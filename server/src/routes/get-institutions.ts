@@ -1,4 +1,4 @@
-import { getAccounts, Route, GetResponse } from "lib";
+import { getInstitutions, Route, GetResponse } from "lib";
 
 const getResponse: GetResponse = async (req) => {
   if (req.session.user?.username !== "admin") {
@@ -8,8 +8,9 @@ const getResponse: GetResponse = async (req) => {
     };
   }
 
-  const response = await getAccounts();
-  if (!response) throw new Error("Server failed to get accounts.");
+  const id = req.query.id as string;
+  const response = await getInstitutions(id);
+  if (!response) throw new Error("Server failed to get institutions.");
 
   return {
     status: "success",
@@ -17,6 +18,6 @@ const getResponse: GetResponse = async (req) => {
   };
 };
 
-const route = new Route("GET", "/accounts", getResponse);
+const route = new Route("GET", "/institutions", getResponse);
 
 export default route;

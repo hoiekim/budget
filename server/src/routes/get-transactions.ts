@@ -1,25 +1,22 @@
-import { RequestHandler } from "express";
-import { Route } from "routes";
-import { getTransactions, Handler, HandlerCallback } from "lib";
+import { getTransactions, Route, GetResponse } from "lib";
 
-const getResponse: HandlerCallback = async () => {
-  const response = await getTransactions();
-  if (!response) {
-    console.error("[plaid.getTransactions] has failed");
+const getResponse: GetResponse = async (req) => {
+  if (req.session.user?.username !== "admin") {
     return {
-      status: "error",
-      info: "Server failed to get transactions",
+      status: "failed",
+      info: "Request user is not authenticated.",
     };
   }
+
+  const response = await getTransactions();
+  if (!response) throw new Error("Server failed to get transactions.");
+
   return {
     status: "success",
     data: response,
   };
 };
 
-const path = "/transactions";
-const handler: RequestHandler = new Handler("GET", getResponse).handler;
+const route = new Route("GET", "/transactions", getResponse);
 
-const getTransactionsRoute: Route = { path, handler };
-
-export default getTransactionsRoute;
+export default route;

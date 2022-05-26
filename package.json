@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@elastic/elasticsearch": "^8.2.1",
     "express-session": "^1.17.3",
     "plaid": "^10.4.0",
     "react": "^18.1.0",

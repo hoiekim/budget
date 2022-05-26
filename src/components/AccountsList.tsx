@@ -1,6 +1,10 @@
 import { AccountBase } from "plaid";
 
-const AccountsList = ({ data }: { data: AccountBase[] }) => {
+interface Props {
+  data: AccountBase[];
+}
+
+const AccountsList = ({ data }: Props) => {
   const transactionRows = data.map((e, i) => {
     return (
       <tr key={i}>
@@ -8,7 +12,7 @@ const AccountsList = ({ data }: { data: AccountBase[] }) => {
           {e.balances.available} / {e.balances.current}
         </td>
         <td>{e.balances.iso_currency_code}</td>
-        <td>{e.amount}</td>
+        <td>{e.name}</td>
       </tr>
     );
   });

@@ -6,7 +6,18 @@ require("dotenv").config({ path: envPath });
 import express from "express";
 import session from "express-session";
 import path from "path";
-import routes from "routes";
+import * as routes from "routes";
+
+export interface User {
+  id: string;
+  username: string;
+}
+
+declare module "express-session" {
+  export interface SessionData {
+    user: User;
+  }
+}
 
 const app = express();
 
@@ -28,14 +39,13 @@ app.use(
 const router = express.Router();
 
 router.use((req, res, next) => {
-  console.info("Received API request.");
+  console.info(`<${req.method}> /api${req.url}`);
   console.group();
   const date = new Date();
   const offset = date.getTimezoneOffset() / -60;
   const offsetString = (offset > 0 ? "+" : "") + offset + "H";
-  console.info(`<${req.method}> /api${req.url}`);
-  console.info(`At: ${date.toLocaleString()}, ${offsetString}`);
-  console.info(`From: ${req.ip}`);
+  console.info(`at: ${date.toLocaleString()}, ${offsetString}`);
+  console.info(`from: ${req.ip}`);
   console.groupEnd();
   try {
     next();
@@ -44,7 +54,10 @@ router.use((req, res, next) => {
   }
 });
 
-routes.forEach((e) => router.use(e.path, e.handler));
+Object.values(routes).forEach((route) => {
+  const { path, handler } = route;
+  router.use(path, handler);
+});
 
 app.use("/api", router);
 

@@ -1,25 +1,20 @@
-import { RequestHandler } from "express";
-import { Route } from "routes";
-import { exchangePublicToken, Handler, HandlerCallback } from "lib";
+import { exchangePublicToken, Route, GetResponse } from "lib";
 
-const getResponse: HandlerCallback = async (req) => {
-  const token = req.body.token;
-  const response = await exchangePublicToken(token);
-  if (!response) {
-    console.error("[exchangePublicToken] has failed");
+const getResponse: GetResponse = async (req) => {
+  if (req.session.user?.username !== "admin") {
     return {
-      status: "error",
-      info: "Server failed to exchange token",
+      status: "failed",
+      info: "Request user is not authenticated.",
     };
   }
-  return {
-    status: "success",
-  };
+
+  const token = req.body.token;
+  const response = await exchangePublicToken(token);
+  if (!response) throw new Error("Server failed to exchange token.");
+
+  return { status: "success" };
 };
 
-const path = "/public-token";
-const handler: RequestHandler = new Handler("POST", getResponse).handler;
+const route = new Route("POST", "/public-token", getResponse);
 
-const getLinkTokenRoute: Route = { path, handler };
-
-export default getLinkTokenRoute;
+export default route;

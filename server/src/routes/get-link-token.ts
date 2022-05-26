@@ -1,25 +1,22 @@
-import { RequestHandler } from "express";
-import { Route } from "routes";
-import { getLinkToken, Handler, HandlerCallback } from "lib";
+import { getLinkToken, Route, GetResponse } from "lib";
 
-const getResponse: HandlerCallback = async () => {
-  const response = await getLinkToken();
-  if (!response) {
-    console.error("[getLinkToken] has failed");
+const getResponse: GetResponse = async (req) => {
+  if (req.session.user?.username !== "admin") {
     return {
-      status: "error",
-      info: "Server failed to get link token",
+      status: "failed",
+      info: "Request user is not authenticated.",
     };
   }
+
+  const response = await getLinkToken();
+  if (!response) throw new Error("Server failed to get link token.");
+
   return {
     status: "success",
     data: response.link_token,
   };
 };
 
-const path = "/link-token";
-const handler: RequestHandler = new Handler("GET", getResponse).handler;
+const route = new Route("GET", "/link-token", getResponse);
 
-const getLinkTokenRoute: Route = { path, handler };
-
-export default getLinkTokenRoute;
+export default route;

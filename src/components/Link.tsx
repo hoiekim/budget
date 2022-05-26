@@ -1,26 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import { usePlaidLink } from "react-plaid-link";
+import { call } from "lib";
+import { Context } from "App";
 
 const Link = () => {
+  const { user } = useContext(Context);
   const [token, setToken] = useState("");
+
   useEffect(() => {
-    fetch("/api/link-token")
-      .then((r) => r.json())
-      .then((r) => {
-        console.log(r);
-        setToken(r.data);
-      });
-  }, []);
+    call("/api/link-token").then((r) => {
+      setToken(r.data);
+    });
+  }, [user]);
+
   const { open, ready } = usePlaidLink({
     token,
     onSuccess: (token, metadata) => {
-      fetch("/api/public-token", {
+      call("/api/public-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
-      })
-        .then((r) => r.json())
-        .then(console.log);
+      });
     },
   });
 

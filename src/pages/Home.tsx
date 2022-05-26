@@ -1,22 +1,25 @@
-import { AccountBase, Transaction } from "plaid";
-import { useState } from "react";
+import { useContext } from "react";
 import {
   Link,
   GetTransactionsButton,
   TransactionsList,
   AccountsList,
+  LoginInterface,
 } from "components";
+import { Context } from "App";
+
+export interface User {
+  id: string;
+  username: string;
+}
 
 const Home = () => {
-  const [transactions, setTransactions] = useState<Transaction[][]>([]);
-  const [accounts, setAccounts] = useState<AccountBase[][]>([]);
+  const { accounts, transactions } = useContext(Context);
   return (
     <div className="Home">
+      <LoginInterface />
       <Link />
-      <GetTransactionsButton
-        setTransactions={setTransactions}
-        setAccounts={setAccounts}
-      />
+      <GetTransactionsButton />
       {accounts.map((e, i) => (
         <AccountsList key={i} data={e} />
       ))}

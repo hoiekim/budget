@@ -1,6 +1,10 @@
 import { Transaction } from "plaid";
 
-const TransactionsList = ({ data }: { data: Transaction[] }) => {
+interface Props {
+  data: Transaction[];
+}
+
+const TransactionsList = ({ data }: Props) => {
   const transactionRows = data.map((e, i) => {
     return (
       <tr key={i}>

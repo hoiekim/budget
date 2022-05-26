@@ -1,5 +1,5 @@
-import Link from "./Link";
-import GetTransactionsButton from "./GetTransactionsButton";
-import TransactionsList from "./TransactionsList";
-import AccountsList from "./AccountsList";
-export { Link, GetTransactionsButton, TransactionsList, AccountsList };
+export { default as Link } from "./Link";
+export { default as GetTransactionsButton } from "./GetTransactionsButton";
+export { default as TransactionsList } from "./TransactionsList";
+export { default as AccountsList } from "./AccountsList";
+export { default as LoginInterface } from "./LoginInterface";

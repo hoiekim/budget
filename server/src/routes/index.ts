@@ -1,13 +1,9 @@
-import { RequestHandler } from "express";
-import getLinkToken from "./get-link-token";
-import postPublicToken from "./post-public-token";
-import getTransaction from "./get-transactions";
+export { default as getLinkToken } from "./get-link-token";
+export { default as postPublicToken } from "./post-public-token";
+export { default as getTransactions } from "./get-transactions";
+export { default as getAccounts } from "./get-accounts";
+export { default as getInstitutions } from "./get-institutions";
 
-export interface Route {
-  path: string;
-  handler: RequestHandler;
-}
-
-const routes: Route[] = [getLinkToken, postPublicToken, getTransaction];
-
-export default routes;
+export { default as getLogin } from "./get-login";
+export { default as postLogin } from "./post-login";
+export { default as deleteLogin } from "./delete-login";
