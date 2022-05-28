@@ -1,0 +1,83 @@
+{
+    "properties": {
+        "type": {
+            "type": "keyword"
+        },
+        "user": {
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "keyword"
+                },
+                "email": {
+                    "type": "keyword"
+                },
+                "expiry": {
+                    "type": "date"
+                },
+                "item": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "keyword"
+                        },
+                        "token": {
+                            "type": "keyword"
+                        }
+                    }
+                },
+                "password": {
+                    "type": "keyword"
+                },
+                "token": {
+                    "type": "keyword"
+                }
+            }
+        },
+        "transaction": {
+            "type": "object",
+            "properties": {
+                "pending_transaction_id": "keyword",
+                "category_id": "keyword",
+                "category": "keyword",
+                "location": {
+                    "type": "object",
+                    "properties": {
+                        "address": "text",
+                        "city": "keyword",
+                        "region": "keyword",
+                        "postal_code": "keyword",
+                        "country": "keyword",
+                        "store_number": "keyword",
+                        "lat": "number",
+                        "lon": "number"
+                    }
+                },
+                "payment_meta": {
+                    "reference_number": "keyword",
+                    "ppd_id": "keyword",
+                    "payee": "keyword",
+                    "by_order_of": "keyword",
+                    "payer": "keyword",
+                    "payment_method": "keyword",
+                    "payment_processor": "keyword",
+                    "reason": "text"
+                },
+                "account_owner": "keyword",
+                "name": "text",
+                "account_id": "keyword",
+                "amount": "number",
+                "iso_currency_code": "keyword",
+                "unofficial_currency_code": "keyword",
+                "date": "date",
+                "pending": "boolean",
+                "transaction_id": "keyword",
+                "payment_channel": "keyword",
+                "authorized_date": "date",
+                "authorized_datetime": "date",
+                "datetime": "date",
+                "transaction_code": "keyword"
+            }
+        }
+    }
+}

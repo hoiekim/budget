@@ -7,6 +7,9 @@ import express from "express";
 import session from "express-session";
 import path from "path";
 import * as routes from "routes";
+import { initializeIndex } from "lib";
+
+initializeIndex()
 
 export interface User {
   id: string;

@@ -27,6 +27,7 @@ export class Route {
           console.error(error);
           res.status(500).json({ status: "error", info: error.message });
         }
+        return
       }
       next();
     };
