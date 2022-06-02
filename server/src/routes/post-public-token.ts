@@ -1,7 +1,8 @@
-import { exchangePublicToken, Route, GetResponse } from "lib";
+import { exchangePublicToken, Route, GetResponse, indexItem, Item } from "lib";
 
 const getResponse: GetResponse = async (req) => {
-  if (req.session.user?.username !== "admin") {
+  const { user } = req.session;
+  if (!user) {
     return {
       status: "failed",
       info: "Request user is not authenticated.",
@@ -11,6 +12,15 @@ const getResponse: GetResponse = async (req) => {
   const token = req.body.token;
   const response = await exchangePublicToken(token);
   if (!response) throw new Error("Server failed to exchange token.");
+
+  const item: Item = {
+    id: response.item_id,
+    token: response.access_token,
+  };
+
+  await indexItem(user, item);
+
+  user.items.push(item);
 
   return { status: "success" };
 };

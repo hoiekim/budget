@@ -1,14 +1,15 @@
 import { getLinkToken, Route, GetResponse } from "lib";
 
 const getResponse: GetResponse = async (req) => {
-  if (req.session.user?.username !== "admin") {
+  const { user } = req.session;
+  if (!user) {
     return {
       status: "failed",
       info: "Request user is not authenticated.",
     };
   }
 
-  const response = await getLinkToken();
+  const response = await getLinkToken(user);
   if (!response) throw new Error("Server failed to get link token.");
 
   return {

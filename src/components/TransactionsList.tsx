@@ -8,7 +8,7 @@ const TransactionsList = ({ data }: Props) => {
   const transactionRows = data.map((e, i) => {
     return (
       <tr key={i}>
-        <td>{e.authorized_date}</td>
+        <td>{e.authorized_date || e.date}</td>
         <td>{e.name}</td>
         <td>{e.amount}</td>
       </tr>

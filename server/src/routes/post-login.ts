@@ -1,12 +1,18 @@
-import { Route, GetResponse } from "lib";
+import bcrypt from "bcrypt";
+import { Route, GetResponse, searchUser } from "lib";
 
 const getResponse: GetResponse = async (req) => {
-  const password = req.body.password;
+  const { username, password } = req.body;
 
-  if (password === process.env.ADMIN_PASSWORD) {
-    const user = { id: "admin", username: "admin" };
-    req.session.user = user;
-    return { status: "success", data: user };
+  const user = await searchUser({ username });
+  if (!user) return { status: "failed", info: "User is not found." };
+
+  const pwMatches = await bcrypt.compare(password, user.password);
+
+  if (pwMatches) {
+    const safeUser = { ...user, password: undefined };
+    req.session.user = safeUser;
+    return { status: "success", data: safeUser };
   }
 
   return { status: "failed", info: "Wrong password." };

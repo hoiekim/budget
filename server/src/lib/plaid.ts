@@ -1,4 +1,3 @@
-import fs from "fs";
 import {
   Configuration,
   PlaidApi,
@@ -9,12 +8,13 @@ import {
   Transaction,
   // RemovedTransaction,
   TransactionsSyncRequest,
+  Institution,
 } from "plaid";
+import { User } from "lib";
 
-const { CLIENT_ID, SECRET_SANDBOX, SECRET_DEVELOPMENT } = process.env;
-const SECRET = SECRET_DEVELOPMENT;
+const { PLAID_CLIENT_ID, PLAID_SECRET } = process.env;
 
-if (!CLIENT_ID || !SECRET) {
+if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
   console.warn("Plaid is not cofigured. Check env vars.");
 }
 
@@ -22,17 +22,17 @@ const configuration = new Configuration({
   basePath: PlaidEnvironments.development,
   baseOptions: {
     headers: {
-      "PLAID-CLIENT-ID": CLIENT_ID,
-      "PLAID-SECRET": SECRET,
+      "PLAID-CLIENT-ID": PLAID_CLIENT_ID,
+      "PLAID-SECRET": PLAID_SECRET,
     },
   },
 });
 
 export const client = new PlaidApi(configuration);
 
-export const getLinkToken = async () => {
+export const getLinkToken = async (user: Omit<User, "password">) => {
   const request: LinkTokenCreateRequest = {
-    user: { client_user_id: "admin" },
+    user: { client_user_id: user.id },
     client_name: "Budget App",
     products: [Products.Auth, Products.Transactions],
     country_codes: [CountryCode.Us],
@@ -45,62 +45,43 @@ export const getLinkToken = async () => {
 export class Item {
   token: string;
   id: string;
+  cursor?: string;
+
   constructor(token: string, id: string) {
     this.token = token;
     this.id = id;
   }
 }
 
-let items: Item[] = [];
-
-const itemsFilePath = "./.items";
-
-if (fs.existsSync(itemsFilePath)) {
-  fs.readFile(itemsFilePath, (error, data) => {
-    if (error) {
-      console.error("Failed to load initial items data from local disk.");
-      return;
-    }
-    const itemsData = JSON.parse(data.toString());
-    if (Array.isArray(itemsData)) items = itemsData;
-  });
-}
-
 export const exchangePublicToken = async (public_token: string) => {
   const response = await client.itemPublicTokenExchange({ public_token });
-  const { access_token, item_id } = response.data;
-  items.push(new Item(access_token, item_id));
-  fs.writeFile(itemsFilePath, JSON.stringify(items), (error) => {
-    if (error) console.error("Failed to write items data to local disk.");
-  });
   return response.data;
 };
 
-export const getTransactions = () => {
+export const getTransactions = async (user: Omit<User, "password">) => {
   try {
-    const fetchJobs = items.map(async (item) => {
+    const fetchJobs = user.items.map(async (item) => {
       try {
-        let cursor: string | undefined;
-        let added: Transaction[] = [];
-        // let modified: Transaction[] = [];
-        // let removed: RemovedTransaction[] = [];
+        const added: Transaction[][] = [];
+        // const modified: Transaction[][] = [];
+        // const removed: RemovedTransaction[][] = [];
         let hasMore = true;
 
         while (hasMore) {
           const request: TransactionsSyncRequest = {
             access_token: item.token,
-            cursor: cursor,
+            cursor: item.cursor,
           };
           const response = await client.transactionsSync(request);
           const data = response.data;
-          added = added.concat(data.added);
-          // modified = modified.concat(data.modified);
-          // removed = removed.concat(data.removed);
+          added.push(data.added);
+          // modified.push(data.modified);
+          // removed.push(data.removed);
           hasMore = data.has_more;
-          cursor = data.next_cursor;
+          item.cursor = data.next_cursor;
         }
 
-        return added;
+        return added.flat();
       } catch (error) {
         console.error(error);
         console.error("Failed to get transactions data for item:", item.id);
@@ -108,16 +89,16 @@ export const getTransactions = () => {
       }
     });
 
-    return Promise.all(fetchJobs);
+    return (await Promise.all(fetchJobs)).flat();
   } catch (error) {
     console.error(error);
     console.error("Failed to get transactions data.");
   }
 };
 
-export const getAccounts = () => {
+export const getAccounts = async (user: Omit<User, "password">) => {
   try {
-    const fetchJobs = items.map(async (item) => {
+    const fetchJobs = user.items.map(async (item) => {
       try {
         const response = await client.accountsGet({ access_token: item.token });
         return response.data.accounts;
@@ -128,20 +109,30 @@ export const getAccounts = () => {
       return [];
     });
 
-    return Promise.all(fetchJobs);
+    return (await Promise.all(fetchJobs)).flat();
   } catch (error) {
     console.error(error);
     console.error("Failed to get accounts data.");
   }
 };
 
-export const getInstitutions = async (id: string) => {
+const institutionsCache = new Map<string, Institution>();
+
+export const getInstitution = async (id: string) => {
+  const cachedData = institutionsCache.get(id);
+  if (cachedData) return cachedData;
+
   try {
     const response = await client.institutionsGetById({
       institution_id: id,
       country_codes: [CountryCode.Us],
     });
-    return response.data;
+
+    const { institution } = response.data;
+
+    if (institution) institutionsCache.set(id, institution);
+
+    return institution;
   } catch (error) {
     console.error(error);
     console.error("Failed to get institutions data.");

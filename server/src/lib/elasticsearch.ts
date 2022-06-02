@@ -1,87 +1,306 @@
 import { Client } from "@elastic/elasticsearch";
-import { Transaction } from "plaid";
-import { Item } from "lib/plaid";
-import mappings from "./mappings.json"
+import bcrypt from "bcrypt";
+import { Transaction, AccountBase } from "plaid";
+import { Item } from "lib";
+import mappings from "./mappings.json";
 
-const client = new Client({ node: "https://localhost:9200" });
+const client = new Client({ node: process.env.ELASTICSEARCH_HOST });
 
 const index = "budget";
-const { properties }: any = mappings
+const { properties }: any = mappings;
 
+export interface User {
+  id: string;
+  username: string;
+  password: string;
+  items: Item[];
+}
+
+/**
+ * Makes sure an index exists with specified mappings.
+ * Then creates or updates admin user with configured password.
+ * If this operations fail, budget app might not work in many situations.
+ * Check server logs and try resolve the issues in this case.
+ */
 export const initializeIndex = async () => {
   const indexAlreadyExists = await client.indices.exists({ index });
-  if (indexAlreadyExists) {
-    console.info("Existing Elasticsearch index is found.")
-    const response = await client.indices.putMapping({
-      index,
-      properties,
-    });
 
-    if ((response as any).error) {
-      throw new Error("Failed to setup mappings for Elasticsearch index.")
+  if (indexAlreadyExists) {
+    console.info("Existing Elasticsearch index is found.");
+
+    const response = await client.indices
+      .putMapping({
+        index,
+        properties,
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    if (!response) {
+      throw new Error("Failed to setup mappings for Elasticsearch index.");
     }
 
-    console.info("Successfully setup mappings for Elasticsearch index.")
-    return response.acknowledged;
+    console.info("Successfully setup mappings for Elasticsearch index.");
+  } else {
+    const response = await client.indices
+      .create({
+        index,
+        mappings: { properties },
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    if (!response) {
+      throw new Error("Failed to create Elasticsearch index.");
+    }
+
+    console.info("Successfully created Elasticsearch index.");
   }
 
-  const response = await client.indices.create({
-    index,
-    mappings: { properties },
-  });
-
-  if ((response as any).error) {
-    throw new Error("Failed to create Elasticsearch index.")
+  const { ADMIN_PASSWORD } = process.env;
+  if (!ADMIN_PASSWORD) {
+    throw new Error("Admin password is not configured. Check env vars.");
   }
 
-  console.info("Successfully created Elasticsearch index.")
-  return response.index;
-};
+  const existingAdminUser = await searchUser({ username: "admin" });
 
-export const searchUser = async (username: string) => {
-  const response = await client.search({
-    index,
-    query: { match: { username } },
+  indexUser({
+    id: existingAdminUser?.id,
+    username: "admin",
+    password: ADMIN_PASSWORD,
+    items: existingAdminUser?.items || [],
   });
-  return response.hits.hits;
+
+  console.info("Successfully created admin user.");
 };
 
-export const indexItem = async (user_id: string, item: Item) => {
-  const { id, token } = item;
+/**
+ * Creates or updates a document that represents a user.
+ * If id is provided and already exists in the index, existing document will be updated.
+ * Otherwise, new document is created in either provided id or auto-generated one.
+ * This operation doesn't ensure created user's properties are unique.
+ * Therefore an extra validation is recommended when creating a new user.
+ * @param user
+ * @returns A promise to be an Elasticsearch result object
+ */
+export const indexUser = async (user: Omit<User, "id"> & { id?: string }) => {
+  const { id, password } = user;
+
+  if (password) {
+    user.password = await bcrypt.hash(password, 10);
+  }
+
+  if (id) delete user.id;
+
+  const response = await client.index({
+    index,
+    id,
+    body: { type: "user", user },
+  });
+
+  return response.result;
+};
+
+/**
+ * Searches for a user. Prints out warning log if multiple users are found.
+ * @param user
+ * @returns A promise to be a User object
+ */
+export const searchUser = async (
+  user: Omit<{ [k in keyof User]?: User[k] }, "password">
+) => {
+  if (user.id) {
+    const response = await client.get<{ user: User }>({
+      index,
+      id: user.id,
+    });
+
+    const hitUser = response?._source?.user;
+
+    return (hitUser && { ...hitUser, id: response._id }) as User;
+  }
+
+  const filter: { term: any }[] = [{ term: { type: "user" } }];
+
+  for (const key in user) {
+    filter.push({
+      term: { [`user.${key}`]: (user as any)[key] },
+    });
+  }
+
+  const response = await client.search<{ user: User }>({
+    index,
+    query: { bool: { filter } },
+  });
+
+  const { hits } = response.hits;
+
+  if (hits.length > 1) {
+    console.warn("Multiple users are found by user:", user);
+  }
+
+  const hit = hits[0];
+  const hitUser = hit?._source?.user;
+
+  return (hitUser && { ...hitUser, id: hit._id }) as User;
+};
+
+/**
+ * Adds an item to an indexed user object.
+ * @param user
+ * @param item
+ * @returns A promise to be an Elasticsearch result object
+ */
+export const indexItem = async (user: Omit<User, "password">, item: Item) => {
   const response = await client.update({
     index,
-    id: user_id,
+    id: user.id,
     script: {
-      source: "ctx._source.item.add(params.val)",
+      source: "ctx._source.user.items.add(params.val)",
       lang: "painless",
-      params: { val: { id, token } },
+      params: { val: item },
     },
   });
   return response.result;
 };
 
-export const indexTransactions = async (
-  user_id: string,
-  transactions: Transaction[]
-) => {
-  const operations = transactions.map((transaction) => {
-    return {
-      index: {
-        _index: "transactions",
-        _id: transaction.transaction_id,
-        ...transaction,
-        user_id,
-      },
-    };
+/**
+ * Update items of given user, specifically each item's cursor.
+ * Cursor is used to mark where last synced with Plaid API.
+ * @param user
+ * @returns A promise to be an Elasticsearch result object
+ */
+export const updateItems = async (user: Omit<User, "password">) => {
+  const response = await client.update({
+    index,
+    id: user.id,
+    script: {
+      source: `
+        for (int i=ctx._source.user.items.length-1; i>=0; i--) {
+          for (int j=params.val.length-1; i>=0; i--) {
+            if (ctx._source.user.items[i].id == params.val[j].id) {
+                ctx._source.user.items[i].cursor = params.val[j].cursor;
+            }
+          }
+        }
+      `,
+      lang: "painless",
+      params: { val: user.items },
+    },
   });
-  const response = await client.bulk({ operations });
-  return response.items;
+  return response.result;
 };
 
-export const searchTransactions = async (user_id: string) => {
-  const response = await client.search({
-    index: "transactions",
-    query: { match: { user_id } },
+/**
+ * Creates transactions documents associated with given user.
+ * @param user
+ * @param transactions
+ * @returns A promise to be an array of Elasticsearch bulk response objects
+ */
+export const indexTransactions = async (
+  user: Omit<User, "password">,
+  transactions: Transaction[]
+) => {
+  if (!transactions.length) return [];
+
+  const operations = transactions.flatMap((transaction) => {
+    return [
+      {
+        index: {
+          _index: index,
+          _id: transaction.transaction_id,
+        },
+      },
+      {
+        type: "transaction",
+        user: { user_id: user.id },
+        transaction,
+      },
+    ];
   });
-  return response.hits.hits;
+
+  const response = await client.bulk({ operations });
+
+  return response.items.map((e) => e.index);
+};
+
+/**
+ * Searches for transactions associated with given user.
+ * @param user
+ * @returns A promise to be an array of Transaction objects
+ */
+export const searchTransactions = async (user: Omit<User, "password">) => {
+  const response = await client.search<{ transaction: Transaction }>({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user.id } },
+          { term: { type: "transaction" } },
+        ],
+      },
+    },
+  });
+
+  return response.hits.hits
+    .map((e) => e?._source?.transaction as Transaction)
+    .filter((e) => e);
+};
+
+/**
+ * Creates accounts documents associated with given user.
+ * @param user
+ * @param accounts
+ * @returns A promise to be an array of Elasticsearch bulk response objects
+ */
+export const indexAccounts = async (
+  user: Omit<User, "password">,
+  accounts: AccountBase[]
+) => {
+  if (!accounts.length) return [];
+
+  const operations = accounts.flatMap((account) => {
+    return [
+      {
+        index: {
+          _index: index,
+          _id: account.account_id,
+        },
+      },
+      {
+        type: "account",
+        user: { user_id: user.id },
+        account,
+      },
+    ];
+  });
+
+  const response = await client.bulk({ operations });
+
+  return response.items.map((e) => e.index);
+};
+
+/**
+ * Searches for accounts associated with given user.
+ * @param user
+ * @returns A promise to be an array of AccountBase objects
+ */
+export const searchAccounts = async (user: Omit<User, "password">) => {
+  const response = await client.search<{ account: AccountBase }>({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user.id } },
+          { term: { type: "account" } },
+        ],
+      },
+    },
+  });
+
+  return response.hits.hits
+    .map((e) => e?._source?.account as AccountBase)
+    .filter((e) => e);
 };

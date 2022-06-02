@@ -7,18 +7,13 @@ import express from "express";
 import session from "express-session";
 import path from "path";
 import * as routes from "routes";
-import { initializeIndex } from "lib";
+import { initializeIndex, User } from "lib";
 
-initializeIndex()
-
-export interface User {
-  id: string;
-  username: string;
-}
+initializeIndex();
 
 declare module "express-session" {
   export interface SessionData {
-    user: User;
+    user: Omit<User, "password">;
   }
 }
 

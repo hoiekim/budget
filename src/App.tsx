@@ -1,31 +1,32 @@
 import { useState, createContext, Dispatch } from "react";
 import { Home, User } from "pages";
 import { Transaction, AccountBase } from "plaid";
-import { useLocalStorage } from "lib";
 
 interface ContextType {
-  transactions: Transaction[][];
-  setTransactions: Dispatch<Transaction[][]>;
-  accounts: AccountBase[][];
-  setAccounts: Dispatch<AccountBase[][]>;
+  transactions: Transaction[];
+  setTransactions: Dispatch<Transaction[]>;
+  accounts: AccountBase[];
+  setAccounts: Dispatch<AccountBase[]>;
   user: User | undefined;
   setUser: Dispatch<User>;
 }
 
 export const Context = createContext<ContextType>({} as ContextType);
 
+export const Cache = {
+  transactions: new Map<string, Transaction>(),
+  accounts: new Map<string, AccountBase>(),
+};
+
 interface Props {
   initialUser: ContextType["user"];
 }
 
 const App = ({ initialUser }: Props) => {
-  const [transactions, setTransactions] = useLocalStorage<
-    ContextType["transactions"]
-  >("transactions", []);
-  const [accounts, setAccounts] = useLocalStorage<ContextType["accounts"]>(
-    "accounts",
+  const [transactions, setTransactions] = useState<ContextType["transactions"]>(
     []
   );
+  const [accounts, setAccounts] = useState<ContextType["accounts"]>([]);
   const [user, setUser] = useState<ContextType["user"]>(initialUser);
 
   const contextValue = {

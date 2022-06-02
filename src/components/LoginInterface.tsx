@@ -5,24 +5,36 @@ import { Context } from "App";
 const LoginInterface = () => {
   const { user, setUser } = useContext(Context);
 
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const onClick = () => {
     call("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ username, password }),
     }).then((r) => setUser(r.data));
   };
   if (!user) {
     return (
       <div className="LoginInterface">
-        <input
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value);
-          }}
-        ></input>
-        <button onClick={onClick}>Login</button>
+        <div>
+          <input
+            value={username}
+            onChange={(e) => {
+              setUsername(e.target.value);
+            }}
+          ></input>
+        </div>
+        <div>
+          <input
+            value={password}
+            type="password"
+            onChange={(e) => setPassword(e.target.value)}
+          ></input>
+        </div>
+        <div>
+          <button onClick={onClick}>Login</button>
+        </div>
       </div>
     );
   }

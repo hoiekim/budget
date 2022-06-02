@@ -1,83 +1,93 @@
 {
-    "properties": {
-        "type": {
-            "type": "keyword"
+  "properties": {
+    "type": { "type": "keyword" },
+    "user": {
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "keyword" },
+        "username": { "type": "keyword" },
+        "email": { "type": "keyword" },
+        "expiry": { "type": "date" },
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "keyword" },
+            "token": { "type": "keyword" },
+            "cursor": { "type": "keyword" }
+          }
         },
-        "user": {
-            "type": "object",
-            "properties": {
-                "username": {
-                    "type": "keyword"
-                },
-                "email": {
-                    "type": "keyword"
-                },
-                "expiry": {
-                    "type": "date"
-                },
-                "item": {
-                    "type": "object",
-                    "properties": {
-                        "id": {
-                            "type": "keyword"
-                        },
-                        "token": {
-                            "type": "keyword"
-                        }
-                    }
-                },
-                "password": {
-                    "type": "keyword"
-                },
-                "token": {
-                    "type": "keyword"
-                }
-            }
+        "password": { "type": "keyword" },
+        "token": { "type": "keyword" }
+      }
+    },
+    "account": {
+      "type": "object",
+      "properties": {
+        "account_id": { "type": "keyword" },
+        "balances": {
+          "type": "object",
+          "properties": {
+            "available": { "type": "half_float" },
+            "current": { "type": "half_float" },
+            "limit": { "type": "half_float" },
+            "iso_currency_code": { "type": "keyword" },
+            "unofficial_currency_code": { "type": "keyword" }
+          }
         },
-        "transaction": {
-            "type": "object",
-            "properties": {
-                "pending_transaction_id": "keyword",
-                "category_id": "keyword",
-                "category": "keyword",
-                "location": {
-                    "type": "object",
-                    "properties": {
-                        "address": "text",
-                        "city": "keyword",
-                        "region": "keyword",
-                        "postal_code": "keyword",
-                        "country": "keyword",
-                        "store_number": "keyword",
-                        "lat": "number",
-                        "lon": "number"
-                    }
-                },
-                "payment_meta": {
-                    "reference_number": "keyword",
-                    "ppd_id": "keyword",
-                    "payee": "keyword",
-                    "by_order_of": "keyword",
-                    "payer": "keyword",
-                    "payment_method": "keyword",
-                    "payment_processor": "keyword",
-                    "reason": "text"
-                },
-                "account_owner": "keyword",
-                "name": "text",
-                "account_id": "keyword",
-                "amount": "number",
-                "iso_currency_code": "keyword",
-                "unofficial_currency_code": "keyword",
-                "date": "date",
-                "pending": "boolean",
-                "transaction_id": "keyword",
-                "payment_channel": "keyword",
-                "authorized_date": "date",
-                "authorized_datetime": "date",
-                "datetime": "date",
-                "transaction_code": "keyword"
-            }
-        }
+        "mask": { "type": "keyword" },
+        "name": { "type": "keyword" },
+        "official_name": { "type": "keyword" },
+        "type": { "type": "keyword" },
+        "subtype": { "type": "keyword" }
+      }
+    },
+    "transaction": {
+      "type": "object",
+      "properties": {
+        "pending_transaction_id": { "type": "keyword" },
+        "category_id": { "type": "keyword" },
+        "category": { "type": "keyword" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "address": { "type": "text" },
+            "city": { "type": "keyword" },
+            "region": { "type": "keyword" },
+            "postal_code": { "type": "keyword" },
+            "country": { "type": "keyword" },
+            "store_number": { "type": "keyword" },
+            "lat": { "type": "half_float" },
+            "lon": { "type": "half_float" }
+          }
+        },
+        "payment_meta": {
+          "type": "object",
+          "properties": {
+            "reference_number": { "type": "keyword" },
+            "ppd_id": { "type": "keyword" },
+            "payee": { "type": "keyword" },
+            "by_order_of": { "type": "keyword" },
+            "payer": { "type": "keyword" },
+            "payment_method": { "type": "keyword" },
+            "payment_processor": { "type": "keyword" },
+            "reason": { "type": "text" }
+          }
+        },
+        "account_owner": { "type": "keyword" },
+        "name": { "type": "text" },
+        "account_id": { "type": "keyword" },
+        "amount": { "type": "half_float" },
+        "iso_currency_code": { "type": "keyword" },
+        "unofficial_currency_code": { "type": "keyword" },
+        "date": { "type": "date" },
+        "pending": { "type": "boolean" },
+        "transaction_id": { "type": "keyword" },
+        "payment_channel": { "type": "keyword" },
+        "authorized_date": { "type": "date" },
+        "authorized_datetime": { "type": "date" },
+        "datetime": { "type": "date" },
+        "transaction_code": { "type": "keyword" }
+      }
     }
+  }
 }

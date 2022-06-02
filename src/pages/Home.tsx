@@ -20,12 +20,8 @@ const Home = () => {
       <LoginInterface />
       <Link />
       <GetTransactionsButton />
-      {accounts.map((e, i) => (
-        <AccountsList key={i} data={e} />
-      ))}
-      {transactions.map((e, i) => (
-        <TransactionsList key={i} data={e} />
-      ))}
+      <AccountsList data={accounts} />
+      <TransactionsList data={transactions} />
     </div>
   );
 };

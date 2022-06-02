@@ -1,12 +1,15 @@
 import { RequestHandler, Request, Response } from "express";
 
 export interface ApiResponse {
-  status: "loading" | "success" | "failed" | "error";
+  status: "loading" | "streaming" | "success" | "failed" | "error";
   data?: any;
   info?: string;
 }
 
-export type GetResponse = (req: Request, res: Response) => Promise<ApiResponse>;
+export type GetResponse = (
+  req: Request,
+  res: Response
+) => Promise<ApiResponse | void>;
 
 export class Route {
   path: string;
@@ -22,12 +25,13 @@ export class Route {
       if (req.method === method) {
         try {
           const result = await callback(req, res);
-          res.json(result);
+          if (result) res.json(result);
+          else res.end();
         } catch (error: any) {
           console.error(error);
           res.status(500).json({ status: "error", info: error.message });
         }
-        return
+        return;
       }
       next();
     };
