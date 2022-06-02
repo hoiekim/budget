@@ -1,6 +1,6 @@
-import { Route, GetResponse } from "lib";
+import { Route, GetResponse, User } from "lib";
 
-const getResponse: GetResponse = async (req) => {
+const getResponse: GetResponse<Omit<User, "password">> = async (req) => {
   const { user } = req.session;
   return {
     status: "success",

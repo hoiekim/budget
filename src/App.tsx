@@ -1,22 +1,6 @@
-import { useState, createContext, Dispatch } from "react";
-import { Home, User } from "pages";
-import { Transaction, AccountBase } from "plaid";
-
-interface ContextType {
-  transactions: Transaction[];
-  setTransactions: Dispatch<Transaction[]>;
-  accounts: AccountBase[];
-  setAccounts: Dispatch<AccountBase[]>;
-  user: User | undefined;
-  setUser: Dispatch<User>;
-}
-
-export const Context = createContext<ContextType>({} as ContextType);
-
-export const Cache = {
-  transactions: new Map<string, Transaction>(),
-  accounts: new Map<string, AccountBase>(),
-};
+import { useState } from "react";
+import { Home } from "pages";
+import { ContextType, Context } from "lib";
 
 interface Props {
   initialUser: ContextType["user"];

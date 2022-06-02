@@ -20,7 +20,7 @@ const getResponse: GetResponse = async (req, res) => {
 
   const earlyResponse = await searchAccounts(user);
   if (!earlyResponse) {
-    throw new Error("Server failed to get early accounts data.");
+    throw new Error("Server failed to get middlestream accounts data.");
   }
   res.write(JSON.stringify({ status: "streaming", data: earlyResponse }));
 

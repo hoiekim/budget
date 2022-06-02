@@ -1,6 +1,5 @@
 import { useState, useContext } from "react";
-import { call } from "lib";
-import { Context } from "App";
+import { Context, User, call } from "lib";
 
 const LoginInterface = () => {
   const { user, setUser } = useContext(Context);
@@ -8,7 +7,7 @@ const LoginInterface = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const onClick = () => {
-    call("/api/login", {
+    call<User>("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),

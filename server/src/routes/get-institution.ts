@@ -1,6 +1,7 @@
 import { getInstitution, Route, GetResponse } from "lib";
+import { Institution } from "plaid";
 
-const getResponse: GetResponse = async (req) => {
+const getResponse: GetResponse<Institution> = async (req) => {
   if (!req.session.user) {
     return {
       status: "failed",

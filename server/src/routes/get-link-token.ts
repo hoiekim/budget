@@ -1,6 +1,6 @@
 import { getLinkToken, Route, GetResponse } from "lib";
 
-const getResponse: GetResponse = async (req) => {
+const getResponse: GetResponse<string> = async (req) => {
   const { user } = req.session;
   if (!user) {
     return {

@@ -1,7 +1,7 @@
 import { useContext, useRef, useEffect } from "react";
 import { Transaction, AccountBase } from "plaid";
 import { read } from "lib";
-import { Context, Cache } from "App";
+import { Context, Cache } from "lib";
 
 const GetTransactionsButton = () => {
   const { setTransactions, setAccounts } = useContext(Context);

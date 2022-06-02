@@ -1,15 +1,15 @@
 import { RequestHandler, Request, Response } from "express";
 
-export interface ApiResponse {
+export interface ApiResponse<T = undefined> {
   status: "loading" | "streaming" | "success" | "failed" | "error";
-  data?: any;
+  data?: T;
   info?: string;
 }
 
-export type GetResponse = (
+export type GetResponse<T = any> = (
   req: Request,
   res: Response
-) => Promise<ApiResponse | void>;
+) => Promise<ApiResponse<T> | void>;
 
 export class Route {
   path: string;

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, createContext } from "react";
+import { ContextType } from "lib";
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const [storedValue, setStoredValue] = useState(() => {
@@ -27,3 +28,5 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
     setValue as React.Dispatch<React.SetStateAction<T>>,
   ] as const;
 };
+
+export const Context = createContext<ContextType>({} as ContextType);

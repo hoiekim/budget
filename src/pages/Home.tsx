@@ -6,12 +6,7 @@ import {
   AccountsList,
   LoginInterface,
 } from "components";
-import { Context } from "App";
-
-export interface User {
-  id: string;
-  username: string;
-}
+import { Context } from "lib";
 
 const Home = () => {
   const { accounts, transactions } = useContext(Context);
