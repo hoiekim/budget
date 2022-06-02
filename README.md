@@ -1,46 +1,40 @@
-# Getting Started with Create React App
+# What is Budget?
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Budget is a web app that provides features for monitoring your financial acounts and transactions. We aim to develop this project to be a tool for users to understand their money flow and plan easily. We use 3rd party API provided by [Plaid](https://plaid.com/) so you need Plaid account and credentials to setup Budget on your own environment.
 
-## Available Scripts
+# How do I install Budget?
 
-In the project directory, you can run:
+First, download Budget with this command in your terminal. This command will create `budget` folder and download all files in this repository.
 
-### `npm start`
+```
+git clone https://github.com/hoiekim/budget.git
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+Now we need some environment configuration. Copy `.env.example` file and name it `.env`. This file contains environment variables and Budget will try to read them once you run it. You need to keep the keys but use your own values depend on your environment. Open your favorite text editor and change values in `.env` file. See below for how to determine correct environment variables.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+* `ADMIN_PASSWORD` is password that you will use when login to Budget as administrator user. Choose one that you would like.
 
-### `npm test`
+* `PLAID_CLIENT_ID` is a unique identifier for a Plaid user. Go to [Plaid](https://plaid.com), sign up and get your client id.
+ 
+* `PLAID_SECRET` is a kind of password that you need to request data from Plaid API. Go to [Plaid](https://plaid.com), sign up and get your development secret key. If you want to use sandbox or production secret key, you also need to change `configuration.basePath` value in `server/src/lib/plaid.ts` file. Currently it's set to development.
+ 
+* `ELASTICSEARCH_HOST` is an address to an Elasticsearch server. You can download it from their [official website](https://elastic.co) for free and install it on your local machine. Or consider using free external hosting service, [Learndatabases](https://learndatabases.dev).
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Once you setup all environment variables, make sure you have [npm](https://npmjs.com) installed in your machine and available in your terminal. Then use this command to install Budget.
 
-### `npm run build`
+```
+cd budget
+npm install
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Then use this command to run Budget.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```
+npm start
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Now Budget app should be live [here](http://localhost:3005). Take a look!
 
-### `npm run eject`
+# How to contribute
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+Create an [issue](https://github.com/hoiekim/budget/issues/new) and explain how you want to improve this project. Or send us an email to budget@hoie.kim if you feel shy. We welcome your ideas!
