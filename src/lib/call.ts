@@ -14,12 +14,10 @@ export interface ApiResponse<T = undefined> {
 export const call = async <T = any>(path: string, options?: RequestInit) => {
   const method = options?.method?.toUpperCase() || "GET";
 
-  return fetch(path, options)
-    .then((r) => r.json())
-    .then((r: ApiResponse<T>) => {
-      console.log(`<${method}> ${path}`, r);
-      return r;
-    });
+  const response: ApiResponse<T> = await fetch(path, options).then((r) => r.json())
+  console.log(`<${method}> ${path}`, response);
+
+  return response;
 };
 
 export const read = async <T = any>(
@@ -29,36 +27,26 @@ export const read = async <T = any>(
 ) => {
   const method = options?.method?.toUpperCase() || "GET";
 
-  fetch(path, options)
-    .then((r) => r.body)
-    .then((r) => {
-      if (!r) throw new Error("Response body is not found.");
+  const response = await fetch(path, options)
+  const reader = response.body?.getReader()
+  if (!reader) return
 
-      const reader = r.getReader();
+  const start = async (controller: ReadableStreamController<any>) => {
+    while (true) {
+      const { done, value } = await reader.read();
 
-      return new ReadableStream({
-        start: async (controller) => {
-          while (true) {
-            const { done, value } = await reader.read();
+      const response: ApiResponse<T> = JSON.parse(new TextDecoder().decode(value));
+      console.log(`<${method}> ${path}`, response);
+      callback(response);
 
-            const response = JSON.parse(new TextDecoder().decode(value));
-            console.log(`<${method}> ${path}`, response);
-            callback(response);
+      if (done) break;
 
-            if (done) break;
+      controller.enqueue(value);
+    }
 
-            controller.enqueue(value);
-          }
+    controller.close();
+    reader.releaseLock();
+  }
 
-          controller.close();
-          reader.releaseLock();
-        },
-      });
-    })
-    .then((r) => {
-      console.log(`<${method}> ${path}`, r);
-    })
-    .catch((r) => {
-      console.log(`<${method}> ${path}`, r);
-    });
+  return new ReadableStream({ start });
 };

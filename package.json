@@ -16,7 +16,7 @@
   },
   "scripts": {
     "start": "npm run build && npm run start-server",
-    "start-server": "npm run build && node ./server/build/index.js",
+    "start-server": "node ./server/build/index.js",
     "start-dev-client": "react-scripts start",
     "build": "npm run build-server && npm run build-client",
     "build-server": "tsc -p ./server/tsconfig.json",
