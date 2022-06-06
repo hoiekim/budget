@@ -1,7 +1,16 @@
+const { NODE_PATH, NODE_ENV } = process.env;
+
 let envPath = ".env";
-const { NODE_ENV } = process.env;
 if (NODE_ENV) envPath += "." + NODE_ENV;
 require("dotenv").config({ path: envPath });
+
+if (!NODE_PATH) {
+  const paths = ["server/build", "server/src"];
+  const isWindows = process.platform === "win32";
+  if (isWindows) process.env.NODE_PATH = paths.join(";");
+  else process.env.NODE_PATH = paths.join(":");
+}
+require("module").Module._initPaths();
 
 import express from "express";
 import session from "express-session";
