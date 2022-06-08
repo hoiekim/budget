@@ -6,8 +6,8 @@ import mappings from "./mappings.json";
 
 const client = new Client({ node: process.env.ELASTICSEARCH_HOST });
 
-const index = "budget";
-const { properties }: any = mappings;
+const { version, properties }: any = mappings;
+const index = "budget" + (version ? `-${version}` : "");
 
 export interface User {
   id: string;
@@ -22,7 +22,26 @@ export interface User {
  * If this operations fail, budget app might not work in many situations.
  * Check server logs and try resolve the issues in this case.
  */
-export const initializeIndex = async () => {
+export const initializeIndex = async (): Promise<void> => {
+  console.info("Initialization started.");
+  try {
+    console.info("Checking Elasticsearch availability...");
+    const { status } = await client.cluster.health({
+      wait_for_status: "yellow",
+      timeout: "5s",
+    });
+    if (!status || status === "red") {
+      throw new Error("Elasticsearch is not available");
+    }
+    console.info(`Elasticsearch is ready (status: ${status})`);
+  } catch (err) {
+    console.info(
+      "Elasticsearch is not available. Restarting initialization in 10 seconds."
+    );
+    return new Promise((res) => {
+      setTimeout(() => res(initializeIndex()), 10000);
+    });
+  }
   const indexAlreadyExists = await client.indices.exists({ index });
 
   if (indexAlreadyExists) {
