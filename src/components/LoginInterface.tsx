@@ -19,9 +19,8 @@ const LoginInterface = () => {
         <div>
           <input
             value={username}
-            onChange={(e) => {
-              setUsername(e.target.value);
-            }}
+            onChange={(e) => setUsername(e.target.value)}
+            onKeyUp={(e) => e.key === "Enter" && onClick()}
           ></input>
         </div>
         <div>
@@ -29,6 +28,7 @@ const LoginInterface = () => {
             value={password}
             type="password"
             onChange={(e) => setPassword(e.target.value)}
+            onKeyUp={(e) => e.key === "Enter" && onClick()}
           ></input>
         </div>
         <div>

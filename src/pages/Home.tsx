@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import {
-  Link,
-  GetTransactionsButton,
+  PlaidLinkButton,
+  SyncButton,
   TransactionsList,
   AccountsList,
   LoginInterface,
@@ -13,8 +13,8 @@ const Home = () => {
   return (
     <div className="Home">
       <LoginInterface />
-      <Link />
-      <GetTransactionsButton />
+      <PlaidLinkButton />
+      <SyncButton />
       <AccountsList data={accounts} />
       <TransactionsList data={transactions} />
     </div>

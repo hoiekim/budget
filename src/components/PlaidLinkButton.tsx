@@ -2,7 +2,7 @@ import { useEffect, useState, useContext } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { Context, call } from "lib";
 
-const Link = () => {
+const PlaidLinkButton = () => {
   const { user } = useContext(Context);
   const [token, setToken] = useState("");
 
@@ -24,7 +24,7 @@ const Link = () => {
   });
 
   return (
-    <div className="Link">
+    <div className="PlaidLinkButton">
       <button onClick={() => open()} disabled={!ready}>
         Connect a bank account
       </button>
@@ -32,4 +32,4 @@ const Link = () => {
   );
 };
 
-export default Link;
+export default PlaidLinkButton;
