@@ -18,7 +18,7 @@ import path from "path";
 import * as routes from "routes";
 import { initializeIndex, User } from "lib";
 
-// initializeIndex();
+initializeIndex();
 
 declare module "express-session" {
   export interface SessionData {
