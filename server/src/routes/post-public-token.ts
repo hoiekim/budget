@@ -10,7 +10,7 @@ const getResponse: GetResponse = async (req) => {
   }
 
   const token = req.body.token;
-  const response = await exchangePublicToken(token);
+  const response = await exchangePublicToken(user, token);
   if (!response) throw new Error("Server failed to exchange token.");
 
   const item: Item = {

@@ -5,7 +5,7 @@ if (NODE_ENV) envPath += "." + NODE_ENV;
 require("dotenv").config({ path: envPath });
 
 if (!NODE_PATH) {
-  const paths = ["server/build", "server/src"];
+  const paths = ["server/src", "server/build"];
   const isWindows = process.platform === "win32";
   if (isWindows) process.env.NODE_PATH = paths.join(";");
   else process.env.NODE_PATH = paths.join(":");
@@ -78,3 +78,5 @@ app.get("*", (req, res) => {
 app.listen(process.env.PORT || 3005, () => {
   console.info("Budget app server is up.");
 });
+
+export * from "./lib";

@@ -14,7 +14,9 @@ export interface ApiResponse<T = undefined> {
 export const call = async <T = any>(path: string, options?: RequestInit) => {
   const method = options?.method?.toUpperCase() || "GET";
 
-  const response: ApiResponse<T> = await fetch(path, options).then((r) => r.json())
+  const response: ApiResponse<T> = await fetch(path, options).then((r) => {
+    return r.json();
+  });
   console.log(`<${method}> ${path}`, response);
 
   return response;
@@ -27,15 +29,17 @@ export const read = async <T = any>(
 ) => {
   const method = options?.method?.toUpperCase() || "GET";
 
-  const response = await fetch(path, options)
-  const reader = response.body?.getReader()
-  if (!reader) return
+  const response = await fetch(path, options);
+  const reader = response.body?.getReader();
+  if (!reader) return;
 
   const start = async (controller: ReadableStreamController<any>) => {
     while (true) {
       const { done, value } = await reader.read();
 
-      const response: ApiResponse<T> = JSON.parse(new TextDecoder().decode(value));
+      const response: ApiResponse<T> = JSON.parse(
+        new TextDecoder().decode(value)
+      );
       console.log(`<${method}> ${path}`, response);
       callback(response);
 
@@ -46,7 +50,7 @@ export const read = async <T = any>(
 
     controller.close();
     reader.releaseLock();
-  }
+  };
 
   return new ReadableStream({ start });
 };

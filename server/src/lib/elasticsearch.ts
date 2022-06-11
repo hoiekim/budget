@@ -78,21 +78,27 @@ export const initializeIndex = async (): Promise<void> => {
     console.info("Successfully created Elasticsearch index.");
   }
 
-  const { ADMIN_PASSWORD } = process.env;
-  if (!ADMIN_PASSWORD) {
-    throw new Error("Admin password is not configured. Check env vars.");
-  }
+  const { ADMIN_PASSWORD, DEMO_PASSWORD } = process.env;
 
   const existingAdminUser = await searchUser({ username: "admin" });
 
   indexUser({
     id: existingAdminUser?.id,
     username: "admin",
-    password: ADMIN_PASSWORD,
+    password: ADMIN_PASSWORD || "budget",
     items: existingAdminUser?.items || [],
   });
 
-  console.info("Successfully created admin user.");
+  const existingDemoUser = await searchUser({ username: "demo" });
+
+  indexUser({
+    id: existingDemoUser?.id,
+    username: "demo",
+    password: DEMO_PASSWORD || "budget",
+    items: existingDemoUser?.items || [],
+  });
+
+  console.info("Successfully setup admin & demo user.");
 };
 
 /**
