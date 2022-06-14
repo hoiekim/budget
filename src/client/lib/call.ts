@@ -1,15 +1,10 @@
 import { Transaction, AccountBase } from "plaid";
+import { ApiResponse } from "server";
 
 export const Cache = {
   transactions: new Map<string, Transaction>(),
   accounts: new Map<string, AccountBase>(),
 };
-
-export interface ApiResponse<T = undefined> {
-  status: "loading" | "streaming" | "success" | "failed" | "error";
-  data: T;
-  info?: string;
-}
 
 export const call = async <T = any>(path: string, options?: RequestInit) => {
   const method = options?.method?.toUpperCase() || "GET";

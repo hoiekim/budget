@@ -5,7 +5,7 @@ import {
   Route,
   GetResponse,
   indexAccounts,
-} from "lib";
+} from "server";
 
 const getResponse: GetResponse = async (req, res) => {
   const { user } = req.session;

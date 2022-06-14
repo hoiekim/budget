@@ -10,7 +10,7 @@ import {
   TransactionsSyncRequest,
   Institution,
 } from "plaid";
-import { User } from "lib";
+import { User } from "server";
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;

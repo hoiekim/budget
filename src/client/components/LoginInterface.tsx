@@ -1,5 +1,5 @@
 import { useState, useContext } from "react";
-import { Context, User, call } from "lib";
+import { Context, User, call } from "client";
 
 const LoginInterface = () => {
   const { user, setUser } = useContext(Context);

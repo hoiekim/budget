@@ -1,6 +1,6 @@
 import { useState, createContext, useContext, useRef, useEffect } from "react";
 import { Transaction, AccountBase } from "plaid";
-import { ContextType, read, Cache } from "lib";
+import { ContextType, read, Cache } from "client";
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const [storedValue, setStoredValue] = useState(() => {
@@ -61,5 +61,5 @@ export const useSynchronizer = () => {
     });
   };
 
-  return synchronize
+  return synchronize;
 };

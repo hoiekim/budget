@@ -1,3 +1,4 @@
+export { default as App } from "./App";
 export { default as PlaidLinkButton } from "./PlaidLinkButton";
 export { default as SyncButton } from "./SyncButton";
 export { default as TransactionsList } from "./TransactionsList";

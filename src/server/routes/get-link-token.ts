@@ -1,4 +1,4 @@
-import { getLinkToken, Route, GetResponse } from "lib";
+import { getLinkToken, Route, GetResponse } from "server";
 
 const getResponse: GetResponse<string> = async (req) => {
   const { user } = req.session;

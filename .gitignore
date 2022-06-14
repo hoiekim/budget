@@ -10,6 +10,7 @@
 
 # production
 build
+compile
 
 # misc
 .DS_Store

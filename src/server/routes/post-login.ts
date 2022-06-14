@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { Route, GetResponse, searchUser, User } from "lib";
+import { Route, GetResponse, searchUser, User } from "server";
 
 const getResponse: GetResponse<Omit<User, "password">> = async (req) => {
   const { username, password } = req.body;

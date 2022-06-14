@@ -12,5 +12,5 @@ export interface ContextType {
   accounts: AccountBase[];
   setAccounts: Dispatch<AccountBase[]>;
   user: User | undefined;
-  setUser: Dispatch<User>;
+  setUser: Dispatch<User | undefined>;
 }

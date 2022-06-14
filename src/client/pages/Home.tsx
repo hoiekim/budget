@@ -5,8 +5,8 @@ import {
   TransactionsList,
   AccountsList,
   LoginInterface,
-} from "components";
-import { Context } from "lib";
+  Context,
+} from "client";
 
 const Home = () => {
   const { accounts, transactions } = useContext(Context);

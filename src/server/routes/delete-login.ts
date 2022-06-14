@@ -1,4 +1,4 @@
-import { Route, GetResponse } from "lib";
+import { Route, GetResponse } from "server";
 
 const getResponse: GetResponse = async (req) => {
   req.session.user = undefined;

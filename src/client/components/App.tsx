@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Home } from "pages";
-import { ContextType, Context } from "lib";
+import { Home, ContextType, Context } from "client";
 
 interface Props {
   initialUser: ContextType["user"];

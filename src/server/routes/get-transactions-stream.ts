@@ -6,7 +6,7 @@ import {
   searchTransactions,
   indexTransactions,
   updateItems,
-} from "lib";
+} from "server";
 
 const getResponse: GetResponse = async (req, res) => {
   const { user } = req.session;

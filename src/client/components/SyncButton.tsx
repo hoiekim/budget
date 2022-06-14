@@ -1,7 +1,7 @@
-import { useSynchronizer } from "lib";
+import { useSynchronizer } from "client";
 
 const SyncButton = () => {
-  const synchrosize = useSynchronizer()
+  const synchrosize = useSynchronizer();
 
   return (
     <div className="SyncButton">

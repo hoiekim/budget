@@ -5,18 +5,20 @@ if (NODE_ENV) envPath += "." + NODE_ENV;
 require("dotenv").config({ path: envPath });
 
 if (!NODE_PATH) {
-  const paths = ["server/src", "server/build"];
+  const paths = ["src", "compile"];
   const isWindows = process.platform === "win32";
   if (isWindows) process.env.NODE_PATH = paths.join(";");
   else process.env.NODE_PATH = paths.join(":");
 }
 require("module").Module._initPaths();
 
+export * from "./lib";
+
 import express from "express";
 import session from "express-session";
 import path from "path";
-import * as routes from "routes";
-import { initializeIndex, User } from "lib";
+import * as routes from "./routes";
+import { initializeIndex, User } from "./lib";
 
 initializeIndex();
 
@@ -78,5 +80,3 @@ app.get("*", (req, res) => {
 app.listen(process.env.PORT || 3005, () => {
   console.info("Budget app server is up.");
 });
-
-export * from "./lib";

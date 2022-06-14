@@ -1,4 +1,10 @@
-import { exchangePublicToken, Route, GetResponse, indexItem, Item } from "lib";
+import {
+  exchangePublicToken,
+  Route,
+  GetResponse,
+  indexItem,
+  Item,
+} from "server";
 
 const getResponse: GetResponse = async (req) => {
   const { user } = req.session;

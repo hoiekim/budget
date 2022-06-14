@@ -1,6 +1,6 @@
 import { useEffect, useState, useContext } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { Context, call } from "lib";
+import { Context, call } from "client";
 
 const PlaidLinkButton = () => {
   const { user } = useContext(Context);
@@ -8,7 +8,7 @@ const PlaidLinkButton = () => {
 
   useEffect(() => {
     call<string>("/api/link-token").then((r) => {
-      setToken(r.data);
+      setToken(r.data || "");
     });
   }, [user]);
 

@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "es5",
-    "lib": [ "dom", "dom.iterable", "esnext"],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,15 +15,43 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "baseUrl": "./src"
+    "baseUrl": "./src",
+    "paths": {
+      "client": ["./client"],
+      "client/*": ["./client/*"],
+      "server": ["./server"],
+      "server/*": ["./server/*"]
+    }
   },
   "include": ["src"],
   "exclude": [
-    "build",
-    "node_modules",
-    "src/*.test.ts",
-    "src/*.test.tsx",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx"
-  ]
+    "*.test.ts",
+    "*.test.tsx",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ],
+  "ts-node": {
+    "compilerOptions": {
+      "target": "es2016",
+      "skipLibCheck": true,
+      "esModuleInterop": true,
+      "strict": true,
+      "forceConsistentCasingInFileNames": true,
+      "module": "commonjs",
+      "resolveJsonModule": true,
+      "outDir": "./compile/server",
+      "baseUrl": "./src",
+      "paths": {
+        "client": ["./client"],
+        "client/*": ["./client/*"],
+        "server": ["./server"],
+        "server/*": ["./server/*"]
+      }
+    },
+    "include": ["src/server"],
+    "exclude": [
+      "*.test.ts",
+      "**/*.test.ts",
+    ]
+  }
 }
