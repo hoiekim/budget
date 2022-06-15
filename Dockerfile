@@ -2,7 +2,13 @@ FROM --platform=linux/AMD64 node:14.17.6-alpine3.13 AS BUILDER
 
 WORKDIR /app
 
-COPY . .
+COPY package.json package.json
+COPY package-lock.json package-lock.json
+COPY tsconfig.json tsconfig.json
+COPY tsconfig.server.json tsconfig.server.json
+COPY src src
+COPY public public
+
 RUN npm i
 RUN npm run build
 RUN npm prune --production
