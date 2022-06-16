@@ -10,7 +10,7 @@ First, download Budget with this command in your terminal. This command will cre
 git clone https://github.com/hoiekim/budget.git
 ```
 
-Now we need some environment configuration. Copy `.env.example` file and name it `.env`. This file contains environment variables and Budget will try to read them once you run it. You need to keep the keys but use your own values depend on your environment. Open your favorite text editor and change values in `.env` file. See below for how to determine correct environment variables.
+Now we need some environment configuration. Copy `.env.example` file and name it `.env.local`. This file contains environment variables and Budget will try to read them once you run it. You need to keep the keys but use your own values depend on your environment. Open your favorite text editor and change values in `.env.local` file. See below for how to determine correct environment variables.
 
 - `ADMIN_PASSWORD` is password that you will use when login to Budget as administrator user. Choose one that you would like.
 

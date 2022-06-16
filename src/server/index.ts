@@ -1,15 +1,13 @@
-const { NODE_PATH, NODE_ENV } = process.env;
+import { config } from "dotenv";
 
-let envPath = ".env";
-if (NODE_ENV) envPath += "." + NODE_ENV;
-require("dotenv").config({ path: envPath });
+const { NODE_ENV } = process.env;
+const extraEnv = NODE_ENV ? ".env." + NODE_ENV : "";
+[".env", ".env.local", extraEnv].forEach((path) => config({ path }));
 
-if (!NODE_PATH) {
-  const paths = ["src", "compile"];
-  const isWindows = process.platform === "win32";
-  if (isWindows) process.env.NODE_PATH = paths.join(";");
-  else process.env.NODE_PATH = paths.join(":");
-}
+const paths = ["src", "build"];
+const isWindows = process.platform === "win32";
+if (isWindows) process.env.NODE_PATH = paths.join(";");
+else process.env.NODE_PATH = paths.join(":");
 require("module").Module._initPaths();
 
 export * from "./lib";
@@ -70,7 +68,7 @@ Object.values(routes).forEach((route) => {
 
 app.use("/api", router);
 
-const clientPath = path.resolve(__dirname, "../../build");
+const clientPath = path.resolve(__dirname, "../client");
 app.use(express.static(clientPath));
 
 app.get("*", (req, res) => {

@@ -7,7 +7,7 @@
     "forceConsistentCasingInFileNames": true,
     "module": "commonjs",
     "resolveJsonModule": true,
-    "outDir": "./compile/server",
+    "outDir": "./build/server",
     "baseUrl": "./src",
     "paths": {
       "client": ["./client"],
