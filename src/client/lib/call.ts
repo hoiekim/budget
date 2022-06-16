@@ -1,9 +1,9 @@
-import { Transaction, AccountBase } from "plaid";
-import { ApiResponse } from "server";
+import { Transaction } from "plaid";
+import { ApiResponse, Account } from "server";
 
 export const Cache = {
   transactions: new Map<string, Transaction>(),
-  accounts: new Map<string, AccountBase>(),
+  accounts: new Map<string, Account>(),
 };
 
 export const call = async <T = any>(path: string, options?: RequestInit) => {

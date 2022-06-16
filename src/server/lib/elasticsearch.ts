@@ -1,7 +1,7 @@
 import { Client } from "@elastic/elasticsearch";
 import bcrypt from "bcrypt";
-import { Transaction, AccountBase } from "plaid";
-import { Item } from "server";
+import { Transaction } from "plaid";
+import { Item, Account } from "server";
 import mappings from "./mappings.json";
 
 const client = new Client({ node: process.env.ELASTICSEARCH_HOST });
@@ -205,14 +205,14 @@ export const updateItems = async (user: MaskedUser) => {
     id: user.id,
     script: {
       source: `
-        for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-          for (int j=params.val.length-1; i>=0; i--) {
-            if (ctx._source.user.items[i].id == params.val[j].id) {
-                ctx._source.user.items[i].cursor = params.val[j].cursor;
-            }
-          }
-        }
-      `,
+for (int i=ctx._source.user.items.length-1; i>=0; i--) {
+  for (int j=params.val.length-1; i>=0; i--) {
+    if (ctx._source.user.items[i].id == params.val[j].id) {
+        ctx._source.user.items[i].cursor = params.val[j].cursor;
+    }
+  }
+}
+`,
       lang: "painless",
       params: { val: user.items },
     },
@@ -284,7 +284,7 @@ export const searchTransactions = async (user: MaskedUser) => {
  */
 export const indexAccounts = async (
   user: MaskedUser,
-  accounts: AccountBase[]
+  accounts: Account[]
 ) => {
   if (!accounts.length) return [];
 
@@ -312,10 +312,10 @@ export const indexAccounts = async (
 /**
  * Searches for accounts associated with given user.
  * @param user
- * @returns A promise to be an array of AccountBase objects
+ * @returns A promise to be an array of Account objects
  */
 export const searchAccounts = async (user: MaskedUser) => {
-  const response = await client.search<{ account: AccountBase }>({
+  const response = await client.search<{ account: Account }>({
     index,
     query: {
       bool: {
@@ -328,6 +328,6 @@ export const searchAccounts = async (user: MaskedUser) => {
   });
 
   return response.hits.hits
-    .map((e) => e?._source?.account as AccountBase)
+    .map((e) => e?._source?.account as Account)
     .filter((e) => e);
 };

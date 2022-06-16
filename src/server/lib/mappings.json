@@ -14,6 +14,7 @@
           "properties": {
             "id": { "type": "keyword" },
             "token": { "type": "keyword" },
+            "institution_id": { "type": "keyword" },
             "cursor": { "type": "keyword" }
           }
         },
@@ -35,6 +36,7 @@
             "unofficial_currency_code": { "type": "keyword" }
           }
         },
+        "institution_id": { "type": "keyword" },
         "mask": { "type": "keyword" },
         "name": { "type": "keyword" },
         "official_name": { "type": "keyword" },

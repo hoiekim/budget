@@ -1,5 +1,5 @@
-import { AccountBase } from "plaid";
 import {
+  Account,
   searchAccounts,
   getAccounts,
   Route,
@@ -16,7 +16,7 @@ const getResponse: GetResponse = async (req, res) => {
     };
   }
 
-  const map = new Map<string, AccountBase>();
+  const map = new Map<string, Account>();
 
   const earlyResponse = await searchAccounts(user);
   if (!earlyResponse) {

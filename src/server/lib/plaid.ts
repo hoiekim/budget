@@ -8,6 +8,7 @@ import {
   Transaction,
   // RemovedTransaction,
   TransactionsSyncRequest,
+  AccountBase,
   Institution,
 } from "plaid";
 import { MaskedUser } from "server";
@@ -64,13 +65,14 @@ export const getLinkToken = async (user: MaskedUser) => {
 };
 
 export class Item {
-  token: string;
-  id: string;
+  access_token: string;
+  item_id: string;
+  institution_id?: string;
   cursor?: string;
 
-  constructor(token: string, id: string) {
-    this.token = token;
-    this.id = id;
+  constructor(access_token: string, item_id: string) {
+    this.access_token = access_token;
+    this.item_id = item_id;
   }
 }
 
@@ -90,7 +92,9 @@ export const getItem = async (user: MaskedUser, access_token: string) => {
 
   const response = await client.itemGet({ access_token });
 
-  return response.data;
+  const { item } = response.data;
+
+  return item;
 };
 
 export const getTransactions = async (user: MaskedUser) => {
@@ -106,7 +110,7 @@ export const getTransactions = async (user: MaskedUser) => {
 
         while (hasMore) {
           const request: TransactionsSyncRequest = {
-            access_token: item.token,
+            access_token: item.access_token,
             cursor: item.cursor,
           };
           const response = await client.transactionsSync(request);
@@ -121,7 +125,7 @@ export const getTransactions = async (user: MaskedUser) => {
         return added.flat();
       } catch (error) {
         console.error(error);
-        console.error("Failed to get transactions data for item:", item.id);
+        console.error("Failed to get transactions data for item:", item.item_id);
         return [];
       }
     });
@@ -133,26 +137,30 @@ export const getTransactions = async (user: MaskedUser) => {
   }
 };
 
-export const getAccounts = async (user: MaskedUser) => {
+export interface Account extends AccountBase {
+  institution_id?: string;
+}
+
+export const getAccounts = async (user: MaskedUser): Promise<Account[]> => {
   const client = getClient(user);
 
-  try {
-    const fetchJobs = user.items.map(async (item) => {
-      try {
-        const response = await client.accountsGet({ access_token: item.token });
-        return response.data.accounts;
-      } catch (error) {
-        console.error(error);
-        console.error("Failed to get accounts data for item:", item.id);
-      }
-      return [];
-    });
+  const fetchJobs = user.items.map(async (item) => {
+    const { item_id, access_token, institution_id } = item
+    try {
+      const response = await client.accountsGet({ access_token });
+      const { accounts } = response.data
+      const filledAccounts: Account[] = accounts.map((e) => {
+        return { ...e, institution_id }
+      })
+      return filledAccounts;
+    } catch (error) {
+      console.error(error);
+      console.error("Failed to get accounts data for item:", item_id);
+    }
+    return [];
+  });
 
-    return (await Promise.all(fetchJobs)).flat();
-  } catch (error) {
-    console.error(error);
-    console.error("Failed to get accounts data.");
-  }
+  return (await Promise.all(fetchJobs)).flat();
 };
 
 const institutionsCache = new Map<string, Institution>();

@@ -1,5 +1,6 @@
 import { Dispatch } from "react";
-import { Transaction, AccountBase } from "plaid";
+import { Transaction } from "plaid";
+import { Account } from "server"
 
 export interface User {
   id: string;
@@ -9,8 +10,8 @@ export interface User {
 export interface ContextType {
   transactions: Transaction[];
   setTransactions: Dispatch<Transaction[]>;
-  accounts: AccountBase[];
-  setAccounts: Dispatch<AccountBase[]>;
+  accounts: Account[];
+  setAccounts: Dispatch<Account[]>;
   user: User | undefined;
   setUser: Dispatch<User | undefined>;
 }
