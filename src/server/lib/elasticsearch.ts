@@ -16,6 +16,8 @@ export interface User {
   items: Item[];
 }
 
+export type MaskedUser = Omit<User, "password">;
+
 /**
  * Makes sure an index exists with specified mappings.
  * Then creates or updates admin user with configured password.
@@ -178,7 +180,7 @@ export const searchUser = async (
  * @param item
  * @returns A promise to be an Elasticsearch result object
  */
-export const indexItem = async (user: Omit<User, "password">, item: Item) => {
+export const indexItem = async (user: MaskedUser, item: Item) => {
   const response = await client.update({
     index,
     id: user.id,
@@ -197,7 +199,7 @@ export const indexItem = async (user: Omit<User, "password">, item: Item) => {
  * @param user
  * @returns A promise to be an Elasticsearch result object
  */
-export const updateItems = async (user: Omit<User, "password">) => {
+export const updateItems = async (user: MaskedUser) => {
   const response = await client.update({
     index,
     id: user.id,
@@ -225,7 +227,7 @@ export const updateItems = async (user: Omit<User, "password">) => {
  * @returns A promise to be an array of Elasticsearch bulk response objects
  */
 export const indexTransactions = async (
-  user: Omit<User, "password">,
+  user: MaskedUser,
   transactions: Transaction[]
 ) => {
   if (!transactions.length) return [];
@@ -256,7 +258,7 @@ export const indexTransactions = async (
  * @param user
  * @returns A promise to be an array of Transaction objects
  */
-export const searchTransactions = async (user: Omit<User, "password">) => {
+export const searchTransactions = async (user: MaskedUser) => {
   const response = await client.search<{ transaction: Transaction }>({
     index,
     query: {
@@ -281,7 +283,7 @@ export const searchTransactions = async (user: Omit<User, "password">) => {
  * @returns A promise to be an array of Elasticsearch bulk response objects
  */
 export const indexAccounts = async (
-  user: Omit<User, "password">,
+  user: MaskedUser,
   accounts: AccountBase[]
 ) => {
   if (!accounts.length) return [];
@@ -312,7 +314,7 @@ export const indexAccounts = async (
  * @param user
  * @returns A promise to be an array of AccountBase objects
  */
-export const searchAccounts = async (user: Omit<User, "password">) => {
+export const searchAccounts = async (user: MaskedUser) => {
   const response = await client.search<{ account: AccountBase }>({
     index,
     query: {

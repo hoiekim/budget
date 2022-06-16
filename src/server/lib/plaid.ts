@@ -10,7 +10,7 @@ import {
   TransactionsSyncRequest,
   Institution,
 } from "plaid";
-import { User } from "server";
+import { MaskedUser } from "server";
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;
@@ -19,7 +19,7 @@ if (!PLAID_CLIENT_ID || !PLAID_SECRET_DEVELOPMENT || !PLAID_SECRET_SANDBOX) {
   console.warn("Plaid is not cofigured. Check env vars.");
 }
 
-const getClient = (user: Omit<User, "password">) => {
+const getClient = (user: MaskedUser) => {
   if (user.username === "demo") {
     const sandboxConfig = new Configuration({
       basePath: PlaidEnvironments.sandbox,
@@ -47,7 +47,7 @@ const getClient = (user: Omit<User, "password">) => {
   }
 };
 
-export const getLinkToken = async (user: Omit<User, "password">) => {
+export const getLinkToken = async (user: MaskedUser) => {
   const client = getClient(user);
 
   const request: LinkTokenCreateRequest = {
@@ -75,7 +75,7 @@ export class Item {
 }
 
 export const exchangePublicToken = async (
-  user: Omit<User, "password">,
+  user: MaskedUser,
   public_token: string
 ) => {
   const client = getClient(user);
@@ -85,7 +85,15 @@ export const exchangePublicToken = async (
   return response.data;
 };
 
-export const getTransactions = async (user: Omit<User, "password">) => {
+export const getItem = async (user: MaskedUser, access_token: string) => {
+  const client = getClient(user);
+
+  const response = await client.itemGet({ access_token });
+
+  return response.data;
+};
+
+export const getTransactions = async (user: MaskedUser) => {
   const client = getClient(user);
 
   try {
@@ -125,7 +133,7 @@ export const getTransactions = async (user: Omit<User, "password">) => {
   }
 };
 
-export const getAccounts = async (user: Omit<User, "password">) => {
+export const getAccounts = async (user: MaskedUser) => {
   const client = getClient(user);
 
   try {
@@ -149,10 +157,7 @@ export const getAccounts = async (user: Omit<User, "password">) => {
 
 const institutionsCache = new Map<string, Institution>();
 
-export const getInstitution = async (
-  user: Omit<User, "password">,
-  id: string
-) => {
+export const getInstitution = async (user: MaskedUser, id: string) => {
   const client = getClient(user);
 
   const cachedData = institutionsCache.get(id);

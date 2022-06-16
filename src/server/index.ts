@@ -56,8 +56,9 @@ router.use((req, res, next) => {
   console.groupEnd();
   try {
     next();
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
+    res.status(500).json({ status: "error", info: error?.message });
   }
 });
 
