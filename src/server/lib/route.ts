@@ -23,14 +23,9 @@ export class Route {
     this.path = path;
     this.handler = async (req, res, next) => {
       if (req.method === method) {
-        try {
-          const result = await callback(req, res);
-          if (result) res.json(result);
-          else res.end();
-        } catch (error: any) {
-          console.error(error);
-          res.status(500).json({ status: "error", info: error.message });
-        }
+        const result = await callback(req, res);
+        if (result) res.json(result);
+        else res.end();
         return;
       }
       next();
