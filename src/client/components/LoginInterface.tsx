@@ -6,13 +6,27 @@ const LoginInterface = () => {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
   const onClick = () => {
-    call<User>("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    }).then((r) => setUser(r.data));
+    if (user) {
+      call<User>("/api/login", { method: "DELETE" }).then((r) => {
+        setUser(r.data);
+      });
+    } else {
+      call<User>("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      }).then((r) => {
+        if (r.status === "success") {
+          setUser(r.data);
+          setUsername("");
+          setPassword("");
+        }
+      });
+    }
   };
+
   if (!user) {
     return (
       <div className="LoginInterface">
@@ -37,7 +51,15 @@ const LoginInterface = () => {
       </div>
     );
   }
-  return <div className="LoginInterface">{user.username} is logged in</div>;
+
+  return (
+    <div className="LoginInterface">
+      <div>{user.username} is logged in</div>
+      <div>
+        <button onClick={onClick}>Logout</button>
+      </div>
+    </div>
+  );
 };
 
 export default LoginInterface;
