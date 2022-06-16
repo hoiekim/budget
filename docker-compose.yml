@@ -1,0 +1,27 @@
+---
+version: "3.3"
+
+services:
+  budget:
+    image: hoie/budget:latest
+    env_file:
+      - ./.env.local
+    ports:
+      - "3005:3005"
+    links:
+      - elastic
+    depends_on:
+      - elastic
+
+  elastic:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.2
+    environment:
+      - discovery.type=single-node
+    restart: always
+    volumes:
+      - data:/usr/share/elasticsearch/data
+
+volumes:
+  data:
+    external: true
+    name: inbox_data
