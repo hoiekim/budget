@@ -1,7 +1,7 @@
-import { AccountBase } from "plaid";
+import { Account } from "server";
 
 interface Props {
-  data: AccountBase[];
+  data: Account[];
 }
 
 const AccountsList = ({ data }: Props) => {

@@ -1,6 +1,7 @@
 import { useState, createContext, useContext, useRef, useEffect } from "react";
-import { Transaction, AccountBase } from "plaid";
+import { Transaction } from "plaid";
 import { ContextType, read, Cache } from "client";
+import { Account } from "server"
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const [storedValue, setStoredValue] = useState(() => {
@@ -54,7 +55,7 @@ export const useSynchronizer = () => {
       const array = Array.from(Cache.transactions.values());
       setTransactionsRef.current(array);
     });
-    read<AccountBase[]>("/api/accounts-stream", (r) => {
+    read<Account[]>("/api/accounts-stream", (r) => {
       r.data?.forEach((e) => Cache.accounts.set(e.account_id, e));
       const array = Array.from(Cache.accounts.values());
       setAccountsRef.current(array);

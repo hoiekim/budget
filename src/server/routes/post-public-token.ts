@@ -1,5 +1,6 @@
 import {
   exchangePublicToken,
+  getItem,
   Route,
   GetResponse,
   indexItem,
@@ -16,17 +17,22 @@ const getResponse: GetResponse = async (req) => {
   }
 
   const token = req.body.token;
-  const response = await exchangePublicToken(user, token);
-  if (!response) throw new Error("Server failed to exchange token.");
+  const { item_id, access_token } = await exchangePublicToken(user, token);
+  if (!item_id || !access_token) throw new Error("Server failed to exchange token.");
 
-  const item: Item = {
-    id: response.item_id,
-    token: response.access_token,
-  };
-
-  await indexItem(user, item);
+  const item: Item = { item_id, access_token };
 
   user.items.push(item);
+
+  try {
+    const { institution_id } = await getItem(user, access_token)
+    if (institution_id) item.institution_id = institution_id
+  } catch (error) {
+    console.error(error)
+    console.error(`Failed to get institution id for item: ${item_id}`)
+  }
+
+  await indexItem(user, item)
 
   return { status: "success" };
 };
