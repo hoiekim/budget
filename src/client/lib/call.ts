@@ -1,5 +1,4 @@
-import { Transaction } from "plaid";
-import { ApiResponse, Account } from "server";
+import { ApiResponse, Account, Transaction } from "server";
 
 export const Cache = {
   transactions: new Map<string, Transaction>(),

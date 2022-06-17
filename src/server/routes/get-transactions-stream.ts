@@ -1,5 +1,5 @@
-import { Transaction } from "plaid";
 import {
+  Transaction,
   getTransactions,
   Route,
   GetResponse,

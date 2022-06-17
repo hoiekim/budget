@@ -1,5 +1,4 @@
-import { Institution } from "plaid";
-import { getInstitution, Route, GetResponse } from "server";
+import { Institution, getInstitution, Route, GetResponse } from "server";
 
 const getResponse: GetResponse<Institution> = async (req) => {
   const { user } = req.session;
