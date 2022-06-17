@@ -1,6 +1,5 @@
 import { Dispatch } from "react";
-import { Transaction } from "plaid";
-import { Account } from "server"
+import { Transaction, Account } from "server"
 
 export interface User {
   id: string;

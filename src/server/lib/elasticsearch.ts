@@ -1,7 +1,6 @@
 import { Client } from "@elastic/elasticsearch";
 import bcrypt from "bcrypt";
-import { Transaction } from "plaid";
-import { Item, Account } from "server";
+import { Item, Transaction, Account } from "server";
 import mappings from "./mappings.json";
 
 const client = new Client({ node: process.env.ELASTICSEARCH_HOST });

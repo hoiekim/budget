@@ -5,13 +5,15 @@ import {
   LinkTokenCreateRequest,
   Products,
   CountryCode,
-  Transaction,
-  // RemovedTransaction,
+  Transaction as PlaidTransaction,
   TransactionsSyncRequest,
   AccountBase,
-  Institution,
+  Institution as PlaidInstitution,
 } from "plaid";
 import { MaskedUser } from "server";
+
+export interface Transaction extends PlaidTransaction { }
+export interface Institution extends PlaidInstitution { }
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;
@@ -104,8 +106,6 @@ export const getTransactions = async (user: MaskedUser) => {
     const fetchJobs = user.items.map(async (item) => {
       try {
         const added: Transaction[][] = [];
-        // const modified: Transaction[][] = [];
-        // const removed: RemovedTransaction[][] = [];
         let hasMore = true;
 
         while (hasMore) {
@@ -116,8 +116,6 @@ export const getTransactions = async (user: MaskedUser) => {
           const response = await client.transactionsSync(request);
           const data = response.data;
           added.push(data.added);
-          // modified.push(data.modified);
-          // removed.push(data.removed);
           hasMore = data.has_more;
           item.cursor = data.next_cursor;
         }

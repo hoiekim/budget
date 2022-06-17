@@ -1,4 +1,4 @@
-import { Transaction } from "plaid";
+import { Transaction } from "server";
 
 interface Props {
   data: Transaction[];

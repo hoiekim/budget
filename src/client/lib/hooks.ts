@@ -1,7 +1,6 @@
 import { useState, createContext, useContext, useRef, useEffect } from "react";
-import { Transaction } from "plaid";
 import { ContextType, read, Cache } from "client";
-import { Account } from "server"
+import { Transaction, Account } from "server"
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const [storedValue, setStoredValue] = useState(() => {
