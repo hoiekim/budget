@@ -1,8 +1,9 @@
-import { ApiResponse, Account, Transaction } from "server";
+import { ApiResponse, Account, Transaction, Institution } from "server";
 
 export const Cache = {
   transactions: new Map<string, Transaction>(),
   accounts: new Map<string, Account>(),
+  institutions: new Map<string, Institution>(),
 };
 
 export const call = async <T = any>(path: string, options?: RequestInit) => {

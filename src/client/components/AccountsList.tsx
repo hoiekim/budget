@@ -1,4 +1,5 @@
 import { Account } from "server";
+import { InstitutionTag } from "client";
 
 interface Props {
   data: Account[];
@@ -13,6 +14,9 @@ const AccountsList = ({ data }: Props) => {
         </td>
         <td>{e.balances.iso_currency_code}</td>
         <td>{e.name}</td>
+        <td>
+          <InstitutionTag institution_id={e.institution_id} />
+        </td>
       </tr>
     );
   });
