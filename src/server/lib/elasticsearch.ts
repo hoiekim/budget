@@ -1,6 +1,6 @@
 import { Client } from "@elastic/elasticsearch";
 import bcrypt from "bcrypt";
-import { Item, Transaction, Account } from "server";
+import { Item, Transaction, Account, getLocalItems } from "server";
 import mappings from "./mappings.json";
 
 const client = new Client({ node: process.env.ELASTICSEARCH_HOST });
@@ -35,7 +35,7 @@ export const initializeIndex = async (): Promise<void> => {
       throw new Error("Elasticsearch is not available");
     }
     console.info(`Elasticsearch is ready (status: ${status})`);
-  } catch (err) {
+  } catch (error) {
     console.info(
       "Elasticsearch is not available. Restarting initialization in 10 seconds."
     );
@@ -81,13 +81,15 @@ export const initializeIndex = async (): Promise<void> => {
 
   const { ADMIN_PASSWORD, DEMO_PASSWORD } = process.env;
 
+  const localItems = getLocalItems();
   const existingAdminUser = await searchUser({ username: "admin" });
+  const adminItems = [localItems, existingAdminUser?.items || []].flat();
 
   indexUser({
     id: existingAdminUser?.id,
     username: "admin",
     password: ADMIN_PASSWORD || "budget",
-    items: existingAdminUser?.items || [],
+    items: adminItems,
   });
 
   const existingDemoUser = await searchUser({ username: "demo" });
@@ -281,10 +283,7 @@ export const searchTransactions = async (user: MaskedUser) => {
  * @param accounts
  * @returns A promise to be an array of Elasticsearch bulk response objects
  */
-export const indexAccounts = async (
-  user: MaskedUser,
-  accounts: Account[]
-) => {
+export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
   if (!accounts.length) return [];
 
   const operations = accounts.flatMap((account) => {
