@@ -12,11 +12,10 @@ import {
 } from "plaid";
 import { MaskedUser } from "server";
 
-export interface Transaction extends PlaidTransaction { }
-export interface Institution extends PlaidInstitution { }
+export interface Transaction extends PlaidTransaction {}
+export interface Institution extends PlaidInstitution {}
 
-const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
-  process.env;
+const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } = process.env;
 
 if (!PLAID_CLIENT_ID || !PLAID_SECRET_DEVELOPMENT || !PLAID_SECRET_SANDBOX) {
   console.warn("Plaid is not cofigured. Check env vars.");
@@ -78,10 +77,7 @@ export class Item {
   }
 }
 
-export const exchangePublicToken = async (
-  user: MaskedUser,
-  public_token: string
-) => {
+export const exchangePublicToken = async (user: MaskedUser, public_token: string) => {
   const client = getClient(user);
 
   const response = await client.itemPublicTokenExchange({ public_token });
@@ -102,37 +98,32 @@ export const getItem = async (user: MaskedUser, access_token: string) => {
 export const getTransactions = async (user: MaskedUser) => {
   const client = getClient(user);
 
-  try {
-    const fetchJobs = user.items.map(async (item) => {
-      try {
-        const added: Transaction[][] = [];
-        let hasMore = true;
+  const fetchJobs = user.items.map(async (item) => {
+    try {
+      const added: Transaction[][] = [];
+      let hasMore = true;
 
-        while (hasMore) {
-          const request: TransactionsSyncRequest = {
-            access_token: item.access_token,
-            cursor: item.cursor,
-          };
-          const response = await client.transactionsSync(request);
-          const data = response.data;
-          added.push(data.added);
-          hasMore = data.has_more;
-          item.cursor = data.next_cursor;
-        }
-
-        return added.flat();
-      } catch (error) {
-        console.error(error);
-        console.error("Failed to get transactions data for item:", item.item_id);
-        return [];
+      while (hasMore) {
+        const request: TransactionsSyncRequest = {
+          access_token: item.access_token,
+          cursor: item.cursor,
+        };
+        const response = await client.transactionsSync(request);
+        const data = response.data;
+        added.push(data.added);
+        hasMore = data.has_more;
+        item.cursor = data.next_cursor;
       }
-    });
 
-    return (await Promise.all(fetchJobs)).flat();
-  } catch (error) {
-    console.error(error);
-    console.error("Failed to get transactions data.");
-  }
+      return added.flat();
+    } catch (error) {
+      console.error(error);
+      console.error("Failed to get transactions data for item:", item.item_id);
+    }
+    return [];
+  });
+
+  return (await Promise.all(fetchJobs)).flat();
 };
 
 export interface Account extends AccountBase {
@@ -143,13 +134,13 @@ export const getAccounts = async (user: MaskedUser): Promise<Account[]> => {
   const client = getClient(user);
 
   const fetchJobs = user.items.map(async (item) => {
-    const { item_id, access_token, institution_id } = item
+    const { item_id, access_token, institution_id } = item;
     try {
       const response = await client.accountsGet({ access_token });
-      const { accounts } = response.data
+      const { accounts } = response.data;
       const filledAccounts: Account[] = accounts.map((e) => {
-        return { ...e, institution_id }
-      })
+        return { ...e, institution_id };
+      });
       return filledAccounts;
     } catch (error) {
       console.error(error);

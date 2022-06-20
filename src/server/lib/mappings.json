@@ -12,8 +12,8 @@
         "items": {
           "type": "object",
           "properties": {
-            "id": { "type": "keyword" },
-            "token": { "type": "keyword" },
+            "item_id": { "type": "keyword" },
+            "access_token": { "type": "keyword" },
             "institution_id": { "type": "keyword" },
             "cursor": { "type": "keyword" }
           }

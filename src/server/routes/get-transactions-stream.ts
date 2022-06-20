@@ -23,11 +23,11 @@ const getResponse: GetResponse = async (req, res) => {
   if (!earlyResponse) {
     throw new Error("Server failed to get middlestream transactions data.");
   }
-  res.write(JSON.stringify({ status: "streaming", data: earlyResponse }));
 
-  earlyResponse.forEach((e) => {
-    map.set(e.transaction_id, e);
-  });
+  res.write(JSON.stringify({ status: "streaming", data: earlyResponse }));
+  res.write("\n");
+
+  earlyResponse.forEach((e) => map.set(e.transaction_id, e));
 
   const lateResponse = await getTransactions(user);
   if (!lateResponse) {
