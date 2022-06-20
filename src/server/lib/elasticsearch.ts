@@ -81,9 +81,15 @@ export const initializeIndex = async (): Promise<void> => {
 
   const { ADMIN_PASSWORD, DEMO_PASSWORD } = process.env;
 
+  const itemsMap = new Map<string, Item>();
+
   const localItems = getLocalItems();
+  localItems.forEach((e) => itemsMap.set(e.item_id, e));
+
   const existingAdminUser = await searchUser({ username: "admin" });
-  const adminItems = [localItems, existingAdminUser?.items || []].flat();
+  existingAdminUser?.items.forEach((e) => itemsMap.set(e.item_id, e));
+
+  const adminItems = Array.from(itemsMap.values());
 
   indexUser({
     id: existingAdminUser?.id,
@@ -262,6 +268,8 @@ export const indexTransactions = async (
 export const searchTransactions = async (user: MaskedUser) => {
   const response = await client.search<{ transaction: Transaction }>({
     index,
+    from: 0,
+    size: 10000,
     query: {
       bool: {
         filter: [
@@ -315,17 +323,14 @@ export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
 export const searchAccounts = async (user: MaskedUser) => {
   const response = await client.search<{ account: Account }>({
     index,
+    from: 0,
+    size: 10000,
     query: {
       bool: {
-        filter: [
-          { term: { "user.user_id": user.id } },
-          { term: { type: "account" } },
-        ],
+        filter: [{ term: { "user.user_id": user.id } }, { term: { type: "account" } }],
       },
     },
   });
 
-  return response.hits.hits
-    .map((e) => e?._source?.account as Account)
-    .filter((e) => e);
+  return response.hits.hits.map((e) => e?._source?.account as Account).filter((e) => e);
 };

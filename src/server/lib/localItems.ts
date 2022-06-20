@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import { Item } from "server";
 
-const localItemsPath = path.resolve(__dirname, "../../.items");
+const localItemsPath = path.resolve(__dirname, "../../../.items");
 
 export const getLocalItems = () => {
   if (fs.existsSync(localItemsPath)) {

@@ -31,12 +31,13 @@ export const read = async <T = any>(
   const start = async (controller: ReadableStreamController<any>) => {
     while (true) {
       const { done, value } = await reader.read();
+      const text = new TextDecoder().decode(value);
 
-      const response: ApiResponse<T> = JSON.parse(
-        new TextDecoder().decode(value)
-      );
-      console.log(`<${method}> ${path}`, response);
-      callback(response);
+      text.split("\n").forEach((e) => {
+        const response: ApiResponse<T> = JSON.parse(e);
+        console.log(`<${method}> ${path}`, response);
+        callback(response);
+      });
 
       if (done) break;
 

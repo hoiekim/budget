@@ -1,6 +1,14 @@
-import { useState, createContext, useContext, useRef, useEffect } from "react";
+import {
+  useState,
+  createContext,
+  useContext,
+  useRef,
+  useEffect,
+  Dispatch,
+  SetStateAction,
+} from "react";
 import { ContextType, read, Cache } from "client";
-import { Transaction, Account } from "server"
+import { Transaction, Account } from "server";
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const [storedValue, setStoredValue] = useState(() => {
@@ -15,8 +23,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
 
   const setValue = (value: any | ((val: any) => any)) => {
     try {
-      const valueToStore =
-        value instanceof Function ? value(storedValue) : value;
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
       setStoredValue(valueToStore);
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
@@ -24,10 +31,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
     }
   };
 
-  return [
-    storedValue as T,
-    setValue as React.Dispatch<React.SetStateAction<T>>,
-  ] as const;
+  return [storedValue as T, setValue as Dispatch<SetStateAction<T>>] as const;
 };
 
 export const Context = createContext<ContextType>({} as ContextType);
