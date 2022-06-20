@@ -8,6 +8,6 @@
     "editor.formatOnSave": true,
     "json.format.enable": false,
     "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "prettier.printWidth": 80
+    "prettier.printWidth": 90
   }
 }
