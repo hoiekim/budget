@@ -87,7 +87,11 @@ export const initializeIndex = async (): Promise<void> => {
   localItems.forEach((e) => itemsMap.set(e.item_id, e));
 
   const existingAdminUser = await searchUser({ username: "admin" });
-  existingAdminUser?.items.forEach((e) => itemsMap.set(e.item_id, e));
+  existingAdminUser?.items.forEach((e) => {
+    const duplicatedItem = itemsMap.get(e.item_id);
+    const mergedItem = duplicatedItem ? { ...e, ...duplicatedItem } : e;
+    itemsMap.set(e.item_id, mergedItem);
+  });
 
   const adminItems = Array.from(itemsMap.values());
 

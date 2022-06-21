@@ -29,23 +29,38 @@ export const read = async <T = any>(
   if (!reader) return;
 
   const start = async (controller: ReadableStreamController<any>) => {
-    while (true) {
-      const { done, value } = await reader.read();
-      const text = new TextDecoder().decode(value);
+    const push = async () => {
+      try {
+        const stream = await reader.read();
+        const { done, value } = stream;
 
-      text.split("\n").forEach((e) => {
-        const response: ApiResponse<T> = JSON.parse(e);
-        console.log(`<${method}> ${path}`, response);
-        callback(response);
-      });
+        if (done) {
+          controller.close();
+          reader.releaseLock();
+          return;
+        }
 
-      if (done) break;
+        const text = new TextDecoder().decode(value);
 
-      controller.enqueue(value);
-    }
+        text
+          .split("\n")
+          .filter((e) => e)
+          .forEach((e) => {
+            const response: ApiResponse<T> = JSON.parse(e);
+            console.log(`<${method}> ${path}`, response);
 
-    controller.close();
-    reader.releaseLock();
+            callback(response);
+          });
+
+        controller.enqueue(value);
+      } catch (error) {
+        console.error(error);
+      }
+
+      push();
+    };
+
+    push();
   };
 
   return new ReadableStream({ start });
