@@ -1,5 +1,7 @@
 # What is Budget?
 
+See [live](https://budget.hoie.kim)
+
 Budget is a web app that provides features for monitoring your financial acounts and transactions. We aim to develop this project to be a tool for users to understand their money flow and plan easily. We use 3rd party API provided by [Plaid](https://plaid.com/) so you need Plaid account and credentials to setup Budget on your own environment.
 
 # How do I install Budget?
