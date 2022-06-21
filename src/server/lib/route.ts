@@ -1,5 +1,7 @@
 import { RequestHandler, Request, Response } from "express";
 
+export type Method = "GET" | "POST" | "DELETE";
+
 export interface ApiResponse<T = undefined> {
   status: "loading" | "streaming" | "success" | "failed" | "error";
   data?: T;
@@ -15,11 +17,7 @@ export class Route {
   path: string;
   handler: RequestHandler;
 
-  constructor(
-    method: "GET" | "POST" | "DELETE",
-    path: string,
-    callback: GetResponse
-  ) {
+  constructor(method: Method, path: string, callback: GetResponse) {
     this.path = path;
     this.handler = async (req, res, next) => {
       if (req.method === method) {
