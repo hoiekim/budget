@@ -1,12 +1,12 @@
 import { useContext } from "react";
+import { Context } from "client";
 import {
+  LoginInterface,
   PlaidLinkButton,
   SyncButton,
   TransactionsList,
   AccountsList,
-  LoginInterface,
-  Context,
-} from "client";
+} from "client/components";
 
 const Home = () => {
   const { accounts, transactions } = useContext(Context);

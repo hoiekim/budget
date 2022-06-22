@@ -1,11 +1,11 @@
 import { useSynchronizer } from "client";
 
 const SyncButton = () => {
-  const synchrosize = useSynchronizer();
+  const { sync } = useSynchronizer();
 
   return (
     <div className="SyncButton">
-      <button onClick={synchrosize}>Sync data</button>
+      <button onClick={sync}>Sync data</button>
     </div>
   );
 };

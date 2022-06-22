@@ -15,8 +15,8 @@ export * from "./lib";
 import express from "express";
 import session from "express-session";
 import path from "path";
-import * as routes from "./routes";
-import { initializeIndex, User } from "./lib";
+import { initializeIndex, User } from "server";
+import * as routes from "server/routes";
 
 initializeIndex();
 

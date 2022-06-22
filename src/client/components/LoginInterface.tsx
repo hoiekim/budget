@@ -1,5 +1,5 @@
 import { useState, useContext } from "react";
-import { Context, User, call } from "client";
+import { Context, User, call, useSynchronizer } from "client";
 
 const LoginInterface = () => {
   const { user, setUser } = useContext(Context);
@@ -7,10 +7,13 @@ const LoginInterface = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
+  const { clean } = useSynchronizer();
+
   const onClick = () => {
     if (user) {
       call<User>("/api/login", { method: "DELETE" }).then((r) => {
         setUser(r.data);
+        clean();
       });
     } else {
       call<User>("/api/login", {

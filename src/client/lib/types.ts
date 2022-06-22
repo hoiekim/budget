@@ -1,9 +1,16 @@
 import { Dispatch } from "react";
-import { Transaction, Account } from "server"
+import { Transaction, Account } from "server";
 
 export interface User {
   id: string;
   username: string;
+}
+
+export interface ClientRouter {
+  path: string;
+  go: Dispatch<string>;
+  forward: () => void;
+  back: () => void;
 }
 
 export interface ContextType {
@@ -13,4 +20,5 @@ export interface ContextType {
   setAccounts: Dispatch<Account[]>;
   user: User | undefined;
   setUser: Dispatch<User | undefined>;
+  router: ClientRouter;
 }
