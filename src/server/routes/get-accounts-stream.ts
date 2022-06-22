@@ -35,6 +35,7 @@ const getResponse: GetResponse = async (req, res) => {
 
   const moreResponse = lateResponse.filter((e) => !map.has(e.account_id));
   res.write(JSON.stringify({ status: "success", data: moreResponse }));
+  res.write("\n");
 
   indexAccounts(user, moreResponse);
 };
