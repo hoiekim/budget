@@ -37,7 +37,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
 export const Context = createContext<ContextType>({} as ContextType);
 
 /**
- * @returns a function that sets transactions and accounts states.
+ * @returns a function that sets transactions and accounts states and a function that cleans them.
  */
 export const useSynchronizer = () => {
   const { setTransactions, setAccounts } = useContext(Context);
@@ -52,7 +52,7 @@ export const useSynchronizer = () => {
     setAccountsRef.current = setAccounts;
   }, [setAccounts]);
 
-  const synchronize = () => {
+  const sync = () => {
     read<Transaction[]>("/api/transactions-stream", (r) => {
       r.data?.forEach((e) => Cache.transactions.set(e.transaction_id, e));
       const array = Array.from(Cache.transactions.values());
@@ -65,5 +65,23 @@ export const useSynchronizer = () => {
     });
   };
 
-  return synchronize;
+  const clean = () => {
+    setTransactionsRef.current([]);
+    setAccountsRef.current([]);
+  };
+
+  return { sync, clean };
+};
+
+export const useRouter = () => {
+  const { pathname } = window.location;
+  const [path, setPath] = useState(pathname);
+
+  useEffect(() => {
+    if (pathname !== path) window.history.pushState("", "", path);
+  }, [pathname, path]);
+
+  const { forward, back } = window.history;
+
+  return { path, go: setPath, forward, back };
 };

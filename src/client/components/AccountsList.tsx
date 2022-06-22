@@ -1,5 +1,5 @@
 import { Account } from "server";
-import { InstitutionTag } from "client";
+import { InstitutionTag } from "client/components";
 
 interface Props {
   data: Account[];
