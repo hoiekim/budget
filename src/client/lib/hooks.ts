@@ -100,7 +100,7 @@ export const useSync = () => {
   return { sync, clean };
 };
 
-export const useRouter = () => {
+export const useRouter = (): ClientRouter => {
   const { pathname } = window.location;
   const [path, setPath] = useState(pathname);
 
