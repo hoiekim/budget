@@ -146,9 +146,7 @@ export const indexUser = async (user: Omit<User, "id"> & { id?: string }) => {
  * @param user
  * @returns A promise to be a User object
  */
-export const searchUser = async (
-  user: Omit<{ [k in keyof User]?: User[k] }, "password">
-) => {
+export const searchUser = async (user: Partial<MaskedUser>) => {
   if (user.id) {
     const response = await client.get<{ user: User }>({
       index,
@@ -262,6 +260,25 @@ export const indexTransactions = async (
   const response = await client.bulk({ operations });
 
   return response.items.map((e) => e.index);
+};
+
+/**
+ * Updates transaction document with given object.
+ * @param transaction
+ * @returns A promise to be an Elasticsearch result object
+ */
+export const updateTransaction = async (
+  transaction: Partial<Transaction> & {
+    transaction_id: string;
+  }
+) => {
+  const response = await client.update({
+    index,
+    id: transaction.transaction_id,
+    doc: { transaction },
+  });
+
+  return response.result;
 };
 
 /**

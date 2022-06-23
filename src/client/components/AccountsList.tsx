@@ -10,10 +10,13 @@ const AccountsList = ({ data }: Props) => {
     return (
       <tr key={i}>
         <td>
-          {e.balances.available} / {e.balances.current}
+          <div>
+            {e.balances.available} / {e.balances.current} {e.balances.iso_currency_code}
+          </div>
         </td>
-        <td>{e.balances.iso_currency_code}</td>
-        <td>{e.name}</td>
+        <td>
+          <div>{e.name}</div>
+        </td>
         <td>
           <InstitutionTag institution_id={e.institution_id} />
         </td>
@@ -21,14 +24,25 @@ const AccountsList = ({ data }: Props) => {
     );
   });
   return (
-    <table className="AccountsList">
-      <thead>
-        <tr>
-          <td>Accounts:</td>
-        </tr>
-      </thead>
-      <tbody>{transactionRows}</tbody>
-    </table>
+    <div className="AccountsList">
+      <div>Accounts:</div>
+      <table>
+        <thead>
+          <tr>
+            <td>
+              <div>Balance</div>
+            </td>
+            <td>
+              <div>Name</div>
+            </td>
+            <td>
+              <div>Institution</div>
+            </td>
+          </tr>
+        </thead>
+        <tbody>{transactionRows}</tbody>
+      </table>
+    </div>
   );
 };
 
