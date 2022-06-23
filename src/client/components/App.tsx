@@ -28,8 +28,11 @@ const App = ({ initialUser }: AppProps) => {
   const { path, go } = router;
 
   useEffect(() => {
-    if (go && !user) go("/login");
-  }, [user, go]);
+    if (!user && path !== "/login") {
+      go("/login");
+      console.log("!!");
+    }
+  }, [user, go, path]);
 
   const contextValue = {
     transactions,
