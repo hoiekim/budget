@@ -18,8 +18,10 @@ interface AppProps {
 }
 
 const App = ({ initialUser }: AppProps) => {
-  const [transactions, setTransactions] = useState<ContextType["transactions"]>([]);
-  const [accounts, setAccounts] = useState<ContextType["accounts"]>([]);
+  const [transactions, setTransactions] = useState<ContextType["transactions"]>(
+    new Map()
+  );
+  const [accounts, setAccounts] = useState<ContextType["accounts"]>(new Map());
   const [user, setUser] = useState<ContextType["user"]>(initialUser);
 
   const router = useRouter();
