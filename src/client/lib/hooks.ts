@@ -84,8 +84,6 @@ export const useSync = () => {
       const newTransactions = new Map(transactionsRef.current);
       r.data?.forEach((e) => newTransactions.set(e.transaction_id, e));
       setTransactionsRef.current(newTransactions);
-      console.log(transactions);
-      console.log(newTransactions);
     });
     read<Account[]>("/api/accounts-stream", (r) => {
       const newAccounts = new Map(accountsRef.current);
