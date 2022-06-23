@@ -100,15 +100,26 @@ export const useSync = () => {
   return { sync, clean };
 };
 
+let isRouterRegistered = false;
+
 export const useRouter = (): ClientRouter => {
-  const { pathname } = window.location;
-  const [path, setPath] = useState(pathname);
+  const [path, setPath] = useState(window.location.pathname);
 
   useEffect(() => {
-    if (pathname !== path) window.history.pushState("", "", path);
-  }, [pathname, path]);
+    if (!isRouterRegistered) {
+      window.addEventListener("popstate", () => setPath(window.location.pathname), false);
+      isRouterRegistered = true;
+    }
+  }, []);
+
+  const go = (target: string) => {
+    if (window.location.pathname !== target) {
+      window.history.pushState("", "", target);
+      setPath(target);
+    }
+  };
 
   const { forward, back } = window.history;
 
-  return { path, go: setPath, forward, back };
+  return { path, go, forward, back };
 };
