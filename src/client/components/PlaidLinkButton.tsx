@@ -2,16 +2,11 @@ import { useEffect, useState, useContext } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { Context, call } from "client";
 
-const PlaidLinkButton = () => {
-  const { user } = useContext(Context);
-  const [token, setToken] = useState("");
+interface Props {
+  token: string;
+}
 
-  useEffect(() => {
-    call<string>("/api/link-token").then((r) => {
-      setToken(r.data || "");
-    });
-  }, [user]);
-
+const Button = ({ token }: Props) => {
   const { open, ready } = usePlaidLink({
     token,
     onSuccess: (token) => {
@@ -24,10 +19,33 @@ const PlaidLinkButton = () => {
   });
 
   return (
+    <button onClick={() => open()} disabled={!ready}>
+      Connect a bank account
+    </button>
+  );
+};
+
+const PlaidLinkButton = () => {
+  const { user } = useContext(Context);
+  const [token, setToken] = useState("");
+
+  useEffect(() => {
+    call<string>("/api/link-token").then((r) => {
+      setToken(r.data || "");
+    });
+  }, [user]);
+
+  if (token) {
+    return (
+      <div className="PlaidLinkButton">
+        <Button token={token} />
+      </div>
+    );
+  }
+
+  return (
     <div className="PlaidLinkButton">
-      <button onClick={() => open()} disabled={!ready}>
-        Connect a bank account
-      </button>
+      <button disabled={true}>Connect a bank account</button>
     </div>
   );
 };
