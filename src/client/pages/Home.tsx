@@ -4,7 +4,7 @@ import {
   LoginInterface,
   PlaidLinkButton,
   SyncButton,
-  TransactionsList,
+  TransactionsTable,
   AccountsList,
 } from "client/components";
 
@@ -16,7 +16,7 @@ const Home = () => {
       <PlaidLinkButton />
       <SyncButton />
       <AccountsList data={Array.from(accounts.values())} />
-      <TransactionsList data={Array.from(transactions.values())} />
+      <TransactionsTable data={Array.from(transactions.values())} />
     </div>
   );
 };

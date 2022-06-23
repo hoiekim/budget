@@ -12,7 +12,15 @@ import {
 } from "plaid";
 import { MaskedUser } from "server";
 
-export interface Transaction extends PlaidTransaction {}
+export interface Transaction extends PlaidTransaction {
+  /**
+   * A hierarchical array of the categories to which this transaction belongs.
+   * This property's value should be overwritten by users and if so, not longer
+   * keep consistency of data provided by Plaid API.
+   */
+  category: string[] | null;
+}
+
 export interface Institution extends PlaidInstitution {}
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } = process.env;

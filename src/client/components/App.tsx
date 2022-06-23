@@ -42,11 +42,9 @@ const App = ({ initialUser }: AppProps) => {
   };
 
   return (
-    <div className="App">
-      <Context.Provider value={contextValue}>
-        <Router path={path} />
-      </Context.Provider>
-    </div>
+    <Context.Provider value={contextValue}>
+      <Router path={path} />
+    </Context.Provider>
   );
 };
 
