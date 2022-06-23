@@ -59,42 +59,26 @@ export const Context = createContext<ContextType>({} as ContextType);
 export const useSync = () => {
   const { transactions, setTransactions, accounts, setAccounts } = useContext(Context);
   const transactionsRef = useRef(transactions);
-  const setTransactionsRef = useRef(setTransactions);
   const accountsRef = useRef(accounts);
-  const setAccountsRef = useRef(setAccounts);
-
-  useEffect(() => {
-    transactionsRef.current = transactions;
-  }, [transactions]);
-
-  useEffect(() => {
-    setTransactionsRef.current = setTransactions;
-  }, [setTransactions]);
-
-  useEffect(() => {
-    accountsRef.current = accounts;
-  }, [accounts]);
-
-  useEffect(() => {
-    setAccountsRef.current = setAccounts;
-  }, [setAccounts]);
 
   const sync = () => {
     read<Transaction[]>("/api/transactions-stream", (r) => {
       const newTransactions = new Map(transactionsRef.current);
       r.data?.forEach((e) => newTransactions.set(e.transaction_id, e));
-      setTransactionsRef.current(newTransactions);
+      setTransactions(newTransactions);
+      transactionsRef.current = newTransactions;
     });
     read<Account[]>("/api/accounts-stream", (r) => {
       const newAccounts = new Map(accountsRef.current);
       r.data?.forEach((e) => newAccounts.set(e.account_id, e));
-      setAccountsRef.current(newAccounts);
+      setAccounts(newAccounts);
+      accountsRef.current = newAccounts;
     });
   };
 
   const clean = () => {
-    setTransactionsRef.current(new Map());
-    setAccountsRef.current(new Map());
+    setTransactions(new Map());
+    setAccounts(new Map());
   };
 
   return { sync, clean };
