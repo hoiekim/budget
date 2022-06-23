@@ -15,8 +15,8 @@ const Home = () => {
       <LoginInterface />
       <PlaidLinkButton />
       <SyncButton />
-      <AccountsList data={accounts} />
-      <TransactionsList data={transactions} />
+      <AccountsList data={Array.from(accounts.values())} />
+      <TransactionsList data={Array.from(transactions.values())} />
     </div>
   );
 };

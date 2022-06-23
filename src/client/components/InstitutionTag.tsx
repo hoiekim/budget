@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { call, useLocalStorage } from "client";
 import { Institution } from "server";
+import { call, useLocalStorage } from "client";
 
 interface Props {
   institution_id: string | undefined;
@@ -9,9 +9,10 @@ interface Props {
 const UNKNWON_INSTITUTION = "Unknown Institution";
 
 const TagWithValidId = ({ institution_id }: Props) => {
-  const [institution, setInstitution] = useLocalStorage<
-    Institution | undefined
-  >(`institution_${institution_id}`, undefined);
+  const [institution, setInstitution] = useLocalStorage<Institution | undefined>(
+    `institution_${institution_id}`,
+    undefined
+  );
 
   useEffect(() => {
     if (!institution) {
@@ -19,7 +20,7 @@ const TagWithValidId = ({ institution_id }: Props) => {
         setInstitution(r.data);
       });
     }
-  }, [institution, setInstitution]);
+  }, [institution, setInstitution, institution_id]);
 
   return <>{institution?.name || UNKNWON_INSTITUTION}</>;
 };
