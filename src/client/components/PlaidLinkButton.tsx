@@ -1,21 +1,23 @@
 import { useEffect, useState, useContext } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { Context, call } from "client";
+import { Context, call, useSync } from "client";
 
 interface Props {
   token: string;
 }
 
 const Button = ({ token }: Props) => {
+  const { sync } = useSync();
+
+  const onSuccess = (token: Props["token"]) => {
+    call.post("/api/public-token", { token }).then((r) => {
+      if (r.status === "success") sync();
+    });
+  };
+
   const { open, ready } = usePlaidLink({
     token,
-    onSuccess: (token) => {
-      call("/api/public-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-    },
+    onSuccess,
   });
 
   return (
@@ -30,7 +32,7 @@ const PlaidLinkButton = () => {
   const [token, setToken] = useState("");
 
   useEffect(() => {
-    call<string>("/api/link-token").then((r) => {
+    call.get<string>("/api/link-token").then((r) => {
       setToken(r.data || "");
     });
   }, [user]);
