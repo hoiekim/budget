@@ -3,6 +3,7 @@ import { MaskedUser } from "server";
 import { Context, call, useSync } from "client";
 
 const LoginInterface = () => {
+  const { sync } = useSync();
   const { user, setUser } = useContext(Context);
 
   const [username, setUsername] = useState("");
@@ -12,20 +13,17 @@ const LoginInterface = () => {
 
   const onClick = () => {
     if (user) {
-      call<MaskedUser>("/api/login", { method: "DELETE" }).then((r) => {
+      call.delete<MaskedUser>("/api/login").then((r) => {
         setUser(r.data);
         clean();
       });
     } else {
-      call<MaskedUser>("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      }).then((r) => {
+      call.post<MaskedUser>("/api/login", { username, password }).then((r) => {
         if (r.status === "success") {
           setUser(r.data);
           setUsername("");
           setPassword("");
+          sync();
         }
       });
     }

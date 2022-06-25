@@ -1,15 +1,30 @@
 import { ApiResponse } from "server";
 
-export const call = async <T = any>(path: string, options?: RequestInit) => {
-  const method = options?.method?.toUpperCase() || "GET";
+const call = async <T = any>(path: string, options?: RequestInit) => {
+  const method = options?.method || "GET";
+  const body = options?.body;
 
-  const response: ApiResponse<T> = await fetch(path, options).then((r) => {
+  const init: RequestInit | undefined = options;
+
+  if (method === "POST") {
+    (init as RequestInit).headers = { "Content-Type": "application/json" };
+    (init as RequestInit).body = JSON.stringify(body);
+  }
+
+  const response: ApiResponse<T> = await fetch(path, init).then((r) => {
     return r.json();
   });
+
   console.log(`<${method}> ${path}`, response);
 
   return response;
 };
+
+call.get = <T>(path: string) => call<T>(path);
+call.post = <T>(path: string, body: any) => call<T>(path, { method: "POST", body });
+call.delete = <T>(path: string) => call<T>(path, { method: "DELETE" });
+
+export { call };
 
 export const read = async <T = any>(
   path: string,

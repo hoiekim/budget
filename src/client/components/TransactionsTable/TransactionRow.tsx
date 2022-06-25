@@ -31,11 +31,7 @@ const TransactionRow = ({ transaction }: Props) => {
         .split(",")
         .map((e) => e.replace(/^\s+|\s+$|\s+(?=\s)/g, ""));
 
-      call("/api/transaction", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction_id, category: parsedCategory }),
-      });
+      call.post("/api/transaction", { transaction_id, category: parsedCategory });
     }, 500);
   };
 

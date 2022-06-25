@@ -1,4 +1,4 @@
-import { useState, useContext, useRef, ChangeEventHandler } from "react";
+import { useState, useRef, ChangeEventHandler } from "react";
 import { InstitutionTag } from "client/components";
 import { call } from "client";
 import { Account } from "server";
@@ -22,11 +22,7 @@ const AccountRow = ({ account }: Props) => {
     setNameInput(value);
     clearTimeout(timeout.current);
     timeout.current = setTimeout(() => {
-      call("/api/account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_id, name: value }),
-      });
+      call.post("/api/account", { account_id, name: value });
     }, 500);
   };
 
