@@ -40,7 +40,7 @@ const getResponse: GetResponse = async (req, res) => {
   res.write(JSON.stringify({ status: "success", data: moreResponse }));
   res.write("\n");
 
-  indexTransactions(user, moreResponse);
+  indexTransactions(user, moreResponse).then(console.log);
 };
 
 const route = new Route("GET", "/transactions-stream", getResponse);

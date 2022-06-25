@@ -27,11 +27,14 @@ const TransactionRow = ({ transaction }: Props) => {
     setCategoryInput(value);
     clearTimeout(timeout.current);
     timeout.current = setTimeout(() => {
-      // TODO: Parse category input value into array
-      call("/api/transaction-category", {
+      const parsedCategory = value
+        .split(",")
+        .map((e) => e.replace(/^\s+|\s+$|\s+(?=\s)/g, ""));
+
+      call("/api/transaction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction_id, category: [value] }),
+        body: JSON.stringify({ transaction_id, category: parsedCategory }),
       });
     }, 500);
   };

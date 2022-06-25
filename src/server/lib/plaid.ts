@@ -135,7 +135,14 @@ export const getTransactions = async (user: MaskedUser) => {
 };
 
 export interface Account extends AccountBase {
+  /**
+   * The ID of the institution that the account belongs to.
+   */
   institution_id?: string;
+  /**
+   * Determines if budget app should include the account to calculation & display.
+   */
+  hide_in_budget?: boolean;
 }
 
 export const getAccounts = async (user: MaskedUser): Promise<Account[]> => {

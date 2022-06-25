@@ -4,6 +4,7 @@
     "type": { "type": "keyword" },
     "user": {
       "type": "object",
+      "dynamic": "strict",
       "properties": {
         "user_id": { "type": "keyword" },
         "username": { "type": "keyword" },
@@ -24,6 +25,7 @@
     },
     "account": {
       "type": "object",
+      "dynamic": true,
       "properties": {
         "account_id": { "type": "keyword" },
         "balances": {
@@ -46,6 +48,7 @@
     },
     "transaction": {
       "type": "object",
+      "dynamic": true,
       "properties": {
         "pending_transaction_id": { "type": "keyword" },
         "category_id": { "type": "keyword" },

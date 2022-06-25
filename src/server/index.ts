@@ -54,12 +54,7 @@ router.use((req, res, next) => {
   console.info(`at: ${date.toLocaleString()}, ${offsetString}`);
   console.info(`from: ${req.ip}`);
   console.groupEnd();
-  try {
-    next();
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ status: "error", info: error?.message });
-  }
+  next();
 });
 
 Object.values(routes).forEach((route) => {
