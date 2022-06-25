@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "properties": {
     "type": { "type": "keyword" },
     "user": {
@@ -31,9 +31,9 @@
         "balances": {
           "type": "object",
           "properties": {
-            "available": { "type": "half_float" },
-            "current": { "type": "half_float" },
-            "limit": { "type": "half_float" },
+            "available": { "type": "float" },
+            "current": { "type": "float" },
+            "limit": { "type": "float" },
             "iso_currency_code": { "type": "keyword" },
             "unofficial_currency_code": { "type": "keyword" }
           }
@@ -82,7 +82,7 @@
         "account_owner": { "type": "keyword" },
         "name": { "type": "text" },
         "account_id": { "type": "keyword" },
-        "amount": { "type": "half_float" },
+        "amount": { "type": "float" },
         "iso_currency_code": { "type": "keyword" },
         "unofficial_currency_code": { "type": "keyword" },
         "date": { "type": "date" },
