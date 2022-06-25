@@ -52,6 +52,7 @@ export const initializeIndex = async (): Promise<void> => {
       .putMapping({
         index,
         properties,
+        dynamic: "strict",
       })
       .catch((error) => {
         console.error(error);
@@ -66,7 +67,7 @@ export const initializeIndex = async (): Promise<void> => {
     const response = await client.indices
       .create({
         index,
-        mappings: { properties },
+        mappings: { properties, dynamic: "strict" },
       })
       .catch((error) => {
         console.error(error);
@@ -334,6 +335,25 @@ export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
   const response = await client.bulk({ operations });
 
   return response.items.map((e) => e.index);
+};
+
+/**
+ * Updates account document with given object.
+ * @param account
+ * @returns A promise to be an Elasticsearch result object
+ */
+export const updateAccount = async (
+  account: Partial<Account> & {
+    account_id: string;
+  }
+) => {
+  const response = await client.update({
+    index,
+    id: account.account_id,
+    doc: { account },
+  });
+
+  return response.result;
 };
 
 /**

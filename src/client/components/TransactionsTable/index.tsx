@@ -1,12 +1,11 @@
-import { Transaction } from "server";
+import { useContext } from "react";
+import { Context } from "client";
 import TransactionRow from "./TransactionRow";
 
-interface Props {
-  data: Transaction[];
-}
+const TransactionsTable = () => {
+  const { transactions } = useContext(Context);
 
-const TransactionsTable = ({ data }: Props) => {
-  const transactionRows = data.map((e, i) => {
+  const transactionRows = Array.from(transactions.values()).map((e, i) => {
     return <TransactionRow key={i} transaction={e} />;
   });
 
