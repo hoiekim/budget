@@ -11,7 +11,7 @@ interface Props {
 
 const TagWithValidId = ({ institution_id }: Props) => {
   const [name, setName] = useLocalStorage<string | undefined>(
-    `institution_${institution_id}`,
+    `institution_name_${institution_id}`,
     undefined
   );
 
