@@ -1,9 +1,9 @@
-import { useContext, useEffect } from "react";
-import { Context } from "client";
+import { useEffect } from "react";
+import { useAppContext } from "client";
 import { LoginInterface } from "client/components";
 
 const Login = () => {
-  const { user, router } = useContext(Context);
+  const { user, router } = useAppContext();
 
   useEffect(() => {
     if (user && router) router.go("/");

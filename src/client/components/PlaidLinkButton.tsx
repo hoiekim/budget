@@ -1,6 +1,6 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { Context, call, useSync } from "client";
+import { useAppContext, call, useSync } from "client";
 
 interface Props {
   token: string;
@@ -28,7 +28,7 @@ const Button = ({ token }: Props) => {
 };
 
 const PlaidLinkButton = () => {
-  const { user } = useContext(Context);
+  const { user } = useAppContext();
   const [token, setToken] = useState("");
 
   useEffect(() => {

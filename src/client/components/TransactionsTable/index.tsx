@@ -1,9 +1,9 @@
-import { useContext } from "react";
-import { Context } from "client";
+import { useAppContext } from "client";
 import TransactionRow from "./TransactionRow";
+import TransactionsHead from "./TransactionsHead";
 
 const TransactionsTable = () => {
-  const { transactions } = useContext(Context);
+  const { transactions } = useAppContext();
 
   const transactionRows = Array.from(transactions.values()).map((e, i) => {
     return <TransactionRow key={i} transaction={e} />;
@@ -13,28 +13,7 @@ const TransactionsTable = () => {
     <div className="TransactionsTable">
       <div>Transactions:</div>
       <table>
-        <thead>
-          <tr>
-            <td>
-              <div>Date</div>
-            </td>
-            <td>
-              <div>Name</div>
-            </td>
-            <td>
-              <div>Amount</div>
-            </td>
-            <td>
-              <div>Account</div>
-            </td>
-            <td>
-              <div>Institution</div>
-            </td>
-            <td>
-              <div>Category</div>
-            </td>
-          </tr>
-        </thead>
+        <TransactionsHead />
         <tbody>{transactionRows}</tbody>
       </table>
     </div>
