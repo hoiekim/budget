@@ -1,10 +1,9 @@
-import { useState, useContext } from "react";
+import { useState } from "react";
 import { MaskedUser } from "server";
-import { Context, call, useSync } from "client";
+import { useAppContext, call, useSync } from "client";
 
 const LoginInterface = () => {
-  const { sync } = useSync();
-  const { user, setUser } = useContext(Context);
+  const { user, setUser } = useAppContext();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +22,6 @@ const LoginInterface = () => {
           setUser(r.data);
           setUsername("");
           setPassword("");
-          sync();
         }
       });
     }

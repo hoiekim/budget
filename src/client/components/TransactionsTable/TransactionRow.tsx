@@ -1,6 +1,6 @@
-import { useState, useContext, useRef, ChangeEventHandler } from "react";
+import { useState, useRef, ChangeEventHandler } from "react";
 import { Transaction } from "server";
-import { Context, call } from "client";
+import { useAppContext, call } from "client";
 import { InstitutionTag } from "client/components";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
 }
 
 const TransactionRow = ({ transaction }: Props) => {
-  const { accounts } = useContext(Context);
+  const { accounts } = useAppContext();
   const { transaction_id, account_id, authorized_date, date, name, amount, category } =
     transaction;
 

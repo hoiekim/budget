@@ -1,9 +1,8 @@
-import { useContext } from "react";
-import { Context } from "client";
+import { useAppContext } from "client";
 import AccountRow from "./AccountRow";
 
 const AccountsTable = () => {
-  const { accounts } = useContext(Context);
+  const { accounts } = useAppContext();
 
   const transactionRows = Array.from(accounts.values()).map((e, i) => {
     return <AccountRow key={i} account={e} />;
