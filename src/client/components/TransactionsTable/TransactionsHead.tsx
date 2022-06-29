@@ -1,4 +1,19 @@
-const TransactionsHead = () => {
+import { Dispatch } from "react";
+import { SortingOptions, VisibilityOptions } from "./index";
+
+interface Props {
+  options: {
+    sortingOptions: SortingOptions;
+    setSortingOptions: Dispatch<SortingOptions>;
+    visibilityOptions: VisibilityOptions;
+    setVisibilityOptions: Dispatch<VisibilityOptions>;
+  };
+}
+
+const TransactionsHead = ({ options }: Props) => {
+  const { sortingOptions, setSortingOptions, visibilityOptions, setVisibilityOptions } =
+    options;
+
   return (
     <thead>
       <tr>
