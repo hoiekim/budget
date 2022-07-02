@@ -1,4 +1,4 @@
-import { useState, useRef, ChangeEventHandler } from "react";
+import { useState, useEffect, useRef, ChangeEventHandler } from "react";
 import { Transaction } from "server";
 import { useAppContext, call } from "client";
 import { InstitutionTag } from "client/components";
@@ -8,11 +8,23 @@ interface Props {
 }
 
 const TransactionRow = ({ transaction }: Props) => {
-  const { accounts } = useAppContext();
-  const { transaction_id, account_id, authorized_date, date, name, amount, category } =
-    transaction;
+  const { transactions, setTransactions, accounts } = useAppContext();
+  const {
+    transaction_id,
+    account_id,
+    authorized_date,
+    date,
+    merchant_name,
+    name,
+    amount,
+    category,
+  } = transaction;
 
   const [categoryInput, setCategoryInput] = useState(category ? category.join(", ") : "");
+
+  useEffect(() => {
+    setCategoryInput(category ? category.join(", ") : "");
+  }, [category, setCategoryInput]);
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
@@ -32,6 +44,12 @@ const TransactionRow = ({ transaction }: Props) => {
         .map((e) => e.replace(/^\s+|\s+$|\s+(?=\s)/g, ""));
 
       call.post("/api/transaction", { transaction_id, category: parsedCategory });
+
+      transaction.category = parsedCategory;
+
+      const newTransactions = new Map(transactions);
+      newTransactions.set(transaction_id, transaction);
+      setTransactions(newTransactions);
     }, 500);
   };
 
@@ -41,7 +59,7 @@ const TransactionRow = ({ transaction }: Props) => {
         <div>{authorized_date || date}</div>
       </td>
       <td>
-        <div>{name}</div>
+        <div>{merchant_name || name}</div>
       </td>
       <td>
         <div>{amount}</div>
