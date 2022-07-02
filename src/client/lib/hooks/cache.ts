@@ -1,10 +1,15 @@
 import { useState, Dispatch, SetStateAction } from "react";
+import { Institution } from "server";
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
+  const isMap = key.indexOf("map_") === 0;
+  const parse = isMap ? (s: string) => new Map(JSON.parse(s)) : JSON.parse;
+  const stringify = isMap ? (m: any) => JSON.stringify([...m]) : JSON.stringify;
+
   const [storedValue, setStoredValue] = useState(() => {
     try {
       const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
+      return item ? parse(item) : initialValue;
     } catch (error) {
       console.error(error);
       return initialValue;
@@ -15,7 +20,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
     try {
       const valueToStore = value instanceof Function ? value(storedValue) : value;
       setStoredValue(valueToStore);
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      window.localStorage.setItem(key, stringify(valueToStore));
     } catch (error) {
       console.error(error);
     }
@@ -23,3 +28,8 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
 
   return [storedValue as T, setValue as Dispatch<SetStateAction<T>>] as const;
 };
+
+export const institutionsCache = new Map<
+  string,
+  Promise<Institution | undefined> | Institution
+>();

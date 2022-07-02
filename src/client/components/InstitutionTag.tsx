@@ -1,44 +1,44 @@
 import { useEffect } from "react";
 import { Institution } from "server";
-import { call, useLocalStorage } from "client";
+import { call, useAppContext } from "client";
 
-const institutionsCache = new Map<string, Promise<Institution | undefined>>();
 const UNKNWON_INSTITUTION = "Unknown Institution";
 
 interface Props {
   institution_id: string;
 }
 
+const fetchJobs = new Map<string, Promise<Institution | undefined>>();
+
 const TagWithValidId = ({ institution_id }: Props) => {
-  const [name, setName] = useLocalStorage<string | undefined>(
-    `institution_name_${institution_id}`,
-    undefined
-  );
+  const { institutions, setInstitutions } = useAppContext();
+  const institution = institutions.get(institution_id);
 
   useEffect(() => {
     const dynamicCall = async () => {
-      const cachedInstitution = institutionsCache.get(institution_id);
+      if (fetchJobs.has(institution_id)) return;
 
-      if (cachedInstitution) {
-        const institution = await cachedInstitution;
-        if (institution) setName(institution.name);
-      } else {
-        const promisedInstitution = call
-          .get<Institution>(`/api/institution?id=${institution_id}`)
-          .then((r) => {
-            const institution = r.data;
-            if (institution) setName(institution.name);
-            return institution;
-          });
+      const promisedInstitution = call
+        .get<Institution>(`/api/institution?id=${institution_id}`)
+        .then((r) => {
+          const institution = r.data;
 
-        institutionsCache.set(institution_id, promisedInstitution);
-      }
+          if (institution) {
+            const newInstitutions = new Map(institutions);
+            newInstitutions.set(institution_id, institution);
+            setInstitutions(newInstitutions);
+          }
+
+          return institution;
+        });
+
+      fetchJobs.set(institution_id, promisedInstitution);
     };
 
-    if (!name) dynamicCall();
-  }, [name, setName, institution_id]);
+    if (!institution) dynamicCall();
+  }, [institutions, setInstitutions, institution, institution_id]);
 
-  return <>{name || UNKNWON_INSTITUTION}</>;
+  return <>{institution?.name || UNKNWON_INSTITUTION}</>;
 };
 
 const InstitutionTag = ({ institution_id }: Partial<Props>) => {

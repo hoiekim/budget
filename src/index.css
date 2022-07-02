@@ -10,10 +10,6 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
-button {
-  min-width: 200px;
-}
-
 table {
   border-collapse: collapse;
   width: 100%;

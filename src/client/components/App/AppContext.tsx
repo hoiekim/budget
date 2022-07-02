@@ -1,5 +1,13 @@
 import { useState, ReactNode } from "react";
-import { ContextType, Context, useRouter, Transactions, Accounts } from "client";
+import {
+  useLocalStorage,
+  ContextType,
+  Context,
+  useRouter,
+  Transactions,
+  Accounts,
+  Institutions,
+} from "client";
 import { MaskedUser } from "server";
 
 interface Props {
@@ -10,6 +18,10 @@ interface Props {
 const AppContext = ({ initialUser, children }: Props) => {
   const [transactions, setTransactions] = useState<Transactions>(new Map());
   const [accounts, setAccounts] = useState<Accounts>(new Map());
+  const [institutions, setInstitutions] = useLocalStorage<Institutions>(
+    "map_institutions",
+    new Map()
+  );
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
 
   const router = useRouter();
@@ -19,6 +31,8 @@ const AppContext = ({ initialUser, children }: Props) => {
     setTransactions,
     accounts,
     setAccounts,
+    institutions,
+    setInstitutions,
     user,
     setUser,
     router,
