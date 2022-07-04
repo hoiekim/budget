@@ -33,11 +33,10 @@ const getResponse: GetResponse = async (req, res) => {
     throw new Error("Server failed to get upstream accounts data.");
   }
 
-  const moreResponse = lateResponse.filter((e) => !map.has(e.account_id));
-  res.write(JSON.stringify({ status: "success", data: moreResponse }));
+  res.write(JSON.stringify({ status: "success", data: lateResponse }));
   res.write("\n");
 
-  indexAccounts(user, moreResponse);
+  indexAccounts(user, lateResponse);
 };
 
 const route = new Route("GET", "/accounts-stream", getResponse);
