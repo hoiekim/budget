@@ -5,12 +5,12 @@ import { call, useAppContext } from "client";
 const UNKNWON_INSTITUTION = "Unknown Institution";
 
 interface Props {
-  institution_id: string;
+  institution_id?: string;
 }
 
-const fetchJobs = new Map<string, Promise<Institution | undefined>>();
+const fetchJobs = new Map<string | undefined, Promise<Institution | undefined>>();
 
-const TagWithValidId = ({ institution_id }: Props) => {
+const InstitutionTag = ({ institution_id }: Partial<Props>) => {
   const { institutions, setInstitutions } = useAppContext();
   const institution = institutions.get(institution_id);
 
@@ -35,22 +35,10 @@ const TagWithValidId = ({ institution_id }: Props) => {
       fetchJobs.set(institution_id, promisedInstitution);
     };
 
-    if (!institution) dynamicCall();
+    if (institution_id && !institution) dynamicCall();
   }, [institutions, setInstitutions, institution, institution_id]);
 
-  return <>{institution?.name || UNKNWON_INSTITUTION}</>;
-};
-
-const InstitutionTag = ({ institution_id }: Partial<Props>) => {
-  return (
-    <div className="InstitutionTag">
-      {institution_id ? (
-        <TagWithValidId institution_id={institution_id} />
-      ) : (
-        UNKNWON_INSTITUTION
-      )}
-    </div>
-  );
+  return <div className="InstitutionTag">{institution?.name || UNKNWON_INSTITUTION}</div>;
 };
 
 export default InstitutionTag;
