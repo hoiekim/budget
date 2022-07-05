@@ -1,23 +1,31 @@
 import { Transaction } from "server";
-import { useAppContext, useLocalStorage, useSorter } from "client";
+import { useAppContext, useSorter } from "client";
 import TransactionRow from "./TransactionRow";
 import TransactionsHead from "./TransactionsHead";
 import "./index.css";
 
-export type Visibles = { [k in keyof Transaction]?: boolean } & {
+export type TransactionHeaders = { [k in keyof Transaction]?: boolean } & {
   account?: boolean;
   institution?: boolean;
 };
 
-export type TransactionHeaders = Transaction & { account?: never; institution?: never };
-
 const TransactionsTable = () => {
   const { transactions, accounts, institutions } = useAppContext();
-  const [visibles, setVisibles] = useLocalStorage<Visibles>("visibles", {});
 
-  const { sort, setSortBy, getArrow } = useSorter<TransactionHeaders>("transactions", [
-    ["authorized_date", "descending"],
-  ]);
+  const sorter = useSorter<Transaction, TransactionHeaders>(
+    "transactions",
+    new Map([["authorized_date", "descending"]]),
+    {
+      authorized_date: true,
+      merchant_name: true,
+      amount: true,
+      account: true,
+      institution: true,
+      category: true,
+    }
+  );
+
+  const { sort, visibles, toggleVisible } = sorter;
 
   const transactionsArray = sort(Array.from(transactions.values()), (e, key) => {
     if (key === "authorized_date") {
@@ -37,14 +45,23 @@ const TransactionsTable = () => {
   });
 
   const transactionRows = transactionsArray.map((e, i) => {
-    return <TransactionRow key={i} transaction={e} />;
+    return <TransactionRow key={i} transaction={e} sorter={sorter} />;
   });
+
+  const hiddenColumns = Object.entries(visibles)
+    .filter(([key, value]) => !value)
+    .map(([key, value]) => {
+      return (
+        <button onClick={() => toggleVisible(key as keyof typeof visibles)}>{key}</button>
+      );
+    });
 
   return (
     <div className="TransactionsTable">
       <div>Transactions:</div>
+      <div>{hiddenColumns}</div>
       <table>
-        <TransactionsHead setSortBy={setSortBy} getArrow={getArrow} />
+        <TransactionsHead sorter={sorter} />
         <tbody>{transactionRows}</tbody>
       </table>
     </div>

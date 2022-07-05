@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef, ChangeEventHandler } from "react";
 import { Transaction } from "server";
-import { useAppContext, call } from "client";
+import { useAppContext, call, Sorter } from "client";
 import { InstitutionTag } from "client/components";
+import { TransactionHeaders } from ".";
 
 interface Props {
   transaction: Transaction;
+  sorter: Sorter<Transaction, TransactionHeaders>;
 }
 
-const TransactionRow = ({ transaction }: Props) => {
+const TransactionRow = ({ transaction, sorter }: Props) => {
+  const { getVisible } = sorter;
   const { transactions, setTransactions, accounts } = useAppContext();
   const {
     transaction_id,
@@ -55,24 +58,36 @@ const TransactionRow = ({ transaction }: Props) => {
 
   return (
     <tr>
-      <td>
-        <div>{authorized_date || date}</div>
-      </td>
-      <td>
-        <div>{merchant_name || name}</div>
-      </td>
-      <td>
-        <div>{amount}</div>
-      </td>
-      <td>
-        <div>{account?.name}</div>
-      </td>
-      <td>
-        <InstitutionTag institution_id={institution_id} />
-      </td>
-      <td>
-        <input onChange={onChangeCategoryInput} value={categoryInput} />
-      </td>
+      {getVisible("authorized_date") && (
+        <td>
+          <div>{authorized_date || date}</div>
+        </td>
+      )}
+      {getVisible("merchant_name") && (
+        <td>
+          <div>{merchant_name || name}</div>
+        </td>
+      )}
+      {getVisible("amount") && (
+        <td>
+          <div>{amount}</div>
+        </td>
+      )}
+      {getVisible("account") && (
+        <td>
+          <div>{account?.name}</div>
+        </td>
+      )}
+      {getVisible("institution") && (
+        <td>
+          <InstitutionTag institution_id={institution_id} />
+        </td>
+      )}
+      {getVisible("category") && (
+        <td>
+          <input onChange={onChangeCategoryInput} value={categoryInput} />
+        </td>
+      )}
     </tr>
   );
 };
