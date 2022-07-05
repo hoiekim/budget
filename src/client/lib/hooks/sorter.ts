@@ -1,6 +1,6 @@
 import { useLocalStorage } from "client";
 
-export class Comparable<T> {
+class Comparable<T> {
   A: T;
   B: T;
   a: string | number | Date = 0;
@@ -29,21 +29,39 @@ export class Comparable<T> {
   };
 }
 
-export type SortingKey<T> = keyof T;
-export type Sortings<T> = Map<SortingKey<T>, "ascending" | "descending">;
-export type SetSortBy<T> = (key: SortingKey<T>) => void;
-export type GetArrow<T> = (key: SortingKey<T>) => "↑" | "↓" | "";
+type Sortings<H> = Map<keyof H, "ascending" | "descending">;
+type SetSortBy<H> = (key: keyof H) => void;
+type GetArrow<H> = (key: keyof H) => "↑" | "↓" | "";
+type Visibles<H> = { [k in keyof H]?: boolean };
+type GetVisible<H> = (key: keyof H) => boolean;
+type ToggleVisible<H> = (key: keyof H) => void;
+type Formatter<T, H> = (e: T, key: keyof H) => any;
 
-export const useSorter = <T>(
+export interface Sorter<T = any, H = any> {
+  sort: (array: T[], formatter: Formatter<T, H>) => T[];
+  setSortBy: SetSortBy<H>;
+  getArrow: GetArrow<H>;
+  visibles: { [k in keyof H]?: boolean };
+  getVisible: GetVisible<H>;
+  toggleVisible: ToggleVisible<H>;
+}
+
+export const useSorter = <T, H>(
   name: string,
-  initial: [SortingKey<T>, "ascending" | "descending"][]
-) => {
-  const [sortings, setSortings] = useLocalStorage<Sortings<T>>(
+  initialSortings?: Sortings<H>,
+  initialVisibles?: Visibles<H>
+): Sorter<T, H> => {
+  const [sortings, setSortings] = useLocalStorage<Sortings<H>>(
     `map_${name}_sortings`,
-    new Map(initial)
+    initialSortings || new Map()
   );
 
-  const sort = <E>(array: E[], formatter: (e: E, key: SortingKey<T>) => any) => {
+  const [visibles, setVisibles] = useLocalStorage<{ [k in keyof H]?: boolean }>(
+    `${name}_visibles`,
+    initialVisibles || {}
+  );
+
+  const sort: Sorter<T, H>["sort"] = (array, formatter) => {
     Array.from(sortings).forEach(async (e) => {
       const [key, option] = e;
       array.sort((a, b) => {
@@ -64,7 +82,7 @@ export const useSorter = <T>(
     return array;
   };
 
-  const setSortBy = (key: SortingKey<T>) => {
+  const setSortBy: Sorter<T, H>["setSortBy"] = (key) => {
     const existingValue = sortings.get(key);
     const newValue = existingValue === "ascending" ? "descending" : "ascending";
     sortings.delete(key);
@@ -72,7 +90,7 @@ export const useSorter = <T>(
     setSortings(new Map(sortings));
   };
 
-  const getArrow = (key: SortingKey<T>) => {
+  const getArrow: Sorter<T, H>["getArrow"] = (key) => {
     switch (sortings.get(key)) {
       case "ascending":
         return "↑";
@@ -83,5 +101,11 @@ export const useSorter = <T>(
     }
   };
 
-  return { sort, setSortBy, getArrow };
+  const getVisible: Sorter<T, H>["getVisible"] = (key) => !!visibles[key];
+
+  const toggleVisible: Sorter<T, H>["toggleVisible"] = (key) => {
+    setVisibles({ ...visibles, [key]: !visibles[key] });
+  };
+
+  return { sort, setSortBy, getArrow, visibles, getVisible, toggleVisible };
 };
