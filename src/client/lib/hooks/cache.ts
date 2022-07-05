@@ -1,5 +1,4 @@
 import { useState, Dispatch, SetStateAction } from "react";
-import { Institution } from "server";
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const isMap = key.indexOf("map_") === 0;
@@ -28,8 +27,3 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
 
   return [storedValue as T, setValue as Dispatch<SetStateAction<T>>] as const;
 };
-
-export const institutionsCache = new Map<
-  string,
-  Promise<Institution | undefined> | Institution
->();
