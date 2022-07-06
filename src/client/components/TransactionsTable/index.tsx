@@ -48,11 +48,31 @@ const TransactionsTable = () => {
     return <TransactionRow key={i} transaction={e} sorter={sorter} />;
   });
 
+  const getHeader = (key: keyof TransactionHeaders): string => {
+    if (key === "authorized_date") {
+      return "Date";
+    } else if (key === "merchant_name") {
+      return "Name";
+    } else if (key === "amount") {
+      return "Amount";
+    } else if (key === "account") {
+      return "Account";
+    } else if (key === "institution") {
+      return "Institutions";
+    } else if (key === "category") {
+      return "Category";
+    } else {
+      return key;
+    }
+  };
+
   const hiddenColumns = Object.entries(visibles)
     .filter(([key, value]) => !value)
     .map(([key, value]) => {
       return (
-        <button onClick={() => toggleVisible(key as keyof typeof visibles)}>{key}</button>
+        <button onClick={() => toggleVisible(key as keyof typeof visibles)}>
+          {getHeader(key as keyof typeof visibles)}
+        </button>
       );
     });
 
@@ -61,7 +81,7 @@ const TransactionsTable = () => {
       <div>Transactions:</div>
       <div>{hiddenColumns}</div>
       <table>
-        <TransactionsHead sorter={sorter} />
+        <TransactionsHead sorter={sorter} getHeader={getHeader} />
         <tbody>{transactionRows}</tbody>
       </table>
     </div>
