@@ -2,15 +2,13 @@ import { useEffect } from "react";
 import { Institution } from "server";
 import { call, useAppContext } from "client";
 
-const UNKNWON_INSTITUTION = "Unknown Institution";
-
 interface Props {
   institution_id?: string;
 }
 
 const fetchJobs = new Map<string | undefined, Promise<Institution | undefined>>();
 
-const InstitutionTag = ({ institution_id }: Partial<Props>) => {
+const InstitutionSpan = ({ institution_id }: Partial<Props>) => {
   const { institutions, setInstitutions } = useAppContext();
   const institution = institutions.get(institution_id);
 
@@ -38,7 +36,7 @@ const InstitutionTag = ({ institution_id }: Partial<Props>) => {
     if (institution_id && !institution) dynamicCall();
   }, [institutions, setInstitutions, institution, institution_id]);
 
-  return <div className="InstitutionTag">{institution?.name || UNKNWON_INSTITUTION}</div>;
+  return <span className="InstitutionSpan">{institution?.name || "Unknown"}</span>;
 };
 
-export default InstitutionTag;
+export default InstitutionSpan;

@@ -91,6 +91,7 @@ export const initializeIndex = async (): Promise<void> => {
   existingAdminUser?.items.forEach((e) => {
     const duplicatedItem = itemsMap.get(e.item_id);
     const mergedItem = duplicatedItem ? { ...e, ...duplicatedItem } : e;
+    mergedItem.cursor = undefined;
     itemsMap.set(e.item_id, mergedItem);
   });
 
@@ -225,6 +226,31 @@ for (int i=ctx._source.user.items.length-1; i>=0; i--) {
 `,
       lang: "painless",
       params: { val: user.items },
+    },
+  });
+  return response.result;
+};
+
+/**
+ * Delete an item with given user and item_id.
+ * @param user
+ * @param item_id
+ * @returns A promise to be an Elasticsearch result object
+ */
+export const deleteItem = async (user: MaskedUser, item_id: string) => {
+  const response = await client.update({
+    index,
+    id: user.id,
+    script: {
+      source: `
+for (int i=ctx._source.user.items.length-1; i>=0; i--) {
+  if (ctx._source.user.items[i].id == params.val) {
+      ctx._source.user.items.remove(i);
+  }
+}
+`,
+      lang: "painless",
+      params: { val: item_id },
     },
   });
   return response.result;

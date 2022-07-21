@@ -49,8 +49,8 @@ const Login = () => {
 
   return (
     <div className="Login">
-      <div>{user.username} is logged in</div>
       <div>
+        <span>{user.username} is logged in</span>
         <button onClick={onClick}>Logout</button>
       </div>
     </div>

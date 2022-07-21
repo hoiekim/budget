@@ -1,4 +1,4 @@
-import { createContext, useContext, Dispatch } from "react";
+import { createContext, useContext, Dispatch, SetStateAction } from "react";
 import { Transaction, Account, Institution, MaskedUser } from "server";
 import { ClientRouter } from "client";
 
@@ -8,13 +8,13 @@ export type Institutions = Map<string | undefined, Institution>;
 
 export interface ContextType {
   transactions: Transactions;
-  setTransactions: Dispatch<Transactions>;
+  setTransactions: Dispatch<SetStateAction<Transactions>>;
   accounts: Accounts;
-  setAccounts: Dispatch<Accounts>;
+  setAccounts: Dispatch<SetStateAction<Accounts>>;
   institutions: Institutions;
-  setInstitutions: Dispatch<Institutions>;
+  setInstitutions: Dispatch<SetStateAction<Institutions>>;
   user: MaskedUser | undefined;
-  setUser: Dispatch<MaskedUser | undefined>;
+  setUser: Dispatch<SetStateAction<MaskedUser | undefined>>;
   router: ClientRouter;
 }
 

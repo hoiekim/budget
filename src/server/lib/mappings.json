@@ -39,6 +39,7 @@
           }
         },
         "institution_id": { "type": "keyword" },
+        "item_id": { "type": "keyword" },
         "mask": { "type": "keyword" },
         "name": { "type": "keyword" },
         "official_name": { "type": "keyword" },

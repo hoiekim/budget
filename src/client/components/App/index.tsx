@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ContextType } from "client";
 import Utility from "./Utility";
 import Router from "./Router";
@@ -11,7 +12,9 @@ const App = ({ initialUser }: Props) => {
   return (
     <AppContext initialUser={initialUser}>
       <Utility />
-      <Router />
+      <Suspense fallback={<div className="loading">Loading...</div>}>
+        <Router />
+      </Suspense>
     </AppContext>
   );
 };

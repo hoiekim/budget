@@ -23,7 +23,9 @@ const getResponse: GetResponse = async (req, res) => {
     throw new Error("Server failed to get middlestream accounts data.");
   }
 
-  res.write(JSON.stringify({ status: "streaming", data: earlyResponse }));
+  res.write(
+    JSON.stringify({ status: "streaming", data: { errors: [], accounts: earlyResponse } })
+  );
   res.write("\n");
 
   earlyResponse.forEach((e) => map.set(e.account_id, e));
@@ -36,7 +38,7 @@ const getResponse: GetResponse = async (req, res) => {
   res.write(JSON.stringify({ status: "success", data: lateResponse }));
   res.write("\n");
 
-  indexAccounts(user, lateResponse);
+  indexAccounts(user, lateResponse.accounts);
 };
 
 const route = new Route("GET", "/accounts-stream", getResponse);

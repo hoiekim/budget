@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, ChangeEventHandler } from "react";
 import { Transaction } from "server";
 import { useAppContext, call, Sorter } from "client";
-import { InstitutionTag } from "client/components";
+import { InstitutionSpan } from "client/components";
 import { TransactionHeaders } from ".";
 
 interface Props {
@@ -80,12 +80,16 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
       )}
       {getVisible("institution") && (
         <td>
-          <InstitutionTag institution_id={institution_id} />
+          <div>
+            <InstitutionSpan institution_id={institution_id} />
+          </div>
         </td>
       )}
       {getVisible("category") && (
         <td>
-          <input onChange={onChangeCategoryInput} value={categoryInput} />
+          <div>
+            <input onChange={onChangeCategoryInput} value={categoryInput} />
+          </div>
         </td>
       )}
     </tr>

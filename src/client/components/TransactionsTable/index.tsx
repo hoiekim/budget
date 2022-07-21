@@ -68,9 +68,9 @@ const TransactionsTable = () => {
 
   const hiddenColumns = Object.entries(visibles)
     .filter(([key, value]) => !value)
-    .map(([key, value]) => {
+    .map(([key, value], i) => {
       return (
-        <button onClick={() => toggleVisible(key as keyof typeof visibles)}>
+        <button key={i} onClick={() => toggleVisible(key as keyof typeof visibles)}>
           {getHeader(key as keyof typeof visibles)}
         </button>
       );

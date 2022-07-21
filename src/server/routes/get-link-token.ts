@@ -9,7 +9,16 @@ const getResponse: GetResponse<string> = async (req) => {
     };
   }
 
-  const response = await getLinkToken(user);
+  const { access_token } = req.query;
+
+  if (typeof access_token !== "string" && typeof access_token !== "undefined") {
+    return {
+      status: "failed",
+      info: "access_token value must be string.",
+    };
+  }
+
+  const response = await getLinkToken(user, access_token);
   if (!response) throw new Error("Server failed to get link token.");
 
   return {

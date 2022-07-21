@@ -11,10 +11,12 @@ const Utility = () => {
 
   const { sync, clean } = useSync();
 
+  const userLoggedIn = !!user;
+
   useEffect(() => {
-    if (user) sync();
+    if (userLoggedIn) sync();
     else clean();
-  }, [user, sync, clean]);
+  }, [userLoggedIn, sync, clean]);
 
   return <></>;
 };
