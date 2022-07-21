@@ -218,7 +218,7 @@ export const updateItems = async (user: MaskedUser) => {
       source: `
 for (int i=ctx._source.user.items.length-1; i>=0; i--) {
   for (int j=params.val.length-1; i>=0; i--) {
-    if (ctx._source.user.items[i].id == params.val[j].id) {
+    if (ctx._source.user.items[i].item_id == params.val[j].id) {
         ctx._source.user.items[i].cursor = params.val[j].cursor;
     }
   }
@@ -244,7 +244,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
     script: {
       source: `
 for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-  if (ctx._source.user.items[i].id == params.val) {
+  if (ctx._source.user.items[i].item_id == params.val) {
       ctx._source.user.items.remove(i);
   }
 }
