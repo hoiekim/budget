@@ -1,29 +1,63 @@
-import { useRef, useCallback } from "react";
-import { Transaction, Account } from "server";
+import { useCallback } from "react";
+import { TransactionsResponse, AccountsResponse } from "server";
 import { useAppContext, read } from "client";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
  */
 export const useSync = () => {
-  const { transactions, setTransactions, accounts, setAccounts } = useAppContext();
-  const transactionsRef = useRef(transactions);
-  const accountsRef = useRef(accounts);
+  const { user, setUser, setTransactions, setAccounts } = useAppContext();
+  const userLoggedIn = !!user;
 
   const sync = useCallback(() => {
-    read<Transaction[]>("/api/transactions-stream", (r) => {
-      const newTransactions = new Map(transactionsRef.current);
-      r.data?.forEach((e) => newTransactions.set(e.transaction_id, e));
-      setTransactions(newTransactions);
-      transactionsRef.current = newTransactions;
+    if (!userLoggedIn) return;
+
+    read<TransactionsResponse>("/api/transactions-stream", (r) => {
+      if (!r.data) return;
+      const { transactions } = r.data;
+
+      setTransactions((oldTransactions) => {
+        const newTransactions = new Map(oldTransactions);
+        transactions.forEach((e) => newTransactions.set(e.transaction_id, e));
+        return newTransactions;
+      });
     });
-    read<Account[]>("/api/accounts-stream", (r) => {
-      const newAccounts = new Map(accountsRef.current);
-      r.data?.forEach((e) => newAccounts.set(e.account_id, e));
-      setAccounts(newAccounts);
-      accountsRef.current = newAccounts;
+
+    read<AccountsResponse>("/api/accounts-stream", (r) => {
+      if (!r.data) return;
+      const { accounts, errors } = r.data;
+
+      setAccounts((oldAccounts) => {
+        const newAccounts = new Map(oldAccounts);
+        accounts.forEach((e) => newAccounts.set(e.account_id, e));
+        return newAccounts;
+      });
+
+      setUser((oldUser) => {
+        const newItems = oldUser ? [...oldUser.items] : [];
+        const newUser = oldUser && { ...oldUser, items: newItems };
+        accounts.forEach((e) => {
+          newItems.find((item) => {
+            if (item.item_id === e.item_id) {
+              delete item.plaidError;
+              return true;
+            }
+            return false;
+          });
+        });
+        errors.forEach((e) => {
+          newItems.find((item) => {
+            if (item.item_id === e.item_id) {
+              item.plaidError = e;
+              return true;
+            }
+            return false;
+          });
+        });
+        return newUser;
+      });
     });
-  }, [setTransactions, setAccounts]);
+  }, [userLoggedIn, setUser, setTransactions, setAccounts]);
 
   const clean = useCallback(() => {
     setTransactions(new Map());

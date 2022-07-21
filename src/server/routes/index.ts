@@ -9,3 +9,4 @@ export { default as postAccount } from "./post-account";
 export { default as getLogin } from "./get-login";
 export { default as postLogin } from "./post-login";
 export { default as deleteLogin } from "./delete-login";
+export { default as deleteItem } from "./delete-item";

@@ -9,6 +9,8 @@ import {
   TransactionsSyncRequest,
   AccountBase,
   Institution as PlaidInstitution,
+  PlaidError,
+  Item as PlaidItem,
 } from "plaid";
 import { MaskedUser } from "server";
 
@@ -30,59 +32,43 @@ if (!PLAID_CLIENT_ID || !PLAID_SECRET_DEVELOPMENT || !PLAID_SECRET_SANDBOX) {
 }
 
 const getClient = (user: MaskedUser) => {
-  if (user.username === "demo") {
-    const sandboxConfig = new Configuration({
-      basePath: PlaidEnvironments.sandbox,
-      baseOptions: {
-        headers: {
-          "PLAID-CLIENT-ID": PLAID_CLIENT_ID,
-          "PLAID-SECRET": PLAID_SECRET_SANDBOX,
-        },
+  const isDemo = user.username === "demo";
+  const config = new Configuration({
+    basePath: isDemo ? PlaidEnvironments.sandbox : PlaidEnvironments.development,
+    baseOptions: {
+      headers: {
+        "PLAID-CLIENT-ID": PLAID_CLIENT_ID,
+        "PLAID-SECRET": isDemo ? PLAID_SECRET_SANDBOX : PLAID_SECRET_DEVELOPMENT,
       },
-    });
-
-    return new PlaidApi(sandboxConfig);
-  } else {
-    const devConfig = new Configuration({
-      basePath: PlaidEnvironments.development,
-      baseOptions: {
-        headers: {
-          "PLAID-CLIENT-ID": PLAID_CLIENT_ID,
-          "PLAID-SECRET": PLAID_SECRET_DEVELOPMENT,
-        },
-      },
-    });
-
-    return new PlaidApi(devConfig);
-  }
+    },
+  });
+  return new PlaidApi(config);
 };
 
-export const getLinkToken = async (user: MaskedUser) => {
+export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
   const client = getClient(user);
 
   const request: LinkTokenCreateRequest = {
     user: { client_user_id: user.id },
     client_name: "Budget App",
-    products: [Products.Auth, Products.Transactions],
     country_codes: [CountryCode.Us],
     language: "en",
   };
+
+  if (access_token) request.access_token = access_token;
+  else request.products = [Products.Auth, Products.Transactions, Products.Investments];
 
   const response = await client.linkTokenCreate(request);
 
   return response.data;
 };
 
-export class Item {
-  access_token: string;
+export interface Item {
   item_id: string;
+  access_token: string;
   institution_id?: string;
   cursor?: string;
-
-  constructor(access_token: string, item_id: string) {
-    this.access_token = access_token;
-    this.item_id = item_id;
-  }
+  plaidError?: PlaidError;
 }
 
 export const exchangePublicToken = async (user: MaskedUser, public_token: string) => {
@@ -93,28 +79,42 @@ export const exchangePublicToken = async (user: MaskedUser, public_token: string
   return response.data;
 };
 
-export const getItem = async (user: MaskedUser, access_token: string) => {
+export const getItem = async (user: MaskedUser, access_token: string): Promise<Item> => {
   const client = getClient(user);
 
   const response = await client.itemGet({ access_token });
 
-  const { item } = response.data;
+  const { item: plaidItem } = response.data;
+  const { institution_id, item_id } = plaidItem;
 
-  return item;
+  return { item_id, access_token, institution_id: institution_id || undefined };
 };
+
+export type ItemError = PlaidError & { item_id: string };
+
+export interface TransactionsResponse {
+  errors: ItemError[];
+  transactions: Transaction[];
+}
 
 export const getTransactions = async (user: MaskedUser) => {
   const client = getClient(user);
 
+  const data: TransactionsResponse = {
+    errors: [],
+    transactions: [],
+  };
+
   const fetchJobs = user.items.map(async (item) => {
+    const { item_id, access_token, cursor } = item;
     try {
       const added: Transaction[][] = [];
       let hasMore = true;
 
       while (hasMore) {
         const request: TransactionsSyncRequest = {
-          access_token: item.access_token,
-          cursor: item.cursor,
+          access_token: access_token,
+          cursor: cursor,
         };
         const response = await client.transactionsSync(request);
         const data = response.data;
@@ -123,15 +123,20 @@ export const getTransactions = async (user: MaskedUser) => {
         item.cursor = data.next_cursor;
       }
 
-      return added.flat();
-    } catch (error) {
-      console.error(error);
-      console.error("Failed to get transactions data for item:", item.item_id);
+      data.transactions = added.flat();
+    } catch (error: any) {
+      const plaidError = error.response.data as PlaidError;
+      console.error(plaidError);
+      console.error("Failed to get transactions data for item:", item_id);
+      data.errors.push({ ...plaidError, item_id });
     }
-    return [];
+
+    return;
   });
 
-  return (await Promise.all(fetchJobs)).flat();
+  await Promise.all(fetchJobs);
+
+  return data;
 };
 
 export interface Account extends AccountBase {
@@ -140,13 +145,23 @@ export interface Account extends AccountBase {
    */
   institution_id?: string;
   /**
-   * Determines if budget app should include the account to calculation & display.
+   * The ID of the item that the account belongs to.
    */
-  hide_in_budget?: boolean;
+  item_id: string;
 }
 
-export const getAccounts = async (user: MaskedUser): Promise<Account[]> => {
+export interface AccountsResponse {
+  errors: ItemError[];
+  accounts: Account[];
+}
+
+export const getAccounts = async (user: MaskedUser) => {
   const client = getClient(user);
+
+  const data: AccountsResponse = {
+    errors: [],
+    accounts: [],
+  };
 
   const fetchJobs = user.items.map(async (item) => {
     const { item_id, access_token, institution_id } = item;
@@ -154,17 +169,22 @@ export const getAccounts = async (user: MaskedUser): Promise<Account[]> => {
       const response = await client.accountsGet({ access_token });
       const { accounts } = response.data;
       const filledAccounts: Account[] = accounts.map((e) => {
-        return { ...e, institution_id };
+        return { ...e, institution_id, item_id };
       });
-      return filledAccounts;
-    } catch (error) {
-      console.error(error);
+      data.accounts = filledAccounts;
+    } catch (error: any) {
+      const plaidError = error.response.data as PlaidError;
+      console.error(plaidError);
       console.error("Failed to get accounts data for item:", item_id);
+      data.errors.push({ ...plaidError, item_id });
     }
-    return [];
+
+    return;
   });
 
-  return (await Promise.all(fetchJobs)).flat();
+  await Promise.all(fetchJobs);
+
+  return data;
 };
 
 const institutionsCache = new Map<string, Institution>();

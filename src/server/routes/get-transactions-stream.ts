@@ -24,7 +24,12 @@ const getResponse: GetResponse = async (req, res) => {
     throw new Error("Server failed to get middlestream transactions data.");
   }
 
-  res.write(JSON.stringify({ status: "streaming", data: earlyResponse }));
+  res.write(
+    JSON.stringify({
+      status: "streaming",
+      data: { errors: [], transactions: earlyResponse },
+    })
+  );
   res.write("\n");
 
   earlyResponse.forEach((e) => map.set(e.transaction_id, e));
@@ -36,8 +41,15 @@ const getResponse: GetResponse = async (req, res) => {
 
   updateItems(user);
 
-  const moreResponse = lateResponse.filter((e) => !map.has(e.transaction_id));
-  res.write(JSON.stringify({ status: "success", data: moreResponse }));
+  const moreResponse = lateResponse.transactions.filter(
+    (e) => !map.has(e.transaction_id)
+  );
+  res.write(
+    JSON.stringify({
+      status: "success",
+      data: { errors: lateResponse.errors, transactions: moreResponse },
+    })
+  );
   res.write("\n");
 
   indexTransactions(user, moreResponse);
