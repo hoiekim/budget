@@ -10,14 +10,15 @@ const getResponse: GetResponse = async (req) => {
   }
 
   const item_id = req.query.id as string;
+
+  await deleteItem(user, item_id);
+
   user.items.find((e, i) => {
     if (e.item_id === item_id) {
       user.items.splice(i, 1);
       return true;
     }
   });
-
-  await deleteItem(user, item_id);
 
   if (user.username === "admin") saveLocalItems(user.items);
 
