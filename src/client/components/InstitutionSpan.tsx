@@ -13,27 +13,25 @@ const InstitutionSpan = ({ institution_id }: Partial<Props>) => {
   const institution = institutions.get(institution_id);
 
   useEffect(() => {
-    const dynamicCall = async () => {
-      if (fetchJobs.has(institution_id)) return;
+    if (!institution_id || institution || fetchJobs.has(institution_id)) return;
 
-      const promisedInstitution = call
-        .get<Institution>(`/api/institution?id=${institution_id}`)
-        .then((r) => {
-          const institution = r.data;
+    const promisedInstitution = call
+      .get<Institution>(`/api/institution?id=${institution_id}`)
+      .then((r) => {
+        const institution = r.data;
 
-          if (institution) {
-            const newInstitutions = new Map(institutions);
+        if (institution) {
+          setInstitutions((oldInstitutions) => {
+            const newInstitutions = new Map(oldInstitutions);
             newInstitutions.set(institution_id, institution);
-            setInstitutions(newInstitutions);
-          }
+            return newInstitutions;
+          });
+        }
 
-          return institution;
-        });
+        return institution;
+      });
 
-      fetchJobs.set(institution_id, promisedInstitution);
-    };
-
-    if (institution_id && !institution) dynamicCall();
+    fetchJobs.set(institution_id, promisedInstitution);
   }, [institutions, setInstitutions, institution, institution_id]);
 
   return <span className="InstitutionSpan">{institution?.name || "Unknown"}</span>;

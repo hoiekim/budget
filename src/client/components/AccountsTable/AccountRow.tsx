@@ -1,9 +1,18 @@
-import { useState, useRef, ChangeEventHandler, MouseEventHandler } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  ChangeEventHandler,
+  MouseEventHandler,
+} from "react";
 import { InstitutionSpan, PlaidLinkButton } from "client/components";
-import { call, Sorter, useAppContext } from "client";
+import { call, Sorter, useAppContext, numberToCommaString } from "client";
 import { Account } from "server";
 
-export type ErrorAccount = Omit<Account, "institution_id" | "item_id"> & Partial<Account>;
+export interface ErrorAccount {
+  item_id: string;
+  institution_id?: string;
+}
 
 interface Props {
   account: Account | ErrorAccount;
@@ -12,11 +21,16 @@ interface Props {
 
 const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
-  const { account_id, balances, name, institution_id } = account;
+  const { account_id, balances, name, official_name, institution_id } =
+    account as Partial<Account>;
 
-  const { user, setUser, institutions } = useAppContext();
+  const { user, setUser, setAccounts, institutions } = useAppContext();
 
   const [nameInput, setNameInput] = useState(name);
+
+  useEffect(() => {
+    setNameInput(name);
+  }, [name, setNameInput]);
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
@@ -58,20 +72,52 @@ const AccountRow = ({ account, sorter }: Props) => {
               });
               return true;
             }
+            return false;
           });
       });
     }
   };
 
+  const onClickHide: MouseEventHandler<HTMLButtonElement> = () => {
+    if (!account_id) return;
+    call.post("/api/account", { account_id, config: { hide: true } }).then((r) => {
+      if (r.status === "success") {
+        setAccounts((oldAccounts) => {
+          const newAccounts = new Map(oldAccounts);
+          newAccounts.set(account_id, {
+            ...(account as Account),
+            config: { hide: true },
+          });
+          return newAccounts;
+        });
+      }
+    });
+  };
+
+  let formattedBalancesText = "";
+
+  if (balances) {
+    const { available, current, iso_currency_code } = balances;
+
+    if ([available, current].filter((e) => e).length === 2) {
+      const formattedAvailable = numberToCommaString(available as number);
+      const formattedCurrent = numberToCommaString(current as number);
+      formattedBalancesText += `${formattedAvailable} / ${formattedCurrent}`;
+    } else {
+      const formattedBalance = numberToCommaString((available || current) as number);
+      formattedBalancesText += formattedBalance;
+    }
+
+    if (iso_currency_code) {
+      formattedBalancesText += " " + iso_currency_code;
+    }
+  }
+
   return (
     <tr>
       {getVisible("balances") && (
         <td>
-          <div>
-            {balances
-              ? `${balances.available} / ${balances.current} ${balances.iso_currency_code}`
-              : "Unknown"}
-          </div>
+          <div>{formattedBalancesText}</div>
         </td>
       )}
       {getVisible("name") && (
@@ -82,19 +128,20 @@ const AccountRow = ({ account, sorter }: Props) => {
         </td>
       )}
       <td>
-        <div>{account.official_name || "Unknown"}</div>
+        <div>{official_name || "Unknown"}</div>
       </td>
       {getVisible("institution") && (
         <td>
           <div>
             <InstitutionSpan institution_id={institution_id} />
-            <button onClick={onClickRemove}>✕</button>
           </div>
         </td>
       )}
       <td>
         <div>
-          <PlaidLinkButton item={item}>Reconnect</PlaidLinkButton>
+          <PlaidLinkButton item={item}>Fix</PlaidLinkButton>
+          <button onClick={onClickRemove}>Remove</button>
+          <button onClick={onClickHide}>Hide</button>
         </div>
       </td>
     </tr>

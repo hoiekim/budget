@@ -15,11 +15,13 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
     }
   });
 
-  const setValue = (value: any | ((val: any) => any)) => {
+  const setValue = (value: T | ((val: T) => T)) => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(key, stringify(valueToStore));
+      setStoredValue((oldValue: T) => {
+        const valueToStore = value instanceof Function ? value(oldValue) : value;
+        window.localStorage.setItem(key, stringify(valueToStore));
+        return valueToStore;
+      });
     } catch (error) {
       console.error(error);
     }

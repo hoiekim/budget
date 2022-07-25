@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEventHandler } from "react";
 import { Transaction } from "server";
-import { useAppContext, call, Sorter } from "client";
+import { useAppContext, call, Sorter, numberToCommaString } from "client";
 import { InstitutionSpan } from "client/components";
 import { TransactionHeaders } from ".";
 
@@ -20,14 +20,16 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     merchant_name,
     name,
     amount,
-    category,
+    plaid_category,
   } = transaction;
 
-  const [categoryInput, setCategoryInput] = useState(category ? category.join(", ") : "");
+  const [categoryInput, setCategoryInput] = useState(
+    plaid_category ? plaid_category.join(", ") : ""
+  );
 
   useEffect(() => {
-    setCategoryInput(category ? category.join(", ") : "");
-  }, [category, setCategoryInput]);
+    setCategoryInput(plaid_category ? plaid_category.join(", ") : "");
+  }, [plaid_category, setCategoryInput]);
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
@@ -48,7 +50,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
       call.post("/api/transaction", { transaction_id, category: parsedCategory });
 
-      transaction.category = parsedCategory;
+      transaction.plaid_category = parsedCategory;
 
       const newTransactions = new Map(transactions);
       newTransactions.set(transaction_id, transaction);
@@ -70,7 +72,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
       )}
       {getVisible("amount") && (
         <td>
-          <div>{amount}</div>
+          <div>{numberToCommaString(amount)}</div>
         </td>
       )}
       {getVisible("account") && (
@@ -85,7 +87,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
           </div>
         </td>
       )}
-      {getVisible("category") && (
+      {getVisible("plaid_category") && (
         <td>
           <div>
             <input onChange={onChangeCategoryInput} value={categoryInput} />

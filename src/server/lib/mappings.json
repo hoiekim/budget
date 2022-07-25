@@ -38,13 +38,20 @@
             "unofficial_currency_code": { "type": "keyword" }
           }
         },
+        "budget_ids": { "type": "keyword" },
         "institution_id": { "type": "keyword" },
         "item_id": { "type": "keyword" },
         "mask": { "type": "keyword" },
         "name": { "type": "keyword" },
         "official_name": { "type": "keyword" },
         "type": { "type": "keyword" },
-        "subtype": { "type": "keyword" }
+        "subtype": { "type": "keyword" },
+        "config": {
+          "type": "object",
+          "properties": {
+            "hide": { "type": "boolean" }
+          }
+        }
       }
     },
     "transaction": {
@@ -52,8 +59,9 @@
       "dynamic": true,
       "properties": {
         "pending_transaction_id": { "type": "keyword" },
-        "category_id": { "type": "keyword" },
-        "category": { "type": "keyword" },
+        "category_ids": { "type": "keyword" },
+        "plaid_category_id": { "type": "keyword" },
+        "plaid_category": { "type": "keyword" },
         "location": {
           "type": "object",
           "properties": {
@@ -94,6 +102,33 @@
         "authorized_datetime": { "type": "date" },
         "datetime": { "type": "date" },
         "transaction_code": { "type": "keyword" }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "budget_id": { "type": "keyword" },
+        "name": { "type": "keyword" },
+        "interval": { "type": "keyword" },
+        "capacity": { "type": "float" }
+      }
+    },
+    "section": {
+      "type": "object",
+      "properties": {
+        "section_id": { "type": "keyword" },
+        "budget_id": { "type": "keyword" },
+        "name": { "type": "keyword" },
+        "capacity": { "type": "float" }
+      }
+    },
+    "category": {
+      "type": "object",
+      "properties": {
+        "category_id": { "type": "keyword" },
+        "section_id": { "type": "keyword" },
+        "name": { "type": "keyword" },
+        "capacity": { "type": "float" }
       }
     }
   }

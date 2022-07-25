@@ -401,3 +401,38 @@ export const searchAccounts = async (user: MaskedUser) => {
 
   return response.hits.hits.map((e) => e?._source?.account as Account).filter((e) => e);
 };
+
+export type Interval = "year" | "month" | "week" | "day";
+
+export interface Budget {
+  budget_id: string;
+  interval: Interval;
+  capacity: number;
+  name: string;
+  section: {
+    section_id: string;
+    name: string;
+    capacity: number;
+    category: {
+      category_id: string;
+      name: string;
+      capacity: number;
+    };
+  };
+}
+
+/**
+ * Creates or updates a document that represents a budget.
+ * Note: Budget > Section > Category
+ * @param user
+ * @param budget
+ * @returns A promise to be an Elasticsearch result object
+ */
+export const indexBudget = async (user: MaskedUser, budget: Budget) => {
+  const response = await client.index({
+    index,
+    body: { type: "budget", user: { user_id: user.id }, budget },
+  });
+
+  return response.result;
+};

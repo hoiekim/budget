@@ -1,3 +1,4 @@
+import { Transaction as PlaidTransaction } from "plaid";
 import {
   Transaction,
   getTransactions,

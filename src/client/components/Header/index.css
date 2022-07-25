@@ -1,4 +1,12 @@
 div.Header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+}
+
+div.Header > div:nth-child(1) {
+  margin-right: 5px;
+}
+
+div.Header > div:not(:nth-child(1)) {
+  margin: 0 5px;
 }

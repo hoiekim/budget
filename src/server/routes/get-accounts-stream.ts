@@ -18,22 +18,25 @@ const getResponse: GetResponse = async (req, res) => {
 
   const map = new Map<string, Account>();
 
-  const earlyResponse = await searchAccounts(user);
-  if (!earlyResponse) {
+  const earlyResponse = { errors: [], accounts: await searchAccounts(user) };
+  if (!earlyResponse.accounts) {
     throw new Error("Server failed to get middlestream accounts data.");
   }
 
-  res.write(
-    JSON.stringify({ status: "streaming", data: { errors: [], accounts: earlyResponse } })
-  );
+  res.write(JSON.stringify({ status: "streaming", data: earlyResponse }));
   res.write("\n");
 
-  earlyResponse.forEach((e) => map.set(e.account_id, e));
+  earlyResponse.accounts.forEach((e) => map.set(e.account_id, e));
 
   const lateResponse = await getAccounts(user);
   if (!lateResponse) {
     throw new Error("Server failed to get upstream accounts data.");
   }
+
+  lateResponse.accounts = lateResponse.accounts.map((e) => {
+    const oldAccount = map.get(e.account_id);
+    return { ...oldAccount, ...e };
+  });
 
   res.write(JSON.stringify({ status: "success", data: lateResponse }));
   res.write("\n");
