@@ -1,15 +1,12 @@
-import { Client } from "@elastic/elasticsearch";
 import bcrypt from "bcrypt";
-import { Item, Transaction, Account, getLocalItems } from "server";
+import { Item, getLocalItems } from "server";
 import mappings from "./mappings.json";
+import { client, index } from "./client";
 
-const client = new Client({ node: process.env.ELASTICSEARCH_HOST });
-
-const { version, properties }: any = mappings;
-const index = "budget" + (version ? `-${version}` : "");
+const { properties }: any = mappings;
 
 export interface User {
-  id: string;
+  user_id: string;
   username: string;
   password: string;
   items: Item[];
@@ -98,7 +95,7 @@ export const initializeIndex = async (): Promise<void> => {
   const adminItems = Array.from(itemsMap.values());
 
   indexUser({
-    id: existingAdminUser?.id,
+    user_id: existingAdminUser?.user_id,
     username: "admin",
     password: ADMIN_PASSWORD || "budget",
     items: adminItems,
@@ -107,7 +104,7 @@ export const initializeIndex = async (): Promise<void> => {
   const existingDemoUser = await searchUser({ username: "demo" });
 
   indexUser({
-    id: existingDemoUser?.id,
+    user_id: existingDemoUser?.user_id,
     username: "demo",
     password: DEMO_PASSWORD || "budget",
     items: existingDemoUser?.items || [],
@@ -125,22 +122,22 @@ export const initializeIndex = async (): Promise<void> => {
  * @param user
  * @returns A promise to be an Elasticsearch result object
  */
-export const indexUser = async (user: Omit<User, "id"> & { id?: string }) => {
-  const { id, password } = user;
+export const indexUser = async (user: Omit<User, "user_id"> & { user_id?: string }) => {
+  const { user_id, password } = user;
 
   if (password) {
     user.password = await bcrypt.hash(password, 10);
   }
 
-  if (id) delete user.id;
+  if (user_id) delete user.user_id;
 
   const response = await client.index({
     index,
-    id,
+    id: user_id,
     body: { type: "user", user },
   });
 
-  return response.result;
+  return response;
 };
 
 /**
@@ -149,15 +146,15 @@ export const indexUser = async (user: Omit<User, "id"> & { id?: string }) => {
  * @returns A promise to be a User object
  */
 export const searchUser = async (user: Partial<MaskedUser>) => {
-  if (user.id) {
+  if (user.user_id) {
     const response = await client.get<{ user: User }>({
       index,
-      id: user.id,
+      id: user.user_id,
     });
 
     const hitUser = response?._source?.user;
 
-    return (hitUser && { ...hitUser, id: response._id }) as User;
+    return (hitUser && { ...hitUser, user_id: response._id }) as User;
   }
 
   const filter: { term: any }[] = [{ term: { type: "user" } }];
@@ -182,7 +179,7 @@ export const searchUser = async (user: Partial<MaskedUser>) => {
   const hit = hits[0];
   const hitUser = hit?._source?.user;
 
-  return (hitUser && { ...hitUser, id: hit._id }) as User;
+  return (hitUser && { ...hitUser, user_id: hit._id }) as User;
 };
 
 /**
@@ -191,17 +188,17 @@ export const searchUser = async (user: Partial<MaskedUser>) => {
  * @param item
  * @returns A promise to be an Elasticsearch result object
  */
-export const indexItem = async (user: MaskedUser, item: Item) => {
+export const createItem = async (user: MaskedUser, item: Item) => {
   const response = await client.update({
     index,
-    id: user.id,
+    id: user.user_id,
     script: {
       source: "ctx._source.user.items.add(params.val)",
       lang: "painless",
       params: { val: item },
     },
   });
-  return response.result;
+  return response;
 };
 
 /**
@@ -213,22 +210,22 @@ export const indexItem = async (user: MaskedUser, item: Item) => {
 export const updateItems = async (user: MaskedUser) => {
   const response = await client.update({
     index,
-    id: user.id,
+    id: user.user_id,
     script: {
       source: `
-for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-  for (int j=params.val.length-1; i>=0; i--) {
-    if (ctx._source.user.items[i].item_id == params.val[j].id) {
-        ctx._source.user.items[i].cursor = params.val[j].cursor;
+  for (int i=ctx._source.user.items.length-1; i>=0; i--) {
+    for (int j=params.val.length-1; i>=0; i--) {
+      if (ctx._source.user.items[i].item_id == params.val[j].id) {
+          ctx._source.user.items[i].cursor = params.val[j].cursor;
+      }
     }
   }
-}
-`,
+  `,
       lang: "painless",
       params: { val: user.items },
     },
   });
-  return response.result;
+  return response;
 };
 
 /**
@@ -240,199 +237,18 @@ for (int i=ctx._source.user.items.length-1; i>=0; i--) {
 export const deleteItem = async (user: MaskedUser, item_id: string) => {
   const response = await client.update({
     index,
-    id: user.id,
+    id: user.user_id,
     script: {
       source: `
-for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-  if (ctx._source.user.items[i].item_id == params.val) {
-      ctx._source.user.items.remove(i);
+  for (int i=ctx._source.user.items.length-1; i>=0; i--) {
+    if (ctx._source.user.items[i].item_id == params.val) {
+        ctx._source.user.items.remove(i);
+    }
   }
-}
-`,
+  `,
       lang: "painless",
       params: { val: item_id },
     },
   });
-  return response.result;
-};
-
-/**
- * Creates transactions documents associated with given user.
- * @param user
- * @param transactions
- * @returns A promise to be an array of Elasticsearch bulk response objects
- */
-export const indexTransactions = async (
-  user: MaskedUser,
-  transactions: Transaction[]
-) => {
-  if (!transactions.length) return [];
-
-  const operations = transactions.flatMap((transaction) => {
-    return [
-      {
-        index: {
-          _index: index,
-          _id: transaction.transaction_id,
-        },
-      },
-      {
-        type: "transaction",
-        user: { user_id: user.id },
-        transaction,
-      },
-    ];
-  });
-
-  const response = await client.bulk({ operations });
-
-  return response.items.map((e) => e.index);
-};
-
-/**
- * Updates transaction document with given object.
- * @param transaction
- * @returns A promise to be an Elasticsearch result object
- */
-export const updateTransaction = async (
-  transaction: Partial<Transaction> & {
-    transaction_id: string;
-  }
-) => {
-  const response = await client.update({
-    index,
-    id: transaction.transaction_id,
-    doc: { transaction },
-  });
-
-  return response.result;
-};
-
-/**
- * Searches for transactions associated with given user.
- * @param user
- * @returns A promise to be an array of Transaction objects
- */
-export const searchTransactions = async (user: MaskedUser) => {
-  const response = await client.search<{ transaction: Transaction }>({
-    index,
-    from: 0,
-    size: 10000,
-    query: {
-      bool: {
-        filter: [
-          { term: { "user.user_id": user.id } },
-          { term: { type: "transaction" } },
-        ],
-      },
-    },
-  });
-
-  return response.hits.hits
-    .map((e) => e?._source?.transaction as Transaction)
-    .filter((e) => e);
-};
-
-/**
- * Creates accounts documents associated with given user.
- * @param user
- * @param accounts
- * @returns A promise to be an array of Elasticsearch bulk response objects
- */
-export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
-  if (!accounts.length) return [];
-
-  const operations = accounts.flatMap((account) => {
-    return [
-      {
-        index: {
-          _index: index,
-          _id: account.account_id,
-        },
-      },
-      {
-        type: "account",
-        user: { user_id: user.id },
-        account,
-      },
-    ];
-  });
-
-  const response = await client.bulk({ operations });
-
-  return response.items.map((e) => e.index);
-};
-
-/**
- * Updates account document with given object.
- * @param account
- * @returns A promise to be an Elasticsearch result object
- */
-export const updateAccount = async (
-  account: Partial<Account> & {
-    account_id: string;
-  }
-) => {
-  const response = await client.update({
-    index,
-    id: account.account_id,
-    doc: { account },
-  });
-
-  return response.result;
-};
-
-/**
- * Searches for accounts associated with given user.
- * @param user
- * @returns A promise to be an array of Account objects
- */
-export const searchAccounts = async (user: MaskedUser) => {
-  const response = await client.search<{ account: Account }>({
-    index,
-    from: 0,
-    size: 10000,
-    query: {
-      bool: {
-        filter: [{ term: { "user.user_id": user.id } }, { term: { type: "account" } }],
-      },
-    },
-  });
-
-  return response.hits.hits.map((e) => e?._source?.account as Account).filter((e) => e);
-};
-
-export type Interval = "year" | "month" | "week" | "day";
-
-export interface Budget {
-  budget_id: string;
-  interval: Interval;
-  capacity: number;
-  name: string;
-  section: {
-    section_id: string;
-    name: string;
-    capacity: number;
-    category: {
-      category_id: string;
-      name: string;
-      capacity: number;
-    };
-  };
-}
-
-/**
- * Creates or updates a document that represents a budget.
- * Note: Budget > Section > Category
- * @param user
- * @param budget
- * @returns A promise to be an Elasticsearch result object
- */
-export const indexBudget = async (user: MaskedUser, budget: Budget) => {
-  const response = await client.index({
-    index,
-    body: { type: "budget", user: { user_id: user.id }, budget },
-  });
-
-  return response.result;
+  return response;
 };

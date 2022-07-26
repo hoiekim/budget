@@ -5,9 +5,10 @@ import {
   Route,
   GetResponse,
   indexAccounts,
+  AccountsResponse,
 } from "server";
 
-const getResponse: GetResponse = async (req, res) => {
+const getResponse: GetResponse<AccountsResponse> = async (req, res) => {
   const { user } = req.session;
   if (!user) {
     return {

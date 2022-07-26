@@ -3,7 +3,7 @@ import {
   getItem,
   Route,
   GetResponse,
-  indexItem,
+  createItem,
   saveLocalItems,
 } from "server";
 
@@ -20,7 +20,7 @@ const getResponse: GetResponse = async (req) => {
   const { access_token } = await exchangePublicToken(user, token);
   const item = await getItem(user, access_token);
   user.items.push(item);
-  await indexItem(user, item);
+  await createItem(user, item);
 
   if (user.username === "admin") saveLocalItems(user.items);
 

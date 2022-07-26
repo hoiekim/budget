@@ -61,7 +61,7 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
   const client = getClient(user);
 
   const request: LinkTokenCreateRequest = {
-    user: { client_user_id: user.id },
+    user: { client_user_id: user.user_id },
     client_name: "Budget App",
     country_codes: [CountryCode.Us],
     language: "en",
@@ -235,12 +235,16 @@ export interface Account {
    * The ID of the item that the account belongs to.
    */
   item_id: string;
+  config?: AccountConfig;
+}
+
+export interface AccountConfig {
   /**
    * Determines if the account is set hidden by user. If this value is true,
    * Budget will not display or calcuate balances or transactions that belong
    * to this account.
    */
-  config?: { hide?: boolean };
+  hide?: boolean;
 }
 
 export interface AccountsResponse {

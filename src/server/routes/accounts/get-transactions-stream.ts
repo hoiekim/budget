@@ -1,4 +1,3 @@
-import { Transaction as PlaidTransaction } from "plaid";
 import {
   Transaction,
   getTransactions,
@@ -7,9 +6,10 @@ import {
   searchTransactions,
   indexTransactions,
   updateItems,
+  TransactionsResponse,
 } from "server";
 
-const getResponse: GetResponse = async (req, res) => {
+const getResponse: GetResponse<TransactionsResponse> = async (req, res) => {
   const { user } = req.session;
   if (!user) {
     return {
