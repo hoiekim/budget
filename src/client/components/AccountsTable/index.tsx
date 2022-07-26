@@ -5,6 +5,7 @@ import AccountsHead from "./AccountsHead";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
   institution?: boolean;
+  action?: boolean;
 };
 
 const AccountsTable = () => {
@@ -16,7 +17,9 @@ const AccountsTable = () => {
     {
       balances: true,
       name: true,
+      official_name: true,
       institution: true,
+      action: true,
     }
   );
 
@@ -31,6 +34,8 @@ const AccountsTable = () => {
       } else if (key === "institution") {
         const account = accounts.get(e.account_id);
         return institutions.get(account?.institution_id || "")?.name;
+      } else if (key === "action") {
+        return 0;
       } else {
         return e[key];
       }
@@ -55,8 +60,12 @@ const AccountsTable = () => {
       return "Balances";
     } else if (key === "name") {
       return "Name";
+    } else if (key === "official_name") {
+      return "Official Name";
     } else if (key === "institution") {
       return "Institution";
+    } else if (key === "action") {
+      return "Action";
     } else {
       return key.toString();
     }

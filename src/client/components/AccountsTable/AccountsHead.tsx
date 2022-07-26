@@ -9,45 +9,41 @@ interface Props {
 
 const AccountsHead = ({ sorter, getHeader }: Props) => {
   const { setSortBy, getArrow, getVisible, toggleVisible } = sorter;
+
+  const headerKeys: (keyof AccountHeaders)[] = [
+    "balances",
+    "name",
+    "official_name",
+    "institution",
+  ];
+
+  const headerComponents = headerKeys.map((key, i) => {
+    if (getVisible(key)) {
+      return (
+        <td key={i}>
+          <div>
+            <button onClick={() => setSortBy(key)}>
+              {getHeader(key)} {getArrow(key)}
+            </button>
+            <button onClick={() => toggleVisible(key)}>✕</button>
+          </div>
+        </td>
+      );
+    } else return <></>;
+  });
+
   return (
     <thead>
       <tr>
-        {getVisible("balances") && (
+        {headerComponents}
+        {getVisible("action") && (
           <td>
             <div>
-              <button onClick={() => setSortBy("balances")}>
-                {getHeader("balances")} {getArrow("balances")}
-              </button>
-              <button onClick={() => toggleVisible("balances")}>✕</button>
+              <span>{getHeader("action")}</span>
+              <button onClick={() => toggleVisible("action")}>✕</button>
             </div>
           </td>
         )}
-        {getVisible("name") && (
-          <td>
-            <div>
-              <button onClick={() => setSortBy("name")}>
-                {getHeader("name")} {getArrow("name")}
-              </button>
-              <button onClick={() => toggleVisible("name")}>✕</button>
-            </div>
-          </td>
-        )}
-        <td>
-          <div>Official Name</div>
-        </td>
-        {getVisible("institution") && (
-          <td>
-            <div>
-              <button onClick={() => setSortBy("institution")}>
-                {getHeader("institution")} {getArrow("institution")}
-              </button>
-              <button onClick={() => toggleVisible("institution")}>✕</button>
-            </div>
-          </td>
-        )}
-        <td>
-          <div>Action</div>
-        </td>
       </tr>
     </thead>
   );

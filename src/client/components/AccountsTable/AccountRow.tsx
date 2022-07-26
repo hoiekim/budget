@@ -8,6 +8,7 @@ import {
 import { InstitutionSpan, PlaidLinkButton } from "client/components";
 import { call, Sorter, useAppContext, numberToCommaString } from "client";
 import { Account } from "server";
+import { AccountHeaders } from ".";
 
 export interface ErrorAccount {
   item_id: string;
@@ -16,7 +17,7 @@ export interface ErrorAccount {
 
 interface Props {
   account: Account | ErrorAccount;
-  sorter: Sorter;
+  sorter: Sorter<Account, AccountHeaders>;
 }
 
 const AccountRow = ({ account, sorter }: Props) => {
@@ -38,11 +39,23 @@ const AccountRow = ({ account, sorter }: Props) => {
   const timeout = useRef<Timeout>();
 
   const onChangeNameInput: ChangeEventHandler<HTMLInputElement> = (e) => {
+    if (!account_id) return;
     const { value } = e.target;
     setNameInput(value);
     clearTimeout(timeout.current);
     timeout.current = setTimeout(() => {
-      call.post("/api/account", { account_id, name: value });
+      call.post("/api/account", { account_id, name: value }).then((r) => {
+        if (r.status === "success") {
+          setAccounts((oldAccounts) => {
+            const oldAccount = oldAccounts.get(account_id);
+            if (!oldAccount) return oldAccounts;
+            const newAccounts = new Map(oldAccounts);
+            const newAccount = { ...oldAccount, name: value };
+            newAccounts.set(account_id, newAccount);
+            return newAccounts;
+          });
+        }
+      });
     }, 500);
   };
 
@@ -127,9 +140,11 @@ const AccountRow = ({ account, sorter }: Props) => {
           </div>
         </td>
       )}
-      <td>
-        <div>{official_name || "Unknown"}</div>
-      </td>
+      {getVisible("official_name") && (
+        <td>
+          <div>{official_name || "Unknown"}</div>
+        </td>
+      )}
       {getVisible("institution") && (
         <td>
           <div>
@@ -137,13 +152,15 @@ const AccountRow = ({ account, sorter }: Props) => {
           </div>
         </td>
       )}
-      <td>
-        <div>
-          <PlaidLinkButton item={item}>Fix</PlaidLinkButton>
-          <button onClick={onClickRemove}>Remove</button>
-          <button onClick={onClickHide}>Hide</button>
-        </div>
-      </td>
+      {getVisible("action") && (
+        <td>
+          <div>
+            <PlaidLinkButton item={item}>Fix</PlaidLinkButton>
+            <button onClick={onClickRemove}>Remove</button>
+            <button onClick={onClickHide}>Hide</button>
+          </div>
+        </td>
+      )}
     </tr>
   );
 };

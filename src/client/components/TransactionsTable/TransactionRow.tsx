@@ -72,7 +72,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
       )}
       {getVisible("amount") && (
         <td>
-          <div>{numberToCommaString(amount)}</div>
+          <div>{numberToCommaString(-amount)}</div>
         </td>
       )}
       {getVisible("account") && (
