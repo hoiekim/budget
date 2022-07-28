@@ -120,7 +120,7 @@ export const initializeIndex = async (): Promise<void> => {
  * This operation doesn't ensure created user's properties are unique.
  * Therefore an extra validation is recommended when creating a new user.
  * @param user
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const indexUser = async (user: Omit<User, "user_id"> & { user_id?: string }) => {
   const { user_id, password } = user;
@@ -186,16 +186,16 @@ export const searchUser = async (user: Partial<MaskedUser>) => {
  * Adds an item to an indexed user object.
  * @param user
  * @param item
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const createItem = async (user: MaskedUser, item: Item) => {
   const response = await client.update({
     index,
     id: user.user_id,
     script: {
-      source: "ctx._source.user.items.add(params.val)",
+      source: "ctx._source.user.items.add(params.item)",
       lang: "painless",
-      params: { val: item },
+      params: { item },
     },
   });
   return response;
@@ -205,24 +205,25 @@ export const createItem = async (user: MaskedUser, item: Item) => {
  * Update items of given user, specifically each item's cursor.
  * Cursor is used to mark where last synced with Plaid API.
  * @param user
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const updateItems = async (user: MaskedUser) => {
+  const { items } = user;
   const response = await client.update({
     index,
     id: user.user_id,
     script: {
       source: `
   for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-    for (int j=params.val.length-1; i>=0; i--) {
-      if (ctx._source.user.items[i].item_id == params.val[j].id) {
-          ctx._source.user.items[i].cursor = params.val[j].cursor;
+    for (int j=params.items.length-1; i>=0; i--) {
+      if (ctx._source.user.items[i].item_id == params.items[j].id) {
+          ctx._source.user.items[i].cursor = params.items[j].cursor;
       }
     }
   }
   `,
       lang: "painless",
-      params: { val: user.items },
+      params: { items },
     },
   });
   return response;
@@ -232,7 +233,7 @@ export const updateItems = async (user: MaskedUser) => {
  * Delete an item with given user and item_id.
  * @param user
  * @param item_id
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const deleteItem = async (user: MaskedUser, item_id: string) => {
   const response = await client.update({
@@ -241,13 +242,13 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
     script: {
       source: `
   for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-    if (ctx._source.user.items[i].item_id == params.val) {
+    if (ctx._source.user.items[i].item_id == params.item_id) {
         ctx._source.user.items.remove(i);
     }
   }
   `,
       lang: "painless",
-      params: { val: item_id },
+      params: { item_id },
     },
   });
   return response;

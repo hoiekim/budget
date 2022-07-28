@@ -106,6 +106,7 @@
     },
     "budget": {
       "type": "object",
+      "dynamic": "strict",
       "properties": {
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
@@ -115,6 +116,7 @@
     },
     "section": {
       "type": "object",
+      "dynamic": "strict",
       "properties": {
         "section_id": { "type": "keyword" },
         "budget_id": { "type": "keyword" },
@@ -124,6 +126,7 @@
     },
     "category": {
       "type": "object",
+      "dynamic": "strict",
       "properties": {
         "category_id": { "type": "keyword" },
         "section_id": { "type": "keyword" },

@@ -10,7 +10,7 @@ const getResponse: GetResponse<{ account_id: string }> = async (req) => {
   }
 
   try {
-    const response = await updateAccount(req.body);
+    const response = await updateAccount(user, req.body);
     return { status: "success", data: { account_id: response._id } };
   } catch (error: any) {
     console.error(`Failed to update an account: ${req.body.account_id}`);

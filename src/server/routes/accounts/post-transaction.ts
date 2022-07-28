@@ -10,7 +10,7 @@ const getResponse: GetResponse<{ transaction_id: string }> = async (req) => {
   }
 
   try {
-    const response = await updateTransaction(req.body);
+    const response = await updateTransaction(user, req.body);
     return { status: "success", data: { transaction_id: response._id } };
   } catch (error: any) {
     console.error(`Failed to update a transaction: ${req.body.transaction_id}`);

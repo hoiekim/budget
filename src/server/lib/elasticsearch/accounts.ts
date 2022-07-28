@@ -1,4 +1,4 @@
-import { Transaction, Account, MaskedUser } from "server";
+import { Transaction, Account, MaskedUser, flattenAllAddresses } from "server";
 import { client, index } from "./client";
 
 /**
@@ -39,25 +39,38 @@ export const indexTransactions = async (
 /**
  * Updates transaction document with given object.
  * @param transaction
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const updateTransaction = async (
+  user: MaskedUser,
   transaction: Partial<Transaction> & {
     transaction_id: string;
   }
 ) => {
+  const { user_id } = user;
   const { transaction_id } = transaction;
 
-  type UpdatedTransaction = Omit<Transaction, "transaction_id"> & {
-    transaction_id?: string;
-  };
-  const updatedTransaction = { ...transaction } as UpdatedTransaction;
-  delete updatedTransaction.transaction_id;
+  const source = `
+  if (ctx._source.user.user_id == "${user_id}") {
+    if (ctx._source.type == "transaction") {
+      ${Object.entries(transaction).reduce((acc, [key, value]) => {
+        if (key === "transaction_id") return acc;
+        if (key === "category") key = "plaid_category";
+        if (key === "category_id") key = "plaid_category_id";
+        return acc + `ctx._source.transaction.${key} = ${JSON.stringify(value)};\n`;
+      }, "")}
+    } else {
+      throw new Exception("Found document is not transaction type.");
+    }
+  } else {
+    throw new Exception("Request user doesn't have permission for this document.");
+  }
+  `;
 
   const response = await client.update({
     index,
     id: transaction_id,
-    doc: { transaction: updatedTransaction },
+    script: { source, lang: "painless" },
   });
 
   return response;
@@ -127,23 +140,36 @@ export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
 /**
  * Updates account document with given object.
  * @param account
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const updateAccount = async (
+  user: MaskedUser,
   account: Partial<Account> & {
     account_id: string;
   }
 ) => {
+  const { user_id } = user;
   const { account_id } = account;
 
-  type UpdatedAccount = Omit<Account, "account_id"> & { account_id?: string };
-  const updatedAccount = { ...account } as UpdatedAccount;
-  delete updatedAccount.account_id;
+  const source = `
+  if (ctx._source.user.user_id == "${user_id}") {
+    if (ctx._source.type == "account") {
+      ${Object.entries(flattenAllAddresses(account)).reduce((acc, [key, value]) => {
+        if (key === "account_id") return acc;
+        return acc + `ctx._source.account.${key} = ${JSON.stringify(value)};\n`;
+      }, "")}
+    } else {
+      throw new Exception("Found document is not account type.");
+    }
+  } else {
+    throw new Exception("Request user doesn't have permission for this document.");
+  }
+  `;
 
   const response = await client.update({
     index,
     id: account_id,
-    doc: { account: updatedAccount },
+    script: { source, lang: "painless" },
   });
 
   return response;

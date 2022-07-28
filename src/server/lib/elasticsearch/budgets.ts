@@ -18,7 +18,7 @@ export interface Budget {
  * Note: Budget > Section > Category
  * @param user
  * @param budget
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const createBudget = async (user: MaskedUser) => {
   const { user_id } = user;
@@ -33,7 +33,7 @@ export const createBudget = async (user: MaskedUser) => {
 /**
  * Updates budget document with given object.
  * @param budget
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const updateBudget = async (
   budget: Partial<Budget> & {
@@ -51,6 +51,20 @@ export const updateBudget = async (
   return response;
 };
 
+/**
+ * Deletes budget document with given id.
+ * @param budget_id
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const deleteBudget = async (budget_id: string) => {
+  const response = await client.delete({
+    index,
+    id: budget_id,
+  });
+
+  return response;
+};
+
 export interface Section {
   section_id: string;
   budget_id: string;
@@ -63,7 +77,7 @@ export interface Section {
  * Note: Budget > Section > Category
  * @param user
  * @param section
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const createSection = async (user: MaskedUser) => {
   const { user_id } = user;
@@ -78,7 +92,7 @@ export const createSection = async (user: MaskedUser) => {
 /**
  * Updates section document with given object.
  * @param section
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const updateSection = async (
   section: Partial<Section> & {
@@ -96,6 +110,20 @@ export const updateSection = async (
   return response;
 };
 
+/**
+ * Deletes section document with given id.
+ * @param section_id
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const deleteSection = async (section_id: string) => {
+  const response = await client.delete({
+    index,
+    id: section_id,
+  });
+
+  return response;
+};
+
 export interface Category {
   category_id: string;
   section_id: string;
@@ -108,7 +136,7 @@ export interface Category {
  * Note: Budget > Section > Category
  * @param user
  * @param category
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const createCategory = async (user: MaskedUser) => {
   const { user_id } = user;
@@ -123,7 +151,7 @@ export const createCategory = async (user: MaskedUser) => {
 /**
  * Updates category document with given object.
  * @param category
- * @returns A promise to be an Elasticsearch result object
+ * @returns A promise to be an Elasticsearch response object
  */
 export const updateCategory = async (
   category: Partial<Category> & {
@@ -136,6 +164,20 @@ export const updateCategory = async (
     index,
     id: category_id,
     doc: { category: { ...category, category_id: undefined } },
+  });
+
+  return response;
+};
+
+/**
+ * Deletes category document with given id.
+ * @param category_id
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const deleteCategory = async (category_id: string) => {
+  const response = await client.delete({
+    index,
+    id: category_id,
   });
 
   return response;

@@ -36,7 +36,9 @@ const getResponse: GetResponse<AccountsResponse> = async (req, res) => {
 
   lateResponse.accounts = lateResponse.accounts.map((e) => {
     const oldAccount = map.get(e.account_id);
-    return oldAccount ? { ...oldAccount, ...e, name: oldAccount.name } : e;
+    return oldAccount
+      ? { ...oldAccount, ...e, name: oldAccount.name }
+      : { ...e, config: { hide: false } };
   });
 
   res.write(JSON.stringify({ status: "success", data: lateResponse }));
