@@ -2,8 +2,6 @@ import bcrypt from "bcrypt";
 import { Item, getLocalItems } from "server";
 import mappings from "./mappings.json";
 import { client, index } from "./client";
-import util from "util";
-import { SandboxItemSetVerificationStatusRequestVerificationStatusEnum } from "plaid";
 
 const { properties }: any = mappings;
 

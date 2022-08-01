@@ -54,7 +54,7 @@ export const updateTransaction = async (
   const source = `
   if (ctx._source.user.user_id == "${user_id}") {
     if (ctx._source.type == "transaction") {
-      ${Object.entries(transaction).reduce((acc, [key, value]) => {
+      ${Object.entries(flattenAllAddresses(transaction)).reduce((acc, [key, value]) => {
         if (key === "transaction_id") return acc;
         if (key === "category") key = "plaid_category";
         if (key === "category_id") key = "plaid_category_id";

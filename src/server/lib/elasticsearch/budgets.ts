@@ -1,8 +1,5 @@
-import { Client } from "@elastic/elasticsearch";
-import { MaskedUser } from "server";
-import { index } from "./client";
-
-const client = new Client({ node: process.env.ELASTICSEARCH_HOST });
+import { MaskedUser, flattenAllAddresses } from "server";
+import { client, index } from "./client";
 
 export type Interval = "year" | "month" | "week" | "day";
 
@@ -32,20 +29,38 @@ export const createBudget = async (user: MaskedUser) => {
 
 /**
  * Updates budget document with given object.
+ * @param user
  * @param budget
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateBudget = async (
+  user: MaskedUser,
   budget: Partial<Budget> & {
     budget_id: string;
   }
 ) => {
+  const { user_id } = user;
   const { budget_id } = budget;
+
+  const source = `
+  if (ctx._source.user.user_id == "${user_id}") {
+    if (ctx._source.type == "budget") {
+      ${Object.entries(flattenAllAddresses(budget)).reduce((acc, [key, value]) => {
+        if (key === "budget_id") return acc;
+        return acc + `ctx._source.budget.${key} = ${JSON.stringify(value)};\n`;
+      }, "")}
+    } else {
+      throw new Exception("Found document is not budget type.");
+    }
+  } else {
+    throw new Exception("Request user doesn't have permission for this document.");
+  }
+  `;
 
   const response = await client.update({
     index,
     id: budget_id,
-    doc: { budget: { ...budget, budget_id: undefined } },
+    script: { source, lang: "painless" },
   });
 
   return response;
@@ -53,13 +68,26 @@ export const updateBudget = async (
 
 /**
  * Deletes budget document with given id.
+ * @param user
  * @param budget_id
  * @returns A promise to be an Elasticsearch response object
  */
-export const deleteBudget = async (budget_id: string) => {
-  const response = await client.delete({
+export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
+  if (!budget_id) return;
+
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
     index,
-    id: budget_id,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "budget" } },
+          { term: { _id: budget_id } },
+        ],
+      },
+    },
   });
 
   return response;
@@ -91,20 +119,38 @@ export const createSection = async (user: MaskedUser) => {
 
 /**
  * Updates section document with given object.
+ * @param user
  * @param section
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateSection = async (
+  user: MaskedUser,
   section: Partial<Section> & {
     section_id: string;
   }
 ) => {
+  const { user_id } = user;
   const { section_id } = section;
+
+  const source = `
+  if (ctx._source.user.user_id == "${user_id}") {
+    if (ctx._source.type == "section") {
+      ${Object.entries(flattenAllAddresses(section)).reduce((acc, [key, value]) => {
+        if (key === "section_id") return acc;
+        return acc + `ctx._source.section.${key} = ${JSON.stringify(value)};\n`;
+      }, "")}
+    } else {
+      throw new Exception("Found document is not section type.");
+    }
+  } else {
+    throw new Exception("Request user doesn't have permission for this document.");
+  }
+  `;
 
   const response = await client.update({
     index,
     id: section_id,
-    doc: { section: { ...section, section_id: undefined } },
+    script: { source, lang: "painless" },
   });
 
   return response;
@@ -112,13 +158,26 @@ export const updateSection = async (
 
 /**
  * Deletes section document with given id.
+ * @param user
  * @param section_id
  * @returns A promise to be an Elasticsearch response object
  */
-export const deleteSection = async (section_id: string) => {
-  const response = await client.delete({
+export const deleteSection = async (user: MaskedUser, section_id: string) => {
+  if (!section_id) return;
+
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
     index,
-    id: section_id,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "section" } },
+          { term: { _id: section_id } },
+        ],
+      },
+    },
   });
 
   return response;
@@ -150,20 +209,38 @@ export const createCategory = async (user: MaskedUser) => {
 
 /**
  * Updates category document with given object.
+ * @param user
  * @param category
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateCategory = async (
+  user: MaskedUser,
   category: Partial<Category> & {
     category_id: string;
   }
 ) => {
+  const { user_id } = user;
   const { category_id } = category;
+
+  const source = `
+  if (ctx._source.user.user_id == "${user_id}") {
+    if (ctx._source.type == "category") {
+      ${Object.entries(flattenAllAddresses(category)).reduce((acc, [key, value]) => {
+        if (key === "category_id") return acc;
+        return acc + `ctx._source.category.${key} = ${JSON.stringify(value)};\n`;
+      }, "")}
+    } else {
+      throw new Exception("Found document is not category type.");
+    }
+  } else {
+    throw new Exception("Request user doesn't have permission for this document.");
+  }
+  `;
 
   const response = await client.update({
     index,
     id: category_id,
-    doc: { category: { ...category, category_id: undefined } },
+    script: { source, lang: "painless" },
   });
 
   return response;
@@ -171,13 +248,26 @@ export const updateCategory = async (
 
 /**
  * Deletes category document with given id.
+ * @param user
  * @param category_id
  * @returns A promise to be an Elasticsearch response object
  */
-export const deleteCategory = async (category_id: string) => {
-  const response = await client.delete({
+export const deleteCategory = async (user: MaskedUser, category_id: string) => {
+  if (!category_id) return;
+
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
     index,
-    id: category_id,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "category" } },
+          { term: { _id: category_id } },
+        ],
+      },
+    },
   });
 
   return response;
