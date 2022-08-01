@@ -3,6 +3,7 @@ import { Item, getLocalItems } from "server";
 import mappings from "./mappings.json";
 import { client, index } from "./client";
 import util from "util";
+import { SandboxItemSetVerificationStatusRequestVerificationStatusEnum } from "plaid";
 
 const { properties }: any = mappings;
 
@@ -239,7 +240,7 @@ export const updateItems = async (user: MaskedUser) => {
  * @returns A promise to be an Elasticsearch response object
  */
 export const deleteItem = async (user: MaskedUser, item_id: string) => {
-  const response = await client.update({
+  const itemJob = client.update({
     index,
     id: user.user_id,
     script: {
@@ -254,5 +255,34 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
       params: { item_id },
     },
   });
-  return response;
+
+  const otherJob = client
+    .search({
+      index,
+      query: { term: { "account.item_id": item_id } },
+    })
+    .then((r) => {
+      const account_ids = r.hits.hits.map((e) => e._id);
+      return client.deleteByQuery({
+        index,
+        query: {
+          bool: {
+            should: account_ids.flatMap((account_id) => [
+              { term: { _id: account_id } },
+              { term: { "transaction.account_id": account_id } },
+            ]),
+          },
+        },
+      });
+    });
+
+  user.items.find((e, i) => {
+    if (e.item_id === item_id) {
+      user.items.splice(i, 1);
+      return true;
+    }
+    return false;
+  });
+
+  return Promise.all([itemJob, otherJob]);
 };

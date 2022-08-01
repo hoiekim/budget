@@ -106,6 +106,12 @@ export const searchTransactions = async (user: MaskedUser) => {
     .filter((e) => e) as Transaction[];
 };
 
+/**
+ * Deletes transactions by transaction_id in given transactions data.
+ * @param user
+ * @param transactions
+ * @returns A promise to be an array of Account objects
+ */
 export const deleteTransactions = async (
   user: MaskedUser,
   transactions: (Transaction | RemovedTransaction)[]
@@ -237,6 +243,12 @@ interface RemovedAccount {
   account_id: string;
 }
 
+/**
+ * Deletes accounts by account_id in given accounts data.
+ * @param user
+ * @param accounts
+ * @returns A promise to be an array of Account objects
+ */
 export const deleteAccounts = async (
   user: MaskedUser,
   accounts: (Account | RemovedAccount)[]

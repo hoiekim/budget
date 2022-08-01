@@ -95,6 +95,10 @@ export const exchangePublicToken = async (user: MaskedUser, public_token: string
   return response.data;
 };
 
+export interface PbulicTokenResponse {
+  item: Item;
+}
+
 export const getItem = async (user: MaskedUser, access_token: string): Promise<Item> => {
   const client = getClient(user);
 

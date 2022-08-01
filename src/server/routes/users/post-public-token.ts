@@ -5,9 +5,10 @@ import {
   GetResponse,
   createItem,
   saveLocalItems,
+  PbulicTokenResponse,
 } from "server";
 
-const getResponse: GetResponse = async (req) => {
+const getResponse: GetResponse<PbulicTokenResponse> = async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -24,7 +25,7 @@ const getResponse: GetResponse = async (req) => {
 
   if (user.username === "admin") saveLocalItems(user.items);
 
-  return { status: "success" };
+  return { status: "success", data: { item } };
 };
 
 const route = new Route("POST", "/public-token", getResponse);

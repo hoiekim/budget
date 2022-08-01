@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { Item } from "server";
+import { Item, PbulicTokenResponse } from "server";
 import { useAppContext, call, useSync } from "client";
 
 interface Props {
@@ -23,8 +23,12 @@ const PlaidLinkButton = ({ item, children }: Props) => {
   const { open, ready } = usePlaidLink({
     token,
     onSuccess: (token: string) => {
-      call.post("/api/public-token", { token }).then((r) => {
-        if (r.status === "success") sync();
+      call.post<PbulicTokenResponse>("/api/public-token", { token }).then((r) => {
+        const { status, data } = r;
+        if (status === "success" && data?.item) {
+          user?.items.push(data.item);
+          sync();
+        }
       });
     },
   });

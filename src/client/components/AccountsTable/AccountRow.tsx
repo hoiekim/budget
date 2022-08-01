@@ -19,7 +19,8 @@ const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
   const { account_id, balances, name, official_name, institution_id } = account;
 
-  const { user, setUser, setAccounts, institutions, items } = useAppContext();
+  const { user, setUser, accounts, setAccounts, setTransactions, institutions, items } =
+    useAppContext();
 
   const [nameInput, setNameInput] = useState(name);
 
@@ -81,6 +82,28 @@ const AccountRow = ({ account, sorter }: Props) => {
             }
             return false;
           });
+
+        const accountsInItem = Array.from(accounts.values()).filter((e) => {
+          return e.item_id === item_id;
+        });
+
+        setAccounts((oldAccounts) => {
+          const newAccounts = new Map(oldAccounts);
+          accountsInItem.forEach((e) => {
+            newAccounts.delete(e.account_id);
+          });
+          return newAccounts;
+        });
+
+        setTransactions((oldTransactions) => {
+          const newTransactions = new Map(oldTransactions);
+          Array.from(newTransactions.values()).forEach((e) => {
+            if (accountsInItem.find((f) => e.account_id === f.account_id)) {
+              newTransactions.delete(e.transaction_id);
+            }
+          });
+          return newTransactions;
+        });
       });
     }
   };
