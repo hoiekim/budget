@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, Dispatch } from "react";
-import { useAppContext } from "client";
 
 export interface ClientRouter {
   path: string;
@@ -32,9 +31,4 @@ export const useRouter = (): ClientRouter => {
   const back = useCallback(() => window.history.back(), []);
 
   return { path, go, forward, back };
-};
-
-export const useAppRouter = () => {
-  const { router } = useAppContext();
-  return router;
 };

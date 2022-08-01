@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import { Item, getLocalItems } from "server";
 import mappings from "./mappings.json";
 import { client, index } from "./client";
+import util from "util";
 
 const { properties }: any = mappings;
 
@@ -208,16 +209,17 @@ export const createItem = async (user: MaskedUser, item: Item) => {
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateItems = async (user: MaskedUser) => {
-  const { items } = user;
-  const response = await client.update({
+  const { user_id, items } = user;
+
+  const query = {
     index,
-    id: user.user_id,
+    id: user_id,
     script: {
       source: `
   for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-    for (int j=params.items.length-1; i>=0; i--) {
-      if (ctx._source.user.items[i].item_id == params.items[j].id) {
-          ctx._source.user.items[i].cursor = params.items[j].cursor;
+    for (int j=params.items.length-1; j>=0; j--) {
+      if (ctx._source.user.items[i].item_id == params.items[j].item_id) {
+          ctx._source.user.items[i].cursor = params.items[j].cursor
       }
     }
   }
@@ -225,7 +227,8 @@ export const updateItems = async (user: MaskedUser) => {
       lang: "painless",
       params: { items },
     },
-  });
+  };
+  const response = await client.update(query);
   return response;
 };
 

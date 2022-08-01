@@ -10,22 +10,16 @@ import { call, Sorter, useAppContext, numberToCommaString } from "client";
 import { Account } from "server";
 import { AccountHeaders } from ".";
 
-export interface ErrorAccount {
-  item_id: string;
-  institution_id?: string;
-}
-
 interface Props {
-  account: Account | ErrorAccount;
+  account: Account;
   sorter: Sorter<Account, AccountHeaders>;
 }
 
 const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
-  const { account_id, balances, name, official_name, institution_id } =
-    account as Partial<Account>;
+  const { account_id, balances, name, official_name, institution_id } = account;
 
-  const { user, setUser, setAccounts, institutions } = useAppContext();
+  const { user, setUser, setAccounts, institutions, items } = useAppContext();
 
   const [nameInput, setNameInput] = useState(name);
 
@@ -59,7 +53,7 @@ const AccountRow = ({ account, sorter }: Props) => {
     }, 500);
   };
 
-  const item = user?.items.find((e) => e.item_id === account.item_id);
+  const item = items.get(account.item_id);
   const institution = institutions.get(account.institution_id);
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = () => {
@@ -109,21 +103,21 @@ const AccountRow = ({ account, sorter }: Props) => {
 
   let formattedBalancesText = "";
 
-  if (balances) {
-    const { available, current, iso_currency_code } = balances;
+  const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
-    if ([available, current].filter((e) => e).length === 2) {
-      const formattedAvailable = numberToCommaString(available as number);
-      const formattedCurrent = numberToCommaString(current as number);
-      formattedBalancesText += `${formattedAvailable} / ${formattedCurrent}`;
-    } else {
-      const formattedBalance = numberToCommaString((available || current) as number);
-      formattedBalancesText += formattedBalance;
-    }
+  if ([available, current].filter((e) => e).length === 2) {
+    const formattedAvailable = numberToCommaString(available as number);
+    const formattedCurrent = numberToCommaString(current as number);
+    formattedBalancesText += `${formattedAvailable} / ${formattedCurrent}`;
+  } else {
+    const formattedBalance = numberToCommaString((available || current) as number);
+    formattedBalancesText += formattedBalance;
+  }
 
-    if (iso_currency_code) {
-      formattedBalancesText += " " + iso_currency_code;
-    }
+  if (iso_currency_code) {
+    formattedBalancesText += " " + iso_currency_code;
+  } else if (unofficial_currency_code) {
+    formattedBalancesText += " " + unofficial_currency_code;
   }
 
   return (

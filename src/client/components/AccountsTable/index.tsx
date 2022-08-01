@@ -1,6 +1,7 @@
 import { Account } from "server";
 import { useAppContext, useSorter } from "client";
-import AccountRow, { ErrorAccount } from "./AccountRow";
+import ErrorAccountRow, { ErrorAccount } from "./ErrorAccountRow";
+import AccountRow from "./AccountRow";
 import AccountsHead from "./AccountsHead";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
@@ -10,6 +11,7 @@ export type AccountHeaders = { [k in keyof Account]?: boolean } & {
 
 const AccountsTable = () => {
   const { user, accounts, institutions } = useAppContext();
+  const { items } = user || {};
 
   const sorter = useSorter<Account, AccountHeaders>(
     "accounts",
@@ -23,9 +25,20 @@ const AccountsTable = () => {
     }
   );
 
+  const errorAccountsArray: ErrorAccount[] =
+    items
+      ?.filter((e) => {
+        return e.plaidError && !accountsArray.find((f) => f.item_id === e.item_id);
+      })
+      .map((e) => ({ item_id: e.item_id, institution_id: e.institution_id })) || [];
+
+  const errorAccountRows = errorAccountsArray.map((e, i) => {
+    return <ErrorAccountRow key={i} errorAccount={e} sorter={sorter} />;
+  });
+
   const { sort, visibles, toggleVisible } = sorter;
 
-  const accountsArray: (Account | ErrorAccount)[] = sort(
+  const accountsArray = sort(
     Array.from(accounts.values()).filter((e) => !e.config?.hide),
     (e, key) => {
       if (key === "balances") {
@@ -42,16 +55,7 @@ const AccountsTable = () => {
     }
   );
 
-  const accountsAndErrorAccounts = accountsArray.concat(
-    user?.items
-      ?.filter((e) => e.plaidError)
-      .map((e) => {
-        const { institution_id, item_id } = e;
-        return { institution_id, item_id };
-      }) || []
-  );
-
-  const accountRows = accountsAndErrorAccounts.map((e, i) => {
+  const accountRows = accountsArray.map((e, i) => {
     return <AccountRow key={i} account={e} sorter={sorter} />;
   });
 
@@ -87,7 +91,10 @@ const AccountsTable = () => {
       <div>{hiddenColumns}</div>
       <table>
         <AccountsHead sorter={sorter} getHeader={getHeader} />
-        <tbody>{accountRows}</tbody>
+        <tbody>
+          {errorAccountRows}
+          {accountRows}
+        </tbody>
       </table>
     </div>
   );

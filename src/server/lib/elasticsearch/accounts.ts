@@ -1,3 +1,4 @@
+import { RemovedTransaction } from "plaid";
 import { Transaction, Account, MaskedUser, flattenAllAddresses } from "server";
 import { client, index } from "./client";
 
@@ -105,6 +106,34 @@ export const searchTransactions = async (user: MaskedUser) => {
     .filter((e) => e) as Transaction[];
 };
 
+export const deleteTransactions = async (
+  user: MaskedUser,
+  transactions: (Transaction | RemovedTransaction)[]
+) => {
+  if (!Array.isArray(transactions) || !transactions.length) return;
+
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "transaction" } },
+          {
+            bool: {
+              should: transactions.map((e) => ({ term: { _id: e.transaction_id } })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  return response;
+};
+
 /**
  * Creates accounts documents associated with given user.
  * @param user
@@ -202,4 +231,36 @@ export const searchAccounts = async (user: MaskedUser) => {
       return { ...source.account, account_id: e._id };
     })
     .filter((e) => e) as Account[];
+};
+
+interface RemovedAccount {
+  account_id: string;
+}
+
+export const deleteAccounts = async (
+  user: MaskedUser,
+  accounts: (Account | RemovedAccount)[]
+) => {
+  if (!Array.isArray(accounts) || !accounts.length) return;
+
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "account" } },
+          {
+            bool: {
+              should: accounts.map((e) => ({ term: { _id: e.account_id } })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  return response;
 };

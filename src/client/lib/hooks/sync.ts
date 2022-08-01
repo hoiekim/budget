@@ -12,20 +12,21 @@ export const useSync = () => {
   const sync = useCallback(() => {
     if (!userLoggedIn) return;
 
-    read<TransactionsResponse>("/api/transactions-stream", (r) => {
-      if (!r.data) return;
-      const { transactions } = r.data;
+    read<TransactionsResponse>("/api/transactions-stream", ({ data }) => {
+      if (!data) return;
+      const { added, removed, modified } = data;
 
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
-        transactions.forEach((e) => newTransactions.set(e.transaction_id, e));
+        [...added, ...modified].forEach((e) => newTransactions.set(e.transaction_id, e));
+        removed.forEach((e) => newTransactions.delete(e.transaction_id));
         return newTransactions;
       });
     });
 
-    read<AccountsResponse>("/api/accounts-stream", (r) => {
-      if (!r.data) return;
-      const { accounts, errors } = r.data;
+    read<AccountsResponse>("/api/accounts-stream", ({ data }) => {
+      if (!data) return;
+      const { accounts, errors } = data;
 
       setAccounts((oldAccounts) => {
         const newAccounts = new Map(oldAccounts);

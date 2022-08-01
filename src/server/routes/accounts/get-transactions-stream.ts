@@ -1,6 +1,6 @@
 import {
-  Transaction,
   getTransactions,
+  deleteTransactions,
   Route,
   GetResponse,
   searchTransactions,
@@ -18,42 +18,31 @@ const getResponse: GetResponse<TransactionsResponse> = async (req, res) => {
     };
   }
 
-  const map = new Map<string, Transaction>();
+  const dependency = searchTransactions(user).then((transactions) => {
+    const data = { errors: [], added: transactions, removed: [], modified: [] };
+    res.write(JSON.stringify({ status: "streaming", data }) + "\n");
+  });
 
-  const earlyResponse = await searchTransactions(user);
-  if (!earlyResponse) {
-    throw new Error("Server failed to get middlestream transactions data.");
-  }
+  await getTransactions(user).then(async (data) => {
+    await dependency;
 
-  res.write(
-    JSON.stringify({
-      status: "streaming",
-      data: { errors: [], transactions: earlyResponse },
-    })
-  );
-  res.write("\n");
+    res.write(JSON.stringify({ status: "success", data }) + "\n");
 
-  earlyResponse.forEach((e) => map.set(e.transaction_id, e));
+    const { added, removed, modified } = data;
+    console.info(
+      "Plaid responded with " +
+        `${added.length} added, ` +
+        `${modified.length} modified and ` +
+        `${removed.length} removed transactions data.`
+    );
 
-  const lateResponse = await getTransactions(user);
-  if (!lateResponse) {
-    throw new Error("Server failed to get upstream transactions data.");
-  }
+    const updateJobs = [
+      indexTransactions(user, [...added, ...modified]),
+      deleteTransactions(user, removed),
+    ];
 
-  updateItems(user);
-
-  const moreResponse = lateResponse.transactions.filter(
-    (e) => !map.has(e.transaction_id)
-  );
-  res.write(
-    JSON.stringify({
-      status: "success",
-      data: { errors: lateResponse.errors, transactions: moreResponse },
-    })
-  );
-  res.write("\n");
-
-  indexTransactions(user, moreResponse);
+    Promise.all(updateJobs).then(() => updateItems(user));
+  });
 };
 
 const route = new Route("GET", "/transactions-stream", getResponse);

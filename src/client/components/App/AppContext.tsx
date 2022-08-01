@@ -1,4 +1,4 @@
-import { useState, ReactNode } from "react";
+import { useState, useCallback, ReactNode, Dispatch, SetStateAction } from "react";
 import {
   useLocalStorage,
   ContextType,
@@ -7,6 +7,7 @@ import {
   Transactions,
   Accounts,
   Institutions,
+  Items,
 } from "client";
 import { MaskedUser } from "server";
 
@@ -18,21 +19,40 @@ interface Props {
 const AppContext = ({ initialUser, children }: Props) => {
   const [transactions, setTransactions] = useState<Transactions>(new Map());
   const [accounts, setAccounts] = useState<Accounts>(new Map());
+  const [items, setItems] = useState<Items>(new Map());
   const [institutions, setInstitutions] = useLocalStorage<Institutions>(
     "map_institutions",
     new Map()
   );
-  const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
+  const [user, _setUser] = useState<MaskedUser | undefined>(initialUser);
+
+  const setUser: Dispatch<SetStateAction<MaskedUser | undefined>> = useCallback(
+    (action) => {
+      _setUser((oldUser) => {
+        const newUser = typeof action === "function" ? action(oldUser) : action;
+
+        const newItems: Items = new Map();
+        newUser?.items.forEach((e) => {
+          newItems.set(e.item_id, e);
+        });
+        setItems(newItems);
+
+        return newUser;
+      });
+    },
+    [setItems, _setUser]
+  );
 
   const router = useRouter();
 
-  const contextValue = {
+  const contextValue: ContextType = {
     transactions,
     setTransactions,
     accounts,
     setAccounts,
     institutions,
     setInstitutions,
+    items,
     user,
     setUser,
     router,

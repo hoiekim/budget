@@ -6,10 +6,14 @@ import {
   Products,
   CountryCode,
   Transaction as PlaidTransaction,
+  RemovedTransaction,
   TransactionsSyncRequest,
-  AccountBase,
   Institution as PlaidInstitution,
   PlaidError,
+  AccountBalance,
+  AccountType,
+  AccountSubtype,
+  AccountBaseVerificationStatusEnum,
 } from "plaid";
 import { MaskedUser } from "server";
 
@@ -106,7 +110,9 @@ export type ItemError = PlaidError & { item_id: string };
 
 export interface TransactionsResponse {
   errors: ItemError[];
-  transactions: Transaction[];
+  added: Transaction[];
+  removed: RemovedTransaction[];
+  modified: Transaction[];
 }
 
 export const getTransactions = async (
@@ -116,16 +122,22 @@ export const getTransactions = async (
 
   const data: TransactionsResponse = {
     errors: [],
-    transactions: [],
+    added: [],
+    removed: [],
+    modified: [],
   };
 
-  const allTransactions: Transaction[][] = [];
+  const allAdded: Transaction[][] = [];
+  const allRemoved: RemovedTransaction[][] = [];
+  const allModified: Transaction[][] = [];
 
   const fetchJobs = user.items.map(async (item) => {
     const { item_id, access_token, cursor } = item;
 
     try {
-      const thisItemTransactions: Transaction[][] = [];
+      const thisItemAdded: Transaction[][] = [];
+      const thisItemRemoved: RemovedTransaction[][] = [];
+      const thisItemModified: Transaction[][] = [];
       let hasMore = true;
 
       while (hasMore) {
@@ -134,34 +146,38 @@ export const getTransactions = async (
           cursor: cursor,
         };
         const response = await client.transactionsSync(request);
-        const { added, has_more, next_cursor } = response.data;
+        const { added, removed, modified, has_more, next_cursor } = response.data;
 
-        thisItemTransactions.push(
-          added.map((e) => {
-            const transaction: Transaction & Partial<PlaidTransaction> = {
-              ...e,
-              category_ids: [],
-              plaid_category_id: e.category_id,
-              plaid_category: e.category,
-            };
+        const reservePlaidProperties = (e: PlaidTransaction) => {
+          const transaction: Transaction & Partial<PlaidTransaction> = {
+            ...e,
+            category_ids: [],
+            plaid_category_id: e.category_id,
+            plaid_category: e.category,
+          };
 
-            delete transaction.category_id;
-            delete transaction.category;
+          delete transaction.category_id;
+          delete transaction.category;
 
-            return transaction as Transaction;
-          })
-        );
+          return transaction as Transaction;
+        };
+
+        thisItemAdded.push(added.map(reservePlaidProperties));
+        thisItemRemoved.push(removed);
+        thisItemModified.push(modified.map(reservePlaidProperties));
 
         hasMore = has_more;
         item.cursor = next_cursor;
       }
 
-      allTransactions.push(thisItemTransactions.flat());
+      allAdded.push(thisItemAdded.flat());
+      allRemoved.push(thisItemRemoved.flat());
+      allModified.push(thisItemModified.flat());
     } catch (error: any) {
-      const plaidError = error.response.data as PlaidError;
+      const plaidError = error?.response?.data as PlaidError;
       console.error(plaidError);
       console.error("Failed to get transactions data for item:", item_id);
-      data.errors.push({ ...plaidError, item_id });
+      if (plaidError) data.errors.push({ ...plaidError, item_id });
     }
 
     return;
@@ -169,7 +185,9 @@ export const getTransactions = async (
 
   await Promise.all(fetchJobs);
 
-  data.transactions = allTransactions.flat();
+  data.added = allAdded.flat();
+  data.removed = allRemoved.flat();
+  data.modified = allModified.flat();
 
   return data;
 };
@@ -189,7 +207,7 @@ export interface Account {
    * the `account_id` is case sensitive.
    */
   account_id: string;
-  balances: AccountBase["AccountBalance"];
+  balances: AccountBalance;
   /**
    * The last 2-4 alphanumeric characters of an account\'s official account number.
    * Note that the mask may be non-unique between an Item\'s accounts, and it may
@@ -205,8 +223,8 @@ export interface Account {
    * The official name of the account as given by the financial institution
    */
   official_name: string | null;
-  type: AccountBase["AccountType"];
-  subtype: AccountBase["AccountSubtype"] | null;
+  type: AccountType;
+  subtype: AccountSubtype | null;
   /**
    * The current verification status of an Auth Item initiated through Automated or
    * Manual micro-deposits.  Returned for Auth Items only.
@@ -222,7 +240,7 @@ export interface Account {
    * verification because the user exhausted all 3 verification attempts. Users may
    * retry by submitting their information again through Link.
    */
-  verification_status?: AccountBase["AccountBaseVerificationStatusEnum"];
+  verification_status?: AccountBaseVerificationStatusEnum;
   /**
    * Association field linking to budget.budget_id
    */
