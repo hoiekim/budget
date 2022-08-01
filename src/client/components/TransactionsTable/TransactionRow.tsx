@@ -21,6 +21,8 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     name,
     amount,
     plaid_category,
+    iso_currency_code,
+    unofficial_currency_code,
   } = transaction;
 
   const [categoryInput, setCategoryInput] = useState(
