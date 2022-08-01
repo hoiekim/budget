@@ -13,7 +13,7 @@ const getResponse: GetResponse<{ budget_id: string }> = async (req) => {
     let response:
       | Awaited<ReturnType<typeof updateBudget>>
       | Awaited<ReturnType<typeof createBudget>>;
-    if (req.body) response = await updateBudget(req.body);
+    if (req.body) response = await updateBudget(user, req.body);
     else response = await createBudget(user);
     return { status: "success", data: { budget_id: response._id } };
   } catch (error: any) {

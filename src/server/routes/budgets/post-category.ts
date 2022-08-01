@@ -13,7 +13,7 @@ const getResponse: GetResponse<{ category_id: string }> = async (req) => {
     let response:
       | Awaited<ReturnType<typeof updateCategory>>
       | Awaited<ReturnType<typeof createCategory>>;
-    if (req.body) response = await updateCategory(req.body);
+    if (req.body) response = await updateCategory(user, req.body);
     else response = await createCategory(user);
     return { status: "success", data: { category_id: response._id } };
   } catch (error: any) {
