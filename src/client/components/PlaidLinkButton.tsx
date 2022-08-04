@@ -27,7 +27,8 @@ const PlaidLinkButton = ({ item, children }: Props) => {
         const { status, data } = r;
         if (status === "success" && data?.item) {
           user?.items.push(data.item);
-          sync();
+          sync.transactions();
+          sync.accounts();
         }
       });
     },

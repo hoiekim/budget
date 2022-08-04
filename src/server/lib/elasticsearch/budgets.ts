@@ -8,7 +8,10 @@ export interface Budget {
   name: string;
   interval: Interval;
   capacity: number;
+  iso_currency_code: string;
 }
+
+export type NewBudgetResponse = { budget_id: string };
 
 /**
  * Creates a document that represents a budget.
@@ -21,7 +24,16 @@ export const createBudget = async (user: MaskedUser) => {
   const { user_id } = user;
   const response = await client.index({
     index,
-    body: { type: "budget", user: { user_id } },
+    body: {
+      type: "budget",
+      user: { user_id },
+      budget: {
+        name: "",
+        capacity: 0,
+        iso_currency_code: "USD",
+        interval: "month",
+      },
+    },
   });
 
   return response;
@@ -99,6 +111,8 @@ export interface Section {
   name: string;
   capacity: number;
 }
+
+export type NewSectionResponse = { section_id: string };
 
 /**
  * Creates a document that represents a section.
@@ -190,6 +204,8 @@ export interface Category {
   capacity: number;
 }
 
+export type NewCategoryResponse = { category_id: string };
+
 /**
  * Creates a document that represents a category.
  * Note: Budget > Section > Category
@@ -273,7 +289,7 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
   return response;
 };
 
-export interface Budgets {
+export interface BudgetsResponse {
   budgets: Budget[];
   sections: Section[];
   categories: Category[];
@@ -284,7 +300,7 @@ export interface Budgets {
  * @param user
  * @returns A promise to be an array of Account objects
  */
-export const searchBudgets = async (user: MaskedUser): Promise<Budgets> => {
+export const searchBudgets = async (user: MaskedUser): Promise<BudgetsResponse> => {
   const response = await client.search<{
     type: string;
     budget?: Budget;

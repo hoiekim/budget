@@ -18,8 +18,6 @@ import path from "path";
 import { initializeIndex, User } from "server";
 import * as routes from "server/routes";
 
-initializeIndex();
-
 declare module "express-session" {
   export interface SessionData {
     user: Omit<User, "password">;
@@ -71,6 +69,7 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(clientPath, "index.html"));
 });
 
-app.listen(process.env.PORT || 3005, () => {
+app.listen(process.env.PORT || 3005, async () => {
+  await initializeIndex();
   console.info("Budget app server is up.");
 });

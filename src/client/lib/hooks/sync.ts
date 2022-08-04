@@ -1,15 +1,25 @@
-import { useCallback } from "react";
-import { TransactionsResponse, AccountsResponse } from "server";
-import { useAppContext, read } from "client";
+import { useCallback, useMemo } from "react";
+import { TransactionsResponse, AccountsResponse, BudgetsResponse } from "server";
+import { useAppContext, read, call } from "client";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
  */
 export const useSync = () => {
-  const { user, setUser, setTransactions, setAccounts } = useAppContext();
+  const {
+    user,
+    setUser,
+    setTransactions,
+    setAccounts,
+    setBudgets,
+    setSections,
+    setCategories,
+  } = useAppContext();
   const userLoggedIn = !!user;
 
-  const sync = useCallback(() => {
+  type SyncTransactions = () => void;
+
+  const syncTransactions = useCallback(() => {
     if (!userLoggedIn) return;
 
     read<TransactionsResponse>("/api/transactions-stream", ({ data }) => {
@@ -23,6 +33,12 @@ export const useSync = () => {
         return newTransactions;
       });
     });
+  }, [userLoggedIn, setTransactions]);
+
+  type SyncAccounts = () => void;
+
+  const syncAccounts = useCallback(() => {
+    if (!userLoggedIn) return;
 
     read<AccountsResponse>("/api/accounts-stream", ({ data }) => {
       if (!data) return;
@@ -58,7 +74,63 @@ export const useSync = () => {
         return newUser;
       });
     });
-  }, [userLoggedIn, setUser, setTransactions, setAccounts]);
+  }, [userLoggedIn, setAccounts, setUser]);
+
+  type SyncBudgets = () => void;
+
+  const syncBudgets = useCallback(() => {
+    if (!userLoggedIn) return;
+
+    call<BudgetsResponse>("/api/budgets").then(({ data }) => {
+      if (!data) return;
+      const { budgets, sections, categories } = data;
+
+      setBudgets((oldBudgets) => {
+        const newBudgets = new Map(oldBudgets);
+        Array.from(budgets.values()).forEach((e) => newBudgets.set(e.budget_id, e));
+        return newBudgets;
+      });
+
+      setSections((oldSections) => {
+        const newSections = new Map(oldSections);
+        Array.from(sections.values()).forEach((e) => newSections.set(e.section_id, e));
+        return newSections;
+      });
+
+      setCategories((oldCategories) => {
+        const newCategories = new Map(oldCategories);
+        Array.from(categories.values()).forEach((e) =>
+          newCategories.set(e.category_id, e)
+        );
+        return newCategories;
+      });
+    });
+  }, [userLoggedIn, setBudgets, setSections, setCategories]);
+
+  type SyncAll = () => void;
+
+  const syncAll = useCallback(() => {
+    syncTransactions();
+    syncAccounts();
+    syncBudgets();
+  }, [syncTransactions, syncAccounts, syncBudgets]);
+
+  type Sync = {
+    all: SyncAll;
+    transactions: SyncTransactions;
+    accounts: SyncAccounts;
+    budgets: SyncBudgets;
+  };
+
+  const sync: Sync = useMemo(
+    () => ({
+      all: syncAll,
+      transactions: syncTransactions,
+      accounts: syncAccounts,
+      budgets: syncBudgets,
+    }),
+    [syncAll, syncTransactions, syncAccounts, syncBudgets]
+  );
 
   const clean = useCallback(() => {
     setTransactions(new Map());

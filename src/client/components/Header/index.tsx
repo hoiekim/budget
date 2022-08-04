@@ -1,4 +1,4 @@
-import { MaskedUser, Account } from "server";
+import { MaskedUser } from "server";
 import { PlaidLinkButton } from "client/components";
 import { useAppContext, useSync, call } from "client";
 import "./index.css";
@@ -17,7 +17,7 @@ const Header = () => {
   const unhide = () => {
     return Array.from(accounts.values())
       .filter((e) => e.config?.hide)
-      .map((e) => {
+      .forEach((e) => {
         const { account_id } = e;
         call.post("/api/account", { account_id, config: { hide: false } }).then((r) => {
           if (r.status === "success") {
@@ -47,7 +47,7 @@ const Header = () => {
         <button onClick={unhide}>Unhide Accounts</button>
       </div>
       <div>
-        <button onClick={sync}>Sync Data</button>
+        <button onClick={sync.all}>Sync Data</button>
       </div>
     </div>
   );

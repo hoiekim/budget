@@ -8,6 +8,9 @@ import {
   Accounts,
   Institutions,
   Items,
+  Budgets,
+  Sections,
+  Categories,
 } from "client";
 import { MaskedUser } from "server";
 
@@ -24,6 +27,9 @@ const AppContext = ({ initialUser, children }: Props) => {
     "map_institutions",
     new Map()
   );
+  const [budgets, setBudgets] = useState<Budgets>(new Map());
+  const [sections, setSections] = useState<Sections>(new Map());
+  const [categories, setCategories] = useState<Categories>(new Map());
   const [user, _setUser] = useState<MaskedUser | undefined>(initialUser);
 
   const setUser: Dispatch<SetStateAction<MaskedUser | undefined>> = useCallback(
@@ -56,6 +62,12 @@ const AppContext = ({ initialUser, children }: Props) => {
     user,
     setUser,
     router,
+    budgets,
+    setBudgets,
+    sections,
+    setSections,
+    categories,
+    setCategories,
   };
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;

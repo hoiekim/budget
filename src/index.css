@@ -28,6 +28,12 @@ table td input {
 }
 
 div.row-spacer {
-  margin: 50px 0 0 0;
+  margin: 30px 0 0 0;
+  height: 0px;
+}
+
+div.column-spacer {
+  display: inline-block;
+  margin: 0 20px 0 0;
   height: 0px;
 }

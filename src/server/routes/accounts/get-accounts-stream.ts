@@ -19,29 +19,32 @@ const getResponse: GetResponse<AccountsResponse> = async (req, res) => {
 
   const map = new Map<string, Account>();
 
-  const dependency = searchAccounts(user).then((accounts) => {
+  const earlyRequest = searchAccounts(user).then((accounts) => {
     const earlyResponse = { errors: [], accounts };
-    res.write(JSON.stringify({ status: "streaming", data: earlyResponse }));
-    res.write("\n");
+    res.write(JSON.stringify({ status: "streaming", data: earlyResponse }) + "\n");
     earlyResponse.accounts.forEach((e) => map.set(e.account_id, e));
   });
 
-  await getAccounts(user).then(async (r) => {
-    await dependency;
-    const accounts = r.accounts.map((e) => {
-      const oldAccount = map.get(e.account_id);
-      return oldAccount
-        ? { ...oldAccount, ...e, name: oldAccount.name }
-        : { ...e, config: { hide: false } };
-    });
+  const lateRequest = await getAccounts(user)
+    .then(async (r) => {
+      await earlyRequest;
 
-    const data = { ...r, accounts };
+      const accounts = r.accounts.map((e) => {
+        const oldAccount = map.get(e.account_id);
+        return oldAccount
+          ? { ...oldAccount, ...e, name: oldAccount.name }
+          : { ...e, config: { hide: false } };
+      });
 
-    res.write(JSON.stringify({ status: "success", data }));
-    res.write("\n");
+      const data = { ...r, accounts };
 
-    indexAccounts(user, accounts);
-  });
+      res.write(JSON.stringify({ status: "success", data }) + "\n");
+
+      indexAccounts(user, accounts);
+    })
+    .catch(console.error);
+
+  await Promise.all([earlyRequest, lateRequest]);
 };
 
 const route = new Route("GET", "/accounts-stream", getResponse);

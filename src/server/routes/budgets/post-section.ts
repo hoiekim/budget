@@ -1,6 +1,6 @@
-import { Route, GetResponse, createSection, updateSection } from "server";
+import { Route, GetResponse, updateSection } from "server";
 
-const getResponse: GetResponse<{ section_id: string }> = async (req) => {
+const getResponse: GetResponse = async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -9,13 +9,16 @@ const getResponse: GetResponse<{ section_id: string }> = async (req) => {
     };
   }
 
+  if (!req.body || !Object.keys(req.body).length) {
+    return {
+      status: "failed",
+      info: "Request body is required but not provided.",
+    };
+  }
+
   try {
-    let response:
-      | Awaited<ReturnType<typeof updateSection>>
-      | Awaited<ReturnType<typeof createSection>>;
-    if (req.body) response = await updateSection(user, req.body);
-    else response = await createSection(user);
-    return { status: "success", data: { section_id: response._id } };
+    await updateSection(user, req.body);
+    return { status: "success" };
   } catch (error: any) {
     console.error(`Failed to update(create) a section: ${req.body.section_id}`);
     throw new Error(error);

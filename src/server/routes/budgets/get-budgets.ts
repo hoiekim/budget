@@ -1,6 +1,6 @@
-import { searchBudgets, Route, GetResponse, Budgets } from "server";
+import { searchBudgets, Route, GetResponse, BudgetsResponse } from "server";
 
-const getResponse: GetResponse<Budgets> = async (req, res) => {
+const getResponse: GetResponse<BudgetsResponse> = async (req, res) => {
   const { user } = req.session;
   if (!user) {
     return {

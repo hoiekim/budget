@@ -111,7 +111,8 @@
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
         "interval": { "type": "keyword" },
-        "capacity": { "type": "float" }
+        "capacity": { "type": "float" },
+        "iso_currency_code": { "type": "keyword" }
       }
     },
     "section": {

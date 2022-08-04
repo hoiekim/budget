@@ -14,7 +14,7 @@ const Utility = () => {
   const userLoggedIn = !!user;
 
   useEffect(() => {
-    if (userLoggedIn) sync();
+    if (userLoggedIn) sync.all();
     else clean();
   }, [userLoggedIn, sync, clean]);
 

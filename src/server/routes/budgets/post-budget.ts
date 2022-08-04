@@ -1,6 +1,6 @@
-import { Route, GetResponse, createBudget, updateBudget } from "server";
+import { Route, GetResponse, updateBudget } from "server";
 
-const getResponse: GetResponse<{ budget_id: string }> = async (req) => {
+const getResponse: GetResponse = async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -9,15 +9,18 @@ const getResponse: GetResponse<{ budget_id: string }> = async (req) => {
     };
   }
 
+  if (!req.body || !Object.keys(req.body).length) {
+    return {
+      status: "failed",
+      info: "Request body is required but not provided.",
+    };
+  }
+
   try {
-    let response:
-      | Awaited<ReturnType<typeof updateBudget>>
-      | Awaited<ReturnType<typeof createBudget>>;
-    if (req.body) response = await updateBudget(user, req.body);
-    else response = await createBudget(user);
-    return { status: "success", data: { budget_id: response._id } };
+    await updateBudget(user, req.body);
+    return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update(create) a budget: ${req.body.budget_id}`);
+    console.error(`Failed to update a budget: ${req.body.budget_id}`);
     throw new Error(error);
   }
 };
