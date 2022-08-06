@@ -166,7 +166,7 @@ const BudgetComponent = ({ budget }: Props) => {
           <option value="day">per day</option>
         </select>
       </div>
-      <div className="budgetChildren">
+      <div className="children">
         <div>Sections:</div>
         <div>
           <button onClick={onClickAdd}>+</button>

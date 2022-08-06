@@ -24,13 +24,14 @@ const SectionComponent = ({ section }: Props) => {
       const newCategories = new Map(oldCategories);
       const category_id = data?.category_id;
       if (category_id) {
-        newCategories.set(section_id, {
+        newCategories.set(category_id, {
           category_id,
           section_id,
           name: "",
           capacity: 0,
         });
       }
+
       return newCategories;
     });
   };
@@ -65,7 +66,7 @@ const SectionComponent = ({ section }: Props) => {
           if (status === "success") {
             setSections((oldSections) => {
               const newSections = new Map(oldSections);
-              const oldSection = newSections.get(section_id);
+              const oldSection = oldSections.get(section_id);
               const newSection = { ...oldSection, ...updatedSection };
               newSections.set(section_id, newSection as Section);
               return newSections;
@@ -130,7 +131,7 @@ const SectionComponent = ({ section }: Props) => {
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}
         />
       </div>
-      <div className="sectionChildren">
+      <div className="children">
         <div>Categories:</div>
         <div>
           <button onClick={onClickAdd}>+</button>

@@ -16,11 +16,18 @@ const getResponse: GetResponse = async (req) => {
     };
   }
 
+  if (!req.body.section_id) {
+    return {
+      status: "failed",
+      info: "section_id is required but not provided.",
+    };
+  }
+
   try {
     await updateSection(user, req.body);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update(create) a section: ${req.body.section_id}`);
+    console.error(`Failed to update a section: ${req.body.section_id}`);
     throw new Error(error);
   }
 };

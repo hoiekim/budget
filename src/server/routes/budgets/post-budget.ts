@@ -16,6 +16,13 @@ const getResponse: GetResponse = async (req) => {
     };
   }
 
+  if (!req.body.budget_id) {
+    return {
+      status: "failed",
+      info: "budget_id is required but not provided.",
+    };
+  }
+
   try {
     await updateBudget(user, req.body);
     return { status: "success" };

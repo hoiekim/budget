@@ -11,6 +11,13 @@ const getResponse: GetResponse = async (req) => {
 
   const category_id = req.query.id as string;
 
+  if (!category_id) {
+    return {
+      status: "failed",
+      info: "id is required but not provided.",
+    };
+  }
+
   await deleteCategory(user, category_id);
 
   return { status: "success" };

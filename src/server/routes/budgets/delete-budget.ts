@@ -11,6 +11,13 @@ const getResponse: GetResponse = async (req) => {
 
   const budget_id = req.query.id as string;
 
+  if (!budget_id) {
+    return {
+      status: "failed",
+      info: "id is required but not provided.",
+    };
+  }
+
   await deleteBudget(user, budget_id);
 
   return { status: "success" };

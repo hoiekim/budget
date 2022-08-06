@@ -11,6 +11,13 @@ const getResponse: GetResponse = async (req) => {
 
   const section_id = req.query.id as string;
 
+  if (!section_id) {
+    return {
+      status: "failed",
+      info: "id is required but not provided.",
+    };
+  }
+
   await deleteSection(user, section_id);
 
   return { status: "success" };

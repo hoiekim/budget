@@ -1,5 +1,4 @@
-div.BudgetComponent,
-div.SectionComponent {
+div.BudgetComponent .children {
   margin: 0 0 20px 30px;
 }
 
