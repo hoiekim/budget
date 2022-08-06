@@ -18,7 +18,7 @@ export type Items = Map<string, Item>;
 
 export type Budgets = Map<string, Budget>;
 export type Sections = Map<string, Section>;
-export type Categories = Map<string, Category>;
+export type Categories = Map<string, Category & { amount?: number }>;
 
 export interface ContextType {
   transactions: Transactions;

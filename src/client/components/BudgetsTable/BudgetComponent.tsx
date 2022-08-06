@@ -1,5 +1,5 @@
 import { useAppContext, numberToCommaString, call } from "client";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useMemo } from "react";
 import { Budget, Interval } from "server";
 import SectionComponent from "./SectionComponent";
 
@@ -14,55 +14,63 @@ const BudgetComponent = ({ budget }: Props) => {
   const [capacityInput, setCapacityInput] = useState(numberToCommaString(capacity));
   const [intervalInput, setIntervalInput] = useState<"" | Interval>(interval);
   const [currencyCodeInput, setCurrencyCodeInput] = useState(iso_currency_code);
-  const { budgets, setBudgets, sections } = useAppContext();
+  const { budgets, setBudgets, sections, categories } = useAppContext();
 
-  const sectionComponents = Array.from(sections.values())
-    .filter((e) => e.budget_id === budget_id)
-    .map((e, i) => {
-      return <SectionComponent key={i} section={e} />;
-    });
+  const revertInputs = useCallback(() => {
+    setNameInput(name);
+    setCapacityInput(numberToCommaString(capacity));
+    setIntervalInput(interval);
+    setCurrencyCodeInput(iso_currency_code);
+  }, [
+    name,
+    setNameInput,
+    capacity,
+    setCapacityInput,
+    interval,
+    setIntervalInput,
+    iso_currency_code,
+    setCurrencyCodeInput,
+  ]);
+
+  const sectionComponents = useMemo(() => {
+    return Array.from(sections.values())
+      .filter((e) => e.budget_id === budget_id)
+      .map((e, i) => {
+        return <SectionComponent key={i} section={e} />;
+      });
+  }, [sections, budget_id]);
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
 
   const timeout = useRef<Timeout>();
 
-  const submit = (delay = 500) => {
-    clearTimeout(timeout.current);
-    timeout.current = setTimeout(async () => {
-      const capacity = +capacityInput.replaceAll(",", "");
-      if (!nameInput || Number.isNaN(capacity) || !intervalInput) return;
-
-      const newBudget: Budget = {
-        budget_id,
-        name: nameInput,
-        capacity,
-        interval: intervalInput,
-        iso_currency_code: currencyCodeInput,
-      };
-
-      try {
-        const { status } = await call.post("/api/budget", newBudget);
-        if (status === "success") {
-          setBudgets((oldBudgets) => {
-            const newBudgets = new Map(oldBudgets);
-            newBudgets.set(budget_id, newBudget);
-            return newBudgets;
+  const submit = useCallback(
+    (updatedBudget: Partial<Budget> = {}, delay = 500) => {
+      clearTimeout(timeout.current);
+      timeout.current = setTimeout(async () => {
+        try {
+          const { status } = await call.post("/api/budget", {
+            ...updatedBudget,
+            budget_id,
           });
-        } else throw new Error(`Failed to update budget: ${budget_id}`);
-      } catch (error: any) {
-        console.error(error);
-        const oldBudget = budgets.get(budget_id);
-        if (!oldBudget) {
-          throw new Error(`Failed to revert input for budget: ${budget_id}`);
+          if (status === "success") {
+            setBudgets((oldBudgets) => {
+              const newBudgets = new Map(oldBudgets);
+              const oldBudget = oldBudgets.get(budget_id);
+              const newBudget = { ...oldBudget, ...updatedBudget };
+              newBudgets.set(budget_id, newBudget as Budget);
+              return newBudgets;
+            });
+          } else throw new Error(`Failed to update budget: ${budget_id}`);
+        } catch (error: any) {
+          console.error(error);
+          revertInputs();
         }
-        setNameInput(oldBudget.name);
-        setCapacityInput(numberToCommaString(oldBudget.capacity));
-        setIntervalInput(oldBudget.interval);
-        setCurrencyCodeInput(oldBudget.iso_currency_code);
-      }
-    }, delay);
-  };
+      }, delay);
+    },
+    [setBudgets, budget_id, revertInputs]
+  );
 
   const onClickRemove = useCallback(async () => {
     const queryString = "?" + new URLSearchParams({ id: budget_id }).toString();
@@ -74,10 +82,20 @@ const BudgetComponent = ({ budget }: Props) => {
         return newBudgets;
       });
     }
-  }, [budget_id]);
+  }, [budget_id, setBudgets]);
 
-  // TODO: get total expenses
-  const currentTotal = 10000;
+  const currentTotal = useMemo(() => {
+    return Array.from(categories.values())
+      .filter((e) => {
+        if (!e.amount) return false;
+        const parentSection = sections.get(e.section_id);
+        if (!parentSection) return false;
+        const parentBudget = budgets.get(parentSection.budget_id);
+        if (!parentBudget) return false;
+        return parentBudget === budget;
+      })
+      .reduce((acc, e) => acc + (e.amount || 0), 0);
+  }, [categories, sections, budgets, budget]);
 
   return (
     <div className="BudgetComponent">
@@ -87,36 +105,40 @@ const BudgetComponent = ({ budget }: Props) => {
           placeholder="name"
           value={nameInput}
           onChange={(e) => {
-            setNameInput(e.target.value);
-            submit();
+            const { value } = e.target;
+            setNameInput(value);
+            submit({ name: value });
           }}
         />
-        <select
-          value={currencyCodeInput}
-          onChange={(e) => {
-            setCurrencyCodeInput(e.target.value);
-            submit(0);
-          }}
-        >
-          <option value="USD">USD</option>
-        </select>
         <div className="currentTotal">{numberToCommaString(currentTotal)}</div>
         <span> / </span>
         <input
           value={capacityInput}
           onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
           onChange={(e) => {
-            setCapacityInput(e.target.value);
-            submit();
+            const { value } = e.target;
+            setCapacityInput(value);
+            submit({ capacity: +value });
           }}
           onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}
         />
         <select
+          value={currencyCodeInput}
+          onChange={(e) => {
+            const { value } = e.target;
+            setCurrencyCodeInput(value);
+            submit({ iso_currency_code: value }, 0);
+          }}
+        >
+          <option value="USD">USD</option>
+        </select>
+        <select
           value={intervalInput}
           onChange={(e) => {
-            setIntervalInput(e.target.value as Interval);
-            submit(0);
+            const value = e.target.value as Interval;
+            setIntervalInput(value);
+            submit({ interval: value }, 0);
           }}
         >
           <option value="year">per year</option>

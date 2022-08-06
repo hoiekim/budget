@@ -27,6 +27,7 @@ const BudgetsTable = () => {
   const budgetComponents = Array.from(budgets.values()).map((e, i) => {
     return <BudgetComponent key={i} budget={e} />;
   });
+
   return (
     <div className="BudgetsTable">
       <div>
