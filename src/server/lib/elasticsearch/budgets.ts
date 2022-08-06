@@ -118,7 +118,7 @@ export type NewSectionResponse = { section_id: string };
  * Creates a document that represents a section.
  * Note: Budget > Section > Category
  * @param user
- * @param section
+ * @param budget_id parent budget's id
  * @returns A promise to be an Elasticsearch response object
  */
 export const createSection = async (user: MaskedUser, budget_id: string) => {
@@ -218,14 +218,22 @@ export type NewCategoryResponse = { category_id: string };
  * Creates a document that represents a category.
  * Note: Budget > Section > Category
  * @param user
- * @param category
+ * @param section_id parent section's id
  * @returns A promise to be an Elasticsearch response object
  */
-export const createCategory = async (user: MaskedUser) => {
+export const createCategory = async (user: MaskedUser, section_id: string) => {
   const { user_id } = user;
   const response = await client.index({
     index,
-    body: { type: "category", user: { user_id } },
+    body: {
+      type: "category",
+      user: { user_id },
+      category: {
+        section_id,
+        name: "",
+        capacity: 0,
+      },
+    },
   });
 
   return response;
