@@ -1,4 +1,5 @@
-div.BudgetComponent {
+div.BudgetComponent,
+div.SectionComponent {
   margin: 0 0 20px 30px;
 }
 

@@ -1,6 +1,6 @@
 import { useAppContext, numberToCommaString, call } from "client";
 import { useCallback, useRef, useState, useMemo } from "react";
-import { Budget, Interval } from "server";
+import { Budget, Interval, NewSectionResponse } from "server";
 import SectionComponent from "./SectionComponent";
 
 interface Props {
@@ -14,7 +14,26 @@ const BudgetComponent = ({ budget }: Props) => {
   const [capacityInput, setCapacityInput] = useState(numberToCommaString(capacity));
   const [intervalInput, setIntervalInput] = useState<"" | Interval>(interval);
   const [currencyCodeInput, setCurrencyCodeInput] = useState(iso_currency_code);
-  const { budgets, setBudgets, sections, categories } = useAppContext();
+  const { budgets, setBudgets, sections, setSections, categories } = useAppContext();
+
+  const onClickAdd = async () => {
+    const queryString = "?" + new URLSearchParams({ parent: budget_id }).toString();
+    const { data } = await call.get<NewSectionResponse>("/api/new-section" + queryString);
+
+    setSections((oldSections) => {
+      const newSections = new Map(oldSections);
+      const section_id = data?.section_id;
+      if (section_id) {
+        newSections.set(section_id, {
+          section_id,
+          budget_id,
+          name: "",
+          capacity: 0,
+        });
+      }
+      return newSections;
+    });
+  };
 
   const revertInputs = useCallback(() => {
     setNameInput(name);
@@ -149,6 +168,9 @@ const BudgetComponent = ({ budget }: Props) => {
       </div>
       <div className="budgetChildren">
         <div>Sections:</div>
+        <div>
+          <button onClick={onClickAdd}>+</button>
+        </div>
         <div>{sectionComponents}</div>
       </div>
     </div>

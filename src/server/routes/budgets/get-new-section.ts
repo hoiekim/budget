@@ -9,7 +9,12 @@ const getResponse: GetResponse<NewSectionResponse> = async (req, res) => {
     };
   }
 
-  const response = await createSection(user);
+  const budget_id = req.query.parent as string;
+
+  if (!budget_id) throw new Error("Parent id is required but not provided.");
+
+  const response = await createSection(user, budget_id);
+
   return { status: "success", data: { section_id: response._id } };
 };
 

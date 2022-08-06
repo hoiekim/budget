@@ -121,11 +121,19 @@ export type NewSectionResponse = { section_id: string };
  * @param section
  * @returns A promise to be an Elasticsearch response object
  */
-export const createSection = async (user: MaskedUser) => {
+export const createSection = async (user: MaskedUser, budget_id: string) => {
   const { user_id } = user;
   const response = await client.index({
     index,
-    body: { type: "section", user: { user_id } },
+    body: {
+      type: "section",
+      user: { user_id },
+      section: {
+        budget_id,
+        name: "",
+        capacity: 0,
+      },
+    },
   });
 
   return response;

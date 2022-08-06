@@ -12,7 +12,7 @@ const BudgetsTable = () => {
     setBudgets((oldBudgets) => {
       const newBudgets = new Map(oldBudgets);
       const budget_id = data?.budget_id;
-      if (budget_id)
+      if (budget_id) {
         newBudgets.set(budget_id, {
           budget_id,
           name: "",
@@ -20,6 +20,7 @@ const BudgetsTable = () => {
           iso_currency_code: "USD",
           interval: "month",
         });
+      }
       return newBudgets;
     });
   };
@@ -30,9 +31,7 @@ const BudgetsTable = () => {
 
   return (
     <div className="BudgetsTable">
-      <div>
-        <span>Budgets:</span>
-      </div>
+      <div>Budgets:</div>
       <div>
         <button onClick={onClickAdd}>+</button>
       </div>
