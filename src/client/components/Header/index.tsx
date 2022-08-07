@@ -2,37 +2,46 @@ import { MaskedUser } from "server";
 import { PlaidLinkButton } from "client/components";
 import { useAppContext, useSync, call } from "client";
 import "./index.css";
+import { useCallback, useMemo } from "react";
 
 const Header = () => {
   const { user, setUser, accounts, setAccounts } = useAppContext();
   const { sync, clean } = useSync();
 
-  const logout = () => {
+  const logout = useCallback(() => {
     call.delete<MaskedUser>("/api/login").then((r) => {
       setUser(r.data);
       clean();
     });
-  };
+  }, [setUser, clean]);
 
-  const unhide = () => {
-    return Array.from(accounts.values())
+  const unhide = useCallback(async () => {
+    const newAccounts = new Map(accounts);
+
+    const fetchJobs = Array.from(accounts.values())
       .filter((e) => e.config?.hide)
-      .forEach((e) => {
-        const { account_id } = e;
-        call.post("/api/account", { account_id, config: { hide: false } }).then((r) => {
+      .map(async (e) => {
+        try {
+          const { account_id } = e;
+          const r = await call.post("/api/account", {
+            account_id,
+            config: { hide: false },
+          });
+
           if (r.status === "success") {
-            setAccounts((oldAccounts) => {
-              const newAccounts = new Map(oldAccounts);
-              newAccounts.set(account_id, {
-                ...e,
-                config: { hide: false },
-              });
-              return newAccounts;
+            newAccounts.set(account_id, {
+              ...e,
+              config: { hide: false },
             });
           }
-        });
+        } catch (error: any) {
+          console.error(error);
+        }
       });
-  };
+
+    await Promise.all(fetchJobs);
+    setAccounts(newAccounts);
+  }, [accounts, setAccounts]);
 
   return (
     <div className="Header">

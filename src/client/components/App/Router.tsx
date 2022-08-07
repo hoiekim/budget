@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazy, useMemo } from "react";
 import { useAppContext } from "client";
 
 const Home = lazy(() => import("client/pages/Home"));
@@ -8,10 +8,12 @@ const Router = () => {
   const { router } = useAppContext();
   const { path } = router;
 
-  if (path === "/login") {
-    return <Login />;
-  }
-  return <Home />;
+  return useMemo(() => {
+    if (path === "/login") {
+      return <Login />;
+    }
+    return <Home />;
+  }, [path]);
 };
 
 export default Router;

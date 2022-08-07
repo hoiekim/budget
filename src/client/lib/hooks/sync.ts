@@ -138,7 +138,7 @@ export const useSync = () => {
     setBudgets(new Map());
     setSections(new Map());
     setCategories(new Map());
-  }, [setTransactions, setAccounts]);
+  }, [setTransactions, setAccounts, setBudgets, setSections, setCategories]);
 
   return { sync, clean };
 };
