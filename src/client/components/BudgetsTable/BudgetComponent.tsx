@@ -55,7 +55,7 @@ const BudgetComponent = ({ budget }: Props) => {
     return Array.from(sections.values())
       .filter((e) => e.budget_id === budget_id)
       .map((e, i) => {
-        return <SectionComponent key={i} section={e} />;
+        return <SectionComponent key={e.section_id} section={e} />;
       });
   }, [sections, budget_id]);
 

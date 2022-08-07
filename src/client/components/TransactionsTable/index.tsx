@@ -51,7 +51,7 @@ const TransactionsTable = () => {
   );
 
   const transactionRows = transactionsArray.map((e, i) => {
-    return <TransactionRow key={i} transaction={e} sorter={sorter} />;
+    return <TransactionRow key={e.transaction_id} transaction={e} sorter={sorter} />;
   });
 
   const getHeader = (key: keyof TransactionHeaders): string => {
@@ -76,7 +76,10 @@ const TransactionsTable = () => {
     .filter(([key, value]) => !value)
     .map(([key, value], i) => {
       return (
-        <button key={i} onClick={() => toggleVisible(key as keyof typeof visibles)}>
+        <button
+          key={`transactions_hidden_column_${i}`}
+          onClick={() => toggleVisible(key as keyof typeof visibles)}
+        >
           {getHeader(key as keyof typeof visibles)}
         </button>
       );

@@ -22,7 +22,7 @@ const TransactionsHead = ({ sorter, getHeader }: Props) => {
   const headerComponents = headerKeys.map((key, i) => {
     if (getVisible(key)) {
       return (
-        <td key={i}>
+        <td key={`transactions_header_${i}`}>
           <div>
             <button onClick={() => setSortBy(key)}>
               {getHeader(key)} {getArrow(key)}

@@ -45,7 +45,7 @@ const SectionComponent = ({ section }: Props) => {
     return Array.from(categories.values())
       .filter((e) => e.section_id === section_id)
       .map((e, i) => {
-        return <CategoryComponent key={i} category={e} />;
+        return <CategoryComponent key={e.category_id} category={e} />;
       });
   }, [categories, section_id]);
 

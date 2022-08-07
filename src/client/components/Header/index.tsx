@@ -1,8 +1,8 @@
+import { useCallback } from "react";
 import { MaskedUser } from "server";
-import { PlaidLinkButton } from "client/components";
 import { useAppContext, useSync, call } from "client";
+import { PlaidLinkButton } from "client/components";
 import "./index.css";
-import { useCallback, useMemo } from "react";
 
 const Header = () => {
   const { user, setUser, accounts, setAccounts } = useAppContext();

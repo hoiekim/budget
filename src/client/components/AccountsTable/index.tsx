@@ -33,7 +33,7 @@ const AccountsTable = () => {
       .map((e) => ({ item_id: e.item_id, institution_id: e.institution_id })) || [];
 
   const errorAccountRows = errorAccountsArray.map((e, i) => {
-    return <ErrorAccountRow key={i} errorAccount={e} sorter={sorter} />;
+    return <ErrorAccountRow key={e.item_id} errorAccount={e} sorter={sorter} />;
   });
 
   const { sort, visibles, toggleVisible } = sorter;
@@ -56,7 +56,7 @@ const AccountsTable = () => {
   );
 
   const accountRows = accountsArray.map((e, i) => {
-    return <AccountRow key={i} account={e} sorter={sorter} />;
+    return <AccountRow key={e.account_id} account={e} sorter={sorter} />;
   });
 
   const getHeader = (key: keyof AccountHeaders): string => {
@@ -79,7 +79,10 @@ const AccountsTable = () => {
     .filter(([key, value]) => !value)
     .map(([key, value], i) => {
       return (
-        <button key={i} onClick={() => toggleVisible(key as keyof typeof visibles)}>
+        <button
+          key={`accounts_hidden_column_${i}`}
+          onClick={() => toggleVisible(key as keyof typeof visibles)}
+        >
           {getHeader(key as keyof typeof visibles)}
         </button>
       );
