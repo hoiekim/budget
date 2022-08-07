@@ -59,9 +59,15 @@
       "dynamic": true,
       "properties": {
         "pending_transaction_id": { "type": "keyword" },
-        "category_ids": { "type": "keyword" },
-        "plaid_category_id": { "type": "keyword" },
-        "plaid_category": { "type": "keyword" },
+        "labels": {
+          "type": "nested",
+          "properties": {
+            "budget_id": { "type": "keyword" },
+            "category_id": { "type": "keyword" }
+          }
+        },
+        "category_id": { "type": "keyword" },
+        "category": { "type": "keyword" },
         "location": {
           "type": "object",
           "properties": {

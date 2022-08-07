@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, ChangeEventHandler } from "react";
+import { useState, ChangeEventHandler, useMemo } from "react";
 import { Transaction } from "server";
 import { useAppContext, call, Sorter, numberToCommaString } from "client";
 import { InstitutionSpan } from "client/components";
@@ -10,8 +10,6 @@ interface Props {
 }
 
 const TransactionRow = ({ transaction, sorter }: Props) => {
-  const { getVisible } = sorter;
-  const { transactions, setTransactions, accounts } = useAppContext();
   const {
     transaction_id,
     account_id,
@@ -20,42 +18,72 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     merchant_name,
     name,
     amount,
-    plaid_category,
+    labels,
   } = transaction;
 
-  const [categoryInput, setCategoryInput] = useState(
-    plaid_category ? plaid_category.join(", ") : ""
-  );
+  const { getVisible } = sorter;
 
-  useEffect(() => {
-    setCategoryInput(plaid_category ? plaid_category.join(", ") : "");
-  }, [plaid_category, setCategoryInput]);
+  const { setTransactions, accounts, sections, categories, selectedBudgetId } =
+    useAppContext();
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState(() => {
+    return labels.find((e) => e.budget_id === selectedBudgetId)?.category_id || "";
+  });
+
+  const categoryOptions = useMemo(() => {
+    return Array.from(sections.values())
+      .flatMap((e) => {
+        if (e.budget_id !== selectedBudgetId) return [];
+        return Array.from(categories.values()).filter(
+          (f) => f.section_id === e.section_id
+        );
+      })
+      .map((e) => {
+        return (
+          <option
+            key={`transaction_${transaction_id}_category_option_${e.category_id}`}
+            value={e.category_id}
+          >
+            {e.name}
+          </option>
+        );
+      });
+  }, [transaction_id, sections, categories, selectedBudgetId]);
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
 
-  type SetTimeout = typeof setTimeout;
-  type Timeout = ReturnType<SetTimeout>;
-
-  const timeout = useRef<Timeout>();
-
-  const onChangeCategoryInput: ChangeEventHandler<HTMLInputElement> = (e) => {
+  const onChangeCategorySelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
-    setCategoryInput(value);
-    clearTimeout(timeout.current);
-    timeout.current = setTimeout(() => {
-      const parsedCategory = value
-        .split(",")
-        .map((e) => e.replace(/^\s+|\s+$|\s+(?=\s)/g, ""));
+    if (!value) return;
 
-      call.post("/api/transaction", { transaction_id, category: parsedCategory });
+    setSelectedCategoryId(value);
 
-      transaction.plaid_category = parsedCategory;
+    const newLabel = { budget_id: selectedBudgetId, category_id: value };
 
-      const newTransactions = new Map(transactions);
-      newTransactions.set(transaction_id, transaction);
-      setTransactions(newTransactions);
-    }, 500);
+    const r = await call.post("/api/transaction-label", {
+      transaction_id,
+      label: newLabel,
+    });
+
+    if (r.status === "success") {
+      setTransactions((oldTransactions) => {
+        const newTransactions = new Map(oldTransactions);
+        const newTransaction = { ...transaction };
+        const existingLabel = newTransaction.labels.find((e) => {
+          if (e.budget_id === selectedBudgetId) {
+            e.category_id = value;
+            return true;
+          }
+          return false;
+        });
+        if (!existingLabel) newTransaction.labels.push(newLabel);
+        newTransactions.set(transaction_id, newTransaction);
+        return newTransactions;
+      });
+    } else {
+      setSelectedCategoryId(selectedCategoryId);
+    }
   };
 
   return (
@@ -87,10 +115,13 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
           </div>
         </td>
       )}
-      {getVisible("plaid_category") && (
+      {getVisible("category") && (
         <td>
           <div>
-            <input onChange={onChangeCategoryInput} value={categoryInput} />
+            <select value={selectedCategoryId} onChange={onChangeCategorySelect}>
+              <option value="">Select Category</option>
+              {categoryOptions}
+            </select>
           </div>
         </td>
       )}

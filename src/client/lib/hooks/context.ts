@@ -37,6 +37,8 @@ export interface ContextType {
   setSections: Dispatch<SetStateAction<Sections>>;
   categories: Categories;
   setCategories: Dispatch<SetStateAction<Categories>>;
+  selectedBudgetId: string;
+  setSelectedBudgetId: Dispatch<SetStateAction<string>>;
 }
 
 export const Context = createContext<ContextType>({} as ContextType);

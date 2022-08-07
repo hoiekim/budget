@@ -1,15 +1,11 @@
 import { Budget, NewBudgetResponse } from "server";
-import { call, useAppContext, useLocalStorage } from "client";
+import { call, useAppContext } from "client";
 import BudgetComponent from "./BudgetComponent";
 import "./index.css";
 import { ChangeEventHandler } from "react";
 
 const BudgetsTable = () => {
-  const { budgets, setBudgets } = useAppContext();
-  const [selectedBudgetId, setSelectedBudgetId] = useLocalStorage<string>(
-    "selectedBudgetId",
-    ""
-  );
+  const { budgets, setBudgets, selectedBudgetId, setSelectedBudgetId } = useAppContext();
 
   const onClickAdd = async () => {
     const { data } = await call.get<NewBudgetResponse>("/api/new-budget");
@@ -53,13 +49,11 @@ const BudgetsTable = () => {
     <div className="BudgetsTable">
       <div>Budgets:</div>
       <div>
+        <button onClick={onClickAdd}>+</button>
         <select value={selectedBudgetId} onChange={onChangeBudget}>
           <option>Select Budget</option>
           {budgetOptions}
         </select>
-      </div>
-      <div>
-        <button onClick={onClickAdd}>+</button>
       </div>
       {selectedBudget && (
         <BudgetComponent key={selectedBudgetId} budget={selectedBudget} />

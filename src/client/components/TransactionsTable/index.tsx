@@ -21,7 +21,7 @@ const TransactionsTable = () => {
       amount: true,
       account: true,
       institution: true,
-      plaid_category: true,
+      category: true,
     }
   );
 
@@ -42,8 +42,8 @@ const TransactionsTable = () => {
       } else if (key === "institution") {
         const account = accounts.get(e.account_id);
         return institutions.get(account?.institution_id || "")?.name;
-      } else if (key === "plaid_category") {
-        return e.plaid_category && e.plaid_category[0];
+      } else if (key === "category") {
+        return e.category && e.category[0];
       } else {
         return e[key];
       }
@@ -65,7 +65,7 @@ const TransactionsTable = () => {
       return "Account";
     } else if (key === "institution") {
       return "Institutions";
-    } else if (key === "plaid_category") {
+    } else if (key === "category") {
       return "Category";
     } else {
       return key;

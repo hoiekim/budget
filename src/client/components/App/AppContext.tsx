@@ -32,6 +32,11 @@ const AppContext = ({ initialUser, children }: Props) => {
   const [categories, setCategories] = useState<Categories>(new Map());
   const [user, _setUser] = useState<MaskedUser | undefined>(initialUser);
 
+  const [selectedBudgetId, setSelectedBudgetId] = useLocalStorage<string>(
+    "selectedBudgetId",
+    ""
+  );
+
   const setUser: Dispatch<SetStateAction<MaskedUser | undefined>> = useCallback(
     (action) => {
       _setUser((oldUser) => {
@@ -68,6 +73,8 @@ const AppContext = ({ initialUser, children }: Props) => {
     setSections,
     categories,
     setCategories,
+    selectedBudgetId,
+    setSelectedBudgetId,
   };
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;

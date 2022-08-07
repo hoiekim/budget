@@ -1,5 +1,5 @@
 import { call, numberToCommaString, useAppContext } from "client";
-import { useState, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Category } from "server";
 
 interface Props {
@@ -12,7 +12,29 @@ const CategoryComponent = ({ category }: Props) => {
   const [nameInput, setNameInput] = useState(name);
   const [capacityInput, setCapacityInput] = useState(numberToCommaString(capacity));
 
-  const { setCategories } = useAppContext();
+  const { transactions, accounts, setCategories } = useAppContext();
+
+  useEffect(() => {
+    setCategories((oldCategories) => {
+      const oldCategory = oldCategories.get(category_id);
+      if (!oldCategory) return oldCategories;
+
+      const newCategories = new Map(oldCategories);
+      const newCategory = { ...oldCategory };
+
+      newCategory.amount = Array.from(transactions.values()).reduce((acc, e) => {
+        if (accounts.get(e.account_id)?.config?.hide) return acc;
+        if (e.labels.find((f) => f.category_id === category_id)) {
+          return acc - e.amount;
+        }
+        return acc;
+      }, 0);
+
+      newCategories.set(category_id, newCategory);
+
+      return newCategories;
+    });
+  }, [transactions, accounts, setCategories, category_id]);
 
   const revertInputs = useCallback(() => {
     setNameInput(name);

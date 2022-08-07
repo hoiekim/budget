@@ -17,26 +17,16 @@ import {
 } from "plaid";
 import { MaskedUser } from "server";
 
-export interface Transaction extends Omit<PlaidTransaction, "category_id" | "category"> {
+export interface Label {
+  budget_id: string;
+  category_id: string;
+}
+
+export interface Transaction extends PlaidTransaction {
   /**
-   * Association field linking to budget.section.category.category_id
+   * Represents relations by pair of budget_id and category_id
    */
-  category_ids: string[];
-  /**
-   * The ID of the category to which this transaction belongs. For a full list
-   * of categories, see /categories/get. If the transactions object was returned
-   * by an Assets endpoint such as /asset_report/get/ or /asset_report/pdf/get,
-   * this field will only appear in an Asset Report with Insights.
-   */
-  plaid_category_id: string | null;
-  /**
-   * A hierarchical array of the categories to which this transaction belongs.
-   * For a full list of categories, see /categories/get. If the transactions
-   * object was returned by an Assets endpoint such as /asset_report/get/ or
-   * /asset_report/pdf/get, this field will only appear in an Asset Report with
-   * Insights.
-   */
-  plaid_category: string[] | null;
+  labels: Label[];
 }
 
 export interface Institution extends PlaidInstitution {}
@@ -155,13 +145,8 @@ export const getTransactions = async (
         const reservePlaidProperties = (e: PlaidTransaction) => {
           const transaction: Transaction & Partial<PlaidTransaction> = {
             ...e,
-            category_ids: [],
-            plaid_category_id: e.category_id,
-            plaid_category: e.category,
+            labels: [],
           };
-
-          delete transaction.category_id;
-          delete transaction.category;
 
           return transaction as Transaction;
         };

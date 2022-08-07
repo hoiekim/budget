@@ -1,5 +1,5 @@
 import { RemovedTransaction } from "plaid";
-import { Transaction, Account, MaskedUser, flattenAllAddresses } from "server";
+import { Transaction, Account, MaskedUser, flattenAllAddresses, Label } from "server";
 import { client, index } from "./client";
 
 /**
@@ -39,14 +39,13 @@ export const indexTransactions = async (
 
 /**
  * Updates transaction document with given object.
+ * @param user
  * @param transaction
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateTransaction = async (
   user: MaskedUser,
-  transaction: Partial<Transaction> & {
-    transaction_id: string;
-  }
+  transaction: { transaction_id: string } & Partial<Transaction>
 ) => {
   const { user_id } = user;
   const { transaction_id } = transaction;
@@ -56,8 +55,6 @@ export const updateTransaction = async (
     if (ctx._source.type == "transaction") {
       ${Object.entries(flattenAllAddresses(transaction)).reduce((acc, [key, value]) => {
         if (key === "transaction_id") return acc;
-        if (key === "category") key = "plaid_category";
-        if (key === "category_id") key = "plaid_category_id";
         return acc + `ctx._source.transaction.${key} = ${JSON.stringify(value)};\n`;
       }, "")}
     } else {
@@ -72,6 +69,50 @@ export const updateTransaction = async (
     index,
     id: transaction_id,
     script: { source, lang: "painless" },
+  });
+
+  return response;
+};
+
+/**
+ * Updates transaction document with given object.
+ * @param user
+ * @param transaction
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const updateTransactionLabel = async (
+  user: MaskedUser,
+  transaction: { transaction_id: string } & Partial<Transaction>,
+  label: Label
+) => {
+  const { user_id } = user;
+  const { transaction_id } = transaction;
+
+  const source = `
+  if (ctx._source.user.user_id == "${user_id}") {
+    if (ctx._source.type == "transaction") {
+      int n=0;
+      for (int i=ctx._source.transaction.labels.length-1; i>=0; i--) {
+        if (ctx._source.transaction.labels[i].budget_id == params.label.budget_id) {
+            ctx._source.transaction.labels[i].category_id = params.label.category_id;
+            n++;
+        }
+      }
+      if (n == 0) {
+        ctx._source.transaction.labels.add(params.label);
+      }
+    } else {
+      throw new Exception("Found document is not transaction type.");
+    }
+  } else {
+    throw new Exception("Request user doesn't have permission for this document.");
+  }
+  `;
+
+  const response = await client.update({
+    index,
+    id: transaction_id,
+    script: { source, lang: "painless", params: { label } },
   });
 
   return response;
@@ -174,6 +215,7 @@ export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
 
 /**
  * Updates account document with given object.
+ * @param user
  * @param account
  * @returns A promise to be an Elasticsearch response object
  */

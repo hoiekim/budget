@@ -16,7 +16,7 @@ const TransactionsHead = ({ sorter, getHeader }: Props) => {
     "amount",
     "account",
     "institution",
-    "plaid_category",
+    "category",
   ];
 
   const headerComponents = headerKeys.map((key, i) => {
