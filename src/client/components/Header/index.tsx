@@ -7,7 +7,7 @@ const Header = () => {
   const { user, setUser, accounts, setAccounts } = useAppContext();
   const { sync, clean } = useSync();
 
-  const onClick = () => {
+  const logout = () => {
     call.delete<MaskedUser>("/api/login").then((r) => {
       setUser(r.data);
       clean();
@@ -38,7 +38,7 @@ const Header = () => {
     <div className="Header">
       <div>
         <span>{user?.username} is logged in</span>
-        <button onClick={onClick}>Logout</button>
+        <button onClick={logout}>Logout</button>
       </div>
       <div>
         <PlaidLinkButton>Connect a Bank Account</PlaidLinkButton>

@@ -135,6 +135,9 @@ export const useSync = () => {
   const clean = useCallback(() => {
     setTransactions(new Map());
     setAccounts(new Map());
+    setBudgets(new Map());
+    setSections(new Map());
+    setCategories(new Map());
   }, [setTransactions, setAccounts]);
 
   return { sync, clean };
