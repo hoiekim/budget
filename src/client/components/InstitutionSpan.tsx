@@ -8,7 +8,7 @@ interface Props {
 
 const fetchJobs = new Map<string | undefined, Promise<Institution | undefined>>();
 
-const InstitutionSpan = ({ institution_id }: Partial<Props>) => {
+const InstitutionSpan = ({ institution_id }: Props) => {
   const { institutions, setInstitutions } = useAppContext();
   const institution = institutions.get(institution_id);
 

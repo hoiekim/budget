@@ -39,18 +39,15 @@ export const createBudget = async (user: MaskedUser) => {
   return response;
 };
 
+export type PartialBudget = { budget_id: string } & Partial<Budget>;
+
 /**
  * Updates budget document with given object.
  * @param user
  * @param budget
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateBudget = async (
-  user: MaskedUser,
-  budget: Partial<Budget> & {
-    budget_id: string;
-  }
-) => {
+export const updateBudget = async (user: MaskedUser, budget: PartialBudget) => {
   const { user_id } = user;
   const { budget_id } = budget;
 
@@ -161,18 +158,15 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
   return response;
 };
 
+export type PartialSection = { section_id: string } & Partial<Section>;
+
 /**
  * Updates section document with given object.
  * @param user
  * @param section
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateSection = async (
-  user: MaskedUser,
-  section: Partial<Section> & {
-    section_id: string;
-  }
-) => {
+export const updateSection = async (user: MaskedUser, section: PartialSection) => {
   const { user_id } = user;
   const { section_id } = section;
 
@@ -274,18 +268,15 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
   return response;
 };
 
+export type PartialCategory = { category_id: string } & Partial<Category>;
+
 /**
  * Updates category document with given object.
  * @param user
  * @param category
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateCategory = async (
-  user: MaskedUser,
-  category: Partial<Category> & {
-    category_id: string;
-  }
-) => {
+export const updateCategory = async (user: MaskedUser, category: PartialCategory) => {
   const { user_id } = user;
   const { category_id } = category;
 

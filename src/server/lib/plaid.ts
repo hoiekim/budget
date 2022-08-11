@@ -142,18 +142,13 @@ export const getTransactions = async (
         const response = await client.transactionsSync(request);
         const { added, removed, modified, has_more, next_cursor } = response.data;
 
-        const reservePlaidProperties = (e: PlaidTransaction) => {
-          const transaction: Transaction & Partial<PlaidTransaction> = {
-            ...e,
-            labels: [],
-          };
-
-          return transaction as Transaction;
+        const fill = (e: PlaidTransaction) => {
+          return { ...e, labels: [] };
         };
 
-        thisItemAdded.push(added.map(reservePlaidProperties));
+        thisItemAdded.push(added.map(fill));
         thisItemRemoved.push(removed);
-        thisItemModified.push(modified.map(reservePlaidProperties));
+        thisItemModified.push(modified.map(fill));
 
         hasMore = has_more;
         item.cursor = next_cursor;
