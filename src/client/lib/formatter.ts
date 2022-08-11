@@ -1,7 +1,7 @@
 export const numberToCommaString = (n: number) => {
   const sign = n < 0 ? "-" : "";
 
-  const splitNumberString = Math.abs(n).toString().split(".");
+  const splitNumberString = Math.abs(n).toFixed(2).toString().split(".");
   const firstPart = splitNumberString[0];
   const secondPart = splitNumberString[1];
 

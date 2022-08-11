@@ -37,20 +37,24 @@ export const indexTransactions = async (
   return response.items.map((e) => e.index);
 };
 
+export type PartialTransaction = { transaction_id: string } & Partial<Transaction>;
+
 /**
  * Updates transaction document with given object.
  * @param user
  * @param transaction
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateTransaction = async (
+export const updateTransactions = async (
   user: MaskedUser,
-  transaction: { transaction_id: string } & Partial<Transaction>
+  transactions: PartialTransaction[]
 ) => {
+  if (!transactions || !transactions.length) return [];
   const { user_id } = user;
-  const { transaction_id } = transaction;
+  const operations = transactions.flatMap((transaction) => {
+    const { transaction_id } = transaction;
 
-  const source = `
+    const source = `
   if (ctx._source.user.user_id == "${user_id}") {
     if (ctx._source.type == "transaction") {
       ${Object.entries(flattenAllAddresses(transaction)).reduce((acc, [key, value]) => {
@@ -65,14 +69,26 @@ export const updateTransaction = async (
   }
   `;
 
-  const response = await client.update({
-    index,
-    id: transaction_id,
-    script: { source, lang: "painless" },
+    return [
+      {
+        update: {
+          _index: index,
+          _id: transaction_id,
+        },
+      },
+      { script: { source, lang: "painless" } },
+    ];
   });
 
-  return response;
+  const response = await client.bulk({ operations });
+
+  return response.items;
 };
+
+export interface TransactionLabel {
+  transaction_id: string;
+  label: Label;
+}
 
 /**
  * Updates transaction document with given object.
@@ -80,15 +96,16 @@ export const updateTransaction = async (
  * @param transaction
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateTransactionLabel = async (
+export const updateTransactionLabels = async (
   user: MaskedUser,
-  transaction: { transaction_id: string } & Partial<Transaction>,
-  label: Label
+  transactionLabels: TransactionLabel[]
 ) => {
+  if (!transactionLabels || !transactionLabels.length) return [];
   const { user_id } = user;
-  const { transaction_id } = transaction;
+  const operations = transactionLabels.flatMap((transactionLabel) => {
+    const { transaction_id, label } = transactionLabel;
 
-  const source = `
+    const source = `
   if (ctx._source.user.user_id == "${user_id}") {
     if (ctx._source.type == "transaction") {
       int n=0;
@@ -109,13 +126,20 @@ export const updateTransactionLabel = async (
   }
   `;
 
-  const response = await client.update({
-    index,
-    id: transaction_id,
-    script: { source, lang: "painless", params: { label } },
+    return [
+      {
+        update: {
+          _index: index,
+          _id: transaction_id,
+        },
+      },
+      { script: { source, lang: "painless", params: { label } } },
+    ];
   });
 
-  return response;
+  const response = await client.bulk({ operations });
+
+  return response.items;
 };
 
 /**
@@ -213,18 +237,15 @@ export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
   return response.items.map((e) => e.index);
 };
 
+export type PartialAccount = { account_id: string } & Partial<Account>;
+
 /**
  * Updates account document with given object.
  * @param user
  * @param account
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateAccount = async (
-  user: MaskedUser,
-  account: Partial<Account> & {
-    account_id: string;
-  }
-) => {
+export const updateAccount = async (user: MaskedUser, account: PartialAccount) => {
   const { user_id } = user;
   const { account_id } = account;
 

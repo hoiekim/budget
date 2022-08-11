@@ -62,7 +62,7 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
   };
 
   if (access_token) request.access_token = access_token;
-  else request.products = [Products.Auth, Products.Transactions, Products.Investments];
+  else request.products = [Products.Auth, Products.Transactions];
 
   const response = await client.linkTokenCreate(request);
 
@@ -126,15 +126,15 @@ export const getTransactions = async (
   const allModified: Transaction[][] = [];
 
   const fetchJobs = user.items.map(async (item) => {
-    const { item_id, access_token, cursor } = item;
+    const thisItemAdded: Transaction[][] = [];
+    const thisItemRemoved: RemovedTransaction[][] = [];
+    const thisItemModified: Transaction[][] = [];
+    let hasMore = true;
 
-    try {
-      const thisItemAdded: Transaction[][] = [];
-      const thisItemRemoved: RemovedTransaction[][] = [];
-      const thisItemModified: Transaction[][] = [];
-      let hasMore = true;
+    while (hasMore) {
+      const { item_id, access_token, cursor } = item;
 
-      while (hasMore) {
+      try {
         const request: TransactionsSyncRequest = {
           access_token: access_token,
           cursor: cursor,
@@ -157,17 +157,18 @@ export const getTransactions = async (
 
         hasMore = has_more;
         item.cursor = next_cursor;
+      } catch (error: any) {
+        const plaidError = error?.response?.data as PlaidError;
+        console.error(plaidError);
+        console.error("Failed to get transactions data for item:", item_id);
+        if (plaidError) data.errors.push({ ...plaidError, item_id });
+        hasMore = false;
       }
-
-      allAdded.push(thisItemAdded.flat());
-      allRemoved.push(thisItemRemoved.flat());
-      allModified.push(thisItemModified.flat());
-    } catch (error: any) {
-      const plaidError = error?.response?.data as PlaidError;
-      console.error(plaidError);
-      console.error("Failed to get transactions data for item:", item_id);
-      if (plaidError) data.errors.push({ ...plaidError, item_id });
     }
+
+    allAdded.push(thisItemAdded.flat());
+    allRemoved.push(thisItemRemoved.flat());
+    allModified.push(thisItemModified.flat());
 
     return;
   });

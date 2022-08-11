@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { Item, getLocalItems } from "server";
+import { Item, getLocalItems, saveLocalItems } from "server";
 import mappings from "./mappings.json";
 import { client, index } from "./client";
 
@@ -88,7 +88,6 @@ export const initializeIndex = async (): Promise<void> => {
   existingAdminUser?.items.forEach((e) => {
     const duplicatedItem = itemsMap.get(e.item_id);
     const mergedItem = duplicatedItem ? { ...e, ...duplicatedItem } : e;
-    mergedItem.cursor = undefined;
     itemsMap.set(e.item_id, mergedItem);
   });
 
@@ -227,7 +226,10 @@ export const updateItems = async (user: MaskedUser) => {
       params: { items },
     },
   };
+
   const response = await client.update(query);
+  if (response.result === "updated") saveLocalItems(items);
+
   return response;
 };
 

@@ -1,10 +1,11 @@
 import {
   getTransactions,
-  deleteTransactions,
   Route,
   GetResponse,
   searchTransactions,
   indexTransactions,
+  updateTransactions,
+  deleteTransactions,
   updateItems,
   TransactionsResponse,
 } from "server";
@@ -39,7 +40,8 @@ const getResponse: GetResponse<TransactionsResponse> = async (req, res) => {
       );
 
       const updateJobs = [
-        indexTransactions(user, [...added, ...modified]),
+        indexTransactions(user, added),
+        updateTransactions(user, modified),
         deleteTransactions(user, removed),
       ];
 

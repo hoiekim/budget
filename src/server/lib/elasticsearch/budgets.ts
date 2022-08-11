@@ -89,14 +89,36 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
 
   const { user_id } = user;
 
+  const section_ids = await client
+    .search({
+      index,
+      query: {
+        term: { "section.budget_id": budget_id },
+      },
+    })
+    .then((r) => {
+      return r.hits.hits.map((e) => e._id);
+    });
+
   const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
         filter: [
           { term: { "user.user_id": user_id } },
-          { term: { type: "budget" } },
-          { term: { _id: budget_id } },
+          {
+            bool: {
+              should: [
+                {
+                  bool: {
+                    filter: [{ term: { type: "budget" } }, { term: { _id: budget_id } }],
+                  },
+                },
+                { term: { "section.budget_id": budget_id } },
+                ...section_ids.map((e) => ({ term: { "category.section_id": e } })),
+              ],
+            },
+          },
         ],
       },
     },
@@ -195,8 +217,21 @@ export const deleteSection = async (user: MaskedUser, section_id: string) => {
       bool: {
         filter: [
           { term: { "user.user_id": user_id } },
-          { term: { type: "section" } },
-          { term: { _id: section_id } },
+          {
+            bool: {
+              should: [
+                {
+                  bool: {
+                    filter: [
+                      { term: { type: "section" } },
+                      { term: { _id: section_id } },
+                    ],
+                  },
+                },
+                { term: { "category.section_id": section_id } },
+              ],
+            },
+          },
         ],
       },
     },

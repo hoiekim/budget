@@ -1,4 +1,4 @@
-import { Route, GetResponse, updateTransaction } from "server";
+import { Route, GetResponse, updateTransactions } from "server";
 
 const getResponse: GetResponse<{ transaction_id: string }> = async (req) => {
   const { user } = req.session;
@@ -10,8 +10,9 @@ const getResponse: GetResponse<{ transaction_id: string }> = async (req) => {
   }
 
   try {
-    const response = await updateTransaction(user, req.body);
-    return { status: "success", data: { transaction_id: response._id } };
+    const response = await updateTransactions(user, [req.body]);
+    const transaction_id = response[0].update?._id || "";
+    return { status: "success", data: { transaction_id } };
   } catch (error: any) {
     console.error(`Failed to update a transaction: ${req.body.transaction_id}`);
     throw new Error(error);
