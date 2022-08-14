@@ -17,16 +17,25 @@ interface Props {
 
 const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
-  const { account_id, balances, name, official_name, institution_id } = account;
+  const { account_id, balances, custom_name, name, official_name, institution_id } =
+    account;
 
-  const { user, setUser, accounts, setAccounts, setTransactions, institutions, items } =
-    useAppContext();
+  const {
+    user,
+    setUser,
+    accounts,
+    setAccounts,
+    setTransactions,
+    institutions,
+    items,
+    selectedBudgetId,
+  } = useAppContext();
 
-  const [nameInput, setNameInput] = useState(name);
+  const [nameInput, setNameInput] = useState(custom_name || name);
 
   useEffect(() => {
-    setNameInput(name);
-  }, [name, setNameInput]);
+    setNameInput(custom_name || name);
+  }, [custom_name, name, setNameInput]);
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
@@ -39,13 +48,13 @@ const AccountRow = ({ account, sorter }: Props) => {
     setNameInput(value);
     clearTimeout(timeout.current);
     timeout.current = setTimeout(() => {
-      call.post("/api/account", { account_id, name: value }).then((r) => {
+      call.post("/api/account", { account_id, custom_name: value }).then((r) => {
         if (r.status === "success") {
           setAccounts((oldAccounts) => {
             const oldAccount = oldAccounts.get(account_id);
             if (!oldAccount) return oldAccounts;
             const newAccounts = new Map(oldAccounts);
-            const newAccount = { ...oldAccount, name: value };
+            const newAccount = { ...oldAccount, custom_name: value };
             newAccounts.set(account_id, newAccount);
             return newAccounts;
           });
@@ -110,14 +119,22 @@ const AccountRow = ({ account, sorter }: Props) => {
 
   const onClickHide: MouseEventHandler<HTMLButtonElement> = () => {
     if (!account_id) return;
-    call.post("/api/account", { account_id, config: { hide: true } }).then((r) => {
+    const updatedLabel = { budget_id: selectedBudgetId, hide: true };
+    call.post("/api/account-label", { account_id, label: updatedLabel }).then((r) => {
       if (r.status === "success") {
         setAccounts((oldAccounts) => {
           const newAccounts = new Map(oldAccounts);
-          newAccounts.set(account_id, {
-            ...(account as Account),
-            config: { hide: true },
+          const newAccount = oldAccounts.get(account_id) || account;
+          const { labels } = newAccount;
+          labels.find((f, j) => {
+            if (f.budget_id === selectedBudgetId) {
+              labels.splice(j, 1);
+              return true;
+            }
+            return false;
           });
+          labels.push(updatedLabel);
+          newAccounts.set(account_id, newAccount);
           return newAccounts;
         });
       }
@@ -153,7 +170,7 @@ const AccountRow = ({ account, sorter }: Props) => {
       {getVisible("name") && (
         <td>
           <div>
-            {name ? <input onChange={onChangeNameInput} value={nameInput} /> : "Unknown"}
+            <input onChange={onChangeNameInput} value={nameInput} />
           </div>
         </td>
       )}

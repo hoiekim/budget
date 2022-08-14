@@ -29,9 +29,8 @@ const getResponse: GetResponse<TransactionsResponse> = async (req, res) => {
     .then(async (data) => {
       await earlyRequest;
 
-      res.write(JSON.stringify({ status: "success", data }) + "\n");
-
       const { added, removed, modified } = data;
+
       console.info(
         "Plaid responded with " +
           `${added.length} added, ` +
@@ -39,8 +38,12 @@ const getResponse: GetResponse<TransactionsResponse> = async (req, res) => {
           `${removed.length} removed transactions data.`
       );
 
+      const filledAdded = added.map((e) => ({ ...e, labels: [] }));
+      const filledData = { ...data, added: filledAdded };
+      res.write(JSON.stringify({ status: "success", data: filledData }) + "\n");
+
       const updateJobs = [
-        indexTransactions(user, added),
+        indexTransactions(user, filledAdded),
         updateTransactions(user, modified),
         deleteTransactions(user, removed),
       ];

@@ -227,10 +227,7 @@ export const updateItems = async (user: MaskedUser) => {
     },
   };
 
-  const response = await client.update(query);
-  if (response.result === "updated") saveLocalItems(items);
-
-  return response;
+  return client.update(query);
 };
 
 /**

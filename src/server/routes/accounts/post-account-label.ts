@@ -1,4 +1,4 @@
-import { Route, GetResponse, updateAccounts } from "server";
+import { Route, GetResponse, updateAccountLabels } from "server";
 
 const getResponse: GetResponse<{ account_id: string }> = async (req) => {
   const { user } = req.session;
@@ -10,7 +10,7 @@ const getResponse: GetResponse<{ account_id: string }> = async (req) => {
   }
 
   try {
-    const response = await updateAccounts(user, [req.body]);
+    const response = await updateAccountLabels(user, [req.body]);
     const account_id = response[0].update?._id || "";
     return { status: "success", data: { account_id } };
   } catch (error: any) {
@@ -19,6 +19,6 @@ const getResponse: GetResponse<{ account_id: string }> = async (req) => {
   }
 };
 
-const route = new Route("POST", "/account", getResponse);
+const route = new Route("POST", "/account-label", getResponse);
 
 export default route;

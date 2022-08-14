@@ -1,10 +1,12 @@
 import {
-  Account,
-  searchAccounts,
-  getAccounts,
   Route,
   GetResponse,
+  Account,
+  PlaidAccount,
+  searchAccounts,
+  getAccounts,
   indexAccounts,
+  updateAccounts,
   AccountsResponse,
 } from "server";
 
@@ -20,27 +22,37 @@ const getResponse: GetResponse<AccountsResponse> = async (req, res) => {
   const map = new Map<string, Account>();
 
   const earlyRequest = searchAccounts(user).then((accounts) => {
-    const earlyResponse = { errors: [], accounts };
-    res.write(JSON.stringify({ status: "streaming", data: earlyResponse }) + "\n");
-    earlyResponse.accounts.forEach((e) => map.set(e.account_id, e));
+    const data: AccountsResponse = { errors: [], accounts };
+    res.write(JSON.stringify({ status: "streaming", data }) + "\n");
+    accounts.forEach((e) => map.set(e.account_id, e));
   });
 
-  const lateRequest = await getAccounts(user)
+  const lateRequest = getAccounts(user)
     .then(async (r) => {
       await earlyRequest;
 
-      const accounts = r.accounts.map((e) => {
-        const oldAccount = map.get(e.account_id);
-        return oldAccount
-          ? { ...oldAccount, ...e, name: oldAccount.name }
-          : { ...e, config: { hide: false } };
+      const added: Account[] = [];
+      const modified: PlaidAccount[] = [];
+
+      const accounts = r.accounts.map<Account>((e) => {
+        const existingAccount = map.get(e.account_id);
+        if (existingAccount) {
+          modified.push(e);
+          return existingAccount;
+        }
+        const account = { ...e, custom_name: "", labels: [] };
+        added.push(account);
+        return account;
       });
 
-      const data = { ...r, accounts };
+      const { errors } = r;
+
+      const data: AccountsResponse = { errors, accounts };
 
       res.write(JSON.stringify({ status: "success", data }) + "\n");
 
-      indexAccounts(user, accounts);
+      indexAccounts(user, added);
+      updateAccounts(user, modified);
     })
     .catch(console.error);
 

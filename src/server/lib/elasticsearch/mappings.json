@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "properties": {
     "type": { "type": "keyword" },
     "user": {
@@ -11,7 +11,7 @@
         "email": { "type": "keyword" },
         "expiry": { "type": "date" },
         "items": {
-          "type": "object",
+          "type": "nested",
           "properties": {
             "item_id": { "type": "keyword" },
             "access_token": { "type": "keyword" },
@@ -38,17 +38,18 @@
             "unofficial_currency_code": { "type": "keyword" }
           }
         },
-        "budget_ids": { "type": "keyword" },
-        "institution_id": { "type": "keyword" },
-        "item_id": { "type": "keyword" },
         "mask": { "type": "keyword" },
         "name": { "type": "keyword" },
         "official_name": { "type": "keyword" },
         "type": { "type": "keyword" },
         "subtype": { "type": "keyword" },
-        "config": {
-          "type": "object",
+        "institution_id": { "type": "keyword" },
+        "item_id": { "type": "keyword" },
+        "custom_name": { "type": "text" },
+        "labels": {
+          "type": "nested",
           "properties": {
+            "budget_id": { "type": "keyword" },
             "hide": { "type": "boolean" }
           }
         }
@@ -59,13 +60,6 @@
       "dynamic": true,
       "properties": {
         "pending_transaction_id": { "type": "keyword" },
-        "labels": {
-          "type": "nested",
-          "properties": {
-            "budget_id": { "type": "keyword" },
-            "category_id": { "type": "keyword" }
-          }
-        },
         "category_id": { "type": "keyword" },
         "category": { "type": "keyword" },
         "location": {
@@ -107,7 +101,14 @@
         "authorized_date": { "type": "date" },
         "authorized_datetime": { "type": "date" },
         "datetime": { "type": "date" },
-        "transaction_code": { "type": "keyword" }
+        "transaction_code": { "type": "keyword" },
+        "labels": {
+          "type": "nested",
+          "properties": {
+            "budget_id": { "type": "keyword" },
+            "category_id": { "type": "keyword" }
+          }
+        }
       }
     },
     "budget": {

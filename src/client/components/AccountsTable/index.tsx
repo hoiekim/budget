@@ -10,7 +10,7 @@ export type AccountHeaders = { [k in keyof Account]?: boolean } & {
 };
 
 const AccountsTable = () => {
-  const { user, accounts, institutions } = useAppContext();
+  const { user, accounts, institutions, selectedBudgetId } = useAppContext();
   const { items } = user || {};
 
   const sorter = useSorter<Account, AccountHeaders>(
@@ -18,7 +18,7 @@ const AccountsTable = () => {
     new Map([["name", "descending"]]),
     {
       balances: true,
-      name: true,
+      custom_name: true,
       official_name: true,
       institution: true,
       action: true,
@@ -39,11 +39,16 @@ const AccountsTable = () => {
   const { sort, visibles, toggleVisible } = sorter;
 
   const accountsArray = sort(
-    Array.from(accounts.values()).filter((e) => !e.config?.hide),
+    Array.from(accounts.values()).filter((e) => {
+      const label = e.labels.find((f) => f.budget_id === selectedBudgetId);
+      return !label?.hide;
+    }),
     (e, key) => {
       if (key === "balances") {
         const { available, current } = e.balances;
         return Math.max(available || 0, current || 0);
+      } else if (key === "custom_name") {
+        return e[key] || e.name;
       } else if (key === "institution") {
         const account = accounts.get(e.account_id);
         return institutions.get(account?.institution_id || "")?.name;
@@ -62,7 +67,7 @@ const AccountsTable = () => {
   const getHeader = (key: keyof AccountHeaders): string => {
     if (key === "balances") {
       return "Balances";
-    } else if (key === "name") {
+    } else if (key === "custom_name") {
       return "Name";
     } else if (key === "official_name") {
       return "Official Name";

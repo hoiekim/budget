@@ -1,5 +1,12 @@
 import { RemovedTransaction } from "plaid";
-import { Transaction, Account, MaskedUser, flattenAllAddresses, Label } from "server";
+import {
+  Transaction,
+  Account,
+  MaskedUser,
+  flattenAllAddresses,
+  TransactionLabel,
+  AccountLabel,
+} from "server";
 import { client, index } from "./client";
 
 /**
@@ -18,17 +25,8 @@ export const indexTransactions = async (
 
   const operations = transactions.flatMap((transaction) => {
     return [
-      {
-        index: {
-          _index: index,
-          _id: transaction.transaction_id,
-        },
-      },
-      {
-        type: "transaction",
-        user: { user_id },
-        transaction,
-      },
+      { index: { _index: index, _id: transaction.transaction_id } },
+      { type: "transaction", user: { user_id }, transaction },
     ];
   });
 
@@ -42,7 +40,7 @@ export type PartialTransaction = { transaction_id: string } & Partial<Transactio
 /**
  * Updates transaction document with given object.
  * @param user
- * @param transaction
+ * @param transactions
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateTransactions = async (
@@ -70,12 +68,7 @@ export const updateTransactions = async (
   `;
 
     return [
-      {
-        update: {
-          _index: index,
-          _id: transaction_id,
-        },
-      },
+      { update: { _index: index, _id: transaction_id } },
       { script: { source, lang: "painless" } },
     ];
   });
@@ -85,20 +78,20 @@ export const updateTransactions = async (
   return response.items;
 };
 
-export interface TransactionLabel {
+export interface TransactionLabelInput {
   transaction_id: string;
-  label: Label;
+  label: TransactionLabel;
 }
 
 /**
  * Updates transaction document with given object.
  * @param user
- * @param transaction
+ * @param transactionLabels
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateTransactionLabels = async (
   user: MaskedUser,
-  transactionLabels: TransactionLabel[]
+  transactionLabels: TransactionLabelInput[]
 ) => {
   if (!transactionLabels || !transactionLabels.length) return [];
   const { user_id } = user;
@@ -127,12 +120,7 @@ export const updateTransactionLabels = async (
   `;
 
     return [
-      {
-        update: {
-          _index: index,
-          _id: transaction_id,
-        },
-      },
+      { update: { _index: index, _id: transaction_id } },
       { script: { source, lang: "painless", params: { label } } },
     ];
   });
@@ -218,17 +206,8 @@ export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
 
   const operations = accounts.flatMap((account) => {
     return [
-      {
-        index: {
-          _index: index,
-          _id: account.account_id,
-        },
-      },
-      {
-        type: "account",
-        user: { user_id },
-        account,
-      },
+      { index: { _index: index, _id: account.account_id } },
+      { type: "account", user: { user_id }, account },
     ];
   });
 
@@ -242,35 +221,91 @@ export type PartialAccount = { account_id: string } & Partial<Account>;
 /**
  * Updates account document with given object.
  * @param user
- * @param account
+ * @param accounts
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateAccount = async (user: MaskedUser, account: PartialAccount) => {
+export const updateAccounts = async (user: MaskedUser, accounts: PartialAccount[]) => {
+  if (!accounts || !accounts.length) return [];
   const { user_id } = user;
-  const { account_id } = account;
+  const operations = accounts.flatMap((account) => {
+    const { account_id } = account;
 
-  const source = `
-  if (ctx._source.user.user_id == "${user_id}") {
-    if (ctx._source.type == "account") {
-      ${Object.entries(flattenAllAddresses(account)).reduce((acc, [key, value]) => {
-        if (key === "account_id") return acc;
-        return acc + `ctx._source.account.${key} = ${JSON.stringify(value)};\n`;
-      }, "")}
+    const source = `
+    if (ctx._source.user.user_id == "${user_id}") {
+      if (ctx._source.type == "account") {
+        ${Object.entries(flattenAllAddresses(account)).reduce((acc, [key, value]) => {
+          if (key === "account_id") return acc;
+          return acc + `ctx._source.account.${key} = ${JSON.stringify(value)};\n`;
+        }, "")}
+      } else {
+        throw new Exception("Found document is not account type.");
+      }
     } else {
-      throw new Exception("Found document is not account type.");
+      throw new Exception("Request user doesn't have permission for this document.");
     }
-  } else {
-    throw new Exception("Request user doesn't have permission for this document.");
-  }
-  `;
+    `;
 
-  const response = await client.update({
-    index,
-    id: account_id,
-    script: { source, lang: "painless" },
+    return [
+      { update: { _index: index, _id: account_id } },
+      { script: { source, lang: "painless" } },
+    ];
   });
 
-  return response;
+  const response = await client.bulk({ operations });
+
+  return response.items;
+};
+
+export interface AccountLabelInput {
+  account_id: string;
+  label: AccountLabel;
+}
+
+/**
+ * Updates account document with given object.
+ * @param user
+ * @param accounts
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const updateAccountLabels = async (
+  user: MaskedUser,
+  accountLabels: AccountLabelInput[]
+) => {
+  if (!accountLabels || !accountLabels.length) return [];
+  const { user_id } = user;
+  const operations = accountLabels.flatMap((accountLabel) => {
+    const { account_id, label } = accountLabel;
+
+    const source = `
+    if (ctx._source.user.user_id == "${user_id}") {
+      if (ctx._source.type == "account") {
+        int n=0;
+        for (int i=ctx._source.account.labels.length-1; i>=0; i--) {
+          if (ctx._source.account.labels[i].account_id == params.label.account_id) {
+              ctx._source.account.labels[i].hide = params.label.hide;
+              n++;
+          }
+        }
+        if (n == 0) {
+          ctx._source.account.labels.add(params.label);
+        }
+      } else {
+        throw new Exception("Found document is not account type.");
+      }
+    } else {
+      throw new Exception("Request user doesn't have permission for this document.");
+    }
+    `;
+
+    return [
+      { update: { _index: index, _id: account_id } },
+      { script: { source, lang: "painless", params: { label } } },
+    ];
+  });
+
+  const response = await client.bulk({ operations });
+
+  return response.items;
 };
 
 /**

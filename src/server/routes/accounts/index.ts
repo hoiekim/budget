@@ -4,3 +4,4 @@ export { default as getInstitution } from "./get-institution";
 export { default as postTrasaction } from "./post-transaction";
 export { default as postTrasactionLabel } from "./post-transaction-label";
 export { default as postAccount } from "./post-account";
+export { default as postAccountLabel } from "./post-account-label";

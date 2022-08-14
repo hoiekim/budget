@@ -10,14 +10,11 @@ import {
   TransactionsSyncRequest,
   Institution as PlaidInstitution,
   PlaidError,
-  AccountBalance,
-  AccountType,
-  AccountSubtype,
-  AccountBaseVerificationStatusEnum,
+  AccountBase,
 } from "plaid";
 import { MaskedUser } from "server";
 
-export interface Label {
+export interface TransactionLabel {
   budget_id: string;
   category_id: string;
 }
@@ -26,10 +23,10 @@ export interface Transaction extends PlaidTransaction {
   /**
    * Represents relations by pair of budget_id and category_id
    */
-  labels: Label[];
+  labels: TransactionLabel[];
 }
 
-export interface Institution extends PlaidInstitution {}
+export type Institution = PlaidInstitution;
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } = process.env;
 
@@ -102,33 +99,38 @@ export const getItem = async (user: MaskedUser, access_token: string): Promise<I
 
 export type ItemError = PlaidError & { item_id: string };
 
-export interface TransactionsResponse {
+export type TransactionsResponse = {
   errors: ItemError[];
   added: Transaction[];
   removed: RemovedTransaction[];
   modified: Transaction[];
-}
+};
 
-export const getTransactions = async (
-  user: MaskedUser
-): Promise<TransactionsResponse> => {
+export const getTransactions = async (user: MaskedUser) => {
   const client = getClient(user);
 
-  const data: TransactionsResponse = {
+  type PlaidTransactionsResponse = {
+    errors: ItemError[];
+    added: PlaidTransaction[];
+    removed: RemovedTransaction[];
+    modified: PlaidTransaction[];
+  };
+
+  const data: PlaidTransactionsResponse = {
     errors: [],
     added: [],
     removed: [],
     modified: [],
   };
 
-  const allAdded: Transaction[][] = [];
+  const allAdded: PlaidTransaction[][] = [];
   const allRemoved: RemovedTransaction[][] = [];
-  const allModified: Transaction[][] = [];
+  const allModified: PlaidTransaction[][] = [];
 
   const fetchJobs = user.items.map(async (item) => {
-    const thisItemAdded: Transaction[][] = [];
+    const thisItemAdded: PlaidTransaction[][] = [];
     const thisItemRemoved: RemovedTransaction[][] = [];
-    const thisItemModified: Transaction[][] = [];
+    const thisItemModified: PlaidTransaction[][] = [];
     let hasMore = true;
 
     while (hasMore) {
@@ -142,13 +144,9 @@ export const getTransactions = async (
         const response = await client.transactionsSync(request);
         const { added, removed, modified, has_more, next_cursor } = response.data;
 
-        const fill = (e: PlaidTransaction) => {
-          return { ...e, labels: [] };
-        };
-
-        thisItemAdded.push(added.map(fill));
+        thisItemAdded.push(added);
         thisItemRemoved.push(removed);
-        thisItemModified.push(modified.map(fill));
+        thisItemModified.push(modified);
 
         hasMore = has_more;
         item.cursor = next_cursor;
@@ -177,59 +175,7 @@ export const getTransactions = async (
   return data;
 };
 
-export interface Account {
-  /**
-   * Plaid’s unique identifier for the account. This value will not change unless
-   * Plaid can\'t reconcile the account with the data returned by the financial
-   * institution. This may occur, for example, when the name of the account changes.
-   * If this happens a new `account_id` will be assigned to the account.  The
-   * `account_id` can also change if the `access_token` is deleted and the same
-   * credentials that were used to generate that `access_token` are used to generate
-   * a new `access_token` on a later date. In that case, the new `account_id` will
-   * be different from the old `account_id`.  If an account with a specific
-   * `account_id` disappears instead of changing, the account is likely closed.
-   * Closed accounts are not returned by the Plaid API.  Like all Plaid identifiers,
-   * the `account_id` is case sensitive.
-   */
-  account_id: string;
-  balances: AccountBalance;
-  /**
-   * The last 2-4 alphanumeric characters of an account\'s official account number.
-   * Note that the mask may be non-unique between an Item\'s accounts, and it may
-   * also not match the mask that the bank displays to the user.
-   */
-  mask: string | null;
-  /**
-   * The name of the account, either assigned by the user or by the financial
-   * institution itself
-   */
-  name: string;
-  /**
-   * The official name of the account as given by the financial institution
-   */
-  official_name: string | null;
-  type: AccountType;
-  subtype: AccountSubtype | null;
-  /**
-   * The current verification status of an Auth Item initiated through Automated or
-   * Manual micro-deposits.  Returned for Auth Items only.
-   * `pending_automatic_verification`: The Item is pending automatic verification
-   * `pending_manual_verification`: The Item is pending manual micro-deposit
-   * verification. Items remain in this state until the user successfully verifies
-   * the two amounts.  `automatically_verified`: The Item has successfully been
-   * automatically verified   `manually_verified`: The Item has successfully been
-   * manually verified  `verification_expired`: Plaid was unable to automatically
-   * verify the deposit within 7 calendar days and will no longer attempt to
-   * validate the Item. Users may retry by submitting their information again
-   * through Link.  `verification_failed`: The Item failed manual micro-deposit
-   * verification because the user exhausted all 3 verification attempts. Users may
-   * retry by submitting their information again through Link.
-   */
-  verification_status?: AccountBaseVerificationStatusEnum;
-  /**
-   * Association field linking to budget.budget_id
-   */
-  budget_ids: string[];
+export interface PlaidAccount extends AccountBase {
   /**
    * The ID of the institution that the account belongs to.
    */
@@ -238,16 +184,24 @@ export interface Account {
    * The ID of the item that the account belongs to.
    */
   item_id: string;
-  config?: AccountConfig;
 }
 
-export interface AccountConfig {
+export interface Account extends PlaidAccount {
   /**
-   * Determines if the account is set hidden by user. If this value is true,
-   * Budget will not display or calcuate balances or transactions that belong
-   * to this account.
+   * User defined name. This name is dintinct from account.name or
+   * account.official_name which are provided Plaid.
    */
-  hide?: boolean;
+  custom_name: string;
+  /**
+   * Determines if the account is hidden in the budget. If hidden, the account
+   * is not considered when calculating remaining budget and so on.
+   */
+  labels: AccountLabel[];
+}
+
+export interface AccountLabel {
+  budget_id: string;
+  hide: boolean;
 }
 
 export interface AccountsResponse {
@@ -258,20 +212,25 @@ export interface AccountsResponse {
 export const getAccounts = async (user: MaskedUser) => {
   const client = getClient(user);
 
-  const data: AccountsResponse = {
+  type PlaidAccountsResponse = {
+    errors: ItemError[];
+    accounts: PlaidAccount[];
+  };
+
+  const data: PlaidAccountsResponse = {
     errors: [],
     accounts: [],
   };
 
-  const allAccounts: Account[][] = [];
+  const allAccounts: PlaidAccount[][] = [];
 
   const fetchJobs = user.items.map(async (item) => {
     const { item_id, access_token, institution_id } = item;
     try {
       const response = await client.accountsGet({ access_token });
       const { accounts } = response.data;
-      const filledAccounts: Account[] = accounts.map((e) => {
-        return { ...e, budget_ids: [], institution_id, item_id };
+      const filledAccounts: PlaidAccount[] = accounts.map((e) => {
+        return { ...e, institution_id, item_id };
       });
       allAccounts.push(filledAccounts);
     } catch (error: any) {

@@ -20,7 +20,7 @@ export const getLocalItems = () => {
 
 export const saveLocalItems = (items: Item[]) => {
   try {
-    const data = JSON.stringify(items);
+    const data = JSON.stringify(items.map((e) => ({ ...e, cursor: undefined })));
     fs.writeFileSync(localItemsPath, data);
     console.error("Successfully saved Plaid items to local disk.");
   } catch (error) {
