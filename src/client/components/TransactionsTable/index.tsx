@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Transaction } from "server";
 import { useAppContext, useSorter, IsNow } from "client";
 import TransactionRow from "./TransactionRow";
@@ -35,52 +35,54 @@ const TransactionsTable = () => {
     [budgets, selectedBudgetId]
   );
 
-  const filteredTransactionsArray = useMemo(
-    () =>
-      Array.from(transactions.values()).filter((e) => {
-        if (!budget) return false;
+  const transactionArray = useMemo(() => {
+    return Array.from(transactions.values()).sort((a, b) => {
+      return a.transaction_id > b.transaction_id ? 1 : -1;
+    });
+  }, [transactions]);
 
+  const filteredTransactionsArray = useMemo(() => {
+    return transactionArray.filter((e) => {
+      if (!budget) return false;
+
+      const account = accounts.get(e.account_id);
+      if (account) {
+        const { labels } = account;
+        const label = labels.find((f) => f.budget_id === selectedBudgetId);
+        if (label?.hide) return false;
+
+        const transactionDate = new Date(e.authorized_date || e.date);
+        return isNow.within(budget.interval).from(transactionDate);
+      }
+
+      return false;
+    });
+  }, [transactionArray, accounts, budget, isNow, selectedBudgetId]);
+
+  const sortedTransactionsArray = useMemo(() => {
+    return sort(filteredTransactionsArray, (e, key) => {
+      if (key === "authorized_date") {
+        return new Date(e.authorized_date || e.date);
+      } else if (key === "merchant_name") {
+        return e.merchant_name || e.name;
+      } else if (key === "account") {
+        return accounts.get(e.account_id)?.name;
+      } else if (key === "institution") {
         const account = accounts.get(e.account_id);
-        if (account) {
-          const { labels } = account;
-          const label = labels.find((f) => f.budget_id === selectedBudgetId);
-          if (label?.hide) return false;
-
-          const transactionDate = new Date(e.authorized_date || e.date);
-          return isNow.within(budget.interval).from(transactionDate);
-        }
-
-        return false;
-      }),
-    [accounts, budget, isNow, selectedBudgetId, transactions]
-  );
-
-  const sortedTransactionsArray = useMemo(
-    () =>
-      sort(filteredTransactionsArray, (e, key) => {
-        if (key === "authorized_date") {
-          return new Date(e.authorized_date || e.date);
-        } else if (key === "merchant_name") {
-          return e.merchant_name || e.name;
-        } else if (key === "account") {
-          return accounts.get(e.account_id)?.name;
-        } else if (key === "institution") {
-          const account = accounts.get(e.account_id);
-          return institutions.get(account?.institution_id || "")?.name;
-        } else if (key === "category") {
-          return e.category && e.category[0];
-        } else {
-          return e[key];
-        }
-      }),
-    [accounts, institutions, sort, filteredTransactionsArray]
-  );
+        return institutions.get(account?.institution_id || "")?.name;
+      } else if (key === "category") {
+        return e.category && e.category[0];
+      } else {
+        return e[key];
+      }
+    });
+  }, [accounts, institutions, sort, filteredTransactionsArray]);
 
   const transactionRows = sortedTransactionsArray.map((e) => {
     return <TransactionRow key={e.transaction_id} transaction={e} sorter={sorter} />;
   });
 
-  const getHeader = (key: keyof TransactionHeaders): string => {
+  const getHeader = useCallback((key: keyof TransactionHeaders): string => {
     if (key === "authorized_date") {
       return "Date";
     } else if (key === "merchant_name") {
@@ -96,7 +98,7 @@ const TransactionsTable = () => {
     } else {
       return key;
     }
-  };
+  }, []);
 
   const hiddenColumns = Object.entries(visibles)
     .filter(([key, value]) => !value)

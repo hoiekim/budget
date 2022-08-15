@@ -35,7 +35,9 @@ const CategoryComponent = ({ category }: Props) => {
           return isNow.within(interval).from(transactionDate);
         })
         .reduce((acc, e) => {
-          if (accounts.get(e.account_id)?.config?.hide) return acc;
+          const account = accounts.get(e.account_id);
+          const label = account?.labels.find((f) => f.budget_id === selectedBudgetId);
+          if (label?.hide) return acc;
           if (e.labels.find((f) => f.category_id === category_id)) {
             return acc - e.amount;
           }
