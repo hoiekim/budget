@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { MaskedUser } from "server";
 import { useAppContext, useSync, call } from "client";
 import { PlaidLinkButton } from "client/components";
 import "./index.css";
@@ -9,8 +8,8 @@ const Header = () => {
   const { sync, clean } = useSync();
 
   const logout = useCallback(() => {
-    call.delete<MaskedUser>("/api/login").then((r) => {
-      setUser(r.data);
+    call.delete("/api/login").then((r) => {
+      setUser(undefined);
       clean();
     });
   }, [setUser, clean]);

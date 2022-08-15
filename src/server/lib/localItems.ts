@@ -9,7 +9,6 @@ export const getLocalItems = () => {
     try {
       const localItemsBuffer = fs.readFileSync(localItemsPath);
       const items = JSON.parse(localItemsBuffer.toString());
-      console.error("Successfully loaded Plaid items from local disk.");
       return items as Item[];
     } catch (error) {
       console.error("Failed to load local Plaid items.");
@@ -22,7 +21,6 @@ export const saveLocalItems = (items: Item[]) => {
   try {
     const data = JSON.stringify(items.map((e) => ({ ...e, cursor: undefined })));
     fs.writeFileSync(localItemsPath, data);
-    console.error("Successfully saved Plaid items to local disk.");
   } catch (error) {
     console.error("Failed to save local Plaid items.");
   }

@@ -1,10 +1,6 @@
-import { Route, GetResponse } from "server";
+import { Route } from "server";
 
-const getResponse: GetResponse = async (req) => {
+export const deleteLoginRoute = new Route("DELETE", "/login", async (req) => {
   req.session.user = undefined;
   return { status: "success" };
-};
-
-const route = new Route("DELETE", "/login", getResponse);
-
-export default route;
+});

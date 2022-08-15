@@ -16,7 +16,7 @@ export * from "./routes";
 import express from "express";
 import session from "express-session";
 import path from "path";
-import { initializeIndex, User } from "server";
+import { initializeIndex, User, Route } from "server";
 import * as routes from "server/routes";
 
 declare module "express-session" {
@@ -56,10 +56,12 @@ router.use((req, res, next) => {
   next();
 });
 
-Object.values(routes).forEach((route) => {
+const register = (route: Route<any>) => {
   const { path, handler } = route;
   router.use(path, handler);
-});
+};
+
+Object.values(routes).forEach(register);
 
 app.use("/api", router);
 

@@ -1,6 +1,6 @@
 import { call, numberToCommaString, useAppContext } from "client";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { NewCategoryResponse, Section } from "server";
+import { NewCategoryGetResponse, Section } from "server";
 import CategoryComponent from "./CategoryComponent";
 
 interface Props {
@@ -18,7 +18,7 @@ const SectionComponent = ({ section }: Props) => {
   const onClickAdd = async () => {
     const queryString = "?" + new URLSearchParams({ parent: section_id }).toString();
     const newCategoryRequestUrl = "/api/new-category" + queryString;
-    const { data } = await call.get<NewCategoryResponse>(newCategoryRequestUrl);
+    const { data } = await call.get<NewCategoryGetResponse>(newCategoryRequestUrl);
 
     setCategories((oldCategories) => {
       const newCategories = new Map(oldCategories);

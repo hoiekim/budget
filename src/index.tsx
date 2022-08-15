@@ -1,13 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
-import { getLoginResponse } from "server";
+import { LoginGetResponse } from "server";
 import { call } from "client";
 import { App } from "client/components";
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
-call.get<getLoginResponse>("/api/login").then((r) => {
+call.get<LoginGetResponse>("/api/login").then((r) => {
   const app = r.data?.app;
   const version = app?.version;
   if (version) {

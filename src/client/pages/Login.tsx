@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MaskedUser } from "server";
+import { LoginPostResponse } from "server";
 import { useAppContext, call } from "client";
 
 const Login = () => {
@@ -13,7 +13,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
 
   const onClick = () => {
-    call.post<MaskedUser>("/api/login", { username, password }).then((r) => {
+    call.post<LoginPostResponse>("/api/login", { username, password }).then((r) => {
       if (r.status === "success") {
         setUser(r.data);
         setUsername("");

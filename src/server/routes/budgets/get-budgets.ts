@@ -1,19 +1,25 @@
-import { searchBudgets, Route, GetResponse, BudgetsResponse } from "server";
+import { searchBudgets, Route, Budget, Section, Category } from "server";
 
-const getResponse: GetResponse<BudgetsResponse> = async (req, res) => {
-  const { user } = req.session;
-  if (!user) {
-    return {
-      status: "failed",
-      info: "Request user is not authenticated.",
-    };
+export interface BudgetsGetResponse {
+  budgets: Budget[];
+  sections: Section[];
+  categories: Category[];
+}
+
+export const getBudgetsRoute = new Route<BudgetsGetResponse>(
+  "GET",
+  "/budgets",
+  async (req, res) => {
+    const { user } = req.session;
+    if (!user) {
+      return {
+        status: "failed",
+        info: "Request user is not authenticated.",
+      };
+    }
+
+    const data = await searchBudgets(user);
+
+    return { status: "success", data };
   }
-
-  const data = await searchBudgets(user);
-
-  return { status: "success", data };
-};
-
-const route = new Route("GET", "/budgets", getResponse);
-
-export default route;
+);

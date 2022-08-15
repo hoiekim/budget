@@ -1,6 +1,6 @@
-import { Route, GetResponse, deleteBudget } from "server";
+import { Route, deleteBudget } from "server";
 
-const getResponse: GetResponse = async (req) => {
+export const deleteBudgetRoute = new Route("DELETE", "/budget", async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -21,8 +21,4 @@ const getResponse: GetResponse = async (req) => {
   await deleteBudget(user, budget_id);
 
   return { status: "success" };
-};
-
-const route = new Route("DELETE", "/budget", getResponse);
-
-export default route;
+});

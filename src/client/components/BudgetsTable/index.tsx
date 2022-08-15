@@ -1,4 +1,4 @@
-import { Budget, NewBudgetResponse } from "server";
+import { Budget, NewBudgetGetResponse } from "server";
 import { call, useAppContext } from "client";
 import BudgetComponent from "./BudgetComponent";
 import "./index.css";
@@ -8,7 +8,7 @@ const BudgetsTable = () => {
   const { budgets, setBudgets, selectedBudgetId, setSelectedBudgetId } = useAppContext();
 
   const onClickAdd = async () => {
-    const { data } = await call.get<NewBudgetResponse>("/api/new-budget");
+    const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");
     if (!data) return;
 
     const { budget_id } = data;

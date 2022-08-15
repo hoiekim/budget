@@ -1,24 +1,26 @@
 import bcrypt from "bcrypt";
-import { Route, GetResponse, searchUser, MaskedUser } from "server";
+import { Route, searchUser, MaskedUser } from "server";
 
-const getResponse: GetResponse<MaskedUser> = async (req) => {
-  const { username, password } = req.body;
+export type LoginPostResponse = MaskedUser;
 
-  const user = await searchUser({ username });
-  if (!user) return { status: "failed", info: "User is not found." };
+export const postLoginRoute = new Route<LoginPostResponse>(
+  "POST",
+  "/login",
+  async (req) => {
+    const { username, password } = req.body;
 
-  const pwMatches = await bcrypt.compare(password, user.password);
+    const user = await searchUser({ username });
+    if (!user) return { status: "failed", info: "User is not found." };
 
-  if (pwMatches) {
-    const { user_id, username, items } = user;
-    const safeUser: MaskedUser = { user_id, username, items };
-    req.session.user = safeUser;
-    return { status: "success", data: safeUser };
+    const pwMatches = await bcrypt.compare(password, user.password);
+
+    if (pwMatches) {
+      const { user_id, username, items } = user;
+      const safeUser: MaskedUser = { user_id, username, items };
+      req.session.user = safeUser;
+      return { status: "success", data: safeUser };
+    }
+
+    return { status: "failed", info: "Wrong password." };
   }
-
-  return { status: "failed", info: "Wrong password." };
-};
-
-const route = new Route("POST", "/login", getResponse);
-
-export default route;
+);

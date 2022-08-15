@@ -1,6 +1,6 @@
-import { Route, GetResponse, updateBudget } from "server";
+import { Route, updateBudget } from "server";
 
-const getResponse: GetResponse = async (req) => {
+export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -30,8 +30,4 @@ const getResponse: GetResponse = async (req) => {
     console.error(`Failed to update a budget: ${req.body.budget_id}`);
     throw new Error(error);
   }
-};
-
-const route = new Route("POST", "/budget", getResponse);
-
-export default route;
+});

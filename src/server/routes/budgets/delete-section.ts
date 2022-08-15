@@ -1,6 +1,6 @@
-import { Route, GetResponse, deleteSection } from "server";
+import { Route, deleteSection } from "server";
 
-const getResponse: GetResponse = async (req) => {
+export const deleteSectionRoute = new Route("DELETE", "/section", async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -21,8 +21,4 @@ const getResponse: GetResponse = async (req) => {
   await deleteSection(user, section_id);
 
   return { status: "success" };
-};
-
-const route = new Route("DELETE", "/section", getResponse);
-
-export default route;
+});

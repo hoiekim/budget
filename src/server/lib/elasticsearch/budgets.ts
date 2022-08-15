@@ -11,8 +11,6 @@ export interface Budget {
   iso_currency_code: string;
 }
 
-export type NewBudgetResponse = { budget_id: string };
-
 /**
  * Creates a document that represents a budget.
  * Note: Budget > Section > Category
@@ -131,8 +129,6 @@ export interface Section {
   capacity: number;
 }
 
-export type NewSectionResponse = { section_id: string };
-
 /**
  * Creates a document that represents a section.
  * Note: Budget > Section > Category
@@ -241,8 +237,6 @@ export interface Category {
   capacity: number;
 }
 
-export type NewCategoryResponse = { category_id: string };
-
 /**
  * Creates a document that represents a category.
  * Note: Budget > Section > Category
@@ -331,18 +325,12 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
   return response;
 };
 
-export interface BudgetsResponse {
-  budgets: Budget[];
-  sections: Section[];
-  categories: Category[];
-}
-
 /**
  * Searches for accounts associated with given user.
  * @param user
  * @returns A promise to be an array of Account objects
  */
-export const searchBudgets = async (user: MaskedUser): Promise<BudgetsResponse> => {
+export const searchBudgets = async (user: MaskedUser) => {
   const response = await client.search<{
     type: string;
     budget?: Budget;

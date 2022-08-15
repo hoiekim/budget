@@ -1,6 +1,6 @@
-import { Route, GetResponse, updateSection } from "server";
+import { Route, updateSection } from "server";
 
-const getResponse: GetResponse = async (req) => {
+export const postSectionRoute = new Route("POST", "/section", async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -30,8 +30,4 @@ const getResponse: GetResponse = async (req) => {
     console.error(`Failed to update a section: ${req.body.section_id}`);
     throw new Error(error);
   }
-};
-
-const route = new Route("POST", "/section", getResponse);
-
-export default route;
+});

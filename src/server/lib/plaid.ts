@@ -5,14 +5,16 @@ import {
   LinkTokenCreateRequest,
   Products,
   CountryCode,
+  TransactionsSyncRequest,
   Transaction as PlaidTransaction,
   RemovedTransaction,
-  TransactionsSyncRequest,
   Institution as PlaidInstitution,
   PlaidError,
   AccountBase,
 } from "plaid";
 import { MaskedUser } from "server";
+
+export type { RemovedTransaction } from "plaid";
 
 export interface TransactionLabel {
   budget_id: string;
@@ -82,10 +84,6 @@ export const exchangePublicToken = async (user: MaskedUser, public_token: string
   return response.data;
 };
 
-export interface PbulicTokenResponse {
-  item: Item;
-}
-
 export const getItem = async (user: MaskedUser, access_token: string): Promise<Item> => {
   const client = getClient(user);
 
@@ -98,13 +96,6 @@ export const getItem = async (user: MaskedUser, access_token: string): Promise<I
 };
 
 export type ItemError = PlaidError & { item_id: string };
-
-export type TransactionsResponse = {
-  errors: ItemError[];
-  added: Transaction[];
-  removed: RemovedTransaction[];
-  modified: Transaction[];
-};
 
 export const getTransactions = async (user: MaskedUser) => {
   const client = getClient(user);
@@ -202,11 +193,6 @@ export interface Account extends PlaidAccount {
 export interface AccountLabel {
   budget_id: string;
   hide: boolean;
-}
-
-export interface AccountsResponse {
-  errors: ItemError[];
-  accounts: Account[];
 }
 
 export const getAccounts = async (user: MaskedUser) => {

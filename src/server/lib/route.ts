@@ -13,11 +13,11 @@ export type GetResponse<T = any> = (
   res: Response
 ) => Promise<ApiResponse<T> | void>;
 
-export class Route {
+export class Route<T> {
   path: string;
   handler: RequestHandler;
 
-  constructor(method: Method, path: string, callback: GetResponse) {
+  constructor(method: Method, path: string, callback: GetResponse<T>) {
     this.path = path;
     this.handler = async (req, res, next) => {
       if (req.method === method) {

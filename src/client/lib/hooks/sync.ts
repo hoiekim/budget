@@ -1,5 +1,9 @@
 import { useCallback, useMemo } from "react";
-import { TransactionsResponse, AccountsResponse, BudgetsResponse } from "server";
+import {
+  TransactionsStreamGetResponse,
+  AccountsStreamGetResponse,
+  BudgetsGetResponse,
+} from "server";
 import { useAppContext, read, call } from "client";
 
 /**
@@ -22,13 +26,19 @@ export const useSync = () => {
   const syncTransactions = useCallback(() => {
     if (!userLoggedIn) return;
 
-    read<TransactionsResponse>("/api/transactions-stream", ({ data }) => {
+    read<TransactionsStreamGetResponse>("/api/transactions-stream", ({ data }) => {
       if (!data) return;
       const { added, removed, modified } = data;
 
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
-        [...added, ...modified].forEach((e) => newTransactions.set(e.transaction_id, e));
+        added.forEach((e) => newTransactions.set(e.transaction_id, e));
+        modified.forEach((e) => {
+          const oldTransaction = oldTransactions.get(e.transaction_id);
+          if (oldTransaction) {
+            newTransactions.set(e.transaction_id, { ...oldTransaction, ...e });
+          }
+        });
         removed.forEach((e) => newTransactions.delete(e.transaction_id));
         return newTransactions;
       });
@@ -40,7 +50,7 @@ export const useSync = () => {
   const syncAccounts = useCallback(() => {
     if (!userLoggedIn) return;
 
-    read<AccountsResponse>("/api/accounts-stream", ({ data }) => {
+    read<AccountsStreamGetResponse>("/api/accounts-stream", ({ data }) => {
       if (!data) return;
       const { accounts, errors } = data;
 
@@ -81,7 +91,7 @@ export const useSync = () => {
   const syncBudgets = useCallback(() => {
     if (!userLoggedIn) return;
 
-    call<BudgetsResponse>("/api/budgets").then(({ data }) => {
+    call.get<BudgetsGetResponse>("/api/budgets").then(({ data }) => {
       if (!data) return;
       const { budgets, sections, categories } = data;
 

@@ -1,6 +1,6 @@
 import { useAppContext, numberToCommaString, call } from "client";
 import { useCallback, useRef, useState, useMemo } from "react";
-import { Budget, Interval, NewSectionResponse } from "server";
+import { Budget, Interval, NewSectionGetResponse } from "server";
 import SectionComponent from "./SectionComponent";
 
 interface Props {
@@ -18,7 +18,9 @@ const BudgetComponent = ({ budget }: Props) => {
 
   const onClickAdd = async () => {
     const queryString = "?" + new URLSearchParams({ parent: budget_id }).toString();
-    const { data } = await call.get<NewSectionResponse>("/api/new-section" + queryString);
+    const { data } = await call.get<NewSectionGetResponse>(
+      "/api/new-section" + queryString
+    );
 
     setSections((oldSections) => {
       const newSections = new Map(oldSections);

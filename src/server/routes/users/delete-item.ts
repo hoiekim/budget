@@ -1,6 +1,6 @@
-import { Route, GetResponse, deleteItem, saveLocalItems } from "server";
+import { Route, deleteItem, saveLocalItems } from "server";
 
-const getResponse: GetResponse = async (req) => {
+export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -23,8 +23,4 @@ const getResponse: GetResponse = async (req) => {
   if (user.username === "admin") saveLocalItems(user.items);
 
   return { status: "success" };
-};
-
-const route = new Route("DELETE", "/item", getResponse);
-
-export default route;
+});

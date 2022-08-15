@@ -1,6 +1,6 @@
-import { Route, GetResponse, deleteCategory } from "server";
+import { Route, deleteCategory } from "server";
 
-const getResponse: GetResponse = async (req) => {
+export const deleteCategoryRoute = new Route("DELETE", "/category", async (req) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -21,8 +21,4 @@ const getResponse: GetResponse = async (req) => {
   await deleteCategory(user, category_id);
 
   return { status: "success" };
-};
-
-const route = new Route("DELETE", "/category", getResponse);
-
-export default route;
+});

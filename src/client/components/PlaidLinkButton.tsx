@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
-import { Item, PbulicTokenResponse } from "server";
+import { Item, PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
 import { useAppContext, call, useSync } from "client";
 
 interface Props {
@@ -29,7 +29,10 @@ const PlaidLinkButton = ({ item, children }: Props) => {
       const { institution } = metadata;
       const institution_id = institution && institution.institution_id;
       call
-        .post<PbulicTokenResponse>("/api/public-token", { public_token, institution_id })
+        .post<PbulicTokenPostResponse>("/api/public-token", {
+          public_token,
+          institution_id,
+        })
         .then((r) => {
           const { status, data } = r;
           if (status === "success" && data?.item) {
@@ -63,12 +66,14 @@ const PlaidLinkButton = ({ item, children }: Props) => {
       queryString += "?" + new URLSearchParams({ access_token }).toString();
     }
 
-    const promisedToken = call.get<string>("/api/link-token" + queryString).then((r) => {
-      const token = r.data || "";
-      if (access_token) globalTokens.set(access_token, token);
-      setToken(token);
-      return token;
-    });
+    const promisedToken = call
+      .get<LinkTokenGetResponse>("/api/link-token" + queryString)
+      .then((r) => {
+        const token = r.data || "";
+        if (access_token) globalTokens.set(access_token, token);
+        setToken(token);
+        return token;
+      });
 
     if (access_token) fetchJobs.set(access_token, promisedToken);
   }, [token, userLoggedIn, updateMode, access_token]);

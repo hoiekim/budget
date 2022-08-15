@@ -1,14 +1,7 @@
-export { default as getTransactionsStreamRoute } from "./get-transactions-stream";
 export * from "./get-transactions-stream";
-export { default as getAccountsStreamRoute } from "./get-accounts-stream";
 export * from "./get-accounts-stream";
-export { default as getInstitutionRoute } from "./get-institution";
 export * from "./get-institution";
-export { default as postTrasactionRoute } from "./post-transaction";
 export * from "./post-transaction";
-export { default as postTrasactionLabelRoute } from "./post-transaction-label";
 export * from "./post-transaction-label";
-export { default as postAccountRoute } from "./post-account";
 export * from "./post-account";
-export { default as postAccountLabelRoute } from "./post-account-label";
 export * from "./post-account-label";
