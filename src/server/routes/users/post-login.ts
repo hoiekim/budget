@@ -10,7 +10,8 @@ const getResponse: GetResponse<MaskedUser> = async (req) => {
   const pwMatches = await bcrypt.compare(password, user.password);
 
   if (pwMatches) {
-    const safeUser = { ...user, password: undefined };
+    const { user_id, username, items } = user;
+    const safeUser: MaskedUser = { user_id, username, items };
     req.session.user = safeUser;
     return { status: "success", data: safeUser };
   }

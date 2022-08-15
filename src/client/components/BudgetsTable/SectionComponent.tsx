@@ -44,7 +44,7 @@ const SectionComponent = ({ section }: Props) => {
   const categoryComponents = useMemo(() => {
     return Array.from(categories.values())
       .filter((e) => e.section_id === section_id)
-      .map((e, i) => {
+      .map((e) => {
         return <CategoryComponent key={e.category_id} category={e} />;
       });
   }, [categories, section_id]);

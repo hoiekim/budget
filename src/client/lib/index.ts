@@ -1,3 +1,3 @@
 export * from "./call";
 export * from "./hooks";
-export * from "./formatter";
+export * from "./util";

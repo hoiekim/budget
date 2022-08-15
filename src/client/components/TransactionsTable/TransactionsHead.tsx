@@ -19,8 +19,9 @@ const TransactionsHead = ({ sorter, getHeader }: Props) => {
     "category",
   ];
 
-  const headerComponents = headerKeys.map((key, i) => {
-    if (getVisible(key)) {
+  const headerComponents = headerKeys
+    .filter((key) => getVisible(key))
+    .map((key, i) => {
       return (
         <td key={`transactions_header_${i}`}>
           <div>
@@ -31,8 +32,7 @@ const TransactionsHead = ({ sorter, getHeader }: Props) => {
           </div>
         </td>
       );
-    } else return <></>;
-  });
+    });
 
   return (
     <thead>

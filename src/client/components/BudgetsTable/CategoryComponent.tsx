@@ -1,4 +1,4 @@
-import { call, numberToCommaString, useAppContext } from "client";
+import { call, numberToCommaString, useAppContext, IsNow } from "client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Category } from "server";
 
@@ -12,7 +12,8 @@ const CategoryComponent = ({ category }: Props) => {
   const [nameInput, setNameInput] = useState(name);
   const [capacityInput, setCapacityInput] = useState(numberToCommaString(capacity));
 
-  const { transactions, accounts, setCategories } = useAppContext();
+  const { transactions, accounts, budgets, setCategories, selectedBudgetId } =
+    useAppContext();
 
   useEffect(() => {
     setCategories((oldCategories) => {
@@ -22,19 +23,30 @@ const CategoryComponent = ({ category }: Props) => {
       const newCategories = new Map(oldCategories);
       const newCategory = { ...oldCategory };
 
-      newCategory.amount = Array.from(transactions.values()).reduce((acc, e) => {
-        if (accounts.get(e.account_id)?.config?.hide) return acc;
-        if (e.labels.find((f) => f.category_id === category_id)) {
-          return acc - e.amount;
-        }
-        return acc;
-      }, 0);
+      const budget = budgets.get(selectedBudgetId);
+      if (!budget) return oldCategories;
+
+      const { interval } = budget;
+      const isNow = new IsNow();
+
+      newCategory.amount = Array.from(transactions.values())
+        .filter((e) => {
+          const transactionDate = new Date(e.authorized_date || e.date);
+          return isNow.within(interval).from(transactionDate);
+        })
+        .reduce((acc, e) => {
+          if (accounts.get(e.account_id)?.config?.hide) return acc;
+          if (e.labels.find((f) => f.category_id === category_id)) {
+            return acc - e.amount;
+          }
+          return acc;
+        }, 0);
 
       newCategories.set(category_id, newCategory);
 
       return newCategories;
     });
-  }, [transactions, accounts, setCategories, category_id]);
+  }, [transactions, accounts, setCategories, category_id, budgets, selectedBudgetId]);
 
   const revertInputs = useCallback(() => {
     setNameInput(name);

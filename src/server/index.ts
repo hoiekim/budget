@@ -11,6 +11,7 @@ else process.env.NODE_PATH = paths.join(":");
 require("module").Module._initPaths();
 
 export * from "./lib";
+export * from "./routes";
 
 import express from "express";
 import session from "express-session";

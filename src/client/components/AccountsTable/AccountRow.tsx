@@ -167,7 +167,7 @@ const AccountRow = ({ account, sorter }: Props) => {
           <div>{formattedBalancesText}</div>
         </td>
       )}
-      {getVisible("name") && (
+      {getVisible("custom_name") && (
         <td>
           <div>
             <input onChange={onChangeNameInput} value={nameInput} />

@@ -90,7 +90,13 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     <tr>
       {getVisible("authorized_date") && (
         <td>
-          <div>{authorized_date || date}</div>
+          <div>
+            {new Date(authorized_date || date).toLocaleString("en-US", {
+              year: "numeric",
+              month: "numeric",
+              day: "numeric",
+            })}
+          </div>
         </td>
       )}
       {getVisible("merchant_name") && (

@@ -12,13 +12,14 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
 
   const headerKeys: (keyof AccountHeaders)[] = [
     "balances",
-    "name",
+    "custom_name",
     "official_name",
     "institution",
   ];
 
-  const headerComponents = headerKeys.map((key, i) => {
-    if (getVisible(key)) {
+  const headerComponents = headerKeys
+    .filter((key) => getVisible(key))
+    .map((key, i) => {
       return (
         <td key={`accounts_header_${i}`}>
           <div>
@@ -29,8 +30,7 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
           </div>
         </td>
       );
-    } else return <></>;
-  });
+    });
 
   return (
     <thead>

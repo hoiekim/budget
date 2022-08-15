@@ -281,7 +281,7 @@ export const updateAccountLabels = async (
       if (ctx._source.type == "account") {
         int n=0;
         for (int i=ctx._source.account.labels.length-1; i>=0; i--) {
-          if (ctx._source.account.labels[i].account_id == params.label.account_id) {
+          if (ctx._source.account.labels[i].budget_id == params.label.budget_id) {
               ctx._source.account.labels[i].hide = params.label.hide;
               n++;
           }

@@ -31,7 +31,7 @@ const BudgetsTable = () => {
     setSelectedBudgetId(budget_id);
   };
 
-  const budgetOptions = Array.from(budgets.values()).map((e, i) => {
+  const budgetOptions = Array.from(budgets.values()).map((e) => {
     return (
       <option key={e.budget_id} value={e.budget_id}>
         {e.name || "Unnamed"}

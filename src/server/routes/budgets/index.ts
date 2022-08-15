@@ -1,13 +1,23 @@
-export { default as getBudgets } from "./get-budgets";
+export { default as getBudgetsRoute } from "./get-budgets";
+export * from "./get-budgets";
 
-export { default as getNewBudget } from "./get-new-budget";
-export { default as getNewCategory } from "./get-new-category";
-export { default as getNewSection } from "./get-new-section";
+export { default as getNewBudgetRoute } from "./get-new-budget";
+export * from "./get-new-budget";
+export { default as getNewCategoryRoute } from "./get-new-category";
+export * from "./get-new-category";
+export { default as getNewSectionRoute } from "./get-new-section";
+export * from "./get-new-section";
 
-export { default as postBudget } from "./post-budget";
-export { default as postCategory } from "./post-category";
-export { default as postSection } from "./post-section";
+export { default as postBudgetRoute } from "./post-budget";
+export * from "./post-budget";
+export { default as postCategoryRoute } from "./post-category";
+export * from "./post-category";
+export { default as postSectionRoute } from "./post-section";
+export * from "./post-section";
 
-export { default as deleteBudget } from "./delete-budget";
-export { default as deleteCategory } from "./delete-category";
-export { default as deleteSection } from "./delete-section";
+export { default as deleteBudgetRoute } from "./delete-budget";
+export * from "./delete-budget";
+export { default as deleteCategoryRoute } from "./delete-category";
+export * from "./delete-category";
+export { default as deleteSectionRoute } from "./delete-section";
+export * from "./delete-section";

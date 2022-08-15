@@ -1,10 +1,15 @@
-import { Route, GetResponse, MaskedUser } from "server";
+import { Route, GetResponse, MaskedUser, version } from "server";
 
-const getResponse: GetResponse<MaskedUser> = async (req) => {
+export interface getLoginResponse {
+  user?: MaskedUser;
+  app: { version: string };
+}
+
+const getResponse: GetResponse<getLoginResponse> = async (req) => {
   const { user } = req.session;
   return {
     status: "success",
-    data: user,
+    data: { user, app: { version } },
     info: user ? undefined : "Not logged in.",
   };
 };
