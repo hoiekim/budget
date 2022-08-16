@@ -5,7 +5,6 @@ import {
   MaskedUser,
   flattenAllAddresses,
   TransactionLabel,
-  AccountLabel,
 } from "server";
 import { client, index } from "./client";
 
@@ -70,58 +69,6 @@ export const updateTransactions = async (
     return [
       { update: { _index: index, _id: transaction_id } },
       { script: { source, lang: "painless" } },
-    ];
-  });
-
-  const response = await client.bulk({ operations });
-
-  return response.items;
-};
-
-export interface TransactionLabelInput {
-  transaction_id: string;
-  label: TransactionLabel;
-}
-
-/**
- * Updates transaction document with given object.
- * @param user
- * @param transactionLabels
- * @returns A promise to be an Elasticsearch response object
- */
-export const updateTransactionLabels = async (
-  user: MaskedUser,
-  transactionLabels: TransactionLabelInput[]
-) => {
-  if (!transactionLabels || !transactionLabels.length) return [];
-  const { user_id } = user;
-  const operations = transactionLabels.flatMap((transactionLabel) => {
-    const { transaction_id, label } = transactionLabel;
-
-    const source = `
-  if (ctx._source.user.user_id == "${user_id}") {
-    if (ctx._source.type == "transaction") {
-      int n=0;
-      for (int i=ctx._source.transaction.labels.length-1; i>=0; i--) {
-        if (ctx._source.transaction.labels[i].budget_id == params.label.budget_id) {
-            ctx._source.transaction.labels[i].category_id = params.label.category_id;
-            n++;
-        }
-      }
-      if (n == 0) {
-        ctx._source.transaction.labels.add(params.label);
-      }
-    } else {
-      throw new Exception("Found document is not transaction type.");
-    }
-  } else {
-    throw new Exception("Request user doesn't have permission for this document.");
-  }
-  `;
-
-    return [
-      { update: { _index: index, _id: transaction_id } },
-      { script: { source, lang: "painless", params: { label } } },
     ];
   });
 
@@ -248,58 +195,6 @@ export const updateAccounts = async (user: MaskedUser, accounts: PartialAccount[
     return [
       { update: { _index: index, _id: account_id } },
       { script: { source, lang: "painless" } },
-    ];
-  });
-
-  const response = await client.bulk({ operations });
-
-  return response.items;
-};
-
-export interface AccountLabelInput {
-  account_id: string;
-  label: AccountLabel;
-}
-
-/**
- * Updates account document with given object.
- * @param user
- * @param accounts
- * @returns A promise to be an Elasticsearch response object
- */
-export const updateAccountLabels = async (
-  user: MaskedUser,
-  accountLabels: AccountLabelInput[]
-) => {
-  if (!accountLabels || !accountLabels.length) return [];
-  const { user_id } = user;
-  const operations = accountLabels.flatMap((accountLabel) => {
-    const { account_id, label } = accountLabel;
-
-    const source = `
-    if (ctx._source.user.user_id == "${user_id}") {
-      if (ctx._source.type == "account") {
-        int n=0;
-        for (int i=ctx._source.account.labels.length-1; i>=0; i--) {
-          if (ctx._source.account.labels[i].budget_id == params.label.budget_id) {
-              ctx._source.account.labels[i].hide = params.label.hide;
-              n++;
-          }
-        }
-        if (n == 0) {
-          ctx._source.account.labels.add(params.label);
-        }
-      } else {
-        throw new Exception("Found document is not account type.");
-      }
-    } else {
-      throw new Exception("Request user doesn't have permission for this document.");
-    }
-    `;
-
-    return [
-      { update: { _index: index, _id: account_id } },
-      { script: { source, lang: "painless", params: { label } } },
     ];
   });
 

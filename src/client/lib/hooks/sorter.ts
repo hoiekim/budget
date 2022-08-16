@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useLocalStorage } from "client";
 
 class Comparable<T> {
@@ -61,51 +62,67 @@ export const useSorter = <T, H>(
     initialVisibles || {}
   );
 
-  const sort: Sorter<T, H>["sort"] = (array, formatter) => {
-    Array.from(sortings).forEach(async (e) => {
-      const [key, option] = e;
-      array.sort((a, b) => {
-        const comparable = new Comparable(a, b);
-        comparable.format((e) => formatter(e, key));
+  const sort: Sorter<T, H>["sort"] = useCallback(
+    (array, formatter) => {
+      Array.from(sortings).forEach(async (e) => {
+        const [key, option] = e;
+        array.sort((a, b) => {
+          const comparable = new Comparable(a, b);
+          comparable.format((e) => formatter(e, key));
 
-        const isABiggerThanB = comparable.a > comparable.b;
-        const aMinusB = comparable.a === comparable.b ? 0 : isABiggerThanB ? 1 : -1;
+          const isABiggerThanB = comparable.a > comparable.b;
+          const aMinusB = comparable.a === comparable.b ? 0 : isABiggerThanB ? 1 : -1;
 
-        let result: number = 0;
+          let result: number = 0;
 
-        if (option === "ascending") result = aMinusB;
-        else result = -aMinusB;
-        return result;
+          if (option === "ascending") result = aMinusB;
+          else result = -aMinusB;
+          return result;
+        });
       });
-    });
 
-    return array;
-  };
+      return array;
+    },
+    [sortings]
+  );
 
-  const setSortBy: Sorter<T, H>["setSortBy"] = (key) => {
-    const existingValue = sortings.get(key);
-    const newValue = existingValue === "ascending" ? "descending" : "ascending";
-    sortings.delete(key);
-    sortings.set(key, newValue);
-    setSortings(new Map(sortings));
-  };
+  const setSortBy: Sorter<T, H>["setSortBy"] = useCallback(
+    (key) => {
+      setSortings((oldSortings) => {
+        const newSortings = new Map(oldSortings);
+        const existingValue = oldSortings.get(key);
+        const newValue = existingValue === "ascending" ? "descending" : "ascending";
+        newSortings.delete(key);
+        newSortings.set(key, newValue);
+        return newSortings;
+      });
+    },
+    [setSortings]
+  );
 
-  const getArrow: Sorter<T, H>["getArrow"] = (key) => {
-    switch (sortings.get(key)) {
-      case "ascending":
-        return "↑";
-      case "descending":
-        return "↓";
-      default:
-        return "";
-    }
-  };
+  const getArrow: Sorter<T, H>["getArrow"] = useCallback(
+    (key) => {
+      switch (sortings.get(key)) {
+        case "ascending":
+          return "↑";
+        case "descending":
+          return "↓";
+        default:
+          return "";
+      }
+    },
+    [sortings]
+  );
 
-  const getVisible: Sorter<T, H>["getVisible"] = (key) => !!visibles[key];
+  const getVisible: Sorter<T, H>["getVisible"] = useCallback(
+    (key) => !!visibles[key],
+    [visibles]
+  );
 
-  const toggleVisible: Sorter<T, H>["toggleVisible"] = (key) => {
-    setVisibles({ ...visibles, [key]: !visibles[key] });
-  };
+  const toggleVisible: Sorter<T, H>["toggleVisible"] = useCallback(
+    (key) => setVisibles((oldVisibles) => ({ ...oldVisibles, [key]: !oldVisibles[key] })),
+    [setVisibles]
+  );
 
   return { sort, setSortBy, getArrow, visibles, getVisible, toggleVisible };
 };

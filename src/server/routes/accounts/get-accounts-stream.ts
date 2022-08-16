@@ -47,7 +47,7 @@ export const getAccountsStreamRoute = new Route(
             modified.push(e);
             return existingAccount;
           }
-          const account = { ...e, custom_name: "", labels: [] };
+          const account = { ...e, custom_name: "", hide: false };
           added.push(account);
           return account;
         });

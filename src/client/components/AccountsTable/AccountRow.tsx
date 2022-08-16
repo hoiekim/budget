@@ -20,16 +20,8 @@ const AccountRow = ({ account, sorter }: Props) => {
   const { account_id, balances, custom_name, name, official_name, institution_id } =
     account;
 
-  const {
-    user,
-    setUser,
-    accounts,
-    setAccounts,
-    setTransactions,
-    institutions,
-    items,
-    selectedBudgetId,
-  } = useAppContext();
+  const { user, setUser, accounts, setAccounts, setTransactions, institutions, items } =
+    useAppContext();
 
   const [nameInput, setNameInput] = useState(custom_name || name);
 
@@ -119,21 +111,12 @@ const AccountRow = ({ account, sorter }: Props) => {
 
   const onClickHide: MouseEventHandler<HTMLButtonElement> = () => {
     if (!account_id) return;
-    const updatedLabel = { budget_id: selectedBudgetId, hide: true };
-    call.post("/api/account-label", { account_id, label: updatedLabel }).then((r) => {
+    call.post("/api/account", { account_id, hide: true }).then((r) => {
       if (r.status === "success") {
         setAccounts((oldAccounts) => {
           const newAccounts = new Map(oldAccounts);
           const newAccount = oldAccounts.get(account_id) || account;
-          const { labels } = newAccount;
-          labels.find((f, j) => {
-            if (f.budget_id === selectedBudgetId) {
-              labels.splice(j, 1);
-              return true;
-            }
-            return false;
-          });
-          labels.push(updatedLabel);
+          newAccount.hide = true;
           newAccounts.set(account_id, newAccount);
           return newAccounts;
         });

@@ -16,6 +16,7 @@ const TransactionsHead = ({ sorter, getHeader }: Props) => {
     "amount",
     "account",
     "institution",
+    "budget",
     "category",
   ];
 

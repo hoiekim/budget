@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { Transaction } from "server";
-import { useAppContext, useSorter, IsNow } from "client";
+import { useAppContext, useSorter } from "client";
 import TransactionRow from "./TransactionRow";
 import TransactionsHead from "./TransactionsHead";
 import "./index.css";
@@ -8,11 +8,15 @@ import "./index.css";
 export type TransactionHeaders = { [k in keyof Transaction]?: boolean } & {
   account?: boolean;
   institution?: boolean;
+  budget?: boolean;
 };
 
-const TransactionsTable = () => {
-  const { transactions, accounts, institutions, budgets, selectedBudgetId } =
-    useAppContext();
+interface Props {
+  transactionsArray: Transaction[];
+}
+
+const TransactionsTable = ({ transactionsArray }: Props) => {
+  const { accounts, institutions, budgets, categories } = useAppContext();
 
   const sorter = useSorter<Transaction, TransactionHeaders>(
     "transactions",
@@ -23,44 +27,15 @@ const TransactionsTable = () => {
       amount: true,
       account: true,
       institution: true,
+      budget: true,
       category: true,
     }
   );
 
   const { sort, visibles, toggleVisible } = sorter;
 
-  const isNow = useMemo(() => new IsNow(), []);
-  const budget = useMemo(
-    () => budgets.get(selectedBudgetId),
-    [budgets, selectedBudgetId]
-  );
-
-  const transactionArray = useMemo(() => {
-    return Array.from(transactions.values()).sort((a, b) => {
-      return a.transaction_id > b.transaction_id ? 1 : -1;
-    });
-  }, [transactions]);
-
-  const filteredTransactionsArray = useMemo(() => {
-    return transactionArray.filter((e) => {
-      if (!budget) return false;
-
-      const account = accounts.get(e.account_id);
-      if (account) {
-        const { labels } = account;
-        const label = labels.find((f) => f.budget_id === selectedBudgetId);
-        if (label?.hide) return false;
-
-        const transactionDate = new Date(e.authorized_date || e.date);
-        return isNow.within(budget.interval).from(transactionDate);
-      }
-
-      return false;
-    });
-  }, [transactionArray, accounts, budget, isNow, selectedBudgetId]);
-
   const sortedTransactionsArray = useMemo(() => {
-    return sort(filteredTransactionsArray, (e, key) => {
+    return sort(transactionsArray, (e, key) => {
       if (key === "authorized_date") {
         return new Date(e.authorized_date || e.date);
       } else if (key === "merchant_name") {
@@ -71,12 +46,14 @@ const TransactionsTable = () => {
         const account = accounts.get(e.account_id);
         return institutions.get(account?.institution_id || "")?.name;
       } else if (key === "category") {
-        return e.category && e.category[0];
+        return categories.get(e.label.category_id || "")?.name;
+      } else if (key === "budget") {
+        return budgets.get(e.label.budget_id || "")?.name;
       } else {
         return e[key];
       }
     });
-  }, [accounts, institutions, sort, filteredTransactionsArray]);
+  }, [transactionsArray, accounts, institutions, categories, budgets, sort]);
 
   const transactionRows = sortedTransactionsArray.map((e) => {
     return <TransactionRow key={e.transaction_id} transaction={e} sorter={sorter} />;

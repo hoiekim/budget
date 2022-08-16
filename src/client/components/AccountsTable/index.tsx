@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Account } from "server";
 import { useAppContext, useSorter } from "client";
 import ErrorAccountRow, { ErrorAccount } from "./ErrorAccountRow";
@@ -9,9 +10,13 @@ export type AccountHeaders = { [k in keyof Account]?: boolean } & {
   action?: boolean;
 };
 
-const AccountsTable = () => {
-  const { user, accounts, institutions, selectedBudgetId } = useAppContext();
-  const { items } = user || {};
+interface Props {
+  errorAccountsArray: ErrorAccount[];
+  accountsArray: Account[];
+}
+
+const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
+  const { accounts, institutions } = useAppContext();
 
   const sorter = useSorter<Account, AccountHeaders>(
     "accounts",
@@ -25,25 +30,14 @@ const AccountsTable = () => {
     }
   );
 
-  const errorAccountsArray: ErrorAccount[] =
-    items
-      ?.filter((e) => {
-        return e.plaidError && !accountsArray.find((f) => f.item_id === e.item_id);
-      })
-      .map((e) => ({ item_id: e.item_id, institution_id: e.institution_id })) || [];
-
   const errorAccountRows = errorAccountsArray.map((e, i) => {
     return <ErrorAccountRow key={e.item_id} errorAccount={e} sorter={sorter} />;
   });
 
   const { sort, visibles, toggleVisible } = sorter;
 
-  const accountsArray = sort(
-    Array.from(accounts.values()).filter((e) => {
-      const label = e.labels.find((f) => f.budget_id === selectedBudgetId);
-      return !label?.hide;
-    }),
-    (e, key) => {
+  const sortedAccountsArray = useMemo(() => {
+    return sort(accountsArray, (e, key) => {
       if (key === "balances") {
         const { available, current } = e.balances;
         return Math.max(available || 0, current || 0);
@@ -57,10 +51,10 @@ const AccountsTable = () => {
       } else {
         return e[key];
       }
-    }
-  );
+    });
+  }, [accountsArray, accounts, institutions, sort]);
 
-  const accountRows = accountsArray.map((e, i) => {
+  const accountRows = sortedAccountsArray.map((e, i) => {
     return <AccountRow key={e.account_id} account={e} sorter={sorter} />;
   });
 

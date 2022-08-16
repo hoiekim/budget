@@ -36,9 +36,8 @@ const CategoryComponent = ({ category }: Props) => {
         })
         .reduce((acc, e) => {
           const account = accounts.get(e.account_id);
-          const label = account?.labels.find((f) => f.budget_id === selectedBudgetId);
-          if (label?.hide) return acc;
-          if (e.labels.find((f) => f.category_id === category_id)) {
+          if (account?.hide) return acc;
+          if (e.label.category_id === category_id) {
             return acc - e.amount;
           }
           return acc;

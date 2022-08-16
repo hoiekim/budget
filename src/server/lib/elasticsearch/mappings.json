@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "properties": {
     "type": { "type": "keyword" },
     "user": {
@@ -46,13 +46,7 @@
         "institution_id": { "type": "keyword" },
         "item_id": { "type": "keyword" },
         "custom_name": { "type": "text" },
-        "labels": {
-          "type": "nested",
-          "properties": {
-            "budget_id": { "type": "keyword" },
-            "hide": { "type": "boolean" }
-          }
-        }
+        "hide": { "type": "boolean" }
       }
     },
     "transaction": {
@@ -102,8 +96,8 @@
         "authorized_datetime": { "type": "date" },
         "datetime": { "type": "date" },
         "transaction_code": { "type": "keyword" },
-        "labels": {
-          "type": "nested",
+        "label": {
+          "type": "object",
           "properties": {
             "budget_id": { "type": "keyword" },
             "category_id": { "type": "keyword" }
@@ -117,8 +111,15 @@
       "properties": {
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
-        "interval": { "type": "keyword" },
-        "capacity": { "type": "float" },
+        "capacity": {
+          "type": "object",
+          "properties": {
+            "year": { "type": "float" },
+            "month": { "type": "float" },
+            "week": { "type": "float" },
+            "day": { "type": "float" }
+          }
+        },
         "iso_currency_code": { "type": "keyword" }
       }
     },
@@ -129,7 +130,15 @@
         "section_id": { "type": "keyword" },
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
-        "capacity": { "type": "float" }
+        "capacity": {
+          "type": "object",
+          "properties": {
+            "year": { "type": "float" },
+            "month": { "type": "float" },
+            "week": { "type": "float" },
+            "day": { "type": "float" }
+          }
+        }
       }
     },
     "category": {
@@ -139,7 +148,15 @@
         "category_id": { "type": "keyword" },
         "section_id": { "type": "keyword" },
         "name": { "type": "keyword" },
-        "capacity": { "type": "float" }
+        "capacity": {
+          "type": "object",
+          "properties": {
+            "year": { "type": "float" },
+            "month": { "type": "float" },
+            "week": { "type": "float" },
+            "day": { "type": "float" }
+          }
+        }
       }
     }
   }

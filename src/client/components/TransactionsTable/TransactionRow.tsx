@@ -18,22 +18,35 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     merchant_name,
     name,
     amount,
-    labels,
+    label,
   } = transaction;
 
   const { getVisible } = sorter;
 
-  const { setTransactions, accounts, sections, categories, selectedBudgetId } =
-    useAppContext();
+  const { setTransactions, accounts, budgets, sections, categories } = useAppContext();
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState(() => {
-    return labels.find((e) => e.budget_id === selectedBudgetId)?.category_id || "";
-  });
+  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(label.budget_id);
+  const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(
+    label.category_id
+  );
+
+  const budgetOptions = useMemo(() => {
+    return Array.from(budgets.values()).map((e) => {
+      return (
+        <option
+          key={`transaction_${transaction_id}_budget_option_${e.budget_id}`}
+          value={e.budget_id}
+        >
+          {e.name}
+        </option>
+      );
+    });
+  }, [transaction_id, budgets]);
 
   const categoryOptions = useMemo(() => {
     return Array.from(sections.values())
       .flatMap((e) => {
-        if (e.budget_id !== selectedBudgetId) return [];
+        if (e.budget_id !== label.budget_id) return [];
         return Array.from(categories.values()).filter(
           (f) => f.section_id === e.section_id
         );
@@ -48,41 +61,56 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
           </option>
         );
       });
-  }, [transaction_id, sections, categories, selectedBudgetId]);
+  }, [transaction_id, label.budget_id, sections, categories]);
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
 
-  const onChangeCategorySelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
+  const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
     if (!value) return;
 
-    setSelectedCategoryId(value);
+    setSelectedBudgetIdLabel(value);
 
-    const newLabel = { budget_id: selectedBudgetId, category_id: value };
-
-    const r = await call.post("/api/transaction-label", {
+    const r = await call.post("/api/transaction", {
       transaction_id,
-      label: newLabel,
+      label: { budget_id: value },
     });
 
     if (r.status === "success") {
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
         const newTransaction = { ...transaction };
-        const existingLabel = newTransaction.labels.find((e) => {
-          if (e.budget_id === selectedBudgetId) {
-            e.category_id = value;
-            return true;
-          }
-          return false;
-        });
-        if (!existingLabel) newTransaction.labels.push(newLabel);
+        newTransaction.label.budget_id = value;
         newTransactions.set(transaction_id, newTransaction);
         return newTransactions;
       });
     } else {
-      setSelectedCategoryId(selectedCategoryId);
+      setSelectedBudgetIdLabel(selectedBudgetIdLabel);
+    }
+  };
+
+  const onChangeCategorySelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
+    const { value } = e.target;
+    if (!value) return;
+
+    setSelectedCategoryIdLabel(value);
+
+    const r = await call.post("/api/transaction", {
+      transaction_id,
+      label: { category_id: value },
+    });
+
+    if (r.status === "success") {
+      setTransactions((oldTransactions) => {
+        const newTransactions = new Map(oldTransactions);
+        const newTransaction = { ...transaction };
+        newTransaction.label.category_id = value;
+        newTransactions.set(transaction_id, newTransaction);
+        return newTransactions;
+      });
+    } else {
+      setSelectedCategoryIdLabel(selectedCategoryIdLabel);
     }
   };
 
@@ -121,10 +149,20 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
           </div>
         </td>
       )}
+      {getVisible("budget") && (
+        <td>
+          <div>
+            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+              <option value="">Select Budget</option>
+              {budgetOptions}
+            </select>
+          </div>
+        </td>
+      )}
       {getVisible("category") && (
         <td>
           <div>
-            <select value={selectedCategoryId} onChange={onChangeCategorySelect}>
+            <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
               <option value="">Select Category</option>
               {categoryOptions}
             </select>

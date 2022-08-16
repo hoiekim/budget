@@ -5,7 +5,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const parse = isMap ? (s: string) => new Map(JSON.parse(s)) : JSON.parse;
   const stringify = isMap ? (m: any) => JSON.stringify([...m]) : JSON.stringify;
 
-  const [storedValue, setStoredValue] = useState(() => {
+  const [storedValue, setStoredValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
       return item ? parse(item) : initialValue;
@@ -15,7 +15,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
     }
   });
 
-  const setValue = (value: T | ((val: T) => T)) => {
+  const setValue: Dispatch<SetStateAction<T>> = (value) => {
     try {
       setStoredValue((oldValue: T) => {
         const valueToStore = value instanceof Function ? value(oldValue) : value;
@@ -27,5 +27,5 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
     }
   };
 
-  return [storedValue as T, setValue as Dispatch<SetStateAction<T>>] as const;
+  return [storedValue, setValue] as const;
 };

@@ -4,7 +4,7 @@ import { PlaidLinkButton } from "client/components";
 import "./index.css";
 
 const Header = () => {
-  const { user, setUser, accounts, setAccounts, selectedBudgetId } = useAppContext();
+  const { user, setUser, accounts, setAccounts } = useAppContext();
   const { sync, clean } = useSync();
 
   const logout = useCallback(() => {
@@ -21,23 +21,14 @@ const Header = () => {
       .filter((e) => e.labels)
       .map(async (e) => {
         try {
-          const updatedLabel = { budget_id: selectedBudgetId, hide: false };
           const { account_id } = e;
-          const r = await call.post("/api/account-label", {
+          const r = await call.post("/api/account", {
             account_id,
-            label: updatedLabel,
+            hide: false,
           });
 
           if (r.status === "success") {
-            const { labels } = e;
-            labels.find((f, j) => {
-              if (f.budget_id === selectedBudgetId) {
-                labels.splice(j, 1);
-                return true;
-              }
-              return false;
-            });
-            labels.push(updatedLabel);
+            e.hide = false;
             newAccounts.set(account_id, e);
           }
         } catch (error: any) {
@@ -47,7 +38,7 @@ const Header = () => {
 
     await Promise.all(fetchJobs);
     setAccounts(newAccounts);
-  }, [accounts, setAccounts, selectedBudgetId]);
+  }, [accounts, setAccounts]);
 
   return (
     <div className="Header">

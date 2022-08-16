@@ -17,15 +17,15 @@ import { MaskedUser } from "server";
 export type { RemovedTransaction } from "plaid";
 
 export interface TransactionLabel {
-  budget_id: string;
-  category_id: string;
+  budget_id?: string;
+  category_id?: string;
 }
 
 export interface Transaction extends PlaidTransaction {
   /**
    * Represents relations by pair of budget_id and category_id
    */
-  labels: TransactionLabel[];
+  label: TransactionLabel;
 }
 
 export type Institution = PlaidInstitution;
@@ -184,14 +184,9 @@ export interface Account extends PlaidAccount {
    */
   custom_name: string;
   /**
-   * Determines if the account is hidden in the budget. If hidden, the account
+   * Determines if the account is hidden. If hidden, the account
    * is not considered when calculating remaining budget and so on.
    */
-  labels: AccountLabel[];
-}
-
-export interface AccountLabel {
-  budget_id: string;
   hide: boolean;
 }
 

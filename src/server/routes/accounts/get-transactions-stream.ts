@@ -55,7 +55,7 @@ export const getTransactionsStreamRoute = new Route(
             `${removed.length} removed transactions data.`
         );
 
-        const filledAdded = added.map((e) => ({ ...e, labels: [] }));
+        const filledAdded = added.map((e) => ({ ...e, label: {} }));
         const filledData: TransactionsStreamGetResponse = { ...data, added: filledAdded };
         res.write(JSON.stringify({ status: "success", data: filledData }) + "\n");
 
