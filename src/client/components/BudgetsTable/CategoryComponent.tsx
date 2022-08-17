@@ -1,4 +1,4 @@
-import { call, numberToCommaString, useAppContext, IsNow } from "client";
+import { call, numberToCommaString, useAppContext, IsNow, DeepPartial } from "client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Category } from "server";
 
@@ -9,11 +9,18 @@ interface Props {
 const CategoryComponent = ({ category }: Props) => {
   const { category_id, name, capacity, amount } = category;
 
+  const {
+    transactions,
+    accounts,
+    budgets,
+    setCategories,
+    selectedBudgetId,
+    selectedInterval,
+  } = useAppContext();
   const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(numberToCommaString(capacity));
-
-  const { transactions, accounts, budgets, setCategories, selectedBudgetId } =
-    useAppContext();
+  const [capacityInput, setCapacityInput] = useState(
+    numberToCommaString(capacity[selectedInterval])
+  );
 
   useEffect(() => {
     setCategories((oldCategories) => {
@@ -26,13 +33,12 @@ const CategoryComponent = ({ category }: Props) => {
       const budget = budgets.get(selectedBudgetId);
       if (!budget) return oldCategories;
 
-      const { interval } = budget;
       const isNow = new IsNow();
 
       newCategory.amount = Array.from(transactions.values())
         .filter((e) => {
           const transactionDate = new Date(e.authorized_date || e.date);
-          return isNow.within(interval).from(transactionDate);
+          return isNow.within(selectedInterval).from(transactionDate);
         })
         .reduce((acc, e) => {
           const account = accounts.get(e.account_id);
@@ -47,12 +53,20 @@ const CategoryComponent = ({ category }: Props) => {
 
       return newCategories;
     });
-  }, [transactions, accounts, setCategories, category_id, budgets, selectedBudgetId]);
+  }, [
+    transactions,
+    accounts,
+    setCategories,
+    category_id,
+    budgets,
+    selectedBudgetId,
+    selectedInterval,
+  ]);
 
   const revertInputs = useCallback(() => {
     setNameInput(name);
-    setCapacityInput(numberToCommaString(capacity));
-  }, [name, setNameInput, capacity, setCapacityInput]);
+    setCapacityInput(numberToCommaString(capacity[selectedInterval]));
+  }, [name, setNameInput, capacity, setCapacityInput, selectedInterval]);
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
@@ -60,7 +74,7 @@ const CategoryComponent = ({ category }: Props) => {
   const timeout = useRef<Timeout>();
 
   const submit = useCallback(
-    (updatedCategory: Partial<Category> = {}, delay = 500) => {
+    (updatedCategory: DeepPartial<Category> = {}, delay = 500) => {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(async () => {
         try {
@@ -119,7 +133,7 @@ const CategoryComponent = ({ category }: Props) => {
           onChange={(e) => {
             const { value } = e.target;
             setCapacityInput(value);
-            submit({ capacity: +value });
+            submit({ capacity: { [selectedInterval]: +value } });
           }}
           onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}

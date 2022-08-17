@@ -1,4 +1,4 @@
-import { useAppContext, numberToCommaString, call } from "client";
+import { useAppContext, numberToCommaString, call, DeepPartial } from "client";
 import { useCallback, useRef, useState, useMemo } from "react";
 import { Budget, Interval, NewSectionGetResponse } from "server";
 import SectionComponent from "./SectionComponent";
@@ -8,13 +8,16 @@ interface Props {
 }
 
 const BudgetComponent = ({ budget }: Props) => {
-  const { budget_id, name, interval, capacity, iso_currency_code } = budget;
+  const { budget_id, name, capacity, iso_currency_code } = budget;
 
+  const { budgets, setBudgets, sections, setSections, categories, selectedInterval } =
+    useAppContext();
   const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(numberToCommaString(capacity));
-  const [intervalInput, setIntervalInput] = useState<"" | Interval>(interval);
+  const [capacityInput, setCapacityInput] = useState(
+    numberToCommaString(capacity[selectedInterval])
+  );
+  const [intervalInput, setIntervalInput] = useState<"" | Interval>(selectedInterval);
   const [currencyCodeInput, setCurrencyCodeInput] = useState(iso_currency_code);
-  const { budgets, setBudgets, sections, setSections, categories } = useAppContext();
 
   const onClickAdd = async () => {
     const queryString = "?" + new URLSearchParams({ parent: budget_id }).toString();
@@ -30,7 +33,7 @@ const BudgetComponent = ({ budget }: Props) => {
           section_id,
           budget_id,
           name: "",
-          capacity: 0,
+          capacity: { year: 0, month: 0, week: 0, day: 0 },
         });
       }
       return newSections;
@@ -39,15 +42,15 @@ const BudgetComponent = ({ budget }: Props) => {
 
   const revertInputs = useCallback(() => {
     setNameInput(name);
-    setCapacityInput(numberToCommaString(capacity));
-    setIntervalInput(interval);
+    setCapacityInput(numberToCommaString(capacity[selectedInterval]));
+    setIntervalInput(selectedInterval);
     setCurrencyCodeInput(iso_currency_code);
   }, [
     name,
     setNameInput,
     capacity,
     setCapacityInput,
-    interval,
+    selectedInterval,
     setIntervalInput,
     iso_currency_code,
     setCurrencyCodeInput,
@@ -67,7 +70,7 @@ const BudgetComponent = ({ budget }: Props) => {
   const timeout = useRef<Timeout>();
 
   const submit = useCallback(
-    (updatedBudget: Partial<Budget> = {}, delay = 500) => {
+    (updatedBudget: DeepPartial<Budget> = {}, delay = 500) => {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(async () => {
         try {
@@ -139,7 +142,7 @@ const BudgetComponent = ({ budget }: Props) => {
           onChange={(e) => {
             const { value } = e.target;
             setCapacityInput(value);
-            submit({ capacity: +value });
+            submit({ capacity: { [selectedInterval]: +value } });
           }}
           onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}
@@ -159,7 +162,6 @@ const BudgetComponent = ({ budget }: Props) => {
           onChange={(e) => {
             const value = e.target.value as Interval;
             setIntervalInput(value);
-            submit({ interval: value }, 0);
           }}
         >
           <option value="year">per year</option>

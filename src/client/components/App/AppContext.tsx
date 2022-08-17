@@ -12,7 +12,7 @@ import {
   Sections,
   Categories,
 } from "client";
-import { MaskedUser } from "server";
+import { MaskedUser, Interval } from "server";
 
 interface Props {
   initialUser: ContextType["user"];
@@ -32,9 +32,10 @@ const AppContext = ({ initialUser, children }: Props) => {
   const [categories, setCategories] = useState<Categories>(new Map());
   const [user, _setUser] = useState<MaskedUser | undefined>(initialUser);
 
-  const [selectedBudgetId, setSelectedBudgetId] = useLocalStorage<string>(
-    "selectedBudgetId",
-    ""
+  const [selectedBudgetId, setSelectedBudgetId] = useLocalStorage("selectedBudgetId", "");
+  const [selectedInterval, setSelectedInterval] = useLocalStorage<Interval>(
+    "selectedInterval",
+    "month"
   );
 
   const setUser: Dispatch<SetStateAction<MaskedUser | undefined>> = useCallback(
@@ -75,6 +76,8 @@ const AppContext = ({ initialUser, children }: Props) => {
     setCategories,
     selectedBudgetId,
     setSelectedBudgetId,
+    selectedInterval,
+    setSelectedInterval,
   };
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;

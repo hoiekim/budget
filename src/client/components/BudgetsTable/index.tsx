@@ -1,25 +1,23 @@
+import { ChangeEventHandler, useCallback } from "react";
 import { Budget, NewBudgetGetResponse } from "server";
 import { call, useAppContext } from "client";
 import BudgetComponent from "./BudgetComponent";
 import "./index.css";
-import { ChangeEventHandler } from "react";
 
 const BudgetsTable = () => {
   const { budgets, setBudgets, selectedBudgetId, setSelectedBudgetId } = useAppContext();
 
-  const onClickAdd = async () => {
+  const onClickAdd = useCallback(async () => {
     const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");
     if (!data) return;
 
     const { budget_id } = data;
-    if (!budget_id) return;
 
     const newBudget: Budget = {
       budget_id,
       name: "",
-      capacity: 0,
+      capacity: { year: 0, month: 0, week: 0, day: 0 },
       iso_currency_code: "USD",
-      interval: "month",
     };
 
     setBudgets((oldBudgets) => {
@@ -29,7 +27,7 @@ const BudgetsTable = () => {
     });
 
     setSelectedBudgetId(budget_id);
-  };
+  }, [setBudgets, setSelectedBudgetId]);
 
   const budgetOptions = Array.from(budgets.values()).map((e) => {
     return (

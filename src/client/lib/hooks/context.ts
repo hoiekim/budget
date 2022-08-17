@@ -8,6 +8,7 @@ import {
   Budget,
   Section,
   Category,
+  Interval,
 } from "server";
 import { ClientRouter } from "client";
 
@@ -39,6 +40,8 @@ export interface ContextType {
   setCategories: Dispatch<SetStateAction<Categories>>;
   selectedBudgetId: string;
   setSelectedBudgetId: Dispatch<SetStateAction<string>>;
+  selectedInterval: Interval;
+  setSelectedInterval: Dispatch<SetStateAction<Interval>>;
 }
 
 export const Context = createContext<ContextType>({} as ContextType);

@@ -3,11 +3,14 @@ import { client, index } from "./client";
 
 export type Interval = "year" | "month" | "week" | "day";
 
+export type Capacity = {
+  [key in Interval]: number;
+};
+
 export interface Budget {
   budget_id: string;
   name: string;
-  interval: Interval;
-  capacity: number;
+  capacity: Capacity;
   iso_currency_code: string;
 }
 
@@ -27,9 +30,8 @@ export const createBudget = async (user: MaskedUser) => {
       user: { user_id },
       budget: {
         name: "",
-        capacity: 0,
+        capacity: { year: 0, month: 0, week: 0, day: 0 },
         iso_currency_code: "USD",
-        interval: "month",
       },
     },
   });
@@ -126,7 +128,7 @@ export interface Section {
   section_id: string;
   budget_id: string;
   name: string;
-  capacity: number;
+  capacity: Capacity;
 }
 
 /**
@@ -146,7 +148,7 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
       section: {
         budget_id,
         name: "",
-        capacity: 0,
+        capacity: { year: 0, month: 0, week: 0, day: 0 },
       },
     },
   });
@@ -234,7 +236,7 @@ export interface Category {
   category_id: string;
   section_id: string;
   name: string;
-  capacity: number;
+  capacity: Capacity;
 }
 
 /**
@@ -254,7 +256,7 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
       category: {
         section_id,
         name: "",
-        capacity: 0,
+        capacity: { year: 0, month: 0, week: 0, day: 0 },
       },
     },
   });

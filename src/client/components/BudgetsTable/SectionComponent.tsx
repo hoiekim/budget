@@ -1,4 +1,4 @@
-import { call, numberToCommaString, useAppContext } from "client";
+import { call, DeepPartial, numberToCommaString, useAppContext } from "client";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { NewCategoryGetResponse, Section } from "server";
 import CategoryComponent from "./CategoryComponent";
@@ -10,10 +10,13 @@ interface Props {
 const SectionComponent = ({ section }: Props) => {
   const { section_id, name, capacity } = section;
 
-  const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(numberToCommaString(capacity));
+  const { sections, setSections, categories, setCategories, selectedInterval } =
+    useAppContext();
 
-  const { sections, setSections, categories, setCategories } = useAppContext();
+  const [nameInput, setNameInput] = useState(name);
+  const [capacityInput, setCapacityInput] = useState(
+    numberToCommaString(capacity[selectedInterval])
+  );
 
   const onClickAdd = async () => {
     const queryString = "?" + new URLSearchParams({ parent: section_id }).toString();
@@ -28,7 +31,7 @@ const SectionComponent = ({ section }: Props) => {
           category_id,
           section_id,
           name: "",
-          capacity: 0,
+          capacity: { year: 0, month: 0, week: 0, day: 0 },
         });
       }
 
@@ -38,8 +41,8 @@ const SectionComponent = ({ section }: Props) => {
 
   const revertInputs = useCallback(() => {
     setNameInput(name);
-    setCapacityInput(numberToCommaString(capacity));
-  }, [name, setNameInput, capacity, setCapacityInput]);
+    setCapacityInput(numberToCommaString(capacity[selectedInterval]));
+  }, [name, setNameInput, capacity, setCapacityInput, selectedInterval]);
 
   const categoryComponents = useMemo(() => {
     return Array.from(categories.values())
@@ -55,7 +58,7 @@ const SectionComponent = ({ section }: Props) => {
   const timeout = useRef<Timeout>();
 
   const submit = useCallback(
-    (updatedSection: Partial<Section> = {}, delay = 500) => {
+    (updatedSection: DeepPartial<Section> = {}, delay = 500) => {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(async () => {
         try {
@@ -125,7 +128,7 @@ const SectionComponent = ({ section }: Props) => {
           onChange={(e) => {
             const { value } = e.target;
             setCapacityInput(value);
-            submit({ capacity: +value });
+            submit({ capacity: { [selectedInterval]: +value } });
           }}
           onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}
