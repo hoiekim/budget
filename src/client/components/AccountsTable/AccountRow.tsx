@@ -84,8 +84,9 @@ const AccountRow = ({ account, sorter }: Props) => {
             return false;
           });
 
-        const accountsInItem = Array.from(accounts.values()).filter((e) => {
-          return e.item_id === item_id;
+        const accountsInItem: Account[] = [];
+        accounts.forEach((e) => {
+          if (e.item_id === item_id) accountsInItem.push(e);
         });
 
         setAccounts((oldAccounts) => {
@@ -98,7 +99,7 @@ const AccountRow = ({ account, sorter }: Props) => {
 
         setTransactions((oldTransactions) => {
           const newTransactions = new Map(oldTransactions);
-          Array.from(newTransactions.values()).forEach((e) => {
+          newTransactions.forEach((e) => {
             if (accountsInItem.find((f) => e.account_id === f.account_id)) {
               newTransactions.delete(e.transaction_id);
             }

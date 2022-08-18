@@ -1,5 +1,5 @@
 import { useState, ChangeEventHandler, useMemo } from "react";
-import { Transaction } from "server";
+import { Category, Transaction } from "server";
 import { useAppContext, call, Sorter, numberToCommaString } from "client";
 import { InstitutionSpan } from "client/components";
 import { TransactionHeaders } from ".";
@@ -31,8 +31,9 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
   );
 
   const budgetOptions = useMemo(() => {
-    return Array.from(budgets.values()).map((e) => {
-      return (
+    const components: JSX.Element[] = [];
+    budgets.forEach((e) => {
+      const component = (
         <option
           key={`transaction_${transaction_id}_budget_option_${e.budget_id}`}
           value={e.budget_id}
@@ -40,27 +41,31 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
           {e.name}
         </option>
       );
+      components.push(component);
     });
+    return components;
   }, [transaction_id, budgets]);
 
   const categoryOptions = useMemo(() => {
-    return Array.from(sections.values())
-      .flatMap((e) => {
-        if (e.budget_id !== label.budget_id) return [];
-        return Array.from(categories.values()).filter(
-          (f) => f.section_id === e.section_id
-        );
-      })
-      .map((e) => {
-        return (
-          <option
-            key={`transaction_${transaction_id}_category_option_${e.category_id}`}
-            value={e.category_id}
-          >
-            {e.name}
-          </option>
-        );
+    const availableCategories: Category[] = [];
+    sections.forEach((section) => {
+      if (section.budget_id !== label.budget_id) return;
+      categories.forEach((category) => {
+        if (category.section_id !== section.section_id) return;
+        availableCategories.push(category);
       });
+    });
+
+    return availableCategories.map((e) => {
+      return (
+        <option
+          key={`transaction_${transaction_id}_category_option_${e.category_id}`}
+          value={e.category_id}
+        >
+          {e.name}
+        </option>
+      );
+    });
   }, [transaction_id, label.budget_id, sections, categories]);
 
   const account = accounts.get(account_id);

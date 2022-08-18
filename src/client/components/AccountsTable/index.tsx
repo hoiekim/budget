@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Account } from "server";
 import { useAppContext, useSorter } from "client";
 import ErrorAccountRow, { ErrorAccount } from "./ErrorAccountRow";
@@ -37,7 +37,7 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
   const { sort, visibles, toggleVisible } = sorter;
 
   const sortedAccountsArray = useMemo(() => {
-    return sort(accountsArray, (e, key) => {
+    return sort([...accountsArray], (e, key) => {
       if (key === "balances") {
         const { available, current } = e.balances;
         return Math.max(available || 0, current || 0);
@@ -58,7 +58,7 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
     return <AccountRow key={e.account_id} account={e} sorter={sorter} />;
   });
 
-  const getHeader = (key: keyof AccountHeaders): string => {
+  const getHeader = useCallback((key: keyof AccountHeaders): string => {
     if (key === "balances") {
       return "Balances";
     } else if (key === "custom_name") {
@@ -72,20 +72,22 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
     } else {
       return key.toString();
     }
-  };
+  }, []);
 
-  const hiddenColumns = Object.entries(visibles)
-    .filter(([key, value]) => !value)
-    .map(([key, value], i) => {
-      return (
-        <button
-          key={`accounts_hidden_column_${i}`}
-          onClick={() => toggleVisible(key as keyof typeof visibles)}
-        >
-          {getHeader(key as keyof typeof visibles)}
-        </button>
-      );
-    });
+  const hiddenColumns = useMemo(() => {
+    return Object.entries(visibles)
+      .filter(([key, value]) => !value)
+      .map(([key, value], i) => {
+        return (
+          <button
+            key={`accounts_hidden_column_${i}`}
+            onClick={() => toggleVisible(key as keyof typeof visibles)}
+          >
+            {getHeader(key as keyof typeof visibles)}
+          </button>
+        );
+      });
+  }, [getHeader, toggleVisible, visibles]);
 
   return (
     <div className="AccountsTable">

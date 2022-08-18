@@ -35,7 +35,7 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
   const { sort, visibles, toggleVisible } = sorter;
 
   const sortedTransactionsArray = useMemo(() => {
-    return sort(transactionsArray, (e, key) => {
+    return sort([...transactionsArray], (e, key) => {
       if (key === "authorized_date") {
         return new Date(e.authorized_date || e.date);
       } else if (key === "merchant_name") {
@@ -69,7 +69,9 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
     } else if (key === "account") {
       return "Account";
     } else if (key === "institution") {
-      return "Institutions";
+      return "Institution";
+    } else if (key === "budget") {
+      return "Budget";
     } else if (key === "category") {
       return "Category";
     } else {
@@ -77,18 +79,20 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
     }
   }, []);
 
-  const hiddenColumns = Object.entries(visibles)
-    .filter(([key, value]) => !value)
-    .map(([key, value], i) => {
-      return (
-        <button
-          key={`transactions_hidden_column_${i}`}
-          onClick={() => toggleVisible(key as keyof typeof visibles)}
-        >
-          {getHeader(key as keyof typeof visibles)}
-        </button>
-      );
-    });
+  const hiddenColumns = useMemo(() => {
+    return Object.entries(visibles)
+      .filter(([key, value]) => !value)
+      .map(([key, value], i) => {
+        return (
+          <button
+            key={`transactions_hidden_column_${i}`}
+            onClick={() => toggleVisible(key as keyof typeof visibles)}
+          >
+            {getHeader(key as keyof typeof visibles)}
+          </button>
+        );
+      });
+  }, [getHeader, toggleVisible, visibles]);
 
   return (
     <div className="TransactionsTable">

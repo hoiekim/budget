@@ -1,5 +1,5 @@
 import { call, DeepPartial, numberToCommaString, useAppContext } from "client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { NewCategoryGetResponse, Section } from "server";
 import CategoryComponent from "./CategoryComponent";
 
@@ -39,17 +39,19 @@ const SectionComponent = ({ section }: Props) => {
     });
   };
 
-  const revertInputs = useCallback(() => {
+  const revertInputs = () => {
     setNameInput(name);
     setCapacityInput(numberToCommaString(capacity[selectedInterval]));
-  }, [name, setNameInput, capacity, setCapacityInput, selectedInterval]);
+  };
 
   const categoryComponents = useMemo(() => {
-    return Array.from(categories.values())
-      .filter((e) => e.section_id === section_id)
-      .map((e) => {
-        return <CategoryComponent key={e.category_id} category={e} />;
-      });
+    const components: JSX.Element[] = [];
+    categories.forEach((e) => {
+      if (e.section_id !== section_id) return;
+      const component = <CategoryComponent key={e.category_id} category={e} />;
+      components.push(component);
+    });
+    return components;
   }, [categories, section_id]);
 
   type SetTimeout = typeof setTimeout;
@@ -57,34 +59,31 @@ const SectionComponent = ({ section }: Props) => {
 
   const timeout = useRef<Timeout>();
 
-  const submit = useCallback(
-    (updatedSection: DeepPartial<Section> = {}, delay = 500) => {
-      clearTimeout(timeout.current);
-      timeout.current = setTimeout(async () => {
-        try {
-          const { status } = await call.post("/api/section", {
-            ...updatedSection,
-            section_id,
+  const submit = (updatedSection: DeepPartial<Section> = {}, delay = 500) => {
+    clearTimeout(timeout.current);
+    timeout.current = setTimeout(async () => {
+      try {
+        const { status } = await call.post("/api/section", {
+          ...updatedSection,
+          section_id,
+        });
+        if (status === "success") {
+          setSections((oldSections) => {
+            const newSections = new Map(oldSections);
+            const oldSection = oldSections.get(section_id);
+            const newSection = { ...oldSection, ...updatedSection };
+            newSections.set(section_id, newSection as Section);
+            return newSections;
           });
-          if (status === "success") {
-            setSections((oldSections) => {
-              const newSections = new Map(oldSections);
-              const oldSection = oldSections.get(section_id);
-              const newSection = { ...oldSection, ...updatedSection };
-              newSections.set(section_id, newSection as Section);
-              return newSections;
-            });
-          } else throw new Error(`Failed to update section: ${section_id}`);
-        } catch (error: any) {
-          console.error(error);
-          revertInputs();
-        }
-      }, delay);
-    },
-    [setSections, section_id, revertInputs]
-  );
+        } else throw new Error(`Failed to update section: ${section_id}`);
+      } catch (error: any) {
+        console.error(error);
+        revertInputs();
+      }
+    }, delay);
+  };
 
-  const onClickRemove = useCallback(async () => {
+  const onClickRemove = async () => {
     const queryString = "?" + new URLSearchParams({ id: section_id }).toString();
     const { status } = await call.delete("/api/section" + queryString);
     if (status === "success") {
@@ -94,17 +93,18 @@ const SectionComponent = ({ section }: Props) => {
         return newSections;
       });
     }
-  }, [section_id, setSections]);
+  };
 
   const currentTotal = useMemo(() => {
-    return Array.from(categories.values())
-      .filter((e) => {
-        if (!e.amount) return false;
-        const parentSection = sections.get(e.section_id);
-        if (!parentSection) return false;
-        return parentSection === section;
-      })
-      .reduce((acc, e) => acc + (e.amount || 0), 0);
+    let total = 0;
+    categories.forEach((e) => {
+      if (!e.amount) return;
+      const parentSection = sections.get(e.section_id);
+      if (!parentSection) return;
+      if (parentSection !== section) return;
+      total += e.amount || 0;
+    });
+    return total;
   }, [categories, sections, section]);
 
   return (

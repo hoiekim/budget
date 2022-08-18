@@ -57,11 +57,13 @@ const BudgetComponent = ({ budget }: Props) => {
   ]);
 
   const sectionComponents = useMemo(() => {
-    return Array.from(sections.values())
-      .filter((e) => e.budget_id === budget_id)
-      .map((e) => {
-        return <SectionComponent key={e.section_id} section={e} />;
-      });
+    const components: JSX.Element[] = [];
+    sections.forEach((e) => {
+      if (e.budget_id !== budget_id) return;
+      const component = <SectionComponent key={e.section_id} section={e} />;
+      components.push(component);
+    });
+    return components;
   }, [sections, budget_id]);
 
   type SetTimeout = typeof setTimeout;
@@ -69,34 +71,31 @@ const BudgetComponent = ({ budget }: Props) => {
 
   const timeout = useRef<Timeout>();
 
-  const submit = useCallback(
-    (updatedBudget: DeepPartial<Budget> = {}, delay = 500) => {
-      clearTimeout(timeout.current);
-      timeout.current = setTimeout(async () => {
-        try {
-          const { status } = await call.post("/api/budget", {
-            ...updatedBudget,
-            budget_id,
+  const submit = (updatedBudget: DeepPartial<Budget> = {}, delay = 500) => {
+    clearTimeout(timeout.current);
+    timeout.current = setTimeout(async () => {
+      try {
+        const { status } = await call.post("/api/budget", {
+          ...updatedBudget,
+          budget_id,
+        });
+        if (status === "success") {
+          setBudgets((oldBudgets) => {
+            const newBudgets = new Map(oldBudgets);
+            const oldBudget = oldBudgets.get(budget_id);
+            const newBudget = { ...oldBudget, ...updatedBudget };
+            newBudgets.set(budget_id, newBudget as Budget);
+            return newBudgets;
           });
-          if (status === "success") {
-            setBudgets((oldBudgets) => {
-              const newBudgets = new Map(oldBudgets);
-              const oldBudget = oldBudgets.get(budget_id);
-              const newBudget = { ...oldBudget, ...updatedBudget };
-              newBudgets.set(budget_id, newBudget as Budget);
-              return newBudgets;
-            });
-          } else throw new Error(`Failed to update budget: ${budget_id}`);
-        } catch (error: any) {
-          console.error(error);
-          revertInputs();
-        }
-      }, delay);
-    },
-    [setBudgets, budget_id, revertInputs]
-  );
+        } else throw new Error(`Failed to update budget: ${budget_id}`);
+      } catch (error: any) {
+        console.error(error);
+        revertInputs();
+      }
+    }, delay);
+  };
 
-  const onClickRemove = useCallback(async () => {
+  const onClickRemove = async () => {
     const queryString = "?" + new URLSearchParams({ id: budget_id }).toString();
     const { status } = await call.delete("/api/budget" + queryString);
     if (status === "success") {
@@ -106,19 +105,20 @@ const BudgetComponent = ({ budget }: Props) => {
         return newBudgets;
       });
     }
-  }, [budget_id, setBudgets]);
+  };
 
   const currentTotal = useMemo(() => {
-    return Array.from(categories.values())
-      .filter((e) => {
-        if (!e.amount) return false;
-        const parentSection = sections.get(e.section_id);
-        if (!parentSection) return false;
-        const parentBudget = budgets.get(parentSection.budget_id);
-        if (!parentBudget) return false;
-        return parentBudget === budget;
-      })
-      .reduce((acc, e) => acc + (e.amount || 0), 0);
+    let total = 0;
+    categories.forEach((e) => {
+      if (!e.amount) return;
+      const parentSection = sections.get(e.section_id);
+      if (!parentSection) return;
+      const parentBudget = budgets.get(parentSection.budget_id);
+      if (!parentBudget) return;
+      if (parentBudget !== budget) return;
+      total += e.amount || 0;
+    });
+    return total;
   }, [categories, sections, budgets, budget]);
 
   return (

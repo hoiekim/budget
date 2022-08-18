@@ -64,8 +64,7 @@ export const useSorter = <T, H>(
 
   const sort: Sorter<T, H>["sort"] = useCallback(
     (array, formatter) => {
-      Array.from(sortings).forEach(async (e) => {
-        const [key, option] = e;
+      sortings.forEach(async (option, key) => {
         array.sort((a, b) => {
           const comparable = new Comparable(a, b);
           comparable.format((e) => formatter(e, key));

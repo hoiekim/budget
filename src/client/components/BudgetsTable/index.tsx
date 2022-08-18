@@ -1,13 +1,58 @@
-import { ChangeEventHandler, useCallback } from "react";
+import { ChangeEventHandler, useEffect, useMemo } from "react";
 import { Budget, NewBudgetGetResponse } from "server";
-import { call, useAppContext } from "client";
+import { call, IsNow, useAppContext } from "client";
 import BudgetComponent from "./BudgetComponent";
 import "./index.css";
 
 const BudgetsTable = () => {
-  const { budgets, setBudgets, selectedBudgetId, setSelectedBudgetId } = useAppContext();
+  const {
+    transactions,
+    accounts,
+    budgets,
+    setBudgets,
+    setCategories,
+    selectedBudgetId,
+    setSelectedBudgetId,
+    selectedInterval,
+  } = useAppContext();
 
-  const onClickAdd = useCallback(async () => {
+  useEffect(() => {
+    const budget = budgets.get(selectedBudgetId);
+    if (!budget) return;
+
+    setCategories((oldCategories) => {
+      const newCategories = new Map(oldCategories);
+      oldCategories.forEach((oldCategory) => {
+        const { category_id } = oldCategory;
+        const newCategory = { ...oldCategory };
+
+        const isNow = new IsNow();
+
+        newCategory.amount = 0;
+
+        transactions.forEach((e) => {
+          const transactionDate = new Date(e.authorized_date || e.date);
+          if (!isNow.within(selectedInterval).from(transactionDate)) return;
+          const account = accounts.get(e.account_id);
+          if (account?.hide) return;
+          if (e.label.category_id !== category_id) return;
+          newCategory.amount = (newCategory.amount as number) - e.amount;
+        });
+
+        newCategories.set(category_id, newCategory);
+      });
+      return newCategories;
+    });
+  }, [
+    transactions,
+    accounts,
+    setCategories,
+    budgets,
+    selectedBudgetId,
+    selectedInterval,
+  ]);
+
+  const onClickAdd = async () => {
     const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");
     if (!data) return;
 
@@ -27,21 +72,29 @@ const BudgetsTable = () => {
     });
 
     setSelectedBudgetId(budget_id);
-  }, [setBudgets, setSelectedBudgetId]);
+  };
 
-  const budgetOptions = Array.from(budgets.values()).map((e) => {
-    return (
-      <option key={e.budget_id} value={e.budget_id}>
-        {e.name || "Unnamed"}
-      </option>
-    );
-  });
+  const budgetOptions = useMemo(() => {
+    const components: JSX.Element[] = [];
+    budgets.forEach((e) => {
+      const conponent = (
+        <option key={e.budget_id} value={e.budget_id}>
+          {e.name || "Unnamed"}
+        </option>
+      );
+      components.push(conponent);
+    });
+    return components;
+  }, [budgets]);
 
   const onChangeBudget: ChangeEventHandler<HTMLSelectElement> = (e) => {
     setSelectedBudgetId(e.target.value);
   };
 
-  const selectedBudget = budgets.get(selectedBudgetId);
+  const selectedBudget = useMemo(
+    () => budgets.get(selectedBudgetId),
+    [budgets, selectedBudgetId]
+  );
 
   return (
     <div className="BudgetsTable">

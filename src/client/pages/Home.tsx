@@ -6,12 +6,15 @@ import {
   AccountsTable,
   BudgetsTable,
 } from "client/components";
+import { Account, Transaction } from "server";
 
 const Home = () => {
   const { user, transactions, accounts } = useAppContext();
 
   const accountsArray = useMemo(() => {
-    return Array.from(accounts.values()).filter((e) => !e.hide);
+    const array: Account[] = [];
+    accounts.forEach((e) => !e.hide && array.push(e));
+    return array;
   }, [accounts]);
 
   const errorAccountsArray = useMemo(() => {
@@ -26,11 +29,9 @@ const Home = () => {
   }, [user, accountsArray]);
 
   const transactionsArray = useMemo(() => {
-    return Array.from(transactions.values())
-      .filter((e) => !accounts.get(e.account_id)?.hide)
-      .sort((a, b) => {
-        return a.transaction_id > b.transaction_id ? 1 : -1;
-      });
+    const array: Transaction[] = [];
+    transactions.forEach((e) => !accounts.get(e.account_id)?.hide && array.push(e));
+    return array.sort((a, b) => (a.transaction_id > b.transaction_id ? 1 : -1));
   }, [transactions, accounts]);
 
   return (

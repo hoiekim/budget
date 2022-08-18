@@ -97,21 +97,19 @@ export const useSync = () => {
 
       setBudgets((oldBudgets) => {
         const newBudgets = new Map(oldBudgets);
-        Array.from(budgets.values()).forEach((e) => newBudgets.set(e.budget_id, e));
+        budgets.forEach((e) => newBudgets.set(e.budget_id, e));
         return newBudgets;
       });
 
       setSections((oldSections) => {
         const newSections = new Map(oldSections);
-        Array.from(sections.values()).forEach((e) => newSections.set(e.section_id, e));
+        sections.forEach((e) => newSections.set(e.section_id, e));
         return newSections;
       });
 
       setCategories((oldCategories) => {
         const newCategories = new Map(oldCategories);
-        Array.from(categories.values()).forEach((e) =>
-          newCategories.set(e.category_id, e)
-        );
+        categories.forEach((e) => newCategories.set(e.category_id, e));
         return newCategories;
       });
     });

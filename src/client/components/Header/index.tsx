@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import { useAppContext, useSync, call } from "client";
 import { PlaidLinkButton } from "client/components";
 import "./index.css";
@@ -7,19 +6,21 @@ const Header = () => {
   const { user, setUser, accounts, setAccounts } = useAppContext();
   const { sync, clean } = useSync();
 
-  const logout = useCallback(() => {
+  const logout = () => {
     call.delete("/api/login").then((r) => {
       setUser(undefined);
       clean();
     });
-  }, [setUser, clean]);
+  };
 
-  const unhide = useCallback(async () => {
+  const unhide = async () => {
     const newAccounts = new Map(accounts);
 
-    const fetchJobs = Array.from(accounts.values())
-      .filter((e) => e.labels)
-      .map(async (e) => {
+    const fetchJobs: Promise<void>[] = [];
+    accounts.forEach((account) => {
+      if (!account.hide) return;
+
+      const job = async (e: typeof account) => {
         try {
           const { account_id } = e;
           const r = await call.post("/api/account", {
@@ -34,11 +35,14 @@ const Header = () => {
         } catch (error: any) {
           console.error(error);
         }
-      });
+      };
+
+      fetchJobs.push(job(account));
+    });
 
     await Promise.all(fetchJobs);
     setAccounts(newAccounts);
-  }, [accounts, setAccounts]);
+  };
 
   return (
     <div className="Header">
