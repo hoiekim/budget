@@ -1,5 +1,5 @@
-import { useState, ChangeEventHandler, useMemo } from "react";
-import { Category, Transaction } from "server";
+import { useState, useEffect, ChangeEventHandler, useMemo } from "react";
+import { Category, Transaction, TransactionLabel } from "server";
 import { useAppContext, call, Sorter, numberToCommaString } from "client";
 import { InstitutionSpan } from "client/components";
 import { TransactionHeaders } from ".";
@@ -25,10 +25,20 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
   const { setTransactions, accounts, budgets, sections, categories } = useAppContext();
 
-  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(label.budget_id);
+  const account = accounts.get(account_id);
+  const institution_id = account?.institution_id;
+
+  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
+    return label.budget_id || account?.label.budget_id;
+  });
   const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(
     label.category_id
   );
+
+  useEffect(() => {
+    if (label.budget_id) return;
+    setSelectedBudgetIdLabel(account?.label.budget_id);
+  }, [label.budget_id, account?.label.budget_id]);
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -49,7 +59,8 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
   const categoryOptions = useMemo(() => {
     const availableCategories: Category[] = [];
     sections.forEach((section) => {
-      if (section.budget_id !== label.budget_id) return;
+      const budget_id = label.budget_id || account?.label.budget_id;
+      if (section.budget_id !== budget_id) return;
       categories.forEach((category) => {
         if (category.section_id !== section.section_id) return;
         availableCategories.push(category);
@@ -66,20 +77,18 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
         </option>
       );
     });
-  }, [transaction_id, label.budget_id, sections, categories]);
-
-  const account = accounts.get(account_id);
-  const institution_id = account?.institution_id;
+  }, [transaction_id, label.budget_id, account?.label.budget_id, sections, categories]);
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
-    if (!value) return;
+    if (!value || value === selectedBudgetIdLabel) return;
 
     setSelectedBudgetIdLabel(value);
+    setSelectedCategoryIdLabel(undefined);
 
     const r = await call.post("/api/transaction", {
       transaction_id,
-      label: { budget_id: value },
+      label: { budget_id: value, category_id: null },
     });
 
     if (r.status === "success") {
@@ -87,11 +96,13 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
         const newTransactions = new Map(oldTransactions);
         const newTransaction = { ...transaction };
         newTransaction.label.budget_id = value;
+        delete newTransaction.label.category_id;
         newTransactions.set(transaction_id, newTransaction);
         return newTransactions;
       });
     } else {
       setSelectedBudgetIdLabel(selectedBudgetIdLabel);
+      setSelectedCategoryIdLabel(selectedCategoryIdLabel);
     }
   };
 
@@ -101,15 +112,18 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
     setSelectedCategoryIdLabel(value);
 
-    const r = await call.post("/api/transaction", {
-      transaction_id,
-      label: { category_id: value },
-    });
+    const labelQuery: TransactionLabel = { category_id: value };
+    if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
+
+    const r = await call.post("/api/transaction", { transaction_id, label: labelQuery });
 
     if (r.status === "success") {
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
         const newTransaction = { ...transaction };
+        if (!newTransaction.label.budget_id) {
+          newTransaction.label.budget_id = account?.label.budget_id;
+        }
         newTransaction.label.category_id = value;
         newTransactions.set(transaction_id, newTransaction);
         return newTransactions;
