@@ -4,6 +4,7 @@ import {
   useRef,
   ChangeEventHandler,
   MouseEventHandler,
+  useMemo,
 } from "react";
 import { InstitutionSpan, PlaidLinkButton } from "client/components";
 import { call, Sorter, useAppContext, numberToCommaString } from "client";
@@ -17,17 +18,73 @@ interface Props {
 
 const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
-  const { account_id, balances, custom_name, name, official_name, institution_id } =
-    account;
+  const {
+    account_id,
+    balances,
+    custom_name,
+    name,
+    official_name,
+    institution_id,
+    label,
+  } = account;
 
-  const { user, setUser, accounts, setAccounts, setTransactions, institutions, items } =
-    useAppContext();
+  const {
+    user,
+    setUser,
+    accounts,
+    setAccounts,
+    setTransactions,
+    institutions,
+    items,
+    budgets,
+  } = useAppContext();
 
+  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(label.budget_id);
   const [nameInput, setNameInput] = useState(custom_name || name);
 
   useEffect(() => {
     setNameInput(custom_name || name);
   }, [custom_name, name, setNameInput]);
+
+  const budgetOptions = useMemo(() => {
+    const components: JSX.Element[] = [];
+    budgets.forEach((e) => {
+      const component = (
+        <option
+          key={`account_${account_id}_budget_option_${e.budget_id}`}
+          value={e.budget_id}
+        >
+          {e.name}
+        </option>
+      );
+      components.push(component);
+    });
+    return components;
+  }, [account_id, budgets]);
+
+  const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
+    const { value } = e.target;
+    if (!value) return;
+
+    setSelectedBudgetIdLabel(value);
+
+    const r = await call.post("/api/account", {
+      account_id,
+      label: { budget_id: value },
+    });
+
+    if (r.status === "success") {
+      setAccounts((oldAccounts) => {
+        const newAccounts = new Map(oldAccounts);
+        const newAccount = { ...account };
+        newAccount.label.budget_id = value;
+        newAccounts.set(account_id, newAccount);
+        return newAccounts;
+      });
+    } else {
+      setSelectedBudgetIdLabel(selectedBudgetIdLabel);
+    }
+  };
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
@@ -167,6 +224,16 @@ const AccountRow = ({ account, sorter }: Props) => {
         <td>
           <div>
             <InstitutionSpan institution_id={institution_id} />
+          </div>
+        </td>
+      )}
+      {getVisible("budget") && (
+        <td>
+          <div>
+            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+              <option value="">Select Budget</option>
+              {budgetOptions}
+            </select>
           </div>
         </td>
       )}

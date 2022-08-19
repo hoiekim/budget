@@ -15,6 +15,7 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
     "custom_name",
     "official_name",
     "institution",
+    "budget",
   ];
 
   const headerComponents = headerKeys

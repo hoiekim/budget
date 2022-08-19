@@ -7,6 +7,7 @@ import AccountsHead from "./AccountsHead";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
   institution?: boolean;
+  budget?: boolean;
   action?: boolean;
 };
 
@@ -26,6 +27,7 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
       custom_name: true,
       official_name: true,
       institution: true,
+      budget: true,
       action: true,
     }
   );
@@ -44,6 +46,9 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
       } else if (key === "custom_name") {
         return e[key] || e.name;
       } else if (key === "institution") {
+        const account = accounts.get(e.account_id);
+        return institutions.get(account?.institution_id || "")?.name;
+      } else if (key === "budget") {
         const account = accounts.get(e.account_id);
         return institutions.get(account?.institution_id || "")?.name;
       } else if (key === "action") {
@@ -67,6 +72,8 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
       return "Official Name";
     } else if (key === "institution") {
       return "Institution";
+    } else if (key === "budget") {
+      return "Default Budget";
     } else if (key === "action") {
       return "Action";
     } else {
