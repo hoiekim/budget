@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, MutableRefObject } from "react";
 import { Transaction } from "server";
 import { useAppContext, useSorter } from "client";
 import TransactionRow from "./TransactionRow";

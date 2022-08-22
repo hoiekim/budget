@@ -1,6 +1,6 @@
 import { useAppContext, numberToCommaString, call, DeepPartial } from "client";
-import { useCallback, useRef, useState, useMemo } from "react";
-import { Budget, Interval, NewSectionGetResponse } from "server";
+import { useRef, useState, useMemo } from "react";
+import { Budget, NewSectionGetResponse } from "server";
 import SectionComponent from "./SectionComponent";
 
 interface Props {
@@ -8,15 +8,14 @@ interface Props {
 }
 
 const BudgetComponent = ({ budget }: Props) => {
-  const { budget_id, name, capacity, iso_currency_code } = budget;
+  const { budget_id, name, capacities, iso_currency_code } = budget;
 
   const { budgets, setBudgets, sections, setSections, categories, selectedInterval } =
     useAppContext();
   const [nameInput, setNameInput] = useState(name);
   const [capacityInput, setCapacityInput] = useState(
-    numberToCommaString(capacity[selectedInterval])
+    numberToCommaString(capacities[selectedInterval])
   );
-  const [intervalInput, setIntervalInput] = useState<"" | Interval>(selectedInterval);
   const [currencyCodeInput, setCurrencyCodeInput] = useState(iso_currency_code);
 
   const onClickAdd = async () => {
@@ -33,28 +32,18 @@ const BudgetComponent = ({ budget }: Props) => {
           section_id,
           budget_id,
           name: "",
-          capacity: { year: 0, month: 0, week: 0, day: 0 },
+          capacities: { year: 0, month: 0, week: 0, day: 0 },
         });
       }
       return newSections;
     });
   };
 
-  const revertInputs = useCallback(() => {
+  const revertInputs = () => {
     setNameInput(name);
-    setCapacityInput(numberToCommaString(capacity[selectedInterval]));
-    setIntervalInput(selectedInterval);
+    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
     setCurrencyCodeInput(iso_currency_code);
-  }, [
-    name,
-    setNameInput,
-    capacity,
-    setCapacityInput,
-    selectedInterval,
-    setIntervalInput,
-    iso_currency_code,
-    setCurrencyCodeInput,
-  ]);
+  };
 
   const sectionComponents = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -142,7 +131,7 @@ const BudgetComponent = ({ budget }: Props) => {
           onChange={(e) => {
             const { value } = e.target;
             setCapacityInput(value);
-            submit({ capacity: { [selectedInterval]: +value } });
+            submit({ capacities: { [selectedInterval]: +value } });
           }}
           onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}
@@ -156,18 +145,6 @@ const BudgetComponent = ({ budget }: Props) => {
           }}
         >
           <option value="USD">USD</option>
-        </select>
-        <select
-          value={intervalInput}
-          onChange={(e) => {
-            const value = e.target.value as Interval;
-            setIntervalInput(value);
-          }}
-        >
-          <option value="year">per year</option>
-          <option value="month">per month</option>
-          <option value="week">per week</option>
-          <option value="day">per day</option>
         </select>
       </div>
       <div className="children">

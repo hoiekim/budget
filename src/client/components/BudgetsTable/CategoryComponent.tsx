@@ -7,17 +7,17 @@ interface Props {
 }
 
 const CategoryComponent = ({ category }: Props) => {
-  const { category_id, name, capacity, amount } = category;
+  const { category_id, name, capacities, amount } = category;
 
   const { setCategories, selectedInterval } = useAppContext();
   const [nameInput, setNameInput] = useState(name);
   const [capacityInput, setCapacityInput] = useState(
-    numberToCommaString(capacity[selectedInterval])
+    numberToCommaString(capacities[selectedInterval])
   );
 
   const revertInputs = () => {
     setNameInput(name);
-    setCapacityInput(numberToCommaString(capacity[selectedInterval]));
+    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
   };
 
   type SetTimeout = typeof setTimeout;
@@ -82,7 +82,7 @@ const CategoryComponent = ({ category }: Props) => {
           onChange={(e) => {
             const { value } = e.target;
             setCapacityInput(value);
-            submit({ capacity: { [selectedInterval]: +value } });
+            submit({ capacities: { [selectedInterval]: +value } });
           }}
           onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}

@@ -1,40 +1,18 @@
-import { ChangeEventHandler, useMemo } from "react";
-import { Budget, Interval, NewBudgetGetResponse } from "server";
-import { call, useAppContext } from "client";
-import BudgetComponent from "./BudgetComponent";
+import { ChangeEventHandler, useMemo, useState } from "react";
+import { Interval } from "server";
+import { useAppContext } from "client";
+import BudgetBar from "./BudgetBar";
 import "./index.css";
 
-const BudgetsTable = () => {
+const BudgetBars = () => {
   const {
     budgets,
-    setBudgets,
     selectedBudgetId,
     setSelectedBudgetId,
     selectedInterval,
     setSelectedInterval,
   } = useAppContext();
-
-  const onClickAdd = async () => {
-    const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");
-    if (!data) return;
-
-    const { budget_id } = data;
-
-    const newBudget: Budget = {
-      budget_id,
-      name: "",
-      capacities: { year: 0, month: 0, week: 0, day: 0 },
-      iso_currency_code: "USD",
-    };
-
-    setBudgets((oldBudgets) => {
-      const newBudgets = new Map(oldBudgets);
-      newBudgets.set(budget_id, newBudget);
-      return newBudgets;
-    });
-
-    setSelectedBudgetId(budget_id);
-  };
+  const [intervalInput, setIntervalInput] = useState<"" | Interval>(selectedInterval);
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -59,18 +37,17 @@ const BudgetsTable = () => {
   );
 
   return (
-    <div className="BudgetsTable">
-      <div>Budgets:</div>
+    <div className="BudgetBars">
       <div>
-        <button onClick={onClickAdd}>+</button>
         <select value={selectedBudgetId} onChange={onChangeBudget}>
           <option>Select Budget</option>
           {budgetOptions}
         </select>
         <select
-          value={selectedInterval}
+          value={intervalInput}
           onChange={(e) => {
             const value = e.target.value as Interval;
+            setIntervalInput(value);
             setSelectedInterval(value);
           }}
         >
@@ -80,11 +57,10 @@ const BudgetsTable = () => {
           <option value="day">Daily</option>
         </select>
       </div>
-      {selectedBudget && (
-        <BudgetComponent key={selectedBudgetId} budget={selectedBudget} />
-      )}
+      <div className="row-spacer" />
+      {selectedBudget && <BudgetBar key={selectedBudgetId} budget={selectedBudget} />}
     </div>
   );
 };
 
-export default BudgetsTable;
+export default BudgetBars;

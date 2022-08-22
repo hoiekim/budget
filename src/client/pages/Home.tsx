@@ -1,15 +1,10 @@
 import { useMemo } from "react";
-import { useAppContext } from "client";
-import {
-  Header,
-  TransactionsTable,
-  AccountsTable,
-  BudgetsTable,
-} from "client/components";
+import { IsNow, useAppContext } from "client";
+import { TransactionsTable, AccountsTable, BudgetsTable } from "client/components";
 import { Account, Transaction } from "server";
 
 const Home = () => {
-  const { user, transactions, accounts } = useAppContext();
+  const { user, transactions, accounts, selectedInterval } = useAppContext();
 
   const accountsArray = useMemo(() => {
     const array: Account[] = [];
@@ -30,14 +25,18 @@ const Home = () => {
 
   const transactionsArray = useMemo(() => {
     const array: Transaction[] = [];
-    transactions.forEach((e) => !accounts.get(e.account_id)?.hide && array.push(e));
+    const isNow = new IsNow();
+    transactions.forEach((e) => {
+      const hidden = accounts.get(e.account_id)?.hide;
+      const transactionDate = new Date(e.authorized_date || e.date);
+      const within = isNow.within(selectedInterval).from(transactionDate);
+      if (!hidden && within) array.push(e);
+    });
     return array.sort((a, b) => (a.transaction_id > b.transaction_id ? 1 : -1));
-  }, [transactions, accounts]);
+  }, [transactions, accounts, selectedInterval]);
 
   return (
     <div className="Home">
-      <Header />
-      <div className="row-spacer" />
       <BudgetsTable />
       <div className="row-spacer" />
       <AccountsTable

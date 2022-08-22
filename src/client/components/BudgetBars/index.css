@@ -1,0 +1,64 @@
+div.BudgetBar * {
+  transition: 150ms;
+}
+
+div.BudgetBar .statusBar {
+  width: 100%;
+  height: 40px;
+  background-color: #222;
+  padding: 5px;
+}
+
+div.BudgetBar .statusBar .contentWithoutPadding {
+  width: 100%;
+  height: 100%;
+}
+
+div.BudgetBar .numerator {
+  transition: 1000ms;
+  height: 100%;
+  background-color: #b4d;
+}
+
+div.BudgetBar .sectionInfo > .statusBar {
+  height: 30px;
+}
+
+div.BudgetBar .sectionInfo > .statusBar .numerator {
+  background-color: #538;
+}
+
+div.BudgetBar .categoryInfo > .statusBar {
+  height: 20px;
+}
+
+div.BudgetBar .categoryInfo > .statusBar .numerator {
+  background-color: #455;
+}
+
+div.BudgetBar .infoText {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: flex;
+}
+
+div.BudgetBar .currentTotal {
+  display: inline-block;
+  width: 75px;
+  text-align: right;
+}
+
+div.BudgetBar .budgetInfo,
+div.BudgetBar .sectionInfo,
+div.BudgetBar .categoryInfo {
+  position: relative;
+}
+
+div.BudgetBar .SectionBar {
+  margin-bottom: 30px;
+}
+
+div.BudgetBar .CategoryBar {
+  margin-top: 10px;
+}

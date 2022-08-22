@@ -10,7 +10,7 @@ export type Capacity = {
 export interface Budget {
   budget_id: string;
   name: string;
-  capacity: Capacity;
+  capacities: Capacity;
   iso_currency_code: string;
 }
 
@@ -30,7 +30,7 @@ export const createBudget = async (user: MaskedUser) => {
       user: { user_id },
       budget: {
         name: "",
-        capacity: { year: 0, month: 0, week: 0, day: 0 },
+        capacities: { year: 0, month: 0, week: 0, day: 0 },
         iso_currency_code: "USD",
       },
     },
@@ -128,7 +128,7 @@ export interface Section {
   section_id: string;
   budget_id: string;
   name: string;
-  capacity: Capacity;
+  capacities: Capacity;
 }
 
 /**
@@ -148,7 +148,7 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
       section: {
         budget_id,
         name: "",
-        capacity: { year: 0, month: 0, week: 0, day: 0 },
+        capacities: { year: 0, month: 0, week: 0, day: 0 },
       },
     },
   });
@@ -236,7 +236,7 @@ export interface Category {
   category_id: string;
   section_id: string;
   name: string;
-  capacity: Capacity;
+  capacities: Capacity;
 }
 
 /**
@@ -256,7 +256,7 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
       category: {
         section_id,
         name: "",
-        capacity: { year: 0, month: 0, week: 0, day: 0 },
+        capacities: { year: 0, month: 0, week: 0, day: 0 },
       },
     },
   });

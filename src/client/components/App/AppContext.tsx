@@ -1,4 +1,11 @@
-import { useState, useCallback, ReactNode, Dispatch, SetStateAction } from "react";
+import {
+  useState,
+  useCallback,
+  ReactNode,
+  Dispatch,
+  SetStateAction,
+  useEffect,
+} from "react";
 import {
   useLocalStorage,
   ContextType,
@@ -11,6 +18,7 @@ import {
   Budgets,
   Sections,
   Categories,
+  IsNow,
 } from "client";
 import { MaskedUser, Interval } from "server";
 
@@ -37,6 +45,40 @@ const AppContext = ({ initialUser, children }: Props) => {
     "selectedInterval",
     "month"
   );
+
+  useEffect(() => {
+    const budget = budgets.get(selectedBudgetId);
+    if (!budget) return;
+
+    const isNow = new IsNow();
+
+    setCategories((oldCategories) => {
+      const newCategories = new Map(oldCategories);
+      newCategories.forEach((e) => {
+        e.amount = 0;
+      });
+      transactions.forEach((e) => {
+        const transactionDate = new Date(e.authorized_date || e.date);
+        if (!isNow.within(selectedInterval).from(transactionDate)) return;
+        const account = accounts.get(e.account_id);
+        if (account?.hide) return;
+        const { category_id } = e.label;
+        if (!category_id) return;
+        const newCategory = newCategories.get(category_id);
+        if (!newCategory) return;
+        (newCategory.amount as number) -= e.amount;
+        newCategories.set(category_id, newCategory);
+      });
+      return newCategories;
+    });
+  }, [
+    transactions,
+    accounts,
+    setCategories,
+    budgets,
+    selectedBudgetId,
+    selectedInterval,
+  ]);
 
   const setUser: Dispatch<SetStateAction<MaskedUser | undefined>> = useCallback(
     (action) => {

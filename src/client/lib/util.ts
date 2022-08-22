@@ -1,9 +1,9 @@
 import { Interval } from "server";
 
-export const numberToCommaString = (n: number) => {
+export const numberToCommaString = (n: number, fixed = 2) => {
   const sign = n < 0 ? "-" : "";
 
-  const splitNumberString = Math.abs(n).toFixed(2).toString().split(".");
+  const splitNumberString = Math.abs(n).toFixed(fixed).toString().split(".");
   const firstPart = splitNumberString[0];
   const secondPart = splitNumberString[1];
 

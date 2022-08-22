@@ -117,7 +117,7 @@
       "properties": {
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
-        "capacity": {
+        "capacities": {
           "type": "object",
           "properties": {
             "year": { "type": "float" },
@@ -136,7 +136,7 @@
         "section_id": { "type": "keyword" },
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
-        "capacity": {
+        "capacities": {
           "type": "object",
           "properties": {
             "year": { "type": "float" },
@@ -154,7 +154,7 @@
         "category_id": { "type": "keyword" },
         "section_id": { "type": "keyword" },
         "name": { "type": "keyword" },
-        "capacity": {
+        "capacities": {
           "type": "object",
           "properties": {
             "year": { "type": "float" },

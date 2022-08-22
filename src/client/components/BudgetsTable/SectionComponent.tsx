@@ -8,14 +8,14 @@ interface Props {
 }
 
 const SectionComponent = ({ section }: Props) => {
-  const { section_id, name, capacity } = section;
+  const { section_id, name, capacities } = section;
 
   const { sections, setSections, categories, setCategories, selectedInterval } =
     useAppContext();
 
   const [nameInput, setNameInput] = useState(name);
   const [capacityInput, setCapacityInput] = useState(
-    numberToCommaString(capacity[selectedInterval])
+    numberToCommaString(capacities[selectedInterval])
   );
 
   const onClickAdd = async () => {
@@ -31,7 +31,7 @@ const SectionComponent = ({ section }: Props) => {
           category_id,
           section_id,
           name: "",
-          capacity: { year: 0, month: 0, week: 0, day: 0 },
+          capacities: { year: 0, month: 0, week: 0, day: 0 },
         });
       }
 
@@ -41,7 +41,7 @@ const SectionComponent = ({ section }: Props) => {
 
   const revertInputs = () => {
     setNameInput(name);
-    setCapacityInput(numberToCommaString(capacity[selectedInterval]));
+    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
   };
 
   const categoryComponents = useMemo(() => {
@@ -128,7 +128,7 @@ const SectionComponent = ({ section }: Props) => {
           onChange={(e) => {
             const { value } = e.target;
             setCapacityInput(value);
-            submit({ capacity: { [selectedInterval]: +value } });
+            submit({ capacities: { [selectedInterval]: +value } });
           }}
           onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
           onBlur={(e) => setCapacityInput(numberToCommaString(+e.target.value || 0))}

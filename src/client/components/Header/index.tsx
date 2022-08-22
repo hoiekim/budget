@@ -3,8 +3,9 @@ import { PlaidLinkButton } from "client/components";
 import "./index.css";
 
 const Header = () => {
-  const { user, setUser, accounts, setAccounts } = useAppContext();
+  const { user, setUser, accounts, setAccounts, router } = useAppContext();
   const { sync, clean } = useSync();
+  const { path, go } = router;
 
   const logout = () => {
     call.delete("/api/login").then((r) => {
@@ -46,19 +47,23 @@ const Header = () => {
 
   return (
     <div className="Header">
-      <div>
-        <span>{user?.username} is logged in</span>
-        <button onClick={logout}>Logout</button>
-      </div>
-      <div>
-        <PlaidLinkButton>Connect a Bank Account</PlaidLinkButton>
-      </div>
-      <div>
-        <button onClick={unhide}>Unhide Accounts</button>
-      </div>
-      <div>
-        <button onClick={sync.all}>Sync Data</button>
-      </div>
+      {user && (
+        <>
+          <div>
+            <span>{user?.username}</span>
+          </div>
+          <div>
+            <button disabled={path === "/"} onClick={() => go("/")}>
+              Home
+            </button>
+          </div>
+          <div>
+            <button disabled={path === "/status"} onClick={() => go("/status")}>
+              Status
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };
