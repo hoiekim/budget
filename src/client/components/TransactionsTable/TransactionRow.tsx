@@ -160,7 +160,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
       <div>
         {getVisible("account") && (
           <div>
-            <div>{account?.name}</div>
+            <div>{account?.custom_name || account?.name}</div>
             <div>
               <InstitutionSpan institution_id={institution_id} />
             </div>

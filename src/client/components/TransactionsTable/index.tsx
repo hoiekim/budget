@@ -41,7 +41,8 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
       } else if (key === "merchant_name") {
         return e.merchant_name || e.name;
       } else if (key === "account") {
-        return accounts.get(e.account_id)?.name;
+        const account = accounts.get(e.account_id);
+        return account?.custom_name || account?.name;
       } else if (key === "institution") {
         const account = accounts.get(e.account_id);
         return institutions.get(account?.institution_id || "")?.name;
@@ -98,10 +99,10 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
     <div className="TransactionsTable">
       <div>Transactions:</div>
       <div>{hiddenColumns}</div>
-      <table>
+      <div>
         <TransactionsHead sorter={sorter} getHeader={getHeader} />
-        <tbody>{transactionRows}</tbody>
-      </table>
+        <div>{transactionRows}</div>
+      </div>
     </div>
   );
 };

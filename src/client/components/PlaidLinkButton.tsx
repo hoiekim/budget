@@ -45,12 +45,8 @@ const PlaidLinkButton = ({ item, children }: Props) => {
   });
 
   const userLoggedIn = !!user;
-  const error_code = item?.plaidError?.error_code;
-  const updateMode = error_code === "ITEM_LOGIN_REQUIRED";
-  if (!updateMode && error_code) {
-    console.warn(`Unhandled plaidError: ${error_code}`);
-  }
-  const disabled = !token || !ready || (!!item && !updateMode);
+  const updateMode = !!item;
+  const disabled = !ready;
 
   useEffect(() => {
     if (!userLoggedIn) {
@@ -58,8 +54,14 @@ const PlaidLinkButton = ({ item, children }: Props) => {
       return;
     }
 
-    if (token || fetchJobs.has(access_token || "")) return;
-    if (!updateMode && access_token) return;
+    if (token) return;
+    if (access_token && fetchJobs.has(access_token)) {
+      fetchJobs.get(access_token)?.then((r) => {
+        const globalToken = globalTokens.get(access_token);
+        if (globalToken) setToken(globalToken);
+      });
+      return;
+    }
 
     let queryString: string = "";
     if (updateMode && access_token) {
@@ -75,7 +77,8 @@ const PlaidLinkButton = ({ item, children }: Props) => {
         return token;
       });
 
-    if (access_token) fetchJobs.set(access_token, promisedToken);
+    if (!access_token) return;
+    fetchJobs.set(access_token, promisedToken);
   }, [token, userLoggedIn, updateMode, access_token]);
 
   return (

@@ -132,13 +132,13 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
     <div className="AccountsTable">
       <div>Accounts:</div>
       <div>{hiddenColumns}</div>
-      <table>
+      <div>
         <AccountsHead sorter={sorter} getHeader={getHeader} />
-        <tbody>
+        <div>
           {errorAccountRows}
           {accountRows}
-        </tbody>
-      </table>
+        </div>
+      </div>
       <div>
         <PlaidLinkButton>+</PlaidLinkButton>
         <button onClick={unhide}>Unhide</button>

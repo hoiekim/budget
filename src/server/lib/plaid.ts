@@ -63,8 +63,10 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
     language: "en",
   };
 
-  if (access_token) request.access_token = access_token;
-  else request.products = [Products.Auth, Products.Transactions];
+  if (access_token) {
+    request.access_token = access_token;
+    request.update = { account_selection_enabled: true };
+  } else request.products = [Products.Auth, Products.Transactions];
 
   const response = await client.linkTokenCreate(request);
 

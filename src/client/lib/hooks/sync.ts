@@ -4,7 +4,7 @@ import {
   AccountsStreamGetResponse,
   BudgetsGetResponse,
 } from "server";
-import { useAppContext, read, call } from "client";
+import { useAppContext, read, call, Accounts } from "client";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
@@ -54,8 +54,8 @@ export const useSync = () => {
       if (!data) return;
       const { accounts, errors } = data;
 
-      setAccounts((oldAccounts) => {
-        const newAccounts = new Map(oldAccounts);
+      setAccounts((_oldAccounts) => {
+        const newAccounts: Accounts = new Map();
         accounts.forEach((e) => newAccounts.set(e.account_id, e));
         return newAccounts;
       });
