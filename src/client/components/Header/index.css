@@ -3,21 +3,21 @@ div.Header {
   position: fixed;
   top: 0;
   left: 0;
-  display: flex;
-  justify-content: center;
   background-color: #222;
   width: 100%;
   padding: 10px 0;
 }
 
 div.Header > div {
-  margin: 0 10px;
+  display: flex;
+  justify-content: space-around;
+  max-width: 1050px;
+  margin: auto;
 }
 
 @media only screen and (max-width: 750px) {
   div.Header {
     top: auto;
     bottom: env(safe-area-inset-bottom);
-    justify-content: space-around;
   }
 }

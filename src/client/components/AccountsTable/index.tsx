@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Account } from "server";
-import { useAppContext, useSorter } from "client";
+import { call, useAppContext, useSorter } from "client";
+import { PlaidLinkButton } from "client/components";
 import ErrorAccountRow, { ErrorAccount } from "./ErrorAccountRow";
 import AccountRow from "./AccountRow";
 import AccountsHead from "./AccountsHead";
@@ -17,7 +18,7 @@ interface Props {
 }
 
 const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
-  const { accounts, institutions } = useAppContext();
+  const { accounts, setAccounts, institutions } = useAppContext();
 
   const sorter = useSorter<Account, AccountHeaders>(
     "accounts",
@@ -96,6 +97,37 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
       });
   }, [getHeader, toggleVisible, visibles]);
 
+  const unhide = async () => {
+    const newAccounts = new Map(accounts);
+
+    const fetchJobs: Promise<void>[] = [];
+    accounts.forEach((account) => {
+      if (!account.hide) return;
+
+      const job = async (e: typeof account) => {
+        try {
+          const { account_id } = e;
+          const r = await call.post("/api/account", {
+            account_id,
+            hide: false,
+          });
+
+          if (r.status === "success") {
+            e.hide = false;
+            newAccounts.set(account_id, e);
+          }
+        } catch (error: any) {
+          console.error(error);
+        }
+      };
+
+      fetchJobs.push(job(account));
+    });
+
+    await Promise.all(fetchJobs);
+    setAccounts(newAccounts);
+  };
+
   return (
     <div className="AccountsTable">
       <div>Accounts:</div>
@@ -107,6 +139,10 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
           {accountRows}
         </tbody>
       </table>
+      <div>
+        <PlaidLinkButton>+</PlaidLinkButton>
+        <button onClick={unhide}>Unhide</button>
+      </div>
     </div>
   );
 };

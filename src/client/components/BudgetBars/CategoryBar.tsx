@@ -1,4 +1,5 @@
-import { numberToCommaString, useAppContext, TransactionsTable, IsNow } from "client";
+import { numberToCommaString, useAppContext, IsNow } from "client";
+import { TransactionsList } from "client/components";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Budget, Category, Section, Transaction } from "server";
 
@@ -15,8 +16,9 @@ const CategoryComponent = ({ category }: Props) => {
 
   const capacity = capacities[selectedInterval] || 0;
 
-  const childrenDivRef = useRef<HTMLDivElement>();
-  const infoDivRef = useRef<HTMLDivElement>();
+  const childrenDivRef = useRef<HTMLDivElement>(null);
+  const infoDivRef = useRef<HTMLDivElement>(null);
+
   const observerRef = useRef(
     new ResizeObserver((entries) => {
       const element = entries[0];
@@ -56,7 +58,7 @@ const CategoryComponent = ({ category }: Props) => {
       const includedInCategory = e.label.category_id === category_id;
       if (!hidden && within && includedInCategory) array.push(e);
     });
-    return array.sort((a, b) => (a.transaction_id > b.transaction_id ? 1 : -1));
+    return array;
   }, [category_id, transactions, accounts, selectedInterval]);
 
   const onClickCategoryInfo = () => {
@@ -65,21 +67,15 @@ const CategoryComponent = ({ category }: Props) => {
       setTimeout(() => setIsTransactionOpen((s) => !s), 100);
     } else {
       setIsTransactionOpen((s) => !s);
-      const infoDiv = infoDivRef.current;
-      if (!infoDiv) return;
-      infoDiv.scrollIntoView({ behavior: "smooth" });
+      const childrenDiv = childrenDivRef.current;
+      if (!childrenDiv) return;
+      childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
 
   return (
     <div className="CategoryBar">
-      <div
-        className="categoryInfo"
-        onClick={onClickCategoryInfo}
-        ref={(e) => {
-          if (e) infoDivRef.current = e;
-        }}
-      >
+      <div className="categoryInfo" onClick={onClickCategoryInfo} ref={infoDivRef}>
         <div>{name}:</div>
         <div style={{ width: statusBarWidth + "%" }} className="statusBar">
           <div className="contentWithoutPadding">
@@ -93,13 +89,9 @@ const CategoryComponent = ({ category }: Props) => {
         </div>
       </div>
       <div className="children" style={{ height: childrenHeight }}>
-        <div
-          ref={(e) => {
-            if (e) childrenDivRef.current = e;
-          }}
-        >
+        <div ref={childrenDivRef}>
           {isTransactionOpen && (
-            <TransactionsTable transactionsArray={transactionsArray} />
+            <TransactionsList transactionsArray={transactionsArray} />
           )}
         </div>
       </div>

@@ -2,6 +2,7 @@ import { useAppContext, numberToCommaString } from "client";
 import { useRef, useState, useMemo, useEffect } from "react";
 import { Budget } from "server";
 import SectionBar from "./SectionBar";
+import "./index.css";
 
 interface Props {
   budget: Budget;
@@ -17,7 +18,7 @@ const BudgetBar = ({ budget }: Props) => {
 
   const capacity = capacities[selectedInterval] || 0;
 
-  const childrenDivRef = useRef<HTMLDivElement>();
+  const childrenDivRef = useRef<HTMLDivElement>(null);
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
@@ -93,14 +94,7 @@ const BudgetBar = ({ budget }: Props) => {
       </div>
       <div className="row-spacer" />
       <div className="children" style={{ height: childrenHeight }}>
-        <div
-          ref={(e) => {
-            if (!e) return;
-            childrenDivRef.current = e;
-          }}
-        >
-          {isSectionOpen && sectionComponents}
-        </div>
+        <div ref={childrenDivRef}>{isSectionOpen && sectionComponents}</div>
       </div>
     </div>
   );

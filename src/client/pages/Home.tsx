@@ -32,7 +32,7 @@ const Home = () => {
       const within = isNow.within(selectedInterval).from(transactionDate);
       if (!hidden && within) array.push(e);
     });
-    return array.sort((a, b) => (a.transaction_id > b.transaction_id ? 1 : -1));
+    return array;
   }, [transactions, accounts, selectedInterval]);
 
   return (

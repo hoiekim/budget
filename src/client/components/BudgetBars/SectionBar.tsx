@@ -14,10 +14,13 @@ const SectionBar = ({ section }: Props) => {
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
+  const [statusBarWidth, setStatusBarWidth] = useState(0);
+  const [numeratorWidth, setNumeratorWidth] = useState(0);
 
   const capacity = capacities[selectedInterval] || 0;
 
-  const childrenDivRef = useRef<HTMLDivElement>();
+  const childrenDivRef = useRef<HTMLDivElement>(null);
+  const infoDivRef = useRef<HTMLDivElement>(null);
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
@@ -61,10 +64,12 @@ const SectionBar = ({ section }: Props) => {
   const budgetCapacity = budget.capacities[selectedInterval] || 0;
 
   const capacityRatio = capacity / budgetCapacity;
-  const statusBarWidth = 30 + Math.pow(capacityRatio > 1 ? 1 : capacityRatio, 0.5) * 70;
-
   const currentRatio = currentTotal / capacity;
-  const numeratorWidth = (currentRatio > 1 ? 1 : currentRatio) * 100;
+
+  useEffect(() => {
+    setStatusBarWidth(30 + Math.pow(capacityRatio > 1 ? 1 : capacityRatio, 0.5) * 70);
+    setNumeratorWidth((currentRatio > 1 ? 1 : currentRatio) * 100);
+  }, [capacityRatio, currentRatio]);
 
   const onClickSectionInfo = () => {
     if (isCategoryOpen) {
@@ -72,12 +77,15 @@ const SectionBar = ({ section }: Props) => {
       setTimeout(() => setIsCategoryOpen((s) => !s), 100);
     } else {
       setIsCategoryOpen((s) => !s);
+      const childrenDiv = childrenDivRef.current;
+      if (!childrenDiv) return;
+      childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
 
   return (
     <div className="SectionBar">
-      <div className="sectionInfo" onClick={onClickSectionInfo}>
+      <div className="sectionInfo" onClick={onClickSectionInfo} ref={infoDivRef}>
         <div>{name}:</div>
         <div style={{ width: statusBarWidth + "%" }} className="statusBar">
           <div className="contentWithoutPadding">
@@ -91,14 +99,7 @@ const SectionBar = ({ section }: Props) => {
         </div>
       </div>
       <div className="children" style={{ height: childrenHeight }}>
-        <div
-          ref={(e) => {
-            if (!e) return;
-            childrenDivRef.current = e;
-          }}
-        >
-          {isCategoryOpen && categoryComponents}
-        </div>
+        <div ref={childrenDivRef}>{isCategoryOpen && categoryComponents}</div>
       </div>
     </div>
   );

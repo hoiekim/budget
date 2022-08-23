@@ -7,6 +7,7 @@ div.BudgetBar .statusBar {
   height: 40px;
   background-color: #222;
   padding: 5px;
+  margin: 5px 0;
 }
 
 div.BudgetBar .statusBar .contentWithoutPadding {
@@ -45,7 +46,6 @@ div.BudgetBar .infoText {
 
 div.BudgetBar .currentTotal {
   display: inline-block;
-  width: 75px;
   text-align: right;
 }
 
@@ -55,8 +55,13 @@ div.BudgetBar .categoryInfo {
   position: relative;
 }
 
+div.BudgetBar .budgetInfo,
+div.BudgetBar .sectionInfo {
+  font-size: 20px;
+}
+
 div.BudgetBar .SectionBar {
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 div.BudgetBar .CategoryBar {

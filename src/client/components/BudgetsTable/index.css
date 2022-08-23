@@ -4,6 +4,9 @@ div.BudgetComponent .children {
 
 div.BudgetComponent .currentTotal {
   display: inline-block;
-  width: 75px;
   text-align: right;
+}
+
+div.BudgetComponent input {
+  width: 100px;
 }

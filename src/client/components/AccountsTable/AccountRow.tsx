@@ -202,51 +202,51 @@ const AccountRow = ({ account, sorter }: Props) => {
   }
 
   return (
-    <tr>
+    <div>
       {getVisible("balances") && (
-        <td>
+        <div>
           <div>{formattedBalancesText}</div>
-        </td>
+        </div>
       )}
       {getVisible("custom_name") && (
-        <td>
+        <div>
           <div>
             <input onChange={onChangeNameInput} value={nameInput} />
           </div>
-        </td>
+        </div>
       )}
       {getVisible("official_name") && (
-        <td>
+        <div>
           <div>{official_name || "Unknown"}</div>
-        </td>
+        </div>
       )}
       {getVisible("institution") && (
-        <td>
+        <div>
           <div>
             <InstitutionSpan institution_id={institution_id} />
           </div>
-        </td>
+        </div>
       )}
       {getVisible("budget") && (
-        <td>
+        <div>
           <div>
             <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
               <option value="">Select Budget</option>
               {budgetOptions}
             </select>
           </div>
-        </td>
+        </div>
       )}
       {getVisible("action") && (
-        <td>
+        <div>
           <div>
             <PlaidLinkButton item={item}>Fix</PlaidLinkButton>
             <button onClick={onClickRemove}>Remove</button>
             <button onClick={onClickHide}>Hide</button>
           </div>
-        </td>
+        </div>
       )}
-    </tr>
+    </div>
   );
 };
 

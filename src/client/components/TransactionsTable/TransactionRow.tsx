@@ -134,61 +134,60 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
   };
 
   return (
-    <tr>
-      {getVisible("authorized_date") && (
-        <td>
+    <>
+      <div>
+        {getVisible("authorized_date") && (
           <div>
-            {new Date(authorized_date || date).toLocaleString("en-US", {
-              year: "numeric",
-              month: "numeric",
-              day: "numeric",
-            })}
+            <div>
+              {new Date(authorized_date || date).toLocaleString("en-US", {
+                month: "numeric",
+                day: "numeric",
+              })}
+            </div>
           </div>
-        </td>
-      )}
-      {getVisible("merchant_name") && (
-        <td>
-          <div>{merchant_name || name}</div>
-        </td>
-      )}
-      {getVisible("amount") && (
-        <td>
-          <div>{numberToCommaString(-amount)}</div>
-        </td>
-      )}
-      {getVisible("account") && (
-        <td>
-          <div>{account?.name}</div>
-        </td>
-      )}
-      {getVisible("institution") && (
-        <td>
+        )}
+        {getVisible("merchant_name") && (
           <div>
-            <InstitutionSpan institution_id={institution_id} />
+            <div>{merchant_name || name}</div>
           </div>
-        </td>
-      )}
-      {getVisible("budget") && (
-        <td>
+        )}
+        {getVisible("amount") && (
           <div>
-            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-              <option value="">Select Budget</option>
-              {budgetOptions}
-            </select>
+            <div>{numberToCommaString(-amount)}</div>
           </div>
-        </td>
-      )}
-      {getVisible("category") && (
-        <td>
+        )}
+      </div>
+      <div>
+        {getVisible("account") && (
           <div>
-            <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-              <option value="">Select Category</option>
-              {categoryOptions}
-            </select>
+            <div>{account?.name}</div>
+            <div>
+              <InstitutionSpan institution_id={institution_id} />
+            </div>
           </div>
-        </td>
-      )}
-    </tr>
+        )}
+        {getVisible("budget") && (
+          <div>
+            <div>
+              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+                <option value="">Select Budget</option>
+                {budgetOptions}
+              </select>
+            </div>
+          </div>
+        )}
+        {getVisible("category") && (
+          <div>
+            <div>
+              <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+                <option value="">Select Category</option>
+                {categoryOptions}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 };
 

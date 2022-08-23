@@ -10,35 +10,56 @@ interface Props {
 const TransactionsHead = ({ sorter, getHeader }: Props) => {
   const { setSortBy, getArrow, getVisible, toggleVisible } = sorter;
 
-  const headerKeys: (keyof TransactionHeaders)[] = [
-    "authorized_date",
-    "merchant_name",
-    "amount",
-    "account",
-    "institution",
-    "budget",
-    "category",
-  ];
+  type HeaderComponentProps = { field: keyof TransactionHeaders };
 
-  const headerComponents = headerKeys
-    .filter((key) => getVisible(key))
-    .map((key, i) => {
-      return (
-        <td key={`transactions_header_${i}`}>
-          <div>
-            <button onClick={() => setSortBy(key)}>
-              {getHeader(key)} {getArrow(key)}
-            </button>
-            <button onClick={() => toggleVisible(key)}>✕</button>
-          </div>
-        </td>
-      );
-    });
+  const HeaderComponent = ({ field }: HeaderComponentProps) => {
+    return (
+      <div>
+        <button onClick={() => setSortBy(field)}>
+          {getHeader(field)} {getArrow(field)}
+        </button>
+        <button onClick={() => toggleVisible(field)}>✕</button>
+      </div>
+    );
+  };
 
   return (
-    <thead>
-      <tr>{headerComponents}</tr>
-    </thead>
+    <div>
+      <div>
+        {getVisible("authorized_date") && (
+          <div>
+            <HeaderComponent field="authorized_date" />
+          </div>
+        )}
+        {getVisible("merchant_name") && (
+          <div>
+            <HeaderComponent field="merchant_name" />
+          </div>
+        )}
+        {getVisible("amount") && (
+          <div>
+            <HeaderComponent field="amount" />
+          </div>
+        )}
+      </div>
+      <div>
+        {getVisible("account") && (
+          <div>
+            <HeaderComponent field="account" />
+          </div>
+        )}
+        {getVisible("budget") && (
+          <div>
+            <HeaderComponent field="budget" />
+          </div>
+        )}
+        {getVisible("category") && (
+          <div>
+            <HeaderComponent field="category" />
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

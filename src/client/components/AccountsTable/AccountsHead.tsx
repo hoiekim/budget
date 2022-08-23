@@ -22,31 +22,31 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
     .filter((key) => getVisible(key))
     .map((key, i) => {
       return (
-        <td key={`accounts_header_${i}`}>
+        <div key={`accounts_header_${i}`}>
           <div>
             <button onClick={() => setSortBy(key)}>
               {getHeader(key)} {getArrow(key)}
             </button>
             <button onClick={() => toggleVisible(key)}>✕</button>
           </div>
-        </td>
+        </div>
       );
     });
 
   return (
-    <thead>
-      <tr>
+    <div>
+      <div>
         {headerComponents}
         {getVisible("action") && (
-          <td>
+          <div>
             <div>
               <span>{getHeader("action")}</span>
               <button onClick={() => toggleVisible("action")}>✕</button>
             </div>
-          </td>
+          </div>
         )}
-      </tr>
-    </thead>
+      </div>
+    </div>
   );
 };
 
