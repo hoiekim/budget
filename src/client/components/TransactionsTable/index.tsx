@@ -32,7 +32,7 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
     }
   );
 
-  const { sort, visibles, toggleVisible } = sorter;
+  const { sort } = sorter;
 
   const sortedTransactionsArray = useMemo(() => {
     return sort([...transactionsArray], (e, key) => {
@@ -50,6 +50,9 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
         return categories.get(e.label.category_id || "")?.name;
       } else if (key === "budget") {
         return budgets.get(e.label.budget_id || "")?.name;
+      } else if (key === "location") {
+        const { city, region, country } = e.location;
+        return [city, region || country].filter((e) => e).join(", ");
       } else {
         return e[key];
       }
@@ -75,30 +78,16 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
       return "Budget";
     } else if (key === "category") {
       return "Category";
+    } else if (key === "location") {
+      return "Location";
     } else {
       return key;
     }
   }, []);
 
-  const hiddenColumns = useMemo(() => {
-    return Object.entries(visibles)
-      .filter(([key, value]) => !value)
-      .map(([key, value], i) => {
-        return (
-          <button
-            key={`transactions_hidden_column_${i}`}
-            onClick={() => toggleVisible(key as keyof typeof visibles)}
-          >
-            {getHeader(key as keyof typeof visibles)}
-          </button>
-        );
-      });
-  }, [getHeader, toggleVisible, visibles]);
-
   return (
     <div className="TransactionsTable">
-      <div>Transactions:</div>
-      <div>{hiddenColumns}</div>
+      <h2>Transactions</h2>
       <div>
         <TransactionsHead sorter={sorter} getHeader={getHeader} />
         <div>{transactionRows}</div>

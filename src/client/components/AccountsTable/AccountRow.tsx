@@ -10,6 +10,7 @@ import { InstitutionSpan, PlaidLinkButton } from "client/components";
 import { call, Sorter, useAppContext, numberToCommaString } from "client";
 import { Account } from "server";
 import { AccountHeaders } from ".";
+import "./index.css";
 
 interface Props {
   account: Account;
@@ -18,15 +19,7 @@ interface Props {
 
 const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
-  const {
-    account_id,
-    balances,
-    custom_name,
-    name,
-    official_name,
-    institution_id,
-    label,
-  } = account;
+  const { account_id, balances, custom_name, name, institution_id, label } = account;
 
   const {
     user,
@@ -202,50 +195,35 @@ const AccountRow = ({ account, sorter }: Props) => {
   }
 
   return (
-    <div>
-      {getVisible("balances") && (
-        <div>
-          <div>{formattedBalancesText}</div>
-        </div>
-      )}
+    <div className="AccountRow">
+      {getVisible("balances") && <div>{formattedBalancesText}</div>}
       {getVisible("custom_name") && (
         <div>
-          <div>
-            <input onChange={onChangeNameInput} value={nameInput} />
-          </div>
-        </div>
-      )}
-      {getVisible("official_name") && (
-        <div>
-          <div>{official_name || "Unknown"}</div>
+          <input onChange={onChangeNameInput} value={nameInput} />
         </div>
       )}
       {getVisible("institution") && (
         <div>
-          <div>
-            <InstitutionSpan institution_id={institution_id} />
-          </div>
+          <InstitutionSpan institution_id={institution_id} />
         </div>
       )}
-      {getVisible("budget") && (
-        <div>
+      <div className="budgetAction">
+        {getVisible("budget") && (
           <div>
             <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
               <option value="">Select Budget</option>
               {budgetOptions}
             </select>
           </div>
-        </div>
-      )}
-      {getVisible("action") && (
-        <div>
-          <div>
+        )}
+        {getVisible("action") && (
+          <div className="action">
             <PlaidLinkButton item={item}>Update</PlaidLinkButton>
             <button onClick={onClickRemove}>Remove</button>
             <button onClick={onClickHide}>Hide</button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

@@ -19,6 +19,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     name,
     amount,
     label,
+    location,
   } = transaction;
 
   const { getVisible } = sorter;
@@ -133,61 +134,58 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     }
   };
 
+  const { city, region, country } = location;
+  const locations = [city, region || country].filter((e) => e);
+
   return (
-    <>
-      <div>
+    <div className="TransactionRow">
+      <div className="transactionInfo">
         {getVisible("authorized_date") && (
-          <div>
-            <div>
-              {new Date(authorized_date || date).toLocaleString("en-US", {
-                month: "numeric",
-                day: "numeric",
-              })}
-            </div>
+          <div className="authorized_date bigText">
+            {new Date(authorized_date || date).toLocaleString("en-US", {
+              month: "numeric",
+              day: "numeric",
+            })}
           </div>
         )}
-        {getVisible("merchant_name") && (
-          <div>
-            <div>{merchant_name || name}</div>
-          </div>
-        )}
+        <div className="merchant_name">
+          {getVisible("merchant_name") && (
+            <>
+              {merchant_name && <div className="bigText">{merchant_name}</div>}
+              {name && <div className="smallText">{name}</div>}
+              {!!locations.length && (
+                <div className="smallText">{locations.join(", ")}</div>
+              )}
+            </>
+          )}
+          {getVisible("account") && (
+            <>
+              <div className="bigText">{account?.custom_name || account?.name}</div>
+              <div className="smallText">
+                <InstitutionSpan institution_id={institution_id} />
+              </div>
+            </>
+          )}
+        </div>
         {getVisible("amount") && (
-          <div>
-            <div>{numberToCommaString(-amount)}</div>
-          </div>
+          <div className="amount">{numberToCommaString(-amount)}</div>
         )}
       </div>
-      <div>
-        {getVisible("account") && (
-          <div>
-            <div>{account?.custom_name || account?.name}</div>
-            <div>
-              <InstitutionSpan institution_id={institution_id} />
-            </div>
-          </div>
-        )}
+      <div className="budgetCategory">
         {getVisible("budget") && (
-          <div>
-            <div>
-              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-                <option value="">Select Budget</option>
-                {budgetOptions}
-              </select>
-            </div>
-          </div>
+          <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+            <option value="">Select Budget</option>
+            {budgetOptions}
+          </select>
         )}
         {getVisible("category") && (
-          <div>
-            <div>
-              <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-                <option value="">Select Category</option>
-                {categoryOptions}
-              </select>
-            </div>
-          </div>
+          <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+            <option value="">Select Category</option>
+            {categoryOptions}
+          </select>
         )}
       </div>
-    </>
+    </div>
   );
 };
 

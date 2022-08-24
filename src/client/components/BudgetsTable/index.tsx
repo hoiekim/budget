@@ -60,7 +60,7 @@ const BudgetsTable = () => {
 
   return (
     <div className="BudgetsTable">
-      <div>Budgets:</div>
+      <h2>Budgets</h2>
       <div>
         <button onClick={onClickAdd}>+</button>
         <select value={selectedBudgetId} onChange={onChangeBudget}>

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Account } from "server";
 import { Sorter } from "client";
 import { AccountHeaders } from ".";
@@ -8,14 +9,28 @@ interface Props {
 }
 
 const AccountsHead = ({ sorter, getHeader }: Props) => {
-  const { setSortBy, getArrow, getVisible, toggleVisible } = sorter;
+  const { setSortBy, getArrow, getVisible, toggleVisible, visibles } = sorter;
+
+  const hiddenColumns = useMemo(() => {
+    return Object.entries(visibles)
+      .filter(([key, value]) => !value)
+      .map(([key, value], i) => {
+        return (
+          <div key={`accounts_hidden_column_${i}`} className="hiddenColumn">
+            <button onClick={() => toggleVisible(key as keyof typeof visibles)}>
+              {getHeader(key as keyof typeof visibles)}
+            </button>
+          </div>
+        );
+      });
+  }, [getHeader, toggleVisible, visibles]);
 
   const headerKeys: (keyof AccountHeaders)[] = [
     "balances",
     "custom_name",
-    "official_name",
     "institution",
     "budget",
+    "action",
   ];
 
   const headerComponents = headerKeys
@@ -23,29 +38,18 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
     .map((key, i) => {
       return (
         <div key={`accounts_header_${i}`}>
-          <div>
-            <button onClick={() => setSortBy(key)}>
-              {getHeader(key)} {getArrow(key)}
-            </button>
-            <button onClick={() => toggleVisible(key)}>✕</button>
-          </div>
+          <button onClick={() => setSortBy(key)}>
+            {getHeader(key)} {getArrow(key)}
+          </button>
+          <button onClick={() => toggleVisible(key)}>✕</button>
         </div>
       );
     });
 
   return (
-    <div>
-      <div>
-        {headerComponents}
-        {getVisible("action") && (
-          <div>
-            <div>
-              <span>{getHeader("action")}</span>
-              <button onClick={() => toggleVisible("action")}>✕</button>
-            </div>
-          </div>
-        )}
-      </div>
+    <div className="AccountsHead">
+      {headerComponents}
+      {hiddenColumns}
     </div>
   );
 };

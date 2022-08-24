@@ -12,11 +12,12 @@ div.TransactionsList > .TransactionItem > div:first-child {
 }
 
 div.TransactionsList > .TransactionItem > div:nth-child(2) {
-  width: calc(100% - 100px);
+  width: calc(100% - 130px);
+  text-align: right;
 }
 
 div.TransactionsList > .TransactionItem > div:last-child {
-  width: 50px;
+  width: 80px;
 }
 
 div.TransactionsList .smallText {

@@ -1,6 +1,7 @@
 import { Transaction } from "server";
 import { Sorter } from "client";
 import { TransactionHeaders } from ".";
+import { useMemo } from "react";
 
 interface Props {
   sorter: Sorter<Transaction, TransactionHeaders>;
@@ -8,57 +9,48 @@ interface Props {
 }
 
 const TransactionsHead = ({ sorter, getHeader }: Props) => {
-  const { setSortBy, getArrow, getVisible, toggleVisible } = sorter;
+  const { setSortBy, getArrow, getVisible, toggleVisible, visibles } = sorter;
 
-  type HeaderComponentProps = { field: keyof TransactionHeaders };
+  const headerKeys: (keyof TransactionHeaders)[] = [
+    "authorized_date",
+    "merchant_name",
+    "amount",
+    "account",
+    "budget",
+    "category",
+  ];
 
-  const HeaderComponent = ({ field }: HeaderComponentProps) => {
-    return (
-      <div>
-        <button onClick={() => setSortBy(field)}>
-          {getHeader(field)} {getArrow(field)}
-        </button>
-        <button onClick={() => toggleVisible(field)}>✕</button>
-      </div>
-    );
-  };
+  const headerComponents = headerKeys
+    .filter((key) => getVisible(key))
+    .map((key, i) => {
+      return (
+        <div key={`transactions_header_${i}`}>
+          <button onClick={() => setSortBy(key)}>
+            {getHeader(key)} {getArrow(key)}
+          </button>
+          <button onClick={() => toggleVisible(key)}>✕</button>
+        </div>
+      );
+    });
+
+  const hiddenColumns = useMemo(() => {
+    return Object.entries(visibles)
+      .filter(([key, value]) => !value)
+      .map(([key, value], i) => {
+        return (
+          <div key={`transactions_hidden_column_${i}`} className="hiddenColumn">
+            <button onClick={() => toggleVisible(key as keyof typeof visibles)}>
+              {getHeader(key as keyof typeof visibles)}
+            </button>
+          </div>
+        );
+      });
+  }, [getHeader, toggleVisible, visibles]);
 
   return (
-    <div>
-      <div>
-        {getVisible("authorized_date") && (
-          <div>
-            <HeaderComponent field="authorized_date" />
-          </div>
-        )}
-        {getVisible("merchant_name") && (
-          <div>
-            <HeaderComponent field="merchant_name" />
-          </div>
-        )}
-        {getVisible("amount") && (
-          <div>
-            <HeaderComponent field="amount" />
-          </div>
-        )}
-      </div>
-      <div>
-        {getVisible("account") && (
-          <div>
-            <HeaderComponent field="account" />
-          </div>
-        )}
-        {getVisible("budget") && (
-          <div>
-            <HeaderComponent field="budget" />
-          </div>
-        )}
-        {getVisible("category") && (
-          <div>
-            <HeaderComponent field="category" />
-          </div>
-        )}
-      </div>
+    <div className="TransactionsHead">
+      {headerComponents}
+      {hiddenColumns}
     </div>
   );
 };

@@ -135,7 +135,6 @@ const SectionComponent = ({ section }: Props) => {
         />
       </div>
       <div className="children">
-        <div>Categories:</div>
         <div>
           <button onClick={onClickAdd}>+</button>
         </div>

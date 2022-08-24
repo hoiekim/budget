@@ -2,7 +2,6 @@ import { useCallback, useMemo } from "react";
 import { Account } from "server";
 import { call, useAppContext, useSorter } from "client";
 import { PlaidLinkButton } from "client/components";
-import ErrorAccountRow, { ErrorAccount } from "./ErrorAccountRow";
 import AccountRow from "./AccountRow";
 import AccountsHead from "./AccountsHead";
 
@@ -13,11 +12,10 @@ export type AccountHeaders = { [k in keyof Account]?: boolean } & {
 };
 
 interface Props {
-  errorAccountsArray: ErrorAccount[];
   accountsArray: Account[];
 }
 
-const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
+const AccountsTable = ({ accountsArray }: Props) => {
   const { accounts, setAccounts, institutions } = useAppContext();
 
   const sorter = useSorter<Account, AccountHeaders>(
@@ -26,18 +24,13 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
     {
       balances: true,
       custom_name: true,
-      official_name: true,
       institution: true,
       budget: true,
       action: true,
     }
   );
 
-  const errorAccountRows = errorAccountsArray.map((e, i) => {
-    return <ErrorAccountRow key={e.item_id} errorAccount={e} sorter={sorter} />;
-  });
-
-  const { sort, visibles, toggleVisible } = sorter;
+  const { sort } = sorter;
 
   const sortedAccountsArray = useMemo(() => {
     return sort([...accountsArray], (e, key) => {
@@ -82,21 +75,6 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
     }
   }, []);
 
-  const hiddenColumns = useMemo(() => {
-    return Object.entries(visibles)
-      .filter(([key, value]) => !value)
-      .map(([key, value], i) => {
-        return (
-          <button
-            key={`accounts_hidden_column_${i}`}
-            onClick={() => toggleVisible(key as keyof typeof visibles)}
-          >
-            {getHeader(key as keyof typeof visibles)}
-          </button>
-        );
-      });
-  }, [getHeader, toggleVisible, visibles]);
-
   const unhide = async () => {
     const newAccounts = new Map(accounts);
 
@@ -130,14 +108,10 @@ const AccountsTable = ({ errorAccountsArray, accountsArray }: Props) => {
 
   return (
     <div className="AccountsTable">
-      <div>Accounts:</div>
-      <div>{hiddenColumns}</div>
+      <h2>Accounts</h2>
       <div>
         <AccountsHead sorter={sorter} getHeader={getHeader} />
-        <div>
-          {errorAccountRows}
-          {accountRows}
-        </div>
+        <div>{accountRows}</div>
       </div>
       <div>
         <PlaidLinkButton>+</PlaidLinkButton>

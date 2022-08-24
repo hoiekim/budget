@@ -1,12 +1,24 @@
-div.BudgetComponent .children {
-  margin: 0 0 20px 30px;
-}
-
 div.BudgetComponent .currentTotal {
   display: inline-block;
   text-align: right;
+  min-width: 90px;
 }
 
 div.BudgetComponent input {
   width: 100px;
+}
+
+div.SectionComponent {
+  background-color: #444;
+  border-radius: 5px;
+  padding: 5px;
+  margin: 5px 0;
+}
+
+div.SectionComponent .children {
+  margin: 0 0 10px 10px;
+}
+
+div.CategoryComponent {
+  margin: 5px 0;
 }

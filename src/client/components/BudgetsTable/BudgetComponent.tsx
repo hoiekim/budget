@@ -148,7 +148,6 @@ const BudgetComponent = ({ budget }: Props) => {
         </select>
       </div>
       <div className="children">
-        <div>Sections:</div>
         <div>
           <button onClick={onClickAdd}>+</button>
         </div>
