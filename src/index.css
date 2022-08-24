@@ -13,10 +13,6 @@ body {
   color: #ddd;
 }
 
-body * {
-  overflow: hidden;
-}
-
 button {
   background-color: #555;
   color: #fff;
@@ -78,18 +74,35 @@ div#root {
   min-height: 100vh;
   margin: auto;
   background-color: #333;
-  padding: 80px 30px 0;
+  padding: 50px 30px 0;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  position: sticky;
+  top: 50px;
+  background-color: #333;
+  padding: 10px 0;
 }
 
 @media only screen and (max-width: 1050px) {
   div#root {
-    padding: 80px 20px 0;
+    padding: 50px 20px 0;
   }
 }
 
 @media only screen and (max-width: 750px) {
   div#root {
-    padding: 30px 10px 80px;
+    padding: 0 10px 50px;
     margin-bottom: env(safe-area-inset-bottom);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    top: 0;
   }
 }

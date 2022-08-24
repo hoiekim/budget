@@ -5,6 +5,7 @@ div.Header {
   left: 0;
   background-color: #222;
   width: 100%;
+  height: 50px;
   padding: 10px 0;
 }
 

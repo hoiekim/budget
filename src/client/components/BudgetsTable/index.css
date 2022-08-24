@@ -1,3 +1,7 @@
+div.BudgetsTable > h2:first-child {
+  margin-top: 0;
+}
+
 div.BudgetComponent .currentTotal {
   display: inline-block;
   text-align: right;
