@@ -1,4 +1,4 @@
-import { useAppContext, numberToCommaString } from "client";
+import { useAppContext, numberToCommaString, currencyCodeToSymbol } from "client";
 import { useRef, useState, useMemo, useEffect } from "react";
 import { Budget } from "server";
 import SectionBar from "./SectionBar";
@@ -74,21 +74,25 @@ const BudgetBar = ({ budget }: Props) => {
   return (
     <div className="BudgetBar">
       <div className="budgetInfo" onClick={onClickBudgetInfo}>
-        <div>
-          <span>Total:</span>
-        </div>
-        <div className="statusBar">
-          <div className="contentWithoutPadding">
-            <div
-              style={{ width: (ratio > 1 ? 1 : ratio) * 100 + "%" }}
-              className="numerator"
-            />
+        <div>Total</div>
+        <div className="statusBarWithText">
+          <div className="statusBar">
+            <div className="contentWithoutPadding">
+              <div
+                style={{ width: (ratio > 1 ? 1 : ratio) * 100 + "%" }}
+                className="numerator"
+              />
+            </div>
           </div>
           <div className="infoText">
-            <span className="currentTotal">{numberToCommaString(currentTotal)}</span>
-            <span>&nbsp;/&nbsp;</span>
-            <span className="capacity">{numberToCommaString(capacity)}</span>
-            <span>&nbsp;{iso_currency_code}</span>
+            <div>
+              <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+              <span className="currentTotal">{numberToCommaString(currentTotal)}</span>
+            </div>
+            <div>
+              <span>of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+              <span className="capacity">{numberToCommaString(capacity)}</span>
+            </div>
           </div>
         </div>
       </div>

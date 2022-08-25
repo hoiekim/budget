@@ -84,3 +84,12 @@ export type DeepPartial<T> = {
     ? DeepPartial<T[P]>
     : T[P];
 };
+
+export const currencyCodeToSymbol = (code: string) => {
+  switch (code) {
+    case "USD":
+      return "$";
+    default:
+      return code;
+  }
+};

@@ -1,10 +1,19 @@
 import { useEffect } from "react";
-import { useAppContext, useSync } from "client";
+import { IsNow, useAppContext, useSync } from "client";
 
 let lastSync = new Date();
 
 const Utility = () => {
-  const { user, router } = useAppContext();
+  const {
+    user,
+    router,
+    setCategories,
+    budgets,
+    selectedBudgetId,
+    selectedInterval,
+    transactions,
+    accounts,
+  } = useAppContext();
   const { path, go } = router;
 
   useEffect(() => {
@@ -30,7 +39,41 @@ const Utility = () => {
     };
     window.addEventListener("focus", focusAction);
     return () => window.removeEventListener("focus", focusAction);
-  }, []);
+  }, [sync]);
+
+  useEffect(() => {
+    const budget = budgets.get(selectedBudgetId);
+    if (!budget) return;
+
+    const isNow = new IsNow();
+
+    setCategories((oldCategories) => {
+      const newCategories = new Map(oldCategories);
+      newCategories.forEach((e) => {
+        e.amount = 0;
+      });
+      transactions.forEach((e) => {
+        const transactionDate = new Date(e.authorized_date || e.date);
+        if (!isNow.within(selectedInterval).from(transactionDate)) return;
+        const account = accounts.get(e.account_id);
+        if (account?.hide) return;
+        const { category_id } = e.label;
+        if (!category_id) return;
+        const newCategory = newCategories.get(category_id);
+        if (!newCategory) return;
+        (newCategory.amount as number) += e.amount;
+        newCategories.set(category_id, newCategory);
+      });
+      return newCategories;
+    });
+  }, [
+    transactions,
+    accounts,
+    setCategories,
+    budgets,
+    selectedBudgetId,
+    selectedInterval,
+  ]);
 
   return <></>;
 };
