@@ -32,7 +32,9 @@ const AccountRow = ({ account, sorter }: Props) => {
     budgets,
   } = useAppContext();
 
-  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(label.budget_id);
+  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
+    return label.budget_id || "";
+  });
   const [nameInput, setNameInput] = useState(custom_name || name);
 
   useEffect(() => {
@@ -57,20 +59,20 @@ const AccountRow = ({ account, sorter }: Props) => {
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
-    if (!value) return;
+    if (value === selectedBudgetIdLabel) return;
 
-    setSelectedBudgetIdLabel(value);
+    setSelectedBudgetIdLabel(value || "");
 
     const r = await call.post("/api/account", {
       account_id,
-      label: { budget_id: value },
+      label: { budget_id: value || null },
     });
 
     if (r.status === "success") {
       setAccounts((oldAccounts) => {
         const newAccounts = new Map(oldAccounts);
         const newAccount = { ...account };
-        newAccount.label.budget_id = value;
+        newAccount.label.budget_id = value || null;
         newAccounts.set(account_id, newAccount);
         return newAccounts;
       });

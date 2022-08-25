@@ -1,12 +1,20 @@
 import { Transaction } from "server";
-import { numberToCommaString } from "client";
+import { numberToCommaString, currencyCodeToSymbol } from "client";
 
 interface Props {
   transaction: Transaction;
 }
 
 const TransactionItem = ({ transaction }: Props) => {
-  const { authorized_date, date, merchant_name, name, amount, location } = transaction;
+  const {
+    authorized_date,
+    date,
+    merchant_name,
+    name,
+    amount,
+    location,
+    iso_currency_code,
+  } = transaction;
 
   return (
     <div className="TransactionItem">
@@ -26,7 +34,10 @@ const TransactionItem = ({ transaction }: Props) => {
           {[location.city, location.region].filter((e) => e).join(", ")}
         </div>
       </div>
-      <div className="bigText">{numberToCommaString(-amount)}</div>
+      <div className="bigText">
+        {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
+        {numberToCommaString(amount)}
+      </div>
     </div>
   );
 };

@@ -20,8 +20,8 @@ import { MaskedUser } from "server";
 export type { RemovedTransaction } from "plaid";
 
 export interface TransactionLabel {
-  budget_id?: string;
-  category_id?: string;
+  budget_id?: string | null;
+  category_id?: string | null;
 }
 
 export interface Transaction extends PlaidTransaction {
@@ -261,7 +261,7 @@ export interface PlaidAccount {
 }
 
 export interface AccountLabel {
-  budget_id?: string;
+  budget_id?: string | null;
 }
 
 export interface Account extends PlaidAccount {

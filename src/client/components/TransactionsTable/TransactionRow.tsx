@@ -1,6 +1,12 @@
 import { useState, useEffect, ChangeEventHandler, useMemo } from "react";
 import { Category, Transaction, TransactionLabel } from "server";
-import { useAppContext, call, Sorter, numberToCommaString } from "client";
+import {
+  useAppContext,
+  call,
+  Sorter,
+  numberToCommaString,
+  currencyCodeToSymbol,
+} from "client";
 import { InstitutionSpan } from "client/components";
 import { TransactionHeaders } from ".";
 
@@ -20,6 +26,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     amount,
     label,
     location,
+    iso_currency_code,
   } = transaction;
 
   const { getVisible } = sorter;
@@ -30,15 +37,15 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
   const institution_id = account?.institution_id;
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
-    return label.budget_id || account?.label.budget_id;
+    return label.budget_id || account?.label.budget_id || "";
   });
-  const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(
-    label.category_id
-  );
+  const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
+    return label.category_id || "";
+  });
 
   useEffect(() => {
     if (label.budget_id) return;
-    setSelectedBudgetIdLabel(account?.label.budget_id);
+    setSelectedBudgetIdLabel(account?.label.budget_id || "");
   }, [label.budget_id, account?.label.budget_id]);
 
   const budgetOptions = useMemo(() => {
@@ -82,22 +89,22 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
-    if (!value || value === selectedBudgetIdLabel) return;
+    if (value === selectedBudgetIdLabel) return;
 
     setSelectedBudgetIdLabel(value);
-    setSelectedCategoryIdLabel(undefined);
+    setSelectedCategoryIdLabel("");
 
     const r = await call.post("/api/transaction", {
       transaction_id,
-      label: { budget_id: value, category_id: null },
+      label: { budget_id: value || null, category_id: null },
     });
 
     if (r.status === "success") {
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
         const newTransaction = { ...transaction };
-        newTransaction.label.budget_id = value;
-        delete newTransaction.label.category_id;
+        newTransaction.label.budget_id = value || null;
+        newTransaction.label.category_id = null;
         newTransactions.set(transaction_id, newTransaction);
         return newTransactions;
       });
@@ -109,11 +116,12 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
   const onChangeCategorySelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
-    if (!value) return;
+    if (value === selectedCategoryIdLabel) return;
 
     setSelectedCategoryIdLabel(value);
 
-    const labelQuery: TransactionLabel = { category_id: value };
+    type LabelQuery = { [k in keyof TransactionLabel]: string | null };
+    const labelQuery: LabelQuery = { category_id: value || null };
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
 
     const r = await call.post("/api/transaction", { transaction_id, label: labelQuery });
@@ -125,7 +133,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
         if (!newTransaction.label.budget_id) {
           newTransaction.label.budget_id = account?.label.budget_id;
         }
-        newTransaction.label.category_id = value;
+        newTransaction.label.category_id = value || null;
         newTransactions.set(transaction_id, newTransaction);
         return newTransactions;
       });
@@ -168,7 +176,10 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
           )}
         </div>
         {getVisible("amount") && (
-          <div className="amount">{numberToCommaString(-amount)}</div>
+          <div className="amount">
+            {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
+            {numberToCommaString(amount)}
+          </div>
         )}
       </div>
       <div className="budgetCategory">
