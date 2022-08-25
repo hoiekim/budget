@@ -77,6 +77,7 @@ const CategoryComponent = ({ category }: Props) => {
         <div className="currentTotal">{numberToCommaString(amount || 0)}</div>
         <span> / </span>
         <input
+          className="capacityInput"
           value={capacityInput}
           onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
           onChange={(e) => {

@@ -14,26 +14,24 @@ const Header = () => {
   };
 
   return (
-    <div className="Header">
-      {user && (
+    <div className="Header" style={{ display: user ? undefined : "none" }}>
+      <div>
         <div>
-          <div>
-            <button disabled={!user} onClick={logout}>
-              Logout
-            </button>
-          </div>
-          <div>
-            <button disabled={path === "/"} onClick={() => go("/")}>
-              Home
-            </button>
-          </div>
-          <div>
-            <button disabled={path === "/status"} onClick={() => go("/status")}>
-              Status
-            </button>
-          </div>
+          <button disabled={!user} onClick={logout}>
+            Logout
+          </button>
         </div>
-      )}
+        <div>
+          <button disabled={path === "/"} onClick={() => go("/")}>
+            Home
+          </button>
+        </div>
+        <div>
+          <button disabled={path === "/status"} onClick={() => go("/status")}>
+            Status
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

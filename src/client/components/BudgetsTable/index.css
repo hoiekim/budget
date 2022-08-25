@@ -2,14 +2,18 @@ div.BudgetsTable > h2:first-child {
   margin-top: 0;
 }
 
+div.BudgetsTable .capacityInput {
+  width: 80px;
+}
+
 div.BudgetComponent .currentTotal {
   display: inline-block;
   text-align: right;
-  min-width: 90px;
+  min-width: 85px;
 }
 
 div.BudgetComponent input {
-  width: 100px;
+  width: 110px;
 }
 
 div.SectionComponent {

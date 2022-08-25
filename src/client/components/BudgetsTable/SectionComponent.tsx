@@ -123,6 +123,7 @@ const SectionComponent = ({ section }: Props) => {
         <div className="currentTotal">{numberToCommaString(currentTotal)}</div>
         <span> / </span>
         <input
+          className="capacityInput"
           value={capacityInput}
           onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
           onChange={(e) => {

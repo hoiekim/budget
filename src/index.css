@@ -74,7 +74,7 @@ div#root {
   min-height: 100vh;
   margin: auto;
   background-color: #333;
-  padding: 50px 30px 0;
+  padding: 60px 30px calc(10px + env(safe-area-inset-bottom));
 }
 
 h1,
@@ -84,19 +84,21 @@ h4 {
   position: sticky;
   top: 50px;
   background-color: #333;
-  padding: 10px 0;
+  padding: 1.5rem 0 1rem;
+  margin: 0;
 }
 
 @media only screen and (max-width: 1050px) {
   div#root {
-    padding: 50px 20px 0;
+    padding: calc(60px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+      calc(10px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
   }
 }
 
 @media only screen and (max-width: 750px) {
   div#root {
-    padding: 0 10px 50px;
-    margin-bottom: env(safe-area-inset-bottom);
+    padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+      calc(60px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
   }
 
   h1,
@@ -105,4 +107,13 @@ h4 {
   h4 {
     top: 0;
   }
+}
+
+div.Login {
+  padding-top: 100px;
+}
+
+div.Login > div {
+  text-align: center;
+  margin: 10px 0;
 }
