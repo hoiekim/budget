@@ -10,6 +10,10 @@ div.BudgetBar .statusBar {
   margin: 5px 0;
 }
 
+div.BudgetBar .statusBar.income {
+  height: 20px;
+}
+
 div.BudgetBar .statusBar .contentWithoutPadding {
   width: 100%;
   height: 100%;
@@ -21,10 +25,23 @@ div.BudgetBar .statusBarWithText {
   position: relative;
 }
 
-div.BudgetBar .numerator {
+div.BudgetBar .contentWithoutPadding > div {
   transition: 1000ms;
   height: 100%;
   background-color: #b4d;
+}
+
+div.BudgetBar .statusBar .unlabeledNumerator {
+  position: absolute;
+  top: 0;
+  background: repeating-linear-gradient(135deg, #633, #633 3px, #a3c 3px, #a3c 6px);
+  border: 1px dashed #633;
+}
+
+div.BudgetBar .statusBar .incomeNumerator {
+  position: absolute;
+  top: 0;
+  background: repeating-linear-gradient(90deg, #9a5, #9a5 12px, #222 12px, #222 17px);
 }
 
 div.BudgetBar .sectionInfo .statusBar {
@@ -49,11 +66,14 @@ div.BudgetBar .infoText {
   align-items: center;
   font-size: 14px;
   color: #bbb;
+  position: relative;
 }
 
-div.BudgetBar .currentTotal {
-  display: inline-block;
-  text-align: right;
+div.BudgetBar .infoText > .icon {
+  position: absolute;
+  font-size: 30px;
+  right: 0;
+  top: -15px;
 }
 
 div.BudgetBar .budgetInfo,

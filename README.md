@@ -1,18 +1,14 @@
 # What is Budget?
 
-See [live](https://budget.hoie.kim)! (username: `demo`, password: `budget`)
+See [live demo](https://budget.hoie.kim)! (username: `demo`, password: `budget`)
 
 Budget is a web app that provides features for monitoring your financial acounts and transactions. We aim to develop this project to be a tool for users to understand their money flow and plan easily. We use 3rd party API provided by [Plaid](https://plaid.com/) so you need Plaid account and credentials to setup Budget on your own environment.
 
-# How do I install Budget?
+# How do I setup Budget?
 
-First, download Budget with this command in your terminal. This command will create `budget` folder and download all files in this repository.
+## Set up environment variables
 
-```
-git clone https://github.com/hoiekim/budget.git
-```
-
-Now we need some environment configuration. Copy `.env.example` file and name it `.env.local`. This file contains environment variables and Budget will try to read them once you run it. You need to keep the keys but use your own values depend on your environment. Open your favorite text editor and change values in `.env.local` file. See below for how to determine correct environment variables.
+We need some environment configuration. Copy the content of `.env.example` file and save it as `.env.local`. This file should contain environment variables and Budget will try to read them once you run it. You need to keep the keys but use your own values depend on your environment. See below for how to determine correct environment variables.
 
 - `ADMIN_PASSWORD` is password that you will use when login to Budget as administrator user. Choose one that you would like.
 
@@ -22,7 +18,37 @@ Now we need some environment configuration. Copy `.env.example` file and name it
 
 - `ELASTICSEARCH_HOST` is an address to an Elasticsearch server. You can download it from their [official website](https://elastic.co) for free and install it on your local machine. Or consider using free external hosting service, [Learndatabases](https://learndatabases.dev).
 
-Once you setup all environment variables, make sure you have [npm](https://npmjs.com) installed in your machine and available in your terminal. Then use this command to install Budget.
+## Option 1: Using Docker
+
+Pull latest released image from [hoie/budget](https://hub.docker.com/r/hoie/budget).
+
+```
+docker pull hoie/budget
+```
+
+You still need environment variables defined in `.env.local` file so run command for example:
+
+```
+docker run --env-file ./.env.local -p 3500:3500 hoie/budget
+```
+
+Now Budget app should be live [here](http://localhost:3005). Take a look!
+
+## Option 2: Using Node.js
+
+First, download Budget with this command in your terminal. This command will create `budget` folder and download all files in this repository.
+
+```
+git clone https://github.com/hoiekim/budget.git
+```
+
+Place `.env.local` file in the root of budget directory.
+
+```
+mv .env.local ./budget/.env.local
+```
+
+Make sure you have [npm](https://npmjs.com) installed in your machine and available in your terminal. Then use this command to install Budget.
 
 ```
 cd budget

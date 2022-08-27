@@ -1,6 +1,6 @@
-import { useAppContext, numberToCommaString, currencyCodeToSymbol } from "client";
 import { useRef, useState, useMemo, useEffect } from "react";
 import { Budget } from "server";
+import { useAppContext, numberToCommaString, currencyCodeToSymbol, IsNow } from "client";
 import SectionBar from "./SectionBar";
 import "./index.css";
 
@@ -11,7 +11,8 @@ interface Props {
 const BudgetBar = ({ budget }: Props) => {
   const { budget_id, capacities, iso_currency_code } = budget;
 
-  const { budgets, sections, categories, selectedInterval } = useAppContext();
+  const { transactions, accounts, budgets, sections, categories, selectedInterval } =
+    useAppContext();
 
   const [isSectionOpen, setIsSectionOpen] = useState(true);
   const [childrenHeight, setChildrenHeight] = useState(0);
@@ -62,6 +63,28 @@ const BudgetBar = ({ budget }: Props) => {
 
   const ratio = currentTotal / capacity;
 
+  const { unlabeledTotal, incomeTotal } = useMemo(() => {
+    let unlabeledTotal = 0;
+    let incomeTotal = 0;
+    const isNow = new IsNow();
+    transactions.forEach((e) => {
+      const { account_id, authorized_date, date, label, amount } = e;
+      const transactionDate = new Date(authorized_date || date);
+      if (!isNow.within(selectedInterval).from(transactionDate)) return;
+      const account = accounts.get(account_id);
+      if (!account || account.hide) return;
+      const { category_id, budget_id: labelBudgetId } = label;
+      if (category_id) return;
+      if ((labelBudgetId || account.label.budget_id) !== budget_id) return;
+      if (amount < 0) incomeTotal -= amount;
+      else unlabeledTotal += amount;
+    });
+    return { unlabeledTotal, incomeTotal };
+  }, [selectedInterval, transactions, accounts, budget_id]);
+
+  const unlabledRatio = unlabeledTotal / capacity;
+  const incomeRatio = incomeTotal / capacity;
+
   const onClickBudgetInfo = () => {
     if (isSectionOpen) {
       setChildrenHeight(0);
@@ -82,17 +105,39 @@ const BudgetBar = ({ budget }: Props) => {
                 style={{ width: (ratio > 1 ? 1 : ratio) * 100 + "%" }}
                 className="numerator"
               />
+              <div
+                style={{
+                  left: Math.min(1, ratio) * 100 + "%",
+                  width: Math.min(1 - ratio, unlabledRatio) * 100 + "%",
+                }}
+                className="unlabeledNumerator"
+              />
             </div>
           </div>
           <div className="infoText">
             <div>
-              <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+              <span>Spent {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <span className="currentTotal">{numberToCommaString(currentTotal)}</span>
             </div>
             <div>
               <span>of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <span className="capacity">{numberToCommaString(capacity)}</span>
             </div>
+          </div>
+          <div className="statusBar income">
+            <div className="contentWithoutPadding">
+              <div
+                style={{ width: Math.min(1, incomeRatio) * 100 + "%" }}
+                className="incomeNumerator"
+              />
+            </div>
+          </div>
+          <div className="infoText">
+            <div>
+              <span>Earned {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+              <span className="currentTotal">{numberToCommaString(incomeTotal)}</span>
+            </div>
+            <div className="icon">{incomeRatio > 1 ? "🤑" : "🧐"}</div>
           </div>
         </div>
       </div>
