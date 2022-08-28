@@ -31,3 +31,9 @@ jobs:
         file: ./Dockerfile
         push: true
         tags: ${{ secrets.DOCKER_HUB_USERNAME }}/budget:latest
+    -
+      name: Trigger deploy
+      env:
+        DEPLOY_SECRET: ${{ secrets.DEPLOY_SCRET }}
+      run: |
+        curl -X POST localhost:3002 -H "Content-Type: application/json" -d '{"secret": "$DEPLOY_SCRET"}'
