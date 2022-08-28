@@ -35,6 +35,6 @@ jobs:
       name: Trigger deploy
       env:
         DEPLOY_SECRET: ${{ secrets.DEPLOY_SCRET }}
-        DEPLOY_URL: ${{ secretes.DEPLOY_URL }}
+        DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
       run: |
         curl -X POST $DEPLOY_URL -H "Content-Type: application/json" -d '{"secret": "$DEPLOY_SCRET"}'
