@@ -33,8 +33,5 @@ jobs:
         tags: ${{ secrets.DOCKER_HUB_USERNAME }}/budget:latest
     -
       name: Trigger deploy
-      env:
-        DEPLOY_SECRET: ${{ secrets.DEPLOY_SCRET }}
-        DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
       run: |
-        curl -X POST $DEPLOY_URL -H "Content-Type: application/json" -d '{"secret": "$DEPLOY_SCRET"}'
+        curl -X POST ${{ secrets.DEPLOY_URL }} -H "Content-Type: application/json" -d '{"secret": "${{ secrets.DEPLOY_SCRET }}"}'
