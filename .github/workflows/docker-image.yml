@@ -34,4 +34,4 @@ jobs:
     -
       name: Trigger deploy
       run: |
-        curl -X POST ${{ secrets.DEPLOY_URL }} -H "Content-Type: application/json" -d '{"secret": "${{ secrets.DEPLOY_SCRET }}"}'
+        curl -X POST ${{ secrets.DEPLOY_URL }} -H "Content-Type: application/json" -d '{"secret": "${{ secrets.DEPLOY_SECRET }}"}'
