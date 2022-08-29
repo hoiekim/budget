@@ -14,7 +14,6 @@ const SectionBar = ({ section }: Props) => {
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
-  const [statusBarWidth, setStatusBarWidth] = useState(0);
   const [numeratorWidth, setNumeratorWidth] = useState(0);
 
   const capacity = capacities[selectedInterval] || 0;
@@ -63,12 +62,13 @@ const SectionBar = ({ section }: Props) => {
   const budget = budgets.get(budget_id) as Budget;
   const budgetCapacity = budget.capacities[selectedInterval] || 0;
 
-  const capacityRatio = capacity / budgetCapacity;
-  const currentRatio = currentTotal / capacity;
+  const capacityRatio = capacity / budgetCapacity || 0;
+  const currentRatio = currentTotal / capacity || 0;
+
+  const statusBarWidth = 30 + Math.pow(Math.min(capacityRatio, 1), 0.5) * 70;
 
   useEffect(() => {
-    setStatusBarWidth(30 + Math.pow(capacityRatio > 1 ? 1 : capacityRatio, 0.5) * 70);
-    setNumeratorWidth((currentRatio > 1 ? 1 : currentRatio) * 100);
+    setNumeratorWidth(Math.min(currentRatio, 1) * 100);
   }, [capacityRatio, currentRatio]);
 
   const onClickSectionInfo = () => {

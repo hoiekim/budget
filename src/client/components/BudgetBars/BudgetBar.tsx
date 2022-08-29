@@ -16,6 +16,10 @@ const BudgetBar = ({ budget }: Props) => {
 
   const [isSectionOpen, setIsSectionOpen] = useState(true);
   const [childrenHeight, setChildrenHeight] = useState(0);
+  const [numeratorWidth, setNumeratorWidth] = useState(0);
+  const [unlabeledNumeratorLeft, setUnlabledNumeratorLeft] = useState(0);
+  const [unlabeledNumeratorWidth, setUnlabledNumeratorWidth] = useState(0);
+  const [incomeNumeratorWidth, setIncomeNumeratorWidth] = useState(0);
 
   const capacity = capacities[selectedInterval] || 0;
 
@@ -61,7 +65,7 @@ const BudgetBar = ({ budget }: Props) => {
     return total;
   }, [categories, sections, budgets, budget]);
 
-  const ratio = currentTotal / capacity;
+  const ratio = currentTotal / capacity || 0;
 
   const { unlabeledTotal, incomeTotal } = useMemo(() => {
     let unlabeledTotal = 0;
@@ -82,8 +86,21 @@ const BudgetBar = ({ budget }: Props) => {
     return { unlabeledTotal, incomeTotal };
   }, [selectedInterval, transactions, accounts, budget_id]);
 
-  const unlabledRatio = unlabeledTotal / capacity;
-  const incomeRatio = incomeTotal / capacity;
+  const unlabledRatio = unlabeledTotal / capacity || 0;
+  const incomeRatio = incomeTotal / capacity || 0;
+
+  useEffect(() => {
+    setNumeratorWidth(Math.min(1, ratio) * 100);
+    setUnlabledNumeratorLeft(Math.min(1, ratio) * 100);
+    setUnlabledNumeratorWidth(Math.min(1 - ratio, unlabledRatio) * 100);
+    setIncomeNumeratorWidth(Math.min(1, incomeRatio) * 100);
+    return () => {
+      setNumeratorWidth(0);
+      setUnlabledNumeratorLeft(0);
+      setUnlabledNumeratorWidth(0);
+      setIncomeNumeratorWidth(0);
+    };
+  }, [ratio, unlabledRatio, incomeRatio]);
 
   const onClickBudgetInfo = () => {
     if (isSectionOpen) {
@@ -101,14 +118,12 @@ const BudgetBar = ({ budget }: Props) => {
         <div className="statusBarWithText">
           <div className="statusBar">
             <div className="contentWithoutPadding">
-              <div
-                style={{ width: (ratio > 1 ? 1 : ratio) * 100 + "%" }}
-                className="numerator"
-              />
+              <div style={{ width: numeratorWidth + "%" }} className="numerator" />
               <div
                 style={{
-                  left: Math.min(1, ratio) * 100 + "%",
-                  width: Math.min(1 - ratio, unlabledRatio) * 100 + "%",
+                  border: unlabledRatio === 0 ? "none" : undefined,
+                  left: unlabeledNumeratorLeft + "%",
+                  width: unlabeledNumeratorWidth + "%",
                 }}
                 className="unlabeledNumerator"
               />
@@ -127,7 +142,7 @@ const BudgetBar = ({ budget }: Props) => {
           <div className="statusBar income">
             <div className="contentWithoutPadding">
               <div
-                style={{ width: Math.min(1, incomeRatio) * 100 + "%" }}
+                style={{ width: incomeNumeratorWidth + "%" }}
                 className="incomeNumerator"
               />
             </div>
@@ -137,7 +152,7 @@ const BudgetBar = ({ budget }: Props) => {
               <span>Earned {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <span className="currentTotal">{numberToCommaString(incomeTotal)}</span>
             </div>
-            <div className="icon">{incomeRatio > 1 ? "🤑" : "🧐"}</div>
+            <div className="icon">{incomeRatio >= 1 && "✓"}</div>
           </div>
         </div>
       </div>

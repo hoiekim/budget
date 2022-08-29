@@ -1,5 +1,6 @@
 div.BudgetBar * {
   transition: 150ms;
+  overflow: hidden;
 }
 
 div.BudgetBar .statusBar {
@@ -68,14 +69,6 @@ div.BudgetBar .infoText {
   color: #bbb;
   position: relative;
 }
-
-div.BudgetBar .infoText > .icon {
-  position: absolute;
-  font-size: 30px;
-  right: 0;
-  top: -15px;
-}
-
 div.BudgetBar .budgetInfo,
 div.BudgetBar .sectionInfo,
 div.BudgetBar .categoryInfo {

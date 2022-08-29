@@ -13,6 +13,7 @@ const CategoryComponent = ({ category }: Props) => {
   const { transactions, accounts, budgets, sections, selectedInterval } = useAppContext();
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
+  const [numeratorWidth, setNumeratorWidth] = useState(0);
 
   const capacity = capacities[selectedInterval] || 0;
 
@@ -42,11 +43,14 @@ const CategoryComponent = ({ category }: Props) => {
   const budget = budgets.get(budget_id) as Budget;
   const budgetCapacity = budget.capacities[selectedInterval] || 0;
 
-  const capacityRatio = capacity / budgetCapacity;
-  const statusBarWidth = 30 + Math.pow(capacityRatio > 1 ? 1 : capacityRatio, 0.5) * 70;
+  const capacityRatio = capacity / budgetCapacity || 0;
+  const currentRatio = (amount || 0) / capacity || 0;
 
-  const currentRatio = (amount || 0) / capacity;
-  const numeratorWidth = (currentRatio > 1 ? 1 : currentRatio) * 100;
+  const statusBarWidth = 30 + Math.pow(Math.min(capacityRatio, 1), 0.5) * 70;
+
+  useEffect(() => {
+    setNumeratorWidth(Math.min(currentRatio, 1) * 100);
+  }, [capacityRatio, currentRatio]);
 
   const transactionsArray = useMemo(() => {
     const array: Transaction[] = [];
