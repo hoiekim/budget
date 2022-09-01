@@ -1,6 +1,6 @@
-import { useAppContext, numberToCommaString, call, DeepPartial } from "client";
 import { useRef, useState, useMemo } from "react";
-import { Budget, NewSectionGetResponse } from "server";
+import { Budget, NewSectionGetResponse, DeepPartial } from "server";
+import { useAppContext, numberToCommaString, call } from "client";
 import SectionComponent from "./SectionComponent";
 
 interface Props {

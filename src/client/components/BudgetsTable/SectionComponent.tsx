@@ -1,6 +1,6 @@
-import { call, DeepPartial, numberToCommaString, useAppContext } from "client";
+import { call, numberToCommaString, useAppContext } from "client";
 import { useMemo, useRef, useState } from "react";
-import { NewCategoryGetResponse, Section } from "server";
+import { NewCategoryGetResponse, Section, DeepPartial } from "server";
 import CategoryComponent from "./CategoryComponent";
 
 interface Props {

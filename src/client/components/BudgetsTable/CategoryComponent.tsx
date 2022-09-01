@@ -1,6 +1,6 @@
-import { call, numberToCommaString, useAppContext, DeepPartial } from "client";
 import { useState, useRef } from "react";
-import { Category } from "server";
+import { Category, DeepPartial } from "server";
+import { call, numberToCommaString, useAppContext } from "client";
 
 interface Props {
   category: Category & { amount?: number };

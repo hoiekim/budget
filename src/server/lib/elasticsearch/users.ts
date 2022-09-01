@@ -1,6 +1,5 @@
 import bcrypt from "bcrypt";
-import { DeepPartial } from "client";
-import { deepFlatten } from "server";
+import { deepFlatten, DeepPartial } from "server";
 import { client, index } from "./client";
 
 export interface MaskedUser {
