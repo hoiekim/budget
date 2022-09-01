@@ -8,18 +8,14 @@ interface Props {
   children?: ReactNode;
 }
 
-const globalTokens = new Map<string, string>();
-const fetchJobs = new Map<string, Promise<string>>();
+const tokens = new Map<string, string>();
+const promisedTokens = new Map<string, Promise<string>>();
 
 const PlaidLinkButton = ({ item, children }: Props) => {
   const { user } = useAppContext();
 
-  const access_token = item && item.access_token;
-  const [token, setToken] = useState(() => {
-    if (!access_token) return "";
-    const existingToken = globalTokens.get(access_token);
-    return existingToken || "";
-  });
+  const access_token = (item && item.access_token) || "";
+  const [token, setToken] = useState(tokens.get(access_token) || "");
 
   const { sync } = useSync();
 
@@ -44,7 +40,6 @@ const PlaidLinkButton = ({ item, children }: Props) => {
   });
 
   const userLoggedIn = !!user;
-  const updateMode = !!item;
   const disabled = !ready;
 
   useEffect(() => {
@@ -53,17 +48,17 @@ const PlaidLinkButton = ({ item, children }: Props) => {
       return;
     }
 
-    if (token) return;
-    if (access_token && fetchJobs.has(access_token)) {
-      fetchJobs.get(access_token)?.then((r) => {
-        const globalToken = globalTokens.get(access_token);
-        if (globalToken) setToken(globalToken);
+    if (tokens.has(access_token)) return;
+    if (promisedTokens.has(access_token)) {
+      promisedTokens.get(access_token)?.then((r) => {
+        const existingToken = tokens.get(access_token);
+        if (existingToken) setToken(existingToken);
       });
       return;
     }
 
     let queryString: string = "";
-    if (updateMode && access_token) {
+    if (access_token) {
       queryString += "?" + new URLSearchParams({ access_token }).toString();
     }
 
@@ -71,14 +66,13 @@ const PlaidLinkButton = ({ item, children }: Props) => {
       .get<LinkTokenGetResponse>("/api/link-token" + queryString)
       .then((r) => {
         const token = r.data || "";
-        if (access_token) globalTokens.set(access_token, token);
+        tokens.set(access_token, token);
         setToken(token);
         return token;
       });
 
-    if (!access_token) return;
-    fetchJobs.set(access_token, promisedToken);
-  }, [token, userLoggedIn, updateMode, access_token]);
+    promisedTokens.set(access_token, promisedToken);
+  }, [token, userLoggedIn, access_token]);
 
   return (
     <button onClick={() => open()} disabled={disabled}>

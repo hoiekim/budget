@@ -5,7 +5,7 @@ import { MaskedUser } from "./users";
 export interface Item {
   item_id: string;
   access_token: string;
-  institution_id?: string;
+  institution_id: string;
   cursor?: string;
   plaidError?: PlaidError;
 }

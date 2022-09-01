@@ -15,7 +15,7 @@ import {
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import { MaskedUser, Item, searchItems } from "server";
+import { MaskedUser, Item } from "server";
 
 export type { RemovedTransaction } from "plaid";
 
@@ -79,17 +79,6 @@ export const exchangePublicToken = async (user: MaskedUser, public_token: string
   const response = await client.itemPublicTokenExchange({ public_token });
 
   return response.data;
-};
-
-export const getItem = async (user: MaskedUser, access_token: string): Promise<Item> => {
-  const client = getClient(user);
-
-  const response = await client.itemGet({ access_token });
-
-  const { item: plaidItem } = response.data;
-  const { institution_id, item_id } = plaidItem;
-
-  return { item_id, access_token, institution_id: institution_id || undefined };
 };
 
 export type ItemError = PlaidError & { item_id: string };
@@ -248,7 +237,7 @@ export interface PlaidAccount {
   /**
    * The ID of the institution that the account belongs to.
    */
-  institution_id?: string;
+  institution_id: string;
   /**
    * The ID of the item that the account belongs to.
    */

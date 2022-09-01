@@ -170,7 +170,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
             <>
               <div className="bigText">{account?.custom_name || account?.name}</div>
               <div className="smallText">
-                <InstitutionSpan institution_id={institution_id} />
+                {institution_id && <InstitutionSpan institution_id={institution_id} />}
               </div>
             </>
           )}

@@ -3,7 +3,7 @@ import { Institution } from "server";
 import { call, useAppContext } from "client";
 
 interface Props {
-  institution_id?: string;
+  institution_id: string;
 }
 
 const fetchJobs = new Map<string | undefined, Promise<Institution | undefined>>();

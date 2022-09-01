@@ -198,11 +198,7 @@ const AccountRow = ({ account, sorter }: Props) => {
         )}
         {getVisible("action") && (
           <div className="action">
-            {item ? (
-              <PlaidLinkButton item={item}>Update</PlaidLinkButton>
-            ) : (
-              <button disabled>Update</button>
-            )}
+            <PlaidLinkButton item={item}>Update</PlaidLinkButton>
             <button onClick={onClickRemove}>Remove</button>
             <button onClick={onClickHide}>Hide</button>
           </div>

@@ -2,7 +2,7 @@ import { Store, SessionData, Cookie } from "express-session";
 import { client, index } from "server";
 
 /**
- * The REAL `Cookie` type that's used in runtime.
+ * The REAL `Cookie` type that's used by express-session in runtime.
  */
 export type RealCookie = Omit<Cookie, "expires"> & { _expires?: Date };
 
@@ -23,7 +23,7 @@ export type StoredCookie = Omit<Omit<RealCookie, "secure">, "sameSite"> & {
 export type RealSessionData = Omit<SessionData, "cookie"> & { cookie: RealCookie };
 
 /**
- * Redefines 'cookie' property to make it compatible.
+ * Redefines 'cookie' property to make it compatible with Elasticsearch mappings.
  */
 export type StoredSessionData = Omit<SessionData, "cookie"> & { cookie: StoredCookie };
 
@@ -33,21 +33,21 @@ export type StoredSessionData = Omit<SessionData, "cookie"> & { cookie: StoredCo
  */
 export class ElasticsearchSessionStore extends Store {
   /**
-   * Calls Elasticsearch client method to get session with given session id.
-   * @param sid
+   * Gets session with given session_id.
+   * @param session_id
    * @param callback
    * @returns
    */
   get = async (
-    sid: string,
+    session_id: string,
     callback: (err: any, session?: RealSessionData | null) => void
   ) => {
     try {
       const data = await client
-        .get<{ session: StoredSessionData }>({ index, id: sid })
+        .get<{ session: StoredSessionData }>({ index, id: session_id })
         .catch((error) => {
           if (error.body?.found === false) return;
-          throw new Error(`Failed to get session from Elasticsearch: ${sid}`);
+          throw new Error(`Failed to get session from Elasticsearch: ${session_id}`);
         });
       const source = data?._source;
       if (!source) {
@@ -59,7 +59,7 @@ export class ElasticsearchSessionStore extends Store {
       const { cookie: storedCookie } = session;
       const { _expires, secure, sameSite } = storedCookie;
       if (!_expires || new Date(_expires) < new Date()) {
-        this.destroy(sid);
+        this.destroy(session_id);
         return callback(null, null);
       }
 
@@ -77,12 +77,16 @@ export class ElasticsearchSessionStore extends Store {
   };
 
   /**
-   * Calls Elasticsearch client method to set session with given session id.
-   * @param sid
+   * Sets session with given session_id and session object.
+   * @param session_id
    * @param session
    * @param callback
    */
-  set = async (sid: string, session: RealSessionData, callback?: (err?: any) => void) => {
+  set = async (
+    session_id: string,
+    session: RealSessionData,
+    callback?: (err?: any) => void
+  ) => {
     if (!callback) return;
 
     try {
@@ -97,7 +101,7 @@ export class ElasticsearchSessionStore extends Store {
 
       await client.index({
         index,
-        id: sid,
+        id: session_id,
         document: { type: "session", session: { ...session, cookie: storedCookie } },
       });
 
@@ -108,15 +112,15 @@ export class ElasticsearchSessionStore extends Store {
   };
 
   /**
-   * Removes session data from Elasticsearch by given session id
-   * @param sid
+   * Removes session data from Elasticsearch by given session_id.
+   * @param session_id
    * @param callback
    * @returns
    */
-  destroy = async (sid: string, callback?: (err?: any) => void) => {
+  destroy = async (session_id: string, callback?: (err?: any) => void) => {
     if (!callback) return;
     try {
-      await client.delete({ index, id: sid });
+      await client.delete({ index, id: session_id });
       return callback(null);
     } catch (error) {
       return callback(error);
