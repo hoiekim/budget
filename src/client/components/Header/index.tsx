@@ -59,8 +59,8 @@ const Header = () => {
       const newViewDate = new Date(year, month, date);
       switch (selectedInterval) {
         case "year":
-          newViewDate.setMonth(0);
           newViewDate.setDate(1);
+          newViewDate.setMonth(0);
           break;
         case "month":
           newViewDate.setDate(1);
@@ -83,13 +83,13 @@ const Header = () => {
     const newViewDate = new Date(year, month, date);
     switch (selectedInterval) {
       case "year":
-        newViewDate.setFullYear(year + 2);
-        newViewDate.setMonth(0);
         newViewDate.setDate(1);
+        newViewDate.setMonth(0);
+        newViewDate.setFullYear(year + 2);
         break;
       case "month":
-        newViewDate.setMonth(month + 2);
         newViewDate.setDate(1);
+        newViewDate.setMonth(month + 2);
         break;
       case "week":
         const lastMonday = date - day + (day === 0 ? -6 : 1);
