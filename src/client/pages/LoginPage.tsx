@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { LoginPostResponse } from "server";
 import { useAppContext, call } from "client";
 
-const Login = () => {
+const LoginPage = () => {
   const { user, setUser, router } = useAppContext();
 
   useEffect(() => {
@@ -48,7 +48,7 @@ const Login = () => {
   }
 
   return (
-    <div className="Login">
+    <div className="LoginPage">
       <div>
         <span>{user.username} is logged in</span>
         <button onClick={onClick}>Logout</button>
@@ -57,4 +57,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default LoginPage;

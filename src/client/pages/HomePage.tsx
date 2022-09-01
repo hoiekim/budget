@@ -1,11 +1,12 @@
 import { useMemo } from "react";
 import { AccountType } from "plaid";
-import { IsNow, useAppContext } from "client";
+import { IsDate, useAppContext } from "client";
 import { TransactionsTable, AccountsTable, BudgetsTable } from "client/components";
 import { Account, Transaction } from "server";
 
-const Home = () => {
-  const { user, items, transactions, accounts, selectedInterval } = useAppContext();
+const HomePage = () => {
+  const { user, items, transactions, accounts, selectedInterval, viewDate } =
+    useAppContext();
 
   const accountsArray = useMemo(() => {
     const array: Account[] = [];
@@ -45,18 +46,18 @@ const Home = () => {
 
   const transactionsArray = useMemo(() => {
     const array: Transaction[] = [];
-    const isNow = new IsNow();
+    const isViewDate = new IsDate(viewDate);
     transactions.forEach((e) => {
       const hidden = accounts.get(e.account_id)?.hide;
       const transactionDate = new Date(e.authorized_date || e.date);
-      const within = isNow.within(selectedInterval).from(transactionDate);
+      const within = isViewDate.within(selectedInterval).from(transactionDate);
       if (!hidden && within) array.push(e);
     });
     return array;
-  }, [transactions, accounts, selectedInterval]);
+  }, [transactions, accounts, selectedInterval, viewDate]);
 
   return (
-    <div className="Home">
+    <div className="HomePage">
       <BudgetsTable />
       <AccountsTable accountsArray={[...accountsArray, ...errorAccountsArray]} />
       <TransactionsTable transactionsArray={transactionsArray} />
@@ -64,4 +65,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default HomePage;

@@ -24,15 +24,15 @@ export const numberToCommaString = (n: number, fixed = 2) => {
 
 /**
  * This class is designed to determine certain logics with given date.
- * For example: `isNow.within("week").from("2022-08-14")`
+ * For example: `new IsDate().within("week").from(new Date("2022-08-14"))`
  */
-export class IsNow {
+export class IsDate {
   private interval?: Interval;
   private now: Date;
   private millisecThisWeek: number;
 
-  constructor() {
-    const now = new Date();
+  constructor(date?: Date) {
+    const now = date || new Date();
     this.now = now;
 
     let dayNumber = now.getDay() - 1;
@@ -76,6 +76,30 @@ export class IsNow {
     return false;
   };
 }
+
+const oneDay = 24 * 60 * 60 * 1000;
+
+export const getDateStringByInterval = (date: Date, interval: Interval) => {
+  switch (interval) {
+    case "year":
+      return date.toLocaleString("en-US", { year: "numeric" });
+    case "month":
+      return date.toLocaleString("en-US", { year: "numeric", month: "short" });
+    case "week":
+      const startDate = new Date(date.getFullYear(), 0, 1);
+      const days = Math.floor((date.getTime() - startDate.getTime()) / oneDay);
+      const weekNumber = Math.ceil(days / 7);
+      return `Week ${weekNumber}, ` + date.toLocaleString("en-US", { year: "numeric" });
+    case "day":
+      return date.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+      });
+    default:
+      return "";
+  }
+};
 
 export const currencyCodeToSymbol = (code: string) => {
   switch (code) {

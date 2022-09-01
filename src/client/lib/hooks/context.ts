@@ -43,6 +43,8 @@ export interface ContextType {
   setSelectedBudgetId: Dispatch<SetStateAction<string>>;
   selectedInterval: Interval;
   setSelectedInterval: Dispatch<SetStateAction<Interval>>;
+  viewDate: Date;
+  setViewDate: Dispatch<SetStateAction<Date>>;
 }
 
 export const Context = createContext<ContextType>({} as ContextType);

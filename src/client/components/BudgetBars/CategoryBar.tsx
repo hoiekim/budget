@@ -1,4 +1,4 @@
-import { numberToCommaString, useAppContext, IsNow, currencyCodeToSymbol } from "client";
+import { numberToCommaString, useAppContext, IsDate, currencyCodeToSymbol } from "client";
 import { TransactionsList } from "client/components";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Budget, Category, Section, Transaction } from "server";
@@ -10,7 +10,8 @@ interface Props {
 const CategoryComponent = ({ category }: Props) => {
   const { section_id, category_id, name, capacities, amount } = category;
 
-  const { transactions, accounts, budgets, sections, selectedInterval } = useAppContext();
+  const { transactions, accounts, budgets, sections, selectedInterval, viewDate } =
+    useAppContext();
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
   const [numeratorWidth, setNumeratorWidth] = useState(0);
@@ -54,16 +55,16 @@ const CategoryComponent = ({ category }: Props) => {
 
   const transactionsArray = useMemo(() => {
     const array: Transaction[] = [];
-    const isNow = new IsNow();
+    const isViewDate = new IsDate(viewDate);
     transactions.forEach((e) => {
       const hidden = accounts.get(e.account_id)?.hide;
       const transactionDate = new Date(e.authorized_date || e.date);
-      const within = isNow.within(selectedInterval).from(transactionDate);
+      const within = isViewDate.within(selectedInterval).from(transactionDate);
       const includedInCategory = e.label.category_id === category_id;
       if (!hidden && within && includedInCategory) array.push(e);
     });
     return array;
-  }, [category_id, transactions, accounts, selectedInterval]);
+  }, [category_id, transactions, accounts, selectedInterval, viewDate]);
 
   const onClickCategoryInfo = () => {
     if (isTransactionOpen) {

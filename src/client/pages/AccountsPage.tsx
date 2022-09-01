@@ -4,7 +4,7 @@ import { useAppContext } from "client";
 import { AccountsTable } from "client/components";
 import { Account } from "server";
 
-const Accounts = () => {
+const AccountsPage = () => {
   const { user, items, accounts } = useAppContext();
 
   const accountsArray = useMemo(() => {
@@ -44,10 +44,10 @@ const Accounts = () => {
   }, [user, items]);
 
   return (
-    <div className="Accounts">
+    <div className="AccountsPage">
       <AccountsTable accountsArray={[...accountsArray, ...errorAccountsArray]} />
     </div>
   );
 };
 
-export default Accounts;
+export default AccountsPage;

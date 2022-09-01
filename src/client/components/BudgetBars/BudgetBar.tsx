@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Budget } from "server";
-import { useAppContext, numberToCommaString, currencyCodeToSymbol, IsNow } from "client";
+import { useAppContext, numberToCommaString, currencyCodeToSymbol, IsDate } from "client";
 import SectionBar from "./SectionBar";
 import "./index.css";
 
@@ -11,8 +11,15 @@ interface Props {
 const BudgetBar = ({ budget }: Props) => {
   const { budget_id, capacities, iso_currency_code } = budget;
 
-  const { transactions, accounts, budgets, sections, categories, selectedInterval } =
-    useAppContext();
+  const {
+    transactions,
+    accounts,
+    budgets,
+    sections,
+    categories,
+    selectedInterval,
+    viewDate,
+  } = useAppContext();
 
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorLeft, setUnlabledNumeratorLeft] = useState(0);
@@ -50,11 +57,11 @@ const BudgetBar = ({ budget }: Props) => {
   const { unlabeledTotal, incomeTotal } = useMemo(() => {
     let unlabeledTotal = 0;
     let incomeTotal = 0;
-    const isNow = new IsNow();
+    const isViewDate = new IsDate(viewDate);
     transactions.forEach((e) => {
       const { account_id, authorized_date, date, label, amount } = e;
       const transactionDate = new Date(authorized_date || date);
-      if (!isNow.within(selectedInterval).from(transactionDate)) return;
+      if (!isViewDate.within(selectedInterval).from(transactionDate)) return;
       const account = accounts.get(account_id);
       if (!account || account.hide) return;
       const { category_id, budget_id: labelBudgetId } = label;
@@ -64,7 +71,7 @@ const BudgetBar = ({ budget }: Props) => {
       else unlabeledTotal += amount;
     });
     return { unlabeledTotal, incomeTotal };
-  }, [selectedInterval, transactions, accounts, budget_id]);
+  }, [selectedInterval, transactions, accounts, budget_id, viewDate]);
 
   const unlabledRatio = unlabeledTotal / capacity || 0;
   const incomeRatio = incomeTotal / capacity || 0;
@@ -84,6 +91,7 @@ const BudgetBar = ({ budget }: Props) => {
 
   return (
     <div className="BudgetBar">
+      <h2>Budgets</h2>
       <div className="budgetInfo">
         <div>Total</div>
         <div className="statusBarWithText">

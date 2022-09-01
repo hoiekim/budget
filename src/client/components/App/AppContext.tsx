@@ -37,6 +37,7 @@ const AppContext = ({ initialUser, children }: Props) => {
     "selectedInterval",
     "month"
   );
+  const [viewDate, setViewDate] = useState<Date>(new Date());
 
   const router = useRouter();
 
@@ -62,6 +63,8 @@ const AppContext = ({ initialUser, children }: Props) => {
     setSelectedBudgetId,
     selectedInterval,
     setSelectedInterval,
+    viewDate,
+    setViewDate,
   };
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;
