@@ -15,7 +15,7 @@ import {
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import { MaskedUser } from "server";
+import { MaskedUser, Item, searchItems } from "server";
 
 export type { RemovedTransaction } from "plaid";
 
@@ -39,8 +39,8 @@ if (!PLAID_CLIENT_ID || !PLAID_SECRET_DEVELOPMENT || !PLAID_SECRET_SANDBOX) {
   console.warn("Plaid is not cofigured. Check env vars.");
 }
 
-const getClient = (user: MaskedUser) => {
-  const isDemo = user.username === "demo";
+const getClient = (user?: MaskedUser) => {
+  const isDemo = user?.username === "demo";
   const config = new Configuration({
     basePath: isDemo ? PlaidEnvironments.sandbox : PlaidEnvironments.development,
     baseOptions: {
@@ -73,14 +73,6 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
   return response.data;
 };
 
-export interface Item {
-  item_id: string;
-  access_token: string;
-  institution_id?: string;
-  cursor?: string;
-  plaidError?: PlaidError;
-}
-
 export const exchangePublicToken = async (user: MaskedUser, public_token: string) => {
   const client = getClient(user);
 
@@ -102,18 +94,18 @@ export const getItem = async (user: MaskedUser, access_token: string): Promise<I
 
 export type ItemError = PlaidError & { item_id: string };
 
-export const getTransactions = async (user: MaskedUser) => {
+export const getTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getClient(user);
 
   type PlaidTransactionsResponse = {
-    errors: ItemError[];
+    items: Item[];
     added: PlaidTransaction[];
     removed: RemovedTransaction[];
     modified: PlaidTransaction[];
   };
 
   const data: PlaidTransactionsResponse = {
-    errors: [],
+    items: [],
     added: [],
     removed: [],
     modified: [],
@@ -123,11 +115,12 @@ export const getTransactions = async (user: MaskedUser) => {
   const allRemoved: RemovedTransaction[][] = [];
   const allModified: PlaidTransaction[][] = [];
 
-  const fetchJobs = user.items.map(async (item) => {
+  const fetchJobs = items.map(async (item) => {
     const thisItemAdded: PlaidTransaction[][] = [];
     const thisItemRemoved: RemovedTransaction[][] = [];
     const thisItemModified: PlaidTransaction[][] = [];
     let hasMore = true;
+    let plaidError: PlaidError | null = null;
 
     while (hasMore) {
       const { item_id, access_token, cursor } = item;
@@ -147,13 +140,15 @@ export const getTransactions = async (user: MaskedUser) => {
         hasMore = has_more;
         item.cursor = next_cursor;
       } catch (error: any) {
-        const plaidError = error?.response?.data as PlaidError;
+        plaidError = error?.response?.data as PlaidError;
         console.error(plaidError);
         console.error("Failed to get transactions data for item:", item_id);
-        if (plaidError) data.errors.push({ ...plaidError, item_id });
         hasMore = false;
       }
     }
+
+    if (plaidError) data.items.push({ ...item, plaidError });
+    else data.items.push(item);
 
     allAdded.push(thisItemAdded.flat());
     allRemoved.push(thisItemRemoved.flat());
@@ -281,22 +276,22 @@ export interface Account extends PlaidAccount {
   label: AccountLabel;
 }
 
-export const getAccounts = async (user: MaskedUser) => {
+export const getAccounts = async (user: MaskedUser, items: Item[]) => {
   const client = getClient(user);
 
   type PlaidAccountsResponse = {
-    errors: ItemError[];
+    items: Item[];
     accounts: PlaidAccount[];
   };
 
   const data: PlaidAccountsResponse = {
-    errors: [],
+    items: [],
     accounts: [],
   };
 
   const allAccounts: PlaidAccount[][] = [];
 
-  const fetchJobs = user.items.map(async (item) => {
+  const fetchJobs = items.map(async (item) => {
     const { item_id, access_token, institution_id } = item;
     try {
       const response = await client.accountsGet({ access_token });
@@ -309,7 +304,7 @@ export const getAccounts = async (user: MaskedUser) => {
       const plaidError = error.response.data as PlaidError;
       console.error(plaidError);
       console.error("Failed to get accounts data for item:", item_id);
-      data.errors.push({ ...plaidError, item_id });
+      data.items.push({ ...item, plaidError });
     }
 
     return;

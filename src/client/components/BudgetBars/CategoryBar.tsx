@@ -69,7 +69,7 @@ const CategoryComponent = ({ category }: Props) => {
     if (isTransactionOpen) {
       setChildrenHeight(0);
       setTimeout(() => setIsTransactionOpen((s) => !s), 100);
-    } else {
+    } else if (transactionsArray.length) {
       setIsTransactionOpen((s) => !s);
       const childrenDiv = childrenDivRef.current;
       if (!childrenDiv) return;

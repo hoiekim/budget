@@ -3,7 +3,7 @@ import { Interval } from "server";
 import { useAppContext } from "client";
 import { BudgetBar } from "client/components";
 
-const Status = () => {
+const Budgets = () => {
   const {
     budgets,
     selectedBudgetId,
@@ -62,4 +62,4 @@ const Status = () => {
   );
 };
 
-export default Status;
+export default Budgets;

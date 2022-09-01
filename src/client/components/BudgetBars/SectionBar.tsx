@@ -75,7 +75,7 @@ const SectionBar = ({ section }: Props) => {
     if (isCategoryOpen) {
       setChildrenHeight(0);
       setTimeout(() => setIsCategoryOpen((s) => !s), 100);
-    } else {
+    } else if (categoryComponents.length) {
       setIsCategoryOpen((s) => !s);
       const childrenDiv = childrenDivRef.current;
       if (!childrenDiv) return;

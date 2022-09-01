@@ -29,6 +29,7 @@ export interface ContextType {
   institutions: Institutions;
   setInstitutions: Dispatch<SetStateAction<Institutions>>;
   items: Items;
+  setItems: Dispatch<SetStateAction<Items>>;
   user: MaskedUser | undefined;
   setUser: Dispatch<SetStateAction<MaskedUser | undefined>>;
   router: ClientRouter;

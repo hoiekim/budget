@@ -1,4 +1,4 @@
-import { MaskedUser, flattenAllAddresses } from "server";
+import { MaskedUser, deepFlatten } from "server";
 import { client, index } from "./client";
 
 export type Interval = "year" | "month" | "week" | "day";
@@ -25,7 +25,7 @@ export const createBudget = async (user: MaskedUser) => {
   const { user_id } = user;
   const response = await client.index({
     index,
-    body: {
+    document: {
       type: "budget",
       user: { user_id },
       budget: {
@@ -54,7 +54,7 @@ export const updateBudget = async (user: MaskedUser, budget: PartialBudget) => {
   const source = `
   if (ctx._source.user.user_id == "${user_id}") {
     if (ctx._source.type == "budget") {
-      ${Object.entries(flattenAllAddresses(budget)).reduce((acc, [key, value]) => {
+      ${Object.entries(deepFlatten(budget)).reduce((acc, [key, value]) => {
         if (key === "budget_id") return acc;
         return acc + `ctx._source.budget.${key} = ${JSON.stringify(value)};\n`;
       }, "")}
@@ -142,7 +142,7 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
   const { user_id } = user;
   const response = await client.index({
     index,
-    body: {
+    document: {
       type: "section",
       user: { user_id },
       section: {
@@ -171,7 +171,7 @@ export const updateSection = async (user: MaskedUser, section: PartialSection) =
   const source = `
   if (ctx._source.user.user_id == "${user_id}") {
     if (ctx._source.type == "section") {
-      ${Object.entries(flattenAllAddresses(section)).reduce((acc, [key, value]) => {
+      ${Object.entries(deepFlatten(section)).reduce((acc, [key, value]) => {
         if (key === "section_id") return acc;
         return acc + `ctx._source.section.${key} = ${JSON.stringify(value)};\n`;
       }, "")}
@@ -250,7 +250,7 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
   const { user_id } = user;
   const response = await client.index({
     index,
-    body: {
+    document: {
       type: "category",
       user: { user_id },
       category: {
@@ -279,7 +279,7 @@ export const updateCategory = async (user: MaskedUser, category: PartialCategory
   const source = `
   if (ctx._source.user.user_id == "${user_id}") {
     if (ctx._source.type == "category") {
-      ${Object.entries(flattenAllAddresses(category)).reduce((acc, [key, value]) => {
+      ${Object.entries(deepFlatten(category)).reduce((acc, [key, value]) => {
         if (key === "category_id") return acc;
         return acc + `ctx._source.category.${key} = ${JSON.stringify(value)};\n`;
       }, "")}

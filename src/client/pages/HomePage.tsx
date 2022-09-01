@@ -5,7 +5,7 @@ import { TransactionsTable, AccountsTable, BudgetsTable } from "client/component
 import { Account, Transaction } from "server";
 
 const Home = () => {
-  const { user, transactions, accounts, selectedInterval } = useAppContext();
+  const { user, items, transactions, accounts, selectedInterval } = useAppContext();
 
   const accountsArray = useMemo(() => {
     const array: Account[] = [];
@@ -15,30 +15,33 @@ const Home = () => {
 
   const errorAccountsArray = useMemo((): Account[] => {
     if (!user) return [];
-    const filteredItems = user.items.filter((e) => {
-      return e.plaidError && !accountsArray.find((f) => f.item_id === e.item_id);
+    const result: Account[] = [];
+    items.forEach((e) => {
+      if (!e.plaidError) return;
+      const errorAccount = {
+        item_id: e.item_id,
+        institution_id: e.institution_id,
+        custom_name: "Unknown",
+        hide: false,
+        label: {},
+        account_id: "",
+        balances: {
+          available: 0,
+          current: 0,
+          limit: 0,
+          iso_currency_code: "USD",
+          unofficial_currency_code: "USD",
+        },
+        mask: "",
+        name: "Unknown",
+        official_name: "Unknown",
+        type: AccountType.Other,
+        subtype: null,
+      };
+      result.push(errorAccount);
     });
-    return filteredItems.map((e) => ({
-      item_id: e.item_id,
-      institution_id: e.institution_id,
-      custom_name: "Unknown",
-      hide: false,
-      label: {},
-      account_id: "",
-      balances: {
-        available: 0,
-        current: 0,
-        limit: 0,
-        iso_currency_code: "USD",
-        unofficial_currency_code: "USD",
-      },
-      mask: "",
-      name: "Unknown",
-      official_name: "Unknown",
-      type: AccountType.Other,
-      subtype: null,
-    }));
-  }, [user, accountsArray]);
+    return result;
+  }, [user, items]);
 
   const transactionsArray = useMemo(() => {
     const array: Transaction[] = [];

@@ -6,14 +6,15 @@ import {
   updateTransactions,
   deleteTransactions,
   updateItems,
-  ItemError,
+  Item,
   Transaction,
   PartialTransaction,
   RemovedTransaction,
 } from "server";
+import { searchItems } from "server/lib";
 
 export type TransactionsStreamGetResponse = {
-  errors: ItemError[];
+  items: Item[];
   added: Transaction[];
   removed: RemovedTransaction[];
   modified: PartialTransaction[];
@@ -33,7 +34,7 @@ export const getTransactionsStreamRoute = new Route(
 
     const earlyRequest = searchTransactions(user).then((transactions) => {
       const data: TransactionsStreamGetResponse = {
-        errors: [],
+        items: [],
         added: transactions,
         removed: [],
         modified: [],
@@ -42,11 +43,12 @@ export const getTransactionsStreamRoute = new Route(
       return null;
     });
 
-    const lateRequest = getTransactions(user)
+    const lateRequest = searchItems(user)
+      .then((r) => getTransactions(user, r))
       .then(async (data) => {
         await earlyRequest;
 
-        const { added, removed, modified } = data;
+        const { items, added, removed, modified } = data;
 
         console.info(
           "Plaid responded with " +
@@ -56,7 +58,10 @@ export const getTransactionsStreamRoute = new Route(
         );
 
         const filledAdded = added.map((e) => ({ ...e, label: {} }));
-        const filledData: TransactionsStreamGetResponse = { ...data, added: filledAdded };
+        const filledData: TransactionsStreamGetResponse = {
+          ...data,
+          added: filledAdded,
+        };
         res.write(JSON.stringify({ status: "success", data: filledData }) + "\n");
 
         const updateJobs = [
@@ -65,7 +70,7 @@ export const getTransactionsStreamRoute = new Route(
           deleteTransactions(user, removed),
         ];
 
-        Promise.all(updateJobs).then(() => updateItems(user));
+        Promise.all(updateJobs).then(() => updateItems(user, items));
 
         return null;
       })

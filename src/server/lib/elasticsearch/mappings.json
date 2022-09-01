@@ -10,17 +10,48 @@
         "username": { "type": "keyword" },
         "email": { "type": "keyword" },
         "expiry": { "type": "date" },
-        "items": {
-          "type": "nested",
-          "properties": {
-            "item_id": { "type": "keyword" },
-            "access_token": { "type": "keyword" },
-            "institution_id": { "type": "keyword" },
-            "cursor": { "type": "keyword" }
-          }
-        },
         "password": { "type": "keyword" },
         "token": { "type": "keyword" }
+      }
+    },
+    "item": {
+      "type": "object",
+      "dynamic": "strict",
+      "properties": {
+        "item_id": { "type": "keyword" },
+        "user_id": { "type": "keyword" },
+        "access_token": { "type": "keyword" },
+        "institution_id": { "type": "keyword" },
+        "cursor": { "type": "keyword" }
+      }
+    },
+    "session": {
+      "type": "object",
+      "dynamic": "strict",
+      "properties": {
+        "user": {
+          "type": "object",
+          "dynamic": "strict",
+          "properties": {
+            "user_id": { "type": "keyword" },
+            "username": { "type": "keyword" }
+          }
+        },
+        "cookie": {
+          "type": "object",
+          "dynamic": "strict",
+          "properties": {
+            "originalMaxAge": { "type": "long" },
+            "maxAge": { "type": "long" },
+            "signed": { "type": "boolean" },
+            "_expires": { "type": "date" },
+            "httpOnly": { "type": "boolean" },
+            "path": { "type": "text" },
+            "domain": { "type": "text" },
+            "secure": { "type": "keyword" },
+            "sameSite": { "type": "keyword" }
+          }
+        }
       }
     },
     "account": {

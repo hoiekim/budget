@@ -1,4 +1,5 @@
 import { useAppContext, useSync, call } from "client";
+import { ReactNode } from "react";
 import "./index.css";
 
 const Header = () => {
@@ -13,6 +14,13 @@ const Header = () => {
     });
   };
 
+  type NavigatorProps = { target: string; children: ReactNode };
+  const Navigator = ({ target, children }: NavigatorProps) => (
+    <button disabled={path === target} onClick={() => go(target)}>
+      {children}
+    </button>
+  );
+
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div>
@@ -22,14 +30,16 @@ const Header = () => {
           </button>
         </div>
         <div>
-          <button disabled={path === "/"} onClick={() => go("/")}>
-            Home
-          </button>
+          <Navigator target="/">Home</Navigator>
         </div>
         <div>
-          <button disabled={path === "/status"} onClick={() => go("/status")}>
-            Status
-          </button>
+          <Navigator target="/budgets">Budgets</Navigator>
+        </div>
+        <div>
+          <Navigator target="/accounts">Accounts</Navigator>
+        </div>
+        <div>
+          <Navigator target="/transactions">Transactions</Navigator>
         </div>
       </div>
     </div>

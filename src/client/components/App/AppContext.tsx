@@ -1,4 +1,4 @@
-import { useState, useCallback, ReactNode, Dispatch, SetStateAction } from "react";
+import { useState, ReactNode } from "react";
 import {
   useLocalStorage,
   ContextType,
@@ -30,29 +30,12 @@ const AppContext = ({ initialUser, children }: Props) => {
   const [budgets, setBudgets] = useState<Budgets>(new Map());
   const [sections, setSections] = useState<Sections>(new Map());
   const [categories, setCategories] = useState<Categories>(new Map());
-  const [user, _setUser] = useState<MaskedUser | undefined>(initialUser);
+  const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
 
   const [selectedBudgetId, setSelectedBudgetId] = useLocalStorage("selectedBudgetId", "");
   const [selectedInterval, setSelectedInterval] = useLocalStorage<Interval>(
     "selectedInterval",
     "month"
-  );
-
-  const setUser: Dispatch<SetStateAction<MaskedUser | undefined>> = useCallback(
-    (action) => {
-      _setUser((oldUser) => {
-        const newUser = typeof action === "function" ? action(oldUser) : action;
-
-        const newItems: Items = new Map();
-        newUser?.items.forEach((e) => {
-          newItems.set(e.item_id, e);
-        });
-        setItems(newItems);
-
-        return newUser;
-      });
-    },
-    [setItems, _setUser]
   );
 
   const router = useRouter();
@@ -65,6 +48,7 @@ const AppContext = ({ initialUser, children }: Props) => {
     institutions,
     setInstitutions,
     items,
+    setItems,
     user,
     setUser,
     router,

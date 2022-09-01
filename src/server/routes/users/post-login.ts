@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { Route, searchUser, MaskedUser } from "server";
+import { Route, searchUser, MaskedUser, maskUser } from "server";
 
 export type LoginPostResponse = MaskedUser;
 
@@ -15,10 +15,9 @@ export const postLoginRoute = new Route<LoginPostResponse>(
     const pwMatches = await bcrypt.compare(password, user.password);
 
     if (pwMatches) {
-      const { user_id, username, items } = user;
-      const safeUser: MaskedUser = { user_id, username, items };
-      req.session.user = safeUser;
-      return { status: "success", data: safeUser };
+      const maskedUser = maskUser(user);
+      req.session.user = maskedUser;
+      return { status: "success", data: maskedUser };
     }
 
     return { status: "failed", info: "Wrong password." };

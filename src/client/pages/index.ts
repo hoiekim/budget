@@ -1,2 +1,5 @@
-export { default as Home } from "./Home";
-export { default as Login } from "./Login";
+export { default as HomePage } from "./HomePage";
+export { default as LoginPage } from "./LoginPage";
+export { default as BudgetsPage } from "./BudgetsPage";
+export { default as AccountsPage } from "./AccountsPage";
+export { default as TransactionsPage } from "./TransactionsPage";

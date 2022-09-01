@@ -25,3 +25,21 @@ export const saveLocalItems = (items: Item[]) => {
     console.error("Failed to save local Plaid items.");
   }
 };
+
+export const pushLocalItem = (item: Item) => {
+  const items = getLocalItems();
+  items.push(item);
+  saveLocalItems(items);
+};
+
+export const removeLocalItem = (item_id: string) => {
+  const items = getLocalItems();
+  items.find((e, i) => {
+    if (e.item_id === item_id) {
+      items.splice(i, 1);
+      return true;
+    }
+    return false;
+  });
+  saveLocalItems(items);
+};

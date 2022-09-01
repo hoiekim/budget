@@ -1,15 +1,23 @@
 import bcrypt from "bcrypt";
-import { Item } from "server";
+import { DeepPartial } from "client";
+import { deepFlatten } from "server";
 import { client, index } from "./client";
 
-export interface User {
+export interface MaskedUser {
   user_id: string;
   username: string;
-  password: string;
-  items: Item[];
 }
 
-export type MaskedUser = Omit<User, "password">;
+export type User = MaskedUser & { password: string };
+
+export const maskUser = (user: User): MaskedUser => {
+  const { user_id, username } = user;
+  return { user_id, username };
+};
+
+type IndexUserInput = Omit<User, "user_id"> & {
+  user_id?: string;
+};
 
 /**
  * Creates or updates a document that represents a user.
@@ -20,22 +28,17 @@ export type MaskedUser = Omit<User, "password">;
  * @param user
  * @returns A promise to be an Elasticsearch response object
  */
-export const indexUser = async (user: Omit<User, "user_id"> & { user_id?: string }) => {
+export const indexUser = async (user: IndexUserInput) => {
   const { user_id, password } = user;
 
-  if (password) {
-    user.password = await bcrypt.hash(password, 10);
-  }
-
+  if (password) user.password = await bcrypt.hash(password, 10);
   if (user_id) delete user.user_id;
 
-  const response = await client.index({
+  return client.index({
     index,
     id: user_id,
-    body: { type: "user", user },
+    document: { type: "user", user },
   });
-
-  return response;
 };
 
 /**
@@ -43,142 +46,74 @@ export const indexUser = async (user: Omit<User, "user_id"> & { user_id?: string
  * @param user
  * @returns A promise to be a User object
  */
-export const searchUser = async (user: Partial<MaskedUser>) => {
+export const searchUser = async (
+  user: Partial<MaskedUser>
+): Promise<User | undefined> => {
+  let hitUser: User | undefined;
+  let user_id: string;
+
   if (user.user_id) {
     const response = await client.get<{ user: User }>({
       index,
       id: user.user_id,
     });
 
-    const hitUser = response?._source?.user;
+    hitUser = response._source?.user;
+    user_id = response._id;
+  } else {
+    const filter: { term: any }[] = [{ term: { type: "user" } }];
 
-    return (hitUser && { ...hitUser, user_id: response._id }) as User;
-  }
-
-  const filter: { term: any }[] = [{ term: { type: "user" } }];
-
-  for (const key in user) {
-    filter.push({
-      term: { [`user.${key}`]: (user as any)[key] },
-    });
-  }
-
-  const response = await client.search<{ user: User }>({
-    index,
-    query: { bool: { filter } },
-  });
-
-  const { hits } = response.hits;
-
-  if (hits.length > 1) {
-    console.warn("Multiple users are found by user:", user);
-  }
-
-  const hit = hits[0];
-  const hitUser = hit?._source?.user;
-
-  return (hitUser && { ...hitUser, user_id: hit._id }) as User;
-};
-
-/**
- * Adds an item to an indexed user object.
- * @param user
- * @param item
- * @returns A promise to be an Elasticsearch response object
- */
-export const createItem = async (user: MaskedUser, item: Item) => {
-  const response = await client.update({
-    index,
-    id: user.user_id,
-    script: {
-      source: "ctx._source.user.items.add(params.item)",
-      lang: "painless",
-      params: { item },
-    },
-  });
-  return response;
-};
-
-/**
- * Update items of given user, specifically each item's cursor.
- * Cursor is used to mark where last synced with Plaid API.
- * @param user
- * @returns A promise to be an Elasticsearch response object
- */
-export const updateItems = async (user: MaskedUser) => {
-  const { user_id, items } = user;
-
-  const query = {
-    index,
-    id: user_id,
-    script: {
-      source: `
-  for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-    for (int j=params.items.length-1; j>=0; j--) {
-      if (ctx._source.user.items[i].item_id == params.items[j].item_id) {
-          ctx._source.user.items[i].cursor = params.items[j].cursor
-      }
+    const flatUser = deepFlatten(user);
+    for (const key in flatUser) {
+      filter.push({ term: { [`user.${key}`]: flatUser[key] } });
     }
-  }
-  `,
-      lang: "painless",
-      params: { items },
-    },
-  };
 
-  return client.update(query);
-};
-
-/**
- * Delete an item with given user and item_id.
- * @param user
- * @param item_id
- * @returns A promise to be an Elasticsearch response object
- */
-export const deleteItem = async (user: MaskedUser, item_id: string) => {
-  const itemJob = client.update({
-    index,
-    id: user.user_id,
-    script: {
-      source: `
-  for (int i=ctx._source.user.items.length-1; i>=0; i--) {
-    if (ctx._source.user.items[i].item_id == params.item_id) {
-        ctx._source.user.items.remove(i);
-    }
-  }
-  `,
-      lang: "painless",
-      params: { item_id },
-    },
-  });
-
-  const otherJob = client
-    .search({
+    const response = await client.search<{ user: User }>({
       index,
-      query: { term: { "account.item_id": item_id } },
-    })
-    .then((r) => {
-      const account_ids = r.hits.hits.map((e) => e._id);
-      return client.deleteByQuery({
-        index,
-        query: {
-          bool: {
-            should: account_ids.flatMap((account_id) => [
-              { term: { _id: account_id } },
-              { term: { "transaction.account_id": account_id } },
-            ]),
-          },
-        },
-      });
+      query: { bool: { filter } },
     });
 
-  user.items.find((e, i) => {
-    if (e.item_id === item_id) {
-      user.items.splice(i, 1);
-      return true;
-    }
-    return false;
-  });
+    const { hits } = response.hits;
 
-  return Promise.all([itemJob, otherJob]);
+    if (hits.length > 1) {
+      console.warn("Multiple users are found by user:", user);
+    }
+
+    const hit = hits[0];
+    hitUser = hit?._source?.user;
+    user_id = hit?._id;
+  }
+
+  if (!hitUser || !user_id) return;
+
+  const filledHitUser = { ...hitUser, user_id };
+
+  return filledHitUser;
+};
+
+export type PartialUser = { user_id: string } & DeepPartial<User>;
+
+/**
+ * Updates user document with given object.
+ * @param user
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const updateUser = async (user: PartialUser) => {
+  if (!user) return;
+  const { user_id } = user;
+
+  const source = `
+  if (ctx._source.type == "user") {
+    ${Object.entries(deepFlatten(user)).reduce((acc, [key, value]) => {
+      if (key === "user_id") return acc;
+      return acc + `ctx._source.user.${key} = ${JSON.stringify(value)};\n`;
+    }, "")}
+  } else {
+    throw new Exception("Found document is not user type.");
+  }
+  `;
+
+  const script = { source, lang: "painless" };
+
+  return client.update({ id: user_id, index, script });
 };

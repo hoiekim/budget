@@ -12,7 +12,7 @@ import { useAppContext, read, call, Accounts } from "client";
 export const useSync = () => {
   const {
     user,
-    setUser,
+    setItems,
     setTransactions,
     setAccounts,
     setBudgets,
@@ -28,7 +28,7 @@ export const useSync = () => {
 
     read<TransactionsStreamGetResponse>("/api/transactions-stream", ({ data }) => {
       if (!data) return;
-      const { added, removed, modified } = data;
+      const { items, added, removed, modified } = data;
 
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
@@ -42,8 +42,17 @@ export const useSync = () => {
         removed.forEach((e) => newTransactions.delete(e.transaction_id));
         return newTransactions;
       });
+
+      setItems((oldItems) => {
+        const newItems = new Map(oldItems);
+        items.forEach((item) => {
+          const { item_id } = item;
+          newItems.set(item_id, item);
+        });
+        return newItems;
+      });
     });
-  }, [userLoggedIn, setTransactions]);
+  }, [userLoggedIn, setItems, setTransactions]);
 
   type SyncAccounts = () => void;
 
@@ -52,39 +61,24 @@ export const useSync = () => {
 
     read<AccountsStreamGetResponse>("/api/accounts-stream", ({ data }) => {
       if (!data) return;
-      const { accounts, errors } = data;
+      const { accounts, items } = data;
 
-      setAccounts((_oldAccounts) => {
+      setAccounts(() => {
         const newAccounts: Accounts = new Map();
         accounts.forEach((e) => newAccounts.set(e.account_id, e));
         return newAccounts;
       });
 
-      setUser((oldUser) => {
-        const newItems = oldUser ? [...oldUser.items] : [];
-        const newUser = oldUser && { ...oldUser, items: newItems };
-        accounts.forEach((e) => {
-          newItems.find((item) => {
-            if (item.item_id === e.item_id) {
-              delete item.plaidError;
-              return true;
-            }
-            return false;
-          });
+      setItems((oldItems) => {
+        const newItems = new Map(oldItems);
+        items.forEach((item) => {
+          const { item_id } = item;
+          newItems.set(item_id, item);
         });
-        errors.forEach((e) => {
-          newItems.find((item) => {
-            if (item.item_id === e.item_id) {
-              item.plaidError = e;
-              return true;
-            }
-            return false;
-          });
-        });
-        return newUser;
+        return newItems;
       });
     });
-  }, [userLoggedIn, setAccounts, setUser]);
+  }, [userLoggedIn, setItems, setAccounts]);
 
   type SyncBudgets = () => void;
 

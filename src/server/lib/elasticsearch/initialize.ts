@@ -1,6 +1,14 @@
 import mappings from "./mappings.json";
 import { client, index } from "./client";
-import { Item, getLocalItems, searchUser, indexUser } from "server";
+import {
+  Item,
+  getLocalItems,
+  searchUser,
+  indexUser,
+  searchItems,
+  maskUser,
+} from "server";
+import { indexItem } from "./items";
 
 const { properties }: any = mappings;
 
@@ -69,19 +77,26 @@ export const initializeIndex = async (): Promise<void> => {
   localItems.forEach((e) => itemsMap.set(e.item_id, e));
 
   const existingAdminUser = await searchUser({ username: "admin" });
-  existingAdminUser?.items.forEach((e) => {
-    const duplicatedItem = itemsMap.get(e.item_id);
-    const mergedItem = duplicatedItem ? { ...e, ...duplicatedItem } : e;
-    itemsMap.set(e.item_id, mergedItem);
-  });
 
-  const adminItems = Array.from(itemsMap.values());
+  if (existingAdminUser) {
+    (await searchItems(maskUser(existingAdminUser))).forEach((e) => {
+      const duplicatedItem = itemsMap.get(e.item_id);
+      const mergedItem = duplicatedItem ? { ...e, ...duplicatedItem } : e;
+      itemsMap.set(e.item_id, mergedItem);
+    });
+  }
 
-  indexUser({
+  const indexingAdminUserResult = await indexUser({
     user_id: existingAdminUser?.user_id,
     username: "admin",
     password: ADMIN_PASSWORD || "budget",
-    items: adminItems,
+  });
+
+  const createdAdminUserId = indexingAdminUserResult?._id;
+  if (!createdAdminUserId) throw new Error("Failed to created admin user");
+
+  itemsMap.forEach((item) => {
+    indexItem({ user_id: createdAdminUserId, username: "admin" }, item);
   });
 
   const existingDemoUser = await searchUser({ username: "demo" });
@@ -90,7 +105,6 @@ export const initializeIndex = async (): Promise<void> => {
     user_id: existingDemoUser?.user_id,
     username: "demo",
     password: DEMO_PASSWORD || "budget",
-    items: existingDemoUser?.items || [],
   });
 
   console.info("Successfully initialized Elasticsearch index and setup default users.");

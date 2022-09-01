@@ -10,20 +10,20 @@ if (isWindows) process.env.NODE_PATH = paths.join(";");
 else process.env.NODE_PATH = paths.join(":");
 require("module").Module._initPaths();
 
+import path from "path";
+import express from "express";
+import session from "express-session";
+declare module "express-session" {
+  export interface SessionData {
+    user: MaskedUser;
+  }
+}
+
 export * from "./lib";
 export * from "./routes";
 
-import express from "express";
-import session from "express-session";
-import path from "path";
-import { initializeIndex, User, Route } from "server";
+import { initializeIndex, MaskedUser, Route, ElasticsearchSessionStore } from "server";
 import * as routes from "server/routes";
-
-declare module "express-session" {
-  export interface SessionData {
-    user: Omit<User, "password">;
-  }
-}
 
 const app = express();
 
@@ -37,8 +37,10 @@ app.use(
     rolling: true,
     cookie: {
       secure: false,
+      sameSite: "strict",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
+    store: new ElasticsearchSessionStore(),
   })
 );
 

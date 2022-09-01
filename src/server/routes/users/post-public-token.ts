@@ -1,4 +1,4 @@
-import { exchangePublicToken, Route, createItem, saveLocalItems, Item } from "server";
+import { exchangePublicToken, Route, indexItem, pushLocalItem, Item } from "server";
 
 export interface PbulicTokenPostResponse {
   item: Item;
@@ -16,6 +16,8 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       };
     }
 
+    const { user_id } = user;
+
     const { public_token, institution_id } = req.body;
     if (typeof public_token !== "string") {
       return {
@@ -26,16 +28,13 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
 
     const { access_token, item_id } = await exchangePublicToken(user, public_token);
     const item: Item = { item_id, access_token, institution_id };
-    user.items.push(item);
-    const response = await createItem(user, item);
+    const response = await indexItem(user, item);
 
-    if (response.result !== "updated") {
+    if (response.result !== "created") {
       throw new Error(`Failed to register item: ${item_id}`);
     }
 
-    if (user.username === "admin") {
-      saveLocalItems(user.items);
-    }
+    if (user.username === "admin") pushLocalItem(item);
 
     return { status: "success", data: { item } };
   }

@@ -21,16 +21,8 @@ const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
   const { account_id, balances, custom_name, name, institution_id, label } = account;
 
-  const {
-    user,
-    setUser,
-    accounts,
-    setAccounts,
-    setTransactions,
-    institutions,
-    items,
-    budgets,
-  } = useAppContext();
+  const { user, accounts, setAccounts, setTransactions, institutions, items, budgets } =
+    useAppContext();
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
     return label.budget_id || "";
@@ -122,20 +114,6 @@ const AccountRow = ({ account, sorter }: Props) => {
     if (confirmed) {
       const { item_id } = item;
       call.delete(`/api/item?id=${item_id}`).then((r) => {
-        if (r.status === "success")
-          user?.items.find((e, i) => {
-            if (e.item_id === item_id) {
-              setUser((oldUser) => {
-                if (!oldUser) return;
-                const newUser = { ...oldUser };
-                newUser.items.splice(i, 1);
-                return newUser;
-              });
-              return true;
-            }
-            return false;
-          });
-
         const accountsInItem: Account[] = [];
         accounts.forEach((e) => {
           if (e.item_id === item_id) accountsInItem.push(e);
@@ -220,7 +198,11 @@ const AccountRow = ({ account, sorter }: Props) => {
         )}
         {getVisible("action") && (
           <div className="action">
-            <PlaidLinkButton item={item}>Update</PlaidLinkButton>
+            {item ? (
+              <PlaidLinkButton item={item}>Update</PlaidLinkButton>
+            ) : (
+              <button disabled>Update</button>
+            )}
             <button onClick={onClickRemove}>Remove</button>
             <button onClick={onClickHide}>Hide</button>
           </div>

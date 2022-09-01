@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Budget } from "server";
 import { useAppContext, numberToCommaString, currencyCodeToSymbol, IsNow } from "client";
 import SectionBar from "./SectionBar";
@@ -14,32 +14,12 @@ const BudgetBar = ({ budget }: Props) => {
   const { transactions, accounts, budgets, sections, categories, selectedInterval } =
     useAppContext();
 
-  const [isSectionOpen, setIsSectionOpen] = useState(true);
-  const [childrenHeight, setChildrenHeight] = useState(0);
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorLeft, setUnlabledNumeratorLeft] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabledNumeratorWidth] = useState(0);
   const [incomeNumeratorWidth, setIncomeNumeratorWidth] = useState(0);
 
   const capacity = capacities[selectedInterval] || 0;
-
-  const childrenDivRef = useRef<HTMLDivElement>(null);
-
-  const observerRef = useRef(
-    new ResizeObserver((entries) => {
-      const { height } = entries[0].contentRect;
-      setChildrenHeight(height);
-    })
-  );
-
-  useEffect(() => {
-    const childrenDiv = childrenDivRef.current;
-    const observer = observerRef.current;
-    if (childrenDiv) observer.observe(childrenDiv);
-    return () => {
-      if (childrenDiv) observer.unobserve(childrenDiv);
-    };
-  }, []);
 
   const sectionComponents = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -102,18 +82,9 @@ const BudgetBar = ({ budget }: Props) => {
     };
   }, [ratio, unlabledRatio, incomeRatio]);
 
-  const onClickBudgetInfo = () => {
-    if (isSectionOpen) {
-      setChildrenHeight(0);
-      setTimeout(() => setIsSectionOpen((s) => !s), 100);
-    } else {
-      setIsSectionOpen((s) => !s);
-    }
-  };
-
   return (
     <div className="BudgetBar">
-      <div className="budgetInfo" onClick={onClickBudgetInfo}>
+      <div className="budgetInfo">
         <div>Total</div>
         <div className="statusBarWithText">
           <div className="statusBar">
@@ -157,8 +128,8 @@ const BudgetBar = ({ budget }: Props) => {
         </div>
       </div>
       <div className="row-spacer" />
-      <div className="children" style={{ height: childrenHeight }}>
-        <div ref={childrenDivRef}>{isSectionOpen && sectionComponents}</div>
+      <div className="children">
+        <div>{sectionComponents}</div>
       </div>
     </div>
   );
