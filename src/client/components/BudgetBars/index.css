@@ -44,7 +44,6 @@ div.BudgetBar .statusBar .unlabeledNumerator {
   position: absolute;
   top: 0;
   background: repeating-linear-gradient(135deg, #633, #633 3px, #a3c 3px, #a3c 6px);
-  border: 1px dashed #633;
 }
 
 div.BudgetBar .statusBar .incomeNumerator {
