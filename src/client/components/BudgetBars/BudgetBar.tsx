@@ -52,8 +52,6 @@ const BudgetBar = ({ budget }: Props) => {
     return total;
   }, [categories, sections, budgets, budget]);
 
-  const ratio = currentTotal / capacity || 0;
-
   const { unlabeledTotal, incomeTotal } = useMemo(() => {
     let unlabeledTotal = 0;
     let incomeTotal = 0;
@@ -73,21 +71,21 @@ const BudgetBar = ({ budget }: Props) => {
     return { unlabeledTotal, incomeTotal };
   }, [selectedInterval, transactions, accounts, budget_id, viewDate]);
 
-  const unlabledRatio = unlabeledTotal / capacity || 0;
+  const combinedRatio = (currentTotal + unlabeledTotal) / capacity;
+  const labeledRatio = currentTotal / (currentTotal + unlabeledTotal) || 0;
+  const unlabledRatio = unlabeledTotal / (currentTotal + unlabeledTotal) || 0;
   const incomeRatio = incomeTotal / capacity || 0;
 
   useEffect(() => {
-    setNumeratorWidth(Math.min(1, ratio) * 100);
-    setUnlabledNumeratorLeft(Math.min(1, ratio) * 100);
-    setUnlabledNumeratorWidth(Math.min(1 - ratio, unlabledRatio) * 100);
+    setNumeratorWidth(Math.min(1, labeledRatio) * 100);
+    setUnlabledNumeratorWidth(Math.min(1 - labeledRatio, unlabledRatio) * 100);
     setIncomeNumeratorWidth(Math.min(1, incomeRatio) * 100);
     return () => {
       setNumeratorWidth(0);
-      setUnlabledNumeratorLeft(0);
       setUnlabledNumeratorWidth(0);
       setIncomeNumeratorWidth(0);
     };
-  }, [ratio, unlabledRatio, incomeRatio]);
+  }, [labeledRatio, unlabledRatio, incomeRatio]);
 
   return (
     <div className="BudgetBar">
@@ -97,15 +95,17 @@ const BudgetBar = ({ budget }: Props) => {
         <div className="statusBarWithText">
           <div className="statusBar">
             <div className="contentWithoutPadding">
-              <div style={{ width: numeratorWidth + "%" }} className="numerator" />
-              <div
-                style={{
-                  border: unlabledRatio === 0 ? "none" : undefined,
-                  left: unlabeledNumeratorLeft + "%",
-                  width: unlabeledNumeratorWidth + "%",
-                }}
-                className="unlabeledNumerator"
-              />
+              <div style={{ width: combinedRatio * 100 + "%" }}>
+                <div style={{ width: numeratorWidth + "%" }} className="numerator" />
+                <div
+                  style={{
+                    border: unlabledRatio === 0 ? "none" : undefined,
+                    left: numeratorWidth + "%",
+                    width: unlabeledNumeratorWidth + "%",
+                  }}
+                  className="unlabeledNumerator"
+                />
+              </div>
             </div>
           </div>
           <div className="infoText">

@@ -5,31 +5,39 @@ div.BudgetBar * {
 
 div.BudgetBar .statusBar {
   width: 100%;
-  height: 40px;
+  height: 10px;
   background-color: #222;
-  padding: 5px;
+  padding: 3px;
   margin: 5px 0;
+  border-radius: 10px;
 }
 
 div.BudgetBar .statusBar.income {
-  height: 20px;
+  height: 10px;
 }
 
 div.BudgetBar .statusBar .contentWithoutPadding {
   width: 100%;
   height: 100%;
   position: relative;
+  border-radius: 10px;
+}
+
+div.BudgetBar .contentWithoutPadding > div {
+  height: 100%;
+  border-radius: 10px;
+  position: relative;
+}
+
+div.BudgetBar .contentWithoutPadding > div > div {
+  transition: 1000ms;
+  height: 100%;
+  background-color: #b4d;
 }
 
 div.BudgetBar .statusBarWithText {
   width: 100%;
   position: relative;
-}
-
-div.BudgetBar .contentWithoutPadding > div {
-  transition: 1000ms;
-  height: 100%;
-  background-color: #b4d;
 }
 
 div.BudgetBar .statusBar .unlabeledNumerator {
@@ -42,11 +50,11 @@ div.BudgetBar .statusBar .unlabeledNumerator {
 div.BudgetBar .statusBar .incomeNumerator {
   position: absolute;
   top: 0;
-  background: repeating-linear-gradient(90deg, #9a5, #9a5 12px, #222 12px, #222 17px);
+  background: repeating-linear-gradient(90deg, #9a5, #9a5 6px, #222 6px, #222 9px);
 }
 
 div.BudgetBar .sectionInfo .statusBar {
-  height: 25px;
+  height: 10px;
 }
 
 div.BudgetBar .sectionInfo .statusBar .numerator {
@@ -54,7 +62,7 @@ div.BudgetBar .sectionInfo .statusBar .numerator {
 }
 
 div.BudgetBar .categoryInfo .statusBar {
-  height: 15px;
+  height: 10px;
 }
 
 div.BudgetBar .categoryInfo .statusBar .numerator {
