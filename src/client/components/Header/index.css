@@ -25,6 +25,12 @@ div.Header > .viewController {
   margin-bottom: 10px;
 }
 
+div.Header > .viewController > div {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 @media only screen and (max-width: 750px) {
   div.Header {
     top: auto;

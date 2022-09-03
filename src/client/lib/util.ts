@@ -55,7 +55,7 @@ export class IsDate {
 
     if (interval === "week") {
       const delta = now.getTime() - date.getTime();
-      return millisecThisWeek >= delta;
+      return millisecThisWeek >= delta && delta > 0;
     }
 
     const thisYear = now.getFullYear();
