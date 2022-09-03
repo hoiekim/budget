@@ -24,6 +24,7 @@ div.BudgetBar .statusBar .contentWithoutPadding {
 }
 
 div.BudgetBar .contentWithoutPadding > div {
+  transition: 1000ms;
   height: 100%;
   border-radius: 10px;
   position: relative;
