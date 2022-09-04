@@ -1,6 +1,6 @@
-import { currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
+import { call, currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Budget, Section } from "server";
+import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
 import CategoryBar from "./CategoryBar";
 
 interface Props {
@@ -10,7 +10,13 @@ interface Props {
 const SectionBar = ({ section }: Props) => {
   const { budget_id, section_id, name, capacities } = section;
 
-  const { budgets, sections, categories, selectedInterval } = useAppContext();
+  const { budgets, sections, setSections, categories, setCategories, selectedInterval } =
+    useAppContext();
+
+  const [nameInput, setNameInput] = useState(name);
+  const [capacityInput, setCapacityInput] = useState(() => {
+    return numberToCommaString(capacities[selectedInterval]);
+  });
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
@@ -71,24 +77,105 @@ const SectionBar = ({ section }: Props) => {
     setNumeratorWidth(Math.min(currentRatio, 1) * 100);
   }, [capacityRatio, currentRatio]);
 
+  const openCategory = () => {
+    setIsCategoryOpen((s) => !s);
+    const childrenDiv = childrenDivRef.current;
+    if (!childrenDiv) return;
+    childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   const onClickSectionInfo = () => {
-    if (isCategoryOpen) {
-      setChildrenHeight(0);
-      setTimeout(() => setIsCategoryOpen((s) => !s), 100);
-    } else if (categoryComponents.length) {
-      setIsCategoryOpen((s) => !s);
-      const childrenDiv = childrenDivRef.current;
-      if (!childrenDiv) return;
-      childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    if (isCategoryOpen) setIsCategoryOpen(false);
+    else if (categoryComponents.length) openCategory();
   };
 
   const { iso_currency_code } = budget;
 
+  const revertInputs = () => {
+    setNameInput(name);
+    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
+  };
+
+  type SetTimeout = typeof setTimeout;
+  type Timeout = ReturnType<SetTimeout>;
+
+  const timeout = useRef<Timeout>();
+
+  const submit = (updatedSection: DeepPartial<Section> = {}, delay = 500) => {
+    clearTimeout(timeout.current);
+    timeout.current = setTimeout(async () => {
+      try {
+        const { status } = await call.post("/api/section", {
+          ...updatedSection,
+          section_id,
+        });
+        if (status === "success") {
+          setSections((oldSections) => {
+            const newSections = new Map(oldSections);
+            const oldSection = oldSections.get(section_id);
+            const newSection = { ...oldSection, ...updatedSection };
+            newSections.set(section_id, newSection as Section);
+            return newSections;
+          });
+        } else throw new Error(`Failed to update section: ${section_id}`);
+      } catch (error: any) {
+        console.error(error);
+        revertInputs();
+      }
+    }, delay);
+  };
+
+  const onClickAdd = async () => {
+    const queryString = "?" + new URLSearchParams({ parent: section_id }).toString();
+    const newCategoryRequestUrl = "/api/new-category" + queryString;
+    const { data } = await call.get<NewCategoryGetResponse>(newCategoryRequestUrl);
+
+    setCategories((oldCategories) => {
+      const newCategories = new Map(oldCategories);
+      const category_id = data?.category_id;
+      if (category_id) {
+        newCategories.set(category_id, {
+          category_id,
+          section_id,
+          name: "",
+          capacities: { year: 0, month: 0, week: 0, day: 0 },
+        });
+      }
+
+      return newCategories;
+    });
+
+    openCategory();
+  };
+
+  const onClickRemove = async () => {
+    const queryString = "?" + new URLSearchParams({ id: section_id }).toString();
+    const { status } = await call.delete("/api/section" + queryString);
+    if (status === "success") {
+      setSections((oldSections) => {
+        const newSections = new Map(oldSections);
+        newSections.delete(section_id);
+        return newSections;
+      });
+    }
+  };
+
   return (
     <div className="SectionBar">
       <div className="sectionInfo" onClick={onClickSectionInfo} ref={infoDivRef}>
-        <div>{name}</div>
+        <div className="title">
+          <input
+            placeholder="name"
+            value={nameInput}
+            onChange={(e) => {
+              const { value } = e.target;
+              setNameInput(value);
+              submit({ name: value });
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button onClick={onClickRemove}>✕</button>
+        </div>
         <div className="statusBarWithText">
           <div style={{ width: statusBarWidth + "%" }} className="statusBar">
             <div className="contentWithoutPadding">
@@ -102,13 +189,29 @@ const SectionBar = ({ section }: Props) => {
             </div>
             <div>
               <span>of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <span className="capacity">{numberToCommaString(capacity)}</span>
+              <input
+                className="capacityInput"
+                value={capacityInput}
+                onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
+                onChange={(e) => {
+                  const { value } = e.target;
+                  setCapacityInput(value);
+                  submit({ capacities: { [selectedInterval]: +value } });
+                }}
+                onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
+                onBlur={(e) =>
+                  setCapacityInput(numberToCommaString(+e.target.value || 0))
+                }
+              />
             </div>
           </div>
         </div>
       </div>
       <div className="children" style={{ height: childrenHeight }}>
         <div ref={childrenDivRef}>{isCategoryOpen && categoryComponents}</div>
+      </div>
+      <div className="addButton">
+        <button onClick={onClickAdd}>+</button>
       </div>
     </div>
   );

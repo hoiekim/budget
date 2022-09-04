@@ -1,6 +1,6 @@
 import { ChangeEventHandler, ReactNode, useMemo } from "react";
 import { useAppContext, useSync, call, getDateStringByInterval } from "client";
-import { Interval } from "server";
+import { Budget, Interval, NewBudgetGetResponse } from "server";
 import "./index.css";
 
 const Header = () => {
@@ -13,6 +13,7 @@ const Header = () => {
     selectedInterval,
     setSelectedInterval,
     budgets,
+    setBudgets,
     viewDate,
     setViewDate,
   } = useAppContext();
@@ -104,9 +105,31 @@ const Header = () => {
     setViewDate(newViewDate);
   };
 
+  const onClickAddBudget = async () => {
+    const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");
+    if (!data) return;
+
+    const { budget_id } = data;
+    setSelectedBudgetId(budget_id);
+    const newBudget: Budget = {
+      budget_id,
+      name: "",
+      capacities: { year: 0, month: 0, week: 0, day: 0 },
+      iso_currency_code: "USD",
+    };
+    setBudgets((oldBudgets) => {
+      const newBudgets = new Map(oldBudgets);
+      newBudgets.set(budget_id, newBudget);
+      return newBudgets;
+    });
+  };
+
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
+        <div>
+          <button onClick={onClickAddBudget}>+</button>
+        </div>
         <select value={selectedBudgetId} onChange={onChangeBudget}>
           <option>Select Budget</option>
           {budgetOptions}
@@ -136,10 +159,7 @@ const Header = () => {
           </button>
         </div>
         <div>
-          <Navigator target="/">Home</Navigator>
-        </div>
-        <div>
-          <Navigator target="/budgets">Budgets</Navigator>
+          <Navigator target="/">Budget</Navigator>
         </div>
         <div>
           <Navigator target="/accounts">Accounts</Navigator>

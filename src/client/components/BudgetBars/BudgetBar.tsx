@@ -1,6 +1,12 @@
-import { useState, useMemo, useEffect } from "react";
-import { Budget } from "server";
-import { useAppContext, numberToCommaString, currencyCodeToSymbol, IsDate } from "client";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Budget, DeepPartial, NewSectionGetResponse } from "server";
+import {
+  useAppContext,
+  numberToCommaString,
+  currencyCodeToSymbol,
+  IsDate,
+  call,
+} from "client";
 import SectionBar from "./SectionBar";
 import "./index.css";
 
@@ -9,20 +15,27 @@ interface Props {
 }
 
 const BudgetBar = ({ budget }: Props) => {
-  const { budget_id, capacities, iso_currency_code } = budget;
+  const { budget_id, name, capacities, iso_currency_code } = budget;
 
   const {
     transactions,
     accounts,
     budgets,
+    setBudgets,
     sections,
+    setSections,
     categories,
+    setSelectedBudgetId,
     selectedInterval,
     viewDate,
   } = useAppContext();
 
+  const [nameInput, setNameInput] = useState(name);
+  const [capacityInput, setCapacityInput] = useState(() => {
+    return numberToCommaString(capacities[selectedInterval]);
+  });
+
   const [numeratorWidth, setNumeratorWidth] = useState(0);
-  const [unlabeledNumeratorLeft, setUnlabledNumeratorLeft] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabledNumeratorWidth] = useState(0);
   const [incomeNumeratorWidth, setIncomeNumeratorWidth] = useState(0);
 
@@ -87,11 +100,93 @@ const BudgetBar = ({ budget }: Props) => {
     };
   }, [labeledRatio, unlabledRatio, incomeRatio]);
 
+  const revertInputs = () => {
+    setNameInput(name);
+    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
+  };
+
+  type SetTimeout = typeof setTimeout;
+  type Timeout = ReturnType<SetTimeout>;
+
+  const timeout = useRef<Timeout>();
+
+  const submit = (updatedBudget: DeepPartial<Budget> = {}, delay = 500) => {
+    clearTimeout(timeout.current);
+    timeout.current = setTimeout(async () => {
+      try {
+        const { status } = await call.post("/api/budget", {
+          ...updatedBudget,
+          budget_id,
+        });
+        if (status === "success") {
+          setBudgets((oldBudgets) => {
+            const newBudgets = new Map(oldBudgets);
+            const oldBudget = oldBudgets.get(budget_id);
+            const newBudget = { ...oldBudget, ...updatedBudget };
+            newBudgets.set(budget_id, newBudget as Budget);
+            return newBudgets;
+          });
+        } else throw new Error(`Failed to update budget: ${budget_id}`);
+      } catch (error: any) {
+        console.error(error);
+        revertInputs();
+      }
+    }, delay);
+  };
+
+  const onClickRemoveBudget = async () => {
+    if (!window.confirm(`Do you want to delete budget: ${name || "Unnamed"}?`)) return;
+    const queryString = "?" + new URLSearchParams({ id: budget_id }).toString();
+    const { status } = await call.delete("/api/budget" + queryString);
+    if (status === "success") {
+      setBudgets((oldBudgets) => {
+        const newBudgets = new Map(oldBudgets);
+        newBudgets.delete(budget_id);
+        return newBudgets;
+      });
+      const nextBudget = budgets.values().next().value;
+      setSelectedBudgetId(nextBudget?.budget_id);
+    }
+  };
+
+  const onClickAddSection = async () => {
+    const queryString = "?" + new URLSearchParams({ parent: budget_id }).toString();
+    const { data } = await call.get<NewSectionGetResponse>(
+      "/api/new-section" + queryString
+    );
+
+    setSections((oldSections) => {
+      const newSections = new Map(oldSections);
+      const section_id = data?.section_id;
+      if (section_id) {
+        newSections.set(section_id, {
+          section_id,
+          budget_id,
+          name: "",
+          capacities: { year: 0, month: 0, week: 0, day: 0 },
+        });
+      }
+      return newSections;
+    });
+  };
+
   return (
     <div className="BudgetBar">
       <h2>Budgets</h2>
       <div className="budgetInfo">
-        <div>Total</div>
+        <div className="title">
+          <input
+            placeholder="name"
+            value={nameInput}
+            onChange={(e) => {
+              const { value } = e.target;
+              setNameInput(value);
+              submit({ name: value });
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button onClick={onClickRemoveBudget}>✕</button>
+        </div>
         <div className="statusBarWithText">
           <div className="statusBar">
             <div className="contentWithoutPadding">
@@ -115,7 +210,20 @@ const BudgetBar = ({ budget }: Props) => {
             </div>
             <div>
               <span>of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <span className="capacity">{numberToCommaString(capacity)}</span>
+              <input
+                className="capacityInput"
+                value={capacityInput}
+                onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
+                onChange={(e) => {
+                  const { value } = e.target;
+                  setCapacityInput(value);
+                  submit({ capacities: { [selectedInterval]: +value } });
+                }}
+                onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
+                onBlur={(e) =>
+                  setCapacityInput(numberToCommaString(+e.target.value || 0))
+                }
+              />
             </div>
           </div>
           <div className="statusBar income">
@@ -135,9 +243,11 @@ const BudgetBar = ({ budget }: Props) => {
           </div>
         </div>
       </div>
-      <div className="row-spacer" />
       <div className="children">
         <div>{sectionComponents}</div>
+      </div>
+      <div className="addButton">
+        <button onClick={onClickAddSection}>+</button>
       </div>
     </div>
   );

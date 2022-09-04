@@ -8,6 +8,9 @@ div.Header {
   height: 100px;
   padding: 10px 0;
 }
+div.Header * {
+  white-space: nowrap;
+}
 
 div.Header > div {
   display: flex;

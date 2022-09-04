@@ -1,7 +1,13 @@
-import { numberToCommaString, useAppContext, IsDate, currencyCodeToSymbol } from "client";
+import {
+  numberToCommaString,
+  useAppContext,
+  IsDate,
+  currencyCodeToSymbol,
+  call,
+} from "client";
 import { TransactionsList } from "client/components";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Budget, Category, Section, Transaction } from "server";
+import { Budget, Category, DeepPartial, Section, Transaction } from "server";
 
 interface Props {
   category: Category & { amount?: number };
@@ -10,8 +16,26 @@ interface Props {
 const CategoryComponent = ({ category }: Props) => {
   const { section_id, category_id, name, capacities, amount } = category;
 
-  const { transactions, accounts, budgets, sections, selectedInterval, viewDate } =
-    useAppContext();
+  const {
+    transactions,
+    accounts,
+    budgets,
+    sections,
+    setCategories,
+    selectedInterval,
+    viewDate,
+  } = useAppContext();
+
+  const [nameInput, setNameInput] = useState(name);
+  const [capacityInput, setCapacityInput] = useState(() => {
+    return numberToCommaString(capacities[selectedInterval]);
+  });
+
+  const revertInputs = () => {
+    setNameInput(name);
+    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
+  };
+
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
   const [numeratorWidth, setNumeratorWidth] = useState(0);
@@ -80,10 +104,63 @@ const CategoryComponent = ({ category }: Props) => {
 
   const { iso_currency_code } = budget;
 
+  type SetTimeout = typeof setTimeout;
+  type Timeout = ReturnType<SetTimeout>;
+
+  const timeout = useRef<Timeout>();
+
+  const submit = (updatedCategory: DeepPartial<Category> = {}, delay = 500) => {
+    clearTimeout(timeout.current);
+    timeout.current = setTimeout(async () => {
+      try {
+        const { status } = await call.post("/api/category", {
+          ...updatedCategory,
+          category_id,
+        });
+        if (status === "success") {
+          setCategories((oldCategories) => {
+            const newCategories = new Map(oldCategories);
+            const oldCategory = oldCategories.get(category_id);
+            const newCategory = { ...oldCategory, ...updatedCategory };
+            newCategories.set(category_id, newCategory as Category);
+            return newCategories;
+          });
+        } else throw new Error(`Failed to update category: ${category_id}`);
+      } catch (error: any) {
+        console.error(error);
+        revertInputs();
+      }
+    }, delay);
+  };
+
+  const onClickRemove = async () => {
+    const queryString = "?" + new URLSearchParams({ id: category_id }).toString();
+    const { status } = await call.delete("/api/category" + queryString);
+    if (status === "success") {
+      setCategories((oldCategories) => {
+        const newCategories = new Map(oldCategories);
+        newCategories.delete(category_id);
+        return newCategories;
+      });
+    }
+  };
+
   return (
     <div className="CategoryBar">
       <div className="categoryInfo" onClick={onClickCategoryInfo} ref={infoDivRef}>
-        <div>{name}</div>
+        <div className="title">
+          <input
+            placeholder="name"
+            value={nameInput}
+            onChange={(e) => {
+              const { value } = e.target;
+              setNameInput(value);
+              submit({ name: value });
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button onClick={onClickRemove}>✕</button>
+        </div>
         <div className="statusBarWithText">
           <div style={{ width: statusBarWidth + "%" }} className="statusBar">
             <div className="contentWithoutPadding">
@@ -97,7 +174,20 @@ const CategoryComponent = ({ category }: Props) => {
             </div>
             <div>
               <span>of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <span className="capacity">{numberToCommaString(capacity)}</span>
+              <input
+                className="capacityInput"
+                value={capacityInput}
+                onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
+                onChange={(e) => {
+                  const { value } = e.target;
+                  setCapacityInput(value);
+                  submit({ capacities: { [selectedInterval]: +value } });
+                }}
+                onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
+                onBlur={(e) =>
+                  setCapacityInput(numberToCommaString(+e.target.value || 0))
+                }
+              />
             </div>
           </div>
         </div>
