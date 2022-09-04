@@ -1,8 +1,10 @@
+div.AccountsTable > .rows {
+  margin-bottom: 20px;
+}
+
 div.AccountRow {
-  margin: 10px 0;
-  padding: 10px;
-  background-color: #444;
-  border-radius: 5px;
+  padding: 20px 10px;
+  border-bottom: 1px solid #ccc;
 }
 
 div.AccountRow > div {

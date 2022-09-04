@@ -1,6 +1,5 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import "./index.css";
 import { LoginGetResponse } from "server";
 import { call } from "client";
 import { App } from "client/components";

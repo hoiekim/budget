@@ -4,6 +4,8 @@ import { Header } from "client/components";
 import Utility from "./Utility";
 import Router from "./Router";
 import AppContext from "./AppContext";
+import Cover from "./Cover";
+import "./index.css";
 
 interface Props {
   initialUser: ContextType["user"];
@@ -17,6 +19,7 @@ const App = ({ initialUser }: Props) => {
       <Suspense fallback={<div className="loading">Loading...</div>}>
         <Router />
       </Suspense>
+      <Cover />
     </AppContext>
   );
 };

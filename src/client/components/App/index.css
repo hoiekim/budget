@@ -9,13 +9,13 @@ body {
     "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #222;
-  color: #ddd;
+  background-color: #fff;
+  color: #333;
 }
 
 button {
-  background-color: #555;
-  color: #fff;
+  background-color: #eee;
+  color: #333;
   border: none;
   border-radius: 3px;
   min-width: 20px;
@@ -24,21 +24,20 @@ button {
 }
 
 button:hover {
-  background-color: #444;
+  background-color: #ccc;
 }
 
 input {
-  background-color: #222;
-  color: #ccc;
+  background-color: #eee;
+  color: #333;
   border: none;
-  border-bottom: solid 1px #666;
   height: 24px;
   font-size: 16px;
 }
 
 select {
-  background-color: #222;
-  color: #ccc;
+  background-color: #eee;
+  color: #333;
   border: none;
   height: 24px;
   font-size: 16px;
@@ -48,33 +47,13 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-table td {
-  padding: 4px 10px;
-  border: solid 1px #666;
-}
-
-div.row-spacer {
-  margin: 30px 0 0 0;
-  height: 0px;
-}
-
-div.column-spacer {
-  display: inline-block;
-  margin: 0 20px 0 0;
-  height: 0px;
-}
-
 div#root {
   max-width: 1050px;
   min-height: 100vh;
   margin: auto;
-  background-color: #333;
-  padding: 60px 30px calc(10px + env(safe-area-inset-bottom));
+  background-color: #fff;
+  padding: calc(100px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
 }
 
 h1,
@@ -83,17 +62,10 @@ h3,
 h4 {
   position: sticky;
   top: 50px;
-  background-color: #333;
+  background-color: #fff;
   padding: 1.5rem 0 1rem;
   margin: 0;
-}
-
-@media only screen and (max-width: 1050px) {
-  div#root {
-    padding: calc(100px + env(safe-area-inset-top))
-      calc(20px + env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom))
-      calc(20px + env(safe-area-inset-left));
-  }
+  z-index: 50;
 }
 
 @media only screen and (max-width: 750px) {
@@ -117,4 +89,23 @@ div.Login {
 div.Login > div {
   text-align: center;
   margin: 10px 0;
+}
+
+div.Cover {
+  pointer-events: none;
+  mix-blend-mode: difference;
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+}
+
+div.Cover.dark {
+  background-color: #ccc;
+}
+
+div.Cover.light {
+  background-color: #000;
 }

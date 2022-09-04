@@ -3,12 +3,12 @@ div.TransactionsList > .TransactionItem {
   justify-content: space-between;
   margin: 10px 0;
   padding: 5px 0 0;
-  border-top: 1px solid #666;
+  border-top: 1px solid #ddd;
 }
 
 div.TransactionsList > .TransactionItem:last-child {
   padding-bottom: 5px;
-  border-bottom: 1px solid #666;
+  border-bottom: 1px solid #ddd;
 }
 
 div.TransactionsList > .TransactionItem > div:first-child {
@@ -26,5 +26,5 @@ div.TransactionsList > .TransactionItem > div:last-child {
 
 div.TransactionsList .smallText {
   font-size: 12px;
-  color: #bbb;
+  color: #888;
 }
