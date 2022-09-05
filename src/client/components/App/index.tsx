@@ -4,7 +4,7 @@ import { Header } from "client/components";
 import Utility from "./Utility";
 import Router from "./Router";
 import AppContext from "./AppContext";
-import Cover from "./Cover";
+import ColorSchemeCover from "./ColorSchemeCover";
 import "./index.css";
 
 interface Props {
@@ -19,7 +19,7 @@ const App = ({ initialUser }: Props) => {
       <Suspense fallback={<div className="loading">Loading...</div>}>
         <Router />
       </Suspense>
-      <Cover />
+      <ColorSchemeCover />
     </AppContext>
   );
 };

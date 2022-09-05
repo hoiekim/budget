@@ -164,7 +164,10 @@ const CategoryComponent = ({ category }: Props) => {
         <div className="statusBarWithText">
           <div style={{ width: statusBarWidth + "%" }} className="statusBar">
             <div className="contentWithoutPadding">
-              <div style={{ width: numeratorWidth + "%" }} className="numerator" />
+              <div
+                style={{ width: numeratorWidth + "%" }}
+                className="numerator colored"
+              />
             </div>
           </div>
           <div className="infoText">

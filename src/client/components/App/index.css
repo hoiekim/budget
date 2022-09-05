@@ -91,7 +91,7 @@ div.Login > div {
   margin: 10px 0;
 }
 
-div.Cover > div {
+div.ColorSchemeCover > div {
   pointer-events: none;
   width: 100vw;
   height: 100vh;
@@ -99,19 +99,25 @@ div.Cover > div {
   top: 0;
   left: 0;
   z-index: 1000;
-}
-
-div.Cover > .subtract.dark {
-  mix-blend-mode: difference;
-  background-color: #fff;
-}
-
-div.Cover > .offset.dark {
-  mix-blend-mode: normal;
-  background-color: #fff;
-  opacity: 0.1;
-}
-
-div.Cove > .light {
   display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .colored {
+    filter: hue-rotate(180deg);
+  }
+  div.ColorSchemeCover > div {
+    display: inherit;
+  }
+
+  div.ColorSchemeCover > div.offset {
+    mix-blend-mode: normal;
+    background-color: #fff;
+    opacity: 0.1;
+  }
+
+  div.ColorSchemeCover > div.subtract {
+    mix-blend-mode: difference;
+    background-color: #fff;
+  }
 }

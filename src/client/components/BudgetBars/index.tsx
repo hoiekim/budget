@@ -191,14 +191,17 @@ const BudgetBar = ({ budget }: Props) => {
           <div className="statusBar">
             <div className="contentWithoutPadding">
               <div style={{ width: combinedRatio * 100 + "%" }}>
-                <div style={{ width: numeratorWidth + "%" }} className="numerator" />
+                <div
+                  style={{ width: numeratorWidth + "%" }}
+                  className="numerator colored"
+                />
                 <div
                   style={{
                     border: unlabledRatio === 0 ? "none" : undefined,
                     left: numeratorWidth + "%",
                     width: unlabeledNumeratorWidth + "%",
                   }}
-                  className="unlabeledNumerator"
+                  className="unlabeledNumerator colored"
                 />
               </div>
             </div>
