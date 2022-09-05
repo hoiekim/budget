@@ -1,22 +1,28 @@
 import { useEffect, useState } from "react";
 
+const mediaQueryColorScheme = "(prefers-color-scheme: dark)";
+const mediaQueryList = window.matchMedia(mediaQueryColorScheme);
+const { matches, addEventListener, removeEventListener } = mediaQueryList;
+
 const Cover = () => {
-  const [colorScheme, setColorScheme] = useState("dark");
+  const [colorScheme, setColorScheme] = useState(matches ? "dark" : "light");
   useEffect(() => {
     const listener = (event: MediaQueryListEvent) => {
       setColorScheme(event.matches ? "dark" : "light");
     };
-    window
-      .matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", listener);
+    addEventListener("change", listener);
     return () => {
-      window
-        .matchMedia("(prefers-color-scheme: dark)")
-        .removeEventListener("change", listener);
+      removeEventListener("change", listener);
     };
   }, []);
-  const classes = ["Cover", colorScheme];
-  return <div className={classes.join(" ")} />;
+  const subtractCoverClasses = ["subtract", colorScheme];
+  const offsetCoverClasses = ["offset", colorScheme];
+  return (
+    <div className="Cover">
+      <div className={subtractCoverClasses.join(" ")} />
+      <div className={offsetCoverClasses.join(" ")} />
+    </div>
+  );
 };
 
 export default Cover;
