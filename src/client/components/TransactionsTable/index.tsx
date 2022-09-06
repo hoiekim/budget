@@ -89,7 +89,6 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
 
   return (
     <div className="TransactionsTable">
-      <h2>Transactions</h2>
       <div>
         <TransactionsHead sorter={sorter} getHeader={getHeader} />
         <div>{transactionRows}</div>

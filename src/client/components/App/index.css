@@ -1,5 +1,6 @@
 * {
   box-sizing: border-box;
+  transition: 150ms;
 }
 
 body {
@@ -23,8 +24,25 @@ button {
   padding: 0 5px;
 }
 
-button:hover {
-  background-color: #ccc;
+a {
+  text-decoration: none;
+}
+
+a:visited {
+  color: initial;
+}
+
+button,
+select,
+a {
+  cursor: pointer;
+}
+
+button:hover,
+input:hover:not(:focus),
+select:hover,
+a:hover {
+  background-color: #ddd;
 }
 
 input {
@@ -33,6 +51,9 @@ input {
   border: none;
   height: 24px;
   font-size: 16px;
+  padding: 0;
+  background-color: inherit;
+  outline: 0;
 }
 
 select {
@@ -52,8 +73,8 @@ div#root {
   min-height: 100vh;
   margin: auto;
   background-color: #fff;
-  padding: calc(100px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
-    calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
+  padding: calc(50px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+    calc(90px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
 }
 
 h1,
@@ -61,25 +82,11 @@ h2,
 h3,
 h4 {
   position: sticky;
-  top: 50px;
+  top: 25px;
   background-color: #fff;
   padding: 1.5rem 0 1rem;
   margin: 0;
   z-index: 50;
-}
-
-@media only screen and (max-width: 750px) {
-  div#root {
-    padding: calc(env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
-      calc(120px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
-  }
-
-  h1,
-  h2,
-  h3,
-  h4 {
-    top: 0;
-  }
 }
 
 div.Login {

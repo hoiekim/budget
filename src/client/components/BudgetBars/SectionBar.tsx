@@ -191,7 +191,7 @@ const SectionBar = ({ section }: Props) => {
               <span className="currentTotal">{numberToCommaString(currentTotal)}</span>
             </div>
             <div>
-              <span>of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+              <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <input
                 className="capacityInput"
                 value={capacityInput}
@@ -205,6 +205,7 @@ const SectionBar = ({ section }: Props) => {
                 onBlur={(e) =>
                   setCapacityInput(numberToCommaString(+e.target.value || 0))
                 }
+                onClick={(e) => e.stopPropagation()}
               />
             </div>
           </div>

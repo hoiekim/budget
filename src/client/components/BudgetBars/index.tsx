@@ -172,7 +172,6 @@ const BudgetBar = ({ budget }: Props) => {
 
   return (
     <div className="BudgetBars">
-      <h2>Budgets</h2>
       <div className="budgetInfo">
         <div className="title">
           <input
@@ -192,16 +191,16 @@ const BudgetBar = ({ budget }: Props) => {
             <div className="contentWithoutPadding">
               <div style={{ width: combinedRatio * 100 + "%" }}>
                 <div
-                  style={{ width: numeratorWidth + "%" }}
-                  className="numerator colored"
-                />
-                <div
                   style={{
                     border: unlabledRatio === 0 ? "none" : undefined,
                     left: numeratorWidth + "%",
                     width: unlabeledNumeratorWidth + "%",
                   }}
                   className="unlabeledNumerator colored"
+                />
+                <div
+                  style={{ width: `calc(${numeratorWidth}% + 5px)` }}
+                  className="numerator colored"
                 />
               </div>
             </div>
@@ -224,6 +223,7 @@ const BudgetBar = ({ budget }: Props) => {
                 onBlur={(e) =>
                   setCapacityInput(numberToCommaString(+e.target.value || 0))
                 }
+                onClick={(e) => e.stopPropagation()}
               />
             </div>
           </div>

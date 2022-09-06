@@ -1,4 +1,4 @@
-import { ChangeEventHandler, ReactNode, useMemo } from "react";
+import { ChangeEventHandler, ReactNode, useMemo, useState } from "react";
 import { useAppContext, useSync, call, getDateStringByInterval } from "client";
 import { Budget, Interval, NewBudgetGetResponse } from "server";
 import "./index.css";
@@ -17,8 +17,11 @@ const Header = () => {
     viewDate,
     setViewDate,
   } = useAppContext();
+
+  const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
+
   const { clean } = useSync();
-  const { path, go } = router;
+  const { go } = router;
 
   const logout = () => {
     call.delete("/api/login").then((r) => {
@@ -29,26 +32,34 @@ const Header = () => {
 
   type NavigatorProps = { target: string; children: ReactNode };
   const Navigator = ({ target, children }: NavigatorProps) => (
-    <button disabled={path === target} onClick={() => go(target)}>
+    <a
+      href={target}
+      onClick={(e) => {
+        e.preventDefault();
+        go(target);
+      }}
+    >
       {children}
-    </button>
+    </a>
   );
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
-      const conponent = (
+      const component = (
         <option key={e.budget_id} value={e.budget_id}>
           {e.name || "Unnamed"}
         </option>
       );
-      components.push(conponent);
+      components.push(component);
     });
     return components;
   }, [budgets]);
 
   const onChangeBudget: ChangeEventHandler<HTMLSelectElement> = (e) => {
-    setSelectedBudgetId(e.target.value);
+    const { value } = e.target;
+    if (value === "add_new_budget") onClickAddBudget();
+    else setSelectedBudgetId(e.target.value);
   };
 
   const onClickPreviousView = () => {
@@ -124,49 +135,57 @@ const Header = () => {
     });
   };
 
+  const getIntervalOptionText = (interval: Interval, fallback: string) => {
+    if (selectedInterval !== interval) return fallback;
+    return getDateStringByInterval(viewDate, interval);
+  };
+
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
         <div>
-          <button onClick={onClickAddBudget}>+</button>
+          <select
+            className="budgetSelect"
+            value={selectedBudgetId}
+            onChange={onChangeBudget}
+          >
+            {!selectedBudgetId && <option>Select Budget</option>}
+            {budgetOptions}
+            <option value="add_new_budget">+ New Budget</option>
+          </select>
         </div>
-        <select value={selectedBudgetId} onChange={onChangeBudget}>
-          <option>Select Budget</option>
-          {budgetOptions}
-        </select>
         <div>
           <button onClick={onClickPreviousView}>{"<"}</button>
-          <span>{getDateStringByInterval(viewDate, selectedInterval)}</span>
+          <select
+            className="intervalSelect"
+            value={selectedInterval}
+            onChange={(e) => {
+              const value = e.target.value as Interval;
+              setSelectedInterval(value);
+            }}
+          >
+            <option value="year">{getIntervalOptionText("year", "Yearly")}</option>
+            <option value="month">{getIntervalOptionText("month", "Monthly")}</option>
+            <option value="week">{getIntervalOptionText("week", "Weekly")}</option>
+            <option value="day">{getIntervalOptionText("day", "Daily")}</option>
+          </select>
           <button onClick={onClickNextView}>{">"}</button>
         </div>
-        <select
-          value={selectedInterval}
-          onChange={(e) => {
-            const value = e.target.value as Interval;
-            setSelectedInterval(value);
-          }}
-        >
-          <option value="year">Yearly</option>
-          <option value="month">Monthly</option>
-          <option value="week">Weekly</option>
-          <option value="day">Daily</option>
-        </select>
+        <div className="hamburger" onMouseLeave={() => setIsHamburgerOpen(false)}>
+          <button onClick={() => setIsHamburgerOpen((s) => !s)}>≡</button>
+          {isHamburgerOpen && (
+            <div className="menu">
+              <button disabled={!user} onClick={logout}>
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-      <div>
-        <div>
-          <button disabled={!user} onClick={logout}>
-            Logout
-          </button>
-        </div>
-        <div>
-          <Navigator target="/">Budget</Navigator>
-        </div>
-        <div>
-          <Navigator target="/accounts">Accounts</Navigator>
-        </div>
-        <div>
-          <Navigator target="/transactions">Transactions</Navigator>
-        </div>
+      <div className="navigators">
+        <Navigator target="/">Budget</Navigator>
+        <Navigator target="/accounts">Accounts</Navigator>
+        <Navigator target="/transactions">Transactions</Navigator>
       </div>
     </div>
   );
