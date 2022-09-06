@@ -1,4 +1,4 @@
-import { ChangeEventHandler, ReactNode, useMemo, useState } from "react";
+import { ChangeEventHandler, ReactNode, useEffect, useMemo, useState } from "react";
 import { useAppContext, useSync, call, getDateStringByInterval } from "client";
 import { Budget, Interval, NewBudgetGetResponse } from "server";
 import "./index.css";
@@ -19,6 +19,13 @@ const Header = () => {
   } = useAppContext();
 
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    const listener = () => setScrollY(window.scrollY);
+    window.document.addEventListener("scroll", listener);
+    return () => window.document.removeEventListener("scroll", listener);
+  }, []);
 
   const { clean } = useSync();
   const { go } = router;
@@ -142,7 +149,7 @@ const Header = () => {
 
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
-      <div className="viewController">
+      <div className={"viewController" + (scrollY ? " shadow" : "")}>
         <div>
           <select
             className="budgetSelect"
@@ -171,14 +178,17 @@ const Header = () => {
           </select>
           <button onClick={onClickNextView}>{">"}</button>
         </div>
-        <div className="hamburger" onMouseLeave={() => setIsHamburgerOpen(false)}>
+        <div className="hamburger">
           <button onClick={() => setIsHamburgerOpen((s) => !s)}>≡</button>
           {isHamburgerOpen && (
-            <div className="menu">
-              <button disabled={!user} onClick={logout}>
-                Logout
-              </button>
-            </div>
+            <>
+              <div className="fadeCover" />
+              <div className="menu" onMouseLeave={() => setIsHamburgerOpen(false)}>
+                <button disabled={!user} onClick={logout}>
+                  Logout
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
