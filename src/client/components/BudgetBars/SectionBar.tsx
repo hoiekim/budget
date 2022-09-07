@@ -21,6 +21,7 @@ const SectionBar = ({ section }: Props) => {
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
   const [numeratorWidth, setNumeratorWidth] = useState(0);
+  const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
 
@@ -78,7 +79,7 @@ const SectionBar = ({ section }: Props) => {
   }, [capacityRatio, currentRatio]);
 
   const openCategory = () => {
-    setIsCategoryOpen((s) => !s);
+    setIsCategoryOpen(true);
     const childrenDiv = childrenDivRef.current;
     if (!childrenDiv) return;
     childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -86,7 +87,7 @@ const SectionBar = ({ section }: Props) => {
 
   const onClickSectionInfo = () => {
     if (isCategoryOpen) setIsCategoryOpen(false);
-    else if (categoryComponents.length) openCategory();
+    else openCategory();
   };
 
   const { iso_currency_code } = budget;
@@ -148,7 +149,27 @@ const SectionBar = ({ section }: Props) => {
     openCategory();
   };
 
-  const onClickRemove = async () => {
+  const onClickRemove = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+
+    let sectionIterator = categories.values();
+    let iteratorResult = sectionIterator.next();
+    let isSectionUsed: boolean | undefined;
+    while (!iteratorResult.done) {
+      const category = iteratorResult.value;
+      if (category.section_id === section_id) {
+        isSectionUsed = true;
+        break;
+      }
+      iteratorResult = sectionIterator.next();
+    }
+
+    if (isSectionUsed) {
+      const sectionName = name || "Unnamed";
+      const confirm = window.confirm(`Do you want to delete section: ${sectionName}?`);
+      if (!confirm) return;
+    }
+
     const queryString = "?" + new URLSearchParams({ id: section_id }).toString();
     const { status } = await call.delete("/api/section" + queryString);
     if (status === "success") {
@@ -160,21 +181,43 @@ const SectionBar = ({ section }: Props) => {
     }
   };
 
+  const onClickEdit = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    setIsEditting((s) => !s);
+  };
+
   return (
     <div className="SectionBar">
-      <div className="sectionInfo" onClick={onClickSectionInfo} ref={infoDivRef}>
+      <div
+        className="sectionInfo"
+        onClick={onClickSectionInfo}
+        onMouseLeave={() => setIsEditting(false)}
+        ref={infoDivRef}
+      >
         <div className="title">
-          <input
-            placeholder="name"
-            value={nameInput}
-            onChange={(e) => {
-              const { value } = e.target;
-              setNameInput(value);
-              submit({ name: value });
-            }}
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button onClick={onClickRemove}>✕</button>
+          {isEditting ? (
+            <input
+              placeholder="name"
+              value={nameInput}
+              onChange={(e) => {
+                const { value } = e.target;
+                setNameInput(value);
+                submit({ name: value });
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span>{nameInput || "Unnamed"}</span>
+          )}
+          <div className="buttons">
+            {isEditting ? (
+              <button onClick={onClickRemove}>✕</button>
+            ) : (
+              <button className="edit" onClick={onClickEdit}>
+                ✎
+              </button>
+            )}
+          </div>
         </div>
         <div className="statusBarWithText">
           <div style={{ width: statusBarWidth + "%" }} className="statusBar">
@@ -192,30 +235,38 @@ const SectionBar = ({ section }: Props) => {
             </div>
             <div>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <input
-                className="capacityInput"
-                value={capacityInput}
-                onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
-                onChange={(e) => {
-                  const { value } = e.target;
-                  setCapacityInput(value);
-                  submit({ capacities: { [selectedInterval]: +value } });
-                }}
-                onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
-                onBlur={(e) =>
-                  setCapacityInput(numberToCommaString(+e.target.value || 0))
-                }
-                onClick={(e) => e.stopPropagation()}
-              />
+              {isEditting ? (
+                <input
+                  className="capacityInput"
+                  value={capacityInput}
+                  onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setCapacityInput(value);
+                    submit({ capacities: { [selectedInterval]: +value } });
+                  }}
+                  onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
+                  onBlur={(e) =>
+                    setCapacityInput(numberToCommaString(+e.target.value || 0))
+                  }
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span>{capacityInput}</span>
+              )}
             </div>
           </div>
         </div>
       </div>
       <div className="children" style={{ height: childrenHeight }}>
-        <div ref={childrenDivRef}>{isCategoryOpen && categoryComponents}</div>
-      </div>
-      <div className="addButton">
-        <button onClick={onClickAdd}>+</button>
+        <div ref={childrenDivRef}>
+          {isCategoryOpen && categoryComponents}{" "}
+          {isCategoryOpen && (
+            <div className="addButton">
+              <button onClick={onClickAdd}>+</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

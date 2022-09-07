@@ -55,7 +55,6 @@ input {
   height: 24px;
   font-size: 16px;
   padding: 0;
-  background-color: inherit;
   outline: 0;
 }
 
@@ -76,7 +75,7 @@ div#root {
   min-height: 100vh;
   margin: auto;
   background-color: #fff;
-  padding: calc(50px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+  padding: calc(60px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
     calc(90px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
 }
 

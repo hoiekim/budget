@@ -38,6 +38,7 @@ const BudgetBar = ({ budget }: Props) => {
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabledNumeratorWidth] = useState(0);
   const [incomeNumeratorWidth, setIncomeNumeratorWidth] = useState(0);
+  const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
 
@@ -170,21 +171,35 @@ const BudgetBar = ({ budget }: Props) => {
     });
   };
 
+  const onClickEditBudget = () => setIsEditting((s) => !s);
+
   return (
     <div className="BudgetBars">
-      <div className="budgetInfo">
+      <div className="budgetInfo" onMouseLeave={() => setIsEditting(false)}>
         <div className="title">
-          <input
-            placeholder="name"
-            value={nameInput}
-            onChange={(e) => {
-              const { value } = e.target;
-              setNameInput(value);
-              submit({ name: value });
-            }}
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button onClick={onClickRemoveBudget}>✕</button>
+          {isEditting ? (
+            <input
+              placeholder="name"
+              value={nameInput}
+              onChange={(e) => {
+                const { value } = e.target;
+                setNameInput(value);
+                submit({ name: value });
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span>{nameInput || "Unnamed"}</span>
+          )}
+          <div className="buttons">
+            {isEditting ? (
+              <button onClick={onClickRemoveBudget}>✕</button>
+            ) : (
+              <button className="edit" onClick={onClickEditBudget}>
+                ✎
+              </button>
+            )}
+          </div>
         </div>
         <div className="statusBarWithText">
           <div className="statusBar">
@@ -210,21 +225,25 @@ const BudgetBar = ({ budget }: Props) => {
               <span>Spent {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <span className="currentTotal">{numberToCommaString(currentTotal)}</span>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <input
-                className="capacityInput"
-                value={capacityInput}
-                onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
-                onChange={(e) => {
-                  const { value } = e.target;
-                  setCapacityInput(value);
-                  submit({ capacities: { [selectedInterval]: +value } });
-                }}
-                onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
-                onBlur={(e) =>
-                  setCapacityInput(numberToCommaString(+e.target.value || 0))
-                }
-                onClick={(e) => e.stopPropagation()}
-              />
+              {isEditting ? (
+                <input
+                  className="capacityInput"
+                  value={capacityInput}
+                  onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setCapacityInput(value);
+                    submit({ capacities: { [selectedInterval]: +value } });
+                  }}
+                  onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
+                  onBlur={(e) =>
+                    setCapacityInput(numberToCommaString(+e.target.value || 0))
+                  }
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span>{capacityInput}</span>
+              )}
             </div>
           </div>
           <div className="statusBar income">
@@ -240,7 +259,7 @@ const BudgetBar = ({ budget }: Props) => {
               <span>Earned {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <span className="currentTotal">{numberToCommaString(incomeTotal)}</span>
             </div>
-            <div className="icon">{incomeRatio >= 1 && "✓"}</div>
+            <div className="icon">{incomeRatio >= 1 && "✔︎"}</div>
           </div>
         </div>
       </div>

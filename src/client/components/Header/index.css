@@ -16,8 +16,11 @@ div.Header button {
 
 div.Header select:not(:hover),
 div.Header button:not(:hover) {
-  text-align: center;
   background-color: inherit;
+}
+
+div.Header select {
+  text-decoration: underline;
 }
 
 div.Header select > option {

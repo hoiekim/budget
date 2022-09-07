@@ -86,6 +86,7 @@ div.BudgetBars .infoText {
 
 div.BudgetBars .infoText > div > input {
   font-size: 14px;
+  height: 17px;
   width: 75px;
 }
 
@@ -100,26 +101,38 @@ div.BudgetBars .title {
   justify-content: space-between;
 }
 
-div.BudgetBars .budgetInfo > .title > input {
+div.BudgetBars .title > input {
+  width: 150px;
+}
+
+div.BudgetBars .title > .buttons {
+  width: 50px;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+}
+
+div.BudgetBars .title > .buttons > button.edit {
+  rotate: 90deg;
+}
+
+div.BudgetBars .title > .buttons > button {
+  background-color: inherit;
+}
+
+div.BudgetBars .budgetInfo > .title > input,
+div.BudgetBars .budgetInfo > .title > span {
   font-size: 20px;
 }
 
-div.BudgetBars .sectionInfo > .title > input {
+div.BudgetBars .sectionInfo > .title > input,
+div.BudgetBars .sectionInfo > .title > span {
   font-size: 18px;
 }
 
 div.BudgetBars .SectionBar {
   padding: 20px 10px;
   border-bottom: 1px solid #ccc;
-}
-
-div.BudgetBars .SectionBar button {
-  color: #666;
-  border: solid 1px #ddd;
-}
-
-div.BudgetBars .SectionBar button:not(:hover) {
-  background-color: inherit;
 }
 
 div.BudgetBars .CategoryBar {

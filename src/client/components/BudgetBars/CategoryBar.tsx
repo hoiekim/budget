@@ -40,6 +40,7 @@ const CategoryComponent = ({ category }: Props) => {
   const [childrenHeight, setChildrenHeight] = useState(0);
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [transactionsArray, setTransactionsArray] = useState<Transaction[]>([]);
+  const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
 
@@ -96,14 +97,11 @@ const CategoryComponent = ({ category }: Props) => {
         if (!hidden && within && includedInCategory) newTransactionsArray.push(e);
       });
     }
-
-    if (newTransactionsArray.length) {
-      setTransactionsArray(newTransactionsArray);
-      setIsTransactionOpen((s) => !s);
-      const childrenDiv = childrenDivRef.current;
-      if (childrenDiv) {
-        childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+    setTransactionsArray(newTransactionsArray);
+    setIsTransactionOpen((s) => !s);
+    const childrenDiv = childrenDivRef.current;
+    if (childrenDiv) {
+      childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
 
@@ -138,7 +136,27 @@ const CategoryComponent = ({ category }: Props) => {
     }, delay);
   };
 
-  const onClickRemove = async () => {
+  const onClickRemove = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+
+    let transactionIterator = transactions.values();
+    let iteratorResult = transactionIterator.next();
+    let isCategoryUsed: boolean | undefined;
+    while (!iteratorResult.done) {
+      const transaction = iteratorResult.value;
+      if (transaction.label.category_id === category_id) {
+        isCategoryUsed = true;
+        break;
+      }
+      iteratorResult = transactionIterator.next();
+    }
+
+    if (isCategoryUsed) {
+      const categoryName = name || "Unnamed";
+      const confirm = window.confirm(`Do you want to delete category: ${categoryName}?`);
+      if (!confirm) return;
+    }
+
     const queryString = "?" + new URLSearchParams({ id: category_id }).toString();
     const { status } = await call.delete("/api/category" + queryString);
     if (status === "success") {
@@ -150,21 +168,41 @@ const CategoryComponent = ({ category }: Props) => {
     }
   };
 
+  const onClickEdit = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    setIsEditting((s) => !s);
+  };
+
   return (
     <div className="CategoryBar">
-      <div className="categoryInfo" onClick={onClickCategoryInfo} ref={infoDivRef}>
+      <div
+        className="categoryInfo"
+        onClick={onClickCategoryInfo}
+        onMouseLeave={() => setIsEditting(false)}
+        ref={infoDivRef}
+      >
         <div className="title">
-          <input
-            placeholder="name"
-            value={nameInput}
-            onChange={(e) => {
-              const { value } = e.target;
-              setNameInput(value);
-              submit({ name: value });
-            }}
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button onClick={onClickRemove}>✕</button>
+          {isEditting ? (
+            <input
+              placeholder="name"
+              value={nameInput}
+              onChange={(e) => {
+                const { value } = e.target;
+                setNameInput(value);
+                submit({ name: value });
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span>{nameInput || "Unnamed"}</span>
+          )}
+          <div className="buttons">
+            {isEditting ? (
+              <button onClick={onClickRemove}>✕</button>
+            ) : (
+              <button onClick={onClickEdit}>✎</button>
+            )}
+          </div>
         </div>
         <div className="statusBarWithText">
           <div style={{ width: statusBarWidth + "%" }} className="statusBar">
@@ -182,21 +220,25 @@ const CategoryComponent = ({ category }: Props) => {
             </div>
             <div>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <input
-                className="capacityInput"
-                value={capacityInput}
-                onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
-                onChange={(e) => {
-                  const { value } = e.target;
-                  setCapacityInput(value);
-                  submit({ capacities: { [selectedInterval]: +value } });
-                }}
-                onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
-                onBlur={(e) =>
-                  setCapacityInput(numberToCommaString(+e.target.value || 0))
-                }
-                onClick={(e) => e.stopPropagation()}
-              />
+              {isEditting ? (
+                <input
+                  className="capacityInput"
+                  value={capacityInput}
+                  onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setCapacityInput(value);
+                    submit({ capacities: { [selectedInterval]: +value } });
+                  }}
+                  onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
+                  onBlur={(e) =>
+                    setCapacityInput(numberToCommaString(+e.target.value || 0))
+                  }
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span>{capacityInput}</span>
+              )}
             </div>
           </div>
         </div>
