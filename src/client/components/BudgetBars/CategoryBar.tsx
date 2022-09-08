@@ -200,7 +200,9 @@ const CategoryComponent = ({ category }: Props) => {
             {isEditting ? (
               <button onClick={onClickRemove}>✕</button>
             ) : (
-              <button onClick={onClickEdit}>✎</button>
+              <button className="edit" onClick={onClickEdit}>
+                ✎
+              </button>
             )}
           </div>
         </div>

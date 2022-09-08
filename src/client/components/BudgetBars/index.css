@@ -47,9 +47,9 @@ div.BudgetBars .statusBar .unlabeledNumerator {
   background: repeating-linear-gradient(
     135deg,
     #009d78,
-    #009d78 3px,
-    #d9d9d9 3px,
-    #d9d9d9 6px
+    #009d78 2px,
+    #d9d9d9 2px,
+    #d9d9d9 4px
   );
 }
 
@@ -118,6 +118,7 @@ div.BudgetBars .title > .buttons > button.edit {
 
 div.BudgetBars .title > .buttons > button {
   background-color: inherit;
+  font-size: 18px;
 }
 
 div.BudgetBars .budgetInfo > .title > input,
