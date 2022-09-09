@@ -39,19 +39,19 @@ const TransactionsTable = ({ transactionsArray }: Props) => {
       if (key === "authorized_date") {
         return new Date(e.authorized_date || e.date);
       } else if (key === "merchant_name") {
-        return e.merchant_name || e.name;
+        return e.merchant_name || e.name || "";
       } else if (key === "account") {
         const account = accounts.get(e.account_id);
-        return account?.custom_name || account?.name;
+        return account?.custom_name || account?.name || "";
       } else if (key === "institution") {
         const account = accounts.get(e.account_id);
-        return institutions.get(account?.institution_id || "")?.name;
+        return institutions.get(account?.institution_id || "")?.name || "";
       } else if (key === "category") {
-        return categories.get(e.label.category_id || "")?.name;
+        return categories.get(e.label.category_id || "")?.name || "";
       } else if (key === "budget") {
         const account = accounts.get(e.account_id);
         const budget_id = e.label.budget_id || account?.label.budget_id;
-        return budgets.get(budget_id || "")?.name;
+        return budgets.get(budget_id || "")?.name || "";
       } else if (key === "location") {
         const { city, region, country } = e.location;
         return [city, region || country].filter((e) => e).join(", ");

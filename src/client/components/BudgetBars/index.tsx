@@ -208,8 +208,8 @@ const BudgetBar = ({ budget }: Props) => {
                 <div
                   style={{
                     border: unlabledRatio === 0 ? "none" : undefined,
-                    left: `calc(${numeratorWidth}% - 5px)`,
-                    width: `calc(${unlabeledNumeratorWidth}% + 5px)`,
+                    left: `calc(${numeratorWidth}% - 10px)`,
+                    width: `calc(${unlabeledNumeratorWidth}% + 10px)`,
                   }}
                   className="unlabeledNumerator colored"
                 />

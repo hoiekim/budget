@@ -38,13 +38,13 @@ const AccountsTable = ({ accountsArray }: Props) => {
         const { available, current } = e.balances;
         return Math.max(available || 0, current || 0);
       } else if (key === "custom_name") {
-        return e[key] || e.name;
+        return e[key] || e.name || "";
       } else if (key === "institution") {
         const account = accounts.get(e.account_id);
-        return institutions.get(account?.institution_id || "")?.name;
+        return institutions.get(account?.institution_id || "")?.name || "";
       } else if (key === "budget") {
         const account = accounts.get(e.account_id);
-        return institutions.get(account?.institution_id || "")?.name;
+        return institutions.get(account?.institution_id || "")?.name || "";
       } else if (key === "action") {
         return 0;
       } else {

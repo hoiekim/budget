@@ -3,7 +3,7 @@ div.Header {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
+  width: 100vw;
 }
 div.Header * {
   white-space: nowrap;
@@ -61,14 +61,17 @@ div.Header > .viewController select.intervalSelect {
   width: 120px;
 }
 
-div.Header > .viewController .hamburger > button {
+div.Header > .viewController > .hamburger {
+  position: relative;
+}
+
+div.Header > .viewController > .hamburger > button {
   font-size: 40px;
   height: auto;
-  position: relative;
   top: -5px;
 }
 
-div.Header > .viewController .hamburger > .fadeCover {
+div.Header > .viewController > .hamburger > .fadeCover {
   position: fixed;
   top: 0;
   left: 0;
@@ -79,7 +82,7 @@ div.Header > .viewController .hamburger > .fadeCover {
   opacity: 0.5;
 }
 
-div.Header > .viewController .hamburger > .menu {
+div.Header > .viewController > .hamburger > .menu {
   position: absolute;
   right: 0;
   top: 10px;

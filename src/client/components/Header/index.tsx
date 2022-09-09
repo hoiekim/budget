@@ -182,7 +182,7 @@ const Header = () => {
           <button onClick={() => setIsHamburgerOpen((s) => !s)}>≡</button>
           {isHamburgerOpen && (
             <>
-              <div className="fadeCover" />
+              <div className="fadeCover" onClick={() => setIsHamburgerOpen(false)} />
               <div className="menu" onMouseLeave={() => setIsHamburgerOpen(false)}>
                 <button disabled={!user} onClick={logout}>
                   Logout

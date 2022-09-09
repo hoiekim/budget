@@ -90,9 +90,13 @@ export const useSorter = <T, H>(
       setSortings((oldSortings) => {
         const newSortings = new Map(oldSortings);
         const existingValue = oldSortings.get(key);
-        const newValue = existingValue === "ascending" ? "descending" : "ascending";
+        const newValue = !existingValue
+          ? "descending"
+          : existingValue === "descending"
+          ? "ascending"
+          : undefined;
         newSortings.delete(key);
-        newSortings.set(key, newValue);
+        if (newValue) newSortings.set(key, newValue);
         return newSortings;
       });
     },

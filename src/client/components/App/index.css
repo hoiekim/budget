@@ -112,12 +112,10 @@ div.ColorSchemeCover > div {
 }
 
 @media (prefers-color-scheme: dark) {
-  body {
-    background-color: #333;
-  }
   .colored {
     filter: hue-rotate(180deg);
   }
+
   div.ColorSchemeCover > div {
     display: inherit;
   }
