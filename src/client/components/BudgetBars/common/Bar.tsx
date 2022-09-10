@@ -21,7 +21,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...props }: Props) => {
   return (
     <div className={className ? className + " Bar" : "Bar"} {...props}>
       <div className="contentWithoutPadding">
-        {unlabledRatio && (
+        {!!unlabledRatio && (
           <div
             style={{
               left: `calc(${numeratorWidth}% - 10px)`,
