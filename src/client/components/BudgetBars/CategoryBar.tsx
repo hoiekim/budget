@@ -5,9 +5,9 @@ import {
   currencyCodeToSymbol,
   call,
 } from "client";
-import { TransactionsList } from "client/components";
 import { useState, useRef, useEffect } from "react";
 import { Budget, Category, DeepPartial, Section, Transaction } from "server";
+import { Bar, TransactionsList } from "./common";
 
 interface Props {
   category: Category & { amount?: number };
@@ -38,7 +38,6 @@ const CategoryComponent = ({ category }: Props) => {
 
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
-  const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [transactionsArray, setTransactionsArray] = useState<Transaction[]>([]);
   const [isEditting, setIsEditting] = useState(!name);
 
@@ -74,10 +73,6 @@ const CategoryComponent = ({ category }: Props) => {
   const currentRatio = (amount || 0) / capacity || 0;
 
   const statusBarWidth = 30 + Math.pow(Math.min(capacityRatio, 1), 0.5) * 70;
-
-  useEffect(() => {
-    setNumeratorWidth(Math.min(currentRatio, 1) * 100);
-  }, [capacityRatio, currentRatio]);
 
   const onClickCategoryInfo = () => {
     if (isTransactionOpen) {
@@ -207,14 +202,7 @@ const CategoryComponent = ({ category }: Props) => {
           </div>
         </div>
         <div className="statusBarWithText">
-          <div style={{ width: statusBarWidth + "%" }} className="statusBar">
-            <div className="contentWithoutPadding">
-              <div
-                style={{ width: numeratorWidth + "%" }}
-                className="numerator colored"
-              />
-            </div>
-          </div>
+          <Bar style={{ width: statusBarWidth + "%" }} ratio={currentRatio} />
           <div className="infoText">
             <div>
               <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>

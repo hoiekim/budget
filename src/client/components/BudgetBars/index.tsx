@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Budget, DeepPartial, NewSectionGetResponse } from "server";
 import {
   useAppContext,
@@ -8,6 +8,7 @@ import {
   call,
 } from "client";
 import SectionBar from "./SectionBar";
+import Bar from "./common/Bar";
 import "./index.css";
 
 interface Props {
@@ -34,10 +35,6 @@ const BudgetBar = ({ budget }: Props) => {
   const [capacityInput, setCapacityInput] = useState(() => {
     return numberToCommaString(capacities[selectedInterval]);
   });
-
-  const [numeratorWidth, setNumeratorWidth] = useState(0);
-  const [unlabeledNumeratorWidth, setUnlabledNumeratorWidth] = useState(0);
-  const [incomeNumeratorWidth, setIncomeNumeratorWidth] = useState(0);
   const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
@@ -85,21 +82,9 @@ const BudgetBar = ({ budget }: Props) => {
     return { unlabeledTotal, incomeTotal };
   }, [selectedInterval, transactions, accounts, budget_id, viewDate]);
 
-  const combinedRatio = (currentTotal + unlabeledTotal) / capacity;
-  const labeledRatio = currentTotal / (currentTotal + unlabeledTotal) || 0;
-  const unlabledRatio = unlabeledTotal / (currentTotal + unlabeledTotal) || 0;
+  const labeledRatio = currentTotal / capacity || 0;
+  const unlabledRatio = unlabeledTotal / capacity || 0;
   const incomeRatio = incomeTotal / capacity || 0;
-
-  useEffect(() => {
-    setNumeratorWidth(Math.min(1, labeledRatio) * 100);
-    setUnlabledNumeratorWidth(Math.min(1 - labeledRatio, unlabledRatio) * 100);
-    setIncomeNumeratorWidth(Math.min(1, incomeRatio) * 100);
-    return () => {
-      setNumeratorWidth(0);
-      setUnlabledNumeratorWidth(0);
-      setIncomeNumeratorWidth(0);
-    };
-  }, [labeledRatio, unlabledRatio, incomeRatio]);
 
   const revertInputs = () => {
     setNameInput(name);
@@ -202,28 +187,13 @@ const BudgetBar = ({ budget }: Props) => {
           </div>
         </div>
         <div className="statusBarWithText">
-          <div className="statusBar">
-            <div className="contentWithoutPadding">
-              <div style={{ width: combinedRatio * 100 + "%" }}>
-                <div
-                  style={{
-                    border: unlabledRatio === 0 ? "none" : undefined,
-                    left: `calc(${numeratorWidth}% - 10px)`,
-                    width: `calc(${unlabeledNumeratorWidth}% + 10px)`,
-                  }}
-                  className="unlabeledNumerator colored"
-                />
-                <div
-                  style={{ width: numeratorWidth + "%" }}
-                  className="numerator colored"
-                />
-              </div>
-            </div>
-          </div>
+          <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} />
           <div className="infoText">
             <div>
               <span>Spent {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <span className="currentTotal">{numberToCommaString(currentTotal)}</span>
+              <span className="currentTotal">
+                {numberToCommaString(currentTotal + unlabeledTotal)}
+              </span>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               {isEditting ? (
                 <input
@@ -246,20 +216,13 @@ const BudgetBar = ({ budget }: Props) => {
               )}
             </div>
           </div>
-          <div className="statusBar income">
-            <div className="contentWithoutPadding">
-              <div
-                style={{ width: incomeNumeratorWidth + "%" }}
-                className="incomeNumerator"
-              />
-            </div>
-          </div>
+          <Bar className="income" ratio={incomeRatio} />
           <div className="infoText">
             <div>
               <span>Earned {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <span className="currentTotal">{numberToCommaString(incomeTotal)}</span>
+              {incomeRatio >= 1 && <span>&nbsp;✔︎</span>}
             </div>
-            <div className="icon">{incomeRatio >= 1 && "✔︎"}</div>
           </div>
         </div>
       </div>

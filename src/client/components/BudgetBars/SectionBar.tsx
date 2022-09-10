@@ -1,6 +1,7 @@
 import { call, currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
+import { Bar } from "./common";
 import CategoryBar from "./CategoryBar";
 
 interface Props {
@@ -20,7 +21,6 @@ const SectionBar = ({ section }: Props) => {
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
-  const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
@@ -73,10 +73,6 @@ const SectionBar = ({ section }: Props) => {
   const currentRatio = currentTotal / capacity || 0;
 
   const statusBarWidth = 30 + Math.pow(Math.min(capacityRatio, 1), 0.5) * 70;
-
-  useEffect(() => {
-    setNumeratorWidth(Math.min(currentRatio, 1) * 100);
-  }, [capacityRatio, currentRatio]);
 
   const openCategory = () => {
     setIsCategoryOpen(true);
@@ -220,14 +216,7 @@ const SectionBar = ({ section }: Props) => {
           </div>
         </div>
         <div className="statusBarWithText">
-          <div style={{ width: statusBarWidth + "%" }} className="statusBar">
-            <div className="contentWithoutPadding">
-              <div
-                style={{ width: numeratorWidth + "%" }}
-                className="numerator colored"
-              />
-            </div>
-          </div>
+          <Bar style={{ width: statusBarWidth + "%" }} ratio={currentRatio} />
           <div className="infoText">
             <div>
               <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
