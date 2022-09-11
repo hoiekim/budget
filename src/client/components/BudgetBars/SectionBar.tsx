@@ -1,7 +1,7 @@
 import { call, currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
-import { Bar } from "./common";
+import { Bar, CapacityInput, NameInput } from "./common";
 import CategoryBar from "./CategoryBar";
 
 interface Props {
@@ -13,11 +13,6 @@ const SectionBar = ({ section }: Props) => {
 
   const { budgets, sections, setSections, categories, setCategories, selectedInterval } =
     useAppContext();
-
-  const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(() => {
-    return numberToCommaString(capacities[selectedInterval]);
-  });
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
@@ -88,17 +83,12 @@ const SectionBar = ({ section }: Props) => {
 
   const { iso_currency_code } = budget;
 
-  const revertInputs = () => {
-    setNameInput(name);
-    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
-  };
-
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
 
   const timeout = useRef<Timeout>();
 
-  const submit = (updatedSection: DeepPartial<Section> = {}, delay = 500) => {
+  const submit = (updatedSection: DeepPartial<Section> = {}, onError?: () => void) => {
     clearTimeout(timeout.current);
     timeout.current = setTimeout(async () => {
       try {
@@ -117,12 +107,12 @@ const SectionBar = ({ section }: Props) => {
         } else throw new Error(`Failed to update section: ${section_id}`);
       } catch (error: any) {
         console.error(error);
-        revertInputs();
+        if (onError) onError();
       }
-    }, delay);
+    }, 500);
   };
 
-  const onClickAdd = async () => {
+  const onClickAddCategory = async () => {
     const queryString = "?" + new URLSearchParams({ parent: section_id }).toString();
     const newCategoryRequestUrl = "/api/new-category" + queryString;
     const { data } = await call.get<NewCategoryGetResponse>(newCategoryRequestUrl);
@@ -145,7 +135,7 @@ const SectionBar = ({ section }: Props) => {
     openCategory();
   };
 
-  const onClickRemove = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const onClickDelete = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
 
     let sectionIterator = categories.values();
@@ -191,23 +181,16 @@ const SectionBar = ({ section }: Props) => {
         ref={infoDivRef}
       >
         <div className="title">
-          {isEditting ? (
-            <input
-              placeholder="name"
-              value={nameInput}
-              onChange={(e) => {
-                const { value } = e.target;
-                setNameInput(value);
-                submit({ name: value });
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <span>{nameInput || "Unnamed"}</span>
-          )}
+          <NameInput
+            defaultValue={name}
+            isEditting={isEditting}
+            submit={(value, onError) => submit({ name: value }, onError)}
+          />
           <div className="buttons">
             {isEditting ? (
-              <button onClick={onClickRemove}>✕</button>
+              <button className="delete colored" onClick={onClickDelete}>
+                ✕
+              </button>
             ) : (
               <button className="edit" onClick={onClickEdit}>
                 ✎
@@ -224,35 +207,23 @@ const SectionBar = ({ section }: Props) => {
             </div>
             <div>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              {isEditting ? (
-                <input
-                  className="capacityInput"
-                  value={capacityInput}
-                  onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
-                  onChange={(e) => {
-                    const { value } = e.target;
-                    setCapacityInput(value);
-                    submit({ capacities: { [selectedInterval]: +value } });
-                  }}
-                  onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
-                  onBlur={(e) =>
-                    setCapacityInput(numberToCommaString(+e.target.value || 0))
-                  }
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <span>{capacityInput}</span>
-              )}
+              <CapacityInput
+                defaultValue={numberToCommaString(capacities[selectedInterval])}
+                isEditting={isEditting}
+                submit={(value, onError) =>
+                  submit({ capacities: { [selectedInterval]: +value } }, onError)
+                }
+              />
             </div>
           </div>
         </div>
       </div>
       <div className="children" style={{ height: childrenHeight }}>
         <div ref={childrenDivRef}>
-          {isCategoryOpen && categoryComponents}{" "}
+          {isCategoryOpen && categoryComponents}
           {isCategoryOpen && (
             <div className="addButton">
-              <button onClick={onClickAdd}>+</button>
+              <button onClick={onClickAddCategory}>+</button>
             </div>
           )}
         </div>

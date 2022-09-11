@@ -7,7 +7,7 @@ import {
 } from "client";
 import { useState, useRef, useEffect } from "react";
 import { Budget, Category, DeepPartial, Section, Transaction } from "server";
-import { Bar, TransactionsList } from "./common";
+import { Bar, CapacityInput, NameInput, TransactionsList } from "./common";
 
 interface Props {
   category: Category & { amount?: number };
@@ -25,16 +25,6 @@ const CategoryComponent = ({ category }: Props) => {
     selectedInterval,
     viewDate,
   } = useAppContext();
-
-  const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(() => {
-    return numberToCommaString(capacities[selectedInterval]);
-  });
-
-  const revertInputs = () => {
-    setNameInput(name);
-    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
-  };
 
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
@@ -107,7 +97,7 @@ const CategoryComponent = ({ category }: Props) => {
 
   const timeout = useRef<Timeout>();
 
-  const submit = (updatedCategory: DeepPartial<Category> = {}, delay = 500) => {
+  const submit = (updatedCategory: DeepPartial<Category> = {}, onError?: () => void) => {
     clearTimeout(timeout.current);
     timeout.current = setTimeout(async () => {
       try {
@@ -126,12 +116,12 @@ const CategoryComponent = ({ category }: Props) => {
         } else throw new Error(`Failed to update category: ${category_id}`);
       } catch (error: any) {
         console.error(error);
-        revertInputs();
+        if (onError) onError();
       }
-    }, delay);
+    }, 500);
   };
 
-  const onClickRemove = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const onClickDelete = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
 
     let transactionIterator = transactions.values();
@@ -177,23 +167,16 @@ const CategoryComponent = ({ category }: Props) => {
         ref={infoDivRef}
       >
         <div className="title">
-          {isEditting ? (
-            <input
-              placeholder="name"
-              value={nameInput}
-              onChange={(e) => {
-                const { value } = e.target;
-                setNameInput(value);
-                submit({ name: value });
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <span>{nameInput || "Unnamed"}</span>
-          )}
+          <NameInput
+            defaultValue={name}
+            isEditting={isEditting}
+            submit={(value, onError) => submit({ name: value }, onError)}
+          />
           <div className="buttons">
             {isEditting ? (
-              <button onClick={onClickRemove}>✕</button>
+              <button className="delete colored" onClick={onClickDelete}>
+                ✕
+              </button>
             ) : (
               <button className="edit" onClick={onClickEdit}>
                 ✎
@@ -210,25 +193,13 @@ const CategoryComponent = ({ category }: Props) => {
             </div>
             <div>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              {isEditting ? (
-                <input
-                  className="capacityInput"
-                  value={capacityInput}
-                  onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
-                  onChange={(e) => {
-                    const { value } = e.target;
-                    setCapacityInput(value);
-                    submit({ capacities: { [selectedInterval]: +value } });
-                  }}
-                  onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
-                  onBlur={(e) =>
-                    setCapacityInput(numberToCommaString(+e.target.value || 0))
-                  }
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <span>{capacityInput}</span>
-              )}
+              <CapacityInput
+                defaultValue={numberToCommaString(capacities[selectedInterval])}
+                isEditting={isEditting}
+                submit={(value, onError) =>
+                  submit({ capacities: { [selectedInterval]: +value } }, onError)
+                }
+              />
             </div>
           </div>
         </div>

@@ -32,11 +32,6 @@ div.BudgetBars .Bar > .contentWithoutPadding > div > div {
   border-radius: 5px;
 }
 
-div.BudgetBars .statusBarWithText {
-  width: 100%;
-  position: relative;
-}
-
 div.BudgetBars .Bar {
   height: 10px;
 }
@@ -52,8 +47,8 @@ div.BudgetBars .Bar .unlabeledNumerator {
     135deg,
     #009d78,
     #009d78 2px,
-    #d9d9d9 2px,
-    #d9d9d9 4px
+    #00000000 2px,
+    #00000000 4px
   );
 }
 
@@ -74,6 +69,11 @@ div.BudgetBars .infoText > div > input {
   font-size: 14px;
   height: 17px;
   width: 75px;
+}
+
+div.BudgetBars input.readonly {
+  background-color: inherit;
+  cursor: default;
 }
 
 div.BudgetBars .budgetInfo,
@@ -98,13 +98,18 @@ div.BudgetBars .title > .buttons {
   justify-content: space-between;
 }
 
+div.BudgetBars .title > .buttons > button {
+  background-color: inherit;
+  font-size: 18px;
+}
+
 div.BudgetBars .title > .buttons > button.edit {
   rotate: 90deg;
 }
 
-div.BudgetBars .title > .buttons > button {
-  background-color: inherit;
-  font-size: 18px;
+div.BudgetBars .title > .buttons > button.delete {
+  color: #f63;
+  font-weight: bolder;
 }
 
 div.BudgetBars .budgetInfo > .title > input,

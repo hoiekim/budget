@@ -5,7 +5,7 @@ type Props = { ratio: number; unlabledRatio?: number } & DetailedHTMLProps<
   HTMLDivElement
 >;
 
-const Bar = ({ ratio, unlabledRatio, className, ...props }: Props) => {
+const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabeledNumeratorWidth] = useState(0);
 
@@ -19,7 +19,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...props }: Props) => {
   }, [ratio, unlabledRatio]);
 
   return (
-    <div className={className ? className + " Bar" : "Bar"} {...props}>
+    <div {...rest} className={className ? className + " Bar" : "Bar"}>
       <div className="contentWithoutPadding">
         {!!unlabledRatio && (
           <div

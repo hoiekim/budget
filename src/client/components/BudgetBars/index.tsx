@@ -10,6 +10,7 @@ import {
 import SectionBar from "./SectionBar";
 import Bar from "./common/Bar";
 import "./index.css";
+import { CapacityInput, NameInput } from "./common";
 
 interface Props {
   budget: Budget;
@@ -31,10 +32,6 @@ const BudgetBar = ({ budget }: Props) => {
     viewDate,
   } = useAppContext();
 
-  const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(() => {
-    return numberToCommaString(capacities[selectedInterval]);
-  });
   const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
@@ -86,17 +83,12 @@ const BudgetBar = ({ budget }: Props) => {
   const unlabledRatio = unlabeledTotal / capacity || 0;
   const incomeRatio = incomeTotal / capacity || 0;
 
-  const revertInputs = () => {
-    setNameInput(name);
-    setCapacityInput(numberToCommaString(capacities[selectedInterval]));
-  };
-
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
 
   const timeout = useRef<Timeout>();
 
-  const submit = (updatedBudget: DeepPartial<Budget> = {}, delay = 500) => {
+  const submit = (updatedBudget: DeepPartial<Budget> = {}, onError?: () => void) => {
     clearTimeout(timeout.current);
     timeout.current = setTimeout(async () => {
       try {
@@ -115,12 +107,12 @@ const BudgetBar = ({ budget }: Props) => {
         } else throw new Error(`Failed to update budget: ${budget_id}`);
       } catch (error: any) {
         console.error(error);
-        revertInputs();
+        if (onError) onError();
       }
-    }, delay);
+    }, 500);
   };
 
-  const onClickRemoveBudget = async () => {
+  const onClickDelete = async () => {
     if (!window.confirm(`Do you want to delete budget: ${name || "Unnamed"}?`)) return;
     const queryString = "?" + new URLSearchParams({ id: budget_id }).toString();
     const { status } = await call.delete("/api/budget" + queryString);
@@ -156,31 +148,24 @@ const BudgetBar = ({ budget }: Props) => {
     });
   };
 
-  const onClickEditBudget = () => setIsEditting((s) => !s);
+  const onClickEdit = () => setIsEditting((s) => !s);
 
   return (
     <div className="BudgetBars">
       <div className="budgetInfo" onMouseLeave={() => setIsEditting(false)}>
         <div className="title">
-          {isEditting ? (
-            <input
-              placeholder="name"
-              value={nameInput}
-              onChange={(e) => {
-                const { value } = e.target;
-                setNameInput(value);
-                submit({ name: value });
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <span>{nameInput || "Unnamed"}</span>
-          )}
+          <NameInput
+            defaultValue={name}
+            isEditting={isEditting}
+            submit={(value, onError) => submit({ name: value }, onError)}
+          />
           <div className="buttons">
             {isEditting ? (
-              <button onClick={onClickRemoveBudget}>✕</button>
+              <button className="delete colored" onClick={onClickDelete}>
+                ✕
+              </button>
             ) : (
-              <button className="edit" onClick={onClickEditBudget}>
+              <button className="edit" onClick={onClickEdit}>
                 ✎
               </button>
             )}
@@ -195,25 +180,13 @@ const BudgetBar = ({ budget }: Props) => {
                 {numberToCommaString(currentTotal + unlabeledTotal)}
               </span>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              {isEditting ? (
-                <input
-                  className="capacityInput"
-                  value={capacityInput}
-                  onKeyPress={(e) => !/[0-9.-]/.test(e.key) && e.preventDefault()}
-                  onChange={(e) => {
-                    const { value } = e.target;
-                    setCapacityInput(value);
-                    submit({ capacities: { [selectedInterval]: +value } });
-                  }}
-                  onFocus={(e) => setCapacityInput(e.target.value.replaceAll(",", ""))}
-                  onBlur={(e) =>
-                    setCapacityInput(numberToCommaString(+e.target.value || 0))
-                  }
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <span>{capacityInput}</span>
-              )}
+              <CapacityInput
+                defaultValue={numberToCommaString(capacities[selectedInterval])}
+                isEditting={isEditting}
+                submit={(value, onError) =>
+                  submit({ capacities: { [selectedInterval]: +value } }, onError)
+                }
+              />
             </div>
           </div>
           <Bar className="income" ratio={incomeRatio} />
@@ -227,10 +200,12 @@ const BudgetBar = ({ budget }: Props) => {
         </div>
       </div>
       <div className="children">
-        <div>{sectionComponents}</div>
-      </div>
-      <div className="addButton">
-        <button onClick={onClickAddSection}>+</button>
+        <div>
+          {sectionComponents}
+          <div className="addButton">
+            <button onClick={onClickAddSection}>+</button>
+          </div>
+        </div>
       </div>
     </div>
   );
