@@ -28,7 +28,7 @@ const Header = () => {
   }, []);
 
   const { clean } = useSync();
-  const { go } = router;
+  const { path, go } = router;
 
   const logout = () => {
     call.delete("/api/login").then((r) => {
@@ -147,14 +147,17 @@ const Header = () => {
     return getDateStringByInterval(viewDate, interval);
   };
 
+  const shadowClass = scrollY && path !== "/transactions" ? " shadow" : "";
+
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
-      <div className={"viewController" + (scrollY ? " shadow" : "")}>
+      <div className={"viewController" + shadowClass}>
         <div>
           <select
             className="budgetSelect"
             value={selectedBudgetId}
             onChange={onChangeBudget}
+            disabled={path === "/transactions"}
           >
             {!selectedBudgetId && <option>Select Budget</option>}
             {budgetOptions}

@@ -10,7 +10,7 @@ import {
 import SectionBar from "./SectionBar";
 import Bar from "./common/Bar";
 import "./index.css";
-import { CapacityInput, NameInput } from "./common";
+import { EditButton, CapacityInput, NameInput } from "./common";
 
 interface Props {
   budget: Budget;
@@ -112,7 +112,7 @@ const BudgetBar = ({ budget }: Props) => {
     }, 500);
   };
 
-  const onClickDelete = async () => {
+  const onDelete = async () => {
     if (!window.confirm(`Do you want to delete budget: ${name || "Unnamed"}?`)) return;
     const queryString = "?" + new URLSearchParams({ id: budget_id }).toString();
     const { status } = await call.delete("/api/budget" + queryString);
@@ -148,27 +148,25 @@ const BudgetBar = ({ budget }: Props) => {
     });
   };
 
-  const onClickEdit = () => setIsEditting((s) => !s);
+  const onEdit = () => setIsEditting((s) => !s);
 
   return (
     <div className="BudgetBars">
-      <div className="budgetInfo" onMouseLeave={() => setIsEditting(false)}>
+      <div
+        className="budgetInfo"
+        onMouseLeave={() => setIsEditting(false)}
+        onClick={() => setIsEditting(false)}
+      >
         <div className="title">
           <NameInput
             defaultValue={name}
             isEditting={isEditting}
-            submit={(value, onError) => submit({ name: value }, onError)}
+            submit={(value, onError) => {
+              submit({ name: value }, onError);
+            }}
           />
           <div className="buttons">
-            {isEditting ? (
-              <button className="delete colored" onClick={onClickDelete}>
-                ✕
-              </button>
-            ) : (
-              <button className="edit" onClick={onClickEdit}>
-                ✎
-              </button>
-            )}
+            <EditButton isEditting={isEditting} onEdit={onEdit} onDelete={onDelete} />
           </div>
         </div>
         <div className="statusBarWithText">
@@ -181,11 +179,11 @@ const BudgetBar = ({ budget }: Props) => {
               </span>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <CapacityInput
-                defaultValue={numberToCommaString(capacities[selectedInterval])}
+                defaultValue={numberToCommaString(capacity)}
                 isEditting={isEditting}
-                submit={(value, onError) =>
-                  submit({ capacities: { [selectedInterval]: +value } }, onError)
-                }
+                submit={(value, onError) => {
+                  submit({ capacities: { [selectedInterval]: +value } }, onError);
+                }}
               />
             </div>
           </div>

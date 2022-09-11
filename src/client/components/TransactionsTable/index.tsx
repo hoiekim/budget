@@ -13,13 +13,14 @@ export type TransactionHeaders = { [k in keyof Transaction]?: boolean } & {
 
 interface Props {
   transactionsArray: Transaction[];
+  customKey?: string;
 }
 
-const TransactionsTable = ({ transactionsArray }: Props) => {
+const TransactionsTable = ({ transactionsArray, customKey }: Props) => {
   const { accounts, institutions, budgets, categories } = useAppContext();
 
   const sorter = useSorter<Transaction, TransactionHeaders>(
-    "transactions",
+    "transactions" + customKey ? `_${customKey}` : "",
     new Map([["authorized_date", "descending"]]),
     {
       authorized_date: true,
