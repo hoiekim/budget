@@ -24,14 +24,6 @@ div.BudgetBars .Bar > .contentWithoutPadding > div {
   position: absolute;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > div > div {
-  transition: 1000ms;
-  height: 100%;
-  background-color: #009d78;
-  position: absolute;
-  border-radius: 5px;
-}
-
 div.BudgetBars .Bar {
   height: 10px;
 }
@@ -41,8 +33,6 @@ div.BudgetBars .Bar .numerator {
 }
 
 div.BudgetBars .Bar .unlabeledNumerator {
-  position: absolute;
-  top: 0;
   background: repeating-linear-gradient(
     135deg,
     #009d78,
@@ -96,15 +86,17 @@ div.BudgetBars .title > .buttons {
   display: flex;
   flex-direction: row-reverse;
   justify-content: space-between;
+  position: relative;
 }
 
 div.BudgetBars .title > .buttons > button {
   background-color: inherit;
   font-size: 18px;
+  position: relative;
 }
 
 div.BudgetBars .title > .buttons > button.edit {
-  rotate: 90deg;
+  transform: rotate(90deg);
 }
 
 div.BudgetBars .title > .buttons > button.delete {

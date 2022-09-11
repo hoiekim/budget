@@ -21,15 +21,13 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   return (
     <div {...rest} className={className ? className + " Bar" : "Bar"}>
       <div className="contentWithoutPadding">
-        {!!unlabledRatio && (
-          <div
-            style={{
-              left: `calc(${numeratorWidth}% - 10px)`,
-              width: `calc(${unlabeledNumeratorWidth}% + 10px)`,
-            }}
-            className="unlabeledNumerator colored"
-          />
-        )}
+        <div
+          style={{
+            left: `calc(${numeratorWidth}% - 10px)`,
+            width: `calc(${unlabeledNumeratorWidth}% + 10px)`,
+          }}
+          className="unlabeledNumerator colored"
+        />
         <div style={{ width: numeratorWidth + "%" }} className="numerator colored" />
       </div>
     </div>

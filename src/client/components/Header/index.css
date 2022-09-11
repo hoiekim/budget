@@ -54,11 +54,13 @@ div.Header > .viewController > div > div {
 }
 
 div.Header > .viewController select.budgetSelect {
-  width: 80px;
+  width: auto;
+  max-width: 80px;
 }
 
 div.Header > .viewController select.intervalSelect {
-  width: 120px;
+  width: auto;
+  max-width: 130px;
 }
 
 div.Header > .viewController > .hamburger {
