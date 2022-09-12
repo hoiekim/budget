@@ -32,7 +32,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
     return () => {
       setOverflowedNumeratorWidth(0);
     };
-  }, [numeratorWidth, unlabeledNumeratorWidth]);
+  }, [numeratorWidth, unlabeledNumeratorWidth, overflowedRatio]);
 
   return (
     <div {...rest} className={[className || "", "Bar", alertClass].join(" ")}>
