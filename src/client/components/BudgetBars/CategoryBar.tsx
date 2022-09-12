@@ -69,10 +69,9 @@ const CategoryComponent = ({ category }: Props) => {
       setChildrenHeight(0);
       setTimeout(() => setIsTransactionOpen((s) => !s), 100);
       return;
-    } else if (transactionsArray.length) {
     }
-    const newTransactionsArray = [...transactionsArray];
-    if (!newTransactionsArray.length) {
+    if (!transactionsArray.length) {
+      const newTransactionsArray = [...transactionsArray];
       const isViewDate = new IsDate(viewDate);
       transactions.forEach((e) => {
         const hidden = accounts.get(e.account_id)?.hide;
@@ -81,8 +80,8 @@ const CategoryComponent = ({ category }: Props) => {
         const includedInCategory = e.label.category_id === category_id;
         if (!hidden && within && includedInCategory) newTransactionsArray.push(e);
       });
+      setTransactionsArray(newTransactionsArray);
     }
-    setTransactionsArray(newTransactionsArray);
     setIsTransactionOpen((s) => !s);
     const childrenDiv = childrenDivRef.current;
     if (childrenDiv) {

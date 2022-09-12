@@ -62,7 +62,7 @@ const Utility = () => {
         if (!category_id) return;
         const newCategory = newCategories.get(category_id);
         if (!newCategory) return;
-        (newCategory.amount as number) += e.amount;
+        (newCategory.amount as number) += Math.max(e.amount, 0);
         newCategories.set(category_id, newCategory);
       });
       return newCategories;

@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef } from "react";
-import { Budget, DeepPartial, NewSectionGetResponse } from "server";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { Budget, DeepPartial, NewSectionGetResponse, Transaction } from "server";
 import {
   useAppContext,
   numberToCommaString,
@@ -10,7 +10,7 @@ import {
 import SectionBar from "./SectionBar";
 import Bar from "./common/Bar";
 import "./index.css";
-import { EditButton, CapacityInput, NameInput } from "./common";
+import { EditButton, CapacityInput, NameInput, TransactionsList } from "./common";
 
 interface Props {
   budget: Budget;
@@ -33,6 +33,57 @@ const BudgetBar = ({ budget }: Props) => {
   } = useAppContext();
 
   const [isEditting, setIsEditting] = useState(!name);
+  const [isIncomeSelected, setIsIncomeSelected] = useState(false);
+  const [childrenHeight, setChildrenHeight] = useState(0);
+  const [transactionsArray, setTransactionsArray] = useState<Transaction[]>([]);
+
+  const transactionsDivRef = useRef<HTMLDivElement>(null);
+
+  const observerRef = useRef(
+    new ResizeObserver((entries) => {
+      const element = entries[0];
+      const { height } = element.contentRect;
+      setChildrenHeight(height);
+    })
+  );
+
+  useEffect(() => {
+    const childrenDiv = transactionsDivRef.current;
+    const observer = observerRef.current;
+    if (childrenDiv) observer.observe(childrenDiv);
+    return () => {
+      if (childrenDiv) observer.unobserve(childrenDiv);
+    };
+  }, []);
+
+  const onClickBudgetInfo = () => {
+    if (isIncomeSelected) {
+      setChildrenHeight(0);
+      setTimeout(() => setIsIncomeSelected((s) => !s), 100);
+      return;
+    }
+    if (!transactionsArray.length) {
+      const newTransactionsArray = [...transactionsArray];
+      const isViewDate = new IsDate(viewDate);
+      transactions.forEach((e) => {
+        const account = accounts.get(e.account_id);
+        if (!account) return;
+        const hidden = account.hide;
+        const transactionDate = new Date(e.authorized_date || e.date);
+        const within = isViewDate.within(selectedInterval).from(transactionDate);
+        const transactionBudget = e.label.budget_id;
+        const accountBudget = account.label.budget_id;
+        const includedInBudget = (transactionBudget || accountBudget) === budget_id;
+        const isIncome = e.amount < 0;
+        if (!hidden && within && includedInBudget && isIncome) {
+          newTransactionsArray.push(e);
+        }
+      });
+      setTransactionsArray(newTransactionsArray);
+    }
+    setChildrenHeight(0);
+    setTimeout(() => setIsIncomeSelected((s) => !s), 100);
+  };
 
   const capacity = capacities[selectedInterval] || 0;
 
@@ -155,7 +206,10 @@ const BudgetBar = ({ budget }: Props) => {
       <div
         className="budgetInfo"
         onMouseLeave={() => setIsEditting(false)}
-        onClick={() => setIsEditting(false)}
+        onClick={() => {
+          setIsEditting(false);
+          onClickBudgetInfo();
+        }}
       >
         <div className="title">
           <NameInput
@@ -195,6 +249,11 @@ const BudgetBar = ({ budget }: Props) => {
               {incomeRatio >= 1 && <span>&nbsp;✔︎</span>}
             </div>
           </div>
+        </div>
+      </div>
+      <div className="children" style={{ height: childrenHeight }}>
+        <div ref={transactionsDivRef}>
+          {isIncomeSelected && <TransactionsList transactionsArray={transactionsArray} />}
         </div>
       </div>
       <div className="children">

@@ -209,11 +209,13 @@ const SectionBar = ({ section }: Props) => {
       </div>
       <div className="children" style={{ height: childrenHeight }}>
         <div ref={childrenDivRef}>
-          {isCategoryOpen && categoryComponents}
           {isCategoryOpen && (
-            <div className="addButton">
-              <button onClick={onClickAddCategory}>+</button>
-            </div>
+            <>
+              {categoryComponents}
+              <div className="addButton">
+                <button onClick={onClickAddCategory}>+</button>
+              </div>
+            </>
           )}
         </div>
       </div>
