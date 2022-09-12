@@ -37,7 +37,7 @@ div.BudgetBars .Bar > .contentWithoutPadding > .unlabeledNumerator:not(.alert) {
 }
 
 div.BudgetBars .Bar > .contentWithoutPadding > .unlabeledNumerator.alert {
-  background: repeating-linear-gradient(135deg, #f43, #f43 2px, #0000 2px, #0000 4px);
+  background-color: #fcc;
 }
 
 div.BudgetBars .Bar > .contentWithoutPadding > .overflowedNumerator:not(.alert) {
