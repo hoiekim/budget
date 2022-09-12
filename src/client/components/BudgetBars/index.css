@@ -10,6 +10,10 @@ div.BudgetBars .Bar {
   border-radius: 5px;
 }
 
+div.BudgetBars .Bar.alert {
+  background-color: #fcc;
+}
+
 div.BudgetBars .Bar > .contentWithoutPadding {
   width: 100%;
   height: 100%;
@@ -44,6 +48,10 @@ div.BudgetBars .Bar .unlabeledNumerator {
 
 div.BudgetBars .Bar.income .numerator {
   background: #8b2;
+}
+
+div.BudgetBars .Bar .alert {
+  background-color: #f43;
 }
 
 div.BudgetBars .infoText {
@@ -100,7 +108,7 @@ div.BudgetBars .title > .buttons > button.edit {
 }
 
 div.BudgetBars .title > .buttons > button.delete {
-  color: #f63;
+  color: #f43;
   font-weight: bolder;
 }
 

@@ -10,7 +10,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   const [unlabeledNumeratorWidth, setUnlabeledNumeratorWidth] = useState(0);
 
   useEffect(() => {
-    setNumeratorWidth(Math.min(1, ratio) * 100);
+    setNumeratorWidth(ratio * 100);
     setUnlabeledNumeratorWidth(Math.min(1, unlabledRatio || 0) * 100);
     return () => {
       setNumeratorWidth(0);
@@ -18,17 +18,29 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
     };
   }, [ratio, unlabledRatio]);
 
+  const overCapped = ratio + (unlabledRatio || 0) >= 1;
+  const alertClass = overCapped ? "alert" : "";
+
   return (
-    <div {...rest} className={className ? className + " Bar" : "Bar"}>
+    <div {...rest} className={[className || "", "Bar", alertClass].join(" ")}>
       <div className="contentWithoutPadding">
         <div
           style={{
             left: `calc(${numeratorWidth}% - 10px)`,
             width: `calc(${unlabeledNumeratorWidth}% + 10px)`,
           }}
-          className="unlabeledNumerator colored"
+          className={["unlabeledNumerator", "colored", alertClass].join(" ")}
         />
-        <div style={{ width: numeratorWidth + "%" }} className="numerator colored" />
+        <div
+          style={{
+            width:
+              Math.min(
+                100,
+                numeratorWidth > 100 ? numeratorWidth - 100 : numeratorWidth
+              ) + "%",
+          }}
+          className={["numerator", "colored", alertClass].join(" ")}
+        />
       </div>
     </div>
   );
