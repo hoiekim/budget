@@ -1,5 +1,5 @@
 import { ChangeEventHandler, ReactNode, useEffect, useMemo, useState } from "react";
-import { useAppContext, useSync, call, getDateStringByInterval } from "client";
+import { useAppContext, useSync, call } from "client";
 import { Budget, Interval, NewBudgetGetResponse } from "server";
 import "./index.css";
 
@@ -71,56 +71,18 @@ const Header = () => {
 
   const onClickPreviousView = () => {
     setViewDate((oldViewDate) => {
-      const year = oldViewDate.getFullYear();
-      const month = oldViewDate.getMonth();
-      const date = oldViewDate.getDate();
-      const day = oldViewDate.getDay();
-      const newViewDate = new Date(year, month, date);
-      switch (selectedInterval) {
-        case "year":
-          newViewDate.setDate(1);
-          newViewDate.setMonth(0);
-          break;
-        case "month":
-          newViewDate.setDate(1);
-          break;
-        case "week":
-          const lastMonday = date - day + (day === 0 ? -6 : 1);
-          newViewDate.setDate(lastMonday);
-          break;
-      }
-      newViewDate.setMilliseconds(-1);
+      const newViewDate = oldViewDate.clone();
+      newViewDate.previous();
       return newViewDate;
     });
   };
 
   const onClickNextView = () => {
-    const year = viewDate.getFullYear();
-    const month = viewDate.getMonth();
-    const date = viewDate.getDate();
-    const day = viewDate.getDay();
-    const newViewDate = new Date(year, month, date);
-    switch (selectedInterval) {
-      case "year":
-        newViewDate.setDate(1);
-        newViewDate.setMonth(0);
-        newViewDate.setFullYear(year + 2);
-        break;
-      case "month":
-        newViewDate.setDate(1);
-        newViewDate.setMonth(month + 2);
-        break;
-      case "week":
-        const lastMonday = date - day + (day === 0 ? -6 : 1);
-        const nextNextMonday = lastMonday + 7 * 2;
-        newViewDate.setDate(nextNextMonday);
-        break;
-      case "day":
-        newViewDate.setDate(date + 2);
-        break;
-    }
-    newViewDate.setMilliseconds(-1);
-    setViewDate(newViewDate);
+    setViewDate((oldViewDate) => {
+      const newViewDate = oldViewDate.clone();
+      newViewDate.next();
+      return newViewDate;
+    });
   };
 
   const onClickAddBudget = async () => {
@@ -144,7 +106,7 @@ const Header = () => {
 
   const getIntervalOptionText = (interval: Interval, fallback: string) => {
     if (selectedInterval !== interval) return fallback;
-    return getDateStringByInterval(viewDate, interval);
+    return viewDate.clone().setInterval(interval).toString();
   };
 
   const shadowClass = scrollY && path !== "/transactions" ? " shadow" : "";

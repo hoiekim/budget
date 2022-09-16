@@ -6,9 +6,10 @@ import {
   MouseEventHandler,
   useMemo,
 } from "react";
-import { InstitutionSpan, PlaidLinkButton } from "client/components";
-import { call, Sorter, useAppContext, numberToCommaString } from "client";
 import { Account } from "server";
+import { call, Sorter, useAppContext, numberToCommaString } from "client";
+import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
+import { Point, GraphData } from "client/components/Graph";
 import { AccountHeaders } from ".";
 import "./index.css";
 
@@ -21,8 +22,17 @@ const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
   const { account_id, balances, custom_name, name, institution_id, label } = account;
 
-  const { user, accounts, setAccounts, setTransactions, institutions, items, budgets } =
-    useAppContext();
+  const {
+    user,
+    accounts,
+    setAccounts,
+    transactions,
+    setTransactions,
+    institutions,
+    items,
+    budgets,
+    viewDate,
+  } = useAppContext();
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
     return label.budget_id || "";
@@ -174,6 +184,36 @@ const AccountRow = ({ account, sorter }: Props) => {
     formattedBalancesText += " " + unofficial_currency_code;
   }
 
+  const graphData: GraphData = useMemo(() => {
+    const balanceHistory: number[] = [current || 0];
+
+    transactions.forEach((transaction) => {
+      const { authorized_date, date, amount } = transaction;
+      if (account_id !== transaction.account_id) return;
+      const transactionDate = new Date(authorized_date || date);
+      const span = viewDate.getSpanFrom(transactionDate) + 1;
+      if (balanceHistory[span]) balanceHistory[span] += amount;
+      else balanceHistory[span] = amount;
+    });
+
+    const { length } = balanceHistory;
+
+    let min = current || 0;
+    let max = current || 0;
+
+    for (let i = 1; i < length; i++) {
+      balanceHistory[i] += balanceHistory[i - 1];
+      min = Math.min(min, balanceHistory[i]);
+      max = Math.max(max, balanceHistory[i]);
+    }
+
+    const points = balanceHistory.reverse().map((e, i): Point => {
+      return [i / (length - 1), (e - min) / (max - min)];
+    });
+
+    return { points, range: { y: [min, max], x: [0, length - 1] }, iso_currency_code };
+  }, [transactions, current, viewDate, account_id, iso_currency_code]);
+
   return (
     <div className="AccountRow">
       {getVisible("balances") && <div>{formattedBalancesText}</div>}
@@ -204,6 +244,7 @@ const AccountRow = ({ account, sorter }: Props) => {
           </div>
         )}
       </div>
+      <Graph data={graphData} />
     </div>
   );
 };

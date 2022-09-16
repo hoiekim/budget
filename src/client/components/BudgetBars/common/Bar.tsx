@@ -12,7 +12,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
 
   useEffect(() => {
     setNumeratorWidth(ratio * 100);
-    setUnlabeledNumeratorWidth(Math.min(1, unlabledRatio || 0) * 100);
+    setUnlabeledNumeratorWidth((unlabledRatio || 0) * 100);
     return () => {
       setNumeratorWidth(0);
       setUnlabeledNumeratorWidth(0);
@@ -24,7 +24,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   const alertClass = isOverCapped ? "alert" : "";
 
   useEffect(() => {
-    if (numeratorWidth + unlabeledNumeratorWidth > 100) {
+    if (numeratorWidth + unlabeledNumeratorWidth >= 100) {
       setTimeout(() => {
         setOverflowedNumeratorWidth(Math.min(1, overflowedRatio) * 100);
       }, 500);
@@ -37,7 +37,6 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   return (
     <div {...rest} className={[className || "", "Bar", alertClass].join(" ")}>
       <div className="contentWithoutPadding">
-        <div className={["background", alertClass, alertClass && "colored"].join(" ")} />
         <div
           style={{
             left: `calc(${numeratorWidth}% - 10px)`,

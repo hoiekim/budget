@@ -1,11 +1,5 @@
-import {
-  numberToCommaString,
-  useAppContext,
-  IsDate,
-  currencyCodeToSymbol,
-  call,
-} from "client";
-import { useState, useRef, useEffect } from "react";
+import { numberToCommaString, useAppContext, currencyCodeToSymbol, call } from "client";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Budget, Category, DeepPartial, Section, Transaction } from "server";
 import { Bar, CapacityInput, EditButton, NameInput, TransactionsList } from "./common";
 
@@ -28,7 +22,6 @@ const CategoryComponent = ({ category }: Props) => {
 
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
-  const [transactionsArray, setTransactionsArray] = useState<Transaction[]>([]);
   const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
@@ -64,23 +57,24 @@ const CategoryComponent = ({ category }: Props) => {
 
   const statusBarWidth = 30 + Math.pow(Math.min(capacityRatio, 1), 0.5) * 70;
 
+  const transactionsArray = useMemo(() => {
+    const newTransactionsArray: Transaction[] = [];
+    const viewDateClone = viewDate.clone();
+    transactions.forEach((e) => {
+      const hidden = accounts.get(e.account_id)?.hide;
+      const transactionDate = new Date(e.authorized_date || e.date);
+      const within = viewDateClone.has(transactionDate);
+      const includedInCategory = e.label.category_id === category_id;
+      if (!hidden && within && includedInCategory) newTransactionsArray.push(e);
+    });
+    return newTransactionsArray;
+  }, [accounts, category_id, transactions, viewDate]);
+
   const onClickCategoryInfo = () => {
     if (isTransactionOpen) {
       setChildrenHeight(0);
       setTimeout(() => setIsTransactionOpen((s) => !s), 100);
       return;
-    }
-    if (!transactionsArray.length) {
-      const newTransactionsArray = [...transactionsArray];
-      const isViewDate = new IsDate(viewDate);
-      transactions.forEach((e) => {
-        const hidden = accounts.get(e.account_id)?.hide;
-        const transactionDate = new Date(e.authorized_date || e.date);
-        const within = isViewDate.within(selectedInterval).from(transactionDate);
-        const includedInCategory = e.label.category_id === category_id;
-        if (!hidden && within && includedInCategory) newTransactionsArray.push(e);
-      });
-      setTransactionsArray(newTransactionsArray);
     }
     setIsTransactionOpen((s) => !s);
     const childrenDiv = childrenDivRef.current;
@@ -182,6 +176,7 @@ const CategoryComponent = ({ category }: Props) => {
             <div>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <CapacityInput
+                key={`${category_id}_${selectedInterval}`}
                 defaultValue={numberToCommaString(capacity)}
                 isEditting={isEditting}
                 submit={(value, onError) => {

@@ -11,6 +11,7 @@ import {
   Budgets,
   Sections,
   Categories,
+  ViewDate,
 } from "client";
 import { MaskedUser, Interval } from "server";
 
@@ -37,7 +38,8 @@ const AppContext = ({ initialUser, children }: Props) => {
     "selectedInterval",
     "month"
   );
-  const [viewDate, setViewDate] = useState<Date>(new Date());
+
+  const [viewDate, setViewDate] = useState(new ViewDate(selectedInterval));
 
   const router = useRouter();
 

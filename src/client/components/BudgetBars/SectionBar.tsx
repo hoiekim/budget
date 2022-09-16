@@ -197,6 +197,7 @@ const SectionBar = ({ section }: Props) => {
             <div>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <CapacityInput
+                key={`${section_id}_${selectedInterval}`}
                 defaultValue={numberToCommaString(capacity)}
                 isEditting={isEditting}
                 submit={(value, onError) => {

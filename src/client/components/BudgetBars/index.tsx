@@ -1,12 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Budget, DeepPartial, NewSectionGetResponse, Transaction } from "server";
-import {
-  useAppContext,
-  numberToCommaString,
-  currencyCodeToSymbol,
-  IsDate,
-  call,
-} from "client";
+import { useAppContext, numberToCommaString, currencyCodeToSymbol, call } from "client";
 import SectionBar from "./SectionBar";
 import Bar from "./common/Bar";
 import "./index.css";
@@ -35,7 +29,6 @@ const BudgetBar = ({ budget }: Props) => {
   const [isEditting, setIsEditting] = useState(!name);
   const [isIncomeSelected, setIsIncomeSelected] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
-  const [transactionsArray, setTransactionsArray] = useState<Transaction[]>([]);
 
   const transactionsDivRef = useRef<HTMLDivElement>(null);
 
@@ -56,30 +49,32 @@ const BudgetBar = ({ budget }: Props) => {
     };
   }, []);
 
+  const transactionsArray = useMemo(() => {
+    const newTransactionsArray: Transaction[] = [];
+    const viewDateClone = viewDate.clone();
+    transactions.forEach((e) => {
+      const account = accounts.get(e.account_id);
+      if (!account) return;
+      const hidden = account.hide;
+      const transactionDate = new Date(e.authorized_date || e.date);
+      const within = viewDateClone.has(transactionDate);
+      const transactionBudget = e.label.budget_id;
+      const accountBudget = account.label.budget_id;
+      const includedInBudget = (transactionBudget || accountBudget) === budget_id;
+      const isIncome = e.amount < 0;
+      if (!hidden && within && includedInBudget && isIncome) {
+        newTransactionsArray.push(e);
+      }
+    });
+
+    return newTransactionsArray;
+  }, [transactions, accounts, budget_id, viewDate]);
+
   const onClickBudgetInfo = () => {
     if (isIncomeSelected) {
       setChildrenHeight(0);
       setTimeout(() => setIsIncomeSelected((s) => !s), 100);
       return;
-    }
-    if (!transactionsArray.length) {
-      const newTransactionsArray = [...transactionsArray];
-      const isViewDate = new IsDate(viewDate);
-      transactions.forEach((e) => {
-        const account = accounts.get(e.account_id);
-        if (!account) return;
-        const hidden = account.hide;
-        const transactionDate = new Date(e.authorized_date || e.date);
-        const within = isViewDate.within(selectedInterval).from(transactionDate);
-        const transactionBudget = e.label.budget_id;
-        const accountBudget = account.label.budget_id;
-        const includedInBudget = (transactionBudget || accountBudget) === budget_id;
-        const isIncome = e.amount < 0;
-        if (!hidden && within && includedInBudget && isIncome) {
-          newTransactionsArray.push(e);
-        }
-      });
-      setTransactionsArray(newTransactionsArray);
     }
     setChildrenHeight(0);
     setTimeout(() => setIsIncomeSelected((s) => !s), 100);
@@ -114,11 +109,11 @@ const BudgetBar = ({ budget }: Props) => {
   const { unlabeledTotal, incomeTotal } = useMemo(() => {
     let unlabeledTotal = 0;
     let incomeTotal = 0;
-    const isViewDate = new IsDate(viewDate);
+    const viewDateClone = viewDate.clone();
     transactions.forEach((e) => {
       const { account_id, authorized_date, date, label, amount } = e;
       const transactionDate = new Date(authorized_date || date);
-      if (!isViewDate.within(selectedInterval).from(transactionDate)) return;
+      if (!viewDateClone.has(transactionDate)) return;
       const account = accounts.get(account_id);
       if (!account || account.hide) return;
       const { category_id, budget_id: labelBudgetId } = label;
@@ -128,7 +123,7 @@ const BudgetBar = ({ budget }: Props) => {
       else unlabeledTotal += amount;
     });
     return { unlabeledTotal, incomeTotal };
-  }, [selectedInterval, transactions, accounts, budget_id, viewDate]);
+  }, [transactions, accounts, budget_id, viewDate]);
 
   const labeledRatio = currentTotal / capacity || 0;
   const unlabledRatio = unlabeledTotal / capacity || 0;
@@ -233,6 +228,7 @@ const BudgetBar = ({ budget }: Props) => {
               </span>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <CapacityInput
+                key={`${budget_id}_${selectedInterval}`}
                 defaultValue={numberToCommaString(capacity)}
                 isEditting={isEditting}
                 submit={(value, onError) => {
@@ -241,7 +237,7 @@ const BudgetBar = ({ budget }: Props) => {
               />
             </div>
           </div>
-          <Bar className="income" ratio={incomeRatio} />
+          <Bar className="income" ratio={Math.min(incomeRatio, 1)} />
           <div className="infoText">
             <div>
               <span>Earned {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>

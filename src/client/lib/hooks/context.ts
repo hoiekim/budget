@@ -10,7 +10,7 @@ import {
   Category,
   Interval,
 } from "server";
-import { ClientRouter } from "client";
+import { ClientRouter, ViewDate } from "client";
 
 export type Transactions = Map<string | undefined, Transaction>;
 export type Accounts = Map<string | undefined, Account>;
@@ -43,8 +43,8 @@ export interface ContextType {
   setSelectedBudgetId: Dispatch<SetStateAction<string>>;
   selectedInterval: Interval;
   setSelectedInterval: Dispatch<SetStateAction<Interval>>;
-  viewDate: Date;
-  setViewDate: Dispatch<SetStateAction<Date>>;
+  viewDate: ViewDate;
+  setViewDate: Dispatch<SetStateAction<ViewDate>>;
 }
 
 export const Context = createContext<ContextType>({} as ContextType);

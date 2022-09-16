@@ -7,6 +7,7 @@ interface Props {
 const TransactionsList = ({ transactionsArray }: Props) => {
   const transactionRows = transactionsArray.map((transaction) => {
     const {
+      transaction_id,
       authorized_date,
       date,
       merchant_name,
@@ -17,7 +18,7 @@ const TransactionsList = ({ transactionsArray }: Props) => {
     } = transaction;
 
     return (
-      <div className="TransactionItem">
+      <div key={transaction_id} className="TransactionItem">
         <div>
           <div className="bigText">
             {new Date(authorized_date || date).toLocaleString("en-US", {

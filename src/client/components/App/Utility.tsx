@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { IsDate, useAppContext, useSync } from "client";
+import { useAppContext, useSync } from "client";
 
 let lastSync = new Date();
 
@@ -14,6 +14,7 @@ const Utility = () => {
     transactions,
     accounts,
     viewDate,
+    setViewDate,
   } = useAppContext();
   const { path, go } = router;
 
@@ -46,7 +47,7 @@ const Utility = () => {
     const budget = budgets.get(selectedBudgetId);
     if (!budget) return;
 
-    const isViewDate = new IsDate(viewDate);
+    const viewDateClone = viewDate.clone();
 
     setCategories((oldCategories) => {
       const newCategories = new Map(oldCategories);
@@ -55,7 +56,7 @@ const Utility = () => {
       });
       transactions.forEach((e) => {
         const transactionDate = new Date(e.authorized_date || e.date);
-        if (!isViewDate.within(selectedInterval).from(transactionDate)) return;
+        if (!viewDateClone.has(transactionDate)) return;
         const account = accounts.get(e.account_id);
         if (account?.hide) return;
         const { category_id } = e.label;
@@ -76,6 +77,14 @@ const Utility = () => {
     selectedInterval,
     viewDate,
   ]);
+
+  useEffect(() => {
+    setViewDate((oldViewDate) => {
+      const newViewDate = oldViewDate.clone();
+      newViewDate.setInterval(selectedInterval);
+      return newViewDate;
+    });
+  }, [selectedInterval, setViewDate]);
 
   return <></>;
 };
