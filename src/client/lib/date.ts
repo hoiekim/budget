@@ -57,8 +57,6 @@ export class IsDate {
 
 const oneDay = 24 * 60 * 60 * 1000;
 
-export type ViewDateStringType = "long" | "short";
-
 export class ViewDate {
   protected date: Date;
   protected interval: Interval;
@@ -75,6 +73,8 @@ export class ViewDate {
     return this;
   };
 
+  getInterval = () => this.interval;
+
   getComponents = () => {
     const { date: dateObject } = this;
     const year = dateObject.getFullYear();
@@ -86,8 +86,8 @@ export class ViewDate {
 
   current = () => {
     const { interval } = this;
-    const { year, month, date: dateComponent, day } = this.getComponents();
-    const newDate = new Date(year, month, dateComponent);
+    const { year, month, date, day } = this.getComponents();
+    const newDate = new Date(year, month, date);
 
     switch (interval) {
       case "year":
@@ -100,12 +100,12 @@ export class ViewDate {
         newDate.setMonth(month + 1);
         break;
       case "week":
-        const lastMonday = dateComponent - day + (day === 0 ? -6 : 1);
+        const lastMonday = date - day + (day === 0 ? -6 : 1);
         const nextMonday = lastMonday + 7;
         newDate.setDate(nextMonday);
         break;
       case "day":
-        newDate.setDate(dateComponent + 1);
+        newDate.setDate(date + 1);
         break;
     }
     newDate.setMilliseconds(-1);
@@ -171,34 +171,34 @@ export class ViewDate {
 
   clone = () => new ViewDate(this.interval, this.date);
 
-  toString = (type: ViewDateStringType = "long") => {
+  toString = (options?: Intl.DateTimeFormatOptions & { week?: "long" | "short" }) => {
     const { date, interval } = this;
-
+    let defaultOptions = {};
+    let finalOptions = {};
     switch (interval) {
       case "year":
-        if (type === "short") return date.toLocaleString("en-US", { year: "2-digit" });
-        return date.toLocaleString("en-US", { year: "numeric" });
+        defaultOptions = { year: "numeric" };
+        finalOptions = options || defaultOptions;
+        return date.toLocaleString("en-US", finalOptions);
       case "month":
-        if (type === "short") return date.toLocaleString("en-US", { month: "short" });
-        return date.toLocaleString("en-US", { year: "numeric", month: "short" });
+        defaultOptions = { year: "numeric" };
+        finalOptions = options || { year: "numeric", month: "short" };
+        return date.toLocaleString("en-US", finalOptions);
       case "week":
         const startDate = new Date(date.getFullYear(), 0, 1);
         const days = Math.floor((date.getTime() - startDate.getTime()) / oneDay);
         const weekNumber = Math.ceil(days / 7);
-        if (type === "short") return `Week ${weekNumber}`;
-        return `Week ${weekNumber}, ` + date.toLocaleString("en-US", { year: "numeric" });
+        const isShortWeek = options?.week === "short";
+        delete options?.week;
+        const weekText = isShortWeek ? `W${weekNumber}` : `Week ${weekNumber}`;
+        defaultOptions = { year: "numeric" };
+        finalOptions = options || defaultOptions;
+        if (!Object.keys(finalOptions).length) return weekText;
+        return weekText + ", " + date.toLocaleString("en-US", finalOptions);
       case "day":
-        if (type === "short") {
-          return date.toLocaleString("en-US", {
-            month: "2-digit",
-            day: "2-digit",
-          });
-        }
-        return date.toLocaleString("en-US", {
-          year: "numeric",
-          month: "short",
-          day: "2-digit",
-        });
+        defaultOptions = { year: "numeric", month: "short", day: "2-digit" };
+        finalOptions = options || defaultOptions;
+        return date.toLocaleString("en-US", finalOptions);
       default:
         return "";
     }

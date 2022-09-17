@@ -2,7 +2,6 @@ import {
   numberToCommaString,
   currencyCodeToSymbol,
   useAppContext,
-  ViewDateStringType,
   ViewDate,
 } from "client";
 import { ReactNode } from "react";
@@ -27,48 +26,67 @@ const Grid = ({ range, iso_currency_code }: Props) => {
     return viewDateClone;
   };
 
-  const verticalLineDivs: ReactNode[] = [];
-  const movedViewDates: ViewDate[] = [];
-
-  for (let i = 0; i < 6; i++) {
-    const n = x[0] + ((x[1] - x[0]) * i) / 6;
-    const movedViewDate = moveViewDateBy(n);
-    movedViewDates.push(movedViewDate);
-    const movedViewDateYear = movedViewDate.getComponents().year;
-    const previousMovedViewDateYear = (
-      i ? movedViewDates[i - 1] : viewDate
-    ).getComponents().year;
-
-    let type: ViewDateStringType = "short";
-
-    if (previousMovedViewDateYear !== movedViewDateYear) type = "long";
-
-    const line = <div>{moveViewDateBy(n).toString(type)}</div>;
-    verticalLineDivs.push(line);
-  }
+  const horizontalLineDivs: ReactNode[] = [];
 
   const symbol = currencyCodeToSymbol(iso_currency_code || "");
+  const M = 4;
+  for (let i = 0; i < M; i++) {
+    const n = y[0] + ((y[1] - y[0]) * (i + 1)) / M;
+    const lineDiv = (
+      <div key={i}>
+        {symbol}
+        {numberToCommaString(n, 0)}
+      </div>
+    );
+    horizontalLineDivs.push(lineDiv);
+  }
+
+  const verticalLineDivs: ReactNode[] = [];
+  const viewDates: ViewDate[] = [];
+
+  const N = 6;
+  for (let i = 0; i < N; i++) {
+    const n = x[0] + ((x[1] - x[0]) * i) / N;
+
+    const movedViewDate = moveViewDateBy(n);
+    viewDates.push(movedViewDate);
+    const currentYear = movedViewDate.getComponents().year;
+
+    const previousMovedViewDate = i ? viewDates[i - 1] : viewDate;
+    const previousYear = previousMovedViewDate.getComponents().year;
+
+    type Options = Intl.DateTimeFormatOptions & { week?: "long" | "short" };
+    const options: Options = {};
+    if (!i || previousYear !== currentYear) options.year = "2-digit";
+    let movedViewDateString = "";
+
+    switch (viewDate.getInterval()) {
+      case "year":
+        options.year = "numeric";
+        movedViewDateString = movedViewDate.toString(options);
+        break;
+      case "month":
+        options.month = "short";
+        movedViewDateString = movedViewDate.toString(options);
+        break;
+      case "week":
+        options.week = "short";
+        movedViewDateString = movedViewDate.toString(options);
+        break;
+      case "day":
+        options.month = "2-digit";
+        options.day = "2-digit";
+        movedViewDateString = movedViewDate.toString(options);
+        break;
+    }
+
+    const lineDiv = <div key={i}>{i !== N - 1 && movedViewDateString}</div>;
+    verticalLineDivs.push(lineDiv);
+  }
 
   return (
     <div className="Grid">
-      <div className="horizontal">
-        <div>
-          {symbol}
-          {numberToCommaString(y[1], 0)}
-        </div>
-        <div>
-          {symbol}
-          {numberToCommaString(y[0] + ((y[1] - y[0]) * 3) / 4, 0)}
-        </div>
-        <div>
-          {symbol}
-          {numberToCommaString(y[0] + ((y[1] - y[0]) * 2) / 4, 0)}
-        </div>
-        <div>
-          {symbol}
-          {numberToCommaString(y[0] + (y[1] - y[0]) / 4, 0)}
-        </div>
-      </div>
+      <div className="horizontal">{horizontalLineDivs.reverse()}</div>
       <div className="vertical">{verticalLineDivs.reverse()}</div>
     </div>
   );

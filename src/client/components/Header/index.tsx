@@ -105,8 +105,8 @@ const Header = () => {
   };
 
   const getIntervalOptionText = (interval: Interval, fallback: string) => {
-    if (selectedInterval !== interval) return fallback;
-    return viewDate.clone().setInterval(interval).toString();
+    if (viewDate.getInterval() !== interval) return fallback;
+    return viewDate.toString();
   };
 
   const shadowClass = scrollY && path !== "/transactions" ? " shadow" : "";
