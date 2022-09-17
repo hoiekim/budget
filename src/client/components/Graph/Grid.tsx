@@ -58,29 +58,24 @@ const Grid = ({ range, iso_currency_code }: Props) => {
     type Options = Intl.DateTimeFormatOptions & { week?: "long" | "short" };
     const options: Options = {};
     if (!i || previousYear !== currentYear) options.year = "2-digit";
-    let movedViewDateString = "";
 
     switch (viewDate.getInterval()) {
       case "year":
         options.year = "numeric";
-        movedViewDateString = movedViewDate.toString(options);
         break;
       case "month":
         options.month = "short";
-        movedViewDateString = movedViewDate.toString(options);
         break;
       case "week":
         options.week = "short";
-        movedViewDateString = movedViewDate.toString(options);
         break;
       case "day":
         options.month = "2-digit";
         options.day = "2-digit";
-        movedViewDateString = movedViewDate.toString(options);
         break;
     }
 
-    const lineDiv = <div key={i}>{i !== N - 1 && movedViewDateString}</div>;
+    const lineDiv = <div key={i}>{i !== N - 1 && movedViewDate.toString(options)}</div>;
     verticalLineDivs.push(lineDiv);
   }
 
