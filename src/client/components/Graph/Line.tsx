@@ -39,7 +39,7 @@ const Line = ({ points }: Props) => {
     .join(" ");
 
   return (
-    <div ref={divRef} className="Line">
+    <div ref={divRef} className="Line" style={{ width: "100%" }}>
       <svg
         height="100%"
         width="100%"

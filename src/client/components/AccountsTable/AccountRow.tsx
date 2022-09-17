@@ -225,8 +225,6 @@ const AccountRow = ({ account, sorter }: Props) => {
     max *= fixer;
     min *= fixer;
 
-    console.log(max, min);
-
     const points = balanceHistory.reverse().map((e, i): Point => {
       const x = length === 1 ? 0.5 : i / (length - 1);
       const y = max === min ? 0.5 : (e - min) / (max - min);
