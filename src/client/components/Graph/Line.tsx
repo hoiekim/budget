@@ -7,7 +7,7 @@ interface Props {
 
 const Line = ({ points }: Props) => {
   const divRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(300);
+  const [width, setWidth] = useState(0);
   const height = 100;
 
   const observerRef = useRef(
@@ -22,6 +22,7 @@ const Line = ({ points }: Props) => {
     const div = divRef.current;
     const observer = observerRef.current;
     if (div) observer.observe(div);
+
     return () => {
       if (div) observer.unobserve(div);
     };
@@ -29,8 +30,8 @@ const Line = ({ points }: Props) => {
 
   const d = points
     .map((e, i) => {
-      const x = e[0] * width;
-      const y = (1 - e[1]) * height;
+      const x = e[0] * (width - 10) + 5;
+      const y = (1 - e[1]) * (height - 10) + 5;
       const joinedCoordinate = `${x},${y}`;
       if (!i) return "M" + joinedCoordinate;
       return joinedCoordinate;
@@ -39,26 +40,24 @@ const Line = ({ points }: Props) => {
 
   return (
     <div ref={divRef} className="Line">
-      {divRef.current && (
-        <svg
-          height="100%"
-          width="100%"
-          viewBox={`0 0 ${width} 100`}
-          preserveAspectRatio="none"
-          className="colored"
-        >
-          <path
-            d={d}
-            style={{
-              stroke: "#097",
-              strokeWidth: 5,
-              strokeLinecap: "round",
-              strokeLinejoin: "round",
-              fill: "none",
-            }}
-          />
-        </svg>
-      )}
+      <svg
+        height="100%"
+        width="100%"
+        viewBox={`0 0 ${width} 100`}
+        preserveAspectRatio="none"
+        className="colored"
+      >
+        <path
+          d={width ? d : ""}
+          style={{
+            stroke: "#097",
+            strokeWidth: 3,
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+            fill: "none",
+          }}
+        />
+      </svg>
     </div>
   );
 };

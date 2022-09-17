@@ -23,6 +23,7 @@ div.Graph > .Grid > div {
   top: 0;
   left: 0;
   display: flex;
+  padding: 5px;
 }
 
 div.Graph > .Grid > .horizontal {
@@ -30,7 +31,7 @@ div.Graph > .Grid > .horizontal {
 }
 
 div.Graph > .Grid > .horizontal > div {
-  border-top: 0.5px solid #eee;
+  border-top: 0.5px solid #ccc;
 }
 
 div.Graph > .Grid > .vertical {
@@ -38,7 +39,7 @@ div.Graph > .Grid > .vertical {
 }
 
 div.Graph > .Grid > .vertical > div {
-  border-left: 0.5px solid #eee;
+  border-left: 0.5px solid #ccc;
   display: flex;
   justify-content: right;
   align-items: flex-end;

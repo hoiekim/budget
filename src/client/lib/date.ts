@@ -57,6 +57,8 @@ export class IsDate {
 
 const oneDay = 24 * 60 * 60 * 1000;
 
+export type ViewDateStringType = "long" | "short";
+
 export class ViewDate {
   protected date: Date;
   protected interval: Interval;
@@ -169,13 +171,15 @@ export class ViewDate {
 
   clone = () => new ViewDate(this.interval, this.date);
 
-  toString = () => {
+  toString = (type: ViewDateStringType = "long") => {
     const { date, interval } = this;
 
     switch (interval) {
       case "year":
+        if (type === "short") return date.toLocaleString("en-US", { year: "2-digit" });
         return date.toLocaleString("en-US", { year: "numeric" });
       case "month":
+        if (type === "short") return date.toLocaleString("en-US", { month: "short" });
         return date.toLocaleString("en-US", { year: "numeric", month: "short" });
       case "week":
         const startDate = new Date(date.getFullYear(), 0, 1);

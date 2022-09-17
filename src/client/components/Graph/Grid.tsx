@@ -1,4 +1,9 @@
-import { numberToCommaString, currencyCodeToSymbol, useAppContext } from "client/lib";
+import {
+  numberToCommaString,
+  currencyCodeToSymbol,
+  useAppContext,
+  ViewDateStringType,
+} from "client";
 import { Range } from ".";
 
 interface Props {
@@ -8,35 +13,47 @@ interface Props {
 
 const Grid = ({ range, iso_currency_code }: Props) => {
   const { x, y } = range;
-  const { selectedInterval } = useAppContext();
+  const { viewDate } = useAppContext();
+
+  const getTimeMarker = (n: number, type?: ViewDateStringType) => {
+    const viewDateClone = viewDate.clone();
+    let i = Math.round(n);
+    while (i > 0) {
+      viewDateClone.previous();
+      i--;
+    }
+    return viewDateClone.toString(type);
+  };
+
   const symbol = currencyCodeToSymbol(iso_currency_code || "");
+
   return (
     <div className="Grid">
       <div className="horizontal">
         <div>
           {symbol}
-          {numberToCommaString(y[1])}
+          {numberToCommaString(y[1], 0)}
         </div>
         <div>
           {symbol}
-          {numberToCommaString(y[0] + ((y[1] - y[0]) * 3) / 4)}
+          {numberToCommaString(y[0] + ((y[1] - y[0]) * 3) / 4, 0)}
         </div>
         <div>
           {symbol}
-          {numberToCommaString(y[0] + ((y[1] - y[0]) * 2) / 4)}
+          {numberToCommaString(y[0] + ((y[1] - y[0]) * 2) / 4, 0)}
         </div>
         <div>
           {symbol}
-          {numberToCommaString(y[0] + (y[1] - y[0]) / 4)}
+          {numberToCommaString(y[0] + (y[1] - y[0]) / 4, 0)}
         </div>
       </div>
       <div className="vertical">
-        <div>{x[0] + ((x[1] - x[0]) * 3) / 4}</div>
-        <div>{x[0] + ((x[1] - x[0]) * 2) / 4}</div>
-        <div>{x[0] + (x[1] - x[0]) / 4}</div>
-        <div>
-          ({selectedInterval}) {x[0]}
-        </div>
+        <div />
+        <div>{getTimeMarker(x[0] + ((x[1] - x[0]) * 4) / 6, "short")}</div>
+        <div>{getTimeMarker(x[0] + ((x[1] - x[0]) * 3) / 6, "short")}</div>
+        <div>{getTimeMarker(x[0] + ((x[1] - x[0]) * 2) / 6, "short")}</div>
+        <div>{getTimeMarker(x[0] + (x[1] - x[0]) / 6, "short")}</div>
+        <div>{getTimeMarker(x[0], "short")}</div>
       </div>
     </div>
   );
