@@ -31,6 +31,14 @@ jobs:
         file: ./Dockerfile
         push: true
         tags: ${{ secrets.DOCKER_HUB_USERNAME }}/budget:latest
+        
+  deploy:
+  
+    needs: build
+    
+    runs-on: ubuntu-latest
+    
+    steps:
     -
       name: Trigger deploy
       run: |
