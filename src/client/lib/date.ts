@@ -185,8 +185,15 @@ export class ViewDate {
         const startDate = new Date(date.getFullYear(), 0, 1);
         const days = Math.floor((date.getTime() - startDate.getTime()) / oneDay);
         const weekNumber = Math.ceil(days / 7);
+        if (type === "short") return `Week ${weekNumber}`;
         return `Week ${weekNumber}, ` + date.toLocaleString("en-US", { year: "numeric" });
       case "day":
+        if (type === "short") {
+          return date.toLocaleString("en-US", {
+            month: "2-digit",
+            day: "2-digit",
+          });
+        }
         return date.toLocaleString("en-US", {
           year: "numeric",
           month: "short",

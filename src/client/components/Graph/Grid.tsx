@@ -3,7 +3,9 @@ import {
   currencyCodeToSymbol,
   useAppContext,
   ViewDateStringType,
+  ViewDate,
 } from "client";
+import { ReactNode } from "react";
 import { Range } from ".";
 
 interface Props {
@@ -15,15 +17,35 @@ const Grid = ({ range, iso_currency_code }: Props) => {
   const { x, y } = range;
   const { viewDate } = useAppContext();
 
-  const getTimeMarker = (n: number, type?: ViewDateStringType) => {
+  const moveViewDateBy = (n: number) => {
     const viewDateClone = viewDate.clone();
     let i = Math.round(n);
     while (i > 0) {
       viewDateClone.previous();
       i--;
     }
-    return viewDateClone.toString(type);
+    return viewDateClone;
   };
+
+  const verticalLineDivs: ReactNode[] = [];
+  const movedViewDates: ViewDate[] = [];
+
+  for (let i = 0; i < 6; i++) {
+    const n = x[0] + ((x[1] - x[0]) * i) / 6;
+    const movedViewDate = moveViewDateBy(n);
+    movedViewDates.push(movedViewDate);
+    const movedViewDateYear = movedViewDate.getComponents().year;
+    const previousMovedViewDateYear = (
+      i ? movedViewDates[i - 1] : viewDate
+    ).getComponents().year;
+
+    let type: ViewDateStringType = "short";
+
+    if (previousMovedViewDateYear !== movedViewDateYear) type = "long";
+
+    const line = <div>{moveViewDateBy(n).toString(type)}</div>;
+    verticalLineDivs.push(line);
+  }
 
   const symbol = currencyCodeToSymbol(iso_currency_code || "");
 
@@ -47,14 +69,7 @@ const Grid = ({ range, iso_currency_code }: Props) => {
           {numberToCommaString(y[0] + (y[1] - y[0]) / 4, 0)}
         </div>
       </div>
-      <div className="vertical">
-        <div />
-        <div>{getTimeMarker(x[0] + ((x[1] - x[0]) * 4) / 6, "short")}</div>
-        <div>{getTimeMarker(x[0] + ((x[1] - x[0]) * 3) / 6, "short")}</div>
-        <div>{getTimeMarker(x[0] + ((x[1] - x[0]) * 2) / 6, "short")}</div>
-        <div>{getTimeMarker(x[0] + (x[1] - x[0]) / 6, "short")}</div>
-        <div>{getTimeMarker(x[0], "short")}</div>
-      </div>
+      <div className="vertical">{verticalLineDivs.reverse()}</div>
     </div>
   );
 };
