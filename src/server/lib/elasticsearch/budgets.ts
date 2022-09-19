@@ -1,5 +1,5 @@
 import { MaskedUser, deepFlatten } from "server";
-import { client, index } from "./client";
+import { elasticsearchClient, index } from "./client";
 
 export type Interval = "year" | "month" | "week" | "day";
 
@@ -23,7 +23,7 @@ export interface Budget {
  */
 export const createBudget = async (user: MaskedUser) => {
   const { user_id } = user;
-  const response = await client.index({
+  const response = await elasticsearchClient.index({
     index,
     document: {
       type: "budget",
@@ -66,7 +66,7 @@ export const updateBudget = async (user: MaskedUser, budget: PartialBudget) => {
   }
   `;
 
-  const response = await client.update({
+  const response = await elasticsearchClient.update({
     index,
     id: budget_id,
     script: { source, lang: "painless" },
@@ -86,7 +86,7 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
 
   const { user_id } = user;
 
-  const section_ids = await client
+  const section_ids = await elasticsearchClient
     .search({
       index,
       query: {
@@ -97,7 +97,7 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
       return r.hits.hits.map((e) => e._id);
     });
 
-  const response = await client.deleteByQuery({
+  const response = await elasticsearchClient.deleteByQuery({
     index,
     query: {
       bool: {
@@ -140,7 +140,7 @@ export interface Section {
  */
 export const createSection = async (user: MaskedUser, budget_id: string) => {
   const { user_id } = user;
-  const response = await client.index({
+  const response = await elasticsearchClient.index({
     index,
     document: {
       type: "section",
@@ -183,7 +183,7 @@ export const updateSection = async (user: MaskedUser, section: PartialSection) =
   }
   `;
 
-  const response = await client.update({
+  const response = await elasticsearchClient.update({
     index,
     id: section_id,
     script: { source, lang: "painless" },
@@ -203,7 +203,7 @@ export const deleteSection = async (user: MaskedUser, section_id: string) => {
 
   const { user_id } = user;
 
-  const response = await client.deleteByQuery({
+  const response = await elasticsearchClient.deleteByQuery({
     index,
     query: {
       bool: {
@@ -248,7 +248,7 @@ export interface Category {
  */
 export const createCategory = async (user: MaskedUser, section_id: string) => {
   const { user_id } = user;
-  const response = await client.index({
+  const response = await elasticsearchClient.index({
     index,
     document: {
       type: "category",
@@ -291,7 +291,7 @@ export const updateCategory = async (user: MaskedUser, category: PartialCategory
   }
   `;
 
-  const response = await client.update({
+  const response = await elasticsearchClient.update({
     index,
     id: category_id,
     script: { source, lang: "painless" },
@@ -311,7 +311,7 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
 
   const { user_id } = user;
 
-  const response = await client.deleteByQuery({
+  const response = await elasticsearchClient.deleteByQuery({
     index,
     query: {
       bool: {
@@ -333,7 +333,7 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
  * @returns A promise to be an array of Account objects
  */
 export const searchBudgets = async (user: MaskedUser) => {
-  const response = await client.search<{
+  const response = await elasticsearchClient.search<{
     type: string;
     budget?: Budget;
     section?: Section;

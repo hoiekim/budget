@@ -1,6 +1,6 @@
 import { RemovedTransaction } from "plaid";
 import { Transaction, deepFlatten, MaskedUser } from "server";
-import { client, index } from "./client";
+import { elasticsearchClient, index } from "./client";
 
 /**
  * Creates transactions documents associated with given user.
@@ -22,7 +22,7 @@ export const indexTransactions = async (
     ];
   });
 
-  const response = await client.bulk({ operations });
+  const response = await elasticsearchClient.bulk({ operations });
 
   return response.items.map((e) => e.index);
 };
@@ -66,7 +66,7 @@ export const updateTransactions = async (
     ];
   });
 
-  const response = await client.bulk({ operations });
+  const response = await elasticsearchClient.bulk({ operations });
 
   return response.items;
 };
@@ -79,7 +79,7 @@ export const updateTransactions = async (
 export const searchTransactions = async (user: MaskedUser) => {
   const { user_id } = user;
 
-  const response = await client.search<{ transaction: Transaction }>({
+  const response = await elasticsearchClient.search<{ transaction: Transaction }>({
     index,
     from: 0,
     size: 10000,
@@ -115,7 +115,7 @@ export const deleteTransactions = async (
   if (!Array.isArray(transactions) || !transactions.length) return;
   const { user_id } = user;
 
-  const response = await client.deleteByQuery({
+  const response = await elasticsearchClient.deleteByQuery({
     index,
     query: {
       bool: {

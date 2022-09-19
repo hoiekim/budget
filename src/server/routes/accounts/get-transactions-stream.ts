@@ -1,5 +1,7 @@
+import { InvestmentTransaction } from "plaid";
 import {
   getTransactions,
+  getInvestmentTransactions,
   Route,
   searchTransactions,
   indexTransactions,
@@ -11,19 +13,20 @@ import {
   PartialTransaction,
   RemovedTransaction,
 } from "server";
-import { searchItems } from "server/lib";
+import { ApiResponse, searchItems } from "server/lib";
 
 export type TransactionsStreamGetResponse = {
   items: Item[];
   added: Transaction[];
   removed: RemovedTransaction[];
   modified: PartialTransaction[];
+  investment: InvestmentTransaction[];
 };
 
-export const getTransactionsStreamRoute = new Route(
+export const getTransactionsStreamRoute = new Route<TransactionsStreamGetResponse>(
   "GET",
   "/transactions-stream",
-  async (req, res) => {
+  async (req, res, stream) => {
     const { user } = req.session;
     if (!user) {
       return {
@@ -32,21 +35,32 @@ export const getTransactionsStreamRoute = new Route(
       };
     }
 
-    const earlyRequest = searchTransactions(user).then((transactions) => {
-      const data: TransactionsStreamGetResponse = {
-        items: [],
-        added: transactions,
-        removed: [],
-        modified: [],
-      };
-      res.write(JSON.stringify({ status: "streaming", data }) + "\n");
-      return null;
-    });
+    let counter = 0;
+    const getStatus = (): ApiResponse["status"] => {
+      if (counter > 1) return "success";
+      counter++;
+      return "streaming";
+    };
 
-    const lateRequest = searchItems(user)
+    const getTransactionsFromElasticsearch = searchTransactions(user).then(
+      (transactions) => {
+        const data: TransactionsStreamGetResponse = {
+          items: [],
+          added: transactions,
+          removed: [],
+          modified: [],
+          investment: [],
+        };
+        stream({ status: getStatus(), data });
+
+        return null;
+      }
+    );
+
+    const getTransactionsFromPlaid = searchItems(user)
       .then((r) => getTransactions(user, r))
       .then(async (data) => {
-        await earlyRequest;
+        await getTransactionsFromElasticsearch;
 
         const { items, added, removed, modified } = data;
 
@@ -61,8 +75,9 @@ export const getTransactionsStreamRoute = new Route(
         const filledData: TransactionsStreamGetResponse = {
           ...data,
           added: filledAdded,
+          investment: [],
         };
-        res.write(JSON.stringify({ status: "success", data: filledData }) + "\n");
+        stream({ status: getStatus(), data: filledData });
 
         const updateJobs = [
           indexTransactions(user, filledAdded),
@@ -76,6 +91,27 @@ export const getTransactionsStreamRoute = new Route(
       })
       .catch(console.error);
 
-    await Promise.all([earlyRequest, lateRequest]);
+    const getInvestmentTransactionsFromPlaid = searchItems(user)
+      .then((r) => getInvestmentTransactions(user, r))
+      .then(async (data) => {
+        await getTransactionsFromElasticsearch;
+
+        const { items, investmentTransactions } = data;
+        const filledData: TransactionsStreamGetResponse = {
+          items,
+          added: [],
+          removed: [],
+          modified: [],
+          investment: investmentTransactions,
+        };
+
+        stream({ status: getStatus(), data: filledData });
+      });
+
+    await Promise.all([
+      getTransactionsFromElasticsearch,
+      getTransactionsFromPlaid,
+      getInvestmentTransactionsFromPlaid,
+    ]);
   }
 );

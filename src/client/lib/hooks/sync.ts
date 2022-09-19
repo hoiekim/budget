@@ -14,6 +14,7 @@ export const useSync = () => {
     user,
     setItems,
     setTransactions,
+    setInvestmentTransactions,
     setAccounts,
     setBudgets,
     setSections,
@@ -28,7 +29,7 @@ export const useSync = () => {
 
     read<TransactionsStreamGetResponse>("/api/transactions-stream", ({ data }) => {
       if (!data) return;
-      const { items, added, removed, modified } = data;
+      const { items, added, removed, modified, investment } = data;
 
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
@@ -43,16 +44,32 @@ export const useSync = () => {
         return newTransactions;
       });
 
+      setInvestmentTransactions((oldInvestmentTransactions) => {
+        const newInvestmentTransactions = new Map(oldInvestmentTransactions);
+        investment.forEach((e) => {
+          newInvestmentTransactions.set(e.investment_transaction_id, e);
+        });
+        return newInvestmentTransactions;
+      });
+
       setItems((oldItems) => {
         const newItems = new Map(oldItems);
         items.forEach((item) => {
-          const { item_id } = item;
+          const { item_id, plaidError } = item;
+          const oldItem = oldItems.get(item_id);
+          if (oldItem?.plaidError) {
+            if (plaidError && plaidError?.error_code !== "NO_INVESTMENT_ACCOUNTS") {
+              console.warn(`Multiple error is found in item: ${item_id}`);
+              console.warn(plaidError);
+            }
+            return;
+          }
           newItems.set(item_id, item);
         });
         return newItems;
       });
     });
-  }, [userLoggedIn, setItems, setTransactions]);
+  }, [userLoggedIn, setItems, setTransactions, setInvestmentTransactions]);
 
   type SyncAccounts = () => void;
 

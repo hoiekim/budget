@@ -1,5 +1,5 @@
 import { Account, deepFlatten } from "server";
-import { client, index } from "./client";
+import { elasticsearchClient, index } from "./client";
 import { MaskedUser } from "./users";
 
 /**
@@ -19,7 +19,7 @@ export const indexAccounts = async (user: MaskedUser, accounts: Account[]) => {
     ];
   });
 
-  const response = await client.bulk({ operations });
+  const response = await elasticsearchClient.bulk({ operations });
 
   return response.items.map((e) => e.index);
 };
@@ -60,7 +60,7 @@ export const updateAccounts = async (user: MaskedUser, accounts: PartialAccount[
     ];
   });
 
-  const response = await client.bulk({ operations });
+  const response = await elasticsearchClient.bulk({ operations });
 
   return response.items;
 };
@@ -73,7 +73,7 @@ export const updateAccounts = async (user: MaskedUser, accounts: PartialAccount[
 export const searchAccounts = async (user: MaskedUser) => {
   const { user_id } = user;
 
-  const response = await client.search<{ account: Account }>({
+  const response = await elasticsearchClient.search<{ account: Account }>({
     index,
     from: 0,
     size: 10000,
@@ -110,7 +110,7 @@ export const deleteAccounts = async (
   if (!Array.isArray(accounts) || !accounts.length) return;
   const { user_id } = user;
 
-  const response = await client.deleteByQuery({
+  const response = await elasticsearchClient.deleteByQuery({
     index,
     query: {
       bool: {

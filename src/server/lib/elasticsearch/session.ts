@@ -1,5 +1,5 @@
 import { Store, SessionData, Cookie } from "express-session";
-import { client, index } from "server";
+import { elasticsearchClient, index } from "server";
 
 /**
  * The REAL `Cookie` type that's used by express-session in runtime.
@@ -43,7 +43,7 @@ export class ElasticsearchSessionStore extends Store {
     callback: (err: any, session?: RealSessionData | null) => void
   ) => {
     try {
-      const data = await client
+      const data = await elasticsearchClient
         .get<{ session: StoredSessionData }>({ index, id: session_id })
         .catch((error) => {
           if (error.body?.found === false) return;
@@ -99,7 +99,7 @@ export class ElasticsearchSessionStore extends Store {
         sameSite: JSON.stringify(sameSite),
       };
 
-      await client.index({
+      await elasticsearchClient.index({
         index,
         id: session_id,
         document: { type: "session", session: { ...session, cookie: storedCookie } },
@@ -120,7 +120,7 @@ export class ElasticsearchSessionStore extends Store {
   destroy = async (session_id: string, callback?: (err?: any) => void) => {
     if (!callback) return;
     try {
-      await client.delete({ index, id: session_id });
+      await elasticsearchClient.delete({ index, id: session_id });
       return callback(null);
     } catch (error) {
       return callback(error);

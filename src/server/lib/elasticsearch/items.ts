@@ -1,5 +1,5 @@
 import { PlaidError } from "plaid";
-import { client, index } from "./client";
+import { elasticsearchClient, index } from "./client";
 import { MaskedUser } from "./users";
 
 export interface Item {
@@ -19,7 +19,7 @@ export interface Item {
 export const indexItem = (user: MaskedUser, item: Item) => {
   const { user_id } = user;
 
-  return client.index({
+  return elasticsearchClient.index({
     index,
     id: item.item_id,
     document: {
@@ -60,7 +60,7 @@ export const updateItems = async (user: MaskedUser, items: Item[]) => {
     ];
   });
 
-  const response = await client.bulk({ operations });
+  const response = await elasticsearchClient.bulk({ operations });
 
   return response.items.map((e) => e.update);
 };
@@ -72,7 +72,7 @@ export const updateItems = async (user: MaskedUser, items: Item[]) => {
 export const searchItems = async (user: MaskedUser) => {
   const { user_id } = user;
 
-  const response = await client.search<{ item: Item }>({
+  const response = await elasticsearchClient.search<{ item: Item }>({
     index,
     from: 0,
     size: 10000,
@@ -101,7 +101,7 @@ export const searchItems = async (user: MaskedUser) => {
 export const deleteItem = async (user: MaskedUser, item_id: string) => {
   const { user_id } = user;
 
-  const itemJob = client.deleteByQuery({
+  const itemJob = elasticsearchClient.deleteByQuery({
     index,
     query: {
       bool: {
@@ -114,7 +114,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
     },
   });
 
-  const otherJob = client
+  const otherJob = elasticsearchClient
     .search({
       index,
       query: {
@@ -129,7 +129,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
     })
     .then((r) => {
       const account_ids = r.hits.hits.map((e) => e._id);
-      return client.deleteByQuery({
+      return elasticsearchClient.deleteByQuery({
         index,
         query: {
           bool: {

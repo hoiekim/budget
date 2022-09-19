@@ -1,159 +1,14 @@
 import {
-  Configuration,
-  PlaidApi,
-  PlaidEnvironments,
-  LinkTokenCreateRequest,
-  Products,
   CountryCode,
-  TransactionsSyncRequest,
-  Transaction as PlaidTransaction,
-  RemovedTransaction,
-  Institution as PlaidInstitution,
   PlaidError,
   AccountType,
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import { MaskedUser, Item } from "server";
-
-export type { RemovedTransaction } from "plaid";
-
-export interface TransactionLabel {
-  budget_id?: string | null;
-  category_id?: string | null;
-}
-
-export interface Transaction extends PlaidTransaction {
-  /**
-   * Represents relations by pair of budget_id and category_id
-   */
-  label: TransactionLabel;
-}
-
-export type Institution = PlaidInstitution;
-
-const { PLAID_CLIENT_ID, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } = process.env;
-
-if (!PLAID_CLIENT_ID || !PLAID_SECRET_DEVELOPMENT || !PLAID_SECRET_SANDBOX) {
-  console.warn("Plaid is not cofigured. Check env vars.");
-}
-
-const getClient = (user?: MaskedUser) => {
-  const isDemo = user?.username === "demo";
-  const config = new Configuration({
-    basePath: isDemo ? PlaidEnvironments.sandbox : PlaidEnvironments.development,
-    baseOptions: {
-      headers: {
-        "PLAID-CLIENT-ID": PLAID_CLIENT_ID,
-        "PLAID-SECRET": isDemo ? PLAID_SECRET_SANDBOX : PLAID_SECRET_DEVELOPMENT,
-      },
-    },
-  });
-  return new PlaidApi(config);
-};
-
-export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
-  const client = getClient(user);
-
-  const request: LinkTokenCreateRequest = {
-    user: { client_user_id: user.user_id },
-    client_name: "Budget App",
-    country_codes: [CountryCode.Us],
-    language: "en",
-  };
-
-  if (access_token) {
-    request.access_token = access_token;
-    request.update = { account_selection_enabled: true };
-  } else request.products = [Products.Auth, Products.Transactions];
-
-  const response = await client.linkTokenCreate(request);
-
-  return response.data;
-};
-
-export const exchangePublicToken = async (user: MaskedUser, public_token: string) => {
-  const client = getClient(user);
-
-  const response = await client.itemPublicTokenExchange({ public_token });
-
-  return response.data;
-};
+import { MaskedUser, Item, DeepPartial, getPlaidClient, Institution } from "server";
 
 export type ItemError = PlaidError & { item_id: string };
-
-export const getTransactions = async (user: MaskedUser, items: Item[]) => {
-  const client = getClient(user);
-
-  type PlaidTransactionsResponse = {
-    items: Item[];
-    added: PlaidTransaction[];
-    removed: RemovedTransaction[];
-    modified: PlaidTransaction[];
-  };
-
-  const data: PlaidTransactionsResponse = {
-    items: [],
-    added: [],
-    removed: [],
-    modified: [],
-  };
-
-  const allAdded: PlaidTransaction[][] = [];
-  const allRemoved: RemovedTransaction[][] = [];
-  const allModified: PlaidTransaction[][] = [];
-
-  const fetchJobs = items.map(async (item) => {
-    const thisItemAdded: PlaidTransaction[][] = [];
-    const thisItemRemoved: RemovedTransaction[][] = [];
-    const thisItemModified: PlaidTransaction[][] = [];
-    let hasMore = true;
-    let plaidError: PlaidError | null = null;
-
-    while (hasMore) {
-      const { item_id, access_token, cursor } = item;
-
-      try {
-        const request: TransactionsSyncRequest = {
-          access_token: access_token,
-          cursor: cursor,
-        };
-        const response = await client.transactionsSync(request);
-        const { added, removed, modified, has_more, next_cursor } = response.data;
-
-        thisItemAdded.push(added);
-        thisItemRemoved.push(removed);
-        thisItemModified.push(modified);
-
-        hasMore = has_more;
-        item.cursor = next_cursor;
-      } catch (error: any) {
-        plaidError = error?.response?.data as PlaidError;
-        console.error(plaidError);
-        console.error("Failed to get transactions data for item:", item_id);
-        hasMore = false;
-      }
-    }
-
-    if (plaidError) data.items.push({ ...item, plaidError });
-    else data.items.push(item);
-
-    allAdded.push(thisItemAdded.flat());
-    allRemoved.push(thisItemRemoved.flat());
-    allModified.push(thisItemModified.flat());
-
-    return;
-  });
-
-  await Promise.all(fetchJobs);
-
-  data.added = allAdded.flat();
-  data.removed = allRemoved.flat();
-  data.modified = allModified.flat();
-
-  return data;
-};
 
 /**
  * Properties of `PlaidAccount` type are mostly just simple copies of `AccountBase`.
@@ -266,7 +121,7 @@ export interface Account extends PlaidAccount {
 }
 
 export const getAccounts = async (user: MaskedUser, items: Item[]) => {
-  const client = getClient(user);
+  const client = getPlaidClient(user);
 
   type PlaidAccountsResponse = {
     items: Item[];
@@ -289,6 +144,7 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
         return { ...e, institution_id, item_id };
       });
       allAccounts.push(filledAccounts);
+      data.items.push({ ...item });
     } catch (error: any) {
       const plaidError = error.response.data as PlaidError;
       console.error(plaidError);
@@ -309,7 +165,7 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
 const institutionsCache = new Map<string, Institution>();
 
 export const getInstitution = async (user: MaskedUser, id: string) => {
-  const client = getClient(user);
+  const client = getPlaidClient(user);
 
   const cachedData = institutionsCache.get(id);
   if (cachedData) return cachedData;

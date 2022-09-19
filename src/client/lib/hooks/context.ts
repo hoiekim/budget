@@ -9,10 +9,12 @@ import {
   Section,
   Category,
   Interval,
+  InvestmentTransaction,
 } from "server";
 import { ClientRouter, ViewDate } from "client";
 
 export type Transactions = Map<string | undefined, Transaction>;
+export type InvestmentTransactions = Map<string | undefined, InvestmentTransaction>;
 export type Accounts = Map<string | undefined, Account>;
 export type Institutions = Map<string | undefined, Institution>;
 export type Items = Map<string, Item>;
@@ -24,6 +26,8 @@ export type Categories = Map<string, Category & { amount?: number }>;
 export interface ContextType {
   transactions: Transactions;
   setTransactions: Dispatch<SetStateAction<Transactions>>;
+  investmentTransactions: InvestmentTransactions;
+  setInvestmentTransactions: Dispatch<SetStateAction<InvestmentTransactions>>;
   accounts: Accounts;
   setAccounts: Dispatch<SetStateAction<Accounts>>;
   institutions: Institutions;

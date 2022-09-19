@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { deepFlatten, DeepPartial } from "server";
-import { client, index } from "./client";
+import { elasticsearchClient, index } from "./client";
 
 export interface MaskedUser {
   user_id: string;
@@ -33,7 +33,7 @@ export const indexUser = async (user: IndexUserInput) => {
   if (password) user.password = await bcrypt.hash(password, 10);
   if (user_id) delete user.user_id;
 
-  return client.index({
+  return elasticsearchClient.index({
     index,
     id: user_id,
     document: { type: "user", user },
@@ -52,7 +52,7 @@ export const searchUser = async (
   let user_id: string;
 
   if (user.user_id) {
-    const response = await client.get<{ user: User }>({
+    const response = await elasticsearchClient.get<{ user: User }>({
       index,
       id: user.user_id,
     });
@@ -67,7 +67,7 @@ export const searchUser = async (
       filter.push({ term: { [`user.${key}`]: flatUser[key] } });
     }
 
-    const response = await client.search<{ user: User }>({
+    const response = await elasticsearchClient.search<{ user: User }>({
       index,
       query: { bool: { filter } },
     });
@@ -114,5 +114,5 @@ export const updateUser = async (user: PartialUser) => {
 
   const script = { source, lang: "painless" };
 
-  return client.update({ id: user_id, index, script });
+  return elasticsearchClient.update({ id: user_id, index, script });
 };

@@ -8,9 +8,12 @@ export interface ApiResponse<T = undefined> {
   info?: string;
 }
 
+export type Stream<T = undefined> = (response: ApiResponse<T>) => void;
+
 export type GetResponse<T = any> = (
   req: Request,
-  res: Response
+  res: Response,
+  stream: Stream<T>
 ) => Promise<ApiResponse<T> | void>;
 
 export class Route<T> {
@@ -22,7 +25,10 @@ export class Route<T> {
     this.handler = async (req, res, next) => {
       if (req.method === method) {
         try {
-          const result = await callback(req, res);
+          const stream: Stream<T> = (response) => {
+            res.write(JSON.stringify(response) + "\n");
+          };
+          const result = await callback(req, res, stream);
           if (result) res.json(result);
           else res.end();
           return;

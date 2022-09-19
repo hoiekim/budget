@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { AccountType } from "plaid";
-import { useAppContext } from "client";
+import { Account, useAppContext } from "client";
 import { AccountsTable } from "client/components";
-import { Account } from "server";
+
+const ignorable_error_codes = new Set(["NO_INVESTMENT_ACCOUNTS"]);
 
 const AccountsPage = () => {
   const { user, items, accounts } = useAppContext();
@@ -16,30 +16,14 @@ const AccountsPage = () => {
   const errorAccountsArray = useMemo((): Account[] => {
     if (!user) return [];
     const result: Account[] = [];
-    items.forEach((e) => {
-      if (!e.plaidError) return;
-      const errorAccount = {
-        item_id: e.item_id,
-        institution_id: e.institution_id,
-        custom_name: "Unknown",
-        hide: false,
-        label: {},
-        account_id: "",
-        balances: {
-          available: 0,
-          current: 0,
-          limit: 0,
-          iso_currency_code: "USD",
-          unofficial_currency_code: "USD",
-        },
-        mask: "",
-        name: "Unknown",
-        official_name: "Unknown",
-        type: AccountType.Other,
-        subtype: null,
-      };
+    items.forEach(({ item_id, institution_id, plaidError }) => {
+      if (!plaidError) return;
+      const { error_code } = plaidError;
+      if (ignorable_error_codes.has(error_code)) return;
+      const errorAccount = new Account({ item_id, institution_id });
       result.push(errorAccount);
     });
+
     return result;
   }, [user, items]);
 

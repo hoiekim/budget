@@ -5,6 +5,7 @@ import {
   Context,
   useRouter,
   Transactions,
+  InvestmentTransactions,
   Accounts,
   Institutions,
   Items,
@@ -22,6 +23,8 @@ interface Props {
 
 const AppContext = ({ initialUser, children }: Props) => {
   const [transactions, setTransactions] = useState<Transactions>(new Map());
+  const [investmentTransactions, setInvestmentTransactions] =
+    useState<InvestmentTransactions>(new Map());
   const [accounts, setAccounts] = useState<Accounts>(new Map());
   const [items, setItems] = useState<Items>(new Map());
   const [institutions, setInstitutions] = useLocalStorage<Institutions>(
@@ -46,6 +49,8 @@ const AppContext = ({ initialUser, children }: Props) => {
   const contextValue: ContextType = {
     transactions,
     setTransactions,
+    investmentTransactions,
+    setInvestmentTransactions,
     accounts,
     setAccounts,
     institutions,

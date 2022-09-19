@@ -6,7 +6,7 @@ import {
   MouseEventHandler,
   useMemo,
 } from "react";
-import { Account } from "server";
+import { Account, InvestmentTransaction, Transaction } from "server";
 import { call, Sorter, useAppContext, numberToCommaString } from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
 import { Point, GraphData } from "client/components/Graph";
@@ -20,7 +20,8 @@ interface Props {
 
 const AccountRow = ({ account, sorter }: Props) => {
   const { getVisible } = sorter;
-  const { account_id, balances, custom_name, name, institution_id, label } = account;
+  const { account_id, balances, custom_name, name, institution_id, label, type } =
+    account;
 
   const {
     user,
@@ -28,6 +29,7 @@ const AccountRow = ({ account, sorter }: Props) => {
     setAccounts,
     transactions,
     setTransactions,
+    investmentTransactions,
     institutions,
     items,
     budgets,
@@ -185,16 +187,22 @@ const AccountRow = ({ account, sorter }: Props) => {
   }
 
   const graphData: GraphData | undefined = useMemo(() => {
+    if (type === "credit") return;
+
     const balanceHistory: number[] = [current || 0];
 
-    transactions.forEach((transaction) => {
+    const translate = (transaction: Transaction | InvestmentTransaction) => {
       const { authorized_date, date, amount } = transaction;
       if (account_id !== transaction.account_id) return;
       const transactionDate = new Date(authorized_date || date);
       const span = viewDate.getSpanFrom(transactionDate) + 1;
-      if (balanceHistory[span]) balanceHistory[span] += amount;
-      else balanceHistory[span] = amount;
-    });
+      const diff = type === "investment" ? -amount : amount;
+      if (balanceHistory[span]) balanceHistory[span] += diff;
+      else balanceHistory[span] = diff;
+    };
+
+    transactions.forEach(translate);
+    investmentTransactions.forEach(translate);
 
     const { length } = balanceHistory;
 
@@ -232,7 +240,15 @@ const AccountRow = ({ account, sorter }: Props) => {
     });
 
     return { points, range: { y: [min, max], x: [0, length - 1] }, iso_currency_code };
-  }, [transactions, current, viewDate, account_id, iso_currency_code]);
+  }, [
+    transactions,
+    current,
+    viewDate,
+    account_id,
+    iso_currency_code,
+    type,
+    investmentTransactions,
+  ]);
 
   return (
     <div className="AccountRow">
