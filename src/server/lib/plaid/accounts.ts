@@ -1,12 +1,11 @@
 import {
-  CountryCode,
   PlaidError,
   AccountType,
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import { MaskedUser, Item, DeepPartial, getPlaidClient, Institution } from "server";
+import { MaskedUser, Item, getPlaidClient } from "server";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -160,29 +159,4 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
   data.accounts = allAccounts.flat();
 
   return data;
-};
-
-const institutionsCache = new Map<string, Institution>();
-
-export const getInstitution = async (user: MaskedUser, id: string) => {
-  const client = getPlaidClient(user);
-
-  const cachedData = institutionsCache.get(id);
-  if (cachedData) return cachedData;
-
-  try {
-    const response = await client.institutionsGetById({
-      institution_id: id,
-      country_codes: [CountryCode.Us],
-    });
-
-    const { institution } = response.data;
-
-    if (institution) institutionsCache.set(id, institution);
-
-    return institution;
-  } catch (error) {
-    console.error(error);
-    console.error("Failed to get institutions data.");
-  }
 };

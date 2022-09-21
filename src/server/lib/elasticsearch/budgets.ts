@@ -1,4 +1,9 @@
-import { MaskedUser, deepFlatten } from "server";
+import {
+  MaskedUser,
+  getUpdateBudgetScript,
+  getUpdateSectionScript,
+  getUpdateCategoryScript,
+} from "server";
 import { elasticsearchClient, index } from "./client";
 
 export type Interval = "year" | "month" | "week" | "day";
@@ -48,23 +53,9 @@ export type PartialBudget = { budget_id: string } & Partial<Budget>;
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateBudget = async (user: MaskedUser, budget: PartialBudget) => {
-  const { user_id } = user;
   const { budget_id } = budget;
 
-  const source = `
-  if (ctx._source.user.user_id == "${user_id}") {
-    if (ctx._source.type == "budget") {
-      ${Object.entries(deepFlatten(budget)).reduce((acc, [key, value]) => {
-        if (key === "budget_id") return acc;
-        return acc + `ctx._source.budget.${key} = ${JSON.stringify(value)};\n`;
-      }, "")}
-    } else {
-      throw new Exception("Found document is not budget type.");
-    }
-  } else {
-    throw new Exception("Request user doesn't have permission for this document.");
-  }
-  `;
+  const source = getUpdateBudgetScript(user, budget);
 
   const response = await elasticsearchClient.update({
     index,
@@ -165,23 +156,9 @@ export type PartialSection = { section_id: string } & Partial<Section>;
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateSection = async (user: MaskedUser, section: PartialSection) => {
-  const { user_id } = user;
   const { section_id } = section;
 
-  const source = `
-  if (ctx._source.user.user_id == "${user_id}") {
-    if (ctx._source.type == "section") {
-      ${Object.entries(deepFlatten(section)).reduce((acc, [key, value]) => {
-        if (key === "section_id") return acc;
-        return acc + `ctx._source.section.${key} = ${JSON.stringify(value)};\n`;
-      }, "")}
-    } else {
-      throw new Exception("Found document is not section type.");
-    }
-  } else {
-    throw new Exception("Request user doesn't have permission for this document.");
-  }
-  `;
+  const source = getUpdateSectionScript(user, section);
 
   const response = await elasticsearchClient.update({
     index,
@@ -273,23 +250,9 @@ export type PartialCategory = { category_id: string } & Partial<Category>;
  * @returns A promise to be an Elasticsearch response object
  */
 export const updateCategory = async (user: MaskedUser, category: PartialCategory) => {
-  const { user_id } = user;
   const { category_id } = category;
 
-  const source = `
-  if (ctx._source.user.user_id == "${user_id}") {
-    if (ctx._source.type == "category") {
-      ${Object.entries(deepFlatten(category)).reduce((acc, [key, value]) => {
-        if (key === "category_id") return acc;
-        return acc + `ctx._source.category.${key} = ${JSON.stringify(value)};\n`;
-      }, "")}
-    } else {
-      throw new Exception("Found document is not category type.");
-    }
-  } else {
-    throw new Exception("Request user doesn't have permission for this document.");
-  }
-  `;
+  const source = getUpdateCategoryScript(user, category);
 
   const response = await elasticsearchClient.update({
     index,

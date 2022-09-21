@@ -1,4 +1,4 @@
-import { Account, deepFlatten } from "server";
+import { Account, getUpdateAccountScript } from "server";
 import { elasticsearchClient, index } from "./client";
 import { MaskedUser } from "./users";
 
@@ -34,25 +34,11 @@ export type PartialAccount = { account_id: string } & Partial<Account>;
  */
 export const updateAccounts = async (user: MaskedUser, accounts: PartialAccount[]) => {
   if (!accounts || !accounts.length) return [];
-  const { user_id } = user;
 
   const operations = accounts.flatMap((account) => {
     const { account_id } = account;
 
-    const source = `
-  if (ctx._source.user.user_id == "${user_id}") {
-    if (ctx._source.type == "account") {
-      ${Object.entries(deepFlatten(account)).reduce((acc, [key, value]) => {
-        if (key === "account_id") return acc;
-        return acc + `ctx._source.account.${key} = ${JSON.stringify(value)};\n`;
-      }, "")}
-    } else {
-      throw new Exception("Found document is not account type.");
-    }
-  } else {
-    throw new Exception("Request user doesn't have permission for this document.");
-  }
-  `;
+    const source = getUpdateAccountScript(user, account);
 
     return [
       { update: { _index: index, _id: account_id } },

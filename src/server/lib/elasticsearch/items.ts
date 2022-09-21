@@ -1,6 +1,7 @@
 import { PlaidError } from "plaid";
 import { elasticsearchClient, index } from "./client";
 import { MaskedUser } from "./users";
+import { getUpdateItemScript } from "./util";
 
 export interface Item {
   item_id: string;
@@ -30,6 +31,8 @@ export const indexItem = (user: MaskedUser, item: Item) => {
   });
 };
 
+export type PartialItem = { item_id: string } & Partial<Item>;
+
 /**
  * Update items of given user, specifically each item's cursor.
  * Cursor is used to mark where last synced with Plaid API.
@@ -37,23 +40,14 @@ export const indexItem = (user: MaskedUser, item: Item) => {
  * @param items
  * @returns A promise to be an Elasticsearch response object
  */
-export const updateItems = async (user: MaskedUser, items: Item[]) => {
+export const updateItems = async (user: MaskedUser, items: PartialItem[]) => {
   if (!items || !items.length) return [];
-  const { user_id } = user;
 
   const operations = items.flatMap((item) => {
-    const { item_id, cursor } = item;
-    const source = `
-  if (ctx._source.user.user_id == "${user_id}") {
-    if (ctx._source.type == "item") {
-      ctx._source.item.cursor = "${cursor}";
-    } else {
-      throw new Exception("Found document is not transaction type.");
-    }
-  } else {
-    throw new Exception("Request user doesn't have permission for this document.");
-  }
-  `;
+    const { item_id } = item;
+    const omittedItem = { ...item };
+    delete omittedItem.plaidError;
+    const source = getUpdateItemScript(user, omittedItem);
     return [
       { update: { _index: index, _id: item_id } },
       { script: { source, lang: "painless" } },

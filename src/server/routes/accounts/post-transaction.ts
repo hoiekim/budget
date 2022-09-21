@@ -1,4 +1,4 @@
-import { Route, updateTransactions } from "server";
+import { Route, upsertTransactions } from "server";
 
 export interface TransactionPostResponse {
   transaction_id: string;
@@ -17,7 +17,7 @@ export const postTrasactionRoute = new Route<TransactionPostResponse>(
     }
 
     try {
-      const response = await updateTransactions(user, [req.body]);
+      const response = await upsertTransactions(user, [req.body]);
       const transaction_id = response[0].update?._id || "";
       return { status: "success", data: { transaction_id } };
     } catch (error: any) {

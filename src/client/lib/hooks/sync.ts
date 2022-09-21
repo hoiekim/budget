@@ -57,12 +57,9 @@ export const useSync = () => {
         items.forEach((item) => {
           const { item_id, plaidError } = item;
           const oldItem = oldItems.get(item_id);
-          if (oldItem?.plaidError) {
-            if (plaidError && plaidError?.error_code !== "NO_INVESTMENT_ACCOUNTS") {
-              console.warn(`Multiple error is found in item: ${item_id}`);
-              console.warn(plaidError);
-            }
-            return;
+          if (oldItem?.plaidError && plaidError) {
+            console.warn(`Multiple error is found in item: ${item_id}`);
+            console.warn(plaidError);
           }
           newItems.set(item_id, item);
         });

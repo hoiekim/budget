@@ -4,9 +4,9 @@ import {
   getInvestmentTransactions,
   Route,
   searchTransactions,
-  indexTransactions,
-  updateTransactions,
+  upsertTransactions,
   deleteTransactions,
+  upsertInvestmentTransactions,
   updateItems,
   Item,
   Transaction,
@@ -42,20 +42,23 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
       return "streaming";
     };
 
-    const getTransactionsFromElasticsearch = searchTransactions(user).then(
-      (transactions) => {
+    const getTransactionsFromElasticsearch = searchTransactions(user)
+      .then(({ transactions, investment_transactions }) => {
         const data: TransactionsStreamGetResponse = {
           items: [],
           added: transactions,
           removed: [],
           modified: [],
-          investment: [],
+          investment: investment_transactions,
         };
         stream({ status: getStatus(), data });
 
         return null;
-      }
-    );
+      })
+      .catch((err) => {
+        console.error(err);
+        stream({ status: getStatus() && "error" });
+      });
 
     const getTransactionsFromPlaid = searchItems(user)
       .then((r) => getTransactions(user, r))
@@ -63,13 +66,6 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         await getTransactionsFromElasticsearch;
 
         const { items, added, removed, modified } = data;
-
-        console.info(
-          "Plaid responded with " +
-            `${added.length} added, ` +
-            `${modified.length} modified and ` +
-            `${removed.length} removed transactions data.`
-        );
 
         const filledAdded = added.map((e) => ({ ...e, label: {} }));
         const filledData: TransactionsStreamGetResponse = {
@@ -80,16 +76,20 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         stream({ status: getStatus(), data: filledData });
 
         const updateJobs = [
-          indexTransactions(user, filledAdded),
-          updateTransactions(user, modified),
+          upsertTransactions(user, [...filledAdded, ...modified]),
           deleteTransactions(user, removed),
         ];
 
-        Promise.all(updateJobs).then(() => updateItems(user, items));
+        const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor }));
+
+        Promise.all(updateJobs).then(() => updateItems(user, partialItems));
 
         return null;
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error(err);
+        stream({ status: getStatus() && "error" });
+      });
 
     const getInvestmentTransactionsFromPlaid = searchItems(user)
       .then((r) => getInvestmentTransactions(user, r))
@@ -105,7 +105,13 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
           investment: investmentTransactions,
         };
 
+        upsertInvestmentTransactions(user, investmentTransactions);
+
         stream({ status: getStatus(), data: filledData });
+      })
+      .catch((err) => {
+        console.error(err);
+        stream({ status: getStatus() && "error" });
       });
 
     await Promise.all([

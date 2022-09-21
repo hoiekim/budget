@@ -45,10 +45,10 @@ const Line = ({ points }: Props) => {
         width="100%"
         viewBox={`0 0 ${width} 100`}
         preserveAspectRatio="none"
-        className="colored"
       >
         <path
           d={width ? d : ""}
+          className="colored"
           style={{
             stroke: "#097",
             strokeWidth: 3,

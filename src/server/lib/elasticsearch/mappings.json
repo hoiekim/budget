@@ -142,6 +142,25 @@
         }
       }
     },
+    "investment_transaction": {
+      "type": "object",
+      "dynamic": true,
+      "properties": {
+        "investment_transaction_id": { "type": "keyword" },
+        "account_id": { "type": "keyword" },
+        "security_id": { "type": "keyword" },
+        "date": { "type": "date" },
+        "name": { "type": "text" },
+        "quantity": { "type": "float" },
+        "amount": { "type": "float" },
+        "price": { "type": "float" },
+        "fees": { "type": "float" },
+        "type": { "type": "keyword" },
+        "subtype": { "type": "keyword" },
+        "iso_currency_code": { "type": "keyword" },
+        "unofficial_currency_code": { "type": "keyword" }
+      }
+    },
     "budget": {
       "type": "object",
       "dynamic": "strict",

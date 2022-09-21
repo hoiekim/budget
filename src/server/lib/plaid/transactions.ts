@@ -8,7 +8,7 @@ import {
 } from "plaid";
 import { MaskedUser, Item, getPlaidClient } from "server";
 
-export type { RemovedTransaction } from "plaid";
+export type { RemovedTransaction };
 
 export interface TransactionLabel {
   budget_id?: string | null;
@@ -69,7 +69,7 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
         item.cursor = next_cursor;
       } catch (error: any) {
         plaidError = error?.response?.data as PlaidError;
-        console.error(plaidError);
+        console.error(plaidError || error);
         console.error("Failed to get transactions data for item:", item_id);
         hasMore = false;
       }
@@ -95,6 +95,8 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
 };
 
 export type InvestmentTransaction = PlaidInvestmentTransaction;
+
+const ignorable_error_codes = new Set(["NO_INVESTMENT_ACCOUNTS"]);
 
 export const getInvestmentTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
@@ -129,15 +131,28 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
       end_date: `${year}-${month2Digits}-${date2Digits}`,
     };
 
-    try {
-      const response = await client.investmentsTransactionsGet(request);
-      const investmentTransactions = response.data.investment_transactions;
-      allInvestmentTransactions.push(investmentTransactions);
-    } catch (error: any) {
-      const plaidError = error.response.data as PlaidError;
-      console.error(plaidError);
-      console.error("Failed to get accounts data for item:", item_id);
-      data.items.push({ ...item, plaidError });
+    let count = 100;
+    let offset = 0;
+    let total: number | undefined;
+
+    while (total === undefined || offset < total) {
+      if (total === undefined) total = 0;
+
+      try {
+        const response = await client.investmentsTransactionsGet(request);
+        const investmentTransactions = response.data.investment_transactions;
+        total = response.data.total_investment_transactions;
+        allInvestmentTransactions.push(investmentTransactions);
+      } catch (error: any) {
+        const plaidError = error.response.data as PlaidError;
+        if (!ignorable_error_codes.has(plaidError.error_code)) {
+          console.error(plaidError);
+          console.error("Failed to get investment transaction data for item:", item_id);
+          data.items.push({ ...item, plaidError });
+        }
+      }
+
+      offset += count;
     }
   });
 
