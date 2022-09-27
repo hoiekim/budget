@@ -39,7 +39,7 @@ const Line = ({ points }: Props) => {
     .join(" ");
 
   return (
-    <div ref={divRef} className="Line" style={{ width: "100%" }}>
+    <div ref={divRef} className="Line colored" style={{ width: "100%" }}>
       <svg
         height="100%"
         width="100%"
@@ -48,7 +48,6 @@ const Line = ({ points }: Props) => {
       >
         <path
           d={width ? d : ""}
-          className="colored"
           style={{
             stroke: "#097",
             strokeWidth: 3,
