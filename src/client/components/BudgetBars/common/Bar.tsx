@@ -1,4 +1,4 @@
-import { useState, useEffect, DetailedHTMLProps, HTMLAttributes } from "react";
+import { useState, useEffect, DetailedHTMLProps, HTMLAttributes, useRef } from "react";
 
 type Props = { ratio: number; unlabledRatio?: number } & DetailedHTMLProps<
   HTMLAttributes<HTMLDivElement>,
@@ -23,9 +23,15 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   const overflowedRatio = Math.max(ratio + (unlabledRatio || 0) - 1, 0);
   const alertClass = isOverCapped ? "alert" : "";
 
+  type SetTimeout = typeof setTimeout;
+  type Timeout = ReturnType<SetTimeout>;
+
+  const timeout = useRef<Timeout>();
+
   useEffect(() => {
     if (numeratorWidth + unlabeledNumeratorWidth >= 100) {
-      setTimeout(() => {
+      clearTimeout(timeout.current);
+      timeout.current = setTimeout(() => {
         setOverflowedNumeratorWidth(Math.min(1, overflowedRatio) * 100);
       }, 500);
     }

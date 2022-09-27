@@ -19,8 +19,8 @@ export type Accounts = Map<string | undefined, Account>;
 export type Institutions = Map<string | undefined, Institution>;
 export type Items = Map<string, Item>;
 
-export type Budgets = Map<string, Budget>;
-export type Sections = Map<string, Section>;
+export type Budgets = Map<string, Budget & { amount?: number }>;
+export type Sections = Map<string, Section & { amount?: number }>;
 export type Categories = Map<string, Category & { amount?: number }>;
 
 export interface ContextType {

@@ -1,17 +1,16 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Budget, DeepPartial, NewSectionGetResponse, Transaction } from "server";
 import { useAppContext, numberToCommaString, currencyCodeToSymbol, call } from "client";
+import { Bar, EditButton, CapacityInput, NameInput, TransactionsList } from "./common";
 import SectionBar from "./SectionBar";
-import Bar from "./common/Bar";
 import "./index.css";
-import { EditButton, CapacityInput, NameInput, TransactionsList } from "./common";
 
 interface Props {
-  budget: Budget;
+  budget: Budget & { amount?: number };
 }
 
 const BudgetBar = ({ budget }: Props) => {
-  const { budget_id, name, capacities, iso_currency_code } = budget;
+  const { budget_id, name, capacities, iso_currency_code, amount } = budget;
 
   const {
     transactions,
@@ -20,7 +19,6 @@ const BudgetBar = ({ budget }: Props) => {
     setBudgets,
     sections,
     setSections,
-    categories,
     setSelectedBudgetId,
     selectedInterval,
     viewDate,
@@ -92,20 +90,6 @@ const BudgetBar = ({ budget }: Props) => {
     return components;
   }, [sections, budget_id]);
 
-  const currentTotal = useMemo(() => {
-    let total = 0;
-    categories.forEach((e) => {
-      if (!e.amount) return;
-      const parentSection = sections.get(e.section_id);
-      if (!parentSection) return;
-      const parentBudget = budgets.get(parentSection.budget_id);
-      if (!parentBudget) return;
-      if (parentBudget !== budget) return;
-      total += e.amount || 0;
-    });
-    return total;
-  }, [categories, sections, budgets, budget]);
-
   const { unlabeledTotal, incomeTotal } = useMemo(() => {
     let unlabeledTotal = 0;
     let incomeTotal = 0;
@@ -125,7 +109,7 @@ const BudgetBar = ({ budget }: Props) => {
     return { unlabeledTotal, incomeTotal };
   }, [transactions, accounts, budget_id, viewDate]);
 
-  const labeledRatio = currentTotal / capacity || 0;
+  const labeledRatio = (amount || 0) / capacity || 0;
   const unlabledRatio = unlabeledTotal / capacity || 0;
   const incomeRatio = incomeTotal / capacity || 0;
 
@@ -224,7 +208,7 @@ const BudgetBar = ({ budget }: Props) => {
             <div>
               <span>Spent {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <span className="currentTotal">
-                {numberToCommaString(currentTotal + unlabeledTotal)}
+                {numberToCommaString((amount || 0) + unlabeledTotal)}
               </span>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <CapacityInput

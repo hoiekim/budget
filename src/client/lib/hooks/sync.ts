@@ -105,19 +105,34 @@ export const useSync = () => {
 
       setBudgets((oldBudgets) => {
         const newBudgets = new Map(oldBudgets);
-        budgets.forEach((e) => newBudgets.set(e.budget_id, e));
+        budgets.forEach((e) => {
+          const { budget_id } = e;
+          const oldBudget = oldBudgets.get(budget_id);
+          const amount = oldBudget?.amount;
+          newBudgets.set(budget_id, { ...e, amount });
+        });
         return newBudgets;
       });
 
       setSections((oldSections) => {
         const newSections = new Map(oldSections);
-        sections.forEach((e) => newSections.set(e.section_id, e));
+        sections.forEach((e) => {
+          const { section_id } = e;
+          const oldSection = oldSections.get(section_id);
+          const amount = oldSection?.amount;
+          newSections.set(section_id, { ...e, amount });
+        });
         return newSections;
       });
 
       setCategories((oldCategories) => {
         const newCategories = new Map(oldCategories);
-        categories.forEach((e) => newCategories.set(e.category_id, e));
+        categories.forEach((e) => {
+          const { category_id } = e;
+          const oldCategorie = oldCategories.get(category_id);
+          const amount = oldCategorie?.amount;
+          newCategories.set(category_id, { ...e, amount });
+        });
         return newCategories;
       });
     });

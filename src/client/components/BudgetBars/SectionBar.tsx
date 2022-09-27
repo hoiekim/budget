@@ -5,13 +5,13 @@ import { Bar, CapacityInput, EditButton, NameInput } from "./common";
 import CategoryBar from "./CategoryBar";
 
 interface Props {
-  section: Section;
+  section: Section & { amount?: number };
 }
 
 const SectionBar = ({ section }: Props) => {
-  const { budget_id, section_id, name, capacities } = section;
+  const { budget_id, section_id, name, capacities, amount } = section;
 
-  const { budgets, sections, setSections, categories, setCategories, selectedInterval } =
+  const { budgets, setSections, categories, setCategories, selectedInterval } =
     useAppContext();
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
@@ -49,23 +49,11 @@ const SectionBar = ({ section }: Props) => {
     return components;
   }, [categories, section_id]);
 
-  const currentTotal = useMemo(() => {
-    let total = 0;
-    categories.forEach((e) => {
-      if (!e.amount) return;
-      const parentSection = sections.get(e.section_id);
-      if (!parentSection) return;
-      if (parentSection !== section) return;
-      total += e.amount || 0;
-    });
-    return total;
-  }, [categories, sections, section]);
-
   const budget = budgets.get(budget_id) as Budget;
   const budgetCapacity = budget.capacities[selectedInterval] || 0;
 
   const capacityRatio = capacity / budgetCapacity || 0;
-  const currentRatio = currentTotal / capacity || 0;
+  const currentRatio = (amount || 0) / capacity || 0;
 
   const statusBarWidth = 30 + Math.pow(Math.min(capacityRatio, 1), 0.5) * 70;
 
@@ -192,7 +180,7 @@ const SectionBar = ({ section }: Props) => {
           <div className="infoText">
             <div>
               <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <span className="currentTotal">{numberToCommaString(currentTotal)}</span>
+              <span className="currentTotal">{numberToCommaString(amount || 0)}</span>
             </div>
             <div>
               <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
