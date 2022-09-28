@@ -4,7 +4,15 @@ import {
   AccountsStreamGetResponse,
   BudgetsGetResponse,
 } from "server";
-import { useAppContext, read, call, Accounts } from "client";
+import {
+  useAppContext,
+  read,
+  call,
+  Accounts,
+  Budgets,
+  Sections,
+  Categories,
+} from "client";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
@@ -57,9 +65,12 @@ export const useSync = () => {
         items.forEach((item) => {
           const { item_id, plaidError } = item;
           const oldItem = oldItems.get(item_id);
-          if (oldItem?.plaidError && plaidError) {
-            console.warn(`Multiple error is found in item: ${item_id}`);
-            console.warn(plaidError);
+          if (oldItem?.plaidError) {
+            if (plaidError) {
+              console.warn(`Multiple error is found in item: ${item_id}`);
+              console.warn(plaidError);
+            }
+            return;
           }
           newItems.set(item_id, item);
         });
@@ -77,8 +88,8 @@ export const useSync = () => {
       if (!data) return;
       const { accounts, items } = data;
 
-      setAccounts(() => {
-        const newAccounts: Accounts = new Map();
+      setAccounts((oldAccounts) => {
+        const newAccounts: Accounts = new Map(oldAccounts);
         accounts.forEach((e) => newAccounts.set(e.account_id, e));
         return newAccounts;
       });
@@ -104,7 +115,7 @@ export const useSync = () => {
       const { budgets, sections, categories } = data;
 
       setBudgets((oldBudgets) => {
-        const newBudgets = new Map(oldBudgets);
+        const newBudgets: Budgets = new Map();
         budgets.forEach((e) => {
           const { budget_id } = e;
           const oldBudget = oldBudgets.get(budget_id);
@@ -115,7 +126,7 @@ export const useSync = () => {
       });
 
       setSections((oldSections) => {
-        const newSections = new Map(oldSections);
+        const newSections: Sections = new Map();
         sections.forEach((e) => {
           const { section_id } = e;
           const oldSection = oldSections.get(section_id);
@@ -126,7 +137,7 @@ export const useSync = () => {
       });
 
       setCategories((oldCategories) => {
-        const newCategories = new Map(oldCategories);
+        const newCategories: Categories = new Map();
         categories.forEach((e) => {
           const { category_id } = e;
           const oldCategorie = oldCategories.get(category_id);

@@ -7,13 +7,14 @@ import {
   upsertTransactions,
   deleteTransactions,
   upsertInvestmentTransactions,
+  searchItems,
   updateItems,
   Item,
   Transaction,
   PartialTransaction,
   RemovedTransaction,
+  ApiResponse,
 } from "server";
-import { ApiResponse, searchItems } from "server/lib";
 
 export type TransactionsStreamGetResponse = {
   items: Item[];
@@ -60,7 +61,9 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         stream({ status: getStatus() && "error" });
       });
 
-    const getTransactionsFromPlaid = searchItems(user)
+    const promisedItems = searchItems(user);
+
+    const getTransactionsFromPlaid = promisedItems
       .then((r) => getTransactions(user, r))
       .then(async (data) => {
         await getTransactionsFromElasticsearch;
@@ -91,7 +94,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         stream({ status: getStatus() && "error" });
       });
 
-    const getInvestmentTransactionsFromPlaid = searchItems(user)
+    const getInvestmentTransactionsFromPlaid = promisedItems
       .then((r) => getInvestmentTransactions(user, r))
       .then(async (data) => {
         await getTransactionsFromElasticsearch;

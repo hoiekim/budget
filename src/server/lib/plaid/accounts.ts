@@ -4,8 +4,10 @@ import {
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
+  Holding as PlaidHolding,
+  Security as PlaidSecurity,
 } from "plaid";
-import { MaskedUser, Item, getPlaidClient } from "server";
+import { MaskedUser, Item, getPlaidClient, ignorable_error_codes } from "server";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -145,7 +147,7 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
       allAccounts.push(filledAccounts);
       data.items.push({ ...item });
     } catch (error: any) {
-      const plaidError = error.response.data as PlaidError;
+      const plaidError = error?.response?.data as PlaidError;
       console.error(plaidError);
       console.error("Failed to get accounts data for item:", item_id);
       data.items.push({ ...item, plaidError });
@@ -157,6 +159,74 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
   await Promise.all(fetchJobs);
 
   data.accounts = allAccounts.flat();
+
+  return data;
+};
+
+export interface Holding extends PlaidHolding {
+  holding_id: string;
+}
+
+export interface Security extends PlaidSecurity {}
+
+export const getHoldings = async (user: MaskedUser, items: Item[]) => {
+  const client = getPlaidClient(user);
+
+  type PlaidHoldingsResponse = {
+    items: Item[];
+    accounts: PlaidAccount[];
+    holdings: Holding[];
+    securities: Security[];
+  };
+
+  const data: PlaidHoldingsResponse = {
+    items: [],
+    accounts: [],
+    holdings: [],
+    securities: [],
+  };
+
+  const allAccounts: PlaidAccount[][] = [];
+  const allHoldings: Holding[][] = [];
+  const allSecurities: Security[][] = [];
+
+  const fetchJobs = items.map(async (item) => {
+    const { item_id, access_token, institution_id } = item;
+    try {
+      const response = await client.investmentsHoldingsGet({ access_token });
+      const { accounts, holdings, securities } = response.data;
+
+      const filledAccounts: PlaidAccount[] = accounts.map((e) => {
+        return { ...e, institution_id, item_id };
+      });
+      allAccounts.push(filledAccounts);
+
+      const filledHoldings = holdings.map((e) => {
+        const { account_id, security_id } = e;
+        return { ...e, holding_id: `${account_id}_${security_id}` };
+      });
+      allHoldings.push(filledHoldings);
+
+      allSecurities.push(securities);
+
+      data.items.push({ ...item });
+    } catch (error: any) {
+      const plaidError = error?.response?.data as PlaidError;
+      if (!ignorable_error_codes.has(plaidError?.error_code)) {
+        console.error(plaidError);
+        console.error("Failed to get holdings data for item:", item_id);
+        data.items.push({ ...item, plaidError });
+      }
+    }
+
+    return;
+  });
+
+  await Promise.all(fetchJobs);
+
+  data.accounts = allAccounts.flat();
+  data.holdings = allHoldings.flat();
+  data.securities = allSecurities.flat();
 
   return data;
 };

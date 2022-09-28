@@ -1,18 +1,24 @@
 import {
   Route,
   Account,
-  PlaidAccount,
   searchAccounts,
   getAccounts,
-  indexAccounts,
-  updateAccounts,
+  upsertAccounts,
   Item,
   searchItems,
+  getHoldings,
+  Holding,
+  upsertHoldings,
+  Security,
+  upsertSecurities,
+  ApiResponse,
 } from "server";
 
 export interface AccountsStreamGetResponse {
   items: Item[];
   accounts: Account[];
+  holdings: Holding[];
+  securities: Security[];
 }
 
 export const getAccountsStreamRoute = new Route(
@@ -27,44 +33,83 @@ export const getAccountsStreamRoute = new Route(
       };
     }
 
+    let counter = 0;
+    const getStatus = (): ApiResponse["status"] => {
+      if (counter > 1) return "success";
+      counter++;
+      return "streaming";
+    };
+
     const map = new Map<string, Account>();
 
-    const earlyRequest = searchAccounts(user).then((accounts) => {
-      const data: AccountsStreamGetResponse = { items: [], accounts };
-      res.write(JSON.stringify({ status: "streaming", data }) + "\n");
+    const getAccountsFromElasticsearch = searchAccounts(user).then((r) => {
+      const { accounts, holdings, securities } = r;
+      const data: AccountsStreamGetResponse = {
+        items: [],
+        accounts,
+        holdings,
+        securities,
+      };
+      res.write(JSON.stringify({ status: getStatus(), data }) + "\n");
       accounts.forEach((e) => map.set(e.account_id, e));
     });
 
-    const lateRequest = searchItems(user)
+    const promisedItems = searchItems(user);
+
+    const getAccountsFromPlaid = promisedItems
       .then((r) => getAccounts(user, r))
       .then(async (r) => {
-        await earlyRequest;
-
-        const added: Account[] = [];
-        const modified: PlaidAccount[] = [];
-
-        const accounts = r.accounts.map<Account>((e) => {
-          const existingAccount = map.get(e.account_id);
-          if (existingAccount) {
-            modified.push(e);
-            return existingAccount;
-          }
-          const account = { ...e, custom_name: "", hide: false, label: {} };
-          added.push(account);
-          return account;
-        });
+        await getAccountsFromElasticsearch;
 
         const { items } = r;
 
-        const data: AccountsStreamGetResponse = { items, accounts };
+        const accounts = r.accounts.map<Account>((e) => {
+          const existingAccount = map.get(e.account_id);
+          return existingAccount || { ...e, custom_name: "", hide: false, label: {} };
+        });
 
-        res.write(JSON.stringify({ status: "success", data }) + "\n");
+        const data: AccountsStreamGetResponse = {
+          items,
+          accounts,
+          holdings: [],
+          securities: [],
+        };
 
-        indexAccounts(user, added);
-        updateAccounts(user, modified);
+        res.write(JSON.stringify({ status: getStatus(), data }) + "\n");
+
+        upsertAccounts(user, accounts);
       })
       .catch(console.error);
 
-    await Promise.all([earlyRequest, lateRequest]);
+    const getHoldingsFromPlaid = promisedItems
+      .then((r) => getHoldings(user, r))
+      .then(async ({ items, accounts, holdings, securities }) => {
+        await getAccountsFromElasticsearch;
+
+        const filledAccounts = accounts.map<Account>((e) => {
+          const existingAccount = map.get(e.account_id);
+          return existingAccount || { ...e, custom_name: "", hide: false, label: {} };
+        });
+
+        const data: AccountsStreamGetResponse = {
+          items,
+          accounts: filledAccounts,
+          holdings,
+          securities,
+        };
+
+        res.write(JSON.stringify({ status: getStatus(), data }) + "\n");
+
+        upsertAccounts(user, accounts);
+        upsertHoldings(user, holdings);
+        upsertSecurities(user, securities);
+      })
+      .catch(console.error);
+
+    await Promise.all([
+      getAccountsFromElasticsearch,
+      getAccountsFromPlaid,
+      getHoldingsFromPlaid,
+    ]);
   }
 );

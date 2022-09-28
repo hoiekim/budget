@@ -6,7 +6,7 @@ import {
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction as PlaidInvestmentTransaction,
 } from "plaid";
-import { MaskedUser, Item, getPlaidClient } from "server";
+import { MaskedUser, Item, getPlaidClient, ignorable_error_codes } from "server";
 
 export type { RemovedTransaction };
 
@@ -96,8 +96,6 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
 
 export type InvestmentTransaction = PlaidInvestmentTransaction;
 
-const ignorable_error_codes = new Set(["NO_INVESTMENT_ACCOUNTS"]);
-
 export const getInvestmentTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
 
@@ -144,8 +142,8 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         total = response.data.total_investment_transactions;
         allInvestmentTransactions.push(investmentTransactions);
       } catch (error: any) {
-        const plaidError = error.response.data as PlaidError;
-        if (!ignorable_error_codes.has(plaidError.error_code)) {
+        const plaidError = error?.response?.data as PlaidError;
+        if (!ignorable_error_codes.has(plaidError?.error_code)) {
           console.error(plaidError);
           console.error("Failed to get investment transaction data for item:", item_id);
           data.items.push({ ...item, plaidError });

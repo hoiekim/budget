@@ -92,13 +92,9 @@ export const searchTransactions = async (user: MaskedUser) => {
     const source = e._source;
     if (!source) return;
     const { transaction, investment_transaction } = source;
-    if (transaction) {
-      result.transactions.push({ ...transaction, transaction_id: e._id });
-    } else if (investment_transaction) {
-      result.investment_transactions.push({
-        ...investment_transaction,
-        investment_transaction_id: e._id,
-      });
+    if (transaction) result.transactions.push(transaction);
+    else if (investment_transaction) {
+      result.investment_transactions.push(investment_transaction);
     }
   });
 

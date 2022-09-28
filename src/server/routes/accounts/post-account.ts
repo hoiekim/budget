@@ -1,4 +1,4 @@
-import { Route, updateAccounts } from "server";
+import { Route, upsertAccounts } from "server";
 
 export interface AccountPostResponse {
   account_id: string;
@@ -17,7 +17,7 @@ export const postAccountRoute = new Route<AccountPostResponse>(
     }
 
     try {
-      const response = await updateAccounts(user, [req.body]);
+      const response = await upsertAccounts(user, [req.body], false);
       const account_id = response[0].update?._id || "";
       return { status: "success", data: { account_id } };
     } catch (error: any) {

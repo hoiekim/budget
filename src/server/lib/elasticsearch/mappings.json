@@ -161,6 +161,41 @@
         "unofficial_currency_code": { "type": "keyword" }
       }
     },
+    "holding": {
+      "type": "object",
+      "properties": {
+        "holding_id": { "type": "keyword" },
+        "account_id": { "type": "keyword" },
+        "security_id": { "type": "keyword" },
+        "institution_price": { "type": "float" },
+        "institution_price_as_of": { "type": "date" },
+        "institution_value": { "type": "float" },
+        "cost_basis": { "type": "float" },
+        "quantity": { "type": "float" },
+        "iso_currency_code": { "type": "keyword" },
+        "unofficial_currency_code": { "type": "keyword" }
+      }
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "security_id": { "type": "keyword" },
+        "isin": { "type": "keyword" },
+        "cusip": { "type": "keyword" },
+        "sedol": { "type": "keyword" },
+        "institution_security_id": { "type": "keyword" },
+        "institution_id": { "type": "keyword" },
+        "proxy_security_id": { "type": "keyword" },
+        "name": { "type": "keyword" },
+        "ticker_symbol": { "type": "keyword" },
+        "is_cash_equivalent": { "type": "boolean" },
+        "type": { "type": "keyword" },
+        "close_price": { "type": "float" },
+        "close_price_as_of": { "type": "date" },
+        "iso_currency_code": { "type": "keyword" },
+        "unofficial_currency_code": { "type": "keyword" }
+      }
+    },
     "budget": {
       "type": "object",
       "dynamic": "strict",

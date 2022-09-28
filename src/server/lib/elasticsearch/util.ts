@@ -8,6 +8,8 @@ import {
   PartialCategory,
   PartialItem,
   PartialInvestmentTransaction,
+  PartialHolding,
+  PartialSecurity,
 } from "server";
 
 export const getUpdateScript = ({ user_id }: MaskedUser, type: string, data: any) => `
@@ -41,6 +43,14 @@ export const getUpdateInvestmentTransactionScript = (
 
 export const getUpdateAccountScript = (user: MaskedUser, account: PartialAccount) => {
   return getUpdateScript(user, "account", account);
+};
+
+export const getUpdateHoldingScript = (user: MaskedUser, holding: PartialHolding) => {
+  return getUpdateScript(user, "holding", holding);
+};
+
+export const getUpdateSecurityScript = (user: MaskedUser, security: PartialSecurity) => {
+  return getUpdateScript(user, "security", security);
 };
 
 export const getUpdateBudgetScript = (user: MaskedUser, budget: PartialBudget) => {
