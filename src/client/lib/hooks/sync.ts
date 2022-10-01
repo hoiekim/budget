@@ -66,9 +66,10 @@ export const useSync = () => {
           const { item_id, plaidError } = item;
           const oldItem = oldItems.get(item_id);
           if (oldItem?.plaidError) {
-            if (plaidError) {
+            const oldPlaidError = oldItem?.plaidError;
+            if (plaidError && plaidError.error_code !== oldPlaidError.error_code) {
               console.warn(`Multiple error is found in item: ${item_id}`);
-              console.warn(plaidError);
+              console.warn(oldPlaidError);
             }
             return;
           }
