@@ -49,6 +49,15 @@ export const useSync = () => {
           }
         });
         removed.forEach((e) => newTransactions.delete(e.transaction_id));
+        newTransactions.forEach((e) => {
+          const { authorized_date, date } = e;
+          if (authorized_date && !authorized_date.includes("T")) {
+            e.authorized_date = authorized_date + "T00:00:00";
+          }
+          if (date && !date.includes("T")) {
+            e.date = date + "T00:00:00";
+          }
+        });
         return newTransactions;
       });
 
