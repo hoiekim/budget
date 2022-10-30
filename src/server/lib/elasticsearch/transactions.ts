@@ -14,6 +14,7 @@ export type PartialTransaction = { transaction_id: string } & Partial<Transactio
  * Updates or inserts transactions documents associated with given user.
  * @param user
  * @param transactions
+ * @param upsert
  * @returns A promise to be an array of Elasticsearch bulk response objects
  */
 export const upsertTransactions = async (

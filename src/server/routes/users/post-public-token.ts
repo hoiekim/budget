@@ -1,4 +1,4 @@
-import { exchangePublicToken, Route, indexItem, pushLocalItem, Item } from "server";
+import { exchangePublicToken, Route, pushLocalItem, Item, upsertItems } from "server";
 
 export interface PbulicTokenPostResponse {
   item: Item;
@@ -16,10 +16,8 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       };
     }
 
-    const { user_id } = user;
-
     const { public_token, institution_id } = req.body;
-    if (typeof public_token !== "string") {
+    if (typeof public_token !== "string" || typeof institution_id !== "string") {
       return {
         status: "failed",
         info: "Request body has wrong type of public_token",
@@ -28,11 +26,8 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
 
     const { access_token, item_id } = await exchangePublicToken(user, public_token);
     const item: Item = { item_id, access_token, institution_id };
-    const response = await indexItem(user, item);
 
-    if (response.result !== "created") {
-      throw new Error(`Failed to register item: ${item_id}`);
-    }
+    await upsertItems(user, [item]);
 
     if (user.username === "admin") pushLocalItem(item);
 

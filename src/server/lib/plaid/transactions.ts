@@ -6,7 +6,14 @@ import {
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction as PlaidInvestmentTransaction,
 } from "plaid";
-import { MaskedUser, Item, getPlaidClient, ignorable_error_codes } from "server";
+import {
+  MaskedUser,
+  Item,
+  getPlaidClient,
+  ignorable_error_codes,
+  getDateString,
+  appendTimeString,
+} from "server";
 
 export type { RemovedTransaction };
 
@@ -112,21 +119,30 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
   const allInvestmentTransactions: PlaidInvestmentTransaction[][] = [];
 
   const fetchJobs = items.map(async (item) => {
-    const { item_id, access_token } = item;
+    const { item_id, access_token, updated } = item;
 
     const now = new Date();
 
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const date = now.getDate();
+    let start_date: string;
 
-    const month2Digits = month < 10 ? "0" + month : month.toString();
-    const date2Digits = date < 10 ? "0" + date : date.toString();
+    if (updated) {
+      const updatedDate = new Date(appendTimeString(updated));
+      const todaysDate = updatedDate.getDate();
+      updatedDate.setDate(todaysDate - 14);
+      start_date = getDateString(updatedDate);
+    } else {
+      const oldestDate = new Date();
+      const thisYear = now.getFullYear();
+      oldestDate.setFullYear(thisYear - 2);
+      start_date = getDateString(oldestDate);
+    }
+
+    const end_date = getDateString(now);
 
     const request: InvestmentsTransactionsGetRequest = {
       access_token,
-      start_date: `${year - 2}-${month2Digits}-${date2Digits}`,
-      end_date: `${year}-${month2Digits}-${date2Digits}`,
+      start_date,
+      end_date,
     };
 
     let count = 100;
@@ -141,6 +157,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         const investmentTransactions = response.data.investment_transactions;
         total = response.data.total_investment_transactions;
         allInvestmentTransactions.push(investmentTransactions);
+        items.push({ ...item, updated: end_date });
       } catch (error: any) {
         const plaidError = error?.response?.data as PlaidError;
         if (!ignorable_error_codes.has(plaidError?.error_code)) {

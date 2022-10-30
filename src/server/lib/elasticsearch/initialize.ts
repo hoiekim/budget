@@ -1,14 +1,12 @@
 import mappings from "./mappings.json";
-import { elasticsearchClient, index } from "./client";
 import {
-  Item,
+  elasticsearchClient,
+  index,
   getLocalItems,
   searchUser,
   indexUser,
-  searchItems,
-  maskUser,
+  upsertItems,
 } from "server";
-import { indexItem } from "./items";
 
 const { properties }: any = mappings;
 
@@ -71,20 +69,7 @@ export const initializeIndex = async (): Promise<void> => {
 
   const { ADMIN_PASSWORD, DEMO_PASSWORD } = process.env;
 
-  const itemsMap = new Map<string, Item>();
-
-  const localItems = getLocalItems();
-  localItems.forEach((e) => itemsMap.set(e.item_id, e));
-
   const existingAdminUser = await searchUser({ username: "admin" });
-
-  if (existingAdminUser) {
-    (await searchItems(maskUser(existingAdminUser))).forEach((e) => {
-      const duplicatedItem = itemsMap.get(e.item_id);
-      const mergedItem = duplicatedItem ? { ...e, ...duplicatedItem } : e;
-      itemsMap.set(e.item_id, mergedItem);
-    });
-  }
 
   const indexingAdminUserResult = await indexUser({
     user_id: existingAdminUser?.user_id,
@@ -95,9 +80,9 @@ export const initializeIndex = async (): Promise<void> => {
   const createdAdminUserId = indexingAdminUserResult?._id;
   if (!createdAdminUserId) throw new Error("Failed to created admin user");
 
-  itemsMap.forEach((item) => {
-    indexItem({ user_id: createdAdminUserId, username: "admin" }, item);
-  });
+  const localItems = getLocalItems();
+
+  upsertItems({ user_id: createdAdminUserId, username: "admin" }, localItems);
 
   const existingDemoUser = await searchUser({ username: "demo" });
 

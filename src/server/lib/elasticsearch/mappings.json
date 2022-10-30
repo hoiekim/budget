@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "properties": {
     "type": { "type": "keyword" },
     "user": {
@@ -22,7 +22,8 @@
         "user_id": { "type": "keyword" },
         "access_token": { "type": "keyword" },
         "institution_id": { "type": "keyword" },
-        "cursor": { "type": "keyword" }
+        "cursor": { "type": "keyword" },
+        "updated": { "type": "date" }
       }
     },
     "session": {

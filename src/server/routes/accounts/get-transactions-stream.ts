@@ -8,12 +8,13 @@ import {
   deleteTransactions,
   upsertInvestmentTransactions,
   searchItems,
-  updateItems,
+  upsertItems,
   Item,
   Transaction,
   PartialTransaction,
   RemovedTransaction,
   ApiResponse,
+  appendTimeString,
 } from "server";
 
 export type TransactionsStreamGetResponse = {
@@ -70,12 +71,27 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
         const { items, added, removed, modified } = data;
 
-        const filledAdded = added.map((e) => ({ ...e, label: {} }));
+        const fillDateStrings = (e: typeof added[0]) => {
+          const result = { ...e };
+          const { authorized_date, date } = e;
+          if (authorized_date) result.authorized_date = appendTimeString(authorized_date);
+          if (date) result.date = appendTimeString(date);
+          return result;
+        };
+
+        const filledAdded = added.map(fillDateStrings).map((e) => {
+          return { ...e, label: {} };
+        });
+
+        const filledModified = added.map(fillDateStrings);
+
         const filledData: TransactionsStreamGetResponse = {
           ...data,
           added: filledAdded,
+          modified: filledModified,
           investment: [],
         };
+
         stream({ status: getStatus(), data: filledData });
 
         const updateJobs = [
@@ -84,8 +100,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         ];
 
         const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor }));
-
-        Promise.all(updateJobs).then(() => updateItems(user, partialItems));
+        Promise.all(updateJobs).then(() => upsertItems(user, partialItems));
 
         return null;
       })
@@ -100,15 +115,28 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         await getTransactionsFromElasticsearch;
 
         const { items, investmentTransactions } = data;
+
+        const fillDateStrings = (e: typeof investmentTransactions[0]) => {
+          const result = { ...e };
+          const { date } = e;
+          if (date) result.date = appendTimeString(date);
+          return result;
+        };
+
+        const filledInvestments = investmentTransactions.map(fillDateStrings);
+
         const filledData: TransactionsStreamGetResponse = {
           items,
           added: [],
           removed: [],
           modified: [],
-          investment: investmentTransactions,
+          investment: filledInvestments,
         };
 
-        upsertInvestmentTransactions(user, investmentTransactions);
+        const updateJob = upsertInvestmentTransactions(user, filledInvestments);
+
+        const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
+        updateJob.then(() => upsertItems(user, partialItems));
 
         stream({ status: getStatus(), data: filledData });
       })

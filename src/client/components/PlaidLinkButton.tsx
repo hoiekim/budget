@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
 import { Item, PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
-import { useAppContext, call, useSync } from "client";
+import { useAppContext, call, useSync, useLocalStorage } from "client";
 
 interface Props {
   item?: Item;
@@ -15,12 +15,16 @@ const PlaidLinkButton = ({ item, children }: Props) => {
   const { user } = useAppContext();
 
   const access_token = (item && item.access_token) || "";
-  const [token, setToken] = useState(tokens.get(access_token) || "");
+  const [token, setToken] = useLocalStorage("token", tokens.get(access_token) || "");
 
   const { sync } = useSync();
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const oauth_state_id = urlParams.get("oauth_state_id");
+
   const { open, ready } = usePlaidLink({
     token,
+    receivedRedirectUri: oauth_state_id ? window.location.href : undefined,
     onSuccess: (public_token: string, metadata: PlaidLinkOnSuccessMetadata) => {
       const { institution } = metadata;
       const institution_id = institution && institution.institution_id;
@@ -48,7 +52,8 @@ const PlaidLinkButton = ({ item, children }: Props) => {
       return;
     }
 
-    if (tokens.has(access_token)) return;
+    if (oauth_state_id || tokens.has(access_token)) return;
+
     if (promisedTokens.has(access_token)) {
       promisedTokens.get(access_token)?.then((r) => {
         const existingToken = tokens.get(access_token);

@@ -9,55 +9,51 @@ export interface Item {
   institution_id: string;
   cursor?: string;
   plaidError?: PlaidError;
+  /**
+   * Timestamp in ISO format.
+   */
+  updated?: string;
 }
 
 /**
- * Adds an item to an indexed user object.
- * @param user
- * @param item
- * @returns A promise to be an Elasticsearch response object
- */
-export const indexItem = (user: MaskedUser, item: Item) => {
-  const { user_id } = user;
-
-  return elasticsearchClient.index({
-    index,
-    id: item.item_id,
-    document: {
-      type: "item",
-      user: { user_id },
-      item,
-    },
-  });
-};
-
-export type PartialItem = { item_id: string } & Partial<Item>;
-
-/**
- * Update items of given user, specifically each item's cursor.
- * Cursor is used to mark where last synced with Plaid API.
+ * Updates or inserts items documents associated with given user.
  * @param user
  * @param items
- * @returns A promise to be an Elasticsearch response object
+ * @param upsert
+ * @returns A promise to be an array of Elasticsearch bulk response objects
  */
-export const updateItems = async (user: MaskedUser, items: PartialItem[]) => {
-  if (!items || !items.length) return [];
+export const upsertItems = async (
+  user: MaskedUser,
+  items: PartialItem[],
+  upsert: boolean = true
+) => {
+  if (!items.length) return [];
+  const { user_id } = user;
 
   const operations = items.flatMap((item) => {
     const { item_id } = item;
+
+    const bulkHead = { update: { _index: index, _id: item_id } };
+
     const omittedItem = { ...item };
     delete omittedItem.plaidError;
     const source = getUpdateItemScript(user, omittedItem);
-    return [
-      { update: { _index: index, _id: item_id } },
-      { script: { source, lang: "painless" } },
-    ];
+    const bulkBody: any = { script: { source, lang: "painless" } };
+
+    if (upsert) {
+      bulkBody.upsert = { type: "item", user: { user_id }, item };
+    }
+
+    return [bulkHead, bulkBody];
   });
 
   const response = await elasticsearchClient.bulk({ operations });
 
-  return response.items.map((e) => e.update);
+  return response.items;
 };
+
+export type PartialItem = { item_id: string } & Partial<Item>;
+
 /**
  * Searches for items associated with given user.
  * @param user

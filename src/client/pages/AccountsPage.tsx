@@ -16,7 +16,11 @@ const AccountsPage = () => {
     const result: Account[] = [];
     items.forEach(({ item_id, institution_id, plaidError }) => {
       if (!plaidError) return;
-      const { error_code } = plaidError;
+      let accountExists = false;
+      accounts.forEach((account) => {
+        if (account.item_id === item_id) accountExists = true;
+      });
+      if (accountExists) return;
       const errorAccount = new Account({ item_id, institution_id });
       result.push(errorAccount);
     });
