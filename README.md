@@ -10,11 +10,13 @@ Budget is a web app that provides features for monitoring your financial acounts
 
 We need some environment configuration. Copy the content of `.env.example` file and save it as `.env.local`. This file should contain environment variables and Budget will try to read them once you run it. You need to keep the keys but use your own values depend on your environment. See below for how to determine correct environment variables.
 
+- `HOST_NAME` is the domain name that you will host budget app. This is required for OAuth.
+
 - `ADMIN_PASSWORD` is password that you will use when login to Budget as administrator user. Choose one that you would like.
 
 - `PLAID_CLIENT_ID` is a unique identifier for a Plaid user. Go to [Plaid](https://plaid.com), sign up and get your client id.
 
-- `PLAID_SECRET_DEVELOPMENT` and `PLAID_SECRET_SANDBOX` are kinds of password that you need to request data from Plaid API. Go to [Plaid](https://plaid.com), sign up and get your development and sandbox secret key. If you want to use production secret key, you need to change `configuration.basePath` value in `server/src/lib/plaid.ts` file. Currently it's set to development.
+- `PLAID_SECRET_PRODUCTION`, `PLAID_SECRET_DEVELOPMENT` and `PLAID_SECRET_SANDBOX` are kinds of password that you need to request data from Plaid API. Go to [Plaid](https://plaid.com), sign up and get your secret key. If you set both of production and development key, production key will be used, otherwise development key.
 
 - `ELASTICSEARCH_HOST` is an address to an Elasticsearch server. You can download it from their [official website](https://elastic.co) for free and install it on your local machine. Or consider using free external hosting service, [Learndatabases](https://learndatabases.dev).
 
