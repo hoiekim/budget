@@ -37,46 +37,55 @@ export const useSync = () => {
 
     read<TransactionsStreamGetResponse>("/api/transactions-stream", ({ data }) => {
       if (!data) return;
-      const { items, added, removed, modified, investment } = data;
+      const { items, transactions, investmentTransactions } = data;
 
-      setTransactions((oldTransactions) => {
-        const newTransactions = new Map(oldTransactions);
-        added.forEach((e) => newTransactions.set(e.transaction_id, e));
-        modified.forEach((e) => {
-          const oldTransaction = oldTransactions.get(e.transaction_id);
-          if (oldTransaction) {
-            newTransactions.set(e.transaction_id, { ...oldTransaction, ...e });
-          }
+      if (transactions) {
+        setTransactions((oldData) => {
+          const newData = new Map(oldData);
+          const { added, removed, modified } = transactions;
+          added?.forEach((e) => newData.set(e.transaction_id, e));
+          modified?.forEach((e) => {
+            const data = oldData.get(e.transaction_id);
+            if (data) newData.set(e.transaction_id, { ...data, ...e });
+          });
+          removed?.forEach((e) => newData.delete(e.transaction_id));
+          return newData;
         });
-        removed.forEach((e) => newTransactions.delete(e.transaction_id));
-        return newTransactions;
-      });
+      }
 
-      setInvestmentTransactions((oldInvestmentTransactions) => {
-        const newInvestmentTransactions = new Map(oldInvestmentTransactions);
-        investment.forEach((e) => {
-          newInvestmentTransactions.set(e.investment_transaction_id, e);
+      if (investmentTransactions) {
+        setInvestmentTransactions((oldData) => {
+          const newData = new Map(oldData);
+          const { added, removed, modified } = investmentTransactions;
+          added?.forEach((e) => newData.set(e.investment_transaction_id, e));
+          modified?.forEach((e) => {
+            const data = oldData.get(e.investment_transaction_id);
+            if (data) newData.set(e.transaction_id, { ...data, ...e });
+          });
+          removed?.forEach((e) => newData.delete(e.investment_transaction_id));
+          return newData;
         });
-        return newInvestmentTransactions;
-      });
+      }
 
-      setItems((oldItems) => {
-        const newItems = new Map(oldItems);
-        items.forEach((item) => {
-          const { item_id, plaidError } = item;
-          const oldItem = oldItems.get(item_id);
-          if (oldItem?.plaidError) {
-            const oldPlaidError = oldItem?.plaidError;
-            if (plaidError && plaidError.error_code !== oldPlaidError.error_code) {
-              console.warn(`Multiple error is found in item: ${item_id}`);
-              console.warn(oldPlaidError);
+      if (items) {
+        setItems((oldItems) => {
+          const newItems = new Map(oldItems);
+          items?.forEach((item) => {
+            const { item_id, plaidError } = item;
+            const oldItem = oldItems.get(item_id);
+            if (oldItem?.plaidError) {
+              const oldPlaidError = oldItem?.plaidError;
+              if (plaidError && plaidError.error_code !== oldPlaidError.error_code) {
+                console.warn(`Multiple error is found in item: ${item_id}`);
+                console.warn(oldPlaidError);
+              }
+              return;
             }
-            return;
-          }
-          newItems.set(item_id, item);
+            newItems.set(item_id, item);
+          });
+          return newItems;
         });
-        return newItems;
-      });
+      }
     });
   }, [userLoggedIn, setItems, setTransactions, setInvestmentTransactions]);
 

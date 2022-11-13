@@ -103,6 +103,10 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
 
 export type InvestmentTransaction = PlaidInvestmentTransaction;
 
+export interface RemovedInvestmentTransaction {
+  investment_transaction_id: string;
+}
+
 export const getInvestmentTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
 
@@ -127,8 +131,8 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
 
     if (updated) {
       const updatedDate = new Date(appendTimeString(updated));
-      const todaysDate = updatedDate.getDate();
-      updatedDate.setDate(todaysDate - 14);
+      const date = updatedDate.getDate();
+      updatedDate.setDate(date - 14);
       start_date = getDateString(updatedDate);
     } else {
       const oldestDate = new Date();
@@ -157,7 +161,8 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         const investmentTransactions = response.data.investment_transactions;
         total = response.data.total_investment_transactions;
         allInvestmentTransactions.push(investmentTransactions);
-        items.push({ ...item, updated: end_date });
+        item.updated = end_date;
+        data.items.push({ ...item });
       } catch (error: any) {
         const plaidError = error?.response?.data as PlaidError;
         if (!ignorable_error_codes.has(plaidError?.error_code)) {

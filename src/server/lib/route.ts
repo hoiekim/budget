@@ -8,6 +8,21 @@ export interface ApiResponse<T = undefined> {
   info?: string;
 }
 
+export class StreamingStatus {
+  counter = 0;
+  limit = 1;
+
+  constructor(limit?: number) {
+    if (limit) this.limit = limit;
+  }
+
+  get = (): ApiResponse["status"] => {
+    this.counter++;
+    if (this.counter >= this.limit) return "success";
+    return "streaming";
+  };
+}
+
 export type Stream<T = undefined> = (response: ApiResponse<T>) => void;
 
 export type GetResponse<T = any> = (

@@ -2,6 +2,7 @@ import {
   Transaction,
   RemovedTransaction,
   InvestmentTransaction,
+  RemovedInvestmentTransaction,
   MaskedUser,
   getUpdateTransactionScript,
   getUpdateInvestmentTransactionScript,
@@ -185,7 +186,7 @@ export const upsertInvestmentTransactions = async (
  */
 export const deleteInvestmentTransactions = async (
   user: MaskedUser,
-  investment_transactions: PartialInvestmentTransaction[]
+  investment_transactions: (InvestmentTransaction | RemovedInvestmentTransaction)[]
 ) => {
   if (!Array.isArray(investment_transactions) || !investment_transactions.length) return;
   const { user_id } = user;
@@ -200,7 +201,7 @@ export const deleteInvestmentTransactions = async (
           {
             bool: {
               should: investment_transactions.map((e) => ({
-                term: { _id: e.invesetment_transaction_id },
+                term: { _id: e.investment_transaction_id },
               })),
             },
           },

@@ -1,4 +1,3 @@
-import { InvestmentTransaction } from "plaid";
 import {
   getTransactions,
   getInvestmentTransactions,
@@ -7,23 +6,35 @@ import {
   upsertTransactions,
   deleteTransactions,
   upsertInvestmentTransactions,
+  deleteInvestmentTransactions,
   searchItems,
   upsertItems,
   Item,
   Transaction,
   PartialTransaction,
   RemovedTransaction,
-  ApiResponse,
   appendTimeString,
+  StreamingStatus,
+  InvestmentTransaction,
+  PartialInvestmentTransaction,
+  RemovedInvestmentTransaction,
 } from "server";
 
-export type TransactionsStreamGetResponse = {
-  items: Item[];
-  added: Transaction[];
-  removed: RemovedTransaction[];
-  modified: PartialTransaction[];
-  investment: InvestmentTransaction[];
-};
+const TWO_WEEKS = 1000 * 60 * 60 * 24 * 14;
+
+export interface TransactionsStreamGetResponse {
+  items?: Item[];
+  transactions?: {
+    added?: Transaction[];
+    removed?: RemovedTransaction[];
+    modified?: PartialTransaction[];
+  };
+  investmentTransactions?: {
+    added?: InvestmentTransaction[];
+    removed?: RemovedInvestmentTransaction[];
+    modified?: PartialInvestmentTransaction[];
+  };
+}
 
 export const getTransactionsStreamRoute = new Route<TransactionsStreamGetResponse>(
   "GET",
@@ -37,29 +48,22 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
       };
     }
 
-    let counter = 0;
-    const getStatus = (): ApiResponse["status"] => {
-      if (counter > 1) return "success";
-      counter++;
-      return "streaming";
-    };
+    const status = new StreamingStatus(3);
 
     const getTransactionsFromElasticsearch = searchTransactions(user)
-      .then(({ transactions, investment_transactions }) => {
+      .then((r) => {
+        const { transactions, investment_transactions } = r;
         const data: TransactionsStreamGetResponse = {
-          items: [],
-          added: transactions,
-          removed: [],
-          modified: [],
-          investment: investment_transactions,
+          transactions: { added: transactions },
+          investmentTransactions: { added: investment_transactions },
         };
-        stream({ status: getStatus(), data });
+        stream({ status: status.get(), data });
 
-        return null;
+        return r;
       })
       .catch((err) => {
         console.error(err);
-        stream({ status: getStatus() && "error" });
+        stream({ status: status.get() && "error" });
       });
 
     const promisedItems = searchItems(user);
@@ -83,19 +87,21 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
           return { ...e, label: {} };
         });
 
-        const filledModified = added.map(fillDateStrings);
+        const filledModified = modified.map(fillDateStrings);
 
         const filledData: TransactionsStreamGetResponse = {
-          ...data,
-          added: filledAdded,
-          modified: filledModified,
-          investment: [],
+          items,
+          transactions: {
+            added: filledAdded,
+            removed,
+            modified: filledModified,
+          },
         };
 
-        stream({ status: getStatus(), data: filledData });
+        stream({ status: status.get(), data: filledData });
 
         const updateJobs = [
-          upsertTransactions(user, [...filledAdded, ...modified]),
+          upsertTransactions(user, [...filledAdded, ...filledModified]),
           deleteTransactions(user, removed),
         ];
 
@@ -106,13 +112,13 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
       })
       .catch((err) => {
         console.error(err);
-        stream({ status: getStatus() && "error" });
+        stream({ status: status.get() && "error" });
       });
 
     const getInvestmentTransactionsFromPlaid = promisedItems
       .then((r) => getInvestmentTransactions(user, r))
       .then(async (data) => {
-        await getTransactionsFromElasticsearch;
+        const ingestedTrasactions = await getTransactionsFromElasticsearch;
 
         const { items, investmentTransactions } = data;
 
@@ -125,24 +131,47 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
         const filledInvestments = investmentTransactions.map(fillDateStrings);
 
+        const ingestedData = ingestedTrasactions?.investment_transactions || [];
+
+        const removed: RemovedInvestmentTransaction[] = [];
+        const modified: InvestmentTransaction[] = [];
+
+        ingestedData.forEach((e) => {
+          const age = new Date().getTime() - new Date(e.date).getTime();
+          if (age < TWO_WEEKS) return;
+
+          const { investment_transaction_id } = e;
+
+          const found = investmentTransactions.find((f) => {
+            return investment_transaction_id === f.investment_transaction_id;
+          });
+
+          if (!found) removed.push({ investment_transaction_id });
+          else modified.push(e);
+        });
+
         const filledData: TransactionsStreamGetResponse = {
           items,
-          added: [],
-          removed: [],
-          modified: [],
-          investment: filledInvestments,
+          investmentTransactions: {
+            added: filledInvestments,
+            removed,
+            modified,
+          },
         };
 
-        const updateJob = upsertInvestmentTransactions(user, filledInvestments);
+        const updateJobs = [
+          upsertInvestmentTransactions(user, [...filledInvestments, ...modified]),
+          deleteInvestmentTransactions(user, removed),
+        ];
 
         const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
-        updateJob.then(() => upsertItems(user, partialItems));
+        Promise.all(updateJobs).then(() => upsertItems(user, partialItems));
 
-        stream({ status: getStatus(), data: filledData });
+        stream({ status: status.get(), data: filledData });
       })
       .catch((err) => {
         console.error(err);
-        stream({ status: getStatus() && "error" });
+        stream({ status: status.get() && "error" });
       });
 
     await Promise.all([
