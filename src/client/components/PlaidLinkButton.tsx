@@ -15,7 +15,8 @@ const PlaidLinkButton = ({ item, children }: Props) => {
   const { user } = useAppContext();
 
   const access_token = (item && item.access_token) || "";
-  const [token, setToken] = useLocalStorage("token", tokens.get(access_token) || "");
+  const [token, setToken] = useState(tokens.get(access_token) || "");
+  const [storedToken, setStoredToken] = useLocalStorage("storedToken", "");
 
   const { sync } = useSync();
 
@@ -23,7 +24,7 @@ const PlaidLinkButton = ({ item, children }: Props) => {
   const oauth_state_id = urlParams.get("oauth_state_id");
 
   const { open, ready } = usePlaidLink({
-    token,
+    token: oauth_state_id ? storedToken : token,
     receivedRedirectUri: oauth_state_id ? window.location.href : undefined,
     onSuccess: (public_token: string, metadata: PlaidLinkOnSuccessMetadata) => {
       const { institution } = metadata;
@@ -79,8 +80,14 @@ const PlaidLinkButton = ({ item, children }: Props) => {
     promisedTokens.set(access_token, promisedToken);
   }, [token, userLoggedIn, access_token]);
 
+  const onClick = () => {
+    if (!token) return;
+    setStoredToken(token);
+    open();
+  };
+
   return (
-    <button onClick={() => open()} disabled={disabled}>
+    <button onClick={onClick} disabled={disabled}>
       {children}
     </button>
   );
