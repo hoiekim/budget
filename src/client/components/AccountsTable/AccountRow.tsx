@@ -196,15 +196,13 @@ const AccountRow = ({ account, sorter }: Props) => {
       if (account_id !== transaction.account_id) return;
       const transactionDate = new Date(authorized_date || date);
       const span = viewDate.getSpanFrom(transactionDate) + 1;
-      let diff: number;
+      if (!balanceHistory[span]) balanceHistory[span] = 0;
       if (type === "investment") {
         const { price, quantity } = transaction as InvestmentTransaction;
-        diff = -price * quantity;
+        balanceHistory[span] -= price * quantity;
       } else {
-        diff = amount;
+        balanceHistory[span] += amount;
       }
-      if (balanceHistory[span]) balanceHistory[span] += diff;
-      else balanceHistory[span] = diff;
     };
 
     transactions.forEach(translate);
