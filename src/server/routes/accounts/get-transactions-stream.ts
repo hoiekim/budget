@@ -118,8 +118,6 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
     const getInvestmentTransactionsFromPlaid = promisedItems
       .then((r) => getInvestmentTransactions(user, r))
       .then(async (data) => {
-        const ingestedTrasactions = await getTransactionsFromElasticsearch;
-
         const { items, investmentTransactions } = data;
 
         const fillDateStrings = (e: typeof investmentTransactions[0]) => {
@@ -131,6 +129,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
         const filledInvestments = investmentTransactions.map(fillDateStrings);
 
+        const ingestedTrasactions = await getTransactionsFromElasticsearch;
         const ingestedData = ingestedTrasactions?.investment_transactions || [];
 
         const removed: RemovedInvestmentTransaction[] = [];
@@ -138,7 +137,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
         ingestedData.forEach((e) => {
           const age = new Date().getTime() - new Date(e.date).getTime();
-          if (age < TWO_WEEKS) return;
+          if (age > TWO_WEEKS) return;
 
           const { investment_transaction_id } = e;
 
