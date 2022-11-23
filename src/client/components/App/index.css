@@ -75,16 +75,12 @@ div#root {
   min-height: 100vh;
   margin: auto;
   background-color: #fff;
-  padding: calc(60px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
-    calc(90px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
 }
 
 h1,
 h2,
 h3,
 h4 {
-  position: sticky;
-  top: 25px;
   background-color: #fff;
   padding: 1.5rem 0 1rem;
   margin: 0;
@@ -109,6 +105,39 @@ div.ColorSchemeCover > div {
   left: 0;
   z-index: 1000;
   display: none;
+}
+
+div.Router {
+  position: relative;
+}
+
+div.Router > div {
+  min-width: 100%;
+  min-height: 100vh;
+  background-color: #fff;
+  padding: calc(60px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+    calc(90px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+}
+
+div.Router > div.currentPage {
+  z-index: 500;
+}
+
+div.Router > div.nextPage {
+  position: fixed;
+  top: 0;
+  transition-property: left;
+  transition-duration: 300ms;
+  z-index: 510;
+}
+
+div.Router.transitioning > div.nextPage {
+  left: 0;
+}
+
+div.Router:not(.transitioning) > div.nextPage {
+  left: 100vw;
+  background-color: inherit;
 }
 
 @media (prefers-color-scheme: dark) {

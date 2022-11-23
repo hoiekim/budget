@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useAppContext } from "client";
 import { TransactionsTable } from "client/components";
 import { Transaction } from "server";
+import "./index.css";
 
 const TransactionsPage = () => {
   const { transactions, accounts, viewDate } = useAppContext();

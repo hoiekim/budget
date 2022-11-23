@@ -1,4 +1,4 @@
-import { ChangeEventHandler, ReactNode, useEffect, useMemo, useState } from "react";
+import { ChangeEventHandler, ReactNode, useMemo, useState } from "react";
 import { useAppContext, useSync, call } from "client";
 import { Budget, Interval, NewBudgetGetResponse } from "server";
 import "./index.css";
@@ -19,13 +19,6 @@ const Header = () => {
   } = useAppContext();
 
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
-
-  useEffect(() => {
-    const listener = () => setScrollY(window.scrollY);
-    window.document.addEventListener("scroll", listener);
-    return () => window.document.removeEventListener("scroll", listener);
-  }, []);
 
   const { clean } = useSync();
   const { path, go } = router;
@@ -109,11 +102,9 @@ const Header = () => {
     return viewDate.toString();
   };
 
-  const shadowClass = scrollY && path !== "/transactions" ? " shadow" : "";
-
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
-      <div className={"viewController" + shadowClass}>
+      <div className="viewController">
         <div>
           <select
             className="budgetSelect"

@@ -3,6 +3,10 @@ div.TransactionRow {
   border-bottom: 1px solid #ccc;
 }
 
+div.TransactionRow:first-child {
+  padding-top: 0;
+}
+
 div.TransactionRow > div {
   margin: 5px 0;
 }

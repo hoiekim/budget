@@ -1,5 +1,5 @@
 div.Header {
-  z-index: 100;
+  z-index: 800;
   position: fixed;
   top: 0;
   left: 0;
@@ -29,7 +29,7 @@ div.Header select > option {
 
 div.Header > .viewController {
   height: 50px;
-  background-color: #fff;
+  background-color: #eee;
   max-width: 1050px;
   margin: auto;
   padding: 0 10px;
@@ -37,10 +37,6 @@ div.Header > .viewController {
   justify-content: space-between;
   align-items: center;
   height: 50px;
-}
-
-div.Header > .viewController.shadow {
-  box-shadow: 0 2px 10px #ddd;
 }
 
 div.Header * {
@@ -79,7 +75,7 @@ div.Header > .viewController > .hamburger > .fadeCover {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 150;
+  z-index: 810;
   background-color: #000;
   opacity: 0.5;
 }
@@ -94,7 +90,7 @@ div.Header > .viewController > .hamburger > .menu {
   border-radius: 5px;
   display: flex;
   align-items: center;
-  z-index: 200;
+  z-index: 820;
 }
 
 div.Header .menu > button {

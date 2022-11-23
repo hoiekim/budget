@@ -1,0 +1,12 @@
+div.TransactionsPage > h2 {
+  position: sticky;
+  top: 40px;
+  background-color: #fffe;
+}
+
+div.TransactionsHead {
+  position: sticky;
+  top: 108px;
+  background-color: #fffe;
+  padding-bottom: 20px;
+}
