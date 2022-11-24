@@ -119,25 +119,47 @@ div.Router > div {
     calc(90px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
 }
 
-div.Router > div.currentPage {
+div.Router > div.previousPage {
   z-index: 500;
 }
 
-div.Router > div.nextPage {
-  position: fixed;
-  top: 0;
-  transition-property: left;
-  transition-duration: 300ms;
+div.Router > div.currentPage {
+  position: relative;
   z-index: 510;
 }
 
-div.Router.transitioning > div.nextPage {
+div.Router > div.nextPage {
+  z-index: 520;
+}
+
+div.Router > div.nextPage,
+div.Router > div.previousPage {
+  position: fixed;
+  top: 0;
+}
+
+div.Router > div.nextPage,
+div.Router > div.currentPage {
+  transition-property: left;
+  transition-duration: 300ms;
+}
+
+div.Router.transitioning.forward > div.nextPage {
   left: 0;
 }
 
-div.Router:not(.transitioning) > div.nextPage {
+div.Router:not(.transitioning.forward) > div.nextPage {
+  transition-duration: 0ms;
   left: 100vw;
-  background-color: inherit;
+}
+
+div.Router.transitioning.backward > div.currentPage {
+  left: 100vw;
+}
+
+div.Router:not(.transitioning.backward) > div.currentPage {
+  transition-duration: 0ms;
+  left: 0;
 }
 
 @media (prefers-color-scheme: dark) {

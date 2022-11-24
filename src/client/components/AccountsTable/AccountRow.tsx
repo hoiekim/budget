@@ -34,6 +34,7 @@ const AccountRow = ({ account, sorter }: Props) => {
     items,
     budgets,
     viewDate,
+    router,
   } = useAppContext();
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
@@ -254,6 +255,8 @@ const AccountRow = ({ account, sorter }: Props) => {
     investmentTransactions,
   ]);
 
+  const { isTransitioning } = router.transition;
+
   return (
     <div className="AccountRow">
       {getVisible("balances") && <div>{formattedBalancesText}</div>}
@@ -284,7 +287,7 @@ const AccountRow = ({ account, sorter }: Props) => {
           </div>
         )}
       </div>
-      {!!graphData && <Graph data={graphData} />}
+      {!!graphData && !isTransitioning && <Graph data={graphData} />}
     </div>
   );
 };

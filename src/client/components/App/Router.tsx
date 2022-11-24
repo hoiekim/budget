@@ -1,28 +1,19 @@
-import { lazy, useState, useEffect, useMemo } from "react";
-import { useAppContext } from "client";
-
-const LoginPage = lazy(() => import("client/pages/LoginPage"));
-const BudgetsPage = lazy(() => import("client/pages/BudgetsPage"));
-const AccountsPage = lazy(() => import("client/pages/AccountsPage"));
-const TransactionsPage = lazy(() => import("client/pages/TransactionsPage"));
+import { useMemo } from "react";
+import {
+  useAppContext,
+  LoginPage,
+  BudgetsPage,
+  AccountsPage,
+  TransactionsPage,
+} from "client";
 
 const Router = () => {
-  const [storedPath, setStoredPath] = useState(window.location.pathname);
   const { router } = useAppContext();
-  const { path } = router;
-
-  const transitioning = storedPath !== path;
-
-  useEffect(() => {
-    if (transitioning)
-      setTimeout(() => {
-        window.scrollTo(0, 0);
-        setStoredPath(path);
-      }, 300);
-  }, [transitioning, setStoredPath, path]);
+  const { path, incomingPath, transition } = router;
+  const { isTransitioning, direction } = transition;
 
   const classNames = ["Router"];
-  if (transitioning) classNames.push("transitioning");
+  if (isTransitioning && direction) classNames.push("transitioning", direction);
 
   const getPage = (path: string) => {
     if (path === "/login") return <LoginPage />;
@@ -31,13 +22,18 @@ const Router = () => {
     return <BudgetsPage />;
   };
 
-  const currentPage = useMemo(() => getPage(storedPath), [storedPath]);
-  const nextPage = useMemo(() => getPage(path), [path]);
+  const currentPage = useMemo(() => getPage(path), [path]);
+  const incomingPage = useMemo(() => getPage(incomingPath), [incomingPath]);
 
   return (
     <div className={classNames.join(" ")}>
+      <div className="previousPage">
+        {isTransitioning && direction === "backward" && incomingPage}
+      </div>
       <div className="currentPage">{currentPage}</div>
-      <div className="nextPage">{transitioning && nextPage}</div>
+      <div className="nextPage">
+        {isTransitioning && direction === "forward" && incomingPage}
+      </div>
     </div>
   );
 };

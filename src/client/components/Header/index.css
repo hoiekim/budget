@@ -51,7 +51,7 @@ div.Header > .viewController > div > div {
 
 div.Header > .viewController select.budgetSelect {
   width: auto;
-  max-width: 80px;
+  max-width: 100px;
 }
 
 div.Header > .viewController select.intervalSelect {
@@ -61,12 +61,12 @@ div.Header > .viewController select.intervalSelect {
 
 div.Header > .viewController > .hamburger {
   position: relative;
+  top: -4px;
 }
 
 div.Header > .viewController > .hamburger > button {
   font-size: 40px;
   height: auto;
-  top: -5px;
 }
 
 div.Header > .viewController > .hamburger > .fadeCover {

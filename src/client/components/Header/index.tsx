@@ -1,4 +1,10 @@
-import { ChangeEventHandler, ReactNode, useMemo, useState } from "react";
+import {
+  ChangeEventHandler,
+  MouseEventHandler,
+  ReactNode,
+  useMemo,
+  useState,
+} from "react";
 import { useAppContext, useSync, call } from "client";
 import { Budget, Interval, NewBudgetGetResponse } from "server";
 import "./index.css";
@@ -21,7 +27,7 @@ const Header = () => {
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
 
   const { clean } = useSync();
-  const { path, go } = router;
+  const { path, go, back } = router;
 
   const logout = () => {
     call.delete("/api/login").then((r) => {
@@ -36,7 +42,7 @@ const Header = () => {
       href={target}
       onClick={(e) => {
         e.preventDefault();
-        go(target);
+        go(target, false);
       }}
     >
       {children}
@@ -102,9 +108,17 @@ const Header = () => {
     return viewDate.toString();
   };
 
+  const onClickBack: MouseEventHandler<HTMLButtonElement> = (e) => {
+    e.preventDefault();
+    back();
+  };
+
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
+        <div>
+          <button onClick={onClickBack}>←</button>
+        </div>
         <div>
           <select
             className="budgetSelect"
@@ -118,7 +132,9 @@ const Header = () => {
           </select>
         </div>
         <div>
-          <button onClick={onClickPreviousView}>{"<"}</button>
+          <button onClick={onClickPreviousView}>
+            <b>〈</b>
+          </button>
           <select
             className="intervalSelect"
             value={selectedInterval}
@@ -132,7 +148,9 @@ const Header = () => {
             <option value="week">{getIntervalOptionText("week", "Weekly")}</option>
             <option value="day">{getIntervalOptionText("day", "Daily")}</option>
           </select>
-          <button onClick={onClickNextView}>{">"}</button>
+          <button onClick={onClickNextView}>
+            <b>〉</b>
+          </button>
         </div>
         <div className="hamburger">
           <button onClick={() => setIsHamburgerOpen((s) => !s)}>≡</button>
