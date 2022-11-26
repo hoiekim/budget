@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAppContext } from "client/lib";
 import { Point } from "./index";
 
 interface Props {
@@ -6,6 +7,37 @@ interface Props {
 }
 
 const Line = ({ points }: Props) => {
+  const { router } = useAppContext();
+  const { isTransitioning } = router.transition;
+
+  const pathRef = useRef<SVGPathElement>(null);
+  const [pathLength, setPathLength] = useState(0);
+  const [pathOffset, setPathOffset] = useState(true);
+
+  type SetTimeout = typeof setTimeout;
+  type Timeout = ReturnType<SetTimeout>;
+
+  const timeout = useRef<Timeout>();
+
+  useEffect(() => {
+    const recurUntilRef = () => {
+      setTimeout(() => {
+        const path = pathRef.current;
+        if (path) setPathLength(path.getTotalLength() || 700);
+        else recurUntilRef();
+      }, 100);
+    };
+
+    recurUntilRef();
+
+    if (!isTransitioning) {
+      clearTimeout(timeout.current);
+      timeout.current = setTimeout(() => setPathOffset(false), 300);
+    }
+
+    return () => setPathOffset(true);
+  }, [isTransitioning]);
+
   const divRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const height = 100;
@@ -47,9 +79,14 @@ const Line = ({ points }: Props) => {
         preserveAspectRatio="none"
       >
         <path
+          ref={pathRef}
           d={width ? d : ""}
           style={{
+            display: pathLength ? "block" : "none",
             stroke: "#097",
+            strokeDasharray: pathLength + 5,
+            strokeDashoffset: pathOffset ? pathLength + 5 : 0,
+            transition: "stroke-dashoffset 1.5s ease 0s",
             strokeWidth: 3,
             strokeLinecap: "round",
             strokeLinejoin: "round",
