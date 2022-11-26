@@ -8,7 +8,7 @@ type Props = { ratio: number; unlabledRatio?: number } & DetailedHTMLProps<
 
 const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   const { router } = useAppContext();
-  const { isTransitioning } = router.transition;
+  const { transitioning: isTransitioning } = router.transition;
 
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabeledNumeratorWidth] = useState(0);

@@ -10,11 +10,11 @@ export enum PATH {
 }
 
 export interface ClientRouter {
-  path: string;
-  incomingPath: string;
+  path: PATH;
   transition: {
-    isTransitioning: boolean;
-    direction?: TransitionDirection;
+    incomingPath: PATH;
+    transitioning: boolean;
+    direction: TransitionDirection | undefined;
   };
   go: (path: PATH, options?: GoOptions) => void;
   forward: (options?: NavigateOptions) => void;
@@ -33,11 +33,14 @@ const DEFAULT_TRANSITION_DURATION = 300;
 
 let isRouterRegistered = false;
 
-const landingPath = window.location.pathname.split("/")[1];
+const getPath = () => {
+  const path = window.location.pathname.split("/")[1];
+  return Object.values(PATH).find((e) => e === path) || PATH.BUDGET;
+};
 
 export const useRouter = (): ClientRouter => {
-  const [path, setPath] = useState(landingPath);
-  const [incomingPath, setIncomingPath] = useState(landingPath);
+  const [path, setPath] = useState(getPath());
+  const [incomingPath, setIncomingPath] = useState(getPath());
   const [direction, setDirection] = useState<TransitionDirection>("forward");
 
   const isAnimationEnabled = useRef(true);
@@ -47,7 +50,7 @@ export const useRouter = (): ClientRouter => {
 
   const timeout = useRef<Timeout>();
 
-  const transition = useCallback((newPath: string) => {
+  const transition = useCallback((newPath: PATH) => {
     setIncomingPath(newPath);
     if (isAnimationEnabled.current) {
       clearTimeout(timeout.current);
@@ -63,7 +66,7 @@ export const useRouter = (): ClientRouter => {
 
   useEffect(() => {
     if (!isRouterRegistered) {
-      const listner = () => transition(window.location.pathname.split("/")[1]);
+      const listner = () => transition(getPath());
       window.addEventListener("popstate", listner, false);
       isRouterRegistered = true;
     }
@@ -100,9 +103,9 @@ export const useRouter = (): ClientRouter => {
 
   return {
     path,
-    incomingPath,
     transition: {
-      isTransitioning: incomingPath !== path,
+      incomingPath,
+      transitioning: incomingPath !== path,
       direction: incomingPath !== path ? direction : undefined,
     },
     go,

@@ -8,7 +8,7 @@ interface Props {
 
 const Line = ({ points }: Props) => {
   const { router } = useAppContext();
-  const { isTransitioning } = router.transition;
+  const { transitioning: isTransitioning } = router.transition;
 
   const pathRef = useRef<SVGPathElement>(null);
   const [pathLength, setPathLength] = useState(0);

@@ -10,8 +10,8 @@ import {
 
 const Router = () => {
   const { router } = useAppContext();
-  const { path, incomingPath, transition } = router;
-  const { isTransitioning, direction } = transition;
+  const { path, transition } = router;
+  const { incomingPath, transitioning: isTransitioning, direction } = transition;
 
   const classNames = ["Router"];
   if (isTransitioning && direction) classNames.push("transitioning", direction);

@@ -22,9 +22,8 @@ const Utility = () => {
   const { path, go } = router;
 
   useEffect(() => {
-    const { LOGIN, BUDGET } = PATH;
+    const { LOGIN } = PATH;
     if (!user && path !== LOGIN) go(LOGIN);
-    if (!Object.values(PATH).find((e) => e === path)) go(BUDGET);
   }, [user, go, path]);
 
   const { sync, clean } = useSync();

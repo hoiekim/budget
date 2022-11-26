@@ -113,6 +113,8 @@ const Header = () => {
     back();
   };
 
+  const { BUDGET, ACCOUNTS, TRANSACTIONS } = PATH;
+
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
@@ -124,7 +126,7 @@ const Header = () => {
             className="budgetSelect"
             value={selectedBudgetId}
             onChange={onChangeBudget}
-            disabled={path === "/transactions"}
+            disabled={path === TRANSACTIONS}
           >
             {!selectedBudgetId && <option>Select Budget</option>}
             {budgetOptions}
@@ -167,9 +169,9 @@ const Header = () => {
         </div>
       </div>
       <div className="navigators">
-        <Navigator target={PATH.BUDGET}>Budget</Navigator>
-        <Navigator target={PATH.ACCOUNTS}>Accounts</Navigator>
-        <Navigator target={PATH.TRANSACTIONS}>Transactions</Navigator>
+        <Navigator target={BUDGET}>Budget</Navigator>
+        <Navigator target={ACCOUNTS}>Accounts</Navigator>
+        <Navigator target={TRANSACTIONS}>Transactions</Navigator>
       </div>
     </div>
   );
