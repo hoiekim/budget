@@ -5,7 +5,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useAppContext, useSync, call } from "client";
+import { useAppContext, useSync, call, PATH } from "client";
 import { Budget, Interval, NewBudgetGetResponse } from "server";
 import "./index.css";
 
@@ -36,13 +36,13 @@ const Header = () => {
     });
   };
 
-  type NavigatorProps = { target: string; children: ReactNode };
+  type NavigatorProps = { target: PATH; children: ReactNode };
   const Navigator = ({ target, children }: NavigatorProps) => (
     <a
       href={target}
       onClick={(e) => {
         e.preventDefault();
-        go(target, false);
+        go(target, { animate: false });
       }}
     >
       {children}
@@ -167,9 +167,9 @@ const Header = () => {
         </div>
       </div>
       <div className="navigators">
-        <Navigator target="/">Budget</Navigator>
-        <Navigator target="/accounts">Accounts</Navigator>
-        <Navigator target="/transactions">Transactions</Navigator>
+        <Navigator target={PATH.BUDGET}>Budget</Navigator>
+        <Navigator target={PATH.ACCOUNTS}>Accounts</Navigator>
+        <Navigator target={PATH.TRANSACTIONS}>Transactions</Navigator>
       </div>
     </div>
   );

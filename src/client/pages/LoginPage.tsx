@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { LoginPostResponse } from "server";
-import { useAppContext, call } from "client";
+import { useAppContext, call, PATH } from "client";
 
 const LoginPage = () => {
   const { user, setUser, router } = useAppContext();
 
   useEffect(() => {
-    if (user && router) router.go("/");
+    if (user && router) router.go(PATH.BUDGET);
   }, [user, router]);
 
   const [username, setUsername] = useState("");

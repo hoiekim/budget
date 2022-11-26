@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-type TransitionDirection = "forward" | "backward";
+export type TransitionDirection = "forward" | "backward";
+
+export enum PATH {
+  LOGIN = "login",
+  BUDGET = "budget",
+  ACCOUNTS = "accounts",
+  TRANSACTIONS = "transactions",
+}
 
 export interface ClientRouter {
   path: string;
@@ -9,74 +16,84 @@ export interface ClientRouter {
     isTransitioning: boolean;
     direction?: TransitionDirection;
   };
-  go: (path: string, delayedTransition?: boolean) => void;
-  forward: (delayedTransition?: boolean) => void;
-  back: (delayedTransition?: boolean) => void;
+  go: (path: PATH, options?: GoOptions) => void;
+  forward: (options?: NavigateOptions) => void;
+  back: (options?: NavigateOptions) => void;
+}
+
+export type GoOptions = NavigateOptions & {
+  params?: URLSearchParams;
+};
+
+export interface NavigateOptions {
+  animate?: boolean;
 }
 
 const DEFAULT_TRANSITION_DURATION = 300;
 
 let isRouterRegistered = false;
 
+const landingPath = window.location.pathname.split("/")[1];
+
 export const useRouter = (): ClientRouter => {
-  const [path, setPath] = useState(window.location.pathname);
-  const [incomingPath, setIncomingPath] = useState(window.location.pathname);
+  const [path, setPath] = useState(landingPath);
+  const [incomingPath, setIncomingPath] = useState(landingPath);
   const [direction, setDirection] = useState<TransitionDirection>("forward");
 
-  const isDelayedTransitionEnabled = useRef(true);
+  const isAnimationEnabled = useRef(true);
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
 
   const timeout = useRef<Timeout>();
 
-  const transition = useCallback(
-    (newPath: string) => {
-      setIncomingPath(newPath);
-      if (isDelayedTransitionEnabled.current) {
-        clearTimeout(timeout.current);
-        timeout.current = setTimeout(() => {
-          window.scrollTo(0, 0);
-          setPath(newPath);
-        }, DEFAULT_TRANSITION_DURATION);
-      } else {
+  const transition = useCallback((newPath: string) => {
+    setIncomingPath(newPath);
+    if (isAnimationEnabled.current) {
+      clearTimeout(timeout.current);
+      timeout.current = setTimeout(() => {
+        window.scrollTo(0, 0);
         setPath(newPath);
-      }
-    },
-    [setIncomingPath, setPath]
-  );
+      }, DEFAULT_TRANSITION_DURATION);
+    } else {
+      window.scrollTo(0, 0);
+      setPath(newPath);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isRouterRegistered) {
-      window.addEventListener(
-        "popstate",
-        () => transition(window.location.pathname),
-        false
-      );
+      const listner = () => transition(window.location.pathname.split("/")[1]);
+      window.addEventListener("popstate", listner, false);
       isRouterRegistered = true;
     }
   }, [transition]);
 
   const go = useCallback(
-    (target: string, delayedTransition = true) => {
+    (target: PATH, options?: GoOptions) => {
+      const { params, animate = true } = options || {};
       if (window.location.pathname !== target) {
-        isDelayedTransitionEnabled.current = delayedTransition;
+        isAnimationEnabled.current = animate;
         setDirection("forward");
-        window.history.pushState("", "", target);
+        const paramString = params?.toString();
+        const path = "/" + target + (paramString ? "?" + paramString : "");
+        window.history.pushState("", "", path);
         transition(target);
       }
     },
     [transition]
   );
 
-  const forward = useCallback((delayedTransition = true) => {
-    isDelayedTransitionEnabled.current = delayedTransition;
+  const forward = useCallback((options?: NavigateOptions) => {
+    const { animate = true } = options || {};
+    isAnimationEnabled.current = animate;
     setDirection("forward");
     window.history.forward();
   }, []);
 
-  const back = useCallback((delayedTransition = true) => {
-    isDelayedTransitionEnabled.current = delayedTransition;
+  const back = useCallback((options?: NavigateOptions) => {
+    const { animate = true } = options || {};
+    isAnimationEnabled.current = animate;
     setDirection("backward");
     window.history.back();
   }, []);

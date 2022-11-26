@@ -5,6 +5,7 @@ import {
   BudgetsPage,
   AccountsPage,
   TransactionsPage,
+  PATH,
 } from "client";
 
 const Router = () => {
@@ -16,10 +17,11 @@ const Router = () => {
   if (isTransitioning && direction) classNames.push("transitioning", direction);
 
   const getPage = (path: string) => {
-    if (path === "/login") return <LoginPage />;
-    if (path === "/accounts") return <AccountsPage />;
-    if (path === "/transactions") return <TransactionsPage />;
-    return <BudgetsPage />;
+    if (path === PATH.LOGIN) return <LoginPage />;
+    if (path === PATH.BUDGET) return <BudgetsPage />;
+    if (path === PATH.ACCOUNTS) return <AccountsPage />;
+    if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
+    return <div>Not Found</div>;
   };
 
   const currentPage = useMemo(() => getPage(path), [path]);

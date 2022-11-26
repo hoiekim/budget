@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAppContext, useSync } from "client";
+import { useAppContext, useSync, PATH } from "client";
 
 let lastSync = new Date();
 
@@ -22,7 +22,9 @@ const Utility = () => {
   const { path, go } = router;
 
   useEffect(() => {
-    if (!user && path !== "/login") go("/login");
+    const { LOGIN, BUDGET } = PATH;
+    if (!user && path !== LOGIN) go(LOGIN);
+    if (!Object.values(PATH).find((e) => e === path)) go(BUDGET);
   }, [user, go, path]);
 
   const { sync, clean } = useSync();
