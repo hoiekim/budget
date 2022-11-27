@@ -32,7 +32,7 @@ const Line = ({ points }: Props) => {
 
     if (!transitioning) {
       clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => setPathOffset(false), 100);
+      timeout.current = setTimeout(() => setPathOffset(false), 300);
     }
 
     return () => setPathOffset(true);
@@ -86,7 +86,7 @@ const Line = ({ points }: Props) => {
             stroke: "#097",
             strokeDasharray: pathLength + 5,
             strokeDashoffset: pathOffset ? pathLength + 5 : 0,
-            transition: "stroke-dashoffset 1.5s ease 0s",
+            transition: "stroke-dashoffset 1s ease 0s",
             strokeWidth: 3,
             strokeLinecap: "round",
             strokeLinejoin: "round",
