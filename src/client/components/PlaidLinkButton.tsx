@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
 import { Item, PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
 import { useAppContext, call, useSync, useLocalStorage } from "client";
@@ -78,9 +78,10 @@ const PlaidLinkButton = ({ item, children }: Props) => {
       });
 
     promisedTokens.set(access_token, promisedToken);
-  }, [token, userLoggedIn, access_token]);
+  }, [token, userLoggedIn, access_token, oauth_state_id]);
 
-  const onClick = () => {
+  const onClick: MouseEventHandler<HTMLButtonElement> = (e) => {
+    e.stopPropagation();
     if (!token) return;
     setStoredToken(token);
     open();

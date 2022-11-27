@@ -8,7 +8,7 @@ interface Props {
 
 const Line = ({ points }: Props) => {
   const { router } = useAppContext();
-  const { transitioning: isTransitioning } = router.transition;
+  const { transitioning } = router.transition;
 
   const pathRef = useRef<SVGPathElement>(null);
   const [pathLength, setPathLength] = useState(0);
@@ -30,13 +30,13 @@ const Line = ({ points }: Props) => {
 
     recurUntilRef();
 
-    if (!isTransitioning) {
+    if (!transitioning) {
       clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => setPathOffset(false), 300);
+      timeout.current = setTimeout(() => setPathOffset(false), 100);
     }
 
     return () => setPathOffset(true);
-  }, [isTransitioning]);
+  }, [transitioning]);
 
   const divRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);

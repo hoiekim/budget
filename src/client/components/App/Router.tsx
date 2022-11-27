@@ -11,10 +11,10 @@ import {
 const Router = () => {
   const { router } = useAppContext();
   const { path, transition } = router;
-  const { incomingPath, transitioning: isTransitioning, direction } = transition;
+  const { incomingPath, transitioning, direction } = transition;
 
   const classNames = ["Router"];
-  if (isTransitioning && direction) classNames.push("transitioning", direction);
+  if (transitioning && direction) classNames.push("transitioning", direction);
 
   const getPage = (path: string) => {
     if (path === PATH.LOGIN) return <LoginPage />;
@@ -30,11 +30,11 @@ const Router = () => {
   return (
     <div className={classNames.join(" ")}>
       <div className="previousPage">
-        {isTransitioning && direction === "backward" && incomingPage}
+        {transitioning && direction === "backward" && incomingPage}
       </div>
       <div className="currentPage">{currentPage}</div>
       <div className="nextPage">
-        {isTransitioning && direction === "forward" && incomingPage}
+        {transitioning && direction === "forward" && incomingPage}
       </div>
     </div>
   );

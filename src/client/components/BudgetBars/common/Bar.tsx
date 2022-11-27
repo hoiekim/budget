@@ -8,14 +8,14 @@ type Props = { ratio: number; unlabledRatio?: number } & DetailedHTMLProps<
 
 const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   const { router } = useAppContext();
-  const { transitioning: isTransitioning } = router.transition;
+  const { transitioning } = router.transition;
 
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabeledNumeratorWidth] = useState(0);
   const [overflowedNumeratorWidth, setOverflowedNumeratorWidth] = useState(0);
 
   useEffect(() => {
-    if (!isTransitioning) {
+    if (!transitioning) {
       setNumeratorWidth(ratio * 100);
       setUnlabeledNumeratorWidth((unlabledRatio || 0) * 100);
     }
@@ -23,7 +23,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
       setNumeratorWidth(0);
       setUnlabeledNumeratorWidth(0);
     };
-  }, [ratio, unlabledRatio, isTransitioning]);
+  }, [ratio, unlabledRatio, transitioning]);
 
   const isOverCapped = ratio + (unlabledRatio || 0) > 1;
   const overflowedRatio = Math.max(ratio + (unlabledRatio || 0) - 1, 0);

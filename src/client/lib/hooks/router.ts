@@ -11,6 +11,7 @@ export enum PATH {
 
 export interface ClientRouter {
   path: PATH;
+  params: URLSearchParams;
   transition: {
     incomingPath: PATH;
     transitioning: boolean;
@@ -38,8 +39,18 @@ const getPath = () => {
   return Object.values(PATH).find((e) => e === path) || PATH.BUDGET;
 };
 
+const getParams = () => {
+  return new URLSearchParams(window.location.search);
+};
+
+const getURLString = (path: PATH, params?: URLSearchParams) => {
+  const paramString = params?.toString();
+  return "/" + path + (paramString ? "?" + paramString : "");
+};
+
 export const useRouter = (): ClientRouter => {
   const [path, setPath] = useState(getPath());
+  const [params, setParams] = useState(getParams());
   const [incomingPath, setIncomingPath] = useState(getPath());
   const [direction, setDirection] = useState<TransitionDirection>("forward");
 
@@ -66,7 +77,10 @@ export const useRouter = (): ClientRouter => {
 
   useEffect(() => {
     if (!isRouterRegistered) {
-      const listner = () => transition(getPath());
+      const listner = () => {
+        transition(getPath());
+        setParams(getParams());
+      };
       window.addEventListener("popstate", listner, false);
       isRouterRegistered = true;
     }
@@ -74,15 +88,16 @@ export const useRouter = (): ClientRouter => {
 
   const go = useCallback(
     (target: PATH, options?: GoOptions) => {
-      const { params, animate = true } = options || {};
-      if (window.location.pathname !== target) {
+      const { params: newParams, animate = true } = options || {};
+      if (target !== getPath()) {
         isAnimationEnabled.current = animate;
         setDirection("forward");
-        const paramString = params?.toString();
-        const path = "/" + target + (paramString ? "?" + paramString : "");
-        window.history.pushState("", "", path);
         transition(target);
       }
+      if (newParams && newParams.toString() !== getParams().toString()) {
+        setParams(newParams);
+      }
+      window.history.pushState("", "", getURLString(target, newParams));
     },
     [transition]
   );
@@ -103,6 +118,7 @@ export const useRouter = (): ClientRouter => {
 
   return {
     path,
+    params,
     transition: {
       incomingPath,
       transitioning: incomingPath !== path,

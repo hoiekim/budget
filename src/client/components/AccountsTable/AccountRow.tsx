@@ -7,7 +7,7 @@ import {
   useMemo,
 } from "react";
 import { Account, InvestmentTransaction, Transaction } from "server";
-import { call, Sorter, useAppContext, numberToCommaString } from "client";
+import { call, Sorter, useAppContext, numberToCommaString, PATH } from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
 import { Point, GraphData } from "client/components/Graph";
 import { AccountHeaders } from ".";
@@ -34,6 +34,7 @@ const AccountRow = ({ account, sorter }: Props) => {
     items,
     budgets,
     viewDate,
+    router,
   } = useAppContext();
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
@@ -114,7 +115,8 @@ const AccountRow = ({ account, sorter }: Props) => {
   const item = items.get(account.item_id);
   const institution = institutions.get(account.institution_id);
 
-  const onClickRemove: MouseEventHandler<HTMLButtonElement> = () => {
+  const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {
+    e.stopPropagation();
     if (!item || !user) return;
 
     const confirmed = window.confirm(
@@ -152,7 +154,8 @@ const AccountRow = ({ account, sorter }: Props) => {
     }
   };
 
-  const onClickHide: MouseEventHandler<HTMLButtonElement> = () => {
+  const onClickHide: MouseEventHandler<HTMLButtonElement> = (e) => {
+    e.stopPropagation();
     if (!account_id) return;
     call.post("/api/account", { account_id, hide: true }).then((r) => {
       if (r.status === "success") {
@@ -254,8 +257,13 @@ const AccountRow = ({ account, sorter }: Props) => {
     investmentTransactions,
   ]);
 
+  const onClickAccount = () => {
+    const params = new URLSearchParams({ account_id });
+    router.go(PATH.TRANSACTIONS, { params });
+  };
+
   return (
-    <div className="AccountRow">
+    <div className="AccountRow" onClick={onClickAccount}>
       {getVisible("balances") && <div>{formattedBalancesText}</div>}
       {getVisible("custom_name") && (
         <div>
