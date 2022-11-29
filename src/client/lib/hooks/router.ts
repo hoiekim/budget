@@ -57,7 +57,7 @@ export const useRouter = (): ClientRouter => {
   const [incomingParams, setIncomingParams] = useState(getParams());
   const [direction, setDirection] = useState<TransitionDirection>("forward");
 
-  const isAnimationEnabled = useRef(true);
+  const isAnimationEnabled = useRef(false);
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
@@ -67,17 +67,19 @@ export const useRouter = (): ClientRouter => {
   const transition = useCallback((newPath: PATH, newParams: URLSearchParams) => {
     setIncomingPath(newPath);
     setIncomingParams(newParams);
-    if (window.innerWidth < 1050 && isAnimationEnabled.current) {
-      clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => {
-        window.scrollTo(0, 0);
-        setPath(newPath);
-        setParams(newParams);
-      }, DEFAULT_TRANSITION_DURATION);
-    } else {
+
+    const endTransition = () => {
       window.scrollTo(0, 0);
       setPath(newPath);
       setParams(newParams);
+      isAnimationEnabled.current = false;
+    };
+
+    if (window.innerWidth < 1050 && isAnimationEnabled.current) {
+      clearTimeout(timeout.current);
+      timeout.current = setTimeout(endTransition, DEFAULT_TRANSITION_DURATION);
+    } else {
+      endTransition();
     }
   }, []);
 

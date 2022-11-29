@@ -51,6 +51,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
       <div className="contentWithoutPadding">
         <div
           style={{
+            display: numeratorWidth >= 100 ? "none" : "block",
             left: `calc(${numeratorWidth}% - 10px)`,
             width: unlabeledNumeratorWidth && `calc(${unlabeledNumeratorWidth}% + 10px)`,
           }}
