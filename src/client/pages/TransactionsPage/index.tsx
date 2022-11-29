@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useAppContext, isSubset } from "client";
+import { useAppContext, isSubset, PATH } from "client";
 import { TransactionsTable } from "client/components";
 import { Transaction } from "server";
 import "./index.css";
@@ -12,7 +12,8 @@ export interface TransactionsPageParams {
 
 const TransactionsPage = () => {
   const { transactions, accounts, viewDate, router } = useAppContext();
-  const { params } = router;
+  const { path, params, transition } = router;
+  const { incomingParams } = transition;
 
   const option = params.get("option") || "all";
 
@@ -38,15 +39,22 @@ const TransactionsPage = () => {
 
   const filteredTransactions = useMemo(() => {
     const filters: Partial<Transaction> = {};
-    const account_id = params.get("account_id");
+    let account_id: string;
+    let category_id: string;
+    if (path === PATH.TRANSACTIONS) {
+      account_id = params.get("account_id") || "";
+      category_id = params.get("category_id") || "";
+    } else {
+      account_id = incomingParams.get("account_id") || "";
+      category_id = incomingParams.get("category_id") || "";
+    }
     if (account_id) filters.account_id = account_id;
-    const category_id = params.get("category_id");
     if (category_id) {
       if (!filters.label) filters.label = {};
       filters.label.category_id = category_id;
     }
     return transactionsArray.filter((e) => isSubset(e, filters));
-  }, [transactionsArray, params]);
+  }, [transactionsArray, path, params, incomingParams]);
 
   return (
     <div className="TransactionsPage">

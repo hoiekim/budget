@@ -112,7 +112,7 @@ div.Router {
 }
 
 div.Router > div {
-  min-width: 100%;
+  width: min(100vw, 1050px);
   min-height: 100vh;
   background-color: #fff;
   padding: calc(60px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))

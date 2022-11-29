@@ -13,6 +13,7 @@ interface Props {
   budget: Budget & { amount?: number };
 }
 
+// TODO: refactor for reusable components across BudgetBar and BudgetDetail
 const BudgetBar = ({ budget }: Props) => {
   const { selectedInterval, setBudgets, transactions, accounts, viewDate, router } =
     useAppContext();
@@ -51,7 +52,7 @@ const BudgetBar = ({ budget }: Props) => {
       const { category_id, budget_id: labelBudgetId } = label;
       if (category_id) return;
       if ((labelBudgetId || account.label.budget_id) !== budget_id) return;
-      else result += amount;
+      if (amount > 0) result += amount;
     });
     return result;
   }, [transactions, accounts, budget_id, viewDate]);

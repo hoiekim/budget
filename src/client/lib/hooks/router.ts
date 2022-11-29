@@ -15,6 +15,7 @@ export interface ClientRouter {
   params: URLSearchParams;
   transition: {
     incomingPath: PATH;
+    incomingParams: URLSearchParams;
     transitioning: boolean;
     direction: TransitionDirection | undefined;
   };
@@ -31,7 +32,7 @@ export interface NavigateOptions {
   animate?: boolean;
 }
 
-const DEFAULT_TRANSITION_DURATION = 300;
+export const DEFAULT_TRANSITION_DURATION = 300;
 
 let isRouterRegistered = false;
 
@@ -51,8 +52,9 @@ const getURLString = (path: PATH, params?: URLSearchParams) => {
 
 export const useRouter = (): ClientRouter => {
   const [path, setPath] = useState(getPath());
-  const [params, setParams] = useState(getParams());
   const [incomingPath, setIncomingPath] = useState(getPath());
+  const [params, setParams] = useState(getParams());
+  const [incomingParams, setIncomingParams] = useState(getParams());
   const [direction, setDirection] = useState<TransitionDirection>("forward");
 
   const isAnimationEnabled = useRef(true);
@@ -62,25 +64,27 @@ export const useRouter = (): ClientRouter => {
 
   const timeout = useRef<Timeout>();
 
-  const transition = useCallback((newPath: PATH) => {
+  const transition = useCallback((newPath: PATH, newParams: URLSearchParams) => {
     setIncomingPath(newPath);
-    if (isAnimationEnabled.current) {
+    setIncomingParams(newParams);
+    if (window.innerWidth < 1050 && isAnimationEnabled.current) {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(() => {
         window.scrollTo(0, 0);
         setPath(newPath);
+        setParams(newParams);
       }, DEFAULT_TRANSITION_DURATION);
     } else {
       window.scrollTo(0, 0);
       setPath(newPath);
+      setParams(newParams);
     }
   }, []);
 
   useEffect(() => {
     if (!isRouterRegistered) {
       const listner = () => {
-        transition(getPath());
-        setParams(getParams());
+        transition(getPath(), getParams());
       };
       window.addEventListener("popstate", listner, false);
       isRouterRegistered = true;
@@ -92,8 +96,7 @@ export const useRouter = (): ClientRouter => {
       const { params: newParams, animate = true } = options || {};
       isAnimationEnabled.current = animate;
       setDirection("forward");
-      transition(target);
-      setParams(newParams || new URLSearchParams());
+      transition(target, newParams || new URLSearchParams());
       window.history.pushState("", "", getURLString(target, newParams));
     },
     [transition]
@@ -118,6 +121,7 @@ export const useRouter = (): ClientRouter => {
     params,
     transition: {
       incomingPath,
+      incomingParams,
       transitioning: incomingPath !== path,
       direction: incomingPath !== path ? direction : undefined,
     },
