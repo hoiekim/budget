@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useAppContext } from "client";
+import { useAppContext, isSubset } from "client";
 import { TransactionsTable } from "client/components";
 import { Transaction } from "server";
 import "./index.css";
@@ -7,6 +7,7 @@ import "./index.css";
 export interface TransactionsPageParams {
   option?: "unsorted" | "income";
   account_id?: string;
+  category_id?: string;
 }
 
 const TransactionsPage = () => {
@@ -36,16 +37,15 @@ const TransactionsPage = () => {
   }, [transactions, accounts, viewDate, option]);
 
   const filteredTransactions = useMemo(() => {
-    const filters: Partial<Transaction> = {
-      account_id: params.get("account_id") || undefined,
-    };
-    return transactionsArray.filter((e) => {
-      let pass = true;
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value && value !== e[key as keyof Transaction]) pass = false;
-      });
-      return pass;
-    });
+    const filters: Partial<Transaction> = {};
+    const account_id = params.get("account_id");
+    if (account_id) filters.account_id = account_id;
+    const category_id = params.get("category_id");
+    if (category_id) {
+      if (!filters.label) filters.label = {};
+      filters.label.category_id = category_id;
+    }
+    return transactionsArray.filter((e) => isSubset(e, filters));
   }, [transactionsArray, params]);
 
   return (

@@ -9,7 +9,7 @@ interface Props {
   budget: Budget & { amount?: number };
 }
 
-const BudgetBar = ({ budget }: Props) => {
+const BudgetDetail = ({ budget }: Props) => {
   const { budget_id, name, capacities, iso_currency_code, amount } = budget;
 
   const {
@@ -47,6 +47,7 @@ const BudgetBar = ({ budget }: Props) => {
     };
   }, []);
 
+  // TODO: move this functionality to transactions page using params
   const transactionsArray = useMemo(() => {
     const newTransactionsArray: Transaction[] = [];
     const viewDateClone = viewDate.clone();
@@ -180,8 +181,9 @@ const BudgetBar = ({ budget }: Props) => {
 
   const onEdit = () => setIsEditting((s) => !s);
 
+  // TODO: add a bar for unsorted items
   return (
-    <div className="BudgetBars">
+    <div className="BudgetDetail BudgetBar">
       <div
         className="budgetInfo"
         onMouseLeave={() => setIsEditting(false)}
@@ -248,4 +250,4 @@ const BudgetBar = ({ budget }: Props) => {
   );
 };
 
-export default BudgetBar;
+export default BudgetDetail;

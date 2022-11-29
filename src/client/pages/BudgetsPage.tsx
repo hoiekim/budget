@@ -1,18 +1,9 @@
-import { useMemo } from "react";
-import { useAppContext } from "client";
-import { BudgetBars } from "client/components";
+import { BudgetsTable } from "client/components";
 
 const BudgetsPage = () => {
-  const { budgets, selectedBudgetId } = useAppContext();
-
-  const selectedBudget = useMemo(
-    () => budgets.get(selectedBudgetId),
-    [budgets, selectedBudgetId]
-  );
-
   return (
     <div className="BudgetsPage">
-      {selectedBudget && <BudgetBars key={selectedBudgetId} budget={selectedBudget} />}
+      <BudgetsTable />
     </div>
   );
 };

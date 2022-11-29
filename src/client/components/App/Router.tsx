@@ -3,6 +3,7 @@ import {
   useAppContext,
   LoginPage,
   BudgetsPage,
+  BudgetDetailPage,
   AccountsPage,
   TransactionsPage,
   PATH,
@@ -18,7 +19,8 @@ const Router = () => {
 
   const getPage = (path: string) => {
     if (path === PATH.LOGIN) return <LoginPage />;
-    if (path === PATH.BUDGET) return <BudgetsPage />;
+    if (path === PATH.BUDGETS) return <BudgetsPage />;
+    if (path === PATH.BUDGET_DETAIL) return <BudgetDetailPage />;
     if (path === PATH.ACCOUNTS) return <AccountsPage />;
     if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
     return <div>Not Found</div>;

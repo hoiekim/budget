@@ -6,8 +6,7 @@ const extraEnv = NODE_ENV ? ".env." + NODE_ENV : "";
 
 const paths = ["src", "build"];
 const isWindows = process.platform === "win32";
-if (isWindows) process.env.NODE_PATH = paths.join(";");
-else process.env.NODE_PATH = paths.join(":");
+process.env.NODE_PATH = paths.join(isWindows ? ";" : ":");
 require("module").Module._initPaths();
 
 import path from "path";

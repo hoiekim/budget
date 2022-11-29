@@ -1,15 +1,15 @@
-div.BudgetBars * {
+div.BudgetBar * {
   overflow: hidden;
 }
 
-div.BudgetBars .Bar {
+div.BudgetBar .Bar {
   width: 100%;
   height: 10px;
   margin: 5px 0;
   border-radius: 5px;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding {
+div.BudgetBar .Bar > .contentWithoutPadding {
   width: 100%;
   height: 100%;
   position: relative;
@@ -17,42 +17,42 @@ div.BudgetBars .Bar > .contentWithoutPadding {
   background-color: #d9d9d9;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > div {
+div.BudgetBar .Bar > .contentWithoutPadding > div {
   transition: 1000ms;
   height: 100%;
   border-radius: 5px;
   position: absolute;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > .numerator:not(.alert) {
+div.BudgetBar .Bar > .contentWithoutPadding > .numerator:not(.alert) {
   background-color: #097;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > .numerator.alert {
+div.BudgetBar .Bar > .contentWithoutPadding > .numerator.alert {
   background-color: #fcc;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > .unlabeledNumerator:not(.alert) {
+div.BudgetBar .Bar > .contentWithoutPadding > .unlabeledNumerator:not(.alert) {
   background: repeating-linear-gradient(135deg, #097, #097 2px, #0000 2px, #0000 4px);
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > .unlabeledNumerator.alert {
+div.BudgetBar .Bar > .contentWithoutPadding > .unlabeledNumerator.alert {
   background-color: #fcc;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > .overflowedNumerator:not(.alert) {
+div.BudgetBar .Bar > .contentWithoutPadding > .overflowedNumerator:not(.alert) {
   background-color: #f43;
 }
 
-div.BudgetBars .Bar > .contentWithoutPadding > .overflowedNumerator.alert {
+div.BudgetBar .Bar > .contentWithoutPadding > .overflowedNumerator.alert {
   background-color: #902;
 }
 
-div.BudgetBars .Bar.income > .contentWithoutPadding > .numerator {
+div.BudgetBar .Bar.income > .contentWithoutPadding > .numerator {
   background: #8b2;
 }
 
-div.BudgetBars .infoText {
+div.BudgetBar .infoText {
   display: flex;
   justify-content: left;
   align-items: center;
@@ -61,33 +61,33 @@ div.BudgetBars .infoText {
   position: relative;
 }
 
-div.BudgetBars .infoText > div > input {
+div.BudgetBar .infoText > div > input {
   font-size: 14px;
   height: 17px;
   width: 75px;
 }
 
-div.BudgetBars input.readonly {
+div.BudgetBar input.readonly {
   background-color: inherit;
   cursor: default;
 }
 
-div.BudgetBars .budgetInfo,
-div.BudgetBars .sectionInfo,
-div.BudgetBars .categoryInfo {
+div.BudgetBar .budgetInfo,
+div.BudgetBar .sectionInfo,
+div.BudgetBar .categoryInfo {
   position: relative;
 }
 
-div.BudgetBars .title {
+div.BudgetBar .title {
   display: flex;
   justify-content: space-between;
 }
 
-div.BudgetBars .title > input {
+div.BudgetBar .title > input {
   width: 150px;
 }
 
-div.BudgetBars .title > .buttons {
+div.BudgetBar .title > .buttons {
   width: 50px;
   display: flex;
   flex-direction: row-reverse;
@@ -95,41 +95,41 @@ div.BudgetBars .title > .buttons {
   position: relative;
 }
 
-div.BudgetBars .title > .buttons > button {
+div.BudgetBar .title > .buttons > button {
   background-color: inherit;
   font-size: 18px;
   position: relative;
 }
 
-div.BudgetBars .title > .buttons > button.edit {
+div.BudgetBar .title > .buttons > button.edit {
   transform: rotate(90deg);
 }
 
-div.BudgetBars .title > .buttons > button.delete {
+div.BudgetBar .title > .buttons > button.delete {
   color: #f43;
   font-weight: bolder;
 }
 
-div.BudgetBars .budgetInfo > .title > input,
-div.BudgetBars .budgetInfo > .title > span {
+div.BudgetBar .budgetInfo > .title > input,
+div.BudgetBar .budgetInfo > .title > span {
   font-size: 20px;
 }
 
-div.BudgetBars .sectionInfo > .title > input,
-div.BudgetBars .sectionInfo > .title > span {
+div.BudgetBar .sectionInfo > .title > input,
+div.BudgetBar .sectionInfo > .title > span {
   font-size: 18px;
 }
 
-div.BudgetBars .SectionBar {
+div.BudgetBar .SectionBar {
   padding: 20px 10px;
   border-bottom: 1px solid #ccc;
 }
 
-div.BudgetBars .CategoryBar {
+div.BudgetBar .CategoryBar {
   margin-top: 10px;
 }
 
-div.BudgetBars .addButton {
+div.BudgetBar .addButton {
   margin-top: 10px;
 }
 

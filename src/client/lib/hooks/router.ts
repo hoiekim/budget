@@ -4,7 +4,8 @@ export type TransitionDirection = "forward" | "backward";
 
 export enum PATH {
   LOGIN = "login",
-  BUDGET = "budget",
+  BUDGETS = "budgets",
+  BUDGET_DETAIL = "budget-detail",
   ACCOUNTS = "accounts",
   TRANSACTIONS = "transactions",
 }
@@ -36,7 +37,7 @@ let isRouterRegistered = false;
 
 const getPath = () => {
   const path = window.location.pathname.split("/")[1];
-  return Object.values(PATH).find((e) => e === path) || PATH.BUDGET;
+  return Object.values(PATH).find((e) => e === path) || PATH.BUDGETS;
 };
 
 const getParams = () => {
@@ -89,14 +90,10 @@ export const useRouter = (): ClientRouter => {
   const go = useCallback(
     (target: PATH, options?: GoOptions) => {
       const { params: newParams, animate = true } = options || {};
-      if (target !== getPath()) {
-        isAnimationEnabled.current = animate;
-        setDirection("forward");
-        transition(target);
-      }
-      if (newParams && newParams.toString() !== getParams().toString()) {
-        setParams(newParams);
-      }
+      isAnimationEnabled.current = animate;
+      setDirection("forward");
+      transition(target);
+      setParams(newParams || new URLSearchParams());
       window.history.pushState("", "", getURLString(target, newParams));
     },
     [transition]

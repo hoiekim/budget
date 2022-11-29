@@ -1,12 +1,6 @@
-import {
-  ChangeEventHandler,
-  MouseEventHandler,
-  ReactNode,
-  useMemo,
-  useState,
-} from "react";
+import { MouseEventHandler, ReactNode, useState } from "react";
 import { useAppContext, useSync, call, PATH } from "client";
-import { Budget, Interval, NewBudgetGetResponse } from "server";
+import { Interval } from "server";
 import "./index.css";
 
 const Header = () => {
@@ -14,12 +8,8 @@ const Header = () => {
     user,
     setUser,
     router,
-    selectedBudgetId,
-    setSelectedBudgetId,
     selectedInterval,
     setSelectedInterval,
-    budgets,
-    setBudgets,
     viewDate,
     setViewDate,
   } = useAppContext();
@@ -27,7 +17,7 @@ const Header = () => {
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
 
   const { clean } = useSync();
-  const { path, go, back } = router;
+  const { path, params, go, back } = router;
 
   const logout = () => {
     call.delete("/api/login").then((r) => {
@@ -49,25 +39,6 @@ const Header = () => {
     </a>
   );
 
-  const budgetOptions = useMemo(() => {
-    const components: JSX.Element[] = [];
-    budgets.forEach((e) => {
-      const component = (
-        <option key={e.budget_id} value={e.budget_id}>
-          {e.name || "Unnamed"}
-        </option>
-      );
-      components.push(component);
-    });
-    return components;
-  }, [budgets]);
-
-  const onChangeBudget: ChangeEventHandler<HTMLSelectElement> = (e) => {
-    const { value } = e.target;
-    if (value === "add_new_budget") onClickAddBudget();
-    else setSelectedBudgetId(e.target.value);
-  };
-
   const onClickPreviousView = () => {
     setViewDate((oldViewDate) => {
       const newViewDate = oldViewDate.clone();
@@ -84,25 +55,6 @@ const Header = () => {
     });
   };
 
-  const onClickAddBudget = async () => {
-    const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");
-    if (!data) return;
-
-    const { budget_id } = data;
-    setSelectedBudgetId(budget_id);
-    const newBudget: Budget = {
-      budget_id,
-      name: "",
-      capacities: { year: 0, month: 0, week: 0, day: 0 },
-      iso_currency_code: "USD",
-    };
-    setBudgets((oldBudgets) => {
-      const newBudgets = new Map(oldBudgets);
-      newBudgets.set(budget_id, newBudget);
-      return newBudgets;
-    });
-  };
-
   const getIntervalOptionText = (interval: Interval, fallback: string) => {
     if (viewDate.getInterval() !== interval) return fallback;
     return viewDate.toString();
@@ -113,25 +65,18 @@ const Header = () => {
     back();
   };
 
-  const { BUDGET, ACCOUNTS, TRANSACTIONS } = PATH;
+  const { BUDGETS, ACCOUNTS, TRANSACTIONS } = PATH;
+
+  const isBackButtonDisabled =
+    !params.toString() && !![BUDGETS, ACCOUNTS, TRANSACTIONS].find((e) => e === path);
 
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
-        <div>
-          <button onClick={onClickBack}>←</button>
-        </div>
-        <div>
-          <select
-            className="budgetSelect"
-            value={selectedBudgetId}
-            onChange={onChangeBudget}
-            disabled={path === TRANSACTIONS}
-          >
-            {!selectedBudgetId && <option>Select Budget</option>}
-            {budgetOptions}
-            <option value="add_new_budget">+ New Budget</option>
-          </select>
+        <div className="backButton">
+          <button onClick={onClickBack} disabled={isBackButtonDisabled}>
+            {isBackButtonDisabled ? "" : "←"}
+          </button>
         </div>
         <div>
           <button onClick={onClickPreviousView}>
@@ -169,7 +114,7 @@ const Header = () => {
         </div>
       </div>
       <div className="navigators">
-        <Navigator target={BUDGET}>Budget</Navigator>
+        <Navigator target={BUDGETS}>Budget</Navigator>
         <Navigator target={ACCOUNTS}>Accounts</Navigator>
         <Navigator target={TRANSACTIONS}>Transactions</Navigator>
       </div>

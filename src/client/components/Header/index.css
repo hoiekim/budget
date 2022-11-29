@@ -49,9 +49,12 @@ div.Header > .viewController > div > div {
   align-items: center;
 }
 
-div.Header > .viewController select.budgetSelect {
-  width: auto;
-  max-width: 100px;
+div.Header > .viewController > .backButton {
+  width: 25px;
+}
+
+div.Header > .viewController > .backButton > button {
+  font-size: 20px;
 }
 
 div.Header > .viewController select.intervalSelect {

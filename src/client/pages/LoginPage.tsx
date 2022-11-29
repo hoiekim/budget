@@ -6,7 +6,7 @@ const LoginPage = () => {
   const { user, setUser, router } = useAppContext();
 
   useEffect(() => {
-    if (user && router) router.go(PATH.BUDGET);
+    if (user && router) router.go(PATH.BUDGETS);
   }, [user, router]);
 
   const [username, setUsername] = useState("");

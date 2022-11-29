@@ -10,9 +10,6 @@ const Utility = () => {
     setBudgets,
     setSections,
     setCategories,
-    budgets,
-    selectedBudgetId,
-    setSelectedBudgetId,
     selectedInterval,
     transactions,
     accounts,
@@ -115,12 +112,6 @@ const Utility = () => {
       return newViewDate;
     });
   }, [selectedInterval, setViewDate]);
-
-  useEffect(() => {
-    if (!selectedBudgetId && budgets.size) {
-      setSelectedBudgetId(budgets.values().next().value);
-    }
-  }, [selectedBudgetId, setSelectedBudgetId, budgets]);
 
   return <></>;
 };

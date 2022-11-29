@@ -4,5 +4,6 @@ export { default as TransactionsTable } from "./TransactionsTable";
 export { default as AccountsTable } from "./AccountsTable";
 export { default as InstitutionSpan } from "./InstitutionSpan";
 export { default as Header } from "./Header";
-export { default as BudgetBars } from "./BudgetBars";
+export { default as BudgetsTable } from "./BudgetsTable";
+export { default as BudgetDetail } from "./BudgetDetail";
 export { default as Graph } from "./Graph";
