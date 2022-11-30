@@ -14,9 +14,10 @@ export type TransactionHeaders = { [k in keyof Transaction]?: boolean } & {
 interface Props {
   transactionsArray: Transaction[];
   customKey?: string;
+  top?: number;
 }
 
-const TransactionsTable = ({ transactionsArray, customKey }: Props) => {
+const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
   const { accounts, institutions, budgets, categories } = useAppContext();
 
   const sorter = useSorter<Transaction, TransactionHeaders>(
@@ -91,7 +92,7 @@ const TransactionsTable = ({ transactionsArray, customKey }: Props) => {
   return (
     <div className="TransactionsTable">
       <div>
-        <TransactionsHead sorter={sorter} getHeader={getHeader} />
+        <TransactionsHead sorter={sorter} getHeader={getHeader} style={{ top }} />
         <div>{transactionRows}</div>
       </div>
     </div>

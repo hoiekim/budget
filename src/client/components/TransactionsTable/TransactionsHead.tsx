@@ -1,14 +1,15 @@
 import { Transaction } from "server";
 import { Sorter } from "client";
 import { TransactionHeaders } from ".";
-import { useMemo } from "react";
+import { CSSProperties, useMemo } from "react";
 
 interface Props {
   sorter: Sorter<Transaction, TransactionHeaders>;
   getHeader: (key: keyof TransactionHeaders) => string;
+  style?: CSSProperties;
 }
 
-const TransactionsHead = ({ sorter, getHeader }: Props) => {
+const TransactionsHead = ({ sorter, getHeader, style }: Props) => {
   const { setSortBy, getArrow, getVisible, toggleVisible, visibles } = sorter;
 
   const headerKeys: (keyof TransactionHeaders)[] = [
@@ -48,7 +49,7 @@ const TransactionsHead = ({ sorter, getHeader }: Props) => {
   }, [getHeader, toggleVisible, visibles]);
 
   return (
-    <div className="TransactionsHead">
+    <div className="TransactionsHead" style={style}>
       {headerComponents}
       {hiddenColumns}
     </div>

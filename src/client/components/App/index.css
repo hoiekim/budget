@@ -1,6 +1,5 @@
 * {
   box-sizing: border-box;
-  transition: 150ms;
   cursor: default;
 }
 
@@ -77,16 +76,6 @@ div#root {
   background-color: #fff;
 }
 
-h1,
-h2,
-h3,
-h4 {
-  background-color: #fff;
-  padding: 1.5rem 0 1rem;
-  margin: 0;
-  z-index: 50;
-}
-
 div.Login {
   padding-top: 100px;
 }
@@ -115,8 +104,8 @@ div.Router > div {
   width: min(100vw, 1050px);
   min-height: 100vh;
   background-color: #fff;
-  padding: calc(60px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
-    calc(90px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+  padding: calc(50px + env(safe-area-inset-top)) env(safe-area-inset-right)
+    calc(90px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
 }
 
 div.Router > div.previousPage {

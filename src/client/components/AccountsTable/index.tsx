@@ -108,8 +108,8 @@ const AccountsTable = ({ accountsArray }: Props) => {
 
   return (
     <div className="AccountsTable">
+      <h2>All Accounts</h2>
       <div className="rows">
-        <AccountsHead sorter={sorter} getHeader={getHeader} />
         <div>{accountRows}</div>
       </div>
       <div>

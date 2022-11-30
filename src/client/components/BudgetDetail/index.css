@@ -72,6 +72,10 @@ div.BudgetBar input.readonly {
   cursor: default;
 }
 
+div.BudgetBar .budgetInfo {
+  padding: 10px;
+}
+
 div.BudgetBar .budgetInfo,
 div.BudgetBar .sectionInfo,
 div.BudgetBar .categoryInfo {
@@ -88,7 +92,7 @@ div.BudgetBar .title > input {
 }
 
 div.BudgetBar .title > .buttons {
-  width: 50px;
+  width: 30px;
   display: flex;
   flex-direction: row-reverse;
   justify-content: space-between;
@@ -96,18 +100,26 @@ div.BudgetBar .title > .buttons {
 }
 
 div.BudgetBar .title > .buttons > button {
+  transition-duration: 150ms;
   background-color: inherit;
-  font-size: 18px;
-  position: relative;
+  font-size: 24px;
+  width: 24px;
+  height: 24px;
+  position: absolute;
+  padding: 0;
+  font-weight: bolder;
 }
 
 div.BudgetBar .title > .buttons > button.edit {
   transform: rotate(90deg);
+  top: calc(50% - 12px);
+  left: calc(50% - 11px);
 }
 
 div.BudgetBar .title > .buttons > button.delete {
   color: #f43;
-  font-weight: bolder;
+  top: calc(50% - 15px);
+  left: calc(50% - 14px);
 }
 
 div.BudgetBar .budgetInfo > .title > input,
@@ -131,6 +143,14 @@ div.BudgetBar .CategoryBar {
 
 div.BudgetBar .addButton {
   margin-top: 10px;
+}
+
+div.BudgetBar > .addButton {
+  margin-left: 10px;
+}
+
+div.BudgetBar > div > div > .addButton {
+  margin-left: 10px;
 }
 
 div.TransactionsList > .TransactionItem {

@@ -91,7 +91,7 @@ const BudgetBar = ({ budget }: Props) => {
 
   return (
     <div
-      className="BudgetBar budgetInfo"
+      className="budgetInfo"
       onMouseLeave={() => setIsEditting(false)}
       onClick={() => {
         setIsEditting(false);
