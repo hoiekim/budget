@@ -1,8 +1,3 @@
-div.AccountsTable > h2 {
-  margin: 0;
-  padding: 1rem 10px 0;
-}
-
 div.AccountsTable > .rows {
   margin-bottom: 20px;
 }
@@ -39,6 +34,6 @@ div.AccountsHead > div {
   margin: 3px;
 }
 
-div.AccountsHead > .hiddenColumn > button {
-  text-decoration: line-through;
+div.AccountsTable > div > button {
+  margin-left: 10px;
 }

@@ -1,0 +1,8 @@
+div.AccountsPage > h2 {
+  margin: 0;
+  padding: 16px 10px 10px;
+  position: sticky;
+  top: 50px;
+  background-color: #fffe;
+  z-index: 110;
+}

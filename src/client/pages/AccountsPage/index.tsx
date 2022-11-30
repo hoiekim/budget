@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Account, useAppContext } from "client";
 import { AccountsTable } from "client/components";
+import "./index.css";
 
 const AccountsPage = () => {
   const { user, items, accounts } = useAppContext();
@@ -30,6 +31,7 @@ const AccountsPage = () => {
 
   return (
     <div className="AccountsPage">
+      <h2>All Accounts</h2>
       <AccountsTable accountsArray={[...accountsArray, ...errorAccountsArray]} />
     </div>
   );

@@ -108,7 +108,6 @@ const AccountsTable = ({ accountsArray }: Props) => {
 
   return (
     <div className="AccountsTable">
-      <h2>All Accounts</h2>
       <div className="rows">
         <div>{accountRows}</div>
       </div>

@@ -57,7 +57,10 @@ const TransactionsPage = () => {
     return transactionsArray.filter((e) => isSubset(e, filters));
   }, [transactionsArray, path, params, incomingParams]);
 
-  const title = (accounts.get(account_id) || categories.get(category_id))?.name;
+  const filteringAccount = accounts.get(account_id);
+  const filteringCategory = categories.get(category_id);
+  const title =
+    filteringAccount?.custom_name || filteringAccount?.name || filteringCategory?.name;
   const Title = () => {
     if (title) {
       return (
@@ -76,7 +79,7 @@ const TransactionsPage = () => {
       <TransactionsTable
         customKey={option}
         transactionsArray={filteredTransactions}
-        top={title ? 135 : 96}
+        top={title ? 139 : 96}
       />
     </div>
   );

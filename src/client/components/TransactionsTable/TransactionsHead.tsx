@@ -10,7 +10,7 @@ interface Props {
 }
 
 const TransactionsHead = ({ sorter, getHeader, style }: Props) => {
-  const { setSortBy, getArrow, getVisible, toggleVisible, visibles } = sorter;
+  const { setSortBy, getArrow, getVisible } = sorter;
 
   const headerKeys: (keyof TransactionHeaders)[] = [
     "authorized_date",
@@ -29,29 +29,13 @@ const TransactionsHead = ({ sorter, getHeader, style }: Props) => {
           <button onClick={() => setSortBy(key)}>
             {getHeader(key)} {getArrow(key)}
           </button>
-          <button onClick={() => toggleVisible(key)}>✕</button>
         </div>
       );
     });
 
-  const hiddenColumns = useMemo(() => {
-    return Object.entries(visibles)
-      .filter(([key, value]) => !value)
-      .map(([key, value], i) => {
-        return (
-          <div key={`transactions_hidden_column_${i}`} className="hiddenColumn">
-            <button onClick={() => toggleVisible(key as keyof typeof visibles)}>
-              {getHeader(key as keyof typeof visibles)}
-            </button>
-          </div>
-        );
-      });
-  }, [getHeader, toggleVisible, visibles]);
-
   return (
     <div className="TransactionsHead" style={style}>
       {headerComponents}
-      {hiddenColumns}
     </div>
   );
 };
