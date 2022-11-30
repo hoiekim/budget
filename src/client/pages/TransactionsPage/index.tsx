@@ -79,7 +79,7 @@ const TransactionsPage = () => {
       <TransactionsTable
         customKey={option}
         transactionsArray={filteredTransactions}
-        top={title ? 139 : 96}
+        top={title ? 138 : 95}
       />
     </div>
   );
