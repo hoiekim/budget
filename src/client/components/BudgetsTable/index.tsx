@@ -1,9 +1,9 @@
-import { call, useAppContext } from "client";
 import { Budget, NewBudgetGetResponse } from "server";
-import BudgetBar from "./BudgetBar";
+import { call, useAppContext } from "client";
+import { BudgetBar } from "client/components";
 import "./index.css";
 
-const Budgets = () => {
+const BudgetsTable = () => {
   const { budgets, setBudgets } = useAppContext();
   const budgetBars = Array.from(budgets).map(([budget_id, budget]) => {
     return <BudgetBar key={budget_id} budget={budget} />;
@@ -42,4 +42,4 @@ const Budgets = () => {
   );
 };
 
-export default Budgets;
+export default BudgetsTable;

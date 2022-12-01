@@ -8,12 +8,12 @@ import {
   PATH,
 } from "client";
 import { Bar, CapacityInput, EditButton, NameInput } from "client/components";
+import "./index.css";
 
 interface Props {
   budget: Budget & { amount?: number };
 }
 
-// TODO: refactor for reusable components across BudgetBar and BudgetDetail
 const BudgetBar = ({ budget }: Props) => {
   const { selectedInterval, setBudgets, transactions, accounts, viewDate, router } =
     useAppContext();
@@ -58,6 +58,8 @@ const BudgetBar = ({ budget }: Props) => {
     return result;
   }, [transactions, accounts, budget_id, viewDate]);
 
+  const leftover = capacity - ((amount || 0) + unlabeledTotal);
+
   const labeledRatio = (amount || 0) / capacity || 0;
   const unlabledRatio = unlabeledTotal / capacity || 0;
 
@@ -91,47 +93,68 @@ const BudgetBar = ({ budget }: Props) => {
   };
 
   return (
-    <div
-      className="budgetInfo"
-      onMouseLeave={() => setIsEditting(false)}
-      onClick={() => {
-        setIsEditting(false);
-        onClickBudgetInfo();
-      }}
-    >
-      <div className="title">
-        <NameInput
-          defaultValue={name}
-          isEditting={isEditting}
-          submit={(value, onError) => {
-            submit({ name: value }, onError);
-          }}
-        />
-        <div className="buttons">
-          <EditButton
+    <div className="BudgetBar">
+      <div
+        className="budgetInfo"
+        onMouseLeave={() => setIsEditting(false)}
+        onClick={() => {
+          setIsEditting(false);
+          onClickBudgetInfo();
+        }}
+      >
+        <div className="title">
+          <NameInput
+            defaultValue={name}
             isEditting={isEditting}
-            onEdit={() => setIsEditting((s) => !s)}
-            onDelete={onDelete}
+            submit={(value, onError) => {
+              submit({ name: value }, onError);
+            }}
           />
-        </div>
-      </div>
-      <div className="statusBarWithText">
-        <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} />
-        <div className="infoText">
-          <div>
-            <span>Spent {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-            <span className="currentTotal">
-              {numberToCommaString((amount || 0) + unlabeledTotal)}
-            </span>
-            <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-            <CapacityInput
-              key={`${budget_id}_${selectedInterval}`}
-              defaultValue={numberToCommaString(capacity)}
+          <div className="buttons">
+            <EditButton
               isEditting={isEditting}
-              submit={(value, onError) => {
-                submit({ capacities: { [selectedInterval]: +value } }, onError);
-              }}
+              onEdit={() => setIsEditting((s) => !s)}
+              onDelete={onDelete}
             />
+          </div>
+        </div>
+        <div className="statusBarWithText">
+          <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} />
+          <div className="infoText">
+            {!isEditting && (
+              <>
+                <div>
+                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                  <span className="currentTotal">
+                    {numberToCommaString(amount || 0 + unlabeledTotal)}
+                  </span>
+                  <span>&nbsp; spent</span>
+                </div>
+                <div>
+                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                  <span className="currentTotal">
+                    {numberToCommaString(Math.abs(leftover))}
+                  </span>
+                  <span>
+                    &nbsp;
+                    {leftover >= 0 ? "left" : "over"}
+                  </span>
+                </div>
+              </>
+            )}
+            {isEditting && (
+              <div>
+                <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                <CapacityInput
+                  key={`${budget_id}_${selectedInterval}`}
+                  defaultValue={numberToCommaString(capacity)}
+                  isEditting={isEditting}
+                  submit={(value, onError) => {
+                    submit({ capacities: { [selectedInterval]: +value } }, onError);
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -60,3 +60,5 @@ export class Account implements Account {
     Object.assign(this, account);
   }
 }
+
+export const isEmoji = (s: string) => /\p{Extended_Pictographic}/u.test(s);

@@ -15,7 +15,18 @@ const TransactionsPage = () => {
   const { path, params, transition } = router;
   const { incomingParams } = transition;
 
-  const option = params.get("option") || "all";
+  let option: string;
+  let account_id: string;
+  let category_id: string;
+  if (path === PATH.TRANSACTIONS) {
+    option = params.get("option") || "all";
+    account_id = params.get("account_id") || "";
+    category_id = params.get("category_id") || "";
+  } else {
+    option = incomingParams.get("option") || "all";
+    account_id = incomingParams.get("account_id") || "";
+    category_id = incomingParams.get("category_id") || "";
+  }
 
   const transactionsArray = useMemo(() => {
     const result: Transaction[] = [];
@@ -36,16 +47,6 @@ const TransactionsPage = () => {
     });
     return result;
   }, [transactions, accounts, viewDate, option]);
-
-  let account_id: string;
-  let category_id: string;
-  if (path === PATH.TRANSACTIONS) {
-    account_id = params.get("account_id") || "";
-    category_id = params.get("category_id") || "";
-  } else {
-    account_id = incomingParams.get("account_id") || "";
-    category_id = incomingParams.get("category_id") || "";
-  }
 
   const filteredTransactions = useMemo(() => {
     const filters: Partial<Transaction> = {};

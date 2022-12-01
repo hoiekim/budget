@@ -1,42 +1,46 @@
-div.BudgetBar * {
-  overflow: hidden;
+div.BudgetDetail .unsortedButton {
+  padding: 0 10px;
 }
 
-div.BudgetBar .infoText {
+div.BudgetDetail .unsortedButton > button {
+  width: 100%;
+}
+
+div.SectionBar * {
+  overflow: hidden;
+  transition-duration: 300ms;
+}
+
+div.SectionBar .infoText {
   display: flex;
-  justify-content: left;
+  justify-content: space-between;
   align-items: center;
   font-size: 14px;
   color: #333;
   position: relative;
 }
 
-div.BudgetBar .infoText > div > input {
+div.SectionBar .infoText > div > input {
   font-size: 14px;
   height: 17px;
-  width: 75px;
+  width: 250px;
 }
 
-div.BudgetBar .budgetInfo {
-  padding: 10px;
-}
-
-div.BudgetBar .budgetInfo,
-div.BudgetBar .sectionInfo,
-div.BudgetBar .categoryInfo {
+div.SectionBar .sectionInfo,
+div.SectionBar .categoryInfo {
   position: relative;
 }
 
-div.BudgetBar .title {
+div.SectionBar .title {
   display: flex;
   justify-content: space-between;
 }
 
-div.BudgetBar .title > input {
-  width: 150px;
+div.SectionBar .title > input {
+  width: 250px;
 }
 
-div.BudgetBar .title > .buttons {
+div.SectionBar .title > .buttons {
   width: 30px;
   display: flex;
   flex-direction: row-reverse;
@@ -44,33 +48,20 @@ div.BudgetBar .title > .buttons {
   position: relative;
 }
 
-div.BudgetBar .budgetInfo > .title > input,
-div.BudgetBar .budgetInfo > .title > span {
-  font-size: 20px;
-}
-
-div.BudgetBar .sectionInfo > .title > input,
-div.BudgetBar .sectionInfo > .title > span {
+div.SectionBar .sectionInfo > .title > input,
+div.SectionBar .sectionInfo > .title > span {
   font-size: 18px;
 }
 
-div.BudgetBar .SectionBar {
+div.SectionBar {
   padding: 20px 10px;
   border-bottom: 1px solid #ccc;
 }
 
-div.BudgetBar .CategoryBar {
+div.SectionBar .CategoryBar {
   margin-top: 10px;
 }
 
-div.BudgetBar .addButton {
+div.SectionBar .addButton {
   margin-top: 10px;
-}
-
-div.BudgetBar > .addButton {
-  margin-left: 10px;
-}
-
-div.BudgetBar > div > div > .addButton {
-  margin-left: 10px;
 }

@@ -6,6 +6,7 @@ export { default as InstitutionSpan } from "./InstitutionSpan";
 export { default as Header } from "./Header";
 export { default as BudgetsTable } from "./BudgetsTable";
 export { default as BudgetDetail } from "./BudgetDetail";
+export { default as BudgetBar } from "./BudgetBar";
 export { default as Graph } from "./Graph";
 export { default as Bar } from "./Bar";
 export { default as CapacityInput } from "./CapacityInput";

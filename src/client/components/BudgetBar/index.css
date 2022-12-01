@@ -1,0 +1,58 @@
+div.BudgetBar * {
+  overflow: hidden;
+  transition-duration: 300ms;
+}
+
+div.BudgetBar .infoText {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  color: #333;
+  position: relative;
+}
+
+div.BudgetBar .infoText > div > input {
+  font-size: 14px;
+  height: 17px;
+  width: 250px;
+}
+
+div.BudgetBar .budgetInfo {
+  padding: 10px;
+  position: relative;
+}
+
+div.BudgetBar .title {
+  display: flex;
+  justify-content: space-between;
+}
+
+div.BudgetBar .title > input {
+  width: 250px;
+}
+
+div.BudgetBar .title > .buttons {
+  width: 30px;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  position: relative;
+}
+
+div.BudgetBar .budgetInfo > .title > input,
+div.BudgetBar .budgetInfo > .title > span {
+  font-size: 20px;
+}
+
+div.BudgetBar .addButton {
+  margin-top: 10px;
+}
+
+div.BudgetBar > .addButton {
+  margin-left: 10px;
+}
+
+div.BudgetBar > div > div > .addButton {
+  margin-left: 10px;
+}

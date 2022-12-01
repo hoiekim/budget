@@ -22,21 +22,18 @@ const CategoryComponent = ({ category }: Props) => {
   const [isEditting, setIsEditting] = useState(!name);
 
   const capacity = capacities[selectedInterval] || 0;
+  const leftover = capacity - (amount || 0);
 
   const infoDivRef = useRef<HTMLDivElement>(null);
 
   const section = sections.get(section_id) as Section;
   const budget_id = section.budget_id;
-
   const budget = budgets.get(budget_id) as Budget;
-  const budgetCapacity = budget.capacities[selectedInterval] || 0;
 
-  const capacityRatio = capacity / budgetCapacity || 0;
   const currentRatio = (amount || 0) / capacity || 0;
 
-  const statusBarWidth = 30 + Math.pow(Math.min(capacityRatio, 1), 0.5) * 70;
-
   const onClickCategoryInfo = () => {
+    if (isEditting) return;
     const params = new URLSearchParams({ category_id });
     router.go(PATH.TRANSACTIONS, { params });
   };
@@ -125,23 +122,40 @@ const CategoryComponent = ({ category }: Props) => {
           </div>
         </div>
         <div className="statusBarWithText">
-          <Bar style={{ width: statusBarWidth + "%" }} ratio={currentRatio} />
+          <Bar ratio={currentRatio} />
           <div className="infoText">
-            <div>
-              <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <span className="currentTotal">{numberToCommaString(amount || 0)}</span>
-            </div>
-            <div>
-              <span>&nbsp;of {currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <CapacityInput
-                key={`${category_id}_${selectedInterval}`}
-                defaultValue={numberToCommaString(capacity)}
-                isEditting={isEditting}
-                submit={(value, onError) => {
-                  submit({ capacities: { [selectedInterval]: +value } }, onError);
-                }}
-              />
-            </div>
+            {!isEditting && (
+              <>
+                <div>
+                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                  <span className="currentTotal">{numberToCommaString(amount || 0)}</span>
+                  <span>&nbsp; spent</span>
+                </div>
+                <div>
+                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                  <span className="currentTotal">
+                    {numberToCommaString(Math.abs(leftover))}
+                  </span>
+                  <span>
+                    &nbsp;
+                    {leftover >= 0 ? "left" : "over"}
+                  </span>
+                </div>
+              </>
+            )}
+            {isEditting && (
+              <div>
+                <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                <CapacityInput
+                  key={`${category_id}_${selectedInterval}`}
+                  defaultValue={numberToCommaString(capacity)}
+                  isEditting={isEditting}
+                  submit={(value, onError) => {
+                    submit({ capacities: { [selectedInterval]: +value } }, onError);
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
