@@ -21,6 +21,7 @@ const BudgetBar = ({ budget }: Props) => {
   const [isEditting, setIsEditting] = useState(!name);
 
   const onClickBudgetInfo = () => {
+    if (isEditting) return;
     const params = new URLSearchParams({ budget_id });
     router.go(PATH.BUDGET_DETAIL, { params });
   };
