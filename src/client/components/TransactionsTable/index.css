@@ -59,7 +59,7 @@ div.TransactionsHead {
 }
 
 div.TransactionsHead > div {
-  margin: 3px;
+  margin: 3px 6px 3px 0;
 }
 
 div.TransactionsHead > .hiddenColumn > button {
