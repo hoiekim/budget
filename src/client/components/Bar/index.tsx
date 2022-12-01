@@ -1,5 +1,6 @@
 import { useState, useEffect, DetailedHTMLProps, HTMLAttributes, useRef } from "react";
 import { useAppContext } from "client";
+import "./index.css";
 
 type Props = { ratio: number; unlabledRatio?: number } & DetailedHTMLProps<
   HTMLAttributes<HTMLDivElement>,

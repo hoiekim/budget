@@ -27,7 +27,7 @@ const AccountsPage = () => {
     });
 
     return result;
-  }, [user, items]);
+  }, [user, items, accounts]);
 
   return (
     <div className="AccountsPage">

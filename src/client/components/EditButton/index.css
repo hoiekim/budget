@@ -1,0 +1,22 @@
+button.EditButton {
+  transition-duration: 150ms;
+  background-color: inherit;
+  font-size: 24px;
+  width: 24px;
+  height: 24px;
+  position: absolute;
+  padding: 0;
+  font-weight: bolder;
+}
+
+button.EditButton.edit {
+  transform: rotate(90deg);
+  top: calc(50% - 12px);
+  left: calc(50% - 11px);
+}
+
+button.EditButton.delete {
+  color: #f43;
+  top: calc(50% - 15px);
+  left: calc(50% - 14px);
+}

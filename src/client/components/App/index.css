@@ -40,7 +40,6 @@ a {
 }
 
 button:hover,
-input:hover:not(:focus),
 select:hover,
 a:hover {
   background-color: #ddd;
@@ -55,6 +54,11 @@ input {
   font-size: 16px;
   padding: 0;
   outline: 0;
+}
+
+input.readonly {
+  background-color: inherit;
+  cursor: default;
 }
 
 select {

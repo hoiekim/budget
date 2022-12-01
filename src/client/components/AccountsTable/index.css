@@ -37,3 +37,9 @@ div.AccountsHead > div {
 div.AccountsTable > div > button {
   margin-left: 10px;
 }
+
+div.AccountsTable .placeholder {
+  padding: 10px;
+  display: flex;
+  align-items: center;
+}

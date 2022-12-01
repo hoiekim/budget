@@ -1,7 +1,7 @@
-import { call, currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
-import { Bar, CapacityInput, EditButton, NameInput } from "./common";
+import { call, currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
+import { Bar, CapacityInput, EditButton, NameInput } from "client/components";
 import CategoryBar from "./CategoryBar";
 
 interface Props {

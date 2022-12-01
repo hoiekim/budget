@@ -55,7 +55,7 @@ const TransactionsPage = () => {
       filters.label.category_id = category_id;
     }
     return transactionsArray.filter((e) => isSubset(e, filters));
-  }, [transactionsArray, path, params, incomingParams]);
+  }, [transactionsArray, account_id, category_id]);
 
   const filteringAccount = accounts.get(account_id);
   const filteringCategory = categories.get(category_id);

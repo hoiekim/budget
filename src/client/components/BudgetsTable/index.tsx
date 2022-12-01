@@ -28,11 +28,16 @@ const Budgets = () => {
   };
 
   return (
-    <div className="Budgets BudgetBar">
+    <div className="BudgetsTable BudgetBar">
       {budgetBars}
       <div className="addButton">
         <button onClick={onClickAddBudget}>+</button>
       </div>
+      {!budgetBars.length && (
+        <div className="placeholder">
+          You don't have any budgets! Click this button to create one.
+        </div>
+      )}
     </div>
   );
 };

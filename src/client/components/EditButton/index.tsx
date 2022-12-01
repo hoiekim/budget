@@ -1,4 +1,5 @@
 import { MouseEventHandler } from "react";
+import "./index.css";
 
 interface Props {
   isEditting: boolean;
@@ -10,7 +11,7 @@ const EditButton = ({ isEditting, onEdit, onDelete }: Props) => {
   if (isEditting)
     return (
       <button
-        className="delete colored"
+        className="EditButton delete colored"
         onClick={(e) => {
           e.stopPropagation();
           onDelete(e);
@@ -21,7 +22,7 @@ const EditButton = ({ isEditting, onEdit, onDelete }: Props) => {
     );
   return (
     <button
-      className="edit"
+      className="EditButton edit"
       onClick={(e) => {
         e.stopPropagation();
         onEdit(e);

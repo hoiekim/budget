@@ -1,9 +1,8 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { Account } from "server";
 import { call, useAppContext, useSorter } from "client";
 import { PlaidLinkButton } from "client/components";
 import AccountRow from "./AccountRow";
-import AccountsHead from "./AccountsHead";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
   institution?: boolean;
@@ -57,24 +56,6 @@ const AccountsTable = ({ accountsArray }: Props) => {
     return <AccountRow key={e.account_id} account={e} sorter={sorter} />;
   });
 
-  const getHeader = useCallback((key: keyof AccountHeaders): string => {
-    if (key === "balances") {
-      return "Balances";
-    } else if (key === "custom_name") {
-      return "Name";
-    } else if (key === "official_name") {
-      return "Official Name";
-    } else if (key === "institution") {
-      return "Institution";
-    } else if (key === "budget") {
-      return "Default Budget";
-    } else if (key === "action") {
-      return "Action";
-    } else {
-      return key.toString();
-    }
-  }, []);
-
   const unhide = async () => {
     const newAccounts = new Map(accounts);
 
@@ -113,8 +94,14 @@ const AccountsTable = ({ accountsArray }: Props) => {
       </div>
       <div>
         <PlaidLinkButton>+</PlaidLinkButton>
-        <button onClick={unhide}>Unhide</button>
+        {!!accountRows.length && <button onClick={unhide}>Unhide</button>}
       </div>
+      {!accountRows.length && (
+        <div className="placeholder">
+          You don't have any connected accounts! Click this button to connect your
+          accounts.
+        </div>
+      )}
     </div>
   );
 };

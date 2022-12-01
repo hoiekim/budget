@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { Budget, DeepPartial } from "server";
 import {
   currencyCodeToSymbol,
   numberToCommaString,
@@ -6,8 +7,7 @@ import {
   useAppContext,
   PATH,
 } from "client";
-import { Budget, DeepPartial } from "server";
-import { Bar, CapacityInput, EditButton, NameInput } from "../BudgetDetail/common";
+import { Bar, CapacityInput, EditButton, NameInput } from "client/components";
 
 interface Props {
   budget: Budget & { amount?: number };

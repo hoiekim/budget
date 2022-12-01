@@ -2,56 +2,6 @@ div.BudgetBar * {
   overflow: hidden;
 }
 
-div.BudgetBar .Bar {
-  width: 100%;
-  height: 10px;
-  margin: 5px 0;
-  border-radius: 5px;
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  border-radius: 5px;
-  background-color: #d9d9d9;
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding > div {
-  transition: 1000ms;
-  height: 100%;
-  border-radius: 5px;
-  position: absolute;
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding > .numerator:not(.alert) {
-  background-color: #097;
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding > .numerator.alert {
-  background-color: #fcc;
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding > .unlabeledNumerator:not(.alert) {
-  background: repeating-linear-gradient(135deg, #097, #097 2px, #0000 2px, #0000 4px);
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding > .unlabeledNumerator.alert {
-  background-color: #fcc;
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding > .overflowedNumerator:not(.alert) {
-  background-color: #f43;
-}
-
-div.BudgetBar .Bar > .contentWithoutPadding > .overflowedNumerator.alert {
-  background-color: #902;
-}
-
-div.BudgetBar .Bar.income > .contentWithoutPadding > .numerator {
-  background: #8b2;
-}
-
 div.BudgetBar .infoText {
   display: flex;
   justify-content: left;
@@ -65,11 +15,6 @@ div.BudgetBar .infoText > div > input {
   font-size: 14px;
   height: 17px;
   width: 75px;
-}
-
-div.BudgetBar input.readonly {
-  background-color: inherit;
-  cursor: default;
 }
 
 div.BudgetBar .budgetInfo {
@@ -97,29 +42,6 @@ div.BudgetBar .title > .buttons {
   flex-direction: row-reverse;
   justify-content: space-between;
   position: relative;
-}
-
-div.BudgetBar .title > .buttons > button {
-  transition-duration: 150ms;
-  background-color: inherit;
-  font-size: 24px;
-  width: 24px;
-  height: 24px;
-  position: absolute;
-  padding: 0;
-  font-weight: bolder;
-}
-
-div.BudgetBar .title > .buttons > button.edit {
-  transform: rotate(90deg);
-  top: calc(50% - 12px);
-  left: calc(50% - 11px);
-}
-
-div.BudgetBar .title > .buttons > button.delete {
-  color: #f43;
-  top: calc(50% - 15px);
-  left: calc(50% - 14px);
 }
 
 div.BudgetBar .budgetInfo > .title > input,
@@ -151,35 +73,4 @@ div.BudgetBar > .addButton {
 
 div.BudgetBar > div > div > .addButton {
   margin-left: 10px;
-}
-
-div.TransactionsList > .TransactionItem {
-  display: flex;
-  justify-content: space-between;
-  margin: 10px 0;
-  padding: 5px 0 0;
-  border-top: 1px solid #ddd;
-}
-
-div.TransactionsList > .TransactionItem:last-child {
-  padding-bottom: 5px;
-  border-bottom: 1px solid #ddd;
-}
-
-div.TransactionsList > .TransactionItem > div:first-child {
-  width: 50px;
-}
-
-div.TransactionsList > .TransactionItem > div:nth-child(2) {
-  width: calc(100% - 130px);
-}
-
-div.TransactionsList > .TransactionItem > div:last-child {
-  width: 80px;
-  text-align: right;
-}
-
-div.TransactionsList .smallText {
-  font-size: 12px;
-  color: #888;
 }

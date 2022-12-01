@@ -1,7 +1,7 @@
 import { Transaction } from "server";
 import { Sorter } from "client";
 import { TransactionHeaders } from ".";
-import { CSSProperties, useMemo } from "react";
+import { CSSProperties } from "react";
 
 interface Props {
   sorter: Sorter<Transaction, TransactionHeaders>;

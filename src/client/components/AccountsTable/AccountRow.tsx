@@ -267,7 +267,11 @@ const AccountRow = ({ account, sorter }: Props) => {
       {getVisible("balances") && <div>{formattedBalancesText}</div>}
       {getVisible("custom_name") && (
         <div>
-          <input onChange={onChangeNameInput} value={nameInput} />
+          <input
+            onClick={(e) => e.stopPropagation()}
+            onChange={onChangeNameInput}
+            value={nameInput}
+          />
         </div>
       )}
       {getVisible("institution") && (

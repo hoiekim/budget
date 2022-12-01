@@ -7,3 +7,7 @@ export { default as Header } from "./Header";
 export { default as BudgetsTable } from "./BudgetsTable";
 export { default as BudgetDetail } from "./BudgetDetail";
 export { default as Graph } from "./Graph";
+export { default as Bar } from "./Bar";
+export { default as CapacityInput } from "./CapacityInput";
+export { default as NameInput } from "./NameInput";
+export { default as EditButton } from "./EditButton";

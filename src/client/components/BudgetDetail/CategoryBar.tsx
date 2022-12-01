@@ -1,3 +1,5 @@
+import { useState, useRef } from "react";
+import { Budget, Category, DeepPartial, Section } from "server";
 import {
   numberToCommaString,
   useAppContext,
@@ -5,9 +7,7 @@ import {
   call,
   PATH,
 } from "client";
-import { useState, useRef } from "react";
-import { Budget, Category, DeepPartial, Section } from "server";
-import { Bar, CapacityInput, EditButton, NameInput } from "./common";
+import { Bar, CapacityInput, EditButton, NameInput } from "client/components";
 
 interface Props {
   category: Category & { amount?: number };
