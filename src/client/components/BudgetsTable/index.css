@@ -3,3 +3,8 @@ div.BudgetsTable .placeholder {
   display: flex;
   align-items: center;
 }
+
+div.BudgetsTable > .addButton {
+  margin-top: 10px;
+  margin-left: 10px;
+}

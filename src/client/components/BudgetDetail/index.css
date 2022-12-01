@@ -6,6 +6,11 @@ div.BudgetDetail .unsortedButton > button {
   width: 100%;
 }
 
+div.BudgetDetail > div > div > .addButton {
+  margin-top: 10px;
+  margin-left: 10px;
+}
+
 div.SectionBar * {
   overflow: hidden;
   transition-duration: 300ms;

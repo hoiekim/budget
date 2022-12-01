@@ -44,15 +44,3 @@ div.BudgetBar .budgetInfo > .title > input,
 div.BudgetBar .budgetInfo > .title > span {
   font-size: 20px;
 }
-
-div.BudgetBar .addButton {
-  margin-top: 10px;
-}
-
-div.BudgetBar > .addButton {
-  margin-left: 10px;
-}
-
-div.BudgetBar > div > div > .addButton {
-  margin-left: 10px;
-}
