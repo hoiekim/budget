@@ -44,8 +44,10 @@ const BudgetDetail = ({ budget }: Props) => {
     });
   };
 
-  const onClickUnsorted = () =>
-    router.go(PATH.TRANSACTIONS, { params: new URLSearchParams({ option: "unsorted" }) });
+  const onClickUnsorted = () => {
+    const params = new URLSearchParams({ option: "unsorted", budget_id });
+    router.go(PATH.TRANSACTIONS, { params });
+  };
 
   return (
     <div className="BudgetDetail">

@@ -29,6 +29,7 @@ const Header = () => {
   type NavigatorProps = { target: PATH; children: ReactNode };
   const Navigator = ({ target, children }: NavigatorProps) => (
     <a
+      className={path === target ? "selected" : undefined}
       href={target}
       onClick={(e) => {
         e.preventDefault();

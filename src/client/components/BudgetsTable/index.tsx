@@ -28,7 +28,7 @@ const BudgetsTable = () => {
   };
 
   return (
-    <div className="BudgetsTable BudgetBar">
+    <div className="BudgetsTable">
       {budgetBars}
       <div className="addButton">
         <button onClick={onClickAddBudget}>+</button>

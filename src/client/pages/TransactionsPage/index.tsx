@@ -6,6 +6,7 @@ import "./index.css";
 
 export interface TransactionsPageParams {
   option?: "unsorted" | "income";
+  budget_id?: string;
   account_id?: string;
   category_id?: string;
 }
@@ -17,14 +18,17 @@ const TransactionsPage = () => {
 
   let option: string;
   let account_id: string;
+  let budget_id: string;
   let category_id: string;
   if (path === PATH.TRANSACTIONS) {
     option = params.get("option") || "all";
     account_id = params.get("account_id") || "";
+    budget_id = params.get("budget_id") || "";
     category_id = params.get("category_id") || "";
   } else {
     option = incomingParams.get("option") || "all";
     account_id = incomingParams.get("account_id") || "";
+    budget_id = incomingParams.get("budget_id") || "";
     category_id = incomingParams.get("category_id") || "";
   }
 
@@ -51,6 +55,10 @@ const TransactionsPage = () => {
   const filteredTransactions = useMemo(() => {
     const filters: Partial<Transaction> = {};
     if (account_id) filters.account_id = account_id;
+    if (budget_id) {
+      if (!filters.label) filters.label = {};
+      filters.label.budget_id = budget_id;
+    }
     if (category_id) {
       if (!filters.label) filters.label = {};
       filters.label.category_id = category_id;

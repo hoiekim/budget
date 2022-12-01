@@ -63,6 +63,7 @@ const SectionBar = ({ section }: Props) => {
   };
 
   const onClickSectionInfo = () => {
+    if (isEditting) return;
     if (isCategoryOpen) setIsCategoryOpen(false);
     else openCategory();
   };
