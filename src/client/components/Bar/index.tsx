@@ -17,8 +17,8 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
 
   useEffect(() => {
     if (!transitioning) {
-      setNumeratorWidth(ratio * 100);
-      setUnlabeledNumeratorWidth((unlabledRatio || 0) * 100);
+      setNumeratorWidth(Math.min(1, ratio) * 100);
+      setUnlabeledNumeratorWidth(Math.min(1, unlabledRatio || 0) * 100);
     }
     return () => {
       setNumeratorWidth(0);

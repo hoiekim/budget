@@ -63,8 +63,14 @@ const TransactionsPage = () => {
       if (!filters.label) filters.label = {};
       filters.label.category_id = category_id;
     }
-    return transactionsArray.filter((e) => isSubset(e, filters));
-  }, [transactionsArray, account_id, budget_id, category_id]);
+    return transactionsArray.filter((e) => {
+      if (!e.label.budget_id) {
+        const account = accounts.get(e.account_id);
+        if (account?.label.budget_id === budget_id) return true;
+      }
+      return isSubset(e, filters);
+    });
+  }, [transactionsArray, accounts, account_id, budget_id, category_id]);
 
   const filteringAccount = accounts.get(account_id);
   const filteringCategory = categories.get(category_id);
