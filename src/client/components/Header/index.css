@@ -1,12 +1,6 @@
-div.Header {
-  z-index: 800;
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-}
 div.Header * {
   white-space: nowrap;
+  font-size: 14px;
 }
 
 div.Header select,
@@ -28,32 +22,44 @@ div.Header select > option {
 }
 
 div.Header > .viewController {
+  z-index: 800;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
   height: 50px;
   background-color: #eee;
-  max-width: 1050px;
   margin: auto;
   padding: 0 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 50px;
 }
 
-div.Header * {
-  font-size: 14px;
+div.Header > .viewController > .centerBox {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-div.Header > .viewController > div > div {
+div.Header > .viewController > .centerBox,
+div.Header > .navigators > .centerBox {
+  margin: 0 auto;
+  max-width: 950px;
+  width: 100%;
+}
+
+div.Header > .viewController > div > div > div {
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
-div.Header > .viewController > .backButton {
+div.Header > .viewController > div > .backButton {
   width: 25px;
 }
 
-div.Header > .viewController > .backButton > button {
+div.Header > .viewController > div > .backButton > button {
   font-size: 20px;
 }
 
@@ -62,17 +68,17 @@ div.Header > .viewController select.intervalSelect {
   max-width: 130px;
 }
 
-div.Header > .viewController > .hamburger {
+div.Header > .viewController > div > .hamburger {
   position: relative;
   top: -4px;
 }
 
-div.Header > .viewController > .hamburger > button {
+div.Header > .viewController > div > .hamburger > button {
   font-size: 40px;
   height: auto;
 }
 
-div.Header > .viewController > .hamburger > .fadeCover {
+div.Header > .viewController > div > .hamburger > .fadeCover {
   position: fixed;
   top: 0;
   left: 0;
@@ -83,7 +89,7 @@ div.Header > .viewController > .hamburger > .fadeCover {
   opacity: 0.5;
 }
 
-div.Header > .viewController > .hamburger > .menu {
+div.Header > .viewController > div > .hamburger > .menu {
   position: absolute;
   right: 0;
   top: 10px;
@@ -96,17 +102,21 @@ div.Header > .viewController > .hamburger > .menu {
   z-index: 820;
 }
 
-div.Header .menu > button {
+div.Header > .viewController > div > .hamburger > .menu > button {
   width: 100%;
   height: 30px;
   border-top: 1px solid #ddd;
 }
 
-div.Header .menu > button:last-child {
+div.Header > .viewController > div > .hamburger > .menu > button:last-child {
   border-bottom: 1px solid #ddd;
 }
 
 div.Header > .navigators {
+  z-index: 800;
+  position: fixed;
+  bottom: 0;
+  left: 0;
   box-shadow: 0px -20px 20px #fff;
   bottom: env(safe-area-inset-bottom);
   display: flex;
@@ -114,16 +124,23 @@ div.Header > .navigators {
   background-color: #eee;
   position: fixed;
   width: 100%;
-  height: 60px;
+  padding: 0 10px;
 }
 
-div.Header > .navigators > a {
+div.Header > .navigators > .centerBox {
+  display: flex;
+  justify-content: space-around;
+}
+
+div.Header > .navigators > div > a {
   flex: 1;
   padding: 10px;
   height: 40px;
   text-align: center;
+  border-bottom-right-radius: 10px;
+  border-bottom-left-radius: 10px;
 }
 
-div.Header > .navigators > a.selected {
+div.Header > .navigators > div > a.selected {
   background-color: #fff;
 }

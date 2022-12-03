@@ -3,6 +3,9 @@ import { useAppContext, useSync, call, PATH } from "client";
 import { Interval } from "server";
 import "./index.css";
 
+const { innerHeight, innerWidth } = window;
+const navigatorsHeight = innerHeight / innerWidth > 2 ? 80 : 60;
+
 const Header = () => {
   const {
     user,
@@ -74,50 +77,54 @@ const Header = () => {
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
-        <div className="backButton">
-          <button onClick={onClickBack} disabled={isBackButtonDisabled}>
-            {isBackButtonDisabled ? "" : "←"}
-          </button>
-        </div>
-        <div>
-          <button onClick={onClickPreviousView}>
-            <b>〈</b>
-          </button>
-          <select
-            className="intervalSelect"
-            value={selectedInterval}
-            onChange={(e) => {
-              const value = e.target.value as Interval;
-              setSelectedInterval(value);
-            }}
-          >
-            <option value="year">{getIntervalOptionText("year", "Yearly")}</option>
-            <option value="month">{getIntervalOptionText("month", "Monthly")}</option>
-            <option value="week">{getIntervalOptionText("week", "Weekly")}</option>
-            <option value="day">{getIntervalOptionText("day", "Daily")}</option>
-          </select>
-          <button onClick={onClickNextView}>
-            <b>〉</b>
-          </button>
-        </div>
-        <div className="hamburger">
-          <button onClick={() => setIsHamburgerOpen((s) => !s)}>≡</button>
-          {isHamburgerOpen && (
-            <>
-              <div className="fadeCover" onClick={() => setIsHamburgerOpen(false)} />
-              <div className="menu" onMouseLeave={() => setIsHamburgerOpen(false)}>
-                <button disabled={!user} onClick={logout}>
-                  Logout
-                </button>
-              </div>
-            </>
-          )}
+        <div className="centerBox">
+          <div className="backButton">
+            <button onClick={onClickBack} disabled={isBackButtonDisabled}>
+              {isBackButtonDisabled ? "" : "←"}
+            </button>
+          </div>
+          <div>
+            <button onClick={onClickPreviousView}>
+              <b>&nbsp;〈&nbsp;&nbsp;</b>
+            </button>
+            <select
+              className="intervalSelect"
+              value={selectedInterval}
+              onChange={(e) => {
+                const value = e.target.value as Interval;
+                setSelectedInterval(value);
+              }}
+            >
+              <option value="year">{getIntervalOptionText("year", "Yearly")}</option>
+              <option value="month">{getIntervalOptionText("month", "Monthly")}</option>
+              <option value="week">{getIntervalOptionText("week", "Weekly")}</option>
+              <option value="day">{getIntervalOptionText("day", "Daily")}</option>
+            </select>
+            <button onClick={onClickNextView}>
+              <b>&nbsp;&nbsp;〉&nbsp;</b>
+            </button>
+          </div>
+          <div className="hamburger">
+            <button onClick={() => setIsHamburgerOpen((s) => !s)}>≡</button>
+            {isHamburgerOpen && (
+              <>
+                <div className="fadeCover" onClick={() => setIsHamburgerOpen(false)} />
+                <div className="menu" onMouseLeave={() => setIsHamburgerOpen(false)}>
+                  <button disabled={!user} onClick={logout}>
+                    Logout
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-      <div className="navigators">
-        <Navigator target={BUDGETS}>Budget</Navigator>
-        <Navigator target={ACCOUNTS}>Accounts</Navigator>
-        <Navigator target={TRANSACTIONS}>Transactions</Navigator>
+      <div className="navigators" style={{ height: navigatorsHeight }}>
+        <div className="centerBox">
+          <Navigator target={BUDGETS}>Budget</Navigator>
+          <Navigator target={ACCOUNTS}>Accounts</Navigator>
+          <Navigator target={TRANSACTIONS}>Transactions</Navigator>
+        </div>
       </div>
     </div>
   );

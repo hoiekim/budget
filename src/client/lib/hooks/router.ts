@@ -75,7 +75,7 @@ export const useRouter = (): ClientRouter => {
       isAnimationEnabled.current = false;
     };
 
-    if (window.innerWidth < 1050 && isAnimationEnabled.current) {
+    if (window.innerWidth < 950 && isAnimationEnabled.current) {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(endTransition, DEFAULT_TRANSITION_DURATION);
     } else {
