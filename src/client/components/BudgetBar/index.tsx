@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useMemo, useRef, useState } from "react";
 import { Budget, DeepPartial } from "server";
 import {
   currencyCodeToSymbol,
@@ -12,16 +12,35 @@ import "./index.css";
 
 interface Props {
   budget: Budget & { amount?: number };
+  editingBudgetIdState?: [string | null, Dispatch<SetStateAction<string | null>>];
 }
 
-const BudgetBar = ({ budget }: Props) => {
+const BudgetBar = ({ budget, editingBudgetIdState }: Props) => {
   const { selectedInterval, setBudgets, transactions, accounts, viewDate, router } =
     useAppContext();
   const { budget_id, name, capacities, iso_currency_code, amount } = budget;
-  const [isEditting, setIsEditting] = useState(!name);
+
+  const [_isEditingThis, _setIsEditingThis] = useState(false);
+
+  const isEditingThis =
+    editingBudgetIdState === undefined
+      ? _isEditingThis
+      : editingBudgetIdState[0] === budget_id;
+
+  const isEditingAny = editingBudgetIdState && !!editingBudgetIdState[0];
+
+  const startEditingThis = () => {
+    if (editingBudgetIdState === undefined) _setIsEditingThis(true);
+    else editingBudgetIdState[1](budget_id);
+  };
+
+  const finishEditingThis = () => {
+    if (editingBudgetIdState === undefined) _setIsEditingThis(false);
+    else editingBudgetIdState[1](null);
+  };
 
   const onClickBudgetInfo = () => {
-    if (isEditting) return;
+    if (isEditingThis || isEditingAny) return;
     const params = new URLSearchParams({ budget_id });
     router.go(PATH.BUDGET_DETAIL, { params });
   };
@@ -96,24 +115,24 @@ const BudgetBar = ({ budget }: Props) => {
     <div className="BudgetBar">
       <div
         className="budgetInfo"
-        onMouseLeave={() => setIsEditting(false)}
+        onMouseLeave={() => finishEditingThis()}
         onClick={() => {
-          setIsEditting(false);
+          finishEditingThis();
           onClickBudgetInfo();
         }}
       >
         <div className="title">
           <NameInput
             defaultValue={name}
-            isEditting={isEditting}
+            isEditting={isEditingThis}
             submit={(value, onError) => {
               submit({ name: value }, onError);
             }}
           />
           <div className="buttons">
             <EditButton
-              isEditting={isEditting}
-              onEdit={() => setIsEditting((s) => !s)}
+              isEditting={isEditingThis}
+              onEdit={() => startEditingThis()}
               onDelete={onDelete}
             />
           </div>
@@ -121,12 +140,12 @@ const BudgetBar = ({ budget }: Props) => {
         <div className="statusBarWithText">
           <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} />
           <div className="infoText">
-            {!isEditting && (
+            {!isEditingThis && (
               <>
                 <div>
                   <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
                   <span className="currentTotal">
-                    {numberToCommaString(amount || 0 + unlabeledTotal)}
+                    {numberToCommaString((amount || 0) + unlabeledTotal)}
                   </span>
                   <span>&nbsp; spent</span>
                 </div>
@@ -142,13 +161,13 @@ const BudgetBar = ({ budget }: Props) => {
                 </div>
               </>
             )}
-            {isEditting && (
+            {isEditingThis && (
               <div>
                 <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
                 <CapacityInput
                   key={`${budget_id}_${selectedInterval}`}
                   defaultValue={numberToCommaString(capacity)}
-                  isEditting={isEditting}
+                  isEditting={isEditingThis}
                   submit={(value, onError) => {
                     submit({ capacities: { [selectedInterval]: +value } }, onError);
                   }}

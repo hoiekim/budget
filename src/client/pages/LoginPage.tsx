@@ -4,10 +4,11 @@ import { useAppContext, call, PATH } from "client";
 
 const LoginPage = () => {
   const { user, setUser, router } = useAppContext();
+  const { path, go } = router;
 
   useEffect(() => {
-    if (user && router) router.go(PATH.BUDGETS);
-  }, [user, router]);
+    if (user && path === PATH.LOGIN) go(PATH.BUDGETS);
+  }, [user, path, go]);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -22,36 +23,25 @@ const LoginPage = () => {
     });
   };
 
-  if (!user) {
-    return (
-      <div className="Login">
-        <div>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            onKeyUp={(e) => e.key === "Enter" && onClick()}
-          ></input>
-        </div>
-        <div>
-          <input
-            value={password}
-            type="password"
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyUp={(e) => e.key === "Enter" && onClick()}
-          ></input>
-        </div>
-        <div>
-          <button onClick={onClick}>Login</button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="LoginPage">
       <div>
-        <span>{user.username} is logged in</span>
-        <button onClick={onClick}>Logout</button>
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          onKeyUp={(e) => e.key === "Enter" && onClick()}
+        ></input>
+      </div>
+      <div>
+        <input
+          value={password}
+          type="password"
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyUp={(e) => e.key === "Enter" && onClick()}
+        ></input>
+      </div>
+      <div>
+        <button onClick={onClick}>Login</button>
       </div>
     </div>
   );

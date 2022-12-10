@@ -54,7 +54,7 @@ input {
   border: none;
   height: 24px;
   font-size: 16px;
-  padding: 0;
+  padding: 0 5px;
   outline: 0;
 }
 
@@ -82,11 +82,11 @@ div#root {
   background-color: #fff;
 }
 
-div.Login {
+div.LoginPage {
   padding-top: 100px;
 }
 
-div.Login > div {
+div.LoginPage > div {
   text-align: center;
   margin: 10px 0;
 }
