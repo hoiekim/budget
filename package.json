@@ -14,12 +14,14 @@
   },
   "scripts": {
     "start": "npm run build && npm run start-server",
-    "start-server": "node ./build/server/index.js",
+    "start-server": "node ./build/server/bundle.js",
     "build": "npm run build-server && npm run build-client",
     "build-client": "react-scripts build",
-    "build-server": "tsc -p ./tsconfig.server.json",
+    "build-server": "npm run ts-compile-server && npm run webpack-server",
+    "webpack-server": "node ./build/server/server/pack.js",
+    "ts-compile-server": "tsc -p ./tsconfig.server.json",
     "dev-client": "react-scripts start",
-    "dev-server": "nodemon ./src/server/index.ts",
+    "dev-server": "nodemon ./src/server/start.ts",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -42,7 +44,7 @@
     ]
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^5.16.4",
+    "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.2.0",
     "@testing-library/user-event": "^13.5.0",
     "@types/bcrypt": "^5.0.0",
@@ -51,9 +53,12 @@
     "@types/node": "^16.11.36",
     "@types/react": "^18.0.9",
     "@types/react-dom": "^18.0.4",
-    "nodemon": "^2.0.16",
+    "@types/webpack-node-externals": "^2.5.3",
+    "nodemon": "^2.0.20",
     "ts-node": "^10.4.0",
-    "typescript": "^4.6.4"
+    "typescript": "^4.6.4",
+    "webpack": "^5.72.1",
+    "webpack-node-externals": "^3.0.0"
   },
   "proxy": "http://localhost:3005"
 }

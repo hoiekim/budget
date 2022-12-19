@@ -53,12 +53,12 @@ const CapacityInput = (props: Props) => {
       onFocus={(e) => {
         const { target } = e;
         if (!isEditting) return target.blur();
-        setValue(target.value.replaceAll(",", ""));
+        setValue(target.value.replace(/,/g, ""));
         if (onFocus) onFocus(e);
       }}
       onBlur={(e) => {
         const { value } = e.target;
-        const numberizedValue = +value.replaceAll(",", "") || 0;
+        const numberizedValue = +value.replace(/,/g, "") || 0;
         const commaString = numberToCommaString(numberizedValue);
         setValue(commaString);
         if (onBlur) onBlur(e);

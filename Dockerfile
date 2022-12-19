@@ -21,4 +21,4 @@ WORKDIR /app
 COPY --from=BUILDER /app/build ./build
 COPY --from=BUILDER /app/node_modules ./node_modules
 
-CMD ["node", "./build/server/index.js"]
+CMD ["node", "./build/server/bundle.js"]
