@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction } from "react";
 import { Budget, Category, DeepPartial, Section } from "server";
-import { useAppContext, call, PATH } from "client";
+import { useAppContext, call, PATH, TransactionsPageParams } from "client";
 import { LabeledBar } from "client/components";
 
 interface Props {
@@ -18,7 +18,8 @@ const CategoryComponent = ({ category, editingState }: Props) => {
   const budget = budgets.get(budget_id) as Budget;
 
   const onClickInfo = () => {
-    const params = new URLSearchParams({ category_id });
+    const paramObj: TransactionsPageParams = { category_id };
+    const params = new URLSearchParams(paramObj);
     router.go(PATH.TRANSACTIONS, { params });
   };
 
@@ -73,8 +74,8 @@ const CategoryComponent = ({ category, editingState }: Props) => {
   return (
     <div className="CategoryBar">
       <LabeledBar
-        dataId={section_id}
-        data={section}
+        dataId={category_id}
+        data={category}
         iso_currency_code={iso_currency_code}
         onSubmit={onSubmit}
         onDelete={onDelete}

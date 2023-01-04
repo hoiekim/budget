@@ -6,9 +6,8 @@ div.BudgetDetail .unsortedButton > button {
   width: 100%;
 }
 
-div.BudgetDetail > div > div > .addButton {
-  margin-top: 10px;
-  margin-left: 10px;
+div.BudgetDetail .addButton {
+  margin: 10px 10px;
 }
 
 div.SectionBar * {
@@ -17,14 +16,6 @@ div.SectionBar * {
 }
 
 div.SectionBar {
-  padding: 20px 0px;
+  padding: 10px 0px;
   border-bottom: 1px solid #ccc;
-}
-
-div.SectionBar > .children > div > .addButton {
-  padding: 0 10px;
-}
-
-div.SectionBar > .children > div > div {
-  margin-top: 10px;
 }

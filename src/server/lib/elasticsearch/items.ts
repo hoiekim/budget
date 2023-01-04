@@ -76,7 +76,7 @@ export const searchItems = async (user: MaskedUser) => {
   return response.hits.hits
     .map((e) => {
       const source = e._source;
-      if (!source) return;
+      if (!source) return null;
       return { ...source.item, item_id: e._id };
     })
     .filter((e) => e) as Item[];

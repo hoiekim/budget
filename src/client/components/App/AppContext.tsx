@@ -36,7 +36,6 @@ const AppContext = ({ initialUser, children }: Props) => {
   const [categories, setCategories] = useState<Categories>(new Map());
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
 
-  const [selectedBudgetId, setSelectedBudgetId] = useLocalStorage("selectedBudgetId", "");
   const [selectedInterval, setSelectedInterval] = useLocalStorage<Interval>(
     "selectedInterval",
     "month"
@@ -66,8 +65,6 @@ const AppContext = ({ initialUser, children }: Props) => {
     setSections,
     categories,
     setCategories,
-    selectedBudgetId,
-    setSelectedBudgetId,
     selectedInterval,
     setSelectedInterval,
     viewDate,

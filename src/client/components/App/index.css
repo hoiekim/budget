@@ -111,7 +111,7 @@ div.Router > div {
   min-height: 100vh;
   background-color: #fff;
   padding: calc(50px + env(safe-area-inset-top)) env(safe-area-inset-right)
-    calc(90px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+    calc(110px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
 }
 
 div.Router > div.previousPage {

@@ -1,8 +1,7 @@
-import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
 import { call, useAppContext } from "client";
-import { LabeledBar } from "client/components";
-import CategoryBar from "./CategoryBar";
+import { LabeledBar, CategoryBar } from "client/components";
 
 interface Props {
   section: Section & { sorted_amount?: number };
@@ -35,16 +34,13 @@ const SectionBar = ({ section, editingState }: Props) => {
     };
   }, []);
 
-  const categoryComponents = useMemo(() => {
-    const components: JSX.Element[] = [];
-    categories.forEach((e) => {
-      if (e.section_id !== section_id) return;
-      components.push(
-        <CategoryBar key={e.category_id} category={e} editingState={editingState} />
-      );
-    });
-    return components;
-  }, [categories, section_id]);
+  const categoryComponents: JSX.Element[] = [];
+  categories.forEach((e) => {
+    if (e.section_id !== section_id) return;
+    categoryComponents.push(
+      <CategoryBar key={e.category_id} category={e} editingState={editingState} />
+    );
+  });
 
   const budget = budgets.get(budget_id) as Budget;
   const { iso_currency_code } = budget;

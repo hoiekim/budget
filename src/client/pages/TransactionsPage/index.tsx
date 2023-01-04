@@ -4,12 +4,12 @@ import { TransactionsTable } from "client/components";
 import { Transaction } from "server";
 import "./index.css";
 
-export interface TransactionsPageParams {
+export type TransactionsPageParams = {
   option?: "unsorted" | "income";
   budget_id?: string;
   account_id?: string;
   category_id?: string;
-}
+};
 
 const TransactionsPage = () => {
   const { transactions, accounts, categories, viewDate, router } = useAppContext();

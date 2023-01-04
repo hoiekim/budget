@@ -1,0 +1,11 @@
+:root {
+  --safeAreaInsetTop: env(safe-area-inset-top);
+  --safeAreaInsetRight: env(safe-area-inset-right);
+  --safeAreaInsetBottom: env(safe-area-inset-bottom);
+  --safeAreaInsetLeft: env(safe-area-inset-left);
+
+  --headerHeight: 50px;
+  --navigatorHeight: 80px;
+  --edgeSpace: 10px;
+  --maxWidth: 950px;
+}

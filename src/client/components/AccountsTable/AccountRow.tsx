@@ -7,7 +7,14 @@ import {
   useMemo,
 } from "react";
 import { Account, InvestmentTransaction, Transaction } from "server";
-import { call, Sorter, useAppContext, numberToCommaString, PATH } from "client";
+import {
+  call,
+  Sorter,
+  useAppContext,
+  numberToCommaString,
+  PATH,
+  TransactionsPageParams,
+} from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
 import { Point, GraphData } from "client/components/Graph";
 import { AccountHeaders } from ".";
@@ -258,7 +265,8 @@ const AccountRow = ({ account, sorter }: Props) => {
   ]);
 
   const onClickAccount = () => {
-    const params = new URLSearchParams({ account_id });
+    const paramObj: TransactionsPageParams = { account_id };
+    const params = new URLSearchParams(paramObj);
     router.go(PATH.TRANSACTIONS, { params });
   };
 

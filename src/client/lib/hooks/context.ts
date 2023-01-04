@@ -48,8 +48,6 @@ export interface ContextType {
   setSections: Dispatch<SetStateAction<Sections>>;
   categories: Categories;
   setCategories: Dispatch<SetStateAction<Categories>>;
-  selectedBudgetId: string;
-  setSelectedBudgetId: Dispatch<SetStateAction<string>>;
   selectedInterval: Interval;
   setSelectedInterval: Dispatch<SetStateAction<Interval>>;
   viewDate: ViewDate;

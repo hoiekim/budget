@@ -1,10 +1,9 @@
 import { Dispatch, SetStateAction } from "react";
 import { Budget, DeepPartial } from "server";
-import { call, useAppContext, PATH } from "client";
+import { call, useAppContext, PATH, BudgetDetailPageParams } from "client";
 import { LabeledBar } from "client/components";
 
 const { BUDGET_DETAIL } = PATH;
-
 interface Props {
   budget: Budget;
   editingState?: [string | null, Dispatch<SetStateAction<string | null>>];
@@ -18,7 +17,8 @@ const BudgetBar = ({ budget, editingState }: Props) => {
 
   const onClickInfo = () => {
     if (path === BUDGET_DETAIL) return;
-    const params = new URLSearchParams({ budget_id });
+    const paramObj: BudgetDetailPageParams = { budget_id };
+    const params = new URLSearchParams(paramObj);
     go(BUDGET_DETAIL, { params });
   };
 

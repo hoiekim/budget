@@ -5,6 +5,7 @@ import Router from "./Router";
 import AppContext from "./AppContext";
 import ColorSchemeCover from "./ColorSchemeCover";
 import "./index.css";
+import "./variables.css";
 
 interface Props {
   initialUser: ContextType["user"];

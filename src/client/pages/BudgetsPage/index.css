@@ -14,6 +14,5 @@ div.BudgetsPage > h2 {
 }
 
 div.BudgetsPage > div.budgetsTable > .addButton {
-  margin-top: 10px;
-  margin-left: 10px;
+  margin: 10px 10px;
 }
