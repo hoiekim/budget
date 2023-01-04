@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Budget, NewSectionGetResponse } from "server";
 import { useAppContext, call, PATH } from "client";
 import { BudgetBar } from "client/components";
@@ -12,12 +12,15 @@ interface Props {
 const BudgetDetail = ({ budget }: Props) => {
   const { budget_id } = budget;
   const { sections, setSections, router } = useAppContext();
+  const editingState = useState<string | null>(null);
 
   const sectionComponents = useMemo(() => {
     const components: JSX.Element[] = [];
     sections.forEach((e) => {
       if (e.budget_id !== budget_id) return;
-      const component = <SectionBar key={e.section_id} section={e} />;
+      const component = (
+        <SectionBar key={e.section_id} section={e} editingState={editingState} />
+      );
       components.push(component);
     });
     return components;
@@ -51,7 +54,7 @@ const BudgetDetail = ({ budget }: Props) => {
 
   return (
     <div className="BudgetDetail">
-      <BudgetBar budget={budget} />
+      <BudgetBar budget={budget} editingState={editingState} />
       <div className="unsortedButton">
         <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
       </div>

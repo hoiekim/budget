@@ -6,16 +6,10 @@ import "./index.css";
 
 const BudgetsPage = () => {
   const { budgets, setBudgets } = useAppContext();
-  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
+  const editingState = useState<string | null>(null);
 
   const budgetBars = Array.from(budgets).map(([budget_id, budget]) => {
-    return (
-      <BudgetBar
-        key={budget_id}
-        budget={budget}
-        editingState={[editingBudgetId, setEditingBudgetId]}
-      />
-    );
+    return <BudgetBar key={budget_id} budget={budget} editingState={editingState} />;
   });
 
   const onClickAddBudget = async () => {

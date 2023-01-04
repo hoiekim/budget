@@ -39,21 +39,25 @@ const LabeledBar = ({
   const [_isEditingThis, _setIsEditingThis] = useState(false);
   const [_editingDataId, _setEditingDataId] = editingState || [];
 
-  const isEditingThis = _editingDataId ? _editingDataId === dataId : _isEditingThis;
+  const isEditingThis = editingState ? _editingDataId === dataId : _isEditingThis;
   const isEditingAny = editingState && !!_editingDataId;
 
   const startEditingThis = () => {
-    if (_setEditingDataId) _setEditingDataId(dataId);
+    if (editingState && _setEditingDataId) _setEditingDataId(dataId);
     else _setIsEditingThis(true);
   };
 
   const finishEditingThis = () => {
-    if (_setEditingDataId) _setEditingDataId(null);
+    if (editingState && _setEditingDataId) _setEditingDataId(null);
     else _setIsEditingThis(false);
   };
 
   const _onClickInfo = () => {
-    if (isEditingThis || isEditingAny) return;
+    if (isEditingThis) return;
+    if (isEditingAny && _setEditingDataId) {
+      _setEditingDataId(null);
+      return;
+    }
     onClickInfo();
   };
 

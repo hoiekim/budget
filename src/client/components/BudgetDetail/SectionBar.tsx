@@ -39,8 +39,9 @@ const SectionBar = ({ section, editingState }: Props) => {
     const components: JSX.Element[] = [];
     categories.forEach((e) => {
       if (e.section_id !== section_id) return;
-      const component = <CategoryBar key={e.category_id} category={e} />;
-      components.push(component);
+      components.push(
+        <CategoryBar key={e.category_id} category={e} editingState={editingState} />
+      );
     });
     return components;
   }, [categories, section_id]);
