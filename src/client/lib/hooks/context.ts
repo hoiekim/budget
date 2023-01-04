@@ -19,9 +19,14 @@ export type Accounts = Map<string | undefined, Account>;
 export type Institutions = Map<string | undefined, Institution>;
 export type Items = Map<string, Item>;
 
-export type Budgets = Map<string, Budget & { amount?: number }>;
-export type Sections = Map<string, Section & { amount?: number }>;
-export type Categories = Map<string, Category & { amount?: number }>;
+export type CalculatedProperties = {
+  sorted_amount?: number;
+  unsorted_amount?: number;
+};
+
+export type Budgets = Map<string, Budget & CalculatedProperties>;
+export type Sections = Map<string, Section & CalculatedProperties>;
+export type Categories = Map<string, Category & CalculatedProperties>;
 
 export interface ContextType {
   transactions: Transactions;

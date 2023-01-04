@@ -1,9 +1,14 @@
-div.BudgetBar * {
+div.LabeledBar {
+  padding: 10px;
+  position: relative;
+}
+
+div.LabeledBar * {
   overflow: hidden;
   transition-duration: 300ms;
 }
 
-div.BudgetBar .infoText {
+div.LabeledBar .infoText {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -12,27 +17,22 @@ div.BudgetBar .infoText {
   position: relative;
 }
 
-div.BudgetBar .infoText > div > input {
+div.LabeledBar .infoText > div > input {
   font-size: 14px;
   height: 17px;
   width: 250px;
 }
 
-div.BudgetBar .budgetInfo {
-  padding: 10px;
-  position: relative;
-}
-
-div.BudgetBar .title {
+div.LabeledBar .title {
   display: flex;
   justify-content: space-between;
 }
 
-div.BudgetBar .title > input {
+div.LabeledBar .title > input {
   width: 250px;
 }
 
-div.BudgetBar .title > .buttons {
+div.LabeledBar .title > .buttons {
   width: 30px;
   display: flex;
   flex-direction: row-reverse;
@@ -40,7 +40,7 @@ div.BudgetBar .title > .buttons {
   position: relative;
 }
 
-div.BudgetBar .budgetInfo > .title > input,
-div.BudgetBar .budgetInfo > .title > span {
+div.LabeledBar > .title > input,
+div.LabeledBar > .title > span {
   font-size: 20px;
 }

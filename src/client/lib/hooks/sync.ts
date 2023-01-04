@@ -129,8 +129,9 @@ export const useSync = () => {
         budgets.forEach((e) => {
           const { budget_id } = e;
           const oldBudget = oldBudgets.get(budget_id);
-          const amount = oldBudget?.amount;
-          newBudgets.set(budget_id, { ...e, amount });
+          const sorted_amount = oldBudget?.sorted_amount;
+          const unsorted_amount = oldBudget?.unsorted_amount;
+          newBudgets.set(budget_id, { ...e, sorted_amount, unsorted_amount });
         });
         return newBudgets;
       });
@@ -140,8 +141,8 @@ export const useSync = () => {
         sections.forEach((e) => {
           const { section_id } = e;
           const oldSection = oldSections.get(section_id);
-          const amount = oldSection?.amount;
-          newSections.set(section_id, { ...e, amount });
+          const sorted_amount = oldSection?.sorted_amount;
+          newSections.set(section_id, { ...e, sorted_amount });
         });
         return newSections;
       });
@@ -150,9 +151,9 @@ export const useSync = () => {
         const newCategories: Categories = new Map();
         categories.forEach((e) => {
           const { category_id } = e;
-          const oldCategorie = oldCategories.get(category_id);
-          const amount = oldCategorie?.amount;
-          newCategories.set(category_id, { ...e, amount });
+          const oldCategory = oldCategories.get(category_id);
+          const sorted_amount = oldCategory?.sorted_amount;
+          newCategories.set(category_id, { ...e, sorted_amount });
         });
         return newCategories;
       });

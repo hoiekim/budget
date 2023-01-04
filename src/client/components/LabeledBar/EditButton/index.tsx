@@ -2,13 +2,13 @@ import { MouseEventHandler } from "react";
 import "./index.css";
 
 interface Props {
-  isEditting: boolean;
+  isEditing: boolean;
   onEdit: MouseEventHandler<HTMLButtonElement>;
   onDelete: MouseEventHandler<HTMLButtonElement>;
 }
 
-const EditButton = ({ isEditting, onEdit, onDelete }: Props) => {
-  if (isEditting)
+const EditButton = ({ isEditing, onEdit, onDelete }: Props) => {
+  if (isEditing)
     return (
       <button
         className="EditButton delete colored"

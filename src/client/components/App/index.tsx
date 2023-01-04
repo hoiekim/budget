@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { ContextType } from "client";
 import { Header } from "client/components";
 import Utility from "./Utility";
@@ -16,9 +15,7 @@ const App = ({ initialUser }: Props) => {
     <AppContext initialUser={initialUser}>
       <Utility />
       <Header />
-      <Suspense fallback={<div className="loading">Loading...</div>}>
-        <Router />
-      </Suspense>
+      <Router />
       <ColorSchemeCover />
     </AppContext>
   );

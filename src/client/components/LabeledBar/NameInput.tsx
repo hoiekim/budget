@@ -1,19 +1,19 @@
 import { DetailedHTMLProps, HTMLAttributes, useState, useEffect, useRef } from "react";
 
 type Props = {
-  isEditting: boolean;
+  isEditing: boolean;
   submit?: (value: string, onError?: () => void) => void;
 } & DetailedHTMLProps<HTMLAttributes<HTMLInputElement>, HTMLInputElement>;
 
 const CapacityInput = (props: Props) => {
-  const { defaultValue, isEditting, submit, className, onClick, onChange, ...rest } =
+  const { defaultValue, isEditing, submit, className, onClick, onChange, ...rest } =
     props;
   const [value, setValue] = useState(defaultValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!isEditting) inputRef.current?.blur();
-  }, [isEditting]);
+    if (!isEditing) inputRef.current?.blur();
+  }, [isEditing]);
 
   const onError = () => setValue(defaultValue);
 
@@ -22,8 +22,8 @@ const CapacityInput = (props: Props) => {
       {...rest}
       placeholder="name"
       value={value}
-      readOnly={!isEditting}
-      className={className + (isEditting ? "" : " readonly")}
+      readOnly={!isEditing}
+      className={className + (isEditing ? "" : " readonly")}
       onChange={(e) => {
         const { value } = e.target;
         setValue(value);
@@ -31,7 +31,7 @@ const CapacityInput = (props: Props) => {
         if (onChange) onChange(e);
       }}
       onClick={(e) => {
-        isEditting && e.stopPropagation();
+        isEditing && e.stopPropagation();
         if (onClick) onClick(e);
       }}
     />

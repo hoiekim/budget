@@ -1,72 +1,43 @@
-import { useState, useRef } from "react";
+import { Dispatch, SetStateAction } from "react";
 import { Budget, Category, DeepPartial, Section } from "server";
-import {
-  numberToCommaString,
-  useAppContext,
-  currencyCodeToSymbol,
-  call,
-  PATH,
-} from "client";
-import { Bar, CapacityInput, EditButton, NameInput } from "client/components";
+import { useAppContext, call, PATH } from "client";
+import { LabeledBar } from "client/components";
 
 interface Props {
   category: Category & { amount?: number };
+  editingState?: [string | null, Dispatch<SetStateAction<string | null>>];
 }
 
-const CategoryComponent = ({ category }: Props) => {
-  const { section_id, category_id, name, capacities, amount } = category;
+const CategoryComponent = ({ category, editingState }: Props) => {
+  const { section_id, category_id, name } = category;
 
-  const { transactions, budgets, sections, setCategories, selectedInterval, router } =
-    useAppContext();
-
-  const [isEditting, setIsEditting] = useState(!name);
-
-  const capacity = capacities[selectedInterval] || 0;
-  const leftover = capacity - (amount || 0);
-
-  const infoDivRef = useRef<HTMLDivElement>(null);
+  const { transactions, budgets, sections, setCategories, router } = useAppContext();
 
   const section = sections.get(section_id) as Section;
   const budget_id = section.budget_id;
   const budget = budgets.get(budget_id) as Budget;
 
-  const currentRatio = (amount || 0) / capacity || 0;
-
-  const onClickCategoryInfo = () => {
-    if (isEditting) return;
+  const onClickInfo = () => {
     const params = new URLSearchParams({ category_id });
     router.go(PATH.TRANSACTIONS, { params });
   };
 
   const { iso_currency_code } = budget;
 
-  type SetTimeout = typeof setTimeout;
-  type Timeout = ReturnType<SetTimeout>;
-
-  const timeout = useRef<Timeout>();
-
-  const submit = (updatedCategory: DeepPartial<Category> = {}, onError?: () => void) => {
-    clearTimeout(timeout.current);
-    timeout.current = setTimeout(async () => {
-      try {
-        const { status } = await call.post("/api/category", {
-          ...updatedCategory,
-          category_id,
-        });
-        if (status === "success") {
-          setCategories((oldCategories) => {
-            const newCategories = new Map(oldCategories);
-            const oldCategory = oldCategories.get(category_id);
-            const newCategory = { ...oldCategory, ...updatedCategory };
-            newCategories.set(category_id, newCategory as Category);
-            return newCategories;
-          });
-        } else throw new Error(`Failed to update category: ${category_id}`);
-      } catch (error: any) {
-        console.error(error);
-        if (onError) onError();
-      }
-    }, 500);
+  const onSubmit = async (updatedCategory: DeepPartial<Category> = {}) => {
+    const { status } = await call.post("/api/category", {
+      ...updatedCategory,
+      category_id,
+    });
+    if (status === "success") {
+      setCategories((oldCategories) => {
+        const newCategories = new Map(oldCategories);
+        const oldCategory = oldCategories.get(category_id);
+        const newCategory = { ...oldCategory, ...updatedCategory };
+        newCategories.set(category_id, newCategory as Category);
+        return newCategories;
+      });
+    } else throw new Error(`Failed to update category: ${category_id}`);
   };
 
   const onDelete = async () => {
@@ -99,66 +70,17 @@ const CategoryComponent = ({ category }: Props) => {
     }
   };
 
-  const onEdit = () => setIsEditting((s) => !s);
-
   return (
     <div className="CategoryBar">
-      <div
-        className="categoryInfo"
-        onClick={onClickCategoryInfo}
-        onMouseLeave={() => setIsEditting(false)}
-        ref={infoDivRef}
-      >
-        <div className="title">
-          <NameInput
-            defaultValue={name}
-            isEditting={isEditting}
-            submit={(value, onError) => {
-              submit({ name: value }, onError);
-            }}
-          />
-          <div className="buttons">
-            <EditButton isEditting={isEditting} onEdit={onEdit} onDelete={onDelete} />
-          </div>
-        </div>
-        <div className="statusBarWithText">
-          <Bar ratio={currentRatio} />
-          <div className="infoText">
-            {!isEditting && (
-              <>
-                <div>
-                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-                  <span className="currentTotal">{numberToCommaString(amount || 0)}</span>
-                  <span>&nbsp; spent</span>
-                </div>
-                <div>
-                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-                  <span className="currentTotal">
-                    {numberToCommaString(Math.abs(leftover))}
-                  </span>
-                  <span>
-                    &nbsp;
-                    {leftover >= 0 ? "left" : "over"}
-                  </span>
-                </div>
-              </>
-            )}
-            {isEditting && (
-              <div>
-                <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-                <CapacityInput
-                  key={`${category_id}_${selectedInterval}`}
-                  defaultValue={numberToCommaString(capacity)}
-                  isEditting={isEditting}
-                  submit={(value, onError) => {
-                    submit({ capacities: { [selectedInterval]: +value } }, onError);
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <LabeledBar
+        dataId={section_id}
+        data={section}
+        iso_currency_code={iso_currency_code}
+        onSubmit={onSubmit}
+        onDelete={onDelete}
+        onClickInfo={onClickInfo}
+        editingState={editingState}
+      />
     </div>
   );
 };

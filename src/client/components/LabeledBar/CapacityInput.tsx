@@ -2,14 +2,14 @@ import { numberToCommaString } from "client";
 import { DetailedHTMLProps, HTMLAttributes, useState, useEffect, useRef } from "react";
 
 type Props = {
-  isEditting: boolean;
+  isEditing: boolean;
   submit?: (value: string, onError?: () => void) => void;
 } & DetailedHTMLProps<HTMLAttributes<HTMLInputElement>, HTMLInputElement>;
 
 const CapacityInput = (props: Props) => {
   const {
     defaultValue,
-    isEditting,
+    isEditing,
     submit,
     className,
     onClick,
@@ -24,8 +24,8 @@ const CapacityInput = (props: Props) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!isEditting) inputRef.current?.blur();
-  }, [isEditting]);
+    if (!isEditing) inputRef.current?.blur();
+  }, [isEditing]);
 
   const onError = () => setValue(defaultValue);
 
@@ -34,10 +34,10 @@ const CapacityInput = (props: Props) => {
       {...rest}
       ref={inputRef}
       value={value}
-      readOnly={!isEditting}
-      className={className + (isEditting ? "" : " readonly")}
+      readOnly={!isEditing}
+      className={className + (isEditing ? "" : " readonly")}
       onClick={(e) => {
-        isEditting && e.stopPropagation();
+        isEditing && e.stopPropagation();
         if (onClick) onClick(e);
       }}
       onKeyPress={(e) => {
@@ -52,7 +52,7 @@ const CapacityInput = (props: Props) => {
       }}
       onFocus={(e) => {
         const { target } = e;
-        if (!isEditting) return target.blur();
+        if (!isEditing) return target.blur();
         setValue(target.value.replace(/,/g, ""));
         if (onFocus) onFocus(e);
       }}

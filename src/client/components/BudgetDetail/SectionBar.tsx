@@ -1,28 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
-import { call, currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
-import { Bar, CapacityInput, EditButton, NameInput } from "client/components";
+import { call, useAppContext } from "client";
+import { LabeledBar } from "client/components";
 import CategoryBar from "./CategoryBar";
 
 interface Props {
-  section: Section & { amount?: number };
+  section: Section & { sorted_amount?: number };
+  editingState?: [string | null, Dispatch<SetStateAction<string | null>>];
 }
 
-const SectionBar = ({ section }: Props) => {
-  const { budget_id, section_id, name, capacities, amount } = section;
+const SectionBar = ({ section, editingState }: Props) => {
+  const { budget_id, section_id, name } = section;
 
-  const { budgets, setSections, categories, setCategories, selectedInterval } =
-    useAppContext();
+  const { budgets, setSections, categories, setCategories } = useAppContext();
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
-  const [isEditting, setIsEditting] = useState(!name);
-
-  const capacity = capacities[selectedInterval] || 0;
-  const leftover = capacity - (amount || 0);
 
   const childrenDivRef = useRef<HTMLDivElement>(null);
-  const infoDivRef = useRef<HTMLDivElement>(null);
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
@@ -53,8 +48,6 @@ const SectionBar = ({ section }: Props) => {
   const budget = budgets.get(budget_id) as Budget;
   const { iso_currency_code } = budget;
 
-  const currentRatio = (amount || 0) / capacity || 0;
-
   const openCategory = () => {
     setIsCategoryOpen(true);
     const childrenDiv = childrenDivRef.current;
@@ -62,39 +55,25 @@ const SectionBar = ({ section }: Props) => {
     childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  const onClickSectionInfo = () => {
-    if (isEditting) return;
+  const onClickInfo = () => {
     if (isCategoryOpen) setIsCategoryOpen(false);
     else openCategory();
   };
 
-  type SetTimeout = typeof setTimeout;
-  type Timeout = ReturnType<SetTimeout>;
-
-  const timeout = useRef<Timeout>();
-
-  const submit = (updatedSection: DeepPartial<Section> = {}, onError?: () => void) => {
-    clearTimeout(timeout.current);
-    timeout.current = setTimeout(async () => {
-      try {
-        const { status } = await call.post("/api/section", {
-          ...updatedSection,
-          section_id,
-        });
-        if (status === "success") {
-          setSections((oldSections) => {
-            const newSections = new Map(oldSections);
-            const oldSection = oldSections.get(section_id);
-            const newSection = { ...oldSection, ...updatedSection };
-            newSections.set(section_id, newSection as Section);
-            return newSections;
-          });
-        } else throw new Error(`Failed to update section: ${section_id}`);
-      } catch (error: any) {
-        console.error(error);
-        if (onError) onError();
-      }
-    }, 500);
+  const onSubmit = async (updatedSection: DeepPartial<Section> = {}) => {
+    const { status } = await call.post("/api/section", {
+      ...updatedSection,
+      section_id,
+    });
+    if (status === "success") {
+      setSections((oldSections) => {
+        const newSections = new Map(oldSections);
+        const oldSection = oldSections.get(section_id);
+        const newSection = { ...oldSection, ...updatedSection };
+        newSections.set(section_id, newSection as Section);
+        return newSections;
+      });
+    } else throw new Error(`Failed to update section: ${section_id}`);
   };
 
   const onClickAddCategory = async () => {
@@ -150,66 +129,17 @@ const SectionBar = ({ section }: Props) => {
     }
   };
 
-  const onEdit = () => setIsEditting((s) => !s);
-
   return (
     <div className="SectionBar">
-      <div
-        className="sectionInfo"
-        onClick={onClickSectionInfo}
-        onMouseLeave={() => setIsEditting(false)}
-        ref={infoDivRef}
-      >
-        <div className="title">
-          <NameInput
-            defaultValue={name}
-            isEditting={isEditting}
-            submit={(value, onError) => {
-              submit({ name: value }, onError);
-            }}
-          />
-          <div className="buttons">
-            <EditButton isEditting={isEditting} onEdit={onEdit} onDelete={onDelete} />
-          </div>
-        </div>
-        <div className="statusBarWithText">
-          <Bar ratio={currentRatio} />
-          <div className="infoText">
-            {!isEditting && (
-              <>
-                <div>
-                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-                  <span className="currentTotal">{numberToCommaString(amount || 0)}</span>
-                  <span>&nbsp; spent</span>
-                </div>
-                <div>
-                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-                  <span className="currentTotal">
-                    {numberToCommaString(Math.abs(leftover))}
-                  </span>
-                  <span>
-                    &nbsp;
-                    {leftover >= 0 ? "left" : "over"}
-                  </span>
-                </div>
-              </>
-            )}
-            {isEditting && (
-              <div>
-                <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-                <CapacityInput
-                  key={`${section_id}_${selectedInterval}`}
-                  defaultValue={numberToCommaString(capacity)}
-                  isEditting={isEditting}
-                  submit={(value, onError) => {
-                    submit({ capacities: { [selectedInterval]: +value } }, onError);
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <LabeledBar
+        dataId={section_id}
+        data={section}
+        iso_currency_code={iso_currency_code}
+        onSubmit={onSubmit}
+        onDelete={onDelete}
+        onClickInfo={onClickInfo}
+        editingState={editingState}
+      />
       <div className="children" style={{ height: childrenHeight }}>
         <div ref={childrenDivRef}>
           {isCategoryOpen && (
