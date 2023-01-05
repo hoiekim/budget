@@ -1,5 +1,6 @@
 div.BudgetDetail .unsortedButton {
   padding: 0 10px;
+  margin-bottom: 10px;
 }
 
 div.BudgetDetail .unsortedButton > button {

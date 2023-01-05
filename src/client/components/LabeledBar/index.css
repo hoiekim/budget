@@ -32,15 +32,78 @@ div.LabeledBar .title > input {
   width: 250px;
 }
 
-div.LabeledBar .title > .buttons {
-  width: 30px;
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: space-between;
-  position: relative;
-}
-
 div.LabeledBar > .title > input,
 div.LabeledBar > .title > span {
   font-size: 20px;
+}
+
+div.EditButton {
+  width: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+
+div.EditButton > button {
+  transition-duration: 300ms;
+  background-color: inherit;
+  font-size: 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-weight: bolder;
+}
+
+div.EditButton > button.edit {
+  transform: rotate(90deg);
+  position: relative;
+  top: 3px;
+  left: 3px;
+}
+
+div.ActionButtons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+div.ActionButtons > button {
+  margin: 0 5px;
+}
+
+div.ActionButtons > button:first-child {
+  margin-left: 0;
+}
+
+div.ActionButtons > button:last-child {
+  margin-right: 0;
+}
+
+div.ActionButtons:not(.locked) > button {
+  flex: 1;
+}
+
+div.ActionButtons.locked > button:not(:last-child) {
+  flex: 1;
+}
+
+div.ActionButtons.locked > button:last-child {
+  width: 24px;
+}
+
+div.ActionButtons > button.complete > span.colored {
+  color: var(--green);
+}
+
+div.ActionButtons > button.cancel > span.colored {
+  color: var(--red);
+}
+
+div.ActionButtons > button.delete {
+  background-color: var(--darkRed);
+}
+
+div.ActionButtons > button.delete > span {
+  color: #fff;
 }

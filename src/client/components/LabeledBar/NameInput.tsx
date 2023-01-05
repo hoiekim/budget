@@ -1,33 +1,25 @@
-import { DetailedHTMLProps, HTMLAttributes, useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, InputHTMLAttributes } from "react";
 
-type Props = {
-  isEditing: boolean;
-  submit?: (value: string, onError?: () => void) => void;
-} & DetailedHTMLProps<HTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+type Props = { isEditing: boolean } & InputHTMLAttributes<HTMLInputElement>;
 
 const CapacityInput = (props: Props) => {
-  const { defaultValue, isEditing, submit, className, onClick, onChange, ...rest } =
-    props;
-  const [value, setValue] = useState(defaultValue);
+  const { isEditing, defaultValue, className, onClick, onChange, ...rest } = props;
+  const [_value, _setValue] = useState(defaultValue || "");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isEditing) inputRef.current?.blur();
   }, [isEditing]);
 
-  const onError = () => setValue(defaultValue);
-
   return (
     <input
       {...rest}
       placeholder="name"
-      value={value}
+      value={_value}
       readOnly={!isEditing}
       className={className + (isEditing ? "" : " readonly")}
       onChange={(e) => {
-        const { value } = e.target;
-        setValue(value);
-        if (submit) submit(value, onError);
+        _setValue(e.target.value);
         if (onChange) onChange(e);
       }}
       onClick={(e) => {

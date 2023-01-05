@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useState } from "react";
 import { Budget, Category, DeepPartial, Section } from "server";
 import {
   currencyCodeToSymbol,
@@ -6,10 +6,11 @@ import {
   useAppContext,
   CalculatedProperties,
 } from "client";
-import Bar from "client/components/LabeledBar/Bar";
-import CapacityInput from "client/components/LabeledBar/CapacityInput";
-import EditButton from "client/components/LabeledBar/EditButton";
-import NameInput from "client/components/LabeledBar/NameInput";
+import Bar from "./Bar";
+import EditButton from "./EditButton";
+import ActionButtons from "./ActionButtons";
+import NameInput from "./NameInput";
+import CapacityInput from "./CapacityInput";
 import "./index.css";
 
 export type BarData = (Budget | Section | Category) & CalculatedProperties;
@@ -35,6 +36,9 @@ const LabeledBar = ({
 }: Props) => {
   const { selectedInterval } = useAppContext();
   const { name, capacities, sorted_amount = 0, unsorted_amount = 0 } = data;
+
+  const [nameInput, setNameInput] = useState(name);
+  const [capacityInput, setCapacityInput] = useState(capacities[selectedInterval]);
 
   const [_isEditingThis, _setIsEditingThis] = useState(false);
   const [_editingDataId, _setEditingDataId] = editingState || [];
@@ -68,49 +72,58 @@ const LabeledBar = ({
   const labeledRatio = sorted_amount / capacity;
   const unlabledRatio = unsorted_amount / capacity;
 
-  const timeout = useRef<ReturnType<typeof setTimeout>>();
-
-  const submit = (updatedData: DeepPartial<BarData> = {}, onError?: () => void) => {
-    clearTimeout(timeout.current);
-    timeout.current = setTimeout(async () => {
-      try {
-        await onSubmit(updatedData);
-      } catch (error: any) {
-        console.error(error);
-        if (onError) onError();
-      }
-    }, 500);
+  const onComplete = async () => {
+    try {
+      await onSubmit({
+        name: nameInput,
+        capacities: { [selectedInterval]: capacityInput },
+      });
+    } catch (error: any) {
+      console.error(error);
+    }
+    finishEditingThis();
   };
+
+  const _onDelete = async () => {
+    try {
+      await onDelete();
+    } catch (error: any) {
+      console.error(error);
+    }
+    finishEditingThis();
+  };
+
+  const classes = ["LabeledBar"];
+  if (isEditingThis) classes.push("editing");
 
   return (
     <div
-      className="LabeledBar"
+      className={classes.join(" ")}
       onMouseLeave={() => finishEditingThis()}
-      onClick={() => {
-        finishEditingThis();
-        _onClickInfo();
-      }}
+      onClick={_onClickInfo}
     >
       <div className="title">
         <NameInput
-          defaultValue={name}
+          defaultValue={nameInput}
           isEditing={isEditingThis}
-          submit={(value, onError) => {
-            submit({ name: value }, onError);
-          }}
+          onChange={(e) => setNameInput(e.target.value)}
         />
-        <div className="buttons">
-          <EditButton
-            isEditing={isEditingThis}
-            onEdit={() => startEditingThis()}
-            onDelete={onDelete}
-          />
-        </div>
+        {!isEditingThis && <EditButton onEdit={startEditingThis} />}
       </div>
       <div className="statusBarWithText">
         <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} />
         <div className="infoText">
-          {!isEditingThis && (
+          {isEditingThis ? (
+            <div>
+              <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+              <CapacityInput
+                key={`${dataId}_${selectedInterval}`}
+                defaultValue={capacity}
+                isEditing={isEditingThis}
+                onChange={(e) => setCapacityInput(+e.target.value)}
+              />
+            </div>
+          ) : (
             <>
               <div>
                 <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
@@ -134,28 +147,17 @@ const LabeledBar = ({
               </div>
             </>
           )}
-          {isEditingThis && (
-            <div>
-              <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-              <CapacityInput
-                key={`${dataId}_${selectedInterval}`}
-                defaultValue={numberToCommaString(capacity)}
-                isEditing={isEditingThis}
-                submit={(value, onError) => {
-                  submit({ capacities: { [selectedInterval]: +value } }, onError);
-                }}
-              />
-            </div>
-          )}
         </div>
       </div>
+      {isEditingThis && (
+        <ActionButtons
+          onComplete={onComplete}
+          onCancel={finishEditingThis}
+          onDelete={_onDelete}
+        />
+      )}
     </div>
   );
 };
 
 export default LabeledBar;
-
-export { default as Bar } from "./Bar";
-export { default as EditButton } from "./EditButton";
-export { default as CapacityInput } from "./CapacityInput";
-export { default as NameInput } from "./NameInput";

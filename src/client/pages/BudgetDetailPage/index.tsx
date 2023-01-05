@@ -17,6 +17,8 @@ const BudgetDetailPage = () => {
   const budget = budgets.get(budget_id);
   const editingState = useState<string | null>(null);
 
+  const isEditingThis = editingState[0] === budget_id;
+
   const sectionComponents: JSX.Element[] = [];
   sections.forEach((e) => {
     if (e.budget_id !== budget_id) return;
@@ -59,7 +61,9 @@ const BudgetDetailPage = () => {
         <div className="BudgetDetail">
           <BudgetBar budget={budget} editingState={editingState} />
           <div className="unsortedButton">
-            <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
+            <button onClick={onClickUnsorted} disabled={isEditingThis}>
+              See Unsorted Transactions &gt;&gt;
+            </button>
           </div>
           <div className="children">
             <div>

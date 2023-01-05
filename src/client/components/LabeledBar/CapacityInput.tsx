@@ -1,16 +1,15 @@
 import { numberToCommaString } from "client";
-import { DetailedHTMLProps, HTMLAttributes, useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, InputHTMLAttributes } from "react";
 
-type Props = {
-  isEditing: boolean;
-  submit?: (value: string, onError?: () => void) => void;
-} & DetailedHTMLProps<HTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+type Props = { defaultValue: number; isEditing: boolean } & Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "defaultValue"
+>;
 
 const CapacityInput = (props: Props) => {
   const {
     defaultValue,
     isEditing,
-    submit,
     className,
     onClick,
     onKeyPress,
@@ -20,20 +19,20 @@ const CapacityInput = (props: Props) => {
     ...rest
   } = props;
 
-  const [value, setValue] = useState(defaultValue);
+  const defaultValueAsCommaString = numberToCommaString(defaultValue);
+  const [_value, _setValue] = useState(defaultValueAsCommaString);
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isEditing) inputRef.current?.blur();
   }, [isEditing]);
 
-  const onError = () => setValue(defaultValue);
-
   return (
     <input
       {...rest}
       ref={inputRef}
-      value={value}
+      value={_value}
       readOnly={!isEditing}
       className={className + (isEditing ? "" : " readonly")}
       onClick={(e) => {
@@ -45,22 +44,18 @@ const CapacityInput = (props: Props) => {
         if (onKeyPress) onKeyPress(e);
       }}
       onChange={(e) => {
-        const { value } = e.target;
-        setValue(value);
-        if (submit) submit(value, onError);
+        _setValue(e.target.value);
         if (onChange) onChange(e);
       }}
       onFocus={(e) => {
-        const { target } = e;
-        if (!isEditing) return target.blur();
-        setValue(target.value.replace(/,/g, ""));
+        if (!isEditing) return e.target.blur();
+        _setValue((+e.target.value.replace(/,/g, "")).toString());
         if (onFocus) onFocus(e);
       }}
       onBlur={(e) => {
-        const { value } = e.target;
-        const numberizedValue = +value.replace(/,/g, "") || 0;
+        const numberizedValue = +e.target.value.replace(/,/g, "") || 0;
         const commaString = numberToCommaString(numberizedValue);
-        setValue(commaString);
+        _setValue(commaString);
         if (onBlur) onBlur(e);
       }}
     />
