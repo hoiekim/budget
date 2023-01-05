@@ -42,8 +42,11 @@ a:visited {
 }
 
 button,
+button *,
 select,
-a {
+select *,
+a,
+a * {
   cursor: pointer;
 }
 

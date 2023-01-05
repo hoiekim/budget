@@ -97,11 +97,7 @@ const LabeledBar = ({
   if (isEditingThis) classes.push("editing");
 
   return (
-    <div
-      className={classes.join(" ")}
-      onMouseLeave={() => finishEditingThis()}
-      onClick={_onClickInfo}
-    >
+    <div className={classes.join(" ")} onClick={_onClickInfo}>
       <div className="title">
         <NameInput
           defaultValue={nameInput}

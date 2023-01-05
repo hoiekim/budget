@@ -46,7 +46,6 @@ div.EditButton {
 }
 
 div.EditButton > button {
-  transition-duration: 300ms;
   background-color: inherit;
   font-size: 24px;
   width: 24px;
@@ -70,6 +69,7 @@ div.ActionButtons {
 
 div.ActionButtons > button {
   margin: 0 5px;
+  height: 32px;
 }
 
 div.ActionButtons > button:first-child {
@@ -89,7 +89,7 @@ div.ActionButtons.locked > button:not(:last-child) {
 }
 
 div.ActionButtons.locked > button:last-child {
-  width: 24px;
+  flex: 0 1 24px;
 }
 
 div.ActionButtons > button.complete > span.colored {
@@ -102,6 +102,10 @@ div.ActionButtons > button.cancel > span.colored {
 
 div.ActionButtons > button.delete {
   background-color: var(--darkRed);
+}
+
+div.ActionButtons > button.delete:hover {
+  background-color: var(--red);
 }
 
 div.ActionButtons > button.delete > span {

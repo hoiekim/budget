@@ -38,14 +38,11 @@ const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
       </button>
       <button
         className="delete colored"
+        onMouseLeave={() => setIsDeleteButtonLocked(true)}
         onClick={(e) => {
           e.stopPropagation();
-          if (isDeleteButtonLocked) {
-            setIsDeleteButtonLocked(false);
-          } else {
-            onDelete(e);
-            setIsDeleteButtonLocked(false);
-          }
+          if (!isDeleteButtonLocked) onDelete(e);
+          setIsDeleteButtonLocked((s) => !s);
         }}
       >
         <span>⌫</span>
