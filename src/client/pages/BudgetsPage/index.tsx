@@ -8,6 +8,8 @@ const BudgetsPage = () => {
   const { budgets, setBudgets } = useAppContext();
   const editingState = useState<string | null>(null);
 
+  const [_editingDataId, _setEditingDataId] = editingState;
+
   const budgetBars = Array.from(budgets).map(([budget_id, budget]) => {
     return <BudgetBar key={budget_id} budget={budget} editingState={editingState} />;
   });
@@ -17,17 +19,21 @@ const BudgetsPage = () => {
     if (!data) return;
 
     const { budget_id } = data;
+
     const newBudget: Budget = {
       budget_id,
       name: "",
       capacities: { year: 0, month: 0, week: 0, day: 0 },
       iso_currency_code: "USD",
     };
+
     setBudgets((oldBudgets) => {
       const newBudgets = new Map(oldBudgets);
       newBudgets.set(budget_id, newBudget);
       return newBudgets;
     });
+
+    _setEditingDataId(budget_id);
   };
 
   return (

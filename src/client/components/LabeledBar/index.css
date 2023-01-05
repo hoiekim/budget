@@ -8,7 +8,7 @@ div.LabeledBar * {
   transition-duration: 300ms;
 }
 
-div.LabeledBar .infoText {
+div.LabeledBar > .statusBarWithText > .infoText {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -17,10 +17,15 @@ div.LabeledBar .infoText {
   position: relative;
 }
 
-div.LabeledBar .infoText > div > input {
+div.LabeledBar > .statusBarWithText > .infoText > div.fullLength {
+  display: flex;
+  width: 100%;
+}
+
+div.LabeledBar > .statusBarWithText > .infoText > div.fullLength > input {
   font-size: 14px;
   height: 17px;
-  width: 250px;
+  flex: 1;
 }
 
 div.LabeledBar .title {
@@ -29,7 +34,7 @@ div.LabeledBar .title {
 }
 
 div.LabeledBar .title > input {
-  width: 250px;
+  width: 100%;
 }
 
 div.LabeledBar > .title > input,

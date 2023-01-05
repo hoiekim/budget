@@ -16,6 +16,8 @@ const SectionBar = ({ section, editingState }: Props) => {
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
 
+  const [_editingDataId, _setEditingDataId] = editingState || [];
+
   const childrenDivRef = useRef<HTMLDivElement>(null);
 
   const observerRef = useRef(
@@ -78,9 +80,12 @@ const SectionBar = ({ section, editingState }: Props) => {
     const newCategoryRequestUrl = "/api/new-category" + queryString;
     const { data } = await call.get<NewCategoryGetResponse>(newCategoryRequestUrl);
 
+    if (!data) return;
+
+    const { category_id } = data;
+
     setCategories((oldCategories) => {
       const newCategories = new Map(oldCategories);
-      const category_id = data?.category_id;
       if (category_id) {
         newCategories.set(category_id, {
           category_id,
@@ -89,11 +94,10 @@ const SectionBar = ({ section, editingState }: Props) => {
           capacities: { year: 0, month: 0, week: 0, day: 0 },
         });
       }
-
       return newCategories;
     });
 
-    openCategory();
+    if (_setEditingDataId) _setEditingDataId(category_id);
   };
 
   const onDelete = async () => {

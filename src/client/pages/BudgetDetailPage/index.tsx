@@ -17,7 +17,9 @@ const BudgetDetailPage = () => {
   const budget = budgets.get(budget_id);
   const editingState = useState<string | null>(null);
 
-  const isEditingThis = editingState[0] === budget_id;
+  const [editingDataId, setEditingDataId] = editingState;
+
+  const isEditingThis = editingDataId === budget_id;
 
   const sectionComponents: JSX.Element[] = [];
   sections.forEach((e) => {
@@ -34,9 +36,12 @@ const BudgetDetailPage = () => {
       "/api/new-section" + queryString
     );
 
+    if (!data) return;
+
+    const { section_id } = data;
+
     setSections((oldSections) => {
       const newSections = new Map(oldSections);
-      const section_id = data?.section_id;
       if (section_id) {
         newSections.set(section_id, {
           section_id,
@@ -47,6 +52,8 @@ const BudgetDetailPage = () => {
       }
       return newSections;
     });
+
+    setEditingDataId(section_id);
   };
 
   const onClickUnsorted = () => {

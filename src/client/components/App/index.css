@@ -62,7 +62,6 @@ input {
   color: #333;
   border: none;
   height: 24px;
-  font-size: 16px;
   padding: 0 5px;
   outline: 0;
 }
@@ -77,7 +76,6 @@ select {
   color: #333;
   border: none;
   height: 24px;
-  font-size: 16px;
 }
 
 code {

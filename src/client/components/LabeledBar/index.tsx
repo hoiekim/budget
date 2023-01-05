@@ -110,7 +110,7 @@ const LabeledBar = ({
         <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} />
         <div className="infoText">
           {isEditingThis ? (
-            <div>
+            <div className="fullLength">
               <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
               <CapacityInput
                 key={`${dataId}_${selectedInterval}`}
