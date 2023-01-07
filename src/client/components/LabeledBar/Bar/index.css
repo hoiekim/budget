@@ -10,7 +10,14 @@ div.Bar > .contentWithoutPadding {
   height: 100%;
   position: relative;
   border-radius: 5px;
-  background-color: #d9d9d9;
+}
+
+div.Bar.empty > .contentWithoutPadding {
+  background: repeating-linear-gradient(135deg, #eee, #eee 4px, #0000 4px, #0000 8px);
+}
+
+div.Bar:not(.empty) > .contentWithoutPadding {
+  background-color: #eee;
 }
 
 div.Bar > .contentWithoutPadding > div {

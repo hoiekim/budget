@@ -2,7 +2,7 @@ import { useState, useEffect, DetailedHTMLProps, HTMLAttributes, useRef } from "
 import { useAppContext } from "client";
 import "./index.css";
 
-type Props = { ratio: number; unlabledRatio?: number } & DetailedHTMLProps<
+type Props = { ratio?: number; unlabledRatio?: number } & DetailedHTMLProps<
   HTMLAttributes<HTMLDivElement>,
   HTMLDivElement
 >;
@@ -17,7 +17,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
 
   useEffect(() => {
     if (!transitioning) {
-      setNumeratorWidth(Math.min(1, ratio) * 100);
+      setNumeratorWidth(Math.min(1, ratio || 0) * 100);
       setUnlabeledNumeratorWidth(Math.min(1, unlabledRatio || 0) * 100);
     }
     return () => {
@@ -26,9 +26,13 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
     };
   }, [ratio, unlabledRatio, transitioning]);
 
-  const isOverCapped = ratio + (unlabledRatio || 0) > 1;
-  const overflowedRatio = Math.max(ratio + (unlabledRatio || 0) - 1, 0);
+  const isOverCapped = (ratio || 0) + (unlabledRatio || 0) > 1;
+  const overflowedRatio = Math.max((ratio || 0) + (unlabledRatio || 0) - 1, 0);
   const alertClass = isOverCapped ? "alert" : "";
+
+  const classes = ["Bar", alertClass];
+  if (className) classes.push(className);
+  if (ratio === undefined && unlabledRatio === undefined) classes.push("empty");
 
   type SetTimeout = typeof setTimeout;
   type Timeout = ReturnType<SetTimeout>;
@@ -48,7 +52,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   }, [numeratorWidth, unlabeledNumeratorWidth, overflowedRatio]);
 
   return (
-    <div {...rest} className={[className || "", "Bar", alertClass].join(" ")}>
+    <div {...rest} className={classes.join(" ")}>
       <div className="contentWithoutPadding">
         <div
           style={{

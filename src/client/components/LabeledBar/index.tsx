@@ -68,7 +68,6 @@ const LabeledBar = ({
   const isEditingAny = editingState && !!editingDataId;
 
   const startEditingThis = () => {
-    console.log(isInfinite ? 0 : capacity);
     setNameInput(name);
     setCapacityInput(isInfinite ? 0 : capacity);
     setIsInfiniteInput(isInfinite);
@@ -100,8 +99,8 @@ const LabeledBar = ({
 
   const shouldIgnoreBarLength = isEditingThis ? isInfiniteInput : isInfinite;
 
-  const labeledRatio = shouldIgnoreBarLength ? 0 : sorted_amount / capacity;
-  const unlabledRatio = shouldIgnoreBarLength ? 0 : unsorted_amount / capacity;
+  const labeledRatio = shouldIgnoreBarLength ? undefined : sorted_amount / capacity;
+  const unlabledRatio = shouldIgnoreBarLength ? undefined : unsorted_amount / capacity;
 
   const onComplete = async () => {
     let calculatedCapacity = isInfiniteInput ? MAX_FLOAT : capacityInput;
