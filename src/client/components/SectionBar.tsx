@@ -16,8 +16,6 @@ const SectionBar = ({ section, editingState }: Props) => {
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
 
-  const [_editingDataId, _setEditingDataId] = editingState || [];
-
   const childrenDivRef = useRef<HTMLDivElement>(null);
 
   const observerRef = useRef(
@@ -92,12 +90,13 @@ const SectionBar = ({ section, editingState }: Props) => {
           section_id,
           name: "",
           capacities: { year: 0, month: 0, week: 0, day: 0 },
+          roll_over: false,
         });
       }
       return newCategories;
     });
 
-    if (_setEditingDataId) _setEditingDataId(category_id);
+    if (editingState) editingState[1](category_id);
   };
 
   const onDelete = async () => {

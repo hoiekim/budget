@@ -3,6 +3,15 @@
   cursor: default;
 }
 
+*:not(input:not([type="checkbox"]):not(.readonly)) {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
 body {
   width: 100%;
   margin: 0;
@@ -41,22 +50,23 @@ a:visited {
   color: inherit;
 }
 
-button,
-button *,
-select,
-select *,
-a,
-a * {
+button:not(:disabled),
+button:not(:disabled) *,
+select:not(:disabled),
+select:not(:disabled) *,
+a:not(:disabled),
+a:not(:disabled) *,
+input[type="checkbox"] {
   cursor: pointer;
 }
 
-button:hover,
-select:hover,
-a:hover {
+button:not(:disabled):hover,
+select:not(:disabled):hover,
+a:not(:disabled):hover {
   background-color: #ddd;
 }
 
-input {
+input:not([type="checkbox"]) {
   cursor: text;
   background-color: #eee;
   color: #333;

@@ -19,8 +19,6 @@ const BudgetDetailPage = () => {
 
   const [editingDataId, setEditingDataId] = editingState;
 
-  const isEditingThis = editingDataId === budget_id;
-
   const sectionComponents: JSX.Element[] = [];
   sections.forEach((e) => {
     if (e.budget_id !== budget_id) return;
@@ -48,6 +46,7 @@ const BudgetDetailPage = () => {
           budget_id,
           name: "",
           capacities: { year: 0, month: 0, week: 0, day: 0 },
+          roll_over: false,
         });
       }
       return newSections;
@@ -68,7 +67,7 @@ const BudgetDetailPage = () => {
         <div className="BudgetDetail">
           <BudgetBar budget={budget} editingState={editingState} />
           <div className="unsortedButton">
-            <button onClick={onClickUnsorted} disabled={isEditingThis}>
+            <button onClick={onClickUnsorted} disabled={editingDataId === budget_id}>
               See Unsorted Transactions &gt;&gt;
             </button>
           </div>

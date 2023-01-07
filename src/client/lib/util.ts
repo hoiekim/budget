@@ -62,3 +62,5 @@ export class Account implements Account {
 }
 
 export const isEmoji = (s: string) => /\p{Extended_Pictographic}/u.test(s);
+
+export const MAX_FLOAT = 3.402823567e38;

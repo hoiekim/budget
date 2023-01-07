@@ -212,7 +212,9 @@
             "day": { "type": "float" }
           }
         },
-        "iso_currency_code": { "type": "keyword" }
+        "iso_currency_code": { "type": "keyword" },
+        "roll_over": { "type": "boolean" },
+        "roll_over_start_date": { "type": "date" }
       }
     },
     "section": {
@@ -230,7 +232,9 @@
             "week": { "type": "float" },
             "day": { "type": "float" }
           }
-        }
+        },
+        "roll_over": { "type": "boolean" },
+        "roll_over_start_date": { "type": "date" }
       }
     },
     "category": {
@@ -248,7 +252,9 @@
             "week": { "type": "float" },
             "day": { "type": "float" }
           }
-        }
+        },
+        "roll_over": { "type": "boolean" },
+        "roll_over_start_date": { "type": "date" }
       }
     }
   }

@@ -17,6 +17,8 @@ export interface Budget {
   name: string;
   capacities: Capacity;
   iso_currency_code: string;
+  roll_over: boolean;
+  roll_over_start_date?: string;
 }
 
 /**
@@ -120,6 +122,8 @@ export interface Section {
   budget_id: string;
   name: string;
   capacities: Capacity;
+  roll_over: boolean;
+  roll_over_start_date?: string;
 }
 
 /**
@@ -214,6 +218,8 @@ export interface Category {
   section_id: string;
   name: string;
   capacities: Capacity;
+  roll_over: boolean;
+  roll_over_start_date?: string;
 }
 
 /**

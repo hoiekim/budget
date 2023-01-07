@@ -42,6 +42,7 @@ const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
         onClick={(e) => {
           e.stopPropagation();
           if (!isDeleteButtonLocked) onDelete(e);
+          if (isDeleteButtonLocked) setTimeout(() => setIsDeleteButtonLocked(true), 5000);
           setIsDeleteButtonLocked((s) => !s);
         }}
       >
