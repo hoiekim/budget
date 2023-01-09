@@ -17,6 +17,10 @@ div.LabeledBar > .statusBarWithText > .infoText {
   position: relative;
 }
 
+div.LabeledBar > .statusBarWithText > .infoText > div:not(.fullLength) {
+  text-align: right;
+}
+
 div.LabeledBar > .statusBarWithText > .infoText > div.fullLength {
   display: flex;
   width: 100%;

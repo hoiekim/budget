@@ -59,7 +59,9 @@ const LabeledBar = ({
   const isIncome = capacity < 0;
 
   const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(isInfinite ? 0 : capacity);
+  const [capacityInput, setCapacityInput] = useState(
+    isInfinite ? 0 : capacity * (isIncome ? -1 : 1)
+  );
 
   const [isInfiniteInput, setIsInfiniteInput] = useState(isInfinite);
   const [isIncomeInput, setIsIncomeInput] = useState(isIncome);
@@ -76,7 +78,7 @@ const LabeledBar = ({
 
   const startEditingThis = () => {
     setNameInput(name);
-    setCapacityInput(isInfinite ? 0 : capacity);
+    setCapacityInput(isInfinite ? 0 : capacity * (isIncome ? -1 : 1));
     setIsInfiniteInput(isInfinite);
     setIsIncomeInput(isIncome);
     setIsRollOverInput(roll_over);
@@ -111,7 +113,7 @@ const LabeledBar = ({
 
   const onComplete = async () => {
     let calculatedCapacity = isInfiniteInput ? MAX_FLOAT : capacityInput;
-    if (isIncome) calculatedCapacity *= -1;
+    if (isIncomeInput) calculatedCapacity *= -1;
     try {
       await onSubmit({
         name: nameInput,
@@ -138,9 +140,7 @@ const LabeledBar = ({
   const classes = ["LabeledBar"];
   if (isEditingThis) classes.push("editing");
 
-  const CurrencySymbolSpan = () => (
-    <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-  );
+  const CurrencySymbolSpan = () => <span>{currencyCodeToSymbol(iso_currency_code)}</span>;
 
   return (
     <div className={classes.join(" ")} onClick={onClickInfo}>
@@ -174,37 +174,57 @@ const LabeledBar = ({
           ) : (
             <>
               <div className={isInfinite ? "fullLength" : undefined}>
-                <CurrencySymbolSpan />
-                <span className="currentTotal">
-                  {numberToCommaString(Math.abs(total))}
-                </span>
-                <span>
-                  &nbsp;
-                  {total >= 0 ? "spent" : "earned"}
-                </span>
+                <table>
+                  <tr>
+                    <td>
+                      <CurrencySymbolSpan />
+                    </td>
+                    <td>
+                      <span className="currentTotal">
+                        {numberToCommaString(Math.abs(total))}
+                      </span>
+                    </td>
+                    <td>
+                      <span>{total >= 0 ? "spent" : "gained"}</span>
+                    </td>
+                  </tr>
+                </table>
               </div>
               {!isInfinite && (
                 <div>
-                  <div>
-                    <CurrencySymbolSpan />
-                    <span className="currentTotal">
-                      {numberToCommaString(Math.abs(leftover))}
-                    </span>
-                    <span>
-                      &nbsp;
-                      {leftover >= 0 ? "left" : "over"}
-                    </span>
-                  </div>
-                  {roll_over && rolled_over_amount !== undefined && (
-                    <div>
-                      <span>{rolled_over_amount <= 0 ? "+" : "-"}</span>
-                      <CurrencySymbolSpan />
-                      <span className="currentTotal">
-                        {numberToCommaString(Math.abs(rolled_over_amount))}
-                      </span>
-                      <span>&nbsp;rolled</span>
-                    </div>
-                  )}
+                  <table>
+                    <tr>
+                      <td>
+                        <CurrencySymbolSpan />
+                      </td>
+                      <td>
+                        <span className="currentTotal">
+                          {numberToCommaString(Math.abs(leftover))}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "left" }}>
+                        <span>
+                          {(isIncome ? leftover < 0 : 0 <= leftover) ? "left" : "over"}
+                        </span>
+                      </td>
+                    </tr>
+                    {roll_over && rolled_over_amount !== undefined && (
+                      <tr>
+                        <td>
+                          <span>{rolled_over_amount <= 0 ? "+" : "-"}</span>
+                          <CurrencySymbolSpan />
+                        </td>
+                        <td>
+                          <span className="currentTotal">
+                            {numberToCommaString(Math.abs(rolled_over_amount))}
+                          </span>
+                        </td>
+                        <td>
+                          <span>rolled</span>
+                        </td>
+                      </tr>
+                    )}
+                  </table>
                 </div>
               )}
             </>
