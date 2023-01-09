@@ -32,7 +32,11 @@ div.Bar > .contentWithoutPadding > .numerator:not(.alert) {
 }
 
 div.Bar > .contentWithoutPadding > .numerator.alert {
-  background-color: #fcc;
+  background-color: #f43;
+}
+
+div.Bar > .contentWithoutPadding > .numerator.alert.more {
+  background-color: #902;
 }
 
 div.Bar > .contentWithoutPadding > .unlabeledNumerator:not(.alert) {
@@ -40,13 +44,13 @@ div.Bar > .contentWithoutPadding > .unlabeledNumerator:not(.alert) {
 }
 
 div.Bar > .contentWithoutPadding > .unlabeledNumerator.alert {
+  background: repeating-linear-gradient(135deg, #f43, #f43 2px, #f434 2px, #f434 4px);
+}
+
+div.Bar > .contentWithoutPadding > .unlabeledNumerator.alert.more {
+  background: repeating-linear-gradient(135deg, #902, #902 2px, #9024 2px, #9024 4px);
+}
+
+div.Bar > .contentWithoutPadding > .overflowFiller {
   background-color: #fcc;
-}
-
-div.Bar > .contentWithoutPadding > .overflowedNumerator:not(.alert) {
-  background-color: #f43;
-}
-
-div.Bar > .contentWithoutPadding > .overflowedNumerator.alert {
-  background-color: #902;
 }

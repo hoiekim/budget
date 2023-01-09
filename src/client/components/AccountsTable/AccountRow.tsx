@@ -22,11 +22,9 @@ import "./index.css";
 
 interface Props {
   account: Account;
-  sorter: Sorter<Account, AccountHeaders>;
 }
 
-const AccountRow = ({ account, sorter }: Props) => {
-  const { getVisible } = sorter;
+const AccountRow = ({ account }: Props) => {
   const { account_id, balances, custom_name, name, institution_id, label, type } =
     account;
 
@@ -272,37 +270,29 @@ const AccountRow = ({ account, sorter }: Props) => {
 
   return (
     <div className="AccountRow" onClick={onClickAccount}>
-      {getVisible("balances") && <div>{formattedBalancesText}</div>}
-      {getVisible("custom_name") && (
-        <div>
-          <input
-            onClick={(e) => e.stopPropagation()}
-            onChange={onChangeNameInput}
-            value={nameInput}
-          />
-        </div>
-      )}
-      {getVisible("institution") && (
-        <div>
-          <InstitutionSpan institution_id={institution_id} />
-        </div>
-      )}
+      <div>{formattedBalancesText}</div>
+      <div>
+        <input
+          onClick={(e) => e.stopPropagation()}
+          onChange={onChangeNameInput}
+          value={nameInput}
+        />
+      </div>
+      <div>
+        <InstitutionSpan institution_id={institution_id} />
+      </div>
       <div className="budgetAction">
-        {getVisible("budget") && (
-          <div>
-            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-              <option value="">Select Budget</option>
-              {budgetOptions}
-            </select>
-          </div>
-        )}
-        {getVisible("action") && (
-          <div className="action">
-            <PlaidLinkButton item={item}>Update</PlaidLinkButton>
-            <button onClick={onClickRemove}>Remove</button>
-            <button onClick={onClickHide}>Hide</button>
-          </div>
-        )}
+        <div>
+          <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+            <option value="">Select Budget</option>
+            {budgetOptions}
+          </select>
+        </div>
+        <div className="action">
+          <PlaidLinkButton item={item}>Update</PlaidLinkButton>
+          <button onClick={onClickRemove}>Remove</button>
+          <button onClick={onClickHide}>Hide</button>
+        </div>
       </div>
       {!!graphData && <Graph data={graphData} />}
     </div>

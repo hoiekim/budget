@@ -34,8 +34,6 @@ const Line = ({ points }: Props) => {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(() => setPathOffset(false), 300);
     }
-
-    return () => setPathOffset(true);
   }, [transitioning]);
 
   const divRef = useRef<HTMLDivElement>(null);

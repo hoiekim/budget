@@ -21,7 +21,7 @@ const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
   const { accounts, institutions, budgets, categories } = useAppContext();
 
   const sorter = useSorter<Transaction, TransactionHeaders>(
-    "transactions" + customKey ? `_${customKey}` : "",
+    "transactions" + (customKey ? `_${customKey}` : ""),
     new Map([["authorized_date", "descending"]]),
     {
       authorized_date: true,
