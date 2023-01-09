@@ -64,9 +64,9 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
         });
       } else {
         setOverflowFillerWidth((oldValue) => {
-          setNumeratorWidth(0);
-          setUnlabeledNumeratorWidth(0);
           if (oldValue) {
+            setNumeratorWidth(0);
+            setUnlabeledNumeratorWidth(0);
             clearTimeout(timeout.current);
             timeout.current = setTimeout(() => {
               setOverflowFillerWidth(0);
@@ -76,6 +76,9 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
                 setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
               }, 500);
             }, 500);
+          } else {
+            setNumeratorWidth(definedRatio * 100);
+            setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
           }
           return oldValue;
         });
