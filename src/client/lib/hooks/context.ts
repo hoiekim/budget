@@ -22,6 +22,7 @@ export type Items = Map<string, Item>;
 export type CalculatedProperties = {
   sorted_amount?: number;
   unsorted_amount?: number;
+  rolled_over_amount?: number;
 };
 
 export type Budgets = Map<string, Budget & CalculatedProperties>;

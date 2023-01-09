@@ -7,15 +7,7 @@ const { innerHeight, innerWidth } = window;
 const navigatorsHeight = innerHeight / innerWidth > 2 ? 80 : 60;
 
 const Header = () => {
-  const {
-    user,
-    setUser,
-    router,
-    selectedInterval,
-    setSelectedInterval,
-    viewDate,
-    setViewDate,
-  } = useAppContext();
+  const { user, setUser, router, viewDate, setViewDate } = useAppContext();
 
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
 
@@ -89,10 +81,14 @@ const Header = () => {
             </button>
             <select
               className="intervalSelect"
-              value={selectedInterval}
+              value={viewDate.getInterval()}
               onChange={(e) => {
                 const value = e.target.value as Interval;
-                setSelectedInterval(value);
+                setViewDate((oldViewDate) => {
+                  const newViewDate = oldViewDate.clone();
+                  newViewDate.setInterval(value);
+                  return newViewDate;
+                });
               }}
             >
               <option value="year">{getIntervalOptionText("year", "Yearly")}</option>

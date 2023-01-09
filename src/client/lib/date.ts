@@ -67,6 +67,8 @@ export class ViewDate {
     this.current();
   }
 
+  getDate = () => this.date;
+
   setInterval = (interval: Interval) => {
     this.interval = interval;
     this.current();

@@ -131,7 +131,13 @@ export const useSync = () => {
           const oldBudget = oldBudgets.get(budget_id);
           const sorted_amount = oldBudget?.sorted_amount;
           const unsorted_amount = oldBudget?.unsorted_amount;
-          newBudgets.set(budget_id, { ...e, sorted_amount, unsorted_amount });
+          const rolled_over_amount = oldBudget?.rolled_over_amount;
+          newBudgets.set(budget_id, {
+            ...e,
+            sorted_amount,
+            unsorted_amount,
+            rolled_over_amount,
+          });
         });
         return newBudgets;
       });
@@ -142,7 +148,14 @@ export const useSync = () => {
           const { section_id } = e;
           const oldSection = oldSections.get(section_id);
           const sorted_amount = oldSection?.sorted_amount;
-          newSections.set(section_id, { ...e, sorted_amount });
+          const unsorted_amount = oldSection?.unsorted_amount;
+          const rolled_over_amount = oldSection?.rolled_over_amount;
+          newSections.set(section_id, {
+            ...e,
+            sorted_amount,
+            unsorted_amount,
+            rolled_over_amount,
+          });
         });
         return newSections;
       });
@@ -153,7 +166,14 @@ export const useSync = () => {
           const { category_id } = e;
           const oldCategory = oldCategories.get(category_id);
           const sorted_amount = oldCategory?.sorted_amount;
-          newCategories.set(category_id, { ...e, sorted_amount });
+          const unsorted_amount = oldCategory?.unsorted_amount;
+          const rolled_over_amount = oldCategory?.rolled_over_amount;
+          newCategories.set(category_id, {
+            ...e,
+            sorted_amount,
+            unsorted_amount,
+            rolled_over_amount,
+          });
         });
         return newCategories;
       });

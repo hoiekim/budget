@@ -34,11 +34,10 @@ const TransactionsPage = () => {
 
   const transactionsArray = useMemo(() => {
     const result: Transaction[] = [];
-    const viewDateClone = viewDate.clone();
     transactions.forEach((e) => {
       const hidden = accounts.get(e.account_id)?.hide;
       const transactionDate = new Date(e.authorized_date || e.date);
-      const within = viewDateClone.has(transactionDate);
+      const within = viewDate.has(transactionDate);
       if (hidden || !within) return;
 
       if (option === "unsorted") {

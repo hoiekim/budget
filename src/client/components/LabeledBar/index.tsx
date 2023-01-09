@@ -7,6 +7,8 @@ import {
   CalculatedProperties,
   MAX_FLOAT,
   getDateString,
+  useCalculator,
+  appendTimeString,
 } from "client";
 import Bar from "./Bar";
 import EditButton from "./EditButton";
@@ -37,17 +39,22 @@ const LabeledBar = ({
   onClickInfo: _onClickInfo,
   editingState,
 }: Props) => {
-  const { selectedInterval } = useAppContext();
+  const { viewDate } = useAppContext();
+  const calculate = useCalculator();
+
   const {
     name,
     capacities,
     sorted_amount = 0,
     unsorted_amount = 0,
+    rolled_over_amount,
     roll_over,
     roll_over_start_date,
   } = data;
 
-  const capacity = capacities[selectedInterval];
+  const interval = viewDate.getInterval();
+
+  const capacity = capacities[interval];
   const isInfinite = capacity === MAX_FLOAT || capacity === -MAX_FLOAT;
   const isIncome = capacity < 0;
 
@@ -108,10 +115,11 @@ const LabeledBar = ({
     try {
       await onSubmit({
         name: nameInput,
-        capacities: { [selectedInterval]: calculatedCapacity },
+        capacities: { [interval]: calculatedCapacity },
         roll_over: isRollOverInput,
-        roll_over_start_date: getDateString(new Date()),
+        roll_over_start_date: appendTimeString(getDateString(rollOverStartDateInput)),
       });
+      if (isRollOverInput) calculate();
     } catch (error: any) {
       console.error(error);
     }
@@ -129,6 +137,10 @@ const LabeledBar = ({
 
   const classes = ["LabeledBar"];
   if (isEditingThis) classes.push("editing");
+
+  const CurrencySymbolSpan = () => (
+    <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+  );
 
   return (
     <div className={classes.join(" ")} onClick={onClickInfo}>
@@ -149,9 +161,9 @@ const LabeledBar = ({
                 <span>Unlimited</span>
               ) : (
                 <>
-                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                  <CurrencySymbolSpan />
                   <CapacityInput
-                    key={`${dataId}_${selectedInterval}`}
+                    key={`${dataId}_${interval}`}
                     defaultValue={capacityInput}
                     isEditing={isEditingThis}
                     onChange={(e) => setCapacityInput(Math.abs(+e.target.value))}
@@ -162,7 +174,7 @@ const LabeledBar = ({
           ) : (
             <>
               <div className={isInfinite ? "fullLength" : undefined}>
-                <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
+                <CurrencySymbolSpan />
                 <span className="currentTotal">
                   {numberToCommaString(Math.abs(total))}
                 </span>
@@ -173,14 +185,26 @@ const LabeledBar = ({
               </div>
               {!isInfinite && (
                 <div>
-                  <span>{currencyCodeToSymbol(iso_currency_code)}&nbsp;</span>
-                  <span className="currentTotal">
-                    {numberToCommaString(Math.abs(leftover))}
-                  </span>
-                  <span>
-                    &nbsp;
-                    {leftover >= 0 ? "left" : "over"}
-                  </span>
+                  <div>
+                    <CurrencySymbolSpan />
+                    <span className="currentTotal">
+                      {numberToCommaString(Math.abs(leftover))}
+                    </span>
+                    <span>
+                      &nbsp;
+                      {leftover >= 0 ? "left" : "over"}
+                    </span>
+                  </div>
+                  {roll_over && rolled_over_amount !== undefined && (
+                    <div>
+                      <span>{rolled_over_amount <= 0 ? "+" : "-"}</span>
+                      <CurrencySymbolSpan />
+                      <span className="currentTotal">
+                        {numberToCommaString(Math.abs(rolled_over_amount))}
+                      </span>
+                      <span>&nbsp;rolled</span>
+                    </div>
+                  )}
                 </div>
               )}
             </>
