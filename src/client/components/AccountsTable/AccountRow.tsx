@@ -9,7 +9,6 @@ import {
 import { Account, InvestmentTransaction, Transaction } from "server";
 import {
   call,
-  Sorter,
   useAppContext,
   numberToCommaString,
   PATH,
@@ -17,7 +16,6 @@ import {
 } from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
 import { Point, GraphData } from "client/components/Graph";
-import { AccountHeaders } from ".";
 import "./index.css";
 
 interface Props {

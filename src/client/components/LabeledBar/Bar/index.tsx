@@ -33,9 +33,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   useEffect(() => {
     if (!transitioning) {
       if (isOverCapped) {
-        setOverflowFillerWidth(100);
-        clearTimeout(timeout.current);
-        timeout.current = setTimeout(() => {
+        const setNumeratorsWidths = () => {
           if (definedRatio > 1) {
             if (definedRatio > 2) {
               setNumeratorWidth(100);
@@ -52,13 +50,38 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
             const reducedUnlabeledRatio = definedUnlabeledRatio - (1 - definedRatio);
             setUnlabeledNumeratorWidth(Math.min(1, reducedUnlabeledRatio) * 100);
           }
-        }, 500);
+        };
+
+        setOverflowFillerWidth((oldValue) => {
+          if (oldValue === 100) {
+            setNumeratorsWidths();
+          } else {
+            setOverflowFillerWidth(100);
+            clearTimeout(timeout.current);
+            timeout.current = setTimeout(setNumeratorsWidths, 500);
+          }
+          return oldValue;
+        });
       } else {
-        setNumeratorWidth(definedRatio * 100);
-        setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
+        setOverflowFillerWidth((oldValue) => {
+          setNumeratorWidth(0);
+          setUnlabeledNumeratorWidth(0);
+          if (oldValue) {
+            clearTimeout(timeout.current);
+            timeout.current = setTimeout(() => {
+              setOverflowFillerWidth(0);
+              clearTimeout(timeout.current);
+              timeout.current = setTimeout(() => {
+                setNumeratorWidth(definedRatio * 100);
+                setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
+              }, 500);
+            }, 500);
+          }
+          return oldValue;
+        });
       }
     }
-  }, [ratio, unlabledRatio, transitioning]);
+  }, [definedRatio, definedUnlabeledRatio, isOverCapped, transitioning]);
 
   return (
     <div {...rest} className={classes.join(" ")}>
