@@ -103,7 +103,8 @@ const LabeledBar = ({
     _onClickInfo();
   };
 
-  const barCapacity = isEditingThis ? capacityInput : capacity;
+  let barCapacity = isEditingThis ? capacityInput : capacity;
+  if (isEditingThis && isIncomeInput) barCapacity *= -1;
 
   const total = sorted_amount + unsorted_amount;
   const leftover = barCapacity - total;
@@ -161,19 +162,29 @@ const LabeledBar = ({
         <div className="infoText">
           {isEditingThis ? (
             <div className="fullLength">
-              {isInfiniteInput ? (
-                <span>Unlimited</span>
-              ) : (
-                <>
-                  <CurrencySymbolSpan />
-                  <CapacityInput
-                    key={`${dataId}_${interval}`}
-                    defaultValue={capacityInput}
-                    isEditing={isEditingThis}
-                    onChange={(e) => setCapacityInput(Math.abs(+e.target.value))}
-                  />
-                </>
-              )}
+              <table>
+                <tr>
+                  {isInfiniteInput ? (
+                    <td>
+                      <span>Unlimited</span>
+                    </td>
+                  ) : (
+                    <>
+                      <td>
+                        <CurrencySymbolSpan />
+                      </td>
+                      <td>
+                        <CapacityInput
+                          key={`${dataId}_${interval}`}
+                          defaultValue={capacityInput}
+                          isEditing={isEditingThis}
+                          onChange={(e) => setCapacityInput(Math.abs(+e.target.value))}
+                        />
+                      </td>
+                    </>
+                  )}
+                </tr>
+              </table>
             </div>
           ) : (
             <>
