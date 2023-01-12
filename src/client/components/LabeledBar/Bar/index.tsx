@@ -15,8 +15,8 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
   const [unlabeledNumeratorWidth, setUnlabeledNumeratorWidth] = useState(0);
   const [overflowFillerWidth, setOverflowFillerWidth] = useState(0);
 
-  const definedRatio = ratio || 0;
-  const definedUnlabeledRatio = unlabledRatio || 0;
+  const definedRatio = ratio ? Math.max(ratio, 0) : 0;
+  const definedUnlabeledRatio = unlabledRatio ? Math.max(unlabledRatio, 0) : 0;
 
   const isOverCapped = definedRatio + definedUnlabeledRatio > 1;
   const isOverCappedTwice = definedRatio + definedUnlabeledRatio > 2;
@@ -52,35 +52,54 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
           }
         };
 
-        setOverflowFillerWidth((oldValue) => {
-          if (oldValue === 100) {
-            setNumeratorsWidths();
-          } else {
-            setOverflowFillerWidth(100);
-            clearTimeout(timeout.current);
-            timeout.current = setTimeout(setNumeratorsWidths, 500);
-          }
-          return oldValue;
+        const setAllWidths = () => {
+          setOverflowFillerWidth((oldOlverFlowFillerWidth) => {
+            const wasOverCapped = oldOlverFlowFillerWidth === 100;
+            if (wasOverCapped) {
+              setNumeratorsWidths();
+            } else {
+              setOverflowFillerWidth(100);
+              clearTimeout(timeout.current);
+              timeout.current = setTimeout(setNumeratorsWidths, 500);
+            }
+            return oldOlverFlowFillerWidth;
+          });
+        };
+
+        setNumeratorWidth((oldNumeratorWidth) => {
+          setUnlabeledNumeratorWidth((oldUnlabledNumeratorWidth) => {
+            if (!oldNumeratorWidth && !oldUnlabledNumeratorWidth) {
+              setAllWidths();
+            } else {
+              clearTimeout(timeout.current);
+              timeout.current = setTimeout(setAllWidths, 500);
+            }
+            return 0;
+          });
+          return 0;
         });
       } else {
-        setOverflowFillerWidth((oldValue) => {
-          if (oldValue) {
+        const setNumeratorsWidths = () => {
+          setNumeratorWidth(definedRatio * 100);
+          setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
+        };
+
+        setOverflowFillerWidth((oldOlverFlowFillerWidth) => {
+          const wasOverCapped = oldOlverFlowFillerWidth === 100;
+          if (wasOverCapped) {
             setNumeratorWidth(0);
             setUnlabeledNumeratorWidth(0);
             clearTimeout(timeout.current);
             timeout.current = setTimeout(() => {
               setOverflowFillerWidth(0);
               clearTimeout(timeout.current);
-              timeout.current = setTimeout(() => {
-                setNumeratorWidth(definedRatio * 100);
-                setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
-              }, 500);
+              timeout.current = setTimeout(setNumeratorsWidths, 500);
             }, 500);
           } else {
-            setNumeratorWidth(definedRatio * 100);
-            setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
+            setNumeratorsWidths();
           }
-          return oldValue;
+
+          return oldOlverFlowFillerWidth;
         });
       }
     }
