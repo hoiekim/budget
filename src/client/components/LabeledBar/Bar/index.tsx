@@ -1,34 +1,48 @@
 import { useState, useEffect, DetailedHTMLProps, HTMLAttributes, useRef } from "react";
-import { useAppContext } from "client";
+import { useAppContext, Timeout, clamp } from "client";
 import "./index.css";
 
-type Props = { ratio?: number; unlabledRatio?: number } & DetailedHTMLProps<
-  HTMLAttributes<HTMLDivElement>,
-  HTMLDivElement
->;
+type Props = {
+  ratio?: number;
+  unlabledRatio?: number;
+  noAlert?: boolean;
+} & DetailedHTMLProps<HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
 
-const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
+const Bar = ({
+  ratio,
+  unlabledRatio: unlabeledRatio,
+  noAlert,
+  className,
+  ...rest
+}: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
 
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabeledNumeratorWidth] = useState(0);
   const [overflowFillerWidth, setOverflowFillerWidth] = useState(0);
+  const [alertClass, setAlertClass] = useState("");
 
-  const definedRatio = ratio ? Math.max(ratio, 0) : 0;
-  const definedUnlabeledRatio = unlabledRatio ? Math.max(unlabledRatio, 0) : 0;
+  const definedRatio = ratio || 0;
+  const definedUnlabeledRatio = unlabeledRatio || 0;
 
-  const isOverCapped = definedRatio + definedUnlabeledRatio > 1;
-  const isOverCappedTwice = definedRatio + definedUnlabeledRatio > 2;
-  const alertClass = isOverCapped ? (isOverCappedTwice ? "alert more" : "alert") : "";
+  const isOverCapped = !noAlert && definedRatio + definedUnlabeledRatio > 1;
+  const isOverCappedTwice = !noAlert && definedRatio + definedUnlabeledRatio > 2;
+
+  const barColorTransitionTimeout = useRef<Timeout>();
+
+  useEffect(() => {
+    clearTimeout(barColorTransitionTimeout.current);
+    barColorTransitionTimeout.current = setTimeout(() => {
+      setAlertClass(isOverCapped ? (isOverCappedTwice ? "alert more" : "alert") : "");
+    }, 500);
+  }, [isOverCapped, isOverCappedTwice]);
 
   const classes = ["Bar", alertClass];
   if (className) classes.push(className);
-  if (ratio === undefined && unlabledRatio === undefined) classes.push("empty");
+  if (ratio === undefined && unlabeledRatio === undefined) classes.push("empty");
 
-  type SetTimeout = typeof setTimeout;
-  type Timeout = ReturnType<SetTimeout>;
-  const timeout = useRef<Timeout>();
+  const barMovingTimeout = useRef<Timeout>();
 
   useEffect(() => {
     if (!transitioning) {
@@ -48,7 +62,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
           } else {
             setNumeratorWidth(0);
             const reducedUnlabeledRatio = definedUnlabeledRatio - (1 - definedRatio);
-            setUnlabeledNumeratorWidth(Math.min(1, reducedUnlabeledRatio) * 100);
+            setUnlabeledNumeratorWidth(clamp(reducedUnlabeledRatio, 0, 1) * 100);
           }
         };
 
@@ -59,8 +73,8 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
               setNumeratorsWidths();
             } else {
               setOverflowFillerWidth(100);
-              clearTimeout(timeout.current);
-              timeout.current = setTimeout(setNumeratorsWidths, 500);
+              clearTimeout(barMovingTimeout.current);
+              barMovingTimeout.current = setTimeout(setNumeratorsWidths, 500);
             }
             return oldOlverFlowFillerWidth;
           });
@@ -71,8 +85,8 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
             if (!oldNumeratorWidth && !oldUnlabledNumeratorWidth) {
               setAllWidths();
             } else {
-              clearTimeout(timeout.current);
-              timeout.current = setTimeout(setAllWidths, 500);
+              clearTimeout(barMovingTimeout.current);
+              barMovingTimeout.current = setTimeout(setAllWidths, 500);
             }
             return 0;
           });
@@ -80,8 +94,8 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
         });
       } else {
         const setNumeratorsWidths = () => {
-          setNumeratorWidth(definedRatio * 100);
-          setUnlabeledNumeratorWidth(definedUnlabeledRatio * 100);
+          setNumeratorWidth(clamp(definedRatio, 0, 1) * 100);
+          setUnlabeledNumeratorWidth(clamp(definedUnlabeledRatio, 0, 1) * 100);
         };
 
         setOverflowFillerWidth((oldOlverFlowFillerWidth) => {
@@ -89,11 +103,11 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
           if (wasOverCapped) {
             setNumeratorWidth(0);
             setUnlabeledNumeratorWidth(0);
-            clearTimeout(timeout.current);
-            timeout.current = setTimeout(() => {
+            clearTimeout(barMovingTimeout.current);
+            barMovingTimeout.current = setTimeout(() => {
               setOverflowFillerWidth(0);
-              clearTimeout(timeout.current);
-              timeout.current = setTimeout(setNumeratorsWidths, 500);
+              clearTimeout(barMovingTimeout.current);
+              barMovingTimeout.current = setTimeout(setNumeratorsWidths, 500);
             }, 500);
           } else {
             setNumeratorsWidths();
@@ -109,9 +123,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
     <div {...rest} className={classes.join(" ")}>
       <div className="contentWithoutPadding">
         <div
-          style={{
-            width: Math.min(100, overflowFillerWidth) + "%",
-          }}
+          style={{ width: Math.min(100, overflowFillerWidth) + "%" }}
           className={["overflowFiller", "colored", alertClass].join(" ")}
         />
         <div
@@ -123,9 +135,7 @@ const Bar = ({ ratio, unlabledRatio, className, ...rest }: Props) => {
           className={["unlabeledNumerator", "colored", alertClass].join(" ")}
         />
         <div
-          style={{
-            width: Math.min(100, numeratorWidth) + "%",
-          }}
+          style={{ width: Math.min(100, numeratorWidth) + "%" }}
           className={["numerator", "colored", alertClass].join(" ")}
         />
       </div>

@@ -64,3 +64,9 @@ export class Account implements Account {
 export const isEmoji = (s: string) => /\p{Extended_Pictographic}/u.test(s);
 
 export const MAX_FLOAT = 3.402823567e38;
+
+export type Timeout = ReturnType<typeof setTimeout>;
+
+export const clamp = (n: number, min: number, max: number) => {
+  return Math.min(Math.max(n, min), max);
+};

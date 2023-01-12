@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAppContext } from "client/lib";
+import { useAppContext, Timeout } from "client";
 import { Point } from "./index";
 
 interface Props {
@@ -13,9 +13,6 @@ const Line = ({ points }: Props) => {
   const pathRef = useRef<SVGPathElement>(null);
   const [pathLength, setPathLength] = useState(0);
   const [pathOffset, setPathOffset] = useState(true);
-
-  type SetTimeout = typeof setTimeout;
-  type Timeout = ReturnType<SetTimeout>;
 
   const timeout = useRef<Timeout>();
 

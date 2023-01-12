@@ -51,6 +51,10 @@ div.Bar > .contentWithoutPadding > .unlabeledNumerator.alert.more {
   background: repeating-linear-gradient(135deg, #902, #902 2px, #9024 2px, #9024 4px);
 }
 
-div.Bar > .contentWithoutPadding > .overflowFiller {
+div.Bar > .contentWithoutPadding > .overflowFiller:not(.alert) {
+  background-color: #097;
+}
+
+div.Bar > .contentWithoutPadding > .overflowFiller.alert {
   background-color: #fcc;
 }

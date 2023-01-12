@@ -13,6 +13,7 @@ import {
   numberToCommaString,
   PATH,
   TransactionsPageParams,
+  Timeout,
 } from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
 import { Point, GraphData } from "client/components/Graph";
@@ -88,9 +89,6 @@ const AccountRow = ({ account }: Props) => {
       setSelectedBudgetIdLabel(selectedBudgetIdLabel);
     }
   };
-
-  type SetTimeout = typeof setTimeout;
-  type Timeout = ReturnType<SetTimeout>;
 
   const timeout = useRef<Timeout>();
 

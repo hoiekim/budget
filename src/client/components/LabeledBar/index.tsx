@@ -103,13 +103,15 @@ const LabeledBar = ({
     _onClickInfo();
   };
 
+  const barCapacity = isEditingThis ? capacityInput : capacity;
+
   const total = sorted_amount + unsorted_amount;
-  const leftover = capacity - total;
+  const leftover = barCapacity - total;
 
   const shouldIgnoreBarLength = isEditingThis ? isInfiniteInput : isInfinite;
 
-  const labeledRatio = shouldIgnoreBarLength ? undefined : sorted_amount / capacity;
-  const unlabledRatio = shouldIgnoreBarLength ? undefined : unsorted_amount / capacity;
+  const labeledRatio = shouldIgnoreBarLength ? undefined : sorted_amount / barCapacity;
+  const unlabledRatio = shouldIgnoreBarLength ? undefined : unsorted_amount / barCapacity;
 
   const onComplete = async () => {
     let calculatedCapacity = isInfiniteInput ? MAX_FLOAT : capacityInput;
@@ -142,6 +144,8 @@ const LabeledBar = ({
 
   const CurrencySymbolSpan = () => <span>{currencyCodeToSymbol(iso_currency_code)}</span>;
 
+  const noAlert = isEditingThis ? isIncomeInput : isIncome;
+
   return (
     <div className={classes.join(" ")} onClick={onClickInfo}>
       <div className="title">
@@ -153,7 +157,7 @@ const LabeledBar = ({
         {!isEditingThis && <EditButton onEdit={startEditingThis} />}
       </div>
       <div className="statusBarWithText">
-        <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} />
+        <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} noAlert={noAlert} />
         <div className="infoText">
           {isEditingThis ? (
             <div className="fullLength">

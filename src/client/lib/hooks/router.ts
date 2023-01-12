@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Timeout } from "client";
 
 export type TransitionDirection = "forward" | "backward";
 
@@ -58,9 +59,6 @@ export const useRouter = (): ClientRouter => {
   const [direction, setDirection] = useState<TransitionDirection>("forward");
 
   const isAnimationEnabled = useRef(false);
-
-  type SetTimeout = typeof setTimeout;
-  type Timeout = ReturnType<SetTimeout>;
 
   const timeout = useRef<Timeout>();
 
