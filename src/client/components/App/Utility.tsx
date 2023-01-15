@@ -63,6 +63,14 @@ const Utility = () => {
     setSelectedInterval(viewDate.getInterval());
   }, [viewDate, setSelectedInterval]);
 
+  // /**
+  //  * This prevents draggable element's ghost image flying back
+  //  * to original position.
+  //  */
+  // useEffect(() => {
+  //   window.document.ondragover = (e) => e.preventDefault();
+  // }, []);
+
   return <></>;
 };
 

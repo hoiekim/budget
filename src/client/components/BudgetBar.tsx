@@ -4,12 +4,14 @@ import { call, useAppContext, PATH, BudgetDetailPageParams } from "client";
 import { LabeledBar } from "client/components";
 
 const { BUDGET_DETAIL } = PATH;
+
 interface Props {
   budget: Budget;
   editingState?: [string | null, Dispatch<SetStateAction<string | null>>];
+  onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
-const BudgetBar = ({ budget, editingState }: Props) => {
+const BudgetBar = ({ budget, editingState, onSetOrder }: Props) => {
   const { setBudgets, router } = useAppContext();
   const { path, go } = router;
 
@@ -61,6 +63,7 @@ const BudgetBar = ({ budget, editingState }: Props) => {
       onDelete={onDelete}
       onClickInfo={onClickInfo}
       editingState={editingState}
+      onSetOrder={onSetOrder}
     />
   );
 };

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { call, useAppContext } from "client";
+import { useEffect, useState } from "react";
+import { call, useAppContext, useLocalStorage, getIndex } from "client";
 import { BudgetBar } from "client/components";
 import { Budget, NewBudgetGetResponse } from "server";
 import "./index.css";
@@ -7,10 +7,33 @@ import "./index.css";
 const BudgetsPage = () => {
   const { budgets, setBudgets } = useAppContext();
   const editingState = useState<string | null>(null);
+  const [budgetsOrder, setBudgetsOrder] = useLocalStorage<string[]>("budgetsOrder", []);
 
-  const budgetBars = Array.from(budgets).map(([budget_id, budget]) => {
-    return <BudgetBar key={budget_id} budget={budget} editingState={editingState} />;
-  });
+  useEffect(() => {
+    setBudgetsOrder((oldOrder) => {
+      const set = new Set(oldOrder);
+      budgets.forEach((_value, key) => set.add(key));
+      return Array.from(set.values());
+    });
+  }, [budgets, setBudgetsOrder]);
+
+  const budgetBars = Array.from(budgets)
+    .sort(([a], [b]) => {
+      const indexA = getIndex(a, budgetsOrder);
+      const indexB = getIndex(b, budgetsOrder);
+      if (indexA === undefined || indexB === undefined) return 0;
+      return indexA - indexB;
+    })
+    .map(([budget_id, budget]) => {
+      return (
+        <BudgetBar
+          key={budget_id}
+          budget={budget}
+          editingState={editingState}
+          onSetOrder={setBudgetsOrder}
+        />
+      );
+    });
 
   const onClickAddBudget = async () => {
     const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");

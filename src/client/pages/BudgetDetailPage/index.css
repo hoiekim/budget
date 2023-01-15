@@ -11,11 +11,6 @@ div.BudgetDetail .addButton {
   margin: 10px 10px;
 }
 
-div.SectionBar * {
-  overflow: hidden;
-  transition-duration: 300ms;
-}
-
 div.SectionBar {
   padding: 10px 0px;
   border-bottom: 1px solid #ccc;

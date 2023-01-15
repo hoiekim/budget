@@ -1,8 +1,6 @@
 import { Dispatch, SetStateAction, useState } from "react";
 import { Budget, Category, DeepPartial, Section } from "server";
 import {
-  currencyCodeToSymbol,
-  numberToCommaString,
   useAppContext,
   CalculatedProperties,
   MAX_FLOAT,
@@ -10,12 +8,13 @@ import {
   useCalculator,
   appendTimeString,
 } from "client";
-import Bar from "./Bar";
-import EditButton from "./EditButton";
-import ActionButtons from "./ActionButtons";
 import NameInput from "./NameInput";
-import CapacityInput from "./CapacityInput";
+import EditButton from "./EditButton";
+import Bar from "./Bar";
+import InfoText from "./InfoText";
 import ToggleInput from "./ToggleInput";
+import ActionButtons from "./ActionButtons";
+import { useReorder } from "./lib";
 import "./index.css";
 
 export type BarData = (Budget | Section | Category) & CalculatedProperties;
@@ -28,6 +27,7 @@ interface Props {
   onDelete: () => void | Promise<void>;
   onClickInfo: () => void;
   editingState?: [string | null, Dispatch<SetStateAction<string | null>>];
+  onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
 const LabeledBar = ({
@@ -35,9 +35,10 @@ const LabeledBar = ({
   data,
   iso_currency_code,
   onSubmit,
-  onDelete,
+  onDelete: _onDelete,
   onClickInfo: _onClickInfo,
   editingState,
+  onSetOrder,
 }: Props) => {
   const { viewDate } = useAppContext();
   const calculate = useCalculator();
@@ -58,16 +59,28 @@ const LabeledBar = ({
   const isInfinite = capacity === MAX_FLOAT || capacity === -MAX_FLOAT;
   const isIncome = capacity < 0;
 
+  const {
+    isDragging,
+    onDragStart,
+    onDragEnd,
+    onDragEnter,
+    onGotPointerCapture,
+    onTouchHandleStart,
+    onTouchHandleEnd,
+    onPointerEnter,
+  } = useReorder(dataId, onSetOrder);
+
   const [nameInput, setNameInput] = useState(name);
-  const [capacityInput, setCapacityInput] = useState(
-    isInfinite ? 0 : capacity * (isIncome ? -1 : 1)
-  );
+  const getCapacityInput = () => (isInfinite ? 0 : capacity * (isIncome ? -1 : 1));
+  const [capacityInput, setCapacityInput] = useState(getCapacityInput());
 
   const [isInfiniteInput, setIsInfiniteInput] = useState(isInfinite);
   const [isIncomeInput, setIsIncomeInput] = useState(isIncome);
   const [isRollOverInput, setIsRollOverInput] = useState(roll_over);
+  const getRollOverStartDateInput = () =>
+    roll_over_start_date ? new Date(roll_over_start_date) : new Date();
   const [rollOverStartDateInput, setRollOverStartDateInput] = useState(
-    roll_over_start_date ? new Date(roll_over_start_date) : new Date()
+    getRollOverStartDateInput()
   );
 
   const [_isEditingThis, _setIsEditingThis] = useState(false);
@@ -76,20 +89,19 @@ const LabeledBar = ({
   const isEditingThis = editingState ? editingDataId === dataId : _isEditingThis;
   const isEditingAny = editingState && !!editingDataId;
 
-  const startEditingThis = () => {
+  const startEditing = () => {
+    if (isDragging) return;
     setNameInput(name);
-    setCapacityInput(isInfinite ? 0 : capacity * (isIncome ? -1 : 1));
+    setCapacityInput(getCapacityInput());
     setIsInfiniteInput(isInfinite);
     setIsIncomeInput(isIncome);
     setIsRollOverInput(roll_over);
-    setRollOverStartDateInput(
-      roll_over_start_date ? new Date(roll_over_start_date) : new Date()
-    );
+    setRollOverStartDateInput(getRollOverStartDateInput());
     if (editingState && setEditingDataId) setEditingDataId(dataId);
     else _setIsEditingThis(true);
   };
 
-  const finishEditingThis = () => {
+  const finishEditing = () => {
     if (editingState && setEditingDataId) setEditingDataId(null);
     else _setIsEditingThis(false);
   };
@@ -128,123 +140,65 @@ const LabeledBar = ({
     } catch (error: any) {
       console.error(error);
     }
-    finishEditingThis();
+    finishEditing();
   };
 
-  const _onDelete = async () => {
+  const onDelete = async () => {
     try {
-      await onDelete();
+      await _onDelete();
     } catch (error: any) {
       console.error(error);
     }
-    finishEditingThis();
+    finishEditing();
   };
 
   const classes = ["LabeledBar"];
+  if (isDragging) classes.push("dragging");
   if (isEditingThis) classes.push("editing");
-
-  const CurrencySymbolSpan = () => <span>{currencyCodeToSymbol(iso_currency_code)}</span>;
 
   const noAlert = isEditingThis ? isIncomeInput : isIncome;
 
   return (
-    <div className={classes.join(" ")} onClick={onClickInfo}>
+    <div
+      className={classes.join(" ")}
+      onClick={() => onClickInfo()}
+      draggable={true}
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onPointerEnter={onPointerEnter}
+      onDragEnd={onDragEnd}
+    >
       <div className="title">
         <NameInput
           defaultValue={nameInput}
           isEditing={isEditingThis}
           onChange={(e) => setNameInput(e.target.value)}
         />
-        {!isEditingThis && <EditButton onEdit={startEditingThis} />}
+        {!isEditingThis && (
+          <EditButton
+            onEdit={startEditing}
+            onTouchStart={onTouchHandleStart}
+            onTouchEnd={onTouchHandleEnd}
+            onGotPointerCapture={onGotPointerCapture}
+          />
+        )}
       </div>
       <div className="statusBarWithText">
         <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} noAlert={noAlert} />
-        <div className="infoText">
-          {isEditingThis ? (
-            <div className="fullLength">
-              <table>
-                <tr>
-                  {isInfiniteInput ? (
-                    <td>
-                      <span>Unlimited</span>
-                    </td>
-                  ) : (
-                    <>
-                      <td>
-                        <CurrencySymbolSpan />
-                      </td>
-                      <td>
-                        <CapacityInput
-                          key={`${dataId}_${interval}`}
-                          defaultValue={capacityInput}
-                          isEditing={isEditingThis}
-                          onChange={(e) => setCapacityInput(Math.abs(+e.target.value))}
-                        />
-                      </td>
-                    </>
-                  )}
-                </tr>
-              </table>
-            </div>
-          ) : (
-            <>
-              <div className={isInfinite ? "fullLength" : undefined}>
-                <table>
-                  <tr>
-                    <td>
-                      <CurrencySymbolSpan />
-                    </td>
-                    <td>
-                      <span className="currentTotal">
-                        {numberToCommaString(Math.abs(total))}
-                      </span>
-                    </td>
-                    <td>
-                      <span>{total >= 0 ? "spent" : "gained"}</span>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-              {!isInfinite && (
-                <div>
-                  <table>
-                    <tr>
-                      <td>
-                        <CurrencySymbolSpan />
-                      </td>
-                      <td>
-                        <span className="currentTotal">
-                          {numberToCommaString(Math.abs(leftover))}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: "left" }}>
-                        <span>
-                          {(isIncome ? leftover < 0 : 0 <= leftover) ? "left" : "over"}
-                        </span>
-                      </td>
-                    </tr>
-                    {roll_over && rolled_over_amount !== undefined && (
-                      <tr>
-                        <td>
-                          <span>{rolled_over_amount <= 0 ? "+" : "-"}</span>
-                          <CurrencySymbolSpan />
-                        </td>
-                        <td>
-                          <span className="currentTotal">
-                            {numberToCommaString(Math.abs(rolled_over_amount))}
-                          </span>
-                        </td>
-                        <td>
-                          <span>rolled</span>
-                        </td>
-                      </tr>
-                    )}
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        <InfoText
+          dataId={dataId}
+          isEditingThis={isEditingThis}
+          isIncome={isIncome}
+          isInfinite={isInfinite}
+          isInfiniteInput={isInfiniteInput}
+          capacityInput={capacityInput}
+          setCapacityInput={setCapacityInput}
+          iso_currency_code={iso_currency_code}
+          total={total}
+          leftover={leftover}
+          roll_over={roll_over}
+          rolled_over_amount={rolled_over_amount}
+        />
       </div>
       {isEditingThis && (
         <div className="properties">
@@ -281,8 +235,8 @@ const LabeledBar = ({
       {isEditingThis && (
         <ActionButtons
           onComplete={onComplete}
-          onCancel={finishEditingThis}
-          onDelete={_onDelete}
+          onCancel={finishEditing}
+          onDelete={onDelete}
         />
       )}
     </div>

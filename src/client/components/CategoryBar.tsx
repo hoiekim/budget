@@ -6,6 +6,7 @@ import { LabeledBar } from "client/components";
 interface Props {
   category: Category & { amount?: number };
   editingState?: [string | null, Dispatch<SetStateAction<string | null>>];
+  onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
 const CategoryComponent = ({ category, editingState }: Props) => {

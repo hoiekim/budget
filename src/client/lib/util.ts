@@ -70,3 +70,15 @@ export type Timeout = ReturnType<typeof setTimeout>;
 export const clamp = (n: number, min: number, max: number) => {
   return Math.min(Math.max(n, min), max);
 };
+
+export const getIndex = <T = any>(e: T, arr: T[]): number | undefined => {
+  let i: number | undefined = undefined;
+  arr.find((f, j) => {
+    if (e === f) {
+      i = j;
+      return true;
+    }
+    return false;
+  });
+  return i;
+};

@@ -1,21 +1,23 @@
-import { MouseEventHandler } from "react";
+import { ButtonHTMLAttributes, MouseEventHandler } from "react";
 import "./index.css";
 
-interface Props {
+type Props = {
   onEdit: MouseEventHandler<HTMLButtonElement>;
-}
+} & ButtonHTMLAttributes<HTMLButtonElement>;
 
-const EditButton = ({ onEdit }: Props) => {
+const EditButton = ({ onEdit, ...rest }: Props) => {
   return (
     <div className="EditButton">
       <button
         className="edit"
         onClick={(e) => {
+          e.preventDefault();
           e.stopPropagation();
           onEdit(e);
         }}
+        {...rest}
       >
-        ✎
+        <span>✎</span>
       </button>
     </div>
   );

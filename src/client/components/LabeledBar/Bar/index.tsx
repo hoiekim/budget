@@ -21,7 +21,7 @@ const Bar = ({
   const [numeratorWidth, setNumeratorWidth] = useState(0);
   const [unlabeledNumeratorWidth, setUnlabeledNumeratorWidth] = useState(0);
   const [overflowFillerWidth, setOverflowFillerWidth] = useState(0);
-  const [alertClass, setAlertClass] = useState("");
+  const [alertLevel, setAlertLevel] = useState(0);
 
   const definedRatio = ratio || 0;
   const definedUnlabeledRatio = unlabeledRatio || 0;
@@ -32,13 +32,19 @@ const Bar = ({
   const barColorTransitionTimeout = useRef<Timeout>();
 
   useEffect(() => {
-    clearTimeout(barColorTransitionTimeout.current);
-    barColorTransitionTimeout.current = setTimeout(() => {
-      setAlertClass(isOverCapped ? (isOverCappedTwice ? "alert more" : "alert") : "");
-    }, 500);
-  }, [isOverCapped, isOverCappedTwice]);
+    if (!transitioning) {
+      clearTimeout(barColorTransitionTimeout.current);
+      barColorTransitionTimeout.current = setTimeout(() => {
+        setAlertLevel(isOverCapped ? (isOverCappedTwice ? 2 : 1) : 0);
+      }, 500);
+    }
+  }, [transitioning, isOverCapped, isOverCappedTwice]);
 
-  const classes = ["Bar", alertClass];
+  const alertClasses = [];
+  if (alertLevel > 0) alertClasses.push("alert");
+  if (alertLevel > 1) alertClasses.push("more");
+
+  const classes = ["Bar", ...alertClasses];
   if (className) classes.push(className);
   if (ratio === undefined && unlabeledRatio === undefined) classes.push("empty");
 
@@ -119,12 +125,22 @@ const Bar = ({
     }
   }, [definedRatio, definedUnlabeledRatio, isOverCapped, transitioning]);
 
+  useEffect(
+    () => () => {
+      setNumeratorWidth(0);
+      setUnlabeledNumeratorWidth(0);
+      setOverflowFillerWidth(0);
+      setAlertLevel(0);
+    },
+    []
+  );
+
   return (
     <div {...rest} className={classes.join(" ")}>
       <div className="contentWithoutPadding">
         <div
           style={{ width: Math.min(100, overflowFillerWidth) + "%" }}
-          className={["overflowFiller", "colored", alertClass].join(" ")}
+          className={["overflowFiller", "colored", ...alertClasses].join(" ")}
         />
         <div
           style={{
@@ -132,11 +148,11 @@ const Bar = ({
             left: `calc(${numeratorWidth}% - 10px)`,
             width: unlabeledNumeratorWidth && `calc(${unlabeledNumeratorWidth}% + 10px)`,
           }}
-          className={["unlabeledNumerator", "colored", alertClass].join(" ")}
+          className={["unlabeledNumerator", "colored", ...alertClasses].join(" ")}
         />
         <div
           style={{ width: Math.min(100, numeratorWidth) + "%" }}
-          className={["numerator", "colored", alertClass].join(" ")}
+          className={["numerator", "colored", ...alertClasses].join(" ")}
         />
       </div>
     </div>
