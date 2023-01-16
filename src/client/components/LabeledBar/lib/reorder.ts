@@ -94,7 +94,7 @@ export const useReorder = (
     touching = false;
     setTimeout(() => {
       isClickAllowed = true;
-    }, 100);
+    }, 500);
     finishDragging();
   };
 
