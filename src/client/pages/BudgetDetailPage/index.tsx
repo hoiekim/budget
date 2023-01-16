@@ -1,6 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NewSectionGetResponse } from "server";
-import { TransactionsPageParams, useAppContext, call, PATH } from "client";
+import {
+  TransactionsPageParams,
+  useAppContext,
+  call,
+  PATH,
+  useLocalStorage,
+  getIndex,
+} from "client";
 import { BudgetBar, SectionBar } from "client/components";
 import "./index.css";
 
@@ -18,15 +25,39 @@ const BudgetDetailPage = () => {
   const editingState = useState<string | null>(null);
 
   const [editingDataId, setEditingDataId] = editingState;
+  const [sectionsOrder, setSectionsOrder] = useLocalStorage<string[]>(
+    `sectionsOrder_${budget_id}`,
+    []
+  );
 
-  const sectionComponents: JSX.Element[] = [];
-  sections.forEach((e) => {
-    if (e.budget_id !== budget_id) return;
-    const component = (
-      <SectionBar key={e.section_id} section={e} editingState={editingState} />
-    );
-    sectionComponents.push(component);
-  });
+  useEffect(() => {
+    setSectionsOrder((oldOrder) => {
+      const set = new Set(oldOrder);
+      sections.forEach((section, key) => {
+        if (section.budget_id === budget_id) set.add(key);
+      });
+      return Array.from(set.values());
+    });
+  }, [sections, setSectionsOrder]);
+
+  const sectionBars = Array.from(sections)
+    .filter(([_section_id, section]) => section.budget_id === budget_id)
+    .sort(([a], [b]) => {
+      const indexA = getIndex(a, sectionsOrder);
+      const indexB = getIndex(b, sectionsOrder);
+      if (indexA === undefined || indexB === undefined) return 0;
+      return indexA - indexB;
+    })
+    .map(([section_id, section]) => {
+      return (
+        <SectionBar
+          key={section_id}
+          section={section}
+          editingState={editingState}
+          onSetOrder={setSectionsOrder}
+        />
+      );
+    });
 
   const onClickAddSection = async () => {
     const queryString = "?" + new URLSearchParams({ parent: budget_id }).toString();
@@ -73,7 +104,7 @@ const BudgetDetailPage = () => {
           </div>
           <div className="children">
             <div>
-              {sectionComponents}
+              {sectionBars}
               <div className="addButton">
                 <button onClick={onClickAddSection}>+</button>
               </div>

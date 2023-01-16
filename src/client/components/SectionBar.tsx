@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
-import { call, useAppContext } from "client";
+import { call, getIndex, useAppContext, useLocalStorage } from "client";
 import { LabeledBar, CategoryBar } from "client/components";
 
 interface Props {
@@ -9,13 +9,28 @@ interface Props {
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
-const SectionBar = ({ section, editingState }: Props) => {
+const SectionBar = ({ section, editingState, onSetOrder }: Props) => {
   const { budget_id, section_id, name } = section;
 
   const { budgets, setSections, categories, setCategories } = useAppContext();
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
+
+  const [categoriesOrder, setCategoriesOrder] = useLocalStorage<string[]>(
+    `categoriesOrder_${section_id}`,
+    []
+  );
+
+  useEffect(() => {
+    setCategoriesOrder((oldOrder) => {
+      const set = new Set(oldOrder);
+      categories.forEach((category, key) => {
+        if (category.section_id === section_id) set.add(key);
+      });
+      return Array.from(set.values());
+    });
+  }, [categories, setCategoriesOrder]);
 
   const childrenDivRef = useRef<HTMLDivElement>(null);
 
@@ -35,13 +50,24 @@ const SectionBar = ({ section, editingState }: Props) => {
     };
   }, []);
 
-  const categoryComponents: JSX.Element[] = [];
-  categories.forEach((e) => {
-    if (e.section_id !== section_id) return;
-    categoryComponents.push(
-      <CategoryBar key={e.category_id} category={e} editingState={editingState} />
-    );
-  });
+  const categoryBars = Array.from(categories)
+    .filter(([_category_id, category]) => category.section_id === section_id)
+    .sort(([a], [b]) => {
+      const indexA = getIndex(a, categoriesOrder);
+      const indexB = getIndex(b, categoriesOrder);
+      if (indexA === undefined || indexB === undefined) return 0;
+      return indexA - indexB;
+    })
+    .map(([category_id, category]) => {
+      return (
+        <CategoryBar
+          key={category_id}
+          category={category}
+          editingState={editingState}
+          onSetOrder={setCategoriesOrder}
+        />
+      );
+    });
 
   const budget = budgets.get(budget_id) as Budget;
   const { iso_currency_code } = budget;
@@ -140,12 +166,13 @@ const SectionBar = ({ section, editingState }: Props) => {
         onDelete={onDelete}
         onClickInfo={onClickInfo}
         editingState={editingState}
+        onSetOrder={onSetOrder}
       />
       <div className="children" style={{ height: childrenHeight }}>
         <div ref={childrenDivRef}>
           {isCategoryOpen && (
             <>
-              {categoryComponents}
+              {categoryBars}
               <div className="addButton">
                 <button onClick={onClickAddCategory}>+</button>
               </div>

@@ -9,7 +9,7 @@ interface Props {
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
-const CategoryComponent = ({ category, editingState }: Props) => {
+const CategoryComponent = ({ category, editingState, onSetOrder }: Props) => {
   const { section_id, category_id, name } = category;
 
   const { transactions, budgets, sections, setCategories, router } = useAppContext();
@@ -82,6 +82,7 @@ const CategoryComponent = ({ category, editingState }: Props) => {
         onDelete={onDelete}
         onClickInfo={onClickInfo}
         editingState={editingState}
+        onSetOrder={onSetOrder}
       />
     </div>
   );
