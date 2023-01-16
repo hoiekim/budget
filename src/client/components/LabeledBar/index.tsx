@@ -60,7 +60,6 @@ const LabeledBar = ({
   const isIncome = capacity < 0;
 
   const {
-    isDragging,
     onDragStart,
     onDragEnd,
     onDragEnter,
@@ -68,6 +67,8 @@ const LabeledBar = ({
     onTouchHandleStart,
     onTouchHandleEnd,
     onPointerEnter,
+    isDragging,
+    isClickAllowed,
   } = useReorder(dataId, onSetOrder);
 
   const [nameInput, setNameInput] = useState(name);
@@ -90,7 +91,7 @@ const LabeledBar = ({
   const isEditingAny = editingState && !!editingDataId;
 
   const startEditing = () => {
-    if (isDragging) return;
+    if (isDragging || !isClickAllowed) return;
     setNameInput(name);
     setCapacityInput(getCapacityInput());
     setIsInfiniteInput(isInfinite);

@@ -9,7 +9,6 @@ import {
 } from "react";
 
 interface ReorderHelper {
-  isDragging: boolean;
   onDragStart: DragEventHandler;
   onDragEnter: DragEventHandler;
   onDragEnd: DragEventHandler;
@@ -17,10 +16,19 @@ interface ReorderHelper {
   onPointerEnter: PointerEventHandler;
   onTouchHandleStart: TouchEventHandler;
   onTouchHandleEnd: TouchEventHandler;
+  isDragging: boolean;
+  /**
+   * This variable can be used to prevent unexpected click event firing after
+   * reordering is performed. Such cases were found during testing and it's
+   * potentially a browser bug.
+   */
+  isClickAllowed: boolean;
 }
 
 let dragStartItem: string | undefined;
 let reorderThrottliing = false;
+let touching = false;
+let isClickAllowed = true;
 
 export const useReorder = (
   dataId: string,
@@ -44,13 +52,15 @@ export const useReorder = (
     if (!onSetOrder || !dragStartItem || dragStartItem === dataId || reorderThrottliing)
       return;
 
-    // Throttling is implemented because redordering differently sized elements can cause
-    // another "mouseenter" or "pointerenter" event, resulting in elements infinitely
-    // getting reordered in some use cases.
+    // Throttling is implemented because redordering differently sized elements can
+    // cause another "mouseenter" or "pointerenter" event, resulting in elements
+    // infinitely getting reordered in some use cases.
     reorderThrottliing = true;
     setTimeout(() => {
       reorderThrottliing = false;
     }, 100);
+
+    if (touching) isClickAllowed = false;
 
     onSetOrder((oldOrder) => {
       const newOrder = [...oldOrder];
@@ -76,20 +86,33 @@ export const useReorder = (
     reorderItems();
   };
 
+  const onTouchHandleStart: TouchEventHandler = () => {
+    touching = true;
+    startDragging();
+  };
+  const onTouchHandleEnd: TouchEventHandler = () => {
+    touching = false;
+    setTimeout(() => {
+      isClickAllowed = true;
+    }, 100);
+    finishDragging();
+  };
+
   const onGotPointerCapture: PointerEventHandler = (e) => {
-    // This is needed to detect "pointerenter" event with touch input.
-    // By default, browsers "capture" the pointer at the first touch so
-    // sliding the finger into another element is not detected as an event.
+    // This is needed to detect "pointerenter" event with touch input. By default,
+    // browsers "capture" the pointer at the first touch so sliding the finger into
+    // another element is not detected as an event.
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   };
 
   return {
+    isClickAllowed,
     isDragging,
     onDragStart,
     onDragEnd: finishDragging,
     onDragEnter,
-    onTouchHandleStart: startDragging,
-    onTouchHandleEnd: finishDragging,
+    onTouchHandleStart,
+    onTouchHandleEnd,
     onGotPointerCapture,
     onPointerEnter: reorderItems,
   };
