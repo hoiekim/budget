@@ -143,17 +143,21 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
 
     const end_date = getDateString(now);
 
+    const options = {
+      count: 100,
+      offset: 0,
+    };
+
     const request: InvestmentsTransactionsGetRequest = {
       access_token,
       start_date,
       end_date,
+      options,
     };
 
-    let count = 100;
-    let offset = 0;
     let total: number | undefined;
 
-    while (total === undefined || offset < total) {
+    while (total === undefined || options.offset < total) {
       if (total === undefined) total = 0;
 
       try {
@@ -172,7 +176,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         }
       }
 
-      offset += count;
+      options.offset += options.count;
     }
   });
 
