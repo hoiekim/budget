@@ -129,6 +129,10 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
         const filledInvestments = investmentTransactions.map(fillDateStrings);
 
+        const addedMap = new Map(
+          filledInvestments.map((e) => [e.investment_transaction_id, e])
+        );
+
         const ingestedTrasactions = await getTransactionsFromElasticsearch;
         const ingestedData = ingestedTrasactions?.investment_transactions || [];
 
@@ -146,13 +150,16 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
           });
 
           if (!found) removed.push({ investment_transaction_id });
-          else modified.push(e);
+          else {
+            modified.push(e);
+            addedMap.delete(e.investment_transaction_id);
+          }
         });
 
         const filledData: TransactionsStreamGetResponse = {
           items,
           investmentTransactions: {
-            added: filledInvestments,
+            added: Array.from(addedMap.values()),
             removed,
             modified,
           },

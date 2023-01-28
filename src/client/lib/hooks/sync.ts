@@ -60,7 +60,7 @@ export const useSync = () => {
           added?.forEach((e) => newData.set(e.investment_transaction_id, e));
           modified?.forEach((e) => {
             const data = oldData.get(e.investment_transaction_id);
-            if (data) newData.set(e.transaction_id, { ...data, ...e });
+            if (data) newData.set(e.investment_transaction_id, { ...data, ...e });
           });
           removed?.forEach((e) => newData.delete(e.investment_transaction_id));
           return newData;

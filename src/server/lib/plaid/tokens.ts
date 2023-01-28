@@ -1,5 +1,5 @@
 import { CountryCode, LinkTokenCreateRequest, Products } from "plaid";
-import { getPlaidClient, MaskedUser } from "server";
+import { getPlaidClient, Item, MaskedUser } from "server";
 
 const { HOST_NAME } = process.env;
 
@@ -28,6 +28,14 @@ export const exchangePublicToken = async (user: MaskedUser, public_token: string
   const client = getPlaidClient(user);
 
   const response = await client.itemPublicTokenExchange({ public_token });
+
+  return response.data;
+};
+
+export const deletePlaidItem = async (user: MaskedUser, { access_token }: Item) => {
+  const client = getPlaidClient(user);
+
+  const response = await client.itemRemove({ access_token });
 
   return response.data;
 };

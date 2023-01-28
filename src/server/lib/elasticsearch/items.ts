@@ -126,6 +126,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
             should: account_ids.flatMap((account_id) => [
               { term: { _id: account_id } },
               { term: { "transaction.account_id": account_id } },
+              { term: { "investment_transaction.account_id": account_id } },
             ]),
           },
         },

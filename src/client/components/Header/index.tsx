@@ -17,6 +17,7 @@ const Header = () => {
   const logout = () => {
     call.delete("/api/login").then((r) => {
       setUser(undefined);
+      setIsHamburgerOpen(false);
       clean();
     });
   };
