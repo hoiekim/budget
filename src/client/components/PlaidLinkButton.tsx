@@ -37,8 +37,10 @@ const PlaidLinkButton = ({ item, children }: Props) => {
         .then((r) => {
           const { status, data } = r;
           if (status === "success" && data?.item) {
-            sync.transactions();
-            sync.accounts();
+            setTimeout(() => {
+              sync.transactions();
+              sync.accounts();
+            }, 1000);
           }
         });
     },

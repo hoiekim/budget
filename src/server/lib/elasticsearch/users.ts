@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { deepFlatten, DeepPartial } from "server";
+import { flatten, DeepPartial } from "server";
 import { elasticsearchClient, index } from "./client";
 
 export interface MaskedUser {
@@ -62,7 +62,7 @@ export const searchUser = async (
   } else {
     const filter: { term: any }[] = [{ term: { type: "user" } }];
 
-    const flatUser = deepFlatten(user);
+    const flatUser = flatten(user);
     for (const key in flatUser) {
       filter.push({ term: { [`user.${key}`]: flatUser[key] } });
     }
@@ -103,7 +103,7 @@ export const updateUser = async (user: PartialUser) => {
 
   const source = `
   if (ctx._source.type == "user") {
-    ${Object.entries(deepFlatten(user)).reduce((acc, [key, value]) => {
+    ${Object.entries(flatten(user)).reduce((acc, [key, value]) => {
       if (key === "user_id") return acc;
       return acc + `ctx._source.user.${key} = ${JSON.stringify(value)};\n`;
     }, "")}

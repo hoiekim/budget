@@ -1,4 +1,4 @@
-export const deepFlatten = (obj: { [k: string]: any }) => {
+export const flatten = (obj: { [k: string]: any }) => {
   const set = new Set<[string, any]>();
   for (const key in obj) set.add([key, obj[key]]);
 

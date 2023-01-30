@@ -1,5 +1,5 @@
 import {
-  deepFlatten,
+  flatten,
   MaskedUser,
   PartialAccount,
   PartialTransaction,
@@ -15,7 +15,7 @@ import {
 export const getUpdateScript = ({ user_id }: MaskedUser, type: string, data: any) => `
 if (ctx._source.user.user_id == "${user_id}") {
   if (ctx._source.type == "${type}") {
-    ${Object.entries(deepFlatten(data)).reduce((acc, [key, value]) => {
+    ${Object.entries(flatten(data)).reduce((acc, [key, value]) => {
       if (key === `${type}_id`) return acc;
       return acc + `ctx._source.${type}.${key} = ${JSON.stringify(value)};\n`;
     }, "")}
