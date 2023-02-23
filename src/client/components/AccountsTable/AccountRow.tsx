@@ -279,7 +279,11 @@ const AccountRow = ({ account }: Props) => {
       </div>
       <div className="budgetAction">
         <div>
-          <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+          <select
+            value={selectedBudgetIdLabel}
+            onClick={(e) => e.stopPropagation()}
+            onChange={onChangeBudgetSelect}
+          >
             <option value="">Select Budget</option>
             {budgetOptions}
           </select>
