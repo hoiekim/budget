@@ -1,4 +1,4 @@
-FROM --platform=linux/AMD64 node:14.17.6-alpine3.13 AS BUILDER
+FROM --platform=linux/AMD64 node:18.15.0-alpine3.17 AS BUILDER
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN npm i
 RUN npm run build
 RUN npm prune --production
 
-FROM --platform=linux/AMD64 node:14.17.6-alpine3.13
+FROM --platform=linux/AMD64 node:18.15.0-alpine3.17
 
 WORKDIR /app
 

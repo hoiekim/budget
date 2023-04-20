@@ -6,12 +6,9 @@
     "@elastic/elasticsearch": "^8.2.1",
     "bcrypt": "^5.0.1",
     "dotenv": "^16.0.3",
+    "express": "^4.18.2",
     "express-session": "^1.17.3",
-    "plaid": "^10.4.0",
-    "react": "^18.1.0",
-    "react-dom": "^18.1.0",
-    "react-plaid-link": "^3.3.2",
-    "react-scripts": "5.0.1"
+    "plaid": "^10.4.0"
   },
   "scripts": {
     "start": "npm run build && npm run start-server",
@@ -56,6 +53,10 @@
     "@types/react-dom": "^18.0.4",
     "@types/webpack-node-externals": "^2.5.3",
     "nodemon": "^2.0.20",
+    "react": "^18.1.0",
+    "react-dom": "^18.1.0",
+    "react-plaid-link": "^3.3.2",
+    "react-scripts": "^5.0.1",
     "ts-node": "^10.4.0",
     "typescript": "^4.6.4",
     "webpack": "^5.72.1",

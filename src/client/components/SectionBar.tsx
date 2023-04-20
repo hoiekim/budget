@@ -30,7 +30,7 @@ const SectionBar = ({ section, editingState, onSetOrder }: Props) => {
       });
       return Array.from(set.values());
     });
-  }, [categories, setCategoriesOrder]);
+  }, [categories, section_id, setCategoriesOrder]);
 
   const childrenDivRef = useRef<HTMLDivElement>(null);
 

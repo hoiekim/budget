@@ -38,7 +38,7 @@ const BudgetDetailPage = () => {
       });
       return Array.from(set.values());
     });
-  }, [sections, setSectionsOrder]);
+  }, [sections, budget_id, setSectionsOrder]);
 
   const sectionBars = Array.from(sections)
     .filter(([_section_id, section]) => section.budget_id === budget_id)
