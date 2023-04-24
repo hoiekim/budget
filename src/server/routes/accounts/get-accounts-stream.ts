@@ -65,7 +65,8 @@ export const getAccountsStreamRoute = new Route(
 
         const accounts = r.accounts.map<Account>((e) => {
           const existingAccount = map.get(e.account_id);
-          return existingAccount || { ...e, custom_name: "", hide: false, label: {} };
+          if (existingAccount) return { ...existingAccount, ...e }
+          else return { ...e, custom_name: "", hide: false, label: {} };
         });
 
         const data: AccountsStreamGetResponse = {
@@ -88,7 +89,8 @@ export const getAccountsStreamRoute = new Route(
 
         const filledAccounts = accounts.map<Account>((e) => {
           const existingAccount = map.get(e.account_id);
-          return existingAccount || { ...e, custom_name: "", hide: false, label: {} };
+          if (existingAccount) return { ...existingAccount, ...e }
+          else return { ...e, custom_name: "", hide: false, label: {} };
         });
 
         const data: AccountsStreamGetResponse = {
