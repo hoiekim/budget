@@ -28,18 +28,6 @@ div.LabeledBar > .title > span {
   font-size: 20px;
 }
 
-div.LabeledBar > .properties {
-  margin-top: 5px;
-  margin-left: -5px;
-  display: flex;
-  flex-wrap: wrap;
-}
-
-div.LabeledBar > .properties > .rollOverStartDate {
-  margin-top: 10px;
-  margin-left: 5px;
-}
-
 div.InfoText {
   display: flex;
   justify-content: space-between;
@@ -62,32 +50,17 @@ div.InfoText > div.fullLength.editing > table {
   width: 100%;
 }
 
-div.InfoText
-  > div.fullLength.editing
-  > table
-  > tbody
-  > tr {
+div.InfoText > div.fullLength.editing > table > tbody > tr {
   display: flex;
 }
 
-div.InfoText
-  > div.fullLength.editing
-  > table
-  > tbody
-  > tr
-  > td:last-child {
+div.InfoText > div.fullLength.editing > table > tbody > tr > td:last-child {
   padding-right: 0;
   margin-right: -2px;
   flex: 1;
 }
 
-div.InfoText
-  > div.fullLength.editing
-  > table
-  > tbody
-  > tr
-  > td:last-child
-  > input {
+div.InfoText > div.fullLength.editing > table > tbody > tr > td:last-child > input {
   font-size: 14px;
   height: 17px;
   width: 100%;
@@ -178,48 +151,4 @@ div.ActionButtons > button.delete:hover {
 
 div.ActionButtons > button.delete > span {
   color: #fff;
-}
-
-label.ToggleInput {
-  margin-top: 5px;
-  margin-left: 5px;
-}
-
-label.ToggleInput > div {
-  position: relative;
-  width: 100px;
-  height: 32px;
-  background-color: #eee;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  padding: 5px;
-  border: #ddd 2px solid;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-label.ToggleInput:not(.checked) > div {
-  justify-content: flex-end;
-}
-
-label.ToggleInput.checked > div {
-  justify-content: flex-start;
-}
-
-label.ToggleInput > div:before {
-  position: absolute;
-  border-radius: 12.5px;
-  content: "";
-  height: 25px;
-  width: 30px;
-  left: 2px;
-  bottom: 2px;
-  background-color: #888;
-  -webkit-transition: 300ms;
-  transition: 300ms;
-}
-
-label.ToggleInput.checked > div:before {
-  left: 64px;
 }

@@ -16,7 +16,10 @@ const ToggleInput = ({ defaultChecked, children, style, ...rest }: Props) => {
         hidden
         {...rest}
       />
-      <div style={style}>{children}</div>
+      <div className="switch" style={style}>
+        <div className="background colored" />
+        {children}
+      </div>
     </label>
   );
 };

@@ -12,12 +12,16 @@ import NameInput from "./NameInput";
 import EditButton from "./EditButton";
 import Bar from "./Bar";
 import InfoText from "./InfoText";
-import ToggleInput from "./ToggleInput";
+import ToggleInput from "./Properties/ToggleInput";
+import RadioInputs from "./Properties/RadioInputs";
 import ActionButtons from "./ActionButtons";
 import { useReorder } from "./lib";
 import "./index.css";
+import Properties from "./Properties";
 
 export type BarData = (Budget | Section | Category) & CalculatedProperties;
+
+export type BudgetType = "income" | "expense";
 
 interface Props {
   dataId: string;
@@ -202,43 +206,23 @@ const LabeledBar = ({
         />
       </div>
       {isEditingThis && (
-        <div className="properties">
-          <ToggleInput
-            defaultChecked={isInfiniteInput}
-            onChange={(e) => setIsInfiniteInput(e.target.checked)}
-          >
-            {isInfiniteInput ? "Unlimited" : "Limited"}
-          </ToggleInput>
-          <ToggleInput
-            defaultChecked={isIncomeInput}
-            onChange={(e) => setIsIncomeInput(e.target.checked)}
-          >
-            {isIncomeInput ? "Income" : "Expense"}
-          </ToggleInput>
-          <ToggleInput
-            defaultChecked={isRollOverInput}
-            onChange={(e) => setIsRollOverInput(e.target.checked)}
-          >
-            {isRollOverInput ? "Rolls Over" : "Resets"}
-          </ToggleInput>
-          {isRollOverInput && (
-            <div className="rollOverStartDate">
-              <span>Roll Over Start Date:&nbsp;</span>
-              <input
-                type="date"
-                value={getDateString(rollOverStartDateInput)}
-                onChange={(e) => setRollOverStartDateInput(new Date(e.target.value))}
-              />
-            </div>
-          )}
-        </div>
-      )}
-      {isEditingThis && (
-        <ActionButtons
-          onComplete={onComplete}
-          onCancel={finishEditing}
-          onDelete={onDelete}
-        />
+        <>
+          <Properties
+            isIncomeInput={isIncomeInput}
+            setIsIncomeInput={setIsIncomeInput}
+            isInfiniteInput={isInfiniteInput}
+            setIsInfiniteInput={setIsInfiniteInput}
+            isRollOverInput={isRollOverInput}
+            setIsRollOverInput={setIsRollOverInput}
+            rollOverStartDateInput={rollOverStartDateInput}
+            setRollOverStartDateInput={setRollOverStartDateInput}
+          />
+          <ActionButtons
+            onComplete={onComplete}
+            onCancel={finishEditing}
+            onDelete={onDelete}
+          />
+        </>
       )}
     </div>
   );
