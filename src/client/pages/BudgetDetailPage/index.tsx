@@ -76,7 +76,7 @@ const BudgetDetailPage = () => {
           section_id,
           budget_id,
           name: "",
-          capacities: { year: 0, month: 0, week: 0, day: 0 },
+          capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
           roll_over: false,
         });
       }

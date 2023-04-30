@@ -75,7 +75,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
         const { items, added, removed, modified } = data;
 
-        const fillDateStrings = (e: typeof added[0]) => {
+        const fillDateStrings = (e: (typeof added)[0]) => {
           const result = { ...e };
           const { authorized_date, date } = e;
           if (authorized_date) result.authorized_date = appendTimeString(authorized_date);
@@ -89,16 +89,21 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
         const filledModified = modified.map(fillDateStrings);
 
-        const filledData: TransactionsStreamGetResponse = {
+        const filteredRemoved = removed.filter(({ transaction_id }) => {
+          const transactionsToSave = [...added, ...modified].map((e) => e.transaction_id);
+          return transaction_id && !(transaction_id in transactionsToSave);
+        });
+
+        const adjustedData: TransactionsStreamGetResponse = {
           items,
           transactions: {
             added: filledAdded,
-            removed,
+            removed: filteredRemoved,
             modified: filledModified,
           },
         };
 
-        stream({ status: status.get(), data: filledData });
+        stream({ status: status.get(), data: adjustedData });
 
         const updateJobs = [
           upsertTransactions(user, [...filledAdded, ...filledModified]),
@@ -120,7 +125,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
       .then(async (data) => {
         const { items, investmentTransactions } = data;
 
-        const fillDateStrings = (e: typeof investmentTransactions[0]) => {
+        const fillDateStrings = (e: (typeof investmentTransactions)[0]) => {
           const result = { ...e };
           const { date } = e;
           if (date) result.date = appendTimeString(date);

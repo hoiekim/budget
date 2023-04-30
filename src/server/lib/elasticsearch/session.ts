@@ -28,10 +28,80 @@ export type RealSessionData = Omit<SessionData, "cookie"> & { cookie: RealCookie
 export type StoredSessionData = Omit<SessionData, "cookie"> & { cookie: StoredCookie };
 
 /**
+ * Searches session data by id from Elasticsearch.
+ * @param session_id
+ * @returns  A promise to be a StoredSessionData object.
+ */
+export const searchSession = async (session_id: string) => {
+  const data = await elasticsearchClient
+    .get<{ session: StoredSessionData }>({ index, id: session_id })
+    .catch((error) => {
+      if (error.body?.found === false) return;
+      throw new Error(`Failed to get session from Elasticsearch: ${session_id}`);
+    });
+  return data?._source?.session;
+};
+
+/**
+ * Updates a session object with given session_id and session data.
+ * @param session_id
+ * @param session
+ * @returns A promise to be an Elasticsearch response object.
+ */
+export const updateSession = async (session_id: string, session: StoredSessionData) => {
+  return elasticsearchClient.index({
+    index,
+    id: session_id,
+    document: { type: "session", session },
+  });
+};
+
+/**
+ * Deletes a session object with given session_id.
+ * @param session_id
+ * @returns A promise to be an Elasticsearch response object.
+ */
+export const deleteSession = async (session_id: string) => {
+  return elasticsearchClient.delete({ index, id: session_id });
+};
+
+/**
+ * Searches all expired session data and delete them.
+ * @returns A promise to be an Elasticsearch response object.
+ */
+export const purgeSessions = async () => {
+  const now = new Date().toISOString();
+  return elasticsearchClient.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { type: "session" } },
+          { range: { "session.cookie._expires": { lte: now } } },
+        ],
+      },
+    },
+  });
+};
+
+/**
  * Can be passed to 'store' option of express-session middleware to achieve persistent
  * session memory.
  */
 export class ElasticsearchSessionStore extends Store {
+  constructor() {
+    super();
+    this.autoRemoveScheduler();
+  }
+
+  /**
+   * Repeatedly run every hour to remove expired session data.
+   */
+  private autoRemoveScheduler = () => {
+    purgeSessions();
+    setTimeout(this.autoRemoveScheduler, 1000 * 60 * 60);
+  };
+
   /**
    * Gets session with given session_id.
    * @param session_id
@@ -43,19 +113,13 @@ export class ElasticsearchSessionStore extends Store {
     callback: (err: any, session?: RealSessionData | null) => void
   ) => {
     try {
-      const data = await elasticsearchClient
-        .get<{ session: StoredSessionData }>({ index, id: session_id })
-        .catch((error) => {
-          if (error.body?.found === false) return;
-          throw new Error(`Failed to get session from Elasticsearch: ${session_id}`);
-        });
-      const source = data?._source;
-      if (!source) {
+      const session = await searchSession(session_id);
+
+      if (!session) {
         callback(null, null);
         return;
       }
 
-      const { session } = source;
       const { cookie: storedCookie } = session;
       const { _expires, secure, sameSite } = storedCookie;
       if (!_expires || new Date(_expires) < new Date()) {
@@ -99,11 +163,7 @@ export class ElasticsearchSessionStore extends Store {
         sameSite: JSON.stringify(sameSite),
       };
 
-      await elasticsearchClient.index({
-        index,
-        id: session_id,
-        document: { type: "session", session: { ...session, cookie: storedCookie } },
-      });
+      await updateSession(session_id, { ...session, cookie: storedCookie });
 
       callback(null);
     } catch (error) {
@@ -120,7 +180,7 @@ export class ElasticsearchSessionStore extends Store {
   destroy = async (session_id: string, callback?: (err?: any) => void) => {
     if (!callback) return;
     try {
-      await elasticsearchClient.delete({ index, id: session_id });
+      await deleteSession(session_id);
       return callback(null);
     } catch (error) {
       return callback(error);

@@ -37,8 +37,8 @@ export const upsertItems = async (
 
     const omittedItem = { ...item };
     delete omittedItem.plaidError;
-    const source = getUpdateItemScript(user, omittedItem);
-    const bulkBody: any = { script: { source, lang: "painless" } };
+    const script = getUpdateItemScript(user, omittedItem);
+    const bulkBody: any = { script };
 
     if (upsert) {
       bulkBody.upsert = { type: "item", user: { user_id }, item };

@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "properties": {
     "type": { "type": "keyword" },
     "user": {
@@ -204,12 +204,13 @@
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
         "capacities": {
-          "type": "object",
+          "type": "nested",
           "properties": {
             "year": { "type": "float" },
             "month": { "type": "float" },
             "week": { "type": "float" },
-            "day": { "type": "float" }
+            "day": { "type": "float" },
+            "valid_from": { "type": "date" }
           }
         },
         "iso_currency_code": { "type": "keyword" },
@@ -225,12 +226,13 @@
         "budget_id": { "type": "keyword" },
         "name": { "type": "keyword" },
         "capacities": {
-          "type": "object",
+          "type": "nested",
           "properties": {
             "year": { "type": "float" },
             "month": { "type": "float" },
             "week": { "type": "float" },
-            "day": { "type": "float" }
+            "day": { "type": "float" },
+            "valid_from": { "type": "date" }
           }
         },
         "roll_over": { "type": "boolean" },
@@ -245,12 +247,13 @@
         "section_id": { "type": "keyword" },
         "name": { "type": "keyword" },
         "capacities": {
-          "type": "object",
+          "type": "nested",
           "properties": {
             "year": { "type": "float" },
             "month": { "type": "float" },
             "week": { "type": "float" },
-            "day": { "type": "float" }
+            "day": { "type": "float" },
+            "valid_from": { "type": "date" }
           }
         },
         "roll_over": { "type": "boolean" },

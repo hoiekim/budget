@@ -31,8 +31,8 @@ export const upsertAccounts = async (
 
     const bulkHead = { update: { _index: index, _id: account_id } };
 
-    const source = getUpdateAccountScript(user, account);
-    const bulkBody: any = { script: { source, lang: "painless" } };
+    const script = getUpdateAccountScript(user, account);
+    const bulkBody: any = { script };
 
     if (upsert) {
       bulkBody.upsert = { type: "account", user: { user_id }, account };
@@ -156,8 +156,8 @@ export const upsertHoldings = async (
 
     const bulkHead = { update: { _index: index, _id: holding_id } };
 
-    const source = getUpdateHoldingScript(user, holding);
-    const bulkBody: any = { script: { source, lang: "painless" } };
+    const script = getUpdateHoldingScript(user, holding);
+    const bulkBody: any = { script };
 
     if (upsert) {
       bulkBody.upsert = { type: "holding", user: { user_id }, holding };
@@ -186,8 +186,8 @@ export const upsertSecurities = async (
 
     const bulkHead = { update: { _index: index, _id: security_id } };
 
-    const source = getUpdateSecurityScript(user, security);
-    const bulkBody: any = { script: { source, lang: "painless" } };
+    const script = getUpdateSecurityScript(user, security);
+    const bulkBody: any = { script };
 
     if (upsert) {
       bulkBody.upsert = { type: "security", user: { user_id }, security };

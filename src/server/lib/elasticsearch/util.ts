@@ -12,12 +12,13 @@ import {
   PartialSecurity,
 } from "server";
 
-export const getUpdateScript = ({ user_id }: MaskedUser, type: string, data: any) => `
+export const getUpdateScript = ({ user_id }: MaskedUser, type: string, data: any) => {
+  const source = `
 if (ctx._source.user.user_id == "${user_id}") {
   if (ctx._source.type == "${type}") {
-    ${Object.entries(flatten(data)).reduce((acc, [key, value]) => {
+    ${Object.keys(flatten(data)).reduce((acc, key) => {
       if (key === `${type}_id`) return acc;
-      return acc + `ctx._source.${type}.${key} = ${JSON.stringify(value)};\n`;
+      return acc + `ctx._source.${type}.${key} = params.${key};\n`;
     }, "")}
   } else {
     throw new Exception("Found document is not ${type} type.");
@@ -26,6 +27,8 @@ if (ctx._source.user.user_id == "${user_id}") {
   throw new Exception("Request user doesn't have permission for this document.");
 }
 `;
+  return { source, lang: "painless", params: data };
+};
 
 export const getUpdateTransactionScript = (
   user: MaskedUser,

@@ -15,7 +15,7 @@ export type Capacity = {
 export interface Budget {
   budget_id: string;
   name: string;
-  capacities: Capacity;
+  capacities: Capacity[];
   iso_currency_code: string;
   roll_over: boolean;
   roll_over_start_date?: string;
@@ -37,7 +37,7 @@ export const createBudget = async (user: MaskedUser) => {
       user: { user_id },
       budget: {
         name: "",
-        capacities: { year: 0, month: 0, week: 0, day: 0 },
+        capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
         iso_currency_code: "USD",
       },
     },
@@ -56,16 +56,8 @@ export type PartialBudget = { budget_id: string } & Partial<Budget>;
  */
 export const updateBudget = async (user: MaskedUser, budget: PartialBudget) => {
   const { budget_id } = budget;
-
-  const source = getUpdateBudgetScript(user, budget);
-
-  const response = await elasticsearchClient.update({
-    index,
-    id: budget_id,
-    script: { source, lang: "painless" },
-  });
-
-  return response;
+  const script = getUpdateBudgetScript(user, budget);
+  return elasticsearchClient.update({ index, id: budget_id, script });
 };
 
 /**
@@ -121,7 +113,7 @@ export interface Section {
   section_id: string;
   budget_id: string;
   name: string;
-  capacities: Capacity;
+  capacities: Capacity[];
   roll_over: boolean;
   roll_over_start_date?: string;
 }
@@ -143,7 +135,7 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
       section: {
         budget_id,
         name: "",
-        capacities: { year: 0, month: 0, week: 0, day: 0 },
+        capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
       },
     },
   });
@@ -161,16 +153,8 @@ export type PartialSection = { section_id: string } & Partial<Section>;
  */
 export const updateSection = async (user: MaskedUser, section: PartialSection) => {
   const { section_id } = section;
-
-  const source = getUpdateSectionScript(user, section);
-
-  const response = await elasticsearchClient.update({
-    index,
-    id: section_id,
-    script: { source, lang: "painless" },
-  });
-
-  return response;
+  const script = getUpdateSectionScript(user, section);
+  return elasticsearchClient.update({ index, id: section_id, script });
 };
 
 /**
@@ -217,7 +201,7 @@ export interface Category {
   category_id: string;
   section_id: string;
   name: string;
-  capacities: Capacity;
+  capacities: Capacity[];
   roll_over: boolean;
   roll_over_start_date?: string;
 }
@@ -239,7 +223,7 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
       category: {
         section_id,
         name: "",
-        capacities: { year: 0, month: 0, week: 0, day: 0 },
+        capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
       },
     },
   });
@@ -257,16 +241,8 @@ export type PartialCategory = { category_id: string } & Partial<Category>;
  */
 export const updateCategory = async (user: MaskedUser, category: PartialCategory) => {
   const { category_id } = category;
-
-  const source = getUpdateCategoryScript(user, category);
-
-  const response = await elasticsearchClient.update({
-    index,
-    id: category_id,
-    script: { source, lang: "painless" },
-  });
-
-  return response;
+  const script = getUpdateCategoryScript(user, category);
+  return elasticsearchClient.update({ index, id: category_id, script });
 };
 
 /**

@@ -12,8 +12,6 @@ import NameInput from "./NameInput";
 import EditButton from "./EditButton";
 import Bar from "./Bar";
 import InfoText from "./InfoText";
-import ToggleInput from "./Properties/ToggleInput";
-import RadioInputs from "./Properties/RadioInputs";
 import ActionButtons from "./ActionButtons";
 import { useReorder } from "./lib";
 import "./index.css";
@@ -59,7 +57,7 @@ const LabeledBar = ({
 
   const interval = viewDate.getInterval();
 
-  const capacity = capacities[interval];
+  const capacity = capacities[0] && capacities[0][interval];
   const isInfinite = capacity === MAX_FLOAT || capacity === -MAX_FLOAT;
   const isIncome = capacity < 0;
 
@@ -137,7 +135,7 @@ const LabeledBar = ({
     try {
       await onSubmit({
         name: nameInput,
-        capacities: { [interval]: calculatedCapacity },
+        capacities: [{ [interval]: calculatedCapacity }],
         roll_over: isRollOverInput,
         roll_over_start_date: appendTimeString(getDateString(rollOverStartDateInput)),
       });

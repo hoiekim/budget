@@ -146,8 +146,7 @@ const Bar = ({
           style={{
             display: numeratorWidth >= 100 ? "none" : "block",
             left: 0,
-            width:
-              unlabeledNumeratorWidth && numeratorWidth + unlabeledNumeratorWidth + "%",
+            width: numeratorWidth + unlabeledNumeratorWidth + "%",
           }}
           className={["unlabeledNumerator", "colored", ...alertClasses].join(" ")}
         />

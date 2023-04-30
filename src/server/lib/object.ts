@@ -5,40 +5,41 @@ export const flatten = (obj: { [k: string]: any }) => {
   const queue = set.values();
   let cue = queue.next();
 
-  const map: { [k: string]: (string | number | boolean | null)[] } = {};
+  type ValidDataType = string | number | boolean | null;
+  const map: { [k: string]: ValidDataType | ValidDataType[] } = {};
 
   while (cue.value) {
     const [address, any] = cue.value;
     const type = typeof any;
 
-    if (type === "object") {
-      if (Array.isArray(any)) {
-        any.forEach((e) => set.add([address, e]));
-      } else if (any !== null) {
-        Object.entries(any).forEach(([key, value]) => {
-          set.add([address + "." + key, value]);
-        });
-      }
+    const isArray = Array.isArray(any);
+
+    if (type === "object" && !isArray && any !== null) {
+      Object.entries(any).forEach(([key, value]) => {
+        set.add([address + "." + key, value]);
+      });
     }
 
-    if (type === "number" || type === "string" || type === "boolean" || any === null) {
+    if (
+      isArray ||
+      type === "number" ||
+      type === "string" ||
+      type === "boolean" ||
+      any === null
+    ) {
       const existingData = map[address];
-      if (existingData) existingData.push(any);
-      else map[address] = [any];
+      if (existingData) {
+        if (!Array.isArray(existingData)) map[address] = [existingData, any];
+        else existingData.push(any);
+      } else {
+        map[address] = any;
+      }
     }
 
     cue = queue.next();
   }
 
-  const result: any = {};
-
-  for (const key in map) {
-    const data = map[key];
-    if (data.length === 1) result[key] = data[0];
-    else result[key] = data;
-  }
-
-  return result;
+  return map;
 };
 
 export type DeepPartial<T> = {

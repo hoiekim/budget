@@ -31,8 +31,8 @@ export const upsertTransactions = async (
 
     const bulkHead = { update: { _index: index, _id: transaction_id } };
 
-    const source = getUpdateTransactionScript(user, transaction);
-    const bulkBody: any = { script: { source, lang: "painless" } };
+    const script = getUpdateTransactionScript(user, transaction);
+    const bulkBody: any = { script };
 
     if (upsert) {
       bulkBody.upsert = { type: "transaction", user: { user_id }, transaction };
@@ -159,8 +159,8 @@ export const upsertInvestmentTransactions = async (
 
     const bulkHead = { update: { _index: index, _id: investment_transaction_id } };
 
-    const source = getUpdateInvestmentTransactionScript(user, investment_transaction);
-    const bulkBody: any = { script: { source, lang: "painless" } };
+    const script = getUpdateInvestmentTransactionScript(user, investment_transaction);
+    const bulkBody: any = { script };
 
     if (upsert) {
       bulkBody.upsert = {

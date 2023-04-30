@@ -39,7 +39,7 @@ export const calculatorLambda = (
         e.rolled_over_amount = undefined;
       } else {
         const interval = viewDate.getInterval();
-        const capacity = e.capacities[interval];
+        const capacity = e.capacities[0] && e.capacities[0][interval];
         e.rolled_over_amount = -span * capacity;
       }
     }

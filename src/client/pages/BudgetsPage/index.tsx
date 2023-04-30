@@ -44,7 +44,7 @@ const BudgetsPage = () => {
     const newBudget: Budget = {
       budget_id,
       name: "",
-      capacities: { year: 0, month: 0, week: 0, day: 0 },
+      capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
       iso_currency_code: "USD",
       roll_over: false,
     };
