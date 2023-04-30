@@ -111,7 +111,14 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         ];
 
         const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor }));
-        Promise.all(updateJobs).then(() => upsertItems(user, partialItems));
+        Promise.all(updateJobs)
+          .then(() => upsertItems(user, partialItems))
+          .catch((err) => {
+            console.error(
+              "Error occured during puting Plaid transanctions data into Elasticsearch"
+            );
+            console.error(err);
+          });
 
         return null;
       })
