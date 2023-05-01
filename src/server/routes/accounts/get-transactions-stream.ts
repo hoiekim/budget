@@ -90,8 +90,9 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         const filledModified = modified.map(fillDateStrings);
 
         const filteredRemoved = removed.filter(({ transaction_id }) => {
-          const transactionsToSave = [...added, ...modified].map((e) => e.transaction_id);
-          return transaction_id && !(transaction_id in transactionsToSave);
+          return ![...added, ...modified].find((e) => {
+            return e.transaction_id === transaction_id;
+          });
         });
 
         const adjustedData: TransactionsStreamGetResponse = {
