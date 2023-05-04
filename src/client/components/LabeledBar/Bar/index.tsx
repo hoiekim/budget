@@ -82,7 +82,7 @@ const Bar = ({
               clearTimeout(barMovingTimeout.current);
               barMovingTimeout.current = setTimeout(setNumeratorsWidths, 500);
             }
-            return oldOlverFlowFillerWidth;
+            return 100;
           });
         };
 
