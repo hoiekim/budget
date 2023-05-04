@@ -23,18 +23,21 @@ const Header = () => {
   };
 
   type NavigatorProps = { target: PATH; children: ReactNode };
-  const Navigator = ({ target, children }: NavigatorProps) => (
-    <a
-      className={path === target ? "selected" : undefined}
-      href={target}
-      onClick={(e) => {
-        e.preventDefault();
-        go(target, { animate: false });
-      }}
-    >
-      {children}
-    </a>
-  );
+  const Navigator = ({ target, children }: NavigatorProps) => {
+    const seleted = path === target && !params.values().next().value;
+    return (
+      <a
+        className={seleted ? "selected" : undefined}
+        href={target}
+        onClick={(e) => {
+          e.preventDefault();
+          go(target, { animate: false });
+        }}
+      >
+        {children}
+      </a>
+    );
+  };
 
   const onClickPreviousView = () => {
     setViewDate((oldViewDate) => {
@@ -65,7 +68,7 @@ const Header = () => {
   const { BUDGETS, ACCOUNTS, TRANSACTIONS } = PATH;
 
   const isBackButtonDisabled =
-    !params.toString() && !![BUDGETS, ACCOUNTS, TRANSACTIONS].find((e) => e === path);
+    !params.toString() && !![BUDGETS, ACCOUNTS, TRANSACTIONS].includes(path);
 
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
