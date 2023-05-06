@@ -4,10 +4,9 @@ import {
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
-  Holding as PlaidHolding,
-  Security as PlaidSecurity,
 } from "plaid";
-import { MaskedUser, Item, getPlaidClient, ignorable_error_codes } from "server";
+import { MaskedUser, getPlaidClient, ignorable_error_codes } from "server";
+import { Item, Holding, Security } from "common";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -100,27 +99,6 @@ export interface PlaidAccount {
   item_id: string;
 }
 
-export interface AccountLabel {
-  budget_id?: string | null;
-}
-
-export interface Account extends PlaidAccount {
-  /**
-   * User defined name. This name is dintinct from account.name or
-   * account.official_name which are provided Plaid.
-   */
-  custom_name: string;
-  /**
-   * Determines if the account is hidden. If hidden, the account is not considered
-   * when calculating remaining budget and so on.
-   */
-  hide: boolean;
-  /**
-   * Represents relations by budget_id.
-   */
-  label: AccountLabel;
-}
-
 export const getAccounts = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
 
@@ -145,12 +123,12 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
         return { ...e, institution_id, item_id };
       });
       allAccounts.push(filledAccounts);
-      data.items.push({ ...item });
+      data.items.push(new Item(item));
     } catch (error: any) {
       const plaidError = error?.response?.data as PlaidError;
       console.error(plaidError);
       console.error("Failed to get accounts data for item:", item_id);
-      data.items.push({ ...item, plaidError });
+      data.items.push(new Item({ ...item, plaidError }));
     }
 
     return;
@@ -162,12 +140,6 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
 
   return data;
 };
-
-export interface Holding extends PlaidHolding {
-  holding_id: string;
-}
-
-export interface Security extends PlaidSecurity {}
 
 export const getHoldings = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
@@ -203,19 +175,19 @@ export const getHoldings = async (user: MaskedUser, items: Item[]) => {
 
       const filledHoldings = holdings.map((e) => {
         const { account_id, security_id } = e;
-        return { ...e, holding_id: `${account_id}_${security_id}` };
+        return new Holding({ ...e, holding_id: `${account_id}_${security_id}` });
       });
       allHoldings.push(filledHoldings);
 
-      allSecurities.push(securities);
+      allSecurities.push(securities.map((e) => new Security(e)));
 
-      data.items.push({ ...item });
+      data.items.push(new Item(item));
     } catch (error: any) {
       const plaidError = error?.response?.data as PlaidError;
       if (!ignorable_error_codes.has(plaidError?.error_code)) {
         console.error(plaidError);
         console.error("Failed to get holdings data for item:", item_id);
-        data.items.push({ ...item, plaidError });
+        data.items.push(new Item({ ...item, plaidError }));
       }
     }
 

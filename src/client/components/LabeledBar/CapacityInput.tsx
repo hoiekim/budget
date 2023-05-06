@@ -1,4 +1,4 @@
-import { numberToCommaString } from "client";
+import { numberToCommaString } from "common";
 import { useState, useEffect, useRef, InputHTMLAttributes } from "react";
 
 type Props = { defaultValue: number; isEditing: boolean } & Omit<

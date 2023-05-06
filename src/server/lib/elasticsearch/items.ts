@@ -1,19 +1,7 @@
-import { PlaidError } from "plaid";
+import { Item } from "common";
 import { elasticsearchClient, index } from "./client";
 import { MaskedUser } from "./users";
 import { getUpdateItemScript } from "./util";
-
-export interface Item {
-  item_id: string;
-  access_token: string;
-  institution_id: string;
-  cursor?: string;
-  plaidError?: PlaidError;
-  /**
-   * Timestamp in ISO format.
-   */
-  updated?: string;
-}
 
 /**
  * Updates or inserts items documents associated with given user.

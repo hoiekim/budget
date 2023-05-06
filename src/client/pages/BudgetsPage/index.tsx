@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { call, useAppContext, useLocalStorage, getIndex } from "client";
+import { call, useAppContext, useLocalStorage } from "client";
 import { BudgetBar } from "client/components";
-import { Budget, NewBudgetGetResponse } from "server";
+import { NewBudgetGetResponse } from "server";
+import { Budget, getIndex } from "common";
 import "./index.css";
 
 const BudgetsPage = () => {
@@ -41,13 +42,7 @@ const BudgetsPage = () => {
 
     const { budget_id } = data;
 
-    const newBudget: Budget = {
-      budget_id,
-      name: "",
-      capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
-      iso_currency_code: "USD",
-      roll_over: false,
-    };
+    const newBudget = new Budget({ budget_id });
 
     setBudgets((oldBudgets) => {
       const newBudgets = new Map(oldBudgets);

@@ -1,4 +1,5 @@
-import { currencyCodeToSymbol, numberToCommaString, useAppContext } from "client";
+import { useAppContext } from "client";
+import { currencyCodeToSymbol, numberToCommaString } from "common";
 import { Dispatch, SetStateAction } from "react";
 import CapacityInput from "./CapacityInput";
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Timeout } from "client";
+import { Timeout } from "common";
 
 export type TransitionDirection = "forward" | "backward";
 

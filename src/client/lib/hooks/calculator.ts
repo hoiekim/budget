@@ -9,7 +9,7 @@ import {
   Transactions,
   Accounts,
 } from "client";
-import { Budget, Category, Section } from "server";
+import { Budget, Category, Section } from "common";
 
 type BudgetLike = (Budget | Section | Category) & CalculatedProperties;
 

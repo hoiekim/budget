@@ -1,4 +1,5 @@
-import { exchangePublicToken, Route, pushLocalItem, Item, upsertItems } from "server";
+import { exchangePublicToken, Route, pushLocalItem, upsertItems } from "server";
+import { Item } from "common";
 
 export interface PbulicTokenPostResponse {
   item: Item;
@@ -25,7 +26,7 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
     }
 
     const { access_token, item_id } = await exchangePublicToken(user, public_token);
-    const item: Item = { item_id, access_token, institution_id };
+    const item = new Item({ item_id, access_token, institution_id });
 
     await upsertItems(user, [item]);
 

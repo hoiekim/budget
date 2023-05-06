@@ -1,13 +1,14 @@
 import { Dispatch, SetStateAction, useState } from "react";
-import { Budget, Category, DeepPartial, Section } from "server";
+import { useAppContext, CalculatedProperties, useCalculator } from "client";
 import {
-  useAppContext,
-  CalculatedProperties,
-  MAX_FLOAT,
   getDateString,
-  useCalculator,
-  appendTimeString,
-} from "client";
+  getDateTimeString,
+  MAX_FLOAT,
+  DeepPartial,
+  Budget,
+  Category,
+  Section,
+} from "common";
 import NameInput from "./NameInput";
 import EditButton from "./EditButton";
 import Bar from "./Bar";
@@ -137,7 +138,7 @@ const LabeledBar = ({
         name: nameInput,
         capacities: [{ [interval]: calculatedCapacity }],
         roll_over: isRollOverInput,
-        roll_over_start_date: appendTimeString(getDateString(rollOverStartDateInput)),
+        roll_over_start_date: getDateTimeString(getDateString(rollOverStartDateInput)),
       });
       if (isRollOverInput) calculate();
     } catch (error: any) {

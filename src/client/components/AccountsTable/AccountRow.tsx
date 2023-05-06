@@ -6,15 +6,14 @@ import {
   MouseEventHandler,
   useMemo,
 } from "react";
-import { Account, InvestmentTransaction, Transaction } from "server";
 import {
-  call,
-  useAppContext,
+  Transaction,
+  InvestmentTransaction,
+  Account,
   numberToCommaString,
-  PATH,
-  TransactionsPageParams,
   Timeout,
-} from "client";
+} from "common";
+import { call, useAppContext, PATH, TransactionsPageParams } from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
 import { Point, GraphData } from "client/components/Graph";
 import "./index.css";
@@ -80,7 +79,7 @@ const AccountRow = ({ account }: Props) => {
     if (r.status === "success") {
       setAccounts((oldAccounts) => {
         const newAccounts = new Map(oldAccounts);
-        const newAccount = { ...account };
+        const newAccount = new Account(account);
         newAccount.label.budget_id = value || null;
         newAccounts.set(account_id, newAccount);
         return newAccounts;
@@ -104,7 +103,7 @@ const AccountRow = ({ account }: Props) => {
             const oldAccount = oldAccounts.get(account_id);
             if (!oldAccount) return oldAccounts;
             const newAccounts = new Map(oldAccounts);
-            const newAccount = { ...oldAccount, custom_name: value };
+            const newAccount = new Account({ ...oldAccount, custom_name: value });
             newAccounts.set(account_id, newAccount);
             return newAccounts;
           });

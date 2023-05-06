@@ -14,7 +14,8 @@ import {
   Categories,
   ViewDate,
 } from "client";
-import { MaskedUser, Interval } from "server";
+import { MaskedUser } from "server";
+import { Interval } from "common";
 
 interface Props {
   initialUser: ContextType["user"];

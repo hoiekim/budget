@@ -4,22 +4,8 @@ import {
   getUpdateSectionScript,
   getUpdateCategoryScript,
 } from "server";
+import { Budget, Section, Category } from "common";
 import { elasticsearchClient, index } from "./client";
-
-export type Interval = "year" | "month" | "week" | "day";
-
-export type Capacity = {
-  [key in Interval]: number;
-};
-
-export interface Budget {
-  budget_id: string;
-  name: string;
-  capacities: Capacity[];
-  iso_currency_code: string;
-  roll_over: boolean;
-  roll_over_start_date?: string;
-}
 
 /**
  * Creates a document that represents a budget.
@@ -109,15 +95,6 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
   return response;
 };
 
-export interface Section {
-  section_id: string;
-  budget_id: string;
-  name: string;
-  capacities: Capacity[];
-  roll_over: boolean;
-  roll_over_start_date?: string;
-}
-
 /**
  * Creates a document that represents a section.
  * Note: Budget > Section > Category
@@ -196,15 +173,6 @@ export const deleteSection = async (user: MaskedUser, section_id: string) => {
 
   return response;
 };
-
-export interface Category {
-  category_id: string;
-  section_id: string;
-  name: string;
-  capacities: Capacity[];
-  roll_over: boolean;
-  roll_over_start_date?: string;
-}
 
 /**
  * Creates a document that represents a category.
@@ -314,11 +282,17 @@ export const searchBudgets = async (user: MaskedUser) => {
     const id = e._id;
     if (!source) return;
     if (source.type === "budget") {
-      source.budget && budgets.push({ ...source.budget, budget_id: id });
+      if (!source.budget) return;
+      const budget = new Budget({ ...source.budget, budget_id: id });
+      source.budget && budgets.push(budget);
     } else if (source.type === "section") {
-      source.section && sections.push({ ...source.section, section_id: id });
+      if (!source.section) return;
+      const section = new Section({ ...source.section, section_id: id });
+      source.section && sections.push(section);
     } else if (source.type === "category") {
-      source.category && categories.push({ ...source.category, category_id: id });
+      if (!source.category) return;
+      const category = new Category({ ...source.category, category_id: id });
+      source.category && categories.push(category);
     }
   });
 

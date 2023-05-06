@@ -1,5 +1,6 @@
 import { useState, useEffect, DetailedHTMLProps, HTMLAttributes, useRef } from "react";
-import { useAppContext, Timeout, clamp } from "client";
+import { useAppContext } from "client";
+import { Timeout, clamp } from "common";
 import "./index.css";
 
 type Props = {

@@ -1,6 +1,3 @@
-import { AccountType } from "plaid";
-import { Account as _Account, DeepPartial } from "server";
-
 export const numberToCommaString = (n: number, fixed = 2) => {
   const sign = n < 0 ? "-" : "";
 
@@ -35,32 +32,6 @@ export const currencyCodeToSymbol = (code: string) => {
 export const getRandomId = () =>
   (65536 + Math.floor(Math.random() * 983040)).toString(16);
 
-export interface Account extends _Account {}
-
-export class Account implements Account {
-  constructor(account?: DeepPartial<Account>) {
-    this.item_id = getRandomId();
-    this.institution_id = getRandomId();
-    this.account_id = getRandomId();
-    this.custom_name = "";
-    this.hide = false;
-    this.balances = {
-      available: 0,
-      current: 0,
-      limit: 0,
-      iso_currency_code: "USD",
-      unofficial_currency_code: "USD",
-    };
-    this.label = {};
-    this.mask = "0000";
-    this.name = "Unknown";
-    this.official_name = "Unknown";
-    this.type = AccountType.Other;
-    this.subtype = null;
-    Object.assign(this, account);
-  }
-}
-
 export const isEmoji = (s: string) => /\p{Extended_Pictographic}/u.test(s);
 
 export const MAX_FLOAT = 3.402823567e38;
@@ -82,3 +53,39 @@ export const getIndex = <T = any>(e: T, arr: T[]): number | undefined => {
   });
   return i;
 };
+
+export const getDateString = (date = new Date()) => {
+  return date.toISOString().split("T").shift() as string;
+};
+
+/**
+ * @param dateOrString If string, YYYY-MM-DD
+ * @returns YYYY-MM-DDT00:00:00
+ */
+export const getDateTimeString = (dateOrString: Date | string = getDateString()) => {
+  const isDate = dateOrString instanceof Date;
+  const dateString = isDate ? getDateString(dateOrString) : dateOrString;
+  if (dateString.includes("T")) return dateString;
+  return dateString + "T00:00:00";
+};
+
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends (infer U)[]
+    ? DeepPartial<U>[]
+    : T[P] extends object
+    ? DeepPartial<T[P]>
+    : T[P];
+};
+
+export type ValueOf<T> = T[keyof T];
+
+const isNodejs = typeof window === "undefined";
+const isBrowser = typeof process === "undefined";
+
+export const environment = isNodejs
+  ? !isBrowser
+    ? "server"
+    : "unknown"
+  : isBrowser
+  ? "client"
+  : "unknown";

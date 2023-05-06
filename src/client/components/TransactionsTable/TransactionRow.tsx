@@ -1,12 +1,12 @@
 import { useState, useEffect, ChangeEventHandler, useMemo } from "react";
-import { Category, Transaction, TransactionLabel } from "server";
 import {
-  useAppContext,
-  call,
-  Sorter,
+  Transaction,
+  TransactionLabel,
   numberToCommaString,
   currencyCodeToSymbol,
-} from "client";
+  Category,
+} from "common";
+import { useAppContext, call, Sorter } from "client";
 import { InstitutionSpan } from "client/components";
 import { TransactionHeaders } from ".";
 
@@ -102,7 +102,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     if (r.status === "success") {
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
-        const newTransaction = { ...transaction };
+        const newTransaction = new Transaction(transaction);
         newTransaction.label.budget_id = value || null;
         newTransaction.label.category_id = null;
         newTransactions.set(transaction_id, newTransaction);
@@ -119,9 +119,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     if (value === selectedCategoryIdLabel) return;
 
     setSelectedCategoryIdLabel(value);
-
-    type LabelQuery = { [k in keyof TransactionLabel]: string | null };
-    const labelQuery: LabelQuery = { category_id: value || null };
+    const labelQuery = new TransactionLabel({ category_id: value || null });
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
 
     const r = await call.post("/api/transaction", { transaction_id, label: labelQuery });
@@ -129,7 +127,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     if (r.status === "success") {
       setTransactions((oldTransactions) => {
         const newTransactions = new Map(oldTransactions);
-        const newTransaction = { ...transaction };
+        const newTransaction = new Transaction(transaction);
         if (!newTransaction.label.budget_id) {
           newTransaction.label.budget_id = account?.label.budget_id;
         }

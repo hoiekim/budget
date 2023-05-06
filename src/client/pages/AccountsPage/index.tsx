@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { Account, useAppContext } from "client";
+import { useAppContext } from "client";
 import { AccountsTable } from "client/components";
+import { Account } from "common";
 import "./index.css";
 
 const AccountsPage = () => {

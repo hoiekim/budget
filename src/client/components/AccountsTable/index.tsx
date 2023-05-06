@@ -1,4 +1,4 @@
-import { Account } from "server";
+import { Account } from "common";
 import { call, useAppContext } from "client";
 import { PlaidLinkButton } from "client/components";
 import AccountRow from "./AccountRow";

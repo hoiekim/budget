@@ -1,4 +1,4 @@
-import { getIndex } from "client";
+import { getIndex } from "common";
 import {
   Dispatch,
   DragEventHandler,

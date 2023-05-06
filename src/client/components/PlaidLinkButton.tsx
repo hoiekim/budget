@@ -1,7 +1,8 @@
 import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
-import { Item, PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
+import { PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
 import { useAppContext, call, useSync, useLocalStorage } from "client";
+import { Item } from "common";
 
 interface Props {
   item?: Item;

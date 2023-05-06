@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { Transaction } from "server";
+import { Transaction } from "common";
 import { useAppContext, useSorter } from "client";
 import TransactionRow from "./TransactionRow";
 import TransactionsHead from "./TransactionsHead";

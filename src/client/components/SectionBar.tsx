@@ -1,7 +1,8 @@
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
-import { Budget, DeepPartial, NewCategoryGetResponse, Section } from "server";
-import { call, getIndex, useAppContext, useLocalStorage } from "client";
+import { NewCategoryGetResponse } from "server";
+import { call, useAppContext, useLocalStorage } from "client";
 import { LabeledBar, CategoryBar } from "client/components";
+import { getIndex, DeepPartial, Budget, Section, Category } from "common";
 
 interface Props {
   section: Section & { sorted_amount?: number };
@@ -112,13 +113,8 @@ const SectionBar = ({ section, editingState, onSetOrder }: Props) => {
     setCategories((oldCategories) => {
       const newCategories = new Map(oldCategories);
       if (category_id) {
-        newCategories.set(category_id, {
-          category_id,
-          section_id,
-          name: "",
-          capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
-          roll_over: false,
-        });
+        const newCategory = new Category({ category_id, section_id });
+        newCategories.set(category_id, newCategory);
       }
       return newCategories;
     });

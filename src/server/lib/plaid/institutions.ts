@@ -1,8 +1,6 @@
 import { CountryCode, Institution } from "plaid";
 import { getPlaidClient, MaskedUser } from "server";
 
-export type { Institution };
-
 const institutionsCache = new Map<string, Institution>();
 
 export const getInstitution = async (user: MaskedUser, id: string) => {

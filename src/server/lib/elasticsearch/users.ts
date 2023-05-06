@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
-import { flatten, DeepPartial } from "server";
+import { flatten } from "server";
+import { DeepPartial } from "common";
 import { elasticsearchClient, index } from "./client";
 
 export interface MaskedUser {

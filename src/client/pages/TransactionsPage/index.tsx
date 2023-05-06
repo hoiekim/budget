@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useAppContext, isSubset, PATH } from "client";
 import { TransactionsTable } from "client/components";
-import { Transaction } from "server";
+import { Transaction, TransactionLabel } from "common";
 import "./index.css";
 
 export type TransactionsPageParams = {
@@ -55,11 +55,11 @@ const TransactionsPage = () => {
     const filters: Partial<Transaction> = {};
     if (account_id) filters.account_id = account_id;
     if (budget_id) {
-      if (!filters.label) filters.label = {};
+      if (!filters.label) filters.label = new TransactionLabel();
       filters.label.budget_id = budget_id;
     }
     if (category_id) {
-      if (!filters.label) filters.label = {};
+      if (!filters.label) filters.label = new TransactionLabel();
       filters.label.category_id = category_id;
     }
     return transactionsArray.filter((e) => {

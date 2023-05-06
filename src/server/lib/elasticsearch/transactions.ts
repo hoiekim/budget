@@ -3,6 +3,8 @@ import {
   RemovedTransaction,
   InvestmentTransaction,
   RemovedInvestmentTransaction,
+} from "common";
+import {
   MaskedUser,
   getUpdateTransactionScript,
   getUpdateInvestmentTransactionScript,

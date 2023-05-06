@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { Item } from "server";
+import { Item } from "common";
 
 const localItemsPath = path.resolve(__dirname, "../../../.items");
 

@@ -1,5 +1,6 @@
 import { CountryCode, LinkTokenCreateRequest, Products } from "plaid";
-import { getPlaidClient, Item, MaskedUser } from "server";
+import { getPlaidClient, MaskedUser } from "server";
+import { Item } from "common";
 
 const { HOST_NAME } = process.env;
 

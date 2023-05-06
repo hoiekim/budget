@@ -3,4 +3,3 @@ export * from "./plaid";
 export * from "./elasticsearch";
 export * from "./localItems";
 export * from "./object";
-export * from "./date";

@@ -1,4 +1,5 @@
-import { searchBudgets, Route, Budget, Section, Category } from "server";
+import { searchBudgets, Route } from "server";
+import { Budget, Section, Category } from "common";
 
 export interface BudgetsGetResponse {
   budgets: Budget[];

@@ -13,6 +13,7 @@ import {
   Sections,
   Categories,
 } from "client";
+import { InvestmentTransaction, Transaction } from "common";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
@@ -46,7 +47,7 @@ export const useSync = () => {
           added?.forEach((e) => newData.set(e.transaction_id, e));
           modified?.forEach((e) => {
             const data = oldData.get(e.transaction_id);
-            if (data) newData.set(e.transaction_id, { ...data, ...e });
+            if (data) newData.set(e.transaction_id, new Transaction({ ...data, ...e }));
           });
           removed?.forEach((e) => newData.delete(e.transaction_id));
           return newData;
@@ -60,7 +61,9 @@ export const useSync = () => {
           added?.forEach((e) => newData.set(e.investment_transaction_id, e));
           modified?.forEach((e) => {
             const data = oldData.get(e.investment_transaction_id);
-            if (data) newData.set(e.investment_transaction_id, { ...data, ...e });
+            if (!data) return;
+            const newTransaction = new InvestmentTransaction({ ...data, ...e });
+            newData.set(e.investment_transaction_id, newTransaction);
           });
           removed?.forEach((e) => newData.delete(e.investment_transaction_id));
           return newData;
@@ -134,6 +137,7 @@ export const useSync = () => {
           const rolled_over_amount = oldBudget?.rolled_over_amount;
           newBudgets.set(budget_id, {
             ...e,
+            id: budget_id,
             sorted_amount,
             unsorted_amount,
             rolled_over_amount,
@@ -152,6 +156,7 @@ export const useSync = () => {
           const rolled_over_amount = oldSection?.rolled_over_amount;
           newSections.set(section_id, {
             ...e,
+            id: section_id,
             sorted_amount,
             unsorted_amount,
             rolled_over_amount,
@@ -170,6 +175,7 @@ export const useSync = () => {
           const rolled_over_amount = oldCategory?.rolled_over_amount;
           newCategories.set(category_id, {
             ...e,
+            id: category_id,
             sorted_amount,
             unsorted_amount,
             rolled_over_amount,

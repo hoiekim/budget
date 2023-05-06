@@ -9,16 +9,18 @@ import {
   deleteInvestmentTransactions,
   searchItems,
   upsertItems,
-  Item,
-  Transaction,
   PartialTransaction,
-  RemovedTransaction,
-  appendTimeString,
   StreamingStatus,
-  InvestmentTransaction,
   PartialInvestmentTransaction,
-  RemovedInvestmentTransaction,
 } from "server";
+import {
+  Transaction,
+  RemovedTransaction,
+  InvestmentTransaction,
+  RemovedInvestmentTransaction,
+  getDateTimeString,
+  Item,
+} from "common";
 
 const TWO_WEEKS = 1000 * 60 * 60 * 24 * 14;
 
@@ -78,17 +80,14 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         const fillDateStrings = (e: (typeof added)[0]) => {
           const result = { ...e };
           const { authorized_date, date } = e;
-          if (authorized_date) result.authorized_date = appendTimeString(authorized_date);
-          if (date) result.date = appendTimeString(date);
-          return result;
+          if (authorized_date)
+            result.authorized_date = getDateTimeString(authorized_date);
+          if (date) result.date = getDateTimeString(date);
+          return new Transaction(result);
         };
 
-        const filledAdded = added.map(fillDateStrings).map((e) => {
-          return { ...e, label: {} };
-        });
-
+        const filledAdded = added.map(fillDateStrings);
         const filledModified = modified.map(fillDateStrings);
-
         const filteredRemoved = removed.filter(({ transaction_id }) => {
           return ![...added, ...modified].find((e) => {
             return e.transaction_id === transaction_id;
@@ -136,14 +135,17 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         const fillDateStrings = (e: (typeof investmentTransactions)[0]) => {
           const result = { ...e };
           const { date } = e;
-          if (date) result.date = appendTimeString(date);
+          if (date) result.date = getDateTimeString(date);
           return result;
         };
 
         const filledInvestments = investmentTransactions.map(fillDateStrings);
 
         const addedMap = new Map(
-          filledInvestments.map((e) => [e.investment_transaction_id, e])
+          filledInvestments.map((e) => [
+            e.investment_transaction_id,
+            new InvestmentTransaction(e),
+          ])
         );
 
         const ingestedTrasactions = await getTransactionsFromElasticsearch;

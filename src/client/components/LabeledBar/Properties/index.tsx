@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { getDateString } from "client";
+import { getDateString } from "common";
 import ToggleInput from "./ToggleInput";
 import RadioInputs from "./RadioInputs";
 import "./index.css";

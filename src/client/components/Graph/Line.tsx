@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useAppContext, Timeout } from "client";
+import { useAppContext } from "client";
+import { Timeout } from "common";
 import { Point } from "./index";
 
 interface Props {

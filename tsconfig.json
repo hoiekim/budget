@@ -20,7 +20,9 @@
       "client": ["./client"],
       "client/*": ["./client/*"],
       "server": ["./server"],
-      "server/*": ["./server/*"]
+      "server/*": ["./server/*"],
+      "common": ["./common"],
+      "common/*": ["./common/*"]
     }
   },
   "include": ["src"],

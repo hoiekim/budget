@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Account } from "server";
+import { Account } from "common";
 import { Sorter } from "client";
 import { AccountHeaders } from ".";
 

@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { Budget, Category, DeepPartial, Section } from "server";
+import { DeepPartial, Budget, Category, Section } from "common";
 import { useAppContext, call, PATH, TransactionsPageParams } from "client";
 import { LabeledBar } from "client/components";
 

@@ -1,4 +1,5 @@
-import { Institution, getInstitution, Route } from "server";
+import { getInstitution, Route } from "server";
+import { Institution } from "common";
 
 export type InstitutionGetResponse = Institution;
 
@@ -20,7 +21,7 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
 
     return {
       status: "success",
-      data: response,
+      data: new Institution(response),
     };
   }
 );

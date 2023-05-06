@@ -1,4 +1,4 @@
-import { Transaction } from "server";
+import { Transaction } from "common";
 import { Sorter } from "client";
 import { TransactionHeaders } from ".";
 import { CSSProperties } from "react";

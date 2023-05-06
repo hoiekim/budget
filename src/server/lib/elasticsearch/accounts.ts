@@ -1,11 +1,9 @@
 import {
-  Account,
-  Holding,
-  Security,
   getUpdateAccountScript,
   getUpdateHoldingScript,
   getUpdateSecurityScript,
 } from "server";
+import { Account, Holding, Security } from "common";
 import { elasticsearchClient, index } from "./client";
 import { MaskedUser } from "./users";
 

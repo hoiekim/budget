@@ -1,6 +1,6 @@
 import { MouseEventHandler, ReactNode, useState } from "react";
 import { useAppContext, useSync, call, PATH } from "client";
-import { Interval } from "server";
+import { Interval } from "common";
 import "./index.css";
 
 const { innerHeight, innerWidth } = window;

@@ -6,8 +6,8 @@ import {
   call,
   PATH,
   useLocalStorage,
-  getIndex,
 } from "client";
+import { Section, getIndex } from "common";
 import { BudgetBar, SectionBar } from "client/components";
 import "./index.css";
 
@@ -72,13 +72,12 @@ const BudgetDetailPage = () => {
     setSections((oldSections) => {
       const newSections = new Map(oldSections);
       if (section_id) {
-        newSections.set(section_id, {
+        const newSection = new Section({
+          id: section_id,
           section_id,
           budget_id,
-          name: "",
-          capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
-          roll_over: false,
         });
+        newSections.set(section_id, newSection);
       }
       return newSections;
     });

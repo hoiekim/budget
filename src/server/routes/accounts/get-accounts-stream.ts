@@ -1,18 +1,15 @@
 import {
   Route,
-  Account,
   searchAccounts,
   getAccounts,
   upsertAccounts,
-  Item,
   searchItems,
   getHoldings,
-  Holding,
   upsertHoldings,
-  Security,
   upsertSecurities,
   ApiResponse,
 } from "server";
+import { Account, Item, Security, Holding } from "common";
 
 export interface AccountsStreamGetResponse {
   items: Item[];
@@ -65,8 +62,8 @@ export const getAccountsStreamRoute = new Route(
 
         const accounts = r.accounts.map<Account>((e) => {
           const existingAccount = map.get(e.account_id);
-          if (existingAccount) return { ...existingAccount, ...e }
-          else return { ...e, custom_name: "", hide: false, label: {} };
+          if (existingAccount) return new Account({ ...existingAccount, ...e });
+          else return new Account(e);
         });
 
         const data: AccountsStreamGetResponse = {
@@ -89,8 +86,8 @@ export const getAccountsStreamRoute = new Route(
 
         const filledAccounts = accounts.map<Account>((e) => {
           const existingAccount = map.get(e.account_id);
-          if (existingAccount) return { ...existingAccount, ...e }
-          else return { ...e, custom_name: "", hide: false, label: {} };
+          if (existingAccount) return new Account({ ...existingAccount, ...e });
+          else return new Account(e);
         });
 
         const data: AccountsStreamGetResponse = {

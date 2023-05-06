@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Institution } from "server";
+import { Institution } from "common";
 import { call, useAppContext } from "client";
 
 interface Props {

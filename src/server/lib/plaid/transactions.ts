@@ -6,28 +6,8 @@ import {
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction as PlaidInvestmentTransaction,
 } from "plaid";
-import {
-  MaskedUser,
-  Item,
-  getPlaidClient,
-  ignorable_error_codes,
-  getDateString,
-  appendTimeString,
-} from "server";
-
-export type { RemovedTransaction };
-
-export interface TransactionLabel {
-  budget_id?: string | null;
-  category_id?: string | null;
-}
-
-export interface Transaction extends PlaidTransaction {
-  /**
-   * Represents relations by pair of budget_id and category_id
-   */
-  label: TransactionLabel;
-}
+import { MaskedUser, getPlaidClient, ignorable_error_codes } from "server";
+import { Item, getDateString, getDateTimeString } from "common";
 
 export const getTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
@@ -82,8 +62,8 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
       }
     }
 
-    if (plaidError) data.items.push({ ...item, plaidError });
-    else data.items.push({ ...item });
+    if (plaidError) data.items.push(new Item({ ...item, plaidError }));
+    else data.items.push(new Item(item));
 
     allAdded.push(thisItemAdded.flat());
     allRemoved.push(thisItemRemoved.flat());
@@ -100,12 +80,6 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
 
   return data;
 };
-
-export type InvestmentTransaction = PlaidInvestmentTransaction;
-
-export interface RemovedInvestmentTransaction {
-  investment_transaction_id: string;
-}
 
 export const getInvestmentTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
@@ -130,7 +104,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
     let start_date: string;
 
     if (updated) {
-      const updatedDate = new Date(appendTimeString(updated));
+      const updatedDate = new Date(getDateTimeString(updated));
       const date = updatedDate.getDate();
       updatedDate.setDate(date - 14);
       start_date = getDateString(updatedDate);
@@ -166,13 +140,13 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         total = response.data.total_investment_transactions;
         allInvestmentTransactions.push(investmentTransactions);
         item.updated = end_date;
-        data.items.push({ ...item });
+        data.items.push(new Item(item));
       } catch (error: any) {
         const plaidError = error?.response?.data as PlaidError;
         if (!ignorable_error_codes.has(plaidError?.error_code)) {
           console.error(plaidError);
           console.error("Failed to get investment transaction data for item:", item_id);
-          data.items.push({ ...item, plaidError });
+          data.items.push(new Item({ ...item, plaidError }));
         }
       }
 
