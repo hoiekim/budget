@@ -18,6 +18,8 @@ export class Account implements PlaidAccount {
   get id() {
     return this.account_id;
   }
+  set id(_: string) {}
+
   account_id: string = getRandomId();
   balances: AccountBalance = {
     available: 0,

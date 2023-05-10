@@ -4,6 +4,7 @@ import {
   LoginPage,
   BudgetsPage,
   BudgetDetailPage,
+  BudgetConfigPage,
   AccountsPage,
   TransactionsPage,
   PATH,
@@ -21,6 +22,7 @@ const Router = () => {
     if (path === PATH.LOGIN) return <LoginPage />;
     if (path === PATH.BUDGETS) return <BudgetsPage />;
     if (path === PATH.BUDGET_DETAIL) return <BudgetDetailPage />;
+    if (path === PATH.BUDGET_CONFIG) return <BudgetConfigPage />;
     if (path === PATH.ACCOUNTS) return <AccountsPage />;
     if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
     return <div>Not Found</div>;

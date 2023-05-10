@@ -10,6 +10,7 @@ export class InvestmentTransaction implements PlaidInvestmentTransaction {
   get id() {
     return this.transaction_id;
   }
+  set id(_: string) {}
 
   [key: string]: any;
   investment_transaction_id: string = getRandomId();

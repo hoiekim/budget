@@ -18,17 +18,11 @@ div.LabeledBar > .title {
   height: 24px;
 }
 
-div.LabeledBar > .title > input {
-  transition-duration: 0ms;
-  width: 100%;
-}
-
-div.LabeledBar > .title > input,
 div.LabeledBar > .title > span {
   font-size: 20px;
 }
 
-div.InfoText {
+div.LabeledBar > .statusBarWithText > .infoText {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -37,33 +31,8 @@ div.InfoText {
   position: relative;
 }
 
-div.InfoText > div:not(.fullLength) {
+div.LabeledBar > .statusBarWithText > .infoText > div {
   text-align: right;
-}
-
-div.InfoText > div.fullLength {
-  display: flex;
-  width: 100%;
-}
-
-div.InfoText > div.fullLength.editing > table {
-  width: 100%;
-}
-
-div.InfoText > div.fullLength.editing > table > tbody > tr {
-  display: flex;
-}
-
-div.InfoText > div.fullLength.editing > table > tbody > tr > td:last-child {
-  padding-right: 0;
-  margin-right: -2px;
-  flex: 1;
-}
-
-div.InfoText > div.fullLength.editing > table > tbody > tr > td:last-child > input {
-  font-size: 14px;
-  height: 17px;
-  width: 100%;
 }
 
 div.EditButton {
@@ -86,10 +55,6 @@ div.EditButton > button:first-child {
   margin: 0 5px;
 }
 
-div.EditButton > button.edit {
-  transform: rotate(90deg);
-}
-
 div.EditButton > button > span {
   font-size: 24px;
 }
@@ -98,57 +63,4 @@ div.EditButton > button.edit > span {
   position: relative;
   top: -3px;
   left: 2px;
-}
-
-div.ActionButtons {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 10px;
-}
-
-div.ActionButtons > button {
-  margin: 0 5px;
-  height: 32px;
-  transition-duration: 300ms;
-  overflow: hidden;
-}
-
-div.ActionButtons > button:first-child {
-  margin-left: 0;
-}
-
-div.ActionButtons > button:last-child {
-  margin-right: 0;
-}
-
-div.ActionButtons:not(.locked) > button {
-  flex: 1;
-}
-
-div.ActionButtons.locked > button:not(:last-child) {
-  flex: 1;
-}
-
-div.ActionButtons.locked > button:last-child {
-  flex: 0 1 24px;
-}
-
-div.ActionButtons > button.complete > span.colored {
-  color: var(--green);
-}
-
-div.ActionButtons > button.cancel > span.colored {
-  color: var(--red);
-}
-
-div.ActionButtons > button.delete {
-  background-color: var(--darkRed);
-}
-
-div.ActionButtons > button.delete:hover {
-  background-color: var(--red);
-}
-
-div.ActionButtons > button.delete > span {
-  color: #fff;
 }

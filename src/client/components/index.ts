@@ -9,3 +9,8 @@ export { default as SectionBar } from "./SectionBar";
 export { default as CategoryBar } from "./CategoryBar";
 export { default as Graph } from "./Graph";
 export { default as LabeledBar } from "./LabeledBar";
+export { default as Bar } from "./Bar";
+export { default as ActionButtons } from "./ActionButtons";
+export { default as Properties } from "./Properties";
+export { default as NameInput } from "./NameInput";
+export { default as CapacityInput } from "./CapacityInput";

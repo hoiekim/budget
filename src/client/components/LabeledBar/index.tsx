@@ -1,22 +1,17 @@
-import { Dispatch, SetStateAction, useState } from "react";
-import { useAppContext, CalculatedProperties, useCalculator } from "client";
+import { Dispatch, SetStateAction } from "react";
+import { useAppContext, CalculatedProperties, PATH } from "client";
+import { Bar } from "client/components";
 import {
-  getDateString,
-  getDateTimeString,
   MAX_FLOAT,
-  DeepPartial,
   Budget,
   Category,
   Section,
+  currencyCodeToSymbol,
+  numberToCommaString,
 } from "common";
-import NameInput from "./NameInput";
 import EditButton from "./EditButton";
-import Bar from "./Bar";
-import InfoText from "./InfoText";
-import ActionButtons from "./ActionButtons";
 import { useReorder } from "./lib";
 import "./index.css";
-import Properties from "./Properties";
 
 export type BarData = (Budget | Section | Category) & CalculatedProperties;
 
@@ -26,10 +21,7 @@ interface Props {
   dataId: string;
   data: BarData;
   iso_currency_code: string;
-  onSubmit: (updatedData: DeepPartial<BarData>) => void | Promise<void>;
-  onDelete: () => void | Promise<void>;
   onClickInfo: () => void;
-  editingState?: [string | null, Dispatch<SetStateAction<string | null>>];
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
@@ -37,14 +29,10 @@ const LabeledBar = ({
   dataId,
   data,
   iso_currency_code,
-  onSubmit,
-  onDelete: _onDelete,
   onClickInfo: _onClickInfo,
-  editingState,
   onSetOrder,
 }: Props) => {
-  const { viewDate } = useAppContext();
-  const calculate = useCalculator();
+  const { viewDate, router } = useAppContext();
 
   const {
     name,
@@ -53,7 +41,6 @@ const LabeledBar = ({
     unsorted_amount = 0,
     rolled_over_amount,
     roll_over,
-    roll_over_start_date,
   } = data;
 
   const interval = viewDate.getInterval();
@@ -74,93 +61,25 @@ const LabeledBar = ({
     isClickAllowed,
   } = useReorder(dataId, onSetOrder);
 
-  const [nameInput, setNameInput] = useState(name);
-  const getCapacityInput = () => (isInfinite ? 0 : capacity * (isIncome ? -1 : 1));
-  const [capacityInput, setCapacityInput] = useState(getCapacityInput());
-
-  const [isInfiniteInput, setIsInfiniteInput] = useState(isInfinite);
-  const [isIncomeInput, setIsIncomeInput] = useState(isIncome);
-  const [isRollOverInput, setIsRollOverInput] = useState(roll_over);
-  const getRollOverStartDateInput = () =>
-    roll_over_start_date ? new Date(roll_over_start_date) : new Date();
-  const [rollOverStartDateInput, setRollOverStartDateInput] = useState(
-    getRollOverStartDateInput()
-  );
-
-  const [_isEditingThis, _setIsEditingThis] = useState(false);
-  const [editingDataId, setEditingDataId] = editingState || [];
-
-  const isEditingThis = editingState ? editingDataId === dataId : _isEditingThis;
-  const isEditingAny = editingState && !!editingDataId;
-
   const startEditing = () => {
     if (isDragging || !isClickAllowed) return;
-    setNameInput(name);
-    setCapacityInput(getCapacityInput());
-    setIsInfiniteInput(isInfinite);
-    setIsIncomeInput(isIncome);
-    setIsRollOverInput(roll_over);
-    setRollOverStartDateInput(getRollOverStartDateInput());
-    if (editingState && setEditingDataId) setEditingDataId(dataId);
-    else _setIsEditingThis(true);
-  };
-
-  const finishEditing = () => {
-    if (editingState && setEditingDataId) setEditingDataId(null);
-    else _setIsEditingThis(false);
+    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: dataId }) });
   };
 
   const onClickInfo = () => {
-    if (isEditingThis) return;
-    if (isEditingAny && setEditingDataId) {
-      setEditingDataId(null);
-      return;
-    }
     _onClickInfo();
   };
 
-  let barCapacity = isEditingThis ? capacityInput : capacity;
-  if (isEditingThis && isIncomeInput) barCapacity *= -1;
-
   const total = sorted_amount + unsorted_amount;
-  const leftover = barCapacity - total;
+  const leftover = capacity - total;
 
-  const shouldIgnoreBarLength = isEditingThis ? isInfiniteInput : isInfinite;
-
-  const labeledRatio = shouldIgnoreBarLength ? undefined : sorted_amount / barCapacity;
-  const unlabledRatio = shouldIgnoreBarLength ? undefined : unsorted_amount / barCapacity;
-
-  const onComplete = async () => {
-    let calculatedCapacity = isInfiniteInput ? MAX_FLOAT : capacityInput;
-    if (isIncomeInput) calculatedCapacity *= -1;
-    try {
-      await onSubmit({
-        name: nameInput,
-        capacities: [{ [interval]: calculatedCapacity }],
-        roll_over: isRollOverInput,
-        roll_over_start_date: getDateTimeString(getDateString(rollOverStartDateInput)),
-      });
-      if (isRollOverInput) calculate();
-    } catch (error: any) {
-      console.error(error);
-    }
-    finishEditing();
-  };
-
-  const onDelete = async () => {
-    try {
-      await _onDelete();
-    } catch (error: any) {
-      console.error(error);
-    }
-    finishEditing();
-  };
+  const labeledRatio = isInfinite ? undefined : sorted_amount / capacity;
+  const unlabledRatio = isInfinite ? undefined : unsorted_amount / capacity;
 
   const classes = ["LabeledBar"];
   if (isDragging) classes.push("dragging");
-  if (isEditingThis) classes.push("editing");
 
-  const noAlert = isEditingThis ? isIncomeInput : isIncome;
+  const CurrencySymbolSpan = <span>{currencyCodeToSymbol(iso_currency_code)}</span>;
 
   return (
     <div
@@ -173,56 +92,73 @@ const LabeledBar = ({
       onDragEnd={onDragEnd}
     >
       <div className="title">
-        <NameInput
-          defaultValue={nameInput}
-          isEditing={isEditingThis}
-          onChange={(e) => setNameInput(e.target.value)}
+        <span>{name}</span>
+        <EditButton
+          onEdit={startEditing}
+          onTouchStart={onTouchHandleStart}
+          onTouchEnd={onTouchHandleEnd}
+          onGotPointerCapture={onGotPointerCapture}
         />
-        {!isEditingThis && (
-          <EditButton
-            onEdit={startEditing}
-            onTouchStart={onTouchHandleStart}
-            onTouchEnd={onTouchHandleEnd}
-            onGotPointerCapture={onGotPointerCapture}
-          />
-        )}
       </div>
       <div className="statusBarWithText">
-        <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} noAlert={noAlert} />
-        <InfoText
-          dataId={dataId}
-          isEditingThis={isEditingThis}
-          isIncome={isIncome}
-          isInfinite={isInfinite}
-          isInfiniteInput={isInfiniteInput}
-          capacityInput={capacityInput}
-          setCapacityInput={setCapacityInput}
-          iso_currency_code={iso_currency_code}
-          total={total}
-          leftover={leftover}
-          roll_over={roll_over}
-          rolled_over_amount={rolled_over_amount}
-        />
+        <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} noAlert={isIncome} />
+        <div className="infoText">
+          <div className={isInfinite ? "fullLength" : undefined}>
+            <table>
+              <tbody>
+                <tr>
+                  <td>{CurrencySymbolSpan}</td>
+                  <td>
+                    <span className="currentTotal">
+                      {numberToCommaString(Math.abs(total))}
+                    </span>
+                  </td>
+                  <td>
+                    <span>{total >= 0 ? "spent" : "gained"}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {!isInfinite && (
+            <div>
+              <table>
+                <tbody>
+                  <tr>
+                    <td>{CurrencySymbolSpan}</td>
+                    <td>
+                      <span className="currentTotal">
+                        {numberToCommaString(Math.abs(leftover))}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "left" }}>
+                      <span>
+                        {(isIncome ? leftover < 0 : 0 <= leftover) ? "left" : "over"}
+                      </span>
+                    </td>
+                  </tr>
+                  {roll_over && rolled_over_amount !== undefined && (
+                    <tr>
+                      <td>
+                        <span>{rolled_over_amount <= 0 ? "+" : "-"}</span>
+                        {CurrencySymbolSpan}
+                      </td>
+                      <td>
+                        <span className="currentTotal">
+                          {numberToCommaString(Math.abs(rolled_over_amount))}
+                        </span>
+                      </td>
+                      <td>
+                        <span>rolled</span>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
-      {isEditingThis && (
-        <>
-          <Properties
-            isIncomeInput={isIncomeInput}
-            setIsIncomeInput={setIsIncomeInput}
-            isInfiniteInput={isInfiniteInput}
-            setIsInfiniteInput={setIsInfiniteInput}
-            isRollOverInput={isRollOverInput}
-            setIsRollOverInput={setIsRollOverInput}
-            rollOverStartDateInput={rollOverStartDateInput}
-            setRollOverStartDateInput={setRollOverStartDateInput}
-          />
-          <ActionButtons
-            onComplete={onComplete}
-            onCancel={finishEditing}
-            onDelete={onDelete}
-          />
-        </>
-      )}
     </div>
   );
 };

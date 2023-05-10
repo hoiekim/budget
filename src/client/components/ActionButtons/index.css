@@ -1,0 +1,52 @@
+div.ActionButtons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+div.ActionButtons > button {
+  margin: 0 5px;
+  height: 32px;
+  transition-duration: 300ms;
+  overflow: hidden;
+}
+
+div.ActionButtons > button:first-child {
+  margin-left: 0;
+}
+
+div.ActionButtons > button:last-child {
+  margin-right: 0;
+}
+
+div.ActionButtons:not(.locked) > button {
+  flex: 1;
+}
+
+div.ActionButtons.locked > button:not(:last-child) {
+  flex: 1;
+}
+
+div.ActionButtons.locked > button:last-child {
+  flex: 0 1 24px;
+}
+
+div.ActionButtons > button.complete > span.colored {
+  color: var(--green);
+}
+
+div.ActionButtons > button.cancel > span.colored {
+  color: var(--red);
+}
+
+div.ActionButtons > button.delete {
+  background-color: var(--darkRed);
+}
+
+div.ActionButtons > button.delete:hover {
+  background-color: var(--red);
+}
+
+div.ActionButtons > button.delete > span {
+  color: #fff;
+}

@@ -4,6 +4,8 @@ export class Section {
   get id() {
     return this.section_id;
   }
+  set id(_: string) {}
+
   section_id: string = getRandomId();
   budget_id: string = "";
   name: string = "";

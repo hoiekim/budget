@@ -7,13 +7,21 @@ import {
   TransactionTransactionTypeEnum,
 } from "plaid";
 
-import { Location, PaymentMeta, data, getRandomId, getDateTimeString } from "common";
+import {
+  Location,
+  PaymentMeta,
+  data,
+  getRandomId,
+  getDateTimeString,
+  environment,
+} from "common";
 
 export class TransactionLabel {
   budget_id?: string | null;
   category_id?: string | null;
 
   get section_id(): string | null | undefined {
+    if (environment === "server") return undefined;
     const { category_id } = this;
     if (!category_id) return undefined;
     const category = data.categories.get(category_id);
@@ -31,6 +39,7 @@ export class Transaction implements PlaidTransaction {
   get id() {
     return this.transaction_id;
   }
+  set id(_: string) {}
 
   transaction_type?: TransactionTransactionTypeEnum;
   pending_transaction_id: string | null = null;

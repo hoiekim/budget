@@ -1,11 +1,9 @@
 div.Properties {
-  margin-top: 5px;
-  margin-left: -5px;
+  margin-top: 10px;
 }
 
 div.Properties > .property {
   margin-top: 10px;
-  margin-left: 5px;
   background-color: #eee;
   border-radius: 5px;
   padding: 5px 10px;

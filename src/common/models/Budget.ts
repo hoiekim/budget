@@ -10,6 +10,8 @@ export class Budget {
   get id() {
     return this.budget_id;
   }
+  set id(_: string) {}
+
   budget_id: string = getRandomId();
   name: string = "";
   capacities: Capacity[] = [{ year: 0, month: 0, week: 0, day: 0 }];

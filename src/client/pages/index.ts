@@ -4,6 +4,8 @@ export { default as BudgetsPage } from "./BudgetsPage";
 export * from "./BudgetsPage";
 export { default as BudgetDetailPage } from "./BudgetDetailPage";
 export * from "./BudgetDetailPage";
+export { default as BudgetConfigPage } from "./BudgetConfigPage";
+export * from "./BudgetConfigPage";
 export { default as AccountsPage } from "./AccountsPage";
 export * from "./AccountsPage";
 export { default as TransactionsPage } from "./TransactionsPage";

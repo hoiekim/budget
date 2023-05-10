@@ -4,6 +4,8 @@ import {
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
+  Holding as PlaidHolding,
+  Security as PlaidSecurity,
 } from "plaid";
 import { MaskedUser, getPlaidClient, ignorable_error_codes } from "server";
 import { Item, Holding, Security } from "common";
@@ -174,8 +176,7 @@ export const getHoldings = async (user: MaskedUser, items: Item[]) => {
       allAccounts.push(filledAccounts);
 
       const filledHoldings = holdings.map((e) => {
-        const { account_id, security_id } = e;
-        return new Holding({ ...e, holding_id: `${account_id}_${security_id}` });
+        return new Holding({ ...e });
       });
       allHoldings.push(filledHoldings);
 

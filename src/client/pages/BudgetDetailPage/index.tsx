@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { NewSectionGetResponse } from "server";
 import {
   TransactionsPageParams,
@@ -22,9 +22,7 @@ const BudgetDetailPage = () => {
   if (path === PATH.BUDGET_DETAIL) budget_id = params.get("budget_id") || "";
   else budget_id = transition.incomingParams.get("budget_id") || "";
   const budget = budgets.get(budget_id);
-  const editingState = useState<string | null>(null);
 
-  const [editingDataId, setEditingDataId] = editingState;
   const [sectionsOrder, setSectionsOrder] = useLocalStorage<string[]>(
     `sectionsOrder_${budget_id}`,
     []
@@ -50,12 +48,7 @@ const BudgetDetailPage = () => {
     })
     .map(([section_id, section]) => {
       return (
-        <SectionBar
-          key={section_id}
-          section={section}
-          editingState={editingState}
-          onSetOrder={setSectionsOrder}
-        />
+        <SectionBar key={section_id} section={section} onSetOrder={setSectionsOrder} />
       );
     });
 
@@ -73,7 +66,6 @@ const BudgetDetailPage = () => {
       const newSections = new Map(oldSections);
       if (section_id) {
         const newSection = new Section({
-          id: section_id,
           section_id,
           budget_id,
         });
@@ -82,7 +74,7 @@ const BudgetDetailPage = () => {
       return newSections;
     });
 
-    setEditingDataId(section_id);
+    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: section_id }) });
   };
 
   const onClickUnsorted = () => {
@@ -95,11 +87,9 @@ const BudgetDetailPage = () => {
     <div className="BudgetDetailPage">
       {budget && (
         <div className="BudgetDetail">
-          <BudgetBar budget={budget} editingState={editingState} />
+          <BudgetBar budget={budget} />
           <div className="unsortedButton">
-            <button onClick={onClickUnsorted} disabled={editingDataId === budget_id}>
-              See Unsorted Transactions &gt;&gt;
-            </button>
+            <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
           </div>
           <div className="children">
             <div>

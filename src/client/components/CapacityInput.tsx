@@ -1,7 +1,7 @@
 import { numberToCommaString } from "common";
-import { useState, useEffect, useRef, InputHTMLAttributes } from "react";
+import { useState, useRef, InputHTMLAttributes, useEffect } from "react";
 
-type Props = { defaultValue: number; isEditing: boolean } & Omit<
+type Props = { defaultValue: number } & Omit<
   InputHTMLAttributes<HTMLInputElement>,
   "defaultValue"
 >;
@@ -9,7 +9,6 @@ type Props = { defaultValue: number; isEditing: boolean } & Omit<
 const CapacityInput = (props: Props) => {
   const {
     defaultValue,
-    isEditing,
     className,
     onClick,
     onKeyPress,
@@ -22,21 +21,20 @@ const CapacityInput = (props: Props) => {
   const defaultValueAsCommaString = numberToCommaString(defaultValue);
   const [_value, _setValue] = useState(defaultValueAsCommaString);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
-    if (!isEditing) inputRef.current?.blur();
-  }, [isEditing]);
+    _setValue(defaultValueAsCommaString);
+  }, [defaultValueAsCommaString]);
+
+  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
     <input
       {...rest}
       ref={inputRef}
       value={_value}
-      readOnly={!isEditing}
-      className={className + (isEditing ? "" : " readonly")}
+      className={className}
       onClick={(e) => {
-        isEditing && e.stopPropagation();
+        e.stopPropagation();
         if (onClick) onClick(e);
       }}
       onKeyPress={(e) => {
@@ -48,7 +46,6 @@ const CapacityInput = (props: Props) => {
         if (onChange) onChange(e);
       }}
       onFocus={(e) => {
-        if (!isEditing) return e.target.blur();
         _setValue((+e.target.value.replace(/,/g, "")).toString());
         if (onFocus) onFocus(e);
       }}

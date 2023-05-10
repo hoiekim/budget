@@ -5,6 +5,8 @@ export class Item {
   get id() {
     return this.item_id;
   }
+  set id(_: string) {}
+
   item_id: string = getRandomId();
   access_token: string = getRandomId();
   institution_id: string = "";

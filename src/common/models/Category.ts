@@ -4,6 +4,8 @@ export class Category {
   get id() {
     return this.category_id;
   }
+  set id(_: string) {}
+
   category_id: string = getRandomId();
   section_id: string = "";
   name: string = "";

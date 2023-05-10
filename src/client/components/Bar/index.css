@@ -1,8 +1,8 @@
 div.Bar {
   width: 100%;
-  height: 10px;
+  height: 2px;
   margin: 5px 0;
-  border-radius: 5px;
+  border-radius: 1px;
 }
 
 div.Bar * {
@@ -13,11 +13,11 @@ div.Bar > .contentWithoutPadding {
   width: 100%;
   height: 100%;
   position: relative;
-  border-radius: 5px;
+  border-radius: 1px;
 }
 
 div.Bar.empty > .contentWithoutPadding {
-  background: repeating-linear-gradient(135deg, #eee, #eee 4px, #0000 4px, #0000 8px);
+  background: repeating-linear-gradient(135deg, #eee, #eee 2px, #0000 2px, #0000 4px);
 }
 
 div.Bar:not(.empty) > .contentWithoutPadding {
@@ -27,7 +27,7 @@ div.Bar:not(.empty) > .contentWithoutPadding {
 div.Bar > .contentWithoutPadding > div {
   transition: 1000ms;
   height: 100%;
-  border-radius: 5px;
+  border-radius: 1px;
   position: absolute;
 }
 
@@ -44,7 +44,7 @@ div.Bar > .contentWithoutPadding > .numerator.alert.more {
 }
 
 div.Bar > .contentWithoutPadding > .unlabeledNumerator:not(.alert) {
-  background: repeating-linear-gradient(135deg, #097, #097 2px, #0000 2px, #0000 4px);
+  background: repeating-linear-gradient(135deg, #097, #097 1px, #0000 1px, #0000 2px);
 }
 
 div.Bar > .contentWithoutPadding > .unlabeledNumerator::before,
@@ -58,11 +58,11 @@ div.Bar > .contentWithoutPadding > .unlabeledNumerator::after {
 }
 
 div.Bar > .contentWithoutPadding > .unlabeledNumerator::before {
-  background: repeating-linear-gradient(135deg, #f43, #f43 2px, #f434 2px, #f434 4px);
+  background: repeating-linear-gradient(135deg, #f43, #f43 1px, #f434 1px, #f434 2px);
 }
 
 div.Bar > .contentWithoutPadding > .unlabeledNumerator::after {
-  background: repeating-linear-gradient(135deg, #902, #902 2px, #9024 2px, #9024 4px);
+  background: repeating-linear-gradient(135deg, #902, #902 1px, #9024 1px, #9024 2px);
 }
 
 div.Bar > .contentWithoutPadding > .unlabeledNumerator.alert::before {

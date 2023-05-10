@@ -29,7 +29,7 @@ const Properties = ({
     <div className="Properties">
       <div className="property">
         <RadioInputs
-          defaultCheckedOptionId="expense"
+          defaultCheckedOptionId={isIncomeInput ? "income" : "expense"}
           checkedOptionId={isIncomeInput ? "income" : "expense"}
           name="incomeOrExpense"
           options={[

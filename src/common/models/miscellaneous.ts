@@ -50,6 +50,7 @@ export class Holding implements PlaidHolding {
   get id() {
     return this.holding_id;
   }
+  set id(_: string) {}
 
   [key: string]: any;
 
@@ -63,10 +64,11 @@ export class Holding implements PlaidHolding {
   quantity: number = 0;
   iso_currency_code: string | null = null;
   unofficial_currency_code: string | null = null;
-  holding_id: string = getRandomId();
+  holding_id: string = "";
 
   constructor(init?: Partial<Holding> & { account_id: string; security_id: string }) {
     if (init) Object.assign(this, init);
+    if (!init?.holding_id) this.holding_id = `${this.account_id}_${this.security_id}`;
   }
 }
 
@@ -74,6 +76,7 @@ export class Security implements PlaidSecurity {
   get id() {
     return this.security_id;
   }
+  set id(_: string) {}
 
   [key: string]: any;
 
