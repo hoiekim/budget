@@ -228,3 +228,18 @@ export class ViewDate {
     }
   };
 }
+
+export const getDateString = (date = new Date()) => {
+  return date.toISOString().split("T").shift() as string;
+};
+
+/**
+ * @param dateOrString If string, YYYY-MM-DD
+ * @returns YYYY-MM-DDT00:00:00
+ */
+export const getDateTimeString = (dateOrString: Date | string = getDateString()) => {
+  const isDate = dateOrString instanceof Date;
+  const dateString = isDate ? getDateString(dateOrString) : dateOrString;
+  if (dateString.includes("T")) return dateString;
+  return dateString + "T00:00:00";
+};

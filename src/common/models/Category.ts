@@ -1,6 +1,7 @@
-import { getRandomId, Capacity } from "common";
+import { getRandomId, assign } from "common";
+import { BudgetLike } from "./BudgetLike";
 
-export class Category {
+export class Category extends BudgetLike {
   get id() {
     return this.category_id;
   }
@@ -8,12 +9,9 @@ export class Category {
 
   category_id: string = getRandomId();
   section_id: string = "";
-  name: string = "";
-  capacities: Capacity[] = [{ year: 0, month: 0, week: 0, day: 0 }];
-  roll_over: boolean = false;
-  roll_over_start_date?: string;
 
-  constructor(init?: Partial<Category> & { section_id: string }) {
-    Object.assign(this, init);
+  constructor(init: Partial<Category> & { section_id: string }) {
+    super();
+    assign(this, init);
   }
 }

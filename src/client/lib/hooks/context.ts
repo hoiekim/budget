@@ -10,8 +10,9 @@ import {
   Interval,
   Item,
   Institution,
+  ViewDate,
 } from "common";
-import { ClientRouter, ViewDate } from "client";
+import { ClientRouter } from "client";
 
 export type Transactions = Map<string | undefined, Transaction>;
 export type InvestmentTransactions = Map<string | undefined, InvestmentTransaction>;
@@ -19,15 +20,9 @@ export type Accounts = Map<string | undefined, Account>;
 export type Institutions = Map<string | undefined, Institution>;
 export type Items = Map<string, Item>;
 
-export type CalculatedProperties = {
-  sorted_amount?: number;
-  unsorted_amount?: number;
-  rolled_over_amount?: number;
-};
-
-export type Budgets = Map<string, Budget & CalculatedProperties>;
-export type Sections = Map<string, Section & CalculatedProperties>;
-export type Categories = Map<string, Category & CalculatedProperties>;
+export type Budgets = Map<string, Budget>;
+export type Sections = Map<string, Section>;
+export type Categories = Map<string, Category>;
 
 export interface ContextType {
   transactions: Transactions;

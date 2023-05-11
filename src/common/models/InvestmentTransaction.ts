@@ -4,7 +4,7 @@ import {
   InvestmentTransactionType,
 } from "plaid";
 
-import { getRandomId, getDateTimeString } from "common";
+import { getRandomId, getDateTimeString, assign } from "common";
 
 export class InvestmentTransaction implements PlaidInvestmentTransaction {
   get id() {
@@ -29,7 +29,7 @@ export class InvestmentTransaction implements PlaidInvestmentTransaction {
   unofficial_currency_code: string | null = null;
 
   constructor(init: Partial<InvestmentTransaction> & { account_id: string }) {
-    Object.assign(this, init);
+    assign(this, init);
   }
 }
 

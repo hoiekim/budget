@@ -1,4 +1,4 @@
-import { getRandomId } from "common/util";
+import { getRandomId, assign } from "common";
 import { PlaidError } from "plaid";
 
 export class Item {
@@ -18,6 +18,6 @@ export class Item {
   updated?: string;
 
   constructor(init?: Partial<Item> & { institution_id: string }) {
-    Object.assign(this, init);
+    assign(this, init);
   }
 }

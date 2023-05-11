@@ -54,21 +54,6 @@ export const getIndex = <T = any>(e: T, arr: T[]): number | undefined => {
   return i;
 };
 
-export const getDateString = (date = new Date()) => {
-  return date.toISOString().split("T").shift() as string;
-};
-
-/**
- * @param dateOrString If string, YYYY-MM-DD
- * @returns YYYY-MM-DDT00:00:00
- */
-export const getDateTimeString = (dateOrString: Date | string = getDateString()) => {
-  const isDate = dateOrString instanceof Date;
-  const dateString = isDate ? getDateString(dateOrString) : dateOrString;
-  if (dateString.includes("T")) return dateString;
-  return dateString + "T00:00:00";
-};
-
 export type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends (infer U)[]
     ? DeepPartial<U>[]
@@ -89,3 +74,11 @@ export const environment = isNodejs
   : isBrowser
   ? "client"
   : "unknown";
+
+export const assign = (target: any, source: any) => {
+  for (const key in source) {
+    const value = source[key];
+    if (typeof value === "function") continue;
+    target[key] = value;
+  }
+};

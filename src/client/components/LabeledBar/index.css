@@ -49,6 +49,7 @@ div.EditButton > button {
   padding: 0;
   width: 32px;
   height: 32px;
+  transform: rotate(90deg);
 }
 
 div.EditButton > button:first-child {
@@ -57,9 +58,6 @@ div.EditButton > button:first-child {
 
 div.EditButton > button > span {
   font-size: 24px;
-}
-
-div.EditButton > button.edit > span {
   position: relative;
   top: -3px;
   left: 2px;

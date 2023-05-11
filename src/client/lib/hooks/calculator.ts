@@ -1,17 +1,14 @@
 import { useCallback } from "react";
 import {
-  CalculatedProperties,
   useAppContext,
-  ViewDate,
   Budgets,
   Sections,
   Categories,
   Transactions,
   Accounts,
 } from "client";
-import { Budget, Category, Section } from "common";
-
-type BudgetLike = (Budget | Section | Category) & CalculatedProperties;
+import { ViewDate } from "common";
+import { BudgetLike } from "common/models/BudgetLike";
 
 /**
  * Receives budget-like data objects maps, calculates their transaction amounts
@@ -32,17 +29,12 @@ export const calculatorLambda = (
   const setBaseAmounts = (e: BudgetLike) => {
     e.sorted_amount = 0;
     e.unsorted_amount = 0;
-    if (e.roll_over && e.roll_over_start_date) {
-      const rollOverStartDate = new Date(e.roll_over_start_date);
-      const span = viewDate.getSpanFrom(rollOverStartDate);
-      if (span < 0) {
-        e.rolled_over_amount = undefined;
-      } else {
-        const interval = viewDate.getInterval();
-        const capacity = e.capacities[0] && e.capacities[0][interval];
-        e.rolled_over_amount = -span * capacity;
-      }
-    }
+    if (!e.roll_over || !e.roll_over_start_date) return;
+    const rollOverStartDate = new Date(e.roll_over_start_date);
+    const span = viewDate.getSpanFrom(rollOverStartDate);
+    if (span < 0) return;
+    const capacity = e.capacities[0] && e.getValidCapacity(viewDate);
+    e.rolled_over_amount = -span * capacity;
   };
 
   newBudgets.forEach(setBaseAmounts);

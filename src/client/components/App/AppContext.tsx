@@ -12,10 +12,9 @@ import {
   Budgets,
   Sections,
   Categories,
-  ViewDate,
 } from "client";
 import { MaskedUser } from "server";
-import { Interval } from "common";
+import { Interval, ViewDate } from "common";
 
 interface Props {
   initialUser: ContextType["user"];

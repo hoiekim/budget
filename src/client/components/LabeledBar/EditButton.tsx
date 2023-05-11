@@ -9,7 +9,6 @@ const EditButton = ({ onEdit, ...rest }: Props) => {
   return (
     <div className="EditButton">
       <button
-        className="edit"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();

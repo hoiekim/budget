@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, useRef } from "react";
+import { InputHTMLAttributes } from "react";
 
 interface Option {
   id: string;
@@ -8,35 +8,23 @@ interface Option {
 type Props = InputHTMLAttributes<HTMLInputElement> & {
   name: string;
   options: Option[];
-  defaultCheckedOptionId: string;
   checkedOptionId: string;
 };
 
 const RadioInputs = ({
   name,
   options,
-  defaultCheckedOptionId,
   checkedOptionId,
   children,
   style,
   ...rest
 }: Props) => {
-  const inputRef = useRef<HTMLInputElement>(null);
   const inputs = options.map(({ id, label }) => {
-    const defaultChecked = defaultCheckedOptionId === id;
     const checked = checkedOptionId === id;
     return (
       <div className="option row" key={id}>
         <label htmlFor={id}>{label}</label>
-        <input
-          ref={inputRef}
-          type="radio"
-          name={name}
-          id={id}
-          defaultChecked={defaultChecked}
-          hidden
-          {...rest}
-        />
+        <input type="radio" name={name} id={id} hidden checked={checked} {...rest} />
         {checked && <div className="checkMark colored">✓</div>}
       </div>
     );

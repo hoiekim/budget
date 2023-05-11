@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { useAppContext, CalculatedProperties, PATH } from "client";
+import { useAppContext, PATH } from "client";
 import { Bar } from "client/components";
 import {
   MAX_FLOAT,
@@ -13,7 +13,7 @@ import EditButton from "./EditButton";
 import { useReorder } from "./lib";
 import "./index.css";
 
-export type BarData = (Budget | Section | Category) & CalculatedProperties;
+export type BarData = Budget | Section | Category;
 
 export type BudgetType = "income" | "expense";
 
@@ -36,16 +36,13 @@ const LabeledBar = ({
 
   const {
     name,
-    capacities,
     sorted_amount = 0,
     unsorted_amount = 0,
     rolled_over_amount,
     roll_over,
   } = data;
 
-  const interval = viewDate.getInterval();
-
-  const capacity = capacities[0] && capacities[0][interval];
+  const capacity = data.getValidCapacity(viewDate);
   const isInfinite = capacity === MAX_FLOAT || capacity === -MAX_FLOAT;
   const isIncome = capacity < 0;
 

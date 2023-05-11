@@ -14,6 +14,7 @@ import {
   getRandomId,
   getDateTimeString,
   environment,
+  assign,
 } from "common";
 
 export class TransactionLabel {
@@ -31,7 +32,7 @@ export class TransactionLabel {
   }
 
   constructor(init?: Partial<TransactionLabel>) {
-    Object.assign(this, init);
+    assign(this, init);
   }
 }
 
@@ -71,7 +72,10 @@ export class Transaction implements PlaidTransaction {
   label: TransactionLabel = new TransactionLabel();
 
   constructor(init: Partial<Transaction> & { account_id: string }) {
-    Object.assign(this, init);
+    assign(this, init);
+    if (init.location) this.location = new Location(init.location);
+    if (init.payment_meta) this.payment_meta = new PaymentMeta(init.payment_meta);
+    if (init.label) this.label = new TransactionLabel(init.label);
   }
 }
 

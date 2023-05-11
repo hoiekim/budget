@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAppContext, PATH, call, useCalculator } from "client";
 import {
   NameInput,
@@ -9,7 +9,6 @@ import {
 } from "client/components";
 import {
   Budget,
-  DeepPartial,
   getDateString,
   getDateTimeString,
   MAX_FLOAT,
@@ -39,8 +38,6 @@ const BudgetConfigPage = () => {
 
   const calculate = useCalculator();
 
-  const interval = viewDate.getInterval();
-
   const { path, params, transition } = router;
   let id: string;
   if (path === PATH.BUDGET_CONFIG) id = params.get("id") || "";
@@ -50,7 +47,9 @@ const BudgetConfigPage = () => {
   const section = sections.get(id) || (category && sections.get(category.section_id));
   const budget = budgets.get(id) || (section && budgets.get(section.budget_id));
 
-  const data = category || section || budget;
+  const data = useMemo(() => {
+    return category || section || budget || new Budget();
+  }, [category, section, budget]);
 
   const {
     name,
@@ -59,9 +58,9 @@ const BudgetConfigPage = () => {
     unsorted_amount = 0,
     roll_over,
     roll_over_start_date: roll_date,
-  } = data || { ...new Budget(), sorted_amount: 0, unsorted_amount: 0 };
+  } = data;
 
-  const capacity = capacities[0][interval];
+  const capacity = data.getValidCapacity(viewDate);
   const isInfinite = capacity === MAX_FLOAT || capacity === -MAX_FLOAT;
   const isIncome = typeof capacity === "number" && capacity < 0;
   const getCapacityInput = () => (isInfinite ? 0 : capacity * (isIncome ? -1 : 1));
@@ -75,8 +74,8 @@ const BudgetConfigPage = () => {
 
   useEffect(() => {
     if (!data) return;
-    const { name, capacities, roll_over, roll_over_start_date: roll_date } = data;
-    const capacity = capacities[0][interval];
+    const { name, roll_over, roll_over_start_date: roll_date } = data;
+    const capacity = data.getValidCapacity(viewDate);
     const isInfinite = capacity === MAX_FLOAT || capacity === -MAX_FLOAT;
     const isIncome = typeof capacity === "number" && capacity < 0;
     const getCapacityInput = () => (isInfinite ? 0 : capacity * (isIncome ? -1 : 1));
@@ -87,7 +86,7 @@ const BudgetConfigPage = () => {
     setIsIncomeInput(isIncome);
     setIsRollOverInput(roll_over);
     setRollDateInput(getRollDateInput);
-  }, [data, interval]);
+  }, [data, viewDate]);
 
   if (!budget) return <></>;
 
@@ -96,9 +95,11 @@ const BudgetConfigPage = () => {
   const labeledRatio = isInfiniteInput ? undefined : sorted_amount / barCapacity;
   const unlabledRatio = isInfiniteInput ? undefined : unsorted_amount / barCapacity;
 
+  const interval = viewDate.getInterval();
+
   const finishEditing = () => router.back();
 
-  const onSubmit = async (updatedData: DeepPartial<Budget | Section | Category>) => {
+  const onSubmit = async (updatedData: Partial<Budget | Section | Category>) => {
     if (category) {
       const { status } = await call.post("/api/category", {
         ...updatedData,
@@ -108,8 +109,9 @@ const BudgetConfigPage = () => {
         setCategories((oldCategories) => {
           const newCategories = new Map(oldCategories);
           const oldCategory = oldCategories.get(id);
-          const newCategory = { ...oldCategory, ...updatedData };
-          newCategories.set(id, newCategory as Category);
+          if (!oldCategory) return newCategories;
+          const newCategory = new Category({ ...oldCategory, ...updatedData });
+          newCategories.set(id, newCategory);
           return newCategories;
         });
       } else throw new Error(`Failed to update category: ${id}`);
@@ -122,8 +124,9 @@ const BudgetConfigPage = () => {
         setSections((oldSections) => {
           const newSections = new Map(oldSections);
           const oldSection = oldSections.get(id);
-          const newSection = { ...oldSection, ...updatedData };
-          newSections.set(id, newSection as Section);
+          if (!oldSection) return newSections;
+          const newSection = new Section({ ...oldSection, ...updatedData });
+          newSections.set(id, newSection);
           return newSections;
         });
       } else throw new Error(`Failed to update section: ${id}`);
@@ -137,7 +140,7 @@ const BudgetConfigPage = () => {
           const newBudgets = new Map(oldBudgets);
           const oldBudget = oldBudgets.get(id);
           if (!oldBudget) return newBudgets;
-          const newBudget = { ...oldBudget, ...updatedData } as Budget;
+          const newBudget = new Budget({ ...oldBudget, ...updatedData });
           newBudgets.set(id, newBudget);
           return newBudgets;
         });
@@ -226,7 +229,7 @@ const BudgetConfigPage = () => {
     try {
       await onSubmit({
         name: nameInput,
-        capacities: [{ [interval]: calculatedCapacity }],
+        capacities: [{ ...capacities[0], [interval]: calculatedCapacity }],
         roll_over: isRollOverInput,
         roll_over_start_date: getDateTimeString(getDateString(rollDateInput)),
       });
@@ -240,10 +243,7 @@ const BudgetConfigPage = () => {
   return (
     <div className="BudgetConfigPage">
       <div className="title">
-        <NameInput
-          defaultValue={nameInput}
-          onChange={(e) => setNameInput(e.target.value)}
-        />
+        <NameInput defaultValue={name} onChange={(e) => setNameInput(e.target.value)} />
       </div>
       <div className="statusBarWithText">
         <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} noAlert={isIncomeInput} />
@@ -264,7 +264,7 @@ const BudgetConfigPage = () => {
                       <td>
                         <CapacityInput
                           key={`${id}_${interval}`}
-                          defaultValue={capacityInput}
+                          defaultValue={getCapacityInput()}
                           onChange={(e) => setCapacityInput(Math.abs(+e.target.value))}
                         />
                       </td>
@@ -277,12 +277,16 @@ const BudgetConfigPage = () => {
         </div>
       </div>
       <Properties
+        isIncome={isIncome}
         isIncomeInput={isIncomeInput}
         setIsIncomeInput={setIsIncomeInput}
+        isInfinite={isInfinite}
         isInfiniteInput={isInfiniteInput}
         setIsInfiniteInput={setIsInfiniteInput}
+        isRollOver={roll_over}
         isRollOverInput={isRollOverInput}
         setIsRollOverInput={setIsRollOverInput}
+        rollOverStartDate={getRollDateInput()}
         rollOverStartDateInput={rollDateInput}
         setRollOverStartDateInput={setRollDateInput}
       />

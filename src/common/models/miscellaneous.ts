@@ -1,4 +1,4 @@
-import { getRandomId } from "common";
+import { getRandomId, assign } from "common";
 import {
   Location as PlaidLocation,
   PaymentMeta as PlaidPaymentMeta,
@@ -25,7 +25,7 @@ export class Location implements PlaidLocation {
   store_number: string | null = null;
 
   constructor(init?: Partial<Location>) {
-    if (init) Object.assign(this, init);
+    assign(this, init);
   }
 }
 
@@ -42,7 +42,7 @@ export class PaymentMeta implements PlaidPaymentMeta {
   reason: string | null = null;
 
   constructor(init?: Partial<PaymentMeta>) {
-    if (init) Object.assign(this, init);
+    assign(this, init);
   }
 }
 
@@ -67,7 +67,7 @@ export class Holding implements PlaidHolding {
   holding_id: string = "";
 
   constructor(init?: Partial<Holding> & { account_id: string; security_id: string }) {
-    if (init) Object.assign(this, init);
+    assign(this, init);
     if (!init?.holding_id) this.holding_id = `${this.account_id}_${this.security_id}`;
   }
 }
@@ -98,7 +98,7 @@ export class Security implements PlaidSecurity {
   unofficial_currency_code: string | null = null;
 
   constructor(init?: Partial<Security>) {
-    if (init) Object.assign(this, init);
+    assign(this, init);
   }
 }
 
@@ -123,6 +123,12 @@ export class Institution implements PlaidInstitution {
   auth_metadata?: AuthMetadata | null | undefined;
 
   constructor(init?: Partial<Institution>) {
-    if (init) Object.assign(this, init);
+    assign(this, init);
   }
 }
+
+export type Interval = "year" | "month" | "week" | "day";
+
+export type Capacity = { valid_from?: string } & {
+  [key in Interval]: number;
+};

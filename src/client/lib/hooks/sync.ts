@@ -13,7 +13,7 @@ import {
   Sections,
   Categories,
 } from "client";
-import { InvestmentTransaction, Transaction } from "common";
+import { InvestmentTransaction, Transaction, Budget, Section, Category } from "common";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
@@ -127,60 +127,21 @@ export const useSync = () => {
       if (!data) return;
       const { budgets, sections, categories } = data;
 
-      setBudgets((oldBudgets) => {
-        const newBudgets: Budgets = new Map();
-        budgets.forEach((e) => {
-          const { budget_id } = e;
-          const oldBudget = oldBudgets.get(budget_id);
-          const sorted_amount = oldBudget?.sorted_amount;
-          const unsorted_amount = oldBudget?.unsorted_amount;
-          const rolled_over_amount = oldBudget?.rolled_over_amount;
-          newBudgets.set(budget_id, {
-            ...e,
-            id: budget_id,
-            sorted_amount,
-            unsorted_amount,
-            rolled_over_amount,
-          });
-        });
+      setBudgets(() => {
+        const m = (e: Budget): [string, Budget] => [e.budget_id, new Budget(e)];
+        const newBudgets: Budgets = new Map(budgets.map(m));
         return newBudgets;
       });
 
-      setSections((oldSections) => {
-        const newSections: Sections = new Map();
-        sections.forEach((e) => {
-          const { section_id } = e;
-          const oldSection = oldSections.get(section_id);
-          const sorted_amount = oldSection?.sorted_amount;
-          const unsorted_amount = oldSection?.unsorted_amount;
-          const rolled_over_amount = oldSection?.rolled_over_amount;
-          newSections.set(section_id, {
-            ...e,
-            id: section_id,
-            sorted_amount,
-            unsorted_amount,
-            rolled_over_amount,
-          });
-        });
+      setSections(() => {
+        const m = (e: Section): [string, Section] => [e.section_id, new Section(e)];
+        const newSections: Sections = new Map(sections.map(m));
         return newSections;
       });
 
-      setCategories((oldCategories) => {
-        const newCategories: Categories = new Map();
-        categories.forEach((e) => {
-          const { category_id } = e;
-          const oldCategory = oldCategories.get(category_id);
-          const sorted_amount = oldCategory?.sorted_amount;
-          const unsorted_amount = oldCategory?.unsorted_amount;
-          const rolled_over_amount = oldCategory?.rolled_over_amount;
-          newCategories.set(category_id, {
-            ...e,
-            id: category_id,
-            sorted_amount,
-            unsorted_amount,
-            rolled_over_amount,
-          });
-        });
+      setCategories(() => {
+        const m = (e: Category): [string, Category] => [e.category_id, new Category(e)];
+        const newCategories: Categories = new Map(categories.map(m));
         return newCategories;
       });
     });

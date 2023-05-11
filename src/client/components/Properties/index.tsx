@@ -5,23 +5,31 @@ import RadioInputs from "./RadioInputs";
 import "./index.css";
 
 interface Props {
+  isIncome: boolean;
   isIncomeInput: boolean;
   setIsIncomeInput: Dispatch<SetStateAction<boolean>>;
+  isInfinite: boolean;
   isInfiniteInput: boolean;
   setIsInfiniteInput: Dispatch<SetStateAction<boolean>>;
+  isRollOver: boolean;
   isRollOverInput: boolean;
   setIsRollOverInput: Dispatch<SetStateAction<boolean>>;
+  rollOverStartDate: Date;
   rollOverStartDateInput: Date;
   setRollOverStartDateInput: Dispatch<SetStateAction<Date>>;
 }
 
 const Properties = ({
+  isIncome,
   isIncomeInput,
   setIsIncomeInput,
+  isInfinite,
   isInfiniteInput,
   setIsInfiniteInput,
+  isRollOver,
   isRollOverInput,
   setIsRollOverInput,
+  rollOverStartDate,
   rollOverStartDateInput,
   setRollOverStartDateInput,
 }: Props) => {
@@ -29,7 +37,6 @@ const Properties = ({
     <div className="Properties">
       <div className="property">
         <RadioInputs
-          defaultCheckedOptionId={isIncomeInput ? "income" : "expense"}
           checkedOptionId={isIncomeInput ? "income" : "expense"}
           name="incomeOrExpense"
           options={[
@@ -43,7 +50,7 @@ const Properties = ({
         <div className="row">
           <span>Limited budget</span>
           <ToggleInput
-            defaultChecked={!isInfiniteInput}
+            defaultChecked={!isInfinite}
             onChange={(e) => setIsInfiniteInput(!e.target.checked)}
           />
         </div>
@@ -52,7 +59,7 @@ const Properties = ({
             <div className="row">
               <span>Rolls over to the next period</span>
               <ToggleInput
-                defaultChecked={isRollOverInput}
+                defaultChecked={isRollOver}
                 onChange={(e) => setIsRollOverInput(e.target.checked)}
               />
             </div>

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useAppContext, isSubset, PATH } from "client";
 import { TransactionsTable } from "client/components";
-import { Transaction, TransactionLabel } from "common";
+import { Transaction, DeepPartial } from "common";
 import "./index.css";
 
 export type TransactionsPageParams = {
@@ -52,14 +52,14 @@ const TransactionsPage = () => {
   }, [transactions, accounts, viewDate, option]);
 
   const filteredTransactions = useMemo(() => {
-    const filters: Partial<Transaction> = {};
+    const filters: DeepPartial<Transaction> = {};
     if (account_id) filters.account_id = account_id;
     if (budget_id) {
-      if (!filters.label) filters.label = new TransactionLabel();
+      if (!filters.label) filters.label = {};
       filters.label.budget_id = budget_id;
     }
     if (category_id) {
-      if (!filters.label) filters.label = new TransactionLabel();
+      if (!filters.label) filters.label = {};
       filters.label.category_id = category_id;
     }
     return transactionsArray.filter((e) => {

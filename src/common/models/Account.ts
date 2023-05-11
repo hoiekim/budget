@@ -5,12 +5,12 @@ import {
   AccountBalance,
 } from "plaid";
 import { PlaidAccount } from "server";
-import { getRandomId } from "common";
+import { getRandomId, assign } from "common";
 
 export class AccountLabel {
   budget_id?: string | null;
   constructor(init?: Partial<AccountLabel>) {
-    Object.assign(this, init);
+    assign(this, init);
   }
 }
 
@@ -52,6 +52,6 @@ export class Account implements PlaidAccount {
   label = new AccountLabel();
 
   constructor(init?: Partial<Account>) {
-    Object.assign(this, init);
+    assign(this, init);
   }
 }
