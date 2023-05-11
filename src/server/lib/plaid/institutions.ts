@@ -1,5 +1,6 @@
-import { CountryCode, Institution } from "plaid";
+import { CountryCode } from "plaid";
 import { getPlaidClient, MaskedUser } from "server";
+import { Institution } from "common";
 
 const institutionsCache = new Map<string, Institution>();
 
@@ -17,7 +18,7 @@ export const getInstitution = async (user: MaskedUser, id: string) => {
 
     const { institution } = response.data;
 
-    if (institution) institutionsCache.set(id, institution);
+    if (institution) institutionsCache.set(id, new Institution(institution));
 
     return institution;
   } catch (error) {

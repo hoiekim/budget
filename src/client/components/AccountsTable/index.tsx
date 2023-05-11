@@ -36,8 +36,8 @@ const AccountsTable = ({ accountsArray }: Props) => {
           });
 
           if (r.status === "success") {
-            e.hide = false;
-            newAccounts.set(account_id, e);
+            const newAccount = new Account({ ...e, hide: false });
+            newAccounts.set(account_id, newAccount);
           }
         } catch (error: any) {
           console.error(error);

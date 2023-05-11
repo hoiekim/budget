@@ -6,7 +6,7 @@ interface Props {
   institution_id: string;
 }
 
-const fetchJobs = new Map<string | undefined, Promise<Institution | undefined>>();
+const fetchJobs = new Set<string>();
 
 const InstitutionSpan = ({ institution_id }: Props) => {
   const { institutions, setInstitutions } = useAppContext();
@@ -15,23 +15,18 @@ const InstitutionSpan = ({ institution_id }: Props) => {
   useEffect(() => {
     if (!institution_id || institution || fetchJobs.has(institution_id)) return;
 
-    const promisedInstitution = call
-      .get<Institution>(`/api/institution?id=${institution_id}`)
-      .then((r) => {
-        const institution = r.data;
-
-        if (institution) {
-          setInstitutions((oldInstitutions) => {
-            const newInstitutions = new Map(oldInstitutions);
-            newInstitutions.set(institution_id, institution);
-            return newInstitutions;
-          });
-        }
-
-        return institution;
+    call.get<Institution>(`/api/institution?id=${institution_id}`).then((r) => {
+      const { data } = r;
+      if (!data) return;
+      setInstitutions((oldInstitutions) => {
+        const institution = new Institution(data);
+        const newInstitutions = new Map(oldInstitutions);
+        newInstitutions.set(institution_id, institution);
+        return newInstitutions;
       });
+    });
 
-    fetchJobs.set(institution_id, promisedInstitution);
+    fetchJobs.add(institution_id);
   }, [institutions, setInstitutions, institution, institution_id]);
 
   return <span className="InstitutionSpan">{institution?.name || "Unknown"}</span>;

@@ -13,7 +13,15 @@ import {
   Sections,
   Categories,
 } from "client";
-import { InvestmentTransaction, Transaction, Budget, Section, Category } from "common";
+import {
+  Account,
+  InvestmentTransaction,
+  Transaction,
+  Budget,
+  Section,
+  Category,
+  Item,
+} from "common";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
@@ -44,10 +52,12 @@ export const useSync = () => {
         setTransactions((oldData) => {
           const newData = new Map(oldData);
           const { added, removed, modified } = transactions;
-          added?.forEach((e) => newData.set(e.transaction_id, e));
+          added?.forEach((e) => newData.set(e.transaction_id, new Transaction(e)));
           modified?.forEach((e) => {
             const data = oldData.get(e.transaction_id);
-            if (data) newData.set(e.transaction_id, new Transaction({ ...data, ...e }));
+            if (!data) return;
+            const newTransaction = new Transaction({ ...data, ...e });
+            newData.set(newTransaction.id, newTransaction);
           });
           removed?.forEach((e) => newData.delete(e.transaction_id));
           return newData;
@@ -58,12 +68,15 @@ export const useSync = () => {
         setInvestmentTransactions((oldData) => {
           const newData = new Map(oldData);
           const { added, removed, modified } = investmentTransactions;
-          added?.forEach((e) => newData.set(e.investment_transaction_id, e));
+          added?.forEach((e) => {
+            const newTransaction = new InvestmentTransaction(e);
+            newData.set(newTransaction.id, newTransaction);
+          });
           modified?.forEach((e) => {
             const data = oldData.get(e.investment_transaction_id);
             if (!data) return;
             const newTransaction = new InvestmentTransaction({ ...data, ...e });
-            newData.set(e.investment_transaction_id, newTransaction);
+            newData.set(newTransaction.id, newTransaction);
           });
           removed?.forEach((e) => newData.delete(e.investment_transaction_id));
           return newData;
@@ -84,7 +97,7 @@ export const useSync = () => {
               }
               return;
             }
-            newItems.set(item_id, item);
+            newItems.set(item_id, new Item(item));
           });
           return newItems;
         });
@@ -103,7 +116,7 @@ export const useSync = () => {
 
       setAccounts((oldAccounts) => {
         const newAccounts: Accounts = new Map(oldAccounts);
-        accounts.forEach((e) => newAccounts.set(e.account_id, e));
+        accounts.forEach((e) => newAccounts.set(e.account_id, new Account(e)));
         return newAccounts;
       });
 
@@ -111,7 +124,7 @@ export const useSync = () => {
         const newItems = new Map(oldItems);
         items.forEach((item) => {
           const { item_id } = item;
-          newItems.set(item_id, item);
+          newItems.set(item_id, new Item(item));
         });
         return newItems;
       });

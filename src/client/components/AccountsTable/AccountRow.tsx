@@ -161,8 +161,9 @@ const AccountRow = ({ account }: Props) => {
       if (r.status === "success") {
         setAccounts((oldAccounts) => {
           const newAccounts = new Map(oldAccounts);
-          const newAccount = oldAccounts.get(account_id) || account;
-          newAccount.hide = true;
+          const oldAccount = oldAccounts.get(account_id);
+          if (!oldAccount) return newAccounts;
+          const newAccount = new Account({ ...oldAccount, hide: true });
           newAccounts.set(account_id, newAccount);
           return newAccounts;
         });

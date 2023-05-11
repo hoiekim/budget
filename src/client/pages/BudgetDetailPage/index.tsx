@@ -65,10 +65,7 @@ const BudgetDetailPage = () => {
     setSections((oldSections) => {
       const newSections = new Map(oldSections);
       if (section_id) {
-        const newSection = new Section({
-          section_id,
-          budget_id,
-        });
+        const newSection = new Section({ section_id, budget_id });
         newSections.set(section_id, newSection);
       }
       return newSections;

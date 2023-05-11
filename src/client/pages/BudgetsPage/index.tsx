@@ -34,9 +34,8 @@ const BudgetsPage = () => {
 
     const { budget_id } = data;
 
-    const newBudget = new Budget({ budget_id });
-
     setBudgets((oldBudgets) => {
+      const newBudget = new Budget({ budget_id });
       const newBudgets = new Map(oldBudgets);
       newBudgets.set(budget_id, newBudget);
       return newBudgets;
