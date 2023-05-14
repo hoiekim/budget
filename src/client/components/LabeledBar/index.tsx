@@ -138,7 +138,7 @@ const LabeledBar = ({
                     </td>
                     <td style={{ textAlign: "left" }}>
                       <span>
-                        {(isIncome ? leftover < 0 : 0 <= leftover) ? "left" : "over"}
+                        {0 <= (isIncome ? -leftover : leftover) ? "left" : "over"}
                       </span>
                     </td>
                   </tr>
