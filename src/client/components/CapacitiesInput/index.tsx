@@ -1,6 +1,12 @@
 import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from "react";
 import { useAppContext } from "client/lib";
-import { Capacity, ViewDate, currencyCodeToSymbol, getDateString } from "common";
+import {
+  Capacity,
+  ViewDate,
+  currencyCodeToSymbol,
+  getDateString,
+  getDateTimeString,
+} from "common";
 import CapacityInput from "./CapacityInput";
 
 import "./index.css";
@@ -44,7 +50,7 @@ const CapacitiesInput = ({
 
     const onChangeDate: ChangeEventHandler<HTMLInputElement> = (e) => {
       const newCapacity = new Capacity(capacity);
-      const newActiveFrom = new Date(e.target.value);
+      const newActiveFrom = new Date(getDateTimeString(e.target.value));
       newCapacity.active_from = newActiveFrom;
       setCapacitiesInput((capacities) => {
         const newCapacities = capacities.map((e) => new Capacity(e));
