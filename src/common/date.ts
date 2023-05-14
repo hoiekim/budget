@@ -69,6 +69,14 @@ export class ViewDate {
 
   getDate = () => this.date;
 
+  getDateAsStartDate = () => {
+    const clone = this.clone();
+    clone.previous();
+    const date = new Date(clone.getDate());
+    date.setMilliseconds(date.getMilliseconds() + 1);
+    return date;
+  };
+
   setInterval = (interval: Interval) => {
     this.interval = interval;
     this.current();

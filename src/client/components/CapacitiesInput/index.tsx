@@ -50,7 +50,9 @@ const CapacitiesInput = ({
 
     const onChangeDate: ChangeEventHandler<HTMLInputElement> = (e) => {
       const newCapacity = new Capacity(capacity);
-      const newActiveFrom = new Date(getDateTimeString(e.target.value));
+      const inputDate = new Date(getDateTimeString(e.target.value));
+      const dateHelper = new ViewDate(viewDate.getInterval(), inputDate);
+      const newActiveFrom = dateHelper.getDateAsStartDate();
       newCapacity.active_from = newActiveFrom;
       setCapacitiesInput((capacities) => {
         const newCapacities = capacities.map((e) => new Capacity(e));
@@ -122,8 +124,8 @@ const CapacitiesInput = ({
 
       const latestCapacity = newCapacities[newCapacities.length - 1];
       const dateHelper = new ViewDate(viewDate.getInterval(), latestCapacity.active_from);
-      const active_from = dateHelper.getDate();
-      active_from.setMilliseconds(active_from.getMilliseconds() + 2);
+      dateHelper.next();
+      const active_from = dateHelper.getDateAsStartDate();
       const newCapacity = new Capacity({ ...latestCapacity, active_from });
       newCapacities.push(newCapacity);
       defaultCapacities.current = newCapacities;

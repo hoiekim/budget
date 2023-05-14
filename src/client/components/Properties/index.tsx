@@ -1,5 +1,6 @@
-import { Dispatch, SetStateAction } from "react";
-import { getDateString } from "common";
+import { ChangeEventHandler, Dispatch, SetStateAction } from "react";
+import { ViewDate, getDateString, getDateTimeString } from "common";
+import { useAppContext } from "client";
 import ToggleInput from "./ToggleInput";
 import RadioInputs from "./RadioInputs";
 import "./index.css";
@@ -25,6 +26,15 @@ const Properties = ({
   rollOverStartDateInput,
   setRollOverStartDateInput,
 }: Props) => {
+  const { viewDate } = useAppContext();
+
+  const onChangeRollDate: ChangeEventHandler<HTMLInputElement> = (e) => {
+    const inputDate = new Date(getDateTimeString(e.target.value));
+    const dateHelper = new ViewDate(viewDate.getInterval(), inputDate);
+    const newRollDate = dateHelper.getDateAsStartDate();
+    setRollOverStartDateInput(newRollDate);
+  };
+
   return (
     <div className="Properties">
       <div className="property">
@@ -61,7 +71,7 @@ const Properties = ({
                 <input
                   type="date"
                   value={getDateString(rollOverStartDateInput)}
-                  onChange={(e) => setRollOverStartDateInput(new Date(e.target.value))}
+                  onChange={onChangeRollDate}
                 />
               </div>
             )}
