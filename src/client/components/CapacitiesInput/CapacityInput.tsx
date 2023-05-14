@@ -1,5 +1,5 @@
 import { numberToCommaString } from "common";
-import { useState, useRef, InputHTMLAttributes, useEffect } from "react";
+import { useState, useRef, InputHTMLAttributes } from "react";
 
 type Props = { defaultValue: number } & Omit<
   InputHTMLAttributes<HTMLInputElement>,
@@ -21,10 +21,6 @@ const CapacityInput = (props: Props) => {
   const defaultValueAsCommaString = numberToCommaString(defaultValue);
   const [_value, _setValue] = useState(defaultValueAsCommaString);
 
-  useEffect(() => {
-    _setValue(defaultValueAsCommaString);
-  }, [defaultValueAsCommaString]);
-
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -40,6 +36,7 @@ const CapacityInput = (props: Props) => {
       onKeyPress={(e) => {
         if (!/[0-9.-]/.test(e.key)) e.preventDefault();
         if (onKeyPress) onKeyPress(e);
+        if (e.key === "Enter") inputRef.current?.blur();
       }}
       onChange={(e) => {
         _setValue(e.target.value);

@@ -126,7 +126,7 @@ const BudgetConfigPage = () => {
         <CapacitiesInput
           isInfiniteInput={isInfiniteInput}
           currencyCode={iso_currency_code}
-          defaultCapacities={capacities.map((c) => c.toInputs().capacityInput)}
+          defaultCapacities={capacities}
           capacitiesInput={capacitiesInput}
           setCapacitiesInput={setCapacitiesInput}
         />

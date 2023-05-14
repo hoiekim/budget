@@ -24,22 +24,19 @@ const sortCapacities = (a: Capacity, b: Capacity) => {
 const CapacitiesInput = ({
   isInfiniteInput,
   currencyCode,
-  defaultCapacities: _defaultCapacities,
+  defaultCapacities: _defaultCap,
   capacitiesInput,
   setCapacitiesInput,
 }: Props) => {
   const { viewDate } = useAppContext();
   const interval = viewDate.getInterval();
-
-  const defaultCapacities = useRef(_defaultCapacities);
+  const defaultCapacities = useRef(_defaultCap.map((c) => c.toInputs().capacityInput));
 
   useEffect(() => {
-    defaultCapacities.current = _defaultCapacities;
-  }, [_defaultCapacities]);
+    defaultCapacities.current = _defaultCap.map((c) => c.toInputs().capacityInput);
+  }, [_defaultCap]);
 
-  capacitiesInput.sort(sortCapacities);
-
-  const rows = capacitiesInput.map((capacity, i) => {
+  const rows = capacitiesInput.sort(sortCapacities).map((capacity, i) => {
     defaultCapacities.current.sort(sortCapacities);
     const defaultValue = defaultCapacities.current[i][interval];
 
@@ -103,7 +100,7 @@ const CapacitiesInput = ({
           <span>{currencyCodeToSymbol(currencyCode)}</span>
         </td>
         <td>
-          <CapacityInput defaultValue={defaultValue} onChange={onChangeAmount} />
+          <CapacityInput defaultValue={defaultValue} onBlur={onChangeAmount} />
         </td>
         <td>
           <button onClick={onDelete}>-</button>

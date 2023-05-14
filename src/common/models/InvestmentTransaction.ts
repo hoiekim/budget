@@ -8,7 +8,7 @@ import { getRandomId, getDateTimeString, assign } from "common";
 
 export class InvestmentTransaction implements PlaidInvestmentTransaction {
   get id() {
-    return this.transaction_id;
+    return this.investment_transaction_id;
   }
   set id(_: string) {}
 
