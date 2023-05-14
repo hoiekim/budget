@@ -1,7 +1,7 @@
 div.ActionButtons {
   display: flex;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 30px;
 }
 
 div.ActionButtons > button {
@@ -31,12 +31,13 @@ div.ActionButtons.locked > button:last-child {
   flex: 0 1 24px;
 }
 
-div.ActionButtons > button.complete > span.colored {
-  color: var(--green);
+div.ActionButtons > button.complete {
+  background-color: var(--darkGreen);
 }
 
-div.ActionButtons > button.cancel > span.colored {
-  color: var(--red);
+div.ActionButtons > button.complete > span {
+  color: #fff;
+  font-weight: bold;
 }
 
 div.ActionButtons > button.delete {

@@ -126,9 +126,3 @@ export class Institution implements PlaidInstitution {
     assign(this, init);
   }
 }
-
-export type Interval = "year" | "month" | "week" | "day";
-
-export type Capacity = { valid_from?: string } & {
-  [key in Interval]: number;
-};

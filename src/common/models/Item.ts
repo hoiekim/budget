@@ -13,7 +13,7 @@ export class Item {
   cursor?: string;
   plaidError?: PlaidError;
   /**
-   * Timestamp in ISO format.
+   * Timestamp in YYYY-MM-DD format.
    */
   updated?: string;
 

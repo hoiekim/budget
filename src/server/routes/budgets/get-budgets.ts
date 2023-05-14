@@ -1,10 +1,10 @@
 import { searchBudgets, Route } from "server";
-import { Budget, Section, Category } from "common";
+import { JSONBudget, JSONSection, JSONCategory } from "common";
 
 export interface BudgetsGetResponse {
-  budgets: Budget[];
-  sections: Section[];
-  categories: Category[];
+  budgets: JSONBudget[];
+  sections: JSONSection[];
+  categories: JSONCategory[];
 }
 
 export const getBudgetsRoute = new Route<BudgetsGetResponse>(

@@ -141,20 +141,23 @@ export const useSync = () => {
       const { budgets, sections, categories } = data;
 
       setBudgets(() => {
-        const m = (e: Budget): [string, Budget] => [e.budget_id, new Budget(e)];
-        const newBudgets: Budgets = new Map(budgets.map(m));
+        const newBudgets: Budgets = new Map(
+          budgets.map((e) => [e.budget_id, new Budget(e)])
+        );
         return newBudgets;
       });
 
       setSections(() => {
-        const m = (e: Section): [string, Section] => [e.section_id, new Section(e)];
-        const newSections: Sections = new Map(sections.map(m));
+        const newSections: Sections = new Map(
+          sections.map((e) => [e.section_id, new Section(e)])
+        );
         return newSections;
       });
 
       setCategories(() => {
-        const m = (e: Category): [string, Category] => [e.category_id, new Category(e)];
-        const newCategories: Categories = new Map(categories.map(m));
+        const newCategories: Categories = new Map(
+          categories.map((e) => [e.category_id, new Category(e)])
+        );
         return newCategories;
       });
     });

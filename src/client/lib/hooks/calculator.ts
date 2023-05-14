@@ -33,8 +33,9 @@ export const calculatorLambda = (
     const rollOverStartDate = new Date(e.roll_over_start_date);
     const span = viewDate.getSpanFrom(rollOverStartDate);
     if (span < 0) return;
-    const capacity = e.capacities[0] && e.getValidCapacity(viewDate);
-    e.rolled_over_amount = -span * capacity;
+    const capacity = e.getActiveCapacity(viewDate.getDate());
+    const capacityValue = capacity[viewDate.getInterval()];
+    e.rolled_over_amount = -span * capacityValue;
   };
 
   newBudgets.forEach(setBaseAmounts);

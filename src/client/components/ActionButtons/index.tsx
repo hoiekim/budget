@@ -16,13 +16,12 @@ const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
   return (
     <div className={classes.join(" ")}>
       <button
-        className="complete"
+        className="complete colored"
         onClick={(e) => {
           e.stopPropagation();
           onComplete(e);
         }}
       >
-        <span className="colored">✓</span>
         <span>&nbsp;Save</span>
       </button>
       <button
@@ -33,7 +32,6 @@ const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
           onCancel(e);
         }}
       >
-        <span className="colored">✕</span>
         <span>&nbsp;Cancel</span>
       </button>
       <button
@@ -46,8 +44,7 @@ const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
           setIsDeleteButtonLocked((s) => !s);
         }}
       >
-        <span>⌫</span>
-        {!isDeleteButtonLocked && <span>&nbsp;Delete</span>}
+        <span>{isDeleteButtonLocked ? "⌫" : "Delete"}</span>
       </button>
     </div>
   );

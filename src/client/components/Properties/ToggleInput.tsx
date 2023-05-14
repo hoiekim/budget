@@ -2,9 +2,8 @@ import { InputHTMLAttributes, useRef } from "react";
 
 type Props = InputHTMLAttributes<HTMLInputElement>;
 
-const ToggleInput = ({ defaultChecked, children, style, ...rest }: Props) => {
+const ToggleInput = ({ defaultChecked, checked, children, style, ...rest }: Props) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const checked = inputRef.current === null ? defaultChecked : inputRef.current.checked;
   const classes = ["ToggleInput"];
   if (checked) classes.push("checked");
   return (

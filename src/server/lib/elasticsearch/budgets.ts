@@ -4,7 +4,7 @@ import {
   getUpdateSectionScript,
   getUpdateCategoryScript,
 } from "server";
-import { Budget, Section, Category } from "common";
+import { Budget, Section, Category, JSONBudget, JSONSection, JSONCategory } from "common";
 import { elasticsearchClient, index } from "./client";
 
 /**
@@ -16,17 +16,14 @@ import { elasticsearchClient, index } from "./client";
  */
 export const createBudget = async (user: MaskedUser) => {
   const { user_id } = user;
+
+  type UnindexedBudget = Omit<Budget, "budget_id"> & { budget_id?: string };
+  const budget: UnindexedBudget = new Budget();
+  delete budget.budget_id;
+
   const response = await elasticsearchClient.index({
     index,
-    document: {
-      type: "budget",
-      user: { user_id },
-      budget: {
-        name: "",
-        capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
-        iso_currency_code: "USD",
-      },
-    },
+    document: { type: "budget", user: { user_id }, budget },
   });
 
   return response;
@@ -104,17 +101,14 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
  */
 export const createSection = async (user: MaskedUser, budget_id: string) => {
   const { user_id } = user;
+
+  type UnindexedSection = Omit<Section, "section_id"> & { section_id?: string };
+  const section: UnindexedSection = new Section({ budget_id });
+  delete section.section_id;
+
   const response = await elasticsearchClient.index({
     index,
-    document: {
-      type: "section",
-      user: { user_id },
-      section: {
-        budget_id,
-        name: "",
-        capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
-      },
-    },
+    document: { type: "section", user: { user_id }, section },
   });
 
   return response;
@@ -183,17 +177,14 @@ export const deleteSection = async (user: MaskedUser, section_id: string) => {
  */
 export const createCategory = async (user: MaskedUser, section_id: string) => {
   const { user_id } = user;
+
+  type UnindexedCategory = Omit<Category, "category_id"> & { category_id?: string };
+  const category: UnindexedCategory = new Category({ section_id });
+  delete category.category_id;
+
   const response = await elasticsearchClient.index({
     index,
-    document: {
-      type: "category",
-      user: { user_id },
-      category: {
-        section_id,
-        name: "",
-        capacities: [{ year: 0, month: 0, week: 0, day: 0 }],
-      },
-    },
+    document: { type: "category", user: { user_id }, category },
   });
 
   return response;
@@ -248,9 +239,9 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
 export const searchBudgets = async (user: MaskedUser) => {
   const response = await elasticsearchClient.search<{
     type: string;
-    budget?: Budget;
-    section?: Section;
-    category?: Category;
+    budget?: JSONBudget;
+    section?: JSONSection;
+    category?: JSONCategory;
   }>({
     index,
     from: 0,
@@ -273,26 +264,22 @@ export const searchBudgets = async (user: MaskedUser) => {
     },
   });
 
-  const budgets: Budget[] = [];
-  const sections: Section[] = [];
-  const categories: Category[] = [];
+  const budgets: JSONBudget[] = [];
+  const sections: JSONSection[] = [];
+  const categories: JSONCategory[] = [];
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     const id = e._id;
     if (!source) return;
-    if (source.type === "budget") {
-      if (!source.budget) return;
-      const budget = new Budget({ ...source.budget, budget_id: id });
-      source.budget && budgets.push(budget);
-    } else if (source.type === "section") {
-      if (!source.section) return;
-      const section = new Section({ ...source.section, section_id: id });
-      source.section && sections.push(section);
-    } else if (source.type === "category") {
-      if (!source.category) return;
-      const category = new Category({ ...source.category, category_id: id });
-      source.category && categories.push(category);
+    if (source.type === "budget" && source.budget) {
+      budgets.push({ ...source.budget, budget_id: id });
+    }
+    if (source.type === "section" && source.section) {
+      sections.push({ ...source.section, section_id: id });
+    }
+    if (source.type === "category" && source.category) {
+      categories.push({ ...source.category, category_id: id });
     }
   });
 

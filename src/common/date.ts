@@ -63,7 +63,7 @@ export class ViewDate {
 
   constructor(interval: Interval, date?: Date) {
     this.interval = interval;
-    this.date = date || new Date();
+    this.date = date ? new Date(date) : new Date();
     this.current();
   }
 
@@ -229,8 +229,27 @@ export class ViewDate {
   };
 }
 
-export const getDateString = (date = new Date()) => {
-  return date.toISOString().split("T").shift() as string;
+export const getDateComponents = (dateObject: Date) => {
+  const year = dateObject.getFullYear();
+  const month = dateObject.getMonth();
+  const date = dateObject.getDate();
+  const day = dateObject.getDay();
+  return { year, month, date, day };
+};
+
+export const to2DString = (n: Number) => {
+  return n.toLocaleString(undefined, { minimumIntegerDigits: 2 });
+};
+
+/**
+ * @param dateObject Date
+ * @returns YYYY-MM-DD
+ */
+export const getDateString = (dateObject = new Date()) => {
+  const { year, month, date } = getDateComponents(dateObject);
+  const formattedMonth = to2DString(month + 1);
+  const formattedDate = to2DString(date);
+  return `${year}-${formattedMonth}-${formattedDate}`;
 };
 
 /**

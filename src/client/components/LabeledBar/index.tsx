@@ -42,9 +42,10 @@ const LabeledBar = ({
     roll_over,
   } = data;
 
-  const capacity = data.getValidCapacity(viewDate);
-  const isInfinite = capacity === MAX_FLOAT || capacity === -MAX_FLOAT;
-  const isIncome = capacity < 0;
+  const capacity = data.getActiveCapacity(viewDate.getDate());
+  const capacityValue = capacity[viewDate.getInterval()];
+  const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
+  const isIncome = capacityValue < 0;
 
   const {
     onDragStart,
@@ -68,10 +69,10 @@ const LabeledBar = ({
   };
 
   const total = sorted_amount + unsorted_amount;
-  const leftover = capacity - total;
+  const leftover = capacityValue - total;
 
-  const labeledRatio = isInfinite ? undefined : sorted_amount / capacity;
-  const unlabledRatio = isInfinite ? undefined : unsorted_amount / capacity;
+  const labeledRatio = isInfinite ? undefined : sorted_amount / capacityValue;
+  const unlabledRatio = isInfinite ? undefined : unsorted_amount / capacityValue;
 
   const classes = ["LabeledBar"];
   if (isDragging) classes.push("dragging");

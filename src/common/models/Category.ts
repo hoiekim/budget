@@ -1,5 +1,5 @@
 import { getRandomId, assign } from "common";
-import { BudgetLike } from "./BudgetLike";
+import { BudgetLike, JSONBudgetLike } from "./BudgetLike";
 
 export class Category extends BudgetLike {
   get id() {
@@ -10,8 +10,14 @@ export class Category extends BudgetLike {
   category_id: string = getRandomId();
   section_id: string = "";
 
-  constructor(init: Partial<Category> & { section_id: string }) {
+  constructor(init: Partial<Category | JSONCategory> & { section_id: string }) {
     super();
     assign(this, init);
+    this.fromJSON();
   }
+}
+
+export interface JSONCategory extends JSONBudgetLike {
+  category_id: string;
+  section_id: string;
 }

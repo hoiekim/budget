@@ -1,42 +1,57 @@
-import { ViewDate, Capacity, assign } from "common";
+import { Capacity, JSONCapacity, assign, getDateTimeString } from "common";
 
 export class BudgetLike {
   name: string = "";
-  capacities: Capacity[] = [{ year: 0, month: 0, week: 0, day: 0 }];
+  capacities = [new Capacity()];
   roll_over: boolean = false;
-  roll_over_start_date?: string;
+  roll_over_start_date?: Date;
   sorted_amount = 0;
   unsorted_amount = 0;
   rolled_over_amount = 0;
 
-  constructor(init?: Partial<BudgetLike>) {
+  constructor(init?: Partial<BudgetLike | JSONBudgetLike>) {
     assign(this, init);
-    Object.defineProperties(this, {
-      sorted_amount: { enumerable: false, writable: true },
-      unsorted_amount: { enumerable: false, writable: true },
-      rolled_over_amount: { enumerable: false, writable: true },
-    });
+    this.fromJSON();
   }
 
-  getValidCapacity = (viewDate: ViewDate) => {
-    const date = viewDate.getDate();
-    const interval = viewDate.getInterval();
+  protected fromJSON = () => {
+    if (typeof this.roll_over_start_date === "string") {
+      this.roll_over_start_date = new Date(this.roll_over_start_date);
+    }
+    this.capacities = this.capacities.map((c) => new Capacity(c));
+  };
 
+  toJSON = () => {
+    const rollDate = this.roll_over_start_date;
+    const roll_over_start_date = rollDate && getDateTimeString(rollDate);
+    return {
+      ...this,
+      roll_over_start_date,
+      sorted_amount: undefined,
+      unsorted_amount: undefined,
+      rolled_over_amount: undefined,
+    };
+  };
+
+  getActiveCapacity = (date: Date) => {
     const validCapacity = this.capacities
       .sort((a, b) => {
-        const validFromA = new Date(a.valid_from || 0);
-        const validFromB = new Date(b.valid_from || 0);
+        const validFromA = new Date(a.active_from || 0);
+        const validFromB = new Date(b.active_from || 0);
         return validFromB.getTime() - validFromA.getTime();
       })
       .find((capacity) => {
-        const { valid_from } = capacity;
-        return new Date(valid_from || 0) < date;
+        const { active_from } = capacity;
+        return new Date(active_from || 0) < date;
       });
 
-    return validCapacity ? validCapacity[interval] : 0;
+    return validCapacity || new Capacity();
   };
+}
 
-  getValidCapacity4test = () => {
-    return this.capacities;
-  };
+export interface JSONBudgetLike {
+  name: string;
+  capacities: JSONCapacity[];
+  roll_over: boolean;
+  roll_over_start_date?: string;
 }

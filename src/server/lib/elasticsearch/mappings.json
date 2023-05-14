@@ -210,7 +210,7 @@
             "month": { "type": "float" },
             "week": { "type": "float" },
             "day": { "type": "float" },
-            "valid_from": { "type": "date" }
+            "active_from": { "type": "date" }
           }
         },
         "iso_currency_code": { "type": "keyword" },
@@ -232,7 +232,7 @@
             "month": { "type": "float" },
             "week": { "type": "float" },
             "day": { "type": "float" },
-            "valid_from": { "type": "date" }
+            "active_from": { "type": "date" }
           }
         },
         "roll_over": { "type": "boolean" },
@@ -253,7 +253,7 @@
             "month": { "type": "float" },
             "week": { "type": "float" },
             "day": { "type": "float" },
-            "valid_from": { "type": "date" }
+            "active_from": { "type": "date" }
           }
         },
         "roll_over": { "type": "boolean" },

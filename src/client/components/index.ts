@@ -13,4 +13,4 @@ export { default as Bar } from "./Bar";
 export { default as ActionButtons } from "./ActionButtons";
 export { default as Properties } from "./Properties";
 export { default as NameInput } from "./NameInput";
-export { default as CapacityInput } from "./CapacityInput";
+export { default as CapacitiesInput } from "./CapacitiesInput";
