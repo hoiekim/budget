@@ -58,3 +58,17 @@ export interface JSONCapacity {
   day: number;
   active_from?: string;
 }
+
+const sortCapacities = (a: Capacity, b: Capacity, order: "asc" | "desc" = "asc") => {
+  const sign = order === "asc" ? 1 : -1;
+  const activeFromA = a.active_from;
+  const activeFromB = b.active_from;
+  const factorA = activeFromA ? activeFromA.getTime() : -Infinity;
+  const factorB = activeFromB ? activeFromB.getTime() : -Infinity;
+  return sign * (factorA - factorB);
+};
+
+sortCapacities.asc = (a: Capacity, b: Capacity) => sortCapacities(a, b, "asc");
+sortCapacities.desc = (a: Capacity, b: Capacity) => sortCapacities(a, b, "desc");
+
+export { sortCapacities };

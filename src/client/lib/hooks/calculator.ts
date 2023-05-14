@@ -30,12 +30,9 @@ export const calculatorLambda = (
     e.sorted_amount = 0;
     e.unsorted_amount = 0;
     if (!e.roll_over || !e.roll_over_start_date) return;
-    const rollOverStartDate = new Date(e.roll_over_start_date);
-    const span = viewDate.getSpanFrom(rollOverStartDate);
-    if (span < 0) return;
-    const capacity = e.getActiveCapacity(viewDate.getDate());
-    const capacityValue = capacity[viewDate.getInterval()];
-    e.rolled_over_amount = -span * capacityValue;
+    const rollDate = e.roll_over_start_date;
+    const accumulatedCapacity = e.getAccumulatedCapacity(viewDate, rollDate);
+    e.rolled_over_amount = -accumulatedCapacity;
   };
 
   newBudgets.forEach(setBaseAmounts);
@@ -48,9 +45,6 @@ export const calculatorLambda = (
     if (!account || account.hide) return;
 
     const { budget_id, category_id } = label;
-
-    const previousViewDate = viewDate.clone();
-    previousViewDate.previous();
 
     // Calculates unsorted transactions amount for budgets
     if (!category_id) {
@@ -65,7 +59,7 @@ export const calculatorLambda = (
         parentBudget.roll_over &&
         parentBudget.roll_over_start_date &&
         new Date(parentBudget.roll_over_start_date) <= transactionDate &&
-        transactionDate < previousViewDate.getDate() &&
+        transactionDate < viewDate.getDateAsStartDate() &&
         parentBudget.rolled_over_amount !== undefined
       ) {
         parentBudget.rolled_over_amount += amount;
@@ -83,7 +77,7 @@ export const calculatorLambda = (
       parentCategory.roll_over &&
       parentCategory.roll_over_start_date &&
       new Date(parentCategory.roll_over_start_date) <= transactionDate &&
-      transactionDate < previousViewDate.getDate() &&
+      transactionDate < viewDate.getDateAsStartDate() &&
       parentCategory.rolled_over_amount !== undefined
     ) {
       parentCategory.rolled_over_amount += amount;
@@ -98,7 +92,7 @@ export const calculatorLambda = (
       parentSection.roll_over &&
       parentSection.roll_over_start_date &&
       new Date(parentSection.roll_over_start_date) <= transactionDate &&
-      transactionDate < previousViewDate.getDate() &&
+      transactionDate < viewDate.getDateAsStartDate() &&
       parentSection.rolled_over_amount !== undefined
     ) {
       parentSection.rolled_over_amount += amount;
@@ -113,7 +107,7 @@ export const calculatorLambda = (
       parentBudget.roll_over &&
       parentBudget.roll_over_start_date &&
       new Date(parentBudget.roll_over_start_date) <= transactionDate &&
-      transactionDate < previousViewDate.getDate() &&
+      transactionDate < viewDate.getDateAsStartDate() &&
       parentBudget.rolled_over_amount !== undefined
     ) {
       parentBudget.rolled_over_amount += amount;

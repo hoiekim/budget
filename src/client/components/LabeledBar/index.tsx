@@ -40,6 +40,7 @@ const LabeledBar = ({
     unsorted_amount = 0,
     rolled_over_amount,
     roll_over,
+    roll_over_start_date,
   } = data;
 
   const capacity = data.getActiveCapacity(viewDate.getDate());
@@ -78,6 +79,12 @@ const LabeledBar = ({
   if (isDragging) classes.push("dragging");
 
   const CurrencySymbolSpan = <span>{currencyCodeToSymbol(iso_currency_code)}</span>;
+
+  const shouldShowRolledAmount =
+    roll_over &&
+    rolled_over_amount !== undefined &&
+    roll_over_start_date &&
+    roll_over_start_date < viewDate.getDate();
 
   return (
     <div
@@ -135,7 +142,7 @@ const LabeledBar = ({
                       </span>
                     </td>
                   </tr>
-                  {roll_over && rolled_over_amount !== undefined && (
+                  {shouldShowRolledAmount && (
                     <tr>
                       <td>
                         <span>{rolled_over_amount <= 0 ? "+" : "-"}</span>

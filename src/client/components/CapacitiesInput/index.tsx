@@ -6,6 +6,7 @@ import {
   currencyCodeToSymbol,
   getDateString,
   getDateTimeString,
+  sortCapacities,
 } from "common";
 import CapacityInput from "./CapacityInput";
 
@@ -18,14 +19,6 @@ interface Props {
   capacitiesInput: Capacity[];
   setCapacitiesInput: Dispatch<SetStateAction<Capacity[]>>;
 }
-
-const sortCapacities = (a: Capacity, b: Capacity) => {
-  const activeFromA = a.active_from;
-  const activeFromB = b.active_from;
-  const factorA = activeFromA ? activeFromA.getTime() : -Infinity;
-  const factorB = activeFromB ? activeFromB.getTime() : -Infinity;
-  return factorA - factorB;
-};
 
 const CapacitiesInput = ({
   isInfiniteInput,
@@ -42,8 +35,8 @@ const CapacitiesInput = ({
     defaultCapacities.current = _defaultCap.map((c) => c.toInputs().capacityInput);
   }, [_defaultCap]);
 
-  const rows = capacitiesInput.sort(sortCapacities).map((capacity, i) => {
-    defaultCapacities.current.sort(sortCapacities);
+  const rows = capacitiesInput.sort(sortCapacities.asc).map((capacity, i) => {
+    defaultCapacities.current.sort(sortCapacities.asc);
     const defaultValue = defaultCapacities.current[i][interval];
 
     const { active_from } = capacity;
@@ -120,7 +113,7 @@ const CapacitiesInput = ({
   const onClickAdd = () => {
     setCapacitiesInput((oldCapacities) => {
       const newCapacities = oldCapacities.map((e) => new Capacity(e));
-      newCapacities.sort(sortCapacities);
+      newCapacities.sort(sortCapacities.asc);
 
       const latestCapacity = newCapacities[newCapacities.length - 1];
       const dateHelper = new ViewDate(viewDate.getInterval(), latestCapacity.active_from);

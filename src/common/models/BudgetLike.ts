@@ -1,4 +1,11 @@
-import { Capacity, JSONCapacity, assign, getDateTimeString } from "common";
+import {
+  Capacity,
+  JSONCapacity,
+  ViewDate,
+  assign,
+  getDateTimeString,
+  sortCapacities,
+} from "common";
 
 export class BudgetLike {
   name: string = "";
@@ -33,19 +40,34 @@ export class BudgetLike {
     };
   };
 
+  sortCapacities = (order: "asc" | "desc" = "asc") => {
+    return this.capacities.sort((a, b) => sortCapacities(a, b, order));
+  };
+
   getActiveCapacity = (date: Date) => {
-    const validCapacity = this.capacities
-      .sort((a, b) => {
-        const validFromA = new Date(a.active_from || 0);
-        const validFromB = new Date(b.active_from || 0);
-        return validFromB.getTime() - validFromA.getTime();
-      })
-      .find((capacity) => {
-        const { active_from } = capacity;
-        return new Date(active_from || 0) < date;
-      });
+    const validCapacity = this.sortCapacities("desc").find((capacity) => {
+      const { active_from } = capacity;
+      return new Date(active_from || 0) < date;
+    });
 
     return validCapacity || new Capacity();
+  };
+
+  getAccumulatedCapacity = (viewDate: ViewDate, startDate: Date) => {
+    const interval = viewDate.getInterval();
+    let sum = 0;
+    this.sortCapacities().forEach((e, i) => {
+      const from = e.active_from || startDate;
+      const nextCapacity = this.capacities[i + 1];
+      const endDate = nextCapacity?.active_from;
+      const endDateAsNumber = endDate?.getTime() || Infinity;
+      const isEndDateEarlier = endDateAsNumber < viewDate.getDate().getTime();
+      const endViewDate = endDate ? new ViewDate(interval, endDate) : viewDate;
+      const dateHelper = isEndDateEarlier ? endViewDate : viewDate;
+      const span = dateHelper.getSpanFrom(from);
+      if (span > 0) sum += span * e[interval];
+    });
+    return sum;
   };
 }
 
