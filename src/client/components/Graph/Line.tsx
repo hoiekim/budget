@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppContext } from "client";
 import { Timeout } from "common";
-import { Point } from "./index";
+import { LineType, Point } from "./index";
 
 interface Props {
   points: Point[];
   color: string;
+  type?: LineType;
 }
 
-const Line = ({ points, color }: Props) => {
+const Line = ({ points, color, type = "diagonal" }: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
 
@@ -58,17 +59,22 @@ const Line = ({ points, color }: Props) => {
   }, []);
 
   const d = points
-    .map((e, i) => {
+    .flatMap((e, i) => {
       const x = e[0] * (width - 10) + 5;
       const y = (1 - e[1]) * (height - 10) + 5;
-      const joinedCoordinate = `${x},${y}`;
-      if (!i) return "M" + joinedCoordinate;
-      return joinedCoordinate;
+      if (!i) return [`M${x},${y}`];
+      if (type === "diagonal") return [`${x},${y}`];
+      const _x = points[i - 1][0] * (width - 10) + 5;
+      return [`${_x},${y}`, `${x},${y}`];
     })
     .join(" ");
 
+  const classes = ["Line"];
+  if (color.split("").reduce((a, e, i, t) => (i < 2 ? a : a || e !== t[i - 1]), false)) {
+    classes.push("colored");
+  }
   return (
-    <div ref={divRef} className="Line colored" style={{ width: "100%" }}>
+    <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
       <svg
         height="100%"
         width="100%"

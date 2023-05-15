@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { NewSectionGetResponse } from "server";
 import {
   TransactionsPageParams,
@@ -6,9 +6,10 @@ import {
   call,
   PATH,
   useLocalStorage,
+  getGraphData,
 } from "client";
 import { Section, getIndex } from "common";
-import { BudgetBar, SectionBar } from "client/components";
+import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
 
 export type BudgetDetailPageParams = {
@@ -16,7 +17,8 @@ export type BudgetDetailPageParams = {
 };
 
 const BudgetDetailPage = () => {
-  const { budgets, router, sections, setSections } = useAppContext();
+  const { transactions, accounts, budgets, router, sections, setSections, viewDate } =
+    useAppContext();
   const { path, params, transition } = router;
   let budget_id: string;
   if (path === PATH.BUDGET_DETAIL) budget_id = params.get("budget_id") || "";
@@ -80,6 +82,49 @@ const BudgetDetailPage = () => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
+  const graphData = useMemo(() => {
+    if (!budget) return;
+    const spendingHistory: number[] = [];
+
+    transactions.forEach((transaction) => {
+      const { authorized_date, date, amount, account_id } = transaction;
+      const account = accounts.get(account_id);
+      if (!account) return;
+      const _budget_id = transaction.label.budget_id || account.label.budget_id;
+      if (budget_id !== _budget_id) return;
+      const transactionDate = new Date(authorized_date || date);
+      const span = viewDate.getSpanFrom(transactionDate);
+      if (!spendingHistory[span]) spendingHistory[span] = 0;
+      spendingHistory[span] += amount;
+    });
+
+    const { length } = spendingHistory;
+
+    if (length < 2) return;
+
+    for (let i = 0; i < length; i++) {
+      if (!spendingHistory[i]) spendingHistory[i] = 0;
+    }
+
+    spendingHistory.reverse();
+
+    const clonedViewDate = viewDate.clone();
+
+    const capacityHistory = new Array(length)
+      .fill(0)
+      .map(() => {
+        const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
+        clonedViewDate.previous();
+        return capacity[viewDate.getInterval()];
+      })
+      .reverse();
+
+    return getGraphData([
+      { sequence: capacityHistory, color: "#aaa", type: "perpendicular" },
+      { sequence: spendingHistory, color: "#097" },
+    ]);
+  }, [transactions, viewDate, accounts, budget, budget_id]);
+
   return (
     <div className="BudgetDetailPage">
       {budget && (
@@ -88,6 +133,10 @@ const BudgetDetailPage = () => {
           <div className="unsortedButton">
             <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
           </div>
+
+          {!!graphData && (
+            <Graph data={graphData} iso_currency_code={budget.iso_currency_code} />
+          )}
           <div className="children">
             <div>
               {sectionBars}

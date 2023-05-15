@@ -7,9 +7,10 @@ export interface Range {
   x: Point;
   y: Point;
 }
+export type LineType = "perpendicular" | "diagonal";
 
 export interface GraphData {
-  lines: { points: Point[]; color: string }[];
+  lines: { points: Point[]; color: string; type?: LineType }[];
   range: Range;
 }
 
@@ -19,8 +20,8 @@ interface Props {
 }
 
 const Graph = ({ data: { lines, range }, iso_currency_code }: Props) => {
-  const lineElements = lines.map(({ points, color }) => {
-    return <Line points={points} color={color} />;
+  const lineElements = lines.map(({ points, color, type }) => {
+    return <Line points={points} color={color} type={type} />;
   });
   return (
     <div className="Graph">

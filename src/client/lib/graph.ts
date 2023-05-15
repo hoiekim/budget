@@ -1,22 +1,21 @@
-import { GraphData, Point, Range } from "client/components/Graph";
+import { GraphData, LineType, Point, Range } from "client/components/Graph";
 
 export type Sequence = number[];
+export type GraphInput = { sequence: Sequence; color: string; type?: LineType };
 
-export type GraphInput = { sequence: Sequence; color: string }[];
-
-export const getGraphData = (input: GraphInput): GraphData => {
+export const getGraphData = (input: GraphInput[]): GraphData => {
   const ranges = input.map(({ sequence }) => getRange(sequence));
   const range = ranges.reduce(
     (acc, e) => {
       return {
-        y: [Math.min(acc.y[0], e.y[0]), Math.max(acc.y[1], e.y[1])],
         x: [Math.min(acc.x[0], e.x[0]), Math.max(acc.x[1], e.x[1])],
+        y: [Math.min(acc.y[0], e.y[0]), Math.max(acc.y[1], e.y[1])],
       };
     },
-    { y: [0, 0], x: [0, 0] }
+    { x: [0, 0], y: [0, 0] }
   );
-  const lines = input.map(({ sequence, color }) => {
-    return { points: getPoints(sequence, range), color };
+  const lines = input.map(({ sequence, color, type }) => {
+    return { points: getPoints(sequence, range), color, type };
   });
   return { lines, range };
 };
@@ -60,5 +59,5 @@ export const getRange = (sequence: Sequence): Range => {
   max *= fixer;
   min *= fixer;
 
-  return { y: [min, max], x: [0, length - 1] };
+  return { x: [0, length - 1], y: [min, max] };
 };
