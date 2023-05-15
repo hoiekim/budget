@@ -53,7 +53,7 @@ export class BudgetLike {
     return validCapacity || new Capacity();
   };
 
-  getAccumulatedCapacity = (viewDate: ViewDate, startDate: Date) => {
+  getAccumulatedCapacity = (startDate: Date, viewDate: ViewDate) => {
     const interval = viewDate.getInterval();
     let sum = 0;
     this.sortCapacities().forEach((e, i) => {

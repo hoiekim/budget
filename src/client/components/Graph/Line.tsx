@@ -5,9 +5,10 @@ import { Point } from "./index";
 
 interface Props {
   points: Point[];
+  color: string;
 }
 
-const Line = ({ points }: Props) => {
+const Line = ({ points, color }: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
 
@@ -79,7 +80,7 @@ const Line = ({ points }: Props) => {
           d={width ? d : ""}
           style={{
             display: pathLength ? "block" : "none",
-            stroke: "#097",
+            stroke: color,
             strokeDasharray: pathLength + 5,
             strokeDashoffset: pathOffset ? pathLength + 5 : 0,
             transition: "stroke-dashoffset 1s ease 0s",

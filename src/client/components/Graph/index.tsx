@@ -9,20 +9,23 @@ export interface Range {
 }
 
 export interface GraphData {
-  points: Point[];
+  lines: { points: Point[]; color: string }[];
   range: Range;
-  iso_currency_code: string | null;
 }
 
 interface Props {
   data: GraphData;
+  iso_currency_code: string | null;
 }
 
-const Graph = ({ data: { points, range, iso_currency_code } }: Props) => {
+const Graph = ({ data: { lines, range }, iso_currency_code }: Props) => {
+  const lineElements = lines.map(({ points, color }) => {
+    return <Line points={points} color={color} />;
+  });
   return (
     <div className="Graph">
       <Grid range={range} iso_currency_code={iso_currency_code} />
-      <Line points={points} />
+      {lineElements}
     </div>
   );
 };

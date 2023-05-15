@@ -13,9 +13,8 @@ import {
   numberToCommaString,
   Timeout,
 } from "common";
-import { call, useAppContext, PATH, TransactionsPageParams } from "client";
+import { call, useAppContext, PATH, TransactionsPageParams, getGraphData } from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
-import { Point, GraphData } from "client/components/Graph";
 import "./index.css";
 
 interface Props {
@@ -190,7 +189,7 @@ const AccountRow = ({ account }: Props) => {
     formattedBalancesText += " " + unofficial_currency_code;
   }
 
-  const graphData: GraphData | undefined = useMemo(() => {
+  const graphData = useMemo(() => {
     if (type === "credit") return;
 
     const balanceHistory: number[] = [current || 0];
@@ -216,47 +215,15 @@ const AccountRow = ({ account }: Props) => {
 
     if (length < 2) return;
 
-    let min = current || 0;
-    let max = current || 0;
-
     for (let i = 1; i < length; i++) {
       if (!balanceHistory[i]) balanceHistory[i] = 0;
       balanceHistory[i] += balanceHistory[i - 1];
-      min = Math.min(min, balanceHistory[i]);
-      max = Math.max(max, balanceHistory[i]);
     }
 
-    const maxDigits = max.toFixed(0).length - 1;
-    const fixer = Math.pow(10, maxDigits - 1);
-    max = Math.ceil(max / fixer);
-    min = Math.floor(min / fixer);
+    const sequence = balanceHistory.reverse();
 
-    let i = 0;
-    while ((max - min) % 4) {
-      if (i % 2) min -= 1;
-      else max += 1;
-      i++;
-    }
-
-    max *= fixer;
-    min *= fixer;
-
-    const points = balanceHistory.reverse().map((e, i): Point => {
-      const x = length === 1 ? 0.5 : i / (length - 1);
-      const y = max === min ? 0.5 : (e - min) / (max - min);
-      return [x, y];
-    });
-
-    return { points, range: { y: [min, max], x: [0, length - 1] }, iso_currency_code };
-  }, [
-    transactions,
-    current,
-    viewDate,
-    account_id,
-    iso_currency_code,
-    type,
-    investmentTransactions,
-  ]);
+    return getGraphData([{ sequence, color: "#097" }]);
+  }, [transactions, current, viewDate, account_id, type, investmentTransactions]);
 
   const onClickAccount = () => {
     const paramObj: TransactionsPageParams = { account_id };
@@ -294,7 +261,7 @@ const AccountRow = ({ account }: Props) => {
           <button onClick={onClickHide}>Hide</button>
         </div>
       </div>
-      {!!graphData && <Graph data={graphData} />}
+      {!!graphData && <Graph data={graphData} iso_currency_code={iso_currency_code} />}
     </div>
   );
 };

@@ -31,7 +31,7 @@ export const calculatorLambda = (
     e.unsorted_amount = 0;
     if (!e.roll_over || !e.roll_over_start_date) return;
     const rollDate = e.roll_over_start_date;
-    const accumulatedCapacity = e.getAccumulatedCapacity(viewDate, rollDate);
+    const accumulatedCapacity = e.getAccumulatedCapacity(rollDate, viewDate);
     e.rolled_over_amount = -accumulatedCapacity;
   };
 
