@@ -140,23 +140,53 @@ export const useSync = () => {
       if (!data) return;
       const { budgets, sections, categories } = data;
 
-      setBudgets(() => {
+      setBudgets((oldBudgets) => {
         const newBudgets: Budgets = new Map(
-          budgets.map((e) => [e.budget_id, new Budget(e)])
+          budgets.map((e) => {
+            const { budget_id } = e;
+            const newBudget = new Budget(e);
+            const old = oldBudgets.get(budget_id);
+            if (old) {
+              newBudget.sorted_amount = old.sorted_amount;
+              newBudget.unsorted_amount = old.unsorted_amount;
+              newBudget.rolled_over_amount = old.rolled_over_amount;
+            }
+            return [budget_id, newBudget];
+          })
         );
         return newBudgets;
       });
 
-      setSections(() => {
+      setSections((oldSections) => {
         const newSections: Sections = new Map(
-          sections.map((e) => [e.section_id, new Section(e)])
+          sections.map((e) => {
+            const { section_id } = e;
+            const newSection = new Section(e);
+            const old = oldSections.get(section_id);
+            if (old) {
+              newSection.sorted_amount = old.sorted_amount;
+              newSection.unsorted_amount = old.unsorted_amount;
+              newSection.rolled_over_amount = old.rolled_over_amount;
+            }
+            return [section_id, newSection];
+          })
         );
         return newSections;
       });
 
-      setCategories(() => {
+      setCategories((oldCategories) => {
         const newCategories: Categories = new Map(
-          categories.map((e) => [e.category_id, new Category(e)])
+          categories.map((e) => {
+            const { category_id } = e;
+            const newCategory = new Category(e);
+            const old = oldCategories.get(category_id);
+            if (old) {
+              newCategory.sorted_amount = old.sorted_amount;
+              newCategory.unsorted_amount = old.unsorted_amount;
+              newCategory.rolled_over_amount = old.rolled_over_amount;
+            }
+            return [category_id, newCategory];
+          })
         );
         return newCategories;
       });
