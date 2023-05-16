@@ -1,13 +1,15 @@
 import {
   TransactionsSyncRequest,
-  Transaction as PlaidTransaction,
+  Transaction,
   RemovedTransaction,
   PlaidError,
   InvestmentsTransactionsGetRequest,
-  InvestmentTransaction as PlaidInvestmentTransaction,
+  InvestmentTransaction,
 } from "plaid";
 import { MaskedUser, getPlaidClient, ignorable_error_codes } from "server";
 import { Item, getDateString, getDateTimeString } from "common";
+
+export interface PlaidTransaction extends Transaction {}
 
 export const getTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);
@@ -80,6 +82,8 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
 
   return data;
 };
+
+export interface PlaidInvestmentTransaction extends InvestmentTransaction {}
 
 export const getInvestmentTransactions = async (user: MaskedUser, items: Item[]) => {
   const client = getPlaidClient(user);

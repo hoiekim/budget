@@ -73,22 +73,30 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
     const getTransactionsFromPlaid = promisedItems
       .then((r) => getTransactions(user, r))
       .then(async (data) => {
-        await getTransactionsFromElasticsearch;
+        const ingestedTrasactions = await getTransactionsFromElasticsearch;
+        const ingestedData = ingestedTrasactions?.transactions || [];
 
         const { items, added, removed, modified } = data;
 
-        const fillDateStrings = (e: (typeof added)[0]) => {
-          const result = { ...e };
-          const { authorized_date, date } = e;
-          if (authorized_date)
-            result.authorized_date = getDateTimeString(authorized_date);
+        const modelize = (e: (typeof added)[0]) => {
+          const result = new Transaction(e);
+          const { authorized_date: auth_date, date } = e;
+          if (auth_date) result.authorized_date = getDateTimeString(auth_date);
           if (date) result.date = getDateTimeString(date);
-          return new Transaction(result);
+          const existing = ingestedData.find((f) => {
+            const idMatches = e.transaction_id === f.transaction_id;
+            const accountMatches = e.account_id === f.account_id;
+            const nameMatches = e.name === f.name;
+            const amountMatches = e.amount === f.amount;
+            return idMatches || (accountMatches && nameMatches && amountMatches);
+          });
+          if (existing) result.label = existing.label;
+          return result;
         };
 
-        const filledAdded = added.map(fillDateStrings);
-        const filledModified = modified.map(fillDateStrings);
-        const filteredRemoved = removed.filter(({ transaction_id }) => {
+        const modeledAdded = added.map(modelize);
+        const modeledModified = modified.map(modelize);
+        const modeledRemoved = removed.filter(({ transaction_id }) => {
           return ![...added, ...modified].find((e) => {
             return e.transaction_id === transaction_id;
           });
@@ -97,16 +105,16 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         const adjustedData: TransactionsStreamGetResponse = {
           items,
           transactions: {
-            added: filledAdded,
-            removed: filteredRemoved,
-            modified: filledModified,
+            added: modeledAdded,
+            removed: modeledRemoved,
+            modified: modeledModified,
           },
         };
 
         stream({ status: status.get(), data: adjustedData });
 
         const updateJobs = [
-          upsertTransactions(user, [...filledAdded, ...filledModified]),
+          upsertTransactions(user, [...modeledAdded, ...modeledModified]),
           deleteTransactions(user, removed),
         ];
 
