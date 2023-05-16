@@ -20,12 +20,21 @@ export interface GraphData {
 interface Props {
   data: GraphInput[];
   iso_currency_code: string | null;
+  memoryKey?: string;
 }
 
-const Graph = ({ data, iso_currency_code }: Props) => {
+const Graph = ({ data, iso_currency_code, memoryKey }: Props) => {
   const { lines, range } = getGraphData(data);
   const lineElements = lines.map(({ points, color, type }, i) => {
-    return <Line key={`graphLine_${i}`} points={points} color={color} type={type} />;
+    return (
+      <Line
+        key={`graphLine_${i}`}
+        points={points}
+        color={color}
+        type={type}
+        memoryKey={`${memoryKey}_${i}`}
+      />
+    );
   });
   return (
     <div className="Graph">

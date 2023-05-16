@@ -262,7 +262,11 @@ const AccountRow = ({ account }: Props) => {
         </div>
       </div>
       {!!graphData.length && (
-        <Graph data={graphData} iso_currency_code={iso_currency_code} />
+        <Graph
+          data={graphData}
+          iso_currency_code={iso_currency_code}
+          memoryKey={account_id}
+        />
       )}
     </div>
   );

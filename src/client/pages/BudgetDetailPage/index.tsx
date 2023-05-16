@@ -131,7 +131,11 @@ const BudgetDetailPage = () => {
           </div>
 
           {!!graphData.length && (
-            <Graph data={graphData} iso_currency_code={budget.iso_currency_code} />
+            <Graph
+              data={graphData}
+              iso_currency_code={budget.iso_currency_code}
+              memoryKey={budget_id}
+            />
           )}
           <div className="children">
             <div>

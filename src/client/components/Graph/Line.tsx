@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAppContext } from "client";
+import { useAppContext, useMemoryState } from "client";
 import { Timeout } from "common";
 import { LineType, Point } from "./index";
 
@@ -7,15 +7,18 @@ interface Props {
   points: Point[];
   color: string;
   type?: LineType;
+  memoryKey?: string;
 }
 
-const Line = ({ points, color, type = "diagonal" }: Props) => {
+const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
 
   const pathRef = useRef<SVGPathElement>(null);
-  const [pathLength, setPathLength] = useState(0);
-  const [pathOffset, setPathOffset] = useState(true);
+  const memoryKey0 = memoryKey && `graphLine_${memoryKey}_0`;
+  const [pathLength, setPathLength] = useMemoryState(memoryKey0, 0);
+  const memoryKey1 = memoryKey && `graphLine_${memoryKey}_1`;
+  const [pathOffset, setPathOffset] = useMemoryState(memoryKey1, true);
 
   const timeout = useRef<Timeout>();
 
@@ -34,7 +37,7 @@ const Line = ({ points, color, type = "diagonal" }: Props) => {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(() => setPathOffset(false), 300);
     }
-  }, [transitioning]);
+  }, [transitioning, setPathLength, setPathOffset]);
 
   const divRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);

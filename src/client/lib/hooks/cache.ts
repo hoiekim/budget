@@ -35,9 +35,9 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
 
 export const stateMemory = new Map<string, any>();
 
-export const useMemoryState = <T>(key: string, initialValue: T) => {
+export const useMemoryState = <T>(key: string | undefined, initialValue: T) => {
   const [state, _setState] = useState<T>(() => {
-    if (stateMemory.has(key)) return stateMemory.get(key) as T;
+    if (key && stateMemory.has(key)) return stateMemory.get(key) as T;
     else return initialValue instanceof Function ? initialValue() : initialValue;
   });
 
@@ -45,7 +45,7 @@ export const useMemoryState = <T>(key: string, initialValue: T) => {
     (nextState) => {
       _setState((oldState) => {
         const newState = nextState instanceof Function ? nextState(oldState) : nextState;
-        stateMemory.set(key, newState);
+        if (key) stateMemory.set(key, newState);
         return newState;
       });
     },

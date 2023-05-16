@@ -21,10 +21,14 @@ const Bar = ({
   const { router } = useAppContext();
   const { transitioning } = router.transition;
 
-  const [barWidth, setBarWidth] = useMemoryState(`bar_${memoryKey}_0`, 0);
-  const [dottedBarWidth, setDottedBarWidth] = useMemoryState(`bar_${memoryKey}_1`, 0);
-  const [fillerWidth, setFillerWidth] = useMemoryState(`bar_${memoryKey}_2`, 0);
-  const [alertLevel, setAlertLevel] = useMemoryState(`bar_${memoryKey}_3`, 0);
+  const memoryKey0 = memoryKey && `bar_${memoryKey}_0`;
+  const [barWidth, setBarWidth] = useMemoryState(memoryKey0, 0);
+  const memoryKey1 = memoryKey && `bar_${memoryKey}_1`;
+  const [dottedBarWidth, setDottedBarWidth] = useMemoryState(memoryKey1, 0);
+  const memoryKey2 = memoryKey && `bar_${memoryKey}_2`;
+  const [fillerWidth, setFillerWidth] = useMemoryState(memoryKey2, 0);
+  const memoryKey3 = memoryKey && `bar_${memoryKey}_3`;
+  const [alertLevel, setAlertLevel] = useMemoryState(memoryKey3, 0);
 
   const definedRatio = ratio || 0;
   const definedUnlabeledRatio = unlabeledRatio || 0;
