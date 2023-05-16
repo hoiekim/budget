@@ -122,7 +122,12 @@ const BudgetConfigPage = () => {
         <NameInput defaultValue={name} onChange={(e) => setNameInput(e.target.value)} />
       </div>
       <div className="statusBarWithText">
-        <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} noAlert={isIncomeInput} />
+        <Bar
+          memoryKey={id}
+          ratio={labeledRatio}
+          unlabeledRatio={unlabledRatio}
+          noAlert={isIncomeInput}
+        />
         <CapacitiesInput
           isInfiniteInput={isInfiniteInput}
           currencyCode={iso_currency_code}

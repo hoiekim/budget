@@ -106,7 +106,12 @@ const LabeledBar = ({
         />
       </div>
       <div className="statusBarWithText">
-        <Bar ratio={labeledRatio} unlabledRatio={unlabledRatio} noAlert={isIncome} />
+        <Bar
+          memoryKey={dataId}
+          ratio={labeledRatio}
+          unlabeledRatio={unlabledRatio}
+          noAlert={isIncome}
+        />
         <div className="infoText">
           <div className={isInfinite ? "fullLength" : undefined}>
             <table>

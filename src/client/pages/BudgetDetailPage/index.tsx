@@ -6,10 +6,9 @@ import {
   call,
   PATH,
   useLocalStorage,
-  getGraphData,
 } from "client";
 import { Section, getIndex } from "common";
-import { BudgetBar, Graph, SectionBar } from "client/components";
+import { BudgetBar, Graph, SectionBar, GraphInput } from "client/components";
 import "./index.css";
 
 export type BudgetDetailPageParams = {
@@ -82,8 +81,8 @@ const BudgetDetailPage = () => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
-  const graphData = useMemo(() => {
-    if (!budget) return;
+  const graphData: GraphInput[] = useMemo(() => {
+    if (!budget) return [];
     const spendingHistory: number[] = [];
 
     transactions.forEach((transaction) => {
@@ -99,9 +98,7 @@ const BudgetDetailPage = () => {
     });
 
     const { length } = spendingHistory;
-
-    if (length < 2) return;
-
+    if (length < 2) return [];
     for (let i = 0; i < length; i++) {
       if (!spendingHistory[i]) spendingHistory[i] = 0;
     }
@@ -109,9 +106,8 @@ const BudgetDetailPage = () => {
     spendingHistory.reverse();
 
     const clonedViewDate = viewDate.clone();
-
     const capacityHistory = new Array(length)
-      .fill(0)
+      .fill(undefined)
       .map(() => {
         const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
         clonedViewDate.previous();
@@ -119,10 +115,10 @@ const BudgetDetailPage = () => {
       })
       .reverse();
 
-    return getGraphData([
+    return [
       { sequence: capacityHistory, color: "#aaa", type: "perpendicular" },
-      { sequence: spendingHistory, color: "#097" },
-    ]);
+      { sequence: spendingHistory, color: "#097", type: "perpendicular" },
+    ];
   }, [transactions, viewDate, accounts, budget, budget_id]);
 
   return (
@@ -134,7 +130,7 @@ const BudgetDetailPage = () => {
             <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
           </div>
 
-          {!!graphData && (
+          {!!graphData.length && (
             <Graph data={graphData} iso_currency_code={budget.iso_currency_code} />
           )}
           <div className="children">

@@ -1,6 +1,9 @@
 import Grid from "./Grid";
 import Line from "./Line";
+import { GraphInput, getGraphData } from "./lib";
 import "./index.css";
+
+export * from "./lib";
 
 export type Point = [number, number];
 export interface Range {
@@ -15,13 +18,14 @@ export interface GraphData {
 }
 
 interface Props {
-  data: GraphData;
+  data: GraphInput[];
   iso_currency_code: string | null;
 }
 
-const Graph = ({ data: { lines, range }, iso_currency_code }: Props) => {
-  const lineElements = lines.map(({ points, color, type }) => {
-    return <Line points={points} color={color} type={type} />;
+const Graph = ({ data, iso_currency_code }: Props) => {
+  const { lines, range } = getGraphData(data);
+  const lineElements = lines.map(({ points, color, type }, i) => {
+    return <Line key={`graphLine_${i}`} points={points} color={color} type={type} />;
   });
   return (
     <div className="Graph">
