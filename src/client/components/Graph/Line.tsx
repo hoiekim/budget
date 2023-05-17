@@ -15,10 +15,10 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
   const { transitioning } = router.transition;
 
   const pathRef = useRef<SVGPathElement>(null);
-  const memoryKey0 = memoryKey && `graphLine_${memoryKey}_0`;
-  const [pathLength, setPathLength] = useMemoryState(memoryKey0, 0);
-  const memoryKey1 = memoryKey && `graphLine_${memoryKey}_1`;
-  const [pathOffset, setPathOffset] = useMemoryState(memoryKey1, true);
+  const pathLengthMemoryKey = memoryKey && `graphLine_${memoryKey}_pathLength`;
+  const [pathLength, setPathLength] = useMemoryState(pathLengthMemoryKey, 0);
+  const pathOffsetMemoryKey = memoryKey && `graphLine_${memoryKey}_pathOffset`;
+  const [pathOffset, setPathOffset] = useMemoryState(pathOffsetMemoryKey, true);
 
   const timeout = useRef<Timeout>();
 

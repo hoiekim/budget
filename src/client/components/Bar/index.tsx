@@ -21,14 +21,14 @@ const Bar = ({
   const { router } = useAppContext();
   const { transitioning } = router.transition;
 
-  const memoryKey0 = memoryKey && `bar_${memoryKey}_0`;
-  const [barWidth, setBarWidth] = useMemoryState(memoryKey0, 0);
-  const memoryKey1 = memoryKey && `bar_${memoryKey}_1`;
-  const [dottedBarWidth, setDottedBarWidth] = useMemoryState(memoryKey1, 0);
-  const memoryKey2 = memoryKey && `bar_${memoryKey}_2`;
-  const [fillerWidth, setFillerWidth] = useMemoryState(memoryKey2, 0);
-  const memoryKey3 = memoryKey && `bar_${memoryKey}_3`;
-  const [alertLevel, setAlertLevel] = useMemoryState(memoryKey3, 0);
+  const barWidthMemoryKey = memoryKey && `bar_${memoryKey}_barWidth`;
+  const [barWidth, setBarWidth] = useMemoryState(barWidthMemoryKey, 0);
+  const dottedBarWidthMemoryKey = memoryKey && `bar_${memoryKey}_dottedBarWidth`;
+  const [dottedBarWidth, setDottedBarWidth] = useMemoryState(dottedBarWidthMemoryKey, 0);
+  const fillerWidthMemoryKey = memoryKey && `bar_${memoryKey}_fillerWidth`;
+  const [fillerWidth, setFillerWidth] = useMemoryState(fillerWidthMemoryKey, 0);
+  const alertLevelMemoryKey = memoryKey && `bar_${memoryKey}_alertLevel`;
+  const [alertLevel, setAlertLevel] = useMemoryState(alertLevelMemoryKey, 0);
 
   const definedRatio = ratio || 0;
   const definedUnlabeledRatio = unlabeledRatio || 0;
