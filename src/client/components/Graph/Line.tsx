@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useAppContext, useMemoryState } from "client";
 import { Timeout } from "common";
 import { LineType, Point } from "./index";
@@ -19,6 +19,7 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
   const [pathLength, setPathLength] = useMemoryState(pathLengthMemoryKey, 0);
   const pathOffsetMemoryKey = memoryKey && `graphLine_${memoryKey}_pathOffset`;
   const [pathOffset, setPathOffset] = useMemoryState(pathOffsetMemoryKey, true);
+  const [width, setWidth] = useMemoryState("graphLine_svgWidth", 0);
 
   const timeout = useRef<Timeout>();
 
@@ -40,14 +41,12 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
   }, [transitioning, setPathLength, setPathOffset]);
 
   const divRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
   const height = 100;
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
       const element = entries[0];
-      const { width } = element.contentRect;
-      setWidth(width);
+      setWidth(element.contentRect.width);
     })
   );
 
@@ -61,21 +60,25 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
     };
   }, []);
 
-  const d = points
-    .flatMap((e, i) => {
-      const x = e[0] * (width - 10) + 5;
-      const y = (1 - e[1]) * (height - 10) + 5;
-      if (!i) return [`M${x},${y}`];
-      if (type === "diagonal") return [`${x},${y}`];
-      const _x = points[i - 1][0] * (width - 10) + 5;
-      return [`${_x},${y}`, `${x},${y}`];
-    })
-    .join(" ");
+  const d =
+    "M" +
+    points
+      .flatMap((e, i) => {
+        if (!e) return [];
+        const x = e[0] * (width - 10) + 5;
+        const y = (1 - e[1]) * (height - 10) + 5;
+        if (type === "diagonal") return [`${x},${y}`];
+        const previousPoint = points[i - 1];
+        if (previousPoint === undefined) return [`${x},${y}`];
+        const _x = previousPoint[0] * (width - 10) + 5;
+        return [`${_x},${y}`, `${x},${y}`];
+      })
+      .join(" ");
 
   const classes = ["Line"];
-  if (color.split("").reduce((a, e, i, t) => (i < 2 ? a : a || e !== t[i - 1]), false)) {
-    classes.push("colored");
-  }
+  const isColored = new Set(color.split("")).size > 2;
+  if (isColored) classes.push("colored");
+
   return (
     <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
       <svg
@@ -92,8 +95,8 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
             stroke: color,
             strokeDasharray: pathLength + 5,
             strokeDashoffset: pathOffset ? pathLength + 5 : 0,
-            transition: "stroke-dashoffset 1s ease 0s",
-            strokeWidth: 3,
+            transition: "all 1s ease 0s",
+            strokeWidth: 2,
             strokeLinecap: "round",
             strokeLinejoin: "round",
             fill: "none",

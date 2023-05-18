@@ -1,63 +1,84 @@
-import { GraphData, LineType, Point, Range } from "client/components/Graph";
+export type Point = [number, number];
+export interface Range {
+  x: Point;
+  y: Point;
+}
+export type LineType = "perpendicular" | "diagonal";
+
+export interface GraphData {
+  lines?: { points: Point[]; color: string; type?: LineType }[];
+  area?: { upperBound: Point[]; lowerBound: Point[]; color: string; type?: LineType };
+  range: Range;
+}
 
 export type Sequence = number[];
-export type GraphInput = { sequence: Sequence; color: string; type?: LineType };
+export type LineInput = { sequence: Sequence; color: string; type?: LineType };
+export type AreaInput = {
+  upperBound: Sequence;
+  lowerBound: Sequence;
+  color: string;
+  type?: LineType;
+};
+export type GraphInput = { lines?: LineInput[]; area?: AreaInput };
 
-export const getGraphData = (input: GraphInput[]): GraphData => {
-  const ranges = input.map(({ sequence }) => getRange(sequence));
-  const range = ranges.reduce(
-    (acc, e) => {
-      return {
-        x: [Math.min(acc.x[0], e.x[0]), Math.max(acc.x[1], e.x[1])],
-        y: [Math.min(acc.y[0], e.y[0]), Math.max(acc.y[1], e.y[1])],
-      };
-    },
-    { x: [0, 0], y: [0, 0] }
-  );
-  const lines = input.map(({ sequence, color, type }) => {
+export const getGraphData = (input: GraphInput): GraphData => {
+  const allSequences: Sequence[] = [];
+  input.lines?.forEach(({ sequence }) => allSequences.push(sequence));
+  input.area?.upperBound && allSequences.push(input.area.upperBound);
+  input.area?.lowerBound && allSequences.push(input.area.lowerBound);
+  const rangeX: Point = [0, Math.max(...allSequences.map((e) => e.length)) - 1];
+  const rangeY: Point = getRangeY(allSequences.flat());
+  const range = { x: rangeX, y: rangeY };
+
+  const lines = input.lines?.map(({ sequence, color, type }) => {
     return { points: getPoints(sequence, range), color, type };
   });
-  return { lines, range };
+
+  if (!input.area) return { lines, range };
+
+  const { upperBound, lowerBound, color, type } = input.area;
+
+  const area = {
+    upperBound: getPoints(upperBound, range),
+    lowerBound: getPoints(lowerBound, range),
+    color: color,
+    type: type,
+  };
+
+  return { lines, area, range };
 };
 
 export const getPoints = (sequence: Sequence, range: Range): Point[] => {
-  const { length } = sequence;
-  const [min, max] = range.y;
-
-  const points = sequence.map((e, i): Point => {
-    const x = length === 1 ? 0.5 : i / (length - 1);
-    const y = max === min ? 0.5 : (e - min) / (max - min) || 0;
+  const [minX, maxX] = range.x;
+  const [minY, maxY] = range.y;
+  return sequence.map((e, i): Point => {
+    const x = minX === maxX ? 0.5 : i / maxX;
+    const y = maxY === minY ? 0.5 : (e - minY) / (maxY - minY) || 0;
     return [x, y];
   });
-
-  return points;
 };
 
-export const getRange = (sequence: Sequence): Range => {
-  const { length } = sequence;
+export const getRangeY = (sequence: Sequence): Point => {
+  let min = Math.min(...sequence);
+  let max = Math.max(...sequence);
 
-  let min = sequence[0];
-  let max = sequence[0];
-
-  for (let i = 1; i < length; i++) {
-    min = Math.min(min, sequence[i]);
-    max = Math.max(max, sequence[i]);
-  }
-
-  const maxDigits = max.toFixed(0).length - 1;
-  const fixer = Math.pow(10, maxDigits - 1);
+  const maxDigits = max.toFixed(0).length;
+  const fixer = Math.pow(10, maxDigits - 2);
   max = Math.ceil(max / fixer);
   min = Math.floor(min / fixer);
 
-  let i = 0;
-  while ((max - min) % 4) {
-    if (i % 2) min -= 1;
-    else max += 1;
-    i++;
-  }
+  const gap = [8, 12, 16, 20, 24, 32, 40, 60, 80, 100].reduce((a, b) => {
+    const distA = max - min + (min % (a / 4)) - a;
+    const distB = max - min + (min % (b / 4)) - b;
+    if (0 < distA && distB < distA) return b;
+    return a;
+  }, 8);
+
+  min = min - (min % (gap / 4));
+  max = min + gap;
 
   max *= fixer;
   min *= fixer;
 
-  return { x: [0, length - 1], y: [min, max] };
+  return [min, max];
 };

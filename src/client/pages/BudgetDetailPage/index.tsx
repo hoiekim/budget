@@ -8,7 +8,14 @@ import {
   useLocalStorage,
 } from "client";
 import { Section, getIndex } from "common";
-import { BudgetBar, Graph, SectionBar, GraphInput } from "client/components";
+import {
+  BudgetBar,
+  Graph,
+  SectionBar,
+  GraphInput,
+  AreaInput,
+  LineInput,
+} from "client/components";
 import "./index.css";
 
 export type BudgetDetailPageParams = {
@@ -81,8 +88,13 @@ const BudgetDetailPage = () => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
-  const graphData: GraphInput[] = useMemo(() => {
-    if (!budget) return [];
+  const graphData: GraphInput = useMemo(() => {
+    if (!budget) return {};
+
+    const currentCapacity = budget.getActiveCapacity(viewDate.getDate());
+    const isIncome = currentCapacity[viewDate.getInterval()] < 0;
+    const sign = isIncome ? -1 : 1;
+
     const spendingHistory: number[] = [];
 
     transactions.forEach((transaction) => {
@@ -94,11 +106,12 @@ const BudgetDetailPage = () => {
       const transactionDate = new Date(authorized_date || date);
       const span = viewDate.getSpanFrom(transactionDate);
       if (!spendingHistory[span]) spendingHistory[span] = 0;
-      spendingHistory[span] += amount;
+      spendingHistory[span] += sign * amount;
     });
 
     const { length } = spendingHistory;
-    if (length < 2) return [];
+    if (length < 2) return {};
+
     for (let i = 0; i < length; i++) {
       if (!spendingHistory[i]) spendingHistory[i] = 0;
     }
@@ -111,14 +124,36 @@ const BudgetDetailPage = () => {
       .map(() => {
         const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
         clonedViewDate.previous();
-        return capacity[viewDate.getInterval()];
+        return sign * capacity[viewDate.getInterval()];
       })
       .reverse();
 
-    return [
+    const lines: LineInput[] = [
       { sequence: capacityHistory, color: "#aaa", type: "perpendicular" },
       { sequence: spendingHistory, color: "#097", type: "perpendicular" },
     ];
+
+    const { roll_over, roll_over_start_date } = budget;
+
+    if (!roll_over || !roll_over_start_date) return { lines };
+
+    const upperBound = [];
+    const lowerBound = [];
+    const rollOverStartSpan = length - 1 - viewDate.getSpanFrom(roll_over_start_date);
+
+    for (let i = rollOverStartSpan; i < length; i++) {
+      upperBound[i] = capacityHistory[i];
+      lowerBound[i] = spendingHistory[i];
+    }
+
+    const area: AreaInput = {
+      upperBound,
+      lowerBound,
+      color: "#a82",
+      type: "perpendicular",
+    };
+
+    return { lines, area };
   }, [transactions, viewDate, accounts, budget, budget_id]);
 
   return (
@@ -130,7 +165,7 @@ const BudgetDetailPage = () => {
             <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
           </div>
 
-          {!!graphData.length && (
+          {!!(graphData.lines || graphData.area) && (
             <Graph
               data={graphData}
               iso_currency_code={budget.iso_currency_code}

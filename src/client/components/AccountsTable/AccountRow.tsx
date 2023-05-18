@@ -189,8 +189,8 @@ const AccountRow = ({ account }: Props) => {
     formattedBalancesText += " " + unofficial_currency_code;
   }
 
-  const graphData: GraphInput[] = useMemo(() => {
-    if (type === "credit") return [];
+  const graphData: GraphInput = useMemo(() => {
+    if (type === "credit") return {};
 
     const balanceHistory: number[] = [current || 0];
 
@@ -213,7 +213,7 @@ const AccountRow = ({ account }: Props) => {
 
     const { length } = balanceHistory;
 
-    if (length < 2) return [];
+    if (length < 2) return {};
 
     for (let i = 1; i < length; i++) {
       if (!balanceHistory[i]) balanceHistory[i] = 0;
@@ -222,7 +222,7 @@ const AccountRow = ({ account }: Props) => {
 
     const sequence = balanceHistory.reverse();
 
-    return [{ sequence, color: "#097" }];
+    return { lines: [{ sequence, color: "#097" }] };
   }, [transactions, current, viewDate, account_id, type, investmentTransactions]);
 
   const onClickAccount = () => {
@@ -261,7 +261,7 @@ const AccountRow = ({ account }: Props) => {
           <button onClick={onClickHide}>Hide</button>
         </div>
       </div>
-      {!!graphData.length && (
+      {!!graphData.lines && (
         <Graph
           data={graphData}
           iso_currency_code={iso_currency_code}

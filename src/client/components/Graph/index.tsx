@@ -2,30 +2,19 @@ import Grid from "./Grid";
 import Line from "./Line";
 import { GraphInput, getGraphData } from "./lib";
 import "./index.css";
+import Area from "./Area";
 
 export * from "./lib";
 
-export type Point = [number, number];
-export interface Range {
-  x: Point;
-  y: Point;
-}
-export type LineType = "perpendicular" | "diagonal";
-
-export interface GraphData {
-  lines: { points: Point[]; color: string; type?: LineType }[];
-  range: Range;
-}
-
 interface Props {
-  data: GraphInput[];
+  data: GraphInput;
   iso_currency_code: string | null;
   memoryKey?: string;
 }
 
 const Graph = ({ data, iso_currency_code, memoryKey }: Props) => {
-  const { lines, range } = getGraphData(data);
-  const lineElements = lines.map(({ points, color, type }, i) => {
+  const { lines, area, range } = getGraphData(data);
+  const lineElements = lines?.map(({ points, color, type }, i) => {
     return (
       <Line
         key={`graphLine_${i}`}
@@ -36,9 +25,19 @@ const Graph = ({ data, iso_currency_code, memoryKey }: Props) => {
       />
     );
   });
+  const areaElement = area && (
+    <Area
+      upperBound={area.upperBound}
+      lowerBound={area.lowerBound}
+      color={area.color}
+      type={area.type}
+      memoryKey={`${memoryKey}_area`}
+    />
+  );
   return (
     <div className="Graph">
       <Grid range={range} iso_currency_code={iso_currency_code} />
+      {areaElement}
       {lineElements}
     </div>
   );
