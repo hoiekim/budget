@@ -52,7 +52,7 @@ export const calculatorLambda = (
       if (!budgetId) return;
 
       const parentBudget = newBudgets.get(budgetId);
-      if (parentBudget?.unsorted_amount === undefined) return;
+      if (!parentBudget) return;
       if (viewDate.has(transactionDate)) {
         parentBudget.unsorted_amount += amount;
       } else if (
@@ -70,7 +70,7 @@ export const calculatorLambda = (
 
     // Calcuates sorted transactions amount for categories
     const parentCategory = newCategories.get(category_id);
-    if (parentCategory?.sorted_amount === undefined) return;
+    if (!parentCategory) return;
     if (viewDate.has(transactionDate)) {
       parentCategory.sorted_amount += amount;
     } else if (
@@ -85,7 +85,7 @@ export const calculatorLambda = (
 
     // Calcuates sorted transactions amount for sections
     const parentSection = newSections.get(parentCategory.section_id);
-    if (parentSection?.sorted_amount === undefined) return;
+    if (!parentSection) return;
     if (viewDate.has(transactionDate)) {
       parentSection.sorted_amount += amount;
     } else if (
@@ -100,7 +100,7 @@ export const calculatorLambda = (
 
     // Calcuates sorted transactions amount for budgets
     const parentBudget = newBudgets.get(parentSection.budget_id);
-    if (parentBudget?.sorted_amount === undefined) return;
+    if (!parentBudget) return;
     if (viewDate.has(transactionDate)) {
       parentBudget.sorted_amount += amount;
     } else if (

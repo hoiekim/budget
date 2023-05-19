@@ -115,7 +115,8 @@ const BudgetDetailPage = () => {
     const lengthFixer = 3 - ((length - 1) % 3);
 
     for (let i = 0; i < length; i++) {
-      if (!spendingHistory[i]) spendingHistory[i] = 0;
+      const e = spendingHistory[i];
+      if (!e || e < 0) spendingHistory[i] = 0;
     }
 
     spendingHistory.push(...new Array(lengthFixer));
