@@ -1,5 +1,4 @@
 div.BudgetDetail .unsortedButton {
-  padding: 0 10px;
   margin-bottom: 10px;
 }
 
@@ -14,4 +13,9 @@ div.BudgetDetail .addButton {
 div.SectionBar {
   padding: 10px 0px;
   border-bottom: 1px solid #ccc;
+}
+
+div.BudgetDetail > div.sidePadding {
+  padding-right: 10px;
+  padding-left: 10px;
 }

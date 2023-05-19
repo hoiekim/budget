@@ -4,8 +4,8 @@ import { Timeout } from "common";
 import { LineType, Point } from "./index";
 
 interface Props {
-  upperBound: Point[];
-  lowerBound: Point[];
+  upperBound: (Point | undefined)[];
+  lowerBound: (Point | undefined)[];
   color: string;
   type?: LineType;
   memoryKey?: string;
@@ -47,7 +47,7 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
     };
   }, []);
 
-  const translate = (points: Point[]) => {
+  const translate = (points: (Point | undefined)[]) => {
     return points.flatMap((e, i) => {
       if (!e) return [];
       const x = e[0] * (width - 10) + 5;

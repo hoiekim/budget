@@ -112,21 +112,24 @@ const BudgetDetailPage = () => {
     const { length } = spendingHistory;
     if (length < 2) return {};
 
+    const lengthFixer = 3 - ((length - 1) % 3);
+
     for (let i = 0; i < length; i++) {
       if (!spendingHistory[i]) spendingHistory[i] = 0;
     }
 
+    spendingHistory.push(...new Array(lengthFixer));
     spendingHistory.reverse();
 
     const clonedViewDate = viewDate.clone();
-    const capacityHistory = new Array(length)
-      .fill(undefined)
-      .map(() => {
-        const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
-        clonedViewDate.previous();
-        return sign * capacity[viewDate.getInterval()];
-      })
-      .reverse();
+    const capacityHistory = new Array(length).fill(undefined).map(() => {
+      const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
+      clonedViewDate.previous();
+      return sign * capacity[viewDate.getInterval()];
+    });
+
+    capacityHistory.push(...new Array(lengthFixer).fill(capacityHistory[length - 1]));
+    capacityHistory.reverse();
 
     const lines: LineInput[] = [
       { sequence: capacityHistory, color: "#aaa", type: "perpendicular" },
@@ -141,7 +144,7 @@ const BudgetDetailPage = () => {
     const lowerBound = [];
     const rollOverStartSpan = length - 1 - viewDate.getSpanFrom(roll_over_start_date);
 
-    for (let i = rollOverStartSpan; i < length; i++) {
+    for (let i = rollOverStartSpan + lengthFixer; i < length + lengthFixer; i++) {
       upperBound[i] = capacityHistory[i];
       lowerBound[i] = spendingHistory[i];
     }
@@ -161,16 +164,18 @@ const BudgetDetailPage = () => {
       {budget && (
         <div className="BudgetDetail">
           <BudgetBar budget={budget} />
-          <div className="unsortedButton">
+          <div className="unsortedButton sidePadding">
             <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
           </div>
 
           {!!(graphData.lines || graphData.area) && (
-            <Graph
-              data={graphData}
-              iso_currency_code={budget.iso_currency_code}
-              memoryKey={budget_id}
-            />
+            <div className="sidePadding">
+              <Graph
+                data={graphData}
+                iso_currency_code={budget.iso_currency_code}
+                memoryKey={budget_id}
+              />
+            </div>
           )}
           <div className="children">
             <div>

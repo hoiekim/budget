@@ -4,7 +4,7 @@ import { Timeout } from "common";
 import { LineType, Point } from "./index";
 
 interface Props {
-  points: Point[];
+  points: (Point | undefined)[];
   color: string;
   type?: LineType;
   memoryKey?: string;

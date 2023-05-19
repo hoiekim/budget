@@ -6,12 +6,17 @@ export interface Range {
 export type LineType = "perpendicular" | "diagonal";
 
 export interface GraphData {
-  lines?: { points: Point[]; color: string; type?: LineType }[];
-  area?: { upperBound: Point[]; lowerBound: Point[]; color: string; type?: LineType };
+  lines?: { points: (Point | undefined)[]; color: string; type?: LineType }[];
+  area?: {
+    upperBound: (Point | undefined)[];
+    lowerBound: (Point | undefined)[];
+    color: string;
+    type?: LineType;
+  };
   range: Range;
 }
 
-export type Sequence = number[];
+export type Sequence = (number | undefined)[];
 export type LineInput = { sequence: Sequence; color: string; type?: LineType };
 export type AreaInput = {
   upperBound: Sequence;
@@ -27,8 +32,9 @@ export const getGraphData = (input: GraphInput): GraphData => {
   input.area?.upperBound && allSequences.push(input.area.upperBound);
   input.area?.lowerBound && allSequences.push(input.area.lowerBound);
   const rangeX: Point = [0, Math.max(...allSequences.map((e) => e.length)) - 1];
+  const fixerX = 3 - (rangeX[1] % 3);
   const rangeY: Point = getRangeY(allSequences.flat());
-  const range = { x: rangeX, y: rangeY };
+  const range: Range = { x: [rangeX[0], rangeX[1]], y: rangeY };
 
   const lines = input.lines?.map(({ sequence, color, type }) => {
     return { points: getPoints(sequence, range), color, type };
@@ -48,19 +54,22 @@ export const getGraphData = (input: GraphInput): GraphData => {
   return { lines, area, range };
 };
 
-export const getPoints = (sequence: Sequence, range: Range): Point[] => {
+const getPoints = (sequence: Sequence, range: Range): (Point | undefined)[] => {
   const [minX, maxX] = range.x;
   const [minY, maxY] = range.y;
-  return sequence.map((e, i): Point => {
+
+  return sequence.map((e, i): Point | undefined => {
+    if (e === undefined) return undefined;
     const x = minX === maxX ? 0.5 : i / maxX;
     const y = maxY === minY ? 0.5 : (e - minY) / (maxY - minY) || 0;
     return [x, y];
   });
 };
 
-export const getRangeY = (sequence: Sequence): Point => {
-  let min = Math.min(...sequence);
-  let max = Math.max(...sequence);
+const getRangeY = (sequence: Sequence): Point => {
+  const definedSequence = sequence.filter((e) => e !== undefined) as number[];
+  let min = Math.min(...definedSequence);
+  let max = Math.max(...definedSequence);
 
   const maxDigits = max.toFixed(0).length;
   const fixer = Math.pow(10, maxDigits - 2);

@@ -215,10 +215,14 @@ const AccountRow = ({ account }: Props) => {
 
     if (length < 2) return {};
 
+    const lengthFixer = 3 - ((length - 1) % 3);
+
     for (let i = 1; i < length; i++) {
       if (!balanceHistory[i]) balanceHistory[i] = 0;
       balanceHistory[i] += balanceHistory[i - 1];
     }
+
+    balanceHistory.push(...new Array(lengthFixer));
 
     const sequence = balanceHistory.reverse();
 
