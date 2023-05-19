@@ -14,8 +14,8 @@ interface Props {
 const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
-  const opacityMemoryKey = memoryKey && `graphLine_${memoryKey}_opacity`;
-  const [opacity, setOpacity] = useMemoryState(opacityMemoryKey, 0);
+  const animateMemoryKey = memoryKey && `graphLine_${memoryKey}_opacity`;
+  const [animate, setAnimate] = useMemoryState(animateMemoryKey, true);
   const [width, setWidth] = useMemoryState("graphLine_svgWidth", 0);
 
   const timeout = useRef<Timeout>();
@@ -23,9 +23,9 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
   useEffect(() => {
     if (!transitioning) {
       clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => setOpacity(0.5), 600);
+      timeout.current = setTimeout(() => setAnimate(false), 1300);
     }
-  }, [transitioning, setOpacity]);
+  }, [transitioning, setAnimate]);
 
   const divRef = useRef<HTMLDivElement>(null);
   const height = 100;
@@ -75,6 +75,33 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
         viewBox={`0 0 ${width} 100`}
         preserveAspectRatio="none"
       >
+        <linearGradient id="prog-mask" x1="0%" x2="0%" y1="100%" y2="100%">
+          <stop offset="0%" stopColor="white" stopOpacity="1" />
+          <stop offset="0%" stopColor="white" stopOpacity="1">
+            <animate
+              attributeName="offset"
+              values="0; 1"
+              dur="1s"
+              begin="300ms"
+              repeatCount="0"
+              fill="freeze"
+            />
+          </stop>
+          <stop offset="0%" stopColor="white" stopOpacity="0">
+            <animate
+              attributeName="offset"
+              values="0; 1"
+              dur="1s"
+              begin="300ms"
+              repeatCount="0"
+              fill="freeze"
+            />
+          </stop>
+          <stop offset="100%" stopColor="white" stopOpacity="0" />
+        </linearGradient>
+        <mask id="prog-render">
+          <rect x="0" y="0" width="100%" height="100%" fill="url(#prog-mask)" />
+        </mask>
         <pattern
           id="pattern"
           x="0"
@@ -92,7 +119,8 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
             strokeLinecap: "round",
             strokeLinejoin: "round",
             fill: "url(#pattern)",
-            opacity,
+            mask: animate ? "url(#prog-render)" : undefined,
+            opacity: 0.5,
           }}
         />
       </svg>
