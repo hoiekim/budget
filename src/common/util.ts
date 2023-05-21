@@ -1,3 +1,14 @@
+const isNodejs = typeof window === "undefined";
+const isBrowser = typeof process === "undefined";
+
+export const environment = isNodejs
+  ? !isBrowser
+    ? "server"
+    : "unknown"
+  : isBrowser
+  ? "client"
+  : "unknown";
+
 export const numberToCommaString = (n: number, fixed = 2) => {
   const sign = n < 0 ? "-" : "";
 
@@ -64,21 +75,31 @@ export type DeepPartial<T> = {
 
 export type ValueOf<T> = T[keyof T];
 
-const isNodejs = typeof window === "undefined";
-const isBrowser = typeof process === "undefined";
-
-export const environment = isNodejs
-  ? !isBrowser
-    ? "server"
-    : "unknown"
-  : isBrowser
-  ? "client"
-  : "unknown";
-
 export const assign = (target: any, source: any) => {
   for (const key in source) {
     const value = source[key];
     if (typeof value === "function") continue;
     target[key] = value;
   }
+};
+
+export const deepEqual = (x: any, y: any) => {
+  return isSubset(x, y, (x, y) => Object.keys(x).length === Object.keys(y).length);
+};
+
+export const isSubset = (
+  whole: any,
+  part: any,
+  extraCondition?: (whole: any, part: any) => boolean
+) => {
+  if (extraCondition && !extraCondition(whole, part)) return false;
+  if (whole === part) return true;
+  else if (whole && typeof whole === "object" && part && typeof part === "object") {
+    for (const prop in part) {
+      if (whole.hasOwnProperty(prop)) {
+        if (!isSubset(whole[prop], part[prop])) return false;
+      } else return false;
+    }
+    return true;
+  } else return false;
 };

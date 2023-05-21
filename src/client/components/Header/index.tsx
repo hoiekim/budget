@@ -41,16 +41,14 @@ const Header = () => {
 
   const onClickPreviousView = () => {
     setViewDate((oldViewDate) => {
-      const newViewDate = oldViewDate.clone();
-      newViewDate.previous();
+      const newViewDate = oldViewDate.clone().previous();
       return newViewDate;
     });
   };
 
   const onClickNextView = () => {
     setViewDate((oldViewDate) => {
-      const newViewDate = oldViewDate.clone();
-      newViewDate.next();
+      const newViewDate = oldViewDate.clone().next();
       return newViewDate;
     });
   };

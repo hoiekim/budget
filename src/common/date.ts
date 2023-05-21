@@ -70,8 +70,7 @@ export class ViewDate {
   getDate = () => this.date;
 
   getDateAsStartDate = () => {
-    const clone = this.clone();
-    clone.previous();
+    const clone = this.clone().previous();
     const date = new Date(clone.getDate());
     date.setMilliseconds(date.getMilliseconds() + 1);
     return date;
@@ -86,12 +85,7 @@ export class ViewDate {
   getInterval = () => this.interval;
 
   getComponents = () => {
-    const { date: dateObject } = this;
-    const year = dateObject.getFullYear();
-    const month = dateObject.getMonth();
-    const date = dateObject.getDate();
-    const day = dateObject.getDay();
-    return { year, month, date, day };
+    return getDateComponents(this.date);
   };
 
   current = () => {
@@ -122,10 +116,11 @@ export class ViewDate {
 
     this.date = newDate;
 
-    return newDate;
+    return this;
   };
 
-  next = () => {
+  next = (n = 1) => {
+    const N = Math.round(n) + 1;
     const { interval } = this;
     const { year, month, date, day } = this.getComponents();
     const newDate = new Date(year, month, date);
@@ -134,28 +129,30 @@ export class ViewDate {
       case "year":
         newDate.setDate(1);
         newDate.setMonth(0);
-        newDate.setFullYear(year + 2);
+        newDate.setFullYear(year + N);
         break;
       case "month":
         newDate.setDate(1);
-        newDate.setMonth(month + 2);
+        newDate.setMonth(month + N);
         break;
       case "week":
         const lastMonday = date - day + (day === 0 ? -6 : 1);
-        const nextNextMonday = lastMonday + 7 * 2;
-        newDate.setDate(nextNextMonday);
+        const dayAfterTargetWeek = lastMonday + 7 * N;
+        newDate.setDate(dayAfterTargetWeek);
         break;
       case "day":
-        newDate.setDate(date + 2);
+        newDate.setDate(date + N);
         break;
     }
     newDate.setMilliseconds(-1);
 
     this.date = newDate;
-    return newDate;
+
+    return this;
   };
 
-  previous = () => {
+  previous = (n = 1) => {
+    const N = Math.round(n) - 1;
     const { interval } = this;
     const { year, month, date, day } = this.getComponents();
     const newDate = new Date(year, month, date);
@@ -164,19 +161,26 @@ export class ViewDate {
       case "year":
         newDate.setDate(1);
         newDate.setMonth(0);
+        newDate.setFullYear(year - N);
         break;
       case "month":
         newDate.setDate(1);
+        newDate.setMonth(month - N);
         break;
       case "week":
         const lastMonday = date - day + (day === 0 ? -6 : 1);
-        newDate.setDate(lastMonday);
+        const dayAfterTargetWeek = lastMonday - 7 * N;
+        newDate.setDate(dayAfterTargetWeek);
+        break;
+      case "day":
+        newDate.setDate(date - N);
         break;
     }
     newDate.setMilliseconds(-1);
 
     this.date = newDate;
-    return newDate;
+
+    return this;
   };
 
   clone = () => new ViewDate(this.interval, this.date);

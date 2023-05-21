@@ -1,6 +1,6 @@
 import Grid from "./Grid";
 import Line from "./Line";
-import { GraphInput, getGraphData } from "./lib";
+import { GraphInput, GraphLabel, getGraphData } from "./lib";
 import "./index.css";
 import Area from "./Area";
 
@@ -8,11 +8,12 @@ export * from "./lib";
 
 interface Props {
   data: GraphInput;
-  iso_currency_code: string | null;
+  labelX: GraphLabel;
+  labelY: GraphLabel;
   memoryKey?: string;
 }
 
-const Graph = ({ data, iso_currency_code, memoryKey }: Props) => {
+const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
   const { lines, area, range } = getGraphData(data);
   const lineElements = lines?.map(({ points, color, type }, i) => {
     return (
@@ -36,7 +37,11 @@ const Graph = ({ data, iso_currency_code, memoryKey }: Props) => {
   );
   return (
     <div className="Graph">
-      <Grid range={range} iso_currency_code={iso_currency_code} />
+      <Grid
+        range={range}
+        getLabelX={(i, div) => labelX.get(i, div, range.x)}
+        getLabelY={(i, div) => labelY.get(i, div, range.y)}
+      />
       {areaElement}
       {lineElements}
     </div>

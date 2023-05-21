@@ -6,8 +6,10 @@ import {
   call,
   PATH,
   useLocalStorage,
+  DateLabel,
+  MoneyLabel,
 } from "client";
-import { Section, getIndex } from "common";
+import { Section, ViewDate, getIndex } from "common";
 import {
   BudgetBar,
   Graph,
@@ -91,8 +93,11 @@ const BudgetDetailPage = () => {
   const graphData: GraphInput = useMemo(() => {
     if (!budget) return {};
 
-    const currentCapacity = budget.getActiveCapacity(viewDate.getDate());
-    const isIncome = currentCapacity[viewDate.getInterval()] < 0;
+    const interval = viewDate.getInterval();
+    const dateHelper = new ViewDate(interval);
+
+    const currentCapacity = budget.getActiveCapacity(dateHelper.getDate());
+    const isIncome = currentCapacity[interval] < 0;
     const sign = isIncome ? -1 : 1;
 
     const spendingHistory: number[] = [];
@@ -104,7 +109,7 @@ const BudgetDetailPage = () => {
       const _budget_id = transaction.label.budget_id || account.label.budget_id;
       if (budget_id !== _budget_id) return;
       const transactionDate = new Date(authorized_date || date);
-      const span = viewDate.getSpanFrom(transactionDate);
+      const span = dateHelper.getSpanFrom(transactionDate);
       if (!spendingHistory[span]) spendingHistory[span] = 0;
       spendingHistory[span] += sign * amount;
     });
@@ -122,11 +127,11 @@ const BudgetDetailPage = () => {
     spendingHistory.push(...new Array(lengthFixer));
     spendingHistory.reverse();
 
-    const clonedViewDate = viewDate.clone();
+    const clonedViewDate = dateHelper.clone();
     const capacityHistory = new Array(length).fill(undefined).map(() => {
       const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
       clonedViewDate.previous();
-      return sign * capacity[viewDate.getInterval()];
+      return sign * capacity[interval];
     });
 
     capacityHistory.push(...new Array(lengthFixer).fill(capacityHistory[length - 1]));
@@ -143,7 +148,7 @@ const BudgetDetailPage = () => {
 
     const upperBound = [];
     const lowerBound = [];
-    const rollOverStartSpan = length - 1 - viewDate.getSpanFrom(roll_over_start_date);
+    const rollOverStartSpan = length - 1 - dateHelper.getSpanFrom(roll_over_start_date);
 
     for (let i = rollOverStartSpan + lengthFixer; i < length + lengthFixer; i++) {
       upperBound[i] = capacityHistory[i];
@@ -173,7 +178,8 @@ const BudgetDetailPage = () => {
             <div className="sidePadding">
               <Graph
                 data={graphData}
-                iso_currency_code={budget.iso_currency_code}
+                labelX={new DateLabel(viewDate)}
+                labelY={new MoneyLabel(budget.iso_currency_code)}
                 memoryKey={budget_id}
               />
             </div>

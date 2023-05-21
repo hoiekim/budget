@@ -32,7 +32,6 @@ export const getGraphData = (input: GraphInput): GraphData => {
   input.area?.upperBound && allSequences.push(input.area.upperBound);
   input.area?.lowerBound && allSequences.push(input.area.lowerBound);
   const rangeX: Point = [0, Math.max(...allSequences.map((e) => e.length)) - 1];
-  const fixerX = 3 - (rangeX[1] % 3);
   const rangeY: Point = getRangeY(allSequences.flat());
   const range: Range = { x: [rangeX[0], rangeX[1]], y: rangeY };
 

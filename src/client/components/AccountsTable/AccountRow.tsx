@@ -12,8 +12,16 @@ import {
   Account,
   numberToCommaString,
   Timeout,
+  ViewDate,
 } from "common";
-import { call, useAppContext, PATH, TransactionsPageParams } from "client";
+import {
+  call,
+  useAppContext,
+  PATH,
+  TransactionsPageParams,
+  DateLabel,
+  MoneyLabel,
+} from "client";
 import { InstitutionSpan, PlaidLinkButton, Graph, GraphInput } from "client/components";
 import "./index.css";
 
@@ -192,13 +200,16 @@ const AccountRow = ({ account }: Props) => {
   const graphData: GraphInput = useMemo(() => {
     if (type === "credit") return {};
 
+    const interval = viewDate.getInterval();
+    const dateHelper = new ViewDate(interval);
+
     const balanceHistory: number[] = [current || 0];
 
     const translate = (transaction: Transaction | InvestmentTransaction) => {
       const { authorized_date, date, amount } = transaction;
       if (account_id !== transaction.account_id) return;
       const transactionDate = new Date(authorized_date || date);
-      const span = viewDate.getSpanFrom(transactionDate) + 1;
+      const span = dateHelper.getSpanFrom(transactionDate) + 1;
       if (!balanceHistory[span]) balanceHistory[span] = 0;
       if (type === "investment") {
         const { price, quantity } = transaction as InvestmentTransaction;
@@ -268,7 +279,8 @@ const AccountRow = ({ account }: Props) => {
       {!!graphData.lines && (
         <Graph
           data={graphData}
-          iso_currency_code={iso_currency_code}
+          labelX={new DateLabel(viewDate)}
+          labelY={new MoneyLabel(iso_currency_code || "USD")}
           memoryKey={account_id}
         />
       )}
