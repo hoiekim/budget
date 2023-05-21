@@ -8,7 +8,12 @@ div.AccountRow {
 }
 
 div.AccountRow > div {
-  margin: 5px 0;
+  margin: 10px 0;
+}
+
+div.AccountRow > div > input {
+  font-size: 14px;
+  width: 100%;
 }
 
 div.AccountRow > .budgetAction {
@@ -23,6 +28,15 @@ div.AccountRow > .budgetAction > .action {
 
 div.AccountRow > .budgetAction > .action > button {
   margin: 0 3px;
+}
+
+div.Balance > div {
+  margin-bottom: 5px;
+}
+
+div.Balance > div > span:last-child {
+  margin-left: 10px;
+  font-size: 14px;
 }
 
 div.AccountsHead {

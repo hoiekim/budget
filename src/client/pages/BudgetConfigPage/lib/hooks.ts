@@ -5,10 +5,10 @@ export const useEventHandlers = (
   id: string,
   category?: Category,
   section?: Section,
-  _budget?: Budget
+  budget?: Budget
 ) => ({
-  save: useSave(id, category, section, _budget),
-  remove: useRemove(id, category, section, _budget),
+  save: useSave(id, category, section, budget),
+  remove: useRemove(id, category, section, budget),
 });
 
 export const useSave = (
@@ -48,11 +48,11 @@ export const useRemove = (
   id: string,
   category?: Category,
   section?: Section,
-  _budget?: Budget
+  budget?: Budget
 ) => {
   const { transactions, categories, setCategories, setSections, setBudgets } =
     useAppContext();
-  const data = category || section || _budget;
+  const data = category || section || budget;
   const name = data?.name || "Unnamed";
   const apiPath = category ? "category" : section ? "section" : "budget";
   const setDataMap = category ? setCategories : section ? setSections : setBudgets;

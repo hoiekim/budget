@@ -92,7 +92,7 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
               attributeName="offset"
               values="0; 1"
               dur="1s"
-              begin="300ms"
+              begin="0"
               repeatCount="0"
               fill="freeze"
             />

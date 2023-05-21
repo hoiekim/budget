@@ -24,6 +24,8 @@ div.Graph > .Grid > div {
   left: 0;
   display: flex;
   padding: 5px;
+  top: 0;
+  left: 0;
 }
 
 div.Graph > .Grid > .horizontal {
@@ -34,6 +36,10 @@ div.Graph > .Grid > .horizontal > div {
   border-top: 0.5px solid #ccc;
 }
 
+div.Graph > .Grid > .horizontal.right > div {
+  text-align: right;
+}
+
 div.Graph > .Grid > .vertical {
   flex-direction: row;
 }
@@ -42,8 +48,12 @@ div.Graph > .Grid > .vertical > div {
   border-left: 0.5px solid #ccc;
   display: flex;
   justify-content: right;
-  align-items: flex-end;
+  align-items: flex-start;
   text-align: right;
+}
+
+div.Graph > .Grid > .vertical.bottom > div {
+  align-items: flex-end;
 }
 
 div.Graph > .Grid > div > div {

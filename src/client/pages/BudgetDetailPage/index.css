@@ -12,7 +12,11 @@ div.BudgetDetail .addButton {
 
 div.SectionBar {
   padding: 10px 0px;
-  border-bottom: 1px solid #ccc;
+}
+
+div.SectionBar > .children {
+  transition-duration: 300ms;
+  overflow: hidden;
 }
 
 div.BudgetDetail > div.sidePadding {

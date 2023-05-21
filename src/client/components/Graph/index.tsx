@@ -1,8 +1,8 @@
 import Grid from "./Grid";
 import Line from "./Line";
+import Area from "./Area";
 import { GraphInput, GraphLabel, getGraphData } from "./lib";
 import "./index.css";
-import Area from "./Area";
 
 export * from "./lib";
 
@@ -14,7 +14,10 @@ interface Props {
 }
 
 const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
-  const { lines, area, range } = getGraphData(data);
+  const { lines, areas, range, labelDirectionX, labelDirectionY } = getGraphData(data);
+  if (labelDirectionX) labelX.direction = labelDirectionX;
+  if (labelDirectionY) labelY.direction = labelDirectionY;
+
   const lineElements = lines?.map(({ points, color, type }, i) => {
     return (
       <Line
@@ -26,23 +29,24 @@ const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
       />
     );
   });
-  const areaElement = area && (
-    <Area
-      upperBound={area.upperBound}
-      lowerBound={area.lowerBound}
-      color={area.color}
-      type={area.type}
-      memoryKey={`${memoryKey}_area`}
-    />
-  );
+
+  const areaElements = areas?.map(({ upperBound, lowerBound, color, type }, i) => {
+    return (
+      <Area
+        key={`graphArea_${i}`}
+        upperBound={upperBound}
+        lowerBound={lowerBound}
+        color={color}
+        type={type}
+        memoryKey={`${memoryKey}_area`}
+      />
+    );
+  });
+
   return (
     <div className="Graph">
-      <Grid
-        range={range}
-        getLabelX={(i, div) => labelX.get(i, div, range.x)}
-        getLabelY={(i, div) => labelY.get(i, div, range.y)}
-      />
-      {areaElement}
+      <Grid range={range} labelX={labelX} labelY={labelY} />
+      {areaElements}
       {lineElements}
     </div>
   );

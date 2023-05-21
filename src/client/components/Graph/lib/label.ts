@@ -1,7 +1,11 @@
 import { ViewDate, currencyCodeToSymbol, numberToCommaString } from "common";
 import { Point } from "client";
 
+export type LabelDirection = "left" | "right" | "top" | "bottom";
+
 export class GraphLabel {
+  direction: LabelDirection = "left";
+
   /**
    * Get label to display at the axis of the graph
    * @param i The index number of the grid to get label for
@@ -62,7 +66,7 @@ export class DateLabel extends GraphLabel {
         break;
     }
 
-    return i !== gridPosition - 1 ? movedViewDate.toString(options) : "";
+    return movedViewDate.toString(options);
   };
 }
 

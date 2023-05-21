@@ -1,36 +1,91 @@
+import { LabelDirection } from "./label";
+
 export type Point = [number, number];
+
 export interface Range {
   x: Point;
   y: Point;
 }
+
 export type LineType = "perpendicular" | "diagonal";
 
+export interface LineData {
+  points: (Point | undefined)[];
+  color: string;
+  type?: LineType;
+}
+
+export interface AreaData {
+  upperBound: (Point | undefined)[];
+  lowerBound: (Point | undefined)[];
+  color: string;
+  type?: LineType;
+}
+
+export interface PointData {
+  point: Point;
+  color: string;
+}
+
 export interface GraphData {
-  lines?: { points: (Point | undefined)[]; color: string; type?: LineType }[];
-  area?: {
-    upperBound: (Point | undefined)[];
-    lowerBound: (Point | undefined)[];
-    color: string;
-    type?: LineType;
-  };
   range: Range;
+  lines?: LineData[];
+  areas?: AreaData[];
+  points?: PointData[];
+  labelDirectionX?: LabelDirection;
+  labelDirectionY?: LabelDirection;
 }
 
 export type Sequence = (number | undefined)[];
-export type LineInput = { sequence: Sequence; color: string; type?: LineType };
-export type AreaInput = {
+
+export interface LineInput {
+  sequence: Sequence;
+  color: string;
+  type?: LineType;
+}
+
+export interface AreaInput {
   upperBound: Sequence;
   lowerBound: Sequence;
   color: string;
   type?: LineType;
-};
-export type GraphInput = { lines?: LineInput[]; area?: AreaInput };
+}
 
+export interface PointInput {
+  point: { value: number; index: number };
+  color: string;
+}
+
+export interface GraphInput {
+  lines?: LineInput[];
+  areas?: AreaInput[];
+  points?: PointInput[];
+}
+
+/**
+ * Converts GraphInput type arguments into GraphData type object. Using this
+ * function simplifies graph drawing process by allowing input as "Sequence",
+ * which is just array of numbers instead of full coordinate points. This
+ * simplification necessarily introduce ambiguity when it comes to x-axis unit.
+ * Basically x-axis is presented as "index"(of the sequence array) and Grid
+ * component is responsible to convert index into meaningful labels to display.
+ */
 export const getGraphData = (input: GraphInput): GraphData => {
   const allSequences: Sequence[] = [];
+
   input.lines?.forEach(({ sequence }) => allSequences.push(sequence));
-  input.area?.upperBound && allSequences.push(input.area.upperBound);
-  input.area?.lowerBound && allSequences.push(input.area.lowerBound);
+
+  input.areas?.forEach(({ upperBound, lowerBound }) => {
+    allSequences.push(upperBound);
+    allSequences.push(lowerBound);
+  });
+
+  const sequenceFromPoints: Sequence = [];
+  allSequences.push(sequenceFromPoints);
+  input.points?.forEach(({ point: { value, index } }) => {
+    sequenceFromPoints[index] = value;
+  });
+
   const rangeX: Point = [0, Math.max(...allSequences.map((e) => e.length)) - 1];
   const rangeY: Point = getRangeY(allSequences.flat());
   const range: Range = { x: [rangeX[0], rangeX[1]], y: rangeY };
@@ -39,30 +94,51 @@ export const getGraphData = (input: GraphInput): GraphData => {
     return { points: getPoints(sequence, range), color, type };
   });
 
-  if (!input.area) return { lines, range };
+  const areas = input.areas?.map(({ upperBound, lowerBound, color, type }) => {
+    return {
+      upperBound: getPoints(upperBound, range),
+      lowerBound: getPoints(lowerBound, range),
+      color: color,
+      type: type,
+    };
+  });
 
-  const { upperBound, lowerBound, color, type } = input.area;
+  const points =
+    input.points?.map(({ point, color }) => {
+      return { point: mapSequence(point.value, point.index, range) as Point, color };
+    }) || [];
 
-  const area = {
-    upperBound: getPoints(upperBound, range),
-    lowerBound: getPoints(lowerBound, range),
-    color: color,
-    type: type,
-  };
+  let topEdges = 0;
+  let bottomEdges = 0;
 
-  return { lines, area, range };
+  allSequences.flat().forEach((e) => {
+    if (!e) return;
+    const factor = e / range.y[1];
+    if (0.75 < factor) topEdges++;
+    if (factor < 0.25) bottomEdges++;
+  });
+
+  const labelDirectionY = topEdges < bottomEdges ? "top" : "bottom";
+
+  return { lines, areas, range, points, labelDirectionY };
 };
 
 const getPoints = (sequence: Sequence, range: Range): (Point | undefined)[] => {
+  return sequence.map((e: number | undefined, i: number) => mapSequence(e, i, range));
+};
+
+const mapSequence = (
+  value: number | undefined,
+  index: number,
+  range: Range
+): Point | undefined => {
   const [minX, maxX] = range.x;
   const [minY, maxY] = range.y;
 
-  return sequence.map((e, i): Point | undefined => {
-    if (e === undefined) return undefined;
-    const x = minX === maxX ? 0.5 : i / maxX;
-    const y = maxY === minY ? 0.5 : (e - minY) / (maxY - minY) || 0;
-    return [x, y];
-  });
+  if (value === undefined) return undefined;
+  const x = minX === maxX ? 0.5 : index / maxX;
+  const y = maxY === minY ? 0.5 : (value - minY) / (maxY - minY) || 0;
+  return [x, y];
 };
 
 const getRangeY = (sequence: Sequence): Point => {

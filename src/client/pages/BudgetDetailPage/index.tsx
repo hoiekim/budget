@@ -90,11 +90,13 @@ const BudgetDetailPage = () => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
+  const interval = viewDate.getInterval();
+  const dateHelper = useMemo(() => {
+    return new Date() < viewDate.getDate() ? viewDate : new ViewDate(interval);
+  }, [interval, viewDate]);
+
   const graphData: GraphInput = useMemo(() => {
     if (!budget) return {};
-
-    const interval = viewDate.getInterval();
-    const dateHelper = new ViewDate(interval);
 
     const currentCapacity = budget.getActiveCapacity(dateHelper.getDate());
     const isIncome = currentCapacity[interval] < 0;
@@ -119,7 +121,10 @@ const BudgetDetailPage = () => {
 
     const lengthFixer = 3 - ((length - 1) % 3);
 
+    let firstOccurence = false;
     for (let i = 0; i < length; i++) {
+      if (spendingHistory[i] !== undefined) firstOccurence = true;
+      if (!firstOccurence) continue;
       const e = spendingHistory[i];
       if (!e || e < 0) spendingHistory[i] = 0;
     }
@@ -151,19 +156,22 @@ const BudgetDetailPage = () => {
     const rollOverStartSpan = length - 1 - dateHelper.getSpanFrom(roll_over_start_date);
 
     for (let i = rollOverStartSpan + lengthFixer; i < length + lengthFixer; i++) {
+      if (spendingHistory[i] === undefined) continue;
       upperBound[i] = capacityHistory[i];
       lowerBound[i] = spendingHistory[i];
     }
 
-    const area: AreaInput = {
-      upperBound,
-      lowerBound,
-      color: "#a82",
-      type: "perpendicular",
-    };
+    const areas: AreaInput[] = [
+      {
+        upperBound,
+        lowerBound,
+        color: "#a82",
+        type: "perpendicular",
+      },
+    ];
 
-    return { lines, area };
-  }, [transactions, viewDate, accounts, budget, budget_id]);
+    return { lines, areas };
+  }, [transactions, accounts, budget, budget_id, dateHelper, interval]);
 
   return (
     <div className="BudgetDetailPage">
@@ -174,11 +182,11 @@ const BudgetDetailPage = () => {
             <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
           </div>
 
-          {!!(graphData.lines || graphData.area) && (
+          {!!(graphData.lines || graphData.areas) && (
             <div className="sidePadding">
               <Graph
                 data={graphData}
-                labelX={new DateLabel(viewDate)}
+                labelX={new DateLabel(dateHelper)}
                 labelY={new MoneyLabel(budget.iso_currency_code)}
                 memoryKey={budget_id}
               />
