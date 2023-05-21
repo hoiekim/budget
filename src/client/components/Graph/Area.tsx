@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useAppContext, useMemoryState } from "client";
 import { Timeout } from "common";
-import { LineType, Point } from "./index";
+import { LineType, Point, pointsToCoordinateString } from "./lib";
 
 interface Props {
   upperBound: (Point | undefined)[];
@@ -14,9 +14,9 @@ interface Props {
 const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
-  const animateMemoryKey = memoryKey && `graphLine_${memoryKey}_opacity`;
+  const animateMemoryKey = memoryKey && `graphArea_${memoryKey}_animate`;
   const [animate, setAnimate] = useMemoryState(animateMemoryKey, true);
-  const [width, setWidth] = useMemoryState("graphLine_svgWidth", 0);
+  const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
 
   const timeout = useRef<Timeout>();
 
@@ -48,20 +48,11 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
   }, []);
 
   const translate = (points: (Point | undefined)[]) => {
-    return points.flatMap((e, i) => {
-      if (!e) return [];
-      const x = e[0] * (width - 10) + 5;
-      const y = (1 - e[1]) * (height - 10) + 5;
-      if (type === "diagonal") return [`${x},${y}`];
-      const previousPoint = points[i - 1];
-      if (previousPoint === undefined) return [`${x},${y}`];
-      const _x = previousPoint[0] * (width - 10) + 5;
-      return [`${_x},${y}`, `${x},${y}`];
-    });
+    return pointsToCoordinateString(points, width, height, type);
   };
 
   const translatedPoints = [...translate(upperBound), ...translate(lowerBound).reverse()];
-  const d = "M" + translatedPoints.filter((e) => e).join(" ");
+  const d = "M" + translatedPoints.join(" ");
 
   const classes = ["Area"];
   const isColored = new Set(color.split("")).size > 2;

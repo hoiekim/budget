@@ -9,19 +9,19 @@ import {
 import { Account, InvestmentTransaction, Timeout, Transaction, ViewDate } from "common";
 import { GraphInput, PATH, TransactionsPageParams, call, useAppContext } from "client";
 
-export const useGraph = (account: Account, viewDate: ViewDate) => {
+export const useGraph = (account: Account) => {
   const {
     account_id,
     type,
     balances: { current },
   } = account;
 
-  const { transactions, investmentTransactions } = useAppContext();
+  const { transactions, investmentTransactions, viewDate } = useAppContext();
 
-  const interval = viewDate.getInterval();
   const graphViewDate = useMemo(() => {
-    return new Date() < viewDate.getDate() ? viewDate : new ViewDate(interval);
-  }, [interval, viewDate]);
+    const isFuture = new Date() < viewDate.getDate();
+    return isFuture ? viewDate : new ViewDate(viewDate.getInterval());
+  }, [viewDate]);
 
   const graphData: GraphInput = useMemo(() => {
     if (type === "credit") return {};
@@ -60,8 +60,24 @@ export const useGraph = (account: Account, viewDate: ViewDate) => {
 
     const sequence = balanceHistory.reverse();
 
-    return { lines: [{ sequence, color: "#097" }] };
-  }, [transactions, current, account_id, type, investmentTransactions, graphViewDate]);
+    const todayIndex = graphViewDate.getSpanFrom(viewDate.getDate()) - lengthFixer + 1;
+    const pointIndex = length - todayIndex;
+    const pointValue = balanceHistory[pointIndex];
+    const points = [];
+    if (pointValue !== undefined) {
+      points.push({ point: { value: pointValue, index: pointIndex }, color: "#097" });
+    }
+
+    return { lines: [{ sequence, color: "#097" }], points };
+  }, [
+    transactions,
+    current,
+    account_id,
+    type,
+    investmentTransactions,
+    graphViewDate,
+    viewDate,
+  ]);
 
   return { graphViewDate, graphData };
 };

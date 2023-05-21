@@ -9,19 +9,19 @@ interface Props {
   memoryKey?: string;
 }
 
-const Area = ({ memoryKey, point, color }: Props) => {
+const Dot = ({ memoryKey, point, color }: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
-  const animateMemoryKey = memoryKey && `graphLine_${memoryKey}_opacity`;
+  const animateMemoryKey = memoryKey && `graphDot_${memoryKey}_opacity`;
   const [opacity, setOpacity] = useMemoryState(animateMemoryKey, 0);
-  const [width, setWidth] = useMemoryState("graphLine_svgWidth", 0);
+  const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
 
   const timeout = useRef<Timeout>();
 
   useEffect(() => {
     if (!transitioning) {
       clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => setOpacity(1), 1000);
+      timeout.current = setTimeout(() => setOpacity(1), 1150);
     }
   }, [transitioning, setOpacity]);
 
@@ -63,9 +63,11 @@ const Area = ({ memoryKey, point, color }: Props) => {
         <circle
           cx={x}
           cy={y}
-          r="5"
+          r="2"
           style={{
-            transition: "all 1s ease 0s",
+            stroke: color,
+            strokeWidth: "4px",
+            transition: "all 300ms ease 0s",
             opacity,
           }}
         />
@@ -74,4 +76,4 @@ const Area = ({ memoryKey, point, color }: Props) => {
   );
 };
 
-export default Area;
+export default Dot;

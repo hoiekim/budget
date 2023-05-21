@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useAppContext, useMemoryState } from "client";
 import { Timeout } from "common";
-import { LineType, Point } from "./index";
+import { LineType, Point, pointsToCoordinateString } from "./lib";
 
 interface Props {
   points: (Point | undefined)[];
@@ -19,7 +19,7 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
   const [pathLength, setPathLength] = useMemoryState(pathLengthMemoryKey, 0);
   const pathOffsetMemoryKey = memoryKey && `graphLine_${memoryKey}_pathOffset`;
   const [pathOffset, setPathOffset] = useMemoryState(pathOffsetMemoryKey, true);
-  const [width, setWidth] = useMemoryState("graphLine_svgWidth", 0);
+  const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
 
   const timeout = useRef<Timeout>();
 
@@ -60,20 +60,8 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
     };
   }, []);
 
-  const d =
-    "M" +
-    points
-      .flatMap((e, i) => {
-        if (!e) return [];
-        const x = e[0] * (width - 10) + 5;
-        const y = (1 - e[1]) * (height - 10) + 5;
-        if (type === "diagonal") return [`${x},${y}`];
-        const previousPoint = points[i - 1];
-        if (previousPoint === undefined) return [`${x},${y}`];
-        const _x = previousPoint[0] * (width - 10) + 5;
-        return [`${_x},${y}`, `${x},${y}`];
-      })
-      .join(" ");
+  const coordinateStrings = pointsToCoordinateString(points, width, height, type);
+  const d = "M" + coordinateStrings.join(" ");
 
   const classes = ["Line"];
   const isColored = new Set(color.split("")).size > 2;

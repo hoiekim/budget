@@ -14,7 +14,7 @@ const AccountRow = ({ account }: Props) => {
   const { account_id, balances, custom_name, name, institution_id, label, type } =
     account;
 
-  const { items, budgets, viewDate } = useAppContext();
+  const { items, budgets } = useAppContext();
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
     return label.budget_id || "";
@@ -46,7 +46,7 @@ const AccountRow = ({ account }: Props) => {
   const { iso_currency_code, unofficial_currency_code } = balances;
   const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
 
-  const { graphViewDate, graphData } = useGraph(account, viewDate);
+  const { graphViewDate, graphData } = useGraph(account);
 
   const {
     onClickAccount,

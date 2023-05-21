@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { NewSectionGetResponse } from "server";
 import {
   TransactionsPageParams,
@@ -9,24 +9,17 @@ import {
   DateLabel,
   MoneyLabel,
 } from "client";
-import { Section, ViewDate, getIndex } from "common";
-import {
-  BudgetBar,
-  Graph,
-  SectionBar,
-  GraphInput,
-  AreaInput,
-  LineInput,
-} from "client/components";
+import { Budget, Section, getIndex } from "common";
+import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
+import { useGraph } from "./lib";
 
 export type BudgetDetailPageParams = {
   budget_id?: string;
 };
 
 const BudgetDetailPage = () => {
-  const { transactions, accounts, budgets, router, sections, setSections, viewDate } =
-    useAppContext();
+  const { budgets, router, sections, setSections } = useAppContext();
   const { path, params, transition } = router;
   let budget_id: string;
   if (path === PATH.BUDGET_DETAIL) budget_id = params.get("budget_id") || "";
@@ -90,88 +83,7 @@ const BudgetDetailPage = () => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
-  const interval = viewDate.getInterval();
-  const dateHelper = useMemo(() => {
-    return new Date() < viewDate.getDate() ? viewDate : new ViewDate(interval);
-  }, [interval, viewDate]);
-
-  const graphData: GraphInput = useMemo(() => {
-    if (!budget) return {};
-
-    const currentCapacity = budget.getActiveCapacity(dateHelper.getDate());
-    const isIncome = currentCapacity[interval] < 0;
-    const sign = isIncome ? -1 : 1;
-
-    const spendingHistory: number[] = [];
-
-    transactions.forEach((transaction) => {
-      const { authorized_date, date, amount, account_id } = transaction;
-      const account = accounts.get(account_id);
-      if (!account) return;
-      const _budget_id = transaction.label.budget_id || account.label.budget_id;
-      if (budget_id !== _budget_id) return;
-      const transactionDate = new Date(authorized_date || date);
-      const span = dateHelper.getSpanFrom(transactionDate);
-      if (!spendingHistory[span]) spendingHistory[span] = 0;
-      spendingHistory[span] += sign * amount;
-    });
-
-    const { length } = spendingHistory;
-    if (length < 2) return {};
-
-    const lengthFixer = 3 - ((length - 1) % 3);
-
-    let firstOccurence = false;
-    for (let i = 0; i < length; i++) {
-      if (spendingHistory[i] !== undefined) firstOccurence = true;
-      if (!firstOccurence) continue;
-      const e = spendingHistory[i];
-      if (!e || e < 0) spendingHistory[i] = 0;
-    }
-
-    spendingHistory.push(...new Array(lengthFixer));
-    spendingHistory.reverse();
-
-    const clonedViewDate = dateHelper.clone();
-    const capacityHistory = new Array(length).fill(undefined).map(() => {
-      const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
-      clonedViewDate.previous();
-      return sign * capacity[interval];
-    });
-
-    capacityHistory.push(...new Array(lengthFixer).fill(capacityHistory[length - 1]));
-    capacityHistory.reverse();
-
-    const lines: LineInput[] = [
-      { sequence: capacityHistory, color: "#aaa", type: "perpendicular" },
-      { sequence: spendingHistory, color: "#097", type: "perpendicular" },
-    ];
-
-    const { roll_over, roll_over_start_date } = budget;
-
-    if (!roll_over || !roll_over_start_date) return { lines };
-
-    const upperBound = [];
-    const lowerBound = [];
-    const rollOverStartSpan = length - 1 - dateHelper.getSpanFrom(roll_over_start_date);
-
-    for (let i = rollOverStartSpan + lengthFixer; i < length + lengthFixer; i++) {
-      if (spendingHistory[i] === undefined) continue;
-      upperBound[i] = capacityHistory[i];
-      lowerBound[i] = spendingHistory[i];
-    }
-
-    const areas: AreaInput[] = [
-      {
-        upperBound,
-        lowerBound,
-        color: "#a82",
-        type: "perpendicular",
-      },
-    ];
-
-    return { lines, areas };
-  }, [transactions, accounts, budget, budget_id, dateHelper, interval]);
+  const { graphData, graphViewDate } = useGraph(budget || new Budget());
 
   return (
     <div className="BudgetDetailPage">
@@ -186,7 +98,7 @@ const BudgetDetailPage = () => {
             <div className="sidePadding">
               <Graph
                 data={graphData}
-                labelX={new DateLabel(dateHelper)}
+                labelX={new DateLabel(graphViewDate)}
                 labelY={new MoneyLabel(budget.iso_currency_code)}
                 memoryKey={budget_id}
               />

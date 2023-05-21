@@ -1,6 +1,7 @@
 import Grid from "./Grid";
 import Line from "./Line";
 import Area from "./Area";
+import Dot from "./Dot";
 import { GraphInput, GraphLabel, getGraphData } from "./lib";
 import "./index.css";
 
@@ -14,7 +15,8 @@ interface Props {
 }
 
 const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
-  const { lines, areas, range, labelDirectionX, labelDirectionY } = getGraphData(data);
+  const { lines, areas, points, range, labelDirectionX, labelDirectionY } =
+    getGraphData(data);
   if (labelDirectionX) labelX.direction = labelDirectionX;
   if (labelDirectionY) labelY.direction = labelDirectionY;
 
@@ -43,11 +45,23 @@ const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
     );
   });
 
+  const pointElements = points?.map(({ point, color }, i) => {
+    return (
+      <Dot
+        key={`graphPoint_${i}`}
+        point={point}
+        color={color}
+        memoryKey={`${memoryKey}_point`}
+      />
+    );
+  });
+
   return (
     <div className="Graph">
       <Grid range={range} labelX={labelX} labelY={labelY} />
       {areaElements}
       {lineElements}
+      {pointElements}
     </div>
   );
 };

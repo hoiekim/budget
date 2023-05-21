@@ -104,8 +104,13 @@ export const getGraphData = (input: GraphInput): GraphData => {
   });
 
   const points =
-    input.points?.map(({ point, color }) => {
-      return { point: mapSequence(point.value, point.index, range) as Point, color };
+    input.points?.map(({ point: { index, value }, color }) => {
+      const [minX, maxX] = range.x;
+      const [minY, maxY] = range.y;
+      const x = minX === maxX ? 0.5 : index / maxX;
+      const y = maxY === minY ? 0.5 : (value - minY) / (maxY - minY) || 0;
+      const point: Point = [x, y];
+      return { point, color };
     }) || [];
 
   let topEdges = 0;
