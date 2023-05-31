@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" style="background-color: #222">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/icons/favicon.ico" />
@@ -190,9 +190,43 @@
       media="screen and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)"
       href="%PUBLIC_URL%/splash/9.7__iPad_Pro__7.9__iPad_mini__9.7__iPad_Air__9.7__iPad_landscape.png"
     />
+
+    <style>
+      div.ColorSchemeCover > div {
+        pointer-events: none;
+        width: 100vw;
+        height: 100vh;
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 1000;
+        display: none;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        div.ColorSchemeCover > div {
+          display: inherit;
+        }
+
+        div.ColorSchemeCover > div.offset {
+          mix-blend-mode: normal;
+          background-color: #fff;
+          opacity: 0.15;
+        }
+
+        div.ColorSchemeCover > div.subtract {
+          mix-blend-mode: difference;
+          background-color: #fff;
+        }
+      }
+    </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <div class="ColorSchemeCover">
+      <div class="subtract"></div>
+      <div class="offset"></div>
+    </div>
   </body>
 </html>

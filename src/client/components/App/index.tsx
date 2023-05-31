@@ -3,7 +3,6 @@ import { Header } from "client/components";
 import Utility from "./Utility";
 import Router from "./Router";
 import AppContext from "./AppContext";
-import ColorSchemeCover from "./ColorSchemeCover";
 import "./index.css";
 import "./variables.css";
 
@@ -17,7 +16,6 @@ const App = ({ initialUser }: Props) => {
       <Utility />
       <Header />
       <Router />
-      <ColorSchemeCover />
     </AppContext>
   );
 };
