@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { NewCategoryGetResponse } from "server";
 import { PATH, call, useAppContext, useLocalStorage } from "client";
 import { LabeledBar, CategoryBar } from "client/components";
-import { getIndex, Budget, Section, Category } from "common";
+import { getIndex, Budget, Section, Category, CategoryDictionary } from "common";
 
 interface Props {
   section: Section & { sorted_amount?: number };
@@ -93,7 +93,7 @@ const SectionBar = ({ section, onSetOrder }: Props) => {
     const { category_id } = data;
 
     setCategories((oldCategories) => {
-      const newCategories = new Map(oldCategories);
+      const newCategories = new CategoryDictionary(oldCategories);
       if (category_id) {
         const newCategory = new Category({ category_id, section_id });
         newCategories.set(category_id, newCategory);

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { PATH, call, useAppContext, useLocalStorage } from "client";
 import { BudgetBar } from "client/components";
 import { NewBudgetGetResponse } from "server";
-import { Budget, getIndex } from "common";
+import { Budget, BudgetDictionary, getIndex } from "common";
 import "./index.css";
 
 const BudgetsPage = () => {
@@ -36,7 +36,7 @@ const BudgetsPage = () => {
 
     setBudgets((oldBudgets) => {
       const newBudget = new Budget({ budget_id });
-      const newBudgets = new Map(oldBudgets);
+      const newBudgets = new BudgetDictionary(oldBudgets);
       newBudgets.set(budget_id, newBudget);
       return newBudgets;
     });

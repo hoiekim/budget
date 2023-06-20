@@ -5,6 +5,7 @@ import {
   numberToCommaString,
   currencyCodeToSymbol,
   Category,
+  TransactionDictionary,
 } from "common";
 import { useAppContext, call, Sorter } from "client";
 import { InstitutionSpan } from "client/components";
@@ -101,7 +102,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
     if (r.status === "success") {
       setTransactions((oldTransactions) => {
-        const newTransactions = new Map(oldTransactions);
+        const newTransactions = new TransactionDictionary(oldTransactions);
         const newTransaction = new Transaction(transaction);
         newTransaction.label.budget_id = value || null;
         newTransaction.label.category_id = null;
@@ -126,7 +127,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
     if (r.status === "success") {
       setTransactions((oldTransactions) => {
-        const newTransactions = new Map(oldTransactions);
+        const newTransactions = new TransactionDictionary(oldTransactions);
         const newTransaction = new Transaction(transaction);
         if (!newTransaction.label.budget_id) {
           newTransaction.label.budget_id = account?.label.budget_id;

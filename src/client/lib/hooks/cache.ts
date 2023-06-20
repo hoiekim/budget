@@ -1,8 +1,14 @@
+import { Dictionary } from "common";
 import { useCallback, useState, Dispatch, SetStateAction } from "react";
+
+const parseMap = (s: string) => new Map(JSON.parse(s));
+const parseDictionary = (s: string) => new Dictionary(JSON.parse(s));
+const stringifyMap = (m: any) => JSON.stringify([...m]);
 
 export const useLocalStorage = <T>(key: string, initialValue: T) => {
   const isMap = key.indexOf("map_") === 0;
-  const parse = isMap ? (s: string) => new Map(JSON.parse(s)) : JSON.parse;
+  const isDictionary = key.indexOf("dictionary_") === 0;
+  const parse = isMap ? parseMap : isDictionary ? parseDictionary : JSON.parse;
 
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
@@ -16,7 +22,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
 
   const setValue: Dispatch<SetStateAction<T>> = useCallback(
     (value) => {
-      const stringify = isMap ? (m: any) => JSON.stringify([...m]) : JSON.stringify;
+      const stringify = isMap || isDictionary ? stringifyMap : JSON.stringify;
       try {
         setStoredValue((oldValue: T) => {
           const valueToStore = value instanceof Function ? value(oldValue) : value;
@@ -27,7 +33,7 @@ export const useLocalStorage = <T>(key: string, initialValue: T) => {
         console.error(error);
       }
     },
-    [setStoredValue, key, isMap]
+    [setStoredValue, key, isMap, isDictionary]
   );
 
   return [storedValue, setValue] as const;

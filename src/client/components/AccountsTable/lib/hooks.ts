@@ -6,7 +6,15 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { Account, InvestmentTransaction, Timeout, Transaction, ViewDate } from "common";
+import {
+  Account,
+  AccountDictionary,
+  InvestmentTransaction,
+  Timeout,
+  Transaction,
+  TransactionDictionary,
+  ViewDate,
+} from "common";
 import { GraphInput, PATH, TransactionsPageParams, call, useAppContext } from "client";
 
 export const useGraph = (account: Account) => {
@@ -106,7 +114,7 @@ export const useEventHandlers = (
 
     if (r.status === "success") {
       setAccounts((oldAccounts) => {
-        const newAccounts = new Map(oldAccounts);
+        const newAccounts = new AccountDictionary(oldAccounts);
         const newAccount = new Account(account);
         newAccount.label.budget_id = value || null;
         newAccounts.set(account_id, newAccount);
@@ -130,7 +138,7 @@ export const useEventHandlers = (
           setAccounts((oldAccounts) => {
             const oldAccount = oldAccounts.get(account_id);
             if (!oldAccount) return oldAccounts;
-            const newAccounts = new Map(oldAccounts);
+            const newAccounts = new AccountDictionary(oldAccounts);
             const newAccount = new Account({ ...oldAccount, custom_name: value });
             newAccounts.set(account_id, newAccount);
             return newAccounts;
@@ -162,7 +170,7 @@ export const useEventHandlers = (
           oldAccounts.forEach((e) => {
             if (e.item_id === item_id) accountsInItem.push(e);
           });
-          const newAccounts = new Map(oldAccounts);
+          const newAccounts = new AccountDictionary(oldAccounts);
           accountsInItem.forEach((e) => {
             newAccounts.delete(e.account_id);
           });
@@ -170,7 +178,7 @@ export const useEventHandlers = (
         });
 
         setTransactions((oldTransactions) => {
-          const newTransactions = new Map(oldTransactions);
+          const newTransactions = new TransactionDictionary(oldTransactions);
           newTransactions.forEach((e) => {
             if (accountsInItem.find((f) => e.account_id === f.account_id)) {
               newTransactions.delete(e.transaction_id);
@@ -188,7 +196,7 @@ export const useEventHandlers = (
     call.post("/api/account", { account_id, hide: true }).then((r) => {
       if (r.status === "success") {
         setAccounts((oldAccounts) => {
-          const newAccounts = new Map(oldAccounts);
+          const newAccounts = new AccountDictionary(oldAccounts);
           const oldAccount = oldAccounts.get(account_id);
           if (!oldAccount) return newAccounts;
           const newAccount = new Account({ ...oldAccount, hide: true });

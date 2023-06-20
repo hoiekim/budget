@@ -1,13 +1,13 @@
 import { useCallback } from "react";
+import { useAppContext } from "client";
 import {
-  useAppContext,
-  Budgets,
-  Sections,
-  Categories,
-  Transactions,
-  Accounts,
-} from "client";
-import { ViewDate } from "common";
+  AccountDictionary,
+  BudgetDictionary,
+  CategoryDictionary,
+  SectionDictionary,
+  TransactionDictionary,
+  ViewDate,
+} from "common";
 import { BudgetLike } from "common/models/BudgetLike";
 
 /**
@@ -15,16 +15,16 @@ import { BudgetLike } from "common/models/BudgetLike";
  * and returns the cloned maps with calculated results.
  */
 export const calculatorLambda = (
-  budgets: Budgets,
-  sections: Sections,
-  categories: Categories,
+  budgets: BudgetDictionary,
+  sections: SectionDictionary,
+  categories: CategoryDictionary,
   viewDate: ViewDate,
-  transactions: Transactions,
-  accounts: Accounts
+  transactions: TransactionDictionary,
+  accounts: AccountDictionary
 ) => {
-  const newBudgets = new Map(budgets);
-  const newSections = new Map(sections);
-  const newCategories = new Map(categories);
+  const newBudgets = new BudgetDictionary(budgets);
+  const newSections = new SectionDictionary(sections);
+  const newCategories = new CategoryDictionary(categories);
 
   const setBaseAmounts = (e: BudgetLike) => {
     e.sorted_amount = 0;

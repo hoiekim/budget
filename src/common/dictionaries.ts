@@ -1,4 +1,16 @@
-import { TransactionLabel, Transaction, ValueOf, environment } from "common";
+import {
+  TransactionLabel,
+  Transaction,
+  ValueOf,
+  environment,
+  Account,
+  Institution,
+  InvestmentTransaction,
+  Budget,
+  Section,
+  Category,
+  Item,
+} from "common";
 
 export class Dictionary<T = any> extends Map<string, T> {
   toArray = () => Array.from(this.values());
@@ -40,6 +52,14 @@ export class Dictionary<T = any> extends Map<string, T> {
     return super.set(key, value);
   };
 }
+
+export class AccountDictionary extends Dictionary<Account> {}
+export class InstitutionDictionary extends Dictionary<Institution> {}
+export class InvestmentTransactionDictionary extends Dictionary<InvestmentTransaction> {}
+export class BudgetDictionary extends Dictionary<Budget> {}
+export class SectionDictionary extends Dictionary<Section> {}
+export class CategoryDictionary extends Dictionary<Category> {}
+export class ItemDictionary extends Dictionary<Item> {}
 
 export class TransactionDictionary extends Dictionary<Transaction> {
   filterByLabel = (input: Partial<TransactionLabel>) => {

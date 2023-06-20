@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Institution } from "common";
+import { Institution, InstitutionDictionary } from "common";
 import { call, useAppContext } from "client";
 
 interface Props {
@@ -20,7 +20,7 @@ const InstitutionSpan = ({ institution_id }: Props) => {
       if (!data) return;
       setInstitutions((oldInstitutions) => {
         const institution = new Institution(data);
-        const newInstitutions = new Map(oldInstitutions);
+        const newInstitutions = new InstitutionDictionary(oldInstitutions);
         newInstitutions.set(institution_id, institution);
         return newInstitutions;
       });

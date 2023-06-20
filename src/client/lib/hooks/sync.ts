@@ -4,15 +4,7 @@ import {
   AccountsStreamGetResponse,
   BudgetsGetResponse,
 } from "server";
-import {
-  useAppContext,
-  read,
-  call,
-  Accounts,
-  Budgets,
-  Sections,
-  Categories,
-} from "client";
+import { useAppContext, read, call } from "client";
 import {
   Account,
   InvestmentTransaction,
@@ -21,6 +13,13 @@ import {
   Section,
   Category,
   Item,
+  TransactionDictionary,
+  AccountDictionary,
+  BudgetDictionary,
+  SectionDictionary,
+  CategoryDictionary,
+  InvestmentTransactionDictionary,
+  ItemDictionary,
 } from "common";
 
 /**
@@ -50,7 +49,7 @@ export const useSync = () => {
 
       if (transactions) {
         setTransactions((oldData) => {
-          const newData = new Map(oldData);
+          const newData = new TransactionDictionary(oldData);
           const { added, removed, modified } = transactions;
           added?.forEach((e) => newData.set(e.transaction_id, new Transaction(e)));
           modified?.forEach((e) => {
@@ -59,14 +58,14 @@ export const useSync = () => {
             const newTransaction = new Transaction({ ...data, ...e });
             newData.set(newTransaction.id, newTransaction);
           });
-          removed?.forEach((e) => newData.delete(e.transaction_id));
+          removed?.forEach((e) => e.transaction_id && newData.delete(e.transaction_id));
           return newData;
         });
       }
 
       if (investmentTransactions) {
         setInvestmentTransactions((oldData) => {
-          const newData = new Map(oldData);
+          const newData = new InvestmentTransactionDictionary(oldData);
           const { added, removed, modified } = investmentTransactions;
           added?.forEach((e) => {
             const newTransaction = new InvestmentTransaction(e);
@@ -85,7 +84,7 @@ export const useSync = () => {
 
       if (items) {
         setItems((oldItems) => {
-          const newItems = new Map(oldItems);
+          const newItems = new ItemDictionary(oldItems);
           items?.forEach((item) => {
             const { item_id, plaidError } = item;
             const oldItem = oldItems.get(item_id);
@@ -115,13 +114,13 @@ export const useSync = () => {
       const { accounts, items } = data;
 
       setAccounts((oldAccounts) => {
-        const newAccounts: Accounts = new Map(oldAccounts);
+        const newAccounts = new AccountDictionary(oldAccounts);
         accounts.forEach((e) => newAccounts.set(e.account_id, new Account(e)));
         return newAccounts;
       });
 
       setItems((oldItems) => {
-        const newItems = new Map(oldItems);
+        const newItems = new ItemDictionary(oldItems);
         items.forEach((item) => {
           const { item_id } = item;
           newItems.set(item_id, new Item(item));
@@ -141,7 +140,7 @@ export const useSync = () => {
       const { budgets, sections, categories } = data;
 
       setBudgets((oldBudgets) => {
-        const newBudgets: Budgets = new Map(
+        const newBudgets: BudgetDictionary = new BudgetDictionary(
           budgets.map((e) => {
             const { budget_id } = e;
             const newBudget = new Budget(e);
@@ -158,7 +157,7 @@ export const useSync = () => {
       });
 
       setSections((oldSections) => {
-        const newSections: Sections = new Map(
+        const newSections = new SectionDictionary(
           sections.map((e) => {
             const { section_id } = e;
             const newSection = new Section(e);
@@ -175,7 +174,7 @@ export const useSync = () => {
       });
 
       setCategories((oldCategories) => {
-        const newCategories: Categories = new Map(
+        const newCategories = new CategoryDictionary(
           categories.map((e) => {
             const { category_id } = e;
             const newCategory = new Category(e);
@@ -219,11 +218,11 @@ export const useSync = () => {
   );
 
   const clean = useCallback(() => {
-    setTransactions(new Map());
-    setAccounts(new Map());
-    setBudgets(new Map());
-    setSections(new Map());
-    setCategories(new Map());
+    setTransactions(new TransactionDictionary());
+    setAccounts(new AccountDictionary());
+    setBudgets(new BudgetDictionary());
+    setSections(new SectionDictionary());
+    setCategories(new CategoryDictionary());
   }, [setTransactions, setAccounts, setBudgets, setSections, setCategories]);
 
   return { sync, clean };

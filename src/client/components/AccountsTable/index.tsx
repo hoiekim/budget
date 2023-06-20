@@ -1,4 +1,4 @@
-import { Account } from "common";
+import { Account, AccountDictionary } from "common";
 import { call, useAppContext } from "client";
 import { PlaidLinkButton } from "client/components";
 import AccountRow from "./AccountRow";
@@ -21,7 +21,7 @@ const AccountsTable = ({ accountsArray }: Props) => {
   });
 
   const unhide = async () => {
-    const newAccounts = new Map(accounts);
+    const newAccounts = new AccountDictionary(accounts);
 
     const fetchJobs: Promise<void>[] = [];
     accounts.forEach((account) => {

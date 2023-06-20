@@ -9,7 +9,7 @@ import {
   DateLabel,
   MoneyLabel,
 } from "client";
-import { Budget, Section, getIndex } from "common";
+import { Budget, Section, SectionDictionary, getIndex } from "common";
 import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
 import { useGraph } from "./lib";
@@ -66,7 +66,7 @@ const BudgetDetailPage = () => {
     const { section_id } = data;
 
     setSections((oldSections) => {
-      const newSections = new Map(oldSections);
+      const newSections = new SectionDictionary(oldSections);
       if (section_id) {
         const newSection = new Section({ section_id, budget_id });
         newSections.set(section_id, newSection);

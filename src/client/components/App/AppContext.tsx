@@ -1,20 +1,8 @@
 import { useState, ReactNode } from "react";
-import {
-  useLocalStorage,
-  ContextType,
-  Context,
-  useRouter,
-  Transactions,
-  InvestmentTransactions,
-  Accounts,
-  Institutions,
-  Items,
-  Budgets,
-  Sections,
-  Categories,
-} from "client";
+import { useLocalStorage, ContextType, Context, useRouter } from "client";
 import { MaskedUser } from "server";
-import { Interval, ViewDate } from "common";
+import { data as _data, Interval, ViewDate } from "common";
+import { useData } from "./lib";
 
 interface Props {
   initialUser: ContextType["user"];
@@ -22,49 +10,22 @@ interface Props {
 }
 
 const AppContext = ({ initialUser, children }: Props) => {
-  const [transactions, setTransactions] = useState<Transactions>(new Map());
-  const [investmentTransactions, setInvestmentTransactions] =
-    useState<InvestmentTransactions>(new Map());
-  const [accounts, setAccounts] = useState<Accounts>(new Map());
-  const [items, setItems] = useState<Items>(new Map());
-  const [institutions, setInstitutions] = useLocalStorage<Institutions>(
-    "map_institutions",
-    new Map()
-  );
-  const [budgets, setBudgets] = useState<Budgets>(new Map());
-  const [sections, setSections] = useState<Sections>(new Map());
-  const [categories, setCategories] = useState<Categories>(new Map());
+  const [data, setData] = useData();
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
-
   const [selectedInterval, setSelectedInterval] = useLocalStorage<Interval>(
     "selectedInterval",
     "month"
   );
 
   const [viewDate, setViewDate] = useState(new ViewDate(selectedInterval));
-
   const router = useRouter();
 
   const contextValue: ContextType = {
-    transactions,
-    setTransactions,
-    investmentTransactions,
-    setInvestmentTransactions,
-    accounts,
-    setAccounts,
-    institutions,
-    setInstitutions,
-    items,
-    setItems,
+    data,
+    setData,
     user,
     setUser,
     router,
-    budgets,
-    setBudgets,
-    sections,
-    setSections,
-    categories,
-    setCategories,
     selectedInterval,
     setSelectedInterval,
     viewDate,
