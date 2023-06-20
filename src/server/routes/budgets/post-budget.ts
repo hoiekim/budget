@@ -5,21 +5,21 @@ export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
   if (!user) {
     return {
       status: "failed",
-      info: "Request user is not authenticated.",
+      message: "Request user is not authenticated.",
     };
   }
 
   if (!req.body || !Object.keys(req.body).length) {
     return {
       status: "failed",
-      info: "Request body is required but not provided.",
+      message: "Request body is required but not provided.",
     };
   }
 
   if (!req.body.budget_id) {
     return {
       status: "failed",
-      info: "budget_id is required but not provided.",
+      message: "budget_id is required but not provided.",
     };
   }
 

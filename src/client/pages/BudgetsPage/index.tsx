@@ -2,11 +2,12 @@ import { useEffect } from "react";
 import { PATH, call, useAppContext, useLocalStorage } from "client";
 import { BudgetBar } from "client/components";
 import { NewBudgetGetResponse } from "server";
-import { Budget, getIndex } from "common";
+import { Budget, BudgetDictionary, Data, getIndex } from "common";
 import "./index.css";
 
 const BudgetsPage = () => {
-  const { budgets, setBudgets, router } = useAppContext();
+  const { data, setData, router } = useAppContext();
+  const { budgets } = data;
   const [budgetsOrder, setBudgetsOrder] = useLocalStorage<string[]>("budgetsOrder", []);
 
   useEffect(() => {
@@ -29,16 +30,18 @@ const BudgetsPage = () => {
     });
 
   const onClickAddBudget = async () => {
-    const { data } = await call.get<NewBudgetGetResponse>("/api/new-budget");
-    if (!data) return;
+    const { body } = await call.get<NewBudgetGetResponse>("/api/new-budget");
+    if (!body) return;
 
-    const { budget_id } = data;
+    const { budget_id } = body;
 
-    setBudgets((oldBudgets) => {
+    setData((oldData) => {
+      const newData = new Data(oldData);
       const newBudget = new Budget({ budget_id });
-      const newBudgets = new Map(oldBudgets);
+      const newBudgets = new BudgetDictionary(newData.budgets);
       newBudgets.set(budget_id, newBudget);
-      return newBudgets;
+      newData.budgets = newBudgets;
+      return newData;
     });
 
     router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: budget_id }) });

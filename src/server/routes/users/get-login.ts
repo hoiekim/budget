@@ -9,7 +9,7 @@ export const getLoginRoute = new Route<LoginGetResponse>("GET", "/login", async 
   const { user } = req.session;
   return {
     status: "success",
-    data: { user, app: { version } },
-    info: user ? undefined : "Not logged in.",
+    body: { user, app: { version } },
+    message: user ? undefined : "Not logged in.",
   };
 });

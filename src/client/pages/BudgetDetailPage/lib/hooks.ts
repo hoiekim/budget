@@ -3,7 +3,8 @@ import { Budget, ViewDate } from "common";
 import { AreaInput, GraphInput, LineInput, useAppContext } from "client";
 
 export const useGraph = (budget: Budget) => {
-  const { transactions, accounts, viewDate } = useAppContext();
+  const { data, viewDate } = useAppContext();
+  const { transactions, accounts } = data;
 
   const interval = viewDate.getInterval();
   const graphViewDate = useMemo(() => {

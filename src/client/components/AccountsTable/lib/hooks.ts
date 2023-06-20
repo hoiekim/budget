@@ -6,7 +6,16 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { Account, InvestmentTransaction, Timeout, Transaction, ViewDate } from "common";
+import {
+  Account,
+  AccountDictionary,
+  Data,
+  InvestmentTransaction,
+  Timeout,
+  Transaction,
+  TransactionDictionary,
+  ViewDate,
+} from "common";
 import { GraphInput, PATH, TransactionsPageParams, call, useAppContext } from "client";
 
 export const useGraph = (account: Account) => {
@@ -16,7 +25,8 @@ export const useGraph = (account: Account) => {
     balances: { current },
   } = account;
 
-  const { transactions, investmentTransactions, viewDate } = useAppContext();
+  const { data, viewDate } = useAppContext();
+  const { transactions, investmentTransactions } = data;
 
   const graphViewDate = useMemo(() => {
     const isFuture = new Date() < viewDate.getDate();
@@ -90,8 +100,8 @@ export const useEventHandlers = (
 ) => {
   const { account_id } = account;
 
-  const { setAccounts, setTransactions, items, institutions, user, router } =
-    useAppContext();
+  const { data, setData, user, router } = useAppContext();
+  const { items, institutions } = data;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -105,12 +115,14 @@ export const useEventHandlers = (
     });
 
     if (r.status === "success") {
-      setAccounts((oldAccounts) => {
-        const newAccounts = new Map(oldAccounts);
+      setData((oldData) => {
+        const newData = new Data(oldData);
         const newAccount = new Account(account);
+        const newAccounts = new AccountDictionary(newData.accounts);
         newAccount.label.budget_id = value || null;
         newAccounts.set(account_id, newAccount);
-        return newAccounts;
+        newData.accounts = newAccounts;
+        return newData;
       });
     } else {
       setSelectedBudgetIdLabel(selectedBudgetIdLabel);
@@ -127,13 +139,15 @@ export const useEventHandlers = (
     timeout.current = setTimeout(() => {
       call.post("/api/account", { account_id, custom_name: value }).then((r) => {
         if (r.status === "success") {
-          setAccounts((oldAccounts) => {
-            const oldAccount = oldAccounts.get(account_id);
-            if (!oldAccount) return oldAccounts;
-            const newAccounts = new Map(oldAccounts);
-            const newAccount = new Account({ ...oldAccount, custom_name: value });
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const existingAccount = newData.accounts.get(account_id);
+            if (!existingAccount) return oldData;
+            const newAccount = new Account({ ...existingAccount, custom_name: value });
+            const newAccounts = new AccountDictionary(newData.accounts);
             newAccounts.set(account_id, newAccount);
-            return newAccounts;
+            newData.accounts = newAccounts;
+            return newData;
           });
         }
       });
@@ -158,25 +172,26 @@ export const useEventHandlers = (
       call.delete(`/api/item?id=${item_id}`).then((r) => {
         const accountsInItem: Account[] = [];
 
-        setAccounts((oldAccounts) => {
-          oldAccounts.forEach((e) => {
+        setData((oldData) => {
+          const newData = new Data(oldData);
+
+          const newAccounts = new AccountDictionary(newData.accounts);
+          newAccounts.forEach((e) => {
             if (e.item_id === item_id) accountsInItem.push(e);
           });
-          const newAccounts = new Map(oldAccounts);
           accountsInItem.forEach((e) => {
             newAccounts.delete(e.account_id);
           });
-          return newAccounts;
-        });
+          newData.accounts = newAccounts;
 
-        setTransactions((oldTransactions) => {
-          const newTransactions = new Map(oldTransactions);
+          const newTransactions = new TransactionDictionary(newData.transactions);
           newTransactions.forEach((e) => {
             if (accountsInItem.find((f) => e.account_id === f.account_id)) {
               newTransactions.delete(e.transaction_id);
             }
           });
-          return newTransactions;
+          newData.transactions = newTransactions;
+          return newData;
         });
       });
     }
@@ -187,13 +202,15 @@ export const useEventHandlers = (
     if (!account_id) return;
     call.post("/api/account", { account_id, hide: true }).then((r) => {
       if (r.status === "success") {
-        setAccounts((oldAccounts) => {
-          const newAccounts = new Map(oldAccounts);
-          const oldAccount = oldAccounts.get(account_id);
-          if (!oldAccount) return newAccounts;
-          const newAccount = new Account({ ...oldAccount, hide: true });
+        setData((oldData) => {
+          const newData = new Data(oldData);
+          const existingAccount = newData.accounts.get(account_id);
+          if (!existingAccount) return oldData;
+          const newAccount = new Account({ ...existingAccount, hide: true });
+          const newAccounts = new AccountDictionary(newData.accounts);
           newAccounts.set(account_id, newAccount);
-          return newAccounts;
+          newData.accounts = newAccounts;
+          return newData;
         });
       }
     });

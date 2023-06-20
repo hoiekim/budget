@@ -5,7 +5,7 @@ export const deleteCategoryRoute = new Route("DELETE", "/category", async (req) 
   if (!user) {
     return {
       status: "failed",
-      info: "Request user is not authenticated.",
+      message: "Request user is not authenticated.",
     };
   }
 
@@ -14,7 +14,7 @@ export const deleteCategoryRoute = new Route("DELETE", "/category", async (req) 
   if (!category_id) {
     return {
       status: "failed",
-      info: "id is required but not provided.",
+      message: "id is required but not provided.",
     };
   }
 

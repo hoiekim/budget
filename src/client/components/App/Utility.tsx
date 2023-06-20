@@ -9,8 +9,8 @@ let lastSync = new Date();
  * dev engineers to find them easily.
  */
 const Utility = () => {
-  const { user, router, setSelectedInterval, transactions, accounts, viewDate } =
-    useAppContext();
+  const { user, router, setSelectedInterval, data, viewDate } = useAppContext();
+  const { transactions, accounts } = data;
 
   const userLoggedIn = !!user;
   const { path, go } = router;

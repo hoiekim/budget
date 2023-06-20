@@ -1,4 +1,4 @@
-import { Account } from "common";
+import { Account, AccountDictionary, Data } from "common";
 import { call, useAppContext } from "client";
 import { PlaidLinkButton } from "client/components";
 import AccountRow from "./AccountRow";
@@ -14,14 +14,15 @@ interface Props {
 }
 
 const AccountsTable = ({ accountsArray }: Props) => {
-  const { accounts, setAccounts } = useAppContext();
+  const { data, setData } = useAppContext();
+  const { accounts } = data;
 
   const accountRows = accountsArray.map((e, i) => {
     return <AccountRow key={e.account_id} account={e} />;
   });
 
   const unhide = async () => {
-    const newAccounts = new Map(accounts);
+    const newAccounts = new AccountDictionary(accounts);
 
     const fetchJobs: Promise<void>[] = [];
     accounts.forEach((account) => {
@@ -48,7 +49,11 @@ const AccountsTable = ({ accountsArray }: Props) => {
     });
 
     await Promise.all(fetchJobs);
-    setAccounts(newAccounts);
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      newData.accounts = newAccounts;
+      return newData;
+    });
   };
 
   return (

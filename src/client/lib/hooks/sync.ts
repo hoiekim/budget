@@ -4,15 +4,7 @@ import {
   AccountsStreamGetResponse,
   BudgetsGetResponse,
 } from "server";
-import {
-  useAppContext,
-  read,
-  call,
-  Accounts,
-  Budgets,
-  Sections,
-  Categories,
-} from "client";
+import { useAppContext, read, call } from "client";
 import {
   Account,
   InvestmentTransaction,
@@ -21,22 +13,21 @@ import {
   Section,
   Category,
   Item,
+  BudgetDictionary,
+  SectionDictionary,
+  CategoryDictionary,
+  Data,
+  TransactionDictionary,
+  InvestmentTransactionDictionary,
+  ItemDictionary,
+  AccountDictionary,
 } from "common";
 
 /**
  * @returns a function that sets transactions and accounts states and a function that cleans them.
  */
 export const useSync = () => {
-  const {
-    user,
-    setItems,
-    setTransactions,
-    setInvestmentTransactions,
-    setAccounts,
-    setBudgets,
-    setSections,
-    setCategories,
-  } = useAppContext();
+  const { user, setData } = useAppContext();
   const userLoggedIn = !!user;
 
   type SyncTransactions = () => void;
@@ -44,53 +35,70 @@ export const useSync = () => {
   const syncTransactions = useCallback(() => {
     if (!userLoggedIn) return;
 
-    read<TransactionsStreamGetResponse>("/api/transactions-stream", ({ data }) => {
-      if (!data) return;
-      const { items, transactions, investmentTransactions } = data;
+    read<TransactionsStreamGetResponse>("/api/transactions-stream", ({ body }) => {
+      if (!body) return;
+      const { items, transactions, investmentTransactions } = body;
 
-      if (transactions) {
-        setTransactions((oldData) => {
-          const newData = new Map(oldData);
+      setData((oldData) => {
+        const newData = new Data(oldData);
+
+        if (transactions) {
+          const newTransactions = new TransactionDictionary(newData.transactions);
           const { added, removed, modified } = transactions;
-          added?.forEach((e) => newData.set(e.transaction_id, new Transaction(e)));
-          modified?.forEach((e) => {
-            const data = oldData.get(e.transaction_id);
-            if (!data) return;
-            const newTransaction = new Transaction({ ...data, ...e });
-            newData.set(newTransaction.id, newTransaction);
+          added?.forEach((e) => {
+            newTransactions.set(e.transaction_id, new Transaction(e));
           });
-          removed?.forEach((e) => newData.delete(e.transaction_id));
-          return newData;
-        });
-      }
+          modified?.forEach((e) => {
+            const transaction = newTransactions.get(e.transaction_id);
+            if (!transaction) return;
+            const newTransaction = new Transaction({ ...transaction, ...e });
+            newTransactions.set(newTransaction.id, newTransaction);
+          });
+          removed?.forEach((e) => {
+            e.transaction_id && newTransactions.delete(e.transaction_id);
+          });
+          newData.transactions = newTransactions;
+        }
 
-      if (investmentTransactions) {
-        setInvestmentTransactions((oldData) => {
-          const newData = new Map(oldData);
+        if (investmentTransactions) {
+          const newInvestmentTransactions = new InvestmentTransactionDictionary(
+            newData.investmentTransactions
+          );
           const { added, removed, modified } = investmentTransactions;
           added?.forEach((e) => {
-            const newTransaction = new InvestmentTransaction(e);
-            newData.set(newTransaction.id, newTransaction);
+            const newInvestmentTransaction = new InvestmentTransaction(e);
+            newInvestmentTransactions.set(
+              newInvestmentTransaction.id,
+              newInvestmentTransaction
+            );
           });
           modified?.forEach((e) => {
-            const data = oldData.get(e.investment_transaction_id);
-            if (!data) return;
-            const newTransaction = new InvestmentTransaction({ ...data, ...e });
-            newData.set(newTransaction.id, newTransaction);
+            const investmentTransaction = newInvestmentTransactions.get(
+              e.investment_transaction_id
+            );
+            if (!investmentTransaction) return;
+            const newInvestmentTransaction = new InvestmentTransaction({
+              ...investmentTransaction,
+              ...e,
+            });
+            newInvestmentTransactions.set(
+              newInvestmentTransaction.id,
+              newInvestmentTransaction
+            );
           });
-          removed?.forEach((e) => newData.delete(e.investment_transaction_id));
-          return newData;
-        });
-      }
+          removed?.forEach((e) => {
+            newInvestmentTransactions.delete(e.investment_transaction_id);
+          });
+          newData.investmentTransactions = newInvestmentTransactions;
+        }
 
-      if (items) {
-        setItems((oldItems) => {
-          const newItems = new Map(oldItems);
+        if (items) {
           items?.forEach((item) => {
+            const newItems = new ItemDictionary(newData.items);
             const { item_id, plaidError } = item;
-            const oldItem = oldItems.get(item_id);
-            if (oldItem?.plaidError) {
-              const oldPlaidError = oldItem?.plaidError;
+            const existingItem = newItems.get(item_id);
+            if (existingItem?.plaidError) {
+              const oldPlaidError = existingItem?.plaidError;
               if (plaidError && plaidError.error_code !== oldPlaidError.error_code) {
                 console.warn(`Multiple error is found in item: ${item_id}`);
                 console.warn(oldPlaidError);
@@ -98,100 +106,101 @@ export const useSync = () => {
               return;
             }
             newItems.set(item_id, new Item(item));
+            newData.items = newItems;
           });
-          return newItems;
-        });
-      }
+        }
+
+        return newData;
+      });
     });
-  }, [userLoggedIn, setItems, setTransactions, setInvestmentTransactions]);
+  }, [userLoggedIn, setData]);
 
   type SyncAccounts = () => void;
 
   const syncAccounts = useCallback(() => {
     if (!userLoggedIn) return;
 
-    read<AccountsStreamGetResponse>("/api/accounts-stream", ({ data }) => {
-      if (!data) return;
-      const { accounts, items } = data;
+    read<AccountsStreamGetResponse>("/api/accounts-stream", ({ body }) => {
+      if (!body) return;
+      const { accounts, items } = body;
 
-      setAccounts((oldAccounts) => {
-        const newAccounts: Accounts = new Map(oldAccounts);
+      setData((oldData) => {
+        const newData = new Data(oldData);
+
+        const newAccounts = new AccountDictionary(newData.accounts);
         accounts.forEach((e) => newAccounts.set(e.account_id, new Account(e)));
-        return newAccounts;
-      });
+        newData.accounts = newAccounts;
 
-      setItems((oldItems) => {
-        const newItems = new Map(oldItems);
+        const newItems = new ItemDictionary(newData.items);
         items.forEach((item) => {
           const { item_id } = item;
           newItems.set(item_id, new Item(item));
         });
-        return newItems;
+        newData.items = newItems;
+
+        return newData;
       });
     });
-  }, [userLoggedIn, setItems, setAccounts]);
+  }, [userLoggedIn, setData]);
 
   type SyncBudgets = () => void;
 
   const syncBudgets = useCallback(() => {
     if (!userLoggedIn) return;
 
-    call.get<BudgetsGetResponse>("/api/budgets").then(({ data }) => {
-      if (!data) return;
-      const { budgets, sections, categories } = data;
+    call.get<BudgetsGetResponse>("/api/budgets").then(({ body }) => {
+      if (!body) return;
+      const { budgets, sections, categories } = body;
 
-      setBudgets((oldBudgets) => {
-        const newBudgets: Budgets = new Map(
-          budgets.map((e) => {
-            const { budget_id } = e;
-            const newBudget = new Budget(e);
-            const old = oldBudgets.get(budget_id);
-            if (old) {
-              newBudget.sorted_amount = old.sorted_amount;
-              newBudget.unsorted_amount = old.unsorted_amount;
-              newBudget.rolled_over_amount = old.rolled_over_amount;
-            }
-            return [budget_id, newBudget];
-          })
-        );
-        return newBudgets;
-      });
+      setData((oldData) => {
+        const newData = new Data(oldData);
 
-      setSections((oldSections) => {
-        const newSections: Sections = new Map(
-          sections.map((e) => {
-            const { section_id } = e;
-            const newSection = new Section(e);
-            const old = oldSections.get(section_id);
-            if (old) {
-              newSection.sorted_amount = old.sorted_amount;
-              newSection.unsorted_amount = old.unsorted_amount;
-              newSection.rolled_over_amount = old.rolled_over_amount;
-            }
-            return [section_id, newSection];
-          })
-        );
-        return newSections;
-      });
+        const newBudgets: BudgetDictionary = new BudgetDictionary(newData.budgets);
+        budgets.forEach((e) => {
+          const { budget_id } = e;
+          const newBudget = new Budget(e);
+          const existing = newBudgets.get(budget_id);
+          if (existing) {
+            newBudget.sorted_amount = existing.sorted_amount;
+            newBudget.unsorted_amount = existing.unsorted_amount;
+            newBudget.rolled_over_amount = existing.rolled_over_amount;
+          }
+          newBudgets.set(budget_id, newBudget);
+        });
+        newData.budgets = newBudgets;
 
-      setCategories((oldCategories) => {
-        const newCategories: Categories = new Map(
-          categories.map((e) => {
-            const { category_id } = e;
-            const newCategory = new Category(e);
-            const old = oldCategories.get(category_id);
-            if (old) {
-              newCategory.sorted_amount = old.sorted_amount;
-              newCategory.unsorted_amount = old.unsorted_amount;
-              newCategory.rolled_over_amount = old.rolled_over_amount;
-            }
-            return [category_id, newCategory];
-          })
-        );
-        return newCategories;
+        const newSections = new SectionDictionary(newData.sections);
+        sections.forEach((e) => {
+          const { section_id } = e;
+          const newSection = new Section(e);
+          const existing = newSections.get(section_id);
+          if (existing) {
+            newSection.sorted_amount = existing.sorted_amount;
+            newSection.unsorted_amount = existing.unsorted_amount;
+            newSection.rolled_over_amount = existing.rolled_over_amount;
+          }
+          newSections.set(section_id, newSection);
+        });
+        newData.sections = newSections;
+
+        const newCategories = new CategoryDictionary(newData.categories);
+        categories.forEach((e) => {
+          const { category_id } = e;
+          const newCategory = new Category(e);
+          const existing = newCategories.get(category_id);
+          if (existing) {
+            newCategory.sorted_amount = existing.sorted_amount;
+            newCategory.unsorted_amount = existing.unsorted_amount;
+            newCategory.rolled_over_amount = existing.rolled_over_amount;
+          }
+          newCategories.set(category_id, newCategory);
+        });
+        newData.categories = newCategories;
+
+        return newData;
       });
     });
-  }, [userLoggedIn, setBudgets, setSections, setCategories]);
+  }, [userLoggedIn, setData]);
 
   type SyncAll = () => void;
 
@@ -218,13 +227,7 @@ export const useSync = () => {
     [syncAll, syncTransactions, syncAccounts, syncBudgets]
   );
 
-  const clean = useCallback(() => {
-    setTransactions(new Map());
-    setAccounts(new Map());
-    setBudgets(new Map());
-    setSections(new Map());
-    setCategories(new Map());
-  }, [setTransactions, setAccounts, setBudgets, setSections, setCategories]);
+  const clean = useCallback(() => setData(new Data()), [setData]);
 
   return { sync, clean };
 };

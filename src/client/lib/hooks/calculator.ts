@@ -1,13 +1,14 @@
 import { useCallback } from "react";
+import { useAppContext } from "client";
 import {
-  useAppContext,
-  Budgets,
-  Sections,
-  Categories,
-  Transactions,
-  Accounts,
-} from "client";
-import { ViewDate } from "common";
+  AccountDictionary,
+  BudgetDictionary,
+  CategoryDictionary,
+  Data,
+  SectionDictionary,
+  TransactionDictionary,
+  ViewDate,
+} from "common";
 import { BudgetLike } from "common/models/BudgetLike";
 
 /**
@@ -15,16 +16,16 @@ import { BudgetLike } from "common/models/BudgetLike";
  * and returns the cloned maps with calculated results.
  */
 export const calculatorLambda = (
-  budgets: Budgets,
-  sections: Sections,
-  categories: Categories,
+  budgets: BudgetDictionary,
+  sections: SectionDictionary,
+  categories: CategoryDictionary,
   viewDate: ViewDate,
-  transactions: Transactions,
-  accounts: Accounts
+  transactions: TransactionDictionary,
+  accounts: AccountDictionary
 ) => {
-  const newBudgets = new Map(budgets);
-  const newSections = new Map(sections);
-  const newCategories = new Map(categories);
+  const newBudgets = new BudgetDictionary(budgets);
+  const newSections = new SectionDictionary(sections);
+  const newCategories = new CategoryDictionary(categories);
 
   const setBaseAmounts = (e: BudgetLike) => {
     e.sorted_amount = 0;
@@ -118,48 +119,28 @@ export const calculatorLambda = (
 };
 
 export const useCalculator = () => {
-  const { viewDate, setBudgets, setSections, setCategories, transactions, accounts } =
-    useAppContext();
+  const { data, setData, viewDate } = useAppContext();
+  const { transactions, accounts } = data;
 
   const callback = () => {
-    setBudgets((oldBudgets) => {
-      let newBudgets = oldBudgets;
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const { budgets, sections, categories } = calculatorLambda(
+        newData.budgets,
+        newData.sections,
+        newData.categories,
+        viewDate,
+        transactions,
+        accounts
+      );
 
-      setSections((oldSections) => {
-        let newSections = oldSections;
+      newData.budgets = budgets;
+      newData.sections = sections;
+      newData.categories = categories;
 
-        setCategories((oldCategories) => {
-          let newCategories = oldCategories;
-
-          const { budgets, sections, categories } = calculatorLambda(
-            oldBudgets,
-            oldSections,
-            oldCategories,
-            viewDate,
-            transactions,
-            accounts
-          );
-
-          newBudgets = budgets;
-          newSections = sections;
-          newCategories = categories;
-
-          return newCategories;
-        });
-
-        return newSections;
-      });
-
-      return newBudgets;
+      return newData;
     });
   };
 
-  return useCallback(callback, [
-    viewDate,
-    setBudgets,
-    setSections,
-    setCategories,
-    transactions,
-    accounts,
-  ]);
+  return useCallback(callback, [viewDate, setData, transactions, accounts]);
 };

@@ -12,7 +12,8 @@ export type TransactionsPageParams = {
 };
 
 const TransactionsPage = () => {
-  const { transactions, accounts, categories, viewDate, router } = useAppContext();
+  const { data, viewDate, router } = useAppContext();
+  const { transactions, accounts, categories } = data;
   const { path, params, transition } = router;
   const { incomingParams } = transition;
 

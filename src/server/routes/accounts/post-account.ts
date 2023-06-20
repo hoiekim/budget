@@ -12,14 +12,14 @@ export const postAccountRoute = new Route<AccountPostResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
     try {
       const response = await upsertAccounts(user, [req.body], false);
       const account_id = response[0].update?._id || "";
-      return { status: "success", data: { account_id } };
+      return { status: "success", body: { account_id } };
     } catch (error: any) {
       console.error(`Failed to update an account: ${req.body.account_id}`);
       throw new Error(error);

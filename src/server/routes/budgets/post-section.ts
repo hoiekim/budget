@@ -5,21 +5,21 @@ export const postSectionRoute = new Route("POST", "/section", async (req) => {
   if (!user) {
     return {
       status: "failed",
-      info: "Request user is not authenticated.",
+      message: "Request user is not authenticated.",
     };
   }
 
   if (!req.body || !Object.keys(req.body).length) {
     return {
       status: "failed",
-      info: "Request body is required but not provided.",
+      message: "Request body is required but not provided.",
     };
   }
 
   if (!req.body.section_id) {
     return {
       status: "failed",
-      info: "section_id is required but not provided.",
+      message: "section_id is required but not provided.",
     };
   }
 

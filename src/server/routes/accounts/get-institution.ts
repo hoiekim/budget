@@ -11,7 +11,7 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
@@ -21,7 +21,7 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
 
     return {
       status: "success",
-      data: new Institution(response),
+      body: new Institution(response),
     };
   }
 );

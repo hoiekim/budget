@@ -10,7 +10,7 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
@@ -19,7 +19,7 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
     if (typeof access_token !== "string" && typeof access_token !== "undefined") {
       return {
         status: "failed",
-        info: "access_token value must be string.",
+        message: "access_token value must be string.",
       };
     }
 
@@ -28,7 +28,7 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
 
     return {
       status: "success",
-      data: response.link_token,
+      body: response.link_token,
     };
   }
 );

@@ -17,7 +17,8 @@ export type BudgetLikeConfigPageParams = {
 };
 
 const BudgetConfigPage = () => {
-  const { budgets, sections, categories, router, viewDate } = useAppContext();
+  const { data, router, viewDate } = useAppContext();
+  const { budgets, sections, categories } = data;
 
   const calculate = useCalculator();
 
@@ -30,7 +31,7 @@ const BudgetConfigPage = () => {
   const section = sections.get(id) || (category && sections.get(category.section_id));
   const budget = budgets.get(id) || (section && budgets.get(section.budget_id));
 
-  const data = useMemo(() => {
+  const budgetLike = useMemo(() => {
     return category || section || budget || new Budget();
   }, [category, section, budget]);
 
@@ -41,9 +42,9 @@ const BudgetConfigPage = () => {
     unsorted_amount,
     roll_over,
     roll_over_start_date: roll_date,
-  } = data;
+  } = budgetLike;
 
-  const activeCapacity = data.getActiveCapacity(viewDate.getDate());
+  const activeCapacity = budgetLike.getActiveCapacity(viewDate.getDate());
   const defaultInputs = activeCapacity.toInputs();
   const defaultCapInput = capacities.map((c) => c.toInputs().capacityInput);
 
@@ -55,11 +56,11 @@ const BudgetConfigPage = () => {
   const [rollDateInput, setRollDateInput] = useState(roll_date || new Date());
 
   useEffect(() => {
-    if (!data) return;
+    if (!budgetLike) return;
 
-    const { name, capacities, roll_over, roll_over_start_date: roll_date } = data;
+    const { name, capacities, roll_over, roll_over_start_date: roll_date } = budgetLike;
 
-    const activeCapacity = data.getActiveCapacity(viewDate.getDate());
+    const activeCapacity = budgetLike.getActiveCapacity(viewDate.getDate());
     const defaultInputs = activeCapacity.toInputs();
     const defaultCapInput = capacities.map((c) => c.toInputs().capacityInput);
 
@@ -69,7 +70,7 @@ const BudgetConfigPage = () => {
     setIsIncomeInput(defaultInputs.isIncomeInput);
     setIsRollOverInput(roll_over);
     setRollDateInput(roll_date || new Date());
-  }, [data, viewDate]);
+  }, [budgetLike, viewDate]);
 
   const { save, remove } = useEventHandlers(id, category, section, budget);
 

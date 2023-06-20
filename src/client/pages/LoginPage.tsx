@@ -16,7 +16,7 @@ const LoginPage = () => {
   const onClick = () => {
     call.post<LoginPostResponse>("/api/login", { username, password }).then((r) => {
       if (r.status === "success") {
-        setUser(r.data);
+        setUser(r.body);
         setUsername("");
         setPassword("");
       }

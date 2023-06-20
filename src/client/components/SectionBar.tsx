@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { NewCategoryGetResponse } from "server";
 import { PATH, call, useAppContext, useLocalStorage } from "client";
 import { LabeledBar, CategoryBar } from "client/components";
-import { getIndex, Budget, Section, Category } from "common";
+import { getIndex, Budget, Section, Category, Data, CategoryDictionary } from "common";
 
 interface Props {
   section: Section & { sorted_amount?: number };
@@ -12,7 +12,8 @@ interface Props {
 const SectionBar = ({ section, onSetOrder }: Props) => {
   const { budget_id, section_id } = section;
 
-  const { budgets, categories, setCategories, router } = useAppContext();
+  const { data, setData, router } = useAppContext();
+  const { budgets, categories } = data;
 
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [childrenHeight, setChildrenHeight] = useState(0);
@@ -86,19 +87,22 @@ const SectionBar = ({ section, onSetOrder }: Props) => {
   const onClickAddCategory = async () => {
     const queryString = "?" + new URLSearchParams({ parent: section_id }).toString();
     const newCategoryRequestUrl = "/api/new-category" + queryString;
-    const { data } = await call.get<NewCategoryGetResponse>(newCategoryRequestUrl);
+    const { body } = await call.get<NewCategoryGetResponse>(newCategoryRequestUrl);
 
-    if (!data) return;
+    if (!body) return;
 
-    const { category_id } = data;
+    const { category_id } = body;
 
-    setCategories((oldCategories) => {
-      const newCategories = new Map(oldCategories);
+    setData((oldData) => {
       if (category_id) {
+        const newData = new Data(oldData);
         const newCategory = new Category({ category_id, section_id });
+        const newCategories = new CategoryDictionary(newData.categories);
         newCategories.set(category_id, newCategory);
+        newData.categories = newCategories;
+        return newData;
       }
-      return newCategories;
+      return oldData;
     });
 
     router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: category_id }) });

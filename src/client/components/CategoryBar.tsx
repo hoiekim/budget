@@ -11,7 +11,8 @@ interface Props {
 const CategoryComponent = ({ category, onSetOrder }: Props) => {
   const { section_id, category_id } = category;
 
-  const { budgets, sections, router } = useAppContext();
+  const { data, router } = useAppContext();
+  const { budgets, sections } = data;
 
   const section = sections.get(section_id) as Section;
   const budget_id = section.budget_id;

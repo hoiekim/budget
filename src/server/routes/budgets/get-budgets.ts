@@ -15,12 +15,12 @@ export const getBudgetsRoute = new Route<BudgetsGetResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
-    const data = await searchBudgets(user);
+    const body = await searchBudgets(user);
 
-    return { status: "success", data };
+    return { status: "success", body };
   }
 );

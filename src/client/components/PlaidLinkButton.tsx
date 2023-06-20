@@ -36,8 +36,8 @@ const PlaidLinkButton = ({ item, children }: Props) => {
           institution_id,
         })
         .then((r) => {
-          const { status, data } = r;
-          if (status === "success" && data?.item) {
+          const { status, body } = r;
+          if (status === "success" && body?.item) {
             setTimeout(() => {
               sync.transactions();
               sync.accounts();
@@ -74,7 +74,7 @@ const PlaidLinkButton = ({ item, children }: Props) => {
     const promisedToken = call
       .get<LinkTokenGetResponse>("/api/link-token" + queryString)
       .then((r) => {
-        const token = r.data || "";
+        const token = r.body || "";
         tokens.set(access_token, token);
         setToken(token);
         return token;

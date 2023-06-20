@@ -1,22 +1,32 @@
 import {
   TransactionDictionary,
-  Dictionary,
-  Item,
-  Budget,
-  Section,
-  Category,
-  InvestmentTransaction,
-  Account,
-  Institution,
+  AccountDictionary,
+  InstitutionDictionary,
+  InvestmentTransactionDictionary,
+  BudgetDictionary,
+  SectionDictionary,
+  CategoryDictionary,
+  ItemDictionary,
+  assign,
 } from "common";
 
-export const data = {
-  institutions: new Dictionary<Institution>(),
-  accounts: new Dictionary<Account>(),
-  transactions: new TransactionDictionary(),
-  investmentTransactions: new Dictionary<InvestmentTransaction>(),
-  budgets: new Dictionary<Budget>(),
-  sections: new Dictionary<Section>(),
-  categories: new Dictionary<Category>(),
-  items: new Dictionary<Item>(),
-};
+export class Data {
+  institutions = new InstitutionDictionary();
+  accounts = new AccountDictionary();
+  transactions = new TransactionDictionary();
+  investmentTransactions = new InvestmentTransactionDictionary();
+  budgets = new BudgetDictionary();
+  sections = new SectionDictionary();
+  categories = new CategoryDictionary();
+  items = new ItemDictionary();
+
+  constructor(init?: Partial<Data>) {
+    assign(this, init);
+  }
+
+  update = (init?: Partial<Data>) => {
+    assign(this, init);
+  };
+}
+
+export const data = new Data();

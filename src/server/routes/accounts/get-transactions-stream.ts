@@ -46,7 +46,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
@@ -55,11 +55,13 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
     const getTransactionsFromElasticsearch = searchTransactions(user)
       .then((r) => {
         const { transactions, investment_transactions } = r;
-        const data: TransactionsStreamGetResponse = {
-          transactions: { added: transactions },
-          investmentTransactions: { added: investment_transactions },
-        };
-        stream({ status: status.get(), data });
+        stream({
+          status: status.get(),
+          body: {
+            transactions: { added: transactions },
+            investmentTransactions: { added: investment_transactions },
+          },
+        });
 
         return r;
       })
@@ -72,11 +74,11 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
     const getTransactionsFromPlaid = promisedItems
       .then((r) => getTransactions(user, r))
-      .then(async (data) => {
+      .then(async (r) => {
         const ingestedTrasactions = await getTransactionsFromElasticsearch;
         const ingestedData = ingestedTrasactions?.transactions || [];
 
-        const { items, added, removed, modified } = data;
+        const { items, added, removed, modified } = r;
 
         const modelize = (e: (typeof added)[0]) => {
           const result = new Transaction(e);
@@ -111,7 +113,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
           },
         };
 
-        stream({ status: status.get(), data: adjustedData });
+        stream({ status: status.get(), body: adjustedData });
 
         const updateJobs = [
           upsertTransactions(user, [...modeledAdded, ...modeledModified]),
@@ -137,8 +139,8 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
     const getInvestmentTransactionsFromPlaid = promisedItems
       .then((r) => getInvestmentTransactions(user, r))
-      .then(async (data) => {
-        const { items, investmentTransactions } = data;
+      .then(async (r) => {
+        const { items, investmentTransactions } = r;
 
         const fillDateStrings = (e: (typeof investmentTransactions)[0]) => {
           const result = { ...e };
@@ -196,7 +198,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
         Promise.all(updateJobs).then(() => upsertItems(user, partialItems));
 
-        stream({ status: status.get(), data: filledData });
+        stream({ status: status.get(), body: filledData });
       })
       .catch((err) => {
         console.error(err);

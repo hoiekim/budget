@@ -4,8 +4,8 @@ export type Method = "GET" | "POST" | "DELETE";
 
 export interface ApiResponse<T = undefined> {
   status: "loading" | "streaming" | "success" | "failed" | "error";
-  data?: T;
-  info?: string;
+  body?: T;
+  message?: string;
 }
 
 export class StreamingStatus {

@@ -5,6 +5,8 @@ import {
   numberToCommaString,
   currencyCodeToSymbol,
   Category,
+  Data,
+  TransactionDictionary,
 } from "common";
 import { useAppContext, call, Sorter } from "client";
 import { InstitutionSpan } from "client/components";
@@ -31,7 +33,8 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
 
   const { getVisible } = sorter;
 
-  const { setTransactions, accounts, budgets, sections, categories } = useAppContext();
+  const { data, setData } = useAppContext();
+  const { accounts, budgets, sections, categories } = data;
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
@@ -100,13 +103,15 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     });
 
     if (r.status === "success") {
-      setTransactions((oldTransactions) => {
-        const newTransactions = new Map(oldTransactions);
+      setData((oldData) => {
+        const newData = new Data(oldData);
         const newTransaction = new Transaction(transaction);
+        const newTransactions = new TransactionDictionary(newData.transactions);
         newTransaction.label.budget_id = value || null;
         newTransaction.label.category_id = null;
         newTransactions.set(transaction_id, newTransaction);
-        return newTransactions;
+        newData.transactions = newTransactions;
+        return newData;
       });
     } else {
       setSelectedBudgetIdLabel(selectedBudgetIdLabel);
@@ -125,15 +130,17 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     const r = await call.post("/api/transaction", { transaction_id, label: labelQuery });
 
     if (r.status === "success") {
-      setTransactions((oldTransactions) => {
-        const newTransactions = new Map(oldTransactions);
+      setData((oldData) => {
+        const newData = new Data(oldData);
         const newTransaction = new Transaction(transaction);
+        const newTransactions = new TransactionDictionary(newData.transactions);
         if (!newTransaction.label.budget_id) {
           newTransaction.label.budget_id = account?.label.budget_id;
         }
         newTransaction.label.category_id = value || null;
         newTransactions.set(transaction_id, newTransaction);
-        return newTransactions;
+        newData.transactions = newTransactions;
+        return newData;
       });
     } else {
       setSelectedCategoryIdLabel(selectedCategoryIdLabel);

@@ -5,7 +5,7 @@ export const deleteSectionRoute = new Route("DELETE", "/section", async (req) =>
   if (!user) {
     return {
       status: "failed",
-      info: "Request user is not authenticated.",
+      message: "Request user is not authenticated.",
     };
   }
 
@@ -14,7 +14,7 @@ export const deleteSectionRoute = new Route("DELETE", "/section", async (req) =>
   if (!section_id) {
     return {
       status: "failed",
-      info: "id is required but not provided.",
+      message: "id is required but not provided.",
     };
   }
 

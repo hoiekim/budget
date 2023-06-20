@@ -9,7 +9,7 @@ import {
   DateLabel,
   MoneyLabel,
 } from "client";
-import { Budget, Section, getIndex } from "common";
+import { Budget, Data, Section, SectionDictionary, getIndex } from "common";
 import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
 import { useGraph } from "./lib";
@@ -19,7 +19,8 @@ export type BudgetDetailPageParams = {
 };
 
 const BudgetDetailPage = () => {
-  const { budgets, router, sections, setSections } = useAppContext();
+  const { data, setData, router } = useAppContext();
+  const { budgets, sections } = data;
   const { path, params, transition } = router;
   let budget_id: string;
   if (path === PATH.BUDGET_DETAIL) budget_id = params.get("budget_id") || "";
@@ -57,21 +58,24 @@ const BudgetDetailPage = () => {
 
   const onClickAddSection = async () => {
     const queryString = "?" + new URLSearchParams({ parent: budget_id }).toString();
-    const { data } = await call.get<NewSectionGetResponse>(
+    const { body } = await call.get<NewSectionGetResponse>(
       "/api/new-section" + queryString
     );
 
-    if (!data) return;
+    if (!body) return;
 
-    const { section_id } = data;
+    const { section_id } = body;
 
-    setSections((oldSections) => {
-      const newSections = new Map(oldSections);
+    setData((oldData) => {
       if (section_id) {
+        const newData = new Data(oldData);
         const newSection = new Section({ section_id, budget_id });
+        const newSections = new SectionDictionary(newData.sections);
         newSections.set(section_id, newSection);
+        newData.sections = newSections;
+        return newData;
       }
-      return newSections;
+      return oldData;
     });
 
     router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: section_id }) });

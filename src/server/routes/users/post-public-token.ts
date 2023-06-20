@@ -13,7 +13,7 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
@@ -21,7 +21,7 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
     if (typeof public_token !== "string" || typeof institution_id !== "string") {
       return {
         status: "failed",
-        info: "Request body has wrong type of public_token",
+        message: "Request body has wrong type of public_token",
       };
     }
 
@@ -32,6 +32,6 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
 
     if (user.username === "admin") pushLocalItem(item);
 
-    return { status: "success", data: { item } };
+    return { status: "success", body: { item } };
   }
 );

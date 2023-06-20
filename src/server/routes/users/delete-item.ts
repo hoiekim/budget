@@ -11,7 +11,7 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   if (!user) {
     return {
       status: "failed",
-      info: "Request user is not authenticated.",
+      message: "Request user is not authenticated.",
     };
   }
 
@@ -22,7 +22,7 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   if (!item) {
     return {
       status: "failed",
-      info: "Specified item is not owned by the request user",
+      message: "Specified item is not owned by the request user",
     };
   }
 

@@ -5,21 +5,21 @@ export const postCategoryRoute = new Route("POST", "/category", async (req) => {
   if (!user) {
     return {
       status: "failed",
-      info: "Request user is not authenticated.",
+      message: "Request user is not authenticated.",
     };
   }
 
   if (!req.body || !Object.keys(req.body).length) {
     return {
       status: "failed",
-      info: "Request body is required but not provided.",
+      message: "Request body is required but not provided.",
     };
   }
 
   if (!req.body.category_id) {
     return {
       status: "failed",
-      info: "category_id is required but not provided.",
+      message: "category_id is required but not provided.",
     };
   }
 

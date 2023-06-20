@@ -10,7 +10,7 @@ export const getNewSectionRoute = new Route<NewSectionGetResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
@@ -18,6 +18,6 @@ export const getNewSectionRoute = new Route<NewSectionGetResponse>(
     if (!budget_id) throw new Error("Parent id is required but not provided.");
     const response = await createSection(user, budget_id);
 
-    return { status: "success", data: { section_id: response._id } };
+    return { status: "success", body: { section_id: response._id } };
   }
 );

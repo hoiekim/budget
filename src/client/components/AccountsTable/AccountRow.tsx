@@ -14,7 +14,8 @@ const AccountRow = ({ account }: Props) => {
   const { account_id, balances, custom_name, name, institution_id, label, type } =
     account;
 
-  const { items, budgets } = useAppContext();
+  const { data } = useAppContext();
+  const { items, budgets } = data;
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
     return label.budget_id || "";

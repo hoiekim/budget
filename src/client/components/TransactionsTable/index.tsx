@@ -18,7 +18,8 @@ interface Props {
 }
 
 const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
-  const { accounts, institutions, budgets, categories } = useAppContext();
+  const { data } = useAppContext();
+  const { accounts, institutions, budgets, categories } = data;
 
   const sorter = useSorter<Transaction, TransactionHeaders>(
     "transactions" + (customKey ? `_${customKey}` : ""),

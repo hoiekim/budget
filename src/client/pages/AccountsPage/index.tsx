@@ -5,7 +5,8 @@ import { Account } from "common";
 import "./index.css";
 
 const AccountsPage = () => {
-  const { user, items, accounts } = useAppContext();
+  const { user, data } = useAppContext();
+  const { items, accounts } = data;
 
   const accountsArray = useMemo(() => {
     const array: Account[] = [];

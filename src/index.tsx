@@ -7,7 +7,7 @@ import { App } from "client/components";
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
 call.get<LoginGetResponse>("/api/login").then((r) => {
-  const app = r.data?.app;
+  const app = r.body?.app;
   const version = app?.version;
   if (version) {
     const appInfoString = localStorage.getItem("app");
@@ -20,7 +20,7 @@ call.get<LoginGetResponse>("/api/login").then((r) => {
   }
   root.render(
     <React.StrictMode>
-      <App initialUser={r.data?.user} />
+      <App initialUser={r.body?.user} />
     </React.StrictMode>
   );
 });

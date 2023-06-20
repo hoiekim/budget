@@ -10,7 +10,7 @@ export const getNewCategoryRoute = new Route<NewCategoryGetResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
@@ -18,6 +18,6 @@ export const getNewCategoryRoute = new Route<NewCategoryGetResponse>(
     if (!section_id) throw new Error("Parent id is required but not provided.");
     const response = await createCategory(user, section_id);
 
-    return { status: "success", data: { category_id: response._id } };
+    return { status: "success", body: { category_id: response._id } };
   }
 );

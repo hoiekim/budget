@@ -26,7 +26,7 @@ export const getAccountsStreamRoute = new Route(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
@@ -41,13 +41,13 @@ export const getAccountsStreamRoute = new Route(
 
     const getAccountsFromElasticsearch = searchAccounts(user).then((r) => {
       const { accounts, holdings, securities } = r;
-      const data: AccountsStreamGetResponse = {
+      const body: AccountsStreamGetResponse = {
         items: [],
         accounts,
         holdings,
         securities,
       };
-      res.write(JSON.stringify({ status: getStatus(), data }) + "\n");
+      res.write(JSON.stringify({ status: getStatus(), body }) + "\n");
       accounts.forEach((e) => map.set(e.account_id, e));
     });
 
@@ -66,14 +66,14 @@ export const getAccountsStreamRoute = new Route(
           else return new Account(e);
         });
 
-        const data: AccountsStreamGetResponse = {
+        const body: AccountsStreamGetResponse = {
           items,
           accounts,
           holdings: [],
           securities: [],
         };
 
-        res.write(JSON.stringify({ status: getStatus(), data }) + "\n");
+        res.write(JSON.stringify({ status: getStatus(), body }) + "\n");
 
         upsertAccounts(user, accounts);
       })
@@ -90,14 +90,14 @@ export const getAccountsStreamRoute = new Route(
           else return new Account(e);
         });
 
-        const data: AccountsStreamGetResponse = {
+        const body: AccountsStreamGetResponse = {
           items,
           accounts: filledAccounts,
           holdings,
           securities,
         };
 
-        res.write(JSON.stringify({ status: getStatus(), data }) + "\n");
+        res.write(JSON.stringify({ status: getStatus(), body }) + "\n");
 
         upsertAccounts(user, accounts);
         upsertHoldings(user, holdings);

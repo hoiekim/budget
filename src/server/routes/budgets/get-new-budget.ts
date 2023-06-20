@@ -10,11 +10,11 @@ export const getNewBudgetRoute = new Route<NewBudgetGetResponse>(
     if (!user) {
       return {
         status: "failed",
-        info: "Request user is not authenticated.",
+        message: "Request user is not authenticated.",
       };
     }
 
     const response = await createBudget(user);
-    return { status: "success", data: { budget_id: response._id } };
+    return { status: "success", body: { budget_id: response._id } };
   }
 );
