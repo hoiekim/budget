@@ -3,7 +3,7 @@ importConfig();
 setModulePaths();
 
 import path from "path";
-import express from "express";
+import express, { Router } from "express";
 import session from "express-session";
 import { initializeIndex, ElasticsearchSessionStore } from "server";
 import * as routes from "server/routes";
@@ -27,7 +27,7 @@ app.use(
   })
 );
 
-const router = express.Router();
+const router = Router();
 
 router.use((req, res, next) => {
   console.info(`<${req.method}> /api${req.url}`);
