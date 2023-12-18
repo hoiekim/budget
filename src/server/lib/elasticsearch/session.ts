@@ -10,7 +10,7 @@ export type RealCookie = Omit<Cookie, "expires"> & { _expires?: Date };
  * Redefines some properties as they should be stringified before storing because
  * Elasticsearch doesn't support multiple types mappings.
  */
-export type StoredCookie = Omit<Omit<RealCookie, "secure">, "sameSite"> & {
+export type StoredCookie = Omit<RealCookie, "secure" | "sameSite"> & {
   secure?: string;
   sameSite?: string;
 };
@@ -98,7 +98,7 @@ export class ElasticsearchSessionStore extends Store {
    * Repeatedly run every hour to remove expired session data.
    */
   private autoRemoveScheduler = () => {
-    purgeSessions();
+    purgeSessions().catch(console.error);
     setTimeout(this.autoRemoveScheduler, 1000 * 60 * 60);
   };
 
@@ -146,11 +146,7 @@ export class ElasticsearchSessionStore extends Store {
    * @param session
    * @param callback
    */
-  set = async (
-    session_id: string,
-    session: RealSessionData,
-    callback?: (err?: any) => void
-  ) => {
+  set = async (session_id: string, session: RealSessionData, callback?: (err?: any) => void) => {
     if (!callback) return;
 
     try {
