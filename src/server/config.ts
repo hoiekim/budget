@@ -12,3 +12,23 @@ export const setModulePaths = () => {
   process.env.NODE_PATH = paths.join(isWindows ? ";" : ":");
   require("module").Module._initPaths();
 };
+
+export const overrideConsoleLog = () => {
+  process.env.TZ = "America/Los_Angeles";
+  const { log, info, error } = console;
+  console.log = (...args: any[]) => {
+    const now = new Date();
+    const timestamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+    log(timestamp, ...args);
+  };
+  console.info = (...args: any[]) => {
+    const now = new Date();
+    const timestamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+    info(timestamp, ...args);
+  };
+  console.error = (...args: any[]) => {
+    const now = new Date();
+    const timestamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+    error(timestamp, ...args);
+  };
+};

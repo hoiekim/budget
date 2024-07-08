@@ -6,8 +6,8 @@ import {
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction,
 } from "plaid";
-import { MaskedUser, getPlaidClient, ignorable_error_codes } from "server";
-import { Item, getDateString, getDateTimeString } from "common";
+import { MaskedUser, getPlaidClient, ignorable_error_codes, updateItemStatus } from "server";
+import { Item, ItemStatus, getDateString, getDateTimeString } from "common";
 
 export interface PlaidTransaction extends Transaction {}
 
@@ -32,7 +32,8 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
   const allRemoved: RemovedTransaction[][] = [];
   const allModified: PlaidTransaction[][] = [];
 
-  const fetchJobs = items.map(async (item) => {
+  const fetchJobs = items.map(async (_item) => {
+    const item = { ..._item };
     const thisItemAdded: PlaidTransaction[][] = [];
     const thisItemRemoved: RemovedTransaction[][] = [];
     const thisItemModified: PlaidTransaction[][] = [];
@@ -60,6 +61,9 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
         plaidError = error?.response?.data as PlaidError;
         console.error(plaidError || error);
         console.error("Failed to get transactions data for item:", item_id);
+        updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+          console.error("Failed to update item status to BAD:", e);
+        });
         hasMore = false;
       }
     }
@@ -150,6 +154,9 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         if (!ignorable_error_codes.has(plaidError?.error_code)) {
           console.error(plaidError);
           console.error("Failed to get investment transaction data for item:", item_id);
+          updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+            console.error("Failed to update item status to BAD:", e);
+          });
           data.items.push(new Item({ ...item, plaidError }));
         }
       }

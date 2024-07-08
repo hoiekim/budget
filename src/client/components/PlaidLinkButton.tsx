@@ -2,7 +2,7 @@ import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
 import { PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
 import { useAppContext, call, useSync, useLocalStorage } from "client";
-import { Item } from "common";
+import { Item, ItemStatus } from "common";
 
 interface Props {
   item?: Item;
@@ -90,8 +90,10 @@ const PlaidLinkButton = ({ item, children }: Props) => {
     open();
   };
 
+  const className = !item || item.status === ItemStatus.OK ? "" : "notification";
+
   return (
-    <button onClick={onClick} disabled={disabled}>
+    <button onClick={onClick} disabled={disabled} className={className}>
       {children}
     </button>
   );

@@ -166,9 +166,7 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
             <>
               {merchant_name && <div className="bigText">{merchant_name}</div>}
               {name && <div className="smallText">{name}</div>}
-              {!!locations.length && (
-                <div className="smallText">{locations.join(", ")}</div>
-              )}
+              {!!locations.length && <div className="smallText">{locations.join(", ")}</div>}
             </>
           )}
           {getVisible("account") && (
@@ -195,10 +193,12 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
           </select>
         )}
         {getVisible("category") && (
-          <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-            <option value="">Select Category</option>
-            {categoryOptions}
-          </select>
+          <div className={selectedCategoryIdLabel ? "" : "notification"}>
+            <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+              <option value="">Select Category</option>
+              {categoryOptions}
+            </select>
+          </div>
         )}
       </div>
     </div>

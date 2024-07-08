@@ -7,8 +7,8 @@ import {
   Holding as PlaidHolding,
   Security as PlaidSecurity,
 } from "plaid";
-import { MaskedUser, getPlaidClient, ignorable_error_codes } from "server";
-import { Item, Holding, Security } from "common";
+import { MaskedUser, getPlaidClient, ignorable_error_codes, updateItemStatus } from "server";
+import { Item, Holding, Security, ItemStatus } from "common";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -130,6 +130,9 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
       const plaidError = error?.response?.data as PlaidError;
       console.error(plaidError);
       console.error("Failed to get accounts data for item:", item_id);
+      updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+        console.error("Failed to update item status to BAD:", e);
+      });
       data.items.push(new Item({ ...item, plaidError }));
     }
 
@@ -188,6 +191,9 @@ export const getHoldings = async (user: MaskedUser, items: Item[]) => {
       if (!ignorable_error_codes.has(plaidError?.error_code)) {
         console.error(plaidError);
         console.error("Failed to get holdings data for item:", item_id);
+        updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+          console.error("Failed to update item status to BAD:", e);
+        });
         data.items.push(new Item({ ...item, plaidError }));
       }
     }

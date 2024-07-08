@@ -10,7 +10,7 @@ interface Props {
 }
 
 const TransactionsHead = ({ sorter, getHeader, style }: Props) => {
-  const { setSortBy, getArrow, getVisible } = sorter;
+  const { setSortBy, getArrow, getVisible, sortings } = sorter;
 
   const headerKeys: (keyof TransactionHeaders)[] = [
     "authorized_date",
@@ -21,8 +21,11 @@ const TransactionsHead = ({ sorter, getHeader, style }: Props) => {
     "category",
   ];
 
+  const sortOrder = Array.from(sortings.keys());
+
   const headerComponents = headerKeys
     .filter((key) => getVisible(key))
+    .sort((a, b) => sortOrder.indexOf(b) - sortOrder.indexOf(a))
     .map((key, i) => {
       return (
         <div key={`transactions_header_${i}`}>

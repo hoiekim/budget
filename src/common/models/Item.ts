@@ -1,6 +1,12 @@
 import { getRandomId, assign } from "common";
 import { PlaidError } from "plaid";
 
+export enum ItemStatus {
+  OK = "ok",
+  BAD = "bad",
+  INACTIVE = "inactive",
+}
+
 export class Item {
   get id() {
     return this.item_id;
@@ -11,6 +17,7 @@ export class Item {
   access_token: string = getRandomId();
   institution_id: string = "";
   cursor?: string;
+  status?: ItemStatus;
   plaidError?: PlaidError;
   /**
    * Timestamp in YYYY-MM-DD format.

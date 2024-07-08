@@ -45,6 +45,7 @@ export interface Sorter<T = any, H = any> {
   visibles: { [k in keyof H]?: boolean };
   getVisible: GetVisible<H>;
   toggleVisible: ToggleVisible<H>;
+  sortings: Sortings<H>;
 }
 
 export const useSorter = <T, H>(
@@ -117,15 +118,12 @@ export const useSorter = <T, H>(
     [sortings]
   );
 
-  const getVisible: Sorter<T, H>["getVisible"] = useCallback(
-    (key) => !!visibles[key],
-    [visibles]
-  );
+  const getVisible: Sorter<T, H>["getVisible"] = useCallback((key) => !!visibles[key], [visibles]);
 
   const toggleVisible: Sorter<T, H>["toggleVisible"] = useCallback(
     (key) => setVisibles((oldVisibles) => ({ ...oldVisibles, [key]: !oldVisibles[key] })),
     [setVisibles]
   );
 
-  return { sort, setSortBy, getArrow, visibles, getVisible, toggleVisible };
+  return { sort, setSortBy, getArrow, visibles, getVisible, toggleVisible, sortings };
 };

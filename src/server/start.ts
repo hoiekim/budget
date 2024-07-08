@@ -1,6 +1,7 @@
-import { importConfig, setModulePaths } from "./config";
+import { importConfig, setModulePaths, overrideConsoleLog } from "./config";
 importConfig();
 setModulePaths();
+overrideConsoleLog();
 
 import path from "path";
 import express, { Router } from "express";
@@ -29,15 +30,8 @@ app.use(
 
 const router = Router();
 
-router.use((req, res, next) => {
+router.use((req, _res, next) => {
   console.info(`<${req.method}> /api${req.url}`);
-  console.group();
-  const date = new Date();
-  const offset = date.getTimezoneOffset() / -60;
-  const offsetString = (offset > 0 ? "+" : "") + offset + "H";
-  console.info(`at: ${date.toLocaleString()}, ${offsetString}`);
-  console.info(`from: ${req.ip}`);
-  console.groupEnd();
   next();
 });
 
@@ -49,7 +43,7 @@ const clientPath = path.resolve(__dirname, "..", "client");
 
 app.use(express.static(clientPath));
 
-app.get("*", (req, res) => {
+app.get("*", (_req, res) => {
   res.sendFile(path.join(clientPath, "index.html"));
 });
 

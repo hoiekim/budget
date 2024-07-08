@@ -34,17 +34,21 @@ div.TransactionRow > .budgetCategory {
   justify-content: flex-end;
 }
 
-div.TransactionRow > .budgetCategory > select {
+div.TransactionRow > .budgetCategory > * {
   margin: 0 5px;
   width: 100%;
   max-width: 300px;
 }
 
-div.TransactionRow > .budgetCategory > select:first-child {
+div.TransactionRow > .budgetCategory > div > select {
+  width: 100%;
+}
+
+div.TransactionRow > .budgetCategory > :first-child {
   margin-left: 0;
 }
 
-div.TransactionRow > .budgetCategory > select:last-child {
+div.TransactionRow > .budgetCategory > :last-child {
   margin-right: 0;
 }
 

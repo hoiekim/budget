@@ -1,7 +1,8 @@
-import { Item } from "common";
+import { Item, ItemStatus } from "common";
 import { elasticsearchClient, index } from "./client";
-import { MaskedUser } from "./users";
+import { MaskedUser, searchUser } from "./users";
 import { getUpdateItemScript } from "./util";
+import { getTransactions } from "../plaid/transactions";
 
 /**
  * Updates or inserts items documents associated with given user.
@@ -68,6 +69,38 @@ export const searchItems = async (user: MaskedUser) => {
       return { ...source.item, item_id: e._id };
     })
     .filter((e) => e) as Item[];
+};
+
+/**
+ * Gets item associated with given item_id.
+ * @param item_id
+ * @returns A promise to be an Item object
+ */
+export const getItem = async (item_id: string) => {
+  const response = await elasticsearchClient.get<{ item: Item }>({ index, id: item_id });
+  return response._source?.item;
+};
+
+export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
+  type ItemDoc = { item: Item; user: { user_id: string } };
+  const response = await elasticsearchClient.get<ItemDoc>({ index, id: item_id });
+  const itemDoc = response._source;
+  if (!itemDoc) return;
+  const { user_id } = itemDoc.user;
+  const foundUser = await searchUser({ user_id });
+  if (!foundUser) return;
+  return await upsertItems(foundUser, [{ item_id, status }]);
+};
+
+export const syncItemTransactions = async (item_id: string) => {
+  type ItemDoc = { item: Item; user: { user_id: string } };
+  const response = await elasticsearchClient.get<ItemDoc>({ index, id: item_id });
+  const itemDoc = response._source;
+  if (!itemDoc) return;
+  const { item, user } = itemDoc;
+  const foundUser = await searchUser({ user_id: user.user_id });
+  if (!foundUser) return;
+  return await getTransactions(foundUser, [item]);
 };
 
 /**

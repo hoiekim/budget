@@ -13,6 +13,7 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
     country_codes: [CountryCode.Us],
     language: "en",
     redirect_uri: `https://${HOST_NAME}/accounts`,
+    webhook: `https://${HOST_NAME}/api/plaid-hook`,
   };
 
   if (access_token) {

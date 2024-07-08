@@ -23,7 +23,8 @@
         "access_token": { "type": "keyword" },
         "institution_id": { "type": "keyword" },
         "cursor": { "type": "keyword" },
-        "updated": { "type": "date" }
+        "updated": { "type": "date" },
+        "status": { "type": "keyword" }
       }
     },
     "session": {
