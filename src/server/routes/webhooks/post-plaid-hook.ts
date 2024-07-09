@@ -2,7 +2,7 @@ import { ItemStatus } from "common";
 import { Route, syncItemTransactions, updateItemStatus } from "server";
 
 interface PlaidWebhookBody {
-  webhook_type: "transactions" | "item";
+  webhook_type: "TRANSACTIONS" | "ITEM";
   webhook_code: string;
   item_id: string;
   error: { error_code: string };
@@ -11,7 +11,7 @@ interface PlaidWebhookBody {
 // TODO: verify request sender is plaid
 export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req) => {
   const { webhook_type, webhook_code, item_id, error } = req.body as PlaidWebhookBody;
-  if (webhook_type === "transactions") {
+  if (webhook_type === "TRANSACTIONS") {
     if (webhook_code === "SYNC_UPDATES_AVAILABLE") {
       const response = await syncItemTransactions(item_id);
       if (!response) return { status: "failed" };
@@ -26,7 +26,7 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req) =
       console.log(`Unhandled hook called for item ${item_id}`);
       console.log(req.body);
     }
-  } else if (webhook_type === "item") {
+  } else if (webhook_type === "ITEM") {
     if (webhook_code === "WEBHOOK_UPDATE_ACKNOWLEDGED") {
       return { status: "success" };
     } else if (webhook_code === "PENDING_EXPIRATION") {
