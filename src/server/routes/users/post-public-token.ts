@@ -26,7 +26,7 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
     }
 
     const { access_token, item_id } = await exchangePublicToken(user, public_token);
-    const item = new Item({ item_id, access_token, institution_id, status: ItemStatus.BAD });
+    const item = new Item({ item_id, access_token, institution_id, status: ItemStatus.OK });
 
     await upsertItems(user, [item]);
 
