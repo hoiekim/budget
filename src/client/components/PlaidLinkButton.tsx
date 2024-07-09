@@ -13,7 +13,7 @@ const tokens = new Map<string, string>();
 const promisedTokens = new Map<string, Promise<string>>();
 
 const PlaidLinkButton = ({ item, children }: Props) => {
-  const { user } = useAppContext();
+  const { user, data } = useAppContext();
 
   const access_token = (item && item.access_token) || "";
   const [token, setToken] = useState(tokens.get(access_token) || "");
@@ -38,6 +38,10 @@ const PlaidLinkButton = ({ item, children }: Props) => {
         .then((r) => {
           const { status, body } = r;
           if (status === "success" && body?.item) {
+            if (item) {
+              const newItem = new Item({ ...item, status: ItemStatus.OK });
+              data.items.set(item.item_id, newItem);
+            }
             setTimeout(() => {
               sync.transactions();
               sync.accounts();

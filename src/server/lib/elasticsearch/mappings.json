@@ -144,6 +144,22 @@
         }
       }
     },
+    "split_transaction": {
+      "type": "object",
+      "dynamic": true,
+      "properties": {
+        "transaction_id": { "type": "keyword" },
+        "amount": { "type": "float" },
+        "custom_name": { "type": "text" },
+        "label": {
+          "type": "object",
+          "properties": {
+            "budget_id": { "type": "keyword" },
+            "category_id": { "type": "keyword" }
+          }
+        }
+      }
+    },
     "investment_transaction": {
       "type": "object",
       "dynamic": true,
