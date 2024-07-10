@@ -20,9 +20,8 @@ import {
   RemovedInvestmentTransaction,
   getDateTimeString,
   Item,
+  TWO_WEEKS,
 } from "common";
-
-const TWO_WEEKS = 1000 * 60 * 60 * 24 * 14;
 
 export interface TransactionsStreamGetResponse {
   items?: Item[];
@@ -152,10 +151,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         const filledInvestments = investmentTransactions.map(fillDateStrings);
 
         const addedMap = new Map(
-          filledInvestments.map((e) => [
-            e.investment_transaction_id,
-            new InvestmentTransaction(e),
-          ])
+          filledInvestments.map((e) => [e.investment_transaction_id, new InvestmentTransaction(e)])
         );
 
         const ingestedTrasactions = await getTransactionsFromElasticsearch;

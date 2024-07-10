@@ -1,5 +1,7 @@
 import { Interval } from "common";
 
+export const TWO_WEEKS = 1000 * 60 * 60 * 24 * 14;
+
 /**
  * This class is designed to determine certain logics with given date.
  * For example: `new IsDate().within("week").from(new Date("2022-08-14"))`

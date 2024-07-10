@@ -94,7 +94,7 @@ const PlaidLinkButton = ({ item, children }: Props) => {
     open();
   };
 
-  const className = !item || item.status === ItemStatus.OK ? "" : "notification";
+  const className = !disabled && item?.status === ItemStatus.BAD ? "notification" : undefined;
 
   return (
     <button onClick={onClick} disabled={disabled} className={className}>

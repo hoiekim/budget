@@ -3,6 +3,7 @@ import { elasticsearchClient, index } from "./client";
 import { MaskedUser, searchUser } from "./users";
 import { getUpdateItemScript } from "./util";
 import { getTransactions } from "../plaid/transactions";
+import { syncAllTransactions } from "../compute-tools";
 
 /**
  * Updates or inserts items documents associated with given user.
@@ -92,7 +93,7 @@ export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
   return await upsertItems(foundUser, [{ item_id, status }]);
 };
 
-export const syncItemTransactions = async (item_id: string) => {
+export const getUserItem = async (item_id: string) => {
   type ItemDoc = { item: Item; user: { user_id: string } };
   const response = await elasticsearchClient.get<ItemDoc>({ index, id: item_id });
   const itemDoc = response._source;
@@ -100,7 +101,7 @@ export const syncItemTransactions = async (item_id: string) => {
   const { item, user } = itemDoc;
   const foundUser = await searchUser({ user_id: user.user_id });
   if (!foundUser) return;
-  return await getTransactions(foundUser, [item]);
+  return { user: foundUser, item };
 };
 
 /**
