@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { useAppContext, useSync, useCalculator, PATH } from "client";
+import { useDebounce } from "./lib";
+import { scheduler } from "common";
 
 let lastSync = new Date();
 
@@ -27,6 +29,14 @@ const Utility = () => {
   }, [user, go, path]);
 
   /**
+   * Download data every minute
+   */
+  useEffect(() => {
+    const { stop } = scheduler(sync.all, 1000 * 60);
+    return stop;
+  }, []);
+
+  /**
    * Download data when user logs in and remove data when user logs out
    */
   useEffect(() => {
@@ -49,12 +59,14 @@ const Utility = () => {
     return () => window.removeEventListener("focus", focusAction);
   }, [sync]);
 
+  const calculationDebouncer = useDebounce();
+
   /**
    * Calculate transactions amounts when data is updated
    */
   useEffect(() => {
-    calculate();
-  }, [transactions, accounts, viewDate, calculate]);
+    calculationDebouncer(calculate);
+  }, [transactions, accounts, viewDate, calculate, calculationDebouncer]);
 
   /**
    * Update viewDate when user selects different interval

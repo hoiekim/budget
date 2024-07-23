@@ -139,15 +139,17 @@
           "type": "object",
           "properties": {
             "budget_id": { "type": "keyword" },
-            "category_id": { "type": "keyword" }
+            "category_id": { "type": "keyword" },
+            "memo": { "type": "text" }
           }
         }
       }
     },
     "split_transaction": {
       "type": "object",
-      "dynamic": true,
+      "dynamic": "strict",
       "properties": {
+        "split_transaction_id": { "type": "keyword" },
         "transaction_id": { "type": "keyword" },
         "amount": { "type": "float" },
         "custom_name": { "type": "text" },
@@ -155,7 +157,8 @@
           "type": "object",
           "properties": {
             "budget_id": { "type": "keyword" },
-            "category_id": { "type": "keyword" }
+            "category_id": { "type": "keyword" },
+            "memo": { "type": "text" }
           }
         }
       }

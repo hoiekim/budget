@@ -40,8 +40,7 @@ export const currencyCodeToSymbol = (code: string) => {
   }
 };
 
-export const getRandomId = () =>
-  (65536 + Math.floor(Math.random() * 983040)).toString(16);
+export const getRandomId = () => (65536 + Math.floor(Math.random() * 983040)).toString(16);
 
 export const isEmoji = (s: string) => /\p{Extended_Pictographic}/u.test(s);
 
@@ -102,4 +101,38 @@ export const isSubset = (
     }
     return true;
   } else return false;
+};
+
+export interface SchedulerStatus {
+  isCancelled: boolean;
+}
+
+const schedule = new Map<string, Timeout>();
+
+const scheduleHandler = (callback: () => void, interval = 1000, pid?: string) => {
+  const _pid = pid || getRandomId();
+
+  const timeout = setTimeout(() => {
+    if (!schedule.has(_pid)) {
+      schedule.delete(_pid);
+      return;
+    }
+    callback();
+    scheduleHandler(callback, interval, _pid);
+  }, interval);
+
+  schedule.set(_pid, timeout);
+
+  return _pid;
+};
+
+export const scheduler = (callback: () => void, interval = 1000) => {
+  const pid = scheduleHandler(callback, interval);
+
+  const stop = () => {
+    clearTimeout(schedule.get(pid));
+    schedule.delete(pid);
+  };
+
+  return { stop };
 };

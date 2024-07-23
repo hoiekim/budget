@@ -10,6 +10,7 @@ import {
   PartialInvestmentTransaction,
   PartialHolding,
   PartialSecurity,
+  PartialSplitTransaction,
 } from "server";
 
 export const getUpdateScript = ({ user_id }: MaskedUser, type: string, data: any) => {
@@ -30,10 +31,7 @@ if (ctx._source.user.user_id == "${user_id}") {
   return { source, lang: "painless", params: data };
 };
 
-export const getUpdateTransactionScript = (
-  user: MaskedUser,
-  transaction: PartialTransaction
-) => {
+export const getUpdateTransactionScript = (user: MaskedUser, transaction: PartialTransaction) => {
   return getUpdateScript(user, "transaction", transaction);
 };
 
@@ -42,6 +40,13 @@ export const getUpdateInvestmentTransactionScript = (
   investmentTransaction: PartialInvestmentTransaction
 ) => {
   return getUpdateScript(user, "investment_transaction", investmentTransaction);
+};
+
+export const getUpdateSplitTransactionScript = (
+  user: MaskedUser,
+  splitTransaction: PartialSplitTransaction
+) => {
+  return getUpdateScript(user, "split_transaction", splitTransaction);
 };
 
 export const getUpdateAccountScript = (user: MaskedUser, account: PartialAccount) => {
@@ -68,9 +73,6 @@ export const getUpdateCategoryScript = (user: MaskedUser, category: PartialCateg
   return getUpdateScript(user, "category", category);
 };
 
-export const getUpdateItemScript = (
-  user: MaskedUser,
-  item: Omit<PartialItem, "plaidError">
-) => {
+export const getUpdateItemScript = (user: MaskedUser, item: Omit<PartialItem, "plaidError">) => {
   return getUpdateScript(user, "item", item);
 };

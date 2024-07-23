@@ -7,3 +7,4 @@ export * from "./Section";
 export * from "./Capacity";
 export * from "./Category";
 export * from "./Item";
+export * from "./SplitTransaction";

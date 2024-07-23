@@ -3,11 +3,14 @@ import {
   RemovedTransaction,
   InvestmentTransaction,
   RemovedInvestmentTransaction,
+  SplitTransaction,
+  RemovedSplitTransaction,
 } from "common";
 import {
   MaskedUser,
   getUpdateTransactionScript,
   getUpdateInvestmentTransactionScript,
+  getUpdateSplitTransactionScript,
 } from "server";
 import { elasticsearchClient, index } from "./client";
 
@@ -59,6 +62,7 @@ export const searchTransactions = async (user: MaskedUser) => {
   type Response = {
     transaction: Transaction;
     investment_transaction: InvestmentTransaction;
+    split_transaction: SplitTransaction;
   };
 
   const response = await elasticsearchClient.search<Response>({
@@ -74,6 +78,7 @@ export const searchTransactions = async (user: MaskedUser) => {
               should: [
                 { term: { type: "transaction" } },
                 { term: { type: "investment_transaction" } },
+                { term: { type: "split_transaction" } },
               ],
             },
           },
@@ -85,20 +90,24 @@ export const searchTransactions = async (user: MaskedUser) => {
   type Result = {
     transactions: Transaction[];
     investment_transactions: InvestmentTransaction[];
+    split_transactions: SplitTransaction[];
   };
 
   const result: Result = {
     transactions: [],
     investment_transactions: [],
+    split_transactions: [],
   };
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     if (!source) return;
-    const { transaction, investment_transaction } = source;
+    const { transaction, investment_transaction, split_transaction } = source;
     if (transaction) result.transactions.push(transaction);
     else if (investment_transaction) {
       result.investment_transactions.push(investment_transaction);
+    } else if (split_transaction) {
+      result.split_transactions.push(split_transaction);
     }
   });
 
@@ -204,6 +213,82 @@ export const deleteInvestmentTransactions = async (
             bool: {
               should: investment_transactions.map((e) => ({
                 term: { _id: e.investment_transaction_id },
+              })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  return response;
+};
+
+export type PartialSplitTransaction = { split_transaction_id: string } & Partial<SplitTransaction>;
+
+/**
+ * Updates or inserts split transactions documents associated with given user.
+ * @param user
+ * @param splitTransactions
+ * @param upsert
+ * @returns A promise to be an array of Elasticsearch bulk response objects
+ */
+export const upsertSplitTransactions = async (
+  user: MaskedUser,
+  splitTransactions: PartialSplitTransaction[],
+  upsert: boolean = true
+) => {
+  if (!splitTransactions.length) return [];
+  const { user_id } = user;
+
+  const operations = splitTransactions.flatMap((splitTransaction) => {
+    const { split_transaction_id } = splitTransaction;
+
+    const bulkHead = { update: { _index: index, _id: split_transaction_id } };
+
+    const script = getUpdateSplitTransactionScript(user, splitTransaction);
+    const bulkBody: any = { script };
+
+    if (upsert) {
+      bulkBody.upsert = {
+        type: "split_transaction",
+        user: { user_id },
+        transaction: splitTransaction,
+      };
+    }
+
+    return [bulkHead, bulkBody];
+  });
+
+  const response = await elasticsearchClient.bulk({ operations });
+
+  return response.items;
+};
+
+/**
+ * Deletes split transactions by id in given data.
+ * @param user
+ * @param split_transactions
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const deleteSplitTransactions = async (
+  user: MaskedUser,
+  split_transactions: (SplitTransaction | RemovedSplitTransaction)[]
+) => {
+  if (!Array.isArray(split_transactions) || !split_transactions.length) return;
+  const { user_id } = user;
+
+  const response = await elasticsearchClient.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "split_transaction" } },
+          {
+            bool: {
+              should: split_transactions.map((e) => ({
+                term: { _id: e.split_transaction_id },
               })),
             },
           },

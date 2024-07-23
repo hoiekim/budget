@@ -32,6 +32,7 @@ export const useSync = () => {
 
   type SyncTransactions = () => void;
 
+  // TODO: debounce, pagination
   const syncTransactions = useCallback(() => {
     if (!userLoggedIn) return;
 
@@ -67,10 +68,7 @@ export const useSync = () => {
           const { added, removed, modified } = investmentTransactions;
           added?.forEach((e) => {
             const newInvestmentTransaction = new InvestmentTransaction(e);
-            newInvestmentTransactions.set(
-              newInvestmentTransaction.id,
-              newInvestmentTransaction
-            );
+            newInvestmentTransactions.set(newInvestmentTransaction.id, newInvestmentTransaction);
           });
           modified?.forEach((e) => {
             const investmentTransaction = newInvestmentTransactions.get(
@@ -81,10 +79,7 @@ export const useSync = () => {
               ...investmentTransaction,
               ...e,
             });
-            newInvestmentTransactions.set(
-              newInvestmentTransaction.id,
-              newInvestmentTransaction
-            );
+            newInvestmentTransactions.set(newInvestmentTransaction.id, newInvestmentTransaction);
           });
           removed?.forEach((e) => {
             newInvestmentTransactions.delete(e.investment_transaction_id);

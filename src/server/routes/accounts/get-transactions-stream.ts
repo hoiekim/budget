@@ -21,6 +21,7 @@ import {
   getDateTimeString,
   Item,
   TWO_WEEKS,
+  SplitTransaction,
 } from "common";
 
 export interface TransactionsStreamGetResponse {
@@ -34,6 +35,9 @@ export interface TransactionsStreamGetResponse {
     added?: InvestmentTransaction[];
     removed?: RemovedInvestmentTransaction[];
     modified?: PartialInvestmentTransaction[];
+  };
+  splitTransactions?: {
+    added: SplitTransaction[];
   };
 }
 
@@ -53,12 +57,13 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
     const getTransactionsFromElasticsearch = searchTransactions(user)
       .then((r) => {
-        const { transactions, investment_transactions } = r;
+        const { transactions, investment_transactions, split_transactions } = r;
         stream({
           status: status.get(),
           body: {
             transactions: { added: transactions },
             investmentTransactions: { added: investment_transactions },
+            splitTransactions: { added: split_transactions },
           },
         });
 
