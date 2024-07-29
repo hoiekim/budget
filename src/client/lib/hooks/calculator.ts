@@ -23,11 +23,16 @@ export const calculatorLambda = (
   transactions: TransactionDictionary,
   accounts: AccountDictionary
 ) => {
+  const date = viewDate.getDate();
+  const interval = viewDate.getInterval();
+
   const newBudgets = new BudgetDictionary(budgets);
   const newSections = new SectionDictionary(sections);
   const newCategories = new CategoryDictionary(categories);
 
   const setBaseAmounts = (e: BudgetLike) => {
+    e.child_section_capacity_total = 0;
+    e.child_category_capacity_total = 0;
     e.sorted_amount = 0;
     e.unsorted_amount = 0;
     if (!e.roll_over || !e.roll_over_start_date) return;
@@ -36,9 +41,40 @@ export const calculatorLambda = (
     e.rolled_over_amount = -accumulatedCapacity;
   };
 
-  newBudgets.forEach(setBaseAmounts);
-  newSections.forEach(setBaseAmounts);
-  newCategories.forEach(setBaseAmounts);
+  newBudgets.forEach((budget) => {
+    setBaseAmounts(budget);
+  });
+
+  newSections.forEach((section) => {
+    setBaseAmounts(section);
+    const sectionCapacity = section.getActiveCapacity(date)[interval];
+    const budget = newBudgets.get(section.budget_id);
+    if (!budget) return;
+    budget.child_section_capacity_total += sectionCapacity;
+  });
+
+  newCategories.forEach((category) => {
+    setBaseAmounts(category);
+    const section = newSections.get(category.section_id);
+    if (!section) return;
+    const categoryCapacity = category.getActiveCapacity(date)[interval];
+    section.child_category_capacity_total += categoryCapacity;
+    const budget = newBudgets.get(section.budget_id);
+    if (!budget) return;
+    budget.child_category_capacity_total += categoryCapacity;
+  });
+
+  newSections.forEach((section) => {
+    const sectionCapacity = section.getActiveCapacity(date)[interval];
+    section.is_children_synced = section.child_category_capacity_total === sectionCapacity;
+  });
+
+  newBudgets.forEach((budget) => {
+    const budgetCapacity = budget.getActiveCapacity(date)[interval];
+    const isBudgetSectionSynced = budget.child_section_capacity_total === budgetCapacity;
+    const isBudgetCategorySynced = budget.child_category_capacity_total === budgetCapacity;
+    budget.is_children_synced = isBudgetSectionSynced && isBudgetCategorySynced;
+  });
 
   transactions.forEach(({ authorized_date, date, account_id, label, amount }) => {
     const transactionDate = new Date(authorized_date || date);

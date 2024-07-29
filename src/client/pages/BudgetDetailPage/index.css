@@ -12,11 +12,25 @@ div.BudgetDetail .addButton {
 
 div.SectionBar {
   padding: 10px 0px;
+  background-color: #fbfbfb;
+  margin-top: 10px;
+}
+
+div.SectionBar > .openLabel {
+  padding: 10px 10px 5px;
+}
+
+div.SectionBar > .openLabel > span {
+  height: 24px;
+  font-size: 15px;
 }
 
 div.SectionBar > .children {
-  transition-duration: 300ms;
   overflow: hidden;
+}
+
+div.SectionBar > .children.transition {
+  transition-duration: 300ms;
 }
 
 div.BudgetDetail > div.sidePadding {

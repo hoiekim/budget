@@ -5,9 +5,10 @@ type Props = {
   onEdit: MouseEventHandler<HTMLButtonElement>;
 } & ButtonHTMLAttributes<HTMLButtonElement>;
 
-const EditButton = ({ onEdit, ...rest }: Props) => {
+const EditButton = ({ onEdit, className, ...rest }: Props) => {
+  const _className = ["EditButton", className].filter(Boolean).join(" ");
   return (
-    <div className="EditButton">
+    <div className={_className}>
       <button
         onClick={(e) => {
           e.preventDefault();

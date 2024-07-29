@@ -9,7 +9,7 @@ import {
   DateLabel,
   MoneyLabel,
 } from "client";
-import { Budget, Data, Section, SectionDictionary, getIndex } from "common";
+import { Budget, Data, Section, SectionDictionary } from "common";
 import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
 import { useGraph } from "./lib";
@@ -45,22 +45,18 @@ const BudgetDetailPage = () => {
   const sectionBars = Array.from(sections)
     .filter(([_section_id, section]) => section.budget_id === budget_id)
     .sort(([a], [b]) => {
-      const indexA = getIndex(a, sectionsOrder);
-      const indexB = getIndex(b, sectionsOrder);
+      const indexA = sectionsOrder.indexOf(a);
+      const indexB = sectionsOrder.indexOf(b);
       if (indexA === undefined || indexB === undefined) return 0;
       return indexA - indexB;
     })
     .map(([section_id, section]) => {
-      return (
-        <SectionBar key={section_id} section={section} onSetOrder={setSectionsOrder} />
-      );
+      return <SectionBar key={section_id} section={section} onSetOrder={setSectionsOrder} />;
     });
 
   const onClickAddSection = async () => {
     const queryString = "?" + new URLSearchParams({ parent: budget_id }).toString();
-    const { body } = await call.get<NewSectionGetResponse>(
-      "/api/new-section" + queryString
-    );
+    const { body } = await call.get<NewSectionGetResponse>("/api/new-section" + queryString);
 
     if (!body) return;
 

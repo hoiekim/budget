@@ -17,7 +17,9 @@ export class Dictionary<T = any> extends Map<string, T> {
 
   protected INPUT_ERROR_MESSAGE = "At least one key-value pair is required as input.";
 
-  find = this.toArray().find;
+  find = (predicate: (value: T, index: number, array: T[]) => void) => {
+    return this.toArray().find(predicate);
+  };
 
   findBy = (input: Partial<T>) => {
     for (const key in input) {
@@ -28,7 +30,9 @@ export class Dictionary<T = any> extends Map<string, T> {
     throw new Error(this.INPUT_ERROR_MESSAGE);
   };
 
-  filter = this.toArray().filter;
+  filter = (predicate: (value: T, index: number, array: T[]) => void) => {
+    return this.toArray().filter(predicate);
+  };
 
   filterBy = (input: Partial<T>) => {
     for (const key in input) {
@@ -40,7 +44,9 @@ export class Dictionary<T = any> extends Map<string, T> {
   };
 
   map = (callback: (value: T, key: string, map: Map<string, T>) => T) => {
-    this.forEach((v, k, m) => m.set(k, callback(v, k, m)));
+    const clone = new Dictionary<T>(this);
+    clone.forEach((v, k, m) => m.set(k, callback(v, k, m)));
+    return clone;
   };
 
   override set = (key: string, value: T) => {

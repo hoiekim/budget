@@ -1,4 +1,3 @@
-import { getIndex } from "common";
 import {
   Dispatch,
   DragEventHandler,
@@ -49,8 +48,7 @@ export const useReorder = (
   };
 
   const reorderItems = () => {
-    if (!onSetOrder || !dragStartItem || dragStartItem === dataId || reorderThrottliing)
-      return;
+    if (!onSetOrder || !dragStartItem || dragStartItem === dataId || reorderThrottliing) return;
 
     // Throttling is implemented because redordering differently sized elements can
     // cause another "mouseenter" or "pointerenter" event, resulting in elements
@@ -64,8 +62,8 @@ export const useReorder = (
 
     onSetOrder((oldOrder) => {
       const newOrder = [...oldOrder];
-      const startIndex = getIndex(dragStartItem, newOrder);
-      const targetIndex = getIndex(dataId, newOrder);
+      const startIndex = dragStartItem ? newOrder.indexOf(dragStartItem) : undefined;
+      const targetIndex = newOrder.indexOf(dataId);
       if (!dragStartItem || startIndex === targetIndex) return newOrder;
       if (startIndex !== undefined && targetIndex !== undefined) {
         newOrder.splice(startIndex, 1);

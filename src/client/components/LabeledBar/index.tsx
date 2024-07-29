@@ -19,7 +19,7 @@ export type BudgetType = "income" | "expense";
 
 interface Props {
   dataId: string;
-  data: BarData;
+  barData: BarData;
   iso_currency_code: string;
   onClickInfo: () => void;
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
@@ -27,7 +27,7 @@ interface Props {
 
 const LabeledBar = ({
   dataId,
-  data,
+  barData,
   iso_currency_code,
   onClickInfo: _onClickInfo,
   onSetOrder,
@@ -41,9 +41,9 @@ const LabeledBar = ({
     rolled_over_amount,
     roll_over,
     roll_over_start_date,
-  } = data;
+  } = barData;
 
-  const capacity = data.getActiveCapacity(viewDate.getDate());
+  const capacity = barData.getActiveCapacity(viewDate.getDate());
   const capacityValue = capacity[viewDate.getInterval()];
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
   const isIncome = capacityValue < 0;
@@ -86,6 +86,8 @@ const LabeledBar = ({
     roll_over_start_date &&
     roll_over_start_date < viewDate.getDate();
 
+  const editButtonClassName = barData.is_children_synced ? undefined : "notification";
+
   return (
     <div
       className={classes.join(" ")}
@@ -99,6 +101,7 @@ const LabeledBar = ({
       <div className="title">
         <span>{name}</span>
         <EditButton
+          className={editButtonClassName}
           onEdit={startEditing}
           onTouchStart={onTouchHandleStart}
           onTouchEnd={onTouchHandleEnd}
@@ -119,14 +122,23 @@ const LabeledBar = ({
                 <tr>
                   <td>{CurrencySymbolSpan}</td>
                   <td>
-                    <span className="currentTotal">
-                      {numberToCommaString(Math.abs(total))}
-                    </span>
+                    <span className="currentTotal">{numberToCommaString(Math.abs(total))}</span>
                   </td>
                   <td>
                     <span>{total >= 0 ? "spent" : "gained"}</span>
                   </td>
                 </tr>
+                {!isInfinite && (
+                  <tr>
+                    <td colSpan={3}>
+                      <span>of&nbsp;</span>
+                      {CurrencySymbolSpan}&nbsp;
+                      <span className="capacity">
+                        {numberToCommaString(Math.abs(capacityValue))}
+                      </span>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -142,9 +154,7 @@ const LabeledBar = ({
                       </span>
                     </td>
                     <td style={{ textAlign: "left" }}>
-                      <span>
-                        {0 <= (isIncome ? -leftover : leftover) ? "left" : "over"}
-                      </span>
+                      <span>{0 <= (isIncome ? -leftover : leftover) ? "left" : "over"}</span>
                     </td>
                   </tr>
                   {shouldShowRolledAmount && (

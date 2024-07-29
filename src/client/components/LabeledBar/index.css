@@ -50,15 +50,11 @@ div.EditButton > button {
   width: 32px;
   height: 32px;
   transform: rotate(90deg);
-}
-
-div.EditButton > button:first-child {
-  margin: 0 5px;
+  border: none;
+  margin: none;
 }
 
 div.EditButton > button > span {
   font-size: 24px;
   position: relative;
-  top: -3px;
-  left: 2px;
 }

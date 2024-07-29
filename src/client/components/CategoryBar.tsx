@@ -30,7 +30,7 @@ const CategoryComponent = ({ category, onSetOrder }: Props) => {
     <div className="CategoryBar">
       <LabeledBar
         dataId={category_id}
-        data={category}
+        barData={category}
         iso_currency_code={iso_currency_code}
         onClickInfo={onClickInfo}
         onSetOrder={onSetOrder}

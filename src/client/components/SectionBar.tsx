@@ -1,8 +1,8 @@
-import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef } from "react";
 import { NewCategoryGetResponse } from "server";
-import { PATH, call, useAppContext, useLocalStorage } from "client";
+import { PATH, call, useAppContext, useLocalStorage, useMemoryState } from "client";
 import { LabeledBar, CategoryBar } from "client/components";
-import { getIndex, Budget, Section, Category, Data, CategoryDictionary } from "common";
+import { Budget, Section, Category, Data, CategoryDictionary } from "common";
 
 interface Props {
   section: Section & { sorted_amount?: number };
@@ -15,8 +15,11 @@ const SectionBar = ({ section, onSetOrder }: Props) => {
   const { data, setData, router } = useAppContext();
   const { budgets, categories } = data;
 
-  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
-  const [childrenHeight, setChildrenHeight] = useState(0);
+  const isOpenKey = `section_${section_id}_isOpen`;
+  const [isOpen, setIsOpen] = useMemoryState(isOpenKey, false);
+
+  const childrenHiehgtKey = `section_${section_id}_childrenHeight`;
+  const [childrenHeight, setChildrenHeight] = useMemoryState(childrenHiehgtKey, 0);
 
   const [categoriesOrder, setCategoriesOrder] = useLocalStorage<string[]>(
     `categoriesOrder_${section_id}`,
@@ -54,33 +57,27 @@ const SectionBar = ({ section, onSetOrder }: Props) => {
   const categoryBars = Array.from(categories)
     .filter(([_category_id, category]) => category.section_id === section_id)
     .sort(([a], [b]) => {
-      const indexA = getIndex(a, categoriesOrder);
-      const indexB = getIndex(b, categoriesOrder);
+      const indexA = categoriesOrder.indexOf(a);
+      const indexB = categoriesOrder.indexOf(b);
       if (indexA === undefined || indexB === undefined) return 0;
       return indexA - indexB;
     })
     .map(([category_id, category]) => {
-      return (
-        <CategoryBar
-          key={category_id}
-          category={category}
-          onSetOrder={setCategoriesOrder}
-        />
-      );
+      return <CategoryBar key={category_id} category={category} onSetOrder={setCategoriesOrder} />;
     });
 
   const budget = budgets.get(budget_id) as Budget;
   const { iso_currency_code } = budget;
 
   const openCategory = () => {
-    setIsCategoryOpen(true);
+    setIsOpen(true);
     const childrenDiv = childrenDivRef.current;
     if (!childrenDiv) return;
     childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const onClickInfo = () => {
-    if (isCategoryOpen) setIsCategoryOpen(false);
+    if (isOpen) setIsOpen(false);
     else openCategory();
   };
 
@@ -108,18 +105,26 @@ const SectionBar = ({ section, onSetOrder }: Props) => {
     router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: category_id }) });
   };
 
+  const childrenClassNames = ["children", "transition"];
+
   return (
     <div className="SectionBar">
-      <LabeledBar
-        dataId={section_id}
-        data={section}
-        iso_currency_code={iso_currency_code}
-        onClickInfo={onClickInfo}
-        onSetOrder={onSetOrder}
-      />
-      <div className="children" style={{ height: childrenHeight }}>
+      {isOpen ? (
+        <div className="openLabel" onClick={onClickInfo}>
+          <span>{section.name}</span>
+        </div>
+      ) : (
+        <LabeledBar
+          dataId={section_id}
+          barData={section}
+          iso_currency_code={iso_currency_code}
+          onClickInfo={onClickInfo}
+          onSetOrder={onSetOrder}
+        />
+      )}
+      <div className={childrenClassNames.join(" ")} style={{ height: childrenHeight }}>
         <div ref={childrenDivRef}>
-          {isCategoryOpen && (
+          {isOpen && (
             <>
               {categoryBars}
               <div className="addButton">

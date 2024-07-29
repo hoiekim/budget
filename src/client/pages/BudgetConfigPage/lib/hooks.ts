@@ -21,21 +21,12 @@ export const useEventHandlers = (
   remove: useRemove(id, category, section, budget),
 });
 
-export const useSave = (
-  id: string,
-  category?: Category,
-  section?: Section,
-  _budget?: Budget
-) => {
-  const { setData } = useAppContext();
+export const useSave = (id: string, category?: Category, section?: Section, _budget?: Budget) => {
+  const { setData, viewDate } = useAppContext();
   const apiPath = category ? "category" : section ? "section" : "budget";
   const idKey = category ? "category_id" : section ? "section_id" : "budget_id";
   const dataKey = category ? "categories" : section ? "sections" : "budgets";
-  const DynamicBudgetLike: typeof BudgetLike = category
-    ? Category
-    : section
-    ? Section
-    : Budget;
+  const DynamicBudgetLike: typeof BudgetLike = category ? Category : section ? Section : Budget;
   const DynamicBudgetLikeDictionary: typeof Dictionary = category
     ? CategoryDictionary
     : section
@@ -58,6 +49,35 @@ export const useSave = (
         ...oldBudgetLike,
         ...updatedBudgetLike,
       });
+      const date = viewDate.getDate();
+      const interval = viewDate.getInterval();
+      const newCapacityValue = newBudgetLike.getActiveCapacity(date)[interval];
+      const oldCapacityValue = oldBudgetLike.getActiveCapacity(date)[interval];
+      const capacityDiff = newCapacityValue - oldCapacityValue;
+      if (category) {
+        const parentSection = newData.sections.get((newBudgetLike as Category).section_id)!;
+        parentSection.child_category_capacity_total += capacityDiff;
+        const sectionCapacity = parentSection.getActiveCapacity(date)[interval];
+        const isSectionSynced = parentSection.child_category_capacity_total === sectionCapacity;
+        parentSection.is_children_synced = isSectionSynced;
+        const parentBudget = newData.budgets.get(parentSection.budget_id)!;
+        parentBudget.child_category_capacity_total += capacityDiff;
+        const budgetCapacity = parentBudget.getActiveCapacity(date)[interval];
+        const isBudgetSynced = parentBudget.child_category_capacity_total === budgetCapacity;
+        parentBudget.is_children_synced = isBudgetSynced;
+      } else if (section) {
+        const is_capacity_synced = newBudgetLike.child_category_capacity_total === newCapacityValue;
+        newBudgetLike.is_children_synced = is_capacity_synced;
+        const parentBudget = newData.budgets.get((newBudgetLike as Section).budget_id)!;
+        parentBudget.child_section_capacity_total += capacityDiff;
+        const budgetCapacity = parentBudget.getActiveCapacity(date)[interval];
+        const isBudgetSynced = parentBudget.child_section_capacity_total === budgetCapacity;
+        parentBudget.is_children_synced = isBudgetSynced;
+      } else {
+        const is_capacity_synced = newBudgetLike.child_category_capacity_total === newCapacityValue;
+        const is_section_synced = newBudgetLike.child_section_capacity_total === newCapacityValue;
+        newBudgetLike.is_children_synced = is_capacity_synced && is_section_synced;
+      }
       const newDictionary = new DynamicBudgetLikeDictionary(newData[dataKey] as any);
       newDictionary.set(id, newBudgetLike as any);
       newData[dataKey] = newDictionary;
@@ -68,12 +88,7 @@ export const useSave = (
   return save;
 };
 
-export const useRemove = (
-  id: string,
-  category?: Category,
-  section?: Section,
-  budget?: Budget
-) => {
+export const useRemove = (id: string, category?: Category, section?: Section, budget?: Budget) => {
   const { data, setData } = useAppContext();
   const { transactions, categories } = data;
   const budgetLike = category || section || budget;

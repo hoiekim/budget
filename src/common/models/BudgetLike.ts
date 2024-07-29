@@ -8,6 +8,11 @@ import {
 } from "common";
 
 export class BudgetLike {
+  get id() {
+    return "unknown";
+  }
+  set id(_: string) {}
+
   name: string = "";
   capacities = [new Capacity()];
   roll_over: boolean = false;
@@ -15,6 +20,9 @@ export class BudgetLike {
   sorted_amount = 0;
   unsorted_amount = 0;
   rolled_over_amount = 0;
+  child_category_capacity_total = 0;
+  child_section_capacity_total = 0;
+  is_children_synced = true;
 
   constructor(init?: Partial<BudgetLike | JSONBudgetLike>) {
     assign(this, init);

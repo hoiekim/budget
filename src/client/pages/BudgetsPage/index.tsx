@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { PATH, call, useAppContext, useLocalStorage } from "client";
 import { BudgetBar } from "client/components";
 import { NewBudgetGetResponse } from "server";
-import { Budget, BudgetDictionary, Data, getIndex } from "common";
+import { Budget, BudgetDictionary, Data } from "common";
 import "./index.css";
 
 const BudgetsPage = () => {
@@ -20,8 +20,8 @@ const BudgetsPage = () => {
 
   const budgetBars = Array.from(budgets)
     .sort(([a], [b]) => {
-      const indexA = getIndex(a, budgetsOrder);
-      const indexB = getIndex(b, budgetsOrder);
+      const indexA = budgetsOrder.indexOf(a);
+      const indexB = budgetsOrder.indexOf(b);
       if (indexA === undefined || indexB === undefined) return 0;
       return indexA - indexB;
     })

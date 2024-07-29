@@ -27,7 +27,7 @@ const BudgetBar = ({ budget, onSetOrder }: Props) => {
     <LabeledBar
       key={budget_id}
       dataId={budget_id}
-      data={budget}
+      barData={budget}
       iso_currency_code={iso_currency_code}
       onClickInfo={onClickInfo}
       onSetOrder={onSetOrder}

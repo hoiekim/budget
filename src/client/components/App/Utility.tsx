@@ -34,7 +34,7 @@ const Utility = () => {
   useEffect(() => {
     const { stop } = scheduler(sync.all, 1000 * 60);
     return stop;
-  }, []);
+  }, [sync]);
 
   /**
    * Download data when user logs in and remove data when user logs out
