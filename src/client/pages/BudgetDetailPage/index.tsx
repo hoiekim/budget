@@ -92,13 +92,15 @@ const BudgetDetailPage = () => {
       {budget && (
         <div className="BudgetDetail">
           <BudgetBar budget={budget} />
-          {number_of_unsorted_items && (
-            <div className="unsortedButton sidePadding">
-              <button onClick={onClickUnsorted}>
-                See {number_of_unsorted_items} Unsorted Transactions &gt;&gt;
-              </button>
-            </div>
-          )}
+          <div className="unsortedButton sidePadding">
+            <button onClick={onClickUnsorted} disabled={!number_of_unsorted_items}>
+              {number_of_unsorted_items ? (
+                <>See {number_of_unsorted_items} Unsorted Transactions &gt;&gt;</>
+              ) : (
+                <>There is no unsorted transactions</>
+              )}
+            </button>
+          </div>
 
           {!!(graphData.lines || graphData.areas) && (
             <div className="sidePadding">

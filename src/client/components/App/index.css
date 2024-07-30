@@ -37,8 +37,8 @@ button {
 
 button:disabled {
   background-color: #fff;
-  color: #eee;
-  border: #eee6 solid 0.5px;
+  color: #ddd;
+  border: #ddd solid 0.5px;
 }
 
 a {

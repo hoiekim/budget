@@ -158,6 +158,7 @@ export const useSync = () => {
           if (existing) {
             newBudget.sorted_amount = existing.sorted_amount;
             newBudget.unsorted_amount = existing.unsorted_amount;
+            newBudget.number_of_unsorted_items = existing.number_of_unsorted_items;
             newBudget.rolled_over_amount = existing.rolled_over_amount;
           }
           newBudgets.set(budget_id, newBudget);
@@ -172,6 +173,7 @@ export const useSync = () => {
           if (existing) {
             newSection.sorted_amount = existing.sorted_amount;
             newSection.unsorted_amount = existing.unsorted_amount;
+            newSection.number_of_unsorted_items = existing.number_of_unsorted_items;
             newSection.rolled_over_amount = existing.rolled_over_amount;
           }
           newSections.set(section_id, newSection);
@@ -186,6 +188,7 @@ export const useSync = () => {
           if (existing) {
             newCategory.sorted_amount = existing.sorted_amount;
             newCategory.unsorted_amount = existing.unsorted_amount;
+            newCategory.number_of_unsorted_items = existing.number_of_unsorted_items;
             newCategory.rolled_over_amount = existing.rolled_over_amount;
           }
           newCategories.set(category_id, newCategory);
