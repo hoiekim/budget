@@ -19,6 +19,7 @@ export class BudgetLike {
   roll_over_start_date?: Date;
   sorted_amount = 0;
   unsorted_amount = 0;
+  number_of_unsorted_items = 0;
   rolled_over_amount = 0;
   child_category_capacity_total = 0;
   child_section_capacity_total = 0;

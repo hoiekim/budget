@@ -85,14 +85,20 @@ const BudgetDetailPage = () => {
 
   const { graphData, graphViewDate } = useGraph(budget || new Budget());
 
+  const { number_of_unsorted_items } = budget || {};
+
   return (
     <div className="BudgetDetailPage">
       {budget && (
         <div className="BudgetDetail">
           <BudgetBar budget={budget} />
-          <div className="unsortedButton sidePadding">
-            <button onClick={onClickUnsorted}>See Unsorted Transactions &gt;&gt;</button>
-          </div>
+          {number_of_unsorted_items && (
+            <div className="unsortedButton sidePadding">
+              <button onClick={onClickUnsorted}>
+                See {number_of_unsorted_items} Unsorted Transactions &gt;&gt;
+              </button>
+            </div>
+          )}
 
           {!!(graphData.lines || graphData.areas) && (
             <div className="sidePadding">

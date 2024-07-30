@@ -35,6 +35,7 @@ export const calculatorLambda = (
     e.child_category_capacity_total = 0;
     e.sorted_amount = 0;
     e.unsorted_amount = 0;
+    e.number_of_unsorted_items = 0;
     if (!e.roll_over || !e.roll_over_start_date) return;
     const rollDate = e.roll_over_start_date;
     const accumulatedCapacity = e.getAccumulatedCapacity(rollDate, viewDate);
@@ -92,6 +93,7 @@ export const calculatorLambda = (
       if (!parentBudget) return;
       if (viewDate.has(transactionDate)) {
         parentBudget.unsorted_amount += amount;
+        parentBudget.number_of_unsorted_items++;
       } else if (
         parentBudget.roll_over &&
         parentBudget.roll_over_start_date &&
