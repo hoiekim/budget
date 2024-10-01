@@ -243,7 +243,7 @@ export class ViewDate {
   };
 }
 
-export const getDateComponents = (dateObject: Date) => {
+const getDateComponents = (dateObject: Date) => {
   const year = dateObject.getFullYear();
   const month = dateObject.getMonth();
   const date = dateObject.getDate();
@@ -251,7 +251,7 @@ export const getDateComponents = (dateObject: Date) => {
   return { year, month, date, day };
 };
 
-export const to2DString = (n: Number) => {
+const to2DString = (n: Number) => {
   return n.toLocaleString(undefined, { minimumIntegerDigits: 2 });
 };
 

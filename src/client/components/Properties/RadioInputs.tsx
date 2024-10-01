@@ -17,6 +17,7 @@ const RadioInputs = ({
   checkedOptionId,
   children,
   style,
+  disabled,
   ...rest
 }: Props) => {
   const inputs = options.map(({ id, label }) => {
@@ -24,12 +25,22 @@ const RadioInputs = ({
     return (
       <div className="option row" key={id}>
         <label htmlFor={id}>{label}</label>
-        <input type="radio" name={name} id={id} hidden checked={checked} {...rest} />
+        <input
+          type="radio"
+          name={name}
+          id={id}
+          hidden
+          checked={checked}
+          disabled={disabled}
+          {...rest}
+        />
         {checked && <div className="checkMark colored">✓</div>}
       </div>
     );
   });
-  return <div className="RadioInputs">{inputs}</div>;
+  const classes = ["RadioInputs"];
+  if (disabled) classes.push("disabled");
+  return <div className={classes.join(" ")}>{inputs}</div>;
 };
 
 export default RadioInputs;

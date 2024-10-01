@@ -1,5 +1,5 @@
 import { useMemoryState } from "client";
-import { Data, data as _data } from "common";
+import { Data, globalData as _data } from "common";
 import { Dispatch, SetStateAction, useCallback, useRef } from "react";
 
 export const useData = () => {

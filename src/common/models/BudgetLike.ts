@@ -3,6 +3,7 @@ import {
   JSONCapacity,
   ViewDate,
   assign,
+  globalData,
   getDateTimeString,
   sortCapacities,
 } from "common";
@@ -45,7 +46,11 @@ export class BudgetLike {
       roll_over_start_date,
       sorted_amount: undefined,
       unsorted_amount: undefined,
+      number_of_unsorted_items: undefined,
       rolled_over_amount: undefined,
+      child_category_capacity_total: undefined,
+      child_section_capacity_total: undefined,
+      is_children_synced: undefined,
     };
   };
 
@@ -56,7 +61,7 @@ export class BudgetLike {
   getActiveCapacity = (date: Date) => {
     const validCapacity = this.sortCapacities("desc").find((capacity) => {
       const { active_from } = capacity;
-      return new Date(active_from || 0) < date;
+      return new Date(active_from || 0) <= date;
     });
 
     return validCapacity || new Capacity();
@@ -77,6 +82,14 @@ export class BudgetLike {
       if (span > 0) sum += span * e[interval];
     });
     return sum;
+  };
+
+  getChildren = () => {
+    const { id } = this;
+    const { sections, categories } = globalData;
+    const childSections = sections.filter((s) => s.budget_id === id);
+    if (childSections.length) return childSections;
+    return categories.filter((c) => c.section_id === id);
   };
 }
 

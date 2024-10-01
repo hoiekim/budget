@@ -17,6 +17,8 @@ export { default as LabeledBar } from "./LabeledBar";
 export * from "./LabeledBar";
 export { default as Bar } from "./Bar";
 export * from "./Bar";
+export { default as Donut } from "./Donut";
+export * from "./Donut";
 export { default as ActionButtons } from "./ActionButtons";
 export * from "./ActionButtons";
 export { default as Properties } from "./Properties";

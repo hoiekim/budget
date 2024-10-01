@@ -49,7 +49,6 @@ div.EditButton > button {
   padding: 0;
   width: 32px;
   height: 32px;
-  transform: rotate(90deg);
   border: none;
   margin: none;
 }

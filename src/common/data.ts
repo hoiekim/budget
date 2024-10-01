@@ -29,4 +29,4 @@ export class Data {
   };
 }
 
-export const data = new Data();
+export const globalData = new Data();

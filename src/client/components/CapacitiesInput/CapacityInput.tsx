@@ -1,22 +1,11 @@
 import { numberToCommaString } from "common";
 import { useState, useRef, InputHTMLAttributes } from "react";
 
-type Props = { defaultValue: number } & Omit<
-  InputHTMLAttributes<HTMLInputElement>,
-  "defaultValue"
->;
+type Props = { defaultValue: number } & Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue">;
 
 const CapacityInput = (props: Props) => {
-  const {
-    defaultValue,
-    className,
-    onClick,
-    onKeyPress,
-    onChange,
-    onFocus,
-    onBlur,
-    ...rest
-  } = props;
+  const { defaultValue, className, onClick, onKeyPress, onChange, onFocus, onBlur, ...rest } =
+    props;
 
   const defaultValueAsCommaString = numberToCommaString(defaultValue);
   const [_value, _setValue] = useState(defaultValueAsCommaString);

@@ -10,7 +10,7 @@ import {
 import {
   Location,
   PaymentMeta,
-  data,
+  globalData,
   getRandomId,
   getDateTimeString,
   environment,
@@ -26,9 +26,9 @@ export class TransactionLabel {
     if (environment === "server") return undefined;
     const { category_id } = this;
     if (!category_id) return undefined;
-    const category = data.categories.get(category_id);
+    const category = globalData.categories.get(category_id);
     if (!category) return undefined;
-    const section = data.sections.get(category.section_id);
+    const section = globalData.sections.get(category.section_id);
     return section?.id;
   }
 

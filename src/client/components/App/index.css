@@ -76,6 +76,11 @@ input:not([type="checkbox"]) {
   outline: 0;
 }
 
+input:not([type="checkbox"]):disabled {
+  background-color: #eee;
+  color: #aaa;
+}
+
 input.readonly {
   background-color: inherit;
   cursor: default;
@@ -186,4 +191,8 @@ div.Router:not(.transitioning.backward) > div.currentPage {
   height: 8px;
   background-color: red;
   border-radius: 50%;
+}
+
+.rotate90deg {
+  transform: rotate(90deg);
 }

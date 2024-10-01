@@ -18,6 +18,7 @@ interface Props {
   defaultCapacities: Capacity[];
   capacitiesInput: Capacity[];
   setCapacitiesInput: Dispatch<SetStateAction<Capacity[]>>;
+  disabled?: boolean;
 }
 
 const CapacitiesInput = ({
@@ -26,6 +27,7 @@ const CapacitiesInput = ({
   defaultCapacities: _defaultCap,
   capacitiesInput,
   setCapacitiesInput,
+  disabled = false,
 }: Props) => {
   const { viewDate } = useAppContext();
   const interval = viewDate.getInterval();
@@ -68,7 +70,7 @@ const CapacitiesInput = ({
     };
 
     const onDelete = () => {
-      if (!active_from) return;
+      if (disabled || !active_from) return;
       setCapacitiesInput((oldCapacities) => {
         const newCapacities = oldCapacities.map((c) => new Capacity(c));
         newCapacities.splice(i, 1);
@@ -88,9 +90,10 @@ const CapacitiesInput = ({
           <span>
             {active_from ? (
               <input
+                disabled={disabled}
                 type="date"
-                value={getDateString(active_from)}
-                onChange={onChangeDate}
+                defaultValue={getDateString(active_from)}
+                onBlur={onChangeDate}
               />
             ) : (
               <input disabled value={"ever"} />
@@ -101,16 +104,19 @@ const CapacitiesInput = ({
           <span>{currencyCodeToSymbol(currencyCode)}</span>
         </td>
         <td>
-          <CapacityInput defaultValue={defaultValue} onBlur={onChangeAmount} />
+          <CapacityInput disabled={disabled} defaultValue={defaultValue} onBlur={onChangeAmount} />
         </td>
         <td>
-          <button onClick={onDelete}>-</button>
+          <button disabled={disabled} onClick={onDelete}>
+            -
+          </button>
         </td>
       </tr>
     );
   });
 
   const onClickAdd = () => {
+    if (disabled) return;
     setCapacitiesInput((oldCapacities) => {
       const newCapacities = oldCapacities.map((e) => new Capacity(e));
       newCapacities.sort(sortCapacities.asc);
@@ -145,7 +151,9 @@ const CapacitiesInput = ({
         </table>
       </div>
       <div>
-        <button onClick={onClickAdd}>+</button>
+        <button disabled={disabled} onClick={onClickAdd}>
+          +
+        </button>
       </div>
     </div>
   );

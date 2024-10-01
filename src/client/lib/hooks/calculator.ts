@@ -5,6 +5,7 @@ import {
   BudgetDictionary,
   CategoryDictionary,
   Data,
+  MAX_FLOAT,
   SectionDictionary,
   TransactionDictionary,
   ViewDate,
@@ -33,6 +34,7 @@ export const calculatorLambda = (
   const setBaseAmounts = (e: BudgetLike) => {
     e.child_section_capacity_total = 0;
     e.child_category_capacity_total = 0;
+    e.is_children_synced = true;
     e.sorted_amount = 0;
     e.unsorted_amount = 0;
     e.number_of_unsorted_items = 0;
@@ -49,9 +51,10 @@ export const calculatorLambda = (
   newSections.forEach((section) => {
     setBaseAmounts(section);
     const sectionCapacity = section.getActiveCapacity(date)[interval];
+    const adding = Math.abs(sectionCapacity) === MAX_FLOAT ? 0 : sectionCapacity;
     const budget = newBudgets.get(section.budget_id);
     if (!budget) return;
-    budget.child_section_capacity_total += sectionCapacity;
+    budget.child_section_capacity_total += adding;
   });
 
   newCategories.forEach((category) => {
@@ -59,22 +62,29 @@ export const calculatorLambda = (
     const section = newSections.get(category.section_id);
     if (!section) return;
     const categoryCapacity = category.getActiveCapacity(date)[interval];
-    section.child_category_capacity_total += categoryCapacity;
+    const adding = Math.abs(categoryCapacity) === MAX_FLOAT ? 0 : categoryCapacity;
+    section.child_category_capacity_total += adding;
     const budget = newBudgets.get(section.budget_id);
     if (!budget) return;
-    budget.child_category_capacity_total += categoryCapacity;
+    budget.child_category_capacity_total += adding;
   });
 
   newSections.forEach((section) => {
     const sectionCapacity = section.getActiveCapacity(date)[interval];
-    section.is_children_synced = section.child_category_capacity_total === sectionCapacity;
+    const isInfinite = Math.abs(sectionCapacity) === MAX_FLOAT;
+    const isTied = section.child_category_capacity_total === sectionCapacity;
+    section.is_children_synced = isInfinite || isTied;
+    const budget = newBudgets.get(section.budget_id);
+    if (budget) budget.is_children_synced = false;
   });
 
   newBudgets.forEach((budget) => {
+    if (!budget.is_children_synced) return;
     const budgetCapacity = budget.getActiveCapacity(date)[interval];
-    const isBudgetSectionSynced = budget.child_section_capacity_total === budgetCapacity;
-    const isBudgetCategorySynced = budget.child_category_capacity_total === budgetCapacity;
-    budget.is_children_synced = isBudgetSectionSynced && isBudgetCategorySynced;
+    const isInfinite = Math.abs(budgetCapacity) === MAX_FLOAT;
+    const isBudgetSectionTied = budget.child_section_capacity_total === budgetCapacity;
+    const isBudgetCategoryTied = budget.child_category_capacity_total === budgetCapacity;
+    budget.is_children_synced = isInfinite || (isBudgetSectionTied && isBudgetCategoryTied);
   });
 
   transactions.forEach(({ authorized_date, date, account_id, label, amount }) => {

@@ -1,12 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useAppContext, PATH, useCalculator } from "client";
-import {
-  NameInput,
-  Bar,
-  CapacitiesInput,
-  ActionButtons,
-  Properties,
-} from "client/components";
+import { NameInput, Bar, CapacitiesInput, ActionButtons, Properties } from "client/components";
 import { Budget, Capacity } from "common";
 import { useEventHandlers } from "./lib";
 
@@ -42,6 +36,7 @@ const BudgetConfigPage = () => {
     unsorted_amount,
     roll_over,
     roll_over_start_date: roll_date,
+    is_children_synced,
   } = budgetLike;
 
   const activeCapacity = budgetLike.getActiveCapacity(viewDate.getDate());
@@ -54,6 +49,7 @@ const BudgetConfigPage = () => {
   const [isIncomeInput, setIsIncomeInput] = useState(defaultInputs.isIncomeInput);
   const [isRollOverInput, setIsRollOverInput] = useState(roll_over);
   const [rollDateInput, setRollDateInput] = useState(roll_date || new Date());
+  const [isSyncedInput, setIsSyncedInput] = useState(is_children_synced);
 
   useEffect(() => {
     if (!budgetLike) return;
@@ -130,6 +126,7 @@ const BudgetConfigPage = () => {
           noAlert={isIncomeInput}
         />
         <CapacitiesInput
+          disabled={isSyncedInput}
           isInfiniteInput={isInfiniteInput}
           currencyCode={iso_currency_code}
           defaultCapacities={capacities}
@@ -138,6 +135,7 @@ const BudgetConfigPage = () => {
         />
       </div>
       <Properties
+        budgetLike={budgetLike}
         isIncomeInput={isIncomeInput}
         setIsIncomeInput={setIsIncomeInput}
         isInfiniteInput={isInfiniteInput}
@@ -146,12 +144,10 @@ const BudgetConfigPage = () => {
         setIsRollOverInput={setIsRollOverInput}
         rollOverStartDateInput={rollDateInput}
         setRollOverStartDateInput={setRollDateInput}
+        isSyncedInput={isSyncedInput}
+        setIsSyncedInput={setIsSyncedInput}
       />
-      <ActionButtons
-        onComplete={onComplete}
-        onCancel={finishEditing}
-        onDelete={onDelete}
-      />
+      <ActionButtons onComplete={onComplete} onCancel={finishEditing} onDelete={onDelete} />
     </div>
   );
 };

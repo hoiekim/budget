@@ -180,8 +180,9 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
         </div>
         {getVisible("amount") && (
           <div className="amount">
+            {amount < 0 && <>+&nbsp;</>}
             {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
-            {numberToCommaString(amount)}
+            {numberToCommaString(Math.abs(amount))}
           </div>
         )}
       </div>
