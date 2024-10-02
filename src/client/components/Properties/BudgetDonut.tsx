@@ -78,12 +78,12 @@ const BudgetDonut = ({ budgetLike, date }: Props) => {
     });
 
     if (childValue > grandChildrenTotal) {
-      childrenDonutData.push({
+      grandChildrenDonutData.push({
         value: childValue - grandChildrenTotal,
         color: "#fff0",
       });
-    } else {
-      grandChildrenDonutData.push({
+    } else if (childValue < grandChildrenTotal) {
+      childrenDonutData.push({
         value: grandChildrenTotal - childValue,
         color: "#fff0",
       });
