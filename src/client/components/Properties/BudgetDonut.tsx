@@ -1,5 +1,5 @@
 import { Donut, adjustBrightness, useAppContext } from "client";
-import { Category, MAX_FLOAT, getDateString, numberToCommaString } from "common";
+import { Category, Interval, MAX_FLOAT, getDateString, numberToCommaString } from "common";
 import { DonutData } from "client/components";
 import { BudgetLike } from "common/models/BudgetLike";
 
@@ -10,10 +10,10 @@ interface Props {
 
 const colors = [
   "#22AB6C",
-  "#43656D",
   "#784E30",
   "#5D9B7E",
   "#786130",
+  "#43656D",
   "#2E8089",
   "#AB7E22",
   "#AB5C22",
@@ -21,10 +21,28 @@ const colors = [
   "#00DE78",
 ];
 
+const altDescendingSort = (budgetLikes: BudgetLike[], date: Date, interval: Interval) => {
+  const sorted = [...budgetLikes].sort((a, b) => {
+    return a.getActiveCapacity(date)[interval] - b.getActiveCapacity(date)[interval];
+  });
+
+  const half = Math.ceil(sorted.length / 2);
+  const firstHalf = sorted.slice(0, half);
+  const secondHalf = sorted.slice(half);
+
+  const result = [];
+  for (let i = 0; i < firstHalf.length; i++) {
+    result.push(firstHalf[i]);
+    if (i < secondHalf.length) result.push(secondHalf[i]);
+  }
+
+  return result;
+};
+
 const BudgetDonut = ({ budgetLike, date }: Props) => {
   const { viewDate } = useAppContext();
   const interval = viewDate.getInterval();
-  const children = budgetLike.getChildren();
+  const children = altDescendingSort(budgetLike.getChildren(), date, interval);
 
   const childrenDonutData: DonutData[] = [];
   const grandChildrenDonutData: DonutData[] = [];
@@ -103,7 +121,6 @@ const BudgetDonut = ({ budgetLike, date }: Props) => {
 
   return (
     <div className="BudgetDonut">
-      <div className="dateLabel">{getDateString(date)}</div>
       <div className="details">
         <div className="labeledDonuts">
           <div className="donuts">

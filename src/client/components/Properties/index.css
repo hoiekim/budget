@@ -35,6 +35,10 @@ div.Properties .row > input {
   font-size: 14px;
 }
 
+div.Properties .row > .capacityAnalysis > .dateLabel {
+  font-size: 14px;
+}
+
 label.ToggleInput > div.switch {
   position: relative;
   width: 50px;
@@ -144,6 +148,7 @@ div.BudgetDonut > .details > .capacityBreakDown > table {
 }
 
 div.BudgetDonut > .details > .capacityBreakDown * {
+  font-size: 14px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

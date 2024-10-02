@@ -20,8 +20,8 @@ const getAllCapaciyDates = (budgetLike: BudgetLike) => {
     });
   });
   return Array.from(uniqueDates)
-    .sort()
-    .map((s) => s && new Date(s));
+    .sort((a, b) => new Date(b || 0).getTime() - new Date(a || 0).getTime())
+    .map((s) => s && new Date(s)) as (Date | undefined)[];
 };
 
 interface Props {
@@ -74,9 +74,16 @@ const Properties = ({
     // If date is undefined, it's a default capacity. Default capacity covers all time period
     // backward so `new Date(0)` can be used to retrieve the default capacity.
     const date = d || new Date(0);
+    const endDate = i > 0 ? allCapacityDates[i - 1] : undefined;
     return (
       <div key={i} className="row">
-        <BudgetDonut budgetLike={budgetLike} date={date} />
+        <div className="capacityAnalysis">
+          <div className="dateLabel">
+            {d ? getDateString(date) : <>All&nbsp;past</>}
+            {endDate && <>&nbsp;-&nbsp;{getDateString(endDate)}</>}
+          </div>
+          <BudgetDonut budgetLike={budgetLike} date={date} />
+        </div>
       </div>
     );
   });
