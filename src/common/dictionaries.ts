@@ -22,12 +22,16 @@ export class Dictionary<T = any> extends Map<string, T> {
   };
 
   findBy = (input: Partial<T>) => {
+    if (!input || !Object.keys(input).length) {
+      throw new Error(this.INPUT_ERROR_MESSAGE);
+    }
     for (const key in input) {
       const typedKey = key as keyof T;
       const value = input[typedKey] as ValueOf<T>;
-      return this.find((e) => e[typedKey] === value);
+      const found = this.find((e) => e[typedKey] === value);
+      if (found) return found;
     }
-    throw new Error(this.INPUT_ERROR_MESSAGE);
+    return undefined;
   };
 
   filter = (predicate: (value: T, index: number, array: T[]) => void) => {
@@ -35,12 +39,16 @@ export class Dictionary<T = any> extends Map<string, T> {
   };
 
   filterBy = (input: Partial<T>) => {
+    if (!input || !Object.keys(input).length) {
+      throw new Error(this.INPUT_ERROR_MESSAGE);
+    }
+    let filtered = this.toArray();
     for (const key in input) {
       const typedKey = key as keyof T;
       const value = input[typedKey] as ValueOf<T>;
-      return this.filter((e) => e[typedKey] === value);
+      filtered = filtered.filter((e) => e[typedKey] === value);
     }
-    throw new Error(this.INPUT_ERROR_MESSAGE);
+    return filtered;
   };
 
   map = (callback: (value: T, key: string, map: Map<string, T>) => T) => {

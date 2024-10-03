@@ -25,5 +25,3 @@ export { default as Properties } from "./Properties";
 export * from "./Properties";
 export { default as NameInput } from "./NameInput";
 export * from "./NameInput";
-export { default as CapacitiesInput } from "./CapacitiesInput";
-export * from "./CapacitiesInput";

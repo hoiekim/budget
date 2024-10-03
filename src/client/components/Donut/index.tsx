@@ -2,6 +2,7 @@ import { DetailedHTMLProps, HTMLAttributes } from "react";
 import "./index.css";
 
 export interface DonutData {
+  id: string;
   value: number;
   color?: string;
   label?: string;

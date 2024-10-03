@@ -1,12 +1,30 @@
 import { useEffect, useState, useMemo } from "react";
+import { Budget, Capacity, getDateTimeString } from "common";
 import { useAppContext, PATH, useCalculator } from "client";
-import { NameInput, Bar, CapacitiesInput, ActionButtons, Properties } from "client/components";
-import { Budget, Capacity } from "common";
+import { NameInput, Bar, ActionButtons, Properties } from "client/components";
+import { BudgetFamily } from "common/models/BudgetFamily";
 import { useEventHandlers } from "./lib";
 
 import "./index.css";
 
-export type BudgetLikeConfigPageParams = {
+const getAllCapaciyDates = (budgetLike: BudgetFamily) => {
+  const uniqueDates = new Set<string | undefined>();
+  const addActiveFromDate = ({ active_from }: Capacity) => {
+    uniqueDates.add(active_from && getDateTimeString(active_from));
+  };
+  budgetLike.capacities.forEach(addActiveFromDate);
+  budgetLike.getChildren().forEach((child) => {
+    child.capacities.forEach(addActiveFromDate);
+    child.getChildren().forEach((grandChild) => {
+      grandChild.capacities.forEach(addActiveFromDate);
+    });
+  });
+  return Array.from(uniqueDates)
+    .sort((a, b) => new Date(b || 0).getTime() - new Date(a || 0).getTime())
+    .map((s) => s && new Date(s)) as (Date | undefined)[];
+};
+
+export type BudgetFamilyConfigPageParams = {
   id: string;
 };
 
@@ -31,7 +49,6 @@ const BudgetConfigPage = () => {
 
   const {
     name,
-    capacities,
     sorted_amount,
     unsorted_amount,
     roll_over,
@@ -41,7 +58,8 @@ const BudgetConfigPage = () => {
 
   const activeCapacity = budgetLike.getActiveCapacity(viewDate.getDate());
   const defaultInputs = activeCapacity.toInputs();
-  const defaultCapInput = capacities.map((c) => c.toInputs().capacityInput);
+  const allDates = getAllCapaciyDates(budgetLike);
+  const defaultCapInput = allDates.map((d) => budgetLike.getActiveCapacity(d || new Date(0)));
 
   const [nameInput, setNameInput] = useState(name);
   const [capacitiesInput, setCapacitiesInput] = useState<Capacity[]>(defaultCapInput);
@@ -70,7 +88,6 @@ const BudgetConfigPage = () => {
 
   const { save, remove } = useEventHandlers(id, category, section, budget);
 
-  const iso_currency_code = budget?.iso_currency_code || "USD";
   const activeCapInput = activeCapacity.toInputs().capacityInput;
   const barCapacity = Capacity.fromInputs(activeCapInput, isIncomeInput, isInfiniteInput);
   const barCapacityValue = barCapacity[viewDate.getInterval()];
@@ -125,14 +142,6 @@ const BudgetConfigPage = () => {
           unlabeledRatio={unlabledRatio}
           noAlert={isIncomeInput}
         />
-        <CapacitiesInput
-          disabled={isSyncedInput}
-          isInfiniteInput={isInfiniteInput}
-          currencyCode={iso_currency_code}
-          defaultCapacities={capacities}
-          capacitiesInput={capacitiesInput}
-          setCapacitiesInput={setCapacitiesInput}
-        />
       </div>
       <Properties
         budgetLike={budgetLike}
@@ -144,6 +153,8 @@ const BudgetConfigPage = () => {
         setIsRollOverInput={setIsRollOverInput}
         rollOverStartDateInput={rollDateInput}
         setRollOverStartDateInput={setRollDateInput}
+        capacitiesInput={capacitiesInput}
+        setCapacitiesInput={setCapacitiesInput}
         isSyncedInput={isSyncedInput}
         setIsSyncedInput={setIsSyncedInput}
       />

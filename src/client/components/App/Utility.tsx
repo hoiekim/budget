@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useAppContext, useSync, useCalculator, PATH } from "client";
 import { useDebounce } from "./lib";
-import { scheduler } from "common";
 
 let lastSync = new Date();
 
@@ -27,14 +26,6 @@ const Utility = () => {
     const { LOGIN } = PATH;
     if (!user && path !== LOGIN) go(LOGIN);
   }, [user, go, path]);
-
-  /**
-   * Download data every minute
-   */
-  useEffect(() => {
-    const { stop } = scheduler(sync.all, 1000 * 60);
-    return stop;
-  }, [sync]);
 
   /**
    * Download data when user logs in and remove data when user logs out

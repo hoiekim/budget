@@ -10,7 +10,7 @@ import {
   TransactionDictionary,
   ViewDate,
 } from "common";
-import { BudgetLike } from "common/models/BudgetLike";
+import { BudgetFamily } from "common/models/BudgetFamily";
 
 /**
  * Receives budget-like data objects maps, calculates their transaction amounts
@@ -31,7 +31,7 @@ export const calculatorLambda = (
   const newSections = new SectionDictionary(sections);
   const newCategories = new CategoryDictionary(categories);
 
-  const setBaseAmounts = (e: BudgetLike) => {
+  const setBaseAmounts = (e: BudgetFamily) => {
     e.child_section_capacity_total = 0;
     e.child_category_capacity_total = 0;
     e.is_children_synced = true;

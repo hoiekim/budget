@@ -276,3 +276,11 @@ export const getDateTimeString = (dateOrString: Date | string = getDateString())
   if (dateString.includes("T")) return dateString;
   return dateString + "T00:00:00";
 };
+
+export const getLocaleDateString = (date: Date) => {
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};

@@ -122,7 +122,7 @@ const LabeledBar = ({
                 <tr>
                   <td>{CurrencySymbolSpan}</td>
                   <td>
-                    <span className="currentTotal">{numberToCommaString(Math.abs(total))}</span>
+                    <span className="currentTotal">{numberToCommaString(Math.abs(total), 0)}</span>
                   </td>
                   <td>
                     <span>{total >= 0 ? "spent" : "gained"}</span>
@@ -134,7 +134,7 @@ const LabeledBar = ({
                       <span>of&nbsp;</span>
                       {CurrencySymbolSpan}&nbsp;
                       <span className="capacity">
-                        {numberToCommaString(Math.abs(capacityValue))}
+                        {numberToCommaString(Math.abs(capacityValue), 0)}
                       </span>
                     </td>
                   </tr>
@@ -150,7 +150,7 @@ const LabeledBar = ({
                     <td>{CurrencySymbolSpan}</td>
                     <td>
                       <span className="currentTotal">
-                        {numberToCommaString(Math.abs(leftover))}
+                        {numberToCommaString(Math.abs(leftover), 0)}
                       </span>
                     </td>
                     <td style={{ textAlign: "left" }}>
@@ -165,7 +165,7 @@ const LabeledBar = ({
                       </td>
                       <td>
                         <span className="currentTotal">
-                          {numberToCommaString(Math.abs(rolled_over_amount))}
+                          {numberToCommaString(Math.abs(rolled_over_amount), 0)}
                         </span>
                       </td>
                       <td>

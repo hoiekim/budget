@@ -1,7 +1,7 @@
 import { getRandomId, assign } from "common";
-import { BudgetLike, JSONBudgetLike } from "./BudgetLike";
+import { BudgetFamily, JSONBudgetFamily } from "./BudgetFamily";
 
-export class Section extends BudgetLike {
+export class Section extends BudgetFamily {
   get id() {
     return this.section_id;
   }
@@ -17,7 +17,7 @@ export class Section extends BudgetLike {
   }
 }
 
-export interface JSONSection extends JSONBudgetLike {
+export interface JSONSection extends JSONBudgetFamily {
   section_id: string;
   budget_id: string;
 }

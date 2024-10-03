@@ -1,0 +1,131 @@
+div.CapacitiesInput {
+  font-size: 14px;
+  color: #333;
+  position: relative;
+}
+
+div.CapacitiesInput > div:not(:last-child) {
+  margin-bottom: 5px;
+}
+
+div.CapacitiesInput > div > table {
+  width: 100%;
+}
+
+div.CapacitiesInput > div > table > tbody > tr > td {
+  padding: 3px 0;
+  height: 30px;
+}
+
+div.CapacitiesInput input {
+  font-size: 14px;
+  height: 100%;
+  width: 100px;
+}
+
+div.CapacitiesInput .capacityAnalysis button {
+  font-size: 14px;
+}
+
+div.CapacitiesInput > .addNew > button {
+  width: 100%;
+  text-align: left;
+  font-size: 16px;
+  margin-left: -4px;
+}
+
+div.CapacitiesInput > div > table > tbody > tr.capacityRow {
+  padding: 3px 0;
+}
+
+div.CapacitiesInput > div > table > tbody > tr.capacityRow > td:last-child {
+  text-align: right;
+}
+
+div.CapacitiesInput .capacityAnalysis {
+  width: 100%;
+}
+
+div.CapacitiesInput .capacityAnalysis > .dateLabel {
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.BudgetDonut {
+  width: 100%;
+}
+
+div.BudgetDonut > .details {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.BudgetDonut > .details > .capacityBreakDown {
+  max-width: 300px;
+}
+
+div.BudgetDonut > .details > .capacityBreakDown > table {
+  table-layout: fixed;
+}
+
+div.BudgetDonut > .details > .capacityBreakDown * {
+  font-size: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+div.BudgetDonut > .details .alert {
+  color: var(--red);
+}
+
+div.BudgetDonut > .details > .labeledDonuts {
+  position: relative;
+  min-width: 160px;
+  display: flex;
+  justify-content: center;
+}
+
+div.BudgetDonut > .details > .labeledDonuts > .donuts {
+  position: relative;
+}
+
+div.BudgetDonut > .details > .labeledDonuts > .donuts > .Donut:not(:first-child) {
+  position: absolute;
+}
+
+div.BudgetDonut > .details > .labeledDonuts > .donuts > .Donut:nth-child(2) {
+  top: 10px;
+  left: 10px;
+}
+
+div.BudgetDonut > .details > .labeledDonuts > .donuts > .Donut:nth-child(3) {
+  top: 20px;
+  left: 20px;
+}
+
+div.BudgetDonut > .details > .labeledDonuts > .centerLabel {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+div.BudgetDonut > .details > .labeledDonuts > .centerLabel input {
+  text-align: center;
+  background-color: #fff;
+}
+
+div.BudgetDonut > .details > .labeledDonuts > .centerLabel > div > div {
+  display: flex;
+  justify-content: space-between;
+}

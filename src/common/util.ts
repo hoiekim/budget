@@ -91,10 +91,6 @@ export const isSubset = (
   } else return false;
 };
 
-export interface SchedulerStatus {
-  isCancelled: boolean;
-}
-
 const schedule = new Map<string, Timeout>();
 
 const scheduleHandler = (callback: () => void, interval = 1000, pid?: string) => {

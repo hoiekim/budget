@@ -8,11 +8,19 @@ import {
   sortCapacities,
 } from "common";
 
-export class BudgetLike {
+export class BudgetFamily {
   get id() {
     return "unknown";
   }
   set id(_: string) {}
+
+  get type() {
+    if (globalData.budgets.has(this.id)) return "budget";
+    if (globalData.sections.has(this.id)) return "section";
+    if (globalData.categories.has(this.id)) return "category";
+    return "unknown";
+  }
+  set type(_: string) {}
 
   name: string = "";
   capacities = [new Capacity()];
@@ -24,9 +32,9 @@ export class BudgetLike {
   rolled_over_amount = 0;
   child_category_capacity_total = 0;
   child_section_capacity_total = 0;
-  is_children_synced = true;
+  is_children_synced = false;
 
-  constructor(init?: Partial<BudgetLike | JSONBudgetLike>) {
+  constructor(init?: Partial<BudgetFamily | JSONBudgetFamily>) {
     assign(this, init);
     this.fromJSON();
   }
@@ -93,7 +101,7 @@ export class BudgetLike {
   };
 }
 
-export interface JSONBudgetLike {
+export interface JSONBudgetFamily {
   name: string;
   capacities: JSONCapacity[];
   roll_over: boolean;

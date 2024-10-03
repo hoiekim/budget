@@ -35,10 +35,6 @@ div.Properties .row > input {
   font-size: 14px;
 }
 
-div.Properties .row > .capacityAnalysis > .dateLabel {
-  font-size: 14px;
-}
-
 label.ToggleInput > div.switch {
   position: relative;
   width: 50px;
@@ -125,60 +121,4 @@ div.RadioInputs > .option > .checkMark {
 
 div.RadioInputs.disabled > .option > .checkMark {
   color: #555;
-}
-
-div.BudgetDonut {
-  width: 100%;
-}
-
-div.BudgetDonut > .details {
-  width: 100%;
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-}
-
-div.BudgetDonut > .details > .capacityBreakDown {
-  width: 100%;
-  max-width: 300px;
-}
-
-div.BudgetDonut > .details > .capacityBreakDown > table {
-  table-layout: fixed;
-}
-
-div.BudgetDonut > .details > .capacityBreakDown * {
-  font-size: 14px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-div.BudgetDonut > .details > .capacityBreakDown .alert {
-  color: var(--red);
-}
-
-div.BudgetDonut > .details > .labeledDonuts {
-  position: relative;
-}
-
-div.BudgetDonut > .details > .labeledDonuts > .donuts {
-  position: relative;
-}
-
-div.BudgetDonut > .details > .labeledDonuts > .donuts > .Donut:nth-child(2) {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-}
-
-div.BudgetDonut > .details > .labeledDonuts > .centerLabel {
-  position: absolute;
-  width: 200px;
-  height: 200px;
-  top: 0;
-  left: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
 }
