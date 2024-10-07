@@ -3,7 +3,6 @@ import {
   Budget,
   Capacity,
   Category,
-  Interval,
   MAX_FLOAT,
   currencyCodeToSymbol,
   numberToCommaString,
@@ -26,24 +25,6 @@ interface Props {
 const ID_DIFF = "diff";
 const LABEL_UNNAMED = "Unnamed";
 
-const altDescendingSort = (budgetLikes: BudgetFamily[], date: Date, interval: Interval) => {
-  const sorted = [...budgetLikes].sort((a, b) => {
-    return a.getActiveCapacity(date)[interval] - b.getActiveCapacity(date)[interval];
-  });
-
-  const half = Math.ceil(sorted.length / 2);
-  const firstHalf = sorted.slice(0, half);
-  const secondHalf = sorted.slice(half);
-
-  const result = [];
-  for (let i = 0; i < firstHalf.length; i++) {
-    result.push(firstHalf[i]);
-    if (i < secondHalf.length) result.push(secondHalf[i]);
-  }
-
-  return result;
-};
-
 const BudgetDonut = ({
   budgetLike,
   date,
@@ -55,7 +36,9 @@ const BudgetDonut = ({
 }: Props) => {
   const { viewDate } = useAppContext();
   const interval = viewDate.getInterval();
-  const children = altDescendingSort(budgetLike.getChildren(), date, interval);
+  const children = budgetLike.getChildren().sort((a, b) => {
+    return a.name === b.name ? 0 : a.name < b.name ? -1 : 1;
+  });
 
   const childrenDonutData: DonutData[] = [];
   const grandChildrenDonutData: DonutData[] = [];
@@ -65,7 +48,8 @@ const BudgetDonut = ({
 
   children.forEach((child, i) => {
     const childValue = child.getActiveCapacity(date)[interval];
-    isChildrenInfinite = Math.abs(childValue) === MAX_FLOAT;
+    if (Math.abs(childValue) === MAX_FLOAT) console.log(child);
+    isChildrenInfinite = isChildrenInfinite || Math.abs(childValue) === MAX_FLOAT;
     childrenTotal += childValue;
 
     childrenDonutData.push({
@@ -82,7 +66,8 @@ const BudgetDonut = ({
       const brightness = ((j % 2) + 1) * 0.3 + 1;
       const color = adjustBrightness(colors[i % colors.length], brightness);
       const grandChildValue = grandChild.getActiveCapacity(date)[interval];
-      isChildrenInfinite = Math.abs(grandChildValue) === MAX_FLOAT;
+      if (Math.abs(grandChildValue) === MAX_FLOAT) console.log(grandChild);
+      isChildrenInfinite = isChildrenInfinite || Math.abs(grandChildValue) === MAX_FLOAT;
       grandChildrenTotal += grandChildValue;
       grandChildrenDonutData.push({
         id: grandChild.id,
@@ -113,7 +98,6 @@ const BudgetDonut = ({
     childrenDonutData.push({ id: ID_DIFF, value: parentDiff, color: TRANSPARENT });
     grandChildrenDonutData.push({ id: ID_DIFF, value: parentDiff, color: TRANSPARENT });
   }
-  const centerLabel = numberToCommaString(capacityAmount, 0);
 
   const isParentInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
   if (isChildrenInfinite || isParentInfinite) {

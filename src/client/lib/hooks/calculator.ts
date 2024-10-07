@@ -79,7 +79,6 @@ export const calculatorLambda = (
   });
 
   newBudgets.forEach((budget) => {
-    if (!budget.is_children_synced) return;
     const budgetCapacity = budget.getActiveCapacity(date)[interval];
     const isInfinite = Math.abs(budgetCapacity) === MAX_FLOAT;
     const isBudgetSectionTied = budget.child_section_capacity_total === budgetCapacity;

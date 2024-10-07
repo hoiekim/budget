@@ -1,17 +1,8 @@
 import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from "react";
 import { BudgetFamily } from "common/models/BudgetFamily";
-import {
-  Budget,
-  Capacity,
-  ViewDate,
-  currencyCodeToSymbol,
-  getDateString,
-  getDateTimeString,
-  sortCapacities,
-} from "common";
+import { Capacity, ViewDate, getDateString, getDateTimeString, sortCapacities } from "common";
 import { useAppContext } from "client";
 import BudgetDonut from "./BudgetDonut";
-import CapacityInput from "./CapacityInput";
 import "./index.css";
 
 interface Props {
