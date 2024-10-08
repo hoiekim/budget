@@ -41,21 +41,26 @@ const BudgetDonut = ({
   });
 
   const childrenDonutData: DonutData[] = [];
-  const grandChildrenDonutData: DonutData[] = [];
+  const childToGrandChildrenMap = new Map<string, DonutData[]>();
 
   let isChildrenInfinite = false;
   let childrenTotal = 0;
 
   children.forEach((child, i) => {
+    const grandChildrenDonutData: DonutData[] = [];
+    childToGrandChildrenMap.set(child.id, grandChildrenDonutData);
+
     const childValue = child.getActiveCapacity(date)[interval];
     if (Math.abs(childValue) === MAX_FLOAT) console.log(child);
     isChildrenInfinite = isChildrenInfinite || Math.abs(childValue) === MAX_FLOAT;
     childrenTotal += childValue;
 
+    const childColor = colors[i % colors.length];
+
     childrenDonutData.push({
       id: child.id,
       value: childValue,
-      color: colors[i % colors.length],
+      color: childColor,
       label: child.name || LABEL_UNNAMED,
     });
 
@@ -64,7 +69,7 @@ const BudgetDonut = ({
 
     grandChildren.forEach((grandChild, j) => {
       const brightness = ((j % 2) + 1) * 0.3 + 1;
-      const color = adjustBrightness(colors[i % colors.length], brightness);
+      const grandChildColor = adjustBrightness(childColor, brightness);
       const grandChildValue = grandChild.getActiveCapacity(date)[interval];
       if (Math.abs(grandChildValue) === MAX_FLOAT) console.log(grandChild);
       isChildrenInfinite = isChildrenInfinite || Math.abs(grandChildValue) === MAX_FLOAT;
@@ -72,18 +77,18 @@ const BudgetDonut = ({
       grandChildrenDonutData.push({
         id: grandChild.id,
         value: grandChildValue,
-        color: color,
+        color: grandChildColor,
         label: grandChild.name || LABEL_UNNAMED,
       });
     });
 
     const childDiff = childValue - grandChildrenTotal;
-    if (childValue > grandChildrenTotal) {
-      grandChildrenDonutData.push({ id: ID_DIFF, value: childDiff, color: TRANSPARENT });
-    } else if (childValue < grandChildrenTotal) {
-      childrenDonutData.push({ id: ID_DIFF, value: -childDiff, color: TRANSPARENT });
-    }
+    const fillerData = { id: ID_DIFF, value: Math.abs(childDiff), color: TRANSPARENT };
+    if (childValue > grandChildrenTotal) grandChildrenDonutData.push(fillerData);
+    else if (childValue < grandChildrenTotal) childrenDonutData.push(fillerData);
   });
+
+  const flatGrandChildrenDonutData = Array.from(childToGrandChildrenMap.values()).flat();
 
   const capacityAmount = capacityInput[interval];
 
@@ -92,11 +97,12 @@ const BudgetDonut = ({
   ];
 
   const parentDiff = capacityAmount - childrenTotal;
+  const fillerData = { id: ID_DIFF, value: Math.abs(parentDiff), color: TRANSPARENT };
   if (childrenTotal > capacityAmount) {
-    parentDonutData.push({ id: ID_DIFF, value: -parentDiff, color: TRANSPARENT });
+    parentDonutData.push(fillerData);
   } else if (childrenTotal < capacityAmount) {
-    childrenDonutData.push({ id: ID_DIFF, value: parentDiff, color: TRANSPARENT });
-    grandChildrenDonutData.push({ id: ID_DIFF, value: parentDiff, color: TRANSPARENT });
+    childrenDonutData.push(fillerData);
+    flatGrandChildrenDonutData.push(fillerData);
   }
 
   const isParentInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
@@ -107,16 +113,44 @@ const BudgetDonut = ({
   const currencyCode = (budgetLike as Budget)["iso_currency_code"] || "USD";
   const currencySymbol = currencyCodeToSymbol(currencyCode);
 
-  const capacityBreakDown = childrenDonutData.map((d, i) => {
-    return (
-      <tr key={i} className={d.label ? undefined : "colored alert"}>
-        <td>{d.label || "Not Specified"}</td>
-        <td>
-          {currencySymbol}&nbsp;{numberToCommaString(d.value, 0)}
-        </td>
-      </tr>
-    );
-  });
+  const capacityBreakDown = childrenDonutData
+    .filter((c, i) => !(c.id === ID_DIFF && i === childrenDonutData.length - 1))
+    .flatMap((c, i) => {
+      const grandChildrenDonutData = childToGrandChildrenMap.get(c.id) || [];
+      const adjustments = grandChildrenDonutData.filter((gc) => gc.id === ID_DIFF);
+      return [
+        <tr
+          key={`capacityBreakDown_row_${i}`}
+          className={c.id === ID_DIFF ? "colored alert" : undefined}
+        >
+          <td>
+            <div
+              className="colored"
+              style={{ width: "5px", height: "12px", backgroundColor: c.color }}
+            />
+          </td>
+          <td>{c.label}</td>
+          <td>
+            {c.id === ID_DIFF && <>+&nbsp;</>}
+            {currencySymbol}&nbsp;{numberToCommaString(c.value, 0)}
+          </td>
+        </tr>,
+        ...(adjustments || []).map((a, j) => (
+          <tr key={`capacityBreakDown_row_${i}_${j}`}>
+            <td>
+              <div
+                className="colored"
+                style={{ width: "5px", height: "12px", backgroundColor: a.color }}
+              />
+            </td>
+            <td />
+            <td className="colored alert">
+              -&nbsp;{currencySymbol}&nbsp;{numberToCommaString(a.value, 0)}
+            </td>
+          </tr>
+        )),
+      ];
+    });
 
   const defaultCapacityValue = defaultCapacityInput[interval];
   const capacityValue = capacityInput[interval];
@@ -131,7 +165,7 @@ const BudgetDonut = ({
               <Donut data={parentDonutData} radius={73} thickness={7} />
             )}
             <Donut data={childrenDonutData} radius={60} thickness={10} />
-            <Donut data={grandChildrenDonutData} radius={50} thickness={10} />
+            <Donut data={flatGrandChildrenDonutData} radius={50} thickness={10} />
           </div>
           <div className="centerLabel">
             <div>
@@ -146,9 +180,11 @@ const BudgetDonut = ({
                   />
                 </div>
               )}
-              {parentDiff < 0 && (
+              {!!parentDiff && (
                 <div className="colored alert">
-                  <span>{currencySymbol}&nbsp;</span>
+                  <span>
+                    {parentDiff < 0 ? "+" : "-"}&nbsp;{currencySymbol}&nbsp;
+                  </span>
                   <span style={{ width: capacityInputWidth, textAlign: "center" }}>
                     {numberToCommaString(Math.abs(parentDiff), 0)}
                   </span>
