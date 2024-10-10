@@ -11,39 +11,36 @@ import {
 } from "common";
 import { BudgetFamily } from "common/models/BudgetFamily";
 
-export const useEventHandlers = (
-  id: string,
-  category?: Category,
-  section?: Section,
-  budget?: Budget
-) => ({
-  save: useSave(id, category, section, budget),
-  remove: useRemove(id, category, section, budget),
+export const useEventHandlers = (budgetLike: BudgetFamily | undefined, isSyncedInput: boolean) => ({
+  save: useSave(budgetLike, isSyncedInput),
+  remove: useRemove(budgetLike),
 });
 
-export const useSave = (id: string, category?: Category, section?: Section, _budget?: Budget) => {
+export const useSave = (budgetLike: BudgetFamily | undefined, isSyncedInput: boolean) => {
   const { setData, viewDate } = useAppContext();
-  const apiPath = category ? "category" : section ? "section" : "budget";
-  const idKey = category ? "category_id" : section ? "section_id" : "budget_id";
-  const dataKey = category ? "categories" : section ? "sections" : "budgets";
-  const DynamicBudgetFamily: typeof BudgetFamily = category ? Category : section ? Section : Budget;
-  const DynamicBudgetFamilyDictionary: typeof Dictionary = category
-    ? CategoryDictionary
-    : section
-    ? SectionDictionary
-    : BudgetDictionary;
+  if (!budgetLike) return async (updatedBudgetFamily: Partial<BudgetFamily>) => {};
+  const { id, type, dictionaryKey } = budgetLike;
+  const idKey = type + "_id";
+  const DynamicBudgetFamily: typeof BudgetFamily =
+    type === "budget" ? Budget : type === "section" ? Section : Category;
+  const DynamicBudgetFamilyDictionary: typeof Dictionary =
+    type === "budget"
+      ? BudgetDictionary
+      : type === "section"
+      ? SectionDictionary
+      : CategoryDictionary;
 
   const save = async (updatedBudgetFamily: Partial<BudgetFamily>) => {
-    const { status } = await call.post(`/api/${apiPath}`, {
+    const { status } = await call.post(`/api/${type}`, {
       ...updatedBudgetFamily,
       [idKey]: id,
     });
 
-    if (status !== "success") throw new Error(`Failed to update ${apiPath}: ${id}`);
+    if (status !== "success") throw new Error(`Failed to update ${type}: ${id}`);
 
     setData((oldData) => {
       const newData = new Data(oldData);
-      const oldBudgetFamily = oldData[dataKey].get(id);
+      const oldBudgetFamily = oldData[dictionaryKey].get(id);
       if (!oldBudgetFamily) return oldData;
       const newBudgetFamily = new DynamicBudgetFamily({
         ...oldBudgetFamily,
@@ -54,7 +51,7 @@ export const useSave = (id: string, category?: Category, section?: Section, _bud
       const newCapacityValue = newBudgetFamily.getActiveCapacity(date)[interval];
       const oldCapacityValue = oldBudgetFamily.getActiveCapacity(date)[interval];
       const capacityDiff = newCapacityValue - oldCapacityValue;
-      if (category) {
+      if (type === "category") {
         const parentSection = newData.sections.get((newBudgetFamily as Category).section_id)!;
         parentSection.child_category_capacity_total += capacityDiff;
         const sectionCapacity = parentSection.getActiveCapacity(date)[interval];
@@ -65,7 +62,7 @@ export const useSave = (id: string, category?: Category, section?: Section, _bud
         const budgetCapacity = parentBudget.getActiveCapacity(date)[interval];
         const isBudgetSynced = parentBudget.child_category_capacity_total === budgetCapacity;
         parentBudget.is_children_synced = isBudgetSynced;
-      } else if (section) {
+      } else if (type === "section") {
         const is_capacity_synced =
           newBudgetFamily.child_category_capacity_total === newCapacityValue;
         newBudgetFamily.is_children_synced = is_capacity_synced;
@@ -80,9 +77,9 @@ export const useSave = (id: string, category?: Category, section?: Section, _bud
         const is_section_synced = newBudgetFamily.child_section_capacity_total === newCapacityValue;
         newBudgetFamily.is_children_synced = is_capacity_synced && is_section_synced;
       }
-      const newDictionary = new DynamicBudgetFamilyDictionary(newData[dataKey] as any);
+      const newDictionary = new DynamicBudgetFamilyDictionary(newData[dictionaryKey] as any);
       newDictionary.set(id, newBudgetFamily as any);
-      newData[dataKey] = newDictionary;
+      newData[dictionaryKey] = newDictionary;
       return newData as any;
     });
   };
@@ -90,24 +87,25 @@ export const useSave = (id: string, category?: Category, section?: Section, _bud
   return save;
 };
 
-export const useRemove = (id: string, category?: Category, section?: Section, budget?: Budget) => {
+export const useRemove = (budgetLike?: BudgetFamily) => {
   const { data, setData } = useAppContext();
   const { transactions, categories } = data;
-  const budgetLike = category || section || budget;
-  const name = budgetLike?.name || "Unnamed";
-  const apiPath = category ? "category" : section ? "section" : "budget";
-  const dataKey = category ? "categories" : section ? "sections" : "budgets";
-  const DynamicBudgetFamilyDictionary: typeof Dictionary = category
-    ? CategoryDictionary
-    : section
-    ? SectionDictionary
-    : BudgetDictionary;
+  if (!budgetLike) return async () => {};
+  const name = budgetLike.name || "Unnamed";
+  const { id, type, dictionaryKey } = budgetLike;
+  const DynamicBudgetFamilyDictionary: typeof Dictionary =
+    type === "budget"
+      ? BudgetDictionary
+      : type === "section"
+      ? SectionDictionary
+      : CategoryDictionary;
+
   const queryString = "?" + new URLSearchParams({ id }).toString();
 
   const remove = async () => {
     let shouldConfirm = false;
 
-    if (category) {
+    if (type === "category") {
       let iterator = transactions.values();
       let iteratorResult = iterator.next();
       while (!iteratorResult.done) {
@@ -118,7 +116,7 @@ export const useRemove = (id: string, category?: Category, section?: Section, bu
         }
         iteratorResult = iterator.next();
       }
-    } else if (section) {
+    } else if (type === "section") {
       let iterator = categories.values();
       let iteratorResult = iterator.next();
       while (!iteratorResult.done) {
@@ -134,17 +132,17 @@ export const useRemove = (id: string, category?: Category, section?: Section, bu
     }
 
     if (shouldConfirm) {
-      const confirm = window.confirm(`Do you want to delete ${apiPath}: ${name}?`);
+      const confirm = window.confirm(`Do you want to delete ${type}: ${name}?`);
       if (!confirm) return;
     }
 
-    const { status } = await call.delete(`/api/${apiPath}` + queryString);
+    const { status } = await call.delete(`/api/${type}` + queryString);
     if (status === "success") {
       setData((oldData) => {
         const newData = new Data(oldData);
-        const newDictionary = new DynamicBudgetFamilyDictionary(newData[dataKey] as any);
+        const newDictionary = new DynamicBudgetFamilyDictionary(newData[dictionaryKey] as any);
         newDictionary.delete(id);
-        newData[dataKey] = newDictionary;
+        newData[dictionaryKey] = newDictionary;
         return newData;
       });
     }

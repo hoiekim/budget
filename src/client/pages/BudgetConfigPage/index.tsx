@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from "react";
-import { Budget, Capacity, getDateTimeString } from "common";
+import { useEffect, useState } from "react";
+import { Capacity, getDateTimeString } from "common";
 import { useAppContext, PATH, useCalculator } from "client";
 import { NameInput, Bar, ActionButtons, Properties } from "client/components";
 import { BudgetFamily } from "common/models/BudgetFamily";
@@ -39,35 +39,13 @@ const BudgetConfigPage = () => {
   if (path === PATH.BUDGET_CONFIG) id = params.get("id") || "";
   else id = transition.incomingParams.get("id") || "";
 
-  const category = categories.get(id);
-  const section = sections.get(id) || (category && sections.get(category.section_id));
-  const budget = budgets.get(id) || (section && budgets.get(section.budget_id));
+  const defaultBudgetLike = categories.get(id) || sections.get(id) || budgets.get(id);
+  const [budgetLike, setBudgetLike] = useState<BudgetFamily | undefined>(defaultBudgetLike);
 
-  const budgetLike = useMemo(() => {
-    return category || section || budget || new Budget();
-  }, [category, section, budget]);
-
-  const {
-    name,
-    sorted_amount,
-    unsorted_amount,
-    roll_over,
-    roll_over_start_date: roll_date,
-    is_children_synced,
-  } = budgetLike;
-
-  const activeCapacity = budgetLike.getActiveCapacity(viewDate.getDate());
-  const defaultInputs = activeCapacity.toInputs();
-  const allDates = getAllCapaciyDates(budgetLike);
-  const defaultCapInput = allDates.map((d) => budgetLike.getActiveCapacity(d || new Date(0)));
-
-  const [nameInput, setNameInput] = useState(name);
-  const [capacitiesInput, setCapacitiesInput] = useState<Capacity[]>(defaultCapInput);
-  const [isInfiniteInput, setIsInfiniteInput] = useState(defaultInputs.isInfiniteInput);
-  const [isIncomeInput, setIsIncomeInput] = useState(defaultInputs.isIncomeInput);
-  const [isRollOverInput, setIsRollOverInput] = useState(roll_over);
-  const [rollDateInput, setRollDateInput] = useState(roll_date || new Date());
-  const [isSyncedInput, setIsSyncedInput] = useState(is_children_synced);
+  useEffect(() => {
+    const newBudgetLike = categories.get(id) || sections.get(id) || budgets.get(id);
+    setBudgetLike((oldBudgetLike) => newBudgetLike || oldBudgetLike);
+  }, [id, categories, sections, budgets]);
 
   useEffect(() => {
     if (!budgetLike) return;
@@ -86,13 +64,39 @@ const BudgetConfigPage = () => {
     setRollDateInput(roll_date || new Date());
   }, [budgetLike, viewDate]);
 
-  const { save, remove } = useEventHandlers(id, category, section, budget);
+  const {
+    name,
+    sorted_amount,
+    unsorted_amount,
+    roll_over,
+    roll_over_start_date: roll_date,
+    is_children_synced,
+  } = budgetLike || {};
 
-  const activeCapInput = activeCapacity.toInputs().capacityInput;
+  const activeCapacity = budgetLike?.getActiveCapacity(viewDate.getDate());
+  const defaultInputs = activeCapacity?.toInputs();
+  const allDates = budgetLike && getAllCapaciyDates(budgetLike);
+  const defaultCapInput = allDates?.map(
+    (d) => budgetLike?.getActiveCapacity(d || new Date(0)) as Capacity
+  );
+
+  const [nameInput, setNameInput] = useState(name);
+  const [capacitiesInput, setCapacitiesInput] = useState<Capacity[]>(defaultCapInput || []);
+  const [isInfiniteInput, setIsInfiniteInput] = useState(!!defaultInputs?.isInfiniteInput);
+  const [isIncomeInput, setIsIncomeInput] = useState(!!defaultInputs?.isIncomeInput);
+  const [isRollOverInput, setIsRollOverInput] = useState(!!roll_over);
+  const [rollDateInput, setRollDateInput] = useState(roll_date || new Date());
+  const [isSyncedInput, setIsSyncedInput] = useState(!!is_children_synced);
+
+  const { save, remove } = useEventHandlers(budgetLike, isSyncedInput);
+
+  if (!budgetLike) return <></>;
+
+  const activeCapInput = activeCapacity!.toInputs().capacityInput;
   const barCapacity = Capacity.fromInputs(activeCapInput, isIncomeInput, isInfiniteInput);
   const barCapacityValue = barCapacity[viewDate.getInterval()];
-  const labeledRatio = isInfiniteInput ? undefined : sorted_amount / barCapacityValue;
-  const unlabledRatio = isInfiniteInput ? undefined : unsorted_amount / barCapacityValue;
+  const labeledRatio = isInfiniteInput ? undefined : sorted_amount! / barCapacityValue;
+  const unlabledRatio = isInfiniteInput ? undefined : unsorted_amount! / barCapacityValue;
 
   const finishEditing = () => router.back();
 
@@ -127,8 +131,6 @@ const BudgetConfigPage = () => {
 
     finishEditing();
   };
-
-  if (!budget) return <></>;
 
   return (
     <div className="BudgetConfigPage">

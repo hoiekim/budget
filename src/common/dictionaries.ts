@@ -52,10 +52,12 @@ export class Dictionary<T = any> extends Map<string, T> {
   };
 
   map = (callback: (value: T, key: string, map: Map<string, T>) => T) => {
-    const clone = new Dictionary<T>(this);
+    const clone = this.clone();
     clone.forEach((v, k, m) => m.set(k, callback(v, k, m)));
     return clone;
   };
+
+  clone = () => new Dictionary<T>(this);
 
   override set = (key: string, value: T) => {
     // TODO: currently the ability to store data in dictionary is disabled in server.

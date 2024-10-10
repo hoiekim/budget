@@ -8,19 +8,36 @@ import {
   sortCapacities,
 } from "common";
 
+export type BudgetFamilyType = "budget" | "section" | "category";
+export type BudgetFamilyDictionaryKey = "budgets" | "sections" | "categories";
+
 export class BudgetFamily {
   get id() {
-    return "unknown";
+    throw new Error("Unknown id");
   }
   set id(_: string) {}
 
-  get type() {
+  get type(): BudgetFamilyType {
     if (globalData.budgets.has(this.id)) return "budget";
     if (globalData.sections.has(this.id)) return "section";
     if (globalData.categories.has(this.id)) return "category";
-    return "unknown";
+    throw new Error("Unknown type");
   }
   set type(_: string) {}
+
+  get dictionaryKey(): BudgetFamilyDictionaryKey {
+    switch (this.type) {
+      case "budget":
+        return "budgets";
+      case "section":
+        return "sections";
+      case "category":
+        return "categories";
+      default:
+        throw new Error("Unknown dictionaryKey");
+    }
+  }
+  set dictionaryKey(_: string) {}
 
   name: string = "";
   capacities = [new Capacity()];
@@ -98,6 +115,14 @@ export class BudgetFamily {
     const childSections = sections.filter((s) => s.budget_id === id);
     if (childSections.length) return childSections;
     return categories.filter((c) => c.section_id === id);
+  };
+
+  getParent = () => {
+    const { id } = this;
+    const { budgets, sections } = globalData;
+    const parentBudget = budgets.get(id);
+    if (parentBudget) return parentBudget;
+    return sections.get(id);
   };
 }
 

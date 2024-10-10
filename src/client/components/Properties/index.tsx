@@ -48,12 +48,11 @@ const Properties = ({
   };
 
   const onChangeSync: ChangeEventHandler<HTMLInputElement> = (e) => {
-    // TODO
     const newValue = e.target.checked;
     setIsSyncedInput(newValue);
-    // if (newValue) {
-    //   // TODO: Calculate
-    // }
+    if (newValue) {
+      // TODO: Calculate
+    }
   };
 
   return (

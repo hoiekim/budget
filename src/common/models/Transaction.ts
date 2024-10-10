@@ -28,8 +28,7 @@ export class TransactionLabel {
     if (!category_id) return undefined;
     const category = globalData.categories.get(category_id);
     if (!category) return undefined;
-    const section = globalData.sections.get(category.section_id);
-    return section?.id;
+    return category.getParent()?.id;
   }
 
   constructor(init?: Partial<TransactionLabel>) {
