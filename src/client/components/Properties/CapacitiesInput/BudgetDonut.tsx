@@ -36,7 +36,7 @@ const BudgetDonut = ({
   const { viewDate } = useAppContext();
   const interval = viewDate.getInterval();
   const capacity = budgetLike.getActiveCapacity(date);
-  const { children_total } = capacity;
+  const { children_total, grand_children_total } = capacity;
   const children = budgetLike.getChildren().sort((a, b) => {
     return a.name === b.name ? 0 : a.name < b.name ? -1 : 1;
   });
@@ -97,7 +97,7 @@ const BudgetDonut = ({
     { id: budgetLike.id, value: capacityAmount, color: "#666" },
   ];
 
-  const parentDiff = capacityAmount - children_total;
+  const parentDiff = capacityAmount - grand_children_total;
   if (!isSyncedInput) {
     const fillerData = { id: ID_DIFF, value: Math.abs(parentDiff), color: TRANSPARENT };
     if (children_total > capacityAmount) {
@@ -139,7 +139,8 @@ const BudgetDonut = ({
             ) : isSyncedInput ? (
               <div>
                 <div>
-                  {currencyCodeToSymbol(currencyCode)}&nbsp;{numberToCommaString(children_total, 0)}
+                  {currencyCodeToSymbol(currencyCode)}&nbsp;
+                  {numberToCommaString(grand_children_total, 0)}
                 </div>
               </div>
             ) : (
