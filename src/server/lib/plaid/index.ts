@@ -1,3 +1,7 @@
+/**
+ * https://plaid.com/docs/api/
+ */
+
 export * from "./client";
 export * from "./accounts";
 export * from "./transactions";

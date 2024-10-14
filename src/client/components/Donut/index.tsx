@@ -4,6 +4,7 @@ import "./index.css";
 export interface DonutData {
   id: string;
   value: number;
+  valueAdjustment?: number;
   color?: string;
   label?: string;
 }

@@ -5,7 +5,10 @@ export class Budget extends BudgetFamily {
   get id() {
     return this.budget_id;
   }
-  set id(_: string) {}
+
+  get type() {
+    return "budget" as const;
+  }
 
   budget_id: string = getRandomId();
   iso_currency_code: string = "USD";

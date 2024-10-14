@@ -30,6 +30,7 @@ export type BudgetFamilyConfigPageParams = {
 
 const BudgetConfigPage = () => {
   const { data, router, viewDate } = useAppContext();
+  const interval = viewDate.getInterval();
   const { budgets, sections, categories } = data;
 
   const calculate = useCalculator();
@@ -50,11 +51,19 @@ const BudgetConfigPage = () => {
   useEffect(() => {
     if (!budgetLike) return;
 
-    const { name, capacities, roll_over, roll_over_start_date: roll_date } = budgetLike;
+    const { name, roll_over, roll_over_start_date: roll_date } = budgetLike;
 
     const activeCapacity = budgetLike.getActiveCapacity(viewDate.getDate());
     const defaultInputs = activeCapacity.toInputs();
-    const defaultCapInput = capacities.map((c) => c.toInputs().capacityInput);
+    const allDates = budgetLike && getAllCapaciyDates(budgetLike);
+    const defaultCapInput = allDates?.map((d) => {
+      const activeCapacity = budgetLike?.getActiveCapacity(d || new Date(0));
+      const cloned = new Capacity(activeCapacity);
+      if (d && (!cloned.active_from || d < cloned.active_from)) {
+        cloned.active_from = new Date(d);
+      }
+      return cloned;
+    });
 
     setNameInput(name);
     setCapacitiesInput(defaultCapInput);
@@ -70,7 +79,6 @@ const BudgetConfigPage = () => {
     unsorted_amount,
     roll_over,
     roll_over_start_date: roll_date,
-    is_children_synced,
   } = budgetLike || {};
 
   const activeCapacity = budgetLike?.getActiveCapacity(viewDate.getDate());
@@ -86,15 +94,15 @@ const BudgetConfigPage = () => {
   const [isIncomeInput, setIsIncomeInput] = useState(!!defaultInputs?.isIncomeInput);
   const [isRollOverInput, setIsRollOverInput] = useState(!!roll_over);
   const [rollDateInput, setRollDateInput] = useState(roll_date || new Date());
-  const [isSyncedInput, setIsSyncedInput] = useState(!!is_children_synced);
+  const [isSyncedInput, setIsSyncedInput] = useState(!!budgetLike?.isChildrenSynced(interval));
 
-  const { save, remove } = useEventHandlers(budgetLike, isSyncedInput);
+  const { save, remove } = useEventHandlers();
 
   if (!budgetLike) return <></>;
 
   const activeCapInput = activeCapacity!.toInputs().capacityInput;
   const barCapacity = Capacity.fromInputs(activeCapInput, isIncomeInput, isInfiniteInput);
-  const barCapacityValue = barCapacity[viewDate.getInterval()];
+  const barCapacityValue = barCapacity[interval];
   const labeledRatio = isInfiniteInput ? undefined : sorted_amount! / barCapacityValue;
   const unlabledRatio = isInfiniteInput ? undefined : unsorted_amount! / barCapacityValue;
 
@@ -107,7 +115,7 @@ const BudgetConfigPage = () => {
     });
 
     try {
-      await save({
+      await save(budgetLike, {
         name: nameInput,
         capacities: updatedCapacities,
         roll_over: isRollOverInput,
@@ -118,12 +126,12 @@ const BudgetConfigPage = () => {
       console.error(error);
     }
 
-    finishEditing();
+    router.back();
   };
 
   const onDelete = async () => {
     try {
-      await remove();
+      await remove(budgetLike);
       if (isRollOverInput) calculate();
     } catch (error: any) {
       console.error(error);

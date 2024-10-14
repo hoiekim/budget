@@ -1,13 +1,21 @@
 import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from "react";
 import { BudgetFamily } from "common/models/BudgetFamily";
-import { Capacity, ViewDate, getDateString, getDateTimeString, sortCapacities } from "common";
+import {
+  Budget,
+  Capacity,
+  ViewDate,
+  currencyCodeToSymbol,
+  getDateString,
+  getDateTimeString,
+  sortCapacities,
+} from "common";
 import { useAppContext } from "client";
 import BudgetDonut from "./BudgetDonut";
 import "./index.css";
+import CapacityInput from "./CapacityInput";
 
 interface Props {
   budgetLike: BudgetFamily;
-  isInfiniteInput: boolean;
   capacitiesInput: Capacity[];
   setCapacitiesInput: Dispatch<SetStateAction<Capacity[]>>;
   isSyncedInput: boolean;
@@ -17,7 +25,6 @@ const CapacitiesInput = ({
   budgetLike,
   capacitiesInput,
   setCapacitiesInput,
-  isInfiniteInput,
   isSyncedInput,
 }: Props) => {
   const { viewDate } = useAppContext();
@@ -69,7 +76,9 @@ const CapacitiesInput = ({
       });
     };
 
-    const key = `capacity_${active_from?.getTime()}_${capacity[interval]}`;
+    const key = `capacity_${i}_${active_from?.getTime()}`;
+    const defaultCapacityValue = capacity[interval];
+    const currencyCode = (budgetLike as Budget)["iso_currency_code"] || "USD";
 
     // If active_from is undefined, it's a default capacity. Default capacity covers all
     // time period backward so `new Date(0)` can be used to refer to the default capacity.
@@ -97,15 +106,26 @@ const CapacitiesInput = ({
               Remove&nbsp;This&nbsp;Period
             </button>
           </div>
-          <BudgetDonut
-            budgetLike={budgetLike}
-            date={date}
-            isInfiniteInput={isInfiniteInput}
-            isSyncedInput={isSyncedInput}
-            capacityInput={capacity}
-            defaultCapacityInput={capacity}
-            onChangeAmount={onChangeAmount}
-          />
+          {budgetLike.type === "category" ? (
+            <div>
+              <span>{currencyCodeToSymbol(currencyCode)}</span>
+              <CapacityInput
+                style={{ width: `${"000,000".length}ch` }}
+                disabled={isSyncedInput}
+                defaultValue={defaultCapacityValue}
+                onBlur={onChangeAmount}
+              />
+            </div>
+          ) : (
+            <BudgetDonut
+              budgetLike={budgetLike}
+              date={date}
+              isSyncedInput={isSyncedInput}
+              capacityInput={capacity}
+              defaultCapacityInput={capacity}
+              onChangeAmount={onChangeAmount}
+            />
+          )}
         </div>
       </div>
     );

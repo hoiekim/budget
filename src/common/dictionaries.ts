@@ -11,6 +11,7 @@ import {
   Category,
   Item,
 } from "common";
+import { BudgetFamily, BudgetFamilyType } from "./models/BudgetFamily";
 
 export class Dictionary<T = any> extends Map<string, T> {
   toArray = () => Array.from(this.values());
@@ -87,3 +88,15 @@ export class TransactionDictionary extends Dictionary<Transaction> {
     throw new Error(this.INPUT_ERROR_MESSAGE);
   };
 }
+
+export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
+  return type === "budget" ? Budget : type === "section" ? Section : Category;
+};
+
+export const getBudgetDictionaryClass = (type: BudgetFamilyType): typeof Dictionary => {
+  return type === "budget"
+    ? BudgetDictionary
+    : type === "section"
+    ? SectionDictionary
+    : CategoryDictionary;
+};

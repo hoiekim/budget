@@ -1,3 +1,7 @@
+/**
+ * https://www.elastic.co/guide/en/elasticsearch/reference/current/quickstart.html
+ */
+
 export * from "./util";
 export * from "./client";
 export * from "./accounts";

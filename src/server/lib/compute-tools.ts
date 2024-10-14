@@ -1,6 +1,7 @@
 import {
   InvestmentTransaction,
   RemovedInvestmentTransaction,
+  Security,
   TWO_WEEKS,
   Transaction,
   getDateTimeString,

@@ -21,6 +21,8 @@ div.CapacitiesInput input {
   font-size: 14px;
   height: 100%;
   width: 100px;
+  text-align: center;
+  background-color: #fff;
 }
 
 div.CapacitiesInput .capacityAnalysis button {
@@ -64,15 +66,15 @@ div.BudgetDonut > .details {
   align-items: center;
 }
 
-div.BudgetDonut > .details > .capacityBreakDown {
+div.CapacityBreakDown {
   max-width: 300px;
 }
 
-div.BudgetDonut > .details > .capacityBreakDown > table {
+div.CapacityBreakDown > table {
   table-layout: fixed;
 }
 
-div.BudgetDonut > .details > .capacityBreakDown * {
+div.CapacityBreakDown * {
   font-size: 14px;
   overflow: hidden;
   white-space: nowrap;
@@ -118,9 +120,4 @@ div.BudgetDonut > .details > .labeledDonuts > .centerLabel {
   justify-content: center;
   align-items: center;
   text-align: center;
-}
-
-div.BudgetDonut > .details > .labeledDonuts > .centerLabel input {
-  text-align: center;
-  background-color: #fff;
 }

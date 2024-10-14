@@ -24,7 +24,6 @@ export const calculatorLambda = (
   transactions: TransactionDictionary,
   accounts: AccountDictionary
 ) => {
-  const date = viewDate.getDate();
   const interval = viewDate.getInterval();
 
   const newBudgets = new BudgetDictionary(budgets);
@@ -32,9 +31,10 @@ export const calculatorLambda = (
   const newCategories = new CategoryDictionary(categories);
 
   const setBaseAmounts = (e: BudgetFamily) => {
-    e.child_section_capacity_total = 0;
-    e.child_category_capacity_total = 0;
-    e.is_children_synced = true;
+    e.capacities.forEach((c) => {
+      c.children_total = 0;
+      c.grand_children_total = 0;
+    });
     e.sorted_amount = 0;
     e.unsorted_amount = 0;
     e.number_of_unsorted_items = 0;
@@ -50,40 +50,30 @@ export const calculatorLambda = (
 
   newSections.forEach((section) => {
     setBaseAmounts(section);
-    const sectionCapacity = section.getActiveCapacity(date)[interval];
-    const adding = Math.abs(sectionCapacity) === MAX_FLOAT ? 0 : sectionCapacity;
     const budget = newBudgets.get(section.budget_id);
     if (!budget) return;
-    budget.child_section_capacity_total += adding;
+    section.capacities.forEach((capacity) => {
+      const { active_from } = capacity;
+      const capacityAmount = capacity[interval];
+      const adding = Math.abs(capacityAmount) === MAX_FLOAT ? 0 : capacityAmount;
+      budget.getActiveCapacity(active_from || new Date(0)).children_total += adding;
+    });
   });
 
   newCategories.forEach((category) => {
     setBaseAmounts(category);
     const section = newSections.get(category.section_id);
     if (!section) return;
-    const categoryCapacity = category.getActiveCapacity(date)[interval];
-    const adding = Math.abs(categoryCapacity) === MAX_FLOAT ? 0 : categoryCapacity;
-    section.child_category_capacity_total += adding;
-    const budget = newBudgets.get(section.budget_id);
-    if (!budget) return;
-    budget.child_category_capacity_total += adding;
-  });
-
-  newSections.forEach((section) => {
-    const sectionCapacity = section.getActiveCapacity(date)[interval];
-    const isInfinite = Math.abs(sectionCapacity) === MAX_FLOAT;
-    const isTied = section.child_category_capacity_total === sectionCapacity;
-    section.is_children_synced = isInfinite || isTied;
-    const budget = newBudgets.get(section.budget_id);
-    if (budget) budget.is_children_synced = false;
-  });
-
-  newBudgets.forEach((budget) => {
-    const budgetCapacity = budget.getActiveCapacity(date)[interval];
-    const isInfinite = Math.abs(budgetCapacity) === MAX_FLOAT;
-    const isBudgetSectionTied = budget.child_section_capacity_total === budgetCapacity;
-    const isBudgetCategoryTied = budget.child_category_capacity_total === budgetCapacity;
-    budget.is_children_synced = isInfinite || (isBudgetSectionTied && isBudgetCategoryTied);
+    category.capacities.forEach((capacity) => {
+      const { active_from } = capacity;
+      const capacityAmount = capacity[interval];
+      const adding = Math.abs(capacityAmount) === MAX_FLOAT ? 0 : capacityAmount;
+      const sectionCapacity = section.getActiveCapacity(active_from || new Date(0));
+      sectionCapacity.children_total += adding;
+      const budget = newBudgets.get(section.budget_id);
+      if (!budget) return;
+      budget.getActiveCapacity(active_from || new Date(0)).grand_children_total += adding;
+    });
   });
 
   transactions.forEach(({ authorized_date, date, account_id, label, amount }) => {

@@ -226,6 +226,7 @@
         "capacities": {
           "type": "nested",
           "properties": {
+            "capacity_id": { "type": "keyword" },
             "year": { "type": "float" },
             "month": { "type": "float" },
             "week": { "type": "float" },
@@ -248,6 +249,7 @@
         "capacities": {
           "type": "nested",
           "properties": {
+            "capacity_id": { "type": "keyword" },
             "year": { "type": "float" },
             "month": { "type": "float" },
             "week": { "type": "float" },
@@ -269,6 +271,7 @@
         "capacities": {
           "type": "nested",
           "properties": {
+            "capacity_id": { "type": "keyword" },
             "year": { "type": "float" },
             "month": { "type": "float" },
             "week": { "type": "float" },

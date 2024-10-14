@@ -26,7 +26,14 @@ const BudgetsPage = () => {
       return indexA - indexB;
     })
     .map(([budget_id, budget]) => {
-      return <BudgetBar key={budget_id} budget={budget} onSetOrder={setBudgetsOrder} />;
+      return (
+        <BudgetBar
+          key={budget_id}
+          budget={budget}
+          onSetOrder={setBudgetsOrder}
+          hideEditButton={true}
+        />
+      );
     });
 
   const onClickAddBudget = async () => {

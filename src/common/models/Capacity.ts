@@ -1,9 +1,46 @@
-import { MAX_FLOAT, assign, getDateTimeString } from "common";
+import { MAX_FLOAT, assign, getDateTimeString, getRandomId } from "common";
 
 export type Interval = "year" | "month" | "week" | "day";
 export const intervals: Interval[] = ["year", "month", "week", "day"];
 
+class CapacitySummary {
+  children_total = 0;
+  grand_children_total = 0;
+}
+
+class CapacitySummaryCache extends Map<string, CapacitySummary> {
+  getOrNew = (id: string) => {
+    const existing = this.get(id);
+    if (existing) return existing;
+    const newData = new CapacitySummary();
+    this.set(id, newData);
+    return newData;
+  };
+}
+
+const summaryCache = new CapacitySummaryCache();
+
 export class Capacity {
+  get id() {
+    return this.capacity_id;
+  }
+
+  capacity_id = getRandomId();
+
+  get children_total() {
+    return summaryCache.getOrNew(this.id).children_total;
+  }
+  set children_total(n: number) {
+    summaryCache.getOrNew(this.id).children_total = n;
+  }
+
+  get grand_children_total() {
+    return summaryCache.getOrNew(this.id).grand_children_total;
+  }
+  set grand_children_total(n: number) {
+    summaryCache.getOrNew(this.id).grand_children_total = n;
+  }
+
   year = 0;
   month = 0;
   week = 0;
@@ -49,6 +86,16 @@ export class Capacity {
     }
     return { capacityInput, isIncomeInput, isInfiniteInput };
   };
+
+  get isInfinite() {
+    const { day, week, month, year } = this;
+    return day === MAX_FLOAT || week === MAX_FLOAT || month === MAX_FLOAT || year === MAX_FLOAT;
+  }
+
+  get isIncome() {
+    const { day, week, month, year } = this;
+    return Math.max(day, week, month, year) < 0;
+  }
 }
 
 export interface JSONCapacity {

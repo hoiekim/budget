@@ -1,84 +1,49 @@
 import { call, useAppContext } from "client";
-import {
-  Budget,
-  BudgetDictionary,
-  Category,
-  CategoryDictionary,
-  Data,
-  Dictionary,
-  Section,
-  SectionDictionary,
-} from "common";
+import { Category, Data, Section, getBudgetClass, getBudgetDictionaryClass } from "common";
 import { BudgetFamily } from "common/models/BudgetFamily";
 
-export const useEventHandlers = (budgetLike: BudgetFamily | undefined, isSyncedInput: boolean) => ({
-  save: useSave(budgetLike, isSyncedInput),
-  remove: useRemove(budgetLike),
+export const useEventHandlers = () => ({
+  save: useSave(),
+  remove: useRemove(),
 });
 
-export const useSave = (budgetLike: BudgetFamily | undefined, isSyncedInput: boolean) => {
+export const useSave = () => {
   const { setData, viewDate } = useAppContext();
-  if (!budgetLike) return async (updatedBudgetFamily: Partial<BudgetFamily>) => {};
-  const { id, type, dictionaryKey } = budgetLike;
-  const idKey = type + "_id";
-  const DynamicBudgetFamily: typeof BudgetFamily =
-    type === "budget" ? Budget : type === "section" ? Section : Category;
-  const DynamicBudgetFamilyDictionary: typeof Dictionary =
-    type === "budget"
-      ? BudgetDictionary
-      : type === "section"
-      ? SectionDictionary
-      : CategoryDictionary;
 
-  const save = async (updatedBudgetFamily: Partial<BudgetFamily>) => {
-    const { status } = await call.post(`/api/${type}`, {
-      ...updatedBudgetFamily,
-      [idKey]: id,
-    });
+  const save = async <T extends BudgetFamily>(original: T, updated: Partial<T>) => {
+    const { id, type, dictionaryKey } = original;
+    const DynamicBudgetFamily = getBudgetClass(type);
+    const DynamicBudgetFamilyDictionary = getBudgetDictionaryClass(type);
+    const { status } = await call.post(`/api/${type}`, { ...updated, [`${type}_id`]: id });
 
     if (status !== "success") throw new Error(`Failed to update ${type}: ${id}`);
 
     setData((oldData) => {
       const newData = new Data(oldData);
-      const oldBudgetFamily = oldData[dictionaryKey].get(id);
-      if (!oldBudgetFamily) return oldData;
-      const newBudgetFamily = new DynamicBudgetFamily({
-        ...oldBudgetFamily,
-        ...updatedBudgetFamily,
-      });
-      const date = viewDate.getDate();
+      const oldBudgetLike = oldData[dictionaryKey].get(id);
+      if (!oldBudgetLike) return oldData;
+      const newBudgetLike = new DynamicBudgetFamily({ ...oldBudgetLike, ...updated });
       const interval = viewDate.getInterval();
-      const newCapacityValue = newBudgetFamily.getActiveCapacity(date)[interval];
-      const oldCapacityValue = oldBudgetFamily.getActiveCapacity(date)[interval];
-      const capacityDiff = newCapacityValue - oldCapacityValue;
-      if (type === "category") {
-        const parentSection = newData.sections.get((newBudgetFamily as Category).section_id)!;
-        parentSection.child_category_capacity_total += capacityDiff;
-        const sectionCapacity = parentSection.getActiveCapacity(date)[interval];
-        const isSectionSynced = parentSection.child_category_capacity_total === sectionCapacity;
-        parentSection.is_children_synced = isSectionSynced;
-        const parentBudget = newData.budgets.get(parentSection.budget_id)!;
-        parentBudget.child_category_capacity_total += capacityDiff;
-        const budgetCapacity = parentBudget.getActiveCapacity(date)[interval];
-        const isBudgetSynced = parentBudget.child_category_capacity_total === budgetCapacity;
-        parentBudget.is_children_synced = isBudgetSynced;
-      } else if (type === "section") {
-        const is_capacity_synced =
-          newBudgetFamily.child_category_capacity_total === newCapacityValue;
-        newBudgetFamily.is_children_synced = is_capacity_synced;
-        const parentBudget = newData.budgets.get((newBudgetFamily as Section).budget_id)!;
-        parentBudget.child_section_capacity_total += capacityDiff;
-        const budgetCapacity = parentBudget.getActiveCapacity(date)[interval];
-        const isBudgetSynced = parentBudget.child_section_capacity_total === budgetCapacity;
-        parentBudget.is_children_synced = isBudgetSynced;
-      } else {
-        const is_capacity_synced =
-          newBudgetFamily.child_category_capacity_total === newCapacityValue;
-        const is_section_synced = newBudgetFamily.child_section_capacity_total === newCapacityValue;
-        newBudgetFamily.is_children_synced = is_capacity_synced && is_section_synced;
-      }
+      const parentSection = newData.sections.get((newBudgetLike as Category).section_id);
+      parentSection?.capacities.forEach((capacity) => {
+        const { active_from = new Date(0) } = capacity;
+        const newCapacityValue = newBudgetLike.getActiveCapacity(active_from)[interval];
+        const oldCapacityValue = oldBudgetLike.getActiveCapacity(active_from)[interval];
+        const capacityDiff = newCapacityValue - oldCapacityValue;
+        capacity.children_total += capacityDiff;
+      });
+      const budget_id = parentSection?.budget_id || (newBudgetLike as Section).budget_id;
+      const parentBudget = newData.budgets.get(budget_id);
+      parentBudget?.capacities.forEach((capacity) => {
+        const { active_from = new Date(0) } = capacity;
+        const newCapacityValue = newBudgetLike.getActiveCapacity(active_from)[interval];
+        const oldCapacityValue = oldBudgetLike.getActiveCapacity(active_from)[interval];
+        const capacityDiff = newCapacityValue - oldCapacityValue;
+        capacity.children_total += capacityDiff;
+        if (type === "category") capacity.grand_children_total += capacityDiff;
+      });
       const newDictionary = new DynamicBudgetFamilyDictionary(newData[dictionaryKey] as any);
-      newDictionary.set(id, newBudgetFamily as any);
+      newDictionary.set(id, newBudgetLike as any);
       newData[dictionaryKey] = newDictionary;
       return newData as any;
     });
@@ -87,22 +52,19 @@ export const useSave = (budgetLike: BudgetFamily | undefined, isSyncedInput: boo
   return save;
 };
 
-export const useRemove = (budgetLike?: BudgetFamily) => {
+export const useRemove = () => {
   const { data, setData } = useAppContext();
   const { transactions, categories } = data;
-  if (!budgetLike) return async () => {};
-  const name = budgetLike.name || "Unnamed";
-  const { id, type, dictionaryKey } = budgetLike;
-  const DynamicBudgetFamilyDictionary: typeof Dictionary =
-    type === "budget"
-      ? BudgetDictionary
-      : type === "section"
-      ? SectionDictionary
-      : CategoryDictionary;
 
-  const queryString = "?" + new URLSearchParams({ id }).toString();
+  const remove = async (deleted?: BudgetFamily) => {
+    if (!deleted) return;
 
-  const remove = async () => {
+    const name = deleted.name || "Unnamed";
+    const { id, type, dictionaryKey } = deleted;
+    const DynamicBudgetFamilyDictionary = getBudgetDictionaryClass(type);
+
+    const queryString = "?" + new URLSearchParams({ id }).toString();
+
     let shouldConfirm = false;
 
     if (type === "category") {

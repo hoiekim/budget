@@ -48,11 +48,7 @@ const Properties = ({
   };
 
   const onChangeSync: ChangeEventHandler<HTMLInputElement> = (e) => {
-    const newValue = e.target.checked;
-    setIsSyncedInput(newValue);
-    if (newValue) {
-      // TODO: Calculate
-    }
+    setIsSyncedInput(e.target.checked);
   };
 
   return (
@@ -79,43 +75,42 @@ const Properties = ({
           />
         </div>
       </div>
-      <div className="property">
-        {!isInfiniteInput && (
-          <>
+      {!isInfiniteInput && (
+        <div className="property">
+          <div className="row">
+            <span>Rolls over to the next period</span>
+            <ToggleInput
+              disabled={isSyncedInput}
+              checked={isRollOverInput}
+              onChange={(e) => setIsRollOverInput(e.target.checked)}
+            />
+          </div>
+          {isRollOverInput && (
             <div className="row">
-              <span>Rolls over to the next period</span>
-              <ToggleInput
+              <span>Rolls over from&nbsp;</span>
+              <input
                 disabled={isSyncedInput}
-                checked={isRollOverInput}
-                onChange={(e) => setIsRollOverInput(e.target.checked)}
+                type="date"
+                value={getDateString(rollOverStartDateInput)}
+                onChange={onChangeRollDate}
               />
             </div>
-            {isRollOverInput && (
-              <div className="row">
-                <span>Rolls over from&nbsp;</span>
-                <input
-                  disabled={isSyncedInput}
-                  type="date"
-                  value={getDateString(rollOverStartDateInput)}
-                  onChange={onChangeRollDate}
-                />
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
       <div className="property">
         <div className="row">
-          <span>Sync all budget family</span>
+          <span>Sync with children</span>
           <ToggleInput checked={isSyncedInput} onChange={onChangeSync} />
         </div>
-        <CapacitiesInput
-          budgetLike={budgetLike}
-          isInfiniteInput={isInfiniteInput}
-          capacitiesInput={capacitiesInput}
-          setCapacitiesInput={setCapacitiesInput}
-          isSyncedInput={isSyncedInput}
-        />
+        {!isInfiniteInput && (
+          <CapacitiesInput
+            budgetLike={budgetLike}
+            capacitiesInput={capacitiesInput}
+            setCapacitiesInput={setCapacitiesInput}
+            isSyncedInput={isSyncedInput}
+          />
+        )}
       </div>
     </div>
   );

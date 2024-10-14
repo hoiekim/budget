@@ -8,9 +8,10 @@ const { BUDGET_DETAIL } = PATH;
 interface Props {
   budget: Budget;
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
+  hideEditButton?: boolean;
 }
 
-const BudgetBar = ({ budget, onSetOrder }: Props) => {
+const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
   const { router } = useAppContext();
   const { path, go } = router;
 
@@ -31,6 +32,7 @@ const BudgetBar = ({ budget, onSetOrder }: Props) => {
       iso_currency_code={iso_currency_code}
       onClickInfo={onClickInfo}
       onSetOrder={onSetOrder}
+      hideEditButton={hideEditButton}
     />
   );
 };

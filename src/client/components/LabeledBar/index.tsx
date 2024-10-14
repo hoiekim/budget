@@ -23,6 +23,7 @@ interface Props {
   iso_currency_code: string;
   onClickInfo: () => void;
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
+  hideEditButton?: boolean;
 }
 
 const LabeledBar = ({
@@ -31,6 +32,7 @@ const LabeledBar = ({
   iso_currency_code,
   onClickInfo: _onClickInfo,
   onSetOrder,
+  hideEditButton,
 }: Props) => {
   const { viewDate, router } = useAppContext();
 
@@ -44,7 +46,8 @@ const LabeledBar = ({
   } = barData;
 
   const capacity = barData.getActiveCapacity(viewDate.getDate());
-  const capacityValue = capacity[viewDate.getInterval()];
+  const interval = viewDate.getInterval();
+  const capacityValue = capacity[interval];
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
   const isIncome = capacityValue < 0;
 
@@ -86,7 +89,7 @@ const LabeledBar = ({
     roll_over_start_date &&
     roll_over_start_date < viewDate.getDate();
 
-  const editButtonClassName = barData.is_children_synced ? undefined : "notification";
+  const editButtonClassName = barData.isChildrenSynced(interval) ? undefined : "notification";
 
   return (
     <div
@@ -100,13 +103,15 @@ const LabeledBar = ({
     >
       <div className="title">
         <span>{name}</span>
-        <EditButton
-          className={editButtonClassName}
-          onEdit={startEditing}
-          onTouchStart={onTouchHandleStart}
-          onTouchEnd={onTouchHandleEnd}
-          onGotPointerCapture={onGotPointerCapture}
-        />
+        {!hideEditButton && (
+          <EditButton
+            className={editButtonClassName}
+            onEdit={startEditing}
+            onTouchStart={onTouchHandleStart}
+            onTouchEnd={onTouchHandleEnd}
+            onGotPointerCapture={onGotPointerCapture}
+          />
+        )}
       </div>
       <div className="statusBarWithText">
         <Bar

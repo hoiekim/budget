@@ -4,10 +4,14 @@ import {
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
-  Holding as PlaidHolding,
-  Security as PlaidSecurity,
 } from "plaid";
-import { MaskedUser, getPlaidClient, ignorable_error_codes, updateItemStatus } from "server";
+import {
+  MaskedUser,
+  getClosePrice,
+  getPlaidClient,
+  ignorable_error_codes,
+  updateItemStatus,
+} from "server";
 import { Item, Holding, Security, ItemStatus } from "common";
 
 export type ItemError = PlaidError & { item_id: string };

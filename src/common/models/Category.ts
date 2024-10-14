@@ -5,7 +5,10 @@ export class Category extends BudgetFamily {
   get id() {
     return this.category_id;
   }
-  set id(_: string) {}
+
+  get type() {
+    return "category" as const;
+  }
 
   category_id: string = getRandomId();
   section_id: string = "";
