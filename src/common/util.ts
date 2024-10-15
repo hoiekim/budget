@@ -62,12 +62,13 @@ export type DeepPartial<T> = {
 
 export type ValueOf<T> = T[keyof T];
 
-export const assign = (target: any, source: any) => {
+export const assign = <T>(target: T, source: any) => {
   for (const key in source) {
     const value = source[key];
     if (typeof value === "function") continue;
-    target[key] = value;
+    target[key as keyof T] = value;
   }
+  return target;
 };
 
 export const deepEqual = (x: any, y: any) => {

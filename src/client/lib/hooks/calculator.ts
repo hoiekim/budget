@@ -1,13 +1,11 @@
 import { useCallback } from "react";
 import { useAppContext } from "client";
 import {
-  AccountDictionary,
   BudgetDictionary,
+  SectionDictionary,
   CategoryDictionary,
   Data,
   MAX_FLOAT,
-  SectionDictionary,
-  TransactionDictionary,
   ViewDate,
 } from "common";
 import { BudgetFamily } from "common/models/BudgetFamily";
@@ -16,14 +14,8 @@ import { BudgetFamily } from "common/models/BudgetFamily";
  * Receives budget-like data objects maps, calculates their transaction amounts
  * and returns the cloned maps with calculated results.
  */
-export const calculatorLambda = (
-  budgets: BudgetDictionary,
-  sections: SectionDictionary,
-  categories: CategoryDictionary,
-  viewDate: ViewDate,
-  transactions: TransactionDictionary,
-  accounts: AccountDictionary
-) => {
+export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
+  const { transactions, accounts, budgets, sections, categories } = data;
   const interval = viewDate.getInterval();
 
   const newBudgets = new BudgetDictionary(budgets);
@@ -156,28 +148,18 @@ export const calculatorLambda = (
 };
 
 export const useCalculator = () => {
-  const { data, setData, viewDate } = useAppContext();
-  const { transactions, accounts } = data;
+  const { setData, viewDate } = useAppContext();
 
   const callback = () => {
     setData((oldData) => {
       const newData = new Data(oldData);
-      const { budgets, sections, categories } = calculatorLambda(
-        newData.budgets,
-        newData.sections,
-        newData.categories,
-        viewDate,
-        transactions,
-        accounts
-      );
-
+      const { budgets, sections, categories } = calculatorLambda(newData, viewDate);
       newData.budgets = budgets;
       newData.sections = sections;
       newData.categories = categories;
-
       return newData;
     });
   };
 
-  return useCallback(callback, [viewDate, setData, transactions, accounts]);
+  return useCallback(callback, [viewDate, setData]);
 };

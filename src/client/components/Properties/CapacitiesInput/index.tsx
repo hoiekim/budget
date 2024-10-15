@@ -141,7 +141,11 @@ const CapacitiesInput = ({
       const dateHelper = new ViewDate(viewDate.getInterval(), latestCapacity.active_from);
       dateHelper.next();
       const active_from = dateHelper.getDateAsStartDate();
-      const newCapacity = new Capacity({ ...latestCapacity, active_from });
+      const newCapacityInit: Partial<Capacity> = { ...latestCapacity, active_from };
+      delete newCapacityInit.capacity_id;
+      const newCapacity = new Capacity(newCapacityInit);
+      newCapacity.children_total = latestCapacity.children_total;
+      newCapacity.grand_children_total = latestCapacity.grand_children_total;
       newCapacities.push(newCapacity);
       defaultCapacities.current = newCapacities;
 

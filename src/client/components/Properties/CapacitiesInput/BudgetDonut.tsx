@@ -112,8 +112,6 @@ const BudgetDonut = ({
   const currencySymbol = currencyCodeToSymbol(currencyCode);
 
   const defaultCapacityValue = defaultCapacityInput[interval];
-  const capacityValue = capacityInput[interval];
-  const capacityInputWidth = `${numberToCommaString(Math.abs(capacityValue), 0).length + 1}ch`;
 
   return (
     <div className="BudgetDonut">
@@ -149,7 +147,7 @@ const BudgetDonut = ({
                   <div>
                     <span>{currencyCodeToSymbol(currencyCode)}</span>
                     <CapacityInput
-                      style={{ width: capacityInputWidth }}
+                      style={{ width: "7ch" }}
                       disabled={isSyncedInput}
                       defaultValue={defaultCapacityValue}
                       onBlur={onChangeAmount}
@@ -161,7 +159,7 @@ const BudgetDonut = ({
                     <span>
                       {parentDiff < 0 ? "+" : "-"}&nbsp;{currencySymbol}&nbsp;
                     </span>
-                    <span style={{ width: capacityInputWidth, textAlign: "center" }}>
+                    <span style={{ width: "7ch", textAlign: "center" }}>
                       {numberToCommaString(Math.abs(parentDiff), 0)}
                     </span>
                   </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Capacity, getDateTimeString } from "common";
-import { useAppContext, PATH, useCalculator } from "client";
+import { useAppContext, PATH } from "client";
 import { NameInput, Bar, ActionButtons, Properties } from "client/components";
 import { BudgetFamily } from "common/models/BudgetFamily";
 import { useEventHandlers } from "./lib";
@@ -32,8 +32,6 @@ const BudgetConfigPage = () => {
   const { data, router, viewDate } = useAppContext();
   const interval = viewDate.getInterval();
   const { budgets, sections, categories } = data;
-
-  const calculate = useCalculator();
 
   const { path, params, transition } = router;
   let id: string;
@@ -96,7 +94,7 @@ const BudgetConfigPage = () => {
   const [rollDateInput, setRollDateInput] = useState(roll_date || new Date());
   const [isSyncedInput, setIsSyncedInput] = useState(!!budgetLike?.isChildrenSynced(interval));
 
-  const { save, remove } = useEventHandlers();
+  const { save, remove } = useEventHandlers(isSyncedInput, isIncomeInput, isInfiniteInput);
 
   if (!budgetLike) return <></>;
 
@@ -109,19 +107,13 @@ const BudgetConfigPage = () => {
   const finishEditing = () => router.back();
 
   const onComplete = async () => {
-    const purgedCapacities = isInfiniteInput ? [new Capacity()] : capacitiesInput;
-    const updatedCapacities = purgedCapacities.map((c) => {
-      return Capacity.fromInputs(c, isIncomeInput, isInfiniteInput);
-    });
-
     try {
       await save(budgetLike, {
         name: nameInput,
-        capacities: updatedCapacities,
+        capacities: capacitiesInput,
         roll_over: isRollOverInput,
         roll_over_start_date: rollDateInput,
       });
-      if (isRollOverInput) calculate();
     } catch (error: any) {
       console.error(error);
     }
@@ -132,7 +124,6 @@ const BudgetConfigPage = () => {
   const onDelete = async () => {
     try {
       await remove(budgetLike);
-      if (isRollOverInput) calculate();
     } catch (error: any) {
       console.error(error);
     }

@@ -116,6 +116,11 @@ export class BudgetFamily {
     return { ...this, roll_over_start_date };
   };
 
+  clone = (override?: Partial<BudgetFamily | JSONBudgetFamily>): this => {
+    const overrode = override ? assign(this.clone(), override) : this;
+    return new (this.constructor as any)(overrode);
+  };
+
   sortCapacities = (order: "asc" | "desc" = "asc") => {
     return [...this.capacities].sort((a, b) => sortCapacities(a, b, order));
   };
@@ -151,8 +156,10 @@ export class BudgetFamily {
     this.capacities.forEach((capacity) => {
       const capacityAmount = capacity[interval];
       const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
-      const isTied = capacity.children_total === capacityAmount;
-      isSynced = (isSynced && isInfinite) || isTied;
+      const isChildrenSynced = capacity.children_total === capacityAmount;
+      const isBudget = this.type === "budget";
+      const isGrandChildrenSynced = !isBudget || capacity.grand_children_total === capacityAmount;
+      isSynced = isSynced && (isInfinite || (isChildrenSynced && isGrandChildrenSynced));
     });
     return isSynced;
   };
@@ -171,6 +178,7 @@ export class BudgetFamily {
     const parentIdKey = `${parentType}_id`;
     // Assuming each budget member has correct parent id property
     const parentId = (this as any)[parentIdKey] as string;
+    if (!parentId || typeof parentId !== "string") return;
     const { budgets, sections } = globalData;
     const parentBudget = budgets.get(parentId);
     if (parentBudget) return parentBudget;

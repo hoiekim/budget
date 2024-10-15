@@ -101,7 +101,11 @@ const Properties = ({
       <div className="property">
         <div className="row">
           <span>Sync with children</span>
-          <ToggleInput checked={isSyncedInput} onChange={onChangeSync} />
+          <ToggleInput
+            disabled={budgetLike.type === "category"}
+            checked={budgetLike.type === "category" || isSyncedInput}
+            onChange={onChangeSync}
+          />
         </div>
         {!isInfiniteInput && (
           <CapacitiesInput
