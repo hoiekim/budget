@@ -43,7 +43,7 @@ const BudgetConfigPage = () => {
 
   useEffect(() => {
     const newBudgetLike = categories.get(id) || sections.get(id) || budgets.get(id);
-    setBudgetLike((oldBudgetLike) => newBudgetLike || oldBudgetLike);
+    setBudgetLike((oldBudgetLike) => newBudgetLike?.clone() || oldBudgetLike);
   }, [id, categories, sections, budgets]);
 
   useEffect(() => {
@@ -69,6 +69,7 @@ const BudgetConfigPage = () => {
     setIsIncomeInput(defaultInputs.isIncomeInput);
     setIsRollOverInput(roll_over);
     setRollDateInput(roll_date || new Date());
+    setIsSyncedInput(budgetLike.isChildrenSynced(viewDate.getInterval()));
   }, [budgetLike, viewDate]);
 
   const {
