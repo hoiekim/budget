@@ -19,7 +19,7 @@ export type BudgetDetailPageParams = {
 };
 
 const BudgetDetailPage = () => {
-  const { data, setData, router } = useAppContext();
+  const { data, setData, router, viewDate } = useAppContext();
   const { budgets, sections } = data;
   const { path, params, transition } = router;
   let budget_id: string;
@@ -87,6 +87,9 @@ const BudgetDetailPage = () => {
 
   const { number_of_unsorted_items } = budget || {};
 
+  const capacity = budget?.getActiveCapacity(viewDate.getDate());
+  const isInfinite = !!capacity?.isInfinite;
+
   return (
     <div className="BudgetDetailPage">
       {budget && (
@@ -102,7 +105,7 @@ const BudgetDetailPage = () => {
             </button>
           </div>
 
-          {!!(graphData.lines || graphData.areas) && (
+          {!!(graphData.lines || graphData.areas) && !isInfinite && (
             <div className="sidePadding">
               <Graph
                 data={graphData}

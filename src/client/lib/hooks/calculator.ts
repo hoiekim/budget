@@ -47,8 +47,15 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
     section.capacities.forEach((capacity) => {
       const { active_from } = capacity;
       const capacityAmount = capacity[interval];
-      const adding = Math.abs(capacityAmount) === MAX_FLOAT ? 0 : capacityAmount;
-      budget.getActiveCapacity(active_from || new Date(0)).children_total += adding;
+      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
+      const budgetCapacity = budget.getActiveCapacity(active_from || new Date(0));
+      if (isInfinite) {
+        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
+        const isInfiniteBefore = Math.abs(budgetCapacity.children_total) >= MAX_FLOAT;
+        if (!isInfiniteBefore) budgetCapacity.children_total = override;
+      } else {
+        budgetCapacity.children_total += capacityAmount;
+      }
     });
   });
 
@@ -59,12 +66,20 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
     category.capacities.forEach((capacity) => {
       const { active_from } = capacity;
       const capacityAmount = capacity[interval];
-      const adding = Math.abs(capacityAmount) === MAX_FLOAT ? 0 : capacityAmount;
+      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
       const sectionCapacity = section.getActiveCapacity(active_from || new Date(0));
-      sectionCapacity.children_total += adding;
-      const budget = newBudgets.get(section.budget_id);
-      if (!budget) return;
-      budget.getActiveCapacity(active_from || new Date(0)).grand_children_total += adding;
+      const budget = newBudgets.get(section.budget_id)!;
+      const budgetCapacity = budget.getActiveCapacity(active_from || new Date(0));
+      if (isInfinite) {
+        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
+        const isSectionInfiniteBefore = Math.abs(sectionCapacity.children_total) >= MAX_FLOAT;
+        if (!isSectionInfiniteBefore) sectionCapacity.children_total = override;
+        const isBudgetInfiniteBefore = Math.abs(budgetCapacity.grand_children_total) >= MAX_FLOAT;
+        if (!isBudgetInfiniteBefore) budgetCapacity.grand_children_total = override;
+      } else {
+        sectionCapacity.children_total += capacityAmount;
+        budgetCapacity.grand_children_total += capacityAmount;
+      }
     });
   });
 

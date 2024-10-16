@@ -152,24 +152,24 @@ export class BudgetFamily {
   };
 
   isChildrenSynced = (interval: Interval) => {
+    if (this.type === "category") return true;
     let isSynced = true;
     this.capacities.forEach((capacity) => {
       const capacityAmount = capacity[interval];
-      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
       const isChildrenSynced = capacity.children_total === capacityAmount;
       const isBudget = this.type === "budget";
       const isGrandChildrenSynced = !isBudget || capacity.grand_children_total === capacityAmount;
-      isSynced = isSynced && (isInfinite || (isChildrenSynced && isGrandChildrenSynced));
+      isSynced = isSynced && isChildrenSynced && isGrandChildrenSynced;
     });
     return isSynced;
   };
 
   getChildren = () => {
-    const { id } = this;
+    const { id, type } = this;
     const { sections, categories } = globalData;
-    const childSections = sections.filter((s) => s.budget_id === id);
-    if (childSections.length) return childSections;
-    return categories.filter((c) => c.section_id === id);
+    if (type === "budget") return sections.filter((s) => s.budget_id === id);
+    else if (type === "section") return categories.filter((c) => c.section_id === id);
+    else return [];
   };
 
   getParent = () => {

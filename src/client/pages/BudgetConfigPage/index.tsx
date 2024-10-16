@@ -62,6 +62,8 @@ const BudgetConfigPage = () => {
       }
       return cloned;
     });
+    const defaultIsSyncInput =
+      budgetLike.type !== "category" && !!budgetLike?.isChildrenSynced(viewDate.getInterval());
 
     setNameInput(name);
     setCapacitiesInput(defaultCapInput);
@@ -69,7 +71,7 @@ const BudgetConfigPage = () => {
     setIsIncomeInput(defaultInputs.isIncomeInput);
     setIsRollOverInput(roll_over);
     setRollDateInput(roll_date || new Date());
-    setIsSyncedInput(budgetLike.isChildrenSynced(viewDate.getInterval()));
+    setIsSyncedInput(defaultIsSyncInput);
   }, [budgetLike, viewDate]);
 
   const {
@@ -83,9 +85,10 @@ const BudgetConfigPage = () => {
   const activeCapacity = budgetLike?.getActiveCapacity(viewDate.getDate());
   const defaultInputs = activeCapacity?.toInputs();
   const allDates = budgetLike && getAllCapaciyDates(budgetLike);
-  const defaultCapInput = allDates?.map(
-    (d) => budgetLike?.getActiveCapacity(d || new Date(0)) as Capacity
-  );
+  const defaultCapInput =
+    budgetLike && allDates?.map((d) => budgetLike.getActiveCapacity(d || new Date(0)));
+  const defaultIsSyncInput =
+    budgetLike?.type !== "category" && !!budgetLike?.isChildrenSynced(interval);
 
   const [nameInput, setNameInput] = useState(name);
   const [capacitiesInput, setCapacitiesInput] = useState<Capacity[]>(defaultCapInput || []);
@@ -93,7 +96,7 @@ const BudgetConfigPage = () => {
   const [isIncomeInput, setIsIncomeInput] = useState(!!defaultInputs?.isIncomeInput);
   const [isRollOverInput, setIsRollOverInput] = useState(!!roll_over);
   const [rollDateInput, setRollDateInput] = useState(roll_date || new Date());
-  const [isSyncedInput, setIsSyncedInput] = useState(!!budgetLike?.isChildrenSynced(interval));
+  const [isSyncedInput, setIsSyncedInput] = useState(defaultIsSyncInput);
 
   const { save, remove } = useEventHandlers(isSyncedInput, isIncomeInput, isInfiniteInput);
 

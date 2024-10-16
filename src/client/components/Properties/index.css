@@ -12,6 +12,11 @@ div.Properties > .property:not(:last-child) {
   margin-bottom: 20px;
 }
 
+div.Properties > .property .disabled.lineThrough {
+  color: #888;
+  text-decoration: line-through;
+}
+
 div.Properties .row {
   padding: 8px 0;
   display: flex;

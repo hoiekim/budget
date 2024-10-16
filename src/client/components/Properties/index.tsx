@@ -51,6 +51,8 @@ const Properties = ({
     setIsSyncedInput(e.target.checked);
   };
 
+  const isCategory = budgetLike.type === "category";
+
   return (
     <div className="Properties">
       <div className="property">
@@ -100,10 +102,12 @@ const Properties = ({
       )}
       <div className="property">
         <div className="row">
-          <span>Sync with children</span>
+          <span className={isCategory ? "disabled lineThrough" : undefined}>
+            Sync with children
+          </span>
           <ToggleInput
-            disabled={budgetLike.type === "category"}
-            checked={budgetLike.type === "category" || isSyncedInput}
+            disabled={isCategory}
+            checked={isCategory ? false : isSyncedInput}
             onChange={onChangeSync}
           />
         </div>

@@ -77,16 +77,16 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
 ) => {
   const toUpdateList = new Set<BudgetFamily>();
 
-  const updatedCapacities = [Capacity.fromInputs(new Capacity(), isIncome, true)];
-  const clonedOriginal = original.clone({ ...updated, capacities: updatedCapacities });
+  const overrideCpacity = Capacity.fromInputs(new Capacity(), isIncome, true);
+  const clonedOriginal = original.clone({ ...updated, capacities: [overrideCpacity] });
   toUpdateList.add(clonedOriginal);
   if (original.type !== "category") {
     const { children, grandChildren } = getChildrenWithUpdatedCapacityPeriod(original, updated);
     [...children, ...grandChildren].forEach((c) => {
       const isSynced = c.capacities.every((c) => c.isInfinite === true && c.isIncome === isIncome);
       if (!isSynced) {
-        const clonedChild = c.clone({ capacities: updatedCapacities });
-        toUpdateList.add(clonedChild);
+        c.capacities = [Capacity.fromInputs(new Capacity(), isIncome, true)];
+        toUpdateList.add(c);
       }
     });
   }

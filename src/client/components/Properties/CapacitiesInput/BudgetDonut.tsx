@@ -44,12 +44,12 @@ const BudgetDonut = ({
   const childrenDonutData: DonutData[] = [];
   const childToGrandChildrenMap = new Map<string, DonutData[]>();
 
-  let isChildrenInfinite = false;
+  const isChildrenInfinite =
+    Math.max(Math.abs(children_total), Math.abs(grand_children_total)) === MAX_FLOAT;
 
   children.forEach((child, i) => {
     const childCapacity = child.getActiveCapacity(date);
     const childValue = childCapacity[interval];
-    isChildrenInfinite = isChildrenInfinite || Math.abs(childValue) === MAX_FLOAT;
     const childColor = colors[i % colors.length];
     const childLabel = child.name || LABEL_UNNAMED;
     childrenDonutData.push({
@@ -65,7 +65,6 @@ const BudgetDonut = ({
       const grandChildren = child.getChildren() as Category[];
       grandChildren.forEach((grandChild, j) => {
         const grandChildValue = grandChild.getActiveCapacity(date)[interval];
-        isChildrenInfinite = isChildrenInfinite || Math.abs(grandChildValue) === MAX_FLOAT;
         const brightness = ((j % 2) + 1) * 0.3 + 1;
         const grandChildColor = adjustBrightness(childColor, brightness);
         const grandChildLabel = child.name || LABEL_UNNAMED;
@@ -97,7 +96,8 @@ const BudgetDonut = ({
     { id: budgetLike.id, value: capacityAmount, color: "#666" },
   ];
 
-  const parentDiff = capacityAmount - grand_children_total;
+  const syncingAmount = budgetLike.type === "budget" ? grand_children_total : children_total;
+  const parentDiff = capacityAmount - syncingAmount;
   if (!isSyncedInput) {
     const fillerData = { id: ID_DIFF, value: Math.abs(parentDiff), color: TRANSPARENT };
     if (children_total > capacityAmount) {
@@ -111,7 +111,7 @@ const BudgetDonut = ({
   const currencyCode = (budgetLike as Budget)["iso_currency_code"] || "USD";
   const currencySymbol = currencyCodeToSymbol(currencyCode);
 
-  const defaultCapacityValue = defaultCapacityInput[interval];
+  const defaultCapacityValue = defaultCapacityInput.toInputs().capacityInput[interval];
 
   return (
     <div className="BudgetDonut">
@@ -138,7 +138,7 @@ const BudgetDonut = ({
               <div>
                 <div>
                   {currencyCodeToSymbol(currencyCode)}&nbsp;
-                  {numberToCommaString(grand_children_total, 0)}
+                  {numberToCommaString(syncingAmount, 0)}
                 </div>
               </div>
             ) : (
@@ -156,12 +156,18 @@ const BudgetDonut = ({
                 }
                 {!!parentDiff && (
                   <div className="colored alert">
-                    <span>
-                      {parentDiff < 0 ? "+" : "-"}&nbsp;{currencySymbol}&nbsp;
-                    </span>
-                    <span style={{ width: "7ch", textAlign: "center" }}>
-                      {numberToCommaString(Math.abs(parentDiff), 0)}
-                    </span>
+                    {isChildrenInfinite ? (
+                      <span>Unlimited</span>
+                    ) : (
+                      <>
+                        <span>
+                          {parentDiff < 0 ? "+" : "-"}&nbsp;{currencySymbol}&nbsp;
+                        </span>
+                        <span style={{ width: "7ch", textAlign: "center" }}>
+                          {numberToCommaString(Math.abs(parentDiff), 0)}
+                        </span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

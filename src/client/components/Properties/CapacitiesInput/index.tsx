@@ -77,7 +77,7 @@ const CapacitiesInput = ({
     };
 
     const key = `capacity_${i}_${active_from?.getTime()}`;
-    const defaultCapacityValue = capacity[interval];
+    const defaultCapacityValue = capacity.toInputs().capacityInput[interval];
     const currencyCode = (budgetLike as Budget)["iso_currency_code"] || "USD";
 
     // If active_from is undefined, it's a default capacity. Default capacity covers all

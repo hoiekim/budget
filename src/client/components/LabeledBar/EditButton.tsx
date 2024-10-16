@@ -18,7 +18,7 @@ const EditButton = ({ onEdit, className, ...rest }: Props) => {
         }}
         {...rest}
       >
-        <span>✎</span>
+        <span>&#9881;</span>
       </button>
     </div>
   );
