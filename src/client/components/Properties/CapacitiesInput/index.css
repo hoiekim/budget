@@ -66,12 +66,12 @@ div.BudgetDonut > .details {
   align-items: center;
 }
 
-div.CapacityBreakDown {
-  max-width: 300px;
-}
-
 div.CapacityBreakDown > table {
   table-layout: fixed;
+}
+
+div.CapacityBreakDown > table td:nth-child(2) {
+  max-width: 110px;
 }
 
 div.CapacityBreakDown * {
@@ -87,7 +87,6 @@ div.BudgetDonut > .details .alert {
 
 div.BudgetDonut > .details > .labeledDonuts {
   position: relative;
-  min-width: 160px;
   display: flex;
   justify-content: center;
 }

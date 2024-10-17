@@ -10,7 +10,6 @@ const EditButton = ({ onEdit, className, ...rest }: Props) => {
   return (
     <div className={_className}>
       <button
-        className="rotate90deg"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -18,7 +17,7 @@ const EditButton = ({ onEdit, className, ...rest }: Props) => {
         }}
         {...rest}
       >
-        <span>&#9881;</span>
+        <span>⚙︎</span>
       </button>
     </div>
   );
