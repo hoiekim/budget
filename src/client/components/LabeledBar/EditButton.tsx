@@ -2,22 +2,25 @@ import { ButtonHTMLAttributes, MouseEventHandler } from "react";
 import "./index.css";
 
 type Props = {
+  isCompact: boolean;
   onEdit: MouseEventHandler<HTMLButtonElement>;
 } & ButtonHTMLAttributes<HTMLButtonElement>;
 
-const EditButton = ({ onEdit, className, ...rest }: Props) => {
-  const _className = ["EditButton", className].filter(Boolean).join(" ");
+const EditButton = ({ isCompact, onEdit, className, type, ...rest }: Props) => {
+  let _className = ["EditButton", className].filter(Boolean).join(" ");
+  if (isCompact) _className += " small";
+  else _className += " big";
   return (
     <div className={_className}>
       <button
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          onEdit(e);
+          if (!isCompact) onEdit(e);
         }}
         {...rest}
       >
-        <span>⚙︎</span>
+        <span className="rotate90deg">{isCompact ? <>〈&nbsp;〉</> : "⚙︎"}</span>
       </button>
     </div>
   );

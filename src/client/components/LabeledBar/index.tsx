@@ -89,7 +89,8 @@ const LabeledBar = ({
     roll_over_start_date &&
     roll_over_start_date < viewDate.getDate();
 
-  const editButtonClassName = barData.isChildrenSynced(interval) ? undefined : "notification";
+  const editButtonClassName =
+    barData.isChildrenSynced(interval) || hideEditButton ? undefined : "notification";
 
   return (
     <div
@@ -103,15 +104,14 @@ const LabeledBar = ({
     >
       <div className="title">
         <span>{name}</span>
-        {!hideEditButton && (
-          <EditButton
-            className={editButtonClassName}
-            onEdit={startEditing}
-            onTouchStart={onTouchHandleStart}
-            onTouchEnd={onTouchHandleEnd}
-            onGotPointerCapture={onGotPointerCapture}
-          />
-        )}
+        <EditButton
+          className={editButtonClassName}
+          isCompact={!!hideEditButton}
+          onEdit={startEditing}
+          onTouchStart={onTouchHandleStart}
+          onTouchEnd={onTouchHandleEnd}
+          onGotPointerCapture={onGotPointerCapture}
+        />
       </div>
       <div className="statusBarWithText">
         <Bar
