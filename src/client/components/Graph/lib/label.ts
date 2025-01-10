@@ -57,13 +57,6 @@ export class DateLabel extends GraphLabel {
       case "month":
         options.month = "short";
         break;
-      case "week":
-        options.week = "short";
-        break;
-      case "day":
-        options.month = "2-digit";
-        options.day = "2-digit";
-        break;
     }
 
     return movedViewDate.toString(options);

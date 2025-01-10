@@ -28,7 +28,7 @@ const CapacitiesInput = ({
   isSyncedInput,
 }: Props) => {
   const { viewDate } = useAppContext();
-  const interval = viewDate.getInterval();
+  const interval = "month";
   const defaultCapacities = useRef(budgetLike.capacities.map((c) => c.toInputs().capacityInput));
 
   useEffect(() => {
@@ -57,7 +57,7 @@ const CapacitiesInput = ({
     const onChangeAmount: ChangeEventHandler<HTMLInputElement> = (e) => {
       const newCapacity = new Capacity(capacity);
       const value = Math.floor(Math.abs(+e.target.value));
-      newCapacity[interval] = value;
+      newCapacity.month = value;
       setCapacitiesInput((capacities) => {
         const newCapacities = capacities.map((e) => new Capacity(e));
         newCapacities.splice(i, 1, newCapacity);

@@ -95,8 +95,6 @@ const Header = () => {
             >
               <option value="year">{getIntervalOptionText("year", "Yearly")}</option>
               <option value="month">{getIntervalOptionText("month", "Monthly")}</option>
-              <option value="week">{getIntervalOptionText("week", "Weekly")}</option>
-              <option value="day">{getIntervalOptionText("day", "Daily")}</option>
             </select>
             <button onClick={onClickNextView}>
               <b>&nbsp;&nbsp;〉&nbsp;</b>

@@ -227,10 +227,7 @@
           "type": "nested",
           "properties": {
             "capacity_id": { "type": "keyword" },
-            "year": { "type": "float" },
             "month": { "type": "float" },
-            "week": { "type": "float" },
-            "day": { "type": "float" },
             "active_from": { "type": "date" }
           }
         },

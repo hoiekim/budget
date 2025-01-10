@@ -1,7 +1,7 @@
 import { MAX_FLOAT, assign, getDateTimeString, getRandomId } from "common";
 
-export type Interval = "year" | "month" | "week" | "day";
-export const intervals: Interval[] = ["year", "month", "week", "day"];
+export type Interval = "year" | "month";
+export const intervals: Interval[] = ["year", "month"];
 
 class CapacitySummary {
   children_total = 0;
@@ -41,10 +41,11 @@ export class Capacity {
     summaryCache.getOrNew(this.id).grand_children_total = n;
   }
 
-  year = 0;
+  get year() {
+    return this.month * 12;
+  }
+
   month = 0;
-  week = 0;
-  day = 0;
 
   active_from?: Date;
 
@@ -66,43 +67,32 @@ export class Capacity {
     isInfiniteInput: boolean
   ) => {
     const capacity = new Capacity(capacityInput);
-    for (const interval of intervals) {
-      const sign = isIncomeInput ? -1 : 1;
-      const value = isInfiniteInput ? MAX_FLOAT : Math.abs(capacityInput[interval]);
-      capacity[interval] = sign * value;
-    }
+    const sign = isIncomeInput ? -1 : 1;
+    const value = isInfiniteInput ? MAX_FLOAT : Math.abs(capacityInput.month);
+    capacity.month = sign * value;
     return capacity;
   };
 
   toInputs = () => {
     const capacityInput = new Capacity(this);
-    let isInfiniteInput = false;
-    let isIncomeInput = false;
-    for (const interval of intervals) {
-      const capacityValue = capacityInput[interval];
-      isInfiniteInput = isInfiniteInput || Math.abs(capacityValue) === MAX_FLOAT;
-      isIncomeInput = isIncomeInput || capacityValue < 0;
-      capacityInput[interval] = isInfiniteInput ? 0 : Math.abs(capacityValue);
-    }
+    const capacityValue = capacityInput.month;
+    const isInfiniteInput = Math.abs(capacityValue) === MAX_FLOAT;
+    const isIncomeInput = capacityValue < 0;
+    capacityInput.month = isInfiniteInput ? 0 : Math.abs(capacityValue);
     return { capacityInput, isIncomeInput, isInfiniteInput };
   };
 
   get isInfinite() {
-    const { day, week, month, year } = this;
-    return day === MAX_FLOAT || week === MAX_FLOAT || month === MAX_FLOAT || year === MAX_FLOAT;
+    return Math.abs(this.month) === MAX_FLOAT;
   }
 
   get isIncome() {
-    const { day, week, month, year } = this;
-    return Math.max(day, week, month, year) < 0;
+    return this.month < 0;
   }
 }
 
 export interface JSONCapacity {
-  year: number;
   month: number;
-  week: number;
-  day: number;
   active_from?: string;
 }
 

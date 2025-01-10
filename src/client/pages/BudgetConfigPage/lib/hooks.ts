@@ -1,7 +1,6 @@
 import {
   Capacity,
   Data,
-  Interval,
   getBudgetClass,
   getBudgetDictionaryClass,
   getDateTimeString,
@@ -25,13 +24,12 @@ interface UpdatedBudgetFamily {
 
 export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolean) => {
   const { setData, viewDate } = useAppContext();
-  const interval = viewDate.getInterval();
 
   const save = async <T extends BudgetFamily>(original: T, updated: UpdatedBudgetFamily) => {
     const toUpdateList = isSynced
       ? isInfinite
         ? getInfiniteBudgetsToSync(original, updated, isIncome)
-        : getLimitedBudgetsToSync(original, updated, interval)
+        : getLimitedBudgetsToSync(original, updated)
       : getNonSyncedBudgetsToUpdate(original, updated, isIncome, isInfinite);
 
     const iterator = toUpdateList.values();
@@ -96,14 +94,13 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
 
 const getLimitedBudgetsToSync = <T extends BudgetFamily>(
   original: T,
-  updated: UpdatedBudgetFamily,
-  interval: Interval
+  updated: UpdatedBudgetFamily
 ) => {
   const toUpdateList = new Set<BudgetFamily>();
   const syncedCapacities = original.capacities.map((c) => {
     const newCapacity = new Capacity(c);
     if (original.type !== "category")
-      newCapacity[interval] = c.grand_children_total || c.children_total;
+      newCapacity.month = c.grand_children_total || c.children_total;
     return newCapacity;
   });
   const clonedOriginal = original.clone({ ...updated, capacities: syncedCapacities });
@@ -114,14 +111,14 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
     const { children } = getChildrenWithUpdatedCapacityPeriod(original, updated);
     for (const child of children) {
       for (const capacity of updated.capacities) {
-        const capacityAmount = capacity[interval];
+        const capacityAmount = capacity.month;
         const isChildrenTied = capacityAmount === capacity.children_total;
         const isGrandChildrenTied = capacityAmount === capacity.grand_children_total;
         const isSynced = isChildrenTied && isGrandChildrenTied;
         if (isSynced) continue;
         const childCapacity = child.getActiveCapacity(capacity.active_from || new Date(0));
-        if (childCapacity[interval] !== childCapacity.children_total) {
-          childCapacity[interval] = childCapacity.children_total;
+        if (childCapacity.month !== childCapacity.children_total) {
+          childCapacity.month = childCapacity.children_total;
           toUpdateList.add(child);
         }
       }
