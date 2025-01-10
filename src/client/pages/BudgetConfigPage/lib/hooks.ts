@@ -160,7 +160,9 @@ const getChildrenWithUpdatedCapacityPeriod = <T extends BudgetFamily>(
     return Array.from(uniqueDates).map((d) => {
       const date = new Date(d || 0);
       const activeCapacity = budgetLike.getActiveCapacity(new Date(d || 0));
-      const newCapacity = new Capacity(activeCapacity);
+      const clonedCapacity: Partial<Capacity> = new Capacity(activeCapacity);
+      delete clonedCapacity.capacity_id;
+      const newCapacity = new Capacity(clonedCapacity);
       newCapacity.active_from = d ? date : undefined;
       return newCapacity;
     });
