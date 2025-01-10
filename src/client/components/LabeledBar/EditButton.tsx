@@ -20,7 +20,9 @@ const EditButton = ({ isCompact, onEdit, className, type, ...rest }: Props) => {
         }}
         {...rest}
       >
-        <span className="rotate90deg">{isCompact ? <>〈&nbsp;〉</> : "⚙︎"}</span>
+        <span className="rotate90deg" style={{ letterSpacing: "-1px" }}>
+          {isCompact ? <>〈&nbsp;〉</> : "✎"}
+        </span>
       </button>
     </div>
   );
