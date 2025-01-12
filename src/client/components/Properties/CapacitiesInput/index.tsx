@@ -132,7 +132,6 @@ const CapacitiesInput = ({
   });
 
   const onClickAdd = () => {
-    if (isSyncedInput) return;
     setCapacitiesInput((oldCapacities) => {
       const newCapacities = oldCapacities.map((e) => new Capacity(e));
       newCapacities.sort(sortCapacities.asc);
@@ -156,9 +155,7 @@ const CapacitiesInput = ({
   return (
     <div className="CapacitiesInput">
       <div className="row addNew">
-        <button disabled={isSyncedInput} onClick={onClickAdd}>
-          Add&nbsp;New&nbsp;Period
-        </button>
+        <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Period</button>
       </div>
       {rows}
     </div>
