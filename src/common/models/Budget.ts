@@ -1,4 +1,4 @@
-import { getRandomId, assign } from "common";
+import { getRandomId, assign, Section } from "common";
 import { BudgetFamily, JSONBudgetFamily } from "./BudgetFamily";
 
 export class Budget extends BudgetFamily {

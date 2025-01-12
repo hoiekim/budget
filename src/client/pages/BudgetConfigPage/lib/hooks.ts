@@ -1,12 +1,18 @@
 import {
+  Budget,
+  BudgetDictionary,
   Capacity,
+  Category,
+  CategoryDictionary,
   Data,
   getBudgetClass,
   getBudgetDictionaryClass,
   getDateTimeString,
+  Section,
+  SectionDictionary,
 } from "common";
 import { BudgetFamily } from "common/models/BudgetFamily";
-import { calculatorLambda, call, useAppContext } from "client";
+import { calculateBudgetSynchrony, calculatorLambda, call, useAppContext } from "client";
 
 export const useEventHandlers = (isSynced: boolean, isIncome: boolean, isInfinite: boolean) => {
   return {
@@ -76,10 +82,13 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
   const toUpdateList = new Set<BudgetFamily>();
 
   const overrideCpacity = Capacity.fromInputs(new Capacity(), isIncome, true);
-  const clonedOriginal = original.clone({ ...updated, capacities: [overrideCpacity] });
-  toUpdateList.add(clonedOriginal);
+  const updatedOriginal = original.clone({ ...updated, capacities: [overrideCpacity] });
+  toUpdateList.add(updatedOriginal);
   if (original.type !== "category") {
-    const { children, grandChildren } = getChildrenWithUpdatedCapacityPeriod(original, updated);
+    const { sections: children, categories: grandChildren } = getBudgetsToUpdatePeriod(
+      original,
+      updated
+    );
     [...children, ...grandChildren].forEach((c) => {
       const isSynced = c.capacities.every((c) => c.isInfinite === true && c.isIncome === isIncome);
       if (!isSynced) {
@@ -103,23 +112,24 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
       newCapacity.month = c.grand_children_total || c.children_total;
     return newCapacity;
   });
-  const clonedOriginal = original.clone({ ...updated, capacities: syncedCapacities });
 
-  toUpdateList.add(clonedOriginal);
+  const synced = { ...updated, capacities: syncedCapacities };
+  const { budget, sections, categories } = getBudgetsToUpdatePeriod(original, synced);
+  toUpdateList.add(budget);
+  sections.forEach((c) => toUpdateList.add(c));
+  categories.forEach((c) => toUpdateList.add(c));
 
   if (original.type === "budget") {
-    const { children } = getChildrenWithUpdatedCapacityPeriod(original, updated);
-    for (const child of children) {
+    for (const section of sections) {
       for (const capacity of updated.capacities) {
         const capacityAmount = capacity.month;
         const isChildrenTied = capacityAmount === capacity.children_total;
         const isGrandChildrenTied = capacityAmount === capacity.grand_children_total;
         const isSynced = isChildrenTied && isGrandChildrenTied;
         if (isSynced) continue;
-        const childCapacity = child.getActiveCapacity(capacity.active_from || new Date(0));
+        const childCapacity = section.getActiveCapacity(capacity.active_from || new Date(0));
         if (childCapacity.month !== childCapacity.children_total) {
           childCapacity.month = childCapacity.children_total;
-          toUpdateList.add(child);
         }
       }
     }
@@ -137,58 +147,60 @@ const getNonSyncedBudgetsToUpdate = <T extends BudgetFamily>(
   const updatedCapacities = purgedCapacities.map((c) => {
     return Capacity.fromInputs(c, isIncome, isInfinite);
   });
-
-  const clonedOriginal = original.clone({ ...updated, capacities: updatedCapacities });
-  const { children, grandChildren } = getChildrenWithUpdatedCapacityPeriod(original, updated);
-  return new Set([clonedOriginal, ...children, ...grandChildren]);
+  const updatedUpdated = { ...updated, capacities: updatedCapacities };
+  const { budget, sections, categories } = getBudgetsToUpdatePeriod(original, updatedUpdated);
+  return new Set([budget, ...sections, ...categories]);
 };
 
-const getChildrenWithUpdatedCapacityPeriod = <T extends BudgetFamily>(
+const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
   original: T,
   updated: UpdatedBudgetFamily
 ) => {
-  const children: BudgetFamily[] = [];
-  const grandChildren: BudgetFamily[] = [];
+  const sections: Section[] = [];
+  const categories: Category[] = [];
 
-  const clonedOriginal = original.clone(updated);
+  const updatedOriginal = original.clone(updated);
 
-  const uniqueDates = new Set<string | undefined>();
-  const addActiveFromDate = ({ active_from }: Capacity) => {
-    uniqueDates.add(active_from && getDateTimeString(active_from));
-  };
-  const fillCapacities = (budgetLike: BudgetFamily) => {
-    return Array.from(uniqueDates).map((d) => {
-      const date = new Date(d || 0);
-      const activeCapacity = budgetLike.getActiveCapacity(new Date(d || 0));
+  const updateCapacities = (budgetLike: BudgetFamily) => {
+    return updated.capacities.map(({ active_from }) => {
+      const date = active_from && new Date(active_from);
+      const activeCapacity = budgetLike.getActiveCapacity(new Date(date || 0));
       const clonedCapacity: Partial<Capacity> = new Capacity(activeCapacity);
       delete clonedCapacity.capacity_id;
       const newCapacity = new Capacity(clonedCapacity);
-      newCapacity.active_from = d ? date : undefined;
+      newCapacity.active_from = date;
       return newCapacity;
     });
   };
 
-  clonedOriginal.capacities.forEach(addActiveFromDate);
-  clonedOriginal.getChildren().forEach((c) => {
-    c.capacities.forEach(addActiveFromDate);
-    c.getChildren().forEach((gc) => {
-      gc.capacities.forEach(addActiveFromDate);
-    });
-  });
+  const budget =
+    updatedOriginal?.type === "budget"
+      ? (updatedOriginal as unknown as Budget)
+      : updatedOriginal.type === "section"
+      ? (original.getParent()! as Budget)
+      : (original.getParent()?.getParent()! as Budget);
 
-  clonedOriginal.capacities = fillCapacities(clonedOriginal);
-  clonedOriginal.getChildren().forEach((c) => {
-    const clonedChild = c.clone();
-    clonedChild.capacities = fillCapacities(clonedChild);
-    children.push(clonedChild);
+  budget.capacities = updateCapacities(budget);
+  budget.getChildren().forEach((c) => {
+    let clonedChild = c.clone() as Section;
+    if (c.id === updatedOriginal.id) clonedChild = updatedOriginal as unknown as Section;
+    clonedChild.capacities = updateCapacities(clonedChild);
+    sections.push(clonedChild);
     clonedChild.getChildren().forEach((gc) => {
-      const clonedGrandChild = gc.clone();
-      clonedGrandChild.capacities = fillCapacities(clonedGrandChild);
-      grandChildren.push(clonedGrandChild);
+      let clonedGrandChild = gc.clone() as Category;
+      if (gc.id === updatedOriginal.id) clonedGrandChild = updatedOriginal as unknown as Category;
+      clonedGrandChild.capacities = updateCapacities(clonedGrandChild);
+      categories.push(clonedGrandChild);
     });
   });
 
-  return { children, grandChildren };
+  calculateBudgetSynchrony(
+    new BudgetDictionary([[budget.id, budget]]),
+    new SectionDictionary(sections.map((s) => [s.id, s])),
+    new CategoryDictionary(categories.map((c) => [c.id, c]))
+  );
+
+  return { budget, sections, categories };
 };
 
 export const useRemove = () => {

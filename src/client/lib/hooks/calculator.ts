@@ -16,7 +16,6 @@ import { BudgetFamily } from "common/models/BudgetFamily";
  */
 export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
   const { transactions, accounts, budgets, sections, categories } = data;
-  const interval = viewDate.getInterval();
 
   const newBudgets = new BudgetDictionary(budgets);
   const newSections = new SectionDictionary(sections);
@@ -40,48 +39,15 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
     setBaseAmounts(budget);
   });
 
-  newSections.forEach((section) => {
-    setBaseAmounts(section);
-    const budget = newBudgets.get(section.budget_id);
-    if (!budget) return;
-    section.capacities.forEach((capacity) => {
-      const { active_from } = capacity;
-      const capacityAmount = capacity[interval];
-      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
-      const budgetCapacity = budget.getActiveCapacity(active_from || new Date(0));
-      if (isInfinite) {
-        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
-        const isInfiniteBefore = Math.abs(budgetCapacity.children_total) >= MAX_FLOAT;
-        if (!isInfiniteBefore) budgetCapacity.children_total = override;
-      } else {
-        budgetCapacity.children_total += capacityAmount;
-      }
-    });
+  newSections.forEach((budget) => {
+    setBaseAmounts(budget);
   });
 
-  newCategories.forEach((category) => {
-    setBaseAmounts(category);
-    const section = newSections.get(category.section_id);
-    if (!section) return;
-    category.capacities.forEach((capacity) => {
-      const { active_from } = capacity;
-      const capacityAmount = capacity[interval];
-      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
-      const sectionCapacity = section.getActiveCapacity(active_from || new Date(0));
-      const budget = newBudgets.get(section.budget_id)!;
-      const budgetCapacity = budget.getActiveCapacity(active_from || new Date(0));
-      if (isInfinite) {
-        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
-        const isSectionInfiniteBefore = Math.abs(sectionCapacity.children_total) >= MAX_FLOAT;
-        if (!isSectionInfiniteBefore) sectionCapacity.children_total = override;
-        const isBudgetInfiniteBefore = Math.abs(budgetCapacity.grand_children_total) >= MAX_FLOAT;
-        if (!isBudgetInfiniteBefore) budgetCapacity.grand_children_total = override;
-      } else {
-        sectionCapacity.children_total += capacityAmount;
-        budgetCapacity.grand_children_total += capacityAmount;
-      }
-    });
+  newCategories.forEach((budget) => {
+    setBaseAmounts(budget);
   });
+
+  calculateBudgetSynchrony(newBudgets, newSections, newCategories);
 
   transactions.forEach(({ authorized_date, date, account_id, label, amount }) => {
     const transactionDate = new Date(authorized_date || date);
@@ -177,4 +143,53 @@ export const useCalculator = () => {
   };
 
   return useCallback(callback, [viewDate, setData]);
+};
+
+export const calculateBudgetSynchrony = (
+  budgets: BudgetDictionary,
+  sections: SectionDictionary,
+  categories: CategoryDictionary
+) => {
+  sections.forEach((section) => {
+    const budget = budgets.get(section.budget_id);
+    if (!budget) return;
+    section.capacities.forEach((capacity) => {
+      const { active_from } = capacity;
+      const capacityAmount = capacity.month;
+      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
+      const budgetCapacity = budget.getActiveCapacity(active_from || new Date(0));
+      if (isInfinite) {
+        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
+        const isInfiniteBefore = Math.abs(budgetCapacity.children_total) >= MAX_FLOAT;
+        if (!isInfiniteBefore) budgetCapacity.children_total = override;
+      } else {
+        budgetCapacity.children_total += capacityAmount;
+      }
+    });
+  });
+
+  categories.forEach((category) => {
+    const section = sections.get(category.section_id);
+    if (!section) return;
+    category.capacities.forEach((capacity) => {
+      const { active_from } = capacity;
+      const capacityAmount = capacity.month;
+      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
+      const sectionCapacity = section.getActiveCapacity(active_from || new Date(0));
+      const budget = budgets.get(section.budget_id)!;
+      const budgetCapacity = budget.getActiveCapacity(active_from || new Date(0));
+      if (isInfinite) {
+        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
+        const isSectionInfiniteBefore = Math.abs(sectionCapacity.children_total) >= MAX_FLOAT;
+        if (!isSectionInfiniteBefore) sectionCapacity.children_total = override;
+        const isBudgetInfiniteBefore = Math.abs(budgetCapacity.grand_children_total) >= MAX_FLOAT;
+        if (!isBudgetInfiniteBefore) budgetCapacity.grand_children_total = override;
+      } else {
+        sectionCapacity.children_total += capacityAmount;
+        budgetCapacity.grand_children_total += capacityAmount;
+      }
+    });
+  });
+
+  return { budgets, sections, categories };
 };
