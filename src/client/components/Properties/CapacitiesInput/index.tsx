@@ -67,7 +67,7 @@ const CapacitiesInput = ({
     };
 
     const onDelete = () => {
-      if (isSyncedInput || !active_from) return;
+      if (!active_from) return;
       setCapacitiesInput((oldCapacities) => {
         const newCapacities = oldCapacities.map((c) => new Capacity(c));
         newCapacities.splice(i, 1);
@@ -92,7 +92,6 @@ const CapacitiesInput = ({
                 <>
                   Since&nbsp;
                   <input
-                    disabled={isSyncedInput}
                     type="date"
                     defaultValue={getDateString(active_from)}
                     onBlur={onChangeDate}
@@ -102,9 +101,7 @@ const CapacitiesInput = ({
                 <>All&nbsp;past</>
               )}
             </div>
-            <button disabled={isSyncedInput} onClick={onDelete}>
-              Remove&nbsp;This&nbsp;Period
-            </button>
+            <button onClick={onDelete}>Remove&nbsp;This&nbsp;Period</button>
           </div>
           {budgetLike.type === "category" ? (
             <div>

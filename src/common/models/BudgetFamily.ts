@@ -137,10 +137,11 @@ export class BudgetFamily {
   getAccumulatedCapacity = (startDate: Date, viewDate: ViewDate) => {
     const interval = viewDate.getInterval();
     let sum = 0;
-    this.sortCapacities().forEach((e, i) => {
+    this.sortCapacities().forEach((e, i, arr) => {
       const from = e.active_from || startDate;
-      const nextCapacity = this.capacities[i + 1];
+      const nextCapacity = arr[i + 1];
       const endDate = nextCapacity?.active_from;
+      if (endDate && endDate <= startDate) return;
       const endDateAsNumber = endDate?.getTime() || Infinity;
       const isEndDateEarlier = endDateAsNumber < viewDate.getDate().getTime();
       const endViewDate = endDate ? new ViewDate(interval, endDate) : viewDate;
