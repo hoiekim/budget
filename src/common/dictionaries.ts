@@ -62,11 +62,13 @@ export class Dictionary<T = any> extends Map<string, T> {
   clone = () => new Dictionary<T>(this);
 
   override set = (key: string, value: T) => {
-    // TODO: currently the ability to store data in dictionary is disabled in server.
-    // This is because server shouldn't store all users' data in memory, which will
-    // cause infinite memory increase. In future implementation, the dictionary should
-    // act as an abstraction for the database access.
-    if (environment === "server") return this;
+    if (environment === "server") {
+      // TODO: currently the ability to store data in dictionary is disabled in server.
+      // This is because server shouldn't store all users' data in memory, which will
+      // cause infinite memory increase.
+      console.warn("Dictionary.set() is disabled in server.");
+      return this;
+    }
     return super.set(key, value);
   };
 }
