@@ -1,4 +1,4 @@
-import { getRandomId, assign } from "common";
+import { getRandomId, assign, getDateTimeString } from "common";
 import { TransactionLabel } from "./Transaction";
 
 export class SplitTransaction {
@@ -10,6 +10,7 @@ export class SplitTransaction {
   split_transaction_id: string = getRandomId();
   transaction_id: string = "";
   amount: number = 0;
+  date: string = getDateTimeString();
   custom_name: string = "Unknown";
   /**
    * Represents relations by pair of budget_id and category_id

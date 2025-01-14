@@ -1,6 +1,6 @@
 import { useMemoryState } from "client";
 import { Data, globalData as _data } from "common";
-import { Dispatch, SetStateAction, useCallback, useRef } from "react";
+import { Dispatch, SetStateAction, useCallback } from "react";
 
 export const useData = () => {
   const [data, _setData] = useMemoryState<Data>("data", _data);
@@ -15,13 +15,4 @@ export const useData = () => {
     [_setData]
   );
   return [data, setData] as const;
-};
-
-export const useDebounce = () => {
-  const timeout = useRef<NodeJS.Timeout | null>(null);
-  const debounce = (callback: () => void, delay = 100) => {
-    if (timeout.current) clearTimeout(timeout.current);
-    timeout.current = setTimeout(callback, delay);
-  };
-  return useCallback(debounce, [timeout]);
 };

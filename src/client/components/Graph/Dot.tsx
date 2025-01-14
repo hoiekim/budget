@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAppContext, useMemoryState } from "client";
-import { Timeout } from "common";
+import { useAppContext, useDebounce, useMemoryState } from "client";
 import { Point } from "./index";
 
 interface Props {
@@ -16,14 +15,11 @@ const Dot = ({ memoryKey, point, color }: Props) => {
   const [opacity, setOpacity] = useMemoryState(animateMemoryKey, 0);
   const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
 
-  const timeout = useRef<Timeout>();
+  const opacityDebouncer = useDebounce();
 
   useEffect(() => {
-    if (!transitioning) {
-      clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => setOpacity(1), 1150);
-    }
-  }, [transitioning, setOpacity]);
+    if (!transitioning) opacityDebouncer(() => setOpacity(1), 1150);
+  }, [point, transitioning, setOpacity, opacityDebouncer]);
 
   const divRef = useRef<HTMLDivElement>(null);
   const height = 100;
@@ -54,12 +50,7 @@ const Dot = ({ memoryKey, point, color }: Props) => {
 
   return (
     <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
-      <svg
-        height="100%"
-        width="100%"
-        viewBox={`0 0 ${width} 100`}
-        preserveAspectRatio="none"
-      >
+      <svg height="100%" width="100%" viewBox={`0 0 ${width} 100`} preserveAspectRatio="none">
         <circle
           cx={x}
           cy={y}

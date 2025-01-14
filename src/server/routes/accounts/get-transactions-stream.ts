@@ -10,7 +10,6 @@ import {
   searchItems,
   upsertItems,
   PartialTransaction,
-  StreamingStatus,
   PartialInvestmentTransaction,
   getOldestTransactionDate,
 } from "server";
@@ -24,6 +23,7 @@ import {
   TWO_WEEKS,
   SplitTransaction,
   ViewDate,
+  sleep,
 } from "common";
 
 export interface TransactionsStreamGetResponse {
@@ -55,8 +55,6 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
       };
     }
 
-    const status = new StreamingStatus(3);
-
     type TransactionsData = {
       transactions: Transaction[];
       investment_transactions: InvestmentTransaction[];
@@ -76,7 +74,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
           .then((r) => {
             const { transactions, investment_transactions, split_transactions } = r;
             stream({
-              status: status.get(),
+              status: "streaming",
               body: {
                 transactions: { added: transactions },
                 investmentTransactions: { added: investment_transactions },
@@ -93,10 +91,11 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
           })
           .catch((err) => {
             console.error(err);
-            stream({ status: status.get() && "error" });
+            stream({ status: "error" });
           });
 
         currentMonth.previous();
+        await sleep(50);
       }
       return res(result);
     });
@@ -144,7 +143,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
           },
         };
 
-        stream({ status: status.get(), body: adjustedData });
+        stream({ status: "streaming", body: adjustedData });
 
         const updateJobs = [
           upsertTransactions(user, [...modeledAdded, ...modeledModified]),
@@ -165,7 +164,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
       })
       .catch((err) => {
         console.error(err);
-        stream({ status: status.get() && "error" });
+        stream({ status: "error" });
       });
 
     const getInvestmentTransactionsFromPlaid = promisedItems
@@ -226,11 +225,11 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
         Promise.all(updateJobs).then(() => upsertItems(user, partialItems));
 
-        stream({ status: status.get(), body: filledData });
+        stream({ status: "streaming", body: filledData });
       })
       .catch((err) => {
         console.error(err);
-        stream({ status: status.get() && "error" });
+        stream({ status: "error" });
       });
 
     await Promise.all([
@@ -238,5 +237,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
       getTransactionsFromPlaid,
       getInvestmentTransactionsFromPlaid,
     ]);
+
+    stream({ status: "success" });
   }
 );

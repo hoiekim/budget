@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAppContext, useMemoryState } from "client";
+import { useAppContext, useDebounce, useMemoryState } from "client";
 import { Timeout } from "common";
 import { LineType, Point, pointsToCoordinateString } from "./lib";
 
@@ -23,12 +23,17 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
 
   const timeout = useRef<Timeout>();
 
+  const pathDebouncer = useDebounce();
+
   useEffect(() => {
     const recurUntilRef = () => {
       setTimeout(() => {
         const path = pathRef.current;
-        if (path) setPathLength(path.getTotalLength() || 700);
-        else recurUntilRef();
+        if (path) {
+          pathDebouncer(() => {
+            setPathLength(path.getTotalLength() || 700);
+          }, 110);
+        } else recurUntilRef();
       }, 100);
     };
 
@@ -38,7 +43,7 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
       clearTimeout(timeout.current);
       timeout.current = setTimeout(() => setPathOffset(false), 300);
     }
-  }, [transitioning, setPathLength, setPathOffset]);
+  }, [points, transitioning, setPathLength, setPathOffset, pathDebouncer]);
 
   const divRef = useRef<HTMLDivElement>(null);
   const height = 100;
@@ -69,12 +74,7 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
 
   return (
     <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
-      <svg
-        height="100%"
-        width="100%"
-        viewBox={`0 0 ${width} 100`}
-        preserveAspectRatio="none"
-      >
+      <svg height="100%" width="100%" viewBox={`0 0 ${width} 100`} preserveAspectRatio="none">
         <path
           ref={pathRef}
           d={width ? d : ""}

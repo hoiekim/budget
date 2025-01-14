@@ -32,7 +32,6 @@ export const useSync = () => {
 
   type SyncTransactions = () => void;
 
-  // TODO: debounce, pagination
   const syncTransactions = useCallback(() => {
     if (!userLoggedIn) return;
 

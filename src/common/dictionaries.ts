@@ -10,6 +10,7 @@ import {
   Section,
   Category,
   Item,
+  SplitTransaction,
 } from "common";
 import { BudgetFamily, BudgetFamilyType } from "./models/BudgetFamily";
 
@@ -73,6 +74,7 @@ export class Dictionary<T = any> extends Map<string, T> {
 export class AccountDictionary extends Dictionary<Account> {}
 export class InstitutionDictionary extends Dictionary<Institution> {}
 export class InvestmentTransactionDictionary extends Dictionary<InvestmentTransaction> {}
+export class SplitTransactionDictionary extends Dictionary<SplitTransaction> {}
 export class BudgetDictionary extends Dictionary<Budget> {}
 export class SectionDictionary extends Dictionary<Section> {}
 export class CategoryDictionary extends Dictionary<Category> {}

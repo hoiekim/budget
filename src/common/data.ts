@@ -8,6 +8,7 @@ import {
   CategoryDictionary,
   ItemDictionary,
   assign,
+  SplitTransactionDictionary,
 } from "common";
 
 export class Data {
@@ -15,6 +16,7 @@ export class Data {
   accounts = new AccountDictionary();
   transactions = new TransactionDictionary();
   investmentTransactions = new InvestmentTransactionDictionary();
+  splitTransactions = new SplitTransactionDictionary();
   budgets = new BudgetDictionary();
   sections = new SectionDictionary();
   categories = new CategoryDictionary();

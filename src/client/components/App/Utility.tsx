@@ -1,6 +1,5 @@
 import { useEffect } from "react";
-import { useAppContext, useSync, useCalculator, PATH } from "client";
-import { useDebounce } from "./lib";
+import { useAppContext, useDebounce, useSync, useCalculator, PATH } from "client";
 
 /**
  * This component is used to run useEffect hooks dependant on context variables.

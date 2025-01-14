@@ -7,7 +7,6 @@ import {
   getDateTimeString,
   sortCapacities,
   Interval,
-  MAX_FLOAT,
 } from "common";
 
 export type BudgetFamilyType = "budget" | "section" | "category";

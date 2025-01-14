@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAppContext, useMemoryState } from "client";
-import { Timeout } from "common";
+import { useAppContext, useDebounce, useMemoryState } from "client";
 import { LineType, Point, pointsToCoordinateString } from "./lib";
 
 interface Props {
@@ -17,15 +16,18 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
   const animateMemoryKey = memoryKey && `graphArea_${memoryKey}_animate`;
   const [animate, setAnimate] = useMemoryState(animateMemoryKey, true);
   const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
+  const [isVisible, setIsVisible] = useMemoryState("graphArea_isVisible", false);
 
-  const timeout = useRef<Timeout>();
+  const visibleDebouncer = useDebounce();
+  const animateDebouncer = useDebounce();
 
   useEffect(() => {
-    if (!transitioning) {
-      clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => setAnimate(false), 1300);
-    }
-  }, [transitioning, setAnimate]);
+    if (!transitioning) visibleDebouncer(() => setIsVisible(true), 100);
+  }, [upperBound, lowerBound, transitioning, setIsVisible, visibleDebouncer]);
+
+  useEffect(() => {
+    if (isVisible) animateDebouncer(() => setAnimate(false), 1300);
+  }, [isVisible, setAnimate, animateDebouncer]);
 
   const divRef = useRef<HTMLDivElement>(null);
   const height = 100;
@@ -60,61 +62,51 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
 
   return (
     <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
-      <svg
-        height="100%"
-        width="100%"
-        viewBox={`0 0 ${width} 100`}
-        preserveAspectRatio="none"
-      >
-        <linearGradient id="prog-mask" x1="0%" x2="0%" y1="100%" y2="100%">
-          <stop offset="0%" stopColor="white" stopOpacity="1" />
-          <stop offset="0%" stopColor="white" stopOpacity="1">
-            <animate
-              attributeName="offset"
-              values="0; 1"
-              dur="1s"
-              begin="300ms"
-              repeatCount="0"
-              fill="freeze"
-            />
-          </stop>
-          <stop offset="0%" stopColor="white" stopOpacity="0">
-            <animate
-              attributeName="offset"
-              values="0; 1"
-              dur="1s"
-              begin="0"
-              repeatCount="0"
-              fill="freeze"
-            />
-          </stop>
-          <stop offset="100%" stopColor="white" stopOpacity="0" />
-        </linearGradient>
-        <mask id="prog-render">
-          <rect x="0" y="0" width="100%" height="100%" fill="url(#prog-mask)" />
-        </mask>
-        <pattern
-          id="pattern"
-          x="0"
-          y="0"
-          width="4"
-          height="4"
-          patternUnits="userSpaceOnUse"
-        >
-          <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: color }} />
-        </pattern>
-        <path
-          d={width ? d : ""}
-          style={{
-            transition: "all 1s ease 0s",
-            strokeLinecap: "round",
-            strokeLinejoin: "round",
-            fill: "url(#pattern)",
-            mask: animate ? "url(#prog-render)" : undefined,
-            opacity: 0.5,
-          }}
-        />
-      </svg>
+      {isVisible && (
+        <svg height="100%" width="100%" viewBox={`0 0 ${width} 100`} preserveAspectRatio="none">
+          <linearGradient id="prog-mask" x1="0%" x2="0%" y1="100%" y2="100%">
+            <stop offset="0%" stopColor="white" stopOpacity="1" />
+            <stop offset="0%" stopColor="white" stopOpacity="1">
+              <animate
+                attributeName="offset"
+                values="0; 1"
+                dur="1s"
+                begin="300ms"
+                repeatCount="0"
+                fill="freeze"
+              />
+            </stop>
+            <stop offset="0%" stopColor="white" stopOpacity="0">
+              <animate
+                attributeName="offset"
+                values="0; 1"
+                dur="1s"
+                begin="0"
+                repeatCount="0"
+                fill="freeze"
+              />
+            </stop>
+            <stop offset="100%" stopColor="white" stopOpacity="0" />
+          </linearGradient>
+          <mask id="prog-render">
+            <rect x="0" y="0" width="100%" height="100%" fill="url(#prog-mask)" />
+          </mask>
+          <pattern id="pattern" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+            <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: color }} />
+          </pattern>
+          <path
+            d={width ? d : ""}
+            style={{
+              transition: "all 1s ease 0s",
+              strokeLinecap: "round",
+              strokeLinejoin: "round",
+              fill: "url(#pattern)",
+              mask: animate ? "url(#prog-render)" : undefined,
+              opacity: 0.5,
+            }}
+          />
+        </svg>
+      )}
     </div>
   );
 };

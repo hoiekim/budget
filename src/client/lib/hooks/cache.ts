@@ -1,5 +1,5 @@
 import { Dictionary } from "common";
-import { useCallback, useState, Dispatch, SetStateAction } from "react";
+import { useCallback, useState, Dispatch, SetStateAction, useRef } from "react";
 
 const parseMap = (s: string) => new Map(JSON.parse(s));
 const parseDictionary = (s: string) => new Dictionary(JSON.parse(s));
@@ -59,4 +59,13 @@ export const useMemoryState = <T>(key: string | undefined, initialValue: T) => {
   );
 
   return [state, setState] as const;
+};
+
+export const useDebounce = () => {
+  const timeout = useRef<NodeJS.Timeout | null>(null);
+  const debounce = (callback: () => void, delay = 50) => {
+    if (timeout.current) clearTimeout(timeout.current);
+    timeout.current = setTimeout(callback, delay);
+  };
+  return useCallback(debounce, [timeout]);
 };
