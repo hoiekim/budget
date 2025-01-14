@@ -21,6 +21,8 @@ import {
   InvestmentTransactionDictionary,
   ItemDictionary,
   AccountDictionary,
+  SplitTransactionDictionary,
+  SplitTransaction,
 } from "common";
 
 /**
@@ -37,7 +39,7 @@ export const useSync = () => {
 
     read<TransactionsStreamGetResponse>("/api/transactions-stream", ({ body }) => {
       if (!body) return;
-      const { items, transactions, investmentTransactions } = body;
+      const { items, transactions, investmentTransactions, splitTransactions } = body;
 
       setData((oldData) => {
         const newData = new Data(oldData);
@@ -84,6 +86,15 @@ export const useSync = () => {
             newInvestmentTransactions.delete(e.investment_transaction_id);
           });
           newData.investmentTransactions = newInvestmentTransactions;
+        }
+
+        if (splitTransactions) {
+          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
+          const { added } = splitTransactions;
+          added.forEach((e) => {
+            newSplitTransactions.set(e.transaction_id, new SplitTransaction(e));
+          });
+          newData.splitTransactions = newSplitTransactions;
         }
 
         if (items) {

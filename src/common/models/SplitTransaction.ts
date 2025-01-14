@@ -17,7 +17,7 @@ export class SplitTransaction {
    */
   label: TransactionLabel = new TransactionLabel();
 
-  constructor(init: Partial<SplitTransaction> & { account_id: string }) {
+  constructor(init: Partial<SplitTransaction> & { transaction_id: string }) {
     assign(this, init);
     if (init.label) this.label = new TransactionLabel(init.label);
   }

@@ -7,6 +7,8 @@ import {
   Data,
   MAX_FLOAT,
   ViewDate,
+  TransactionDictionary,
+  Transaction,
 } from "common";
 import { BudgetFamily } from "common/models/BudgetFamily";
 
@@ -15,7 +17,7 @@ import { BudgetFamily } from "common/models/BudgetFamily";
  * and returns the cloned maps with calculated results.
  */
 export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
-  const { transactions, accounts, budgets, sections, categories } = data;
+  const { transactions, splitTransactions, accounts, budgets, sections, categories } = data;
 
   const newBudgets = new BudgetDictionary(budgets);
   const newSections = new SectionDictionary(sections);
@@ -41,7 +43,25 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
 
   calculateBudgetSynchrony(newBudgets, newSections, newCategories);
 
-  transactions.forEach(({ authorized_date, date, account_id, label, amount }) => {
+  const hypotheticalTransactions = new TransactionDictionary(transactions);
+
+  splitTransactions.forEach(({ id, transaction_id, label, amount }) => {
+    const transaction = hypotheticalTransactions.get(transaction_id);
+    if (!transaction) return;
+
+    const hypotheticalTransaction = new Transaction({ ...transaction, label, amount });
+
+    const leftOverTransaction = new Transaction({
+      ...transaction,
+      transaction_id: id,
+      amount: transaction.amount - amount,
+    });
+
+    hypotheticalTransactions.set(hypotheticalTransaction.id, hypotheticalTransaction);
+    hypotheticalTransactions.set(leftOverTransaction.id, leftOverTransaction);
+  });
+
+  hypotheticalTransactions.forEach(({ authorized_date, date, account_id, label, amount }) => {
     const transactionDate = new Date(authorized_date || date);
     const account = accounts.get(account_id);
     if (!account || account.hide) return;
