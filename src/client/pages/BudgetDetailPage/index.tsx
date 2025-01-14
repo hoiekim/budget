@@ -87,7 +87,7 @@ const BudgetDetailPage = () => {
 
   const { number_of_unsorted_items } = budget || {};
 
-  const capacity = budget?.getActiveCapacity(viewDate.getDate());
+  const capacity = budget?.getActiveCapacity(viewDate.getEndDate());
   const isInfinite = !!capacity?.isInfinite;
 
   return (

@@ -8,7 +8,7 @@ export const useGraph = (budget: Budget) => {
 
   const interval = viewDate.getInterval();
   const graphViewDate = useMemo(() => {
-    const isFuture = new Date() < viewDate.getDate();
+    const isFuture = new Date() < viewDate.getEndDate();
     return isFuture ? viewDate : new ViewDate(interval);
   }, [viewDate, interval]);
 
@@ -17,7 +17,7 @@ export const useGraph = (budget: Budget) => {
 
     const { budget_id } = budget;
 
-    const currentCapacity = budget.getActiveCapacity(graphViewDate.getDate());
+    const currentCapacity = budget.getActiveCapacity(graphViewDate.getEndDate());
     const isIncome = currentCapacity[interval] < 0;
     const sign = isIncome ? -1 : 1;
 
@@ -53,7 +53,7 @@ export const useGraph = (budget: Budget) => {
 
     const clonedViewDate = graphViewDate.clone();
     const capacityHistory = new Array(length).fill(undefined).map(() => {
-      const capacity = budget.getActiveCapacity(clonedViewDate.getDate());
+      const capacity = budget.getActiveCapacity(clonedViewDate.getEndDate());
       clonedViewDate.previous();
       return sign * capacity[interval];
     });
@@ -72,8 +72,7 @@ export const useGraph = (budget: Budget) => {
 
     const upperBound = [];
     const lowerBound = [];
-    const rollOverStartSpan =
-      length - 1 - graphViewDate.getSpanFrom(roll_over_start_date);
+    const rollOverStartSpan = length - 1 - graphViewDate.getSpanFrom(roll_over_start_date);
 
     for (let i = rollOverStartSpan + lengthFixer; i < length + lengthFixer; i++) {
       if (spendingHistory[i] === undefined) continue;
@@ -90,7 +89,7 @@ export const useGraph = (budget: Budget) => {
       },
     ];
 
-    const todayIndex = graphViewDate.getSpanFrom(viewDate.getDate()) - lengthFixer + 1;
+    const todayIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer + 1;
     const pointIndex = length - todayIndex;
     const pointValue = spendingHistory[pointIndex];
     const points = [];

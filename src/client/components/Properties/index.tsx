@@ -43,7 +43,7 @@ const Properties = ({
   const onChangeRollDate: ChangeEventHandler<HTMLInputElement> = (e) => {
     const inputDate = new Date(getDateTimeString(e.target.value));
     const dateHelper = new ViewDate(viewDate.getInterval(), inputDate);
-    const newRollDate = dateHelper.getDateAsStartDate();
+    const newRollDate = dateHelper.getStartDate();
     setRollOverStartDateInput(newRollDate);
   };
 

@@ -143,7 +143,7 @@ export class BudgetFamily {
       const endDate = nextCapacity?.active_from;
       if (endDate && endDate <= startDate) return;
       const endDateAsNumber = endDate?.getTime() || Infinity;
-      const isEndDateEarlier = endDateAsNumber < viewDate.getDate().getTime();
+      const isEndDateEarlier = endDateAsNumber < viewDate.getEndDate().getTime();
       const endViewDate = endDate ? new ViewDate(interval, endDate) : viewDate;
       const dateHelper = isEndDateEarlier ? endViewDate : viewDate;
       const span = dateHelper.getSpanFrom(from);

@@ -44,7 +44,7 @@ const CapacitiesInput = ({
       const newCapacity = new Capacity(capacity);
       const inputDate = new Date(getDateTimeString(e.target.value));
       const dateHelper = new ViewDate(viewDate.getInterval(), inputDate);
-      const newActiveFrom = dateHelper.getDateAsStartDate();
+      const newActiveFrom = dateHelper.getStartDate();
       newCapacity.active_from = newActiveFrom;
       setCapacitiesInput((capacities) => {
         const newCapacities = capacities.map((e) => new Capacity(e));
@@ -136,7 +136,7 @@ const CapacitiesInput = ({
       const latestCapacity = newCapacities[newCapacities.length - 1];
       const dateHelper = new ViewDate(viewDate.getInterval(), latestCapacity.active_from);
       dateHelper.next();
-      const active_from = dateHelper.getDateAsStartDate();
+      const active_from = dateHelper.getStartDate();
       const newCapacityInit: Partial<Capacity> = { ...latestCapacity, active_from };
       delete newCapacityInit.capacity_id;
       const newCapacity = new Capacity(newCapacityInit);

@@ -12,6 +12,7 @@ import {
   PartialTransaction,
   StreamingStatus,
   PartialInvestmentTransaction,
+  getOldestTransactionDate,
 } from "server";
 import {
   Transaction,
@@ -22,6 +23,7 @@ import {
   Item,
   TWO_WEEKS,
   SplitTransaction,
+  ViewDate,
 } from "common";
 
 export interface TransactionsStreamGetResponse {
@@ -55,24 +57,49 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
 
     const status = new StreamingStatus(3);
 
-    const getTransactionsFromElasticsearch = searchTransactions(user)
-      .then((r) => {
-        const { transactions, investment_transactions, split_transactions } = r;
-        stream({
-          status: status.get(),
-          body: {
-            transactions: { added: transactions },
-            investmentTransactions: { added: investment_transactions },
-            splitTransactions: { added: split_transactions },
-          },
-        });
+    type TransactionsData = {
+      transactions: Transaction[];
+      investment_transactions: InvestmentTransaction[];
+      split_transactions: SplitTransaction[];
+    };
 
-        return r;
-      })
-      .catch((err) => {
-        console.error(err);
-        stream({ status: status.get() && "error" });
-      });
+    const getTransactionsFromElasticsearch = new Promise<TransactionsData>(async (res, rej) => {
+      let currentMonth = new ViewDate("month");
+      const oldestDate = await getOldestTransactionDate(user);
+      const result: TransactionsData = {
+        transactions: [],
+        investment_transactions: [],
+        split_transactions: [],
+      };
+      while (oldestDate < currentMonth.getEndDate()) {
+        await searchTransactions(user, currentMonth.getEndDate())
+          .then((r) => {
+            const { transactions, investment_transactions, split_transactions } = r;
+            stream({
+              status: status.get(),
+              body: {
+                transactions: { added: transactions },
+                investmentTransactions: { added: investment_transactions },
+                splitTransactions: { added: split_transactions },
+              },
+            });
+
+            result.transactions = result.transactions.concat(transactions);
+            result.investment_transactions =
+              result.investment_transactions.concat(investment_transactions);
+            result.split_transactions = result.split_transactions.concat(split_transactions);
+
+            return r;
+          })
+          .catch((err) => {
+            console.error(err);
+            stream({ status: status.get() && "error" });
+          });
+
+        currentMonth.previous();
+      }
+      return res(result);
+    });
 
     const promisedItems = searchItems(user);
 

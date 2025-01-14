@@ -54,11 +54,11 @@ export class ViewDate {
     this.current();
   }
 
-  getDate = () => this.date;
+  getEndDate = () => this.date;
 
-  getDateAsStartDate = () => {
+  getStartDate = () => {
     const clone = this.clone().previous();
-    const date = new Date(clone.getDate());
+    const date = new Date(clone.getEndDate());
     date.setMilliseconds(date.getMilliseconds() + 1);
     return date;
   };

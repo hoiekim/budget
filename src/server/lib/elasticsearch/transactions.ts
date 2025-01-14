@@ -5,6 +5,7 @@ import {
   RemovedInvestmentTransaction,
   SplitTransaction,
   RemovedSplitTransaction,
+  ViewDate,
 } from "common";
 import {
   MaskedUser,
@@ -56,7 +57,7 @@ export const upsertTransactions = async (
  * @param user
  * @returns A promise to be an array of Transaction objects
  */
-export const searchTransactions = async (user: MaskedUser) => {
+export const searchTransactions = async (user: MaskedUser, date?: Date) => {
   const { user_id } = user;
 
   type Response = {
@@ -75,11 +76,26 @@ export const searchTransactions = async (user: MaskedUser) => {
           { term: { "user.user_id": user_id } },
           {
             bool: {
-              should: [
-                { term: { type: "transaction" } },
-                { term: { type: "investment_transaction" } },
-                { term: { type: "split_transaction" } },
-              ],
+              should: ["transaction", "investment_transaction", "split_transaction"].map((type) => {
+                if (date) {
+                  const viewDate = new ViewDate("month", date);
+                  const startDate = viewDate.getStartDate();
+                  const endDate = viewDate.clone().next().getStartDate();
+                  const monthStartString = startDate.toISOString();
+                  const monthEndString = endDate.toISOString();
+                  return {
+                    bool: {
+                      filter: [
+                        { term: { type } },
+                        { range: { [`${type}.date`]: { gte: monthStartString } } },
+                        { range: { [`${type}.date`]: { lt: monthEndString } } },
+                      ],
+                    },
+                  };
+                } else {
+                  return { bool: { filter: [{ term: { type } }] } };
+                }
+              }),
             },
           },
         ],
@@ -112,6 +128,45 @@ export const searchTransactions = async (user: MaskedUser) => {
   });
 
   return result;
+};
+
+/**
+ * Searches for transactions associated with given user.
+ * @param user
+ * @returns A promise to be an array of Transaction objects
+ */
+export const getOldestTransactionDate = async (user: MaskedUser) => {
+  const { user_id } = user;
+
+  const { aggregations } = await elasticsearchClient.search({
+    index,
+    size: 0,
+    query: { term: { "user.user_id": user_id } },
+    aggs: {
+      min_transaction_date: { min: { field: "transaction.date", format: "yyyy-MM-dd" } },
+      min_investment_date: {
+        min: { field: "investment_transaction.date", format: "yyyy-MM-dd" },
+      },
+    },
+  });
+
+  type MinDateAggregation = { value: number; value_as_string: string };
+
+  const min_transaction_date = aggregations?.min_transaction_date as MinDateAggregation;
+  const min_investment_date = aggregations?.min_investment_date as MinDateAggregation;
+
+  if (min_transaction_date) {
+    if (min_investment_date) {
+      const minTime = Math.min(min_transaction_date.value, min_investment_date.value);
+      return new Date(minTime);
+    } else {
+      return new Date(min_transaction_date.value);
+    }
+  } else if (min_investment_date) {
+    return new Date(min_investment_date.value);
+  } else {
+    return new Date();
+  }
 };
 
 /**

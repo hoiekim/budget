@@ -29,7 +29,7 @@ export const useGraph = (account: Account) => {
   const { transactions, investmentTransactions } = data;
 
   const graphViewDate = useMemo(() => {
-    const isFuture = new Date() < viewDate.getDate();
+    const isFuture = new Date() < viewDate.getEndDate();
     return isFuture ? viewDate : new ViewDate(viewDate.getInterval());
   }, [viewDate]);
 
@@ -70,7 +70,7 @@ export const useGraph = (account: Account) => {
 
     const sequence = balanceHistory.reverse();
 
-    const todayIndex = graphViewDate.getSpanFrom(viewDate.getDate()) - lengthFixer + 1;
+    const todayIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer + 1;
     const pointIndex = length - todayIndex;
     const pointValue = balanceHistory[pointIndex];
     const points = [];
@@ -79,15 +79,7 @@ export const useGraph = (account: Account) => {
     }
 
     return { lines: [{ sequence, color: "#097" }], points };
-  }, [
-    transactions,
-    current,
-    account_id,
-    type,
-    investmentTransactions,
-    graphViewDate,
-    viewDate,
-  ]);
+  }, [transactions, current, account_id, type, investmentTransactions, graphViewDate, viewDate]);
 
   return { graphViewDate, graphData };
 };

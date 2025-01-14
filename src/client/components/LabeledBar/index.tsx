@@ -45,7 +45,7 @@ const LabeledBar = ({
     roll_over_start_date,
   } = barData;
 
-  const capacity = barData.getActiveCapacity(viewDate.getDate());
+  const capacity = barData.getActiveCapacity(viewDate.getEndDate());
   const interval = viewDate.getInterval();
   const capacityValue = capacity[interval];
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
@@ -87,7 +87,7 @@ const LabeledBar = ({
     roll_over &&
     rolled_over_amount !== undefined &&
     roll_over_start_date &&
-    roll_over_start_date < viewDate.getDate();
+    roll_over_start_date < viewDate.getEndDate();
 
   const editButtonClassName =
     barData.isChildrenSynced(interval) || hideEditButton ? undefined : "notification";

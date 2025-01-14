@@ -35,17 +35,9 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
     e.rolled_over_amount = -accumulatedCapacity;
   };
 
-  newBudgets.forEach((budget) => {
-    setBaseAmounts(budget);
-  });
-
-  newSections.forEach((budget) => {
-    setBaseAmounts(budget);
-  });
-
-  newCategories.forEach((budget) => {
-    setBaseAmounts(budget);
-  });
+  newBudgets.forEach(setBaseAmounts);
+  newSections.forEach(setBaseAmounts);
+  newCategories.forEach(setBaseAmounts);
 
   calculateBudgetSynchrony(newBudgets, newSections, newCategories);
 
@@ -70,7 +62,7 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
         parentBudget.roll_over &&
         parentBudget.roll_over_start_date &&
         new Date(parentBudget.roll_over_start_date) <= transactionDate &&
-        transactionDate < viewDate.getDateAsStartDate() &&
+        transactionDate < viewDate.getStartDate() &&
         parentBudget.rolled_over_amount !== undefined
       ) {
         parentBudget.rolled_over_amount += amount;
@@ -88,7 +80,7 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
       parentCategory.roll_over &&
       parentCategory.roll_over_start_date &&
       new Date(parentCategory.roll_over_start_date) <= transactionDate &&
-      transactionDate < viewDate.getDateAsStartDate() &&
+      transactionDate < viewDate.getStartDate() &&
       parentCategory.rolled_over_amount !== undefined
     ) {
       parentCategory.rolled_over_amount += amount;
@@ -103,7 +95,7 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
       parentSection.roll_over &&
       parentSection.roll_over_start_date &&
       new Date(parentSection.roll_over_start_date) <= transactionDate &&
-      transactionDate < viewDate.getDateAsStartDate() &&
+      transactionDate < viewDate.getStartDate() &&
       parentSection.rolled_over_amount !== undefined
     ) {
       parentSection.rolled_over_amount += amount;
@@ -118,7 +110,7 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
       parentBudget.roll_over &&
       parentBudget.roll_over_start_date &&
       new Date(parentBudget.roll_over_start_date) <= transactionDate &&
-      transactionDate < viewDate.getDateAsStartDate() &&
+      transactionDate < viewDate.getStartDate() &&
       parentBudget.rolled_over_amount !== undefined
     ) {
       parentBudget.rolled_over_amount += amount;

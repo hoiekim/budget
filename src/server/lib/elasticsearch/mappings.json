@@ -152,6 +152,7 @@
         "split_transaction_id": { "type": "keyword" },
         "transaction_id": { "type": "keyword" },
         "amount": { "type": "float" },
+        "date": { "type": "date" },
         "custom_name": { "type": "text" },
         "label": {
           "type": "object",
