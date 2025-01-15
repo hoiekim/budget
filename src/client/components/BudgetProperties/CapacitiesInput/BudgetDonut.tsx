@@ -7,9 +7,8 @@ import {
   currencyCodeToSymbol,
   numberToCommaString,
 } from "common";
-import { DonutData } from "client/components";
+import { DonutData, CapacityInput } from "client/components";
 import { BudgetFamily } from "common/models/BudgetFamily";
-import CapacityInput from "./CapacityInput";
 import { ChangeEventHandler } from "react";
 import CapacityBreakDown from "./CapacityBreakDown";
 

@@ -65,7 +65,7 @@ const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
   }, [transactionsArray, accounts, institutions, categories, budgets, sort]);
 
   const transactionRows = sortedTransactionsArray.map((e) => {
-    return <TransactionRow key={e.transaction_id} transaction={e} sorter={sorter} />;
+    return <TransactionRow key={e.transaction_id} transaction={e} />;
   });
 
   const getHeader = useCallback((key: keyof TransactionHeaders): string => {

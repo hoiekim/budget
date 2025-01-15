@@ -23,7 +23,7 @@ interface Props {
   setIsSyncedInput: Dispatch<SetStateAction<boolean>>;
 }
 
-const Properties = ({
+const BudgetProperties = ({
   budgetLike,
   isIncomeInput,
   setIsIncomeInput,
@@ -54,7 +54,7 @@ const Properties = ({
   const isCategory = budgetLike.type === "category";
 
   return (
-    <div className="Properties">
+    <div className="BudgetProperties Properties">
       <div className="property">
         <RadioInputs
           disabled={isSyncedInput}
@@ -124,4 +124,4 @@ const Properties = ({
   );
 };
 
-export default Properties;
+export default BudgetProperties;

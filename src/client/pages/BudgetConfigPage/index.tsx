@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Capacity, getDateTimeString } from "common";
 import { useAppContext, PATH } from "client";
-import { NameInput, Bar, ActionButtons, Properties } from "client/components";
+import { NameInput, Bar, ActionButtons, BudgetProperties } from "client/components";
 import { BudgetFamily } from "common/models/BudgetFamily";
 import { useEventHandlers } from "./lib";
 
@@ -148,7 +148,7 @@ const BudgetConfigPage = () => {
           noAlert={isIncomeInput}
         />
       </div>
-      <Properties
+      <BudgetProperties
         budgetLike={budgetLike}
         isIncomeInput={isIncomeInput}
         setIsIncomeInput={setIsIncomeInput}

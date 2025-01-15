@@ -19,15 +19,19 @@ div.ActionButtons > button:last-child {
   margin-right: 0;
 }
 
-div.ActionButtons:not(.locked) > button {
+div.ActionButtons:not(.lockable) > button {
   flex: 1;
 }
 
-div.ActionButtons.locked > button:not(:last-child) {
+div.ActionButtons.lockable:not(.locked) > button {
   flex: 1;
 }
 
-div.ActionButtons.locked > button:last-child {
+div.ActionButtons.lockable.locked > button:not(:last-child) {
+  flex: 1;
+}
+
+div.ActionButtons.lockable.locked > button:last-child {
   flex: 0 1 24px;
 }
 

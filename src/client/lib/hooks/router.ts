@@ -10,6 +10,7 @@ export enum PATH {
   BUDGET_CONFIG = "budget-config",
   ACCOUNTS = "accounts",
   TRANSACTIONS = "transactions",
+  TRANSACTION_DETAIL = "transaction-detail",
 }
 
 export interface ClientRouter {

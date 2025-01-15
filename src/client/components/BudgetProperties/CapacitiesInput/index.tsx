@@ -10,9 +10,9 @@ import {
   sortCapacities,
 } from "common";
 import { useAppContext } from "client";
+import { CapacityInput } from "client/components";
 import BudgetDonut from "./BudgetDonut";
 import "./index.css";
-import CapacityInput from "./CapacityInput";
 
 interface Props {
   budgetLike: BudgetFamily;

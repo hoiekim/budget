@@ -8,16 +8,14 @@ import {
   Data,
   TransactionDictionary,
 } from "common";
-import { useAppContext, call, Sorter } from "client";
+import { useAppContext, call, PATH, TransactionDetailPageParams } from "client";
 import { InstitutionSpan } from "client/components";
-import { TransactionHeaders } from ".";
 
 interface Props {
   transaction: Transaction;
-  sorter: Sorter<Transaction, TransactionHeaders>;
 }
 
-const TransactionRow = ({ transaction, sorter }: Props) => {
+const TransactionRow = ({ transaction }: Props) => {
   const {
     transaction_id,
     account_id,
@@ -31,10 +29,9 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     iso_currency_code,
   } = transaction;
 
-  const { getVisible } = sorter;
-
-  const { data, setData } = useAppContext();
+  const { data, setData, router } = useAppContext();
   const { accounts, budgets, sections, categories } = data;
+  const { path, go } = router;
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
@@ -147,60 +144,55 @@ const TransactionRow = ({ transaction, sorter }: Props) => {
     }
   };
 
+  const onClickKebab = () => {
+    if (path === PATH.TRANSACTION_DETAIL) return;
+    const paramObj: TransactionDetailPageParams = { id: transaction_id };
+    const params = new URLSearchParams(paramObj);
+    go(PATH.TRANSACTION_DETAIL, { params });
+  };
+
   const { city, region, country } = location;
-  const locations = [city, region || country].filter((e) => e);
+  const locations = [city, region, country].filter((e) => e);
 
   return (
     <div className="TransactionRow">
       <div className="transactionInfo">
-        {getVisible("authorized_date") && (
-          <div className="authorized_date bigText">
-            {new Date(authorized_date || date).toLocaleString("en-US", {
-              month: "numeric",
-              day: "numeric",
-            })}
-          </div>
-        )}
-        <div className="merchant_name">
-          {getVisible("merchant_name") && (
-            <>
-              {merchant_name && <div className="bigText">{merchant_name}</div>}
-              {name && <div className="smallText">{name}</div>}
-              {!!locations.length && <div className="smallText">{locations.join(", ")}</div>}
-            </>
-          )}
-          {getVisible("account") && (
-            <>
-              <div className="bigText">{account?.custom_name || account?.name}</div>
-              <div className="smallText">
-                {institution_id && <InstitutionSpan institution_id={institution_id} />}
-              </div>
-            </>
-          )}
+        <div className="authorized_date bigText">
+          {new Date(authorized_date || date).toLocaleString("en-US", {
+            month: "numeric",
+            day: "numeric",
+          })}
         </div>
-        {getVisible("amount") && (
-          <div className="amount">
-            {amount < 0 && <>+&nbsp;</>}
-            {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
-            {numberToCommaString(Math.abs(amount))}
+        <div className="merchant_name">
+          {merchant_name && <div className="bigText">{merchant_name}</div>}
+          {name && <div className="smallText">{name}</div>}
+          {!!locations.length && <div className="smallText">{locations.join(", ")}</div>}
+
+          <div className="bigText">{account?.custom_name || account?.name}</div>
+          <div className="smallText">
+            {institution_id && <InstitutionSpan institution_id={institution_id} />}
           </div>
-        )}
+        </div>
+        <div className="amount">
+          {amount < 0 && <>+&nbsp;</>}
+          {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
+          {numberToCommaString(Math.abs(amount))}
+        </div>
       </div>
-      <div className="budgetCategory">
-        {getVisible("budget") && (
-          <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-            <option value="">Select Budget</option>
-            {budgetOptions}
+      <div className="budgetCategoryActions">
+        <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+          <option value="">Select Budget</option>
+          {budgetOptions}
+        </select>
+        <div className={selectedCategoryIdLabel ? "" : "notification"}>
+          <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+            <option value="">Select Category</option>
+            {categoryOptions}
           </select>
-        )}
-        {getVisible("category") && (
-          <div className={selectedCategoryIdLabel ? "" : "notification"}>
-            <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-              <option value="">Select Category</option>
-              {categoryOptions}
-            </select>
-          </div>
-        )}
+        </div>
+        <div>
+          <button onClick={onClickKebab}>⋯</button>
+        </div>
       </div>
     </div>
   );

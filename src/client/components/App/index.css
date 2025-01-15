@@ -196,3 +196,51 @@ div.Router:not(.transitioning.backward) > div.currentPage {
 .rotate90deg {
   transform: rotate(90deg);
 }
+
+div.Properties {
+  margin-top: 20px;
+}
+
+div.Properties button:disabled {
+  background-color: inherit;
+  color: #ccc;
+  border: none;
+}
+
+div.Properties > .property {
+  background-color: #eee;
+  border-radius: 5px;
+  padding: 5px 10px;
+}
+
+div.Properties > .property:not(:last-child) {
+  margin-bottom: 20px;
+}
+
+div.Properties > .property .disabled.lineThrough {
+  color: #888;
+  text-decoration: line-through;
+}
+
+div.Properties .row {
+  padding: 14px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.Properties .row:not(:last-child) {
+  border-bottom: 1px solid #ccc;
+}
+
+div.Properties .row:first-child {
+  padding-top: 10px;
+}
+
+div.Properties .row:last-child {
+  padding-bottom: 10px;
+}
+
+div.Properties .row > input {
+  font-size: 16px;
+}

@@ -73,9 +73,7 @@ const Header = () => {
       <div className="viewController">
         <div className="centerBox">
           <div className="backButton">
-            <button onClick={onClickBack} disabled={isBackButtonDisabled}>
-              {isBackButtonDisabled ? "" : "←"}
-            </button>
+            {!isBackButtonDisabled && <button onClick={onClickBack}>←</button>}
           </div>
           <div>
             <button onClick={onClickPreviousView}>

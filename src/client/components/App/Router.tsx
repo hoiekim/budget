@@ -7,6 +7,7 @@ import {
   BudgetConfigPage,
   AccountsPage,
   TransactionsPage,
+  TransactionDetailPage,
   PATH,
 } from "client";
 
@@ -25,6 +26,7 @@ const Router = () => {
     if (path === PATH.BUDGET_CONFIG) return <BudgetConfigPage />;
     if (path === PATH.ACCOUNTS) return <AccountsPage />;
     if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
+    if (path === PATH.TRANSACTION_DETAIL) return <TransactionDetailPage />;
     return <div>Not Found</div>;
   };
 
@@ -37,9 +39,7 @@ const Router = () => {
         {transitioning && direction === "backward" && incomingPage}
       </div>
       <div className="currentPage">{currentPage}</div>
-      <div className="nextPage">
-        {transitioning && direction === "forward" && incomingPage}
-      </div>
+      <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
     </div>
   );
 };

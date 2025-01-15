@@ -29,27 +29,33 @@ div.TransactionRow > .transactionInfo > .amount {
   text-align: right;
 }
 
-div.TransactionRow > .budgetCategory {
+div.TransactionRow > .budgetCategoryActions {
   display: flex;
   justify-content: flex-end;
 }
 
-div.TransactionRow > .budgetCategory > * {
+div.TransactionRow > .budgetCategoryActions > * {
   margin: 0 5px;
   width: 100%;
   max-width: 300px;
 }
 
-div.TransactionRow > .budgetCategory > div > select {
+div.TransactionRow > .budgetCategoryActions > div > select {
   width: 100%;
 }
 
-div.TransactionRow > .budgetCategory > :first-child {
+div.TransactionRow > .budgetCategoryActions > :first-child {
   margin-left: 0;
 }
 
-div.TransactionRow > .budgetCategory > :last-child {
+div.TransactionRow > .budgetCategoryActions > :last-child {
   margin-right: 0;
+  width: 80px;
+}
+
+div.TransactionRow > .budgetCategoryActions > :last-child > * {
+  width: 100%;
+  font-size: 20px;
 }
 
 div.TransactionRow .smallText {
