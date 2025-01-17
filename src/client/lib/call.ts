@@ -26,6 +26,29 @@ call.delete = <T>(path: string) => call<T>(path, { method: "DELETE" });
 
 export { call };
 
+const promisedCache = caches.open("budget-cache");
+const getCache = () => promisedCache;
+
+export const cachedCall = async <T = any>(path: string) => {
+  try {
+    const cache = await getCache();
+    const cachedResponse = await cache.match(path);
+    if (cachedResponse) {
+      const result = await cachedResponse?.json();
+      console.log(`<GET> <Cahced> ${path}`, result);
+      return result as ApiResponse<T>;
+    } else {
+      await cache.add(path);
+      const cachedResponse = await cache.match(path);
+      const result = await cachedResponse?.json();
+      console.log(`<GET> ${path}`, result);
+      return result as ApiResponse<T>;
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
 export const read = async <T = any>(
   path: string,
   callback: (response: ApiResponse<T>) => any,

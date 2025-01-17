@@ -6,6 +6,7 @@ import {
   SplitTransaction,
   RemovedSplitTransaction,
   ViewDate,
+  DeepPartial,
 } from "common";
 import {
   MaskedUser,
@@ -52,13 +53,21 @@ export const upsertTransactions = async (
   return response.items;
 };
 
+interface DateRange {
+  start: Date;
+  end: Date;
+}
+
 /**
  * Searches for transactions associated with given user.
  * @param user
- * @returns A promise to be an array of Transaction objects
+ * @param range (optional)
+ * @returns A promise to have arrays of Transaction objects
  */
-export const searchTransactions = async (user: MaskedUser, date?: Date) => {
+export const searchTransactions = async (user: MaskedUser, range?: DateRange) => {
   const { user_id } = user;
+  const { start, end } = range || {};
+  const isValidRange = start && end && start < end;
 
   type Response = {
     transaction: Transaction;
@@ -77,18 +86,13 @@ export const searchTransactions = async (user: MaskedUser, date?: Date) => {
           {
             bool: {
               should: ["transaction", "investment_transaction", "split_transaction"].map((type) => {
-                if (date) {
-                  const viewDate = new ViewDate("month", date);
-                  const startDate = viewDate.getStartDate();
-                  const endDate = viewDate.clone().next().getStartDate();
-                  const monthStartString = startDate.toISOString();
-                  const monthEndString = endDate.toISOString();
+                if (isValidRange) {
                   return {
                     bool: {
                       filter: [
                         { term: { type } },
-                        { range: { [`${type}.date`]: { gte: monthStartString } } },
-                        { range: { [`${type}.date`]: { lt: monthEndString } } },
+                        { range: { [`${type}.date`]: { gte: start.toISOString() } } },
+                        { range: { [`${type}.date`]: { lt: end.toISOString() } } },
                       ],
                     },
                   };
@@ -96,6 +100,70 @@ export const searchTransactions = async (user: MaskedUser, date?: Date) => {
                   return { bool: { filter: [{ term: { type } }] } };
                 }
               }),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  type Result = {
+    transactions: Transaction[];
+    investment_transactions: InvestmentTransaction[];
+    split_transactions: SplitTransaction[];
+  };
+
+  const result: Result = {
+    transactions: [],
+    investment_transactions: [],
+    split_transactions: [],
+  };
+
+  response.hits.hits.forEach((e) => {
+    const source = e._source;
+    if (!source) return;
+    const { transaction, investment_transaction, split_transaction } = source;
+    if (transaction) result.transactions.push(transaction);
+    else if (investment_transaction) {
+      result.investment_transactions.push(investment_transaction);
+    } else if (split_transaction) {
+      result.split_transactions.push(split_transaction);
+    }
+  });
+
+  return result;
+};
+
+/**
+ * Searches for transactions associated with given user and id.
+ * @param user
+ * @param id one of transaction_id, investment_transaction_id or split_transaction_id
+ * @returns A promise to havea arrays of Transaction objects
+ */
+export const searchTransactionById = async (user: MaskedUser, id: string) => {
+  const { user_id } = user;
+
+  type Response = {
+    transaction: Transaction;
+    investment_transaction: InvestmentTransaction;
+    split_transaction: SplitTransaction;
+  };
+
+  const response = await elasticsearchClient.search<Response>({
+    index,
+    from: 0,
+    size: 10000,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          {
+            bool: {
+              should: [
+                { term: { "transaction.transaction_id": id } },
+                { term: { "investment_transaction.investment_transaction_id": id } },
+                { term: { "split_transaction.split_transaction_id": id } },
+              ],
             },
           },
         ],

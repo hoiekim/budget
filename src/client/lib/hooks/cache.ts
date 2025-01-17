@@ -69,3 +69,23 @@ export const useDebounce = () => {
   };
   return useCallback(debounce, [timeout]);
 };
+
+export const useThrottle = () => {
+  const timeout = useRef<NodeJS.Timeout | null>(null);
+  const timestamp = useRef<number | null>(null);
+  const callbackStack = useRef<(() => void) | null>(null);
+  const throttle = (callback: () => void, threshold = 5000) => {
+    callbackStack.current = callback;
+    const now = Date.now();
+    const latest = timestamp.current;
+    const delay = threshold - (now - (latest || 0));
+    if (latest && delay > 0) {
+      if (timeout.current) clearTimeout(timeout.current);
+      timeout.current = setTimeout(callbackStack.current, delay);
+      return;
+    }
+    timestamp.current = now;
+    callbackStack.current();
+  };
+  return useCallback(throttle, [timestamp]);
+};

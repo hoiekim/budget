@@ -62,7 +62,7 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
     };
 
     const getTransactionsFromElasticsearch = new Promise<TransactionsData>(async (res, rej) => {
-      let currentMonth = new ViewDate("month");
+      const currentMonth = new ViewDate("month");
       const oldestDate = await getOldestTransactionDate(user);
       const result: TransactionsData = {
         transactions: [],
@@ -70,7 +70,9 @@ export const getTransactionsStreamRoute = new Route<TransactionsStreamGetRespons
         split_transactions: [],
       };
       while (oldestDate < currentMonth.getEndDate()) {
-        await searchTransactions(user, currentMonth.getEndDate())
+        const start = currentMonth.getStartDate();
+        const end = currentMonth.clone().next().getStartDate();
+        await searchTransactions(user, { start, end })
           .then((r) => {
             const { transactions, investment_transactions, split_transactions } = r;
             stream({

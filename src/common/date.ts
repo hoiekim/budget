@@ -1,6 +1,7 @@
 import { Interval } from "common";
 
 export const TWO_WEEKS = 1000 * 60 * 60 * 24 * 14;
+export const THIRTY_DAYS = 1000 * 60 * 60 * 24 * 30;
 
 /**
  * This class is designed to determine certain logics with given date.
@@ -35,10 +36,6 @@ export class IsDate {
     const compareMonth = date.getMonth();
     if (thisMonth !== compareMonth) return false;
     if (interval === "month") return true;
-
-    const todayDate = now.getDate();
-    const compareDate = date.getDate();
-    if (todayDate !== compareDate) return false;
 
     return false;
   };
