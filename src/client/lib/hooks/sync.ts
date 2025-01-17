@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   AccountsStreamGetResponse,
   BudgetsGetResponse,
@@ -28,6 +28,7 @@ import {
   ViewDate,
   getDateString,
   THIRTY_DAYS,
+  sleep,
 } from "common";
 
 /**
@@ -51,49 +52,10 @@ export const useSync = () => {
     const transactionsApiPath = "/api/transactions";
     const viewDate = new ViewDate("month");
 
-    const updateStack: TransactionsGetResponse = {
-      transactions: [],
-      investmentTransactions: [],
-      splitTransactions: [],
-    };
-
-    const updateData = () => {
-      setData((oldData) => {
-        const newData = new Data(oldData);
-        const { transactions, investmentTransactions, splitTransactions } = updateStack;
-
-        if (transactions.length) {
-          const newTransactions = new TransactionDictionary(newData.transactions);
-          transactions.forEach((e) => {
-            newTransactions.set(e.transaction_id, new Transaction(e));
-          });
-          newData.transactions = newTransactions;
-          updateStack.transactions = [];
-        }
-
-        if (investmentTransactions.length) {
-          const newInvestmentTransactions = new InvestmentTransactionDictionary(
-            newData.investmentTransactions
-          );
-          investmentTransactions.forEach((e) => {
-            const newInvestmentTransaction = new InvestmentTransaction(e);
-            newInvestmentTransactions.set(newInvestmentTransaction.id, newInvestmentTransaction);
-          });
-          newData.investmentTransactions = newInvestmentTransactions;
-          updateStack.investmentTransactions = [];
-        }
-
-        if (splitTransactions.length) {
-          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
-          splitTransactions.forEach((e) => {
-            newSplitTransactions.set(e.transaction_id, new SplitTransaction(e));
-          });
-          newData.splitTransactions = newSplitTransactions;
-          updateStack.splitTransactions = [];
-        }
-
-        return newData;
-      });
+    const updateStack = {
+      transactions: new TransactionDictionary(),
+      investmentTransactions: new InvestmentTransactionDictionary(),
+      splitTransactions: new SplitTransactionDictionary(),
     };
 
     while (oldestDate < viewDate.getStartDate()) {
@@ -116,16 +78,52 @@ export const useSync = () => {
       if (!response?.body) return;
 
       const { transactions, investmentTransactions, splitTransactions } = response.body;
-      updateStack.transactions.push(...transactions);
-      updateStack.investmentTransactions.push(...investmentTransactions);
-      updateStack.splitTransactions.push(...splitTransactions);
-
-      if (isRecent) updateData();
+      transactions.forEach((t) => {
+        updateStack.transactions.set(t.transaction_id, t);
+      });
+      investmentTransactions.forEach((t) => {
+        updateStack.investmentTransactions.set(t.investment_transaction_id, t);
+      });
+      splitTransactions.forEach((t) => {
+        updateStack.splitTransactions.set(t.split_transaction_id, t);
+      });
 
       viewDate.previous();
     }
 
-    updateData();
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const { transactions, investmentTransactions, splitTransactions } = updateStack;
+
+      if (transactions.size) {
+        const newTransactions = new TransactionDictionary(newData.transactions);
+        transactions.forEach((e) => {
+          newTransactions.set(e.transaction_id, new Transaction(e));
+        });
+        newData.transactions = newTransactions;
+      }
+
+      if (investmentTransactions.size) {
+        const newInvestmentTransactions = new InvestmentTransactionDictionary(
+          newData.investmentTransactions
+        );
+        investmentTransactions.forEach((e) => {
+          const newInvestmentTransaction = new InvestmentTransaction(e);
+          newInvestmentTransactions.set(newInvestmentTransaction.id, newInvestmentTransaction);
+        });
+        newData.investmentTransactions = newInvestmentTransactions;
+      }
+
+      if (splitTransactions.size) {
+        const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
+        splitTransactions.forEach((e) => {
+          newSplitTransactions.set(e.transaction_id, new SplitTransaction(e));
+        });
+        newData.splitTransactions = newSplitTransactions;
+      }
+
+      return newData;
+    });
   }, [userLoggedIn, setData]);
 
   type SyncAccounts = () => void;
