@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Transaction } from "common";
 import { useAppContext, PATH } from "client";
-import { TransactionProperties, ActionButtons } from "client/components";
+import { TransactionProperties } from "client/components";
 
 import "./index.css";
 
@@ -30,21 +30,9 @@ const TransactionDetailPage = () => {
 
   if (!transaction) return <></>;
 
-  const finishEditing = () => router.back();
-
-  const onComplete = async () => {
-    try {
-    } catch (error: any) {
-      console.error(error);
-    }
-
-    router.back();
-  };
-
   return (
     <div className="TransactionDetailPage">
       <TransactionProperties transaction={transaction} />
-      {/* <ActionButtons onComplete={onComplete} onCancel={finishEditing} /> */}
     </div>
   );
 };

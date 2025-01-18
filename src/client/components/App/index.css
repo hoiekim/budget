@@ -207,6 +207,11 @@ div.Properties button:disabled {
   border: none;
 }
 
+div.Properties > .propertyLabel {
+  font-size: 14px;
+  padding: 5px;
+}
+
 div.Properties > .property {
   background-color: #eee;
   border-radius: 5px;

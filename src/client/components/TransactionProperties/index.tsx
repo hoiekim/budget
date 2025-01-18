@@ -1,17 +1,21 @@
-import { ChangeEventHandler, useEffect, useMemo, useState } from "react";
+import { ChangeEventHandler, useMemo, useState } from "react";
 import {
   Category,
   currencyCodeToSymbol,
   Data,
+  numberToCommaString,
   SplitTransaction,
+  SplitTransactionDictionary,
   Transaction,
   TransactionDictionary,
   TransactionLabel,
 } from "common";
 import { useAppContext, call } from "client";
-import { CapacityInput, InstitutionSpan } from "client/components";
+import { InstitutionSpan } from "client/components";
 
 import "./index.css";
+import SplitTransactionRow from "./SplitTransactionRow";
+import { NewSplitTransactionGetResponse } from "server";
 
 interface Props {
   transaction: Transaction;
@@ -19,7 +23,7 @@ interface Props {
 
 const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData } = useAppContext();
-  const { accounts, transactions, splitTransactions, budgets, sections, categories } = data;
+  const { accounts, splitTransactions, budgets, sections, categories } = data;
 
   const {
     transaction_id,
@@ -43,15 +47,7 @@ const TransactionProperties = ({ transaction }: Props) => {
     return label.category_id || "";
   });
 
-  const defaultSplitTransactionInputs = splitTransactions.filterBy({ transaction_id });
-  const [splitTransactionInputs, setSplitTransactionInputs] = useState<SplitTransaction[]>(
-    defaultSplitTransactionInputs
-  );
-
-  useEffect(() => {
-    const newSplitTransactionInputs = splitTransactions.filterBy({ transaction_id });
-    setSplitTransactionInputs(newSplitTransactionInputs);
-  }, [transaction_id, transactions, splitTransactions]);
+  const splitTransactionInputs = splitTransactions.filterBy({ transaction_id });
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -149,31 +145,41 @@ const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
-  const onClickAdd = () => {
-    setSplitTransactionInputs((oldState) => {
-      const newSplitTransaction = new SplitTransaction({
-        transaction_id,
-        amount: amount / 2,
-      });
-      return [...oldState, newSplitTransaction];
+  const remainingAmount = splitTransactionInputs.reduce((acc, e) => acc - e.amount, amount);
+
+  const onClickAdd = async () => {
+    const queryString = "?" + new URLSearchParams({ parent: transaction_id }).toString();
+    const newSplitTransactionResponse = await call.get<NewSplitTransactionGetResponse>(
+      "/api/new-split-transaction" + queryString
+    );
+    if (!newSplitTransactionResponse.body) {
+      console.error("Failed to get a new split transaction id:", newSplitTransactionResponse);
+      return;
+    }
+    const { split_transaction_id } = newSplitTransactionResponse.body;
+    const newSplitTransaction = new SplitTransaction({
+      split_transaction_id,
+      transaction_id,
+      date,
+      amount: +(remainingAmount / 2).toFixed(2),
+      label,
+    });
+
+    await call.post("/api/split-transaction", newSplitTransaction);
+
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
+      newSplitTransactions.set(newSplitTransaction.split_transaction_id, newSplitTransaction);
+      newData.splitTransactions = newSplitTransactions;
+      return newData;
     });
   };
 
   const splitTransactionInputRows = splitTransactionInputs.map((s, i) => {
-    const { budget_id, category_id } = s.label;
-    const budget = selectedCategoryIdLabel;
-    const category = typeof category_id === "string" ? data.categories.get(category_id) : undefined;
     return (
-      <div key={i} className="row">
-        <div className="splitItem">
-          <CapacityInput
-            style={{ width: `${"000,000".length}ch` }}
-            defaultValue={s.amount}
-            onBlur={() => {}}
-          />
-          <span>{selectedBudgetIdLabel}</span>
-          <span>{selectedCategoryIdLabel}</span>
-        </div>
+      <div key={s.id} className="row">
+        <SplitTransactionRow key={i} splitTransaction={s} />
       </div>
     );
   });
@@ -186,10 +192,13 @@ const TransactionProperties = ({ transaction }: Props) => {
       ? sections.get(categories.get(label.category_id)!.section_id)?.name
       : "";
 
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+
   return (
     <div className="TransactionProperties Properties">
+      <div className="propertyLabel">Details</div>
       <div className="property">
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Date</span>
           <span>
             {new Date(authorized_date || date).toLocaleString("en-US", {
@@ -199,46 +208,47 @@ const TransactionProperties = ({ transaction }: Props) => {
             })}
           </span>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Merchant&nbsp;Name</span>
           <span>{merchant_name}</span>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Name</span>
           <span>{name}</span>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Amount</span>
           <span>
-            {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;{amount}
+            {currencySymbol}&nbsp;{amount}
           </span>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Location</span>
           <span>{locations.join(", ")}</span>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Account</span>
           <span>{account?.custom_name || account?.name}</span>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Institution</span>
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
         </div>
       </div>
+      <div className="propertyLabel">Budgets</div>
       <div className="property">
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Budget</span>
           <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
             <option value="">Select Budget</option>
             {budgetOptions}
           </select>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Section</span>
           <span>{sectionName}</span>
         </div>
-        <div className="row">
+        <div className="row keyValue">
           <span className="propertyName">Category</span>
           <div className={selectedCategoryIdLabel ? "" : "notification"}>
             <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
@@ -248,13 +258,21 @@ const TransactionProperties = ({ transaction }: Props) => {
           </div>
         </div>
       </div>
+      <div className="propertyLabel">Split&nbsp;Transactions</div>
       <div className="property">
         <div className="row addNew">
-          <button disabled className="disabled" onClick={onClickAdd}>
-            Add&nbsp;New&nbsp;Split
-          </button>
+          <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</button>
         </div>
         {splitTransactionInputRows}
+        {!!splitTransactionInputRows.length && (
+          <div className="row keyValue">
+            <span className="propertyName">Remaining</span>
+            <span>
+              {currencySymbol}&nbsp;
+              {numberToCommaString(remainingAmount)}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

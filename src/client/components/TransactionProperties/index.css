@@ -21,6 +21,11 @@ div.TransactionProperties .row > span.propertyName {
   color: #888;
 }
 
+div.TransactionProperties .row.keyValue > *:last-child {
+  max-width: 60%;
+  text-align: end;
+}
+
 div.TransactionProperties .row > button {
   width: 100%;
   text-align: left;
@@ -35,4 +40,30 @@ div.TransactionProperties .row > .splitItem > input {
   flex-grow: 1;
   text-align: center;
   background-color: #fff;
+}
+
+div.SplitTransactionRow {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.SplitTransactionRow > * {
+  width: 30%;
+}
+
+div.SplitTransactionRow > div > select {
+  width: 100%;
+}
+
+div.SplitTransactionRow > .amount {
+  display: flex;
+  align-items: center;
+}
+
+div.SplitTransactionRow > .amount > input {
+  font-size: 16px;
+  background-color: #fff;
+  width: calc(100% - 5px);
 }

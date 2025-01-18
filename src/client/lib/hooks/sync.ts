@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import {
   AccountsStreamGetResponse,
   BudgetsGetResponse,
@@ -28,7 +28,6 @@ import {
   ViewDate,
   getDateString,
   THIRTY_DAYS,
-  sleep,
 } from "common";
 
 /**
@@ -117,7 +116,7 @@ export const useSync = () => {
       if (splitTransactions.size) {
         const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
         splitTransactions.forEach((e) => {
-          newSplitTransactions.set(e.transaction_id, new SplitTransaction(e));
+          newSplitTransactions.set(e.split_transaction_id, new SplitTransaction(e));
         });
         newData.splitTransactions = newSplitTransactions;
       }

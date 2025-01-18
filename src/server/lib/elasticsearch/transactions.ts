@@ -5,8 +5,6 @@ import {
   RemovedInvestmentTransaction,
   SplitTransaction,
   RemovedSplitTransaction,
-  ViewDate,
-  DeepPartial,
 } from "common";
 import {
   MaskedUser,
@@ -119,14 +117,14 @@ export const searchTransactions = async (user: MaskedUser, range?: DateRange) =>
     split_transactions: [],
   };
 
-  response.hits.hits.forEach((e) => {
-    const source = e._source;
-    if (!source) return;
-    const { transaction, investment_transaction, split_transaction } = source;
+  response.hits.hits.forEach(({ _source, _id }) => {
+    if (!_source) return;
+    const { transaction, investment_transaction, split_transaction } = _source;
     if (transaction) result.transactions.push(transaction);
     else if (investment_transaction) {
       result.investment_transactions.push(investment_transaction);
     } else if (split_transaction) {
+      split_transaction.split_transaction_id = _id;
       result.split_transactions.push(split_transaction);
     }
   });
@@ -183,14 +181,14 @@ export const searchTransactionById = async (user: MaskedUser, id: string) => {
     split_transactions: [],
   };
 
-  response.hits.hits.forEach((e) => {
-    const source = e._source;
-    if (!source) return;
-    const { transaction, investment_transaction, split_transaction } = source;
+  response.hits.hits.forEach(({ _source, _id }) => {
+    if (!_source) return;
+    const { transaction, investment_transaction, split_transaction } = _source;
     if (transaction) result.transactions.push(transaction);
     else if (investment_transaction) {
       result.investment_transactions.push(investment_transaction);
     } else if (split_transaction) {
+      split_transaction.split_transaction_id = _id;
       result.split_transactions.push(split_transaction);
     }
   });
@@ -347,6 +345,29 @@ export const deleteInvestmentTransactions = async (
   return response;
 };
 
+/**
+ * Creates a document that represents a split transaction.
+ * @param user
+ * @param split_transaction_id parent transaction's id
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const createSplitTransaction = async (user: MaskedUser, transaction_id: string) => {
+  const { user_id } = user;
+
+  type UnindexedSplitTransaction = Omit<SplitTransaction, "split_transaction_id"> & {
+    split_transaction_id?: string;
+  };
+  const split_transaction: UnindexedSplitTransaction = new SplitTransaction({ transaction_id });
+  delete split_transaction.split_transaction_id;
+
+  const response = await elasticsearchClient.index({
+    index,
+    document: { type: "split_transaction", user: { user_id }, split_transaction },
+  });
+
+  return response;
+};
+
 export type PartialSplitTransaction = { split_transaction_id: string } & Partial<SplitTransaction>;
 
 /**
@@ -376,7 +397,7 @@ export const upsertSplitTransactions = async (
       bulkBody.upsert = {
         type: "split_transaction",
         user: { user_id },
-        transaction: splitTransaction,
+        split_transaction: splitTransaction,
       };
     }
 

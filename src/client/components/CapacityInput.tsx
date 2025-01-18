@@ -1,13 +1,25 @@
 import { numberToCommaString } from "common";
 import { useState, useRef, InputHTMLAttributes } from "react";
 
-type Props = { defaultValue: number } & Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue">;
+type Props = { defaultValue: number; fixed?: number } & Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "defaultValue"
+>;
 
 const CapacityInput = (props: Props) => {
-  const { defaultValue, className, onClick, onKeyPress, onChange, onFocus, onBlur, ...rest } =
-    props;
+  const {
+    defaultValue,
+    fixed = 0,
+    className,
+    onClick,
+    onKeyPress,
+    onChange,
+    onFocus,
+    onBlur,
+    ...rest
+  } = props;
 
-  const defaultValueAsCommaString = numberToCommaString(defaultValue, 0);
+  const defaultValueAsCommaString = numberToCommaString(defaultValue, fixed);
   const [_value, _setValue] = useState(defaultValueAsCommaString);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -37,7 +49,7 @@ const CapacityInput = (props: Props) => {
       }}
       onBlur={(e) => {
         const numberizedValue = +e.target.value.replace(/,/g, "") || 0;
-        const commaString = numberToCommaString(numberizedValue, 0);
+        const commaString = numberToCommaString(numberizedValue, fixed);
         _setValue(commaString);
         if (onBlur) onBlur(e);
       }}

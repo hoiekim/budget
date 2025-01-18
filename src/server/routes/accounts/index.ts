@@ -3,6 +3,7 @@ export * from "./get-transactions-stream";
 export * from "./get-oldest-transaction-date";
 export * from "./get-transactions";
 export * from "./get-transactions";
+export * from "./get-new-split-transaction";
 export * from "./get-accounts-stream";
 export * from "./get-institution";
 export * from "./post-transaction";
