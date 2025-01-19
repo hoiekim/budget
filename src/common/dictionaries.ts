@@ -36,8 +36,12 @@ export class Dictionary<T = any> extends Map<string, T> {
     return undefined;
   };
 
-  filter = (predicate: (value: T, index: number, array: T[]) => void) => {
-    return this.toArray().filter(predicate);
+  filter = (predicate: (value: T, index: number) => boolean) => {
+    const result: T[] = [];
+    this.forEach((v, k) => {
+      if (predicate(v, Number(k))) result.push(v);
+    });
+    return result;
   };
 
   filterBy = (input: Partial<T>) => {

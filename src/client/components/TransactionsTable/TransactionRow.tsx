@@ -147,7 +147,6 @@ const TransactionRow = ({ transaction }: Props) => {
         split_transaction_id: id,
         label: labelQuery,
       });
-      return;
     } else {
       response = await call.post("/api/transaction", {
         transaction_id: id,

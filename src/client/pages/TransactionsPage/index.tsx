@@ -33,25 +33,6 @@ const TransactionsPage = () => {
     category_id = incomingParams.get("category_id") || "";
   }
 
-  const transactionsArray = useMemo(() => {
-    const result: Transaction[] = [];
-    transactions.forEach((e) => {
-      const hidden = accounts.get(e.account_id)?.hide;
-      const transactionDate = new Date(e.authorized_date || e.date);
-      const within = viewDate.has(transactionDate);
-      if (hidden || !within) return;
-
-      if (option === "unsorted") {
-        if (!e.label.category_id) result.push(e);
-      } else if (option === "income") {
-        if (e.amount < 0) result.push(e);
-      } else {
-        result.push(e);
-      }
-    });
-    return result;
-  }, [transactions, accounts, viewDate, option]);
-
   const filteredTransactions = useMemo(() => {
     const filters: DeepPartial<Transaction> = {};
     if (account_id) filters.account_id = account_id;
@@ -63,36 +44,67 @@ const TransactionsPage = () => {
       if (!filters.label) filters.label = {};
       filters.label.category_id = category_id;
     }
-    return transactionsArray.filter((e) => {
+    return transactions.filter((e) => {
+      const hidden = accounts.get(e.account_id)?.hide;
+      const transactionDate = new Date(e.authorized_date || e.date);
+      const within = viewDate.has(transactionDate);
+      if (hidden || !within) return false;
+
+      if (option === "unsorted") {
+        if (e.label.category_id) return false;
+      } else if (option === "income") {
+        if (e.amount > 0) return false;
+      }
+
       if (!e.label.budget_id) {
         const account = accounts.get(e.account_id);
         if (account?.label.budget_id === budget_id) return true;
       }
       return isSubset(e, filters);
     });
-  }, [transactionsArray, accounts, account_id, budget_id, category_id]);
+  }, [transactions, accounts, viewDate, option, account_id, budget_id, category_id]);
 
   const filteredSplitTransactionsArray = useMemo(() => {
-    const result: SplitTransaction[] = [];
-    splitTransactions.forEach((e) => {
+    return splitTransactions.filter((e) => {
       const parentTransaction = transactions.get(e.transaction_id);
-      if (!parentTransaction) return;
+      if (!parentTransaction) return false;
+
       const parentAccount = accounts.get(parentTransaction.account_id);
-      if (!parentAccount) return;
+      if (!parentAccount) return false;
+
+      const hidden = parentAccount.hide;
+      const transactionDate = new Date(e.date);
+      const within = viewDate.has(transactionDate);
+      if (hidden || !within) return false;
+
+      if (option === "unsorted") {
+        if (e.label.category_id) return false;
+      } else if (option === "income") {
+        if (e.amount > 0) return false;
+      }
       if (account_id) {
-        if (parentAccount.account_id !== account_id) return;
+        if (parentAccount.account_id !== account_id) return false;
       }
       if (budget_id) {
-        if (!e.label.budget_id && parentAccount.label.budget_id !== budget_id) return;
-        if (e.label.budget_id !== budget_id) return;
+        if (!e.label.budget_id && parentAccount.label.budget_id !== budget_id) return false;
+        if (e.label.budget_id !== budget_id) return false;
       }
       if (category_id) {
-        if (e.label.category_id !== category_id) return;
+        if (e.label.category_id !== category_id) return false;
       }
-      result.push(e);
+
+      return true;
     });
-    return result;
-  }, [transactions, splitTransactions, accounts, account_id, budget_id, category_id]);
+  }, [
+    transactions,
+    splitTransactions,
+    accounts,
+    viewDate,
+    option,
+    account_id,
+    budget_id,
+    category_id,
+  ]);
 
   const transactionsToDisplay: (Transaction | SplitTransaction)[] = useMemo(() => {
     return [...filteredTransactions, ...filteredSplitTransactionsArray].sort((a, b) => {
