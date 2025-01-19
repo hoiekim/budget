@@ -9,6 +9,7 @@ div.TransactionsPage .TransactionsHead {
 div.TransactionsPage > h2 {
   top: 50px;
   padding: 16px 10px 0;
+  z-index: 110;
 }
 
 div.TransactionsPage > h3 {
@@ -18,4 +19,5 @@ div.TransactionsPage > h3 {
 
 div.TransactionsHead {
   padding: 10px;
+  z-index: 109;
 }
