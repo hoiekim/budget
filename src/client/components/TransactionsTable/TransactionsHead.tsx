@@ -1,10 +1,10 @@
-import { Transaction } from "common";
+import { SplitTransaction, Transaction } from "common";
 import { Sorter } from "client";
 import { TransactionHeaders } from ".";
 import { CSSProperties } from "react";
 
 interface Props {
-  sorter: Sorter<Transaction, TransactionHeaders>;
+  sorter: Sorter<Transaction | SplitTransaction, TransactionHeaders>;
   getHeader: (key: keyof TransactionHeaders) => string;
   style?: CSSProperties;
 }

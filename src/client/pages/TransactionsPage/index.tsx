@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useAppContext, PATH } from "client";
 import { TransactionsTable } from "client/components";
-import { Transaction, DeepPartial, isSubset } from "common";
+import { Transaction, DeepPartial, isSubset, SplitTransaction } from "common";
 import "./index.css";
 
 export type TransactionsPageParams = {
@@ -13,7 +13,7 @@ export type TransactionsPageParams = {
 
 const TransactionsPage = () => {
   const { data, viewDate, router } = useAppContext();
-  const { transactions, accounts, categories } = data;
+  const { transactions, splitTransactions, accounts, categories } = data;
   const { path, params, transition } = router;
   const { incomingParams } = transition;
 
@@ -72,10 +72,36 @@ const TransactionsPage = () => {
     });
   }, [transactionsArray, accounts, account_id, budget_id, category_id]);
 
+  const filteredSplitTransactionsArray = useMemo(() => {
+    const result: SplitTransaction[] = [];
+    splitTransactions.forEach((e) => {
+      const parentTransaction = transactions.get(e.transaction_id);
+      if (!parentTransaction) return;
+      const parentAccount = accounts.get(parentTransaction.account_id);
+      if (!parentAccount) return;
+      if (account_id) {
+        if (parentAccount.account_id !== account_id) return;
+      }
+      if (budget_id) {
+        if (!e.label.budget_id && parentAccount.label.budget_id !== budget_id) return;
+        if (e.label.budget_id !== budget_id) return;
+      }
+      if (category_id) {
+        if (e.label.category_id !== category_id) return;
+      }
+      result.push(e);
+    });
+    return result;
+  }, [transactions, splitTransactions, accounts, account_id, budget_id, category_id]);
+
+  const transactionsToDisplay: (Transaction | SplitTransaction)[] = [
+    ...filteredTransactions,
+    ...filteredSplitTransactionsArray,
+  ];
+
   const filteringAccount = accounts.get(account_id);
   const filteringCategory = categories.get(category_id);
-  const title =
-    filteringAccount?.custom_name || filteringAccount?.name || filteringCategory?.name;
+  const title = filteringAccount?.custom_name || filteringAccount?.name || filteringCategory?.name;
   const Title = () => {
     if (title) {
       return (
@@ -93,7 +119,7 @@ const TransactionsPage = () => {
       <Title />
       <TransactionsTable
         customKey={option}
-        transactionsArray={filteredTransactions}
+        transactionsArray={transactionsToDisplay}
         top={title ? 138 : 95}
       />
     </div>

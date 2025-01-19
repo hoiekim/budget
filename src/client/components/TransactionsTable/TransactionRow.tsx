@@ -7,17 +7,20 @@ import {
   Category,
   Data,
   TransactionDictionary,
+  SplitTransaction,
+  SplitTransactionDictionary,
 } from "common";
 import { useAppContext, call, PATH, TransactionDetailPageParams } from "client";
 import { InstitutionSpan } from "client/components";
+import { ApiResponse } from "server";
 
 interface Props {
-  transaction: Transaction;
+  transaction: Transaction | SplitTransaction;
 }
 
 const TransactionRow = ({ transaction }: Props) => {
   const {
-    transaction_id,
+    id,
     account_id,
     authorized_date,
     date,
@@ -27,7 +30,7 @@ const TransactionRow = ({ transaction }: Props) => {
     label,
     location,
     iso_currency_code,
-  } = transaction;
+  } = transaction.hypotheticalTransaction;
 
   const { data, setData, router } = useAppContext();
   const { accounts, budgets, sections, categories } = data;
@@ -52,17 +55,14 @@ const TransactionRow = ({ transaction }: Props) => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
       const component = (
-        <option
-          key={`transaction_${transaction_id}_budget_option_${e.budget_id}`}
-          value={e.budget_id}
-        >
+        <option key={`transaction_${id}_budget_option_${e.budget_id}`} value={e.budget_id}>
           {e.name}
         </option>
       );
       components.push(component);
     });
     return components;
-  }, [transaction_id, budgets]);
+  }, [id, budgets]);
 
   const categoryOptions = useMemo(() => {
     const availableCategories: Category[] = [];
@@ -77,15 +77,14 @@ const TransactionRow = ({ transaction }: Props) => {
 
     return availableCategories.map((e) => {
       return (
-        <option
-          key={`transaction_${transaction_id}_category_option_${e.category_id}`}
-          value={e.category_id}
-        >
+        <option key={`transaction_${id}_category_option_${e.category_id}`} value={e.category_id}>
           {e.name}
         </option>
       );
     });
-  }, [transaction_id, label.budget_id, account?.label.budget_id, sections, categories]);
+  }, [id, label.budget_id, account?.label.budget_id, sections, categories]);
+
+  const isSplitTransaction = transaction instanceof SplitTransaction;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -94,20 +93,38 @@ const TransactionRow = ({ transaction }: Props) => {
     setSelectedBudgetIdLabel(value);
     setSelectedCategoryIdLabel("");
 
-    const r = await call.post("/api/transaction", {
-      transaction_id,
-      label: { budget_id: value || null, category_id: null },
-    });
+    let response: ApiResponse;
+    if (isSplitTransaction) {
+      response = await call.post("/api/split-transaction", {
+        split_transaction_id: id,
+        label: { budget_id: value || null, category_id: null },
+      });
+      return;
+    } else {
+      response = await call.post("/api/transaction", {
+        transaction_id: id,
+        label: { budget_id: value || null, category_id: null },
+      });
+    }
 
-    if (r.status === "success") {
+    if (response.status === "success") {
       setData((oldData) => {
         const newData = new Data(oldData);
-        const newTransaction = new Transaction(transaction);
-        const newTransactions = new TransactionDictionary(newData.transactions);
-        newTransaction.label.budget_id = value || null;
-        newTransaction.label.category_id = null;
-        newTransactions.set(transaction_id, newTransaction);
-        newData.transactions = newTransactions;
+        if (isSplitTransaction) {
+          const newSplitTransaction = new SplitTransaction(transaction);
+          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
+          newSplitTransaction.label.budget_id = value || null;
+          newSplitTransaction.label.category_id = null;
+          newSplitTransactions.set(id, newSplitTransaction);
+          newData.splitTransactions = newSplitTransactions;
+        } else {
+          const newTransaction = new Transaction(transaction);
+          const newTransactions = new TransactionDictionary(newData.transactions);
+          newTransaction.label.budget_id = value || null;
+          newTransaction.label.category_id = null;
+          newTransactions.set(id, newTransaction);
+          newData.transactions = newTransactions;
+        }
         return newData;
       });
     } else {
@@ -124,19 +141,42 @@ const TransactionRow = ({ transaction }: Props) => {
     const labelQuery = new TransactionLabel({ category_id: value || null });
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
 
-    const r = await call.post("/api/transaction", { transaction_id, label: labelQuery });
+    let response: ApiResponse;
+    if (isSplitTransaction) {
+      response = await call.post("/api/split-transaction", {
+        split_transaction_id: id,
+        label: labelQuery,
+      });
+      return;
+    } else {
+      response = await call.post("/api/transaction", {
+        transaction_id: id,
+        label: labelQuery,
+      });
+    }
 
-    if (r.status === "success") {
+    if (response.status === "success") {
       setData((oldData) => {
         const newData = new Data(oldData);
-        const newTransaction = new Transaction(transaction);
-        const newTransactions = new TransactionDictionary(newData.transactions);
-        if (!newTransaction.label.budget_id) {
-          newTransaction.label.budget_id = account?.label.budget_id;
+        if (isSplitTransaction) {
+          const newSplitTransaction = new SplitTransaction(transaction);
+          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
+          if (!newSplitTransaction.label.budget_id) {
+            newSplitTransaction.label.budget_id = account?.label.budget_id;
+          }
+          newSplitTransaction.label.category_id = value || null;
+          newSplitTransactions.set(id, newSplitTransaction);
+          newData.splitTransactions = newSplitTransactions;
+        } else {
+          const newTransaction = new Transaction(transaction);
+          const newTransactions = new TransactionDictionary(newData.transactions);
+          if (!newTransaction.label.budget_id) {
+            newTransaction.label.budget_id = account?.label.budget_id;
+          }
+          newTransaction.label.category_id = value || null;
+          newTransactions.set(id, newTransaction);
+          newData.transactions = newTransactions;
         }
-        newTransaction.label.category_id = value || null;
-        newTransactions.set(transaction_id, newTransaction);
-        newData.transactions = newTransactions;
         return newData;
       });
     } else {
@@ -146,7 +186,7 @@ const TransactionRow = ({ transaction }: Props) => {
 
   const onClickKebab = () => {
     if (path === PATH.TRANSACTION_DETAIL) return;
-    const paramObj: TransactionDetailPageParams = { id: transaction_id };
+    const paramObj: TransactionDetailPageParams = { id: transaction.transaction_id };
     const params = new URLSearchParams(paramObj);
     go(PATH.TRANSACTION_DETAIL, { params });
   };

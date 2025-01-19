@@ -1,11 +1,18 @@
-import { getRandomId, assign, getDateTimeString } from "common";
-import { TransactionLabel } from "./Transaction";
+import { getRandomId, assign, getDateTimeString, globalData } from "common";
+import { Transaction, TransactionLabel } from "./Transaction";
 
 export class SplitTransaction {
   get id() {
     return this.split_transaction_id;
   }
   set id(_: string) {}
+
+  get hypotheticalTransaction() {
+    const { id, transaction_id, amount, label } = this;
+    const { transactions } = globalData;
+    const parentTransaction = transactions.get(transaction_id);
+    return new Transaction({ ...parentTransaction!, transaction_id: id, amount, label });
+  }
 
   split_transaction_id: string = getRandomId();
   transaction_id: string = "";

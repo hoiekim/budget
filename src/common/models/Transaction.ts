@@ -15,7 +15,10 @@ import {
   getDateTimeString,
   environment,
   assign,
+  SplitTransactionDictionary,
 } from "common";
+
+import { SplitTransaction } from "./SplitTransaction";
 
 export class TransactionLabel {
   budget_id?: string | null;
@@ -36,11 +39,27 @@ export class TransactionLabel {
   }
 }
 
+class TransactionSplitMap extends Map<string, SplitTransactionDictionary> {
+  getOrNew = (id: string) => {
+    const existing = this.get(id);
+    if (existing) return existing;
+    const newData = new SplitTransactionDictionary();
+    this.set(id, newData);
+    return newData;
+  };
+}
+
+const transactionSplitMap = new TransactionSplitMap();
+
 export class Transaction implements PlaidTransaction {
   get id() {
     return this.transaction_id;
   }
   set id(_: string) {}
+
+  get hypotheticalTransaction(): Transaction {
+    return new Transaction({ ...this, amount: this.getRemainingAmount() });
+  }
 
   transaction_type?: TransactionTransactionTypeEnum;
   pending_transaction_id: string | null = null;
@@ -77,6 +96,20 @@ export class Transaction implements PlaidTransaction {
     if (init.payment_meta) this.payment_meta = new PaymentMeta(init.payment_meta);
     if (init.label) this.label = new TransactionLabel(init.label);
   }
+
+  getChildren = () => {
+    return transactionSplitMap.getOrNew(this.id);
+  };
+
+  addChild = (child: SplitTransaction) => {
+    transactionSplitMap.getOrNew(this.id).set(child.id, child);
+  };
+
+  getRemainingAmount = () => {
+    const childrenArray = this.getChildren().toArray();
+    const childrenAmountSum = childrenArray.reduce((sum, child) => sum + child.amount, 0);
+    return this.amount - childrenAmountSum;
+  };
 }
 
 export type { RemovedTransaction };

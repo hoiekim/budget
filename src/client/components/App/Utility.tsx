@@ -8,7 +8,7 @@ import { useAppContext, useDebounce, useSync, useCalculator, PATH } from "client
  */
 const Utility = () => {
   const { user, router, setSelectedInterval, data, viewDate } = useAppContext();
-  const { transactions, accounts } = data;
+  const { transactions, splitTransactions, accounts } = data;
 
   const userLoggedIn = !!user;
   const { path, go } = router;
@@ -39,7 +39,7 @@ const Utility = () => {
    */
   useEffect(() => {
     calculationDebouncer(calculate);
-  }, [transactions, accounts, viewDate, calculate, calculationDebouncer]);
+  }, [transactions, splitTransactions, accounts, viewDate, calculate, calculationDebouncer]);
 
   /**
    * Update viewDate when user selects different interval

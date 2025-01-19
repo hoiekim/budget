@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { Transaction } from "common";
+import { SplitTransaction, Transaction } from "common";
 import { useAppContext, useSorter } from "client";
 import TransactionRow from "./TransactionRow";
 import TransactionsHead from "./TransactionsHead";
@@ -12,16 +12,16 @@ export type TransactionHeaders = { [k in keyof Transaction]?: boolean } & {
 };
 
 interface Props {
-  transactionsArray: Transaction[];
+  transactionsArray: (Transaction | SplitTransaction)[];
   customKey?: string;
   top?: number;
 }
 
 const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
   const { data } = useAppContext();
-  const { accounts, institutions, budgets, categories } = data;
+  const { transactions, accounts, institutions, budgets, categories } = data;
 
-  const sorter = useSorter<Transaction, TransactionHeaders>(
+  const sorter = useSorter<Transaction | SplitTransaction, TransactionHeaders>(
     "transactions" + (customKey ? `_${customKey}` : ""),
     new Map([["authorized_date", "descending"]]),
     {
@@ -39,33 +39,34 @@ const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
 
   const sortedTransactionsArray = useMemo(() => {
     return sort([...transactionsArray], (e, key) => {
+      const { hypotheticalTransaction: t } = e;
       if (key === "authorized_date") {
-        return new Date(e.authorized_date || e.date);
+        return new Date(t.authorized_date || t.date);
       } else if (key === "merchant_name") {
-        return e.merchant_name || e.name || "";
+        return t.merchant_name || t.name || "";
       } else if (key === "account") {
-        const account = accounts.get(e.account_id);
+        const account = accounts.get(t.account_id);
         return account?.custom_name || account?.name || "";
       } else if (key === "institution") {
-        const account = accounts.get(e.account_id);
+        const account = accounts.get(t.account_id);
         return institutions.get(account?.institution_id || "")?.name || "";
       } else if (key === "category") {
         return categories.get(e.label.category_id || "")?.name || "";
       } else if (key === "budget") {
-        const account = accounts.get(e.account_id);
+        const account = accounts.get(t.account_id);
         const budget_id = e.label.budget_id || account?.label.budget_id;
         return budgets.get(budget_id || "")?.name || "";
       } else if (key === "location") {
-        const { city, region, country } = e.location;
+        const { city, region, country } = t.location;
         return [city, region || country].filter((e) => e).join(", ");
       } else {
-        return e[key];
+        return t[key];
       }
     });
   }, [transactionsArray, accounts, institutions, categories, budgets, sort]);
 
   const transactionRows = sortedTransactionsArray.map((e) => {
-    return <TransactionRow key={e.transaction_id} transaction={e} />;
+    return <TransactionRow key={e.id} transaction={e} />;
   });
 
   const getHeader = useCallback((key: keyof TransactionHeaders): string => {
