@@ -105,6 +105,10 @@ export class Transaction implements PlaidTransaction {
     transactionSplitMap.getOrNew(this.id).set(child.id, child);
   };
 
+  removeChild = (id: string) => {
+    transactionSplitMap.getOrNew(this.id).delete(id);
+  };
+
   getRemainingAmount = () => {
     const childrenArray = this.getChildren().toArray();
     const childrenAmountSum = childrenArray.reduce((sum, child) => sum + child.amount, 0);

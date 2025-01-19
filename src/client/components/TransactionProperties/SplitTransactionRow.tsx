@@ -143,6 +143,7 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
 
     if (!abs) {
       await call.delete(`/api/split-transaction?id=${split_transaction_id}`);
+      transaction.removeChild(split_transaction_id);
       setData((oldData) => {
         const newData = new Data(oldData);
         const newSplits = new SplitTransactionDictionary(newData.splitTransactions);

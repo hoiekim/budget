@@ -19,7 +19,7 @@ interface Props {
 
 const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
   const { data } = useAppContext();
-  const { transactions, accounts, institutions, budgets, categories } = data;
+  const { accounts, institutions, budgets, categories } = data;
 
   const sorter = useSorter<Transaction | SplitTransaction, TransactionHeaders>(
     "transactions" + (customKey ? `_${customKey}` : ""),

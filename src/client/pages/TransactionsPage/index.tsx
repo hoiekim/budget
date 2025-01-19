@@ -94,10 +94,13 @@ const TransactionsPage = () => {
     return result;
   }, [transactions, splitTransactions, accounts, account_id, budget_id, category_id]);
 
-  const transactionsToDisplay: (Transaction | SplitTransaction)[] = [
-    ...filteredTransactions,
-    ...filteredSplitTransactionsArray,
-  ];
+  const transactionsToDisplay: (Transaction | SplitTransaction)[] = useMemo(() => {
+    return [...filteredTransactions, ...filteredSplitTransactionsArray].sort((a, b) => {
+      if (a.transaction_id < b.transaction_id) return 1;
+      if (a.transaction_id > b.transaction_id) return -1;
+      return 0;
+    });
+  }, [filteredTransactions, filteredSplitTransactionsArray]);
 
   const filteringAccount = accounts.get(account_id);
   const filteringCategory = categories.get(category_id);

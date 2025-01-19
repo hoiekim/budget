@@ -23,7 +23,7 @@ interface Props {
 
 const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData } = useAppContext();
-  const { accounts, splitTransactions, budgets, sections, categories } = data;
+  const { accounts, budgets, sections, categories } = data;
 
   const {
     transaction_id,
@@ -46,8 +46,6 @@ const TransactionProperties = ({ transaction }: Props) => {
   const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
     return label.category_id || "";
   });
-
-  const splitTransactionInputs = splitTransactions.filterBy({ transaction_id });
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -145,7 +143,7 @@ const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
-  const remainingAmount = splitTransactionInputs.reduce((acc, e) => acc - e.amount, amount);
+  const remainingAmount = transaction.getRemainingAmount();
 
   const onClickAdd = async () => {
     const queryString = "?" + new URLSearchParams({ parent: transaction_id }).toString();
@@ -167,6 +165,7 @@ const TransactionProperties = ({ transaction }: Props) => {
 
     await call.post("/api/split-transaction", newSplitTransaction);
 
+    transaction.addChild(newSplitTransaction);
     setData((oldData) => {
       const newData = new Data(oldData);
       const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
@@ -176,13 +175,16 @@ const TransactionProperties = ({ transaction }: Props) => {
     });
   };
 
-  const splitTransactionInputRows = splitTransactionInputs.map((s, i) => {
-    return (
-      <div key={s.id} className="row">
-        <SplitTransactionRow key={i} splitTransaction={s} />
-      </div>
-    );
-  });
+  const splitTransactionInputRows = transaction
+    .getChildren()
+    .toArray()
+    .map((s) => {
+      return (
+        <div key={s.id} className="row">
+          <SplitTransactionRow splitTransaction={s} />
+        </div>
+      );
+    });
 
   const { city, region, country } = location;
   const locations = [city, region, country].filter((e) => e);
@@ -193,6 +195,8 @@ const TransactionProperties = ({ transaction }: Props) => {
       : "";
 
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+
+  const isIncome = transaction.amount < 0;
 
   return (
     <div className="TransactionProperties Properties">
@@ -219,7 +223,9 @@ const TransactionProperties = ({ transaction }: Props) => {
         <div className="row keyValue">
           <span className="propertyName">Amount</span>
           <span>
-            {currencySymbol}&nbsp;{amount}
+            {isIncome && <>+&nbsp;</>}
+            {currencySymbol}&nbsp;
+            {numberToCommaString(Math.abs(amount))}
           </span>
         </div>
         <div className="row keyValue">
@@ -235,44 +241,60 @@ const TransactionProperties = ({ transaction }: Props) => {
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
         </div>
       </div>
-      <div className="propertyLabel">Budgets</div>
-      <div className="property">
-        <div className="row keyValue">
-          <span className="propertyName">Budget</span>
-          <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-            <option value="">Select Budget</option>
-            {budgetOptions}
-          </select>
-        </div>
-        <div className="row keyValue">
-          <span className="propertyName">Section</span>
-          <span>{sectionName}</span>
-        </div>
-        <div className="row keyValue">
-          <span className="propertyName">Category</span>
-          <div className={selectedCategoryIdLabel ? "" : "notification"}>
-            <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-              <option value="">Select Category</option>
-              {categoryOptions}
-            </select>
+      {!splitTransactionInputRows.length && (
+        <>
+          <div className="propertyLabel">Budgets</div>
+          <div className="property">
+            <div className="row keyValue">
+              <span className="propertyName">Budget</span>
+              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+                <option value="">Select Budget</option>
+                {budgetOptions}
+              </select>
+            </div>
+            <div className="row keyValue">
+              <span className="propertyName">Section</span>
+              <span>{sectionName}</span>
+            </div>
+            <div className="row keyValue">
+              <span className="propertyName">Category</span>
+              <div className={selectedCategoryIdLabel ? "" : "notification"}>
+                <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+                  <option value="">Select Category</option>
+                  {categoryOptions}
+                </select>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
       <div className="propertyLabel">Split&nbsp;Transactions</div>
       <div className="property">
+        {splitTransactionInputRows}
+        {!!splitTransactionInputRows.length && (
+          <div className="SplitTransactionRow">
+            <div className="amount">
+              <span>
+                {isIncome && <>+&nbsp;</>}
+                {currencySymbol}&nbsp;
+                {numberToCommaString(Math.abs(remainingAmount))}
+              </span>
+            </div>
+            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+              <option value="">Select Budget</option>
+              {budgetOptions}
+            </select>
+            <div className={selectedCategoryIdLabel ? "" : "notification"}>
+              <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+                <option value="">Select Category</option>
+                {categoryOptions}
+              </select>
+            </div>
+          </div>
+        )}
         <div className="row addNew">
           <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</button>
         </div>
-        {splitTransactionInputRows}
-        {!!splitTransactionInputRows.length && (
-          <div className="row keyValue">
-            <span className="propertyName">Remaining</span>
-            <span>
-              {currencySymbol}&nbsp;
-              {numberToCommaString(remainingAmount)}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );
