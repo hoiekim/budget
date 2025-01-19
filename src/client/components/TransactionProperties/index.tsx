@@ -165,7 +165,6 @@ const TransactionProperties = ({ transaction }: Props) => {
 
     await call.post("/api/split-transaction", newSplitTransaction);
 
-    transaction.addChild(newSplitTransaction);
     setData((oldData) => {
       const newData = new Data(oldData);
       const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);

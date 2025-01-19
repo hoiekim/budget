@@ -43,11 +43,18 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
 
   calculateBudgetSynchrony(newBudgets, newSections, newCategories);
 
-  const hypotheticalTransactions = new TransactionDictionary(transactions);
+  const hypotheticalTransactions = new TransactionDictionary();
+  transactions.forEach((t) => {
+    t.removeAllChildren();
+    hypotheticalTransactions.set(t.id, t);
+  });
 
-  splitTransactions.forEach(({ id, transaction_id, label, amount }) => {
+  splitTransactions.forEach((e) => {
+    const { id, transaction_id, label, amount } = e;
     const transaction = hypotheticalTransactions.get(transaction_id);
     if (!transaction) return;
+
+    transaction.addChild(e);
 
     const hypotheticalTransaction = new Transaction({ ...transaction, label, amount });
 

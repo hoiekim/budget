@@ -143,7 +143,6 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
 
     if (!abs) {
       await call.delete(`/api/split-transaction?id=${split_transaction_id}`);
-      transaction.removeChild(split_transaction_id);
       setData((oldData) => {
         const newData = new Data(oldData);
         const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
@@ -154,7 +153,7 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
       return;
     }
 
-    const newAmount = Math.floor(abs) * (isIncome ? -1 : 1);
+    const newAmount = abs * (isIncome ? -1 : 1);
 
     await call.post("/api/split-transaction", { split_transaction_id, amount: newAmount });
     setData((oldData) => {

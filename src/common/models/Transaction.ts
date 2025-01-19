@@ -97,22 +97,20 @@ export class Transaction implements PlaidTransaction {
     if (init.label) this.label = new TransactionLabel(init.label);
   }
 
-  getChildren = () => {
-    return transactionSplitMap.getOrNew(this.id);
-  };
+  getChildren = () => transactionSplitMap.getOrNew(this.id);
 
-  addChild = (child: SplitTransaction) => {
-    transactionSplitMap.getOrNew(this.id).set(child.id, child);
-  };
+  addChild = (child: SplitTransaction) => this.getChildren().set(child.id, child);
 
-  removeChild = (id: string) => {
-    transactionSplitMap.getOrNew(this.id).delete(id);
-  };
+  removeChild = (id: string) => this.getChildren().delete(id);
+
+  removeAllChildren = () => transactionSplitMap.delete(this.id);
 
   getRemainingAmount = () => {
-    const childrenArray = this.getChildren().toArray();
-    const childrenAmountSum = childrenArray.reduce((sum, child) => sum + child.amount, 0);
-    return this.amount - childrenAmountSum;
+    let remaining = this.amount;
+    this.getChildren().forEach(({ amount }) => {
+      remaining -= amount;
+    });
+    return remaining;
   };
 }
 

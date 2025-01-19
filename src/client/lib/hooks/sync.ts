@@ -116,9 +116,7 @@ export const useSync = () => {
       if (splitTransactions.size) {
         const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
         splitTransactions.forEach((e) => {
-          const newSplitTransaction = new SplitTransaction(e);
-          newSplitTransactions.set(e.split_transaction_id, newSplitTransaction);
-          newData.transactions.get(e.transaction_id)?.addChild(newSplitTransaction);
+          newSplitTransactions.set(e.split_transaction_id, new SplitTransaction(e));
         });
         newData.splitTransactions = newSplitTransactions;
       }
