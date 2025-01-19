@@ -271,23 +271,25 @@ const TransactionProperties = ({ transaction }: Props) => {
       <div className="property">
         {splitTransactionInputRows}
         {!!splitTransactionInputRows.length && (
-          <div className="SplitTransactionRow">
-            <div className="amount">
-              <span>
-                {isIncome && <>+&nbsp;</>}
-                {currencySymbol}&nbsp;
-                {numberToCommaString(Math.abs(remainingAmount))}
-              </span>
-            </div>
-            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-              <option value="">Select Budget</option>
-              {budgetOptions}
-            </select>
-            <div className={selectedCategoryIdLabel ? "" : "notification"}>
-              <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-                <option value="">Select Category</option>
-                {categoryOptions}
+          <div className="row">
+            <div className="SplitTransactionRow">
+              <div className="amount">
+                <span>
+                  {isIncome && <>+&nbsp;</>}
+                  {currencySymbol}&nbsp;
+                  {numberToCommaString(Math.abs(remainingAmount))}
+                </span>
+              </div>
+              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+                <option value="">Select Budget</option>
+                {budgetOptions}
               </select>
+              <div className={selectedCategoryIdLabel ? "" : "notification"}>
+                <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+                  <option value="">Select Category</option>
+                  {categoryOptions}
+                </select>
+              </div>
             </div>
           </div>
         )}
