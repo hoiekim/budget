@@ -293,7 +293,7 @@ const TransactionProperties = ({ transaction }: Props) => {
             </div>
           </div>
         )}
-        <div className="row addNew">
+        <div className="row button">
           <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</button>
         </div>
       </div>

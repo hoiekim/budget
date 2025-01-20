@@ -69,47 +69,14 @@ div.Header > .viewController select.intervalSelect {
 }
 
 div.Header > .viewController > div > .hamburger {
-  position: relative;
-  top: -4px;
-}
-
-div.Header > .viewController > div > .hamburger > button {
-  font-size: 40px;
-  height: auto;
-}
-
-div.Header > .viewController > div > .hamburger > .fadeCover {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 810;
-  background-color: #000;
-  opacity: 0.5;
-}
-
-div.Header > .viewController > div > .hamburger > .menu {
-  position: absolute;
-  right: 0;
-  top: 10px;
-  width: 200px;
-  padding: 20px 10px;
-  background-color: #eee;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  z-index: 820;
-}
-
-div.Header > .viewController > div > .hamburger > .menu > button {
-  width: 100%;
+  overflow: hidden;
   height: 30px;
-  border-top: 1px solid #ddd;
 }
 
-div.Header > .viewController > div > .hamburger > .menu > button:last-child {
-  border-bottom: 1px solid #ddd;
+div.Header > .viewController > div > .hamburger > a {
+  font-size: 40px;
+  position: relative;
+  top: -12px;
 }
 
 div.Header > .navigators {

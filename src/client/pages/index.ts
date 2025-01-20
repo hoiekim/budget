@@ -12,3 +12,5 @@ export { default as TransactionsPage } from "./TransactionsPage";
 export * from "./TransactionsPage";
 export { default as TransactionDetailPage } from "./TransactionDetailPage";
 export * from "./TransactionDetailPage";
+export { default as ConfigPage } from "./ConfigPage";
+export * from "./ConfigPage";

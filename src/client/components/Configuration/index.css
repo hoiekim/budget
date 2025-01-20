@@ -1,0 +1,8 @@
+div.Configuration {
+  margin-top: 20px;
+}
+
+div.Configuration button.delete {
+  font-weight: 500;
+  color: var(--darkRed);
+}

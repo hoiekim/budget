@@ -1,5 +1,5 @@
-import { MouseEventHandler, ReactNode, useState } from "react";
-import { useAppContext, useSync, call, PATH } from "client";
+import { MouseEventHandler, ReactNode } from "react";
+import { useAppContext, PATH } from "client";
 import { Interval } from "common";
 import "./index.css";
 
@@ -7,20 +7,9 @@ const { innerHeight, innerWidth } = window;
 const navigatorsHeight = innerHeight / innerWidth > 2 ? 80 : 60;
 
 const Header = () => {
-  const { user, setUser, router, viewDate, setViewDate } = useAppContext();
+  const { user, router, viewDate, setViewDate } = useAppContext();
 
-  const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
-
-  const { clean } = useSync();
   const { path, params, go, back } = router;
-
-  const logout = () => {
-    call.delete("/api/login").then((r) => {
-      setUser(undefined);
-      setIsHamburgerOpen(false);
-      clean();
-    });
-  };
 
   type NavigatorProps = { target: PATH; children: ReactNode };
   const Navigator = ({ target, children }: NavigatorProps) => {
@@ -68,6 +57,12 @@ const Header = () => {
   const isBackButtonDisabled =
     !params.toString() && !![BUDGETS, ACCOUNTS, TRANSACTIONS].includes(path);
 
+  const onClickHamburger: MouseEventHandler<HTMLAnchorElement> = (e) => {
+    e.preventDefault();
+    if (path === PATH.CONFIG) back();
+    else go(PATH.CONFIG);
+  };
+
   return (
     <div className="Header" style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
@@ -99,17 +94,9 @@ const Header = () => {
             </button>
           </div>
           <div className="hamburger">
-            <button onClick={() => setIsHamburgerOpen((s) => !s)}>≡</button>
-            {isHamburgerOpen && (
-              <>
-                <div className="fadeCover" onClick={() => setIsHamburgerOpen(false)} />
-                <div className="menu" onMouseLeave={() => setIsHamburgerOpen(false)}>
-                  <button disabled={!user} onClick={logout}>
-                    Logout
-                  </button>
-                </div>
-              </>
-            )}
+            <a href={PATH.CONFIG} onClick={onClickHamburger}>
+              ≡
+            </a>
           </div>
         </div>
       </div>

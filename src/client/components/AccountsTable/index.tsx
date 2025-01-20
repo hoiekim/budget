@@ -61,14 +61,10 @@ const AccountsTable = ({ accountsArray }: Props) => {
       <div className="rows">
         <div>{accountRows}</div>
       </div>
-      <div>
-        <PlaidLinkButton>+</PlaidLinkButton>
-        {!!accountRows.length && <button onClick={unhide}>Unhide</button>}
-      </div>
+      <div>{!!accountRows.length && <button onClick={unhide}>Unhide&nbsp;All</button>}</div>
       {!accountRows.length && (
         <div className="placeholder">
-          You don't have any connected accounts! Click this button to connect your
-          accounts.
+          You don't have any connected accounts! Click this button to connect your accounts.
         </div>
       )}
     </div>

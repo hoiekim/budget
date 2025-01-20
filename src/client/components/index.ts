@@ -25,6 +25,8 @@ export { default as BudgetProperties } from "./BudgetProperties";
 export * from "./BudgetProperties";
 export { default as TransactionProperties } from "./TransactionProperties";
 export * from "./TransactionProperties";
+export { default as Configuration } from "./Configuration";
+export * from "./Configuration";
 export { default as NameInput } from "./NameInput";
 export * from "./NameInput";
 export { default as CapacityInput } from "./CapacityInput";

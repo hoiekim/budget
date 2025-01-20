@@ -1,16 +1,3 @@
 div.TransactionDetailPage > div {
   padding: 0 10px;
 }
-
-div.TransactionDetailPage > div.title {
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-}
-
-div.TransactionDetailPage > div.title > span {
-  transition-duration: 0ms;
-  width: 100%;
-  font-size: 20px;
-  height: 30px;
-}

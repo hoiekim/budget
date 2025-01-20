@@ -215,7 +215,7 @@ div.Properties > .propertyLabel {
 div.Properties > .property {
   background-color: #eee;
   border-radius: 5px;
-  padding: 5px 10px;
+  padding: 5px 0px;
 }
 
 div.Properties > .property:not(:last-child) {
@@ -228,7 +228,7 @@ div.Properties > .property .disabled.lineThrough {
 }
 
 div.Properties .row {
-  padding: 14px 0;
+  padding: 14px 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -248,4 +248,25 @@ div.Properties .row:last-child {
 
 div.Properties .row > input {
   font-size: 16px;
+}
+
+div.Properties .row.keyValue > span.propertyName {
+  color: #888;
+}
+
+div.Properties .row.keyValue > *:last-child {
+  max-width: 60%;
+  text-align: end;
+}
+
+div.Properties .row > button {
+  width: 100%;
+  text-align: left;
+  font-size: 16px;
+  margin-left: -4px;
+  background-color: transparent;
+}
+
+div.Properties .row.button:hover {
+  background-color: #ddd;
 }

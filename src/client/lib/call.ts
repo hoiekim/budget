@@ -26,8 +26,12 @@ call.delete = <T>(path: string) => call<T>(path, { method: "DELETE" });
 
 export { call };
 
-const promisedCache = caches.open("budget-cache");
+const CACHE_KEY = "budget-cache";
+
+const promisedCache = caches.open(CACHE_KEY);
 const getCache = () => promisedCache;
+
+export const cleanCache = () => caches.delete(CACHE_KEY);
 
 export const cachedCall = async <T = any>(path: string) => {
   try {

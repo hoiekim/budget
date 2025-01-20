@@ -8,6 +8,7 @@ import {
   AccountsPage,
   TransactionsPage,
   TransactionDetailPage,
+  ConfigPage,
   PATH,
 } from "client";
 
@@ -27,6 +28,7 @@ const Router = () => {
     if (path === PATH.ACCOUNTS) return <AccountsPage />;
     if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
     if (path === PATH.TRANSACTION_DETAIL) return <TransactionDetailPage />;
+    if (path === PATH.CONFIG) return <ConfigPage />;
     return <div>Not Found</div>;
   };
 

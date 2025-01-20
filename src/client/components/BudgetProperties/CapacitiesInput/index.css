@@ -29,13 +29,6 @@ div.CapacitiesInput .capacityAnalysis button {
   font-size: 14px;
 }
 
-div.CapacitiesInput > .addNew > button {
-  width: 100%;
-  text-align: left;
-  font-size: 16px;
-  margin-left: -4px;
-}
-
 div.CapacitiesInput > div > table > tbody > tr.capacityRow {
   padding: 3px 0;
 }
@@ -53,6 +46,7 @@ div.CapacitiesInput .capacityAnalysis > .dateLabel {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 10px;
 }
 
 div.BudgetDonut {

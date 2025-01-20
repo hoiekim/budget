@@ -151,7 +151,7 @@ const CapacitiesInput = ({
 
   return (
     <div className="CapacitiesInput">
-      <div className="row addNew">
+      <div className="row button">
         <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Period</button>
       </div>
       {rows}

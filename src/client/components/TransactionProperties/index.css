@@ -1,38 +1,3 @@
-div.TransactionProperties {
-  margin-top: 20px;
-}
-
-div.TransactionProperties > .property {
-  background-color: #eee;
-  border-radius: 5px;
-  padding: 5px 10px;
-}
-
-div.TransactionProperties > .property:not(:last-child) {
-  margin-bottom: 20px;
-}
-
-div.TransactionProperties > .property .disabled.lineThrough {
-  color: #888;
-  text-decoration: line-through;
-}
-
-div.TransactionProperties .row > span.propertyName {
-  color: #888;
-}
-
-div.TransactionProperties .row.keyValue > *:last-child {
-  max-width: 60%;
-  text-align: end;
-}
-
-div.TransactionProperties .row > button {
-  width: 100%;
-  text-align: left;
-  font-size: 16px;
-  margin-left: -4px;
-}
-
 div.TransactionProperties .row > .splitItem > input {
   font-size: 16px;
   height: 100%;
