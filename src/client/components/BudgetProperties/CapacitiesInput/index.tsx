@@ -76,7 +76,7 @@ const CapacitiesInput = ({
       });
     };
 
-    const key = `capacity_${i}_${active_from?.getTime()}`;
+    const key = `capacity_${capacity.id}`;
     const defaultCapacityValue = capacity.toInputs().capacityInput[interval];
     const currencyCode = (budgetLike as Budget)["iso_currency_code"] || "USD";
 

@@ -28,7 +28,7 @@ const TransactionsHead = ({ sorter, getHeader, style }: Props) => {
     .sort((a, b) => sortOrder.indexOf(b) - sortOrder.indexOf(a))
     .map((key, i) => {
       return (
-        <div key={`transactions_header_${i}`}>
+        <div key={`transactions_header_${key}`}>
           <button onClick={() => setSortBy(key)}>
             {getHeader(key)} {getArrow(key)}
           </button>

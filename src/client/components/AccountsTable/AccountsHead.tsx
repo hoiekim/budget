@@ -13,10 +13,10 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
 
   const hiddenColumns = useMemo(() => {
     return Object.entries(visibles)
-      .filter(([key, value]) => !value)
-      .map(([key, value], i) => {
+      .filter(([_, value]) => !value)
+      .map(([key, _]) => {
         return (
-          <div key={`accounts_hidden_column_${i}`} className="hiddenColumn">
+          <div key={`accounts_hidden_column_${key}`} className="hiddenColumn">
             <button onClick={() => toggleVisible(key as keyof typeof visibles)}>
               {getHeader(key as keyof typeof visibles)}
             </button>
@@ -37,7 +37,7 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
     .filter((key) => getVisible(key))
     .map((key, i) => {
       return (
-        <div key={`accounts_header_${i}`}>
+        <div key={`accounts_header_${key}`}>
           <button onClick={() => setSortBy(key)}>
             {getHeader(key)} {getArrow(key)}
           </button>
