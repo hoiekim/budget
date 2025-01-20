@@ -57,38 +57,45 @@ export const useSync = () => {
       splitTransactions: new SplitTransactionDictionary(),
     };
 
+    const promises: Promise<void>[] = [];
+
     while (oldestDate < viewDate.getStartDate()) {
       const params = new URLSearchParams();
       const startDate = viewDate.getStartDate();
       const endDate = viewDate.clone().next().getStartDate();
       params.append("start-date", getDateString(startDate));
       params.append("end-date", getDateString(endDate));
-
       const path = transactionsApiPath + "?" + params.toString();
-
       const isRecent = new Date().getTime() - endDate.getTime() < THIRTY_DAYS;
 
-      let response: ApiResponse<TransactionsGetResponse> | undefined;
-      if (isRecent) {
-        response = await call.get<TransactionsGetResponse>(path);
-      } else {
-        response = await cachedCall<TransactionsGetResponse>(path);
-      }
-      if (!response?.body) return;
+      const promise = new Promise<void>(async (res) => {
+        let response: ApiResponse<TransactionsGetResponse> | undefined;
+        if (isRecent) {
+          response = await call.get<TransactionsGetResponse>(path);
+        } else {
+          response = await cachedCall<TransactionsGetResponse>(path);
+        }
+        if (!response?.body) return;
 
-      const { transactions, investmentTransactions, splitTransactions } = response.body;
-      transactions.forEach((t) => {
-        updateStack.transactions.set(t.transaction_id, t);
-      });
-      investmentTransactions.forEach((t) => {
-        updateStack.investmentTransactions.set(t.investment_transaction_id, t);
-      });
-      splitTransactions.forEach((t) => {
-        updateStack.splitTransactions.set(t.split_transaction_id, t);
+        const { transactions, investmentTransactions, splitTransactions } = response.body;
+        transactions.forEach((t) => {
+          updateStack.transactions.set(t.transaction_id, t);
+        });
+        investmentTransactions.forEach((t) => {
+          updateStack.investmentTransactions.set(t.investment_transaction_id, t);
+        });
+        splitTransactions.forEach((t) => {
+          updateStack.splitTransactions.set(t.split_transaction_id, t);
+        });
+
+        res();
       });
 
+      promises.push(promise);
       viewDate.previous();
     }
+
+    await Promise.all(promises);
 
     setData((oldData) => {
       const newData = new Data(oldData);
