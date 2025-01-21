@@ -3,6 +3,7 @@ import {
   RemovedInvestmentTransaction,
   TWO_WEEKS,
   Transaction,
+  getDateString,
   getDateTimeString,
 } from "common";
 import {
@@ -57,7 +58,9 @@ export const syncAllTransactions = async (item_id: string) => {
       deleteTransactions(user, removed),
     ];
 
-    const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor }));
+    const updated = getDateString();
+
+    const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor, updated }));
     return Promise.all(updateJobs)
       .then(() => {
         addedCount += added.length;
