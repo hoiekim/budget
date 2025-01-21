@@ -6,3 +6,13 @@ div.Configuration button.delete {
   font-weight: 500;
   color: var(--darkRed);
 }
+
+div.Configuration .row > .connection {
+  display: flex;
+  justify-content: space-between;
+}
+
+div.Configuration .row > .connection span.small {
+  color: #888;
+  font-size: 12px;
+}

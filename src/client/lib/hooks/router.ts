@@ -12,6 +12,7 @@ export enum PATH {
   TRANSACTIONS = "transactions",
   TRANSACTION_DETAIL = "transaction-detail",
   CONFIG = "config",
+  CONNECTION_DETAIL = "connection-detail",
 }
 
 export interface ClientRouter {

@@ -1,19 +1,36 @@
-import { call, cleanCache, InstitutionSpan, PlaidLinkButton, useAppContext, useSync } from "client";
+import {
+  call,
+  cleanCache,
+  InstitutionSpan,
+  PATH,
+  PlaidLinkButton,
+  useAppContext,
+  useSync,
+} from "client";
 
 import "./index.css";
 
-interface Props {}
-
-const Configuration = ({}: Props) => {
-  const { user, setUser, data } = useAppContext();
+const Configuration = () => {
+  const { setUser, data, router } = useAppContext();
 
   const { items } = data;
+  const { go } = router;
 
   const itemsRow = items.toArray().map(({ id, institution_id }) => {
+    const onClickConnection = () => {
+      const params = new URLSearchParams();
+      params.append("id", id);
+      go(PATH.CONNECTION_DETAIL, { params });
+    };
     return (
-      <div className="row keyValue" key={id}>
-        <span className="propertyName">Institution</span>
-        <InstitutionSpan institution_id={institution_id} />
+      <div className="row button" key={id}>
+        <button className="connection" onClick={onClickConnection}>
+          <div>
+            <InstitutionSpan institution_id={institution_id} />
+            <span className="small">&nbsp;&nbsp;via&nbsp;Plaid</span>
+          </div>
+          <span>〉</span>
+        </button>
       </div>
     );
   });
@@ -37,21 +54,22 @@ const Configuration = ({}: Props) => {
     <div className="Configuration Properties">
       {!!itemsRow.length && (
         <>
-          <div className="propertyLabel">Current&nbsp;Connections</div>
+          <div className="propertyLabel">Connections</div>
           <div className="property">{itemsRow}</div>
         </>
       )}
-      <div className="propertyLabel">Add&nbsp;Connections</div>
+      <div className="propertyLabel">Add&nbsp;Connection</div>
       <div className="property">
         <div className="row button">
-          <PlaidLinkButton>with&nbsp;Plaid</PlaidLinkButton>
+          <PlaidLinkButton>Connect&nbsp;via&nbsp;Plaid</PlaidLinkButton>
         </div>
         <div className="row">
           <button disabled onClick={() => {}}>
-            with&nbsp;Simple&nbsp;Fin
+            Connect&nbsp;via&nbsp;Simple&nbsp;Fin
           </button>
         </div>
       </div>
+      <div className="propertyLabel">&nbsp;</div>
       <div className="property">
         <div className="row button">
           <button onClick={onClickRefresh}>Refresh</button>

@@ -11,6 +11,7 @@ import {
   ConfigPage,
   PATH,
 } from "client";
+import ConnectionDetailPage from "client/pages/ConnectionDetailPage";
 
 const Router = () => {
   const { router } = useAppContext();
@@ -29,6 +30,7 @@ const Router = () => {
     if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
     if (path === PATH.TRANSACTION_DETAIL) return <TransactionDetailPage />;
     if (path === PATH.CONFIG) return <ConfigPage />;
+    if (path === PATH.CONNECTION_DETAIL) return <ConnectionDetailPage />;
     return <div>Not Found</div>;
   };
 
