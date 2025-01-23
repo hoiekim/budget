@@ -42,14 +42,14 @@ export const useSync = () => {
   const syncTransactions = useCallback(async () => {
     if (!userLoggedIn) return;
 
-    const oldestDate = await call
+    const oldestDatePromise = call
       .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
       .then(({ body }) => (body ? new Date(body) : undefined));
 
-    if (!oldestDate) return;
-
     const transactionsApiPath = "/api/transactions";
     const viewDate = new ViewDate("month");
+    const twoMonthAgoViewDate = viewDate.clone().previous().previous();
+    let oldestDate = twoMonthAgoViewDate.clone().previous().getStartDate();
 
     const updateStack = {
       transactions: new TransactionDictionary(),
@@ -93,6 +93,10 @@ export const useSync = () => {
 
       promises.push(promise);
       viewDate.previous();
+
+      if (viewDate.getStartDate() <= oldestDate) {
+        oldestDate = (await oldestDatePromise) || oldestDate;
+      }
     }
 
     await Promise.all(promises);
