@@ -1,6 +1,5 @@
 import { ItemStatus } from "common";
-import { Route, updateItemStatus } from "server";
-import { syncAllTransactions } from "server/lib/compute-tools";
+import { Route, updateItemStatus, syncAllTransactions } from "server";
 
 interface PlaidWebhookBody {
   webhook_type: "TRANSACTIONS" | "ITEM";
@@ -51,7 +50,7 @@ const syncAndLog = async (item_id: string) => {
   const response = await syncAllTransactions(item_id);
   if (!response) return { status: "failed" as const };
   const { added, modified, removed } = response;
-  console.group(`Synced item: ${item_id}`);
+  console.group(`Synced transactions for item: ${item_id}`);
   console.log(`${added} added, ${modified} modified, ${removed} removed`);
   console.groupEnd();
   return { status: "success" as const };

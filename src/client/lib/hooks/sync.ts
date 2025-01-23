@@ -1,12 +1,12 @@
 import { useCallback, useMemo } from "react";
 import {
-  AccountsStreamGetResponse,
   BudgetsGetResponse,
   TransactionsGetResponse,
   OldestTransactionDateGetResponse,
   ApiResponse,
+  AccountsGetResponse,
 } from "server";
-import { useAppContext, read, call, cachedCall } from "client";
+import { useAppContext, call, cachedCall } from "client";
 import {
   Account,
   InvestmentTransaction,
@@ -134,29 +134,28 @@ export const useSync = () => {
 
   type SyncAccounts = () => void;
 
-  const syncAccounts = useCallback(() => {
+  const syncAccounts = useCallback(async () => {
     if (!userLoggedIn) return;
 
-    read<AccountsStreamGetResponse>("/api/accounts-stream", ({ body }) => {
-      if (!body) return;
-      const { accounts, items } = body;
+    const response = await call.get<AccountsGetResponse>("/api/accounts");
+    if (!response?.body) return;
+    const { accounts, items } = response.body;
 
-      setData((oldData) => {
-        const newData = new Data(oldData);
+    setData((oldData) => {
+      const newData = new Data(oldData);
 
-        const newAccounts = new AccountDictionary(newData.accounts);
-        accounts.forEach((e) => newAccounts.set(e.account_id, new Account(e)));
-        newData.accounts = newAccounts;
+      const newAccounts = new AccountDictionary(newData.accounts);
+      accounts.forEach((e) => newAccounts.set(e.account_id, new Account(e)));
+      newData.accounts = newAccounts;
 
-        const newItems = new ItemDictionary(newData.items);
-        items.forEach((item) => {
-          const { item_id } = item;
-          newItems.set(item_id, new Item(item));
-        });
-        newData.items = newItems;
-
-        return newData;
+      const newItems = new ItemDictionary(newData.items);
+      items.forEach((item) => {
+        const { item_id } = item;
+        newItems.set(item_id, new Item(item));
       });
+      newData.items = newItems;
+
+      return newData;
     });
   }, [userLoggedIn, setData]);
 

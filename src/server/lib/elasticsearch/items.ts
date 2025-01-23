@@ -2,8 +2,6 @@ import { Item, ItemStatus } from "common";
 import { elasticsearchClient, index } from "./client";
 import { MaskedUser, searchUser } from "./users";
 import { getUpdateItemScript } from "./util";
-import { getTransactions } from "../plaid/transactions";
-import { syncAllTransactions } from "../compute-tools";
 
 /**
  * Updates or inserts items documents associated with given user.
@@ -49,18 +47,17 @@ export type PartialItem = { item_id: string } & Partial<Item>;
  * @param user
  * @returns A promise to be an array of Item objects
  */
-export const searchItems = async (user: MaskedUser) => {
-  const { user_id } = user;
+export const searchItems = async (user?: MaskedUser) => {
+  const { user_id } = user || {};
+
+  const filter: any[] = [{ term: { type: "item" } }];
+  if (user_id) filter.push({ term: { "user.user_id": user_id } });
 
   const response = await elasticsearchClient.search<{ item: Item }>({
     index,
     from: 0,
     size: 10000,
-    query: {
-      bool: {
-        filter: [{ term: { "user.user_id": user_id } }, { term: { type: "item" } }],
-      },
-    },
+    query: { bool: { filter } },
   });
 
   return response.hits.hits

@@ -1,5 +1,7 @@
 import {
+  Account,
   InvestmentTransaction,
+  ONE_HOUR,
   RemovedInvestmentTransaction,
   TWO_WEEKS,
   Transaction,
@@ -9,12 +11,18 @@ import {
 import {
   deleteInvestmentTransactions,
   deleteTransactions,
+  getAccounts,
+  getHoldings,
   getInvestmentTransactions,
   getTransactions,
   getUserItem,
+  searchItems,
   searchTransactions,
+  upsertAccounts,
+  upsertHoldings,
   upsertInvestmentTransactions,
   upsertItems,
+  upsertSecurities,
   upsertTransactions,
 } from "server";
 
@@ -135,4 +143,75 @@ export const syncAllTransactions = async (item_id: string) => {
     modified: modifiedCount,
     removed: removedCount,
   };
+};
+
+export const syncAllAccounts = async (item_id: string) => {
+  const userItem = await getUserItem(item_id);
+  if (!userItem) return;
+
+  const { user, item } = userItem;
+
+  const getAccountsFromPlaid = getAccounts(user, [item])
+    .then(async (r) => {
+      const accounts = r.accounts.map<Account>((e) => {
+        return new Account(e);
+      });
+      upsertAccounts(user, accounts);
+      return accounts;
+    })
+    .catch(console.error);
+
+  const getHoldingsFromPlaid = getHoldings(user, [item])
+    .then(async ({ accounts, holdings, securities }) => {
+      upsertAccounts(user, accounts);
+      upsertHoldings(user, holdings);
+      upsertSecurities(user, securities);
+      return accounts;
+    })
+    .catch(console.error);
+
+  const [accounts, investmentAccounts] = await Promise.all([
+    getAccountsFromPlaid,
+    getHoldingsFromPlaid,
+  ]);
+  return { accounts, investmentAccounts };
+};
+
+export const scheduledSync = async () => {
+  try {
+    const items = await searchItems();
+    const promises = items.flatMap(({ item_id }) => {
+      const accountsPromise = syncAllAccounts(item_id)
+        .then((r) => {
+          if (!r) throw new Error("Error occured during syncAllAccounts");
+          const { accounts, investmentAccounts } = r;
+          const numberOfAccounts = accounts?.length || 0;
+          const numberOfInvestmentAccounts = investmentAccounts?.length || 0;
+          console.group(`Synced accounts for item: ${item_id}`);
+          console.log(`${numberOfAccounts} accounts`);
+          console.log(`${numberOfInvestmentAccounts} investmentAccounts`);
+          console.groupEnd();
+        })
+        .catch(console.error);
+      const transactionsPromise = syncAllTransactions(item_id)
+        .then((r) => {
+          if (!r) throw new Error("Error occured during syncAllTransactions");
+          const { added, modified, removed } = r;
+          console.group(`Synced transactions for item: ${item_id}`);
+          console.log(`${added} added`);
+          console.log(`${modified} modified`);
+          console.log(`${removed} removed`);
+          console.groupEnd();
+        })
+        .catch(console.error);
+      return [accountsPromise, transactionsPromise];
+    });
+    await Promise.all(promises);
+    console.log("Scheduled sync completed");
+  } catch (err) {
+    console.error("Error occured during scheduled sync");
+    console.error(err);
+  } finally {
+    setTimeout(scheduledSync, ONE_HOUR);
+  }
 };

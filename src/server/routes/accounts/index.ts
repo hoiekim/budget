@@ -5,6 +5,7 @@ export * from "./get-transactions";
 export * from "./get-transactions";
 export * from "./get-new-split-transaction";
 export * from "./get-accounts-stream";
+export * from "./get-accounts";
 export * from "./get-institution";
 export * from "./post-transaction";
 export * from "./post-split-transaction";

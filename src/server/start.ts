@@ -6,7 +6,7 @@ overrideConsoleLog();
 import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
-import { initializeIndex, ElasticsearchSessionStore } from "server";
+import { initializeIndex, ElasticsearchSessionStore, scheduledSync } from "server";
 import * as routes from "server/routes";
 
 const app = express();
@@ -51,3 +51,5 @@ app.listen(process.env.PORT || 3005, async () => {
   await initializeIndex();
   console.info("Budget app server is up.");
 });
+
+scheduledSync();
