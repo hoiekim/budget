@@ -24,7 +24,8 @@
         "institution_id": { "type": "keyword" },
         "cursor": { "type": "keyword" },
         "updated": { "type": "date" },
-        "status": { "type": "keyword" }
+        "status": { "type": "keyword" },
+        "provider": { "type": "keyword" }
       }
     },
     "session": {

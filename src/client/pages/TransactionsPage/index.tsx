@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useAppContext, PATH } from "client";
 import { TransactionsTable } from "client/components";
-import { Transaction, DeepPartial, isSubset, SplitTransaction } from "common";
+import { Transaction, DeepPartial, isSubset, SplitTransaction, toTitleCase } from "common";
 import "./index.css";
 
 export type TransactionsPageParams = {
@@ -126,7 +126,7 @@ const TransactionsPage = () => {
         </>
       );
     }
-    return <h2>{option[0].toUpperCase() + option.slice(1) + " Transactions"}</h2>;
+    return <h2>{toTitleCase(option) + " Transactions"}</h2>;
   };
 
   return (

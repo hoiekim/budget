@@ -7,6 +7,11 @@ export enum ItemStatus {
   INACTIVE = "inactive",
 }
 
+export enum ItemProvider {
+  PLAID = "plaid",
+  SIMPLE_FIN = "simple_fin",
+}
+
 export class Item {
   get id() {
     return this.item_id;
@@ -19,6 +24,7 @@ export class Item {
   cursor?: string;
   status?: ItemStatus;
   plaidError?: PlaidError;
+  provider = ItemProvider.PLAID;
   /**
    * Timestamp in YYYY-MM-DD format.
    */

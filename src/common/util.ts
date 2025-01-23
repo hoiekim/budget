@@ -125,3 +125,7 @@ export const scheduler = (callback: () => void, interval = 1000) => {
 export const sleep = (milliseconds: number) => {
   return new Promise((res) => setTimeout(res, milliseconds));
 };
+
+export const toTitleCase = (s: string) => {
+  return s.replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+};

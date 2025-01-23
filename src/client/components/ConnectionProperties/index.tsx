@@ -1,5 +1,5 @@
 import { MouseEventHandler } from "react";
-import { Account, AccountDictionary, Data, Item, TransactionDictionary } from "common";
+import { Account, AccountDictionary, Data, Item, toTitleCase, TransactionDictionary } from "common";
 import { call, InstitutionSpan, PlaidLinkButton, useAppContext } from "client";
 
 import "./index.css";
@@ -12,7 +12,7 @@ const ConnectionProperties = ({ item }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts, institutions } = data;
 
-  const { institution_id, status, updated } = item;
+  const { institution_id, status, updated, provider } = item;
 
   const accountRows = accounts
     .toArray()
@@ -100,6 +100,10 @@ const ConnectionProperties = ({ item }: Props) => {
         <div className="row keyValue">
           <span className="propertyName">Status</span>
           <span>{status || "Unknown"}</span>
+        </div>
+        <div className="row keyValue">
+          <span className="propertyName">Connection&nbsp;Provider</span>
+          <span>{toTitleCase(provider)}</span>
         </div>
       </div>
       {accountRows}
