@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Account } from "common";
 import { useAppContext, DateLabel, MoneyLabel } from "client";
-import { InstitutionSpan, PlaidLinkButton, Graph } from "client/components";
+import { InstitutionSpan, Graph } from "client/components";
 import "./index.css";
 import { useEventHandlers, useGraph } from "./lib";
 import Balance from "./Balance";
@@ -11,11 +11,10 @@ interface Props {
 }
 
 const AccountRow = ({ account }: Props) => {
-  const { account_id, balances, custom_name, name, institution_id, label, type } =
-    account;
+  const { account_id, balances, custom_name, name, institution_id, label, type } = account;
 
   const { data } = useAppContext();
-  const { items, budgets } = data;
+  const { budgets } = data;
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
     return label.budget_id || "";
@@ -30,10 +29,7 @@ const AccountRow = ({ account }: Props) => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
       const component = (
-        <option
-          key={`account_${account_id}_budget_option_${e.budget_id}`}
-          value={e.budget_id}
-        >
+        <option key={`account_${account_id}_budget_option_${e.budget_id}`} value={e.budget_id}>
           {e.name}
         </option>
       );
@@ -42,20 +38,12 @@ const AccountRow = ({ account }: Props) => {
     return components;
   }, [account_id, budgets]);
 
-  const item = items.get(account.item_id);
-
   const { iso_currency_code, unofficial_currency_code } = balances;
   const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
 
   const { graphViewDate, graphData } = useGraph(account);
 
-  const {
-    onClickAccount,
-    onChangeNameInput,
-    onChangeBudgetSelect,
-    onClickRemove,
-    onClickHide,
-  } = useEventHandlers(
+  const { onClickAccount, onChangeNameInput, onChangeBudgetSelect, onClickHide } = useEventHandlers(
     account,
     selectedBudgetIdLabel,
     setSelectedBudgetIdLabel,
@@ -95,8 +83,6 @@ const AccountRow = ({ account }: Props) => {
           </select>
         </div>
         <div className="action">
-          <PlaidLinkButton item={item}>Update</PlaidLinkButton>
-          <button onClick={onClickRemove}>Remove</button>
           <button onClick={onClickHide}>Hide</button>
         </div>
       </div>
