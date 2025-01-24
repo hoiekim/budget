@@ -12,7 +12,7 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
     client_name: "Budget App",
     country_codes: [CountryCode.Us],
     language: "en",
-    redirect_uri: `https://${HOST_NAME}/accounts`,
+    redirect_uri: `https://${HOST_NAME}/config`,
     webhook: `https://${HOST_NAME}/api/plaid-hook`,
   };
 
