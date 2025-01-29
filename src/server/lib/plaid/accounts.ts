@@ -5,14 +5,9 @@ import {
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import {
-  MaskedUser,
-  getClosePrice,
-  getPlaidClient,
-  ignorable_error_codes,
-  updateItemStatus,
-} from "server";
+import { MaskedUser, updateItemStatus } from "server";
 import { Item, Holding, Security, ItemStatus } from "common";
+import { getPlaidClient, ignorable_error_codes } from "./util";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -126,7 +121,7 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
       const response = await client.accountsGet({ access_token });
       const { accounts } = response.data;
       const filledAccounts: PlaidAccount[] = accounts.map((e) => {
-        return { ...e, institution_id, item_id };
+        return { ...e, institution_id: institution_id || "unknown", item_id };
       });
       allAccounts.push(filledAccounts);
       data.items.push(new Item(item));
@@ -178,7 +173,7 @@ export const getHoldings = async (user: MaskedUser, items: Item[]) => {
       const { accounts, holdings, securities } = response.data;
 
       const filledAccounts: PlaidAccount[] = accounts.map((e) => {
-        return { ...e, institution_id, item_id };
+        return { ...e, institution_id: institution_id || "unknown", item_id };
       });
       allAccounts.push(filledAccounts);
 

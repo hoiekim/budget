@@ -1,5 +1,6 @@
 export { default as App } from "./App";
 export { default as PlaidLinkButton } from "./PlaidLinkButton";
+export { default as SimpleFinLinkButton } from "./SimpleFinLinkButton";
 export { default as TransactionsTable } from "./TransactionsTable";
 export { default as AccountsTable } from "./AccountsTable";
 export { default as InstitutionSpan } from "./InstitutionSpan";

@@ -5,10 +5,8 @@ import {
   Holding as PlaidHolding,
   Security as PlaidSecurity,
   Institution as PlaidInstitution,
-  AuthMetadata,
   CountryCode,
   InstitutionStatus,
-  PaymentInitiationMetadata,
   Products,
 } from "plaid";
 
@@ -119,8 +117,6 @@ export class Institution implements PlaidInstitution {
   routing_numbers: string[] = [];
   oauth: boolean = false;
   status?: InstitutionStatus | null | undefined;
-  payment_initiation_metadata?: PaymentInitiationMetadata | null | undefined;
-  auth_metadata?: AuthMetadata | null | undefined;
 
   constructor(init?: Partial<Institution>) {
     assign(this, init);

@@ -10,6 +10,7 @@ div.Configuration button.delete {
 div.Configuration .row > .connection {
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
 div.Configuration .row > .connection span.small {

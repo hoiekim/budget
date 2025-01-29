@@ -165,10 +165,10 @@ export const useSync = () => {
 
   type SyncBudgets = () => void;
 
-  const syncBudgets = useCallback(() => {
+  const syncBudgets = useCallback(async () => {
     if (!userLoggedIn) return;
 
-    call.get<BudgetsGetResponse>("/api/budgets").then(({ body }) => {
+    await call.get<BudgetsGetResponse>("/api/budgets").then(({ body }) => {
       if (!body) return;
       const { budgets, sections, categories } = body;
 
@@ -225,12 +225,10 @@ export const useSync = () => {
     });
   }, [userLoggedIn, setData]);
 
-  type SyncAll = () => void;
+  type SyncAll = () => Promise<void>[];
 
   const syncAll = useCallback(() => {
-    syncTransactions();
-    syncAccounts();
-    syncBudgets();
+    return [syncTransactions(), syncAccounts(), syncBudgets()];
   }, [syncTransactions, syncAccounts, syncBudgets]);
 
   type Sync = {

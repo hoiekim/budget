@@ -11,10 +11,7 @@ import {
 import {
   deleteInvestmentTransactions,
   deleteTransactions,
-  getAccounts,
-  getHoldings,
-  getInvestmentTransactions,
-  getTransactions,
+  plaidClient,
   getUserItem,
   searchItems,
   searchTransactions,
@@ -37,7 +34,7 @@ export const syncAllTransactions = async (item_id: string) => {
   let modifiedCount = 0;
   let removedCount = 0;
 
-  const syncTransactions = getTransactions(user, [item]).then(async (r) => {
+  const syncTransactions = plaidClient.getTransactions(user, [item]).then(async (r) => {
     const ingestedTrasactions = await getTransactionsFromElasticsearch;
     const ingestedData = ingestedTrasactions?.transactions || [];
 
@@ -82,59 +79,61 @@ export const syncAllTransactions = async (item_id: string) => {
       });
   });
 
-  const syncInvestmentTransactions = getInvestmentTransactions(user, [item]).then(async (r) => {
-    const { items, investmentTransactions } = r;
+  const syncInvestmentTransactions = plaidClient
+    .getInvestmentTransactions(user, [item])
+    .then(async (r) => {
+      const { items, investmentTransactions } = r;
 
-    const fillDateStrings = (e: (typeof investmentTransactions)[0]) => {
-      const result = { ...e };
-      const { date } = e;
-      if (date) result.date = getDateTimeString(date);
-      return result;
-    };
+      const fillDateStrings = (e: (typeof investmentTransactions)[0]) => {
+        const result = { ...e };
+        const { date } = e;
+        if (date) result.date = getDateTimeString(date);
+        return result;
+      };
 
-    const filledInvestments = investmentTransactions.map(fillDateStrings);
+      const filledInvestments = investmentTransactions.map(fillDateStrings);
 
-    const addedMap = new Map(
-      filledInvestments.map((e) => [e.investment_transaction_id, new InvestmentTransaction(e)])
-    );
+      const addedMap = new Map(
+        filledInvestments.map((e) => [e.investment_transaction_id, new InvestmentTransaction(e)])
+      );
 
-    const ingestedTrasactions = await getTransactionsFromElasticsearch;
-    const ingestedData = ingestedTrasactions?.investment_transactions || [];
+      const ingestedTrasactions = await getTransactionsFromElasticsearch;
+      const ingestedData = ingestedTrasactions?.investment_transactions || [];
 
-    const removed: RemovedInvestmentTransaction[] = [];
-    const modified: InvestmentTransaction[] = [];
+      const removed: RemovedInvestmentTransaction[] = [];
+      const modified: InvestmentTransaction[] = [];
 
-    ingestedData.forEach((e) => {
-      const age = new Date().getTime() - new Date(e.date).getTime();
-      if (age > TWO_WEEKS) return;
+      ingestedData.forEach((e) => {
+        const age = new Date().getTime() - new Date(e.date).getTime();
+        if (age > TWO_WEEKS) return;
 
-      const { investment_transaction_id } = e;
+        const { investment_transaction_id } = e;
 
-      const found = investmentTransactions.find((f) => {
-        return investment_transaction_id === f.investment_transaction_id;
+        const found = investmentTransactions.find((f) => {
+          return investment_transaction_id === f.investment_transaction_id;
+        });
+
+        if (!found) removed.push({ investment_transaction_id });
+        else {
+          modified.push(e);
+          addedMap.delete(e.investment_transaction_id);
+        }
       });
 
-      if (!found) removed.push({ investment_transaction_id });
-      else {
-        modified.push(e);
-        addedMap.delete(e.investment_transaction_id);
-      }
+      const updateJobs = [
+        upsertInvestmentTransactions(user, [...Array.from(addedMap.values()), ...modified]),
+        deleteInvestmentTransactions(user, removed),
+      ];
+
+      const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
+      Promise.all(updateJobs)
+        .then(() => {
+          addedCount += addedMap.size;
+          modifiedCount += modified.length;
+          removedCount += removed.length;
+        })
+        .then(() => upsertItems(user, partialItems));
     });
-
-    const updateJobs = [
-      upsertInvestmentTransactions(user, [...Array.from(addedMap.values()), ...modified]),
-      deleteInvestmentTransactions(user, removed),
-    ];
-
-    const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
-    Promise.all(updateJobs)
-      .then(() => {
-        addedCount += addedMap.size;
-        modifiedCount += modified.length;
-        removedCount += removed.length;
-      })
-      .then(() => upsertItems(user, partialItems));
-  });
 
   await Promise.all([syncTransactions, syncInvestmentTransactions]);
 
@@ -151,7 +150,8 @@ export const syncAllAccounts = async (item_id: string) => {
 
   const { user, item } = userItem;
 
-  const getAccountsFromPlaid = getAccounts(user, [item])
+  const getAccountsFromPlaid = plaidClient
+    .getAccounts(user, [item])
     .then(async (r) => {
       const accounts = r.accounts.map<Account>((e) => {
         return new Account(e);
@@ -161,7 +161,8 @@ export const syncAllAccounts = async (item_id: string) => {
     })
     .catch(console.error);
 
-  const getHoldingsFromPlaid = getHoldings(user, [item])
+  const getHoldingsFromPlaid = plaidClient
+    .getHoldings(user, [item])
     .then(async ({ accounts, holdings, securities }) => {
       upsertAccounts(user, accounts);
       upsertHoldings(user, holdings);

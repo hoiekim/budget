@@ -24,7 +24,7 @@ const AccountsPage = () => {
         if (account.item_id === item_id) accountExists = true;
       });
       if (accountExists) return;
-      const errorAccount = new Account({ item_id, institution_id });
+      const errorAccount = new Account({ item_id, institution_id: institution_id || "unknown" });
       result.push(errorAccount);
     });
 

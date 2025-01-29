@@ -7,6 +7,7 @@ import {
   useAppContext,
   useSync,
 } from "client";
+import { SimpleFinLinkButton } from "client/components";
 
 import "./index.css";
 
@@ -63,10 +64,8 @@ const Configuration = () => {
         <div className="row button">
           <PlaidLinkButton>Connect&nbsp;via&nbsp;Plaid</PlaidLinkButton>
         </div>
-        <div className="row">
-          <button disabled onClick={() => {}}>
-            Connect&nbsp;via&nbsp;Simple&nbsp;Fin
-          </button>
+        <div className="row button">
+          <SimpleFinLinkButton>Connect&nbsp;via&nbsp;SimpleFin</SimpleFinLinkButton>
         </div>
       </div>
       <div className="propertyLabel">&nbsp;</div>

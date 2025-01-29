@@ -10,6 +10,7 @@ import {
   PartialInvestmentTransaction,
   PartialHolding,
   PartialSecurity,
+  PartialInstitution,
   PartialSplitTransaction,
 } from "server";
 
@@ -59,6 +60,10 @@ export const getUpdateHoldingScript = (user: MaskedUser, holding: PartialHolding
 
 export const getUpdateSecurityScript = (user: MaskedUser, security: PartialSecurity) => {
   return getUpdateScript(user, "security", security);
+};
+
+export const getUpdateInstitutionScript = (user: MaskedUser, institution: PartialInstitution) => {
+  return getUpdateScript(user, "institution", institution);
 };
 
 export const getUpdateBudgetScript = (user: MaskedUser, budget: PartialBudget) => {

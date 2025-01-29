@@ -1,9 +1,10 @@
 import {
   getUpdateAccountScript,
   getUpdateHoldingScript,
+  getUpdateInstitutionScript,
   getUpdateSecurityScript,
 } from "server";
-import { Account, Holding, Security } from "common";
+import { Account, Holding, Institution, Security } from "common";
 import { elasticsearchClient, index } from "./client";
 import { MaskedUser } from "./users";
 
@@ -112,10 +113,7 @@ interface RemovedAccount {
  * @param accounts
  * @returns A promise to be an array of Account objects
  */
-export const deleteAccounts = async (
-  user: MaskedUser,
-  accounts: (Account | RemovedAccount)[]
-) => {
+export const deleteAccounts = async (user: MaskedUser, accounts: (Account | RemovedAccount)[]) => {
   if (!Array.isArray(accounts) || !accounts.length) return;
   const { user_id } = user;
 
@@ -189,6 +187,57 @@ export const upsertSecurities = async (
 
     if (upsert) {
       bulkBody.upsert = { type: "security", user: { user_id }, security };
+    }
+
+    return [bulkHead, bulkBody];
+  });
+
+  const response = await elasticsearchClient.bulk({ operations });
+
+  return response.items;
+};
+
+/**
+ * Searches for institution associated with given user and id.
+ * @param user_id
+ * @returns A promise to be an array of Account objects
+ */
+export const searchInstitutionById = async (user: MaskedUser, id: string) => {
+  const { user_id } = user;
+
+  const response = await elasticsearchClient.get<{
+    user: MaskedUser;
+    type: string;
+    institution: Institution;
+  }>({ index, id });
+
+  const source = response._source;
+  if (source?.user.user_id !== user_id) return;
+  if (source?.type !== "institution") return;
+
+  return response._source?.institution;
+};
+
+export type PartialInstitution = { institution_id: string } & Partial<Institution>;
+
+export const upsertInstitutions = async (
+  user: MaskedUser,
+  institutions: PartialInstitution[],
+  upsert: boolean = true
+) => {
+  if (!institutions.length) return [];
+  const { user_id } = user;
+
+  const operations = institutions.flatMap((institution) => {
+    const { institution_id } = institution;
+
+    const bulkHead = { update: { _index: index, _id: institution_id } };
+
+    const script = getUpdateInstitutionScript(user, institution);
+    const bulkBody: any = { script };
+
+    if (upsert) {
+      bulkBody.upsert = { type: "institution", user: { user_id }, institution };
     }
 
     return [bulkHead, bulkBody];

@@ -1,5 +1,13 @@
 import { MouseEventHandler } from "react";
-import { Account, AccountDictionary, Data, Item, toTitleCase, TransactionDictionary } from "common";
+import {
+  Account,
+  AccountDictionary,
+  Data,
+  Institution,
+  Item,
+  toTitleCase,
+  TransactionDictionary,
+} from "common";
 import { call, InstitutionSpan, PlaidLinkButton, useAppContext } from "client";
 
 import "./index.css";
@@ -17,7 +25,7 @@ const ConnectionProperties = ({ item }: Props) => {
   const accountRows = accounts
     .toArray()
     .filter(({ item_id }) => {
-      return item_id === item.id;
+      return item_id === institution_id;
     })
     .map(({ id, name, custom_name, type, subtype }, i, { length }) => {
       const numbering = length > 1 ? <>&nbsp;{i + 1}</> : <></>;
@@ -44,7 +52,7 @@ const ConnectionProperties = ({ item }: Props) => {
       );
     });
 
-  const institution = institutions.get(item.institution_id);
+  const institution = institution_id ? institutions.get(institution_id) : new Institution();
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation();

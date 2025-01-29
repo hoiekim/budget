@@ -133,7 +133,7 @@ export const searchTransactions = async (user: MaskedUser, range?: DateRange) =>
 };
 
 /**
- * Searches for transactions associated with given user and id.
+ * Searches for transaction associated with given user and id.
  * @param user
  * @param id one of transaction_id, investment_transaction_id or split_transaction_id
  * @returns A promise to havea arrays of Transaction objects

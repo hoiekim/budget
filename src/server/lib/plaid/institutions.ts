@@ -1,14 +1,10 @@
 import { CountryCode } from "plaid";
-import { getPlaidClient, MaskedUser } from "server";
+import { MaskedUser } from "server";
 import { Institution } from "common";
-
-const institutionsCache = new Map<string, Institution>();
+import { getPlaidClient } from "./util";
 
 export const getInstitution = async (user: MaskedUser, id: string) => {
   const client = getPlaidClient(user);
-
-  const cachedData = institutionsCache.get(id);
-  if (cachedData) return cachedData;
 
   try {
     const response = await client.institutionsGetById({
@@ -18,9 +14,31 @@ export const getInstitution = async (user: MaskedUser, id: string) => {
 
     const { institution } = response.data;
 
-    if (institution) institutionsCache.set(id, new Institution(institution));
+    const {
+      institution_id,
+      name,
+      products,
+      country_codes,
+      url,
+      primary_color,
+      logo,
+      routing_numbers,
+      oauth,
+      status,
+    } = institution;
 
-    return institution;
+    return new Institution({
+      institution_id,
+      name,
+      products,
+      country_codes,
+      url,
+      primary_color,
+      logo,
+      routing_numbers,
+      oauth,
+      status,
+    });
   } catch (error) {
     console.error(error);
     console.error("Failed to get institutions data.");

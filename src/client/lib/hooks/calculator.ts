@@ -150,7 +150,7 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
 export const useCalculator = () => {
   const { setData, viewDate } = useAppContext();
 
-  const callback = () => {
+  const callback = async () => {
     setData((oldData) => {
       const newData = new Data(oldData);
       const { budgets, sections, categories } = calculatorLambda(newData, viewDate);

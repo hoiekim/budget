@@ -215,7 +215,7 @@ div.Properties > .propertyLabel {
 div.Properties > .property {
   background-color: #eee;
   border-radius: 5px;
-  padding: 5px 0px;
+  overflow: hidden;
 }
 
 div.Properties > .property:not(:last-child) {
@@ -239,11 +239,11 @@ div.Properties .row:not(:last-child) {
 }
 
 div.Properties .row:first-child {
-  padding-top: 10px;
+  padding-top: 16px;
 }
 
 div.Properties .row:last-child {
-  padding-bottom: 10px;
+  padding-bottom: 18px;
 }
 
 div.Properties .row > input {

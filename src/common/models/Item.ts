@@ -20,7 +20,7 @@ export class Item {
 
   item_id: string = getRandomId();
   access_token: string = getRandomId();
-  institution_id: string = "";
+  institution_id: string | null = null;
   cursor?: string;
   status?: ItemStatus;
   plaidError?: PlaidError;
@@ -30,7 +30,7 @@ export class Item {
    */
   updated?: string;
 
-  constructor(init?: Partial<Item> & { institution_id: string }) {
+  constructor(init?: Partial<Item> & { access_token: string }) {
     assign(this, init);
   }
 }

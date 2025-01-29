@@ -1,15 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Data, Institution, InstitutionDictionary } from "common";
 import { cachedCall, useAppContext } from "client";
 
 interface Props {
-  institution_id: string;
+  institution_id: string | null;
 }
 
 const InstitutionSpan = ({ institution_id }: Props) => {
   const { data, setData } = useAppContext();
   const { institutions } = data;
-  const institution = institutions.get(institution_id);
+  const institution = useMemo(
+    () => (institution_id ? institutions.get(institution_id) : new Institution()),
+    [institution_id, institutions]
+  );
 
   useEffect(() => {
     if (!institution_id || institution) return;

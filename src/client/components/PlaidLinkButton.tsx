@@ -2,7 +2,7 @@ import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
 import { PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
 import { useAppContext, call, useSync, useLocalStorage } from "client";
-import { Item, ItemStatus } from "common";
+import { Item, ItemProvider, ItemStatus } from "common";
 
 interface Props {
   item?: Item;
@@ -30,8 +30,9 @@ const PlaidLinkButton = ({ item, children }: Props) => {
     onSuccess: (public_token: string, metadata: PlaidLinkOnSuccessMetadata) => {
       const { institution } = metadata;
       const institution_id = institution && institution.institution_id;
+      const params = new URLSearchParams({ provider: ItemProvider.PLAID });
       call
-        .post<PbulicTokenPostResponse>("/api/public-token", {
+        .post<PbulicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
           public_token,
           institution_id,
         })

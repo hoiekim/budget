@@ -57,6 +57,22 @@
         }
       }
     },
+    "institution": {
+      "type": "object",
+      "dynamic": true,
+      "properties": {
+        "institution_id": { "type": "keyword" },
+        "name": { "type": "keyword" },
+        "products": { "type": "keyword" },
+        "country_codes": { "type": "keyword" },
+        "url": { "type": "keyword" },
+        "primary_color": { "type": "keyword" },
+        "logo": { "type": "keyword" },
+        "routing_numbers": { "type": "keyword" },
+        "oauth": { "type": "boolean" },
+        "status": { "type": "keyword" }
+      }
+    },
     "account": {
       "type": "object",
       "dynamic": true,
@@ -186,6 +202,7 @@
     },
     "holding": {
       "type": "object",
+      "dynamic": true,
       "properties": {
         "holding_id": { "type": "keyword" },
         "account_id": { "type": "keyword" },
@@ -201,6 +218,7 @@
     },
     "security": {
       "type": "object",
+      "dynamic": true,
       "properties": {
         "security_id": { "type": "keyword" },
         "isin": { "type": "keyword" },

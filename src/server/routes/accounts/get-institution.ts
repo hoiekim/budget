@@ -1,4 +1,4 @@
-import { getInstitution, Route } from "server";
+import { plaidClient, Route, searchInstitutionById, upsertInstitutions } from "server";
 import { Institution } from "common";
 
 export type InstitutionGetResponse = Institution;
@@ -16,12 +16,14 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
     }
 
     const id = req.query.id as string;
-    const response = await getInstitution(user, id);
-    if (!response) throw new Error("Server failed to get institutions.");
-
-    return {
-      status: "success",
-      body: new Institution(response),
-    };
+    const storedInstitution = await searchInstitutionById(user, id);
+    if (storedInstitution) {
+      return { status: "success", body: storedInstitution };
+    } else {
+      const newInstitution = await plaidClient.getInstitution(user, id);
+      if (!newInstitution) throw new Error("Server failed to get institutions.");
+      upsertInstitutions(user, [newInstitution]).catch(console.error);
+      return { status: "success", body: newInstitution };
+    }
   }
 );

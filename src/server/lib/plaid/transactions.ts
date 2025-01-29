@@ -6,8 +6,9 @@ import {
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction,
 } from "plaid";
-import { MaskedUser, getPlaidClient, ignorable_error_codes, updateItemStatus } from "server";
+import { MaskedUser, updateItemStatus } from "server";
 import { Item, ItemStatus, getDateString, getDateTimeString } from "common";
+import { getPlaidClient, ignorable_error_codes } from "./util";
 
 export interface PlaidTransaction extends Transaction {}
 
