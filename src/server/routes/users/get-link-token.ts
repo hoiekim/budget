@@ -1,4 +1,4 @@
-import { plaidClient, Route } from "server";
+import { plaid, Route } from "server";
 
 export type LinkTokenGetResponse = string;
 
@@ -23,7 +23,7 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
       };
     }
 
-    const response = await plaidClient.getLinkToken(user, access_token);
+    const response = await plaid.getLinkToken(user, access_token);
     if (!response) throw new Error("Server failed to get link token.");
 
     return {

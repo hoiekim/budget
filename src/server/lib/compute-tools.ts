@@ -11,7 +11,7 @@ import {
 import {
   deleteInvestmentTransactions,
   deleteTransactions,
-  plaidClient,
+  plaid,
   getUserItem,
   searchItems,
   searchTransactions,
@@ -34,7 +34,7 @@ export const syncAllTransactions = async (item_id: string) => {
   let modifiedCount = 0;
   let removedCount = 0;
 
-  const syncTransactions = plaidClient.getTransactions(user, [item]).then(async (r) => {
+  const syncTransactions = plaid.getTransactions(user, [item]).then(async (r) => {
     const ingestedTrasactions = await getTransactionsFromElasticsearch;
     const ingestedData = ingestedTrasactions?.transactions || [];
 
@@ -79,7 +79,7 @@ export const syncAllTransactions = async (item_id: string) => {
       });
   });
 
-  const syncInvestmentTransactions = plaidClient
+  const syncInvestmentTransactions = plaid
     .getInvestmentTransactions(user, [item])
     .then(async (r) => {
       const { items, investmentTransactions } = r;
@@ -150,7 +150,7 @@ export const syncAllAccounts = async (item_id: string) => {
 
   const { user, item } = userItem;
 
-  const getAccountsFromPlaid = plaidClient
+  const getAccountsFromPlaid = plaid
     .getAccounts(user, [item])
     .then(async (r) => {
       const accounts = r.accounts.map<Account>((e) => {
@@ -161,7 +161,7 @@ export const syncAllAccounts = async (item_id: string) => {
     })
     .catch(console.error);
 
-  const getHoldingsFromPlaid = plaidClient
+  const getHoldingsFromPlaid = plaid
     .getHoldings(user, [item])
     .then(async ({ accounts, holdings, securities }) => {
       upsertAccounts(user, accounts);

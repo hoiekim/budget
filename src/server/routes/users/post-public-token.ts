@@ -1,12 +1,5 @@
 import { randomUUID } from "crypto";
-import {
-  plaidClient,
-  simpleFinClient,
-  Route,
-  pushLocalItem,
-  upsertItems,
-  MaskedUser,
-} from "server";
+import { plaid, simpleFin, Route, pushLocalItem, upsertItems, MaskedUser } from "server";
 import { Item, ItemProvider, ItemStatus } from "common";
 
 export interface PbulicTokenPostResponse {
@@ -67,7 +60,7 @@ const exchangePlaidToken = async (
   public_token: string,
   institution_id: string
 ) => {
-  const { access_token, item_id } = await plaidClient.exchangePublicToken(user, public_token);
+  const { access_token, item_id } = await plaid.exchangePublicToken(user, public_token);
   return new Item({
     item_id,
     access_token,
@@ -78,7 +71,7 @@ const exchangePlaidToken = async (
 };
 
 const exchangeSimpleFinToken = async (setupToken: string) => {
-  const accessUrl = await simpleFinClient.exchangeSetupToken(setupToken);
+  const accessUrl = await simpleFin.exchangeSetupToken(setupToken);
   return new Item({
     item_id: randomUUID(),
     access_token: accessUrl,

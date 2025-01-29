@@ -1,10 +1,4 @@
-import {
-  Route,
-  deleteItem,
-  removeLocalItem as deleteLocalItem,
-  plaidClient,
-  searchItems,
-} from "server";
+import { Route, deleteItem, removeLocalItem as deleteLocalItem, plaid, searchItems } from "server";
 
 export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   const { user } = req.session;
@@ -26,7 +20,7 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
     };
   }
 
-  await plaidClient.deletePlaidItem(user, item);
+  await plaid.deletePlaidItem(user, item);
   await deleteItem(user, item_id);
 
   if (user.username === "admin") deleteLocalItem(item_id);

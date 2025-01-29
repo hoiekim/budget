@@ -4,7 +4,7 @@ import {
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import { plaidClient } from "server";
+import { plaid } from "server";
 import { getRandomId, assign } from "common";
 
 export class AccountLabel {
@@ -14,7 +14,7 @@ export class AccountLabel {
   }
 }
 
-export class Account implements plaidClient.PlaidAccount {
+export class Account implements plaid.PlaidAccount {
   get id() {
     return this.account_id;
   }
