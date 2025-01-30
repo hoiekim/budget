@@ -1,25 +1,46 @@
 import { ReactNode } from "react";
 import { useAppContext, call, useSync, useLocalStorage } from "client";
-import { Item, ItemStatus } from "common";
+import { Data, Item, ItemDictionary, ItemProvider, ItemStatus } from "common";
+import { PbulicTokenPostResponse } from "server";
 
 interface Props {
   item?: Item;
   children?: ReactNode;
 }
 
-const tokens = new Map<string, string>();
-const promisedTokens = new Map<string, Promise<string>>();
-
 const SimpleFinLinkButton = ({ item, children }: Props) => {
-  const { user, data } = useAppContext();
+  const { setData } = useAppContext();
+  const { sync } = useSync();
 
-  const onClick = () => {};
+  const onClick = () => {
+    const public_token = prompt("Enter setup token");
+    const params = new URLSearchParams({ provider: ItemProvider.SIMPLE_FIN });
+    call
+      .post<PbulicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
+        public_token,
+      })
+      .then((r) => {
+        const { status, body } = r;
+        if (status === "success" && body?.item) {
+          if (item) {
+            setData((oldData) => {
+              const newData = new Data(oldData);
+              const newItems = new ItemDictionary(newData.items);
+              const newItem = new Item({ ...item, status: ItemStatus.OK });
+              newItems.set(item.item_id, newItem);
+              newData.items = newItems;
+              return newData;
+            });
+          }
+          setTimeout(() => {
+            sync.transactions();
+            sync.accounts();
+          }, 1000);
+        }
+      });
+  };
 
-  return (
-    <button disabled onClick={onClick}>
-      {children}
-    </button>
-  );
+  return <button onClick={onClick}>{children}</button>;
 };
 
 export default SimpleFinLinkButton;
