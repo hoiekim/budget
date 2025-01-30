@@ -126,13 +126,19 @@ export const syncAllTransactions = async (item_id: string) => {
       ];
 
       const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
-      Promise.all(updateJobs)
+      return Promise.all(updateJobs)
         .then(() => {
           addedCount += addedMap.size;
           modifiedCount += modified.length;
           removedCount += removed.length;
         })
-        .then(() => upsertItems(user, partialItems));
+        .then(() => upsertItems(user, partialItems))
+        .catch((err) => {
+          console.error(
+            "Error occured during puting Plaid investment transanctions data into Elasticsearch"
+          );
+          console.error(err);
+        });
     });
 
   await Promise.all([syncTransactions, syncInvestmentTransactions]);
