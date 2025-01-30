@@ -197,6 +197,107 @@ export const searchTransactionById = async (user: MaskedUser, id: string) => {
 };
 
 /**
+ * Searches for transactions associated with given user and account id.
+ * @param user
+ * @param account_ids
+ * @param range (optional)
+ * @returns A promise to have arrays of Transaction objects
+ */
+export const searchTransactionsByAccountId = async (
+  user: MaskedUser,
+  account_ids: string[],
+  range?: DateRange
+) => {
+  const { user_id } = user;
+  const { start, end } = range || {};
+  const isValidRange = start && end && start < end;
+
+  type Response = {
+    transaction: Transaction;
+    investment_transaction: InvestmentTransaction;
+    split_transaction: SplitTransaction;
+  };
+
+  const response = await elasticsearchClient.search<Response>({
+    index,
+    from: 0,
+    size: 10000,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          {
+            bool: {
+              should: ["transaction", "investment_transaction"].map((type) => {
+                return {
+                  bool: {
+                    filter: [
+                      { term: { type } },
+                      {
+                        bool: {
+                          should: account_ids.map((account_id) => {
+                            return { term: { [`${type}.account_id`]: account_id } };
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                };
+              }),
+            },
+          },
+          {
+            bool: {
+              should: ["transaction", "investment_transaction"].map((type) => {
+                if (isValidRange) {
+                  return {
+                    bool: {
+                      filter: [
+                        { term: { type } },
+                        { range: { [`${type}.date`]: { gte: start.toISOString() } } },
+                        { range: { [`${type}.date`]: { lt: end.toISOString() } } },
+                      ],
+                    },
+                  };
+                } else {
+                  return { bool: { filter: [{ term: { type } }] } };
+                }
+              }),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  type Result = {
+    transactions: Transaction[];
+    investment_transactions: InvestmentTransaction[];
+    split_transactions: SplitTransaction[];
+  };
+
+  const result: Result = {
+    transactions: [],
+    investment_transactions: [],
+    split_transactions: [],
+  };
+
+  response.hits.hits.forEach(({ _source, _id }) => {
+    if (!_source) return;
+    const { transaction, investment_transaction, split_transaction } = _source;
+    if (transaction) result.transactions.push(transaction);
+    else if (investment_transaction) {
+      result.investment_transactions.push(investment_transaction);
+    } else if (split_transaction) {
+      split_transaction.split_transaction_id = _id;
+      result.split_transactions.push(split_transaction);
+    }
+  });
+
+  return result;
+};
+
+/**
  * Searches for transactions associated with given user.
  * @param user
  * @returns A promise to be an array of Transaction objects

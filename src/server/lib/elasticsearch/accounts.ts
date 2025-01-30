@@ -103,6 +103,38 @@ export const searchAccounts = async (user: MaskedUser) => {
   return result;
 };
 
+/**
+ * Searches for accounts associated with given user and item id.
+ * @param user_id
+ * @param item_id
+ * @returns A promise to be an array of Account objects
+ */
+export const searchAccountsByItemId = async (user: MaskedUser, item_id: string) => {
+  const { user_id } = user;
+
+  const response = await elasticsearchClient.search<{ account: Account }>({
+    index,
+    from: 0,
+    size: 10000,
+    query: {
+      bool: {
+        filter: [{ term: { "user.user_id": user_id } }, { term: { "account.item_id": item_id } }],
+      },
+    },
+  });
+
+  const accounts: Account[] = [];
+
+  response.hits.hits.forEach((e) => {
+    const source = e._source;
+    if (!source) return;
+    const { account } = source;
+    if (account) accounts.push(account);
+  });
+
+  return accounts;
+};
+
 interface RemovedAccount {
   account_id: string;
 }

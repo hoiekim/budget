@@ -14,13 +14,14 @@ import {
   plaid,
   getUserItem,
   searchItems,
-  searchTransactions,
   upsertAccounts,
   upsertHoldings,
   upsertInvestmentTransactions,
   upsertItems,
   upsertSecurities,
   upsertTransactions,
+  searchAccountsByItemId,
+  searchTransactionsByAccountId,
 } from "server";
 
 export const syncAllTransactions = async (item_id: string) => {
@@ -28,7 +29,9 @@ export const syncAllTransactions = async (item_id: string) => {
   if (!userItem) return;
   const { user, item } = userItem;
 
-  const getTransactionsFromElasticsearch = searchTransactions(user);
+  const accounts = await searchAccountsByItemId(user, item_id);
+  const accountIds = accounts?.map((e) => e.account_id) || [];
+  const getTransactionsFromElasticsearch = searchTransactionsByAccountId(user, accountIds);
 
   let addedCount = 0;
   let modifiedCount = 0;
