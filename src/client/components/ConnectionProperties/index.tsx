@@ -5,7 +5,7 @@ import {
   Data,
   Institution,
   Item,
-  toTitleCase,
+  toUpperCamelCase,
   TransactionDictionary,
 } from "common";
 import { call, InstitutionSpan, PlaidLinkButton, useAppContext } from "client";
@@ -111,7 +111,7 @@ const ConnectionProperties = ({ item }: Props) => {
         </div>
         <div className="row keyValue">
           <span className="propertyName">Connection&nbsp;Provider</span>
-          <span>{toTitleCase(provider)}</span>
+          <span>{toUpperCamelCase(provider)}</span>
         </div>
       </div>
       {accountRows}

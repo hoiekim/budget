@@ -1,3 +1,4 @@
+import { toUpperCamelCase } from "common";
 import {
   call,
   cleanCache,
@@ -17,7 +18,7 @@ const Configuration = () => {
   const { items } = data;
   const { go } = router;
 
-  const itemsRow = items.toArray().map(({ id, institution_id }) => {
+  const itemsRow = items.toArray().map(({ id, institution_id, provider }) => {
     const onClickConnection = () => {
       const params = new URLSearchParams();
       params.append("id", id);
@@ -28,7 +29,7 @@ const Configuration = () => {
         <button className="connection" onClick={onClickConnection}>
           <div>
             <InstitutionSpan institution_id={institution_id} />
-            <span className="small">&nbsp;&nbsp;via&nbsp;Plaid</span>
+            <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
           </div>
           <span>〉</span>
         </button>

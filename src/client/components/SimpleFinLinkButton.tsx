@@ -4,11 +4,10 @@ import { Data, Item, ItemDictionary, ItemProvider, ItemStatus } from "common";
 import { PbulicTokenPostResponse } from "server";
 
 interface Props {
-  item?: Item;
   children?: ReactNode;
 }
 
-const SimpleFinLinkButton = ({ item, children }: Props) => {
+const SimpleFinLinkButton = ({ children }: Props) => {
   const { setData } = useAppContext();
   const { sync } = useSync();
 
@@ -22,16 +21,15 @@ const SimpleFinLinkButton = ({ item, children }: Props) => {
       .then((r) => {
         const { status, body } = r;
         if (status === "success" && body?.item) {
-          if (item) {
-            setData((oldData) => {
-              const newData = new Data(oldData);
-              const newItems = new ItemDictionary(newData.items);
-              const newItem = new Item({ ...item, status: ItemStatus.OK });
-              newItems.set(item.item_id, newItem);
-              newData.items = newItems;
-              return newData;
-            });
-          }
+          const item = body.item;
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const newItems = new ItemDictionary(newData.items);
+            const newItem = new Item({ ...item, status: ItemStatus.OK });
+            newItems.set(item.item_id, newItem);
+            newData.items = newItems;
+            return newData;
+          });
           setTimeout(() => {
             sync.transactions();
             sync.accounts();

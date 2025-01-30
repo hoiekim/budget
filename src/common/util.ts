@@ -127,5 +127,11 @@ export const sleep = (milliseconds: number) => {
 };
 
 export const toTitleCase = (s: string) => {
-  return s.replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+  return s
+    .replace(/_/g, " ")
+    .replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+};
+
+export const toUpperCamelCase = (s: string) => {
+  return toTitleCase(s).replace(/ /g, "");
 };

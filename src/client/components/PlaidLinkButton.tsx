@@ -2,7 +2,7 @@ import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
 import { PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
 import { useAppContext, call, useSync, useLocalStorage } from "client";
-import { Item, ItemProvider, ItemStatus } from "common";
+import { Data, Item, ItemDictionary, ItemProvider, ItemStatus } from "common";
 
 interface Props {
   item?: Item;
@@ -13,7 +13,7 @@ const tokens = new Map<string, string>();
 const promisedTokens = new Map<string, Promise<string>>();
 
 const PlaidLinkButton = ({ item, children }: Props) => {
-  const { user, data } = useAppContext();
+  const { user, data, setData } = useAppContext();
 
   const access_token = (item && item.access_token) || "";
   const [token, setToken] = useState(tokens.get(access_token) || "");
@@ -40,8 +40,14 @@ const PlaidLinkButton = ({ item, children }: Props) => {
           const { status, body } = r;
           if (status === "success" && body?.item) {
             if (item) {
-              const newItem = new Item({ ...item, status: ItemStatus.OK });
-              data.items.set(item.item_id, newItem);
+              setData((oldData) => {
+                const newData = new Data(oldData);
+                const newItems = new ItemDictionary(newData.items);
+                const newItem = new Item({ ...item, status: ItemStatus.OK });
+                newItems.set(item.item_id, newItem);
+                newData.items = newItems;
+                return newData;
+              });
             }
             setTimeout(() => {
               sync.transactions();
