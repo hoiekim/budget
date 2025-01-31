@@ -10,13 +10,12 @@ const InstitutionSpan = ({ institution_id }: Props) => {
   const { data, setData } = useAppContext();
   const { institutions } = data;
   const institution = useMemo(
-    () => (institution_id ? institutions.get(institution_id) : new Institution()),
+    () => (institution_id ? institutions.get(institution_id) : undefined),
     [institution_id, institutions]
   );
 
   useEffect(() => {
     if (!institution_id || institution) return;
-
     cachedCall<Institution>(`/api/institution?id=${institution_id}`).then((r) => {
       if (!r) return;
       const { body } = r;

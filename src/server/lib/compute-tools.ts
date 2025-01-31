@@ -25,6 +25,7 @@ import {
   searchAccountsByItemId,
   searchTransactionsByAccountId,
   simpleFin,
+  upsertInstitutions,
 } from "server";
 
 export const syncAllPlaidTransactions = async (item_id: string) => {
@@ -214,9 +215,13 @@ const syncAllSimpleFinData = async (item_id: string) => {
 
   upsertAccounts(user, accounts);
   upsertHoldings(user, holdings);
+  upsertInstitutions(user, institutions);
   // upsertSecurities(user, securities);
   upsertTransactions(user, transactions);
   upsertInvestmentTransactions(user, investmentTransactions);
+
+  const updated = getDateString();
+  await upsertItems(user, [new Item({ ...item, updated })]);
 
   return { accounts, transactions, investmentTransactions };
 };
@@ -232,7 +237,7 @@ export const scheduledSync = async () => {
             const { accounts, investmentAccounts } = r;
             const numberOfAccounts = accounts?.length || 0;
             const numberOfInvestmentAccounts = investmentAccounts?.length || 0;
-            console.group(`Synced accounts for item: ${item_id}`);
+            console.group(`Synced accounts for Plaid item: ${item_id}`);
             console.log(`${numberOfAccounts} accounts`);
             console.log(`${numberOfInvestmentAccounts} investmentAccounts`);
             console.groupEnd();
@@ -242,7 +247,7 @@ export const scheduledSync = async () => {
           .then((r) => {
             if (!r) throw new Error("Error occured during syncAllPlaidTransactions");
             const { added, modified, removed } = r;
-            console.group(`Synced transactions for item: ${item_id}`);
+            console.group(`Synced transactions for Plaid item: ${item_id}`);
             console.log(`${added} added`);
             console.log(`${modified} modified`);
             console.log(`${removed} removed`);
@@ -255,7 +260,7 @@ export const scheduledSync = async () => {
           if (!r) throw new Error("Error occured during syncAllSimpleFinData");
           const { accounts, transactions, investmentTransactions } = r;
           const numberOfAccounts = accounts?.length || 0;
-          console.group(`Synced all data for item: ${item_id}`);
+          console.group(`Synced all data for SimpleFin item: ${item_id}`);
           console.log(`${numberOfAccounts} accounts`);
           console.log(`${transactions.length} transactions updated`);
           console.log(`${investmentTransactions.length} investmentTransactions updated`);

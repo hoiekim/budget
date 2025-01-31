@@ -3,8 +3,8 @@ import {
   Account,
   AccountDictionary,
   Data,
-  Institution,
   Item,
+  ItemProvider,
   toUpperCamelCase,
   TransactionDictionary,
 } from "common";
@@ -18,7 +18,7 @@ interface Props {
 
 const ConnectionProperties = ({ item }: Props) => {
   const { data, setData } = useAppContext();
-  const { accounts, institutions } = data;
+  const { accounts } = data;
   const { institution_id, status, updated, provider } = item;
 
   const accountRows = accounts
@@ -42,25 +42,21 @@ const ConnectionProperties = ({ item }: Props) => {
               <span className="propertyName">Type</span>
               <span>{type}</span>
             </div>
-            <div className="row keyValue">
-              <span className="propertyName">Subtype</span>
-              <span>{subtype}</span>
-            </div>
+            {!!subtype && (
+              <div className="row keyValue">
+                <span className="propertyName">Subtype</span>
+                <span>{subtype}</span>
+              </div>
+            )}
           </div>
         </>
       );
     });
 
-  const institution = institution_id ? institutions.get(institution_id) : new Institution();
-
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation();
 
-    const confirmed = window.confirm(
-      `Do you want to remove all accounts in ${
-        institution?.name || "Unknown"
-      } institution from Budget?`
-    );
+    const confirmed = window.confirm("Do you want to remove all data in this connection?");
 
     if (confirmed) {
       const { item_id } = item;
@@ -96,10 +92,12 @@ const ConnectionProperties = ({ item }: Props) => {
     <div className="ConnectionProperties Properties">
       <div className="propertyLabel">Connection&nbsp;Detail</div>
       <div className="property">
-        <div className="row keyValue">
-          <span className="propertyName">Institution</span>
-          <InstitutionSpan institution_id={institution_id} />
-        </div>
+        {!!institution_id && (
+          <div className="row keyValue">
+            <span className="propertyName">Institution</span>
+            <InstitutionSpan institution_id={institution_id} />
+          </div>
+        )}
         <div className="row keyValue">
           <span className="propertyName">Last&nbsp;Updated</span>
           <span>{updated || "Unknown"}</span>
@@ -116,9 +114,11 @@ const ConnectionProperties = ({ item }: Props) => {
       {accountRows}
       <div className="propertyLabel">&nbsp;</div>
       <div className="property">
-        <div className="row button">
-          <PlaidLinkButton item={item}>Update</PlaidLinkButton>
-        </div>
+        {provider === ItemProvider.PLAID && (
+          <div className="row button">
+            <PlaidLinkButton item={item}>Update</PlaidLinkButton>
+          </div>
+        )}
         <div className="row button">
           <button className="delete colored" onClick={onClickRemove}>
             Delete
