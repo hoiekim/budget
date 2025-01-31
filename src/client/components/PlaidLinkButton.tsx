@@ -13,7 +13,7 @@ const tokens = new Map<string, string>();
 const promisedTokens = new Map<string, Promise<string>>();
 
 const PlaidLinkButton = ({ item, children }: Props) => {
-  const { user, data, setData } = useAppContext();
+  const { user, setData } = useAppContext();
 
   const access_token = (item && item.access_token) || "";
   const [token, setToken] = useState(tokens.get(access_token) || "");

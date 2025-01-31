@@ -1,4 +1,4 @@
-import { toUpperCamelCase } from "common";
+import { ItemStatus, toUpperCamelCase } from "common";
 import {
   call,
   cleanCache,
@@ -18,20 +18,25 @@ const Configuration = () => {
   const { items } = data;
   const { go } = router;
 
-  const itemsRow = items.toArray().map(({ id, institution_id, provider }) => {
+  const itemsRow = items.toArray().map(({ id, institution_id, status, provider }) => {
     const onClickConnection = () => {
       const params = new URLSearchParams();
       params.append("id", id);
       go(PATH.CONNECTION_DETAIL, { params });
     };
+    const buttonClassNames = ["connection"];
+    if (status !== ItemStatus.OK) buttonClassNames.push("notification");
     return (
       <div className="row button" key={id}>
-        <button className="connection" onClick={onClickConnection}>
+        <button className={buttonClassNames.join(" ")} onClick={onClickConnection}>
           <div>
-            <InstitutionSpan institution_id={institution_id} />
+            {institution_id === "unknown" ? (
+              <span>{id.slice(0, 6).toUpperCase()}</span>
+            ) : (
+              <InstitutionSpan institution_id={institution_id} />
+            )}
             <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
           </div>
-          <span>〉</span>
         </button>
       </div>
     );

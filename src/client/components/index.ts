@@ -34,3 +34,5 @@ export { default as NameInput } from "./NameInput";
 export * from "./NameInput";
 export { default as CapacityInput } from "./CapacityInput";
 export * from "./CapacityInput";
+export { default as Spinner } from "./Spinner";
+export * from "./Spinner";

@@ -1,6 +1,8 @@
 import {
   Account,
   InvestmentTransaction,
+  Item,
+  ItemProvider,
   ONE_HOUR,
   RemovedInvestmentTransaction,
   TWO_WEEKS,
@@ -22,9 +24,10 @@ import {
   upsertTransactions,
   searchAccountsByItemId,
   searchTransactionsByAccountId,
+  simpleFin,
 } from "server";
 
-export const syncAllTransactions = async (item_id: string) => {
+export const syncAllPlaidTransactions = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
   if (!userItem) return;
   const { user, item } = userItem;
@@ -153,7 +156,7 @@ export const syncAllTransactions = async (item_id: string) => {
   };
 };
 
-export const syncAllAccounts = async (item_id: string) => {
+export const syncAllPlaidAccounts = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
   if (!userItem) return;
 
@@ -187,34 +190,79 @@ export const syncAllAccounts = async (item_id: string) => {
   return { accounts, investmentAccounts };
 };
 
+const syncAllSimpleFinData = async (item_id: string) => {
+  const userItem = await getUserItem(item_id);
+  if (!userItem) return;
+
+  const { user, item } = userItem;
+
+  let startDate: Date;
+  if (item.updated) {
+    const updatedDate = new Date(getDateTimeString(item.updated));
+    const date = updatedDate.getDate();
+    updatedDate.setDate(date - 14);
+    startDate = updatedDate;
+  } else {
+    const oldestDate = new Date();
+    const thisYear = new Date().getFullYear();
+    oldestDate.setFullYear(thisYear - 2);
+    startDate = oldestDate;
+  }
+
+  const { accounts, institutions, holdings, securities, transactions, investmentTransactions } =
+    await simpleFin.getSimpleFinData(item, { startDate });
+
+  upsertAccounts(user, accounts);
+  upsertHoldings(user, holdings);
+  // upsertSecurities(user, securities);
+  upsertTransactions(user, transactions);
+  upsertInvestmentTransactions(user, investmentTransactions);
+
+  return { accounts, transactions, investmentTransactions };
+};
+
 export const scheduledSync = async () => {
   try {
     const items = await searchItems();
-    const promises = items.flatMap(({ item_id }) => {
-      const accountsPromise = syncAllAccounts(item_id)
-        .then((r) => {
-          if (!r) throw new Error("Error occured during syncAllAccounts");
-          const { accounts, investmentAccounts } = r;
+    const promises = items.flatMap(({ item_id, provider }) => {
+      if (provider === ItemProvider.PLAID) {
+        const accountsPromise = syncAllPlaidAccounts(item_id)
+          .then((r) => {
+            if (!r) throw new Error("Error occured during syncAllPlaidAccounts");
+            const { accounts, investmentAccounts } = r;
+            const numberOfAccounts = accounts?.length || 0;
+            const numberOfInvestmentAccounts = investmentAccounts?.length || 0;
+            console.group(`Synced accounts for item: ${item_id}`);
+            console.log(`${numberOfAccounts} accounts`);
+            console.log(`${numberOfInvestmentAccounts} investmentAccounts`);
+            console.groupEnd();
+          })
+          .catch(console.error);
+        const transactionsPromise = syncAllPlaidTransactions(item_id)
+          .then((r) => {
+            if (!r) throw new Error("Error occured during syncAllPlaidTransactions");
+            const { added, modified, removed } = r;
+            console.group(`Synced transactions for item: ${item_id}`);
+            console.log(`${added} added`);
+            console.log(`${modified} modified`);
+            console.log(`${removed} removed`);
+            console.groupEnd();
+          })
+          .catch(console.error);
+        return [accountsPromise, transactionsPromise];
+      } else if (provider === ItemProvider.SIMPLE_FIN) {
+        const promise = syncAllSimpleFinData(item_id).then((r) => {
+          if (!r) throw new Error("Error occured during syncAllSimpleFinData");
+          const { accounts, transactions, investmentTransactions } = r;
           const numberOfAccounts = accounts?.length || 0;
-          const numberOfInvestmentAccounts = investmentAccounts?.length || 0;
-          console.group(`Synced accounts for item: ${item_id}`);
+          console.group(`Synced all data for item: ${item_id}`);
           console.log(`${numberOfAccounts} accounts`);
-          console.log(`${numberOfInvestmentAccounts} investmentAccounts`);
+          console.log(`${transactions.length} transactions updated`);
+          console.log(`${investmentTransactions.length} investmentTransactions updated`);
           console.groupEnd();
-        })
-        .catch(console.error);
-      const transactionsPromise = syncAllTransactions(item_id)
-        .then((r) => {
-          if (!r) throw new Error("Error occured during syncAllTransactions");
-          const { added, modified, removed } = r;
-          console.group(`Synced transactions for item: ${item_id}`);
-          console.log(`${added} added`);
-          console.log(`${modified} modified`);
-          console.log(`${removed} removed`);
-          console.groupEnd();
-        })
-        .catch(console.error);
-      return [accountsPromise, transactionsPromise];
+        });
+        return [promise];
+      }
     });
     await Promise.all(promises);
     console.log("Scheduled sync completed");

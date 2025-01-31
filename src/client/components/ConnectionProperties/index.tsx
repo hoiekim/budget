@@ -19,13 +19,12 @@ interface Props {
 const ConnectionProperties = ({ item }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts, institutions } = data;
-
   const { institution_id, status, updated, provider } = item;
 
   const accountRows = accounts
     .toArray()
     .filter(({ item_id }) => {
-      return item_id === institution_id;
+      return item_id === item.id;
     })
     .map(({ id, name, custom_name, type, subtype }, i, { length }) => {
       const numbering = length > 1 ? <>&nbsp;{i + 1}</> : <></>;

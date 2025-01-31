@@ -30,6 +30,10 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       }
 
       const item = await exchangeSimpleFinToken(public_token);
+      if (item.access_token === "Forbidden") {
+        return { status: "failed", message: "Invalid token" };
+      }
+
       await upsertItems(user, [item]);
       if (user.username === "admin") pushLocalItem(item);
       return { status: "success", body: { item } };
@@ -75,7 +79,6 @@ const exchangeSimpleFinToken = async (setupToken: string) => {
   return new Item({
     item_id: randomUUID(),
     access_token: accessUrl,
-    institution_id: "unknown",
     status: ItemStatus.OK,
     provider: ItemProvider.SIMPLE_FIN,
   });
