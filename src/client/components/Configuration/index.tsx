@@ -30,10 +30,10 @@ const Configuration = () => {
       <div className="row button" key={id}>
         <button className={buttonClassNames.join(" ")} onClick={onClickConnection}>
           <div>
-            {institution_id === "unknown" ? (
-              <span>{id.slice(0, 6).toUpperCase()}</span>
-            ) : (
+            {!!institution_id ? (
               <InstitutionSpan institution_id={institution_id} />
+            ) : (
+              <span>{id.slice(0, 6).toUpperCase()}</span>
             )}
             <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
           </div>

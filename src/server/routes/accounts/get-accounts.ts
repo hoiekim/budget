@@ -1,11 +1,10 @@
-import { Account, Holding, Item, Security } from "common";
+import { Account, Holding, Item } from "common";
 import { Route, searchAccounts, searchItems } from "server";
 
 export interface AccountsGetResponse {
   items: Item[];
   accounts: Account[];
   holdings: Holding[];
-  securities: Security[];
 }
 
 export const getAccountsRoute = new Route<AccountsGetResponse>("GET", "/accounts", async (req) => {
@@ -18,8 +17,8 @@ export const getAccountsRoute = new Route<AccountsGetResponse>("GET", "/accounts
   }
 
   const [items, accountsResponse] = await Promise.all([searchItems(user), searchAccounts(user)]);
-  const { accounts, holdings, securities } = accountsResponse;
-  const body = { items, accounts, holdings, securities };
+  const { accounts, holdings } = accountsResponse;
+  const body = { items, accounts, holdings };
 
   return { status: "success", body };
 });

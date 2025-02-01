@@ -22,7 +22,7 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
     } else {
       const newInstitution = await plaid.getInstitution(user, id);
       if (!newInstitution) throw new Error("Server failed to get institutions.");
-      upsertInstitutions(user, [newInstitution]).catch(console.error);
+      upsertInstitutions([newInstitution]).catch(console.error);
       return { status: "success", body: newInstitution };
     }
   }

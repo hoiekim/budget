@@ -1,5 +1,6 @@
 import {
   Account,
+  getDateString,
   getDateTimeString,
   Holding,
   Institution,
@@ -9,6 +10,7 @@ import {
   Transaction,
   TransactionLabel,
 } from "common";
+import { AccountType } from "plaid";
 
 export interface SimpleFinAccount {
   id: string;
@@ -61,6 +63,7 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: Item)
     currency: currencyString,
     balance: balanceString,
     "available-balance": availableBalance,
+    holdings,
   } = simpleFinAccount;
 
   const balances = {
@@ -83,6 +86,7 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: Item)
     balances,
     institution_id: org.id,
     item_id,
+    type: holdings.length > 0 ? AccountType.Investment : AccountType.Other,
   });
 
   return { institution, account };
@@ -131,8 +135,6 @@ export const translateInvestmentTransaction = (
   });
 };
 
-export type UnindexedSecurity = Omit<Security, "security_id"> & { security_id: null };
-
 export const translateHolding = (
   simpleFinHolding: SimpleFinHolding,
   simpleFinAccount: SimpleFinAccount
@@ -149,7 +151,7 @@ export const translateHolding = (
   } = simpleFinHolding;
 
   const date = new Date(created * 1000);
-  const close_price_as_of = getDateTimeString(date);
+  const close_price_as_of = getDateString(date);
   const close_price = +marketValueString / +shares;
   const iso_currency_code = currencyString || simpleFinAccount.currency;
 
@@ -160,8 +162,6 @@ export const translateHolding = (
     close_price,
     close_price_as_of,
   });
-
-  const unindexedSecurity: UnindexedSecurity = { ...security, security_id: null };
 
   const holding = new Holding({
     account_id: simpleFinAccount.id,
@@ -175,5 +175,5 @@ export const translateHolding = (
     iso_currency_code,
   });
 
-  return { security: unindexedSecurity, holding };
+  return { security, holding };
 };

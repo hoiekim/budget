@@ -1,4 +1,12 @@
-import { Account, Holding, Institution, InvestmentTransaction, Item, Transaction } from "common";
+import {
+  Account,
+  Holding,
+  Institution,
+  InvestmentTransaction,
+  Item,
+  Security,
+  Transaction,
+} from "common";
 import { decodeAccessUrl } from "./tokens";
 import {
   translateAccount,
@@ -6,7 +14,6 @@ import {
   translateInvestmentTransaction,
   translateTransaction,
   SimpleFinAccount,
-  UnindexedSecurity,
 } from "./translators";
 
 export interface GetSimpleFinDataOptions {
@@ -42,7 +49,7 @@ const modelize = async (item: Item, simpleFinAccounts: SimpleFinAccount[]) => {
   const transactions: Transaction[] = [];
   const investmentTransactions: InvestmentTransaction[] = [];
   const holdings: Holding[] = [];
-  const securities: UnindexedSecurity[] = [];
+  const securities: Security[] = [];
 
   for (const simpleFinAccount of simpleFinAccounts) {
     const { transactions: simpleFinTransactions, holdings: simpleFinHoldings } = simpleFinAccount;

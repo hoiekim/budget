@@ -1,4 +1,5 @@
 import {
+  flatten,
   getUpdateAccountScript,
   getUpdateHoldingScript,
   getUpdateInstitutionScript,
@@ -56,7 +57,6 @@ export const searchAccounts = async (user: MaskedUser) => {
   const response = await elasticsearchClient.search<{
     account: Account;
     holding: Holding;
-    security: Security;
   }>({
     index,
     from: 0,
@@ -67,11 +67,7 @@ export const searchAccounts = async (user: MaskedUser) => {
           { term: { "user.user_id": user_id } },
           {
             bool: {
-              should: [
-                { term: { type: "account" } },
-                { term: { type: "holding" } },
-                { term: { type: "security" } },
-              ],
+              should: [{ term: { type: "account" } }, { term: { type: "holding" } }],
             },
           },
         ],
@@ -82,22 +78,19 @@ export const searchAccounts = async (user: MaskedUser) => {
   type Result = {
     accounts: Account[];
     holdings: Holding[];
-    securities: Security[];
   };
 
   const result: Result = {
     accounts: [],
     holdings: [],
-    securities: [],
   };
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     if (!source) return;
-    const { account, holding, security } = source;
+    const { account, holding } = source;
     if (account) result.accounts.push(account);
     if (holding) result.holdings.push(holding);
-    if (security) result.securities.push(security);
   });
 
   return result;
@@ -169,6 +162,40 @@ export const deleteAccounts = async (user: MaskedUser, accounts: (Account | Remo
   return response;
 };
 
+export const searchHoldingsByAccountId = async (user: MaskedUser, accountIds: string[]) => {
+  const { user_id } = user;
+
+  const response = await elasticsearchClient.search<{ holding: Holding }>({
+    index,
+    from: 0,
+    size: 10000,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "holding" } },
+          {
+            bool: {
+              should: accountIds.map((e) => ({ term: { "holding.account_id": e } })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const holdings: Holding[] = [];
+
+  response.hits.hits.forEach((e) => {
+    const source = e._source;
+    if (!source) return;
+    const { holding } = source;
+    if (holding) holdings.push(holding);
+  });
+
+  return holdings;
+};
+
 export type PartialHolding = { holding_id: string } & Partial<Holding>;
 
 export const upsertHoldings = async (
@@ -199,26 +226,78 @@ export const upsertHoldings = async (
   return response.items;
 };
 
+export interface RemovedHolding {
+  holding_id: string;
+}
+
+export const deleteHoldings = async (user: MaskedUser, holdings: (Holding | RemovedHolding)[]) => {
+  if (!Array.isArray(holdings) || !holdings.length) return;
+  const { user_id } = user;
+
+  const response = await elasticsearchClient.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "holding" } },
+          {
+            bool: {
+              should: holdings.map((e) => ({ term: { _id: e.holding_id } })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  return response;
+};
+
+export const searchSecurities = async (query: Partial<Security>) => {
+  const response = await elasticsearchClient.search<{ security: Security }>({
+    index,
+    from: 0,
+    size: 10000,
+    query: {
+      bool: {
+        filter: [
+          { term: { type: "security" } },
+          ...Object.entries(flatten(query)).map(([key, value]) => ({
+            term: { [`security.${key}`]: value },
+          })),
+        ],
+      },
+    },
+  });
+
+  const securities: Security[] = [];
+
+  response.hits.hits.forEach((e) => {
+    const source = e._source;
+    if (!source) return;
+    const { security } = source;
+    if (security) securities.push(security);
+  });
+
+  return securities;
+};
+
 export type PartialSecurity = { security_id: string } & Partial<Security>;
 
-export const upsertSecurities = async (
-  user: MaskedUser,
-  securities: PartialSecurity[],
-  upsert: boolean = true
-) => {
+export const upsertSecurities = async (securities: PartialSecurity[], upsert: boolean = true) => {
   if (!securities.length) return [];
-  const { user_id } = user;
 
   const operations = securities.flatMap((security) => {
     const { security_id } = security;
 
     const bulkHead = { update: { _index: index, _id: security_id } };
 
-    const script = getUpdateSecurityScript(user, security);
+    const script = getUpdateSecurityScript(security);
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "security", user: { user_id }, security };
+      bulkBody.upsert = { type: "security", security };
     }
 
     return [bulkHead, bulkBody];
@@ -253,23 +332,21 @@ export const searchInstitutionById = async (user: MaskedUser, id: string) => {
 export type PartialInstitution = { institution_id: string } & Partial<Institution>;
 
 export const upsertInstitutions = async (
-  user: MaskedUser,
   institutions: PartialInstitution[],
   upsert: boolean = true
 ) => {
   if (!institutions.length) return [];
-  const { user_id } = user;
 
   const operations = institutions.flatMap((institution) => {
     const { institution_id } = institution;
 
     const bulkHead = { update: { _index: index, _id: institution_id } };
 
-    const script = getUpdateInstitutionScript(user, institution);
+    const script = getUpdateInstitutionScript(institution);
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "institution", user: { user_id }, institution };
+      bulkBody.upsert = { type: "institution", institution };
     }
 
     return [bulkHead, bulkBody];
