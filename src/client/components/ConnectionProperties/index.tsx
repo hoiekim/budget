@@ -22,35 +22,30 @@ const ConnectionProperties = ({ item }: Props) => {
   const { institution_id, status, updated, provider } = item;
 
   const accountRows = accounts
-    .toArray()
-    .filter(({ item_id }) => {
-      return item_id === item.id;
-    })
-    .map(({ id, name, custom_name, type, subtype }, i, { length }) => {
+    .filter(({ item_id }) => item_id === item.id)
+    .flatMap(({ id, name, custom_name, type, subtype }, i, { length }) => {
       const numbering = length > 1 ? <>&nbsp;{i + 1}</> : <></>;
-      return (
-        <>
-          <div className="propertyLabel" key={`${id}_label`}>
-            Connected&nbsp;Account&nbsp;{numbering}
+      return [
+        <div className="propertyLabel" key={`${id}_label`}>
+          Connected&nbsp;Account&nbsp;{numbering}
+        </div>,
+        <div className="property" key={id}>
+          <div className="row keyValue">
+            <span className="propertyName">Name</span>
+            <span>{custom_name || name}</span>
           </div>
-          <div className="property" key={id}>
-            <div className="row keyValue">
-              <span className="propertyName">Name</span>
-              <span>{custom_name || name}</span>
-            </div>
-            <div className="row keyValue">
-              <span className="propertyName">Type</span>
-              <span>{type}</span>
-            </div>
-            {!!subtype && (
-              <div className="row keyValue">
-                <span className="propertyName">Subtype</span>
-                <span>{subtype}</span>
-              </div>
-            )}
+          <div className="row keyValue">
+            <span className="propertyName">Type</span>
+            <span>{type}</span>
           </div>
-        </>
-      );
+          {!!subtype && (
+            <div className="row keyValue">
+              <span className="propertyName">Subtype</span>
+              <span>{subtype}</span>
+            </div>
+          )}
+        </div>,
+      ];
     });
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {

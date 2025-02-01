@@ -80,13 +80,18 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: Item)
     url: org.url,
   });
 
+  const isInvestment =
+    holdings.length > 0 ||
+    name.toLowerCase().includes("investment") ||
+    org.name.toLowerCase().includes("investment");
+
   const account = new Account({
     account_id: accountId,
     name,
     balances,
     institution_id: org.id,
     item_id,
-    type: holdings.length > 0 ? AccountType.Investment : AccountType.Other,
+    type: isInvestment ? AccountType.Investment : AccountType.Other,
   });
 
   return { institution, account };

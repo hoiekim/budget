@@ -8,9 +8,7 @@ interface Props {
 export const Balance = ({ balances, type }: Props) => {
   const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
-  const symbol = currencyCodeToSymbol(
-    iso_currency_code || unofficial_currency_code || "USD"
-  );
+  const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
   const formattedAvailable = numberToCommaString(available as number);
   const formattedCurrent = numberToCommaString(current as number);
 
@@ -87,12 +85,14 @@ export const Balance = ({ balances, type }: Props) => {
     }
   } else {
     return (
-      <div>
-        <span>
-          {symbol}
-          {numberToCommaString(available || current || 0)}
-        </span>
-        <span>available</span>
+      <div className="Balance">
+        <div>
+          <span>
+            {symbol}
+            {numberToCommaString(available || current || 0)}
+          </span>
+          <span>available</span>
+        </div>
       </div>
     );
   }
