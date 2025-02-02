@@ -169,15 +169,16 @@ const processSecurities = async (securities: Security[]) => {
 
   const promises = securities.map(async (s) => {
     const { security_id, ticker_symbol, iso_currency_code, close_price, close_price_as_of } = s;
-    const storedSecurity = await searchSecurities({
-      ticker_symbol,
-      iso_currency_code,
-      close_price,
-      close_price_as_of,
-    });
+    const storedSecurity = await searchSecurities({ ticker_symbol, iso_currency_code });
     if (storedSecurity.length) {
       const existingSecurity = new Security(storedSecurity[0]);
       idMap[security_id] = existingSecurity.security_id;
+      const { close_price: existingPrice, close_price_as_of: existingDate } = existingSecurity;
+      if (close_price !== existingPrice || close_price_as_of !== existingDate) {
+        existingSecurity.close_price = close_price;
+        existingSecurity.close_price_as_of = close_price_as_of;
+        newSecurities.push(existingSecurity);
+      }
       return existingSecurity;
     } else {
       const newSecurity = new Security({ ...s, security_id: randomUUID() });
