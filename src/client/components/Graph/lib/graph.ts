@@ -132,11 +132,7 @@ const getPoints = (sequence: Sequence, range: Range): (Point | undefined)[] => {
   return sequence.map((e: number | undefined, i: number) => mapSequence(e, i, range));
 };
 
-const mapSequence = (
-  value: number | undefined,
-  index: number,
-  range: Range
-): Point | undefined => {
+const mapSequence = (value: number | undefined, index: number, range: Range): Point | undefined => {
   const [minX, maxX] = range.x;
   const [minY, maxY] = range.y;
 
@@ -148,23 +144,31 @@ const mapSequence = (
 
 const getRangeY = (sequence: Sequence): Point => {
   const definedSequence = sequence.filter((e) => e !== undefined) as number[];
-  let min = Math.min(...definedSequence);
-  let max = Math.max(...definedSequence);
+  const actualMax = Math.max(...definedSequence);
+  const actualMin = Math.min(...definedSequence);
 
-  const maxDigits = max.toFixed(0).length;
+  const maxDigits = actualMax.toFixed(0).length;
   const fixer = Math.pow(10, maxDigits - 2);
-  max = Math.ceil(max / fixer);
-  min = Math.floor(min / fixer);
+  const truncatedMax = Math.ceil(actualMax / fixer);
+  const truncatedMin = Math.floor(actualMin / fixer);
 
-  const gap = [8, 12, 16, 20, 24, 32, 40, 60, 80, 100].reduce((a, b) => {
+  let max = truncatedMax;
+  let min = truncatedMin;
+
+  const gap = [4, 8, 12, 16, 20, 24, 32, 40, 60, 80, 100].reduce((a, b) => {
     const distA = max - min + (min % (a / 4)) - a;
     const distB = max - min + (min % (b / 4)) - b;
     if (0 < distA && distB < distA) return b;
     return a;
-  }, 8);
+  }, 4);
 
   min = min - (min % (gap / 4));
   max = min + gap;
+
+  while (1 <= min && truncatedMax + 1 <= max) {
+    max--;
+    min--;
+  }
 
   max *= fixer;
   min *= fixer;
