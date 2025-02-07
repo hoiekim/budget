@@ -323,14 +323,14 @@ export const getOldestTransactionDate = async (user: MaskedUser) => {
   const min_transaction_date = aggregations?.min_transaction_date as MinDateAggregation;
   const min_investment_date = aggregations?.min_investment_date as MinDateAggregation;
 
-  if (min_transaction_date) {
-    if (min_investment_date) {
+  if (min_transaction_date?.value) {
+    if (min_investment_date?.value) {
       const minTime = Math.min(min_transaction_date.value, min_investment_date.value);
       return new Date(minTime);
     } else {
       return new Date(min_transaction_date.value);
     }
-  } else if (min_investment_date) {
+  } else if (min_investment_date?.value) {
     return new Date(min_investment_date.value);
   } else {
     return new Date();

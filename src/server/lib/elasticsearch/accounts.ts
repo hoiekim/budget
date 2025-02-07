@@ -390,12 +390,17 @@ export const upsertSecurities = async (securities: PartialSecurity[], upsert: bo
  * @returns A promise to be an array of Account objects
  */
 export const searchInstitutionById = async (id: string) => {
-  const response = await client.get<{
-    type: string;
-    institution: Institution;
-  }>({ index, id });
+  const response = await client
+    .get<{
+      type: string;
+      institution: Institution;
+    }>({ index, id })
+    .catch((r) => {
+      if (r.statusCode === 404) return;
+      throw r;
+    });
 
-  const source = response._source;
+  const source = response?._source;
   if (source?.type !== "institution") return;
 
   return new Institution(source.institution);
