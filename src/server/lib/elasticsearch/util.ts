@@ -22,12 +22,7 @@ if (ctx._source.user.user_id == "${user_id}") {
   if (ctx._source.type == "${type}") {
     ${Object.keys(flatten(data)).reduce((acc, key) => {
       if (key === `${type}_id`) return acc;
-      return `${acc}
-      if (params.${key} == null) {
-        ctx._source.${type}.${key} = null;
-      } else {
-        ctx._source.${type}.${key} = params.${key};
-      }`;
+      return acc + `ctx._source.${type}.${key} = params.${key};\n`;
     }, "")}
   } else {
     throw new Exception("Found document is not ${type} type.");
@@ -44,12 +39,7 @@ export const getUpdateScript = (type: string, data: any) => {
 if (ctx._source.type == "${type}") {
   ${Object.keys(flatten(data)).reduce((acc, key) => {
     if (key === `${type}_id`) return acc;
-    return `${acc}
-    if (params.${key} == null) {
-      ctx._source.${type}.${key} = null;
-    } else {
-      ctx._source.${type}.${key} = params.${key};
-    }`;
+    return acc + `ctx._source.${type}.${key} = params.${key};\n`;
   }, "")}
 } else {
   throw new Exception("Found document is not ${type} type.");
