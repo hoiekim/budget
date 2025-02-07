@@ -7,7 +7,7 @@ import {
 } from "plaid";
 import { MaskedUser, updateItemStatus } from "server";
 import { Item, Holding, Security, ItemStatus } from "common";
-import { getPlaidClient, ignorable_error_codes } from "./util";
+import { getClient, ignorable_error_codes } from "./util";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -101,7 +101,7 @@ export interface PlaidAccount {
 }
 
 export const getAccounts = async (user: MaskedUser, items: Item[]) => {
-  const client = getPlaidClient(user);
+  const client = getClient(user);
 
   type PlaidAccountsResponse = {
     items: Item[];
@@ -146,7 +146,7 @@ export const getAccounts = async (user: MaskedUser, items: Item[]) => {
 };
 
 export const getHoldings = async (user: MaskedUser, items: Item[]) => {
-  const client = getPlaidClient(user);
+  const client = getClient(user);
 
   type PlaidHoldingsResponse = {
     items: Item[];

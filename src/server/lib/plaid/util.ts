@@ -12,7 +12,7 @@ if (
   console.warn("Plaid is not cofigured. Check env vars.");
 }
 
-export const getPlaidClient = (user?: MaskedUser) => {
+export const getClient = (user?: MaskedUser) => {
   const isDemo = user?.username === "demo";
   const { production, development, sandbox } = PlaidEnvironments;
 

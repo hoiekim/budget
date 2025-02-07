@@ -207,6 +207,17 @@ export const getDateString = (dateObject = new Date()) => {
 };
 
 /**
+ * @param dateObject Date
+ * @returns YYYYMMDD
+ */
+export const getSquashedDateString = (dateObject = new Date()) => {
+  const { year, month, date } = getDateComponents(dateObject);
+  const formattedMonth = to2DString(month + 1);
+  const formattedDate = to2DString(date);
+  return `${year}${formattedMonth}${formattedDate}`;
+};
+
+/**
  * @param dateOrString If string, YYYY-MM-DD
  * @returns YYYY-MM-DDT00:00:00
  */

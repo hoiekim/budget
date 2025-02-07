@@ -1,5 +1,6 @@
-import { randomUUID } from "crypto";
+import { AccountType } from "plaid";
 import {
+  Account,
   getDateString,
   getDateTimeString,
   Holding,
@@ -7,29 +8,28 @@ import {
   Item,
   RemovedInvestmentTransaction,
   RemovedTransaction,
-  Security,
   Transaction,
 } from "common";
 import {
-  deleteHoldings,
   deleteInvestmentTransactions,
   deleteTransactions,
   getUserItem,
-  RemovedHolding,
+  MaskedUser,
   searchAccountsByItemId,
   searchHoldingsByAccountId,
-  searchSecurities,
   searchTransactionsByAccountId,
   simpleFin,
   upsertAccounts,
-  upsertHoldings,
   upsertInstitutions,
   upsertInvestmentTransactions,
   upsertItems,
-  upsertSecurities,
   upsertTransactions,
-  User,
 } from "server";
+import {
+  upsertSecuritiesWithSnapshots,
+  upsertAccountsWithSnapshots,
+  upsertAndDeleteHoldingsWithSnapshots,
+} from "./create-snapshots";
 
 export const syncSimpleFinData = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -40,7 +40,7 @@ export const syncSimpleFinData = async (item_id: string) => {
   const startDate = getStartDate(item);
 
   const [simpleFinData, storedData] = await Promise.all([
-    simpleFin.getSimpleFinData(item, { startDate }),
+    simpleFin.getData(item, { startDate }),
     getStoredData(user, item, startDate),
   ]);
 
@@ -49,6 +49,7 @@ export const syncSimpleFinData = async (item_id: string) => {
   const {
     transactions: storedTransations,
     investment_transactions: storedInvestmentTransactions,
+    accounts: storedAccounts,
     holdings: storedHoldings,
   } = storedData;
 
@@ -60,9 +61,7 @@ export const syncSimpleFinData = async (item_id: string) => {
     startDate
   );
 
-  const removedHoldings = getRemovedHoldings(holdings, storedHoldings);
-
-  const processHoldingsPromise = processSecurities(securities).then((idMap) => {
+  const processHoldingsPromise = upsertSecuritiesWithSnapshots(securities).then((idMap) => {
     const mappedHoldings = holdings
       .map((h) => {
         const security_id = idMap[h.security_id];
@@ -70,13 +69,20 @@ export const syncSimpleFinData = async (item_id: string) => {
         return new Holding({ ...h, security_id });
       })
       .filter((h): h is Holding => !!h);
-    return upsertHoldings(user, mappedHoldings);
+    return upsertAndDeleteHoldingsWithSnapshots(user, mappedHoldings, storedHoldings);
+  });
+
+  const investmentAccounts: Account[] = [];
+  const otherAccounts: Account[] = [];
+  accounts.forEach((a) => {
+    if (a.type === AccountType.Investment) investmentAccounts.push(a);
+    else otherAccounts.push(a);
   });
 
   await Promise.all([
-    upsertAccounts(user, accounts),
+    upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts),
+    upsertAccounts(user, otherAccounts),
     processHoldingsPromise,
-    deleteHoldings(user, removedHoldings),
     upsertInstitutions(institutions),
     upsertTransactions(user, transactions),
     deleteTransactions(user, removedTransactions),
@@ -105,7 +111,7 @@ const getStartDate = (item: Item) => {
   }
 };
 
-const getStoredData = async (user: User, item: Item, startDate: Date) => {
+const getStoredData = async (user: MaskedUser, item: Item, startDate: Date) => {
   const { item_id } = item;
   const accounts = await searchAccountsByItemId(user, item_id);
   const accountIds = accounts?.map((e) => e.account_id) || [];
@@ -118,7 +124,7 @@ const getStoredData = async (user: User, item: Item, startDate: Date) => {
   ]);
 
   const { transactions, investment_transactions } = transactionsData;
-  return { holdings, transactions, investment_transactions };
+  return { accounts, holdings, transactions, investment_transactions };
 };
 
 const getRemovedTransactions = (
@@ -151,45 +157,4 @@ const getRemovedInvestmentTransactions = (
     if (!found) removedInvestmentTransactions.push({ investment_transaction_id });
   });
   return removedInvestmentTransactions;
-};
-
-const getRemovedHoldings = (holdings: Holding[], storedHoldings: Holding[]) => {
-  const removedHoldings: RemovedHolding[] = [];
-  storedHoldings.forEach((h) => {
-    const { holding_id } = h;
-    const found = holdings.find((f) => f.holding_id === holding_id);
-    if (!found) removedHoldings.push({ holding_id });
-  });
-  return removedHoldings;
-};
-
-const processSecurities = async (securities: Security[]) => {
-  const newSecurities: Security[] = [];
-  const idMap: { [key: string]: string } = {};
-
-  const promises = securities.map(async (s) => {
-    const { security_id, ticker_symbol, iso_currency_code, close_price, close_price_as_of } = s;
-    const storedSecurity = await searchSecurities({ ticker_symbol, iso_currency_code });
-    if (storedSecurity.length) {
-      const existingSecurity = new Security(storedSecurity[0]);
-      idMap[security_id] = existingSecurity.security_id;
-      const { close_price: existingPrice, close_price_as_of: existingDate } = existingSecurity;
-      if (close_price !== existingPrice || close_price_as_of !== existingDate) {
-        existingSecurity.close_price = close_price;
-        existingSecurity.close_price_as_of = close_price_as_of;
-        newSecurities.push(existingSecurity);
-      }
-      return existingSecurity;
-    } else {
-      const newSecurity = new Security({ ...s, security_id: randomUUID() });
-      newSecurities.push(newSecurity);
-      idMap[security_id] = newSecurity.security_id;
-      return newSecurity;
-    }
-  });
-
-  await Promise.all(promises);
-  await upsertSecurities(newSecurities);
-
-  return idMap;
 };

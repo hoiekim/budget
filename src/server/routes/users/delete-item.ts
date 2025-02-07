@@ -20,7 +20,7 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
     };
   }
 
-  await plaid.deletePlaidItem(user, item);
+  await plaid.deleteItem(user, item);
   await deleteItem(user, item_id);
 
   if (user.username === "admin") deleteLocalItem(item_id);

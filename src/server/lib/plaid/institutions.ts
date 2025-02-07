@@ -1,10 +1,10 @@
 import { CountryCode } from "plaid";
 import { MaskedUser } from "server";
 import { Institution } from "common";
-import { getPlaidClient } from "./util";
+import { getClient } from "./util";
 
 export const getInstitution = async (user: MaskedUser, id: string) => {
-  const client = getPlaidClient(user);
+  const client = getClient(user);
 
   try {
     const response = await client.institutionsGetById({

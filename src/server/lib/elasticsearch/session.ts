@@ -1,5 +1,6 @@
 import { Store, SessionData, Cookie } from "express-session";
-import { elasticsearchClient, index } from "server";
+import { client } from "./client";
+import { index } from ".";
 
 /**
  * The REAL `Cookie` type that's used by express-session in runtime.
@@ -33,7 +34,7 @@ export type StoredSessionData = Omit<SessionData, "cookie"> & { cookie: StoredCo
  * @returns  A promise to be a StoredSessionData object.
  */
 export const searchSession = async (session_id: string) => {
-  const data = await elasticsearchClient
+  const data = await client
     .get<{ session: StoredSessionData }>({ index, id: session_id })
     .catch((error) => {
       if (error.body?.found === false) return;
@@ -49,7 +50,7 @@ export const searchSession = async (session_id: string) => {
  * @returns A promise to be an Elasticsearch response object.
  */
 export const updateSession = async (session_id: string, session: StoredSessionData) => {
-  return elasticsearchClient.index({
+  return client.index({
     index,
     id: session_id,
     document: { type: "session", session },
@@ -62,7 +63,7 @@ export const updateSession = async (session_id: string, session: StoredSessionDa
  * @returns A promise to be an Elasticsearch response object.
  */
 export const deleteSession = async (session_id: string) => {
-  return elasticsearchClient.delete({ index, id: session_id });
+  return client.delete({ index, id: session_id });
 };
 
 /**
@@ -71,7 +72,7 @@ export const deleteSession = async (session_id: string) => {
  */
 export const purgeSessions = async () => {
   const now = new Date().toISOString();
-  return elasticsearchClient.deleteByQuery({
+  return client.deleteByQuery({
     index,
     query: {
       bool: {

@@ -10,6 +10,7 @@ import {
   Transaction,
   TransactionLabel,
 } from "common";
+import { randomUUID } from "crypto";
 import { AccountType } from "plaid";
 
 export interface SimpleFinAccount {
@@ -161,6 +162,7 @@ export const translateHolding = (
   const iso_currency_code = currencyString || simpleFinAccount.currency;
 
   const security = new Security({
+    security_id: randomUUID(),
     ticker_symbol: symbol,
     name: description,
     iso_currency_code,

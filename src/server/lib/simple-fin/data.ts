@@ -22,7 +22,7 @@ export interface GetSimpleFinDataOptions {
   accountId?: string;
 }
 
-export const getSimpleFinData = async (item: Item, options: GetSimpleFinDataOptions) => {
+export const getData = async (item: Item, options: GetSimpleFinDataOptions) => {
   const { access_token } = item;
   const { startDate, endDate = new Date(), accountId } = options;
   const { url, credentials } = decodeAccessUrl(access_token);

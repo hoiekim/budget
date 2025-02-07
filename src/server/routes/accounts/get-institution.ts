@@ -16,7 +16,7 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
     }
 
     const id = req.query.id as string;
-    const storedInstitution = await searchInstitutionById(user, id);
+    const storedInstitution = await searchInstitutionById(id);
     if (storedInstitution) {
       return { status: "success", body: storedInstitution };
     } else {

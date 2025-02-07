@@ -59,7 +59,6 @@ const Header = () => {
 
   const onClickHamburger: MouseEventHandler<HTMLAnchorElement> = (e) => {
     e.preventDefault();
-    console.log("!!");
     if ([PATH.CONFIG, PATH.CONNECTION_DETAIL].includes(path)) back();
     else go(PATH.CONFIG);
   };

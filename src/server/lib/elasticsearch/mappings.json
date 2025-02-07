@@ -299,6 +299,14 @@
         "roll_over": { "type": "boolean" },
         "roll_over_start_date": { "type": "date" }
       }
+    },
+    "snapshot": {
+      "type": "object",
+      "dynamic": "strict",
+      "properties": {
+        "snapshot_id": { "type": "keyword" },
+        "date": { "type": "date" }
+      }
     }
   }
 }

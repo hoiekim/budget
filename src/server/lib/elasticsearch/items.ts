@@ -1,7 +1,8 @@
 import { Item, ItemStatus } from "common";
-import { elasticsearchClient, index } from "./client";
+import { client } from "./client";
 import { MaskedUser, searchUser } from "./users";
 import { getUpdateItemScript } from "./util";
+import { index } from ".";
 
 /**
  * Updates or inserts items documents associated with given user.
@@ -35,7 +36,7 @@ export const upsertItems = async (
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };
@@ -53,7 +54,7 @@ export const searchItems = async (user?: MaskedUser) => {
   const filter: any[] = [{ term: { type: "item" } }];
   if (user_id) filter.push({ term: { "user.user_id": user_id } });
 
-  const response = await elasticsearchClient.search<{ item: Item }>({
+  const response = await client.search<{ item: Item }>({
     index,
     from: 0,
     size: 10000,
@@ -64,9 +65,9 @@ export const searchItems = async (user?: MaskedUser) => {
     .map((e) => {
       const source = e._source;
       if (!source) return null;
-      return { ...source.item, item_id: e._id };
+      return new Item({ ...source.item, item_id: e._id });
     })
-    .filter((e) => e) as Item[];
+    .filter((e): e is Item => !!e);
 };
 
 /**
@@ -75,13 +76,15 @@ export const searchItems = async (user?: MaskedUser) => {
  * @returns A promise to be an Item object
  */
 export const getItem = async (item_id: string) => {
-  const response = await elasticsearchClient.get<{ item: Item }>({ index, id: item_id });
-  return response._source?.item;
+  const response = await client.get<{ item: Item }>({ index, id: item_id });
+  const item = response._source?.item;
+  if (!item) return;
+  return new Item(item);
 };
 
 export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
   type ItemDoc = { item: Item; user: { user_id: string } };
-  const response = await elasticsearchClient.get<ItemDoc>({ index, id: item_id });
+  const response = await client.get<ItemDoc>({ index, id: item_id });
   const itemDoc = response._source;
   if (!itemDoc) return;
   const { user_id } = itemDoc.user;
@@ -92,13 +95,13 @@ export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
 
 export const getUserItem = async (item_id: string) => {
   type ItemDoc = { item: Item; user: { user_id: string } };
-  const response = await elasticsearchClient.get<ItemDoc>({ index, id: item_id });
+  const response = await client.get<ItemDoc>({ index, id: item_id });
   const itemDoc = response._source;
   if (!itemDoc) return;
   const { item, user } = itemDoc;
   const foundUser = await searchUser({ user_id: user.user_id });
   if (!foundUser) return;
-  return { user: foundUser, item };
+  return { user: foundUser, item: new Item(item) };
 };
 
 /**
@@ -110,7 +113,7 @@ export const getUserItem = async (item_id: string) => {
 export const deleteItem = async (user: MaskedUser, item_id: string) => {
   const { user_id } = user;
 
-  const itemJob = elasticsearchClient.deleteByQuery({
+  const itemJob = client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -123,7 +126,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
     },
   });
 
-  const otherJob = elasticsearchClient
+  const otherJob = client
     .search({
       index,
       query: {
@@ -138,12 +141,15 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
     })
     .then((r) => {
       const account_ids = r.hits.hits.map((e) => e._id);
-      return elasticsearchClient.deleteByQuery({
+      return client.deleteByQuery({
         index,
         query: {
           bool: {
             should: account_ids.flatMap((account_id) => [
               { term: { _id: account_id } },
+              { term: { "account.account_id": account_id } },
+              { term: { "holding.account_id": account_id } },
+              // TODO: associated split_transactions should be deleted with transactions
               { term: { "transaction.account_id": account_id } },
               { term: { "investment_transaction.account_id": account_id } },
             ]),

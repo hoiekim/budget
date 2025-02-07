@@ -71,25 +71,33 @@ export const assign = <T>(target: T, source: any) => {
   return target;
 };
 
-export const deepEqual = (x: any, y: any) => {
-  return isSubset(x, y, (x, y) => Object.keys(x).length === Object.keys(y).length);
-};
+interface IsEqualOptions {
+  usePartialMatch?: boolean;
+  ignoreFunctions?: boolean;
+}
 
-export const isSubset = (
-  whole: any,
-  part: any,
-  extraCondition?: (whole: any, part: any) => boolean
-) => {
-  if (extraCondition && !extraCondition(whole, part)) return false;
-  if (whole === part) return true;
-  else if (whole && typeof whole === "object" && part && typeof part === "object") {
-    for (const prop in part) {
-      if (whole.hasOwnProperty(prop)) {
-        if (!isSubset(whole[prop], part[prop])) return false;
-      } else return false;
+export const isEqual = (x: any, y: any, options?: IsEqualOptions) => {
+  const { usePartialMatch = false, ignoreFunctions = true } = options || {};
+  if (x === y) {
+    return true;
+  } else if (ignoreFunctions && typeof x === "function" && typeof y === "function") {
+    return true;
+  } else if (x && typeof x === "object" && y && typeof y === "object") {
+    if (!usePartialMatch && Object.keys(x).length !== Object.keys(y).length) {
+      return false;
+    }
+    for (const prop in y) {
+      if (!x.hasOwnProperty(prop)) return false;
+      else if (!isEqual(x[prop], y[prop], options)) return false;
     }
     return true;
-  } else return false;
+  } else {
+    return false;
+  }
+};
+
+export const isSubset = (whole: any, part: any) => {
+  return isEqual(whole, part, { usePartialMatch: true });
 };
 
 const schedule = new Map<string, Timeout>();

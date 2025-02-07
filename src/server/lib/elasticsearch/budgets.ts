@@ -5,7 +5,8 @@ import {
   getUpdateCategoryScript,
 } from "server";
 import { Budget, Section, Category, JSONBudget, JSONSection, JSONCategory } from "common";
-import { elasticsearchClient, index } from "./client";
+import { client } from "./client";
+import { index } from ".";
 
 /**
  * Creates a document that represents a budget.
@@ -21,7 +22,7 @@ export const createBudget = async (user: MaskedUser) => {
   const budget: UnindexedBudget = new Budget();
   delete budget.budget_id;
 
-  const response = await elasticsearchClient.index({
+  const response = await client.index({
     index,
     document: { type: "budget", user: { user_id }, budget },
   });
@@ -40,7 +41,7 @@ export type PartialBudget = { budget_id: string } & Partial<Budget>;
 export const updateBudget = async (user: MaskedUser, budget: PartialBudget) => {
   const { budget_id } = budget;
   const script = getUpdateBudgetScript(user, budget);
-  return elasticsearchClient.update({ index, id: budget_id, script });
+  return client.update({ index, id: budget_id, script });
 };
 
 /**
@@ -54,7 +55,7 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
 
   const { user_id } = user;
 
-  const section_ids = await elasticsearchClient
+  const section_ids = await client
     .search({
       index,
       query: {
@@ -65,7 +66,7 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
       return r.hits.hits.map((e) => e._id);
     });
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -106,7 +107,7 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
   const section: UnindexedSection = new Section({ budget_id });
   delete section.section_id;
 
-  const response = await elasticsearchClient.index({
+  const response = await client.index({
     index,
     document: { type: "section", user: { user_id }, section },
   });
@@ -125,7 +126,7 @@ export type PartialSection = { section_id: string } & Partial<Section>;
 export const updateSection = async (user: MaskedUser, section: PartialSection) => {
   const { section_id } = section;
   const script = getUpdateSectionScript(user, section);
-  return elasticsearchClient.update({ index, id: section_id, script });
+  return client.update({ index, id: section_id, script });
 };
 
 /**
@@ -139,7 +140,7 @@ export const deleteSection = async (user: MaskedUser, section_id: string) => {
 
   const { user_id } = user;
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -150,10 +151,7 @@ export const deleteSection = async (user: MaskedUser, section_id: string) => {
               should: [
                 {
                   bool: {
-                    filter: [
-                      { term: { type: "section" } },
-                      { term: { _id: section_id } },
-                    ],
+                    filter: [{ term: { type: "section" } }, { term: { _id: section_id } }],
                   },
                 },
                 { term: { "category.section_id": section_id } },
@@ -182,7 +180,7 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
   const category: UnindexedCategory = new Category({ section_id });
   delete category.category_id;
 
-  const response = await elasticsearchClient.index({
+  const response = await client.index({
     index,
     document: { type: "category", user: { user_id }, category },
   });
@@ -201,7 +199,7 @@ export type PartialCategory = { category_id: string } & Partial<Category>;
 export const updateCategory = async (user: MaskedUser, category: PartialCategory) => {
   const { category_id } = category;
   const script = getUpdateCategoryScript(user, category);
-  return elasticsearchClient.update({ index, id: category_id, script });
+  return client.update({ index, id: category_id, script });
 };
 
 /**
@@ -215,7 +213,7 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
 
   const { user_id } = user;
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -237,7 +235,7 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
  * @returns A promise to be an array of Account objects
  */
 export const searchBudgets = async (user: MaskedUser) => {
-  const response = await elasticsearchClient.search<{
+  const response = await client.search<{
     type: string;
     budget?: JSONBudget;
     section?: JSONSection;

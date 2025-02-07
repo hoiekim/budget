@@ -20,8 +20,7 @@
     "ts-compile-server": "tsc -p ./tsconfig.server.json",
     "dev-client": "react-scripts start",
     "dev-server": "nodemon ./src/server/start.ts",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "test": "jest"
   },
   "eslintConfig": {
     "extends": [
@@ -42,12 +41,9 @@
     ]
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^5.16.5",
-    "@testing-library/react": "^13.2.0",
-    "@testing-library/user-event": "^13.5.0",
     "@types/bcrypt": "^5.0.0",
     "@types/express-session": "^1.17.4",
-    "@types/jest": "^27.5.1",
+    "@types/jest": "^29.5.14",
     "@types/node": "^16.11.36",
     "@types/react": "^18.0.9",
     "@types/react-dom": "^18.0.4",
@@ -57,6 +53,7 @@
     "react-dom": "^18.1.0",
     "react-plaid-link": "^3.3.2",
     "react-scripts": "^5.0.1",
+    "ts-jest": "^29.2.5",
     "ts-node": "^10.4.0",
     "typescript": "^4.6.4",
     "webpack": "^5.72.1",

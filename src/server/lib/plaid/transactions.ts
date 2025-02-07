@@ -8,12 +8,12 @@ import {
 } from "plaid";
 import { MaskedUser, updateItemStatus } from "server";
 import { Item, ItemStatus, getDateString, getDateTimeString } from "common";
-import { getPlaidClient, ignorable_error_codes } from "./util";
+import { getClient, ignorable_error_codes } from "./util";
 
 export interface PlaidTransaction extends Transaction {}
 
 export const getTransactions = async (user: MaskedUser, items: Item[]) => {
-  const client = getPlaidClient(user);
+  const client = getClient(user);
 
   type PlaidTransactionsResponse = {
     items: Item[];
@@ -91,7 +91,7 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
 export interface PlaidInvestmentTransaction extends InvestmentTransaction {}
 
 export const getInvestmentTransactions = async (user: MaskedUser, items: Item[]) => {
-  const client = getPlaidClient(user);
+  const client = getClient(user);
 
   type PlaidInvestmentTransactionsResponse = {
     items: Item[];

@@ -6,8 +6,9 @@ import {
   getUpdateSecurityScript,
 } from "server";
 import { Account, Holding, Institution, Security } from "common";
-import { elasticsearchClient, index } from "./client";
+import { client } from "./client";
 import { MaskedUser } from "./users";
+import { index } from ".";
 
 export type PartialAccount = { account_id: string } & Partial<Account>;
 
@@ -41,7 +42,7 @@ export const upsertAccounts = async (
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };
@@ -54,7 +55,7 @@ export const upsertAccounts = async (
 export const searchAccounts = async (user: MaskedUser) => {
   const { user_id } = user;
 
-  const response = await elasticsearchClient.search<{
+  const response = await client.search<{
     account: Account;
     holding: Holding;
   }>({
@@ -89,11 +90,51 @@ export const searchAccounts = async (user: MaskedUser) => {
     const source = e._source;
     if (!source) return;
     const { account, holding } = source;
-    if (account) result.accounts.push(account);
-    if (holding) result.holdings.push(holding);
+    if (account) result.accounts.push(new Account(account));
+    if (holding) result.holdings.push(new Holding(holding));
   });
 
   return result;
+};
+
+/**
+ * Searches for accounts associated with given user and account ids.
+ * @param user
+ * @param accountIds
+ * @returns A promise to be an array of Account objects
+ */
+export const searchAccountsById = async (user: MaskedUser, accountIds: string[]) => {
+  const { user_id } = user;
+
+  const response = await client.search<{ account: Account }>({
+    index,
+    from: 0,
+    size: 10000,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "account" } },
+          {
+            bool: {
+              should: accountIds.map((e) => ({ term: { "holding.account_id": e } })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const accounts: Account[] = [];
+
+  response.hits.hits.forEach((e) => {
+    const source = e._source;
+    if (!source) return;
+    const { account } = source;
+    if (account) accounts.push(new Account(account));
+  });
+
+  return accounts;
 };
 
 /**
@@ -105,13 +146,17 @@ export const searchAccounts = async (user: MaskedUser) => {
 export const searchAccountsByItemId = async (user: MaskedUser, item_id: string) => {
   const { user_id } = user;
 
-  const response = await elasticsearchClient.search<{ account: Account }>({
+  const response = await client.search<{ account: Account }>({
     index,
     from: 0,
     size: 10000,
     query: {
       bool: {
-        filter: [{ term: { "user.user_id": user_id } }, { term: { "account.item_id": item_id } }],
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "account" } },
+          { term: { "account.item_id": item_id } },
+        ],
       },
     },
   });
@@ -122,7 +167,7 @@ export const searchAccountsByItemId = async (user: MaskedUser, item_id: string) 
     const source = e._source;
     if (!source) return;
     const { account } = source;
-    if (account) accounts.push(account);
+    if (account) accounts.push(new Account(account));
   });
 
   return accounts;
@@ -142,7 +187,7 @@ export const deleteAccounts = async (user: MaskedUser, accounts: (Account | Remo
   if (!Array.isArray(accounts) || !accounts.length) return;
   const { user_id } = user;
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -165,7 +210,7 @@ export const deleteAccounts = async (user: MaskedUser, accounts: (Account | Remo
 export const searchHoldingsByAccountId = async (user: MaskedUser, accountIds: string[]) => {
   const { user_id } = user;
 
-  const response = await elasticsearchClient.search<{ holding: Holding }>({
+  const response = await client.search<{ holding: Holding }>({
     index,
     from: 0,
     size: 10000,
@@ -190,7 +235,7 @@ export const searchHoldingsByAccountId = async (user: MaskedUser, accountIds: st
     const source = e._source;
     if (!source) return;
     const { holding } = source;
-    if (holding) holdings.push(holding);
+    if (holding) holdings.push(new Holding(holding));
   });
 
   return holdings;
@@ -221,7 +266,7 @@ export const upsertHoldings = async (
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };
@@ -234,7 +279,7 @@ export const deleteHoldings = async (user: MaskedUser, holdings: (Holding | Remo
   if (!Array.isArray(holdings) || !holdings.length) return;
   const { user_id } = user;
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -255,7 +300,7 @@ export const deleteHoldings = async (user: MaskedUser, holdings: (Holding | Remo
 };
 
 export const searchSecurities = async (query: Partial<Security>) => {
-  const response = await elasticsearchClient.search<{ security: Security }>({
+  const response = await client.search<{ security: Security }>({
     index,
     from: 0,
     size: 10000,
@@ -277,7 +322,38 @@ export const searchSecurities = async (query: Partial<Security>) => {
     const source = e._source;
     if (!source) return;
     const { security } = source;
-    if (security) securities.push(security);
+    if (security) securities.push(new Security(security));
+  });
+
+  return securities;
+};
+
+export const searchSecuritiesById = async (securityIds: string[]) => {
+  const response = await client.search<{ security: Security }>({
+    index,
+    from: 0,
+    size: 10000,
+    query: {
+      bool: {
+        filter: [
+          { term: { type: "security" } },
+          {
+            bool: {
+              should: securityIds.map((_id) => ({ term: { _id } })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const securities: Security[] = [];
+
+  response.hits.hits.forEach((e) => {
+    const source = e._source;
+    if (!source) return;
+    const { security } = source;
+    if (security) securities.push(new Security(security));
   });
 
   return securities;
@@ -303,30 +379,26 @@ export const upsertSecurities = async (securities: PartialSecurity[], upsert: bo
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };
 
 /**
- * Searches for institution associated with given user and id.
+ * Searches for institution associated with given and id.
  * @param user_id
  * @returns A promise to be an array of Account objects
  */
-export const searchInstitutionById = async (user: MaskedUser, id: string) => {
-  const { user_id } = user;
-
-  const response = await elasticsearchClient.get<{
-    user: MaskedUser;
+export const searchInstitutionById = async (id: string) => {
+  const response = await client.get<{
     type: string;
     institution: Institution;
   }>({ index, id });
 
   const source = response._source;
-  if (source?.user.user_id !== user_id) return;
   if (source?.type !== "institution") return;
 
-  return response._source?.institution;
+  return new Institution(source.institution);
 };
 
 export type PartialInstitution = { institution_id: string } & Partial<Institution>;
@@ -352,7 +424,7 @@ export const upsertInstitutions = async (
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };

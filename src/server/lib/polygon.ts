@@ -30,7 +30,7 @@ export const getTickerDetail = async (ticker_symbol: string) => {
   return { ticker_symbol, name, currency_name };
 };
 
-export const getSecurityBySymbol = async (ticker_symbol: string, date = new Date()) => {
+export const getSecurityForSymbol = async (ticker_symbol: string, date = new Date()) => {
   const [close_price, detail] = await Promise.all([
     getClosePrice(ticker_symbol, date),
     getTickerDetail(ticker_symbol),

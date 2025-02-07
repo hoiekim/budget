@@ -1,12 +1,6 @@
 import mappings from "./mappings.json";
-import {
-  elasticsearchClient,
-  index,
-  getLocalItems,
-  searchUser,
-  indexUser,
-  upsertItems,
-} from "server";
+import { index, getLocalItems, searchUser, indexUser, upsertItems } from "server";
+import { client } from "./client";
 
 const { properties }: any = mappings;
 
@@ -19,7 +13,7 @@ const { properties }: any = mappings;
 export const initializeIndex = async (): Promise<void> => {
   console.info("Initialization started.");
   try {
-    const { status } = await elasticsearchClient.cluster.health({
+    const { status } = await client.cluster.health({
       wait_for_status: "yellow",
       timeout: "5s",
     });
@@ -34,12 +28,12 @@ export const initializeIndex = async (): Promise<void> => {
       setTimeout(() => res(initializeIndex()), 10000);
     });
   }
-  const indexAlreadyExists = await elasticsearchClient.indices.exists({ index });
+  const indexAlreadyExists = await client.indices.exists({ index });
 
   if (indexAlreadyExists) {
     console.info("Existing Elasticsearch index is found.");
 
-    const response = await elasticsearchClient.indices
+    const response = await client.indices
       .putMapping({
         index,
         properties,
@@ -53,7 +47,7 @@ export const initializeIndex = async (): Promise<void> => {
       throw new Error("Failed to setup mappings for Elasticsearch index.");
     }
   } else {
-    const response = await elasticsearchClient.indices
+    const response = await client.indices
       .create({
         index,
         mappings: { properties, dynamic: "strict" },

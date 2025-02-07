@@ -1,6 +1,7 @@
 import {
   Account,
   InvestmentTransaction,
+  Item,
   RemovedInvestmentTransaction,
   TWO_WEEKS,
   Transaction,
@@ -13,14 +14,19 @@ import {
   plaid,
   getUserItem,
   upsertAccounts,
-  upsertHoldings,
   upsertInvestmentTransactions,
   upsertItems,
-  upsertSecurities,
   upsertTransactions,
   searchAccountsByItemId,
   searchTransactionsByAccountId,
+  searchHoldingsByAccountId,
+  MaskedUser,
 } from "server";
+import {
+  upsertAccountsWithSnapshots,
+  upsertAndDeleteHoldingsWithSnapshots,
+  upsertSecuritiesWithSnapshots,
+} from "./create-snapshots";
 
 export const syncPlaidTransactions = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -157,7 +163,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
 
   const { user, item } = userItem;
 
-  const getAccountsFromPlaid = plaid
+  const syncAccounts = plaid
     .getAccounts(user, [item])
     .then(async (r) => {
       const accounts = r.accounts.map<Account>((e) => {
@@ -168,19 +174,30 @@ export const syncPlaidAccounts = async (item_id: string) => {
     })
     .catch(console.error);
 
-  const getHoldingsFromPlaid = plaid
-    .getHoldings(user, [item])
-    .then(async ({ accounts, holdings, securities }) => {
-      upsertAccounts(user, accounts);
-      upsertHoldings(user, holdings);
-      upsertSecurities(securities);
+  const syncHoldings = Promise.all([
+    plaid.getHoldings(user, [item]),
+    getStoredAccountsData(user, item),
+  ])
+    .then(async ([plaidData, storedData]) => {
+      const { accounts, holdings, securities } = plaidData;
+      const { accounts: storedAccounts, holdings: storedHoldings } = storedData;
+      await Promise.all([
+        upsertAccountsWithSnapshots(user, accounts, storedAccounts),
+        upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings),
+        upsertSecuritiesWithSnapshots(securities),
+      ]);
       return accounts;
     })
     .catch(console.error);
 
-  const [accounts, investmentAccounts] = await Promise.all([
-    getAccountsFromPlaid,
-    getHoldingsFromPlaid,
-  ]);
+  const [accounts, investmentAccounts] = await Promise.all([syncAccounts, syncHoldings]);
   return { accounts, investmentAccounts };
+};
+
+const getStoredAccountsData = async (user: MaskedUser, item: Item) => {
+  const { item_id } = item;
+  const accounts = await searchAccountsByItemId(user, item_id);
+  const accountIds = accounts?.map((e) => e.account_id) || [];
+  const holdings = await searchHoldingsByAccountId(user, accountIds);
+  return { accounts, holdings };
 };

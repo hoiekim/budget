@@ -12,7 +12,8 @@ import {
   getUpdateInvestmentTransactionScript,
   getUpdateSplitTransactionScript,
 } from "server";
-import { elasticsearchClient, index } from "./client";
+import { client } from "./client";
+import { index } from ".";
 
 export type PartialTransaction = { transaction_id: string } & Partial<Transaction>;
 
@@ -46,7 +47,7 @@ export const upsertTransactions = async (
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };
@@ -73,7 +74,7 @@ export const searchTransactions = async (user: MaskedUser, range?: DateRange) =>
     split_transaction: SplitTransaction;
   };
 
-  const response = await elasticsearchClient.search<Response>({
+  const response = await client.search<Response>({
     index,
     from: 0,
     size: 10000,
@@ -120,12 +121,12 @@ export const searchTransactions = async (user: MaskedUser, range?: DateRange) =>
   response.hits.hits.forEach(({ _source, _id }) => {
     if (!_source) return;
     const { transaction, investment_transaction, split_transaction } = _source;
-    if (transaction) result.transactions.push(transaction);
+    if (transaction) result.transactions.push(new Transaction(transaction));
     else if (investment_transaction) {
-      result.investment_transactions.push(investment_transaction);
+      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
     } else if (split_transaction) {
       split_transaction.split_transaction_id = _id;
-      result.split_transactions.push(split_transaction);
+      result.split_transactions.push(new SplitTransaction(split_transaction));
     }
   });
 
@@ -147,7 +148,7 @@ export const searchTransactionById = async (user: MaskedUser, id: string) => {
     split_transaction: SplitTransaction;
   };
 
-  const response = await elasticsearchClient.search<Response>({
+  const response = await client.search<Response>({
     index,
     from: 0,
     size: 10000,
@@ -184,12 +185,12 @@ export const searchTransactionById = async (user: MaskedUser, id: string) => {
   response.hits.hits.forEach(({ _source, _id }) => {
     if (!_source) return;
     const { transaction, investment_transaction, split_transaction } = _source;
-    if (transaction) result.transactions.push(transaction);
+    if (transaction) result.transactions.push(new Transaction(transaction));
     else if (investment_transaction) {
-      result.investment_transactions.push(investment_transaction);
+      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
     } else if (split_transaction) {
       split_transaction.split_transaction_id = _id;
-      result.split_transactions.push(split_transaction);
+      result.split_transactions.push(new SplitTransaction(split_transaction));
     }
   });
 
@@ -218,7 +219,7 @@ export const searchTransactionsByAccountId = async (
     split_transaction: SplitTransaction;
   };
 
-  const response = await elasticsearchClient.search<Response>({
+  const response = await client.search<Response>({
     index,
     from: 0,
     size: 10000,
@@ -285,12 +286,12 @@ export const searchTransactionsByAccountId = async (
   response.hits.hits.forEach(({ _source, _id }) => {
     if (!_source) return;
     const { transaction, investment_transaction, split_transaction } = _source;
-    if (transaction) result.transactions.push(transaction);
+    if (transaction) result.transactions.push(new Transaction(transaction));
     else if (investment_transaction) {
-      result.investment_transactions.push(investment_transaction);
+      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
     } else if (split_transaction) {
       split_transaction.split_transaction_id = _id;
-      result.split_transactions.push(split_transaction);
+      result.split_transactions.push(new SplitTransaction(split_transaction));
     }
   });
 
@@ -305,7 +306,7 @@ export const searchTransactionsByAccountId = async (
 export const getOldestTransactionDate = async (user: MaskedUser) => {
   const { user_id } = user;
 
-  const { aggregations } = await elasticsearchClient.search({
+  const { aggregations } = await client.search({
     index,
     size: 0,
     query: { term: { "user.user_id": user_id } },
@@ -349,7 +350,7 @@ export const deleteTransactions = async (
   if (!Array.isArray(transactions) || !transactions.length) return;
   const { user_id } = user;
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -406,7 +407,7 @@ export const upsertInvestmentTransactions = async (
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };
@@ -424,7 +425,7 @@ export const deleteInvestmentTransactions = async (
   if (!Array.isArray(investment_transactions) || !investment_transactions.length) return;
   const { user_id } = user;
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
@@ -461,7 +462,7 @@ export const createSplitTransaction = async (user: MaskedUser, transaction_id: s
   const split_transaction: UnindexedSplitTransaction = new SplitTransaction({ transaction_id });
   delete split_transaction.split_transaction_id;
 
-  const response = await elasticsearchClient.index({
+  const response = await client.index({
     index,
     document: { type: "split_transaction", user: { user_id }, split_transaction },
   });
@@ -505,7 +506,7 @@ export const upsertSplitTransactions = async (
     return [bulkHead, bulkBody];
   });
 
-  const response = await elasticsearchClient.bulk({ operations });
+  const response = await client.bulk({ operations });
 
   return response.items;
 };
@@ -523,7 +524,7 @@ export const deleteSplitTransactions = async (
   if (!Array.isArray(split_transactions) || !split_transactions.length) return;
   const { user_id } = user;
 
-  const response = await elasticsearchClient.deleteByQuery({
+  const response = await client.deleteByQuery({
     index,
     query: {
       bool: {
