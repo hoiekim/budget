@@ -181,11 +181,9 @@ export const syncPlaidAccounts = async (item_id: string) => {
     .then(async ([plaidData, storedData]) => {
       const { accounts, holdings, securities } = plaidData;
       const { accounts: storedAccounts, holdings: storedHoldings } = storedData;
-      await Promise.all([
-        upsertAccountsWithSnapshots(user, accounts, storedAccounts),
-        upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings),
-        upsertSecuritiesWithSnapshots(securities),
-      ]);
+      await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
+      await upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings);
+      await upsertSecuritiesWithSnapshots(securities);
       return accounts;
     })
     .catch(console.error);

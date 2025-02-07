@@ -44,7 +44,10 @@ export const upsertAccountsWithSnapshots = async (
       };
     });
 
-  return Promise.all([upsertAccounts(user, incomingAccounts), upsertSnapshots(snapshots)]);
+  await upsertAccounts(user, incomingAccounts);
+  await upsertSnapshots(snapshots);
+
+  return;
 };
 
 export const upsertAndDeleteHoldingsWithSnapshots = async (
@@ -83,11 +86,9 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
       });
     });
 
-  return Promise.all([
-    upsertHoldings(user, incomingHoldings),
-    upsertSnapshots(snapshots),
-    deleteHoldings(user, removedHoldings),
-  ]);
+  await upsertHoldings(user, incomingHoldings);
+  await upsertSnapshots(snapshots);
+  await deleteHoldings(user, removedHoldings);
 };
 
 export const upsertSecuritiesWithSnapshots = async (securities: Security[]) => {
@@ -142,7 +143,8 @@ export const upsertSecuritiesWithSnapshots = async (securities: Security[]) => {
   });
 
   await Promise.all(promises);
-  await Promise.all([upsertSecurities(newSecurities), upsertSnapshots(snapshots)]);
+  await upsertSecurities(newSecurities);
+  await upsertSnapshots(snapshots);
 
   return idMap;
 };

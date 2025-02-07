@@ -7,12 +7,12 @@ export const scheduledSync = async () => {
   console.log(`Scheduled sync started`);
   try {
     const items = await searchItems();
-    const promises = items.map(({ item_id, provider }) => {
+    for (const { item_id, provider } of items) {
       if (provider === ItemProvider.PLAID) {
         let accountsCount = 0;
         let transactionsCount = 0;
 
-        const accountsPromise = syncPlaidAccounts(item_id)
+        await syncPlaidAccounts(item_id)
           .then((r) => {
             if (!r) throw new Error("Error occured during syncAllPlaidAccounts");
             const { accounts, investmentAccounts } = r;
@@ -20,7 +20,7 @@ export const scheduledSync = async () => {
           })
           .catch(console.error);
 
-        const transactionsPromise = syncPlaidTransactions(item_id)
+        await syncPlaidTransactions(item_id)
           .then((r) => {
             if (!r) throw new Error("Error occured during syncAllPlaidTransactions");
             const { added, modified, removed } = r;
@@ -28,14 +28,12 @@ export const scheduledSync = async () => {
           })
           .catch(console.error);
 
-        return Promise.all([accountsPromise, transactionsPromise]).then(() => {
-          console.group(`Synced all data for Plaid item: ${item_id}`);
-          console.log(`${accountsCount} accounts updated`);
-          console.log(`${transactionsCount} transactions updated`);
-          console.groupEnd();
-        });
+        console.group(`Synced all data for Plaid item: ${item_id}`);
+        console.log(`${accountsCount} accounts updated`);
+        console.log(`${transactionsCount} transactions updated`);
+        console.groupEnd();
       } else if (provider === ItemProvider.SIMPLE_FIN) {
-        return syncSimpleFinData(item_id)
+        await syncSimpleFinData(item_id)
           .then((r) => {
             if (!r) throw new Error("Error occured during syncAllSimpleFinData");
             const { accounts, transactions, investmentTransactions } = r;
@@ -47,8 +45,7 @@ export const scheduledSync = async () => {
           })
           .catch(console.error);
       }
-    });
-    await Promise.all(promises);
+    }
   } catch (err) {
     console.error("Error occured during scheduled sync");
     console.error(err);

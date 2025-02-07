@@ -79,16 +79,14 @@ export const syncSimpleFinData = async (item_id: string) => {
     else otherAccounts.push(a);
   });
 
-  await Promise.all([
-    upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts),
-    upsertAccounts(user, otherAccounts),
-    processHoldingsPromise,
-    upsertInstitutions(institutions),
-    upsertTransactions(user, transactions),
-    deleteTransactions(user, removedTransactions),
-    upsertInvestmentTransactions(user, investmentTransactions),
-    deleteInvestmentTransactions(user, removedInvestmentTransaction),
-  ]);
+  await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
+  await upsertAccounts(user, otherAccounts);
+  await processHoldingsPromise;
+  await upsertInstitutions(institutions);
+  await upsertTransactions(user, transactions);
+  await deleteTransactions(user, removedTransactions);
+  await upsertInvestmentTransactions(user, investmentTransactions);
+  await deleteInvestmentTransactions(user, removedInvestmentTransaction);
 
   const updated = getDateString();
   await upsertItems(user, [new Item({ ...item, updated })]);

@@ -1,5 +1,15 @@
 import { randomUUID } from "crypto";
-import { plaid, simpleFin, Route, pushLocalItem, upsertItems, MaskedUser } from "server";
+import {
+  plaid,
+  simpleFin,
+  Route,
+  pushLocalItem,
+  upsertItems,
+  MaskedUser,
+  syncSimpleFinData,
+  syncPlaidAccounts,
+  syncPlaidTransactions,
+} from "server";
 import { Item, ItemProvider, ItemStatus } from "common";
 
 export interface PbulicTokenPostResponse {
@@ -36,6 +46,9 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
 
       await upsertItems(user, [item]);
       if (user.username === "admin") pushLocalItem(item);
+
+      await syncSimpleFinData(item.id);
+
       return { status: "success", body: { item } };
     } else if (provider === ItemProvider.PLAID) {
       const { public_token, institution_id } = req.body;
@@ -49,6 +62,9 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       const item = await exchangePlaidToken(user, public_token, institution_id);
       await upsertItems(user, [item]);
       if (user.username === "admin") pushLocalItem(item);
+
+      await Promise.all([syncPlaidAccounts(item.id), syncPlaidTransactions(item.id)]);
+
       return { status: "success", body: { item } };
     } else {
       return {
