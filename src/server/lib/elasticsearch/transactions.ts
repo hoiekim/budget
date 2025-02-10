@@ -5,12 +5,14 @@ import {
   RemovedInvestmentTransaction,
   SplitTransaction,
   RemovedSplitTransaction,
+  DeepPartial,
 } from "common";
 import {
   MaskedUser,
   getUpdateTransactionScript,
   getUpdateInvestmentTransactionScript,
   getUpdateSplitTransactionScript,
+  flatten,
 } from "server";
 import { client } from "./client";
 import { index } from ".";
@@ -52,6 +54,11 @@ export const upsertTransactions = async (
   return response.items;
 };
 
+interface SearchTransactionsOptions {
+  range?: DateRange;
+  query?: DeepPartial<Transaction>;
+}
+
 interface DateRange {
   start: Date;
   end: Date;
@@ -63,8 +70,9 @@ interface DateRange {
  * @param range (optional)
  * @returns A promise to have arrays of Transaction objects
  */
-export const searchTransactions = async (user: MaskedUser, range?: DateRange) => {
+export const searchTransactions = async (user: MaskedUser, options?: SearchTransactionsOptions) => {
   const { user_id } = user;
+  const { range, query } = options || {};
   const { start, end } = range || {};
   const isValidRange = start && end && start < end;
 
@@ -74,36 +82,42 @@ export const searchTransactions = async (user: MaskedUser, range?: DateRange) =>
     split_transaction: SplitTransaction;
   };
 
+  const filter: any[] = [
+    { term: { "user.user_id": user_id } },
+    {
+      bool: {
+        should: ["transaction", "investment_transaction", "split_transaction"].map((type) => {
+          if (isValidRange) {
+            return {
+              bool: {
+                filter: [
+                  { term: { type } },
+                  { range: { [`${type}.date`]: { gte: start.toISOString() } } },
+                  { range: { [`${type}.date`]: { lt: end.toISOString() } } },
+                ],
+              },
+            };
+          } else {
+            return { bool: { filter: [{ term: { type } }] } };
+          }
+        }),
+      },
+    },
+  ];
+
+  if (query) {
+    filter.push(
+      ...Object.entries(flatten(query)).map(([key, value]) => ({
+        term: { [key]: value },
+      }))
+    );
+  }
+
   const response = await client.search<Response>({
     index,
     from: 0,
     size: 10000,
-    query: {
-      bool: {
-        filter: [
-          { term: { "user.user_id": user_id } },
-          {
-            bool: {
-              should: ["transaction", "investment_transaction", "split_transaction"].map((type) => {
-                if (isValidRange) {
-                  return {
-                    bool: {
-                      filter: [
-                        { term: { type } },
-                        { range: { [`${type}.date`]: { gte: start.toISOString() } } },
-                        { range: { [`${type}.date`]: { lt: end.toISOString() } } },
-                      ],
-                    },
-                  };
-                } else {
-                  return { bool: { filter: [{ term: { type } }] } };
-                }
-              }),
-            },
-          },
-        ],
-      },
-    },
+    query: { bool: { filter } },
   });
 
   type Result = {

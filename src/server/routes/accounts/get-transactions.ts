@@ -24,7 +24,7 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
     const start = new Date(startString);
     const end = new Date(endString);
 
-    const response = await searchTransactions(user, { start, end });
+    const response = await searchTransactions(user, { range: { start, end } });
     const { transactions, investment_transactions, split_transactions } = response;
 
     return {
