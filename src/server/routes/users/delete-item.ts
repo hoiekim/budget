@@ -1,5 +1,5 @@
 import { ItemProvider } from "common";
-import { Route, deleteItem, removeLocalItem as deleteLocalItem, plaid, searchItems } from "server";
+import { Route, deleteItem, plaid, searchItems } from "server";
 
 export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   const { user } = req.session;
@@ -26,8 +26,6 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   }
 
   await deleteItem(user, item_id);
-
-  if (user.username === "admin") deleteLocalItem(item_id);
 
   return { status: "success" };
 });

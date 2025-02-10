@@ -27,6 +27,7 @@ import {
   upsertAndDeleteHoldingsWithSnapshots,
   upsertSecuritiesWithSnapshots,
 } from "./create-snapshots";
+import { Products } from "plaid";
 
 export const syncPlaidTransactions = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -41,54 +42,56 @@ export const syncPlaidTransactions = async (item_id: string) => {
   let modifiedCount = 0;
   let removedCount = 0;
 
-  const syncTransactions = plaid.getTransactions(user, [item]).then(async (r) => {
-    const storedTransactionsResult = await storedTransactionsPromise;
-    const storedTransactions = storedTransactionsResult?.transactions || [];
+  const syncTransactions =
+    item.available_products.includes(Products.Transactions) &&
+    plaid.getTransactions(user, [item]).then(async (r) => {
+      const storedTransactionsResult = await storedTransactionsPromise;
+      const storedTransactions = storedTransactionsResult?.transactions || [];
 
-    const { items, added, removed, modified } = r;
+      const { items, added, removed, modified } = r;
 
-    const modelize = (e: (typeof added)[0]) => {
-      const result = new Transaction(e);
-      const { authorized_date: auth_date, date } = e;
-      if (auth_date) result.authorized_date = getDateTimeString(auth_date);
-      if (date) result.date = getDateTimeString(date);
-      const existing = storedTransactions.find((f) => {
-        const idMatches = e.transaction_id === f.transaction_id;
-        const accountMatches = e.account_id === f.account_id;
-        const nameMatches = e.name === f.name;
-        const amountMatches = e.amount === f.amount;
-        return idMatches || (accountMatches && nameMatches && amountMatches);
-      });
-      if (existing) result.label = existing.label;
-      return result;
-    };
+      const modelize = (e: (typeof added)[0]) => {
+        const result = new Transaction(e);
+        const { authorized_date: auth_date, date } = e;
+        if (auth_date) result.authorized_date = getDateTimeString(auth_date);
+        if (date) result.date = getDateTimeString(date);
+        const existing = storedTransactions.find((f) => {
+          const idMatches = e.transaction_id === f.transaction_id;
+          const accountMatches = e.account_id === f.account_id;
+          const nameMatches = e.name === f.name;
+          const amountMatches = e.amount === f.amount;
+          return idMatches || (accountMatches && nameMatches && amountMatches);
+        });
+        if (existing) result.label = existing.label;
+        return result;
+      };
 
-    const modeledAdded = added.map(modelize);
-    const modeledModified = modified.map(modelize);
-    const updateJobs = [
-      upsertTransactions(user, [...modeledAdded, ...modeledModified]),
-      deleteTransactions(user, removed),
-    ];
+      const modeledAdded = added.map(modelize);
+      const modeledModified = modified.map(modelize);
+      const updateJobs = [
+        upsertTransactions(user, [...modeledAdded, ...modeledModified]),
+        deleteTransactions(user, removed),
+      ];
 
-    const updated = getDateString();
+      const updated = getDateString();
 
-    const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor, updated }));
-    return Promise.all(updateJobs)
-      .then(() => {
-        addedCount += added.length;
-        modifiedCount += modified.length;
-        removedCount += removed.length;
-      })
-      .then(() => upsertItems(user, partialItems))
-      .catch((err) => {
-        console.error("Error occured during puting Plaid transanctions data into Elasticsearch");
-        console.error(err);
-      });
-  });
+      const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor, updated }));
+      return Promise.all(updateJobs)
+        .then(() => {
+          addedCount += added.length;
+          modifiedCount += modified.length;
+          removedCount += removed.length;
+        })
+        .then(() => upsertItems(user, partialItems))
+        .catch((err) => {
+          console.error("Error occured during puting Plaid transanctions data into Elasticsearch");
+          console.error(err);
+        });
+    });
 
-  const syncInvestmentTransactions = plaid
-    .getInvestmentTransactions(user, [item])
-    .then(async (r) => {
+  const syncInvestmentTransactions =
+    item.available_products.includes(Products.Investments) &&
+    plaid.getInvestmentTransactions(user, [item]).then(async (r) => {
       const { items, investmentTransactions } = r;
 
       const fillDateStrings = (e: (typeof investmentTransactions)[0]) => {

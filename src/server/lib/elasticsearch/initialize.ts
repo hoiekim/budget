@@ -1,5 +1,5 @@
 import mappings from "./mappings.json";
-import { index, getLocalItems, searchUser, indexUser, upsertItems } from "server";
+import { index, searchUser, indexUser, upsertItems } from "server";
 import { client } from "./client";
 
 const { properties }: any = mappings;
@@ -73,10 +73,6 @@ export const initializeIndex = async (): Promise<void> => {
 
   const createdAdminUserId = indexingAdminUserResult?._id;
   if (!createdAdminUserId) throw new Error("Failed to created admin user");
-
-  const localItems = getLocalItems();
-
-  upsertItems({ user_id: createdAdminUserId, username: "admin" }, localItems);
 
   const existingDemoUser = await searchUser({ username: "demo" });
 

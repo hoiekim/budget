@@ -1,5 +1,5 @@
 import { getRandomId, assign } from "common";
-import { PlaidError } from "plaid";
+import { PlaidError, Products } from "plaid";
 
 export enum ItemStatus {
   OK = "ok",
@@ -21,6 +21,7 @@ export class Item {
   item_id: string = getRandomId();
   access_token: string = getRandomId();
   institution_id: string | null = null;
+  available_products: Products[] = [];
   cursor?: string;
   status?: ItemStatus;
   plaidError?: PlaidError;

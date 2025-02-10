@@ -36,6 +36,14 @@ export const exchangePublicToken = async (user: MaskedUser, public_token: string
   return response.data;
 };
 
+export const getItem = async (access_token: string) => {
+  const client = getClient();
+
+  const response = await client.itemGet({ access_token });
+
+  return response.data.item;
+};
+
 export const deleteItem = async (user: MaskedUser, { access_token }: Item) => {
   const client = getClient(user);
 

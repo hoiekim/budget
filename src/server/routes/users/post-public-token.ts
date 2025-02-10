@@ -3,7 +3,6 @@ import {
   plaid,
   simpleFin,
   Route,
-  pushLocalItem,
   upsertItems,
   MaskedUser,
   syncSimpleFinData,
@@ -45,7 +44,6 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       }
 
       await upsertItems(user, [item]);
-      if (user.username === "admin") pushLocalItem(item);
 
       await syncSimpleFinData(item.id);
 
@@ -61,7 +59,6 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
 
       const item = await exchangePlaidToken(user, public_token, institution_id);
       await upsertItems(user, [item]);
-      if (user.username === "admin") pushLocalItem(item);
 
       await Promise.all([syncPlaidAccounts(item.id), syncPlaidTransactions(item.id)]);
 
@@ -81,10 +78,12 @@ const exchangePlaidToken = async (
   institution_id: string
 ) => {
   const { access_token, item_id } = await plaid.exchangePublicToken(user, public_token);
+  const { available_products } = await plaid.getItem(access_token);
   return new Item({
     item_id,
     access_token,
     institution_id,
+    available_products,
     status: ItemStatus.OK,
     provider: ItemProvider.PLAID,
   });
