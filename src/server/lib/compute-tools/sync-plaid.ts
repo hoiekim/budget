@@ -177,19 +177,18 @@ export const syncPlaidAccounts = async (item_id: string) => {
     })
     .catch(console.error);
 
-  const syncHoldings = Promise.all([
-    plaid.getHoldings(user, [item]),
-    getStoredAccountsData(user, item),
-  ])
-    .then(async ([plaidData, storedData]) => {
-      const { accounts, holdings, securities } = plaidData;
-      const { accounts: storedAccounts, holdings: storedHoldings } = storedData;
-      await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
-      await upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings);
-      await upsertSecuritiesWithSnapshots(securities);
-      return accounts;
-    })
-    .catch(console.error);
+  const syncHoldings = item.available_products.includes(Products.Investments)
+    ? Promise.all([plaid.getHoldings(user, [item]), getStoredAccountsData(user, item)])
+        .then(async ([plaidData, storedData]) => {
+          const { accounts, holdings, securities } = plaidData;
+          const { accounts: storedAccounts, holdings: storedHoldings } = storedData;
+          await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
+          await upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings);
+          await upsertSecuritiesWithSnapshots(securities);
+          return accounts;
+        })
+        .catch(console.error)
+    : Promise.resolve();
 
   const [accounts, investmentAccounts] = await Promise.all([syncAccounts, syncHoldings]);
   return { accounts, investmentAccounts };

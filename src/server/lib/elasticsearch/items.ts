@@ -1,6 +1,6 @@
 import { Item, ItemStatus } from "common";
 import { client } from "./client";
-import { MaskedUser, searchUser } from "./users";
+import { MaskedUser, searchUser, User } from "./users";
 import { getUpdateItemScript } from "./util";
 import { index } from ".";
 
@@ -93,7 +93,9 @@ export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
   return await upsertItems(foundUser, [{ item_id, status }]);
 };
 
-export const getUserItem = async (item_id: string) => {
+export const getUserItem = async (
+  item_id: string
+): Promise<{ user: User; item: Item } | undefined> => {
   type ItemDoc = { item: Item; user: { user_id: string } };
   const response = await client.get<ItemDoc>({ index, id: item_id });
   const itemDoc = response._source;
