@@ -1,13 +1,17 @@
-import { getRandomId, assign } from "common";
+import { getRandomId, assign, getDateString } from "common";
 import {
   Location as PlaidLocation,
   PaymentMeta as PlaidPaymentMeta,
   Holding as PlaidHolding,
   Security as PlaidSecurity,
   Institution as PlaidInstitution,
+  OptionContract as PlaidOptionContract,
+  FixedIncome as PlaidFixedIncome,
+  YieldRate as PlaidYieldRate,
   CountryCode,
   InstitutionStatus,
   Products,
+  YieldRateType,
 } from "plaid";
 
 export class Location implements PlaidLocation {
@@ -94,8 +98,47 @@ export class Security implements PlaidSecurity {
   update_datetime?: string | null | undefined = null;
   iso_currency_code: string | null = null;
   unofficial_currency_code: string | null = null;
+  market_identifier_code: string | null = null;
+  sector: string | null = null;
+  industry: string | null = null;
+  option_contract: OptionContract | null = null;
+  fixed_income: FixedIncome | null = null;
 
   constructor(init?: Partial<Security>) {
+    assign(this, init);
+    if (!init?.option_contract) this.option_contract = new OptionContract();
+    if (!init?.fixed_income) this.fixed_income = new FixedIncome();
+  }
+}
+
+export class OptionContract implements PlaidOptionContract {
+  contract_type: string = "put";
+  expiration_date: string = getDateString();
+  strike_price: number = 0;
+  underlying_security_ticker: string = "";
+
+  constructor(init?: Partial<OptionContract>) {
+    assign(this, init);
+  }
+}
+
+export class FixedIncome implements PlaidFixedIncome {
+  yield_rate: YieldRate | null = null;
+  maturity_date: string | null = null;
+  issue_date: string | null = null;
+  face_value: number | null = null;
+
+  constructor(init?: Partial<FixedIncome> & { account_id: string; security_id: string }) {
+    assign(this, init);
+    if (init?.yield_rate) this.yield_rate = new YieldRate(init.yield_rate);
+  }
+}
+
+export class YieldRate implements PlaidYieldRate {
+  percentage: number = 0;
+  type: YieldRateType | null = null;
+
+  constructor(init?: Partial<YieldRate>) {
     assign(this, init);
   }
 }

@@ -1,5 +1,4 @@
 import {
-  RemovedTransaction,
   Transaction as PlaidTransaction,
   PersonalFinanceCategory,
   TransactionCode,
@@ -114,4 +113,6 @@ export class Transaction implements PlaidTransaction {
   };
 }
 
-export type { RemovedTransaction };
+export interface RemovedTransaction {
+  transaction_id: string;
+}
