@@ -58,6 +58,7 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
   const { user_id } = user;
   const existingMap = new Map(existingHoldings.map((h) => [h.holding_id, h]));
   const incomingMap = new Map(incomingHoldings.map((h) => [h.holding_id, h]));
+  const accountIds = new Set(incomingHoldings.map((e) => e.account_id));
 
   const snapshots: HoldingSnapshot[] = incomingHoldings
     .filter((h) => {
@@ -76,7 +77,7 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
   const removedHoldings: Holding[] = [];
 
   existingHoldings
-    .filter((h) => !incomingMap.has(h.holding_id))
+    .filter((h) => accountIds.has(h.account_id) && !incomingMap.has(h.holding_id))
     .forEach((h) => {
       removedHoldings.push(new Holding(h));
       snapshots.push({
