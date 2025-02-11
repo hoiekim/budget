@@ -214,15 +214,29 @@ export const searchTransactionById = async (user: MaskedUser, id: string) => {
 /**
  * Searches for transactions associated with given user and account id.
  * @param user
- * @param account_ids
+ * @param accountIds
  * @param range (optional)
  * @returns A promise to have arrays of Transaction objects
  */
 export const searchTransactionsByAccountId = async (
   user: MaskedUser,
-  account_ids: string[],
+  accountIds: string[],
   range?: DateRange
 ) => {
+  type Result = {
+    transactions: Transaction[];
+    investment_transactions: InvestmentTransaction[];
+    split_transactions: SplitTransaction[];
+  };
+
+  if (!Array.isArray(accountIds) || !accountIds.length) {
+    return {
+      transactions: [],
+      investment_transactions: [],
+      split_transactions: [],
+    };
+  }
+
   const { user_id } = user;
   const { start, end } = range || {};
   const isValidRange = start && end && start < end;
@@ -233,63 +247,53 @@ export const searchTransactionsByAccountId = async (
     split_transaction: SplitTransaction;
   };
 
+  const filter: any[] = [
+    { term: { "user.user_id": user_id } },
+    {
+      bool: {
+        should: ["transaction", "investment_transaction"].map((type) => {
+          return { term: { type } };
+        }),
+      },
+    },
+    {
+      bool: {
+        should: ["transaction", "investment_transaction"].map((type) => {
+          return {
+            bool: {
+              should: accountIds.map((account_id) => {
+                return { term: { [`${type}.account_id`]: account_id } };
+              }),
+            },
+          };
+        }),
+      },
+    },
+  ];
+
+  if (isValidRange) {
+    filter.push({
+      bool: {
+        should: ["transaction", "investment_transaction"].map((type) => {
+          return {
+            bool: {
+              filter: [
+                { range: { [`${type}.date`]: { gte: start.toISOString() } } },
+                { range: { [`${type}.date`]: { lt: end.toISOString() } } },
+              ],
+            },
+          };
+        }),
+      },
+    });
+  }
+
   const response = await client.search<Response>({
     index,
     from: 0,
     size: 10000,
-    query: {
-      bool: {
-        filter: [
-          { term: { "user.user_id": user_id } },
-          {
-            bool: {
-              should: ["transaction", "investment_transaction"].map((type) => {
-                return {
-                  bool: {
-                    filter: [
-                      { term: { type } },
-                      {
-                        bool: {
-                          should: account_ids.map((account_id) => {
-                            return { term: { [`${type}.account_id`]: account_id } };
-                          }),
-                        },
-                      },
-                    ],
-                  },
-                };
-              }),
-            },
-          },
-          {
-            bool: {
-              should: ["transaction", "investment_transaction"].map((type) => {
-                if (isValidRange) {
-                  return {
-                    bool: {
-                      filter: [
-                        { term: { type } },
-                        { range: { [`${type}.date`]: { gte: start.toISOString() } } },
-                        { range: { [`${type}.date`]: { lt: end.toISOString() } } },
-                      ],
-                    },
-                  };
-                } else {
-                  return { bool: { filter: [{ term: { type } }] } };
-                }
-              }),
-            },
-          },
-        ],
-      },
-    },
+    query: { bool: { filter } },
   });
-
-  type Result = {
-    transactions: Transaction[];
-    investment_transactions: InvestmentTransaction[];
-    split_transactions: SplitTransaction[];
-  };
 
   const result: Result = {
     transactions: [],

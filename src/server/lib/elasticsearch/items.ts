@@ -142,12 +142,13 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
       },
     })
     .then((r) => {
-      const account_ids = r.hits.hits.map((e) => e._id);
+      const accountIds = r.hits.hits.map((e) => e._id);
+      if (!accountIds.length) return;
       return client.deleteByQuery({
         index,
         query: {
           bool: {
-            should: account_ids.flatMap((account_id) => [
+            should: accountIds.flatMap((account_id) => [
               { term: { _id: account_id } },
               { term: { "account.account_id": account_id } },
               { term: { "holding.account_id": account_id } },

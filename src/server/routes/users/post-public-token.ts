@@ -44,7 +44,6 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       }
 
       await upsertItems(user, [item]);
-
       await syncSimpleFinData(item.id);
 
       return { status: "success", body: { item } };

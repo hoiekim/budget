@@ -2,6 +2,7 @@ import {
   Account,
   InvestmentTransaction,
   Item,
+  ItemProvider,
   RemovedInvestmentTransaction,
   TWO_WEEKS,
   Transaction,
@@ -33,10 +34,15 @@ export const syncPlaidTransactions = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
   if (!userItem) return;
   const { user, item } = userItem;
+  if (item.provider !== ItemProvider.PLAID) return;
 
   const accounts = await searchAccountsByItemId(user, item_id);
   const accountIds = accounts?.map((e) => e.account_id) || [];
-  const storedTransactionsPromise = searchTransactionsByAccountId(user, accountIds);
+
+  const startDate = getTwoYearsAgo();
+
+  const range = { start: startDate, end: new Date() };
+  const storedTransactionsPromise = searchTransactionsByAccountId(user, accountIds, range);
 
   let addedCount = 0;
   let modifiedCount = 0;
@@ -103,15 +109,10 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const filledInvestments = investmentTransactions.map(fillDateStrings);
 
-      const addedMap = new Map(
-        filledInvestments.map((e) => [e.investment_transaction_id, new InvestmentTransaction(e)])
-      );
-
       const storedTransactionsResult = await storedTransactionsPromise;
       const storedInvestmentTransactions = storedTransactionsResult?.investment_transactions || [];
 
       const removed: RemovedInvestmentTransaction[] = [];
-      const modified: InvestmentTransaction[] = [];
 
       storedInvestmentTransactions.forEach((e) => {
         const age = new Date().getTime() - new Date(e.date).getTime();
@@ -125,21 +126,20 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
         if (!found) removed.push({ investment_transaction_id });
         else {
-          modified.push(e);
-          addedMap.delete(e.investment_transaction_id);
+          modifiedCount += 1;
+          addedCount -= 1;
         }
       });
 
       const updateJobs = [
-        upsertInvestmentTransactions(user, [...Array.from(addedMap.values()), ...modified]),
+        upsertInvestmentTransactions(user, filledInvestments),
         deleteInvestmentTransactions(user, removed),
       ];
 
       const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));
       return Promise.all(updateJobs)
         .then(() => {
-          addedCount += addedMap.size;
-          modifiedCount += modified.length;
+          addedCount += filledInvestments.length;
           removedCount += removed.length;
         })
         .then(() => upsertItems(user, partialItems))
@@ -163,8 +163,8 @@ export const syncPlaidTransactions = async (item_id: string) => {
 export const syncPlaidAccounts = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
   if (!userItem) return;
-
   const { user, item } = userItem;
+  if (item.provider !== ItemProvider.PLAID) return;
 
   const syncAccounts = plaid
     .getAccounts(user, [item])
@@ -200,4 +200,11 @@ const getStoredAccountsData = async (user: MaskedUser, item: Item) => {
   const accountIds = accounts?.map((e) => e.account_id) || [];
   const holdings = await searchHoldingsByAccountId(user, accountIds);
   return { accounts, holdings };
+};
+
+const getTwoYearsAgo = () => {
+  const oldestDate = new Date();
+  const thisYear = new Date().getFullYear();
+  oldestDate.setFullYear(thisYear - 2);
+  return oldestDate;
 };

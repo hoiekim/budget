@@ -54,7 +54,6 @@ export const syncSimpleFinData = async (item_id: string) => {
   } = storedData;
 
   const removedTransactions = getRemovedTransactions(transactions, storedTransations, startDate);
-
   const removedInvestmentTransaction = getRemovedInvestmentTransactions(
     investmentTransactions,
     storedInvestmentTransactions,
@@ -130,10 +129,12 @@ const getRemovedTransactions = (
   storedTransactions: Transaction[],
   startDate: Date
 ) => {
+  const accountIds = new Set(transactions.map((e) => e.account_id));
   const removedTransactions: RemovedTransaction[] = [];
   storedTransactions.forEach((t) => {
     const { transaction_id, date } = t;
     if (new Date(date) < startDate) return;
+    if (!accountIds.has(t.account_id)) return;
     const found = transactions.find((f) => f.transaction_id === transaction_id);
     if (!found) removedTransactions.push({ transaction_id });
   });
@@ -145,10 +146,12 @@ const getRemovedInvestmentTransactions = (
   storedInvestmentTransactions: InvestmentTransaction[],
   startDate: Date
 ) => {
+  const accountIds = new Set(investmentTransactions.map((e) => e.account_id));
   const removedInvestmentTransactions: RemovedInvestmentTransaction[] = [];
   storedInvestmentTransactions.forEach((t) => {
     const { investment_transaction_id, date } = t;
     if (new Date(date) < startDate) return;
+    if (!accountIds.has(t.account_id)) return;
     const found = investmentTransactions.find(
       (f) => f.investment_transaction_id === investment_transaction_id
     );

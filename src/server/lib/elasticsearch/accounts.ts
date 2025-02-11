@@ -208,6 +208,7 @@ export const deleteAccounts = async (user: MaskedUser, accounts: (Account | Remo
 };
 
 export const searchHoldingsByAccountId = async (user: MaskedUser, accountIds: string[]) => {
+  if (!Array.isArray(accountIds) || !accountIds.length) return [];
   const { user_id } = user;
 
   const response = await client.search<{ holding: Holding }>({
