@@ -73,9 +73,17 @@ export const syncSimpleFinData = async (item_id: string) => {
 
   const investmentAccounts: Account[] = [];
   const otherAccounts: Account[] = [];
+  const existingAccountsMap = new Map(storedAccounts.map((a) => [a.account_id, a]));
   accounts.forEach((a) => {
-    if (a.type === AccountType.Investment) investmentAccounts.push(a);
-    else otherAccounts.push(a);
+    const existingAccount = existingAccountsMap.get(a.account_id);
+    const incomingAccount = new Account(a);
+    if (existingAccount) {
+      incomingAccount.hide = existingAccount.hide;
+      incomingAccount.custom_name = existingAccount.custom_name;
+      incomingAccount.label = existingAccount.label;
+    }
+    if (a.type === AccountType.Investment) investmentAccounts.push(incomingAccount);
+    else otherAccounts.push(incomingAccount);
   });
 
   await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
