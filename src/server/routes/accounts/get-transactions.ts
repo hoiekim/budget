@@ -21,10 +21,15 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
 
     const startString = req.query["start-date"] as string;
     const endString = req.query["end-date"] as string;
+    const account_id = req.query["account-id"] as string;
     const start = new Date(startString);
     const end = new Date(endString);
 
-    const response = await searchTransactions(user, { range: { start, end } });
+    const response = await searchTransactions(user, {
+      range: { start, end },
+      query: { account_id },
+    });
+
     const { transactions, investment_transactions, split_transactions } = response;
 
     return {

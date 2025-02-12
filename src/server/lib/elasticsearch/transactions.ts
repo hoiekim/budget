@@ -67,7 +67,7 @@ interface DateRange {
 /**
  * Searches for transactions associated with given user.
  * @param user
- * @param range (optional)
+ * @param options (optional)
  * @returns A promise to have arrays of Transaction objects
  */
 export const searchTransactions = async (user: MaskedUser, options?: SearchTransactionsOptions) => {
@@ -108,7 +108,7 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
   if (query) {
     filter.push(
       ...Object.entries(flatten(query)).map(([key, value]) => ({
-        term: { [key]: value },
+        term: { [`transaction.${key}`]: value },
       }))
     );
   }

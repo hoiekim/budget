@@ -37,130 +37,136 @@ export const useSync = () => {
   const { user, setData } = useAppContext();
   const userLoggedIn = !!user;
 
-  type SyncTransactions = () => void;
+  type SyncTransactions = (accounts?: AccountDictionary) => void;
 
-  const syncTransactions = useCallback(async () => {
-    if (!userLoggedIn) return;
+  const syncTransactions = useCallback(
+    async (accounts?: AccountDictionary) => {
+      if (!userLoggedIn) return;
 
-    const oldestDatePromise = call
-      .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
-      .then(({ body }) => (body ? new Date(body) : undefined));
+      const oldestDatePromise = call
+        .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
+        .then(({ body }) => (body ? new Date(body) : undefined));
 
-    const transactionsApiPath = "/api/transactions";
-    const viewDate = new ViewDate("month");
-    const twoMonthAgoViewDate = viewDate.clone().previous().previous();
-    let oldestDate = twoMonthAgoViewDate.clone().previous().getStartDate();
+      const transactionsApiPath = "/api/transactions";
+      const viewDate = new ViewDate("month");
+      const twoMonthAgoViewDate = viewDate.clone().previous().previous();
+      let oldestDate = twoMonthAgoViewDate.clone().previous().getStartDate();
 
-    const updateStack = {
-      transactions: new TransactionDictionary(),
-      investmentTransactions: new InvestmentTransactionDictionary(),
-      splitTransactions: new SplitTransactionDictionary(),
-    };
+      const updateStack = {
+        transactions: new TransactionDictionary(),
+        investmentTransactions: new InvestmentTransactionDictionary(),
+        splitTransactions: new SplitTransactionDictionary(),
+      };
 
-    const promises: Promise<void>[] = [];
+      const promises: Promise<void>[] = [];
 
-    while (oldestDate < viewDate.getStartDate()) {
-      const params = new URLSearchParams();
-      const startDate = viewDate.getStartDate();
-      const endDate = viewDate.clone().next().getStartDate();
-      params.append("start-date", getDateString(startDate));
-      params.append("end-date", getDateString(endDate));
-      const path = transactionsApiPath + "?" + params.toString();
-      const isRecent = new Date().getTime() - endDate.getTime() < THIRTY_DAYS;
+      while (oldestDate < viewDate.getStartDate()) {
+        accounts?.forEach((a) => {
+          const params = new URLSearchParams();
+          const startDate = viewDate.getStartDate();
+          const endDate = viewDate.clone().next().getStartDate();
+          params.append("start-date", getDateString(startDate));
+          params.append("end-date", getDateString(endDate));
+          params.append("account-id", a.id);
+          const path = transactionsApiPath + "?" + params.toString();
+          const isRecent = new Date().getTime() - endDate.getTime() < THIRTY_DAYS;
 
-      const promise = new Promise<void>(async (res) => {
-        let response: ApiResponse<TransactionsGetResponse> | undefined;
-        if (isRecent) {
-          response = await call.get<TransactionsGetResponse>(path);
-        } else {
-          response = await cachedCall<TransactionsGetResponse>(path);
+          const promise = new Promise<void>(async (res) => {
+            let response: ApiResponse<TransactionsGetResponse> | undefined;
+            if (isRecent) {
+              response = await call.get<TransactionsGetResponse>(path);
+            } else {
+              response = await cachedCall<TransactionsGetResponse>(path);
+            }
+            if (!response?.body) return;
+
+            const { transactions, investmentTransactions, splitTransactions } = response.body;
+            transactions.forEach((t) => {
+              updateStack.transactions.set(t.transaction_id, t);
+            });
+            investmentTransactions.forEach((t) => {
+              updateStack.investmentTransactions.set(t.investment_transaction_id, t);
+            });
+            splitTransactions.forEach((t) => {
+              updateStack.splitTransactions.set(t.split_transaction_id, t);
+            });
+
+            res();
+          });
+
+          promises.push(promise);
+        });
+
+        viewDate.previous();
+
+        if (viewDate.getStartDate() <= oldestDate) {
+          oldestDate = (await oldestDatePromise) || oldestDate;
         }
-        if (!response?.body) return;
+      }
 
-        const { transactions, investmentTransactions, splitTransactions } = response.body;
-        transactions.forEach((t) => {
-          updateStack.transactions.set(t.transaction_id, t);
-        });
-        investmentTransactions.forEach((t) => {
-          updateStack.investmentTransactions.set(t.investment_transaction_id, t);
-        });
-        splitTransactions.forEach((t) => {
-          updateStack.splitTransactions.set(t.split_transaction_id, t);
-        });
+      await Promise.all(promises);
 
-        res();
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const { transactions, investmentTransactions, splitTransactions } = updateStack;
+
+        if (transactions.size) {
+          const newTransactions = new TransactionDictionary(newData.transactions);
+          transactions.forEach((e) => {
+            newTransactions.set(e.transaction_id, new Transaction(e));
+          });
+          newData.transactions = newTransactions;
+        }
+
+        if (investmentTransactions.size) {
+          const newInvestmentTransactions = new InvestmentTransactionDictionary(
+            newData.investmentTransactions
+          );
+          investmentTransactions.forEach((e) => {
+            const newInvestmentTransaction = new InvestmentTransaction(e);
+            newInvestmentTransactions.set(newInvestmentTransaction.id, newInvestmentTransaction);
+          });
+          newData.investmentTransactions = newInvestmentTransactions;
+        }
+
+        if (splitTransactions.size) {
+          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
+          splitTransactions.forEach((e) => {
+            newSplitTransactions.set(e.split_transaction_id, new SplitTransaction(e));
+          });
+          newData.splitTransactions = newSplitTransactions;
+        }
+
+        return newData;
       });
+    },
+    [userLoggedIn, setData]
+  );
 
-      promises.push(promise);
-      viewDate.previous();
-
-      if (viewDate.getStartDate() <= oldestDate) {
-        oldestDate = (await oldestDatePromise) || oldestDate;
-      }
-    }
-
-    await Promise.all(promises);
-
-    setData((oldData) => {
-      const newData = new Data(oldData);
-      const { transactions, investmentTransactions, splitTransactions } = updateStack;
-
-      if (transactions.size) {
-        const newTransactions = new TransactionDictionary(newData.transactions);
-        transactions.forEach((e) => {
-          newTransactions.set(e.transaction_id, new Transaction(e));
-        });
-        newData.transactions = newTransactions;
-      }
-
-      if (investmentTransactions.size) {
-        const newInvestmentTransactions = new InvestmentTransactionDictionary(
-          newData.investmentTransactions
-        );
-        investmentTransactions.forEach((e) => {
-          const newInvestmentTransaction = new InvestmentTransaction(e);
-          newInvestmentTransactions.set(newInvestmentTransaction.id, newInvestmentTransaction);
-        });
-        newData.investmentTransactions = newInvestmentTransactions;
-      }
-
-      if (splitTransactions.size) {
-        const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
-        splitTransactions.forEach((e) => {
-          newSplitTransactions.set(e.split_transaction_id, new SplitTransaction(e));
-        });
-        newData.splitTransactions = newSplitTransactions;
-      }
-
-      return newData;
-    });
-  }, [userLoggedIn, setData]);
-
-  type SyncAccounts = () => void;
+  type SyncAccounts = () => Promise<AccountDictionary>;
 
   const syncAccounts = useCallback(async () => {
-    if (!userLoggedIn) return;
+    const newAccounts = new AccountDictionary();
+
+    if (!userLoggedIn) return newAccounts;
 
     const response = await call.get<AccountsGetResponse>("/api/accounts");
-    if (!response?.body) return;
+    if (!response?.body) return newAccounts;
+
     const { accounts, items } = response.body;
+
+    accounts.forEach((e) => newAccounts.set(e.account_id, new Account(e)));
+    const newItems = new ItemDictionary();
+    items.forEach((item) => newItems.set(item.item_id, new Item(item)));
 
     setData((oldData) => {
       const newData = new Data(oldData);
-
-      const newAccounts = new AccountDictionary(newData.accounts);
-      accounts.forEach((e) => newAccounts.set(e.account_id, new Account(e)));
       newData.accounts = newAccounts;
-
-      const newItems = new ItemDictionary(newData.items);
-      items.forEach((item) => {
-        const { item_id } = item;
-        newItems.set(item_id, new Item(item));
-      });
       newData.items = newItems;
-
       return newData;
     });
+
+    return newAccounts.clone() as AccountDictionary;
   }, [userLoggedIn, setData]);
 
   type SyncBudgets = () => void;
@@ -225,10 +231,10 @@ export const useSync = () => {
     });
   }, [userLoggedIn, setData]);
 
-  type SyncAll = () => Promise<void>[];
+  type SyncAll = () => Promise<any>[];
 
   const syncAll = useCallback(() => {
-    return [syncTransactions(), syncAccounts(), syncBudgets()];
+    return [syncAccounts().then(syncTransactions), syncBudgets()];
   }, [syncTransactions, syncAccounts, syncBudgets]);
 
   type Sync = {

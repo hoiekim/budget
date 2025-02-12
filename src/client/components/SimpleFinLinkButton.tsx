@@ -31,8 +31,7 @@ const SimpleFinLinkButton = ({ children }: Props) => {
             return newData;
           });
           setTimeout(() => {
-            sync.transactions();
-            sync.accounts();
+            sync.accounts().then(sync.transactions);
           }, 1000);
         }
       });

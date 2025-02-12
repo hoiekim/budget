@@ -50,8 +50,7 @@ const PlaidLinkButton = ({ item, children }: Props) => {
               });
             }
             setTimeout(() => {
-              sync.transactions();
-              sync.accounts();
+              sync.accounts().then(sync.transactions);
             }, 1000);
           }
         });
