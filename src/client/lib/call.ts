@@ -15,8 +15,6 @@ const call = async <T = any>(path: string, options?: RequestInit) => {
     return r.json();
   });
 
-  console.log(`<${method}> ${path}`, response);
-
   return response;
 };
 
@@ -39,13 +37,11 @@ export const cachedCall = async <T = any>(path: string) => {
     const cachedResponse = await cache.match(path);
     if (cachedResponse) {
       const result = await cachedResponse?.json();
-      console.log(`<GET> <Cahced> ${path}`, result);
       return result as ApiResponse<T>;
     } else {
       await cache.add(path);
       const cachedResponse = await cache.match(path);
       const result = await cachedResponse?.json();
-      console.log(`<GET> ${path}`, result);
       return result as ApiResponse<T>;
     }
   } catch (error) {
@@ -58,8 +54,6 @@ export const read = async <T = any>(
   callback: (response: ApiResponse<T>) => any,
   options?: RequestInit
 ) => {
-  const method = options?.method?.toUpperCase() || "GET";
-
   const response = await fetch(path, options);
   const reader = response.body?.getReader();
   if (!reader) return;
@@ -87,7 +81,6 @@ export const read = async <T = any>(
 
             try {
               const response: ApiResponse<T> = JSON.parse(e);
-              console.log(`<${method}> ${path}`, response);
               callback(response);
             } catch (error) {
               console.error(error);

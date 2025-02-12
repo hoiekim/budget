@@ -4,6 +4,8 @@ export { default as SimpleFinLinkButton } from "./SimpleFinLinkButton";
 export { default as TransactionsTable } from "./TransactionsTable";
 export { default as AccountsTable } from "./AccountsTable";
 export { default as InstitutionSpan } from "./InstitutionSpan";
+export { default as AccountsDonut } from "./AccountsDonut";
+export * from "./AccountsDonut";
 export { default as Header } from "./Header";
 export * from "./Header";
 export { default as BudgetBar } from "./BudgetBar";
