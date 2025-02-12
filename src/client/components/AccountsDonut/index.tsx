@@ -11,22 +11,20 @@ const AccountsDonut = () => {
   const { accounts } = data;
 
   let balanceTotal = 0;
-  const childrenDonutData: DonutData[] = [];
+  const accountsDonutData: DonutData[] = [];
 
-  accounts.toArray().forEach((a, i) => {
-    if (a.hide) return;
-    const childValue = a.balances.current;
-    if (!childValue) return;
-    balanceTotal += childValue;
-    const childColor = colors[i % colors.length];
-    const childLabel = a.custom_name || a.name || LABEL_UNNAMED;
-    childrenDonutData.push({
-      id: a.id,
-      value: childValue,
-      color: childColor,
-      label: childLabel,
+  accounts
+    .toArray()
+    .sort((a, b) => (b.balances.current || 0) - (a.balances.current || 0))
+    .forEach((a, i) => {
+      if (a.hide) return;
+      const value = a.balances.current;
+      if (!value) return;
+      balanceTotal += value;
+      const color = colors[i % colors.length];
+      const label = a.custom_name || a.name || LABEL_UNNAMED;
+      accountsDonutData.push({ id: a.id, value, color, label });
     });
-  });
 
   const currencyCodes = new Set(
     accounts.toArray().map((a) => a.balances.iso_currency_code || "USD")
@@ -37,7 +35,7 @@ const AccountsDonut = () => {
   return (
     <div className="AccountsDonut">
       <div className="donut">
-        <Donut data={childrenDonutData} radius={60} thickness={10} />
+        <Donut data={accountsDonutData} radius={60} thickness={10} />
         <div className="centerLabel">
           <span>
             {currencyCodeToSymbol(currencyCode)}
@@ -46,7 +44,7 @@ const AccountsDonut = () => {
         </div>
       </div>
       <div className="legend">
-        <BalanceBreakDown currencySymbol={currencySymbol} childrenDonutData={childrenDonutData} />
+        <BalanceBreakDown currencySymbol={currencySymbol} donutData={accountsDonutData} />
       </div>
     </div>
   );
