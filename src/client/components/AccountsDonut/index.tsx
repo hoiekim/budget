@@ -3,7 +3,7 @@ import { currencyCodeToSymbol, numberToCommaString } from "common";
 import { DonutData } from "client/components";
 import BalanceBreakDown from "./BalanceBreakDown";
 import "./index.css";
-import { AccountType } from "plaid";
+import { AccountSubtype, AccountType } from "plaid";
 
 const LABEL_UNNAMED = "Unnamed";
 
@@ -25,6 +25,7 @@ const AccountsDonut = () => {
     const balanceAvailalbe = a.balances.available || 0;
     let value = 0;
     if (a.type === AccountType.Investment) value = balanceCurrent + balanceAvailalbe;
+    if (a.subtype === AccountSubtype.CryptoExchange) value = balanceCurrent;
     else value = balanceCurrent;
     balanceTotal += value;
     const color = colors[i % colors.length];

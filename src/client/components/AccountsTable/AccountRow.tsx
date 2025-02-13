@@ -11,7 +11,7 @@ interface Props {
 }
 
 const AccountRow = ({ account }: Props) => {
-  const { account_id, balances, custom_name, name, institution_id, label, type } = account;
+  const { account_id, balances, custom_name, name, institution_id, label, type, subtype } = account;
 
   const { data } = useAppContext();
   const { budgets } = data;
@@ -62,7 +62,7 @@ const AccountRow = ({ account }: Props) => {
       <div>
         <InstitutionSpan institution_id={institution_id} />
       </div>
-      <Balance balances={balances} type={type} />
+      <Balance balances={balances} type={type} subtype={subtype} />
       {!!graphData.lines && (
         <Graph
           data={graphData}

@@ -1,18 +1,20 @@
 import { Account, currencyCodeToSymbol, numberToCommaString } from "common";
+import { AccountSubtype, AccountType } from "plaid";
 
 interface Props {
   balances: Account["balances"];
   type: Account["type"];
+  subtype: Account["subtype"];
 }
 
-export const Balance = ({ balances, type }: Props) => {
+export const Balance = ({ balances, type, subtype }: Props) => {
   const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
   const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
   const formattedAvailable = numberToCommaString(available as number);
   const formattedCurrent = numberToCommaString(current as number);
 
-  if (type === "credit") {
+  if (type === AccountType.Credit) {
     return (
       <div className="Balance">
         <div>
@@ -31,7 +33,7 @@ export const Balance = ({ balances, type }: Props) => {
         </div>
       </div>
     );
-  } else if (type === "investment") {
+  } else if (type === AccountType.Investment) {
     return (
       <div className="Balance">
         <div>
@@ -41,13 +43,15 @@ export const Balance = ({ balances, type }: Props) => {
           </span>
           <span>invested</span>
         </div>
-        <div>
-          <span>
-            {symbol}
-            {formattedAvailable}
-          </span>
-          <span>in cash</span>
-        </div>
+        {subtype !== AccountSubtype.CryptoExchange && (
+          <div>
+            <span>
+              {symbol}
+              {formattedAvailable}
+            </span>
+            <span>in cash</span>
+          </div>
+        )}
       </div>
     );
   } else if (available && current) {
