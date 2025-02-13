@@ -166,29 +166,45 @@ export const syncPlaidAccounts = async (item_id: string) => {
   const { user, item } = userItem;
   if (item.provider !== ItemProvider.PLAID) return;
 
+  const { accounts: storedAccounts, holdings: storedHoldings } = await getStoredAccountsData(
+    user,
+    item
+  );
+  const storedAccountsMap = new Map(storedAccounts?.map((e) => [e.account_id, e]) || []);
+
   const syncAccounts = plaid
     .getAccounts(user, [item])
     .then(async (r) => {
-      const accounts = r.accounts.map<Account>((e) => {
-        return new Account(e);
+      const accounts = r.accounts.map((a) => {
+        const newAccount = new Account(a);
+        const existing = storedAccountsMap.get(a.account_id);
+        if (existing) {
+          newAccount.hide = existing.hide;
+          newAccount.custom_name = existing.custom_name;
+          newAccount.label = existing.label;
+        }
+        return newAccount;
       });
-      upsertAccounts(user, accounts);
+      await upsertAccounts(user, accounts);
       return accounts;
     })
     .catch(console.error);
 
-  const syncHoldings = item.available_products.includes(Products.Investments)
-    ? Promise.all([plaid.getHoldings(user, [item]), getStoredAccountsData(user, item)])
-        .then(async ([plaidData, storedData]) => {
-          const { accounts, holdings, securities } = plaidData;
-          const { accounts: storedAccounts, holdings: storedHoldings } = storedData;
-          await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
-          await upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings);
-          await upsertSecuritiesWithSnapshots(securities);
-          return accounts;
-        })
-        .catch(console.error)
-    : Promise.resolve();
+  const isInvestmentAvailable = item.available_products.includes(Products.Investments);
+  const syncHoldings = Promise.resolve(isInvestmentAvailable)
+    .then((r) => {
+      if (!r) return;
+      return plaid.getHoldings(user, [item]);
+    })
+    .then(async (r) => {
+      if (!r) return;
+      const { accounts, holdings, securities } = r;
+      await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
+      await upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings);
+      await upsertSecuritiesWithSnapshots(securities);
+      return accounts;
+    })
+    .catch(console.error);
 
   const [accounts, investmentAccounts] = await Promise.all([syncAccounts, syncHoldings]);
   return { accounts, investmentAccounts };
