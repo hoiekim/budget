@@ -16,6 +16,7 @@ export class SplitTransaction {
 
   split_transaction_id: string = getRandomId();
   transaction_id: string = "";
+  account_id: string = "";
   amount: number = 0;
   date: string = getDateTimeString();
   custom_name: string = "Unknown";
@@ -24,7 +25,7 @@ export class SplitTransaction {
    */
   label: TransactionLabel = new TransactionLabel();
 
-  constructor(init: Partial<SplitTransaction> & { transaction_id: string }) {
+  constructor(init: Partial<SplitTransaction> & { transaction_id: string; account_id: string }) {
     assign(this, init);
     if (init.label) this.label = new TransactionLabel(init.label);
   }

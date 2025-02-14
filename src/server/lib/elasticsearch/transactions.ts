@@ -64,6 +64,8 @@ interface DateRange {
   end: Date;
 }
 
+const transactionTypes = ["transaction", "investment_transaction", "split_transaction"];
+
 /**
  * Searches for transactions associated with given user.
  * @param user
@@ -84,32 +86,32 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
 
   const filter: any[] = [
     { term: { "user.user_id": user_id } },
-    {
+    { bool: { should: transactionTypes.map((type) => ({ term: { type } })) } },
+  ];
+
+  if (isValidRange) {
+    filter.push({
       bool: {
-        should: ["transaction", "investment_transaction", "split_transaction"].map((type) => {
-          if (isValidRange) {
-            return {
-              bool: {
-                filter: [
-                  { term: { type } },
-                  { range: { [`${type}.date`]: { gte: start.toISOString() } } },
-                  { range: { [`${type}.date`]: { lt: end.toISOString() } } },
-                ],
-              },
-            };
-          } else {
-            return { bool: { filter: [{ term: { type } }] } };
-          }
+        should: transactionTypes.map((type) => {
+          return {
+            bool: {
+              filter: [
+                { range: { [`${type}.date`]: { gte: start.toISOString() } } },
+                { range: { [`${type}.date`]: { lt: end.toISOString() } } },
+              ],
+            },
+          };
         }),
       },
-    },
-  ];
+    });
+  }
 
   if (query) {
     filter.push(
-      ...Object.entries(flatten(query)).map(([key, value]) => ({
-        term: { [`transaction.${key}`]: value },
-      }))
+      ...Object.entries(flatten(query)).map(([key, value]) => {
+        const should = transactionTypes.map((type) => ({ term: { [`${type}.${key}`]: value } }));
+        return { bool: { should } };
+      })
     );
   }
 
@@ -118,70 +120,6 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
     from: 0,
     size: 10000,
     query: { bool: { filter } },
-  });
-
-  type Result = {
-    transactions: Transaction[];
-    investment_transactions: InvestmentTransaction[];
-    split_transactions: SplitTransaction[];
-  };
-
-  const result: Result = {
-    transactions: [],
-    investment_transactions: [],
-    split_transactions: [],
-  };
-
-  response.hits.hits.forEach(({ _source, _id }) => {
-    if (!_source) return;
-    const { transaction, investment_transaction, split_transaction } = _source;
-    if (transaction) result.transactions.push(new Transaction(transaction));
-    else if (investment_transaction) {
-      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
-    } else if (split_transaction) {
-      split_transaction.split_transaction_id = _id;
-      result.split_transactions.push(new SplitTransaction(split_transaction));
-    }
-  });
-
-  return result;
-};
-
-/**
- * Searches for transaction associated with given user and id.
- * @param user
- * @param id one of transaction_id, investment_transaction_id or split_transaction_id
- * @returns A promise to havea arrays of Transaction objects
- */
-export const searchTransactionById = async (user: MaskedUser, id: string) => {
-  const { user_id } = user;
-
-  type Response = {
-    transaction: Transaction;
-    investment_transaction: InvestmentTransaction;
-    split_transaction: SplitTransaction;
-  };
-
-  const response = await client.search<Response>({
-    index,
-    from: 0,
-    size: 10000,
-    query: {
-      bool: {
-        filter: [
-          { term: { "user.user_id": user_id } },
-          {
-            bool: {
-              should: [
-                { term: { "transaction.transaction_id": id } },
-                { term: { "investment_transaction.investment_transaction_id": id } },
-                { term: { "split_transaction.split_transaction_id": id } },
-              ],
-            },
-          },
-        ],
-      },
-    },
   });
 
   type Result = {
@@ -249,23 +187,12 @@ export const searchTransactionsByAccountId = async (
 
   const filter: any[] = [
     { term: { "user.user_id": user_id } },
+    { bool: { should: transactionTypes.map((type) => ({ term: { type } })) } },
     {
       bool: {
-        should: ["transaction", "investment_transaction"].map((type) => {
-          return { term: { type } };
-        }),
-      },
-    },
-    {
-      bool: {
-        should: ["transaction", "investment_transaction"].map((type) => {
-          return {
-            bool: {
-              should: accountIds.map((account_id) => {
-                return { term: { [`${type}.account_id`]: account_id } };
-              }),
-            },
-          };
+        should: transactionTypes.map((type) => {
+          const should = accountIds.map((id) => ({ term: { [`${type}.account_id`]: id } }));
+          return { bool: { should } };
         }),
       },
     },
@@ -274,7 +201,7 @@ export const searchTransactionsByAccountId = async (
   if (isValidRange) {
     filter.push({
       bool: {
-        should: ["transaction", "investment_transaction"].map((type) => {
+        should: transactionTypes.map((type) => {
           return {
             bool: {
               filter: [
@@ -471,13 +398,20 @@ export const deleteInvestmentTransactions = async (
  * @param split_transaction_id parent transaction's id
  * @returns A promise to be an Elasticsearch response object
  */
-export const createSplitTransaction = async (user: MaskedUser, transaction_id: string) => {
+export const createSplitTransaction = async (
+  user: MaskedUser,
+  transaction_id: string,
+  account_id: string
+) => {
   const { user_id } = user;
 
   type UnindexedSplitTransaction = Omit<SplitTransaction, "split_transaction_id"> & {
     split_transaction_id?: string;
   };
-  const split_transaction: UnindexedSplitTransaction = new SplitTransaction({ transaction_id });
+  const split_transaction: UnindexedSplitTransaction = new SplitTransaction({
+    transaction_id,
+    account_id,
+  });
   delete split_transaction.split_transaction_id;
 
   const response = await client.index({
@@ -553,6 +487,76 @@ export const deleteSplitTransactions = async (
             bool: {
               should: split_transactions.map((e) => ({
                 term: { _id: e.split_transaction_id },
+              })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  return response;
+};
+
+/**
+ * Deletes split transactions by id in transactionIds.
+ * @param user
+ * @param transactionIds
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const deleteSplitTransactionsByTransactionId = async (
+  user: MaskedUser,
+  transactionIds: string[]
+) => {
+  if (!Array.isArray(transactionIds) || !transactionIds.length) return;
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "split_transaction" } },
+          {
+            bool: {
+              should: transactionIds.map((id) => ({
+                term: { "split_transaction.transaction_id": id },
+              })),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  return response;
+};
+
+/**
+ * Deletes split transactions by id in given accountIds.
+ * @param user
+ * @param accountIds
+ * @returns A promise to be an Elasticsearch response object
+ */
+export const deleteSplitTransactionsByAccountId = async (
+  user: MaskedUser,
+  accountIds: string[]
+) => {
+  if (!Array.isArray(accountIds) || !accountIds.length) return;
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { "user.user_id": user_id } },
+          { term: { type: "split_transaction" } },
+          {
+            bool: {
+              should: accountIds.map((id) => ({
+                term: { "split_transaction.account_id": id },
               })),
             },
           },

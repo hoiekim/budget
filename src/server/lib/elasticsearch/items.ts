@@ -152,8 +152,8 @@ export const deleteItem = async (user: MaskedUser, item_id: string) => {
               { term: { _id: account_id } },
               { term: { "account.account_id": account_id } },
               { term: { "holding.account_id": account_id } },
-              // TODO: associated split_transactions should be deleted with transactions
               { term: { "transaction.account_id": account_id } },
+              { term: { "split_transaction.account_id": account_id } },
               { term: { "investment_transaction.account_id": account_id } },
             ]),
           },

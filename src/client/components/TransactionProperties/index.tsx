@@ -146,7 +146,7 @@ const TransactionProperties = ({ transaction }: Props) => {
   const remainingAmount = transaction.getRemainingAmount();
 
   const onClickAdd = async () => {
-    const queryString = "?" + new URLSearchParams({ parent: transaction_id }).toString();
+    const queryString = "?" + new URLSearchParams({ transaction_id, account_id }).toString();
     const newSplitTransactionResponse = await call.get<NewSplitTransactionGetResponse>(
       "/api/new-split-transaction" + queryString
     );
@@ -158,6 +158,7 @@ const TransactionProperties = ({ transaction }: Props) => {
     const newSplitTransaction = new SplitTransaction({
       split_transaction_id,
       transaction_id,
+      account_id,
       date,
       amount: +(remainingAmount / 2).toFixed(2),
       label,

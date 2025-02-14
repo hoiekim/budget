@@ -12,6 +12,7 @@ import {
 } from "common";
 import {
   deleteInvestmentTransactions,
+  deleteSplitTransactionsByTransactionId,
   deleteTransactions,
   getUserItem,
   MaskedUser,
@@ -86,12 +87,15 @@ export const syncSimpleFinData = async (item_id: string) => {
     else otherAccounts.push(incomingAccount);
   });
 
+  const removedTransactionIds = removedTransactions.map((t) => t.transaction_id);
+
   await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
   await upsertAccounts(user, otherAccounts);
   await processHoldingsPromise;
   await upsertInstitutions(institutions);
   await upsertTransactions(user, transactions);
   await deleteTransactions(user, removedTransactions);
+  await deleteSplitTransactionsByTransactionId(user, removedTransactionIds);
   await upsertInvestmentTransactions(user, investmentTransactions);
   await deleteInvestmentTransactions(user, removedInvestmentTransaction);
 

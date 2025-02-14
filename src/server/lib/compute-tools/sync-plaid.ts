@@ -22,6 +22,7 @@ import {
   searchTransactionsByAccountId,
   searchHoldingsByAccountId,
   MaskedUser,
+  deleteSplitTransactionsByTransactionId,
 } from "server";
 import {
   upsertAccountsWithSnapshots,
@@ -74,9 +75,12 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const modeledAdded = added.map(modelize);
       const modeledModified = modified.map(modelize);
+      const removedTransactionIds = removed.map((e) => e.transaction_id);
+
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),
         deleteTransactions(user, removed),
+        deleteSplitTransactionsByTransactionId(user, removedTransactionIds),
       ];
 
       const updated = getDateString();
