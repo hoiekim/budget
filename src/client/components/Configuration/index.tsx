@@ -51,10 +51,10 @@ const Configuration = () => {
     });
   };
 
-  const onClickRefresh = () => {
-    cleanCache();
+  const onClickRefresh = async () => {
     clean();
-    sync.all();
+    await cleanCache();
+    await Promise.all(sync.all());
   };
 
   return (
