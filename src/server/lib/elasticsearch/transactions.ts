@@ -54,7 +54,7 @@ export const upsertTransactions = async (
   return response.items;
 };
 
-interface SearchTransactionsOptions {
+export interface SearchTransactionsOptions {
   range?: DateRange;
   query?: DeepPartial<Transaction>;
 }
@@ -64,7 +64,7 @@ interface DateRange {
   end: Date;
 }
 
-const transactionTypes = ["transaction", "investment_transaction", "split_transaction"];
+const transactionTypes = ["transaction", "investment_transaction"];
 
 /**
  * Searches for transactions associated with given user.
@@ -81,7 +81,6 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
   type Response = {
     transaction: Transaction;
     investment_transaction: InvestmentTransaction;
-    split_transaction: SplitTransaction;
   };
 
   const filter: any[] = [
@@ -125,22 +124,92 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
   type Result = {
     transactions: Transaction[];
     investment_transactions: InvestmentTransaction[];
-    split_transactions: SplitTransaction[];
   };
 
   const result: Result = {
     transactions: [],
     investment_transactions: [],
+  };
+
+  response.hits.hits.forEach(({ _source, _id }) => {
+    if (!_source) return;
+    const { transaction, investment_transaction } = _source;
+    if (transaction) result.transactions.push(new Transaction(transaction));
+    else if (investment_transaction) {
+      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
+    }
+  });
+
+  return result;
+};
+
+export interface SearchSplitTransactionsOptions {
+  range?: DateRange;
+  query?: DeepPartial<SplitTransaction>;
+}
+
+/**
+ * Searches for split transactions associated with given user.
+ * @param user
+ * @param options (optional)
+ * @returns A promise to have arrays of SplitTransaction objects
+ */
+export const searchSplitTransactions = async (
+  user: MaskedUser,
+  options?: SearchSplitTransactionsOptions
+) => {
+  const { user_id } = user;
+  const { range, query } = options || {};
+  const { start, end } = range || {};
+  const isValidRange = start && end && start < end;
+
+  type Response = {
+    split_transaction: SplitTransaction;
+  };
+
+  const filter: any[] = [
+    { term: { "user.user_id": user_id } },
+    { term: { type: "split_transaction" } },
+  ];
+
+  if (isValidRange) {
+    filter.push({
+      bool: {
+        filter: [
+          { range: { ["split_transaction.date"]: { gte: start.toISOString() } } },
+          { range: { ["split_transaction.date"]: { lt: end.toISOString() } } },
+        ],
+      },
+    });
+  }
+
+  if (query) {
+    filter.push(
+      ...Object.entries(flatten(query)).map(([key, value]) => {
+        return { term: { [`split_transaction.${key}`]: value } };
+      })
+    );
+  }
+
+  const response = await client.search<Response>({
+    index,
+    from: 0,
+    size: 10000,
+    query: { bool: { filter } },
+  });
+
+  type Result = {
+    split_transactions: SplitTransaction[];
+  };
+
+  const result: Result = {
     split_transactions: [],
   };
 
   response.hits.hits.forEach(({ _source, _id }) => {
     if (!_source) return;
-    const { transaction, investment_transaction, split_transaction } = _source;
-    if (transaction) result.transactions.push(new Transaction(transaction));
-    else if (investment_transaction) {
-      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
-    } else if (split_transaction) {
+    const { split_transaction } = _source;
+    if (split_transaction) {
       split_transaction.split_transaction_id = _id;
       result.split_transactions.push(new SplitTransaction(split_transaction));
     }

@@ -1,10 +1,9 @@
-import { Route, searchTransactions } from "server";
+import { Route, searchTransactions, SearchTransactionsOptions } from "server";
 import { Transaction, InvestmentTransaction, SplitTransaction } from "common";
 
 export interface TransactionsGetResponse {
   transactions: Transaction[];
   investmentTransactions: InvestmentTransaction[];
-  splitTransactions: SplitTransaction[];
 }
 
 export const getTransactionsRoute = new Route<TransactionsGetResponse>(
@@ -25,19 +24,19 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
     const start = new Date(startString);
     const end = new Date(endString);
 
-    const response = await searchTransactions(user, {
-      range: { start, end },
-      query: { account_id },
-    });
+    const options: SearchTransactionsOptions = {};
+    if (startString && endString) options.range = { start, end };
+    if (account_id) options.query = { account_id };
 
-    const { transactions, investment_transactions, split_transactions } = response;
+    const response = await searchTransactions(user, options);
+
+    const { transactions, investment_transactions } = response;
 
     return {
       status: "success",
       body: {
         transactions,
         investmentTransactions: investment_transactions,
-        splitTransactions: split_transactions,
       },
     };
   }

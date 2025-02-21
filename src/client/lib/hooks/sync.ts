@@ -5,6 +5,7 @@ import {
   OldestTransactionDateGetResponse,
   ApiResponse,
   AccountsGetResponse,
+  SplitTransactionsGetResponse,
 } from "server";
 import { useAppContext, call, cachedCall } from "client";
 import {
@@ -60,6 +61,17 @@ export const useSync = () => {
 
       const promises: Promise<void>[] = [];
 
+      const getSplitTransactions = call
+        .get<SplitTransactionsGetResponse>("/api/split-transactions")
+        .then(({ body: splitTransactions }) => {
+          if (!splitTransactions) return;
+          splitTransactions.forEach((t) => {
+            updateStack.splitTransactions.set(t.split_transaction_id, t);
+          });
+        });
+
+      promises.push(getSplitTransactions);
+
       while (oldestDate < viewDate.getStartDate()) {
         accounts?.forEach((a) => {
           const params = new URLSearchParams();
@@ -80,15 +92,12 @@ export const useSync = () => {
             }
             if (!response?.body) return;
 
-            const { transactions, investmentTransactions, splitTransactions } = response.body;
+            const { transactions, investmentTransactions } = response.body;
             transactions.forEach((t) => {
               updateStack.transactions.set(t.transaction_id, t);
             });
             investmentTransactions.forEach((t) => {
               updateStack.investmentTransactions.set(t.investment_transaction_id, t);
-            });
-            splitTransactions.forEach((t) => {
-              updateStack.splitTransactions.set(t.split_transaction_id, t);
             });
 
             res();
