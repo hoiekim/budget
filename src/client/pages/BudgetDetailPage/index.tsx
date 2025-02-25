@@ -78,7 +78,7 @@ const BudgetDetailPage = () => {
   };
 
   const onClickUnsorted = () => {
-    const paramObj: TransactionsPageParams = { option: "unsorted", budget_id };
+    const paramObj: TransactionsPageParams = { type: "unsorted", budget_id };
     const params = new URLSearchParams(paramObj);
     router.go(PATH.TRANSACTIONS, { params });
   };

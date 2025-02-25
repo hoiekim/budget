@@ -13,16 +13,16 @@ export type TransactionHeaders = { [k in keyof Transaction]?: boolean } & {
 
 interface Props {
   transactionsArray: (Transaction | SplitTransaction)[];
-  customKey?: string;
+  sorterKey?: string;
   top?: number;
 }
 
-const TransactionsTable = ({ transactionsArray, customKey, top }: Props) => {
+const TransactionsTable = ({ transactionsArray, sorterKey, top }: Props) => {
   const { data } = useAppContext();
   const { accounts, institutions, budgets, categories } = data;
 
   const sorter = useSorter<Transaction | SplitTransaction, TransactionHeaders>(
-    "transactions" + (customKey ? `_${customKey}` : ""),
+    "transactions" + (sorterKey ? `_${sorterKey}` : ""),
     new Map([["authorized_date", "descending"]]),
     {
       authorized_date: true,
