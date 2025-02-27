@@ -1,6 +1,6 @@
 import { useState, useEffect, InputHTMLAttributes } from "react";
 
-const CapacityInput = (props: InputHTMLAttributes<HTMLInputElement>) => {
+export const NameInput = (props: InputHTMLAttributes<HTMLInputElement>) => {
   const { defaultValue, className, onClick, onChange, ...rest } = props;
   const [_value, _setValue] = useState(defaultValue || "");
 
@@ -25,5 +25,3 @@ const CapacityInput = (props: InputHTMLAttributes<HTMLInputElement>) => {
     />
   );
 };
-
-export default CapacityInput;

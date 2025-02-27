@@ -105,7 +105,7 @@ export type TransactionsPageParams = {
   category_id?: string;
 };
 
-const TransactionsPage = () => {
+export const TransactionsPage = () => {
   const { data, viewDate, router } = useAppContext();
   const { transactions, investmentTransactions, splitTransactions, accounts, budgets, categories } =
     data;
@@ -223,5 +223,3 @@ const TransactionsPage = () => {
     </div>
   );
 };
-
-export default TransactionsPage;

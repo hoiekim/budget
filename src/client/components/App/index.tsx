@@ -10,7 +10,7 @@ interface Props {
   initialUser: ContextType["user"];
 }
 
-const App = ({ initialUser }: Props) => {
+export const App = ({ initialUser }: Props) => {
   return (
     <AppContext initialUser={initialUser}>
       <Utility />
@@ -19,5 +19,3 @@ const App = ({ initialUser }: Props) => {
     </AppContext>
   );
 };
-
-export default App;

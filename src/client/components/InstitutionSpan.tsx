@@ -6,7 +6,7 @@ interface Props {
   institution_id: string | null;
 }
 
-const InstitutionSpan = ({ institution_id }: Props) => {
+export const InstitutionSpan = ({ institution_id }: Props) => {
   const { data, setData } = useAppContext();
   const { institutions } = data;
   const institution = useMemo(
@@ -33,5 +33,3 @@ const InstitutionSpan = ({ institution_id }: Props) => {
 
   return <span className="InstitutionSpan">{institution?.name || "Unknown"}</span>;
 };
-
-export default InstitutionSpan;

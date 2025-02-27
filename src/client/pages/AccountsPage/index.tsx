@@ -4,7 +4,7 @@ import { AccountsDonut, AccountsTable } from "client/components";
 import { Account } from "common";
 import "./index.css";
 
-const AccountsPage = () => {
+export const AccountsPage = () => {
   const { user, data } = useAppContext();
   const { items, accounts } = data;
 
@@ -43,5 +43,3 @@ const AccountsPage = () => {
     </div>
   );
 };
-
-export default AccountsPage;

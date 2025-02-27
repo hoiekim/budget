@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { LoginPostResponse } from "server";
 import { useAppContext, call, PATH } from "client";
 
-const LoginPage = () => {
+export const LoginPage = () => {
   const { user, setUser, router } = useAppContext();
   const { path, go } = router;
 
@@ -46,5 +46,3 @@ const LoginPage = () => {
     </div>
   );
 };
-
-export default LoginPage;

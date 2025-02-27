@@ -14,7 +14,7 @@ interface Props {
   memoryKey?: string;
 }
 
-const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
+export const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
   const { lines, areas, points, range, labelDirectionX, labelDirectionY } = getGraphData(data);
   if (labelDirectionX) labelX.direction = labelDirectionX;
   if (labelDirectionY) labelY.direction = labelDirectionY;
@@ -59,5 +59,3 @@ const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
     </div>
   );
 };
-
-export default Graph;

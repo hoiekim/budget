@@ -12,7 +12,7 @@ import { SimpleFinLinkButton } from "client/components";
 
 import "./index.css";
 
-const Configuration = () => {
+export const Configuration = () => {
   const { setUser, data, router } = useAppContext();
 
   const { items } = data;
@@ -88,5 +88,3 @@ const Configuration = () => {
     </div>
   );
 };
-
-export default Configuration;

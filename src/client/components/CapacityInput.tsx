@@ -6,7 +6,7 @@ type Props = { defaultValue: number; fixed?: number } & Omit<
   "defaultValue"
 >;
 
-const CapacityInput = (props: Props) => {
+export const CapacityInput = (props: Props) => {
   const {
     defaultValue,
     fixed = 0,
@@ -56,5 +56,3 @@ const CapacityInput = (props: Props) => {
     />
   );
 };
-
-export default CapacityInput;

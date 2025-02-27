@@ -11,7 +11,7 @@ interface Props {
   hideEditButton?: boolean;
 }
 
-const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
+export const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
   const { router } = useAppContext();
   const { path, go } = router;
 
@@ -36,5 +36,3 @@ const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
     />
   );
 };
-
-export default BudgetBar;

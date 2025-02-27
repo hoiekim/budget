@@ -15,7 +15,7 @@ type Props = {
   thickness?: number;
 } & DetailedHTMLProps<HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
 
-const Donut = ({ data, radius = 100, thickness = 20, ...rest }: Props) => {
+export const Donut = ({ data, radius = 100, thickness = 20, ...rest }: Props) => {
   // validate if the items are all positive or all negative.
   const isDataValid = !data.find(({ value }, i) => value * (data[i + 1]?.value || value) < 0);
   const total = data.reduce((acc, item) => acc + Math.abs(item.value), 0);
@@ -54,5 +54,3 @@ const Donut = ({ data, radius = 100, thickness = 20, ...rest }: Props) => {
     </div>
   );
 };
-
-export default Donut;

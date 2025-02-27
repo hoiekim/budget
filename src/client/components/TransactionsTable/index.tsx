@@ -17,7 +17,7 @@ interface Props {
   top?: number;
 }
 
-const TransactionsTable = ({ transactionsArray, sorterKey, top }: Props) => {
+export const TransactionsTable = ({ transactionsArray, sorterKey, top }: Props) => {
   const { data } = useAppContext();
   const { accounts, institutions, budgets, categories } = data;
 
@@ -91,5 +91,3 @@ const TransactionsTable = ({ transactionsArray, sorterKey, top }: Props) => {
     </div>
   );
 };
-
-export default TransactionsTable;

@@ -26,7 +26,7 @@ interface Props {
   hideEditButton?: boolean;
 }
 
-const LabeledBar = ({
+export const LabeledBar = ({
   dataId,
   barData,
   iso_currency_code,
@@ -187,5 +187,3 @@ const LabeledBar = ({
     </div>
   );
 };
-
-export default LabeledBar;

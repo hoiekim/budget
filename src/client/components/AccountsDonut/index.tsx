@@ -7,7 +7,7 @@ import { AccountSubtype, AccountType } from "plaid";
 
 const LABEL_UNNAMED = "Unnamed";
 
-const AccountsDonut = () => {
+export const AccountsDonut = () => {
   const { data } = useAppContext();
   const { accounts } = data;
 
@@ -54,5 +54,3 @@ const AccountsDonut = () => {
     </div>
   );
 };
-
-export default AccountsDonut;

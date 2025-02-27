@@ -9,7 +9,7 @@ export type TransactionDetailPageParams = {
   id?: string;
 };
 
-const TransactionDetailPage = () => {
+export const TransactionDetailPage = () => {
   const { data, router } = useAppContext();
   const { transactions } = data;
 
@@ -36,5 +36,3 @@ const TransactionDetailPage = () => {
     </div>
   );
 };
-
-export default TransactionDetailPage;

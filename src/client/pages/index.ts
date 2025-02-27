@@ -1,16 +1,8 @@
-export { default as LoginPage } from "./LoginPage";
 export * from "./LoginPage";
-export { default as BudgetsPage } from "./BudgetsPage";
 export * from "./BudgetsPage";
-export { default as BudgetDetailPage } from "./BudgetDetailPage";
 export * from "./BudgetDetailPage";
-export { default as BudgetConfigPage } from "./BudgetConfigPage";
 export * from "./BudgetConfigPage";
-export { default as AccountsPage } from "./AccountsPage";
 export * from "./AccountsPage";
-export { default as TransactionsPage } from "./TransactionsPage";
 export * from "./TransactionsPage";
-export { default as TransactionDetailPage } from "./TransactionDetailPage";
 export * from "./TransactionDetailPage";
-export { default as ConfigPage } from "./ConfigPage";
 export * from "./ConfigPage";

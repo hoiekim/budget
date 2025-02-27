@@ -8,7 +8,7 @@ interface Props {
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
-const CategoryComponent = ({ category, onSetOrder }: Props) => {
+export const CategoryBar = ({ category, onSetOrder }: Props) => {
   const { section_id, category_id } = category;
 
   const { data, router } = useAppContext();
@@ -38,5 +38,3 @@ const CategoryComponent = ({ category, onSetOrder }: Props) => {
     </div>
   );
 };
-
-export default CategoryComponent;

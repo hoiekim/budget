@@ -18,7 +18,7 @@ export type BudgetDetailPageParams = {
   budget_id?: string;
 };
 
-const BudgetDetailPage = () => {
+export const BudgetDetailPage = () => {
   const { data, setData, router, viewDate } = useAppContext();
   const { budgets, sections } = data;
   const { path, params, transition } = router;
@@ -128,5 +128,3 @@ const BudgetDetailPage = () => {
     </div>
   );
 };
-
-export default BudgetDetailPage;

@@ -21,7 +21,7 @@ interface Props {
   transaction: Transaction;
 }
 
-const TransactionProperties = ({ transaction }: Props) => {
+export const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts, budgets, sections, categories } = data;
 
@@ -301,5 +301,3 @@ const TransactionProperties = ({ transaction }: Props) => {
     </div>
   );
 };
-
-export default TransactionProperties;

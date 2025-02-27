@@ -12,7 +12,7 @@ interface Props {
   accountsArray: Account[];
 }
 
-const AccountsTable = ({ accountsArray }: Props) => {
+export const AccountsTable = ({ accountsArray }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts } = data;
 
@@ -69,5 +69,3 @@ const AccountsTable = ({ accountsArray }: Props) => {
     </div>
   );
 };
-
-export default AccountsTable;

@@ -7,7 +7,7 @@ interface Props {
   onDelete?: MouseEventHandler<HTMLButtonElement>;
 }
 
-const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
+export const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
   const [isDeleteButtonLocked, setIsDeleteButtonLocked] = useState(true);
 
   const classes = ["ActionButtons"];
@@ -52,5 +52,3 @@ const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
     </div>
   );
 };
-
-export default ActionButtons;

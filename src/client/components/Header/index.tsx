@@ -6,7 +6,7 @@ import "./index.css";
 const { innerHeight, innerWidth } = window;
 const navigatorsHeight = innerHeight / innerWidth > 2 ? 80 : 60;
 
-const Header = () => {
+export const Header = () => {
   const { user, router, viewDate, setViewDate } = useAppContext();
 
   const { path, params, go, back } = router;
@@ -110,5 +110,3 @@ const Header = () => {
     </div>
   );
 };
-
-export default Header;

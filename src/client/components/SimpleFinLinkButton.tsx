@@ -7,7 +7,7 @@ interface Props {
   children?: ReactNode;
 }
 
-const SimpleFinLinkButton = ({ children }: Props) => {
+export const SimpleFinLinkButton = ({ children }: Props) => {
   const { setData } = useAppContext();
   const { sync } = useSync();
 
@@ -39,5 +39,3 @@ const SimpleFinLinkButton = ({ children }: Props) => {
 
   return <button onClick={onClick}>{children}</button>;
 };
-
-export default SimpleFinLinkButton;

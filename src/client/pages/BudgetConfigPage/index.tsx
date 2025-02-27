@@ -28,7 +28,7 @@ export type BudgetFamilyConfigPageParams = {
   id: string;
 };
 
-const BudgetConfigPage = () => {
+export const BudgetConfigPage = () => {
   const { data, router, viewDate } = useAppContext();
   const interval = viewDate.getInterval();
   const { budgets, sections, categories } = data;
@@ -167,5 +167,3 @@ const BudgetConfigPage = () => {
     </div>
   );
 };
-
-export default BudgetConfigPage;

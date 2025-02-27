@@ -9,7 +9,7 @@ interface Props {
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
-const SectionBar = ({ section, onSetOrder }: Props) => {
+export const SectionBar = ({ section, onSetOrder }: Props) => {
   const { budget_id, section_id } = section;
 
   const { data, setData, router } = useAppContext();
@@ -137,5 +137,3 @@ const SectionBar = ({ section, onSetOrder }: Props) => {
     </div>
   );
 };
-
-export default SectionBar;

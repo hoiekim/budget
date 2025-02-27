@@ -16,7 +16,7 @@ interface Props {
   item: Item;
 }
 
-const ConnectionProperties = ({ item }: Props) => {
+export const ConnectionProperties = ({ item }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts } = data;
   const { institution_id, status, updated, provider } = item;
@@ -123,5 +123,3 @@ const ConnectionProperties = ({ item }: Props) => {
     </div>
   );
 };
-
-export default ConnectionProperties;

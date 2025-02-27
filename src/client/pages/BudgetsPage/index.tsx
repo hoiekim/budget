@@ -5,7 +5,7 @@ import { NewBudgetGetResponse } from "server";
 import { Budget, BudgetDictionary, Data } from "common";
 import "./index.css";
 
-const BudgetsPage = () => {
+export const BudgetsPage = () => {
   const { data, setData, router } = useAppContext();
   const { budgets } = data;
   const [budgetsOrder, setBudgetsOrder] = useLocalStorage<string[]>("budgetsOrder", []);
@@ -71,5 +71,3 @@ const BudgetsPage = () => {
     </div>
   );
 };
-
-export default BudgetsPage;

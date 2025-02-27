@@ -10,7 +10,7 @@ type Props = {
   noAlert?: boolean;
 } & DetailedHTMLProps<HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
 
-const Bar = ({
+export const Bar = ({
   memoryKey,
   ratio: _ratio,
   unlabeledRatio: _unlabeledRatio,
@@ -26,10 +26,7 @@ const Bar = ({
   const secondaryBarKey = memoryKey && `bar_${memoryKey}_secondary`;
   const [secondaryBarWidth, setSecondaryBarWidth] = useMemoryState(secondaryBarKey, 0);
   const primaryDottedBarKey = memoryKey && `bar_${memoryKey}_dotted_primary`;
-  const [primaryDottedBarWidth, setPrimaryDottedBarWidth] = useMemoryState(
-    primaryDottedBarKey,
-    0
-  );
+  const [primaryDottedBarWidth, setPrimaryDottedBarWidth] = useMemoryState(primaryDottedBarKey, 0);
   const secondaryDottedBarKey = memoryKey && `bar_${memoryKey}_dotted_secondary`;
   const [secondaryDottedBarWidth, setSecondaryDottedBarWidth] = useMemoryState(
     secondaryDottedBarKey,
@@ -136,5 +133,3 @@ const Bar = ({
     </div>
   );
 };
-
-export default Bar;

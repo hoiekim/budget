@@ -23,7 +23,7 @@ interface Props {
   setIsSyncedInput: Dispatch<SetStateAction<boolean>>;
 }
 
-const BudgetProperties = ({
+export const BudgetProperties = ({
   budgetLike,
   isIncomeInput,
   setIsIncomeInput,
@@ -123,5 +123,3 @@ const BudgetProperties = ({
     </div>
   );
 };
-
-export default BudgetProperties;
