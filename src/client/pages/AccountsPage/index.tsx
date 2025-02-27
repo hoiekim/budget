@@ -9,9 +9,13 @@ const AccountsPage = () => {
   const { items, accounts } = data;
 
   const accountsArray = useMemo(() => {
-    const array: Account[] = [];
-    accounts.forEach((e) => !e.hide && array.push(e));
-    return array;
+    return accounts
+      .filter((e) => !e.hide)
+      .sort((a, b) => {
+        if (a.id < b.id) return 1;
+        if (a.id > b.id) return -1;
+        return 0;
+      });
   }, [accounts]);
 
   const errorAccountsArray = useMemo((): Account[] => {

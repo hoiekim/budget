@@ -38,11 +38,12 @@ div.TransactionsPage > .heading > button {
 div.TransactionsPage > .heading > button > span.chevron-down {
   width: 24px;
   height: 24px;
-  font-size: 12px;
+  font-size: 15px;
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
+  top: 5px;
 }
 
 div.TransactionsPage > .heading > div.select {

@@ -64,7 +64,7 @@ const TransactionsPageTitle = ({ filters }: TransactionsPageTitleProps) => {
     );
   });
 
-  const accountName = account?.name || account?.custom_name;
+  const accountName = account?.custom_name || account?.name;
   const budgetName = budget?.name;
   const categoryName = category?.name;
   const subtitle = [accountName, categoryName, budgetName].find(Boolean);
@@ -147,79 +147,54 @@ const TransactionsPage = () => {
     }
 
     if (isInvestment) {
-      return investmentTransactions.filter((e) => {
-        const hidden = accounts.get(e.account_id)?.hide;
-        const transactionDate = new Date(e.date);
-        const within = viewDate.has(transactionDate);
-        if (hidden || !within) return false;
-        if (type === "deposits" && e.amount > 0) return false;
-        return isSubset(e, filters);
-      });
+      return investmentTransactions
+        .filter((e) => {
+          if (!e.amount) return false;
+          const hidden = accounts.get(e.account_id)?.hide;
+          if (hidden) return false;
+          const transactionDate = new Date(e.date);
+          const within = viewDate.has(transactionDate);
+          if (!within) return false;
+          if (type === "deposits" && e.amount > 0) return false;
+          if (type === "expenses" && e.amount < 0) return false;
+          return isSubset(e, filters);
+        })
+        .sort((a, b) => {
+          if (a.id < b.id) return 1;
+          if (a.id > b.id) return -1;
+          return 0;
+        });
     } else {
-      return transactions.filter((e) => {
-        const hidden = accounts.get(e.account_id)?.hide;
-        const transactionDate = new Date(e.authorized_date || e.date);
-        const within = viewDate.has(transactionDate);
-        if (hidden || !within) return false;
+      return [...transactions.toArray(), ...splitTransactions.toArray()]
+        .filter((e) => {
+          if (!e.amount) return false;
+          const hidden = accounts.get(e.account_id)?.hide;
+          if (hidden) return false;
+          const date = "authorized_date" in e ? e.authorized_date || e.date : e.date;
+          const transactionDate = new Date(date);
+          const within = viewDate.has(transactionDate);
+          if (!within) return false;
+          if (type === "unsorted" && e.label.category_id) return false;
+          if (type === "deposits" && e.amount > 0) return false;
+          if (type === "expenses" && e.amount < 0) return false;
 
-        if (type === "unsorted") {
-          if (e.label.category_id) return false;
-        } else if (type === "deposits") {
-          if (e.amount > 0) return false;
-        }
+          if (!isInvestment && !e.label.budget_id) {
+            const account = accounts.get(e.account_id);
+            if (account?.label.budget_id === budget_id) return true;
+          }
 
-        if (!isInvestment && !e.label.budget_id) {
-          const account = accounts.get(e.account_id);
-          if (account?.label.budget_id === budget_id) return true;
-        }
-        return isSubset(e, filters);
-      });
+          return isSubset(e, filters);
+        })
+        .sort((a, b) => {
+          if (a.id < b.id) return 1;
+          if (a.id > b.id) return -1;
+          return 0;
+        });
     }
   }, [
     isInvestment,
     transactions,
     investmentTransactions,
-    accounts,
-    viewDate,
-    type,
-    account_id,
-    budget_id,
-    category_id,
-  ]);
-
-  const filteredSplitTransactionsArray = useMemo(() => {
-    return splitTransactions.filter((e) => {
-      const parentTransaction = transactions.get(e.transaction_id);
-      if (!parentTransaction) return false;
-
-      const parentAccount = accounts.get(parentTransaction.account_id);
-      if (!parentAccount) return false;
-
-      const hidden = parentAccount.hide;
-      const transactionDate = new Date(e.date);
-      const within = viewDate.has(transactionDate);
-      if (hidden || !within) return false;
-
-      if (type === "unsorted") {
-        if (e.label.category_id) return false;
-      } else if (type === "deposits") {
-        if (e.amount > 0) return false;
-      }
-      if (account_id) {
-        if (parentAccount.account_id !== account_id) return false;
-      }
-      if (budget_id) {
-        if (!e.label.budget_id && parentAccount.label.budget_id !== budget_id) return false;
-        if (e.label.budget_id !== budget_id) return false;
-      }
-      if (category_id) {
-        if (e.label.category_id !== category_id) return false;
-      }
-
-      return true;
-    });
-  }, [
-    transactions,
     splitTransactions,
     accounts,
     viewDate,
@@ -229,28 +204,19 @@ const TransactionsPage = () => {
     category_id,
   ]);
 
-  const transactionsToDisplay: (Transaction | InvestmentTransaction | SplitTransaction)[] =
-    useMemo(() => {
-      return [...filteredTransactions, ...filteredSplitTransactionsArray].sort((a, b) => {
-        if (a.id === b.id) return 0;
-        if (a.id < b.id) return 1;
-        return -1;
-      });
-    }, [filteredTransactions, filteredSplitTransactionsArray]);
-
   return (
     <div className="TransactionsPage">
       <TransactionsPageTitle filters={{ type, account, budget, category }} />
       {isInvestment ? (
         <InvestmentTransactionsTable
           sorterKey={type}
-          transactionsArray={transactionsToDisplay as InvestmentTransaction[]}
+          transactionsArray={filteredTransactions as InvestmentTransaction[]}
           top={account || budget || category ? 139 : 95}
         />
       ) : (
         <TransactionsTable
           sorterKey={type}
-          transactionsArray={transactionsToDisplay as (Transaction | SplitTransaction)[]}
+          transactionsArray={filteredTransactions as (Transaction | SplitTransaction)[]}
           top={account || budget || category ? 139 : 95}
         />
       )}
