@@ -1,5 +1,5 @@
 import { AccountType } from "plaid";
-import { useMemo, useState } from "react";
+import { TouchEventHandler, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext, PATH } from "client";
 import { InvestmentTransactionsTable, TransactionsTable } from "client/components";
 import {
@@ -47,6 +47,21 @@ const TransactionsPageTitle = ({ filters }: TransactionsPageTitleProps) => {
 
   const [isSelecting, setIsSelecting] = useState(false);
 
+  const selectBoxRef = useRef<HTMLDivElement>(null);
+
+  const onClickSelect = () => setIsSelecting((v) => !v);
+  const closeSelect = () => setIsSelecting(false);
+
+  useEffect(() => {
+    const handleTouchOutside: EventListener = (event) => {
+      const node = event.target as Node;
+      const { current } = selectBoxRef;
+      if (current && !current.contains(node)) closeSelect();
+    };
+    document.addEventListener("touchstart", handleTouchOutside);
+    return () => document.removeEventListener("touchstart", handleTouchOutside);
+  }, []);
+
   const options = [...Object.entries(TITLES)].map(([type, title]) => {
     const isSelected = type === (selectedType || "all");
     const onClickSelectOption = () => {
@@ -69,9 +84,6 @@ const TransactionsPageTitle = ({ filters }: TransactionsPageTitleProps) => {
   const categoryName = category?.name;
   const subtitle = [accountName, categoryName, budgetName].find(Boolean);
 
-  const onClickSelect = () => setIsSelecting((v) => !v);
-  const closeSelect = () => setIsSelecting(false);
-
   return (
     <>
       <h2 className="heading">
@@ -80,7 +92,7 @@ const TransactionsPageTitle = ({ filters }: TransactionsPageTitleProps) => {
           <span className="chevron-down rotate90deg">〉</span>
         </button>
         {isSelecting && (
-          <div className="select" onMouseLeave={closeSelect}>
+          <div ref={selectBoxRef} className="select" onMouseLeave={closeSelect}>
             <div className="selectLabel" onClick={closeSelect}>
               <span>Select&nbsp;transaction&nbsp;type</span>
               <button className="closeButton">✕</button>
