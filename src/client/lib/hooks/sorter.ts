@@ -69,15 +69,9 @@ export const useSorter = <T, H>(
         array.sort((a, b) => {
           const comparable = new Comparable(a, b);
           comparable.format((e) => formatter(e, key));
-
-          const isABiggerThanB = comparable.a > comparable.b;
-          const aMinusB = comparable.a === comparable.b ? 0 : isABiggerThanB ? 1 : -1;
-
-          let result: number = 0;
-
-          if (option === "ascending") result = aMinusB;
-          else result = -aMinusB;
-          return result;
+          const aMinusB = comparable.a === comparable.b ? 0 : comparable.a > comparable.b ? 1 : -1;
+          if (option === "ascending") return aMinusB;
+          else return -aMinusB;
         });
       });
 

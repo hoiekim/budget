@@ -194,6 +194,7 @@ div.Router:not(.transitioning.backward) > div.currentPage {
 }
 
 .rotate90deg {
+  display: block;
   transform: rotate(90deg);
 }
 

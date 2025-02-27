@@ -12,7 +12,6 @@ export class InvestmentTransaction implements PlaidInvestmentTransaction {
   }
   set id(_: string) {}
 
-  [key: string]: any;
   investment_transaction_id: string = getRandomId();
   cancel_transaction_id?: string | null;
   account_id: string = "";

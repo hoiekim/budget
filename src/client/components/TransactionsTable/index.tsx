@@ -23,16 +23,7 @@ const TransactionsTable = ({ transactionsArray, sorterKey, top }: Props) => {
 
   const sorter = useSorter<Transaction | SplitTransaction, TransactionHeaders>(
     "transactions" + (sorterKey ? `_${sorterKey}` : ""),
-    new Map([["authorized_date", "descending"]]),
-    {
-      authorized_date: true,
-      merchant_name: true,
-      amount: true,
-      account: true,
-      institution: true,
-      budget: true,
-      category: true,
-    }
+    new Map([["authorized_date", "descending"]])
   );
 
   const { sort } = sorter;

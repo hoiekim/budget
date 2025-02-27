@@ -39,7 +39,9 @@ export const useGraph = (account: Account) => {
     const balanceHistory: number[] = [current || 0];
 
     const translate = (transaction: Transaction | InvestmentTransaction) => {
-      const { authorized_date, date, amount } = transaction;
+      const authorized_date =
+        "authorized_date" in transaction ? transaction.authorized_date : undefined;
+      const { date, amount } = transaction;
       if (account_id !== transaction.account_id) return;
       const transactionDate = new Date(authorized_date || date);
       const span = graphViewDate.getSpanFrom(transactionDate) + 1;

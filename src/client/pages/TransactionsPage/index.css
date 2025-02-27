@@ -6,18 +6,98 @@ div.TransactionsPage .TransactionsHead {
   margin: 0;
 }
 
+div.TransactionsHead {
+  padding: 10px;
+  z-index: 109;
+}
+
 div.TransactionsPage > h2 {
   top: 50px;
+  height: 45px;
   padding: 16px 10px 0;
-  z-index: 110;
+  z-index: 111;
 }
 
 div.TransactionsPage > h3 {
   top: 95px;
   padding: 10px;
+  z-index: 110;
 }
 
-div.TransactionsHead {
+div.TransactionsPage > .heading > button {
+  padding: 0;
+  width: 100%;
+  font-size: 1em;
+  font-weight: bold;
+  background-color: transparent;
+  white-space: nowrap;
+  display: flex;
+  justify-content: space-between;
+}
+
+div.TransactionsPage > .heading > button > span.chevron-down {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+div.TransactionsPage > .heading > div.select {
+  position: absolute;
+  top: 50px;
+  width: calc(100% - 20px);
+  background-color: #eee;
+  display: block;
+  border-radius: 10px;
+  border: 1px solid #aaa;
+  overflow: hidden;
+}
+
+div.TransactionsPage > .heading > div.select * {
+  font-size: 14px;
+  font-weight: normal;
+}
+
+div.TransactionsPage > .heading > div.select > div.selectLabel {
   padding: 10px;
-  z-index: 109;
+  border-bottom: 1px solid #aaa;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.TransactionsPage > .heading > div.select > div.selectLabel > button.closeButton {
+  font-size: 18px;
+}
+
+div.TransactionsPage > .heading > div.select > div.options > button {
+  width: 100%;
+  padding: 4px 0 6px;
+  height: 28px;
+  text-align: left;
+}
+
+div.TransactionsPage > .heading > div.select > div.options > button:first-child {
+  height: 32px;
+  padding: 8px 0 6px 0;
+}
+
+div.TransactionsPage > .heading > div.select > div.options > button:last-child {
+  height: 32px;
+  padding: 4px 0 10px 0;
+}
+
+div.TransactionsPage > .heading > div.select > div.options > button > span {
+  padding-left: 10px;
+}
+
+div.TransactionsPage > .heading > div.select > div.options > button > span:not(.checkmark) {
+  padding-left: 30px;
+}
+
+div.TransactionsPage > .heading > div.select > div.options > button > span.checkmark {
+  position: absolute;
 }

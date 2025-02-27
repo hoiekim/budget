@@ -25,8 +25,6 @@ export const getSplitTransactionsRoute = new Route<SplitTransactionsGetResponse>
     if (startString && endString) options.range = { start, end };
     if (account_id) options.query = { account_id };
 
-    console.log(options);
-
     const response = await searchSplitTransactions(user, options);
 
     return { status: "success", body: response.split_transactions };

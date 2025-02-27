@@ -9,7 +9,7 @@ interface Props {
 }
 
 const AccountsHead = ({ sorter, getHeader }: Props) => {
-  const { setSortBy, getArrow, getVisible, toggleVisible, visibles } = sorter;
+  const { setSortBy, getArrow, toggleVisible, visibles } = sorter;
 
   const hiddenColumns = useMemo(() => {
     return Object.entries(visibles)
@@ -33,18 +33,16 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
     "action",
   ];
 
-  const headerComponents = headerKeys
-    .filter((key) => getVisible(key))
-    .map((key, i) => {
-      return (
-        <div key={`accounts_header_${key}`}>
-          <button onClick={() => setSortBy(key)}>
-            {getHeader(key)} {getArrow(key)}
-          </button>
-          <button onClick={() => toggleVisible(key)}>✕</button>
-        </div>
-      );
-    });
+  const headerComponents = headerKeys.map((key, i) => {
+    return (
+      <div key={`accounts_header_${key}`}>
+        <button onClick={() => setSortBy(key)}>
+          {getHeader(key)} {getArrow(key)}
+        </button>
+        <button onClick={() => toggleVisible(key)}>✕</button>
+      </div>
+    );
+  });
 
   return (
     <div className="AccountsHead">

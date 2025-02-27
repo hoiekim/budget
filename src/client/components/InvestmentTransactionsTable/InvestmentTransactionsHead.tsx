@@ -1,25 +1,18 @@
-import { SplitTransaction, Transaction } from "common";
+import { InvestmentTransaction } from "common";
 import { Sorter } from "client";
-import { TransactionHeaders } from ".";
+import { InvestmentTransactionHeaders } from ".";
 import { CSSProperties } from "react";
 
 interface Props {
-  sorter: Sorter<Transaction | SplitTransaction, TransactionHeaders>;
-  getHeader: (key: keyof TransactionHeaders) => string;
+  sorter: Sorter<InvestmentTransaction, InvestmentTransactionHeaders>;
+  getHeader: (key: keyof InvestmentTransactionHeaders) => string;
   style?: CSSProperties;
 }
 
 const TransactionsHead = ({ sorter, getHeader, style }: Props) => {
   const { setSortBy, getArrow, sortings } = sorter;
 
-  const headerKeys: (keyof TransactionHeaders)[] = [
-    "authorized_date",
-    "merchant_name",
-    "amount",
-    "account",
-    "budget",
-    "category",
-  ];
+  const headerKeys: (keyof InvestmentTransactionHeaders)[] = ["date", "amount", "account"];
 
   const sortOrder = Array.from(sortings.keys());
 
