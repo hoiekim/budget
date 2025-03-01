@@ -1,4 +1,4 @@
-import { isEqual } from "./util";
+import { isEqual } from "./utils";
 import { Account, Institution, Item } from "./models";
 
 test("isEqual should return true when the two input accounts have the same property values", () => {

@@ -96,7 +96,7 @@ div.Header > .navigators {
 
 div.Header > .navigators > .centerBox {
   display: flex;
-  justify-content: space-around;
+  justify-content: space-evenly;
 }
 
 div.Header > .navigators > div > a {

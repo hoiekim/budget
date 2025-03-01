@@ -1,4 +1,4 @@
-export * from "./util";
+export * from "./utils";
 export * from "./date";
 export * from "./models";
 export * from "./dictionaries";

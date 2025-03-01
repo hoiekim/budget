@@ -52,7 +52,7 @@ export const Header = () => {
     back();
   };
 
-  const { BUDGETS, ACCOUNTS, TRANSACTIONS } = PATH;
+  const { DASHBOARD, BUDGETS, ACCOUNTS, TRANSACTIONS } = PATH;
 
   const isBackButtonDisabled =
     !params.toString() && !![BUDGETS, ACCOUNTS, TRANSACTIONS].includes(path);
@@ -102,6 +102,7 @@ export const Header = () => {
       </div>
       <div className="navigators" style={{ height: navigatorsHeight }}>
         <div className="centerBox">
+          {/* <Navigator target={DASHBOARD}>Dashboard</Navigator> */}
           <Navigator target={BUDGETS}>Budget</Navigator>
           <Navigator target={ACCOUNTS}>Accounts</Navigator>
           <Navigator target={TRANSACTIONS}>Transactions</Navigator>

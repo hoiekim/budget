@@ -10,6 +10,7 @@ import {
   TransactionDetailPage,
   ConfigPage,
   PATH,
+  DashboardPage,
 } from "client";
 import ConnectionDetailPage from "client/pages/ConnectionDetailPage";
 
@@ -31,6 +32,7 @@ const Router = () => {
     if (path === PATH.TRANSACTION_DETAIL) return <TransactionDetailPage />;
     if (path === PATH.CONFIG) return <ConfigPage />;
     if (path === PATH.CONNECTION_DETAIL) return <ConnectionDetailPage />;
+    if (path === PATH.DASHBOARD) return <DashboardPage />;
     return <div>Not Found</div>;
   };
 
