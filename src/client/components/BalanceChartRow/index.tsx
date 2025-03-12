@@ -79,8 +79,8 @@ export const BalanceChartRow = ({ showTitle = true, chart, onClick }: BalanceCha
       <div className="chart">
         <Stacks data={stacksData} />
         <div className="equation">
-          <div className="equationItem">{numberToCommaString(Math.abs(sum1), 0)}</div>
-          <div className="equationItem">-&nbsp;{numberToCommaString(Math.abs(sum2), 0)}</div>
+          <div className="equationItem">$&nbsp;{numberToCommaString(Math.abs(sum1), 0)}</div>
+          <div className="equationItem">-&nbsp;$&nbsp;{numberToCommaString(Math.abs(sum2), 0)}</div>
           <hr />
           <div className="equationItem">
             {sign}&nbsp;$&nbsp;{numberToCommaString(Math.abs(total), 0)}

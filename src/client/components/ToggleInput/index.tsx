@@ -1,4 +1,5 @@
 import { ChangeEventHandler, InputHTMLAttributes, useRef, useState } from "react";
+import "./index.css";
 
 type Props = InputHTMLAttributes<HTMLInputElement>;
 

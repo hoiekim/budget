@@ -41,7 +41,7 @@ export const ProjectionChartRow = ({
     }
     saving.amountAsOf = savingViewDate.getEndDate();
     return saving;
-  }, []);
+  }, [initial_saving, momInflation]);
 
   if (!account_ids?.length) {
     return (
