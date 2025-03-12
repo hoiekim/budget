@@ -120,6 +120,7 @@ const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps
   }).length;
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
+    if (!confirm("Do you want to delete this chart?")) return;
     const r = await call.delete(`/api/chart?id=${chart_id}`);
     if (r.status === "success") {
       setData((oldData) => {
@@ -320,6 +321,7 @@ const ProjectionChartProperties = ({ chart, children }: ProjectionChartPropertie
   }).length;
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
+    if (!confirm("Do you want to delete this chart?")) return;
     const r = await call.delete(`/api/chart?id=${chart_id}`);
     if (r.status === "success") {
       setData((oldData) => {
