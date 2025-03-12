@@ -5,10 +5,13 @@ import { Point } from "./index";
 interface Props {
   point: Point;
   color: string;
+  guideX?: boolean;
+  guideY?: boolean;
   memoryKey?: string;
+  height?: number;
 }
 
-const Dot = ({ memoryKey, point, color }: Props) => {
+const Dot = ({ memoryKey, point, color, guideX, guideY, height = 100 }: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
   const animateMemoryKey = memoryKey && `graphDot_${memoryKey}_opacity`;
@@ -22,7 +25,6 @@ const Dot = ({ memoryKey, point, color }: Props) => {
   }, [point, transitioning, setOpacity, opacityDebouncer]);
 
   const divRef = useRef<HTMLDivElement>(null);
-  const height = 100;
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
@@ -44,13 +46,13 @@ const Dot = ({ memoryKey, point, color }: Props) => {
   const x = point[0] * (width - 10) + 5;
   const y = (1 - point[1]) * (height - 10) + 5;
 
-  const classes = ["Area"];
+  const classes = ["Dot"];
   const isColored = new Set(color.split("")).size > 2;
   if (isColored) classes.push("colored");
 
   return (
     <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
-      <svg height="100%" width="100%" viewBox={`0 0 ${width} 100`} preserveAspectRatio="none">
+      <svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         <circle
           cx={x}
           cy={y}
@@ -62,6 +64,34 @@ const Dot = ({ memoryKey, point, color }: Props) => {
             opacity,
           }}
         />
+        {guideX && (
+          <line
+            x1={x}
+            y1={5}
+            x2={x}
+            y2={height - 5}
+            style={{
+              stroke: color,
+              strokeWidth: "1px",
+              transition: "all 300ms ease 0s",
+              opacity: opacity * 0.5,
+            }}
+          />
+        )}
+        {guideY && (
+          <line
+            x1={5}
+            y1={y}
+            x2={width - 5}
+            y2={y}
+            style={{
+              stroke: color,
+              strokeWidth: "1px",
+              transition: "all 300ms ease 0s",
+              opacity: opacity * 0.5,
+            }}
+          />
+        )}
       </svg>
     </div>
   );

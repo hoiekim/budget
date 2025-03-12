@@ -1,4 +1,4 @@
-import { Account, Holding, Security } from "common";
+import { Account, Chart, Holding, JSONChart, Security } from "common";
 import {
   flatten,
   MaskedUser,
@@ -96,6 +96,10 @@ export const getUpdateCategoryScript = (user: MaskedUser, category: PartialCateg
 
 export const getUpdateItemScript = (user: MaskedUser, item: Omit<PartialItem, "plaidError">) => {
   return getUpdateScriptWithUser(user, "item", item);
+};
+
+export const getUpdateChartScript = (user: MaskedUser, chart: Partial<JSONChart>) => {
+  return getUpdateScriptWithUser(user, "chart", chart);
 };
 
 export const getUpdateSnapshotScript = (snapshot: PartialSnapshotData) => {

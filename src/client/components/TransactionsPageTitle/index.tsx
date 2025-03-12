@@ -1,4 +1,4 @@
-import { Sorter, useAppContext } from "client";
+import { ChevronDownIcon, Sorter, useAppContext } from "client";
 import {
   Account,
   Budget,
@@ -138,7 +138,7 @@ export const TransactionsPageTitle = ({
       <h2 className="heading">
         <button onClick={onClickSelect}>
           <span>{typeToTitle(selectedType)}</span>
-          <span className="chevron-down rotate90deg">〉</span>
+          <ChevronDownIcon size={15} />
         </button>
         {isSelecting && (
           <div ref={selectBoxRef} className="select" onMouseLeave={closeSelect}>

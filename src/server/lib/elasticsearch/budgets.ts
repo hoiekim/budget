@@ -1,11 +1,7 @@
-import {
-  MaskedUser,
-  getUpdateBudgetScript,
-  getUpdateSectionScript,
-  getUpdateCategoryScript,
-} from "server";
+import { MaskedUser } from "server";
 import { Budget, Section, Category, JSONBudget, JSONSection, JSONCategory } from "common";
 import { client } from "./client";
+import { getUpdateBudgetScript, getUpdateSectionScript, getUpdateCategoryScript } from "./scripts";
 import { index } from ".";
 
 /**
@@ -230,9 +226,9 @@ export const deleteCategory = async (user: MaskedUser, category_id: string) => {
 };
 
 /**
- * Searches for accounts associated with given user.
+ * Searches for budgets associated with given user.
  * @param user
- * @returns A promise to be an array of Account objects
+ * @returns A promise to be an array of budget objects
  */
 export const searchBudgets = async (user: MaskedUser) => {
   const response = await client.search<{

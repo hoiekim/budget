@@ -49,6 +49,11 @@ div.CapacitiesInput .capacityAnalysis > .dateLabel {
   margin-bottom: 10px;
 }
 
+div.CapacitiesInput .capacityAnalysis > .dateLabel input {
+  width: 150px;
+  max-width: none;
+}
+
 div.BudgetDonut {
   width: 100%;
 }

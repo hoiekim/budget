@@ -1,7 +1,7 @@
 import { numberToCommaString } from "common";
 import { useState, useRef, InputHTMLAttributes } from "react";
 
-type Props = { defaultValue: number; fixed?: number } & Omit<
+type Props = { defaultValue: number; maxValue?: number; minValue?: number; fixed?: number } & Omit<
   InputHTMLAttributes<HTMLInputElement>,
   "defaultValue"
 >;
@@ -9,6 +9,8 @@ type Props = { defaultValue: number; fixed?: number } & Omit<
 export const CapacityInput = (props: Props) => {
   const {
     defaultValue,
+    maxValue,
+    minValue,
     fixed = 0,
     className,
     onClick,
@@ -49,9 +51,11 @@ export const CapacityInput = (props: Props) => {
       }}
       onBlur={(e) => {
         const numberizedValue = +e.target.value.replace(/,/g, "") || 0;
-        const commaString = numberToCommaString(numberizedValue, fixed);
+        const maxCappedValue = maxValue ? Math.min(maxValue, numberizedValue) : numberizedValue;
+        const minCappedValue = minValue ? Math.max(minValue, maxCappedValue) : maxCappedValue;
+        const commaString = numberToCommaString(minCappedValue, fixed);
         _setValue(commaString);
-        if (onBlur) onBlur(e);
+        if (onBlur) onBlur({ ...e, target: { ...e.target, value: minCappedValue.toString() } });
       }}
     />
   );

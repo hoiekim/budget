@@ -11,7 +11,7 @@ import {
   SplitTransactionDictionary,
 } from "common";
 import { useAppContext, call, PATH, TransactionDetailPageParams } from "client";
-import { InstitutionSpan } from "client/components";
+import { InstitutionSpan, KebabIcon } from "client/components";
 import { ApiResponse } from "server";
 
 interface Props {
@@ -230,7 +230,9 @@ const TransactionRow = ({ transaction }: Props) => {
           </select>
         </div>
         <div>
-          <button onClick={onClickKebab}>⋯</button>
+          <button className="kebabButton" onClick={onClickKebab}>
+            <KebabIcon size={15} />
+          </button>
         </div>
       </div>
     </div>

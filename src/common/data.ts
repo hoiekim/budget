@@ -9,6 +9,7 @@ import {
   ItemDictionary,
   assign,
   SplitTransactionDictionary,
+  ChartDictionary,
 } from "common";
 
 export class Data {
@@ -21,6 +22,7 @@ export class Data {
   sections = new SectionDictionary();
   categories = new CategoryDictionary();
   items = new ItemDictionary();
+  charts = new ChartDictionary();
 
   constructor(init?: Partial<Data>) {
     assign(this, init);

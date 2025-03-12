@@ -18,15 +18,13 @@ import {
 } from "common";
 import { GraphInput, PATH, TransactionsPageParams, call, useAppContext } from "client";
 
-export const useGraph = (account: Account) => {
-  const {
-    account_id,
-    type,
-    balances: { current },
-  } = account;
+export const useAccountGraph = (accounts: Account[]) => {
+  const validAccounts = accounts.filter((a) => a.type !== "credit");
+  const accountIds = validAccounts.map((a) => a.account_id);
+  const totalBalance = validAccounts.reduce((acc, a) => acc + (a.balances.current || 0), 0);
 
   const { data, viewDate } = useAppContext();
-  const { transactions, investmentTransactions } = data;
+  const { accounts: accountsDictionary, transactions, investmentTransactions } = data;
 
   const graphViewDate = useMemo(() => {
     const isFuture = new Date() < viewDate.getEndDate();
@@ -34,19 +32,18 @@ export const useGraph = (account: Account) => {
   }, [viewDate]);
 
   const graphData: GraphInput = useMemo(() => {
-    if (type === "credit") return {};
-
-    const balanceHistory: number[] = [current || 0];
+    const balanceHistory: number[] = [totalBalance || 0];
 
     const translate = (transaction: Transaction | InvestmentTransaction) => {
       const authorized_date =
         "authorized_date" in transaction ? transaction.authorized_date : undefined;
       const { date, amount } = transaction;
-      if (account_id !== transaction.account_id) return;
+      if (!accountIds.includes(transaction.account_id)) return;
       const transactionDate = new Date(authorized_date || date);
       const span = graphViewDate.getSpanFrom(transactionDate) + 1;
       if (!balanceHistory[span]) balanceHistory[span] = 0;
-      if (type === "investment") {
+      const account = accountsDictionary.get(transaction.account_id);
+      if (account && account.type === "investment") {
         const { price, quantity } = transaction as InvestmentTransaction;
         balanceHistory[span] -= price * quantity;
       } else {
@@ -81,7 +78,15 @@ export const useGraph = (account: Account) => {
     }
 
     return { lines: [{ sequence, color: "#097" }], points };
-  }, [transactions, current, account_id, type, investmentTransactions, graphViewDate, viewDate]);
+  }, [
+    transactions,
+    accountIds,
+    totalBalance,
+    accountsDictionary,
+    investmentTransactions,
+    graphViewDate,
+    viewDate,
+  ]);
 
   return { graphViewDate, graphData };
 };

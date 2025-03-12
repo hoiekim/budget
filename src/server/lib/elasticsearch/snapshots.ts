@@ -1,6 +1,7 @@
-import { flatten, getUpdateSnapshotScript } from "server";
+import { flatten } from "server";
 import { SnapshotData, DeepPartial, Snapshot, Account, Holding, Security } from "common";
 import { client } from "./client";
+import { getUpdateSnapshotScript } from "./scripts";
 import { index } from ".";
 
 export const searchSnapshots = async (query: DeepPartial<SnapshotData>) => {

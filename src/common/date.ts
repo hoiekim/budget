@@ -228,6 +228,16 @@ export const getDateTimeString = (dateOrString: Date | string = getDateString())
   return dateString + "T00:00:00";
 };
 
+/**
+ * @param dateObject Date
+ * @returns YYYY-MM
+ */
+export const getYearMonthString = (dateObject = new Date()) => {
+  const { year, month } = getDateComponents(dateObject);
+  const formattedMonth = to2DString(month + 1);
+  return `${year}-${formattedMonth}`;
+};
+
 export const getLocaleDateString = (date: Date) => {
   return date.toLocaleDateString("en-US", {
     year: "numeric",

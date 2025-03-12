@@ -1,5 +1,15 @@
 import { MouseEventHandler, ReactNode } from "react";
 import { useAppContext, PATH } from "client";
+import {
+  ArrowLeftIcon,
+  BankIcon,
+  ChartIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  HamburgerIcon,
+  ListIcon,
+  RecieptIcon,
+} from "client/components";
 import { Interval } from "common";
 import "./index.css";
 
@@ -55,7 +65,7 @@ export const Header = () => {
   const { DASHBOARD, BUDGETS, ACCOUNTS, TRANSACTIONS } = PATH;
 
   const isBackButtonDisabled =
-    !params.toString() && !![BUDGETS, ACCOUNTS, TRANSACTIONS].includes(path);
+    !params.toString() && [DASHBOARD, BUDGETS, ACCOUNTS, TRANSACTIONS].includes(path);
 
   const onClickHamburger: MouseEventHandler<HTMLAnchorElement> = (e) => {
     e.preventDefault();
@@ -68,11 +78,15 @@ export const Header = () => {
       <div className="viewController">
         <div className="centerBox">
           <div className="backButton">
-            {!isBackButtonDisabled && <button onClick={onClickBack}>←</button>}
+            {!isBackButtonDisabled && (
+              <button onClick={onClickBack}>
+                <ArrowLeftIcon size={15} />
+              </button>
+            )}
           </div>
           <div>
             <button onClick={onClickPreviousView}>
-              <b>&nbsp;〈&nbsp;&nbsp;</b>
+              <ChevronLeftIcon size={12} />
             </button>
             <select
               className="intervalSelect"
@@ -90,22 +104,34 @@ export const Header = () => {
               <option value="month">{getIntervalOptionText("month", "Monthly")}</option>
             </select>
             <button onClick={onClickNextView}>
-              <b>&nbsp;&nbsp;〉&nbsp;</b>
+              <ChevronRightIcon size={12} />
             </button>
           </div>
           <div className="hamburger">
             <a href={PATH.CONFIG} onClick={onClickHamburger}>
-              ≡
+              <HamburgerIcon size={20} />
             </a>
           </div>
         </div>
       </div>
       <div className="navigators" style={{ height: navigatorsHeight }}>
         <div className="centerBox">
-          {/* <Navigator target={DASHBOARD}>Dashboard</Navigator> */}
-          <Navigator target={BUDGETS}>Budget</Navigator>
-          <Navigator target={ACCOUNTS}>Accounts</Navigator>
-          <Navigator target={TRANSACTIONS}>Transactions</Navigator>
+          <Navigator target={DASHBOARD}>
+            <ChartIcon size={20} />
+            <span>Dashboard</span>
+          </Navigator>
+          <Navigator target={BUDGETS}>
+            <ListIcon size={20} />
+            <span>Budgets</span>
+          </Navigator>
+          <Navigator target={ACCOUNTS}>
+            <BankIcon size={20} />
+            <span>Accounts</span>
+          </Navigator>
+          <Navigator target={TRANSACTIONS}>
+            <RecieptIcon size={20} />
+            <span>Transactions</span>
+          </Navigator>
         </div>
       </div>
     </div>

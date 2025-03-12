@@ -11,6 +11,7 @@ import {
   Category,
   Item,
   SplitTransaction,
+  Chart,
 } from "common";
 import { BudgetFamily, BudgetFamilyType } from "./models/BudgetFamily";
 
@@ -85,6 +86,7 @@ export class BudgetDictionary extends Dictionary<Budget> {}
 export class SectionDictionary extends Dictionary<Section> {}
 export class CategoryDictionary extends Dictionary<Category> {}
 export class ItemDictionary extends Dictionary<Item> {}
+export class ChartDictionary extends Dictionary<Chart> {}
 
 export class TransactionDictionary extends Dictionary<Transaction> {
   filterByLabel = (input: Partial<TransactionLabel>) => {

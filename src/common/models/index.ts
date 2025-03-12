@@ -9,3 +9,4 @@ export * from "./Category";
 export * from "./Item";
 export * from "./SplitTransaction";
 export * from "./Snapshot";
+export * from "./Chart";

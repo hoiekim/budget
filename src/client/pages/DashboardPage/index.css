@@ -6,3 +6,13 @@ div.DashboardPage > h2 {
   background-color: #fffe;
   z-index: 110;
 }
+
+div.DashboardPage > button {
+  width: calc(100% - 20px);
+  margin: 0 10px;
+}
+
+div.DashboardPage > div.BalanceChartRow,
+div.DashboardPage > div.ProjectionChartRow {
+  margin: 10px;
+}

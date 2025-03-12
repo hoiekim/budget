@@ -309,6 +309,16 @@
         "snapshot_id": { "type": "keyword" },
         "date": { "type": "date" }
       }
+    },
+    "chart": {
+      "type": "object",
+      "dynamic": "strict",
+      "properties": {
+        "chart_id": { "type": "keyword" },
+        "name": { "type": "text" },
+        "type": { "type": "keyword" },
+        "configuration": { "type": "text" }
+      }
     }
   }
 }

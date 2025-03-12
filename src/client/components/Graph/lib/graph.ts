@@ -8,11 +8,13 @@ export interface Range {
 }
 
 export type LineType = "perpendicular" | "diagonal";
+export type StrokeType = "solid" | "dashed";
 
 export interface LineData {
   points: (Point | undefined)[];
   color: string;
   type?: LineType;
+  strokeType?: StrokeType;
 }
 
 export interface AreaData {
@@ -25,6 +27,8 @@ export interface AreaData {
 export interface PointData {
   point: Point;
   color: string;
+  guideX?: boolean;
+  guideY?: boolean;
 }
 
 export interface GraphData {
@@ -42,6 +46,7 @@ export interface LineInput {
   sequence: Sequence;
   color: string;
   type?: LineType;
+  strokeType?: StrokeType;
 }
 
 export interface AreaInput {
@@ -54,6 +59,8 @@ export interface AreaInput {
 export interface PointInput {
   point: { value: number; index: number };
   color: string;
+  guideX?: boolean;
+  guideY?: boolean;
 }
 
 export interface GraphInput {
@@ -71,27 +78,37 @@ export interface GraphInput {
  * component is responsible to convert index into meaningful labels to display.
  */
 export const getGraphData = (input: GraphInput): GraphData => {
-  const allSequences: Sequence[] = [];
+  const mergedSequence: { min?: number; max?: number }[] = [];
 
-  input.lines?.forEach(({ sequence }) => allSequences.push(sequence));
+  const mergeSequence = (sequence: Sequence) => {
+    sequence.forEach((e, i) => {
+      if (!mergedSequence[i]) mergedSequence[i] = {};
+      if (e !== undefined) {
+        mergedSequence[i].min = Math.min(e, mergedSequence[i].min || e);
+        mergedSequence[i].max = Math.max(e, mergedSequence[i].max || e);
+      }
+    });
+  };
+
+  input.lines?.forEach(({ sequence }) => mergeSequence(sequence));
 
   input.areas?.forEach(({ upperBound, lowerBound }) => {
-    allSequences.push(upperBound);
-    allSequences.push(lowerBound);
+    mergeSequence(upperBound);
+    mergeSequence(lowerBound);
   });
 
   const sequenceFromPoints: Sequence = [];
-  allSequences.push(sequenceFromPoints);
+  mergeSequence(sequenceFromPoints);
   input.points?.forEach(({ point: { value, index } }) => {
     sequenceFromPoints[index] = value;
   });
 
-  const rangeX: Point = [0, Math.max(...allSequences.map((e) => e.length)) - 1];
-  const rangeY: Point = getRangeY(allSequences.flat());
+  const rangeX: Point = [0, mergedSequence.length - 1];
+  const rangeY: Point = getRangeY(mergedSequence.flatMap((e) => [e?.min, e?.max]));
   const range: Range = { x: [rangeX[0], rangeX[1]], y: rangeY };
 
-  const lines = input.lines?.map(({ sequence, color, type }) => {
-    return { points: getPoints(sequence, range), color, type };
+  const lines = input.lines?.map(({ sequence, color, type, strokeType }) => {
+    return { points: getPoints(sequence, range), color, type, strokeType };
   });
 
   const areas = input.areas?.map(({ upperBound, lowerBound, color, type }) => {
@@ -104,23 +121,28 @@ export const getGraphData = (input: GraphInput): GraphData => {
   });
 
   const points =
-    input.points?.map(({ point: { index, value }, color }) => {
+    input.points?.map(({ point: { index, value }, color, guideX, guideY }) => {
       const [minX, maxX] = range.x;
       const [minY, maxY] = range.y;
       const x = minX === maxX ? 0.5 : index / maxX;
       const y = maxY === minY ? 0.5 : (value - minY) / (maxY - minY) || 0;
       const point: Point = [x, y];
-      return { point, color };
+      return { point, color, guideX, guideY };
     }) || [];
 
   let topEdges = 0;
   let bottomEdges = 0;
 
-  allSequences.flat().forEach((e) => {
+  mergedSequence.forEach((e) => {
     if (!e) return;
-    const factor = e / range.y[1];
-    if (0.75 < factor) topEdges++;
-    if (factor < 0.25) bottomEdges++;
+    const { min, max } = e;
+    const nums = [min, max];
+    nums.forEach((f) => {
+      if (!f) return;
+      const factor = f / range.y[1];
+      if (0.67 < factor) topEdges++;
+      if (factor < 0.25) bottomEdges++;
+    });
   });
 
   const labelDirectionY = topEdges < bottomEdges ? "top" : "bottom";
@@ -143,7 +165,7 @@ const mapSequence = (value: number | undefined, index: number, range: Range): Po
 };
 
 const getRangeY = (sequence: Sequence): Point => {
-  const definedSequence = sequence.filter((e) => e !== undefined) as number[];
+  const definedSequence = sequence.filter((e): e is number => e !== undefined);
   const actualMax = Math.max(...definedSequence);
   const actualMin = Math.min(...definedSequence);
 

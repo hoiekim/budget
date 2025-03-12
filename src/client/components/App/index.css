@@ -257,17 +257,23 @@ div.Properties .row:last-child {
   padding-bottom: 18px;
 }
 
-div.Properties .row > input {
-  font-size: 16px;
-}
-
-div.Properties .row.keyValue > span.propertyName {
+div.Properties .row span.small {
   color: #888;
+  font-size: 12px;
 }
 
-div.Properties .row.keyValue > *:last-child {
-  max-width: 60%;
-  text-align: end;
+div.Properties .row select {
+  font-size: 14px;
+}
+
+div.Properties .row input {
+  font-size: 16px;
+  height: 18px;
+  text-align: right;
+}
+
+div.Properties .row.keyValue span.propertyName {
+  color: #888;
 }
 
 div.Properties .row > button {
@@ -280,4 +286,9 @@ div.Properties .row > button {
 
 div.Properties .row.button:hover {
   background-color: #ddd;
+}
+
+.sidePadding {
+  padding-right: 10px;
+  padding-left: 10px;
 }

@@ -8,9 +8,17 @@ interface Props {
   color: string;
   type?: LineType;
   memoryKey?: string;
+  height?: number;
 }
 
-const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: Props) => {
+const Area = ({
+  memoryKey,
+  upperBound,
+  lowerBound,
+  color,
+  type = "diagonal",
+  height = 100,
+}: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
   const animateMemoryKey = memoryKey && `graphArea_${memoryKey}_animate`;
@@ -30,7 +38,6 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
   }, [isVisible, setAnimate, animateDebouncer]);
 
   const divRef = useRef<HTMLDivElement>(null);
-  const height = 100;
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
@@ -63,7 +70,12 @@ const Area = ({ memoryKey, upperBound, lowerBound, color, type = "diagonal" }: P
   return (
     <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
       {isVisible && (
-        <svg height="100%" width="100%" viewBox={`0 0 ${width} 100`} preserveAspectRatio="none">
+        <svg
+          height="100%"
+          width="100%"
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+        >
           <linearGradient id="prog-mask" x1="0%" x2="0%" y1="100%" y2="100%">
             <stop offset="0%" stopColor="white" stopOpacity="1" />
             <stop offset="0%" stopColor="white" stopOpacity="1">

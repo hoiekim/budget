@@ -5,7 +5,7 @@ import "./index.css";
 import { useEffect, useState } from "react";
 import { Item } from "common";
 
-const ConnectionDetailPage = () => {
+export const ConnectionDetailPage = () => {
   const { data, router } = useAppContext();
   const { items } = data;
 
@@ -30,5 +30,3 @@ const ConnectionDetailPage = () => {
     </div>
   );
 };
-
-export default ConnectionDetailPage;

@@ -1,16 +1,24 @@
 import { useEffect, useRef } from "react";
 import { useAppContext, useDebounce, useMemoryState } from "client";
-import { Timeout } from "common";
 import { LineType, Point, pointsToCoordinateString } from "./lib";
 
 interface Props {
   points: (Point | undefined)[];
   color: string;
   type?: LineType;
+  strokeType?: "solid" | "dashed";
   memoryKey?: string;
+  height?: number;
 }
 
-const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
+const Line = ({
+  memoryKey,
+  points,
+  color,
+  type = "diagonal",
+  strokeType = "solid",
+  height = 100,
+}: Props) => {
   const { router } = useAppContext();
   const { transitioning } = router.transition;
 
@@ -19,34 +27,57 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
   const [pathLength, setPathLength] = useMemoryState(pathLengthMemoryKey, 0);
   const pathOffsetMemoryKey = memoryKey && `graphLine_${memoryKey}_pathOffset`;
   const [pathOffset, setPathOffset] = useMemoryState(pathOffsetMemoryKey, true);
+  const strokeDashArrayMemoryKey = memoryKey && `graphLine_${memoryKey}_strokeDashArray`;
+  const [strokeDashArray, setStrokeDashArray] = useMemoryState(strokeDashArrayMemoryKey, "5");
   const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
 
-  const timeout = useRef<Timeout>();
-
   const pathDebouncer = useDebounce();
+  const offsetDebouncer = useDebounce();
 
   useEffect(() => {
     const recurUntilRef = () => {
-      setTimeout(() => {
-        const path = pathRef.current;
-        if (path) {
-          pathDebouncer(() => {
-            setPathLength(path.getTotalLength() || 700);
-          }, 110);
-        } else recurUntilRef();
-      }, 100);
+      const path = pathRef.current;
+      if (!path) {
+        setTimeout(recurUntilRef, 100);
+        return;
+      }
+
+      pathDebouncer(() => {
+        const newPathLength = path.getTotalLength() || 700;
+        setPathLength(newPathLength);
+        if (strokeType === "solid") {
+          setStrokeDashArray((newPathLength + 5).toString());
+        } else {
+          const dashArray: number[] = [];
+          for (let i = 0; i < Math.floor(newPathLength / 8); i++) {
+            dashArray.push(1);
+            dashArray.push(7);
+          }
+          dashArray.push(1, (newPathLength % 8) - 1 + newPathLength + 5);
+          setStrokeDashArray(dashArray.join(" "));
+        }
+      }, 110);
+
+      if (!transitioning) {
+        offsetDebouncer(() => {
+          setPathOffset(false);
+        }, 300);
+      }
     };
 
-    recurUntilRef();
-
-    if (!transitioning) {
-      clearTimeout(timeout.current);
-      timeout.current = setTimeout(() => setPathOffset(false), 300);
-    }
-  }, [points, transitioning, setPathLength, setPathOffset, pathDebouncer]);
+    setTimeout(recurUntilRef, 100);
+  }, [
+    points,
+    transitioning,
+    setPathLength,
+    setPathOffset,
+    pathDebouncer,
+    offsetDebouncer,
+    setStrokeDashArray,
+    strokeType,
+  ]);
 
   const divRef = useRef<HTMLDivElement>(null);
-  const height = 100;
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
@@ -74,14 +105,14 @@ const Line = ({ memoryKey, points, color, type = "diagonal" }: Props) => {
 
   return (
     <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
-      <svg height="100%" width="100%" viewBox={`0 0 ${width} 100`} preserveAspectRatio="none">
+      <svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         <path
           ref={pathRef}
           d={width ? d : ""}
           style={{
             display: pathLength ? "block" : "none",
             stroke: color,
-            strokeDasharray: pathLength + 5,
+            strokeDasharray: strokeDashArray,
             strokeDashoffset: pathOffset ? pathLength + 5 : 0,
             transition: "all 1s ease 0s",
             strokeWidth: 2,

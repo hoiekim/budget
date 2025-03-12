@@ -3,7 +3,7 @@ import { Account } from "common";
 import { useAppContext, DateLabel, MoneyLabel } from "client";
 import { InstitutionSpan, Graph } from "client/components";
 import "./index.css";
-import { useEventHandlers, useGraph } from "./lib";
+import { useEventHandlers, useAccountGraph } from "./lib";
 import Balance from "./Balance";
 
 interface Props {
@@ -41,7 +41,7 @@ const AccountRow = ({ account }: Props) => {
   const { iso_currency_code, unofficial_currency_code } = balances;
   const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
 
-  const { graphViewDate, graphData } = useGraph(account);
+  const { graphViewDate, graphData } = useAccountGraph([account]);
 
   const { onClickAccount, onChangeNameInput, onChangeBudgetSelect, onClickHide } = useEventHandlers(
     account,
@@ -65,7 +65,7 @@ const AccountRow = ({ account }: Props) => {
       <Balance balances={balances} type={type} subtype={subtype} />
       {!!graphData.lines && (
         <Graph
-          data={graphData}
+          input={graphData}
           labelX={new DateLabel(graphViewDate)}
           labelY={new MoneyLabel(currencyCode)}
           memoryKey={account_id}

@@ -12,8 +12,3 @@ div.Configuration .row > .connection {
   justify-content: space-between;
   align-items: center;
 }
-
-div.Configuration .row > .connection span.small {
-  color: #888;
-  font-size: 12px;
-}

@@ -1,13 +1,13 @@
+import { flatten } from "server";
+import { Account, Holding, Institution, Security } from "common";
+import { client } from "./client";
+import { MaskedUser } from "./users";
 import {
-  flatten,
   getUpdateAccountScript,
   getUpdateHoldingScript,
   getUpdateInstitutionScript,
   getUpdateSecurityScript,
-} from "server";
-import { Account, Holding, Institution, Security } from "common";
-import { client } from "./client";
-import { MaskedUser } from "./users";
+} from "./scripts";
 import { index } from ".";
 
 export type PartialAccount = { account_id: string } & Partial<Account>;

@@ -1,11 +1,11 @@
 import { ChangeEventHandler, Dispatch, SetStateAction } from "react";
 import { Capacity, ViewDate, getDateString, getDateTimeString } from "common";
 import { useAppContext } from "client";
-import ToggleInput from "./ToggleInput";
+import { ToggleInput } from "client/components";
 import RadioInputs from "./RadioInputs";
-import "./index.css";
 import CapacitiesInput from "./CapacitiesInput";
 import { BudgetFamily } from "common/models/BudgetFamily";
+import "./index.css";
 
 interface Props {
   budgetLike: BudgetFamily;
@@ -90,12 +90,14 @@ export const BudgetProperties = ({
           {isRollOverInput && (
             <div className="row">
               <span>Rolls over from&nbsp;</span>
-              <input
-                disabled={isSyncedInput}
-                type="date"
-                value={getDateString(rollOverStartDateInput)}
-                onChange={onChangeRollDate}
-              />
+              <div>
+                <input
+                  disabled={isSyncedInput}
+                  type="date"
+                  value={getDateString(rollOverStartDateInput)}
+                  onChange={onChangeRollDate}
+                />
+              </div>
             </div>
           )}
         </div>

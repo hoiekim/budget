@@ -31,4 +31,5 @@ div.SplitTransactionRow > .amount > input {
   font-size: 16px;
   background-color: #fff;
   width: calc(100% - 5px);
+  text-align: left;
 }

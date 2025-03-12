@@ -1,0 +1,73 @@
+div.BalanceChartRow {
+  padding: 10px;
+  /* margin: 10px 10px 20px;
+  background-color: #eee;
+  border-radius: 10px; */
+}
+
+div.BalanceChartRow > .title {
+  text-align: right;
+}
+
+div.BalanceChartRow > .chart {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 20px 0 0;
+}
+
+div.BalanceChartRow > .chart > .Stacks {
+  flex-grow: 1;
+}
+
+div.BalanceChartRow > .chart > div.equation {
+  width: 25%;
+  text-align: right;
+  font-size: 14px;
+}
+
+div.Stacks {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  height: 150px;
+}
+
+div.Stacks > div.column {
+  width: 50%;
+  margin-right: 10px;
+}
+
+div.Stacks > div.column > div.stack {
+  position: relative;
+  padding: 2px 2px 0 10px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  overflow: hidden;
+  text-align: right;
+}
+
+div.Stacks > div.column:nth-child(odd) > div.stack:nth-child(odd) {
+  background-color: #189878;
+}
+
+div.Stacks > div.column:nth-child(odd) > div.stack:nth-child(even) {
+  background-color: #186888;
+}
+
+div.Stacks > div.column:nth-child(even) > div.stack:nth-child(odd) {
+  background-color: #f86828;
+}
+
+div.Stacks > div.column:nth-child(even) > div.stack:nth-child(even) {
+  background-color: #ff4038;
+}
+
+div.Stacks > div.column > div.stack > span {
+  font-size: 9px;
+  z-index: 50;
+  color: white;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

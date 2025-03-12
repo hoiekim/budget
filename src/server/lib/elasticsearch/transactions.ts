@@ -7,14 +7,13 @@ import {
   RemovedSplitTransaction,
   DeepPartial,
 } from "common";
+import { MaskedUser, flatten } from "server";
+import { client } from "./client";
 import {
-  MaskedUser,
   getUpdateTransactionScript,
   getUpdateInvestmentTransactionScript,
   getUpdateSplitTransactionScript,
-  flatten,
-} from "server";
-import { client } from "./client";
+} from "./scripts";
 import { index } from ".";
 
 export type PartialTransaction = { transaction_id: string } & Partial<Transaction>;

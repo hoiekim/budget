@@ -8,25 +8,34 @@ import "./index.css";
 export * from "./lib";
 
 interface Props {
-  data: GraphInput;
-  labelX: GraphLabel;
-  labelY: GraphLabel;
+  input: GraphInput;
+  labelX?: GraphLabel;
+  labelY?: GraphLabel;
   memoryKey?: string;
+  height?: number;
 }
 
-export const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
-  const { lines, areas, points, range, labelDirectionX, labelDirectionY } = getGraphData(data);
+export const Graph = ({
+  input,
+  labelX = new GraphLabel(),
+  labelY = new GraphLabel(),
+  memoryKey,
+  height = 100,
+}: Props) => {
+  const { lines, areas, points, range, labelDirectionX, labelDirectionY } = getGraphData(input);
   if (labelDirectionX) labelX.direction = labelDirectionX;
   if (labelDirectionY) labelY.direction = labelDirectionY;
 
-  const lineElements = lines?.map(({ points, color, type }, i) => {
+  const lineElements = lines?.map(({ points, color, type, strokeType }, i) => {
     return (
       <Line
         key={`graphLine_${i}`}
         points={points}
         color={color}
         type={type}
+        strokeType={strokeType}
         memoryKey={`${memoryKey}_${i}`}
+        height={height}
       />
     );
   });
@@ -40,18 +49,27 @@ export const Graph = ({ data, labelX, labelY, memoryKey }: Props) => {
         color={color}
         type={type}
         memoryKey={`${memoryKey}_area`}
+        height={height}
       />
     );
   });
 
-  const pointElements = points?.map(({ point, color }, i) => {
+  const pointElements = points?.map(({ point, color, guideX, guideY }, i) => {
     return (
-      <Dot key={`graphPoint_${i}`} point={point} color={color} memoryKey={`${memoryKey}_point`} />
+      <Dot
+        key={`graphPoint_${i}`}
+        point={point}
+        color={color}
+        guideX={guideX}
+        guideY={guideY}
+        memoryKey={`${memoryKey}_point`}
+        height={height}
+      />
     );
   });
 
   return (
-    <div className="Graph">
+    <div className="Graph" style={{ height }}>
       <Grid range={range} labelX={labelX} labelY={labelY} />
       {areaElements}
       {lineElements}

@@ -15,16 +15,19 @@ export class GraphLabel {
    */
   get = (_i: number, _division: number, _range: Point) => "";
 }
+type DateLocaleOptions = Intl.DateTimeFormatOptions & { week?: "long" | "short" };
 
 export class DateLabel extends GraphLabel {
   viewDate: ViewDate;
+  localeOptions?: DateLocaleOptions;
 
   /**
    * @param viewDate ViewDate of the last element of the graph range
    */
-  constructor(viewDate: ViewDate) {
+  constructor(viewDate: ViewDate, localeOptions?: DateLocaleOptions) {
     super();
     this.viewDate = viewDate;
+    this.localeOptions = localeOptions;
   }
 
   /**
@@ -46,8 +49,7 @@ export class DateLabel extends GraphLabel {
     const previousMovedViewDate = viewDate.clone().previous(prevGridPosition);
     const previousYear = previousMovedViewDate.getComponents().year;
 
-    type Options = Intl.DateTimeFormatOptions & { week?: "long" | "short" };
-    const options: Options = {};
+    const options: DateLocaleOptions = {};
     if (!i || previousYear !== currentYear) options.year = "2-digit";
 
     switch (viewDate.getInterval()) {
@@ -58,6 +60,8 @@ export class DateLabel extends GraphLabel {
         options.month = "short";
         break;
     }
+
+    if (this.localeOptions) Object.assign(options, this.localeOptions);
 
     return movedViewDate.toString(options);
   };

@@ -32,8 +32,3 @@ div.SectionBar > .children {
 div.SectionBar > .children.transition {
   transition-duration: 300ms;
 }
-
-div.BudgetDetail > div.sidePadding {
-  padding-right: 10px;
-  padding-left: 10px;
-}

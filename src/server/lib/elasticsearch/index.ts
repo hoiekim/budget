@@ -7,7 +7,6 @@ import mappings from "./mappings.json";
 export const { version }: any = mappings;
 export const index = "budget" + (version ? `-${version}` : "");
 
-export * from "./util";
 export * from "./accounts";
 export * from "./budgets";
 export * from "./users";
@@ -16,3 +15,4 @@ export * from "./session";
 export * from "./transactions";
 export * from "./items";
 export * from "./snapshots";
+export * from "./charts";

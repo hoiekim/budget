@@ -6,7 +6,7 @@ import { clamp } from "common";
  * @example console.log(adjustBrightness("#FF5733", 0.8)); // Darken the color by 20%
  */
 export const adjustBrightness = (hexColor: string, brightness: number) => {
-  let color = hexColor.startsWith("#") ? hexColor.slice(1) : hexColor;
+  const color = hexColor.startsWith("#") ? hexColor.slice(1) : hexColor;
 
   const r = parseInt(color.substring(0, 2), 16);
   const g = parseInt(color.substring(2, 4), 16);

@@ -1,0 +1,8 @@
+div.ChartDetailPage > div {
+  padding: 0 10px;
+}
+
+div.ChartDetailPage > div.Properties > div.ProjectionChartRow,
+div.ChartDetailPage > div.Properties > div.BalanceChartRow {
+  margin-bottom: 20px;
+}

@@ -1,0 +1,14 @@
+div.ProjectionChartRow > div.title {
+  padding-bottom: 10px;
+  text-align: right;
+}
+
+div.ProjectionChartRow > table {
+  text-align: right;
+}
+
+div.ProjectionChartRow > table div.label {
+  width: 5px;
+  height: 15px;
+  background-color: black;
+}

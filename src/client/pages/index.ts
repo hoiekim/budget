@@ -6,4 +6,7 @@ export * from "./AccountsPage";
 export * from "./TransactionsPage";
 export * from "./TransactionDetailPage";
 export * from "./ConfigPage";
+export * from "./ConnectionDetailPage";
 export * from "./DashboardPage";
+export * from "./ChartDetailPage";
+export * from "./ChartAccountsPage";

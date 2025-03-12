@@ -1,4 +1,5 @@
 import { ButtonHTMLAttributes, MouseEventHandler } from "react";
+import { ChevronDownIcon, ChevronUpIcon } from "client/components";
 import "./index.css";
 
 type Props = {
@@ -20,9 +21,16 @@ const EditButton = ({ isCompact, onEdit, className, type, ...rest }: Props) => {
         }}
         {...rest}
       >
-        <span className="rotate90deg" style={{ letterSpacing: "-1px" }}>
-          {isCompact ? <>〈&nbsp;〉</> : "✎"}
-        </span>
+        {isCompact ? (
+          <div className="reorder">
+            <ChevronUpIcon size={8} />
+            <ChevronDownIcon size={8} />
+          </div>
+        ) : (
+          <span className="rotate90deg" style={{ letterSpacing: "-1px" }}>
+            ✎
+          </span>
+        )}
       </button>
     </div>
   );

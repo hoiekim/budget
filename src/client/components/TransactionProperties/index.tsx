@@ -247,10 +247,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
           <div className="property">
             <div className="row keyValue">
               <span className="propertyName">Budget</span>
-              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-                <option value="">Select Budget</option>
-                {budgetOptions}
-              </select>
+              <div>
+                <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+                  <option value="">Select Budget</option>
+                  {budgetOptions}
+                </select>
+              </div>
             </div>
             <div className="row keyValue">
               <span className="propertyName">Section</span>

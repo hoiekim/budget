@@ -6,6 +6,7 @@ import {
   ApiResponse,
   AccountsGetResponse,
   SplitTransactionsGetResponse,
+  ChartsGetResponse,
 } from "server";
 import { useAppContext, call, cachedCall } from "client";
 import {
@@ -29,6 +30,8 @@ import {
   ViewDate,
   getDateString,
   THIRTY_DAYS,
+  ChartDictionary,
+  Chart,
 } from "common";
 
 /**
@@ -240,17 +243,42 @@ export const useSync = () => {
     });
   }, [userLoggedIn, setData]);
 
+  type SyncCharts = () => void;
+
+  const syncCharts = useCallback(async () => {
+    if (!userLoggedIn) return;
+
+    await call.get<ChartsGetResponse>("/api/charts").then(({ body }) => {
+      if (!body) return;
+
+      setData((oldData) => {
+        const newData = new Data(oldData);
+
+        const newCharts = new ChartDictionary(newData.charts);
+        body.forEach((e) => {
+          const { chart_id } = e;
+          const newChart = new Chart(e);
+          newCharts.set(chart_id, newChart);
+        });
+        newData.charts = newCharts;
+
+        return newData;
+      });
+    });
+  }, [userLoggedIn, setData]);
+
   type SyncAll = () => Promise<any>[];
 
   const syncAll = useCallback(() => {
-    return [syncAccounts().then(syncTransactions), syncBudgets()];
-  }, [syncTransactions, syncAccounts, syncBudgets]);
+    return [syncAccounts().then(syncTransactions), syncBudgets(), syncCharts()];
+  }, [syncTransactions, syncAccounts, syncBudgets, syncCharts]);
 
   type Sync = {
     all: SyncAll;
     transactions: SyncTransactions;
     accounts: SyncAccounts;
     budgets: SyncBudgets;
+    charts: SyncCharts;
   };
 
   const sync: Sync = useMemo(
@@ -259,8 +287,9 @@ export const useSync = () => {
       transactions: syncTransactions,
       accounts: syncAccounts,
       budgets: syncBudgets,
+      charts: syncCharts,
     }),
-    [syncAll, syncTransactions, syncAccounts, syncBudgets]
+    [syncAll, syncTransactions, syncAccounts, syncBudgets, syncCharts]
   );
 
   const clean = useCallback(() => setData(new Data()), [setData]);

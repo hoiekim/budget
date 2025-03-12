@@ -101,7 +101,7 @@ const CapacitiesInput = ({
                 <>All&nbsp;past</>
               )}
             </div>
-            <button onClick={onDelete}>Remove&nbsp;This&nbsp;Period</button>
+            <button onClick={onDelete}>Remove</button>
           </div>
           {budgetLike.type === "category" ? (
             <div>

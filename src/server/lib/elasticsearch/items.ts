@@ -1,7 +1,7 @@
 import { Item, ItemStatus } from "common";
 import { client } from "./client";
 import { MaskedUser, searchUser, User } from "./users";
-import { getUpdateItemScript } from "./util";
+import { getUpdateItemScript } from "./scripts";
 import { index } from ".";
 
 /**

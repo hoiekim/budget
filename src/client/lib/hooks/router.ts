@@ -14,6 +14,8 @@ export enum PATH {
   CONFIG = "config",
   CONNECTION_DETAIL = "connection-detail",
   DASHBOARD = "dashboard",
+  CHART_DETAIL = "chart-detail",
+  CHART_ACCOUNTS = "chart-accounts",
 }
 
 export interface ClientRouter {
@@ -44,7 +46,7 @@ let isRouterRegistered = false;
 
 const getPath = () => {
   const path = window.location.pathname.split("/")[1];
-  return Object.values(PATH).find((e) => e === path) || PATH.BUDGETS;
+  return Object.values(PATH).find((e) => e === path) || PATH.DASHBOARD;
 };
 
 const getParams = () => {

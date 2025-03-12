@@ -1,6 +1,6 @@
 import { useMemo } from "react";
+import { useAppContext, PATH } from "client";
 import {
-  useAppContext,
   LoginPage,
   BudgetsPage,
   BudgetDetailPage,
@@ -9,10 +9,11 @@ import {
   TransactionsPage,
   TransactionDetailPage,
   ConfigPage,
-  PATH,
   DashboardPage,
-} from "client";
-import ConnectionDetailPage from "client/pages/ConnectionDetailPage";
+  ChartDetailPage,
+  ConnectionDetailPage,
+  ChartAccountsPage,
+} from "client/pages";
 
 const Router = () => {
   const { router } = useAppContext();
@@ -33,6 +34,8 @@ const Router = () => {
     if (path === PATH.CONFIG) return <ConfigPage />;
     if (path === PATH.CONNECTION_DETAIL) return <ConnectionDetailPage />;
     if (path === PATH.DASHBOARD) return <DashboardPage />;
+    if (path === PATH.CHART_DETAIL) return <ChartDetailPage />;
+    if (path === PATH.CHART_ACCOUNTS) return <ChartAccountsPage />;
     return <div>Not Found</div>;
   };
 

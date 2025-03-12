@@ -66,3 +66,18 @@ div.EditButton.small > button > span {
   left: 8px;
   bottom: 3px;
 }
+
+div.EditButton > button > div.reorder > svg {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+div.EditButton > button > div.reorder > svg {
+  position: absolute;
+  left: calc(50% - 4px);
+}
+
+div.EditButton > button > div.reorder > svg:first-child {
+  top: 6px;
+}

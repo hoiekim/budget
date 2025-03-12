@@ -58,6 +58,12 @@ div.TransactionRow > .budgetCategoryActions > :last-child > * {
   font-size: 20px;
 }
 
+div.TransactionRow > .budgetCategoryActions > div > button.kebabButton {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 div.TransactionRow .smallText {
   font-size: 12px;
   color: #888;

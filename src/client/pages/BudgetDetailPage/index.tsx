@@ -12,7 +12,7 @@ import {
 import { Budget, Data, Section, SectionDictionary } from "common";
 import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
-import { useGraph } from "./lib";
+import { useBudgetGraph } from "./lib";
 
 export type BudgetDetailPageParams = {
   budget_id?: string;
@@ -83,7 +83,7 @@ export const BudgetDetailPage = () => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
-  const { graphData, graphViewDate } = useGraph(budget || new Budget());
+  const { graphData, graphViewDate } = useBudgetGraph(budget || new Budget());
 
   const { number_of_unsorted_items } = budget || {};
 
@@ -108,7 +108,7 @@ export const BudgetDetailPage = () => {
           {!!(graphData.lines || graphData.areas) && !isInfinite && (
             <div className="sidePadding">
               <Graph
-                data={graphData}
+                input={graphData}
                 labelX={new DateLabel(graphViewDate)}
                 labelY={new MoneyLabel(budget.iso_currency_code)}
                 memoryKey={budget_id}

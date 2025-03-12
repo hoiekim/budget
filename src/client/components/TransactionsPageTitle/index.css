@@ -36,15 +36,9 @@ div.TransactionsPage > .heading > button {
   justify-content: space-between;
 }
 
-div.TransactionsPage > .heading > button > span.chevron-down {
-  width: 24px;
-  height: 24px;
-  font-size: 15px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+div.TransactionsPage > .heading > button > svg {
   position: relative;
-  top: 5px;
+  top: 6px;
 }
 
 div.TransactionsPage > .heading > div.select {
