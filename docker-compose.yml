@@ -1,0 +1,32 @@
+---
+version: "3.3"
+
+services:
+  elastic:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.7.0
+    environment:
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=budget_elastic
+    restart: always
+    volumes:
+      - ~/es_volume/_data:/usr/share/elasticsearch/data
+
+  budget:
+    image: hoie/budget:latest
+    environment:
+      - HOST_NAME=localhost
+      - ADMIN_PASSWORD=budget_admin
+      - PLAID_CLIENT_ID=000000000
+      - PLAID_SECRET_PRODUCTION=000000000
+      - PLAID_SECRET_DEVELOPMENT=000000000
+      - PLAID_SECRET_SANDBOX=000000000
+      - ELASTICSEARCH_HOST=http://elastic:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=budget_elastic
+      - POLYGON_API_KEY=000000000
+    ports:
+      - "3005:3005"
+    links:
+      - elastic
+    depends_on:
+      - elastic

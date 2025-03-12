@@ -15,7 +15,9 @@ export const getClosePrice = async (ticker_symbol: string, date: Date) => {
   const tickerParameter = `ticker/${ticker_symbol}`;
   const rangeParameter = `range/1/day/${from}/${to}`;
   const path = `${POLYGON_HOST}/v2/aggs/${tickerParameter}/${rangeParameter}?apiKey=${POLYGON_API_KEY}`;
-  const { results } = await fetch(path).then((r) => r.json());
+  const { results } = await fetch(path)
+    .then((r) => r.json())
+    .catch(console.warn);
   if (!results) return undefined;
   // c = close price
   return results[0].c as number;
@@ -23,7 +25,9 @@ export const getClosePrice = async (ticker_symbol: string, date: Date) => {
 
 export const getTickerDetail = async (ticker_symbol: string) => {
   const path = `${POLYGON_HOST}/v3/reference/tickers/${ticker_symbol}?apiKey=${POLYGON_API_KEY}`;
-  const { results } = await fetch(path).then((r) => r.json());
+  const { results } = await fetch(path)
+    .then((r) => r.json())
+    .catch(console.warn);
   if (!results) return undefined;
   const name = results.name as string;
   const currency_name = results.currency_name as string;
