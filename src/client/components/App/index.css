@@ -249,6 +249,11 @@ div.Properties .row {
   align-items: center;
 }
 
+div.Properties .row button.delete {
+  font-weight: 500;
+  color: var(--darkRed);
+}
+
 div.Properties .row:not(:last-child) {
   border-bottom: 1px solid #ccc;
 }

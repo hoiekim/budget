@@ -119,6 +119,23 @@ const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps
     return budget_ids.includes(b.id);
   }).length;
 
+  const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
+    const r = await call.delete(`/api/chart?id=${chart_id}`);
+    if (r.status === "success") {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const newCharts = new ChartDictionary(newData.charts);
+        newCharts.delete(chart_id);
+        newData.charts = newCharts;
+        return newData;
+      });
+      router.back();
+    } else {
+      console.error(r.message);
+      throw new Error(r.message);
+    }
+  };
+
   return (
     <div className="Properties">
       <div className="propertyLabel">Chart&nbsp;Profile</div>
@@ -157,6 +174,15 @@ const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps
       </div>
 
       {children}
+
+      <div className="propertyLabel">&nbsp;</div>
+      <div className="property">
+        <div className="row button">
+          <button className="delete colored" onClick={onClickRemove}>
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -293,6 +319,23 @@ const ProjectionChartProperties = ({ chart, children }: ProjectionChartPropertie
     return !a.hide && account_ids.includes(a.account_id);
   }).length;
 
+  const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
+    const r = await call.delete(`/api/chart?id=${chart_id}`);
+    if (r.status === "success") {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const newCharts = new ChartDictionary(newData.charts);
+        newCharts.delete(chart_id);
+        newData.charts = newCharts;
+        return newData;
+      });
+      router.back();
+    } else {
+      console.error(r.message);
+      throw new Error(r.message);
+    }
+  };
+
   return (
     <div className="Properties">
       <div className="propertyLabel">Chart&nbsp;Profile</div>
@@ -425,6 +468,15 @@ const ProjectionChartProperties = ({ chart, children }: ProjectionChartPropertie
             />
             <span className="small">&nbsp;%</span>
           </div>
+        </div>
+      </div>
+
+      <div className="propertyLabel">&nbsp;</div>
+      <div className="property">
+        <div className="row button">
+          <button className="delete colored" onClick={onClickRemove}>
+            Delete
+          </button>
         </div>
       </div>
     </div>

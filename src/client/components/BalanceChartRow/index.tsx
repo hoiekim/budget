@@ -29,13 +29,11 @@ export const BalanceChartRow = ({ showTitle = true, chart, onClick }: BalanceCha
   });
 
   budgets.forEach((b) => {
+    if (!configuration.budget_ids.includes(b.id)) return;
     const date = viewDate.getEndDate();
     const interval = viewDate.getInterval();
-    const amount = b.roll_over_start_date
-      ? b.rolled_over_amount
-      : b.getActiveCapacity(date)[interval];
+    const amount = b.roll_over ? b.rolled_over_amount : -b.getActiveCapacity(date)[interval];
     const stack = { type: "Budget", name: b.name, amount: Math.abs(amount) };
-    if (!configuration.budget_ids.includes(b.id)) return;
     if (amount > 0) return column1.push(stack);
     else column2.push(stack);
   });
