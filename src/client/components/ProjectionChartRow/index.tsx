@@ -136,7 +136,7 @@ export const ProjectionChartRow = ({
 
   return (
     <div className="ProjectionChartRow" onClick={onClick}>
-      {showTitle && <div className="title">{chart.name}</div>}
+      {showTitle && <h3 className="title">{chart.name}</h3>}
       <Graph
         height={200}
         input={graphData}
@@ -151,6 +151,7 @@ export const ProjectionChartRow = ({
             <th>Saved</th>
             <th>Payout Max</th>
           </tr>
+          <tr className="spacer"></tr>
         </thead>
         <tbody>
           <tr>

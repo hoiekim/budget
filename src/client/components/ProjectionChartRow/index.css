@@ -1,14 +1,17 @@
-div.ProjectionChartRow > div.title {
-  padding-bottom: 10px;
+div.ProjectionChartRow > h3.title {
   text-align: right;
 }
 
 div.ProjectionChartRow > table {
+  margin-top: 10px;
   text-align: right;
+}
+
+div.ProjectionChartRow > table tr.spacer {
+  height: 6px;
 }
 
 div.ProjectionChartRow > table div.label {
   width: 5px;
   height: 15px;
-  background-color: black;
 }

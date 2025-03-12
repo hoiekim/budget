@@ -97,6 +97,10 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
+table {
+  border-collapse: collapse;
+}
+
 div#root {
   max-width: 950px;
   min-height: 100vh;

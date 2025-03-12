@@ -71,7 +71,7 @@ const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps
   const { account_ids, budget_ids } = configuration;
 
   const { data, setData } = useAppContext();
-  const { accounts } = data;
+  const { accounts, budgets } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [selectedType, setSelectedType] = useState<CHART_TYPE>(type);
@@ -111,8 +111,12 @@ const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps
     router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ id: chart_id }) });
   };
 
-  const numberOfSelectedAccounts = accounts.filter((a) => {
-    return !a.hide && account_ids.includes(a.account_id);
+  const selectedAccountsCount = accounts.filter((a) => {
+    return !a.hide && account_ids.includes(a.id);
+  }).length;
+
+  const selectedBudgetsCount = budgets.filter((b) => {
+    return budget_ids.includes(b.id);
   }).length;
 
   return (
@@ -143,10 +147,12 @@ const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps
         </div>
       </div>
 
-      <div className="propertyLabel">Selected&nbsp;Accounts</div>
+      <div className="propertyLabel">Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</div>
       <div className="property">
         <div className="row button">
-          <button onClick={onClickAccounts}>{numberOfSelectedAccounts}&nbsp;selected</button>
+          <button onClick={onClickAccounts}>
+            {selectedAccountsCount + selectedBudgetsCount}&nbsp;selected
+          </button>
         </div>
       </div>
 

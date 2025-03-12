@@ -1,4 +1,5 @@
 export interface StackData {
+  type: string;
   name: string;
   amount: number;
   color?: string;

@@ -1,10 +1,3 @@
-div.BalanceChartRow {
-  padding: 10px;
-  /* margin: 10px 10px 20px;
-  background-color: #eee;
-  border-radius: 10px; */
-}
-
 div.BalanceChartRow > .title {
   text-align: right;
 }
@@ -13,7 +6,6 @@ div.BalanceChartRow > .chart {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 20px 0 0;
 }
 
 div.BalanceChartRow > .chart > .Stacks {
@@ -24,6 +16,23 @@ div.BalanceChartRow > .chart > div.equation {
   width: 25%;
   text-align: right;
   font-size: 14px;
+}
+
+div.BalanceChartRow > table {
+  margin-top: 10px;
+}
+
+div.BalanceChartRow > table tr.spacer {
+  height: 6px;
+}
+
+div.BalanceChartRow > table tr.sum {
+  font-weight: bold;
+}
+
+div.BalanceChartRow > table th:last-child,
+div.BalanceChartRow > table td:last-child {
+  text-align: right;
 }
 
 div.Stacks {
