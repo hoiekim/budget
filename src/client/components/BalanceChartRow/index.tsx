@@ -64,7 +64,7 @@ export const BalanceChartRow = ({ showTitle = true, chart, onClick }: BalanceCha
     const amountString = numberToCommaString(amount, 0);
     return (
       <tr key={`${i}_${name}`}>
-        <td>{type}</td>
+        <td>{toTitleCase(type)}</td>
         <td>{name}</td>
         <td>-&nbsp;$&nbsp;{amountString}</td>
       </tr>

@@ -8,6 +8,7 @@ import {
   ChartDictionary,
   Data,
   numberToCommaString,
+  ProjectionChartConfiguration,
 } from "common";
 
 export const ChartAccountsPage = () => {
@@ -27,6 +28,9 @@ export const ChartAccountsPage = () => {
   const { account_ids } = configuration;
   const { accounts, budgets } = data;
 
+  const Configuration =
+    type === CHART_TYPE.BALANCE ? BalanceChartConfiguration : ProjectionChartConfiguration;
+
   const accountRows = accounts
     .filter((a) => !a.hide)
     .map((a) => {
@@ -34,7 +38,10 @@ export const ChartAccountsPage = () => {
         const newAccountIds = account_ids.includes(a.account_id)
           ? account_ids.filter((id) => id !== a.account_id)
           : [...account_ids, a.account_id];
-        const updatedConfiguration = { ...configuration, account_ids: newAccountIds };
+        const updatedConfiguration = new Configuration({
+          ...configuration,
+          account_ids: newAccountIds,
+        });
         const r = await call.post("/api/chart", { chart_id, configuration: updatedConfiguration });
         if (r.status === "success") {
           setData((oldData) => {
@@ -78,12 +85,15 @@ export const ChartAccountsPage = () => {
 
   const { budget_ids } = chart.configuration as BalanceChartConfiguration;
 
-  const bucgetRows = budgets.toArray().map((b) => {
+  const budgetRows = budgets.toArray().map((b) => {
     const onChangeToggle: ChangeEventHandler<HTMLInputElement> = async () => {
       const newBudgetIds = budget_ids.includes(b.id)
         ? budget_ids.filter((id) => id !== b.id)
         : [...budget_ids, b.id];
-      const updatedConfiguration = { ...configuration, budget_ids: newBudgetIds };
+      const updatedConfiguration = new Configuration({
+        ...configuration,
+        budget_ids: newBudgetIds,
+      });
       const r = await call.post("/api/chart", { chart_id, configuration: updatedConfiguration });
       if (r.status === "success") {
         setData((oldData) => {
@@ -127,7 +137,7 @@ export const ChartAccountsPage = () => {
         {type === CHART_TYPE.BALANCE && (
           <>
             <div className="propertyLabel">Select budgets</div>
-            <div className="property">{bucgetRows}</div>
+            <div className="property">{budgetRows}</div>
           </>
         )}
       </div>

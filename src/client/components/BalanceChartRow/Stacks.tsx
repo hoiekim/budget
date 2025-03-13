@@ -19,15 +19,17 @@ export const Stacks = ({ data }: StacksProps) => {
     const total = totals[i];
     return (
       <div className="column" style={{ height: `${(total / max) * 100}%` }} key={i}>
-        {column.map(({ name, amount, color }, j) => (
-          <div
-            className="stack colored"
-            style={{ height: `${(amount / total) * 100}%`, backgroundColor: color }}
-            key={j}
-          >
-            {amount / max > 0.1 && <span>{name}</span>}
-          </div>
-        ))}
+        {column
+          .filter(({ amount }) => amount)
+          .map(({ name, amount, color }, j) => (
+            <div
+              className="stack colored"
+              style={{ height: `${(amount / total) * 100}%`, backgroundColor: color }}
+              key={j}
+            >
+              {amount / max > 0.1 && <span>{name}</span>}
+            </div>
+          ))}
       </div>
     );
   });
