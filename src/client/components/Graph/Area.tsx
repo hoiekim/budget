@@ -63,14 +63,13 @@ const Area = ({
   const translatedPoints = [...translate(upperBound), ...translate(lowerBound).reverse()];
   const d = "M" + translatedPoints.join(" ");
 
-  const classes = ["Area"];
   const isColored = new Set(color.split("")).size > 2;
-  if (isColored) classes.push("colored");
 
   return (
-    <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
+    <div ref={divRef} className="Area" style={{ width: "100%" }}>
       {isVisible && (
         <svg
+          className={isColored ? "colored" : undefined}
           height="100%"
           width="100%"
           viewBox={`0 0 ${width} ${height}`}

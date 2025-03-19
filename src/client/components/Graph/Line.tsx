@@ -99,13 +99,17 @@ const Line = ({
   const coordinateStrings = pointsToCoordinateString(points, width, height, type);
   const d = "M" + coordinateStrings.join(" ");
 
-  const classes = ["Line"];
   const isColored = new Set(color.split("")).size > 2;
-  if (isColored) classes.push("colored");
 
   return (
-    <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
-      <svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <div ref={divRef} className="Line" style={{ width: "100%" }}>
+      <svg
+        className={isColored ? "colored" : undefined}
+        height="100%"
+        width="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+      >
         <path
           ref={pathRef}
           d={width ? d : ""}

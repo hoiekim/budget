@@ -328,8 +328,13 @@ div.reorderIcon > svg:last-child {
 div.dragging *,
 div.dragging *::before,
 div.dragging *::after {
-  color: #ccc;
-  background-color: #ccc;
+  color: #3334 !important;
   transition-duration: 0ms !important;
+}
+
+div.dragging :not(svg).colored,
+div.dragging :not(svg).colored::before,
+div.dragging :not(svg).colored::after {
   background: none !important;
+  background-color: #3334 !important;
 }

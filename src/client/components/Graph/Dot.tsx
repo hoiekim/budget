@@ -46,13 +46,17 @@ const Dot = ({ memoryKey, point, color, guideX, guideY, height = 100 }: Props) =
   const x = point[0] * (width - 10) + 5;
   const y = (1 - point[1]) * (height - 10) + 5;
 
-  const classes = ["Dot"];
   const isColored = new Set(color.split("")).size > 2;
-  if (isColored) classes.push("colored");
 
   return (
-    <div ref={divRef} className={classes.join(" ")} style={{ width: "100%" }}>
-      <svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <div ref={divRef} className="Dot" style={{ width: "100%" }}>
+      <svg
+        className={isColored ? "colored" : undefined}
+        height="100%"
+        width="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+      >
         <circle
           cx={x}
           cy={y}
