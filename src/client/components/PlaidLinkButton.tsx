@@ -1,7 +1,7 @@
 import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
 import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
 import { PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
-import { useAppContext, call, useSync, useLocalStorage } from "client";
+import { useAppContext, call, useSync, useLocalStorageState } from "client";
 import { Data, Item, ItemDictionary, ItemProvider, ItemStatus } from "common";
 
 interface Props {
@@ -17,7 +17,7 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
 
   const access_token = (item && item.access_token) || "";
   const [token, setToken] = useState(tokens.get(access_token) || "");
-  const [storedToken, setStoredToken] = useLocalStorage("storedToken", "");
+  const [storedToken, setStoredToken] = useLocalStorageState("storedToken", "");
 
   const { sync } = useSync();
 

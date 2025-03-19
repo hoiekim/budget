@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, useEffect, useRef } from "react";
 import { NewCategoryGetResponse } from "server";
-import { PATH, call, useAppContext, useLocalStorage, useMemoryState } from "client";
+import { PATH, call, useAppContext, useLocalStorageState, useMemoryState } from "client";
 import { LabeledBar, CategoryBar } from "client/components";
 import { Budget, Section, Category, Data, CategoryDictionary } from "common";
 
@@ -21,7 +21,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   const childrenHiehgtKey = `section_${section_id}_childrenHeight`;
   const [childrenHeight, setChildrenHeight] = useMemoryState(childrenHiehgtKey, 0);
 
-  const [categoriesOrder, setCategoriesOrder] = useLocalStorage<string[]>(
+  const [categoriesOrder, setCategoriesOrder] = useLocalStorageState<string[]>(
     `categoriesOrder_${section_id}`,
     []
   );

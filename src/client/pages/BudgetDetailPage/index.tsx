@@ -5,7 +5,7 @@ import {
   useAppContext,
   call,
   PATH,
-  useLocalStorage,
+  useLocalStorageState,
   DateLabel,
   MoneyLabel,
 } from "client";
@@ -27,7 +27,7 @@ export const BudgetDetailPage = () => {
   else budget_id = transition.incomingParams.get("budget_id") || "";
   const budget = budgets.get(budget_id);
 
-  const [sectionsOrder, setSectionsOrder] = useLocalStorage<string[]>(
+  const [sectionsOrder, setSectionsOrder] = useLocalStorageState<string[]>(
     `sectionsOrder_${budget_id}`,
     []
   );

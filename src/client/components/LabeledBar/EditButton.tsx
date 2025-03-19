@@ -22,7 +22,7 @@ const EditButton = ({ isCompact, onEdit, className, type, ...rest }: Props) => {
         {...rest}
       >
         {isCompact ? (
-          <div className="reorder">
+          <div className="reorderIcon">
             <ChevronUpIcon size={8} />
             <ChevronDownIcon size={8} />
           </div>

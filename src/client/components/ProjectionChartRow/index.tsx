@@ -1,20 +1,24 @@
-import { MouseEventHandler, useMemo } from "react";
+import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
 import { getYearMonthString, numberToCommaString, ProjectionChart, ViewDate } from "common";
-import { useAppContext } from "client";
-import { DateLabel, Graph, MoneyLabel } from "client/components";
+import { useAppContext, useReorder } from "client";
+import { ChevronDownIcon, ChevronUpIcon, DateLabel, Graph, MoneyLabel } from "client/components";
 import { calculateHistory, calculateProjection } from "./lib";
 import "./index.css";
 
 export interface ProjectionChartRowProps {
-  showTitle?: boolean;
   chart: ProjectionChart;
+  showTitle?: boolean;
+  showTable?: boolean;
   onClick?: MouseEventHandler<HTMLDivElement>;
+  onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
 export const ProjectionChartRow = ({
   showTitle = true,
+  showTable = true,
   chart,
   onClick,
+  onSetOrder,
 }: ProjectionChartRowProps) => {
   const { data } = useAppContext();
   const { accounts } = data;
@@ -27,6 +31,16 @@ export const ProjectionChartRow = ({
     anual_percentage_yield,
     year_over_year_inflation,
   } = configuration;
+
+  const {
+    onDragStart,
+    onDragEnd,
+    onDragEnter,
+    onGotPointerCapture,
+    onTouchHandleStart,
+    onTouchHandleEnd,
+    onPointerEnter,
+  } = useReorder(chart.id, onSetOrder);
 
   const selectedAccounts = accounts.filter((a) => account_ids.includes(a.id));
   const momInflation = Math.pow(year_over_year_inflation, 1 / 12);
@@ -135,55 +149,79 @@ export const ProjectionChartRow = ({
   }
 
   return (
-    <div className="ProjectionChartRow" onClick={onClick}>
-      {showTitle && <h3 className="title">{chart.name}</h3>}
+    <div
+      className="ProjectionChartRow"
+      onClick={onClick}
+      draggable={true}
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onPointerEnter={onPointerEnter}
+      onDragEnd={onDragEnd}
+    >
+      {showTitle && (
+        <h3 className="title">
+          <span>{chart.name}</span>
+          <button
+            onTouchStart={onTouchHandleStart}
+            onTouchEnd={onTouchHandleEnd}
+            onGotPointerCapture={onGotPointerCapture}
+          >
+            <div className="reorderIcon">
+              <ChevronUpIcon size={8} />
+              <ChevronDownIcon size={8} />
+            </div>
+          </button>
+        </h3>
+      )}
       <Graph
-        height={200}
+        height={150}
         input={graphData}
         labelX={new DateLabel(latestViewDate, { year: "numeric", month: undefined })}
         labelY={new MoneyLabel("USD")}
       />
-      <table width="100%">
-        <thead>
-          <tr>
-            <th></th>
-            <th>Date</th>
-            <th>Saved</th>
-            <th>Payout Max</th>
-          </tr>
-          <tr className="spacer"></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <div className="label colored" style={{ backgroundColor: "#097" }} />
-            </td>
-            <td>{getYearMonthString(currentViewDate.getStartDate())}</td>
-            <td>$ {numberToCommaString(lastValue, 0)}</td>
-            <td>$ {numberToCommaString(lastValue * (mpy - momInflation), 0)}</td>
-          </tr>
-          {!!currentRetireDate && !!currentRetireAmount && (
+      {showTable && (
+        <table width="100%">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Date</th>
+              <th>Saved</th>
+              <th>Payout Max</th>
+            </tr>
+            <tr className="spacer"></tr>
+          </thead>
+          <tbody>
             <tr>
               <td>
-                <div className="label colored" style={{ backgroundColor: "#f43" }} />
+                <div className="label colored" style={{ backgroundColor: "#097" }} />
               </td>
-              <td>{getYearMonthString(currentRetireDate)}</td>
-              <td>$ {numberToCommaString(currentRetireAmount, 0)}</td>
-              <td>$ {numberToCommaString(currentRetireAmount * (mpy - momInflation), 0)}</td>
+              <td>{getYearMonthString(currentViewDate.getStartDate())}</td>
+              <td>$ {numberToCommaString(lastValue, 0)}</td>
+              <td>$ {numberToCommaString(lastValue * (mpy - momInflation), 0)}</td>
             </tr>
-          )}
-          {!!planRetireDate && !!planRetireAmount && (
-            <tr>
-              <td>
-                <div className="label" style={{ backgroundColor: "#aaa" }} />
-              </td>
-              <td>{getYearMonthString(planRetireDate)}</td>
-              <td>$ {numberToCommaString(planRetireAmount, 0)}</td>
-              <td>$ {numberToCommaString(planRetireAmount * (mpy - momInflation), 0)}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            {!!currentRetireDate && !!currentRetireAmount && (
+              <tr>
+                <td>
+                  <div className="label colored" style={{ backgroundColor: "#f43" }} />
+                </td>
+                <td>{getYearMonthString(currentRetireDate)}</td>
+                <td>$ {numberToCommaString(currentRetireAmount, 0)}</td>
+                <td>$ {numberToCommaString(currentRetireAmount * (mpy - momInflation), 0)}</td>
+              </tr>
+            )}
+            {!!planRetireDate && !!planRetireAmount && (
+              <tr>
+                <td>
+                  <div className="label" style={{ backgroundColor: "#aaa" }} />
+                </td>
+                <td>{getYearMonthString(planRetireDate)}</td>
+                <td>$ {numberToCommaString(planRetireAmount, 0)}</td>
+                <td>$ {numberToCommaString(planRetireAmount * (mpy - momInflation), 0)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { useAppContext, PATH } from "client";
+import { useReorder, useAppContext, PATH } from "client";
 import { Bar } from "client/components";
 import {
   MAX_FLOAT,
@@ -10,7 +10,6 @@ import {
   numberToCommaString,
 } from "common";
 import EditButton from "./EditButton";
-import { useReorder } from "./lib";
 import "./index.css";
 
 export type BarData = Budget | Section | Category;

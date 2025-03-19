@@ -1,5 +1,12 @@
 div.ProjectionChartRow > h3.title {
-  text-align: right;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.ProjectionChartRow > .title button {
+  background-color: transparent;
+  width: 32px;
 }
 
 div.ProjectionChartRow > table {

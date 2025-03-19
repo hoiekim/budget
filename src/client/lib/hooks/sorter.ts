@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useLocalStorage } from "client";
+import { useLocalStorageState } from "client";
 
 class Comparable<T> {
   A: T;
@@ -53,12 +53,12 @@ export const useSorter = <T, H>(
   initialSortings?: Sortings<H>,
   initialVisibles?: Visibles<H>
 ): Sorter<T, H> => {
-  const [sortings, setSortings] = useLocalStorage<Sortings<H>>(
+  const [sortings, setSortings] = useLocalStorageState<Sortings<H>>(
     `map_${name}_sortings`,
     initialSortings || new Map()
   );
 
-  const [visibles, setVisibles] = useLocalStorage<{ [k in keyof H]?: boolean }>(
+  const [visibles, setVisibles] = useLocalStorageState<{ [k in keyof H]?: boolean }>(
     `${name}_visibles`,
     initialVisibles || {}
   );

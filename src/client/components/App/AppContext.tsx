@@ -1,5 +1,5 @@
 import { useState, ReactNode } from "react";
-import { useLocalStorage, ContextType, Context, useRouter } from "client";
+import { useLocalStorageState, ContextType, Context, useRouter } from "client";
 import { MaskedUser } from "server";
 import { Interval, ViewDate } from "common";
 import { useData } from "./lib";
@@ -12,7 +12,7 @@ interface Props {
 const AppContext = ({ initialUser, children }: Props) => {
   const [data, setData] = useData();
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
-  const [selectedInterval, setSelectedInterval] = useLocalStorage<Interval>(
+  const [selectedInterval, setSelectedInterval] = useLocalStorageState<Interval>(
     "selectedInterval",
     "month"
   );

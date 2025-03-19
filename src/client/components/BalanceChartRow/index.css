@@ -1,5 +1,12 @@
 div.BalanceChartRow > .title {
-  text-align: right;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.BalanceChartRow > .title button {
+  background-color: transparent;
+  width: 32px;
 }
 
 div.BalanceChartRow > .chart {
@@ -24,6 +31,15 @@ div.BalanceChartRow > table {
 
 div.BalanceChartRow > table tr.spacer {
   height: 6px;
+}
+
+div.BalanceChartRow > table td.type {
+  display: flex;
+  align-items: center;
+}
+
+div.BalanceChartRow > table td.type > svg {
+  color: #666;
 }
 
 div.BalanceChartRow > table tr.sum {

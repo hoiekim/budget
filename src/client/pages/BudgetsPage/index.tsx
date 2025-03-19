@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { PATH, call, useAppContext, useLocalStorage } from "client";
+import { PATH, call, useAppContext, useLocalStorageState } from "client";
 import { BudgetBar } from "client/components";
 import { NewBudgetGetResponse } from "server";
 import { Budget, BudgetDictionary, Data } from "common";
@@ -8,7 +8,7 @@ import "./index.css";
 export const BudgetsPage = () => {
   const { data, setData, router } = useAppContext();
   const { budgets } = data;
-  const [budgetsOrder, setBudgetsOrder] = useLocalStorage<string[]>("budgetsOrder", []);
+  const [budgetsOrder, setBudgetsOrder] = useLocalStorageState<string[]>("budgetsOrder", []);
 
   useEffect(() => {
     setBudgetsOrder((oldOrder) => {

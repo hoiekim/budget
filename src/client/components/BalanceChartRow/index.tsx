@@ -1,20 +1,39 @@
-import { MouseEventHandler } from "react";
+import { Dispatch, MouseEventHandler, SetStateAction } from "react";
 import { AccountType } from "plaid";
 import { BalanceChart, numberToCommaString, toTitleCase } from "common";
-import { useAppContext } from "client";
+import { useAppContext, useReorder } from "client";
+import { ChevronDownIcon, ChevronUpIcon, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
 import "./index.css";
 
 export interface BalanceChartRowProps {
-  showTitle?: boolean;
   chart: BalanceChart;
+  showTitle?: boolean;
+  showTable?: boolean;
   onClick?: MouseEventHandler<HTMLDivElement>;
+  onSetOrder?: Dispatch<SetStateAction<string[]>>;
 }
 
-export const BalanceChartRow = ({ showTitle = true, chart, onClick }: BalanceChartRowProps) => {
+export const BalanceChartRow = ({
+  chart,
+  showTitle = true,
+  showTable = true,
+  onClick,
+  onSetOrder,
+}: BalanceChartRowProps) => {
   const { data, viewDate } = useAppContext();
   const { accounts, budgets } = data;
   const { name, configuration } = chart;
+
+  const {
+    onDragStart,
+    onDragEnd,
+    onDragEnter,
+    onGotPointerCapture,
+    onTouchHandleStart,
+    onTouchHandleEnd,
+    onPointerEnter,
+  } = useReorder(chart.id, onSetOrder);
 
   const column1: StackData[] = [];
   const column2: StackData[] = [];
@@ -51,9 +70,25 @@ export const BalanceChartRow = ({ showTitle = true, chart, onClick }: BalanceCha
 
   const tableRows1 = column1.map(({ type, name, amount }, i) => {
     const amountString = numberToCommaString(amount, 0);
+    const isOverspentBudget = type === "Budget";
+    const onClickOverspentBudget = () => {
+      if (isOverspentBudget) {
+        window.alert(
+          `You overspent $${amountString} for the budget "${name}". We're displaying overspent amount stacked together with the deposit amounts because it's the amount that would have been in the depositories.`
+        );
+      }
+    };
     return (
-      <tr key={`${i}_${name}`}>
-        <td>{toTitleCase(type)}</td>
+      <tr key={`${i}_${name}`} onClick={onClickOverspentBudget}>
+        <td className="type">
+          {toTitleCase(type)}
+          {isOverspentBudget && (
+            <>
+              &nbsp;
+              <QuestionIcon size={12} />
+            </>
+          )}
+        </td>
         <td>{name}</td>
         <td>$&nbsp;{amountString}</td>
       </tr>
@@ -72,8 +107,30 @@ export const BalanceChartRow = ({ showTitle = true, chart, onClick }: BalanceCha
   });
 
   return (
-    <div className="BalanceChartRow" onClick={onClick}>
-      {showTitle && <h3 className="title">{name}</h3>}
+    <div
+      className="BalanceChartRow"
+      onClick={onClick}
+      draggable={true}
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onPointerEnter={onPointerEnter}
+      onDragEnd={onDragEnd}
+    >
+      {showTitle && (
+        <h3 className="title">
+          <span>{name}</span>
+          <button
+            onTouchStart={onTouchHandleStart}
+            onTouchEnd={onTouchHandleEnd}
+            onGotPointerCapture={onGotPointerCapture}
+          >
+            <div className="reorderIcon">
+              <ChevronUpIcon size={8} />
+              <ChevronDownIcon size={8} />
+            </div>
+          </button>
+        </h3>
+      )}
       <div className="chart">
         <Stacks data={stacksData} />
         <div className="equation">
@@ -85,27 +142,29 @@ export const BalanceChartRow = ({ showTitle = true, chart, onClick }: BalanceCha
           </div>
         </div>
       </div>
-      <table width="100%">
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Name</th>
-            <th>Balance</th>
-          </tr>
-          <tr className="spacer"></tr>
-        </thead>
-        <tbody>
-          {tableRows1}
-          {tableRows2}
-          <tr className="spacer"></tr>
-          <tr className="sum">
-            <td colSpan={2}>Sum</td>
-            <td>
-              {sign}&nbsp;$&nbsp;{numberToCommaString(Math.abs(total), 0)}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      {showTable && (
+        <table width="100%">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Name</th>
+              <th>Balance</th>
+            </tr>
+            <tr className="spacer"></tr>
+          </thead>
+          <tbody>
+            {tableRows1}
+            {tableRows2}
+            <tr className="spacer"></tr>
+            <tr className="sum">
+              <td colSpan={2}>Sum</td>
+              <td>
+                {sign}&nbsp;$&nbsp;{numberToCommaString(Math.abs(total), 0)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
     </div>
   );
 };

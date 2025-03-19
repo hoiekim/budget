@@ -5,7 +5,7 @@ const parseMap = (s: string) => new Map(JSON.parse(s));
 const parseDictionary = (s: string) => new Dictionary(JSON.parse(s));
 const stringifyMap = (m: any) => JSON.stringify([...m]);
 
-export const useLocalStorage = <T>(key: string, initialValue: T) => {
+export const useLocalStorageState = <T>(key: string, initialValue: T) => {
   const isMap = key.indexOf("map_") === 0;
   const isDictionary = key.indexOf("dictionary_") === 0;
   const parse = isMap ? parseMap : isDictionary ? parseDictionary : JSON.parse;

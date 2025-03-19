@@ -301,3 +301,26 @@ div.Properties .row.button:hover {
   padding-right: 10px;
   padding-left: 10px;
 }
+
+div.reorderIcon {
+  position: relative;
+}
+
+div.reorderIcon > svg {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+div.reorderIcon > svg {
+  position: absolute;
+  left: calc(50% - 4px);
+}
+
+div.reorderIcon > svg:first-child {
+  top: -6px;
+}
+
+div.reorderIcon > svg:last-child {
+  top: 0px;
+}

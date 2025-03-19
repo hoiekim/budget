@@ -1,31 +1,58 @@
-import { BalanceChartRow, ProjectionChartRow } from "client/components";
-import "./index.css";
-import { call, PATH, useAppContext } from "client";
+import { useEffect } from "react";
 import { BalanceChart, Chart, CHART_TYPE, ChartDictionary, Data, ProjectionChart } from "common";
 import { NewChartGetResponse } from "server";
+import { BalanceChartRow, ProjectionChartRow } from "client/components";
+import { call, PATH, useAppContext, useLocalStorageState } from "client";
+import "./index.css";
 
 export const DashboardPage = () => {
   const { data, setData, router } = useAppContext();
   const { charts } = data;
+  const [chartsOrder, setChartsOrder] = useLocalStorageState<string[]>("chartsOrder", []);
 
-  const balanceCharts = charts.filter((c) => c.type === CHART_TYPE.BALANCE);
-  const projectionCharts = charts.filter((c) => c.type === CHART_TYPE.PROJECTION);
-  const balanceChartRows = balanceCharts.map((chart) => {
-    const onClick = () => {
-      const params = new URLSearchParams();
-      params.append("id", chart.id);
-      router.go(PATH.CHART_DETAIL, { params });
-    };
-    return <BalanceChartRow key={chart.id} chart={chart as BalanceChart} onClick={onClick} />;
-  });
-  const projectionChartRows = projectionCharts.map((chart) => {
-    const onClick = () => {
-      const params = new URLSearchParams();
-      params.append("id", chart.id);
-      router.go(PATH.CHART_DETAIL, { params });
-    };
-    return <ProjectionChartRow key={chart.id} chart={chart as ProjectionChart} onClick={onClick} />;
-  });
+  useEffect(() => {
+    setChartsOrder((oldOrder) => {
+      const set = new Set(oldOrder);
+      charts.forEach((_value, key) => set.add(key));
+      return Array.from(set.values());
+    });
+  }, [charts, setChartsOrder]);
+
+  const chartRows = Array.from(charts)
+    .sort(([a], [b]) => {
+      const indexA = chartsOrder.indexOf(a);
+      const indexB = chartsOrder.indexOf(b);
+      if (indexA === undefined || indexB === undefined) return 0;
+      return indexA - indexB;
+    })
+    .map(([chart_id, chart]) => {
+      const onClick = () => {
+        const params = new URLSearchParams();
+        params.append("id", chart_id);
+        router.go(PATH.CHART_DETAIL, { params });
+      };
+      if (chart.type === CHART_TYPE.BALANCE) {
+        return (
+          <BalanceChartRow
+            key={chart_id}
+            showTable={false}
+            chart={chart as BalanceChart}
+            onClick={onClick}
+            onSetOrder={setChartsOrder}
+          />
+        );
+      } else {
+        return (
+          <ProjectionChartRow
+            key={chart_id}
+            showTable={false}
+            chart={chart as ProjectionChart}
+            onClick={onClick}
+            onSetOrder={setChartsOrder}
+          />
+        );
+      }
+    });
 
   const onClickAddChart = async () => {
     const { body } = await call.get<NewChartGetResponse>("/api/new-chart");
@@ -48,8 +75,7 @@ export const DashboardPage = () => {
   return (
     <div className="DashboardPage">
       <h2>Dashboard</h2>
-      {balanceChartRows}
-      {projectionChartRows}
+      {chartRows}
       <button onClick={onClickAddChart}>Add&nbsp;Chart</button>
     </div>
   );
