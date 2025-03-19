@@ -33,6 +33,7 @@ export const BalanceChartRow = ({
     onTouchHandleStart,
     onTouchHandleEnd,
     onPointerEnter,
+    isDragging,
   } = useReorder(chart.id, onSetOrder);
 
   const column1: StackData[] = [];
@@ -106,9 +107,12 @@ export const BalanceChartRow = ({
     );
   });
 
+  const classes = ["BalanceChartRow"];
+  if (isDragging) classes.push("dragging");
+
   return (
     <div
-      className="BalanceChartRow"
+      className={classes.join(" ")}
       onClick={onClick}
       draggable={true}
       onDragStart={onDragStart}
@@ -120,9 +124,14 @@ export const BalanceChartRow = ({
         <h3 className="title">
           <span>{name}</span>
           <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onTouchStart={onTouchHandleStart}
             onTouchEnd={onTouchHandleEnd}
             onGotPointerCapture={onGotPointerCapture}
+            style={{ touchAction: "none" }}
           >
             <div className="reorderIcon">
               <ChevronUpIcon size={8} />

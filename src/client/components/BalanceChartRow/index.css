@@ -5,8 +5,9 @@ div.BalanceChartRow > .title {
 }
 
 div.BalanceChartRow > .title button {
-  background-color: transparent;
+  background-color: inherit;
   width: 32px;
+  height: 32px;
 }
 
 div.BalanceChartRow > .chart {

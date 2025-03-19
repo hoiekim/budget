@@ -40,6 +40,7 @@ export const ProjectionChartRow = ({
     onTouchHandleStart,
     onTouchHandleEnd,
     onPointerEnter,
+    isDragging,
   } = useReorder(chart.id, onSetOrder);
 
   const selectedAccounts = accounts.filter((a) => account_ids.includes(a.id));
@@ -148,9 +149,12 @@ export const ProjectionChartRow = ({
     latestViewDate.next();
   }
 
+  const classes = ["ProjectionChartRow"];
+  if (isDragging) classes.push("dragging");
+
   return (
     <div
-      className="ProjectionChartRow"
+      className={classes.join(" ")}
       onClick={onClick}
       draggable={true}
       onDragStart={onDragStart}
@@ -162,9 +166,14 @@ export const ProjectionChartRow = ({
         <h3 className="title">
           <span>{chart.name}</span>
           <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onTouchStart={onTouchHandleStart}
             onTouchEnd={onTouchHandleEnd}
             onGotPointerCapture={onGotPointerCapture}
+            style={{ touchAction: "none" }}
           >
             <div className="reorderIcon">
               <ChevronUpIcon size={8} />

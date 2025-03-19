@@ -5,8 +5,9 @@ div.ProjectionChartRow > h3.title {
 }
 
 div.ProjectionChartRow > .title button {
-  background-color: transparent;
+  background-color: inherit;
   width: 32px;
+  height: 32px;
 }
 
 div.ProjectionChartRow > table {

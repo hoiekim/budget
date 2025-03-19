@@ -3,15 +3,6 @@ div.LabeledBar {
   position: relative;
 }
 
-div.LabeledBar.dragging *,
-div.LabeledBar.dragging *::before,
-div.LabeledBar.dragging *::after {
-  color: #ccc;
-  background-color: #ccc;
-  transition-duration: 0ms !important;
-  background: none !important;
-}
-
 div.LabeledBar > .title {
   display: flex;
   justify-content: space-between;
@@ -41,7 +32,6 @@ div.EditButton {
   justify-content: flex-end;
   align-items: center;
   position: relative;
-  touch-action: none;
 }
 
 div.EditButton > button {

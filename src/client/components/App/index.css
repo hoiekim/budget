@@ -324,3 +324,12 @@ div.reorderIcon > svg:first-child {
 div.reorderIcon > svg:last-child {
   top: 0px;
 }
+
+div.dragging *,
+div.dragging *::before,
+div.dragging *::after {
+  color: #ccc;
+  background-color: #ccc;
+  transition-duration: 0ms !important;
+  background: none !important;
+}

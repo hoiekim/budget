@@ -29,7 +29,7 @@ export const LabeledBar = ({
   dataId,
   barData,
   iso_currency_code,
-  onClickInfo: _onClickInfo,
+  onClickInfo,
   onSetOrder,
   hideEditButton,
 }: Props) => {
@@ -67,10 +67,6 @@ export const LabeledBar = ({
     router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: dataId }) });
   };
 
-  const onClickInfo = () => {
-    _onClickInfo();
-  };
-
   const total = sorted_amount + unsorted_amount;
   const leftover = capacityValue - total;
 
@@ -94,7 +90,7 @@ export const LabeledBar = ({
   return (
     <div
       className={classes.join(" ")}
-      onClick={() => onClickInfo()}
+      onClick={onClickInfo}
       draggable={true}
       onDragStart={onDragStart}
       onDragEnter={onDragEnter}
@@ -110,6 +106,7 @@ export const LabeledBar = ({
           onTouchStart={onTouchHandleStart}
           onTouchEnd={onTouchHandleEnd}
           onGotPointerCapture={onGotPointerCapture}
+          style={{ touchAction: "none" }}
         />
       </div>
       <div className="statusBarWithText">
