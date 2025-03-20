@@ -56,13 +56,14 @@ const Dot = ({ memoryKey, point, color, guideX, guideY, height = 100 }: Props) =
         width="100%"
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
+        style={{ color }}
       >
         <circle
           cx={x}
           cy={y}
           r="2"
           style={{
-            stroke: color,
+            stroke: "currentcolor",
             strokeWidth: "4px",
             transition: "all 300ms ease 0s",
             opacity,
@@ -75,7 +76,7 @@ const Dot = ({ memoryKey, point, color, guideX, guideY, height = 100 }: Props) =
             x2={x}
             y2={height - 5}
             style={{
-              stroke: color,
+              stroke: "currentcolor",
               strokeWidth: "1px",
               transition: "all 300ms ease 0s",
               opacity: opacity * 0.5,

@@ -74,6 +74,7 @@ const Area = ({
           width="100%"
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
+          style={{ color }}
         >
           <linearGradient id="prog-mask" x1="0%" x2="0%" y1="100%" y2="100%">
             <stop offset="0%" stopColor="white" stopOpacity="1" />
@@ -103,7 +104,7 @@ const Area = ({
             <rect x="0" y="0" width="100%" height="100%" fill="url(#prog-mask)" />
           </mask>
           <pattern id="pattern" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
-            <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: color }} />
+            <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: "currentcolor" }} />
           </pattern>
           <path
             d={width ? d : ""}

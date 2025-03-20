@@ -332,9 +332,17 @@ div.dragging *::after {
   transition-duration: 0ms !important;
 }
 
+div.dragging div.Graph * {
+  border-color: #8884 !important;
+}
+
 div.dragging :not(svg).colored,
 div.dragging :not(svg).colored::before,
 div.dragging :not(svg).colored::after {
   background: none !important;
   background-color: #3334 !important;
+}
+
+div.dragging div.Stacks div.stack {
+  background-color: #8884 !important;
 }

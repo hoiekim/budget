@@ -109,13 +109,14 @@ const Line = ({
         width="100%"
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
+        style={{ color }}
       >
         <path
           ref={pathRef}
           d={width ? d : ""}
           style={{
             display: pathLength ? "block" : "none",
-            stroke: color,
+            stroke: "currentcolor",
             strokeDasharray: strokeDashArray,
             strokeDashoffset: pathOffset ? pathLength + 5 : 0,
             transition: "all 1s ease 0s",
