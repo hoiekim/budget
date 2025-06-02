@@ -49,7 +49,7 @@ export const indexUser = async (user: IndexUserInput) => {
  */
 export const searchUser = async (user: Partial<MaskedUser>): Promise<User | undefined> => {
   let hitUser: User | undefined;
-  let user_id: string;
+  let user_id: string | undefined;
 
   if (user.user_id) {
     const response = await client.get<{ user: User }>({

@@ -265,7 +265,7 @@ export const searchBudgets = async (user: MaskedUser) => {
   response.hits.hits.forEach((e) => {
     const source = e._source;
     const id = e._id;
-    if (!source) return;
+    if (!source || !id) return;
     if (source.type === "budget" && source.budget) {
       budgets.push({ ...source.budget, budget_id: id });
     }

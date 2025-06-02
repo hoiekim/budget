@@ -206,7 +206,7 @@ export const searchSplitTransactions = async (
   };
 
   response.hits.hits.forEach(({ _source, _id }) => {
-    if (!_source) return;
+    if (!_source || !_id) return;
     const { split_transaction } = _source;
     if (split_transaction) {
       split_transaction.split_transaction_id = _id;
@@ -297,7 +297,7 @@ export const searchTransactionsByAccountId = async (
   };
 
   response.hits.hits.forEach(({ _source, _id }) => {
-    if (!_source) return;
+    if (!_source || !_id) return;
     const { transaction, investment_transaction, split_transaction } = _source;
     if (transaction) result.transactions.push(new Transaction(transaction));
     else if (investment_transaction) {
