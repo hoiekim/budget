@@ -64,4 +64,10 @@ We need some environment configuration. Copy the content of `.env.example` file 
 
 # How to contribute
 
+## Development
+
+Take a look at [dev/README.md](dev/README.md) for development guide.
+
+## Feature request
+
 Create an [issue](https://github.com/hoiekim/budget/issues/new) and explain how you want to improve this project. Or send us an email to budget@hoie.kim if you feel shy. We welcome your ideas!
