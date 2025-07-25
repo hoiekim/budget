@@ -16,9 +16,11 @@ export const createChart = async (user: MaskedUser) => {
   const chart: UnindexedChart = new Chart();
   delete chart.chart_id;
 
+  const updated = new Date().toISOString();
+
   const response = await client.index({
     index,
-    document: { type: "chart", user: { user_id }, chart },
+    document: { type: "chart", updated, user: { user_id }, chart },
   });
 
   return response;

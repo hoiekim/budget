@@ -63,7 +63,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
         const existing = storedTransactions.find((f) => {
-          const idMatches = e.transaction_id === f.transaction_id;
+          const idMatches = [f.transaction_id, f.pending_transaction_id].includes(e.transaction_id);
           const accountMatches = e.account_id === f.account_id;
           const nameMatches = e.name === f.name;
           const amountMatches = e.amount === f.amount;

@@ -42,7 +42,8 @@ export const upsertTransactions = async (
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "transaction", user: { user_id }, transaction };
+      const updated = new Date().toISOString();
+      bulkBody.upsert = { type: "transaction", updated, user: { user_id }, transaction };
     }
 
     return [bulkHead, bulkBody];
@@ -90,16 +91,10 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
   if (isValidRange) {
     filter.push({
       bool: {
-        should: transactionTypes.map((type) => {
-          return {
-            bool: {
-              filter: [
-                { range: { [`${type}.date`]: { gte: start.toISOString() } } },
-                { range: { [`${type}.date`]: { lt: end.toISOString() } } },
-              ],
-            },
-          };
-        }),
+        filter: [
+          { range: { updated: { gte: start.toISOString() } } },
+          { range: { updated: { lt: end.toISOString() } } },
+        ],
       },
     });
   }
@@ -175,8 +170,8 @@ export const searchSplitTransactions = async (
     filter.push({
       bool: {
         filter: [
-          { range: { ["split_transaction.date"]: { gte: start.toISOString() } } },
-          { range: { ["split_transaction.date"]: { lt: end.toISOString() } } },
+          { range: { updated: { gte: start.toISOString() } } },
+          { range: { updated: { lt: end.toISOString() } } },
         ],
       },
     });
@@ -269,16 +264,10 @@ export const searchTransactionsByAccountId = async (
   if (isValidRange) {
     filter.push({
       bool: {
-        should: transactionTypes.map((type) => {
-          return {
-            bool: {
-              filter: [
-                { range: { [`${type}.date`]: { gte: start.toISOString() } } },
-                { range: { [`${type}.date`]: { lt: end.toISOString() } } },
-              ],
-            },
-          };
-        }),
+        filter: [
+          { range: { updated: { gte: start.toISOString() } } },
+          { range: { updated: { lt: end.toISOString() } } },
+        ],
       },
     });
   }
@@ -410,8 +399,10 @@ export const upsertInvestmentTransactions = async (
     const bulkBody: any = { script };
 
     if (upsert) {
+      const updated = new Date().toISOString();
       bulkBody.upsert = {
         type: "investment_transaction",
+        updated,
         user: { user_id },
         investment_transaction,
       };
@@ -516,8 +507,10 @@ export const upsertSplitTransactions = async (
     const bulkBody: any = { script };
 
     if (upsert) {
+      const updated = new Date().toISOString();
       bulkBody.upsert = {
         type: "split_transaction",
+        updated,
         user: { user_id },
         split_transaction: splitTransaction,
       };

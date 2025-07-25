@@ -35,10 +35,12 @@ export const indexUser = async (user: IndexUserInput) => {
   if (password) user.password = await bcrypt.hash(password, 10);
   if (user_id) delete user.user_id;
 
+  const updated = new Date().toISOString();
+
   return client.index({
     index,
     id: user_id,
-    document: { type: "user", user },
+    document: { type: "user", updated, user },
   });
 };
 
@@ -103,6 +105,8 @@ export const updateUser = async (user: PartialUser) => {
 
   const source = `
   if (ctx._source.type == "user") {
+    ZonedDateTime now = ZonedDateTime.ofInstant(Instant.ofEpochMilli(ctx._now), ZoneId.of('UTC'));
+    ctx._source.updated = now.toInstant().toString();
     ${Object.entries(flatten(user)).reduce((acc, [key, value]) => {
       if (key === "user_id") return acc;
       return acc + `ctx._source.user.${key} = ${JSON.stringify(value)};\n`;

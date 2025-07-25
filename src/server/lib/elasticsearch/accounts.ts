@@ -36,7 +36,8 @@ export const upsertAccounts = async (
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "account", user: { user_id }, account };
+      const updated = new Date().toISOString();
+      bulkBody.upsert = { type: "account", updated, user: { user_id }, account };
     }
 
     return [bulkHead, bulkBody];
@@ -261,7 +262,8 @@ export const upsertHoldings = async (
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "holding", user: { user_id }, holding };
+      const updated = new Date().toISOString();
+      bulkBody.upsert = { type: "holding", updated, user: { user_id }, holding };
     }
 
     return [bulkHead, bulkBody];
@@ -374,7 +376,8 @@ export const upsertSecurities = async (securities: PartialSecurity[], upsert: bo
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "security", security };
+      const updated = new Date().toISOString();
+      bulkBody.upsert = { type: "security", updated, security };
     }
 
     return [bulkHead, bulkBody];
@@ -424,7 +427,8 @@ export const upsertInstitutions = async (
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "institution", institution };
+      const updated = new Date().toISOString();
+      bulkBody.upsert = { type: "institution", updated, institution };
     }
 
     return [bulkHead, bulkBody];

@@ -50,6 +50,5 @@ app.get("*", (_req, res) => {
 app.listen(process.env.PORT || 3005, async () => {
   await initializeIndex();
   console.info("Budget app server is up.");
+  scheduledSync();
 });
-
-scheduledSync();

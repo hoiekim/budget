@@ -2,6 +2,7 @@
   "version": 6,
   "properties": {
     "type": { "type": "keyword" },
+    "updated": { "type": "date" },
     "user": {
       "type": "object",
       "dynamic": "strict",

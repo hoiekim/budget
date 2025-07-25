@@ -30,7 +30,8 @@ export const upsertItems = async (
     const bulkBody: any = { script };
 
     if (upsert) {
-      bulkBody.upsert = { type: "item", user: { user_id }, item };
+      const updated = new Date().toISOString();
+      bulkBody.upsert = { type: "item", updated, user: { user_id }, item };
     }
 
     return [bulkHead, bulkBody];

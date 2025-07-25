@@ -1,4 +1,4 @@
-import { Account, Chart, Holding, JSONChart, Security } from "common";
+import { Account, Holding, JSONChart, Security } from "common";
 import {
   flatten,
   MaskedUser,
@@ -20,6 +20,8 @@ export const getUpdateScriptWithUser = ({ user_id }: MaskedUser, type: string, d
   const source = `
 if (ctx._source.user.user_id == "${user_id}") {
   if (ctx._source.type == "${type}") {
+    ZonedDateTime now = ZonedDateTime.ofInstant(Instant.ofEpochMilli(ctx._now), ZoneId.of('UTC'));
+    ctx._source.updated = now.toInstant().toString();
     ${Object.keys(flatten(data)).reduce((acc, key) => {
       if (key === `${type}_id`) return acc;
       return acc + `ctx._source.${type}.${key} = params.${key};\n`;
@@ -37,6 +39,8 @@ if (ctx._source.user.user_id == "${user_id}") {
 export const getUpdateScript = (type: string, data: any) => {
   const source = `
 if (ctx._source.type == "${type}") {
+  ZonedDateTime now = ZonedDateTime.ofInstant(Instant.ofEpochMilli(ctx._now), ZoneId.of('UTC'));
+  ctx._source.updated = now.toInstant().toString();
   ${Object.keys(flatten(data)).reduce((acc, key) => {
     if (key === `${type}_id`) return acc;
     return acc + `ctx._source.${type}.${key} = params.${key};\n`;
@@ -120,14 +124,16 @@ export const getUpdateSnapshotScript = (snapshot: PartialSnapshotData) => {
   } else return undefined;
 
   let source = `
-  if (ctx._source.type == "snapshot") {
-    ${Object.keys(flatten(data)).reduce((acc, key) => {
-      if (key === `${type}_id`) return acc;
-      return acc + `ctx._source.${type}.${key} = params.${key};\n`;
-    }, "")}
-  } else {
-    throw new Exception("Found document is not snapshot type.");
-  }
+if (ctx._source.type == "snapshot") {
+  ZonedDateTime now = ZonedDateTime.ofInstant(Instant.ofEpochMilli(ctx._now), ZoneId.of('UTC'));
+  ctx._source.updated = now.toInstant().toString();
+  ${Object.keys(flatten(data)).reduce((acc, key) => {
+    if (key === `${type}_id`) return acc;
+    return acc + `ctx._source.${type}.${key} = params.${key};\n`;
+  }, "")}
+} else {
+  throw new Exception("Found document is not snapshot type.");
+}
 `;
 
   if (user_id) {

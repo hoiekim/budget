@@ -18,9 +18,11 @@ export const createBudget = async (user: MaskedUser) => {
   const budget: UnindexedBudget = new Budget();
   delete budget.budget_id;
 
+  const updated = new Date().toISOString();
+
   const response = await client.index({
     index,
-    document: { type: "budget", user: { user_id }, budget },
+    document: { type: "budget", updated, user: { user_id }, budget },
   });
 
   return response;
@@ -103,9 +105,11 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
   const section: UnindexedSection = new Section({ budget_id });
   delete section.section_id;
 
+  const updated = new Date().toISOString();
+
   const response = await client.index({
     index,
-    document: { type: "section", user: { user_id }, section },
+    document: { type: "section", updated, user: { user_id }, section },
   });
 
   return response;
@@ -176,9 +180,11 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
   const category: UnindexedCategory = new Category({ section_id });
   delete category.category_id;
 
+  const updated = new Date().toISOString();
+
   const response = await client.index({
     index,
-    document: { type: "category", user: { user_id }, category },
+    document: { type: "category", updated, user: { user_id }, category },
   });
 
   return response;

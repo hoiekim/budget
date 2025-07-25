@@ -5,6 +5,7 @@ import {
   PlaidError,
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction,
+  PlaidErrorType,
 } from "plaid";
 import { MaskedUser, updateItemStatus } from "server";
 import { Item, ItemStatus, getDateString, getDateTimeString } from "common";
@@ -62,9 +63,11 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
         plaidError = error?.response?.data as PlaidError;
         console.error(plaidError || error);
         console.error("Failed to get transactions data for item:", item_id);
-        updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
-          console.error("Failed to update item status to BAD:", e);
-        });
+        if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
+          updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+            console.error("Failed to update item status to BAD:", e);
+          });
+        }
         hasMore = false;
       }
     }
@@ -155,9 +158,11 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         if (!ignorable_error_codes.has(plaidError?.error_code)) {
           console.error(plaidError);
           console.error("Failed to get investment transaction data for item:", item_id);
-          updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
-            console.error("Failed to update item status to BAD:", e);
-          });
+          if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
+            updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+              console.error("Failed to update item status to BAD:", e);
+            });
+          }
           data.items.push(new Item({ ...item, plaidError }));
         }
       }
