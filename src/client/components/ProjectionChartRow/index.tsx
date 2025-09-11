@@ -43,7 +43,12 @@ export const ProjectionChartRow = ({
     isDragging,
   } = useReorder(chart.id, onSetOrder);
 
-  const selectedAccounts = accounts.filter((a) => account_ids.includes(a.id));
+  const selectedAccounts = accounts.filter((a) => {
+    const isIncluded = account_ids.includes(a.id);
+    const isHidden = a.hide;
+    return isIncluded && !isHidden;
+  });
+
   const momInflation = Math.pow(year_over_year_inflation, 1 / 12);
   const mpy = Math.pow(anual_percentage_yield, 1 / 12);
 

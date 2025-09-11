@@ -40,6 +40,7 @@ export const BalanceChartRow = ({
   const column2: StackData[] = [];
 
   accounts.forEach((a) => {
+    if (a.hide) return;
     const stack = { type: a.type, name: a.custom_name || a.name, amount: a.balances.current || 0 };
     if (!configuration.account_ids.includes(a.id)) return;
     if (a.type === AccountType.Depository) column1.push(stack);
