@@ -9,6 +9,7 @@ export enum PATH {
   BUDGET_DETAIL = "budget-detail",
   BUDGET_CONFIG = "budget-config",
   ACCOUNTS = "accounts",
+  ACCOUNT_DETAIL = "account-detail",
   TRANSACTIONS = "transactions",
   TRANSACTION_DETAIL = "transaction-detail",
   CONFIG = "config",

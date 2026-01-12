@@ -69,5 +69,3 @@ export const AccountsTable = ({ accountsArray }: Props) => {
     </div>
   );
 };
-
-export * from "./lib";

@@ -200,7 +200,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
 
   return (
     <div className="TransactionProperties Properties">
-      <div className="propertyLabel">Details</div>
+      <div className="propertyLabel">Transaction&nbsp;Details</div>
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Date</span>

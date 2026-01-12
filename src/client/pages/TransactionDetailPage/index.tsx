@@ -15,7 +15,7 @@ export const TransactionDetailPage = () => {
 
   const { path, params, transition } = router;
   let id: string;
-  if (path === PATH.BUDGET_CONFIG) id = params.get("id") || "";
+  if (path === PATH.TRANSACTION_DETAIL) id = params.get("id") || "";
   else id = transition.incomingParams.get("id") || "";
 
   const defaultTransaction = transactions.get(id);

@@ -1,65 +1,31 @@
-import { useState, useEffect, useMemo } from "react";
 import { Account } from "common";
-import { useAppContext, DateLabel, MoneyLabel } from "client";
-import { InstitutionSpan, Graph } from "client/components";
+import { useAppContext, DateLabel, MoneyLabel, useAccountGraph, PATH } from "client";
+import { InstitutionSpan, Graph, Balance } from "client/components";
 import "./index.css";
-import { useEventHandlers, useAccountGraph } from "./lib";
-import Balance from "./Balance";
 
 interface Props {
   account: Account;
 }
 
 const AccountRow = ({ account }: Props) => {
-  const { account_id, balances, custom_name, name, institution_id, label, type, subtype } = account;
-
-  const { data } = useAppContext();
-  const { budgets } = data;
-
-  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
-    return label.budget_id || "";
-  });
-  const [nameInput, setNameInput] = useState(custom_name || name);
-
-  useEffect(() => {
-    setNameInput(custom_name || name);
-  }, [custom_name, name, setNameInput]);
-
-  const budgetOptions = useMemo(() => {
-    const components: JSX.Element[] = [];
-    budgets.forEach((e) => {
-      const component = (
-        <option key={`account_${account_id}_budget_option_${e.budget_id}`} value={e.budget_id}>
-          {e.name}
-        </option>
-      );
-      components.push(component);
-    });
-    return components;
-  }, [account_id, budgets]);
+  const { router } = useAppContext();
+  const { account_id, balances, custom_name, name, institution_id, type, subtype } = account;
 
   const { iso_currency_code, unofficial_currency_code } = balances;
   const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
 
   const { graphViewDate, graphData } = useAccountGraph([account]);
 
-  const { onClickAccount, onChangeNameInput, onChangeBudgetSelect, onClickHide } = useEventHandlers(
-    account,
-    selectedBudgetIdLabel,
-    setSelectedBudgetIdLabel,
-    setNameInput
-  );
+  const onClickAccount = () => {
+    const params = new URLSearchParams();
+    params.set("id", account_id);
+    router.go(PATH.ACCOUNT_DETAIL, { params });
+  };
 
   return (
     <div className="AccountRow" onClick={onClickAccount}>
-      <div>
-        <input
-          onClick={(e) => e.stopPropagation()}
-          onChange={onChangeNameInput}
-          value={nameInput}
-        />
-      </div>
-      <div>
+      <div className="AccountTitle">
+        <span>{custom_name || name}</span>
         <InstitutionSpan institution_id={institution_id} />
       </div>
       <Balance balances={balances} type={type} subtype={subtype} />
@@ -71,21 +37,6 @@ const AccountRow = ({ account }: Props) => {
           memoryKey={account_id}
         />
       )}
-      <div className="budgetAction">
-        <div>
-          <select
-            value={selectedBudgetIdLabel}
-            onClick={(e) => e.stopPropagation()}
-            onChange={onChangeBudgetSelect}
-          >
-            <option value="">Select Budget</option>
-            {budgetOptions}
-          </select>
-        </div>
-        <div className="action">
-          <button onClick={onClickHide}>Hide</button>
-        </div>
-      </div>
     </div>
   );
 };

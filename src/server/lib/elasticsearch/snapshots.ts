@@ -139,3 +139,26 @@ export const deleteSnapshots = async (docs: { snapshot: RemovedSnapshot }[]) => 
 
   return response;
 };
+
+export const deleteSnapshotsByUser = async (
+  user: MaskedUser,
+  docs: { snapshot: RemovedSnapshot }[]
+) => {
+  if (!Array.isArray(docs) || !docs.length) return;
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { type: "snapshot" } },
+          { term: { "user.user_id": user_id } },
+          { bool: { should: docs.map((e) => ({ term: { _id: e.snapshot.snapshot_id } })) } },
+        ],
+      },
+    },
+  });
+
+  return response;
+};

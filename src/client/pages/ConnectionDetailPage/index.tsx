@@ -11,7 +11,7 @@ export const ConnectionDetailPage = () => {
 
   const { path, params, transition } = router;
   let id: string;
-  if (path === PATH.BUDGET_CONFIG) id = params.get("id") || "";
+  if (path === PATH.CONNECTION_DETAIL) id = params.get("id") || "";
   else id = transition.incomingParams.get("id") || "";
 
   const defaultItem = items.get(id);

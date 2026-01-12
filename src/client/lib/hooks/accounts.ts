@@ -1,19 +1,10 @@
-import {
-  ChangeEventHandler,
-  Dispatch,
-  MouseEventHandler,
-  SetStateAction,
-  useMemo,
-  useRef,
-} from "react";
+import { ChangeEventHandler, Dispatch, SetStateAction, useMemo } from "react";
 import {
   Account,
   AccountDictionary,
   Data,
   InvestmentTransaction,
-  Timeout,
   Transaction,
-  TransactionDictionary,
   ViewDate,
 } from "common";
 import { GraphInput, PATH, TransactionsPageParams, call, useAppContext } from "client";
@@ -91,16 +82,15 @@ export const useAccountGraph = (accounts: Account[]) => {
   return { graphViewDate, graphData };
 };
 
-export const useEventHandlers = (
+export const useAccountEventHandlers = (
   account: Account,
   selectedBudgetIdLabel: string,
   setSelectedBudgetIdLabel: Dispatch<SetStateAction<string>>,
-  setNameInput: Dispatch<SetStateAction<string>>
+  setIsHidden: Dispatch<SetStateAction<boolean>>
 ) => {
   const { account_id } = account;
 
-  const { data, setData, user, router } = useAppContext();
-  const { items, institutions } = data;
+  const { setData, router } = useAppContext();
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -128,84 +118,18 @@ export const useEventHandlers = (
     }
   };
 
-  const timeout = useRef<Timeout>();
-
-  const onChangeNameInput: ChangeEventHandler<HTMLInputElement> = (e) => {
-    if (!account_id) return;
-    const { value } = e.target;
-    setNameInput(value);
-    clearTimeout(timeout.current);
-    timeout.current = setTimeout(() => {
-      call.post("/api/account", { account_id, custom_name: value }).then((r) => {
-        if (r.status === "success") {
-          setData((oldData) => {
-            const newData = new Data(oldData);
-            const existingAccount = newData.accounts.get(account_id);
-            if (!existingAccount) return oldData;
-            const newAccount = new Account({ ...existingAccount, custom_name: value });
-            const newAccounts = new AccountDictionary(newData.accounts);
-            newAccounts.set(account_id, newAccount);
-            newData.accounts = newAccounts;
-            return newData;
-          });
-        }
-      });
-    }, 500);
-  };
-
-  const item = items.get(account.item_id);
-  const institution = institutions.get(account.institution_id);
-
-  const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {
+  const onClickHide: ChangeEventHandler<HTMLInputElement> = (e) => {
     e.stopPropagation();
-    if (!item || !user) return;
-
-    const confirmed = window.confirm(
-      `Do you want to remove all accounts in ${
-        institution?.name || "Unknown"
-      } institution from Budget?`
-    );
-
-    if (confirmed) {
-      const { item_id } = item;
-      call.delete(`/api/item?id=${item_id}`).then((r) => {
-        const accountsInItem: Account[] = [];
-
-        setData((oldData) => {
-          const newData = new Data(oldData);
-
-          const newAccounts = new AccountDictionary(newData.accounts);
-          newAccounts.forEach((e) => {
-            if (e.item_id === item_id) accountsInItem.push(e);
-          });
-          accountsInItem.forEach((e) => {
-            newAccounts.delete(e.account_id);
-          });
-          newData.accounts = newAccounts;
-
-          const newTransactions = new TransactionDictionary(newData.transactions);
-          newTransactions.forEach((e) => {
-            if (accountsInItem.find((f) => e.account_id === f.account_id)) {
-              newTransactions.delete(e.transaction_id);
-            }
-          });
-          newData.transactions = newTransactions;
-          return newData;
-        });
-      });
-    }
-  };
-
-  const onClickHide: MouseEventHandler<HTMLButtonElement> = (e) => {
-    e.stopPropagation();
+    const { checked } = e.target;
+    setIsHidden(checked);
     if (!account_id) return;
-    call.post("/api/account", { account_id, hide: true }).then((r) => {
+    call.post("/api/account", { account_id, hide: checked }).then((r) => {
       if (r.status === "success") {
         setData((oldData) => {
           const newData = new Data(oldData);
           const existingAccount = newData.accounts.get(account_id);
           if (!existingAccount) return oldData;
-          const newAccount = new Account({ ...existingAccount, hide: true });
+          const newAccount = new Account({ ...existingAccount, hide: checked });
           const newAccounts = new AccountDictionary(newData.accounts);
           newAccounts.set(account_id, newAccount);
           newData.accounts = newAccounts;
@@ -223,8 +147,6 @@ export const useEventHandlers = (
 
   return {
     onChangeBudgetSelect,
-    onChangeNameInput,
-    onClickRemove,
     onClickHide,
     onClickAccount,
   };

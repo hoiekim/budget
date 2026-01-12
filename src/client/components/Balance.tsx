@@ -22,7 +22,7 @@ export const Balance = ({ balances, type, subtype }: Props) => {
             {symbol}
             {formattedCurrent}
           </span>
-          <span>owed</span>
+          <span>spent</span>
         </div>
         <div>
           <span>

@@ -13,6 +13,7 @@ import {
   ChartDetailPage,
   ConnectionDetailPage,
   ChartAccountsPage,
+  AccountDetailPage,
 } from "client/pages";
 
 const Router = () => {
@@ -29,6 +30,7 @@ const Router = () => {
     if (path === PATH.BUDGET_DETAIL) return <BudgetDetailPage />;
     if (path === PATH.BUDGET_CONFIG) return <BudgetConfigPage />;
     if (path === PATH.ACCOUNTS) return <AccountsPage />;
+    if (path === PATH.ACCOUNT_DETAIL) return <AccountDetailPage />;
     if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
     if (path === PATH.TRANSACTION_DETAIL) return <TransactionDetailPage />;
     if (path === PATH.CONFIG) return <ConfigPage />;
