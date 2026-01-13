@@ -14,10 +14,12 @@ export const AccountProperties = ({ account }: Props) => {
   const { available, current, iso_currency_code } = balances;
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
-  const { graphViewDate, graphData } = useAccountGraph([account]);
+  const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
 
-  const { data } = useAppContext();
+  const { data, viewDate } = useAppContext();
   const { budgets } = data;
+
+  const [nameInput, setNameInput] = useState(custom_name || "");
 
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
     return label.budget_id || "";
@@ -25,8 +27,10 @@ export const AccountProperties = ({ account }: Props) => {
 
   const [isHidden, setIsHidden] = useState(false);
 
-  const { onChangeBudgetSelect, onClickHide } = useAccountEventHandlers(
+  const { onChangeNameInput, onChangeBudgetSelect, onClickHide } = useAccountEventHandlers(
     account,
+    nameInput,
+    setNameInput,
     selectedBudgetIdLabel,
     setSelectedBudgetIdLabel,
     setIsHidden
@@ -67,7 +71,7 @@ export const AccountProperties = ({ account }: Props) => {
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Name</span>
-          <span>{custom_name || name}</span>
+          <input type="text" value={nameInput} onChange={onChangeNameInput} placeholder={name} />
         </div>
         <div className="row keyValue">
           <span className="propertyName">Type</span>
@@ -78,18 +82,6 @@ export const AccountProperties = ({ account }: Props) => {
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
         </div>
       </div>
-      {!!graphData.lines && (
-        <>
-          <br />
-          <Graph
-            input={graphData}
-            labelX={new DateLabel(graphViewDate)}
-            labelY={new MoneyLabel(currencySymbol)}
-            memoryKey={account_id}
-          />
-          <br />
-        </>
-      )}
       <div className="propertyLabel">Balance</div>
       <div className="property">
         <div className="row keyValue">
@@ -107,6 +99,27 @@ export const AccountProperties = ({ account }: Props) => {
           </span>
         </div>
       </div>
+      {!!graphData.lines && (
+        <>
+          <br />
+          <Graph
+            input={graphData}
+            labelX={new DateLabel(graphViewDate)}
+            labelY={new MoneyLabel(currencySymbol)}
+            memoryKey={account_id}
+          />
+          <br />
+          <div className="property">
+            <div className="row keyValue">
+              <span className="propertyName">{viewDate.toString()}&nbsp;balance</span>
+              <span>
+                {currencySymbol}&nbsp;
+                {cursorAmount !== undefined ? numberToCommaString(cursorAmount) : "0"}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
       <div className="propertyLabel">Preference</div>
       <div className="property">
         <div className="row keyValue">

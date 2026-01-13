@@ -32,6 +32,11 @@ import {
   THIRTY_DAYS,
   ChartDictionary,
   Chart,
+  SnapshotData,
+  AccountSnapshot,
+  HoldingSnapshot,
+  AccountSnapshotDictionary,
+  HoldingSnapshotDictionary,
 } from "common";
 
 /**
@@ -43,13 +48,20 @@ export const useSync = () => {
 
   type SyncTransactions = (accounts?: AccountDictionary) => void;
 
-  const syncTransactions = useCallback(
-    async (accounts?: AccountDictionary) => {
-      if (!userLoggedIn) return;
+  const getOldestTransactionDate = useCallback(async (): Promise<Date | undefined> => {
+    if (!userLoggedIn) return undefined;
 
-      const oldestDatePromise = call
-        .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
-        .then(({ body }) => (body ? new Date(body) : undefined));
+    const response = await call.get<OldestTransactionDateGetResponse>(
+      "/api/oldest-transaction-date"
+    );
+    if (!response?.body) return undefined;
+
+    return response.body ? new Date(response.body) : undefined;
+  }, [userLoggedIn]);
+
+  const syncTransactions = useCallback(
+    async (accounts?: AccountDictionary, oldestDatePromise?: Promise<Date | undefined>) => {
+      if (!userLoggedIn) return;
 
       const transactionsApiPath = "/api/transactions";
       const viewDate = new ViewDate("month");
@@ -267,11 +279,62 @@ export const useSync = () => {
     });
   }, [userLoggedIn, setData]);
 
-  type SyncAll = () => Promise<any>[];
+  const syncSnapshots = useCallback(
+    async (oldestDatePromise: Promise<Date | undefined>) => {
+      if (!userLoggedIn) return;
+      const params = new URLSearchParams();
+      const startDate = await oldestDatePromise;
+      const endDate = new Date();
+      params.append("start-date", getDateString(startDate));
+      params.append("end-date", getDateString(endDate));
+      const path = "/api/snapshots?" + params.toString();
+
+      await call.get(path).then(({ body }) => {
+        if (!body) return;
+        const snapshots = body as SnapshotData[];
+        setData((oldData) => {
+          const newData = new Data(oldData);
+
+          const newAccountSnapshots = new AccountSnapshotDictionary(newData.accountSnapshots);
+          const newHoldingSnapshots = new HoldingSnapshotDictionary(newData.holdingSnapshots);
+
+          snapshots.forEach((snapshot) => {
+            if ("account" in snapshot) {
+              const newSnapshot = new AccountSnapshot(snapshot);
+              newAccountSnapshots.set(snapshot.snapshot.id, newSnapshot);
+            } else if ("holding" in snapshot) {
+              const newSnapshot = new HoldingSnapshot(snapshot);
+              newHoldingSnapshots.set(snapshot.snapshot.id, newSnapshot);
+            }
+          });
+
+          newData.accountSnapshots = newAccountSnapshots;
+          newData.holdingSnapshots = newHoldingSnapshots;
+
+          return newData;
+        });
+      });
+    },
+    [userLoggedIn, setData]
+  );
+
+  type SyncAll = () => Promise<void>[];
 
   const syncAll = useCallback(() => {
-    return [syncAccounts().then(syncTransactions), syncBudgets(), syncCharts()];
-  }, [syncTransactions, syncAccounts, syncBudgets, syncCharts]);
+    const accountsPromise = syncAccounts();
+    const oldestDatePromise = getOldestTransactionDate();
+    const transactionsPromise = accountsPromise.then((accounts) =>
+      syncTransactions(accounts, oldestDatePromise)
+    );
+    return [transactionsPromise, syncBudgets(), syncCharts(), syncSnapshots(oldestDatePromise)];
+  }, [
+    syncTransactions,
+    syncAccounts,
+    syncBudgets,
+    syncCharts,
+    syncSnapshots,
+    getOldestTransactionDate,
+  ]);
 
   type Sync = {
     all: SyncAll;

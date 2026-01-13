@@ -10,6 +10,8 @@ import {
   assign,
   SplitTransactionDictionary,
   ChartDictionary,
+  AccountSnapshotDictionary,
+  HoldingSnapshotDictionary,
 } from "common";
 
 export class Data {
@@ -23,6 +25,8 @@ export class Data {
   categories = new CategoryDictionary();
   items = new ItemDictionary();
   charts = new ChartDictionary();
+  accountSnapshots = new AccountSnapshotDictionary();
+  holdingSnapshots = new HoldingSnapshotDictionary();
 
   constructor(init?: Partial<Data>) {
     assign(this, init);

@@ -22,7 +22,7 @@ export const useAccountGraph = (accounts: Account[]) => {
     return isFuture ? viewDate : new ViewDate(viewDate.getInterval());
   }, [viewDate]);
 
-  const graphData: GraphInput = useMemo(() => {
+  const { graphData, cursorAmount } = useMemo(() => {
     const balanceHistory: number[] = [totalBalance || 0];
 
     const translate = (transaction: Transaction | InvestmentTransaction) => {
@@ -47,7 +47,7 @@ export const useAccountGraph = (accounts: Account[]) => {
 
     const { length } = balanceHistory;
 
-    if (length < 2) return {};
+    if (length < 2) return { graphData: {} as GraphInput };
 
     const lengthFixer = 3 - ((length - 1) % 3);
 
@@ -68,7 +68,9 @@ export const useAccountGraph = (accounts: Account[]) => {
       points.push({ point: { value: pointValue, index: pointIndex }, color: "#097" });
     }
 
-    return { lines: [{ sequence, color: "#097" }], points };
+    const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
+
+    return { graphData, cursorAmount: pointValue };
   }, [
     transactions,
     accountIds,
@@ -79,11 +81,13 @@ export const useAccountGraph = (accounts: Account[]) => {
     viewDate,
   ]);
 
-  return { graphViewDate, graphData };
+  return { graphViewDate, graphData, cursorAmount };
 };
 
 export const useAccountEventHandlers = (
   account: Account,
+  nameInput: string,
+  setNameInput: Dispatch<SetStateAction<string>>,
   selectedBudgetIdLabel: string,
   setSelectedBudgetIdLabel: Dispatch<SetStateAction<string>>,
   setIsHidden: Dispatch<SetStateAction<boolean>>
@@ -91,6 +95,22 @@ export const useAccountEventHandlers = (
   const { account_id } = account;
 
   const { setData, router } = useAppContext();
+
+  const onChangeNameInput: ChangeEventHandler<HTMLInputElement> = (e) => {
+    const { value } = e.target;
+    if (value === nameInput) return;
+    setNameInput(value);
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const existingAccount = newData.accounts.get(account_id);
+      if (!existingAccount) return oldData;
+      const newAccount = new Account({ ...existingAccount, custom_name: value });
+      const newAccounts = new AccountDictionary(newData.accounts);
+      newAccounts.set(account_id, newAccount);
+      newData.accounts = newAccounts;
+      return newData;
+    });
+  };
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -146,6 +166,7 @@ export const useAccountEventHandlers = (
   };
 
   return {
+    onChangeNameInput,
     onChangeBudgetSelect,
     onClickHide,
     onClickAccount,
