@@ -104,6 +104,13 @@
           "properties": {
             "budget_id": { "type": "keyword" }
           }
+        },
+        "graphOptions": {
+          "type": "object",
+          "properties": {
+            "useSnapshots": { "type": "boolean" },
+            "useTransactions": { "type": "boolean" }
+          }
         }
       }
     },

@@ -54,7 +54,7 @@ export const Configuration = () => {
   const onClickRefresh = async () => {
     clean();
     await cleanCache();
-    await Promise.all(sync.all());
+    await sync.all();
   };
 
   return (

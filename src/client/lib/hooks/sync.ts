@@ -301,10 +301,10 @@ export const useSync = () => {
           snapshots.forEach((snapshot) => {
             if ("account" in snapshot) {
               const newSnapshot = new AccountSnapshot(snapshot);
-              newAccountSnapshots.set(snapshot.snapshot.id, newSnapshot);
+              newAccountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
             } else if ("holding" in snapshot) {
               const newSnapshot = new HoldingSnapshot(snapshot);
-              newHoldingSnapshots.set(snapshot.snapshot.id, newSnapshot);
+              newHoldingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
             }
           });
 
@@ -318,15 +318,21 @@ export const useSync = () => {
     [userLoggedIn, setData]
   );
 
-  type SyncAll = () => Promise<void>[];
+  type SyncAll = () => Promise<void>;
 
-  const syncAll = useCallback(() => {
+  const syncAll = useCallback(async () => {
     const accountsPromise = syncAccounts();
     const oldestDatePromise = getOldestTransactionDate();
     const transactionsPromise = accountsPromise.then((accounts) =>
       syncTransactions(accounts, oldestDatePromise)
     );
-    return [transactionsPromise, syncBudgets(), syncCharts(), syncSnapshots(oldestDatePromise)];
+
+    await Promise.all([
+      transactionsPromise,
+      syncBudgets(),
+      syncCharts(),
+      syncSnapshots(oldestDatePromise),
+    ]);
   }, [
     syncTransactions,
     syncAccounts,

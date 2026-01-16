@@ -14,6 +14,14 @@ export class AccountLabel {
   }
 }
 
+export class AccountGraphOptions {
+  useSnapshots = true;
+  useTransactions = true;
+  constructor(init?: Partial<AccountGraphOptions>) {
+    assign(this, init);
+  }
+}
+
 export class Account implements plaid.PlaidAccount {
   get id() {
     return this.account_id;
@@ -50,8 +58,16 @@ export class Account implements plaid.PlaidAccount {
    * Represents relations by budget_id.
    */
   label = new AccountLabel();
+  /**
+   * Graph display preferences for the account.
+   */
+  graphOptions = new AccountGraphOptions();
 
   constructor(init?: Partial<Account>) {
     assign(this, init);
+    if (init?.label) this.label = new AccountLabel(init.label);
+    if (init?.graphOptions) {
+      this.graphOptions = new AccountGraphOptions(init.graphOptions);
+    }
   }
 }

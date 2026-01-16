@@ -1,7 +1,9 @@
-import { ChangeEventHandler, Dispatch, SetStateAction, useMemo } from "react";
+import { ChangeEventHandler, Dispatch, SetStateAction, useMemo, useState } from "react";
 import {
   Account,
   AccountDictionary,
+  AccountGraphOptions,
+  AccountSnapshot,
   Data,
   InvestmentTransaction,
   Transaction,
@@ -9,13 +11,9 @@ import {
 } from "common";
 import { GraphInput, PATH, TransactionsPageParams, call, useAppContext } from "client";
 
-export const useAccountGraph = (accounts: Account[]) => {
-  const validAccounts = accounts.filter((a) => a.type !== "credit");
-  const accountIds = validAccounts.map((a) => a.account_id);
-  const totalBalance = validAccounts.reduce((acc, a) => acc + (a.balances.current || 0), 0);
-
+export const useAccountGraph = (accounts: Account[], options = new AccountGraphOptions()) => {
   const { data, viewDate } = useAppContext();
-  const { accounts: accountsDictionary, transactions, investmentTransactions } = data;
+  const { useSnapshots = true, useTransactions = true } = options;
 
   const graphViewDate = useMemo(() => {
     const isFuture = new Date() < viewDate.getEndDate();
@@ -23,6 +21,16 @@ export const useAccountGraph = (accounts: Account[]) => {
   }, [viewDate]);
 
   const { graphData, cursorAmount } = useMemo(() => {
+    const {
+      accounts: accountsDictionary,
+      transactions,
+      investmentTransactions,
+      accountSnapshots,
+    } = data;
+
+    const validAccounts = accounts.filter((a) => a.type !== "credit");
+    const accountIds = validAccounts.map((a) => a.account_id);
+    const totalBalance = validAccounts.reduce((acc, a) => acc + (a.balances.current || 0), 0);
     const balanceHistory: number[] = [totalBalance || 0];
 
     const translate = (transaction: Transaction | InvestmentTransaction) => {
@@ -52,11 +60,68 @@ export const useAccountGraph = (accounts: Account[]) => {
     const lengthFixer = 3 - ((length - 1) % 3);
 
     for (let i = 1; i < length; i++) {
-      if (!balanceHistory[i]) balanceHistory[i] = 0;
+      if (!balanceHistory[i] || !useTransactions) balanceHistory[i] = 0;
       balanceHistory[i] += balanceHistory[i - 1];
     }
 
     balanceHistory.push(...new Array(lengthFixer));
+
+    const nowSnapshot: { [account_id: string]: AccountSnapshot } = {};
+    accounts.forEach((a) => {
+      nowSnapshot[a.id] = new AccountSnapshot({ account: a });
+    });
+    const snapshotHistory: { [account_id: string]: AccountSnapshot }[] = [nowSnapshot];
+
+    if (useSnapshots) {
+      accountSnapshots.forEach((as) => {
+        const { snapshot, account } = as;
+        const { date } = snapshot;
+        if (!account.balances.current) return;
+        if (!accountIds.includes(account.account_id)) return;
+        const span = graphViewDate.getSpanFrom(new Date(date)) + 1;
+        const existing = snapshotHistory[span];
+        if (existing) {
+          if (existing[account.id] && existing[account.id].snapshot.date < date) {
+            existing[account.id] = as;
+          }
+        } else {
+          snapshotHistory[span] = { [account.id]: as };
+        }
+      });
+
+      if (useTransactions) {
+        snapshotHistory.forEach((snapshotDict, span) => {
+          if (!snapshotDict) return;
+          const snapshots = Object.values(snapshotDict);
+          if (snapshots.length !== accountIds.length) return;
+          let totalBalance = 0;
+          snapshots.forEach(({ account }) => {
+            totalBalance += account.balances.current || 0;
+          });
+          balanceHistory[span] = totalBalance;
+        });
+      } else {
+        const snapshots = Object.values(snapshotHistory[snapshotHistory.length - 1]);
+        let totalBalance = 0;
+        snapshots.forEach(({ account }) => {
+          totalBalance += account.balances.current || 0;
+        });
+        balanceHistory[balanceHistory.length - 1] = totalBalance;
+        for (let i = balanceHistory.length - 2; i >= 0; i--) {
+          const snapshotDict = snapshotHistory[i];
+          if (snapshotDict) {
+            const snapshots = Object.values(snapshotDict);
+            let totalBalance = 0;
+            snapshots.forEach(({ account }) => {
+              totalBalance += account.balances.current || 0;
+            });
+            balanceHistory[i] = totalBalance;
+          } else {
+            balanceHistory[i] = balanceHistory[i + 1];
+          }
+        }
+      }
+    }
 
     const sequence = balanceHistory.reverse();
 
@@ -71,30 +136,27 @@ export const useAccountGraph = (accounts: Account[]) => {
     const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
 
     return { graphData, cursorAmount: pointValue };
-  }, [
-    transactions,
-    accountIds,
-    totalBalance,
-    accountsDictionary,
-    investmentTransactions,
-    graphViewDate,
-    viewDate,
-  ]);
+  }, [data, accounts, graphViewDate, viewDate]);
 
   return { graphViewDate, graphData, cursorAmount };
 };
 
-export const useAccountEventHandlers = (
-  account: Account,
-  nameInput: string,
-  setNameInput: Dispatch<SetStateAction<string>>,
-  selectedBudgetIdLabel: string,
-  setSelectedBudgetIdLabel: Dispatch<SetStateAction<string>>,
-  setIsHidden: Dispatch<SetStateAction<boolean>>
-) => {
-  const { account_id } = account;
+export const useAccountEventHandlers = (account: Account) => {
+  const { account_id, custom_name, label, hide, graphOptions } = account;
 
   const { setData, router } = useAppContext();
+
+  const [nameInput, setNameInput] = useState(custom_name || "");
+
+  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
+    return label.budget_id || "";
+  });
+
+  const [isHidden, setIsHidden] = useState(hide);
+  const [useTransactionsForGraph, setUseTransactionsForGraph] = useState(
+    graphOptions?.useTransactions
+  );
+  const [useSnapshotsForGraph, setUseSnapshotsForGraph] = useState(graphOptions?.useSnapshots);
 
   const onChangeNameInput: ChangeEventHandler<HTMLInputElement> = (e) => {
     const { value } = e.target;
@@ -159,6 +221,68 @@ export const useAccountEventHandlers = (
     });
   };
 
+  const onClickUseTransactionsForGraph: ChangeEventHandler<HTMLInputElement> = (e) => {
+    e.stopPropagation();
+    const { checked } = e.target;
+    setUseTransactionsForGraph(checked);
+    if (!account_id) return;
+    call
+      .post("/api/account", {
+        account_id,
+        graphOptions: { useTransactions: checked },
+      })
+      .then((r) => {
+        if (r.status === "success") {
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const existingAccount = newData.accounts.get(account_id);
+            if (!existingAccount) return oldData;
+            const newGraphOptions = new AccountGraphOptions(existingAccount.graphOptions);
+            newGraphOptions.useTransactions = checked;
+            const newAccount = new Account({
+              ...existingAccount,
+              graphOptions: newGraphOptions,
+            });
+            const newAccounts = new AccountDictionary(newData.accounts);
+            newAccounts.set(account_id, newAccount);
+            newData.accounts = newAccounts;
+            return newData;
+          });
+        }
+      });
+  };
+
+  const onClickUseSnapshotsForGraph: ChangeEventHandler<HTMLInputElement> = (e) => {
+    e.stopPropagation();
+    const { checked } = e.target;
+    setUseSnapshotsForGraph(checked);
+    if (!account_id) return;
+    call
+      .post("/api/account", {
+        account_id,
+        graphOptions: { useSnapshots: checked },
+      })
+      .then((r) => {
+        if (r.status === "success") {
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const existingAccount = newData.accounts.get(account_id);
+            if (!existingAccount) return oldData;
+            const newGraphOptions = new AccountGraphOptions(existingAccount.graphOptions);
+            newGraphOptions.useSnapshots = checked;
+            const newAccount = new Account({
+              ...existingAccount,
+              graphOptions: newGraphOptions,
+            });
+            const newAccounts = new AccountDictionary(newData.accounts);
+            newAccounts.set(account_id, newAccount);
+            newData.accounts = newAccounts;
+            return newData;
+          });
+        }
+      });
+  };
+
   const onClickAccount = () => {
     const paramObj: TransactionsPageParams = { account_id };
     const params = new URLSearchParams(paramObj);
@@ -166,9 +290,16 @@ export const useAccountEventHandlers = (
   };
 
   return {
+    nameInput,
     onChangeNameInput,
+    selectedBudgetIdLabel,
     onChangeBudgetSelect,
+    isHidden,
     onClickHide,
+    useTransactionsForGraph,
+    onClickUseTransactionsForGraph,
+    useSnapshotsForGraph,
+    onClickUseSnapshotsForGraph,
     onClickAccount,
   };
 };

@@ -1,40 +1,34 @@
-import { useMemo, useState } from "react";
+import { AccountType } from "plaid";
+import { useMemo } from "react";
 import { Account, currencyCodeToSymbol, numberToCommaString, toTitleCase } from "common";
 import { useAccountEventHandlers, useAccountGraph, useAppContext } from "client";
 import { DateLabel, Graph, InstitutionSpan, MoneyLabel, ToggleInput } from "client/components";
-import "./index.css";
-import { AccountType } from "plaid";
 
 interface Props {
   account: Account;
 }
 
 export const AccountProperties = ({ account }: Props) => {
-  const { account_id, balances, custom_name, name, label, type, subtype } = account;
+  const { account_id, balances, name, type, subtype, graphOptions } = account;
   const { available, current, iso_currency_code } = balances;
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
-  const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
+  const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account], graphOptions);
 
   const { data, viewDate } = useAppContext();
   const { budgets } = data;
-
-  const [nameInput, setNameInput] = useState(custom_name || "");
-
-  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
-    return label.budget_id || "";
-  });
-
-  const [isHidden, setIsHidden] = useState(false);
-
-  const { onChangeNameInput, onChangeBudgetSelect, onClickHide } = useAccountEventHandlers(
-    account,
+  const {
     nameInput,
-    setNameInput,
+    onChangeNameInput,
     selectedBudgetIdLabel,
-    setSelectedBudgetIdLabel,
-    setIsHidden
-  );
+    onChangeBudgetSelect,
+    isHidden,
+    onClickHide,
+    useTransactionsForGraph,
+    onClickUseTransactionsForGraph,
+    useSnapshotsForGraph,
+    onClickUseSnapshotsForGraph,
+  } = useAccountEventHandlers(account);
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -120,7 +114,21 @@ export const AccountProperties = ({ account }: Props) => {
           </div>
         </>
       )}
-      <div className="propertyLabel">Preference</div>
+      <div className="propertyLabel">Balance&nbsp;Graph&nbsp;Options</div>
+      <div className="property">
+        <div className="row keyValue">
+          <span className="propertyName">Use Transactions</span>
+          <ToggleInput
+            checked={useTransactionsForGraph}
+            onChange={onClickUseTransactionsForGraph}
+          />
+        </div>
+        <div className="row keyValue">
+          <span className="propertyName">Use Snapshots</span>
+          <ToggleInput checked={useSnapshotsForGraph} onChange={onClickUseSnapshotsForGraph} />
+        </div>
+      </div>
+      <div className="propertyLabel">Account&nbsp;Preference</div>
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Default&nbsp;Budget</span>

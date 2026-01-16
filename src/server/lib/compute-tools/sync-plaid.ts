@@ -1,6 +1,5 @@
 import {
   Account,
-  InvestmentTransaction,
   Item,
   ItemProvider,
   RemovedInvestmentTransaction,
@@ -190,6 +189,10 @@ export const syncPlaidAccounts = async (item_id: string) => {
         return newAccount;
       });
       await upsertAccounts(user, accounts);
+      return accounts;
+    })
+    .then(async (accounts) => {
+      await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       return accounts;
     })
     .catch(console.error);

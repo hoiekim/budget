@@ -9,12 +9,13 @@ interface Props {
 
 const AccountRow = ({ account }: Props) => {
   const { router } = useAppContext();
-  const { account_id, balances, custom_name, name, institution_id, type, subtype } = account;
+  const { account_id, balances, custom_name, name, institution_id, type, subtype, graphOptions } =
+    account;
 
   const { iso_currency_code, unofficial_currency_code } = balances;
   const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
 
-  const { graphViewDate, graphData } = useAccountGraph([account]);
+  const { graphViewDate, graphData } = useAccountGraph([account], graphOptions);
 
   const onClickAccount = () => {
     const params = new URLSearchParams();
