@@ -17,15 +17,20 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
       };
     }
 
-    if (!req.body || typeof req.body !== "object") {
+    if (!req.body || typeof req.body !== "object" || !("snapshot" in req.body)) {
       return {
         status: "failed",
-        message: "Request body must be an account",
+        message: "Request body must be a snapshot data",
       };
     }
 
-    const account = new Account(req.body);
-    const snapshot = new Snapshot({ snapshot_id: `${account.id}-${getSquashedDateString()}` });
+    // TODO: Snapshot can be holding or security snapshot as well
+    const account = new Account(req.body.account);
+    const date = req.body.snapshot.date ? new Date(req.body.snapshot.date) : new Date();
+    const snapshot = new Snapshot({
+      snapshot_id: `${account.id}-${getSquashedDateString(date)}`,
+      date: date.toISOString(),
+    });
 
     const { user_id } = user;
     const newSnapshot = { user: { user_id }, snapshot, account };

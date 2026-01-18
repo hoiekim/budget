@@ -1,17 +1,22 @@
 import { numberToCommaString } from "common";
-import { useState, useRef, InputHTMLAttributes } from "react";
+import { useState, useRef, InputHTMLAttributes, SetStateAction, Dispatch } from "react";
 
-type Props = { defaultValue: number; maxValue?: number; minValue?: number; fixed?: number } & Omit<
-  InputHTMLAttributes<HTMLInputElement>,
-  "defaultValue"
->;
+type DynamicCapacityInputProps = {
+  value: string;
+  setValue: Dispatch<SetStateAction<string>>;
+  maxValue?: number;
+  minValue?: number;
+  fixed?: number;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue" | "value">;
 
-export const CapacityInput = (props: Props) => {
+export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
   const {
-    defaultValue,
+    value,
+    setValue,
     maxValue,
     minValue,
     fixed = 0,
+    prefix = "",
     className,
     onClick,
     onKeyPress,
@@ -21,16 +26,13 @@ export const CapacityInput = (props: Props) => {
     ...rest
   } = props;
 
-  const defaultValueAsCommaString = numberToCommaString(defaultValue, fixed);
-  const [_value, _setValue] = useState(defaultValueAsCommaString);
-
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
     <input
       {...rest}
       ref={inputRef}
-      value={_value}
+      value={value}
       className={className}
       onClick={(e) => {
         e.stopPropagation();
@@ -42,21 +44,47 @@ export const CapacityInput = (props: Props) => {
         if (e.key === "Enter") inputRef.current?.blur();
       }}
       onChange={(e) => {
-        _setValue(e.target.value);
+        setValue(e.target.value);
         if (onChange) onChange(e);
       }}
       onFocus={(e) => {
-        _setValue((+e.target.value.replace(/,/g, "")).toString());
+        setValue((+e.target.value.replace(/[$\s,]/g, "")).toString());
         if (onFocus) onFocus(e);
       }}
       onBlur={(e) => {
-        const numberizedValue = +e.target.value.replace(/,/g, "") || 0;
+        const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
         const maxCappedValue = maxValue ? Math.min(maxValue, numberizedValue) : numberizedValue;
         const minCappedValue = minValue ? Math.max(minValue, maxCappedValue) : maxCappedValue;
         const commaString = numberToCommaString(minCappedValue, fixed);
-        _setValue(commaString);
+        if (prefix) setValue(prefix + " " + commaString);
+        else setValue(commaString);
         if (onBlur) onBlur({ ...e, target: { ...e.target, value: minCappedValue.toString() } });
       }}
+    />
+  );
+};
+
+type CapacityInputProps = { defaultValue: number } & Omit<
+  DynamicCapacityInputProps,
+  "value" | "setValue"
+>;
+
+export const CapacityInput = (props: CapacityInputProps) => {
+  const { defaultValue, fixed = 0, prefix = "", ...rest } = props;
+
+  const defaultValueAsCommaString = numberToCommaString(defaultValue, fixed);
+  const prefixedDefaultValue = prefix
+    ? prefix + " " + defaultValueAsCommaString
+    : defaultValueAsCommaString;
+  const [_value, _setValue] = useState(prefixedDefaultValue);
+
+  return (
+    <DynamicCapacityInput
+      value={_value}
+      setValue={_setValue}
+      fixed={fixed}
+      prefix={prefix}
+      {...rest}
     />
   );
 };

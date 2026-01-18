@@ -8,6 +8,7 @@ import {
   syncSimpleFinData,
   syncPlaidAccounts,
   syncPlaidTransactions,
+  searchItems,
 } from "server";
 import { Item, ItemProvider, ItemStatus } from "common";
 
@@ -62,6 +63,18 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       await Promise.all([syncPlaidAccounts(item.id), syncPlaidTransactions(item.id)]);
 
       return { status: "success", body: { item } };
+    } else if (provider === ItemProvider.MANUAL) {
+      const items = await searchItems(user);
+      if (items.find((e) => e.provider === ItemProvider.MANUAL)) {
+        return {
+          status: "failed",
+          message: "Manual item already exists for the user",
+        };
+      } else {
+        const item = new Item({ access_token: "no_access_token", provider });
+        await upsertItems(user, [item]);
+        return { status: "success", body: { item } };
+      }
     } else {
       return {
         status: "failed",

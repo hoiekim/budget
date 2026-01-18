@@ -1,8 +1,16 @@
 import { AccountType } from "plaid";
 import { useMemo } from "react";
-import { Account, currencyCodeToSymbol, numberToCommaString, toTitleCase } from "common";
-import { useAccountEventHandlers, useAccountGraph, useAppContext } from "client";
-import { DateLabel, Graph, InstitutionSpan, MoneyLabel, ToggleInput } from "client/components";
+import { Account, currencyCodeToSymbol, numberToCommaString, toTitleCase, ViewDate } from "common";
+import { PATH, useAccountEventHandlers, useAccountGraph, useAppContext } from "client";
+import {
+  DateLabel,
+  DynamicCapacityInput,
+  Graph,
+  InstitutionSpan,
+  MoneyLabel,
+  ToggleInput,
+} from "client/components";
+import "./index.css";
 
 interface Props {
   account: Account;
@@ -15,7 +23,7 @@ export const AccountProperties = ({ account }: Props) => {
 
   const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account], graphOptions);
 
-  const { data, viewDate } = useAppContext();
+  const { data, viewDate, router } = useAppContext();
   const { budgets } = data;
   const {
     nameInput,
@@ -28,7 +36,10 @@ export const AccountProperties = ({ account }: Props) => {
     onClickUseTransactionsForGraph,
     useSnapshotsForGraph,
     onClickUseSnapshotsForGraph,
-  } = useAccountEventHandlers(account);
+    balanceInput,
+    setBalanceInput,
+    onChangeBalanceInput,
+  } = useAccountEventHandlers(account, cursorAmount);
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -59,6 +70,15 @@ export const AccountProperties = ({ account }: Props) => {
     pendingAmountString = numberToCommaString(available as number);
   }
 
+  const onClickTransactions = () => {
+    const params = new URLSearchParams();
+    params.append("account_id", account_id);
+    router.go(PATH.TRANSACTIONS, { params });
+  };
+
+  const latestViewDate = new ViewDate(viewDate.getInterval());
+  const isBalanceInputDisabled = viewDate.getEndDate() >= latestViewDate.getEndDate();
+
   return (
     <div className="AccountProperties Properties">
       <div className="propertyLabel">Account&nbsp;Details</div>
@@ -74,6 +94,14 @@ export const AccountProperties = ({ account }: Props) => {
         <div className="row keyValue">
           <span className="propertyName">Institution</span>
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
+        </div>
+      </div>
+      <div className="propertyLabel">Navigate</div>
+      <div className="property">
+        <div className="row button">
+          <button className="propertyName" onClick={onClickTransactions}>
+            See&nbsp;Transactions
+          </button>
         </div>
       </div>
       <div className="propertyLabel">Balance</div>
@@ -106,10 +134,17 @@ export const AccountProperties = ({ account }: Props) => {
           <div className="property">
             <div className="row keyValue">
               <span className="propertyName">{viewDate.toString()}&nbsp;balance</span>
-              <span>
-                {currencySymbol}&nbsp;
-                {cursorAmount !== undefined ? numberToCommaString(cursorAmount) : "0"}
-              </span>
+              <div className="amount">
+                <DynamicCapacityInput
+                  disabled={isBalanceInputDisabled}
+                  className={isBalanceInputDisabled ? "disabled" : ""}
+                  value={balanceInput}
+                  setValue={setBalanceInput}
+                  prefix={currencySymbol}
+                  fixed={2}
+                  onBlur={onChangeBalanceInput}
+                />
+              </div>
             </div>
           </div>
         </>

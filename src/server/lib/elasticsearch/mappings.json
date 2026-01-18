@@ -3,6 +3,7 @@
   "properties": {
     "type": { "type": "keyword" },
     "updated": { "type": "date" },
+    "is_deleted": { "type": "boolean" },
     "user": {
       "type": "object",
       "dynamic": "strict",

@@ -185,6 +185,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
           newAccount.hide = existing.hide;
           newAccount.custom_name = existing.custom_name;
           newAccount.label = existing.label;
+          newAccount.graphOptions = existing.graphOptions;
         }
         return newAccount;
       });

@@ -82,6 +82,7 @@ export const syncSimpleFinData = async (item_id: string) => {
       incomingAccount.hide = existingAccount.hide;
       incomingAccount.custom_name = existingAccount.custom_name;
       incomingAccount.label = existingAccount.label;
+      incomingAccount.graphOptions = existingAccount.graphOptions;
     }
     if (a.type === AccountType.Investment) investmentAccounts.push(incomingAccount);
     else otherAccounts.push(incomingAccount);

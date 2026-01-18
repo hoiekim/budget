@@ -10,6 +10,7 @@ export enum ItemStatus {
 export enum ItemProvider {
   PLAID = "plaid",
   SIMPLE_FIN = "simple_fin",
+  MANUAL = "manual",
 }
 
 export class Item {
@@ -31,7 +32,7 @@ export class Item {
    */
   updated?: string;
 
-  constructor(init?: Partial<Item> & { access_token: string }) {
+  constructor(init: Partial<Item> & { access_token: string }) {
     assign(this, init);
   }
 }
