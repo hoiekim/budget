@@ -4,7 +4,7 @@ import { AreaInput, GraphInput, LineInput, useAppContext } from "client";
 
 export const useBudgetGraph = (budget: Budget) => {
   const { data, viewDate } = useAppContext();
-  const { transactions, accounts } = data;
+  const { transactions, splitTransactions, accounts } = data;
 
   const interval = viewDate.getInterval();
   const graphViewDate = useMemo(() => {
@@ -24,7 +24,7 @@ export const useBudgetGraph = (budget: Budget) => {
     const spendingHistory: number[] = [];
 
     transactions.forEach((transaction) => {
-      const { authorized_date, date, amount, account_id } = transaction;
+      const { authorized_date, date, getRemainingAmount, getChildren, account_id } = transaction;
       const account = accounts.get(account_id);
       if (!account) return;
       const _budget_id = transaction.label.budget_id || account.label.budget_id;
@@ -32,7 +32,12 @@ export const useBudgetGraph = (budget: Budget) => {
       const transactionDate = new Date(authorized_date || date);
       const span = graphViewDate.getSpanFrom(transactionDate);
       if (!spendingHistory[span]) spendingHistory[span] = 0;
-      spendingHistory[span] += sign * amount;
+      spendingHistory[span] += sign * getRemainingAmount();
+      getChildren().forEach((splitTransaction) => {
+        if (splitTransaction.label.budget_id !== budget_id) return;
+        if (!spendingHistory[span]) spendingHistory[span] = 0;
+        spendingHistory[span] += sign * splitTransaction.amount;
+      });
     });
 
     const { length } = spendingHistory;
