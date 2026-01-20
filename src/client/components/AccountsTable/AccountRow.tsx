@@ -1,21 +1,27 @@
-import { Account } from "common";
+import { Account, ItemProvider } from "common";
 import { useAppContext, DateLabel, MoneyLabel, useAccountGraph, PATH } from "client";
 import { InstitutionSpan, Graph, Balance } from "client/components";
 import "./index.css";
+import { AccountType } from "plaid";
 
 interface Props {
   account: Account;
 }
 
 const AccountRow = ({ account }: Props) => {
-  const { router } = useAppContext();
+  const { router, data } = useAppContext();
   const { account_id, balances, custom_name, name, institution_id, type, subtype, graphOptions } =
     account;
+
+  const { items } = data;
+  const item = items.get(account.item_id);
+  const isManualAccount = item?.provider === ItemProvider.MANUAL;
 
   const { iso_currency_code, unofficial_currency_code } = balances;
   const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
 
   const { graphViewDate, graphData } = useAccountGraph([account], graphOptions);
+  const showGraph = type === AccountType.Depository || type === AccountType.Investment;
 
   const onClickAccount = () => {
     const params = new URLSearchParams();
@@ -27,10 +33,14 @@ const AccountRow = ({ account }: Props) => {
     <div className="AccountRow" onClick={onClickAccount}>
       <div className="AccountTitle">
         <span>{custom_name || name}</span>
-        <InstitutionSpan institution_id={institution_id} />
+        {isManualAccount ? (
+          <span>Manual</span>
+        ) : (
+          <InstitutionSpan institution_id={institution_id} />
+        )}
       </div>
       <Balance balances={balances} type={type} subtype={subtype} />
-      {!!graphData.lines && (
+      {showGraph && !!graphData.lines && (
         <Graph
           input={graphData}
           labelX={new DateLabel(graphViewDate)}

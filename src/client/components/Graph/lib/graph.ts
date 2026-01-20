@@ -102,10 +102,9 @@ export const getGraphData = (input: GraphInput): GraphData => {
   input.points?.forEach(({ point: { value, index } }) => {
     sequenceFromPoints[index] = value;
   });
-
   const rangeX: Point = [0, mergedSequence.length - 1];
   const rangeY: Point = getRangeY(mergedSequence.flatMap((e) => [e?.min, e?.max]));
-  const range: Range = { x: [rangeX[0], rangeX[1]], y: rangeY };
+  const range: Range = { x: rangeX, y: rangeY };
 
   const lines = input.lines?.map(({ sequence, color, type, strokeType }) => {
     return { points: getPoints(sequence, range), color, type, strokeType };
@@ -176,6 +175,8 @@ const getRangeY = (sequence: Sequence): Point => {
 
   let max = truncatedMax;
   let min = truncatedMin;
+
+  if (max === min) return [min * fixer, max * fixer];
 
   const gap = [4, 8, 12, 16, 20, 24, 32, 40, 60, 80, 100].reduce((a, b) => {
     const distA = max - min + (min % (a / 4)) - a;

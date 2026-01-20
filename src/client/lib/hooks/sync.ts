@@ -285,7 +285,7 @@ export const useSync = () => {
       const params = new URLSearchParams();
       const startDate = await oldestDatePromise;
       const endDate = new Date();
-      endDate.setDate(endDate.getDate() + 1);
+      endDate.setDate(endDate.getDate() + 2);
       params.append("start-date", getDateString(startDate));
       params.append("end-date", getDateString(endDate));
       const path = "/api/snapshots?" + params.toString();

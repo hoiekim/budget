@@ -12,3 +12,7 @@ div.AccountProperties .property > .row > .amount > input {
 div.AccountProperties .property > .row > .amount > input:disabled {
   color: inherit;
 }
+
+div.AccountProperties .property > .row > select {
+  text-align: right;
+}

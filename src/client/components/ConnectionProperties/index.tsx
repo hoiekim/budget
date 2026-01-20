@@ -2,49 +2,42 @@ import { MouseEventHandler } from "react";
 import {
   Account,
   AccountDictionary,
+  AccountGraphOptions,
   Data,
   Item,
+  ItemDictionary,
   ItemProvider,
+  toTitleCase,
   toUpperCamelCase,
   TransactionDictionary,
 } from "common";
 import { call, InstitutionSpan, PlaidLinkButton, useAppContext } from "client";
 
 import "./index.css";
+import { ConnectedAccountRow } from "./ConnectedAccountRow";
+import { AccountPostResponse } from "server";
 
 interface Props {
   item: Item;
 }
 
 export const ConnectionProperties = ({ item }: Props) => {
-  const { data, setData } = useAppContext();
+  const { data, setData, router } = useAppContext();
   const { accounts } = data;
   const { institution_id, status, updated, provider } = item;
 
   const accountRows = accounts
     .filter(({ item_id }) => item_id === item.id)
-    .flatMap(({ id, name, custom_name, type, subtype }, i, { length }) => {
-      const numbering = length > 1 ? <>&nbsp;{i + 1}</> : <></>;
+    .flatMap((account, i, { length }) => {
+      const { id } = account;
+      const isManualItem = item.provider === ItemProvider.MANUAL;
+      let propertyLabel = isManualItem ? "Manual Account" : "Connected Account";
+      if (length > 1) propertyLabel += ` ${i + 1}`;
       return [
         <div className="propertyLabel" key={`${id}_label`}>
-          Connected&nbsp;Account&nbsp;{numbering}
+          {propertyLabel}
         </div>,
-        <div className="property" key={id}>
-          <div className="row keyValue">
-            <span className="propertyName">Name</span>
-            <span>{custom_name || name}</span>
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Type</span>
-            <span>{type}</span>
-          </div>
-          {!!subtype && (
-            <div className="row keyValue">
-              <span className="propertyName">Subtype</span>
-              <span>{subtype}</span>
-            </div>
-          )}
-        </div>,
+        <ConnectedAccountRow key={id} item={item} account={account} />,
       ];
     });
 
@@ -60,6 +53,10 @@ export const ConnectionProperties = ({ item }: Props) => {
 
         setData((oldData) => {
           const newData = new Data(oldData);
+
+          const newItems = new ItemDictionary(newData.items);
+          newItems.delete(item_id);
+          newData.items = newItems;
 
           const newAccounts = new AccountDictionary(newData.accounts);
           newAccounts.forEach((e) => {
@@ -79,6 +76,27 @@ export const ConnectionProperties = ({ item }: Props) => {
           newData.transactions = newTransactions;
           return newData;
         });
+
+        router.back();
+      });
+    }
+  };
+
+  const onClickAddManualAccount: MouseEventHandler<HTMLButtonElement> = async (e) => {
+    e.stopPropagation();
+    const newAccountGraphOptions = new AccountGraphOptions({
+      useSnapshots: true,
+      useTransactions: false,
+    });
+    const newAccount = new Account({ item_id: item.id, graphOptions: newAccountGraphOptions });
+    const { status, body } = await call.post<AccountPostResponse>("/api/account", newAccount);
+    if (status === "success" && body) {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const newAccounts = new AccountDictionary(newData.accounts);
+        newAccounts.set(newAccount.id, newAccount);
+        newData.accounts = newAccounts;
+        return newData;
       });
     }
   };
@@ -99,7 +117,7 @@ export const ConnectionProperties = ({ item }: Props) => {
         </div>
         <div className="row keyValue">
           <span className="propertyName">Status</span>
-          <span>{status || "Unknown"}</span>
+          <span>{status ? toTitleCase(status) : "Unknown"}</span>
         </div>
         <div className="row keyValue">
           <span className="propertyName">Connection&nbsp;Provider</span>
@@ -114,11 +132,17 @@ export const ConnectionProperties = ({ item }: Props) => {
             <PlaidLinkButton item={item}>Update</PlaidLinkButton>
           </div>
         )}
-        <div className="row button">
-          <button className="delete colored" onClick={onClickRemove}>
-            Delete
-          </button>
-        </div>
+        {provider === ItemProvider.MANUAL ? (
+          <div className="row button">
+            <button onClick={onClickAddManualAccount}>Add&nbsp;Account</button>
+          </div>
+        ) : (
+          <div className="row button">
+            <button className="delete colored" onClick={onClickRemove}>
+              Delete
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

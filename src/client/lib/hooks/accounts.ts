@@ -1,4 +1,4 @@
-import { ChangeEventHandler, useEffect, useMemo, useState } from "react";
+import { ChangeEventHandler, MouseEventHandler, useEffect, useMemo, useState } from "react";
 import {
   Account,
   AccountDictionary,
@@ -7,13 +7,17 @@ import {
   AccountSnapshotDictionary,
   Data,
   InvestmentTransaction,
+  ItemProvider,
   numberToCommaString,
   Snapshot,
   Transaction,
+  TransactionDictionary,
   ViewDate,
 } from "common";
 import { GraphInput, call, useAppContext, useDebounce } from "client";
 import { SnapshotPostResponse } from "server/routes/accounts/post-snapshot";
+import { AccountType } from "plaid";
+import { AccountPostResponse } from "server";
 
 export const useAccountGraph = (accounts: Account[], options = new AccountGraphOptions()) => {
   const { data, viewDate } = useAppContext();
@@ -23,13 +27,14 @@ export const useAccountGraph = (accounts: Account[], options = new AccountGraphO
     return isFuture ? viewDate : new ViewDate(viewDate.getInterval());
   }, [viewDate]);
 
+  const {
+    accounts: accountsDictionary,
+    transactions,
+    investmentTransactions,
+    accountSnapshots,
+  } = data;
+
   const { graphData, cursorAmount } = useMemo(() => {
-    const {
-      accounts: accountsDictionary,
-      transactions,
-      investmentTransactions,
-      accountSnapshots,
-    } = data;
     const { useSnapshots, useTransactions } = options;
 
     const validAccounts = accounts.filter((a) => a.type !== "credit");
@@ -57,35 +62,28 @@ export const useAccountGraph = (accounts: Account[], options = new AccountGraphO
     transactions.forEach(translate);
     investmentTransactions.forEach(translate);
 
-    const { length } = balanceHistory;
-
-    if (length < 2) return { graphData: {} as GraphInput };
-
-    const lengthFixer = 3 - ((length - 1) % 3);
-
-    for (let i = 1; i < length; i++) {
+    for (let i = 1; i < balanceHistory.length; i++) {
       if (!balanceHistory[i] || !useTransactions) balanceHistory[i] = 0;
       balanceHistory[i] += balanceHistory[i - 1];
     }
-
-    balanceHistory.push(...new Array(lengthFixer));
 
     const nowSnapshot: { [account_id: string]: AccountSnapshot } = {};
     accounts.forEach((a) => {
       nowSnapshot[a.id] = new AccountSnapshot({ account: a });
     });
-    const snapshotHistory: { [account_id: string]: AccountSnapshot }[] = [nowSnapshot];
 
     if (useSnapshots) {
+      const snapshotHistory: { [account_id: string]: AccountSnapshot }[] = [nowSnapshot];
+
       accountSnapshots.forEach((as) => {
         const { snapshot, account } = as;
         const { date } = snapshot;
-        if (!account.balances.current) return;
+        if (!account.balances.current && account.balances.current !== 0) return;
         if (!accountIds.includes(account.account_id)) return;
         const span = graphViewDate.getSpanFrom(new Date(date));
         const existing = snapshotHistory[span];
         if (existing) {
-          if (existing[account.id] && existing[account.id].snapshot.date < date) {
+          if (!existing[account.id] || existing[account.id]?.snapshot.date < date) {
             existing[account.id] = as;
           }
         } else {
@@ -110,7 +108,8 @@ export const useAccountGraph = (accounts: Account[], options = new AccountGraphO
         snapshots.forEach(({ account }) => {
           totalBalance += account.balances.current || 0;
         });
-        balanceHistory[balanceHistory.length - 1] = totalBalance;
+        const longestSpan = Math.max(snapshotHistory.length, balanceHistory.length) - 1;
+        balanceHistory[longestSpan] = totalBalance;
         for (let i = balanceHistory.length - 2; i >= 0; i--) {
           const snapshotDict = snapshotHistory[i];
           if (snapshotDict) {
@@ -127,6 +126,12 @@ export const useAccountGraph = (accounts: Account[], options = new AccountGraphO
       }
     }
 
+    const { length } = balanceHistory;
+
+    const lengthFixer = 3 - ((length - 1) % 3);
+
+    balanceHistory.push(...new Array(lengthFixer));
+
     const sequence = balanceHistory.reverse();
 
     const todayIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer + 1;
@@ -140,24 +145,39 @@ export const useAccountGraph = (accounts: Account[], options = new AccountGraphO
     const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
 
     return { graphData, cursorAmount: pointValue };
-  }, [data, accounts, options, graphViewDate, viewDate]);
+  }, [
+    accounts,
+    accountsDictionary,
+    transactions,
+    investmentTransactions,
+    accountSnapshots,
+    options,
+    graphViewDate,
+    viewDate,
+  ]);
 
   return { graphViewDate, graphData, cursorAmount };
 };
 
 export const useAccountEventHandlers = (account: Account, cursorAmount?: number) => {
-  const { account_id, custom_name, label, hide, graphOptions, balances } = account;
+  const { account_id, custom_name, type, label, hide, graphOptions, balances } = account;
 
-  const { setData, viewDate } = useAppContext();
+  const { data, setData, viewDate, router } = useAppContext();
+
+  const { items } = data;
+  const item = items.get(account.item_id);
+  const isManualAccount = item?.provider === ItemProvider.MANUAL;
 
   const [nameInput, setNameInput] = useState(custom_name || "");
 
-  const [balanceInput, setBalanceInput] = useState("");
+  const [typeInput, setTypeInput] = useState(type);
+
+  const [balanceSnapshotInput, setBalanceSnapshotInput] = useState("");
 
   useEffect(() => {
     const newDefaultBalanceSnapshotAmount =
       "$ " + numberToCommaString(cursorAmount || balances.current || 0, 2);
-    setBalanceInput((old) => {
+    setBalanceSnapshotInput((old) => {
       if (old !== newDefaultBalanceSnapshotAmount) {
         return newDefaultBalanceSnapshotAmount;
       }
@@ -313,9 +333,10 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
       });
   };
 
-  const onChangeBalanceInput: ChangeEventHandler<HTMLInputElement> = (e) => {
+  const onChangeBalanceSnapshotInput: ChangeEventHandler<HTMLInputElement> = (e) => {
     const todayViewDate = new ViewDate(viewDate.getInterval());
-    if (viewDate.getEndDate() >= todayViewDate.getEndDate()) return;
+    const isTargetingCurrent = viewDate.getEndDate() >= todayViewDate.getEndDate();
+    if (!isManualAccount && isTargetingCurrent) return;
 
     debouncer(async () => {
       const { value } = e.target;
@@ -326,33 +347,112 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
         balances: { ...account.balances, current: numericValue },
       });
       const date = viewDate.getEndDate().toISOString();
-      call
-        .post<SnapshotPostResponse>("/api/snapshot", {
+      if (isTargetingCurrent) {
+        const response = await call.post<AccountPostResponse>("/api/account", {
+          account_id,
+          balances: { current: numericValue },
+        });
+        if (response.status === "success") {
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const newAccounts = new AccountDictionary(newData.accounts);
+            newAccounts.set(account_id, newAccount);
+            newData.accounts = newAccounts;
+            return newData;
+          });
+        }
+      } else {
+        const response = await call.post<SnapshotPostResponse>("/api/snapshot", {
           account: newAccount,
           snapshot: { date },
-        })
-        .then((r) => {
-          const snapshot_id = r.body?.snapshot_id;
-          if (r.status === "success" && snapshot_id) {
-            setData((oldData) => {
-              const newData = new Data(oldData);
-              const newAccountSnapshot = new AccountSnapshot({
-                snapshot: new Snapshot({ snapshot_id, date }),
-                account: newAccount,
-              });
-              const newAccountSnapshots = new AccountSnapshotDictionary(newData.accountSnapshots);
-              newAccountSnapshots.set(snapshot_id, newAccountSnapshot);
-              newData.accountSnapshots = newAccountSnapshots;
-              return newData;
-            });
-          }
         });
+        const snapshot_id = response.body?.snapshot_id;
+        if (response.status === "success" && snapshot_id) {
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const newAccountSnapshot = new AccountSnapshot({
+              snapshot: new Snapshot({ snapshot_id, date }),
+              account: newAccount,
+            });
+            const newAccountSnapshots = new AccountSnapshotDictionary(newData.accountSnapshots);
+            newAccountSnapshots.set(snapshot_id, newAccountSnapshot);
+            newData.accountSnapshots = newAccountSnapshots;
+            return newData;
+          });
+        }
+      }
     }, 300);
+  };
+
+  const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {
+    e.stopPropagation();
+
+    const confirmed = window.confirm("Do you want to delete this account?");
+
+    if (confirmed) {
+      call.delete(`/api/account?id=${account_id}`).then((r) => {
+        if (r.status === "success") {
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const newAccounts = new AccountDictionary(newData.accounts);
+            newAccounts.delete(account_id);
+            newData.accounts = newAccounts;
+
+            const newTransactions = new TransactionDictionary(newData.transactions);
+            newTransactions.forEach((e) => {
+              if (e.account_id === account_id) {
+                newTransactions.delete(e.transaction_id);
+              }
+            });
+            newData.transactions = newTransactions;
+
+            const newAccountSnapshots = new AccountSnapshotDictionary(newData.accountSnapshots);
+            newAccountSnapshots.forEach((e) => {
+              if (e.account.account_id === account_id) {
+                newAccountSnapshots.delete(e.snapshot.snapshot_id);
+              }
+            });
+            newData.accountSnapshots = newAccountSnapshots;
+
+            return newData;
+          });
+
+          router.back();
+        }
+      });
+    }
+  };
+
+  const onChangeTypeInput: ChangeEventHandler<HTMLSelectElement> = async (e) => {
+    const { value } = e.target;
+    if (value === selectedBudgetIdLabel) return;
+    if (!isAccountType(value)) return;
+
+    setTypeInput(value);
+
+    const r = await call.post("/api/account", { account_id, type: value });
+
+    if (r.status === "success") {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const existingAccount = newData.accounts.get(account_id);
+        if (!existingAccount) return oldData;
+        const newAccount = new Account({ ...existingAccount, type: value });
+        const newAccounts = new AccountDictionary(newData.accounts);
+        newAccounts.set(account_id, newAccount);
+        newData.accounts = newAccounts;
+        return newData;
+      });
+    } else {
+      setTypeInput(typeInput);
+    }
   };
 
   return {
     nameInput,
     onChangeNameInput,
+    typeInput,
+    onChangeTypeInput,
     selectedBudgetIdLabel,
     onChangeBudgetSelect,
     isHidden,
@@ -361,8 +461,13 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
     onClickUseTransactionsForGraph,
     useSnapshotsForGraph,
     onClickUseSnapshotsForGraph,
-    balanceInput,
-    setBalanceInput,
-    onChangeBalanceInput,
+    balanceSnapshotInput,
+    setBalanceSnapshotInput,
+    onChangeBalanceSnapshotInput,
+    onClickRemove,
   };
+};
+
+const isAccountType = (value: any): value is AccountType => {
+  return Object.values(AccountType).includes(value);
 };

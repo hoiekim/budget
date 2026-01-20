@@ -118,7 +118,7 @@ export const searchAccountsById = async (user: MaskedUser, accountIds: string[])
           { term: { type: "account" } },
           {
             bool: {
-              should: accountIds.map((e) => ({ term: { "holding.account_id": e } })),
+              should: accountIds.map((e) => ({ term: { "account.account_id": e } })),
             },
           },
         ],
@@ -174,7 +174,7 @@ export const searchAccountsByItemId = async (user: MaskedUser, item_id: string) 
   return accounts;
 };
 
-interface RemovedAccount {
+export interface RemovedAccount {
   account_id: string;
 }
 

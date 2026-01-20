@@ -69,7 +69,7 @@ export class Transaction implements PlaidTransaction {
   account_owner: string | null = null;
   name: string = "Unknown";
   original_description?: string | null;
-  account_id: string = "";
+  account_id: string = "Unknown";
   amount: number = 0;
   iso_currency_code: string | null = null;
   unofficial_currency_code: string | null = null;

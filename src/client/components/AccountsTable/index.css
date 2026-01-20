@@ -3,8 +3,7 @@ div.AccountsTable > .rows {
 }
 
 div.AccountRow {
-  padding: 20px 10px;
-  border-bottom: 1px solid #ccc;
+  padding: 10px 10px;
 }
 
 div.AccountRow > div {
@@ -63,4 +62,9 @@ div.AccountsTable .placeholder {
   padding: 10px;
   display: flex;
   align-items: center;
+}
+
+div.AccountsTable > .sectionTitle {
+  margin-left: 10px;
+  margin-top: 20px;
 }

@@ -1,6 +1,8 @@
 import { Account, AccountDictionary, Data } from "common";
 import { call, useAppContext } from "client";
 import AccountRow from "./AccountRow";
+import { AccountType } from "plaid";
+import { ReactNode } from "react";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
   institution?: boolean;
@@ -16,8 +18,27 @@ export const AccountsTable = ({ accountsArray }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts } = data;
 
-  const accountRows = accountsArray.map((e, i) => {
-    return <AccountRow key={e.account_id} account={e} />;
+  const depositoryAccounts: ReactNode[] = [];
+  const investmentAccounts: ReactNode[] = [];
+  const creditAccounts: ReactNode[] = [];
+  const otherAccounts: ReactNode[] = [];
+
+  accountsArray.forEach((a) => {
+    const element = <AccountRow key={a.account_id} account={a} />;
+    switch (a.type) {
+      case AccountType.Depository:
+        depositoryAccounts.push(element);
+        break;
+      case AccountType.Investment:
+        investmentAccounts.push(element);
+        break;
+      case AccountType.Credit:
+        creditAccounts.push(element);
+        break;
+      default:
+        otherAccounts.push(element);
+        break;
+    }
   });
 
   const unhide = async () => {
@@ -58,10 +79,19 @@ export const AccountsTable = ({ accountsArray }: Props) => {
   return (
     <div className="AccountsTable">
       <div className="rows">
-        <div>{accountRows}</div>
+        <div>{depositoryAccounts}</div>
       </div>
-      <div>{!!accountRows.length && <button onClick={unhide}>Unhide&nbsp;All</button>}</div>
-      {!accountRows.length && (
+      <div className="rows">
+        <div>{investmentAccounts}</div>
+      </div>
+      <div className="rows">
+        <div>{creditAccounts}</div>
+      </div>
+      <div className="rows">
+        <div>{otherAccounts}</div>
+      </div>
+      <div>{!!accountsArray.length && <button onClick={unhide}>Unhide&nbsp;All</button>}</div>
+      {!accountsArray.length && (
         <div className="placeholder">
           You don't have any connected accounts! Click this button to connect your accounts.
         </div>

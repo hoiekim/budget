@@ -4,7 +4,7 @@ import { AreaInput, GraphInput, LineInput, useAppContext } from "client";
 
 export const useBudgetGraph = (budget: Budget) => {
   const { data, viewDate } = useAppContext();
-  const { transactions, splitTransactions, accounts } = data;
+  const { transactions, accounts } = data;
 
   const interval = viewDate.getInterval();
   const graphViewDate = useMemo(() => {

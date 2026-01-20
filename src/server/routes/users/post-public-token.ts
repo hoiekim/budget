@@ -10,7 +10,7 @@ import {
   syncPlaidTransactions,
   searchItems,
 } from "server";
-import { Item, ItemProvider, ItemStatus } from "common";
+import { getDateString, Item, ItemProvider, ItemStatus } from "common";
 
 export interface PbulicTokenPostResponse {
   item: Item;
@@ -71,7 +71,12 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
           message: "Manual item already exists for the user",
         };
       } else {
-        const item = new Item({ access_token: "no_access_token", provider });
+        const item = new Item({
+          access_token: "no_access_token",
+          provider,
+          updated: getDateString(new Date()),
+          status: ItemStatus.OK,
+        });
         await upsertItems(user, [item]);
         return { status: "success", body: { item } };
       }

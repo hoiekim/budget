@@ -1,6 +1,13 @@
 import { AccountType } from "plaid";
 import { useMemo } from "react";
-import { Account, currencyCodeToSymbol, numberToCommaString, toTitleCase, ViewDate } from "common";
+import {
+  Account,
+  currencyCodeToSymbol,
+  ItemProvider,
+  numberToCommaString,
+  toTitleCase,
+  ViewDate,
+} from "common";
 import { PATH, useAccountEventHandlers, useAccountGraph, useAppContext } from "client";
 import {
   DateLabel,
@@ -24,10 +31,13 @@ export const AccountProperties = ({ account }: Props) => {
   const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account], graphOptions);
 
   const { data, viewDate, router } = useAppContext();
-  const { budgets } = data;
+  const { budgets, items } = data;
+
   const {
     nameInput,
     onChangeNameInput,
+    typeInput,
+    onChangeTypeInput,
     selectedBudgetIdLabel,
     onChangeBudgetSelect,
     isHidden,
@@ -36,10 +46,14 @@ export const AccountProperties = ({ account }: Props) => {
     onClickUseTransactionsForGraph,
     useSnapshotsForGraph,
     onClickUseSnapshotsForGraph,
-    balanceInput,
-    setBalanceInput,
-    onChangeBalanceInput,
+    balanceSnapshotInput,
+    setBalanceSnapshotInput,
+    onChangeBalanceSnapshotInput,
+    onClickRemove,
   } = useAccountEventHandlers(account, cursorAmount);
+
+  const item = items.get(account.item_id);
+  const isManualAccount = item?.provider === ItemProvider.MANUAL;
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -76,8 +90,16 @@ export const AccountProperties = ({ account }: Props) => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
+  const onClickConnectionDetail = () => {
+    if (!item) return;
+    const params = new URLSearchParams();
+    params.append("id", item.id);
+    router.go(PATH.CONNECTION_DETAIL, { params });
+  };
+
   const latestViewDate = new ViewDate(viewDate.getInterval());
-  const isBalanceInputDisabled = viewDate.getEndDate() >= latestViewDate.getEndDate();
+  const isBalanceInputDisabled =
+    !isManualAccount && viewDate.getEndDate() >= latestViewDate.getEndDate();
 
   return (
     <div className="AccountProperties Properties">
@@ -89,38 +111,46 @@ export const AccountProperties = ({ account }: Props) => {
         </div>
         <div className="row keyValue">
           <span className="propertyName">Type</span>
-          <span>{toTitleCase(subtype || type)}</span>
+          {isManualAccount ? (
+            <select value={typeInput} onChange={onChangeTypeInput}>
+              {Object.values(AccountType).map((type) => (
+                <option key={type} value={type}>
+                  {toTitleCase(type)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span>{toTitleCase(subtype || type)}</span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Institution</span>
-          {account && <InstitutionSpan institution_id={account?.institution_id} />}
+          {isManualAccount ? (
+            <span>Manual</span>
+          ) : (
+            <InstitutionSpan institution_id={account.institution_id} />
+          )}
         </div>
       </div>
-      <div className="propertyLabel">Navigate</div>
-      <div className="property">
-        <div className="row button">
-          <button className="propertyName" onClick={onClickTransactions}>
-            See&nbsp;Transactions
-          </button>
+      {(!isManualAccount || !!graphData.lines) && <div className="propertyLabel">Balance</div>}
+      {!isManualAccount && (
+        <div className="property">
+          <div className="row keyValue">
+            <span className="propertyName">{currentLabel}</span>
+            <span>
+              {currencySymbol}&nbsp;
+              {currentAmountString}
+            </span>
+          </div>
+          <div className="row keyValue">
+            <span className="propertyName">{pendingLabel}</span>
+            <span>
+              {currencySymbol}&nbsp;
+              {pendingAmountString}
+            </span>
+          </div>
         </div>
-      </div>
-      <div className="propertyLabel">Balance</div>
-      <div className="property">
-        <div className="row keyValue">
-          <span className="propertyName">{currentLabel}</span>
-          <span>
-            {currencySymbol}&nbsp;
-            {currentAmountString}
-          </span>
-        </div>
-        <div className="row keyValue">
-          <span className="propertyName">{pendingLabel}</span>
-          <span>
-            {currencySymbol}&nbsp;
-            {pendingAmountString}
-          </span>
-        </div>
-      </div>
+      )}
       {!!graphData.lines && (
         <>
           <br />
@@ -138,45 +168,73 @@ export const AccountProperties = ({ account }: Props) => {
                 <DynamicCapacityInput
                   disabled={isBalanceInputDisabled}
                   className={isBalanceInputDisabled ? "disabled" : ""}
-                  value={balanceInput}
-                  setValue={setBalanceInput}
+                  value={balanceSnapshotInput}
+                  setValue={setBalanceSnapshotInput}
                   prefix={currencySymbol}
                   fixed={2}
-                  onBlur={onChangeBalanceInput}
+                  onBlur={onChangeBalanceSnapshotInput}
                 />
               </div>
             </div>
           </div>
         </>
       )}
-      <div className="propertyLabel">Balance&nbsp;Graph&nbsp;Options</div>
+      {!isManualAccount && (
+        <>
+          <div className="propertyLabel">Balance&nbsp;Graph&nbsp;Options</div>
+          <div className="property">
+            <div className="row keyValue">
+              <span className="propertyName">Use Transactions</span>
+              <ToggleInput
+                checked={useTransactionsForGraph}
+                onChange={onClickUseTransactionsForGraph}
+              />
+            </div>
+            <div className="row keyValue">
+              <span className="propertyName">Use Snapshots</span>
+              <ToggleInput checked={useSnapshotsForGraph} onChange={onClickUseSnapshotsForGraph} />
+            </div>
+          </div>
+          <div className="propertyLabel">Account&nbsp;Preference</div>
+          <div className="property">
+            <div className="row keyValue">
+              <span className="propertyName">Default&nbsp;Budget</span>
+              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+                <option value="">Select Budget</option>
+                {budgetOptions}
+              </select>
+            </div>
+            <div className="row keyValue">
+              <span className="propertyName">Hide</span>
+              <ToggleInput checked={isHidden} onChange={onClickHide} />
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="propertyLabel">Navigate</div>
       <div className="property">
-        <div className="row keyValue">
-          <span className="propertyName">Use Transactions</span>
-          <ToggleInput
-            checked={useTransactionsForGraph}
-            onChange={onClickUseTransactionsForGraph}
-          />
+        <div className="row button">
+          <button onClick={onClickConnectionDetail}>See&nbsp;Connection&nbsp;Details</button>
         </div>
-        <div className="row keyValue">
-          <span className="propertyName">Use Snapshots</span>
-          <ToggleInput checked={useSnapshotsForGraph} onChange={onClickUseSnapshotsForGraph} />
+        <div className="row button">
+          <button className="propertyName" onClick={onClickTransactions}>
+            See&nbsp;Transactions
+          </button>
         </div>
       </div>
-      <div className="propertyLabel">Account&nbsp;Preference</div>
-      <div className="property">
-        <div className="row keyValue">
-          <span className="propertyName">Default&nbsp;Budget</span>
-          <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-            <option value="">Select Budget</option>
-            {budgetOptions}
-          </select>
-        </div>
-        <div className="row keyValue">
-          <span className="propertyName">Hide</span>
-          <ToggleInput checked={isHidden} onChange={onClickHide} />
-        </div>
-      </div>
+      {isManualAccount && (
+        <>
+          <br />
+          <div className="property">
+            <div className="row button">
+              <button className="delete colored" onClick={onClickRemove}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

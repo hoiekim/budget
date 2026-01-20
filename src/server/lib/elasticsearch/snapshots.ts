@@ -2,7 +2,7 @@ import { flatten, MaskedUser } from "server";
 import { SnapshotData, DeepPartial, Snapshot, Account, Holding, Security } from "common";
 import { client } from "./client";
 import { getUpdateSnapshotScript } from "./scripts";
-import { index } from ".";
+import { index, RemovedAccount } from ".";
 
 export interface SearchSnapshotsOptions {
   range?: DateRange;
@@ -155,6 +155,35 @@ export const deleteSnapshotsByUser = async (
           { term: { type: "snapshot" } },
           { term: { "user.user_id": user_id } },
           { bool: { should: docs.map((e) => ({ term: { _id: e.snapshot.snapshot_id } })) } },
+        ],
+      },
+    },
+  });
+
+  return response;
+};
+
+export const deleteSnapshotsByAccount = async (
+  user: MaskedUser,
+  docs: { account: RemovedAccount }[]
+) => {
+  if (!Array.isArray(docs) || !docs.length) return;
+  const { user_id } = user;
+
+  const response = await client.deleteByQuery({
+    index,
+    query: {
+      bool: {
+        filter: [
+          { term: { type: "snapshot" } },
+          { term: { "user.user_id": user_id } },
+          {
+            bool: {
+              should: docs.map((e) => ({
+                term: { "account.account_id": e.account.account_id },
+              })),
+            },
+          },
         ],
       },
     },

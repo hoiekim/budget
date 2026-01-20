@@ -42,8 +42,8 @@ export class Account implements plaid.PlaidAccount {
   type = AccountType.Other;
   subtype: AccountSubtype | null = null;
   verification_status?: AccountBaseVerificationStatusEnum;
-  institution_id: string = getRandomId();
-  item_id: string = getRandomId();
+  institution_id: string = "Unknown";
+  item_id: string = "Unknown";
   /**
    * User defined name. This name is dintinct from account.name or
    * account.official_name which are provided Plaid.
