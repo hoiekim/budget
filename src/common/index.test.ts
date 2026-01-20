@@ -3,7 +3,7 @@ import { Account, Institution, Item } from "./models";
 
 test("isEqual should return true when the two input accounts have the same property values", () => {
   const commonInstitution = new Institution();
-  const commonItem = new Item();
+  const commonItem = new Item({ access_token: "test_token" });
 
   const accountA = new Account({
     account_id: "1a2b3c",
