@@ -55,14 +55,12 @@ export const calculateHistory = (
   transactions.forEach(translate);
   investmentTransactions.forEach(translate);
 
-  const { length } = balanceHistory;
-
-  if (length < 2) return { graphViewDate: viewDate, graphData: { lines: [], points: [] } };
-
-  for (let i = 1; i < length; i++) {
+  for (let i = 1; i < balanceHistory.length; i++) {
     if (!balanceHistory[i]) balanceHistory[i] = 0;
     balanceHistory[i] += balanceHistory[i - 1];
   }
+
+  const { length } = balanceHistory;
 
   const sequence = balanceHistory.reverse();
 

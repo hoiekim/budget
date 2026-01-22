@@ -1,8 +1,8 @@
 import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
 import { getYearMonthString, numberToCommaString, ProjectionChart, ViewDate } from "common";
-import { useAppContext, useReorder } from "client";
+import { useAccountGraph, useAppContext, useReorder } from "client";
 import { ChevronDownIcon, ChevronUpIcon, DateLabel, Graph, MoneyLabel } from "client/components";
-import { calculateHistory, calculateProjection } from "./lib";
+import { calculateProjection } from "./lib";
 import "./index.css";
 
 export interface ProjectionChartRowProps {
@@ -63,6 +63,11 @@ export const ProjectionChartRow = ({
     return saving;
   }, [initial_saving, momInflation]);
 
+  const { graphViewDate, graphData } = useAccountGraph(selectedAccounts, {
+    startDate: adjustedInitialSaving.amountAsOf,
+    viewDate: new ViewDate("month"),
+  });
+
   if (!account_ids?.length) {
     return (
       <div className="ProjectionChartRow" onClick={onClick}>
@@ -72,15 +77,9 @@ export const ProjectionChartRow = ({
     );
   }
 
-  const { graphViewDate, graphData } = calculateHistory(selectedAccounts, data, {
-    startDate: adjustedInitialSaving.amountAsOf,
-    lineColor: "#097",
-    pointColor: "#097",
-  });
-
   const currentViewDate = graphViewDate.clone();
 
-  const historyLine = graphData.lines[0];
+  const historyLine = graphData.lines![0];
 
   const { sequence } = historyLine;
   const lastValue = sequence[sequence.length - 1] as number;
@@ -112,8 +111,8 @@ export const ProjectionChartRow = ({
     yearOverYearInflation: year_over_year_inflation,
   });
 
-  graphData.lines.push(...planProjectionLines);
-  graphData.points.push(...planRetirePoints);
+  graphData.lines!.push(...planProjectionLines);
+  graphData.points!.push(...planRetirePoints);
 
   const {
     graphData: { lines: currentProjectionLines, points: currentRetirePoint },
@@ -133,8 +132,8 @@ export const ProjectionChartRow = ({
     yearOverYearInflation: configuration.year_over_year_inflation,
   });
 
-  graphData.lines.push(...currentProjectionLines);
-  graphData.points.push(...currentRetirePoint);
+  graphData.lines!.push(...currentProjectionLines);
+  graphData.points!.push(...currentRetirePoint);
 
   const latestViewDate =
     currentGraphViewDate.getEndDate() < planGraphViewDate.getEndDate()
@@ -145,7 +144,7 @@ export const ProjectionChartRow = ({
     (latestViewDate.getEndDate().getFullYear() - adjustedInitialSaving.amountAsOf.getFullYear()) %
     6
   ) {
-    graphData.lines.forEach(({ sequence }, i) => {
+    graphData.lines!.forEach(({ sequence }, i) => {
       if (!i) return;
       const lastValue = sequence[sequence.length - 1];
       if (!lastValue) return;

@@ -17,7 +17,7 @@ import {
 } from "common";
 import { BudgetFamily, BudgetFamilyType } from "./models/BudgetFamily";
 
-export class Dictionary<T = any> extends Map<string, T> {
+export class Dictionary<T = any, S extends Dictionary = any> extends Map<string, T> {
   toArray = () => Array.from(this.values());
 
   protected INPUT_ERROR_MESSAGE = "At least one key-value pair is required as input.";
@@ -66,7 +66,7 @@ export class Dictionary<T = any> extends Map<string, T> {
     return clone;
   };
 
-  clone = () => new Dictionary<T>(this);
+  clone = () => new Dictionary<T>(this) as S extends any ? Dictionary<T> : S;
 
   override set = (key: string, value: T) => {
     if (environment === "server") {
@@ -80,19 +80,36 @@ export class Dictionary<T = any> extends Map<string, T> {
   };
 }
 
-export class AccountDictionary extends Dictionary<Account> {}
-export class InstitutionDictionary extends Dictionary<Institution> {}
-export class InvestmentTransactionDictionary extends Dictionary<InvestmentTransaction> {}
-export class SplitTransactionDictionary extends Dictionary<SplitTransaction> {}
-export class BudgetDictionary extends Dictionary<Budget> {}
-export class SectionDictionary extends Dictionary<Section> {}
-export class CategoryDictionary extends Dictionary<Category> {}
-export class ItemDictionary extends Dictionary<Item> {}
-export class ChartDictionary extends Dictionary<Chart> {}
-export class AccountSnapshotDictionary extends Dictionary<AccountSnapshot> {}
-export class HoldingSnapshotDictionary extends Dictionary<HoldingSnapshot> {}
+export class AccountDictionary extends Dictionary<Account, AccountDictionary> {}
+export class InstitutionDictionary extends Dictionary<Institution, InstitutionDictionary> {}
 
-export class TransactionDictionary extends Dictionary<Transaction> {
+export class InvestmentTransactionDictionary extends Dictionary<
+  InvestmentTransaction,
+  InvestmentTransactionDictionary
+> {}
+
+export class SplitTransactionDictionary extends Dictionary<
+  SplitTransaction,
+  SplitTransactionDictionary
+> {}
+
+export class BudgetDictionary extends Dictionary<Budget, BudgetDictionary> {}
+export class SectionDictionary extends Dictionary<Section, SectionDictionary> {}
+export class CategoryDictionary extends Dictionary<Category, CategoryDictionary> {}
+export class ItemDictionary extends Dictionary<Item, ItemDictionary> {}
+export class ChartDictionary extends Dictionary<Chart, ChartDictionary> {}
+
+export class AccountSnapshotDictionary extends Dictionary<
+  AccountSnapshot,
+  AccountSnapshotDictionary
+> {}
+
+export class HoldingSnapshotDictionary extends Dictionary<
+  HoldingSnapshot,
+  HoldingSnapshotDictionary
+> {}
+
+export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {
   filterByLabel = (input: Partial<TransactionLabel>) => {
     for (const key in input) {
       const typedKey = key as keyof TransactionLabel;

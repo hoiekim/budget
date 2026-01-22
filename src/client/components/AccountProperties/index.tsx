@@ -8,7 +8,7 @@ import {
   toTitleCase,
   ViewDate,
 } from "common";
-import { PATH, useAccountEventHandlers, useAccountGraph, useAppContext } from "client";
+import { PATH, useAccountGraph, useAppContext } from "client";
 import {
   DateLabel,
   DynamicCapacityInput,
@@ -17,6 +17,7 @@ import {
   MoneyLabel,
   ToggleInput,
 } from "client/components";
+import { useAccountEventHandlers } from "./lib";
 import "./index.css";
 
 interface Props {
@@ -24,11 +25,11 @@ interface Props {
 }
 
 export const AccountProperties = ({ account }: Props) => {
-  const { account_id, balances, name, type, subtype, graphOptions } = account;
+  const { account_id, balances, name, type, subtype } = account;
   const { available, current, iso_currency_code } = balances;
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
-  const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account], graphOptions);
+  const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
 
   const { data, viewDate, router } = useAppContext();
   const { budgets, items } = data;

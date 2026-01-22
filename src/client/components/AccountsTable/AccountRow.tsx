@@ -10,8 +10,7 @@ interface Props {
 
 const AccountRow = ({ account }: Props) => {
   const { router, data } = useAppContext();
-  const { account_id, balances, custom_name, name, institution_id, type, subtype, graphOptions } =
-    account;
+  const { account_id, balances, custom_name, name, institution_id, type, subtype } = account;
 
   const { items } = data;
   const item = items.get(account.item_id);
@@ -20,7 +19,7 @@ const AccountRow = ({ account }: Props) => {
   const { iso_currency_code, unofficial_currency_code } = balances;
   const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
 
-  const { graphViewDate, graphData } = useAccountGraph([account], graphOptions);
+  const { graphViewDate, graphData } = useAccountGraph([account]);
   const showGraph = type === AccountType.Depository || type === AccountType.Investment;
 
   const onClickAccount = () => {
