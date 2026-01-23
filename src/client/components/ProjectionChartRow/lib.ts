@@ -1,4 +1,4 @@
-import { Account, AmountInTime, Data, InvestmentTransaction, Transaction, ViewDate } from "common";
+import { AmountInTime, ViewDate } from "common";
 import { LineInput, PointInput } from "client";
 
 export interface ProjectionCalculationResult {
@@ -10,79 +10,6 @@ export interface ProjectionCalculationResult {
   retireDate?: Date;
   retireAmount?: number;
 }
-
-export interface HistoryCalculationConfig {
-  startDate: Date;
-  lineColor: string;
-  pointColor: string;
-}
-
-export const calculateHistory = (
-  selectedAccounts: Account[],
-  data: Data,
-  config: HistoryCalculationConfig
-): ProjectionCalculationResult => {
-  const { startDate, lineColor, pointColor } = config;
-  const validAccounts = selectedAccounts.filter((a) => a.type !== "credit");
-  const accountIds = validAccounts.map((a) => a.account_id);
-  const totalBalance = validAccounts.reduce((acc, a) => acc + (a.balances.current || 0), 0);
-
-  const { accounts: accountsDictionary, transactions, investmentTransactions } = data;
-  const viewDate = new ViewDate("month");
-
-  const balanceHistory: number[] = [totalBalance || 0];
-
-  balanceHistory[viewDate.getSpanFrom(startDate) + 1] = 0;
-
-  const translate = (transaction: Transaction | InvestmentTransaction) => {
-    const authorized_date =
-      "authorized_date" in transaction ? transaction.authorized_date : undefined;
-    const { date, amount } = transaction;
-    if (!accountIds.includes(transaction.account_id)) return;
-    const transactionDate = new Date(authorized_date || date);
-    if (transactionDate < startDate) return;
-    const span = viewDate.getSpanFrom(transactionDate) + 1;
-    if (!balanceHistory[span]) balanceHistory[span] = 0;
-    const account = accountsDictionary.get(transaction.account_id);
-    if (account && account.type === "investment") {
-      const { price, quantity } = transaction as InvestmentTransaction;
-      balanceHistory[span] -= price * quantity;
-    } else {
-      balanceHistory[span] += amount;
-    }
-  };
-
-  transactions.forEach(translate);
-  investmentTransactions.forEach(translate);
-
-  for (let i = 1; i < balanceHistory.length; i++) {
-    if (!balanceHistory[i]) balanceHistory[i] = 0;
-    balanceHistory[i] += balanceHistory[i - 1];
-  }
-
-  const { length } = balanceHistory;
-
-  const sequence = balanceHistory.reverse();
-
-  const pointIndex = length - 1;
-  const pointValue = balanceHistory[pointIndex];
-  const points: PointInput[] = [];
-  if (pointValue !== undefined) {
-    points.push({
-      point: { value: pointValue, index: pointIndex },
-      color: pointColor,
-      guideX: true,
-      guideY: false,
-    });
-  }
-
-  const graphData: { lines: LineInput[]; points: PointInput[] } = {
-    lines: [{ sequence, color: lineColor }],
-    points,
-  };
-
-  return { graphViewDate: viewDate, graphData };
-};
 
 export interface ProjectionConfig {
   lineColor: string;

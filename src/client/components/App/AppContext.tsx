@@ -2,7 +2,7 @@ import { useState, ReactNode } from "react";
 import { useLocalStorageState, ContextType, Context, useRouter } from "client";
 import { MaskedUser } from "server";
 import { Interval, ViewDate } from "common";
-import { useData } from "./lib";
+import { useData, useScreenType } from "./lib";
 
 interface Props {
   initialUser: ContextType["user"];
@@ -10,6 +10,7 @@ interface Props {
 }
 
 const AppContext = ({ initialUser, children }: Props) => {
+  const screenType = useScreenType();
   const [data, setData] = useData();
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
   const [selectedInterval, setSelectedInterval] = useLocalStorageState<Interval>(
@@ -30,6 +31,7 @@ const AppContext = ({ initialUser, children }: Props) => {
     setSelectedInterval,
     viewDate,
     setViewDate,
+    screenType,
   };
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;

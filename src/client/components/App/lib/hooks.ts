@@ -1,18 +1,39 @@
-import { useMemoryState } from "client";
-import { Data, globalData as _data } from "common";
-import { Dispatch, SetStateAction, useCallback } from "react";
+import { ScreenType, useMemoryState } from "client";
+import { Data, globalData } from "common";
+import { Dispatch, SetStateAction, useCallback, useEffect, useState } from "react";
 
 export const useData = () => {
-  const [data, _setData] = useMemoryState<Data>("data", _data);
+  const [data, _setData] = useMemoryState<Data>("data", globalData);
   const setData: Dispatch<SetStateAction<Data>> = useCallback(
     (nextData) => {
       _setData((oldData) => {
         const newData = nextData instanceof Function ? nextData(oldData) : nextData;
-        _data.update(newData);
+        globalData.update(newData);
         return newData;
       });
     },
     [_setData]
   );
   return [data, setData] as const;
+};
+
+export const useScreenType = () => {
+  const [screenWidth, setScreenWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 0
+  );
+
+  useEffect(() => {
+    const handleResize = () => setScreenWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const screenType =
+    screenWidth <= 768
+      ? ScreenType.Narrow
+      : screenWidth >= 950
+      ? ScreenType.Wide
+      : ScreenType.Medium;
+
+  return screenType;
 };
