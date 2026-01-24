@@ -28,7 +28,7 @@ export const DashboardPage = () => {
     .map(([chart_id, chart]) => {
       const onClick = () => {
         const params = new URLSearchParams();
-        params.append("id", chart_id);
+        params.append("chart_id", chart_id);
         router.go(PATH.CHART_DETAIL, { params });
       };
       if (chart.type === CHART_TYPE.BALANCE) {

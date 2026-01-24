@@ -57,6 +57,15 @@ const Router = () => {
   }
 
   classNames.push("wideScreen");
+
+  if (path === PATH.LOGIN) {
+    return (
+      <div className={classNames.join(" ")}>
+        <div className="currentPage">{currentPage}</div>
+      </div>
+    );
+  }
+
   return (
     <div className={classNames.join(" ")}>
       <main>{currentPage}</main>

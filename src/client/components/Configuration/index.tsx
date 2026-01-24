@@ -25,7 +25,7 @@ export const Configuration = () => {
     .map(({ id, institution_id, status, provider }) => {
       const onClickConnection = () => {
         const params = new URLSearchParams();
-        params.append("id", id);
+        params.append("item_id", id);
         go(PATH.CONNECTION_DETAIL, { params });
       };
       const buttonClassNames = ["connection"];
@@ -65,7 +65,7 @@ export const Configuration = () => {
     const manualItem = items.find((item) => item.provider === ItemProvider.MANUAL);
     if (manualItem) {
       const clientPathParams = new URLSearchParams();
-      clientPathParams.append("id", manualItem.id);
+      clientPathParams.append("item_id", manualItem.id);
       go(PATH.CONNECTION_DETAIL, { params: clientPathParams });
     } else {
       const params = new URLSearchParams({ provider: ItemProvider.MANUAL });
@@ -84,7 +84,7 @@ export const Configuration = () => {
         return newData;
       });
       const clientPathParams = new URLSearchParams();
-      clientPathParams.append("id", newItem.id);
+      clientPathParams.append("item_id", newItem.id);
       go(PATH.CONNECTION_DETAIL, { params: clientPathParams });
     }
   };

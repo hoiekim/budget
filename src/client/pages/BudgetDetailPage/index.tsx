@@ -1,13 +1,14 @@
 import { useEffect } from "react";
 import { NewSectionGetResponse } from "server";
 import {
-  TransactionsPageParams,
   useAppContext,
   call,
   PATH,
   useLocalStorageState,
   DateLabel,
   MoneyLabel,
+  ScreenType,
+  TransactionsPageParams,
 } from "client";
 import { Budget, Data, Section, SectionDictionary } from "common";
 import { BudgetBar, Graph, SectionBar } from "client/components";
@@ -19,7 +20,7 @@ export type BudgetDetailPageParams = {
 };
 
 export const BudgetDetailPage = () => {
-  const { data, setData, router, viewDate } = useAppContext();
+  const { data, setData, router, viewDate, screenType } = useAppContext();
   const { budgets, sections } = data;
   const { path, params, transition } = router;
   let budget_id: string;
@@ -78,9 +79,16 @@ export const BudgetDetailPage = () => {
   };
 
   const onClickUnsorted = () => {
-    const paramObj: TransactionsPageParams = { type: "unsorted", budget_id };
-    const params = new URLSearchParams(paramObj);
-    router.go(PATH.TRANSACTIONS, { params });
+    if (screenType === ScreenType.Narrow) {
+      const paramObj: TransactionsPageParams = { transactions_type: "unsorted", budget_id };
+      const params = new URLSearchParams(paramObj);
+      router.go(PATH.TRANSACTIONS, { params });
+    } else {
+      const params = new URLSearchParams(router.params);
+      params.set("transactions_type", "unsorted");
+      params.set("budget_id", budget_id);
+      router.go(router.path, { params, animate: false });
+    }
   };
 
   const { graphData, graphViewDate } = useBudgetGraph(budget || new Budget());

@@ -77,8 +77,20 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   };
 
   const onClickInfo = () => {
-    if (isOpen) setIsOpen(false);
-    else openCategory();
+    const params = new URLSearchParams(router.params);
+    params.delete("category_id");
+    params.delete("section_id");
+    if (isOpen) {
+      setIsOpen(false);
+    } else {
+      params.set("section_id", section_id);
+      openCategory();
+    }
+    router.go(router.path, { params, animate: false });
+  };
+
+  const onClickEdit = () => {
+    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ section_id }) });
   };
 
   const onClickAddCategory = async () => {
@@ -102,7 +114,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
       return oldData;
     });
 
-    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: category_id }) });
+    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ category_id }) });
   };
 
   const childrenClassNames = ["children", "transition"];
@@ -119,6 +131,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
           barData={section}
           iso_currency_code={iso_currency_code}
           onClickInfo={onClickInfo}
+          onClickEdit={onClickEdit}
           onSetOrder={onSetOrder}
         />
       )}

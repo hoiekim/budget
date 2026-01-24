@@ -24,7 +24,7 @@ const AccountRow = ({ account }: Props) => {
 
   const onClickAccount = () => {
     const params = new URLSearchParams();
-    params.set("id", account_id);
+    params.set("account_id", account_id);
     router.go(PATH.ACCOUNT_DETAIL, { params });
   };
 

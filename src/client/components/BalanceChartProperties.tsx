@@ -50,7 +50,7 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
   };
 
   const onClickAccounts: MouseEventHandler<HTMLButtonElement> = () => {
-    router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ id: chart_id }) });
+    router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ chart_id }) });
   };
 
   const selectedAccountsCount = accounts.filter((a) => {

@@ -64,7 +64,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   };
 
   const onClickAccounts: MouseEventHandler<HTMLButtonElement> = (e) => {
-    router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ id: chart_id }) });
+    router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ chart_id }) });
   };
 
   const onBlurInitialSavingAmount: FocusEventHandler<HTMLInputElement> = (e) => {

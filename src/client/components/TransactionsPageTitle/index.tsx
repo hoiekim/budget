@@ -4,6 +4,7 @@ import {
   Budget,
   Category,
   InvestmentTransaction,
+  Section,
   SplitTransaction,
   toTitleCase,
   Transaction,
@@ -20,6 +21,7 @@ interface TransactionsPageFilters {
   type?: TransactionsPageType;
   account?: Account;
   budget?: Budget;
+  section?: Section;
   category?: Category;
 }
 
@@ -60,7 +62,7 @@ export const TransactionsPageTitle = ({
   sorter,
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
-  const { type: selectedType, account, budget, category } = filters;
+  const { type: selectedType, account, budget, section, category } = filters;
   const { router, screenType } = useAppContext();
   const { go, path, params } = router;
 
@@ -86,8 +88,8 @@ export const TransactionsPageTitle = ({
     const onClickSelectOption = () => {
       setIsSelecting(false);
       const newParams = new URLSearchParams(params);
-      if (type === "all") newParams.delete("type");
-      else newParams.set("type", type as TransactionsPageType);
+      if (type === "all") newParams.delete("transactions_type");
+      else newParams.set("transactions_type", type as TransactionsPageType);
       go(path, { params: newParams, animate: false });
     };
     return (
@@ -100,8 +102,9 @@ export const TransactionsPageTitle = ({
 
   const accountName = account?.custom_name || account?.name;
   const budgetName = budget?.name;
+  const sectionName = section?.name;
   const categoryName = category?.name;
-  const subtitle = [accountName, categoryName, budgetName].find(Boolean);
+  const subtitle = [accountName, categoryName, sectionName, budgetName].find(Boolean);
 
   const getHeader = useCallback(
     (key: keyof TransactionHeaders | keyof InvestmentTransactionHeaders): string => {

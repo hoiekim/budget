@@ -24,6 +24,10 @@ export const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
     go(BUDGET_DETAIL, { params });
   };
 
+  const onClickEdit = () => {
+    go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ budget_id }) });
+  };
+
   return (
     <LabeledBar
       key={budget_id}
@@ -31,6 +35,7 @@ export const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
       barData={budget}
       iso_currency_code={iso_currency_code}
       onClickInfo={onClickInfo}
+      onClickEdit={onClickEdit}
       onSetOrder={onSetOrder}
       hideEditButton={hideEditButton}
     />

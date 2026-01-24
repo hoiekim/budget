@@ -8,7 +8,7 @@ import {
   toTitleCase,
   ViewDate,
 } from "common";
-import { PATH, useAccountGraph, useAppContext } from "client";
+import { PATH, ScreenType, useAccountGraph, useAppContext } from "client";
 import {
   DateLabel,
   DynamicCapacityInput,
@@ -31,7 +31,7 @@ export const AccountProperties = ({ account }: Props) => {
 
   const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
 
-  const { data, viewDate, router } = useAppContext();
+  const { data, viewDate, router, screenType } = useAppContext();
   const { budgets, items } = data;
 
   const {
@@ -94,7 +94,7 @@ export const AccountProperties = ({ account }: Props) => {
   const onClickConnectionDetail = () => {
     if (!item) return;
     const params = new URLSearchParams();
-    params.append("id", item.id);
+    params.append("item_id", item.id);
     router.go(PATH.CONNECTION_DETAIL, { params });
   };
 
@@ -218,11 +218,13 @@ export const AccountProperties = ({ account }: Props) => {
         <div className="row button">
           <button onClick={onClickConnectionDetail}>See&nbsp;Connection&nbsp;Details</button>
         </div>
-        <div className="row button">
-          <button className="propertyName" onClick={onClickTransactions}>
-            See&nbsp;Transactions
-          </button>
-        </div>
+        {screenType === ScreenType.Narrow && (
+          <div className="row button">
+            <button className="propertyName" onClick={onClickTransactions}>
+              See&nbsp;Transactions
+            </button>
+          </div>
+        )}
       </div>
       {isManualAccount && (
         <>

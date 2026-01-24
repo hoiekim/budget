@@ -11,8 +11,8 @@ export const ConnectionDetailPage = () => {
 
   const { path, params, transition } = router;
   let id: string;
-  if (path === PATH.CONNECTION_DETAIL) id = params.get("id") || "";
-  else id = transition.incomingParams.get("id") || "";
+  if (path === PATH.CONNECTION_DETAIL) id = params.get("item_id") || "";
+  else id = transition.incomingParams.get("item_id") || "";
 
   const defaultItem = items.get(id);
   const [item, setItem] = useState<Item | undefined>(defaultItem);

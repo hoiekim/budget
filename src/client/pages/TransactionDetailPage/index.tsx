@@ -6,7 +6,7 @@ import { TransactionProperties } from "client/components";
 import "./index.css";
 
 export type TransactionDetailPageParams = {
-  id?: string;
+  transaction_id?: string;
 };
 
 export const TransactionDetailPage = () => {
@@ -15,8 +15,8 @@ export const TransactionDetailPage = () => {
 
   const { path, params, transition } = router;
   let id: string;
-  if (path === PATH.TRANSACTION_DETAIL) id = params.get("id") || "";
-  else id = transition.incomingParams.get("id") || "";
+  if (path === PATH.TRANSACTION_DETAIL) id = params.get("transaction_id") || "";
+  else id = transition.incomingParams.get("transaction_id") || "";
 
   const defaultTransaction = transactions.get(id);
   const [transaction, setTransaction] = useState<Transaction | undefined>(defaultTransaction);

@@ -37,7 +37,8 @@ div.Header > .viewController {
 }
 
 div.Header.wideScreen > .viewController {
-  padding-left: 80px;
+  padding-left: 110px;
+  padding-right: 20px;
 }
 
 div.Header > .viewController > .centerBox {
@@ -87,32 +88,30 @@ div.Header > .viewController > div > .hamburger > a {
   align-items: center;
 }
 
-div.Header:not(.wideScreen) > .navigators {
+div.Header > .navigators {
   z-index: 800;
   position: fixed;
-  bottom: 0;
   left: 0;
+  display: flex;
+}
+
+div.Header:not(.wideScreen) > .navigators {
   box-shadow: 0px -20px 20px #fff;
   bottom: env(safe-area-inset-bottom);
-  display: flex;
   justify-content: space-around;
-  background-color: #eee;
   width: 100%;
   padding: 0 10px;
+  background-color: #eee;
 }
 
 div.Header.wideScreen > .navigators {
-  z-index: 800;
-  position: fixed;
   top: 50px;
-  left: 0;
-  display: flex;
   justify-content: center;
   align-items: flex-start;
-  background-color: #eee;
   width: 80px;
   height: 100%;
   padding-left: 5px;
+  background-color: #f8f8f8;
 }
 
 div.Header.wideScreen > .navigators > .centerBox {

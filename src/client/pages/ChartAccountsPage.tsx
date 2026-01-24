@@ -17,8 +17,8 @@ export const ChartAccountsPage = () => {
   const { path, params, transition } = router;
 
   let chart_id: string;
-  if (path === PATH.CHART_ACCOUNTS) chart_id = params.get("id") || "";
-  else chart_id = transition.incomingParams.get("id") || "";
+  if (path === PATH.CHART_ACCOUNTS) chart_id = params.get("chart_id") || "";
+  else chart_id = transition.incomingParams.get("chart_id") || "";
 
   const chart = charts.get(chart_id);
 

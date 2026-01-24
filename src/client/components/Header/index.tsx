@@ -18,10 +18,10 @@ export const Header = () => {
 
   const { path, params, go, back } = router;
 
-  type NavigatorProps = { target: PATH; children: ReactNode };
-  const Navigator = ({ target, children }: NavigatorProps) => {
+  type NavigatorProps = { target: PATH; subPages?: PATH[]; children: ReactNode };
+  const Navigator = ({ target, subPages = [], children }: NavigatorProps) => {
     const classNames = ["navigator"];
-    const seleted = path === target && !params.values().next().value;
+    const seleted = [...subPages, target].includes(path);
     if (seleted) classNames.push("selected");
     return (
       <a
@@ -61,7 +61,18 @@ export const Header = () => {
     back();
   };
 
-  const { DASHBOARD, BUDGETS, ACCOUNTS, TRANSACTIONS } = PATH;
+  const {
+    DASHBOARD,
+    CHART_DETAIL,
+    CHART_ACCOUNTS,
+    BUDGETS,
+    BUDGET_DETAIL,
+    BUDGET_CONFIG,
+    ACCOUNTS,
+    ACCOUNT_DETAIL,
+    TRANSACTIONS,
+    TRANSACTION_DETAIL,
+  } = PATH;
 
   const isBackButtonDisabled =
     !params.toString() && [DASHBOARD, BUDGETS, ACCOUNTS, TRANSACTIONS].includes(path);
@@ -121,20 +132,20 @@ export const Header = () => {
       </div>
       <div className="navigators" style={{ height: navigatorsHeight }}>
         <div className="centerBox">
-          <Navigator target={DASHBOARD}>
+          <Navigator target={DASHBOARD} subPages={[CHART_DETAIL, CHART_ACCOUNTS]}>
             <ChartIcon size={20} />
             <span>Dashboard</span>
           </Navigator>
-          <Navigator target={BUDGETS}>
+          <Navigator target={BUDGETS} subPages={[BUDGET_DETAIL, BUDGET_CONFIG]}>
             <ListIcon size={20} />
             <span>Budgets</span>
           </Navigator>
-          <Navigator target={ACCOUNTS}>
+          <Navigator target={ACCOUNTS} subPages={[ACCOUNT_DETAIL]}>
             <BankIcon size={20} />
             <span>Accounts</span>
           </Navigator>
           {screenType === ScreenType.Narrow && (
-            <Navigator target={TRANSACTIONS}>
+            <Navigator target={TRANSACTIONS} subPages={[TRANSACTION_DETAIL]}>
               <RecieptIcon size={20} />
               <span>Transactions</span>
             </Navigator>

@@ -10,7 +10,7 @@ import {
   SplitTransaction,
   SplitTransactionDictionary,
 } from "common";
-import { useAppContext, call, PATH, TransactionDetailPageParams } from "client";
+import { useAppContext, call, PATH } from "client";
 import { InstitutionSpan, KebabIcon } from "client/components";
 import { ApiResponse } from "server";
 
@@ -185,8 +185,8 @@ const TransactionRow = ({ transaction }: Props) => {
 
   const onClickKebab = () => {
     if (path === PATH.TRANSACTION_DETAIL) return;
-    const paramObj: TransactionDetailPageParams = { id: transaction.transaction_id };
-    const params = new URLSearchParams(paramObj);
+    const params = new URLSearchParams(router.params);
+    params.set("transaction_id", transaction.transaction_id);
     go(PATH.TRANSACTION_DETAIL, { params });
   };
 

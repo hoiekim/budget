@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { useReorder, useAppContext, PATH } from "client";
+import { useReorder, useAppContext } from "client";
 import { Bar } from "client/components";
 import {
   MAX_FLOAT,
@@ -21,6 +21,7 @@ interface Props {
   barData: BarData;
   iso_currency_code: string;
   onClickInfo: () => void;
+  onClickEdit?: () => void;
   onSetOrder?: Dispatch<SetStateAction<string[]>>;
   hideEditButton?: boolean;
 }
@@ -30,10 +31,11 @@ export const LabeledBar = ({
   barData,
   iso_currency_code,
   onClickInfo,
+  onClickEdit,
   onSetOrder,
   hideEditButton,
 }: Props) => {
-  const { viewDate, router } = useAppContext();
+  const { viewDate } = useAppContext();
 
   const {
     name,
@@ -64,7 +66,7 @@ export const LabeledBar = ({
 
   const startEditing = () => {
     if (isDragging || !isClickAllowed) return;
-    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: dataId }) });
+    if (onClickEdit) onClickEdit();
   };
 
   const total = sorted_amount + unsorted_amount;

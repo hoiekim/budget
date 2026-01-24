@@ -1,6 +1,6 @@
 import { AccountType } from "plaid";
 import { useMemo, useState } from "react";
-import { useAppContext, PATH, useSorter } from "client";
+import { useAppContext, PATH, useSorter, ScreenType } from "client";
 import {
   InvestmentTransactionHeaders,
   TransactionHeaders,
@@ -18,14 +18,14 @@ import {
 import { useTransactionHit } from "./hooks";
 
 export type TransactionsPageParams = {
-  type?: TransactionsPageType;
+  transactions_type?: TransactionsPageType;
   budget_id?: string;
   account_id?: string;
   category_id?: string;
 };
 
 export const TransactionsPage = () => {
-  const { data, viewDate, router } = useAppContext();
+  const { data, viewDate, router, screenType } = useAppContext();
   const {
     transactions,
     investmentTransactions,
@@ -33,6 +33,7 @@ export const TransactionsPage = () => {
     accounts,
     institutions,
     budgets,
+    sections,
     categories,
   } = data;
   const { path, params, transition } = router;
@@ -43,21 +44,25 @@ export const TransactionsPage = () => {
   let type: TransactionsPageType | undefined;
   let account_id: string;
   let budget_id: string;
+  let section_id: string;
   let category_id: string;
-  if (path === PATH.TRANSACTIONS) {
-    type = (params.get("type") as TransactionsPageType) || undefined;
+  if (path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow) {
+    type = (params.get("transactions_type") as TransactionsPageType) || undefined;
     account_id = params.get("account_id") || "";
     budget_id = params.get("budget_id") || "";
+    section_id = params.get("section_id") || "";
     category_id = params.get("category_id") || "";
   } else {
-    type = (incomingParams.get("type") as TransactionsPageType) || undefined;
+    type = (incomingParams.get("transactions_type") as TransactionsPageType) || undefined;
     account_id = incomingParams.get("account_id") || "";
     budget_id = incomingParams.get("budget_id") || "";
+    section_id = incomingParams.get("section_id") || "";
     category_id = incomingParams.get("category_id") || "";
   }
 
   const account = accounts.get(account_id);
   const budget = budgets.get(budget_id);
+  const section = sections.get(section_id);
   const category = categories.get(category_id);
 
   const isInvestment = account?.type === AccountType.Investment;
@@ -75,10 +80,14 @@ export const TransactionsPage = () => {
 
   const filteredAndSorted = useMemo(() => {
     const filters: DeepPartial<Transaction & InvestmentTransaction> = {};
+    const category_ids: string[] = [];
     if (account_id) filters.account_id = account_id;
     if (budget_id) {
       if (!filters.label) filters.label = {};
       filters.label.budget_id = budget_id;
+    }
+    if (section_id) {
+      section?.getChildren().forEach((c) => category_ids.push(c.id));
     }
     if (category_id) {
       if (!filters.label) filters.label = {};
@@ -120,7 +129,7 @@ export const TransactionsPage = () => {
         if (type === "deposits" && e.amount > 0) return false;
         if (type === "expenses" && e.amount < 0) return false;
 
-        if (!isInvestment && !e.label.budget_id) {
+        if (!isInvestment && !e.label.budget_id && !section_id && !category_id) {
           const account = accounts.get(e.account_id);
           if (account?.label.budget_id === budget_id) return true;
         }
@@ -128,7 +137,11 @@ export const TransactionsPage = () => {
         // filters out orphaned split transactions
         if (!transactions.has(e.transaction_id)) return false;
 
-        return isSubset(e, filters);
+        if (!isSubset(e, filters)) return false;
+
+        if (section_id && !category_id) return category_ids.includes(e.label.category_id!);
+
+        return true;
       };
 
       const filtered = [
@@ -136,7 +149,7 @@ export const TransactionsPage = () => {
         ...splitTransactions.filter(filterTransaction),
       ];
 
-      return sort(filtered, (e, key) => {
+      const sortedByColumns = sort(filtered, (e, key) => {
         if (e instanceof InvestmentTransaction) {
           if (key === "date") {
             return new Date(e.date);
@@ -174,7 +187,11 @@ export const TransactionsPage = () => {
             return t[key as keyof Transaction] || t.id;
           }
         }
-      }).sort((a, b) => {
+      });
+
+      if (!searchValue) return sortedByColumns;
+
+      return sortedByColumns.sort((a, b) => {
         const hitA = hit(searchValue, a);
         const hitB = hit(searchValue, b);
         if (hitA < hitB) return 1;
@@ -196,15 +213,17 @@ export const TransactionsPage = () => {
     sort,
     account_id,
     budget_id,
+    section_id,
     category_id,
     hit,
     searchValue,
+    section,
   ]);
 
   return (
     <div className="TransactionsPage">
       <TransactionsPageTitle
-        filters={{ type, account, budget, category }}
+        filters={{ type, account, budget, section, category }}
         sorter={sorter}
         onChangeSearchValue={setSearchValue}
       />
