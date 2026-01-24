@@ -1,5 +1,5 @@
 import { MouseEventHandler, ReactNode } from "react";
-import { useAppContext, PATH } from "client";
+import { useAppContext, PATH, ScreenType } from "client";
 import {
   ArrowLeftIcon,
   BankIcon,
@@ -13,20 +13,19 @@ import {
 import { Interval } from "common";
 import "./index.css";
 
-const { innerHeight, innerWidth } = window;
-const navigatorsHeight = innerHeight / innerWidth > 2 ? 80 : 60;
-
 export const Header = () => {
-  const { user, router, viewDate, setViewDate } = useAppContext();
+  const { user, router, viewDate, setViewDate, screenType } = useAppContext();
 
   const { path, params, go, back } = router;
 
   type NavigatorProps = { target: PATH; children: ReactNode };
   const Navigator = ({ target, children }: NavigatorProps) => {
+    const classNames = ["navigator"];
     const seleted = path === target && !params.values().next().value;
+    if (seleted) classNames.push("selected");
     return (
       <a
-        className={seleted ? "selected" : undefined}
+        className={classNames.join(" ")}
         href={target}
         onClick={(e) => {
           e.preventDefault();
@@ -72,9 +71,15 @@ export const Header = () => {
     if ([PATH.CONFIG, PATH.CONNECTION_DETAIL].includes(path)) back();
     else go(PATH.CONFIG);
   };
+  const { innerHeight, innerWidth } = window;
+  const navigatorsHeight =
+    screenType !== ScreenType.Narrow ? "100%" : innerHeight / innerWidth > 2 ? 80 : 60;
+
+  const classNames = ["Header"];
+  if (screenType !== ScreenType.Narrow) classNames.push("wideScreen");
 
   return (
-    <div className="Header" style={{ display: user ? undefined : "none" }}>
+    <div className={classNames.join(" ")} style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
         <div className="centerBox">
           <div className="backButton">
@@ -128,10 +133,12 @@ export const Header = () => {
             <BankIcon size={20} />
             <span>Accounts</span>
           </Navigator>
-          <Navigator target={TRANSACTIONS}>
-            <RecieptIcon size={20} />
-            <span>Transactions</span>
-          </Navigator>
+          {screenType === ScreenType.Narrow && (
+            <Navigator target={TRANSACTIONS}>
+              <RecieptIcon size={20} />
+              <span>Transactions</span>
+            </Navigator>
+          )}
         </div>
       </div>
     </div>

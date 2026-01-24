@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useAppContext, PATH } from "client";
+import { useAppContext, PATH, ScreenType } from "client";
 import {
   LoginPage,
   BudgetsPage,
@@ -17,7 +17,7 @@ import {
 } from "client/pages";
 
 const Router = () => {
-  const { router } = useAppContext();
+  const { router, screenType } = useAppContext();
   const { path, transition } = router;
   const { incomingPath, transitioning, direction } = transition;
 
@@ -44,13 +44,25 @@ const Router = () => {
   const currentPage = useMemo(() => getPage(path), [path]);
   const incomingPage = useMemo(() => getPage(incomingPath), [incomingPath]);
 
+  if (screenType === ScreenType.Narrow) {
+    return (
+      <div className={classNames.join(" ")}>
+        <div className="previousPage">
+          {transitioning && direction === "backward" && incomingPage}
+        </div>
+        <div className="currentPage">{currentPage}</div>
+        <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
+      </div>
+    );
+  }
+
+  classNames.push("wideScreen");
   return (
     <div className={classNames.join(" ")}>
-      <div className="previousPage">
-        {transitioning && direction === "backward" && incomingPage}
-      </div>
-      <div className="currentPage">{currentPage}</div>
-      <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
+      <main>{currentPage}</main>
+      <aside>
+        <TransactionsPage />
+      </aside>
     </div>
   );
 };

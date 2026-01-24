@@ -6,3 +6,7 @@ div.AccountsPage > h2 {
   background-color: #fffe;
   z-index: 110;
 }
+
+div.wideScreen div.AccountsPage > h2 {
+  top: 0;
+}

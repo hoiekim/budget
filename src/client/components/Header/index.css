@@ -36,6 +36,10 @@ div.Header > .viewController {
   align-items: center;
 }
 
+div.Header.wideScreen > .viewController {
+  padding-left: 80px;
+}
+
 div.Header > .viewController > .centerBox {
   display: flex;
   justify-content: space-between;
@@ -45,7 +49,6 @@ div.Header > .viewController > .centerBox {
 div.Header > .viewController > .centerBox,
 div.Header > .navigators > .centerBox {
   margin: 0 auto;
-  max-width: 950px;
   width: 100%;
 }
 
@@ -84,7 +87,7 @@ div.Header > .viewController > div > .hamburger > a {
   align-items: center;
 }
 
-div.Header > .navigators {
+div.Header:not(.wideScreen) > .navigators {
   z-index: 800;
   position: fixed;
   bottom: 0;
@@ -94,9 +97,29 @@ div.Header > .navigators {
   display: flex;
   justify-content: space-around;
   background-color: #eee;
-  position: fixed;
   width: 100%;
   padding: 0 10px;
+}
+
+div.Header.wideScreen > .navigators {
+  z-index: 800;
+  position: fixed;
+  top: 50px;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background-color: #eee;
+  width: 80px;
+  height: 100%;
+  padding-left: 5px;
+}
+
+div.Header.wideScreen > .navigators > .centerBox {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* align-items: flex-start; */
 }
 
 div.Header > .navigators > .centerBox {
@@ -104,13 +127,24 @@ div.Header > .navigators > .centerBox {
   justify-content: space-evenly;
 }
 
-div.Header > .navigators > div > a {
+div.Header:not(.wideScreen) > .navigators > div > a {
   flex: 1;
   padding: 5px 10px 15px;
   height: 45px;
   text-align: center;
   border-bottom-right-radius: 10px;
   border-bottom-left-radius: 10px;
+}
+
+div.Header.wideScreen > .navigators > div > a {
+  flex: 1;
+  padding: 10px 15px 10px 10px;
+  height: 45px;
+  text-align: center;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 10px;
+  border-top-left-radius: 10px;
+  margin-bottom: 10px;
 }
 
 div.Header > .navigators > div > a.selected {

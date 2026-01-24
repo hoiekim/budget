@@ -19,10 +19,18 @@ div.TransactionsPage > h2 {
   z-index: 111;
 }
 
+div.wideScreen div.TransactionsPage > h2 {
+  top: 0;
+}
+
 div.TransactionsPage > h3 {
   top: 105px;
   padding: 0 10px 10px;
   z-index: 110;
+}
+
+div.wideScreen div.TransactionsPage > h3 {
+  top: 55px;
 }
 
 div.TransactionsPage > .heading > button {

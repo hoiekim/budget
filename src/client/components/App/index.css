@@ -102,7 +102,6 @@ table {
 }
 
 div#root {
-  max-width: 950px;
   min-height: 100vh;
   margin: auto;
   background-color: #fff;
@@ -119,6 +118,23 @@ div.LoginPage > div {
 
 div.Router {
   position: relative;
+}
+
+div.Router.wideScreen {
+  display: flex;
+  overflow: hidden;
+  height: 100vh;
+  padding-left: 80px;
+}
+
+div.Router.wideScreen > main,
+div.Router.wideScreen > aside {
+  overflow-y: auto;
+  padding-top: 50px;
+  padding-bottom: 110px;
+  padding-left: 20px;
+  padding-right: 20px;
+  width: 50%;
 }
 
 div.Router > div {

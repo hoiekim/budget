@@ -7,6 +7,10 @@ div.DashboardPage > h2 {
   z-index: 110;
 }
 
+div.wideScreen div.DashboardPage > h2 {
+  top: 0;
+}
+
 div.DashboardPage > button {
   width: calc(100% - 20px);
   margin: 0 10px;

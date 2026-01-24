@@ -29,7 +29,7 @@ export const useScreenType = () => {
   }, []);
 
   const screenType =
-    screenWidth <= 768
+    screenWidth < 768
       ? ScreenType.Narrow
       : screenWidth >= 950
       ? ScreenType.Wide

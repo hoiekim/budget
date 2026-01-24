@@ -1,4 +1,4 @@
-import { ChevronDownIcon, Sorter, useAppContext } from "client";
+import { ChevronDownIcon, ScreenType, Sorter, useAppContext } from "client";
 import {
   Account,
   Budget,
@@ -61,7 +61,7 @@ export const TransactionsPageTitle = ({
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
   const { type: selectedType, account, budget, category } = filters;
-  const { router } = useAppContext();
+  const { router, screenType } = useAppContext();
   const { go, path, params } = router;
 
   const [isSelecting, setIsSelecting] = useState(false);
@@ -133,6 +133,9 @@ export const TransactionsPageTitle = ({
     ? ["date", "amount", "account"]
     : ["date", "merchant_name", "amount", "account", "budget", "category"];
 
+  let transactionsHeadTop = subtitle ? 137 : 104;
+  if (screenType !== ScreenType.Narrow) transactionsHeadTop -= 50;
+
   return (
     <>
       <h2 className="heading">
@@ -155,12 +158,12 @@ export const TransactionsPageTitle = ({
           <span>{toTitleCase(subtitle)}</span>
         </h3>
       )}
-      <SearchBar onChange={onChangeSearchValue} style={{ top: subtitle ? 137 : 104 }} />
+      <SearchBar onChange={onChangeSearchValue} style={{ top: transactionsHeadTop }} />
       <TransactionsHead
         sorter={sorter as any}
         getHeaderName={getHeader}
         headerKeys={headerKeys as any}
-        style={{ top: subtitle ? 137 : 104 }}
+        style={{ top: transactionsHeadTop }}
       />
     </>
   );

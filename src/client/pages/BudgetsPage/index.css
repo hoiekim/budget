@@ -13,6 +13,10 @@ div.BudgetsPage > h2 {
   z-index: 110;
 }
 
+div.wideScreen div.BudgetsPage > h2 {
+  top: 0;
+}
+
 div.BudgetsPage > div.budgetsTable > .addButton {
   margin: 10px 10px;
 }
