@@ -17,7 +17,9 @@ interface GraphOptions {
   viewDate?: ViewDate;
 }
 
-type UseAccountGraphOptionsType = GraphOptions;
+type UseAccountGraphOptionsType = GraphOptions & {
+  useLengthFixer?: boolean;
+};
 
 class BalanceByAccount extends Map<string, number> {
   override get = (accountId: string) => {
@@ -48,7 +50,7 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
   const { transactions, investmentTransactions, accountSnapshots } = data;
 
   const { graphData, cursorAmount } = useMemo(() => {
-    const { startDate } = options;
+    const { startDate, useLengthFixer = true } = options;
 
     const transactionBasedHistory = getBalanceHistoryFromTransactions(
       accounts,
@@ -90,17 +92,17 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
 
     const { length } = mergedHistory;
 
-    const lengthFixer = 3 - ((length - 1) % 3);
+    const lengthFixer = useLengthFixer ? 3 - ((length - 1) % 3) : 0;
     mergedHistory.push(...new Array(lengthFixer));
 
     const sequence = mergedHistory.reverse();
 
-    const todayIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer + 1;
-    const pointIndex = length - todayIndex;
-    const cursorAmount = sequence[pointIndex];
+    const todayIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer;
+    const cursorIndex = length - 1 - todayIndex;
+    const cursorAmount = sequence[cursorIndex];
     const points = [];
     if (cursorAmount !== undefined) {
-      points.push({ point: { value: cursorAmount, index: pointIndex }, color: "#097" });
+      points.push({ point: { value: cursorAmount, index: cursorIndex }, color: "#097" });
     }
 
     const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
@@ -136,7 +138,7 @@ const getBalanceHistoryFromTransactions = (
     accountIds.add(a.id);
     currentBalances.set(a.id, a.balances.current || 0);
   });
-  if (startDate) balanceHistory[graphViewDate.getSpanFrom(startDate) + 1] = new BalanceByAccount();
+  if (startDate) balanceHistory[graphViewDate.getSpanFrom(startDate)] = new BalanceByAccount();
 
   // first aggregate transactions to sum amounts for each period
   const translate = (t: Transaction | InvestmentTransaction) => {
@@ -144,9 +146,9 @@ const getBalanceHistoryFromTransactions = (
     const { date, amount } = t;
     if (!accountIds.has(t.account_id)) return;
     const transactionDate = new Date(authorized_date || date);
-    if (startDate && transactionDate < startDate) return;
     if (today < transactionDate) return;
     const span = graphViewDate.getSpanFrom(transactionDate) + 1;
+    if (startDate && balanceHistory.length <= span) return;
     if (!balanceHistory[span]) balanceHistory[span] = new BalanceByAccount();
     if ("price" in t && "quantity" in t) {
       const { price, quantity } = t as InvestmentTransaction;

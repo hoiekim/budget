@@ -10,13 +10,13 @@ interface Props {
 export const ConnectedAccountRow = ({ item, account }: Props) => {
   const { router } = useAppContext();
 
-  const { id, name, custom_name, type, subtype } = account;
+  const { account_id, name, custom_name, type, subtype } = account;
 
   const isManualItem = item.provider === ItemProvider.MANUAL;
 
   const onClickDetails: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation();
-    router.go(PATH.ACCOUNT_DETAIL, { params: new URLSearchParams({ id }) });
+    router.go(PATH.ACCOUNT_DETAIL, { params: new URLSearchParams({ account_id }) });
   };
 
   return (

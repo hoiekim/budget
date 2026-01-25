@@ -69,7 +69,7 @@ export const DashboardPage = () => {
       return newData;
     });
 
-    router.go(PATH.CHART_DETAIL, { params: new URLSearchParams({ id: chart_id }) });
+    router.go(PATH.CHART_DETAIL, { params: new URLSearchParams({ chart_id }) });
   };
 
   return (

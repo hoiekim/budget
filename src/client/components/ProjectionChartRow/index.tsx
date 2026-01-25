@@ -63,9 +63,12 @@ export const ProjectionChartRow = ({
     return saving;
   }, [initial_saving, momInflation]);
 
+  const startDate = adjustedInitialSaving.amountAsOf;
+
   const { graphViewDate, graphData } = useAccountGraph(selectedAccounts, {
-    startDate: adjustedInitialSaving.amountAsOf,
+    startDate,
     viewDate: new ViewDate("month"),
+    useLengthFixer: false,
   });
 
   if (!account_ids?.length) {
@@ -83,17 +86,6 @@ export const ProjectionChartRow = ({
 
   const { sequence } = historyLine;
   const lastValue = sequence[sequence.length - 1] as number;
-  const historyStartDate = graphViewDate.clone().previous(sequence.length + 1);
-
-  while (historyStartDate.getStartDate() < adjustedInitialSaving.amountAsOf) {
-    historyLine.sequence.shift();
-    historyStartDate.next();
-  }
-
-  while (historyStartDate.getStartDate() > adjustedInitialSaving.amountAsOf) {
-    historyLine.sequence.unshift(undefined);
-    historyStartDate.previous();
-  }
 
   const {
     graphData: { lines: planProjectionLines, points: planRetirePoints },
@@ -103,8 +95,8 @@ export const ProjectionChartRow = ({
   } = calculateProjection({
     lineColor: "#aaa",
     pointColor: "#aaa",
-    startDate: adjustedInitialSaving.amountAsOf,
-    initialSaving: adjustedInitialSaving,
+    startDate,
+    initialSaving: initial_saving,
     livingCost: living_cost,
     contribution,
     anualPercentageYield: anual_percentage_yield,
@@ -122,14 +114,14 @@ export const ProjectionChartRow = ({
   } = calculateProjection({
     lineColor: "#097",
     pointColor: "#f43",
-    startOffset: sequence.length,
-    startDate: graphViewDate.getStartDate(),
+    startOffset: sequence.length - 1,
+    startDate: graphViewDate.clone().getEndDate(),
     endDate: planGraphViewDate.getEndDate(),
-    initialSaving: { amount: lastValue, amountAsOf: graphViewDate.getStartDate() },
-    livingCost: configuration.living_cost,
-    contribution: configuration.contribution,
-    anualPercentageYield: configuration.anual_percentage_yield,
-    yearOverYearInflation: configuration.year_over_year_inflation,
+    initialSaving: { amount: lastValue, amountAsOf: graphViewDate.getEndDate() },
+    livingCost: living_cost,
+    contribution,
+    anualPercentageYield: anual_percentage_yield,
+    yearOverYearInflation: year_over_year_inflation,
   });
 
   graphData.lines!.push(...currentProjectionLines);
@@ -140,10 +132,7 @@ export const ProjectionChartRow = ({
       ? planGraphViewDate
       : currentGraphViewDate;
 
-  while (
-    (latestViewDate.getEndDate().getFullYear() - adjustedInitialSaving.amountAsOf.getFullYear()) %
-    6
-  ) {
+  while ((latestViewDate.getEndDate().getFullYear() - startDate.getFullYear()) % 6) {
     graphData.lines!.forEach(({ sequence }, i) => {
       if (!i) return;
       const lastValue = sequence[sequence.length - 1];
