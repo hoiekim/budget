@@ -147,7 +147,9 @@ export const TransactionsPage = () => {
       const filtered = [
         ...transactions.filter(filterTransaction),
         ...splitTransactions.filter(filterTransaction),
-      ];
+      ].sort((a, b) =>
+        a.transaction_id > b.transaction_id ? 1 : a.transaction_id === b.transaction_id ? 0 : -1
+      );
 
       const sortedByColumns = sort(filtered, (e, key) => {
         if (e instanceof InvestmentTransaction) {
@@ -164,7 +166,7 @@ export const TransactionsPage = () => {
           }
         } else {
           const { hypotheticalTransaction: t } = e;
-          if (key === "authorized_date") {
+          if (key === "date") {
             return new Date(t.authorized_date || t.date);
           } else if (key === "merchant_name") {
             return t.merchant_name || t.name || "";
