@@ -33,7 +33,7 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
 
   useEffect(() => {
     const newDefaultBalanceSnapshotAmount =
-      "$ " + numberToCommaString(cursorAmount || balances.current || 0, 2);
+      "$ " + numberToCommaString(cursorAmount ?? (balances.current || 0), 2);
     setBalanceSnapshotInput((old) => {
       if (old !== newDefaultBalanceSnapshotAmount) {
         return newDefaultBalanceSnapshotAmount;

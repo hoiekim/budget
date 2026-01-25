@@ -67,10 +67,10 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
     const maxLength = Math.max(transactionBasedHistory.length, snapshotBasedHistory.length);
 
     const lastBalance = new BalanceByAccount();
-    accounts.forEach(({ id, balances }) => lastBalance.set(id, balances.current || 0));
+    accounts.forEach(({ id, balances }) => lastBalance.set(id, 0));
 
     const mergedHistory: number[] = [];
-    for (let i = 0; i < maxLength; i++) {
+    for (let i = maxLength - 1; i >= 0; i--) {
       const transactionBased = transactionBasedHistory[i];
       const snapshotBased = snapshotBasedHistory[i];
 
@@ -212,11 +212,13 @@ const getBalanceHistoryFromSnapshots = (
 
   // then get the balance amount for each period
   for (let i = todaySpan + 1; i < snapshotHistory.length; i++) {
-    if (!balanceHistory[i]) balanceHistory[i] = new BalanceByAccount();
     for (const accountId of accountIds) {
       const snapshot = snapshotHistory[i]?.[accountId];
       const snapshotBalance = snapshot?.account.balances.current;
-      if (isNumber(snapshotBalance)) balanceHistory[i].set(accountId, snapshotBalance);
+      if (isNumber(snapshotBalance)) {
+        if (!balanceHistory[i]) balanceHistory[i] = new BalanceByAccount();
+        balanceHistory[i].set(accountId, snapshotBalance);
+      }
     }
   }
 
