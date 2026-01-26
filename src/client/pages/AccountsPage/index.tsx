@@ -1,45 +1,59 @@
 import { useMemo } from "react";
-import { useAppContext } from "client";
-import { AccountsDonut, AccountsTable } from "client/components";
-import { Account } from "common";
+import { colors, useAppContext } from "client";
+import { AccountsDonut, AccountsTable, DonutData } from "client/components";
+import { currencyCodeToSymbol } from "common";
 import "./index.css";
+import { AccountSubtype, AccountType } from "plaid";
 
 export const AccountsPage = () => {
-  const { user, data } = useAppContext();
-  const { items, accounts } = data;
+  const { data } = useAppContext();
+  const { accounts } = data;
 
-  const accountsArray = useMemo(() => {
-    return accounts
-      .filter((e) => !e.hide)
-      .sort((a, b) => {
-        if (a.id < b.id) return 1;
-        if (a.id > b.id) return -1;
-        return 0;
-      });
-  }, [accounts]);
+  const { donutData, currencySymbol, balanceTotal } = useMemo(() => {
+    let balanceTotal = 0;
+    const donutData: DonutData[] = [];
 
-  const errorAccountsArray = useMemo((): Account[] => {
-    if (!user) return [];
-    const result: Account[] = [];
-    items.forEach(({ item_id, institution_id, plaidError }) => {
-      if (!plaidError) return;
-      let accountExists = false;
-      accounts.forEach((account) => {
-        if (account.item_id === item_id) accountExists = true;
+    const filteredAccounts = accounts
+      .toArray()
+      .sort((a, b) => (b.balances.current || 0) - (a.balances.current || 0))
+      .filter(({ hide, type, balances }) => {
+        return !hide && type !== AccountType.Credit && (balances.current || balances.available);
       });
-      if (accountExists) return;
-      const errorAccount = new Account({ item_id, institution_id: institution_id || "unknown" });
-      result.push(errorAccount);
+
+    filteredAccounts.forEach((a, i) => {
+      const balanceCurrent = a.balances.current || 0;
+      const balanceAvailalbe = a.balances.available || 0;
+      let value = 0;
+      if (a.type === AccountType.Investment) {
+        if (a.subtype === AccountSubtype.CryptoExchange) value = balanceCurrent;
+        else value = balanceCurrent + balanceAvailalbe;
+      } else {
+        value = balanceCurrent;
+      }
+      balanceTotal += value;
+      const color = colors[i % colors.length];
+      const label = a.custom_name || a.name || "Unnamed";
+      donutData.push({ id: a.id, value, color, label });
     });
 
-    return result;
-  }, [user, items, accounts]);
+    const currencyCodes = new Set(
+      filteredAccounts.map((a) => a.balances.iso_currency_code || "USD"),
+    );
+    const currencyCode = currencyCodes.values().next().value || "USD";
+    const currencySymbol = currencyCodeToSymbol(currencyCode);
+
+    return { donutData, currencySymbol, balanceTotal };
+  }, [accounts]);
 
   return (
     <div className="AccountsPage">
       <h2>All Accounts</h2>
-      <AccountsDonut />
-      <AccountsTable accountsArray={[...accountsArray, ...errorAccountsArray]} />
+      <AccountsDonut
+        balanceTotal={balanceTotal}
+        currencySymbol={currencySymbol}
+        donutData={donutData}
+      />
+      <AccountsTable donutData={donutData} />
     </div>
   );
 };

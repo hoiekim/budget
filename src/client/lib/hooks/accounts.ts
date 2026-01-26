@@ -49,7 +49,7 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
 
   const { transactions, investmentTransactions, accountSnapshots } = data;
 
-  const { graphData, cursorAmount } = useMemo(() => {
+  const { graphData, cursorAmount, previousAmount } = useMemo(() => {
     const { startDate, useLengthFixer = true } = options;
 
     const transactionBasedHistory = getBalanceHistoryFromTransactions(
@@ -57,14 +57,14 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
       transactions,
       investmentTransactions,
       graphViewDate,
-      startDate
+      startDate,
     );
 
     const snapshotBasedHistory = getBalanceHistoryFromSnapshots(
       accounts,
       accountSnapshots,
       graphViewDate,
-      startDate
+      startDate,
     );
     const maxLength = Math.max(transactionBasedHistory.length, snapshotBasedHistory.length);
 
@@ -97,17 +97,21 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
 
     const sequence = mergedHistory.reverse();
 
-    const todayIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer;
-    const cursorIndex = length - 1 - todayIndex;
-    const cursorAmount = sequence[cursorIndex];
+    const viewDateIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer;
+    const cursorIndex = length - 1 - viewDateIndex;
+    const cursorAmount = sequence[cursorIndex] as number | undefined;
     const points = [];
     if (cursorAmount !== undefined) {
       points.push({ point: { value: cursorAmount, index: cursorIndex }, color: "#097" });
     }
 
+    const previousViewDate = new ViewDate(viewDate.getInterval()).previous();
+    const previousIndex = graphViewDate.getSpanFrom(previousViewDate.getEndDate()) - lengthFixer;
+    const previousAmount = sequence[length - 1 - previousIndex] as number | undefined;
+
     const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
 
-    return { graphData, cursorAmount };
+    return { graphData, cursorAmount, previousAmount };
   }, [
     accounts,
     transactions,
@@ -118,7 +122,7 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
     viewDate,
   ]);
 
-  return { graphViewDate, graphData, cursorAmount };
+  return { graphViewDate, graphData, cursorAmount, previousAmount };
 };
 
 const getBalanceHistoryFromTransactions = (
@@ -126,7 +130,7 @@ const getBalanceHistoryFromTransactions = (
   transactions: TransactionDictionary,
   investmentTransactions: InvestmentTransactionDictionary,
   graphViewDate: ViewDate,
-  startDate?: Date
+  startDate?: Date,
 ): BalanceHistory => {
   const accountIds = new Set<string>();
   const currentBalances = new BalanceByAccount();
@@ -177,7 +181,7 @@ const getBalanceHistoryFromSnapshots = (
   accounts: Account[],
   accountSnapshots: AccountSnapshotDictionary,
   graphViewDate: ViewDate,
-  startDate?: Date
+  startDate?: Date,
 ): BalanceHistory => {
   const snapshotHistory: { [account_id: string]: AccountSnapshot }[] = [];
   const accountIds = new Set<string>();

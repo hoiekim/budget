@@ -5,15 +5,29 @@ interface Props {
   balances: Account["balances"];
   type: Account["type"];
   subtype: Account["subtype"];
+  previousAmount?: number;
 }
 
-export const Balance = ({ balances, type, subtype }: Props) => {
+export const Balance = ({ balances, type, subtype, previousAmount }: Props) => {
   const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
   const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
-  const formattedAvailable = numberToCommaString(available!);
-  const formattedCurrent = numberToCommaString(current!);
-  const formattedCombined = numberToCommaString(available! + current!);
+  const availableString = numberToCommaString(available!);
+  const currentString = numberToCommaString(current!);
+  const combined = numberToCommaString(available! + current!);
+
+  const getChanges = (currentAmount: number) => {
+    if (previousAmount === undefined) return undefined;
+
+    const changes = currentAmount - previousAmount;
+
+    if (changes === 0) return <div className="neutral">-</div>;
+
+    const changesString = "$" + numberToCommaString(Math.abs(changes));
+
+    if (changes > 0) return <div className="colored positive">+{changesString}</div>;
+    return <div className="colored negative">-{changesString}</div>;
+  };
 
   if (type === AccountType.Credit) {
     return (
@@ -21,14 +35,14 @@ export const Balance = ({ balances, type, subtype }: Props) => {
         <div>
           <span>
             {symbol}
-            {formattedCurrent}
+            {currentString}
           </span>
           <span>spent</span>
         </div>
         <div>
           <span>
             {symbol}
-            {formattedAvailable}
+            {availableString}
           </span>
           <span>available</span>
         </div>
@@ -39,8 +53,9 @@ export const Balance = ({ balances, type, subtype }: Props) => {
       <div className="Balance">
         <div>
           {symbol}
-          {formattedCurrent}
+          {currentString}
         </div>
+        {getChanges(current!)}
       </div>
     );
   } else if (type === AccountType.Investment) {
@@ -48,8 +63,9 @@ export const Balance = ({ balances, type, subtype }: Props) => {
       <div className="Balance">
         <div>
           {symbol}
-          {formattedCombined}
+          {combined}
         </div>
+        {getChanges(available! + current!)}
       </div>
     );
   } else {
@@ -57,8 +73,9 @@ export const Balance = ({ balances, type, subtype }: Props) => {
       <div className="Balance">
         <div>
           {symbol}
-          {formattedCurrent}
+          {currentString}
         </div>
+        {getChanges(current!)}
       </div>
     );
   }

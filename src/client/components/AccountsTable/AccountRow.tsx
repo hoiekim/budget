@@ -7,9 +7,10 @@ import "./index.css";
 
 interface Props {
   account: Account;
+  color?: string;
 }
 
-const AccountRow = ({ account }: Props) => {
+const AccountRow = ({ account, color }: Props) => {
   const { router, data } = useAppContext();
   const { account_id, balances, custom_name, name, institution_id, type, subtype } = account;
 
@@ -17,7 +18,7 @@ const AccountRow = ({ account }: Props) => {
   const item = items.get(account.item_id);
   const isManualAccount = item?.provider === ItemProvider.MANUAL;
 
-  const { graphData } = useAccountGraph([account]);
+  const { graphData, previousAmount } = useAccountGraph([account]);
   const showGraph = type === AccountType.Depository || type === AccountType.Investment;
 
   const onClickAccount = () => {
@@ -32,6 +33,43 @@ const AccountRow = ({ account }: Props) => {
     return (
       <div className="AccountRow threeChildren" onClick={onClickAccount}>
         <div className="accountTitle">
+          <div className="colorTag colored" style={{ backgroundColor: color }} />
+          <div className="textTag">
+            <div>{custom_name || name}</div>
+            <div>
+              {isManualAccount ? (
+                <span>Manual</span>
+              ) : (
+                <InstitutionSpan institution_id={institution_id} />
+              )}
+            </div>
+          </div>
+        </div>
+        {showGraph && !!graphData.lines && (
+          <div className="graphContainer">
+            <Graph
+              height={40}
+              input={{ ...graphData, points: undefined }}
+              labelX={noLabel}
+              labelY={noLabel}
+              memoryKey={`small_${account_id}`}
+            />
+          </div>
+        )}
+        <Balance
+          balances={balances}
+          type={type}
+          subtype={subtype}
+          previousAmount={previousAmount}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="AccountRow twoChildren" onClick={onClickAccount}>
+      <div className="accountTitle">
+        <div className="textTag">
           <div>{custom_name || name}</div>
           <div>
             {isManualAccount ? (
@@ -40,33 +78,6 @@ const AccountRow = ({ account }: Props) => {
               <InstitutionSpan institution_id={institution_id} />
             )}
           </div>
-        </div>
-        {showGraph && !!graphData.lines && (
-          <div className="graphContainer">
-            <Graph
-              height={50}
-              input={{ ...graphData, points: undefined }}
-              labelX={noLabel}
-              labelY={noLabel}
-              memoryKey={`small_${account_id}`}
-            />
-          </div>
-        )}
-        <Balance balances={balances} type={type} subtype={subtype} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="AccountRow twoChildren" onClick={onClickAccount}>
-      <div className="accountTitle">
-        <div>{custom_name || name}</div>
-        <div>
-          {isManualAccount ? (
-            <span>Manual</span>
-          ) : (
-            <InstitutionSpan institution_id={institution_id} />
-          )}
         </div>
       </div>
       <Balance balances={balances} type={type} subtype={subtype} />

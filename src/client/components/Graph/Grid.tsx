@@ -5,13 +5,12 @@ interface Props {
   range: Range;
   labelX: GraphLabel;
   labelY: GraphLabel;
-  height?: number;
 }
 
-const Grid = ({ range, labelX, labelY, height }: Props) => {
+const Grid = ({ range, labelX, labelY }: Props) => {
   const horizontalLineDivs: ReactNode[] = [];
 
-  const M = height && height < 100 ? 2 : 4;
+  const M = 4;
   for (let i = M - 1; 0 <= i; i--) {
     const lineDiv = <div key={i}>{labelY.get(i, M, range.y)}</div>;
     horizontalLineDivs.push(lineDiv);
@@ -19,7 +18,7 @@ const Grid = ({ range, labelX, labelY, height }: Props) => {
 
   const bottomLabels: ReactNode[] = [];
 
-  const N = height && height < 100 ? 2 : 6;
+  const N = 6;
   for (let i = N - 1; 0 <= i; i--) {
     const labelDiv = <div key={i}>{i === N - 1 ? "" : labelX.get(i, N, range.x)}</div>;
     bottomLabels.push(labelDiv);

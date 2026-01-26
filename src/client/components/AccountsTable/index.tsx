@@ -1,5 +1,5 @@
 import { Account, AccountDictionary, Data } from "common";
-import { call, useAppContext } from "client";
+import { call, DonutData, useAppContext } from "client";
 import AccountRow from "./AccountRow";
 import { AccountType } from "plaid";
 import { ReactNode } from "react";
@@ -11,37 +11,27 @@ export type AccountHeaders = { [k in keyof Account]?: boolean } & {
 };
 
 interface Props {
-  accountsArray: Account[];
+  donutData: DonutData[];
 }
 
-export const AccountsTable = ({ accountsArray }: Props) => {
+export const AccountsTable = ({ donutData }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts } = data;
 
-  const depositoryAccounts: ReactNode[] = [];
-  const investmentAccounts: ReactNode[] = [];
-  const creditAccounts: ReactNode[] = [];
-  const otherAccounts: ReactNode[] = [];
-
-  accountsArray.forEach((a) => {
-    const element = <AccountRow key={a.account_id} account={a} />;
-    switch (a.type) {
-      case AccountType.Depository:
-        depositoryAccounts.push(element);
-        break;
-      case AccountType.Investment:
-        investmentAccounts.push(element);
-        break;
-      case AccountType.Credit:
-        creditAccounts.push(element);
-        break;
-      default:
-        otherAccounts.push(element);
-        break;
-    }
+  const donutAccounts: ReactNode[] = donutData.map(({ id, color }) => {
+    const account = accounts.get(id);
+    if (!account) return <></>;
+    return <AccountRow key={id} account={account} color={color} />;
   });
 
-  const unhide = async () => {
+  const creditAccounts: ReactNode[] = [];
+
+  accounts.forEach((a) => {
+    const element = <AccountRow key={a.account_id} account={a} />;
+    if (a.type === AccountType.Credit) creditAccounts.push(element);
+  });
+
+  const onClickUnhide = async () => {
     const newAccounts = new AccountDictionary(accounts);
 
     const fetchJobs: Promise<void>[] = [];
@@ -78,14 +68,9 @@ export const AccountsTable = ({ accountsArray }: Props) => {
 
   return (
     <div className="AccountsTable">
-      {!!depositoryAccounts.length && (
+      {!!donutAccounts.length && (
         <div className="rows">
-          <div>{depositoryAccounts}</div>
-        </div>
-      )}
-      {!!investmentAccounts.length && (
-        <div className="rows">
-          <div>{investmentAccounts}</div>
+          <div>{donutAccounts}</div>
         </div>
       )}
       {!!creditAccounts.length && (
@@ -93,13 +78,8 @@ export const AccountsTable = ({ accountsArray }: Props) => {
           <div>{creditAccounts}</div>
         </div>
       )}
-      {!!otherAccounts.length && (
-        <div className="rows">
-          <div>{otherAccounts}</div>
-        </div>
-      )}
-      <div>{!!accountsArray.length && <button onClick={unhide}>Unhide&nbsp;All</button>}</div>
-      {!accountsArray.length && (
+      <div>{!!accounts.size && <button onClick={onClickUnhide}>Unhide&nbsp;All</button>}</div>
+      {!accounts.size && (
         <div className="placeholder">
           You don't have any connected accounts! Click this button to connect your accounts.
         </div>
