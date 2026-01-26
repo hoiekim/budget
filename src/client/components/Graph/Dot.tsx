@@ -16,7 +16,7 @@ const Dot = ({ memoryKey, point, color, guideX, guideY, height = 100 }: Props) =
   const { transitioning } = router.transition;
   const animateMemoryKey = memoryKey && `graphDot_${memoryKey}_opacity`;
   const [opacity, setOpacity] = useMemoryState(animateMemoryKey, 0);
-  const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
+  const [width, setWidth] = useMemoryState(`graph_svgWidth_${memoryKey}`, 0);
 
   const opacityDebouncer = useDebounce();
 
@@ -30,7 +30,7 @@ const Dot = ({ memoryKey, point, color, guideX, guideY, height = 100 }: Props) =
     new ResizeObserver((entries) => {
       const element = entries[0];
       setWidth(element.contentRect.width);
-    })
+    }),
   );
 
   useEffect(() => {

@@ -29,7 +29,7 @@ const Line = ({
   const [pathOffset, setPathOffset] = useMemoryState(pathOffsetMemoryKey, true);
   const strokeDashArrayMemoryKey = memoryKey && `graphLine_${memoryKey}_strokeDashArray`;
   const [strokeDashArray, setStrokeDashArray] = useMemoryState(strokeDashArrayMemoryKey, "5");
-  const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
+  const [width, setWidth] = useMemoryState(`graph_svgWidth_${memoryKey}`, 0);
 
   const pathDebouncer = useDebounce();
   const offsetDebouncer = useDebounce();
@@ -83,7 +83,7 @@ const Line = ({
     new ResizeObserver((entries) => {
       const element = entries[0];
       setWidth(element.contentRect.width);
-    })
+    }),
   );
 
   useEffect(() => {

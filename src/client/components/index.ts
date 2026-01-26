@@ -29,4 +29,3 @@ export * from "./BalanceChartRow";
 export * from "./ProjectionChartRow";
 export * from "./ProjectionChartProperties";
 export * from "./BalanceChartProperties";
-export * from "./Balance";

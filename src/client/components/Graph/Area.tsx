@@ -23,7 +23,7 @@ const Area = ({
   const { transitioning } = router.transition;
   const animateMemoryKey = memoryKey && `graphArea_${memoryKey}_animate`;
   const [animate, setAnimate] = useMemoryState(animateMemoryKey, true);
-  const [width, setWidth] = useMemoryState("graph_svgWidth", 0);
+  const [width, setWidth] = useMemoryState(`graph_svgWidth_${memoryKey}`, 0);
   const [isVisible, setIsVisible] = useMemoryState("graphArea_isVisible", false);
 
   const visibleDebouncer = useDebounce();
@@ -43,7 +43,7 @@ const Area = ({
     new ResizeObserver((entries) => {
       const element = entries[0];
       setWidth(element.contentRect.width);
-    })
+    }),
   );
 
   useEffect(() => {

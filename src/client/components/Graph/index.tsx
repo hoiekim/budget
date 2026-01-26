@@ -70,7 +70,7 @@ export const Graph = ({
 
   return (
     <div className="Graph" style={{ height }}>
-      <Grid range={range} labelX={labelX} labelY={labelY} />
+      <Grid range={range} labelX={labelX} labelY={labelY} height={height} />
       {areaElements}
       {lineElements}
       {pointElements}

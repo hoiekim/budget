@@ -96,7 +96,7 @@ div.Header > .navigators {
 }
 
 div.Header:not(.wideScreen) > .navigators {
-  box-shadow: 0px -20px 20px #fff;
+  box-shadow: 0px -10px 10px #fffc;
   bottom: env(safe-area-inset-bottom);
   justify-content: space-around;
   width: 100%;

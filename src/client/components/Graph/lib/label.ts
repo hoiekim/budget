@@ -13,7 +13,7 @@ export class GraphLabel {
    * @param range The actual minimum and maximum value on the axis to display
    * @returns
    */
-  get = (_i: number, _division: number, _range: Point) => "";
+  get = (_i: number, _division: number, _range: Point): string | undefined => "";
 }
 type DateLocaleOptions = Intl.DateTimeFormatOptions & { week?: "long" | "short" };
 
@@ -91,4 +91,8 @@ export class MoneyLabel extends GraphLabel {
     const n = min + ((max - min) * (i + 1)) / division;
     return symbol + numberToCommaString(n, 0);
   };
+}
+
+export class NoLabel extends GraphLabel {
+  get = () => undefined;
 }

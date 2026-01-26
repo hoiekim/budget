@@ -78,18 +78,26 @@ export const AccountsTable = ({ accountsArray }: Props) => {
 
   return (
     <div className="AccountsTable">
-      <div className="rows">
-        <div>{depositoryAccounts}</div>
-      </div>
-      <div className="rows">
-        <div>{investmentAccounts}</div>
-      </div>
-      <div className="rows">
-        <div>{creditAccounts}</div>
-      </div>
-      <div className="rows">
-        <div>{otherAccounts}</div>
-      </div>
+      {!!depositoryAccounts.length && (
+        <div className="rows">
+          <div>{depositoryAccounts}</div>
+        </div>
+      )}
+      {!!investmentAccounts.length && (
+        <div className="rows">
+          <div>{investmentAccounts}</div>
+        </div>
+      )}
+      {!!creditAccounts.length && (
+        <div className="rows">
+          <div>{creditAccounts}</div>
+        </div>
+      )}
+      {!!otherAccounts.length && (
+        <div className="rows">
+          <div>{otherAccounts}</div>
+        </div>
+      )}
       <div>{!!accountsArray.length && <button onClick={unhide}>Unhide&nbsp;All</button>}</div>
       {!accountsArray.length && (
         <div className="placeholder">

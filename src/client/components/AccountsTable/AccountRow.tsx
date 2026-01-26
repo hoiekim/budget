@@ -1,8 +1,9 @@
-import { Account, ItemProvider } from "common";
-import { useAppContext, DateLabel, MoneyLabel, useAccountGraph, PATH } from "client";
-import { InstitutionSpan, Graph, Balance } from "client/components";
-import "./index.css";
 import { AccountType } from "plaid";
+import { Account, ItemProvider } from "common";
+import { useAppContext, useAccountGraph, PATH, NoLabel } from "client";
+import { InstitutionSpan, Graph } from "client/components";
+import { Balance } from "./Balance";
+import "./index.css";
 
 interface Props {
   account: Account;
@@ -16,10 +17,7 @@ const AccountRow = ({ account }: Props) => {
   const item = items.get(account.item_id);
   const isManualAccount = item?.provider === ItemProvider.MANUAL;
 
-  const { iso_currency_code, unofficial_currency_code } = balances;
-  const currencyCode = iso_currency_code || unofficial_currency_code || "USD";
-
-  const { graphViewDate, graphData } = useAccountGraph([account]);
+  const { graphData } = useAccountGraph([account]);
   const showGraph = type === AccountType.Depository || type === AccountType.Investment;
 
   const onClickAccount = () => {
@@ -28,25 +26,50 @@ const AccountRow = ({ account }: Props) => {
     router.go(PATH.ACCOUNT_DETAIL, { params });
   };
 
-  return (
-    <div className="AccountRow" onClick={onClickAccount}>
-      <div className="AccountTitle">
-        <span>{custom_name || name}</span>
-        {isManualAccount ? (
-          <span>Manual</span>
-        ) : (
-          <InstitutionSpan institution_id={institution_id} />
+  const noLabel = new NoLabel();
+
+  if (showGraph && !!graphData.lines) {
+    return (
+      <div className="AccountRow threeChildren" onClick={onClickAccount}>
+        <div className="accountTitle">
+          <div>{custom_name || name}</div>
+          <div>
+            {isManualAccount ? (
+              <span>Manual</span>
+            ) : (
+              <InstitutionSpan institution_id={institution_id} />
+            )}
+          </div>
+        </div>
+        {showGraph && !!graphData.lines && (
+          <div className="graphContainer">
+            <Graph
+              height={50}
+              input={{ ...graphData, points: undefined }}
+              labelX={noLabel}
+              labelY={noLabel}
+              memoryKey={`small_${account_id}`}
+            />
+          </div>
         )}
+        <Balance balances={balances} type={type} subtype={subtype} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="AccountRow twoChildren" onClick={onClickAccount}>
+      <div className="accountTitle">
+        <div>{custom_name || name}</div>
+        <div>
+          {isManualAccount ? (
+            <span>Manual</span>
+          ) : (
+            <InstitutionSpan institution_id={institution_id} />
+          )}
+        </div>
       </div>
       <Balance balances={balances} type={type} subtype={subtype} />
-      {showGraph && !!graphData.lines && (
-        <Graph
-          input={graphData}
-          labelX={new DateLabel(graphViewDate)}
-          labelY={new MoneyLabel(currencyCode)}
-          memoryKey={account_id}
-        />
-      )}
     </div>
   );
 };

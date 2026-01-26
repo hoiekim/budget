@@ -1,46 +1,52 @@
-div.AccountsTable > .rows {
-  margin-bottom: 20px;
-}
-
 div.AccountRow {
   padding: 10px 10px;
-}
-
-div.AccountRow > div {
-  margin: 10px 0;
-}
-
-div.AccountRow > div.AccountTitle {
-  font-size: 16px;
   display: flex;
+  font-size: 16px;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid #eee;
 }
 
-div.AccountRow > div.AccountTitle > span {
+div.AccountRow.threeChildren > div.accountTitle {
+  width: calc(100% - 170px);
+}
+
+div.AccountRow.twoChildren > div.accountTitle {
+  width: 50%;
+}
+
+div.AccountRow > div.accountTitle > div {
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
 }
 
-div.AccountRow > div.AccountTitle > span:first-child {
-  width: 60%;
+div.AccountRow > div.accountTitle > div:nth-child(2) {
+  font-size: 12px;
+  color: #888;
 }
 
-div.AccountRow > div.AccountTitle > span:last-child {
-  width: 40%;
-  text-align: right;
+div.AccountRow > div.graphContainer {
+  width: 80px;
+}
+
+div.AccountRow > div > div:nth-child(2) {
+  margin-top: 5px;
 }
 
 div.Balance {
-  font-size: 14px;
+  text-align: right;
 }
 
-div.Balance > div {
-  margin-bottom: 5px;
+div.AccountRow.threeChildren > div.Balance {
+  width: 90px;
 }
 
-div.Balance > div > span:last-child {
+div.AccountRow.twoChildren > div.Balance {
+  width: 50%;
+}
+
+div.Balance.credit > div > span:last-child {
   margin-left: 6px;
   font-size: 12px;
 }
