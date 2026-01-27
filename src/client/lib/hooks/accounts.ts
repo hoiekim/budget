@@ -100,8 +100,8 @@ const getBalanceDataFromTransactions = (
   investmentTransactions.forEach(translate);
 
   // then incrementally add them up
-  for (let i = todaySpan + 1; i < balanceData.length; i++) {
-    for (const [accountId] of accounts) {
+  for (const [accountId] of accounts) {
+    for (let i = todaySpan + 1; i < balanceData.get(accountId).length; i++) {
       const previousBalance = balanceData.get(accountId, i - 1)!;
       balanceData.add(accountId, i, previousBalance);
     }
@@ -166,12 +166,14 @@ export const getBalanceData = (data: Data, viewDate: ViewDate) => {
 
   const snapshotBasedData = getBalanceDataFromSnapshots(accounts, accountSnapshots, viewDate);
 
-  const maxLength = Math.max(transactionBasedData.length, snapshotBasedData.length);
-
   const mergedData = new BalanceData();
 
-  for (let i = maxLength - 1; i >= 0; i--) {
-    accounts.forEach(({ id, graphOptions }) => {
+  accounts.forEach(({ id, graphOptions }) => {
+    const maxLength = Math.max(
+      transactionBasedData.get(id).length,
+      snapshotBasedData.get(id).length,
+    );
+    for (let i = maxLength - 1; i >= 0; i--) {
       const { useTransactions = true, useSnapshots = true } = graphOptions;
       const transactionBasedBalance = transactionBasedData.get(id, i);
       const snapshotBasedBalance = snapshotBasedData.get(id, i);
@@ -180,8 +182,8 @@ export const getBalanceData = (data: Data, viewDate: ViewDate) => {
       else if (useTransactions && transactionBasedBalance) balance = transactionBasedBalance;
       else balance = mergedData.get(id, i + 1)!;
       mergedData.set(id, i, balance);
-    });
-  }
+    }
+  });
 
   return mergedData;
 };
@@ -228,7 +230,7 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
   const { graphData, cursorAmount } = useMemo(() => {
     const flattened: number[] = [];
     accounts.forEach(({ balanceHistory }) => {
-      let maxLength = startDate
+      const maxLength = startDate
         ? graphViewDate.getSpanFrom(startDate) + 1
         : balanceHistory?.length || 0;
 
