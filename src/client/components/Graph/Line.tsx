@@ -97,7 +97,15 @@ const Line = ({
   }, []);
 
   const coordinateStrings = pointsToCoordinateString(points, width, height, type);
-  const d = "M" + coordinateStrings.join(" ");
+
+  let d = "";
+  if (coordinateStrings.length > 1) {
+    d += "M";
+    d += coordinateStrings[0];
+    d += " ";
+    d += "L";
+    d += coordinateStrings.slice(1, coordinateStrings.length).join(" ");
+  }
 
   const isColored = new Set(color.split("")).size > 2;
 
