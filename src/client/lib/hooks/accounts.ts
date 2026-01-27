@@ -43,8 +43,7 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
   const graphViewDate = useMemo(() => {
     const { viewDate: inputViewDate } = options;
     if (inputViewDate) return inputViewDate;
-    const isFuture = new Date() < viewDate.getEndDate();
-    return isFuture ? viewDate : new ViewDate(viewDate.getInterval());
+    return new ViewDate(viewDate.getInterval());
   }, [viewDate, options]);
 
   const { transactions, investmentTransactions, accountSnapshots } = data;
@@ -69,7 +68,7 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
     const maxLength = Math.max(transactionBasedHistory.length, snapshotBasedHistory.length);
 
     const lastBalance = new BalanceByAccount();
-    accounts.forEach(({ id, balances }) => lastBalance.set(id, 0));
+    accounts.forEach(({ id }) => lastBalance.set(id, 0));
 
     const mergedHistory: number[] = [];
     for (let i = maxLength - 1; i >= 0; i--) {
@@ -101,7 +100,15 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
     const cursorIndex = length - 1 - viewDateIndex;
     const cursorAmount = sequence[cursorIndex] as number | undefined;
     const points = [];
-    if (cursorAmount !== undefined) {
+    if (cursorAmount === undefined) {
+      points.push({
+        point: {
+          value: sequence[cursorIndex - 1] || sequence[cursorIndex + 1] || 0,
+          index: cursorIndex,
+        },
+        color: "#0970",
+      });
+    } else {
       points.push({ point: { value: cursorAmount, index: cursorIndex }, color: "#097" });
     }
 
