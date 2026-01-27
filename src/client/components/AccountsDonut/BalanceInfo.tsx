@@ -1,6 +1,5 @@
 import { DonutData, useAppContext } from "client";
 import { Changes } from "client/components";
-import { numberToCommaString } from "common";
 
 interface Props {
   balanceTotal: number;
@@ -21,19 +20,15 @@ export const BalanceInfo = ({ balanceTotal, currencySymbol, donutData, isShrunk 
     return a + (account.balanceHistory?.[viewDateSpan + 1] || 0);
   }, 0);
 
-  let totalAvailableInOthers = 0;
+  let totalCredit = 0;
   let numberOfOthers = 0;
 
   accounts.forEach(({ account_id, balances }) => {
     if (!donutData.find(({ id }) => id === account_id)) {
-      totalAvailableInOthers += balances.available || 0;
+      totalCredit += balances.current || 0;
       numberOfOthers++;
     }
   });
-
-  const creditAvailable = !viewDateSpan
-    ? currencySymbol + numberToCommaString(totalAvailableInOthers)
-    : "-";
 
   return (
     <div className="BalanceInfo">
@@ -47,9 +42,13 @@ export const BalanceInfo = ({ balanceTotal, currencySymbol, donutData, isShrunk 
         <>
           <div className="label">in&nbsp;{donutData.length}&nbsp;Accounts</div>
           <br />
-          <div className="neutral">{creditAvailable}</div>
-          <div className="label">available</div>
-          <div className="label">in&nbsp;{numberOfOthers}&nbsp;Credits</div>
+          <Changes
+            currentAmount={0}
+            previousAmount={!viewDateSpan ? totalCredit : 0}
+            currencySymbol={currencySymbol}
+          />
+          <div className="credit label">outstanding</div>
+          <div className="credit label">in&nbsp;{numberOfOthers}&nbsp;Credits</div>
         </>
       )}
     </div>

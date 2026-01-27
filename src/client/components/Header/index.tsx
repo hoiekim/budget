@@ -18,25 +18,6 @@ export const Header = () => {
 
   const { path, params, go, back } = router;
 
-  type NavigatorProps = { target: PATH; subPages?: PATH[]; children: ReactNode };
-  const Navigator = ({ target, subPages = [], children }: NavigatorProps) => {
-    const classNames = ["navigator"];
-    const seleted = [...subPages, target].includes(path);
-    if (seleted) classNames.push("selected");
-    return (
-      <a
-        className={classNames.join(" ")}
-        href={target}
-        onClick={(e) => {
-          e.preventDefault();
-          go(target, { animate: false });
-        }}
-      >
-        {children}
-      </a>
-    );
-  };
-
   const onClickPreviousView = () => {
     setViewDate((oldViewDate) => {
       const newViewDate = oldViewDate.clone().previous();
@@ -145,13 +126,61 @@ export const Header = () => {
             <span>Accounts</span>
           </Navigator>
           {screenType === ScreenType.Narrow && (
-            <Navigator target={TRANSACTIONS} subPages={[TRANSACTION_DETAIL]}>
+            <TransactionsNavigator target={TRANSACTIONS} subPages={[TRANSACTION_DETAIL]}>
               <RecieptIcon size={20} />
               <span>Transactions</span>
-            </Navigator>
+            </TransactionsNavigator>
           )}
         </div>
       </div>
     </div>
+  );
+};
+
+interface NavigatorProps {
+  target: PATH;
+  subPages?: PATH[];
+  children: ReactNode;
+}
+
+const Navigator = ({ target, subPages = [], children }: NavigatorProps) => {
+  const { router } = useAppContext();
+  const { path, go } = router;
+  const classNames = ["navigator"];
+  const seleted = [...subPages, target].includes(path);
+  if (seleted) classNames.push("selected");
+  return (
+    <a
+      className={classNames.join(" ")}
+      href={target}
+      onClick={(e) => {
+        e.preventDefault();
+        go(target, { animate: false });
+      }}
+    >
+      {children}
+    </a>
+  );
+};
+
+const TransactionsNavigator = ({ children }: NavigatorProps) => {
+  const { router } = useAppContext();
+  const { path, params, go } = router;
+  const classNames = ["navigator"];
+  const { TRANSACTIONS, TRANSACTION_DETAIL } = PATH;
+  const seleted = [TRANSACTION_DETAIL, TRANSACTIONS].includes(path);
+  if (seleted) classNames.push("selected");
+  const onClickLink: MouseEventHandler<HTMLAnchorElement> = (e) => {
+    e.preventDefault();
+    if (path === TRANSACTIONS) {
+      go(TRANSACTIONS, { animate: false });
+    } else {
+      go(TRANSACTIONS, { params, animate: false });
+    }
+  };
+  return (
+    <a className={classNames.join(" ")} href={TRANSACTIONS} onClick={onClickLink}>
+      {children}
+    </a>
   );
 };

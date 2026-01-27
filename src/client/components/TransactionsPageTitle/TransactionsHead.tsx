@@ -1,7 +1,7 @@
+import { CSSProperties } from "react";
 import { InvestmentTransaction, SplitTransaction, Transaction } from "common";
 import { InvestmentTransactionHeaders, Sorter } from "client";
 import { TransactionHeaders } from ".";
-import { CSSProperties } from "react";
 
 interface Props {
   sorter: Sorter<

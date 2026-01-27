@@ -1,3 +1,4 @@
+import { CSSProperties } from "react";
 import { Donut } from "client";
 import { numberToCommaString } from "common";
 import { DonutData } from "client/components";
@@ -9,12 +10,19 @@ interface Props {
   currencySymbol: string;
   donutData: DonutData[];
   isShrunk: boolean;
+  style?: CSSProperties;
 }
 
-export const AccountsDonut = ({ balanceTotal, currencySymbol, donutData, isShrunk }: Props) => {
+export const AccountsDonut = ({
+  balanceTotal,
+  currencySymbol,
+  donutData,
+  isShrunk,
+  style,
+}: Props) => {
   const radius = isShrunk ? 20 : 80;
   return (
-    <div className="AccountsDonut">
+    <div className="AccountsDonut" style={style}>
       <div className="donut">
         <Donut data={donutData} radius={radius} thickness={10} />
         <div className="centerLabel">

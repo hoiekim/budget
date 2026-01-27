@@ -1,26 +1,27 @@
 import { AccountType } from "plaid";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { currencyCodeToSymbol } from "common";
-import { colors, getAccountBalance, useAppContext } from "client";
+import { colors, getAccountBalance, ScreenType, useAppContext, useDebounce } from "client";
 import { AccountsDonut, AccountsTable, DonutData } from "client/components";
 import "./index.css";
 
 export const AccountsPage = () => {
-  const { data, viewDate } = useAppContext();
+  const { data, viewDate, screenType } = useAppContext();
   const { accounts } = data;
 
   const sentinelRef = useRef(null);
   const [isDonutShrunk, setIsDonutShrunk] = useState(false);
+  const debouncer = useDebounce();
 
   useEffect(() => {
     const listener: IntersectionObserverCallback = ([entry]) => {
-      setIsDonutShrunk(!entry.isIntersecting);
+      debouncer(() => setIsDonutShrunk(!entry.isIntersecting));
     };
 
     const observer = new IntersectionObserver(listener, { threshold: [1.0] });
     if (sentinelRef.current) observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [debouncer]);
 
   const { donutData, currencySymbol, balanceTotal } = useMemo(() => {
     let balanceTotal = 0;
@@ -52,6 +53,9 @@ export const AccountsPage = () => {
     return { donutData, currencySymbol, balanceTotal };
   }, [accounts, viewDate]);
 
+  let donutTop = 104;
+  if (screenType !== ScreenType.Narrow) donutTop -= 50;
+
   return (
     <div className="AccountsPage">
       <div
@@ -65,6 +69,7 @@ export const AccountsPage = () => {
         currencySymbol={currencySymbol}
         donutData={donutData}
         isShrunk={isDonutShrunk}
+        style={{ top: donutTop }}
       />
       <AccountsTable donutData={donutData} />
     </div>

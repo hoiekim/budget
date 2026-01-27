@@ -39,6 +39,6 @@ div.BalanceInfo > div.label {
   font-size: 12px;
 }
 
-div.BalanceInfo > div.neutral {
-  color: #888;
+div.BalanceInfo > div.credit.amount {
+  margin-bottom: 5px;
 }
