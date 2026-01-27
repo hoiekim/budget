@@ -58,18 +58,19 @@ div.AccountRow.twoChildren > div.Balance {
   width: 50%;
 }
 
-div.Balance > div.neutral {
+div.Balance > div.Changes {
   font-size: 12px;
+}
+
+div.Changes.neutral {
   color: #888;
 }
 
-div.Balance > div.positive {
-  font-size: 12px;
+div.Changes.positive {
   color: #097;
 }
 
-div.Balance > div.negative {
-  font-size: 12px;
+div.Changes.negative {
   color: #f43;
 }
 

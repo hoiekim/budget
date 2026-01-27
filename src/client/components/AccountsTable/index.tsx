@@ -68,16 +68,8 @@ export const AccountsTable = ({ donutData }: Props) => {
 
   return (
     <div className="AccountsTable">
-      {!!donutAccounts.length && (
-        <div className="rows">
-          <div>{donutAccounts}</div>
-        </div>
-      )}
-      {!!creditAccounts.length && (
-        <div className="rows">
-          <div>{creditAccounts}</div>
-        </div>
-      )}
+      {!!donutAccounts.length && <div className="rows">{donutAccounts}</div>}
+      {!!creditAccounts.length && <div className="rows">{creditAccounts}</div>}
       <div>{!!accounts.size && <button onClick={onClickUnhide}>Unhide&nbsp;All</button>}</div>
       {!accounts.size && (
         <div className="placeholder">
@@ -87,3 +79,5 @@ export const AccountsTable = ({ donutData }: Props) => {
     </div>
   );
 };
+
+export * from "./Balance";

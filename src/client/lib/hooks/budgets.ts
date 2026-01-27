@@ -16,7 +16,7 @@ import { BudgetFamily } from "common/models/BudgetFamily";
  * Receives budget-like data objects maps, calculates their transaction amounts
  * and returns the cloned maps with calculated results.
  */
-export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
+export const budgetCalculatorLambda = (data: Data, viewDate: ViewDate) => {
   const { transactions, splitTransactions, accounts, budgets, sections, categories } = data;
 
   const newBudgets = new BudgetDictionary(budgets);
@@ -147,16 +147,14 @@ export const calculatorLambda = (data: Data, viewDate: ViewDate) => {
   return { budgets: newBudgets, sections: newSections, categories: newCategories };
 };
 
-export const useCalculator = () => {
+export const useBudgetCalculator = () => {
   const { setData, viewDate } = useAppContext();
 
   const callback = async () => {
     setData((oldData) => {
       const newData = new Data(oldData);
-      const { budgets, sections, categories } = calculatorLambda(newData, viewDate);
-      newData.budgets = budgets;
-      newData.sections = sections;
-      newData.categories = categories;
+      const { budgets, sections, categories } = budgetCalculatorLambda(newData, viewDate);
+      newData.update({ budgets, sections, categories });
       return newData;
     });
   };
@@ -167,7 +165,7 @@ export const useCalculator = () => {
 export const calculateBudgetSynchrony = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
-  categories: CategoryDictionary
+  categories: CategoryDictionary,
 ) => {
   sections.forEach((section) => {
     const budget = budgets.get(section.budget_id);

@@ -11,7 +11,7 @@ import {
   SectionDictionary,
 } from "common";
 import { BudgetFamily } from "common/models/BudgetFamily";
-import { calculateBudgetSynchrony, calculatorLambda, call, useAppContext } from "client";
+import { calculateBudgetSynchrony, budgetCalculatorLambda, call, useAppContext } from "client";
 
 export const useEventHandlers = (isSynced: boolean, isIncome: boolean, isInfinite: boolean) => {
   return {
@@ -62,7 +62,7 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
         current = iterator.next();
       }
 
-      const { budgets, sections, categories } = calculatorLambda(newData, viewDate);
+      const { budgets, sections, categories } = budgetCalculatorLambda(newData, viewDate);
       newData.budgets = budgets;
       newData.sections = sections;
       newData.categories = categories;
@@ -76,7 +76,7 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
 const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
   original: T,
   updated: UpdatedBudgetFamily,
-  isIncome: boolean
+  isIncome: boolean,
 ) => {
   const toUpdateList = new Set<BudgetFamily>();
 
@@ -86,7 +86,7 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
   if (original.type !== "category") {
     const { sections: children, categories: grandChildren } = getBudgetsToUpdatePeriod(
       original,
-      updated
+      updated,
     );
     [...children, ...grandChildren].forEach((c) => {
       const isSynced = c.capacities.every((c) => c.isInfinite === true && c.isIncome === isIncome);
@@ -102,7 +102,7 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
 
 const getLimitedBudgetsToSync = <T extends BudgetFamily>(
   original: T,
-  updated: UpdatedBudgetFamily
+  updated: UpdatedBudgetFamily,
 ) => {
   const toUpdateList = new Set<BudgetFamily>();
 
@@ -132,7 +132,7 @@ const getNonSyncedBudgetsToUpdate = <T extends BudgetFamily>(
   original: T,
   updated: UpdatedBudgetFamily,
   isIncome: boolean,
-  isInfinite: boolean
+  isInfinite: boolean,
 ) => {
   const purgedCapacities = isInfinite ? [new Capacity()] : updated.capacities;
   const updatedCapacities = purgedCapacities.map((c) => {
@@ -145,7 +145,7 @@ const getNonSyncedBudgetsToUpdate = <T extends BudgetFamily>(
 
 const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
   original: T,
-  updated: UpdatedBudgetFamily
+  updated: UpdatedBudgetFamily,
 ) => {
   const sections: Section[] = [];
   const categories: Category[] = [];
@@ -168,8 +168,8 @@ const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
     updatedOriginal?.type === "budget"
       ? (updatedOriginal as unknown as Budget)
       : updatedOriginal.type === "section"
-      ? (updatedOriginal.getParent()! as Budget)
-      : (updatedOriginal.getParent()?.getParent()! as Budget);
+        ? (updatedOriginal.getParent()! as Budget)
+        : (updatedOriginal.getParent()?.getParent()! as Budget);
 
   budget.capacities = updateCapacities(budget);
   budget.getChildren().forEach((c) => {
@@ -188,7 +188,7 @@ const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
   calculateBudgetSynchrony(
     new BudgetDictionary([[budget.id, budget]]),
     new SectionDictionary(sections.map((s) => [s.id, s])),
-    new CategoryDictionary(categories.map((c) => [c.id, c]))
+    new CategoryDictionary(categories.map((c) => [c.id, c])),
   );
 
   return { budget, sections, categories };
@@ -247,7 +247,7 @@ export const useRemove = () => {
         const newDictionary = new DynamicBudgetFamilyDictionary(newData[dictionaryKey] as any);
         newDictionary.delete(id);
         newData[dictionaryKey] = newDictionary;
-        const { budgets, sections, categories } = calculatorLambda(newData, viewDate);
+        const { budgets, sections, categories } = budgetCalculatorLambda(newData, viewDate);
         newData.budgets = budgets;
         newData.sections = sections;
         newData.categories = categories;

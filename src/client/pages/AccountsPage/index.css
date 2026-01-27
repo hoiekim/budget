@@ -10,3 +10,10 @@ div.AccountsPage > h2 {
 div.wideScreen div.AccountsPage > h2 {
   top: 0;
 }
+
+div.AccountsPage > div.AccountsDonut {
+  position: sticky;
+  top: 104px;
+  background-color: #fffe;
+  z-index: 100;
+}

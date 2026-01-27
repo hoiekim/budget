@@ -1,35 +1,25 @@
+import { useAppContext } from "client";
 import { Account, currencyCodeToSymbol, numberToCommaString } from "common";
 import { AccountSubtype, AccountType } from "plaid";
 
-interface Props {
-  balances: Account["balances"];
-  type: Account["type"];
-  subtype: Account["subtype"];
-  previousAmount?: number;
+interface BalanceProps {
+  account: Account;
 }
 
-export const Balance = ({ balances, type, subtype, previousAmount }: Props) => {
+export const Balance = ({ account }: BalanceProps) => {
+  const { viewDate } = useAppContext();
+  const { type, subtype, balances, balanceHistory } = account;
   const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
   const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
-  const availableString = numberToCommaString(available!);
   const currentString = numberToCommaString(current!);
-  const combined = numberToCommaString(available! + current!);
 
-  const getChanges = (currentAmount: number) => {
-    if (previousAmount === undefined) return undefined;
-
-    const changes = currentAmount - previousAmount;
-
-    if (changes === 0) return <div className="neutral">-</div>;
-
-    const changesString = "$" + numberToCommaString(Math.abs(changes));
-
-    if (changes > 0) return <div className="colored positive">+{changesString}</div>;
-    return <div className="colored negative">-{changesString}</div>;
-  };
+  const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
+  const dynamicAmount = balanceHistory?.[viewDateSpan];
+  const previousAmount = balanceHistory?.[viewDateSpan + 1];
 
   if (type === AccountType.Credit) {
+    const availableString = numberToCommaString(available!);
     return (
       <div className="Balance credit">
         <div>
@@ -55,17 +45,20 @@ export const Balance = ({ balances, type, subtype, previousAmount }: Props) => {
           {symbol}
           {currentString}
         </div>
-        {getChanges(current!)}
+        {!!previousAmount && <Changes currentAmount={current!} previousAmount={previousAmount} />}
       </div>
     );
   } else if (type === AccountType.Investment) {
+    const combined = numberToCommaString(available! + current!);
     return (
       <div className="Balance">
         <div>
           {symbol}
-          {combined}
+          {dynamicAmount ? numberToCommaString(dynamicAmount) : combined}
         </div>
-        {getChanges(available! + current!)}
+        {!!previousAmount && (
+          <Changes currentAmount={available! + current!} previousAmount={previousAmount} />
+        )}
       </div>
     );
   } else {
@@ -73,12 +66,25 @@ export const Balance = ({ balances, type, subtype, previousAmount }: Props) => {
       <div className="Balance">
         <div>
           {symbol}
-          {currentString}
+          {dynamicAmount ? numberToCommaString(dynamicAmount) : currentString}
         </div>
-        {getChanges(current!)}
+        {!!previousAmount && <Changes currentAmount={current!} previousAmount={previousAmount} />}
       </div>
     );
   }
 };
 
-export default Balance;
+interface ChangesProps {
+  currentAmount: number;
+  previousAmount: number;
+  currencySymbol?: string;
+}
+
+export const Changes = ({ currentAmount, previousAmount, currencySymbol = "$" }: ChangesProps) => {
+  const changes = currentAmount - previousAmount;
+  if (changes === 0) return <div className="Changes neutral">-</div>;
+
+  const changesString = currencySymbol + numberToCommaString(Math.abs(changes));
+  if (changes > 0) return <div className="Changes colored positive">+{changesString}</div>;
+  return <div className="Changes colored negative">-{changesString}</div>;
+};

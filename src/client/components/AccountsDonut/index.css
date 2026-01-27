@@ -1,4 +1,5 @@
 div.AccountsDonut {
+  padding: 0 10px;
   position: relative;
   display: flex;
   justify-content: center;
@@ -22,4 +23,22 @@ div.AccountsDonut > div.donut > div.centerLabel {
   justify-content: center;
   align-items: center;
   text-align: center;
+}
+
+div.BalanceInfo {
+  flex: 1;
+  text-align: right;
+  max-width: 180px;
+}
+
+div.BalanceInfo > div.Changes {
+  margin-bottom: 5px;
+}
+
+div.BalanceInfo > div.label {
+  font-size: 12px;
+}
+
+div.BalanceInfo > div.neutral {
+  color: #888;
 }

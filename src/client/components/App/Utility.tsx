@@ -1,5 +1,12 @@
 import { useEffect } from "react";
-import { useAppContext, useDebounce, useSync, useCalculator, PATH } from "client";
+import {
+  useAppContext,
+  useDebounce,
+  useSync,
+  useBudgetCalculator,
+  useBalanceCalculator,
+  PATH,
+} from "client";
 
 /**
  * This component is used to run useEffect hooks dependant on context variables.
@@ -8,13 +15,14 @@ import { useAppContext, useDebounce, useSync, useCalculator, PATH } from "client
  */
 const Utility = () => {
   const { user, router, setSelectedInterval, data, viewDate } = useAppContext();
-  const { transactions, splitTransactions, accounts } = data;
+  const { transactions, splitTransactions, investmentTransactions, accounts } = data;
 
   const userLoggedIn = !!user;
   const { path, go } = router;
 
   const { sync, clean } = useSync();
-  const calculate = useCalculator();
+  const calculateBudget = useBudgetCalculator();
+  const calculateBalance = useBalanceCalculator();
 
   /**
    * Redirect to login page if not logged in
@@ -32,14 +40,33 @@ const Utility = () => {
     else clean();
   }, [userLoggedIn, sync, clean]);
 
-  const calculationDebouncer = useDebounce();
+  const budgetDebouncer = useDebounce();
+  const balanceDebouncer = useDebounce();
 
   /**
-   * Calculate transactions amounts when data is updated
+   * Calculate budget roll over amounts when data is updated
    */
   useEffect(() => {
-    calculationDebouncer(calculate);
-  }, [transactions, splitTransactions, accounts, viewDate, calculate, calculationDebouncer]);
+    budgetDebouncer(calculateBudget);
+  }, [transactions, splitTransactions, accounts, viewDate, calculateBudget, budgetDebouncer]);
+
+  const accountBalances = JSON.stringify(
+    accounts.toArray().map((a) => ({ [a.id]: a.balances.current })),
+  );
+
+  /**
+   * Calculate balance history when data is updated
+   */
+  useEffect(() => {
+    balanceDebouncer(calculateBalance);
+  }, [
+    transactions,
+    investmentTransactions,
+    accountBalances,
+    viewDate,
+    calculateBalance,
+    balanceDebouncer,
+  ]);
 
   /**
    * Update viewDate when user selects different interval

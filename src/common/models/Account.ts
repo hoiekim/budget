@@ -22,11 +22,22 @@ export class AccountGraphOptions {
   }
 }
 
+const balanceMap = new Map<string, number[]>();
+
 export class Account implements plaid.PlaidAccount {
   get id() {
     return this.account_id;
   }
   set id(_: string) {}
+
+  get balanceHistory() {
+    return balanceMap.get(this.id);
+  }
+
+  set balanceHistory(balanceHistory: number[] | undefined) {
+    if (balanceHistory) balanceMap.set(this.id, balanceHistory);
+    else balanceMap.delete(this.id);
+  }
 
   account_id: string = getRandomId();
   balances: AccountBalance = {

@@ -73,7 +73,7 @@ export const AccountProperties = ({ account }: Props) => {
   let pendingLabel = "Pending";
   const currentAmountString = numberToCommaString(current as number);
   let pendingAmountString = numberToCommaString(
-    current && available ? current - available : ((current || available) as number)
+    current && available ? current - available : ((current || available) as number),
   );
   if (type === AccountType.Credit) {
     currentLabel = "Spent";

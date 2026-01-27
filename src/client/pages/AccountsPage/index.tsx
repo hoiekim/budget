@@ -1,13 +1,26 @@
-import { useMemo } from "react";
-import { colors, useAppContext } from "client";
-import { AccountsDonut, AccountsTable, DonutData } from "client/components";
+import { AccountType } from "plaid";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { currencyCodeToSymbol } from "common";
+import { colors, getAccountBalance, useAppContext } from "client";
+import { AccountsDonut, AccountsTable, DonutData } from "client/components";
 import "./index.css";
-import { AccountSubtype, AccountType } from "plaid";
 
 export const AccountsPage = () => {
-  const { data } = useAppContext();
+  const { data, viewDate } = useAppContext();
   const { accounts } = data;
+
+  const sentinelRef = useRef(null);
+  const [isDonutShrunk, setIsDonutShrunk] = useState(false);
+
+  useEffect(() => {
+    const listener: IntersectionObserverCallback = ([entry]) => {
+      setIsDonutShrunk(!entry.isIntersecting);
+    };
+
+    const observer = new IntersectionObserver(listener, { threshold: [1.0] });
+    if (sentinelRef.current) observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const { donutData, currencySymbol, balanceTotal } = useMemo(() => {
     let balanceTotal = 0;
@@ -15,21 +28,15 @@ export const AccountsPage = () => {
 
     const filteredAccounts = accounts
       .toArray()
-      .sort((a, b) => (b.balances.current || 0) - (a.balances.current || 0))
+      .sort((a, b) => getAccountBalance(b) - getAccountBalance(a))
       .filter(({ hide, type, balances }) => {
         return !hide && type !== AccountType.Credit && (balances.current || balances.available);
       });
 
+    const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
+
     filteredAccounts.forEach((a, i) => {
-      const balanceCurrent = a.balances.current || 0;
-      const balanceAvailalbe = a.balances.available || 0;
-      let value = 0;
-      if (a.type === AccountType.Investment) {
-        if (a.subtype === AccountSubtype.CryptoExchange) value = balanceCurrent;
-        else value = balanceCurrent + balanceAvailalbe;
-      } else {
-        value = balanceCurrent;
-      }
+      const value = a.balanceHistory?.[viewDateSpan] || 0;
       balanceTotal += value;
       const color = colors[i % colors.length];
       const label = a.custom_name || a.name || "Unnamed";
@@ -43,15 +50,21 @@ export const AccountsPage = () => {
     const currencySymbol = currencyCodeToSymbol(currencyCode);
 
     return { donutData, currencySymbol, balanceTotal };
-  }, [accounts]);
+  }, [accounts, viewDate]);
 
   return (
     <div className="AccountsPage">
-      <h2>All Accounts</h2>
+      <div
+        ref={sentinelRef}
+        className="sentinel"
+        style={{ position: "absolute", top: "0", height: "1px", width: "1px" }}
+      />
+      <h2>All&nbsp;Accounts</h2>
       <AccountsDonut
         balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
         donutData={donutData}
+        isShrunk={isDonutShrunk}
       />
       <AccountsTable donutData={donutData} />
     </div>

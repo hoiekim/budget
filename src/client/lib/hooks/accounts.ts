@@ -1,171 +1,98 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import {
   Account,
+  AccountDictionary,
   AccountSnapshot,
   AccountSnapshotDictionary,
+  Data,
   InvestmentTransaction,
   InvestmentTransactionDictionary,
-  isNumber,
   Transaction,
   TransactionDictionary,
   ViewDate,
 } from "common";
 import { GraphInput, useAppContext } from "client";
+import { AccountSubtype, AccountType } from "plaid";
 
-interface GraphOptions {
-  startDate?: Date;
-  viewDate?: ViewDate;
-}
-
-type UseAccountGraphOptionsType = GraphOptions & {
-  useLengthFixer?: boolean;
+export const getAccountBalance = (account: Account) => {
+  const balanceCurrent = account.balances.current || 0;
+  const balanceAvailalbe = account.balances.available || 0;
+  let value = 0;
+  if (account.type === AccountType.Investment) {
+    if (account.subtype === AccountSubtype.CryptoExchange) value = balanceCurrent;
+    else value = balanceCurrent + balanceAvailalbe;
+  } else {
+    value = balanceCurrent;
+  }
+  return value;
 };
 
-class BalanceByAccount extends Map<string, number> {
-  override get = (accountId: string) => {
-    const existing = super.get(accountId);
-    if (existing !== undefined) return existing;
-    this.set(accountId, 0);
-    return 0;
+/**
+ * Balance history stored by `accountId` and `span`. `span` is 0-indexed time interval
+ * where 0 is today, 1 is one month(or year) ago, 2 is two month(or year) ago, etc.
+ * @example const balanceAmount = balanceData.get(accountId, span);
+ */
+class BalanceData {
+  private data = new Map<string, number[]>();
+
+  get size() {
+    return this.data.size;
+  }
+
+  length = 0;
+
+  set = (accountId: string, span: number, amount: number) => {
+    if (!this.data.has(accountId)) this.data.set(accountId, []);
+    const accountData = this.data.get(accountId)!;
+    accountData[span] = amount;
+    this.length = Math.max(this.length, accountData.length);
   };
 
-  add = (accountId: string, amount: number) => {
-    const existing = this.get(accountId);
-    this.set(accountId, existing + amount);
+  get(accountId: string, span: number): number | undefined;
+  get(accountId: string): number[];
+  get(accountId: string, span?: number) {
+    const accountData = this.data.get(accountId);
+    if (span === undefined) return accountData || [];
+    if (!accountData) return undefined;
+    return accountData[span];
+  }
+
+  /**
+   * Add amount to specified position. If data doesn't exist, assume it was 0.
+   */
+  add = (accountId: string, span: number, amount: number) => {
+    const existing = this.get(accountId, span) || 0;
+    this.set(accountId, span, existing + amount);
   };
+
+  forEach = this.data.forEach;
 }
 
-type BalanceHistory = BalanceByAccount[];
-
-export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOptionsType = {}) => {
-  const { data, viewDate } = useAppContext();
-
-  const graphViewDate = useMemo(() => {
-    const { viewDate: inputViewDate } = options;
-    if (inputViewDate) return inputViewDate;
-    return new ViewDate(viewDate.getInterval());
-  }, [viewDate, options]);
-
-  const { transactions, investmentTransactions, accountSnapshots } = data;
-
-  const { graphData, cursorAmount, previousAmount } = useMemo(() => {
-    const { startDate, useLengthFixer = true } = options;
-
-    const transactionBasedHistory = getBalanceHistoryFromTransactions(
-      accounts,
-      transactions,
-      investmentTransactions,
-      graphViewDate,
-      startDate,
-    );
-
-    const snapshotBasedHistory = getBalanceHistoryFromSnapshots(
-      accounts,
-      accountSnapshots,
-      graphViewDate,
-      startDate,
-    );
-    const maxLength = Math.max(transactionBasedHistory.length, snapshotBasedHistory.length);
-
-    const lastBalance = new BalanceByAccount();
-    accounts.forEach(({ id }) => lastBalance.set(id, 0));
-
-    const mergedHistory: number[] = [];
-    for (let i = maxLength - 1; i >= 0; i--) {
-      const transactionBased = transactionBasedHistory[i];
-      const snapshotBased = snapshotBasedHistory[i];
-
-      let totalBalance = 0;
-      accounts.forEach(({ id, graphOptions }) => {
-        const { useTransactions = true, useSnapshots = true } = graphOptions;
-        let balance = 0;
-        if (useSnapshots && snapshotBased?.has(id)) balance = snapshotBased.get(id);
-        else if (useTransactions && transactionBased) balance = transactionBased.get(id);
-        else balance = lastBalance.get(id);
-        totalBalance += balance;
-        lastBalance.set(id, balance);
-      });
-
-      mergedHistory[i] = totalBalance;
-    }
-
-    const { length } = mergedHistory;
-
-    const lengthFixer = useLengthFixer ? 3 - ((length - 1) % 3) : 0;
-    mergedHistory.push(...new Array(lengthFixer));
-
-    const sequence = mergedHistory.reverse();
-
-    const viewDateIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer;
-    const cursorIndex = length - 1 - viewDateIndex;
-    const cursorAmount = sequence[cursorIndex] as number | undefined;
-    const points = [];
-    if (cursorAmount === undefined) {
-      points.push({
-        point: {
-          value: sequence[cursorIndex - 1] || sequence[cursorIndex + 1] || 0,
-          index: cursorIndex,
-        },
-        color: "#0970",
-      });
-    } else {
-      points.push({ point: { value: cursorAmount, index: cursorIndex }, color: "#097" });
-    }
-
-    const previousViewDate = new ViewDate(viewDate.getInterval()).previous();
-    const previousIndex = graphViewDate.getSpanFrom(previousViewDate.getEndDate()) - lengthFixer;
-    const previousAmount = sequence[length - 1 - previousIndex] as number | undefined;
-
-    const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
-
-    return { graphData, cursorAmount, previousAmount };
-  }, [
-    accounts,
-    transactions,
-    investmentTransactions,
-    accountSnapshots,
-    options,
-    graphViewDate,
-    viewDate,
-  ]);
-
-  return { graphViewDate, graphData, cursorAmount, previousAmount };
-};
-
-const getBalanceHistoryFromTransactions = (
-  accounts: Account[],
+const getBalanceDataFromTransactions = (
+  accounts: AccountDictionary,
   transactions: TransactionDictionary,
   investmentTransactions: InvestmentTransactionDictionary,
-  graphViewDate: ViewDate,
-  startDate?: Date,
-): BalanceHistory => {
-  const accountIds = new Set<string>();
-  const currentBalances = new BalanceByAccount();
-  const balanceHistory: BalanceHistory = [];
+  viewDate: ViewDate,
+): BalanceData => {
+  const balanceData = new BalanceData();
+
   const today = new Date();
-  const todaySpan = graphViewDate.getSpanFrom(today);
-  balanceHistory[todaySpan] = currentBalances;
-  accounts.forEach((a) => {
-    accountIds.add(a.id);
-    currentBalances.set(a.id, a.balances.current || 0);
-  });
-  if (startDate) balanceHistory[graphViewDate.getSpanFrom(startDate)] = new BalanceByAccount();
+  const todaySpan = viewDate.getSpanFrom(today);
+  accounts.forEach((a) => balanceData.set(a.id, todaySpan, getAccountBalance(a)));
 
   // first aggregate transactions to sum amounts for each period
   const translate = (t: Transaction | InvestmentTransaction) => {
     const authorized_date = "authorized_date" in t ? t.authorized_date : undefined;
-    const { date, amount } = t;
-    if (!accountIds.has(t.account_id)) return;
+    const { account_id, date, amount } = t;
+    if (!accounts.has(account_id)) return;
     const transactionDate = new Date(authorized_date || date);
     if (today < transactionDate) return;
-    const span = graphViewDate.getSpanFrom(transactionDate) + 1;
-    if (startDate && balanceHistory.length <= span) return;
-    if (!balanceHistory[span]) balanceHistory[span] = new BalanceByAccount();
+    const span = viewDate.getSpanFrom(transactionDate) + 1;
     if ("price" in t && "quantity" in t) {
       const { price, quantity } = t as InvestmentTransaction;
-      balanceHistory[span].add(t.account_id, -(price * quantity));
+      balanceData.add(account_id, span, -(price * quantity));
     } else {
-      balanceHistory[span].add(t.account_id, amount);
+      balanceData.add(account_id, span, amount);
     }
   };
 
@@ -173,49 +100,39 @@ const getBalanceHistoryFromTransactions = (
   investmentTransactions.forEach(translate);
 
   // then incrementally add them up
-  for (let i = todaySpan + 1; i < balanceHistory.length; i++) {
-    if (!balanceHistory[i]) balanceHistory[i] = new BalanceByAccount();
-    for (const accountId of accountIds) {
-      const previousBalance = balanceHistory[i - 1].get(accountId);
-      balanceHistory[i].add(accountId, previousBalance);
+  for (let i = todaySpan + 1; i < balanceData.length; i++) {
+    for (const [accountId] of accounts) {
+      const previousBalance = balanceData.get(accountId, i - 1)!;
+      balanceData.add(accountId, i, previousBalance);
     }
   }
 
-  return balanceHistory;
+  return balanceData;
 };
 
-const getBalanceHistoryFromSnapshots = (
-  accounts: Account[],
+const getBalanceDataFromSnapshots = (
+  accounts: AccountDictionary,
   accountSnapshots: AccountSnapshotDictionary,
-  graphViewDate: ViewDate,
-  startDate?: Date,
-): BalanceHistory => {
+  viewDate: ViewDate,
+): BalanceData => {
+  const balanceData = new BalanceData();
   const snapshotHistory: { [account_id: string]: AccountSnapshot }[] = [];
-  const accountIds = new Set<string>();
-  const currentBalances = new BalanceByAccount();
-  const balanceHistory: BalanceHistory = [];
+
   const today = new Date();
-  const todaySpan = graphViewDate.getSpanFrom(today);
-  balanceHistory[todaySpan] = currentBalances;
-  accounts.forEach((a) => {
-    accountIds.add(a.id);
-    currentBalances.set(a.id, a.balances.current || 0);
-  });
-  if (startDate) snapshotHistory[graphViewDate.getSpanFrom(startDate)] = {};
+  const todaySpan = viewDate.getSpanFrom(today);
+  accounts.forEach((a) => balanceData.set(a.id, todaySpan, getAccountBalance(a)));
 
   // first aggregate snapshots to take the latest snapshot for each period
   accountSnapshots.forEach((accountSnapshot) => {
     const { snapshot, account } = accountSnapshot;
     const { date } = snapshot;
     if (!account.balances.current && account.balances.current !== 0) return;
-    if (!accountIds.has(account.account_id)) return;
     const snapshotDate = new Date(date);
-    if (startDate && snapshotDate < startDate) return;
     if (today < snapshotDate) return;
-    const span = graphViewDate.getSpanFrom(snapshotDate);
+    const span = viewDate.getSpanFrom(snapshotDate);
     const existing = snapshotHistory[span];
     if (existing) {
-      if (!existing[account.id] || existing[account.id]?.snapshot.date < date) {
+      if (!existing[account.id] || existing[account.id].snapshot.date < date) {
         existing[account.id] = accountSnapshot;
       }
     } else {
@@ -225,15 +142,124 @@ const getBalanceHistoryFromSnapshots = (
 
   // then get the balance amount for each period
   for (let i = todaySpan + 1; i < snapshotHistory.length; i++) {
-    for (const accountId of accountIds) {
+    for (const [accountId] of accounts) {
       const snapshot = snapshotHistory[i]?.[accountId];
-      const snapshotBalance = snapshot?.account.balances.current;
-      if (isNumber(snapshotBalance)) {
-        if (!balanceHistory[i]) balanceHistory[i] = new BalanceByAccount();
-        balanceHistory[i].set(accountId, snapshotBalance);
+      if (snapshot) {
+        const snapshotBalance = getAccountBalance(snapshot.account);
+        balanceData.set(accountId, i, snapshotBalance);
       }
     }
   }
 
-  return balanceHistory;
+  return balanceData;
+};
+
+export const getBalanceData = (data: Data, viewDate: ViewDate) => {
+  const { accounts, accountSnapshots, transactions, investmentTransactions } = data;
+
+  const transactionBasedData = getBalanceDataFromTransactions(
+    accounts,
+    transactions,
+    investmentTransactions,
+    viewDate,
+  );
+
+  const snapshotBasedData = getBalanceDataFromSnapshots(accounts, accountSnapshots, viewDate);
+
+  const maxLength = Math.max(transactionBasedData.length, snapshotBasedData.length);
+
+  const mergedData = new BalanceData();
+
+  for (let i = maxLength - 1; i >= 0; i--) {
+    accounts.forEach(({ id, graphOptions }) => {
+      const { useTransactions = true, useSnapshots = true } = graphOptions;
+      const transactionBasedBalance = transactionBasedData.get(id, i);
+      const snapshotBasedBalance = snapshotBasedData.get(id, i);
+      let balance = 0;
+      if (useSnapshots && snapshotBasedBalance) balance = snapshotBasedBalance;
+      else if (useTransactions && transactionBasedBalance) balance = transactionBasedBalance;
+      else balance = mergedData.get(id, i + 1)!;
+      mergedData.set(id, i, balance);
+    });
+  }
+
+  return mergedData;
+};
+
+export const useBalanceCalculator = () => {
+  const { setData, viewDate } = useAppContext();
+
+  const callback = async () => {
+    setData((oldData) => {
+      const newData = new Data(oldData);
+
+      const accounts = new AccountDictionary(newData.accounts);
+      const balanceData = getBalanceData(newData, new ViewDate(viewDate.getInterval()));
+      accounts.forEach((account) => {
+        const newAccount = new Account(account);
+        newAccount.balanceHistory = balanceData.get(account.id);
+        accounts.set(account.id, newAccount);
+      });
+
+      newData.update({ accounts });
+
+      return newData;
+    });
+  };
+
+  return useCallback(callback, [viewDate, setData]);
+};
+
+interface UseAccountGraphOptions {
+  startDate?: Date;
+  viewDate?: ViewDate;
+  useLengthFixer?: boolean;
+}
+
+export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOptions = {}) => {
+  const { viewDate } = useAppContext();
+  const { viewDate: inputViewDate, startDate, useLengthFixer = true } = options;
+
+  const graphViewDate = useMemo(() => {
+    if (inputViewDate) return inputViewDate;
+    return new ViewDate(viewDate.getInterval());
+  }, [viewDate, inputViewDate]);
+
+  const { graphData, cursorAmount } = useMemo(() => {
+    const flattened: number[] = [];
+    accounts.forEach(({ balanceHistory }) => {
+      let maxLength = startDate
+        ? graphViewDate.getSpanFrom(startDate) + 1
+        : balanceHistory?.length || 0;
+
+      for (let i = 0; i < maxLength; i++) {
+        if (flattened[i] === undefined) flattened[i] = 0;
+        flattened[i] += balanceHistory?.[i] || 0;
+      }
+    });
+
+    const { length } = flattened;
+
+    const lengthFixer = useLengthFixer ? 3 - ((length - 1) % 3) : 0;
+    flattened.push(...new Array(lengthFixer));
+
+    const sequence = flattened.reverse();
+
+    const viewDateIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer;
+    const cursorIndex = length - 1 - viewDateIndex;
+    const cursorAmount = sequence[cursorIndex] as number | undefined;
+    const points = [];
+    if (cursorAmount === undefined) {
+      const arbitraryAmount = sequence[cursorIndex - 1] || sequence[cursorIndex + 1] || 0;
+      points.push({ point: { value: arbitraryAmount, index: cursorIndex }, color: "#0970" });
+    } else {
+      points.push({ point: { value: cursorAmount, index: cursorIndex }, color: "#097" });
+    }
+
+    const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
+
+    return { graphData, cursorAmount };
+  }, [accounts, startDate, useLengthFixer, graphViewDate, viewDate]);
+
+  return { graphViewDate, graphData, cursorAmount };
 };

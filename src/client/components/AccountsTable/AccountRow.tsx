@@ -12,13 +12,13 @@ interface Props {
 
 const AccountRow = ({ account, color }: Props) => {
   const { router, data } = useAppContext();
-  const { account_id, balances, custom_name, name, institution_id, type, subtype } = account;
+  const { account_id, custom_name, name, institution_id, type } = account;
 
   const { items } = data;
   const item = items.get(account.item_id);
   const isManualAccount = item?.provider === ItemProvider.MANUAL;
 
-  const { graphData, previousAmount } = useAccountGraph([account]);
+  const { graphData } = useAccountGraph([account]);
   const showGraph = type === AccountType.Depository || type === AccountType.Investment;
 
   const onClickAccount = () => {
@@ -56,12 +56,7 @@ const AccountRow = ({ account, color }: Props) => {
             />
           </div>
         )}
-        <Balance
-          balances={balances}
-          type={type}
-          subtype={subtype}
-          previousAmount={previousAmount}
-        />
+        <Balance account={account} />
       </div>
     );
   }
@@ -80,7 +75,7 @@ const AccountRow = ({ account, color }: Props) => {
           </div>
         </div>
       </div>
-      <Balance balances={balances} type={type} subtype={subtype} />
+      <Balance account={account} />
     </div>
   );
 };
