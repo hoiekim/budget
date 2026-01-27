@@ -36,7 +36,7 @@ const Utility = () => {
    * Download data when user logs in and remove data when user logs out
    */
   useEffect(() => {
-    if (userLoggedIn) sync.all();
+    if (userLoggedIn) sync();
     else clean();
   }, [userLoggedIn, sync, clean]);
 

@@ -49,9 +49,7 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
                 return newData;
               });
             }
-            setTimeout(() => {
-              sync.accounts().then(sync.transactions);
-            }, 1000);
+            setTimeout(sync, 1000);
           }
         });
     },

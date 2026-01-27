@@ -58,7 +58,7 @@ export const Configuration = () => {
   const onClickRefresh = async () => {
     clean();
     await cleanCache();
-    await sync.all();
+    await sync();
   };
 
   const onClickAddManualAccount = async () => {
@@ -71,7 +71,7 @@ export const Configuration = () => {
       const params = new URLSearchParams({ provider: ItemProvider.MANUAL });
       const { body } = await call.post<PbulicTokenPostResponse>(
         `/api/public-token?${params.toString()}`,
-        {}
+        {},
       );
       if (!body) return;
       const { item } = body;
