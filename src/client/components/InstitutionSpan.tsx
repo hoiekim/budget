@@ -11,7 +11,7 @@ export const InstitutionSpan = ({ institution_id }: Props) => {
   const { institutions } = data;
   const institution = useMemo(
     () => (institution_id ? institutions.get(institution_id) : undefined),
-    [institution_id, institutions]
+    [institution_id, institutions],
   );
 
   useEffect(() => {

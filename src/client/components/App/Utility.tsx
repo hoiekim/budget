@@ -50,9 +50,7 @@ const Utility = () => {
     budgetDebouncer(calculateBudget);
   }, [transactions, splitTransactions, accounts, viewDate, calculateBudget, budgetDebouncer]);
 
-  const accountBalances = JSON.stringify(
-    accounts.toArray().map((a) => ({ [a.id]: a.balances.current })),
-  );
+  const accountBalances = JSON.stringify(accounts.toArray().map((a) => ({ [a.id]: a.balances })));
 
   /**
    * Calculate balance history when data is updated

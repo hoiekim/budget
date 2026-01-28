@@ -8,7 +8,13 @@ import {
   SplitTransactionsGetResponse,
   ChartsGetResponse,
 } from "server";
-import { useAppContext, call, cachedCall } from "client";
+import {
+  useAppContext,
+  call,
+  cachedCall,
+  budgetCalculatorLambda,
+  balanceCalculatorLambda,
+} from "client";
 import {
   Account,
   InvestmentTransaction,
@@ -232,56 +238,69 @@ const fetchCharts = async (): Promise<FetchChartsResult> => {
 };
 
 export const useSync = () => {
-  const { user, setData } = useAppContext();
+  const { user, setData, setDataStatus, viewDate } = useAppContext();
   const sync = useCallback(async () => {
     if (!user) return;
+    setDataStatus("loading");
 
-    const accountsPromise = fetchAccounts();
-    const oldestDatePromise = getOldestTransactionDate();
-    const transactionsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
-      ([{ accounts }, oldestDate]) => fetchTransactions(accounts, oldestDate),
-    );
-    const splitTransactionsPromise = fetchSplitTransactions();
-    const snapshotsPromise = oldestDatePromise.then((oldestDate) => fetchSnapshots(oldestDate));
-    const budgetsPromise = fetchBudgets();
-    const chartsPromise = fetchCharts();
+    try {
+      const accountsPromise = fetchAccounts();
+      const oldestDatePromise = getOldestTransactionDate();
+      const transactionsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
+        ([{ accounts }, oldestDate]) => fetchTransactions(accounts, oldestDate),
+      );
+      const splitTransactionsPromise = fetchSplitTransactions();
+      const snapshotsPromise = oldestDatePromise.then((oldestDate) => fetchSnapshots(oldestDate));
+      const budgetsPromise = fetchBudgets();
+      const chartsPromise = fetchCharts();
 
-    const [
-      { accounts, items },
-      { transactions, investmentTransactions },
-      { splitTransactions },
-      { accountSnapshots, holdingSnapshots },
-      { budgets, sections, categories },
-      { charts },
-    ] = await Promise.all([
-      accountsPromise,
-      transactionsPromise,
-      splitTransactionsPromise,
-      snapshotsPromise,
-      budgetsPromise,
-      chartsPromise,
-    ]);
+      const [
+        { accounts, items },
+        { transactions, investmentTransactions },
+        { splitTransactions },
+        { accountSnapshots, holdingSnapshots },
+        { budgets, sections, categories },
+        { charts },
+      ] = await Promise.all([
+        accountsPromise,
+        transactionsPromise,
+        splitTransactionsPromise,
+        snapshotsPromise,
+        budgetsPromise,
+        chartsPromise,
+      ]);
 
-    setData((oldData) => {
-      const newData = new Data(oldData);
+      setData((oldData) => {
+        const newData = new Data(oldData);
 
-      newData.update({
-        accounts,
-        items,
-        transactions,
-        splitTransactions,
-        investmentTransactions,
-        accountSnapshots,
-        holdingSnapshots,
-        budgets,
-        sections,
-        categories,
-        charts,
+        newData.update({
+          accounts,
+          items,
+          transactions,
+          splitTransactions,
+          investmentTransactions,
+          accountSnapshots,
+          holdingSnapshots,
+          budgets,
+          sections,
+          categories,
+          charts,
+        });
+
+        const calculatedBudgets = budgetCalculatorLambda(newData, viewDate);
+        const calculatedAccounts = balanceCalculatorLambda(newData, viewDate);
+
+        newData.update({ ...calculatedBudgets, accounts: calculatedAccounts });
+
+        return newData;
       });
 
-      return newData;
-    });
-  }, [setData, user]);
+      setDataStatus("success");
+    } catch (err) {
+      console.error(err);
+      setDataStatus("error");
+    }
+  }, [setData, setDataStatus, user, viewDate]);
 
   const clean = useCallback(() => setData(new Data()), [setData]);
 

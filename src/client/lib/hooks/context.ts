@@ -9,9 +9,13 @@ export enum ScreenType {
   Wide,
 }
 
+export type DataStatus = "loading" | "success" | "error";
+
 export interface ContextType {
   data: Data;
   setData: Dispatch<SetStateAction<Data>>;
+  dataStatus: DataStatus;
+  setDataStatus: Dispatch<SetStateAction<DataStatus>>;
   user: MaskedUser | undefined;
   setUser: Dispatch<SetStateAction<MaskedUser | undefined>>;
   router: ClientRouter;

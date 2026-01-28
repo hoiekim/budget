@@ -17,7 +17,7 @@ import {
 } from "client/pages";
 
 const Router = () => {
-  const { router, screenType } = useAppContext();
+  const { router, dataStatus, screenType } = useAppContext();
   const { path, transition } = router;
   const { incomingPath, transitioning, direction } = transition;
 
@@ -50,7 +50,9 @@ const Router = () => {
         <div className="previousPage">
           {transitioning && direction === "backward" && incomingPage}
         </div>
-        <div className="currentPage">{currentPage}</div>
+        <div className="currentPage">
+          {dataStatus === "loading" ? <div className="loading" /> : currentPage}
+        </div>
         <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
       </div>
     );
@@ -68,10 +70,16 @@ const Router = () => {
 
   return (
     <div className={classNames.join(" ")}>
-      <main>{currentPage}</main>
-      <aside>
-        <TransactionsPage />
-      </aside>
+      {dataStatus === "loading" ? (
+        <div className="loading" />
+      ) : (
+        <>
+          <main>{currentPage}</main>
+          <aside>
+            <TransactionsPage />
+          </aside>
+        </>
+      )}
     </div>
   );
 };

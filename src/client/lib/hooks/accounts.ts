@@ -188,23 +188,26 @@ export const getBalanceData = (data: Data, viewDate: ViewDate) => {
   return mergedData;
 };
 
+export const balanceCalculatorLambda = (data: Data, viewDate: ViewDate) => {
+  const accounts = new AccountDictionary(data.accounts);
+  const balanceData = getBalanceData(data, viewDate);
+  accounts.forEach((account) => {
+    const newAccount = new Account(account);
+    newAccount.balanceHistory = balanceData.get(account.id);
+    accounts.set(account.id, newAccount);
+  });
+
+  return accounts;
+};
+
 export const useBalanceCalculator = () => {
   const { setData, viewDate } = useAppContext();
 
   const callback = async () => {
     setData((oldData) => {
       const newData = new Data(oldData);
-
-      const accounts = new AccountDictionary(newData.accounts);
-      const balanceData = getBalanceData(newData, new ViewDate(viewDate.getInterval()));
-      accounts.forEach((account) => {
-        const newAccount = new Account(account);
-        newAccount.balanceHistory = balanceData.get(account.id);
-        accounts.set(account.id, newAccount);
-      });
-
+      const accounts = balanceCalculatorLambda(newData, viewDate);
       newData.update({ accounts });
-
       return newData;
     });
   };
