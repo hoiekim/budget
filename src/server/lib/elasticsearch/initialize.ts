@@ -1,5 +1,5 @@
 import mappings from "./mappings.json";
-import { index, searchUser, indexUser, upsertItems } from "server";
+import { index, searchUser, indexUser } from "server";
 import { client } from "./client";
 
 const { properties }: any = mappings;

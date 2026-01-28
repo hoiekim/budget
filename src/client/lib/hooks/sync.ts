@@ -85,9 +85,9 @@ const fetchTransactions = async (
       const isRecent = new Date().getTime() - endDate.getTime() < THIRTY_DAYS;
 
       const promise = new Promise<void>(async (res) => {
-        let response: ApiResponse<TransactionsGetResponse> | undefined;
+        let response: ApiResponse<TransactionsGetResponse> | void;
         if (isRecent) {
-          response = await call.get<TransactionsGetResponse>(path);
+          response = await call.get<TransactionsGetResponse>(path).catch(console.error);
         } else {
           response = await cachedCall<TransactionsGetResponse>(path);
         }
