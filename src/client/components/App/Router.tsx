@@ -51,7 +51,7 @@ const Router = () => {
           {transitioning && direction === "backward" && incomingPage}
         </div>
         <div className="currentPage">
-          {dataStatus === "loading" ? <div className="loading" /> : currentPage}
+          {dataStatus === "not_ready" ? <div className="loading" /> : currentPage}
         </div>
         <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
       </div>
@@ -70,7 +70,7 @@ const Router = () => {
 
   return (
     <div className={classNames.join(" ")}>
-      {dataStatus === "loading" ? (
+      {dataStatus === "not_ready" ? (
         <div className="loading" />
       ) : (
         <>

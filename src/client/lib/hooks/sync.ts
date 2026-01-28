@@ -8,13 +8,7 @@ import {
   SplitTransactionsGetResponse,
   ChartsGetResponse,
 } from "server";
-import {
-  useAppContext,
-  call,
-  cachedCall,
-  budgetCalculatorLambda,
-  balanceCalculatorLambda,
-} from "client";
+import { useAppContext, call, cachedCall } from "client";
 import {
   Account,
   InvestmentTransaction,
@@ -238,10 +232,10 @@ const fetchCharts = async (): Promise<FetchChartsResult> => {
 };
 
 export const useSync = () => {
-  const { user, setData, setDataStatus, viewDate } = useAppContext();
+  const { user, setData, updateStatus } = useAppContext();
   const sync = useCallback(async () => {
     if (!user) return;
-    setDataStatus("loading");
+    updateStatus({ serverData: { isLoading: true } });
 
     try {
       const accountsPromise = fetchAccounts();
@@ -287,20 +281,15 @@ export const useSync = () => {
           charts,
         });
 
-        const calculatedBudgets = budgetCalculatorLambda(newData, viewDate);
-        const calculatedAccounts = balanceCalculatorLambda(newData, viewDate);
-
-        newData.update({ ...calculatedBudgets, accounts: calculatedAccounts });
-
         return newData;
       });
 
-      setDataStatus("success");
+      updateStatus({ serverData: { isInit: true, isLoading: false } });
     } catch (err) {
       console.error(err);
-      setDataStatus("error");
+      updateStatus({ serverData: { isInit: true, isLoading: false, isError: true } });
     }
-  }, [setData, setDataStatus, user, viewDate]);
+  }, [setData, updateStatus, user]);
 
   const clean = useCallback(() => setData(new Data()), [setData]);
 

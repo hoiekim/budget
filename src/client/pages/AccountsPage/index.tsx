@@ -9,18 +9,19 @@ export const AccountsPage = () => {
   const { data, viewDate, screenType } = useAppContext();
   const { accounts } = data;
 
-  const sentinelRef = useRef(null);
-  const [isDonutShrunk, setIsDonutShrunk] = useState(false);
+  const ref = useRef(null);
+  const [donutRadius, setDonutRadius] = useState(80);
   const debouncer = useDebounce();
 
   useEffect(() => {
-    const listener: IntersectionObserverCallback = ([entry]) => {
-      debouncer(() => setIsDonutShrunk(!entry.isIntersecting));
+    const listener = () => {
+      const newRadius = Math.max(80 - window.scrollY / 2, 20);
+      setDonutRadius(newRadius);
     };
 
-    const observer = new IntersectionObserver(listener, { threshold: [1.0] });
-    if (sentinelRef.current) observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
+    window.addEventListener("scroll", listener);
+
+    return () => window.removeEventListener("scroll", listener);
   }, [debouncer]);
 
   const { donutData, currencySymbol, balanceTotal } = useMemo(() => {
@@ -52,24 +53,17 @@ export const AccountsPage = () => {
 
     return { donutData, currencySymbol, balanceTotal };
   }, [accounts, viewDate]);
-
-  let donutTop = 104;
-  if (screenType !== ScreenType.Narrow) donutTop -= 50;
+  const classNames = ["AccountsPage"];
+  if (screenType !== ScreenType.Narrow) classNames.push("wideScreen");
 
   return (
-    <div className="AccountsPage">
-      <div
-        ref={sentinelRef}
-        className="sentinel"
-        style={{ position: "absolute", top: "0", height: "1px", width: "1px" }}
-      />
+    <div className={classNames.join(" ")} ref={ref}>
       <h2>All&nbsp;Accounts</h2>
       <AccountsDonut
         balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
         donutData={donutData}
-        isShrunk={isDonutShrunk}
-        style={{ top: donutTop }}
+        radius={donutRadius}
       />
       <AccountsTable donutData={donutData} />
     </div>

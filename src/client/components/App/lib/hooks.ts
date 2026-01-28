@@ -12,14 +12,14 @@ export const useData = () => {
         return newData;
       });
     },
-    [_setData]
+    [_setData],
   );
   return [data, setData] as const;
 };
 
 export const useScreenType = () => {
   const [screenWidth, setScreenWidth] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth : 0
+    typeof window !== "undefined" ? window.innerWidth : 0,
   );
 
   useEffect(() => {
@@ -32,8 +32,8 @@ export const useScreenType = () => {
     screenWidth < 768
       ? ScreenType.Narrow
       : screenWidth >= 950
-      ? ScreenType.Wide
-      : ScreenType.Medium;
+        ? ScreenType.Wide
+        : ScreenType.Medium;
 
   return screenType;
 };

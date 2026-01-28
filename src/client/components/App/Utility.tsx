@@ -6,6 +6,7 @@ import {
   useBudgetCalculator,
   useBalanceCalculator,
   PATH,
+  statusTracker,
 } from "client";
 
 /**
@@ -14,7 +15,7 @@ import {
  * dev engineers to find them easily.
  */
 const Utility = () => {
-  const { user, router, setSelectedInterval, data, viewDate } = useAppContext();
+  const { user, router, setSelectedInterval, data, viewDate, updateStatus } = useAppContext();
   const { transactions, splitTransactions, investmentTransactions, accounts } = data;
 
   const userLoggedIn = !!user;
@@ -47,8 +48,21 @@ const Utility = () => {
    * Calculate budget roll over amounts when data is updated
    */
   useEffect(() => {
-    budgetDebouncer(calculateBudget);
-  }, [transactions, splitTransactions, accounts, viewDate, calculateBudget, budgetDebouncer]);
+    if (!statusTracker.serverData.isInit) return;
+    updateStatus({ budgetCalculation: { isLoading: true } });
+    budgetDebouncer(() => {
+      calculateBudget();
+      updateStatus({ budgetCalculation: { isInit: true, isLoading: false } });
+    });
+  }, [
+    transactions,
+    splitTransactions,
+    accounts,
+    viewDate,
+    updateStatus,
+    calculateBudget,
+    budgetDebouncer,
+  ]);
 
   const accountBalances = JSON.stringify(accounts.toArray().map((a) => ({ [a.id]: a.balances })));
 
@@ -56,12 +70,18 @@ const Utility = () => {
    * Calculate balance history when data is updated
    */
   useEffect(() => {
-    balanceDebouncer(calculateBalance);
+    if (!statusTracker.serverData.isInit) return;
+    updateStatus({ balanceCalculation: { isLoading: true } });
+    balanceDebouncer(() => {
+      calculateBalance();
+      updateStatus({ balanceCalculation: { isInit: true, isLoading: false } });
+    });
   }, [
     transactions,
     investmentTransactions,
     accountBalances,
     viewDate,
+    updateStatus,
     calculateBalance,
     balanceDebouncer,
   ]);

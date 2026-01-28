@@ -203,7 +203,7 @@ export const balanceCalculatorLambda = (data: Data, viewDate: ViewDate) => {
 export const useBalanceCalculator = () => {
   const { setData, viewDate } = useAppContext();
 
-  const callback = async () => {
+  const callback = () => {
     setData((oldData) => {
       const newData = new Data(oldData);
       const accounts = balanceCalculatorLambda(newData, viewDate);

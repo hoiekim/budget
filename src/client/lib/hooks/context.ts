@@ -1,7 +1,7 @@
 import { createContext, useContext, Dispatch, SetStateAction } from "react";
 import { MaskedUser } from "server";
 import { Interval, ViewDate, Data } from "common";
-import { ClientRouter } from "client";
+import { ClientRouter, Status, StatusUpdateCommand } from "client";
 
 export enum ScreenType {
   Narrow,
@@ -9,13 +9,11 @@ export enum ScreenType {
   Wide,
 }
 
-export type DataStatus = "loading" | "success" | "error";
-
 export interface ContextType {
   data: Data;
   setData: Dispatch<SetStateAction<Data>>;
-  dataStatus: DataStatus;
-  setDataStatus: Dispatch<SetStateAction<DataStatus>>;
+  dataStatus: Status;
+  updateStatus: (command: StatusUpdateCommand) => void;
   user: MaskedUser | undefined;
   setUser: Dispatch<SetStateAction<MaskedUser | undefined>>;
   router: ClientRouter;

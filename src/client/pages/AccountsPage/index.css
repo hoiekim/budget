@@ -16,7 +16,21 @@ div.wideScreen div.AccountsPage > h2 {
 }
 
 div.AccountsPage > div.AccountsDonut {
-  position: sticky;
+  top: 104px;
   background-color: #fffe;
   z-index: 100;
+}
+
+div.AccountsPage:not(.wideScreen) > div.AccountsDonut {
+  position: fixed;
+  width: 100%;
+}
+
+div.AccountsPage.wideScreen > div.AccountsDonut {
+  top: 54px;
+  position: sticky;
+}
+
+div.AccountsPage:not(.wideScreen) > div.AccountsTable {
+  padding-top: 184px;
 }
