@@ -47,7 +47,6 @@ const getOldestTransactionDate = async (): Promise<Date | undefined> => {
 
 interface FetchTransactionsResult {
   transactions: TransactionDictionary;
-  splitTransactions: SplitTransactionDictionary;
   investmentTransactions: InvestmentTransactionDictionary;
 }
 
@@ -57,7 +56,6 @@ const fetchTransactions = async (
 ): Promise<FetchTransactionsResult> => {
   const result = {
     transactions: new TransactionDictionary(),
-    splitTransactions: new SplitTransactionDictionary(),
     investmentTransactions: new InvestmentTransactionDictionary(),
   };
 
@@ -68,17 +66,6 @@ const fetchTransactions = async (
   oldestDate = startDate && startDate < oldestDate ? startDate : oldestDate;
 
   const promises: Promise<void>[] = [];
-
-  const getSplitTransactions = call
-    .get<SplitTransactionsGetResponse>("/api/split-transactions")
-    .then(({ body: splitTransactions }) => {
-      if (!splitTransactions) return;
-      splitTransactions.forEach((t) => {
-        result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
-      });
-    });
-
-  promises.push(getSplitTransactions);
 
   while (oldestDate < viewDate.getStartDate()) {
     accounts?.forEach((a) => {
@@ -121,6 +108,25 @@ const fetchTransactions = async (
   }
 
   await Promise.all(promises);
+
+  return result;
+};
+
+interface FetchSplitTransactionsResult {
+  splitTransactions: SplitTransactionDictionary;
+}
+
+const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> => {
+  const result = { splitTransactions: new SplitTransactionDictionary() };
+
+  await call
+    .get<SplitTransactionsGetResponse>("/api/split-transactions")
+    .then(({ body: splitTransactions }) => {
+      if (!splitTransactions) return;
+      splitTransactions.forEach((t) => {
+        result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
+      });
+    });
 
   return result;
 };
@@ -235,24 +241,26 @@ export const useSync = () => {
     const transactionsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
       ([{ accounts }, oldestDate]) => fetchTransactions(accounts, oldestDate),
     );
+    const splitTransactionsPromise = fetchSplitTransactions();
     const snapshotsPromise = oldestDatePromise.then((oldestDate) => fetchSnapshots(oldestDate));
     const budgetsPromise = fetchBudgets();
     const chartsPromise = fetchCharts();
 
-    await Promise.all([
+    const [
+      { accounts, items },
+      { transactions, investmentTransactions },
+      { splitTransactions },
+      { accountSnapshots, holdingSnapshots },
+      { budgets, sections, categories },
+      { charts },
+    ] = await Promise.all([
       accountsPromise,
-      oldestDatePromise,
       transactionsPromise,
+      splitTransactionsPromise,
       snapshotsPromise,
       budgetsPromise,
       chartsPromise,
     ]);
-
-    const { accounts, items } = await accountsPromise;
-    const { transactions, splitTransactions, investmentTransactions } = await transactionsPromise;
-    const { accountSnapshots, holdingSnapshots } = await snapshotsPromise;
-    const { budgets, sections, categories } = await budgetsPromise;
-    const { charts } = await chartsPromise;
 
     setData((oldData) => {
       const newData = new Data(oldData);

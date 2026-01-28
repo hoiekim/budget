@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import { Timeout } from "common";
 
 export type TransitionDirection = "forward" | "backward";
@@ -47,7 +47,11 @@ let isRouterRegistered = false;
 
 const getPath = () => {
   const path = window.location.pathname.split("/")[1];
-  return Object.values(PATH).find((e) => e === path) || PATH.DASHBOARD;
+  return (
+    Object.values(PATH).find((e) => e === path) ||
+    (window.localStorage.getItem("path") as PATH) ||
+    PATH.DASHBOARD
+  );
 };
 
 const getParams = () => {
@@ -60,7 +64,18 @@ const getURLString = (path: PATH, params?: URLSearchParams) => {
 };
 
 export const useRouter = (): ClientRouter => {
-  const [path, setPath] = useState(getPath());
+  const [path, _setPath] = useState<PATH>(getPath());
+  const setPath: Dispatch<SetStateAction<PATH>> = useCallback(
+    (value) => {
+      _setPath((oldValue) => {
+        const valueToStore = value instanceof Function ? value(oldValue) : value;
+        window.localStorage.setItem("path", valueToStore);
+        return valueToStore;
+      });
+    },
+    [_setPath],
+  );
+
   const [incomingPath, setIncomingPath] = useState(getPath());
   const [params, setParams] = useState(getParams());
   const [incomingParams, setIncomingParams] = useState(getParams());
@@ -70,24 +85,27 @@ export const useRouter = (): ClientRouter => {
 
   const timeout = useRef<Timeout>();
 
-  const transition = useCallback((newPath: PATH, newParams: URLSearchParams) => {
-    setIncomingPath(newPath);
-    setIncomingParams(newParams);
+  const transition = useCallback(
+    (newPath: PATH, newParams: URLSearchParams) => {
+      setIncomingPath(newPath);
+      setIncomingParams(newParams);
 
-    const endTransition = () => {
-      window.scrollTo(0, 0);
-      setPath(newPath);
-      setParams(newParams);
-      isAnimationEnabled.current = false;
-    };
+      const endTransition = () => {
+        window.scrollTo(0, 0);
+        setPath(newPath);
+        setParams(newParams);
+        isAnimationEnabled.current = false;
+      };
 
-    if (window.innerWidth < 950 && isAnimationEnabled.current) {
-      clearTimeout(timeout.current);
-      timeout.current = setTimeout(endTransition, DEFAULT_TRANSITION_DURATION);
-    } else {
-      endTransition();
-    }
-  }, []);
+      if (window.innerWidth < 950 && isAnimationEnabled.current) {
+        clearTimeout(timeout.current);
+        timeout.current = setTimeout(endTransition, DEFAULT_TRANSITION_DURATION);
+      } else {
+        endTransition();
+      }
+    },
+    [setPath],
+  );
 
   useEffect(() => {
     if (!isRouterRegistered) {
@@ -107,7 +125,7 @@ export const useRouter = (): ClientRouter => {
       transition(target, newParams || new URLSearchParams());
       window.history.pushState("", "", getURLString(target, newParams));
     },
-    [transition]
+    [transition],
   );
 
   const forward = useCallback((options?: NavigateOptions) => {
