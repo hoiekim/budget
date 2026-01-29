@@ -19,6 +19,25 @@ export enum PATH {
   CHART_ACCOUNTS = "chart-accounts",
 }
 
+const getHighLevelPage = (path: string): PATH | undefined => {
+  switch (path) {
+    case PATH.BUDGETS:
+    case PATH.BUDGET_DETAIL:
+    case PATH.BUDGET_CONFIG:
+      return PATH.BUDGETS;
+    case PATH.ACCOUNTS:
+    case PATH.ACCOUNT_DETAIL:
+      return PATH.ACCOUNTS;
+    case PATH.TRANSACTIONS:
+    case PATH.TRANSACTION_DETAIL:
+      return PATH.TRANSACTIONS;
+    case PATH.DASHBOARD:
+    case PATH.CHART_DETAIL:
+    case PATH.CHART_ACCOUNTS:
+      return PATH.DASHBOARD;
+  }
+};
+
 export interface ClientRouter {
   path: PATH;
   params: URLSearchParams;
@@ -46,12 +65,13 @@ export const DEFAULT_TRANSITION_DURATION = 300;
 let isRouterRegistered = false;
 
 const getPath = () => {
-  const path = window.location.pathname.split("/")[1];
-  return (
-    Object.values(PATH).find((e) => e === path) ||
-    (window.localStorage.getItem("path") as PATH) ||
-    PATH.DASHBOARD
-  );
+  const locationPath = window.location.pathname.split("/")[1];
+  const foundInLocation = Object.values(PATH).find((e) => e === locationPath);
+  if (foundInLocation) return foundInLocation;
+  const localStoragePath = window.localStorage.getItem("path") || "";
+  const foundInLocalStorage = getHighLevelPage(localStoragePath);
+  if (foundInLocalStorage) return foundInLocalStorage;
+  return PATH.DASHBOARD;
 };
 
 const getParams = () => {
