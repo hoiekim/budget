@@ -1,6 +1,6 @@
 import { AccountType } from "plaid";
 import { useEffect, useMemo, useState } from "react";
-import { currencyCodeToSymbol } from "common";
+import { cap, currencyCodeToSymbol } from "common";
 import { colors, getAccountBalance, ScreenType, useAppContext, useDebounce } from "client";
 import { AccountsDonut, AccountsTable, DonutData } from "client/components";
 import "./index.css";
@@ -9,11 +9,11 @@ export const AccountsPage = () => {
   const { data, viewDate, screenType } = useAppContext();
   const { accounts } = data;
 
-  const [windowScrollY, setWindowScrollY] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
   const debouncer = useDebounce();
 
   useEffect(() => {
-    const listener = () => setWindowScrollY(window.scrollY);
+    const listener = () => setScrollY(window.scrollY);
     window.addEventListener("scroll", listener);
     return () => window.removeEventListener("scroll", listener);
   }, [debouncer]);
@@ -47,11 +47,17 @@ export const AccountsPage = () => {
 
     return { donutData, currencySymbol, balanceTotal };
   }, [accounts, viewDate]);
-  const classNames = ["AccountsPage"];
-  if (screenType !== ScreenType.Narrow) classNames.push("wideScreen");
 
-  const donutRadius = Math.floor(Math.min(Math.max(80 - windowScrollY / 2, 20), 80));
-  const donutTop = screenType === ScreenType.Narrow ? 104 - Math.min(windowScrollY, 0) : undefined;
+  const isNarrow = screenType === ScreenType.Narrow;
+
+  const donutRadius = cap(80 - Math.floor(scrollY / 2), { min: 20, max: 80 });
+  const donutTop = isNarrow && scrollY >= 0 ? 104 - cap(Math.floor(scrollY), { max: 0 }) : 0;
+  const donutPosition = isNarrow && scrollY >= 0 ? "fixed" : "relative";
+
+  const tablePaddingTop = isNarrow && scrollY >= 0 ? 184 : 0;
+
+  const classNames = ["AccountsPage"];
+  if (!isNarrow) classNames.push("wideScreen");
 
   return (
     <div className={classNames.join(" ")}>
@@ -61,9 +67,9 @@ export const AccountsPage = () => {
         currencySymbol={currencySymbol}
         donutData={donutData}
         radius={donutRadius}
-        style={{ top: donutTop }}
+        style={{ top: donutTop, position: donutPosition }}
       />
-      <AccountsTable donutData={donutData} />
+      <AccountsTable donutData={donutData} style={{ paddingTop: tablePaddingTop }} />
     </div>
   );
 };

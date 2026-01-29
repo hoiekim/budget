@@ -26,14 +26,15 @@ export { call };
 
 const CACHE_KEY = "budget-cache";
 
-const promisedCache = caches.open(CACHE_KEY);
+const promisedCache = window.caches?.open(CACHE_KEY);
 const getCache = () => promisedCache;
 
-export const cleanCache = () => caches.delete(CACHE_KEY);
+export const cleanCache = () => window.caches?.delete(CACHE_KEY);
 
 export const cachedCall = async <T = any>(path: string) => {
+  const cache = await getCache();
+  if (!cache) return call.get<T>(path);
   try {
-    const cache = await getCache();
     const cachedResponse = await cache.match(path);
     if (cachedResponse) {
       const result = await cachedResponse?.json();
@@ -52,7 +53,7 @@ export const cachedCall = async <T = any>(path: string) => {
 export const read = async <T = any>(
   path: string,
   callback: (response: ApiResponse<T>) => any,
-  options?: RequestInit
+  options?: RequestInit,
 ) => {
   const response = await fetch(path, options);
   const reader = response.body?.getReader();

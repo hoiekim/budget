@@ -21,16 +21,10 @@ div.AccountsPage > div.AccountsDonut {
 }
 
 div.AccountsPage:not(.wideScreen) > div.AccountsDonut {
-  top: 104px;
-  position: fixed;
   width: 100%;
 }
 
 div.AccountsPage.wideScreen > div.AccountsDonut {
   top: 54px;
   position: sticky;
-}
-
-div.AccountsPage:not(.wideScreen) > div.AccountsTable {
-  padding-top: 184px;
 }

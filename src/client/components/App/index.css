@@ -126,6 +126,11 @@ div.Router.wideScreen {
   overflow: hidden;
   height: 100vh;
   padding-left: 80px;
+  justify-content: center;
+}
+
+div.Router.wideScreen > div > div.LoginPage {
+  padding-right: 80px;
 }
 
 div.Router.wideScreen > main,

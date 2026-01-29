@@ -17,3 +17,10 @@ export class Average {
     this.count += that.count;
   };
 }
+
+export const cap = (value: number, target: { min?: number; max?: number }) => {
+  const { min, max } = target;
+  if (min !== undefined && value < min) return min;
+  if (max !== undefined && value > max) return max;
+  return value;
+};

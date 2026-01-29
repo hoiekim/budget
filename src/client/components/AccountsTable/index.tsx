@@ -2,7 +2,7 @@ import { Account, AccountDictionary, Data } from "common";
 import { call, DonutData, useAppContext } from "client";
 import AccountRow from "./AccountRow";
 import { AccountType } from "plaid";
-import { ReactNode } from "react";
+import { CSSProperties, ReactNode } from "react";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
   institution?: boolean;
@@ -12,9 +12,10 @@ export type AccountHeaders = { [k in keyof Account]?: boolean } & {
 
 interface Props {
   donutData: DonutData[];
+  style?: CSSProperties;
 }
 
-export const AccountsTable = ({ donutData }: Props) => {
+export const AccountsTable = ({ donutData, style }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts } = data;
 
@@ -67,7 +68,7 @@ export const AccountsTable = ({ donutData }: Props) => {
   };
 
   return (
-    <div className="AccountsTable">
+    <div className="AccountsTable" style={style}>
       {!!donutAccounts.length && <div className="rows">{donutAccounts}</div>}
       {!!creditAccounts.length && <div className="rows">{creditAccounts}</div>}
       <div>{!!accounts.size && <button onClick={onClickUnhide}>Unhide&nbsp;All</button>}</div>
