@@ -16,12 +16,12 @@ div.wideScreen div.AccountsPage > h2 {
 }
 
 div.AccountsPage > div.AccountsDonut {
-  top: 104px;
   background-color: #fffe;
   z-index: 100;
 }
 
 div.AccountsPage:not(.wideScreen) > div.AccountsDonut {
+  top: 104px;
   position: fixed;
   width: 100%;
 }

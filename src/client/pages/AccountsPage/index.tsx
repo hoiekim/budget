@@ -15,7 +15,7 @@ export const AccountsPage = () => {
 
   useEffect(() => {
     const listener = () => {
-      const newRadius = Math.max(80 - window.scrollY / 2, 20);
+      const newRadius = Math.min(Math.max(80 - window.scrollY / 2, 20), 80);
       setDonutRadius(newRadius);
     };
 
