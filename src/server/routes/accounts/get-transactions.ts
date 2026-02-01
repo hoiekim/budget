@@ -1,9 +1,9 @@
 import { Route, searchTransactions, SearchTransactionsOptions } from "server";
-import { Transaction, InvestmentTransaction, SplitTransaction } from "common";
+import { JSONTransaction, JSONInvestmentTransaction } from "common";
 
 export interface TransactionsGetResponse {
-  transactions: Transaction[];
-  investmentTransactions: InvestmentTransaction[];
+  transactions: JSONTransaction[];
+  investmentTransactions: JSONInvestmentTransaction[];
 }
 
 export const getTransactionsRoute = new Route<TransactionsGetResponse>(
@@ -39,5 +39,5 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
         investmentTransactions: investment_transactions,
       },
     };
-  }
+  },
 );

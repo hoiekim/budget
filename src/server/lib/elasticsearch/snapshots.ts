@@ -1,12 +1,19 @@
 import { flatten, MaskedUser } from "server";
-import { SnapshotData, DeepPartial, Snapshot, Account, Holding, Security } from "common";
+import {
+  JSONSnapshotData,
+  DeepPartial,
+  JSONSnapshot,
+  JSONAccount,
+  JSONHolding,
+  JSONSecurity,
+} from "common";
 import { client } from "./client";
 import { getUpdateSnapshotScript } from "./scripts";
 import { index, RemovedAccount } from ".";
 
 export interface SearchSnapshotsOptions {
   range?: DateRange;
-  query?: DeepPartial<SnapshotData>;
+  query?: DeepPartial<JSONSnapshotData>;
 }
 
 interface DateRange {
@@ -42,18 +49,18 @@ export const searchSnapshots = async (user?: MaskedUser, options?: SearchSnapsho
     filter.push(
       ...Object.entries(flatten(query)).map(([key, value]) => ({
         term: { [key]: value },
-      }))
+      })),
     );
   }
 
-  const response = await client.search<SnapshotData>({
+  const response = await client.search<JSONSnapshotData>({
     index,
     from: 0,
     size: 10000,
     query: { bool: { filter } },
   });
 
-  const snapshots: SnapshotData[] = [];
+  const snapshots: JSONSnapshotData[] = [];
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
@@ -74,20 +81,20 @@ export const searchSnapshots = async (user?: MaskedUser, options?: SearchSnapsho
   return snapshots;
 };
 
-export type PartialSnapshot = Partial<Snapshot> & { snapshot_id: string };
+export type PartialSnapshot = Partial<JSONSnapshot> & { snapshot_id: string };
 export interface PartialAccountSnapshot {
   snapshot: PartialSnapshot;
   user: { user_id: string };
-  account: Partial<Account>;
+  account: Partial<JSONAccount>;
 }
 export interface PartialHoldingSnapshot {
   snapshot: PartialSnapshot;
   user: { user_id: string };
-  holding: Partial<Holding>;
+  holding: Partial<JSONHolding>;
 }
 export interface PartialSecuritySnapshot {
   snapshot: PartialSnapshot;
-  security: Partial<Security>;
+  security: Partial<JSONSecurity>;
 }
 export type PartialSnapshotData =
   | PartialAccountSnapshot
@@ -142,7 +149,7 @@ export const deleteSnapshots = async (docs: { snapshot: RemovedSnapshot }[]) => 
 
 export const deleteSnapshotsByUser = async (
   user: MaskedUser,
-  docs: { snapshot: RemovedSnapshot }[]
+  docs: { snapshot: RemovedSnapshot }[],
 ) => {
   if (!Array.isArray(docs) || !docs.length) return;
   const { user_id } = user;
@@ -165,7 +172,7 @@ export const deleteSnapshotsByUser = async (
 
 export const deleteSnapshotsByAccount = async (
   user: MaskedUser,
-  docs: { account: RemovedAccount }[]
+  docs: { account: RemovedAccount }[],
 ) => {
   if (!Array.isArray(docs) || !docs.length) return;
   const { user_id } = user;

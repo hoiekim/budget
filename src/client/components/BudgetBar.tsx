@@ -1,6 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { Budget } from "common";
-import { useAppContext, PATH, BudgetDetailPageParams } from "client";
+import { Budget, useAppContext, PATH, BudgetDetailPageParams } from "client";
 import { LabeledBar } from "client/components";
 
 const { BUDGET_DETAIL } = PATH;

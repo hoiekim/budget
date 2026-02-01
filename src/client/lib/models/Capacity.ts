@@ -1,4 +1,4 @@
-import { MAX_FLOAT, assign, getDateTimeString, getRandomId } from "common";
+import { JSONCapacity, MAX_FLOAT, assign, getDateTimeString, getRandomId } from "common";
 
 export type Interval = "year" | "month";
 export const intervals: Interval[] = ["year", "month"];
@@ -49,14 +49,14 @@ export class Capacity {
 
   active_from?: Date;
 
-  constructor(init?: Partial<Capacity>) {
+  constructor(init?: Partial<Capacity | JSONCapacity>) {
     assign(this, init);
     if (typeof this.active_from === "string") {
       this.active_from = new Date(this.active_from);
     }
   }
 
-  toJSON = () => {
+  toJSON = (): JSONCapacity => {
     const active_from = this.active_from && getDateTimeString(this.active_from);
     return { ...this, active_from };
   };
@@ -64,7 +64,7 @@ export class Capacity {
   static fromInputs = (
     capacityInput: Capacity,
     isIncomeInput: boolean,
-    isInfiniteInput: boolean
+    isInfiniteInput: boolean,
   ) => {
     const capacity = new Capacity(capacityInput);
     const sign = isIncomeInput ? -1 : 1;
@@ -89,11 +89,6 @@ export class Capacity {
   get isIncome() {
     return this.month < 0;
   }
-}
-
-export interface JSONCapacity {
-  month: number;
-  active_from?: string;
 }
 
 const sortCapacities = (a: Capacity, b: Capacity, order: "asc" | "desc" = "asc") => {

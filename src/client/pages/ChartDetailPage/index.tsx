@@ -1,5 +1,5 @@
-import { BalanceChart, CHART_TYPE, ProjectionChart } from "common";
-import { useAppContext, PATH } from "client";
+import { ChartType } from "common";
+import { BalanceChart, ProjectionChart, useAppContext, PATH } from "client";
 import {
   BalanceChartProperties,
   BalanceChartRow,
@@ -25,7 +25,7 @@ export const ChartDetailPage = () => {
 
   if (!chart) return <></>;
 
-  if (chart.type === CHART_TYPE.BALANCE) {
+  if (chart.type === ChartType.BALANCE) {
     const balanceChart = chart as BalanceChart;
     return (
       <div className="ChartDetailPage">
@@ -36,7 +36,7 @@ export const ChartDetailPage = () => {
     );
   }
 
-  if (chart.type === CHART_TYPE.PROJECTION) {
+  if (chart.type === ChartType.PROJECTION) {
     const projectionChart = chart as ProjectionChart;
     return (
       <div className="ChartDetailPage">

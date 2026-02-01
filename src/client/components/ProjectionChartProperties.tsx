@@ -1,5 +1,15 @@
-import { Chart, CHART_TYPE, ChartDictionary, Data, getDateString, ProjectionChart } from "common";
-import { call, CapacityInput, PATH, useAppContext, useDebounce } from "client";
+import { ChartType, getDateString } from "common";
+import {
+  Chart,
+  ChartDictionary,
+  Data,
+  ProjectionChart,
+  call,
+  CapacityInput,
+  PATH,
+  useAppContext,
+  useDebounce,
+} from "client";
 import {
   ChangeEventHandler,
   FocusEventHandler,
@@ -29,7 +39,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const { data, setData } = useAppContext();
   const { accounts } = data;
 
-  const [selectedType, setSelectedType] = useState<CHART_TYPE>(type);
+  const [selectedType, setSelectedType] = useState<ChartType>(type);
   const [nameInput, setNameInput] = useState(name);
 
   const updateDebouncer = useDebounce();
@@ -58,7 +68,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   };
 
   const onChangeType: ChangeEventHandler<HTMLSelectElement> = (e) => {
-    const newType = e.target.value as CHART_TYPE;
+    const newType = e.target.value as ChartType;
     setSelectedType(newType);
     updateChart({ type: newType });
   };
@@ -169,13 +179,13 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
         <div className="row keyValue">
           <span className="propertyName">Chart&nbsp;Type</span>
           <select value={selectedType} onChange={onChangeType}>
-            {Object.values(CHART_TYPE).map((v) => {
+            {Object.values(ChartType).map((v) => {
               const chartTypeName =
-                v === CHART_TYPE.BALANCE
+                v === ChartType.BALANCE
                   ? "Balance Chart"
-                  : CHART_TYPE.PROJECTION
-                  ? "Projection Chart"
-                  : "";
+                  : ChartType.PROJECTION
+                    ? "Projection Chart"
+                    : "";
               return (
                 <option key={`chart_type_option_${v}`} value={v}>
                   {chartTypeName}

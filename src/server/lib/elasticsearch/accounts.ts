@@ -1,5 +1,5 @@
 import { flatten } from "server";
-import { Account, Holding, Institution, Security } from "common";
+import { JSONAccount, JSONHolding, JSONInstitution, JSONSecurity } from "common";
 import { client } from "./client";
 import { MaskedUser } from "./users";
 import {
@@ -10,7 +10,7 @@ import {
 } from "./scripts";
 import { index } from ".";
 
-export type PartialAccount = { account_id: string } & Partial<Account>;
+export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
 /**
  * Updates or inserts accounts documents associated with given user.
@@ -22,7 +22,7 @@ export type PartialAccount = { account_id: string } & Partial<Account>;
 export const upsertAccounts = async (
   user: MaskedUser,
   accounts: PartialAccount[],
-  upsert: boolean = true
+  upsert: boolean = true,
 ) => {
   if (!accounts.length) return [];
   const { user_id } = user;
@@ -57,8 +57,8 @@ export const searchAccounts = async (user: MaskedUser) => {
   const { user_id } = user;
 
   const response = await client.search<{
-    account: Account;
-    holding: Holding;
+    account: JSONAccount;
+    holding: JSONHolding;
   }>({
     index,
     from: 0,
@@ -78,8 +78,8 @@ export const searchAccounts = async (user: MaskedUser) => {
   });
 
   type Result = {
-    accounts: Account[];
-    holdings: Holding[];
+    accounts: JSONAccount[];
+    holdings: JSONHolding[];
   };
 
   const result: Result = {
@@ -91,8 +91,8 @@ export const searchAccounts = async (user: MaskedUser) => {
     const source = e._source;
     if (!source) return;
     const { account, holding } = source;
-    if (account) result.accounts.push(new Account(account));
-    if (holding) result.holdings.push(new Holding(holding));
+    if (account) result.accounts.push(account);
+    if (holding) result.holdings.push(holding);
   });
 
   return result;
@@ -107,7 +107,7 @@ export const searchAccounts = async (user: MaskedUser) => {
 export const searchAccountsById = async (user: MaskedUser, accountIds: string[]) => {
   const { user_id } = user;
 
-  const response = await client.search<{ account: Account }>({
+  const response = await client.search<{ account: JSONAccount }>({
     index,
     from: 0,
     size: 10000,
@@ -126,13 +126,13 @@ export const searchAccountsById = async (user: MaskedUser, accountIds: string[])
     },
   });
 
-  const accounts: Account[] = [];
+  const accounts: JSONAccount[] = [];
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     if (!source) return;
     const { account } = source;
-    if (account) accounts.push(new Account(account));
+    if (account) accounts.push(account);
   });
 
   return accounts;
@@ -147,7 +147,7 @@ export const searchAccountsById = async (user: MaskedUser, accountIds: string[])
 export const searchAccountsByItemId = async (user: MaskedUser, item_id: string) => {
   const { user_id } = user;
 
-  const response = await client.search<{ account: Account }>({
+  const response = await client.search<{ account: JSONAccount }>({
     index,
     from: 0,
     size: 10000,
@@ -162,13 +162,13 @@ export const searchAccountsByItemId = async (user: MaskedUser, item_id: string) 
     },
   });
 
-  const accounts: Account[] = [];
+  const accounts: JSONAccount[] = [];
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     if (!source) return;
     const { account } = source;
-    if (account) accounts.push(new Account(account));
+    if (account) accounts.push(account);
   });
 
   return accounts;
@@ -184,7 +184,10 @@ export interface RemovedAccount {
  * @param accounts
  * @returns A promise to be an array of Account objects
  */
-export const deleteAccounts = async (user: MaskedUser, accounts: (Account | RemovedAccount)[]) => {
+export const deleteAccounts = async (
+  user: MaskedUser,
+  accounts: (JSONAccount | RemovedAccount)[],
+) => {
   if (!Array.isArray(accounts) || !accounts.length) return;
   const { user_id } = user;
 
@@ -212,7 +215,7 @@ export const searchHoldingsByAccountId = async (user: MaskedUser, accountIds: st
   if (!Array.isArray(accountIds) || !accountIds.length) return [];
   const { user_id } = user;
 
-  const response = await client.search<{ holding: Holding }>({
+  const response = await client.search<{ holding: JSONHolding }>({
     index,
     from: 0,
     size: 10000,
@@ -231,24 +234,24 @@ export const searchHoldingsByAccountId = async (user: MaskedUser, accountIds: st
     },
   });
 
-  const holdings: Holding[] = [];
+  const holdings: JSONHolding[] = [];
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     if (!source) return;
     const { holding } = source;
-    if (holding) holdings.push(new Holding(holding));
+    if (holding) holdings.push(holding);
   });
 
   return holdings;
 };
 
-export type PartialHolding = { holding_id: string } & Partial<Holding>;
+export type PartialHolding = { holding_id: string } & Partial<JSONHolding>;
 
 export const upsertHoldings = async (
   user: MaskedUser,
   holdings: PartialHolding[],
-  upsert: boolean = true
+  upsert: boolean = true,
 ) => {
   if (!holdings.length) return [];
   const { user_id } = user;
@@ -278,7 +281,10 @@ export interface RemovedHolding {
   holding_id: string;
 }
 
-export const deleteHoldings = async (user: MaskedUser, holdings: (Holding | RemovedHolding)[]) => {
+export const deleteHoldings = async (
+  user: MaskedUser,
+  holdings: (JSONHolding | RemovedHolding)[],
+) => {
   if (!Array.isArray(holdings) || !holdings.length) return;
   const { user_id } = user;
 
@@ -302,8 +308,8 @@ export const deleteHoldings = async (user: MaskedUser, holdings: (Holding | Remo
   return response;
 };
 
-export const searchSecurities = async (query: Partial<Security>) => {
-  const response = await client.search<{ security: Security }>({
+export const searchSecurities = async (query: Partial<JSONSecurity>) => {
+  const response = await client.search<{ security: JSONSecurity }>({
     index,
     from: 0,
     size: 10000,
@@ -319,20 +325,20 @@ export const searchSecurities = async (query: Partial<Security>) => {
     },
   });
 
-  const securities: Security[] = [];
+  const securities: JSONSecurity[] = [];
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     if (!source) return;
     const { security } = source;
-    if (security) securities.push(new Security(security));
+    if (security) securities.push(security);
   });
 
   return securities;
 };
 
 export const searchSecuritiesById = async (securityIds: string[]) => {
-  const response = await client.search<{ security: Security }>({
+  const response = await client.search<{ security: JSONSecurity }>({
     index,
     from: 0,
     size: 10000,
@@ -350,19 +356,19 @@ export const searchSecuritiesById = async (securityIds: string[]) => {
     },
   });
 
-  const securities: Security[] = [];
+  const securities: JSONSecurity[] = [];
 
   response.hits.hits.forEach((e) => {
     const source = e._source;
     if (!source) return;
     const { security } = source;
-    if (security) securities.push(new Security(security));
+    if (security) securities.push(security);
   });
 
   return securities;
 };
 
-export type PartialSecurity = { security_id: string } & Partial<Security>;
+export type PartialSecurity = { security_id: string } & Partial<JSONSecurity>;
 
 export const upsertSecurities = async (securities: PartialSecurity[], upsert: boolean = true) => {
   if (!securities.length) return [];
@@ -393,11 +399,11 @@ export const upsertSecurities = async (securities: PartialSecurity[], upsert: bo
  * @param user_id
  * @returns A promise to be an array of Account objects
  */
-export const searchInstitutionById = async (id: string) => {
+export const searchInstitutionById = async (id: string): Promise<JSONInstitution | undefined> => {
   const response = await client
     .get<{
       type: string;
-      institution: Institution;
+      institution: JSONInstitution;
     }>({ index, id })
     .catch((r) => {
       if (r.statusCode === 404) return;
@@ -407,14 +413,14 @@ export const searchInstitutionById = async (id: string) => {
   const source = response?._source;
   if (source?.type !== "institution") return;
 
-  return new Institution(source.institution);
+  return source.institution;
 };
 
-export type PartialInstitution = { institution_id: string } & Partial<Institution>;
+export type PartialInstitution = { institution_id: string } & Partial<JSONInstitution>;
 
 export const upsertInstitutions = async (
   institutions: PartialInstitution[],
-  upsert: boolean = true
+  upsert: boolean = true,
 ) => {
   if (!institutions.length) return [];
 

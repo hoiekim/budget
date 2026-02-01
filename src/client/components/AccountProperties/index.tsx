@@ -1,14 +1,13 @@
 import { AccountType } from "plaid";
 import { useMemo } from "react";
 import {
-  Account,
   currencyCodeToSymbol,
   ItemProvider,
   numberToCommaString,
   toTitleCase,
   ViewDate,
 } from "common";
-import { PATH, ScreenType, useAccountGraph, useAppContext } from "client";
+import { Account, PATH, ScreenType, useAccountGraph, useAppContext } from "client";
 import {
   DateLabel,
   DynamicCapacityInput,

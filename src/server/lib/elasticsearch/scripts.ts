@@ -1,4 +1,4 @@
-import { Account, Holding, JSONChart, Security } from "common";
+import { JSONAccount, JSONHolding, JSONChart, JSONSecurity } from "common";
 import {
   flatten,
   MaskedUser,
@@ -58,14 +58,14 @@ export const getUpdateTransactionScript = (user: MaskedUser, transaction: Partia
 
 export const getUpdateInvestmentTransactionScript = (
   user: MaskedUser,
-  investmentTransaction: PartialInvestmentTransaction
+  investmentTransaction: PartialInvestmentTransaction,
 ) => {
   return getUpdateScriptWithUser(user, "investment_transaction", investmentTransaction);
 };
 
 export const getUpdateSplitTransactionScript = (
   user: MaskedUser,
-  splitTransaction: PartialSplitTransaction
+  splitTransaction: PartialSplitTransaction,
 ) => {
   return getUpdateScriptWithUser(user, "split_transaction", splitTransaction);
 };
@@ -108,7 +108,7 @@ export const getUpdateChartScript = (user: MaskedUser, chart: Partial<JSONChart>
 
 export const getUpdateSnapshotScript = (snapshot: PartialSnapshotData) => {
   let type: "account" | "holding" | "security";
-  let data: Partial<Account> | Partial<Holding> | Partial<Security>;
+  let data: Partial<JSONAccount> | Partial<JSONHolding> | Partial<JSONSecurity>;
   let user_id: string | undefined = undefined;
   if ("account" in snapshot) {
     type = "account";

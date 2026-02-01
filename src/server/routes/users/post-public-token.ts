@@ -10,10 +10,10 @@ import {
   syncPlaidTransactions,
   searchItems,
 } from "server";
-import { getDateString, Item, ItemProvider, ItemStatus } from "common";
+import { getDateString, JSONItem, ItemProvider, ItemStatus, getRandomId } from "common";
 
 export interface PbulicTokenPostResponse {
-  item: Item;
+  item: JSONItem;
 }
 
 export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
@@ -45,7 +45,7 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       }
 
       await upsertItems(user, [item]);
-      await syncSimpleFinData(item.id);
+      await syncSimpleFinData(item.item_id);
 
       return { status: "success", body: { item } };
     } else if (provider === ItemProvider.PLAID) {
@@ -60,7 +60,7 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       const item = await exchangePlaidToken(user, public_token, institution_id);
       await upsertItems(user, [item]);
 
-      await Promise.all([syncPlaidAccounts(item.id), syncPlaidTransactions(item.id)]);
+      await Promise.all([syncPlaidAccounts(item.item_id), syncPlaidTransactions(item.item_id)]);
 
       return { status: "success", body: { item } };
     } else if (provider === ItemProvider.MANUAL) {
@@ -71,12 +71,15 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
           message: "Manual item already exists for the user",
         };
       } else {
-        const item = new Item({
+        const item: JSONItem = {
+          item_id: getRandomId(),
           access_token: "no_access_token",
           provider,
           updated: getDateString(new Date()),
           status: ItemStatus.OK,
-        });
+          institution_id: null,
+          available_products: [],
+        };
         await upsertItems(user, [item]);
         return { status: "success", body: { item } };
       }
@@ -86,32 +89,34 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
         message: "Request has wrong type of provider",
       };
     }
-  }
+  },
 );
 
 const exchangePlaidToken = async (
   user: MaskedUser,
   public_token: string,
-  institution_id: string
-) => {
+  institution_id: string,
+): Promise<JSONItem> => {
   const { access_token, item_id } = await plaid.exchangePublicToken(user, public_token);
   const { consented_products = [], products = [] } = await plaid.getItem(access_token);
-  return new Item({
+  return {
     item_id,
     access_token,
     institution_id,
     available_products: [...consented_products, ...products],
     status: ItemStatus.OK,
     provider: ItemProvider.PLAID,
-  });
+  };
 };
 
-const exchangeSimpleFinToken = async (setupToken: string) => {
+const exchangeSimpleFinToken = async (setupToken: string): Promise<JSONItem> => {
   const accessUrl = await simpleFin.exchangeSetupToken(setupToken);
-  return new Item({
+  return {
     item_id: randomUUID(),
     access_token: accessUrl,
     status: ItemStatus.OK,
     provider: ItemProvider.SIMPLE_FIN,
-  });
+    institution_id: null,
+    available_products: [],
+  };
 };

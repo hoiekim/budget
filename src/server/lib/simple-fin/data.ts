@@ -1,11 +1,11 @@
 import {
-  Account,
-  Holding,
-  Institution,
-  InvestmentTransaction,
-  Item,
-  Security,
-  Transaction,
+  JSONAccount,
+  JSONHolding,
+  JSONInstitution,
+  JSONInvestmentTransaction,
+  JSONItem,
+  JSONSecurity,
+  JSONTransaction,
 } from "common";
 import { decodeAccessUrl } from "./tokens";
 import {
@@ -22,7 +22,7 @@ export interface GetSimpleFinDataOptions {
   accountId?: string;
 }
 
-export const getData = async (item: Item, options: GetSimpleFinDataOptions) => {
+export const getData = async (item: JSONItem, options: GetSimpleFinDataOptions) => {
   const { access_token } = item;
   const { startDate, endDate = new Date(), accountId } = options;
   const { url, credentials } = decodeAccessUrl(access_token);
@@ -43,13 +43,13 @@ export const getData = async (item: Item, options: GetSimpleFinDataOptions) => {
   return modelize(item, data.accounts);
 };
 
-const modelize = async (item: Item, simpleFinAccounts: SimpleFinAccount[]) => {
-  const accounts: Account[] = [];
-  const institutions: Institution[] = [];
-  const transactions: Transaction[] = [];
-  const investmentTransactions: InvestmentTransaction[] = [];
-  const holdings: Holding[] = [];
-  const securities: Security[] = [];
+const modelize = async (item: JSONItem, simpleFinAccounts: SimpleFinAccount[]) => {
+  const accounts: JSONAccount[] = [];
+  const institutions: JSONInstitution[] = [];
+  const transactions: JSONTransaction[] = [];
+  const investmentTransactions: JSONInvestmentTransaction[] = [];
+  const holdings: JSONHolding[] = [];
+  const securities: JSONSecurity[] = [];
 
   for (const simpleFinAccount of simpleFinAccounts) {
     const { transactions: simpleFinTransactions, holdings: simpleFinHoldings } = simpleFinAccount;

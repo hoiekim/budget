@@ -4,81 +4,132 @@ import {
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import { plaid } from "server";
-import { getRandomId, assign } from "common";
 
-export class AccountLabel {
+export interface AccountLabel {
   budget_id?: string | null;
-  constructor(init?: Partial<AccountLabel>) {
-    assign(this, init);
-  }
 }
 
-export class AccountGraphOptions {
-  useSnapshots = true;
-  useTransactions = true;
-  constructor(init?: Partial<AccountGraphOptions>) {
-    assign(this, init);
-  }
+export interface AccountGraphOptions {
+  useSnapshots: boolean;
+  useTransactions: boolean;
 }
 
-const balanceMap = new Map<string, number[]>();
-
-export class Account implements plaid.PlaidAccount {
-  get id() {
-    return this.account_id;
-  }
-  set id(_: string) {}
-
-  get balanceHistory() {
-    return balanceMap.get(this.id);
-  }
-
-  set balanceHistory(balanceHistory: number[] | undefined) {
-    if (balanceHistory) balanceMap.set(this.id, balanceHistory);
-    else balanceMap.delete(this.id);
-  }
-
-  account_id: string = getRandomId();
-  balances: AccountBalance = {
-    available: 0,
-    current: 0,
-    limit: 0,
-    iso_currency_code: "USD",
-    unofficial_currency_code: "USD",
-  };
-  mask: string | null = null;
-  name: string = "Unknown";
-  official_name: string | null = null;
-  type = AccountType.Other;
-  subtype: AccountSubtype | null = null;
+export interface JSONAccount extends PlaidAccount {
+  account_id: string;
+  balances: AccountBalance;
+  mask: string | null;
+  name: string;
+  official_name: string | null;
+  type: AccountType;
+  subtype: AccountSubtype | null;
   verification_status?: AccountBaseVerificationStatusEnum;
-  institution_id: string = "Unknown";
-  item_id: string = "Unknown";
+  institution_id: string;
+  item_id: string;
   /**
    * User defined name. This name is dintinct from account.name or
    * account.official_name which are provided Plaid.
    */
-  custom_name: string = "";
+  custom_name: string;
   /**
    * Determines if the account is hidden. If hidden, the account is not considered
    * when calculating remaining budget and so on.
    */
-  hide: boolean = false;
+  hide: boolean;
   /**
    * Represents relations by budget_id.
    */
-  label = new AccountLabel();
+  label: AccountLabel;
   /**
    * Graph display preferences for the account.
    */
-  graphOptions = new AccountGraphOptions();
+  graphOptions: AccountGraphOptions;
+}
 
-  constructor(init?: Partial<Account>) {
-    assign(this, init);
-    if (init?.label) this.label = new AccountLabel(init.label);
-    if (init?.graphOptions) {
-      this.graphOptions = new AccountGraphOptions(init.graphOptions);
-    }
-  }
+/**
+ * Properties of `PlaidAccount` type are mostly just simple copies of `AccountBase`.
+ * Except that `AccountBase` has mapped properties as `{ [key: string]: any }`.
+ * We intend to avoid usage of this explicit `any` for strict type checking.
+ */
+export interface PlaidAccount {
+  /**
+   * Plaid’s unique identifier for the account. This value will not change unless
+   * Plaid can\'t reconcile the account with the data returned by the financial
+   * institution. This may occur, for example, when the name of the account changes.
+   * If this happens a new `account_id` will be assigned to the account.  The
+   * `account_id` can also change if the `access_token` is deleted and the same
+   * credentials that were used to generate that `access_token` are used to generate
+   * a new `access_token` on a later date. In that case, the new `account_id` will be
+   * different from the old `account_id`.  If an account with a specific `account_id`
+   * disappears instead of changing, the account is likely closed. Closed accounts are
+   * not returned by the Plaid API.  Like all Plaid identifiers, the `account_id` is
+   * case sensitive.
+   * @type {string}
+   * @memberof AccountBase
+   */
+  account_id: string;
+  /**
+   *
+   * @type {AccountBalance}
+   * @memberof AccountBase
+   */
+  balances: AccountBalance;
+  /**
+   * The last 2-4 alphanumeric characters of an account\'s official account number.
+   * Note that the mask may be non-unique between an Item\'s accounts, and it may also
+   * not match the mask that the bank displays to the user.
+   * @type {string}
+   * @memberof AccountBase
+   */
+  mask: string | null;
+  /**
+   * The name of the account, either assigned by the user or by the financial
+   * institution itself
+   * @type {string}
+   * @memberof AccountBase
+   */
+  name: string;
+  /**
+   * The official name of the account as given by the financial institution
+   * @type {string}
+   * @memberof AccountBase
+   */
+  official_name: string | null;
+  /**
+   *
+   * @type {AccountType}
+   * @memberof AccountBase
+   */
+  type: AccountType;
+  /**
+   *
+   * @type {AccountSubtype}
+   * @memberof AccountBase
+   */
+  subtype: AccountSubtype | null;
+  /**
+   * The current verification status of an Auth Item initiated through Automated
+   * or Manual micro-deposits.  Returned for Auth Items only.
+   * `pending_automatic_verification`: The Item is pending automatic verification
+   * `pending_manual_verification`: The Item is pending manual micro-deposit
+   * verification. Items remain in this state until the user successfully verifies
+   * the two amounts. `automatically_verified`: The Item has successfully been
+   * automatically verified `manually_verified`: The Item has successfully been
+   * manually verified  `verification_expired`: Plaid was unable to automatically
+   * verify the deposit within 7 calendar days and will no longer attempt to validate
+   * the Item. Users may retry by submitting their information again through Link.
+   * `verification_failed`: The Item failed manual micro-deposit verification because
+   * the user exhausted all 3 verification attempts. Users may retry by submitting
+   * their information again through Link.
+   * @type {string}
+   * @memberof AccountBase
+   */
+  verification_status?: AccountBaseVerificationStatusEnum;
+  /**
+   * The ID of the institution that the account belongs to.
+   */
+  institution_id: string;
+  /**
+   * The ID of the item that the account belongs to.
+   */
+  item_id: string;
 }

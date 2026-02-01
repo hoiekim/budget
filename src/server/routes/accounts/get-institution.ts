@@ -1,7 +1,7 @@
 import { plaid, Route, searchInstitutionById, upsertInstitutions } from "server";
-import { Institution } from "common";
+import { JSONInstitution } from "common";
 
-export type InstitutionGetResponse = Institution;
+export type InstitutionGetResponse = JSONInstitution;
 
 export const getInstitutionRoute = new Route<InstitutionGetResponse>(
   "GET",
@@ -25,5 +25,5 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
       upsertInstitutions([newInstitution]).catch(console.error);
       return { status: "success", body: newInstitution };
     }
-  }
+  },
 );

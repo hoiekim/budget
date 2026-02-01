@@ -3,7 +3,7 @@
  * https://polygon.io/docs/stocks/getting-started
  */
 
-import { getDateString, getDateTimeString, Security } from "common";
+import { getDateString, getDateTimeString, getRandomId, JSONSecurity } from "common";
 
 const POLYGON_HOST = "https://api.polygon.io";
 const { POLYGON_API_KEY } = process.env;
@@ -34,7 +34,10 @@ export const getTickerDetail = async (ticker_symbol: string) => {
   return { ticker_symbol, name, currency_name };
 };
 
-export const getSecurityForSymbol = async (ticker_symbol: string, date = new Date()) => {
+export const getSecurityForSymbol = async (
+  ticker_symbol: string,
+  date = new Date(),
+): Promise<JSONSecurity | undefined> => {
   const [close_price, detail] = await Promise.all([
     getClosePrice(ticker_symbol, date),
     getTickerDetail(ticker_symbol),
@@ -44,11 +47,27 @@ export const getSecurityForSymbol = async (ticker_symbol: string, date = new Dat
 
   const { name, currency_name } = detail;
 
-  return new Security({
+  return {
+    security_id: getRandomId(),
     ticker_symbol,
     name,
     iso_currency_code: currency_name.toUpperCase(),
     close_price,
     close_price_as_of: getDateTimeString(date),
-  });
+    isin: null,
+    cusip: null,
+    sedol: null,
+    institution_security_id: null,
+    institution_id: null,
+    proxy_security_id: null,
+    is_cash_equivalent: null,
+    type: null,
+    update_datetime: null,
+    unofficial_currency_code: null,
+    market_identifier_code: null,
+    sector: null,
+    industry: null,
+    option_contract: null,
+    fixed_income: null,
+  };
 };

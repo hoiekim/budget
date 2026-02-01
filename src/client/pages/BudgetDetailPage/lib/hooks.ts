@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { Budget, ViewDate } from "common";
-import { AreaInput, GraphInput, LineInput, useAppContext } from "client";
+import { ViewDate } from "common";
+import { Budget, AreaInput, GraphInput, LineInput, useAppContext } from "client";
 
 export const useBudgetGraph = (budget: Budget) => {
   const { data, viewDate } = useAppContext();

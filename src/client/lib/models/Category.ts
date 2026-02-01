@@ -1,5 +1,5 @@
-import { getRandomId, assign } from "common";
-import { BudgetFamily, JSONBudgetFamily } from "./BudgetFamily";
+import { getRandomId, assign, JSONCategory } from "common";
+import { BudgetFamily } from "./BudgetFamily";
 
 export class Category extends BudgetFamily {
   get id() {
@@ -18,9 +18,8 @@ export class Category extends BudgetFamily {
     assign(this, init);
     this.fromJSON();
   }
-}
 
-export interface JSONCategory extends JSONBudgetFamily {
-  category_id: string;
-  section_id: string;
+  toJSON(): JSONCategory {
+    return { ...this, ...super.toJSON() };
+  }
 }

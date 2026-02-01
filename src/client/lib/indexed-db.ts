@@ -12,7 +12,7 @@ import {
   Category,
   Chart,
   Dictionary,
-} from "common";
+} from "client";
 
 const DB_NAME = "BudgetApp";
 const DB_VERSION = 1;

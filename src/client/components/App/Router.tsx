@@ -34,14 +34,12 @@ const getPage = (path: string) => {
 };
 
 const Router = () => {
-  const { user, router, dataStatus, screenType } = useAppContext();
+  const { user, router, status, screenType } = useAppContext();
   const { path, transition } = router;
   const { incomingPath, transitioning, direction } = transition;
 
   const classNames = ["Router"];
   if (transitioning && direction) classNames.push("transitioning", direction);
-
-  const isNotReady = dataStatus === "not_ready";
 
   const currentPage = useMemo(() => getPage(path), [path]);
   const incomingPage = useMemo(() => getPage(incomingPath), [incomingPath]);
@@ -61,7 +59,7 @@ const Router = () => {
           {transitioning && direction === "backward" && incomingPage}
         </div>
         <div className="currentPage">
-          {!user ? <></> : isNotReady ? <div className="loading" /> : currentPage}
+          {!user ? <></> : status.isInit ? currentPage : <div className="loading" />}
         </div>
         <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
       </div>
@@ -74,15 +72,15 @@ const Router = () => {
     <div className={classNames.join(" ")}>
       {!user ? (
         <></>
-      ) : isNotReady ? (
-        <div className="loading" />
-      ) : (
+      ) : status.isInit ? (
         <>
           <main>{currentPage}</main>
           <aside>
             <TransactionsPage />
           </aside>
         </>
+      ) : (
+        <div className="loading" />
       )}
     </div>
   );

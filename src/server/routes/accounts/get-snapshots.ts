@@ -1,7 +1,7 @@
-import { SnapshotData } from "common";
+import { JSONSnapshotData } from "common";
 import { Route, searchSnapshots, SearchSnapshotsOptions } from "server";
 
-export type SnapshotsGetResponse = SnapshotData[];
+export type SnapshotsGetResponse = JSONSnapshotData[];
 
 export const getSnapshotsRoute = new Route<SnapshotsGetResponse>(
   "GET",
@@ -33,5 +33,5 @@ export const getSnapshotsRoute = new Route<SnapshotsGetResponse>(
     const snapshots = await searchSnapshots(user, options);
 
     return { status: "success", body: snapshots };
-  }
+  },
 );

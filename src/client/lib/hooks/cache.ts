@@ -1,5 +1,5 @@
-import { Dictionary } from "common";
 import { useCallback, useState, Dispatch, SetStateAction, useRef } from "react";
+import { Dictionary } from "client";
 
 const parseMap = (s: string) => new Map(JSON.parse(s));
 const parseDictionary = (s: string) => new Dictionary(JSON.parse(s));
@@ -33,7 +33,7 @@ export const useLocalStorageState = <T>(key: string, initialValue: T) => {
         console.error(error);
       }
     },
-    [setStoredValue, key, isMap, isDictionary]
+    [setStoredValue, key, isMap, isDictionary],
   );
 
   return [storedValue, setValue] as const;
@@ -55,7 +55,7 @@ export const useMemoryState = <T>(key: string | undefined, initialValue: T) => {
         return newState;
       });
     },
-    [key]
+    [key],
   );
 
   return [state, setState] as const;

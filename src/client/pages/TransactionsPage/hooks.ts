@@ -1,6 +1,6 @@
-import { useAppContext } from "client";
-import { getHitScore, InvestmentTransaction, SplitTransaction, Transaction } from "common";
 import { useCallback } from "react";
+import { getHitScore } from "common";
+import { useAppContext, InvestmentTransaction, SplitTransaction, Transaction } from "client";
 
 export const useTransactionHit = () => {
   const { data } = useAppContext();
@@ -45,7 +45,7 @@ export const useTransactionHit = () => {
 
       return totalScore / searchWords.length;
     },
-    [accounts, budgets, sections, categories, institutions]
+    [accounts, budgets, sections, categories, institutions],
   );
   return hit;
 };

@@ -1,4 +1,4 @@
-import { Item, ItemStatus } from "common";
+import { JSONItem, ItemStatus } from "common";
 import { client } from "./client";
 import { MaskedUser, searchUser, User } from "./users";
 import { getUpdateItemScript } from "./scripts";
@@ -14,7 +14,7 @@ import { index } from ".";
 export const upsertItems = async (
   user: MaskedUser,
   items: PartialItem[],
-  upsert: boolean = true
+  upsert: boolean = true,
 ) => {
   if (!items.length) return [];
   const { user_id } = user;
@@ -42,7 +42,7 @@ export const upsertItems = async (
   return response.items;
 };
 
-export type PartialItem = { item_id: string } & Partial<Item>;
+export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
 /**
  * Searches for items associated with given user.
@@ -55,7 +55,7 @@ export const searchItems = async (user?: MaskedUser) => {
   const filter: any[] = [{ term: { type: "item" } }];
   if (user_id) filter.push({ term: { "user.user_id": user_id } });
 
-  const response = await client.search<{ item: Item }>({
+  const response = await client.search<{ item: JSONItem }>({
     index,
     from: 0,
     size: 10000,
@@ -66,9 +66,9 @@ export const searchItems = async (user?: MaskedUser) => {
     .map((e) => {
       const source = e._source;
       if (!source) return null;
-      return new Item({ ...source.item, item_id: e._id });
+      return { ...source.item, item_id: e._id };
     })
-    .filter((e): e is Item => !!e);
+    .filter((e): e is JSONItem => !!e);
 };
 
 /**
@@ -77,14 +77,14 @@ export const searchItems = async (user?: MaskedUser) => {
  * @returns A promise to be an Item object
  */
 export const getItem = async (item_id: string) => {
-  const response = await client.get<{ item: Item }>({ index, id: item_id });
+  const response = await client.get<{ item: JSONItem }>({ index, id: item_id });
   const item = response._source?.item;
   if (!item) return;
-  return new Item(item);
+  return item;
 };
 
 export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
-  type ItemDoc = { item: Item; user: { user_id: string } };
+  type ItemDoc = { item: JSONItem; user: { user_id: string } };
   const response = await client.get<ItemDoc>({ index, id: item_id });
   const itemDoc = response._source;
   if (!itemDoc) return;
@@ -95,16 +95,16 @@ export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
 };
 
 export const getUserItem = async (
-  item_id: string
-): Promise<{ user: User; item: Item } | undefined> => {
-  type ItemDoc = { item: Item; user: { user_id: string } };
+  item_id: string,
+): Promise<{ user: User; item: JSONItem } | undefined> => {
+  type ItemDoc = { item: JSONItem; user: { user_id: string } };
   const response = await client.get<ItemDoc>({ index, id: item_id });
   const itemDoc = response._source;
   if (!itemDoc) return;
   const { item, user } = itemDoc;
   const foundUser = await searchUser({ user_id: user.user_id });
   if (!foundUser) return;
-  return { user: foundUser, item: new Item(item) };
+  return { user: foundUser, item };
 };
 
 /**

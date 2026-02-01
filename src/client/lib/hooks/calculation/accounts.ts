@@ -1,0 +1,375 @@
+import { useMemo } from "react";
+import { AccountSubtype, AccountType } from "plaid";
+import { getYearMonthString, isDate, ViewDate } from "common";
+import {
+  Account,
+  AccountSnapshot,
+  InvestmentTransaction,
+  Transaction,
+  GraphInput,
+  useAppContext,
+  Data,
+  AccountDictionary,
+  AccountSnapshotDictionary,
+  InvestmentTransactionDictionary,
+  TransactionDictionary,
+} from "client";
+
+export const getAccountBalance = (account: Account) => {
+  const balanceCurrent = account.balances.current || 0;
+  const balanceAvailalbe = account.balances.available || 0;
+  let value = 0;
+  if (account.type === AccountType.Investment) {
+    if (account.subtype === AccountSubtype.CryptoExchange) value = balanceCurrent;
+    else value = balanceCurrent + balanceAvailalbe;
+  } else {
+    value = balanceCurrent;
+  }
+  return value;
+};
+
+/**
+ * Balance history stored by `accountId` and `span`. `span` is 0-indexed time interval
+ * where 0 is today, 1 is one month(or year) ago, 2 is two month(or year) ago, etc.
+ * @example const balanceAmount = balanceData.get(accountId, span);
+ */
+class BalanceDataDeprecated {
+  private data = new Map<string, number[]>();
+
+  get size() {
+    return this.data.size;
+  }
+
+  length = 0;
+
+  set = (accountId: string, span: number, amount: number) => {
+    if (!this.data.has(accountId)) this.data.set(accountId, []);
+    const accountData = this.data.get(accountId)!;
+    accountData[span] = amount;
+    this.length = Math.max(this.length, accountData.length);
+  };
+
+  get(accountId: string, span: number): number | undefined;
+  get(accountId: string): number[];
+  get(accountId: string, span?: number) {
+    const accountData = this.data.get(accountId);
+    if (span === undefined) return accountData || [];
+    if (!accountData) return undefined;
+    return accountData[span];
+  }
+
+  /**
+   * Add amount to specified position. If data doesn't exist, assume it was 0.
+   */
+  add = (accountId: string, span: number, amount: number) => {
+    const existing = this.get(accountId, span) || 0;
+    this.set(accountId, span, existing + amount);
+  };
+
+  forEach = this.data.forEach;
+}
+
+const getBalanceDataFromTransactions = (
+  accounts: AccountDictionary,
+  transactions: TransactionDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+): BalanceData => {
+  const balanceData = new BalanceData();
+
+  const today = new Date();
+  accounts.forEach((a) => balanceData.set(a.id, today, getAccountBalance(a)));
+
+  // first aggregates transactions to sum amounts for each period
+  const translate = (t: Transaction | InvestmentTransaction) => {
+    const authorized_date = "authorized_date" in t ? t.authorized_date : undefined;
+    const { account_id, date, amount } = t;
+    if (!accounts.has(account_id)) return;
+    const transactionDate = new Date(authorized_date || date);
+    if (today < transactionDate) return;
+    const previousMonthDate = new ViewDate("month", transactionDate).previous().getEndDate();
+    if ("price" in t && "quantity" in t) {
+      const { price, quantity } = t as InvestmentTransaction;
+      balanceData.add(account_id, previousMonthDate, -(price * quantity));
+    } else {
+      balanceData.add(account_id, previousMonthDate, amount);
+    }
+  };
+
+  transactions.forEach(translate);
+  investmentTransactions.forEach(translate);
+
+  // then incrementally adds them up
+  for (const [accountId] of accounts) {
+    const history = balanceData.get(accountId);
+    const { startDate, endDate } = history;
+    if (!startDate || !endDate) continue;
+    while (startDate.getEndDate() < endDate.getEndDate()) {
+      const amount = history.get(endDate.getEndDate()) || 0;
+      const laterAmount = history.get(endDate.clone().next().getEndDate()) || 0;
+      history.set(endDate.getEndDate(), laterAmount + amount);
+      endDate.previous();
+    }
+  }
+
+  return balanceData;
+};
+
+const getBalanceDataFromSnapshots = (
+  accounts: AccountDictionary,
+  accountSnapshots: AccountSnapshotDictionary,
+): BalanceData => {
+  const snapshotHistory: { [yearMonth: string]: { [account_id: string]: AccountSnapshot } } = {};
+
+  const today = new Date();
+
+  // first aggregates snapshots to take the latest snapshot for each period
+  accountSnapshots.forEach((accountSnapshot) => {
+    const { snapshot, account } = accountSnapshot;
+    const { date } = snapshot;
+    if (!account.balances.current && account.balances.current !== 0) return;
+    const snapshotDate = new Date(date);
+    if (today < snapshotDate) return;
+    const key = getYearMonthString(snapshotDate);
+    const existing = snapshotHistory[key];
+    if (existing) {
+      if (!existing[account.id] || existing[account.id].snapshot.date < date) {
+        existing[account.id] = accountSnapshot;
+      }
+    } else {
+      snapshotHistory[key] = { [account.id]: accountSnapshot };
+    }
+  });
+
+  // then transforms it into balance data
+  const balanceData = new BalanceData();
+  Object.values(snapshotHistory).forEach((accountSnapshots) => {
+    for (const [accountId] of accounts) {
+      const accountSnapshot = accountSnapshots[accountId];
+      if (accountSnapshot) {
+        const snapshotDate = new Date(accountSnapshot.snapshot.date);
+        const snapshotBalance = getAccountBalance(accountSnapshot.account);
+        balanceData.set(accountId, snapshotDate, snapshotBalance);
+      }
+    }
+  });
+
+  // makes sure today's balance takes priority over snapshots.
+  accounts.forEach((a) => balanceData.set(a.id, today, getAccountBalance(a)));
+
+  return balanceData;
+};
+
+export const getBalanceData = (data: Data) => {
+  const { accounts, accountSnapshots, transactions, investmentTransactions } = data;
+
+  const transactionBasedData = getBalanceDataFromTransactions(
+    accounts,
+    transactions,
+    investmentTransactions,
+  );
+
+  const snapshotBasedData = getBalanceDataFromSnapshots(accounts, accountSnapshots);
+
+  const mergedData = new BalanceData();
+
+  accounts.forEach(({ id, graphOptions }) => {
+    const startDate1 = transactionBasedData.get(id).startDate!;
+    const startDate2 = snapshotBasedData.get(id).startDate!;
+    const startDate = startDate1 < startDate2 ? startDate1 : startDate2;
+
+    const endDate1 = transactionBasedData.get(id).endDate!;
+    const endDate2 = snapshotBasedData.get(id).endDate!;
+    const endDate = endDate1 > endDate2 ? endDate1 : endDate2;
+
+    const { useTransactions = true, useSnapshots = true } = graphOptions;
+
+    let previouslyUsedBalance = 0;
+    while (startDate.getEndDate() < endDate.getEndDate()) {
+      const date = startDate.getEndDate();
+      const transactionBasedBalance = transactionBasedData.get(id, date);
+      const snapshotBasedBalance = snapshotBasedData.get(id, date);
+      let balance = 0;
+      if (useSnapshots && snapshotBasedBalance) {
+        balance = snapshotBasedBalance;
+      } else if (useTransactions && transactionBasedBalance) {
+        balance = transactionBasedBalance;
+      } else {
+        balance = previouslyUsedBalance;
+      }
+      mergedData.set(id, date, balance);
+      previouslyUsedBalance = balance;
+      startDate.next();
+    }
+  });
+
+  return mergedData;
+};
+
+interface UseAccountGraphOptions {
+  startDate?: Date;
+  viewDate?: ViewDate;
+  useLengthFixer?: boolean;
+}
+
+export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOptions = {}) => {
+  const { viewDate } = useAppContext();
+  const { viewDate: inputViewDate, startDate, useLengthFixer = true } = options;
+
+  const graphViewDate = useMemo(() => {
+    if (inputViewDate) return inputViewDate;
+    return new ViewDate(viewDate.getInterval());
+  }, [viewDate, inputViewDate]);
+
+  const { graphData, cursorAmount } = useMemo(() => {
+    const flattened: number[] = [];
+    accounts.forEach(({ balanceHistory }) => {
+      const maxLength = startDate
+        ? graphViewDate.getSpanFrom(startDate) + 1
+        : balanceHistory?.length || 0;
+
+      for (let i = 0; i < maxLength; i++) {
+        if (flattened[i] === undefined) flattened[i] = 0;
+        flattened[i] += balanceHistory?.[i] || 0;
+      }
+    });
+
+    const { length } = flattened;
+
+    const lengthFixer = useLengthFixer ? 3 - ((length - 1) % 3) : 0;
+    flattened.push(...new Array(lengthFixer));
+
+    const sequence = flattened.reverse();
+
+    const viewDateIndex = graphViewDate.getSpanFrom(viewDate.getEndDate()) - lengthFixer;
+    const cursorIndex = length - 1 - viewDateIndex;
+    const cursorAmount = sequence[cursorIndex] as number | undefined;
+    const points = [];
+    if (cursorAmount === undefined) {
+      const arbitraryAmount = sequence[cursorIndex - 1] || sequence[cursorIndex + 1] || 0;
+      points.push({ point: { value: arbitraryAmount, index: cursorIndex }, color: "#0970" });
+    } else {
+      points.push({ point: { value: cursorAmount, index: cursorIndex }, color: "#097" });
+    }
+
+    const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
+
+    return { graphData, cursorAmount };
+  }, [accounts, startDate, useLengthFixer, graphViewDate, viewDate]);
+
+  return { graphViewDate, graphData, cursorAmount };
+};
+
+/**
+ * @example
+ * {
+ *    "2026-01": 100,
+ *    "2026-02": 150
+ * }
+ */
+type AmountByMonth = { [k: string]: number };
+
+/**
+ * Helper class to abstract balance history write & read processes.
+ */
+class BalanceHistory {
+  private data: AmountByMonth = {};
+  private range?: [Date, Date];
+
+  constructor(data?: AmountByMonth) {
+    if (data) this.data = data;
+  }
+
+  private getKey = (date: Date) => getYearMonthString(date);
+  private getDate = (key: string) => new Date(`${key}-01`);
+
+  getData = () => ({ ...this.data });
+  getRange = () => this.range && [...this.range];
+
+  get startDate() {
+    return this.range && new ViewDate("month", this.range[0]);
+  }
+
+  get endDate() {
+    return this.range && new ViewDate("month", this.range[1]);
+  }
+
+  set = (date: Date, amount: number) => {
+    if (!this.range) this.range = [date, date];
+    else if (this.range[1] < date) this.range[1] = date;
+    else if (date < this.range[0]) this.range[0] = date;
+    this.data[this.getKey(date)] = amount;
+  };
+
+  get = (date: Date): number | undefined => {
+    return this.data[this.getKey(date)];
+  };
+
+  /**
+   * Add amount to the specified date's position.
+   * If amount doesn't exist in the position, assume it was 0.
+   */
+  add = (date: Date, amount: number) => {
+    const existing = this.get(date) || 0;
+    this.set(date, existing + amount);
+  };
+
+  /**
+   * Returns an array of balance history. Each value represents balance amount.
+   * Values are 0-indexed where 0 is the month of the given `viewDate`,
+   * 1 is the previous month, and so on.
+   */
+  toArray = (viewDate: ViewDate) => {
+    const result: number[] = [];
+    Object.entries(this.data).forEach(([key, value]) => {
+      const date = this.getDate(key);
+      if (!isDate(date)) return;
+      const span = viewDate.getSpanFrom(date);
+      if (span >= 0) result[span] = value;
+    });
+    return result;
+  };
+}
+
+/**
+ * Balance history stored by `accountId` and `date`.
+ * @example
+ * const balanceData = new BalanceData();
+ * const accountId = "a1b2c3";
+ * const date = new Date("2026-01-01");
+ *
+ * balanceData.set(accountId, date, 100);
+ * let balanceAmount = balanceData.get(accountId, date);
+ * console.log(balanceAmount); // 100
+ *
+ * balanceData.add(accountId, date, 50);
+ * balanceAmount = balanceData.get(accountId, date);
+ * console.log(balanceAmount); // 150
+ */
+export class BalanceData {
+  private data = new Map<string, BalanceHistory>();
+
+  get size() {
+    return this.data.size;
+  }
+
+  set(accountId: string, date: Date, amount: number) {
+    if (!this.data.has(accountId)) this.data.set(accountId, new BalanceHistory());
+    const accountData = this.data.get(accountId)!;
+    accountData.set(date!, amount!);
+  }
+
+  get(accountId: string): BalanceHistory;
+  get(accountId: string, date: Date): number | undefined;
+  get(accountId: string, date?: Date) {
+    if (!this.data.has(accountId)) this.data.set(accountId, new BalanceHistory());
+    const accountData = this.data.get(accountId)!;
+    if (date === undefined) return accountData;
+    return accountData.get(date);
+  }
+
+  add = (accountId: string, date: Date, amount: number) => {
+    this.get(accountId).add(date, amount);
+  };
+
+  forEach = this.data.forEach;
+}

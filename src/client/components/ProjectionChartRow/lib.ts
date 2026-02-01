@@ -1,5 +1,5 @@
-import { AmountInTime, ViewDate } from "common";
-import { LineInput, PointInput } from "client";
+import { ViewDate } from "common";
+import { AmountInTime, LineInput, PointInput } from "client";
 
 export interface ProjectionCalculationResult {
   graphViewDate: ViewDate;
@@ -60,7 +60,7 @@ export const calculateProjection = (config: ProjectionConfig): ProjectionCalcula
   // find out living cost at the initial saving date
   let inflatedLivingCost = livingCost.amount / (1 - (livingCost.taxRate || 0));
   const initialToLivingCost = new ViewDate("month", livingCost.amountAsOf).getSpanFrom(
-    initialSaving.amountAsOf
+    initialSaving.amountAsOf,
   );
 
   for (let i = 0; i < Math.abs(initialToLivingCost); i++) {

@@ -1,7 +1,8 @@
-import { getRandomId, assign, getDateTimeString, globalData } from "common";
+import { getRandomId, assign, getDateTimeString, JSONSplitTransaction } from "common";
 import { Transaction, TransactionLabel } from "./Transaction";
+import { globalData } from "./Data";
 
-export class SplitTransaction {
+export class SplitTransaction implements JSONSplitTransaction {
   get id() {
     return this.split_transaction_id;
   }
@@ -25,12 +26,13 @@ export class SplitTransaction {
    */
   label: TransactionLabel = new TransactionLabel();
 
-  constructor(init: Partial<SplitTransaction> & { transaction_id: string; account_id: string }) {
+  constructor(
+    init: Partial<SplitTransaction | JSONSplitTransaction> & {
+      transaction_id: string;
+      account_id: string;
+    },
+  ) {
     assign(this, init);
     if (init.label) this.label = new TransactionLabel(init.label);
   }
-}
-
-export interface RemovedSplitTransaction {
-  split_transaction_id: string;
 }

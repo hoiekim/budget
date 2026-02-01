@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { ViewDate, getDateString, THIRTY_DAYS } from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
@@ -8,7 +9,6 @@ import {
   SplitTransactionsGetResponse,
   ChartsGetResponse,
 } from "server";
-import { useAppContext, call, cachedCall } from "client";
 import {
   Account,
   InvestmentTransaction,
@@ -17,6 +17,14 @@ import {
   Section,
   Category,
   Item,
+  SplitTransaction,
+  Chart,
+  SnapshotData,
+  AccountSnapshot,
+  HoldingSnapshot,
+  useAppContext,
+  call,
+  cachedCall,
   BudgetDictionary,
   SectionDictionary,
   CategoryDictionary,
@@ -26,18 +34,10 @@ import {
   ItemDictionary,
   AccountDictionary,
   SplitTransactionDictionary,
-  SplitTransaction,
-  ViewDate,
-  getDateString,
-  THIRTY_DAYS,
   ChartDictionary,
-  Chart,
-  SnapshotData,
-  AccountSnapshot,
-  HoldingSnapshot,
   AccountSnapshotDictionary,
   HoldingSnapshotDictionary,
-} from "common";
+} from "client";
 
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
   const response = await call.get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date");
@@ -232,10 +232,14 @@ const fetchCharts = async (): Promise<FetchChartsResult> => {
 };
 
 export const useSync = () => {
-  const { user, setData, updateStatus } = useAppContext();
+  const { user, setData } = useAppContext();
   const sync = useCallback(async () => {
     if (!user) return;
-    updateStatus({ serverData: { isLoading: true } });
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      newData.status.isLoading = true;
+      return newData;
+    });
 
     try {
       const accountsPromise = fetchAccounts();
@@ -281,15 +285,23 @@ export const useSync = () => {
           charts,
         });
 
+        newData.status.isInit = true;
+        newData.status.isLoading = false;
+        newData.status.isError = false;
+
         return newData;
       });
-
-      updateStatus({ serverData: { isInit: true, isLoading: false } });
     } catch (err) {
       console.error(err);
-      updateStatus({ serverData: { isInit: true, isLoading: false, isError: true } });
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        newData.status.isInit = true;
+        newData.status.isLoading = false;
+        newData.status.isError = true;
+        return newData;
+      });
     }
-  }, [setData, updateStatus, user]);
+  }, [setData, user]);
 
   const clean = useCallback(() => setData(new Data()), [setData]);
 

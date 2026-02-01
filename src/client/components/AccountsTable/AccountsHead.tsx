@@ -1,6 +1,5 @@
 import { useMemo } from "react";
-import { Account } from "common";
-import { Sorter } from "client";
+import { Account, Sorter } from "client";
 import { AccountHeaders } from ".";
 
 interface Props {

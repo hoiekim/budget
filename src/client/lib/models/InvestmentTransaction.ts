@@ -1,12 +1,8 @@
-import {
-  InvestmentTransaction as PlaidInvestmentTransaction,
-  InvestmentTransactionSubtype,
-  InvestmentTransactionType,
-} from "plaid";
+import { InvestmentTransactionSubtype, InvestmentTransactionType } from "plaid";
 
-import { getRandomId, getDateTimeString, assign } from "common";
+import { getRandomId, getDateTimeString, assign, JSONInvestmentTransaction } from "common";
 
-export class InvestmentTransaction implements PlaidInvestmentTransaction {
+export class InvestmentTransaction implements JSONInvestmentTransaction {
   get id() {
     return this.investment_transaction_id;
   }

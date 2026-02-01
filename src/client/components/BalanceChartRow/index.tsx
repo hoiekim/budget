@@ -1,7 +1,7 @@
 import { Dispatch, MouseEventHandler, SetStateAction } from "react";
 import { AccountType } from "plaid";
-import { BalanceChart, numberToCommaString, toTitleCase } from "common";
-import { useAppContext, useReorder } from "client";
+import { numberToCommaString, toTitleCase } from "common";
+import { BalanceChart, useAppContext, useReorder } from "client";
 import { ChevronDownIcon, ChevronUpIcon, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
 import "./index.css";
@@ -76,7 +76,7 @@ export const BalanceChartRow = ({
     const onClickOverspentBudget = () => {
       if (isOverspentBudget) {
         window.alert(
-          `You overspent $${amountString} for the budget "${name}". We're displaying overspent amount stacked together with the deposit amounts because it's the amount that would have been in the depositories.`
+          `You overspent $${amountString} for the budget "${name}". We're displaying overspent amount stacked together with the deposit amounts because it's the amount that would have been in the depositories.`,
         );
       }
     };

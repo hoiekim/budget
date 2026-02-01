@@ -1,8 +1,7 @@
-import { Account, AccountDictionary, Data } from "common";
-import { call, DonutData, useAppContext } from "client";
-import AccountRow from "./AccountRow";
-import { AccountType } from "plaid";
 import { CSSProperties, ReactNode } from "react";
+import { AccountType } from "plaid";
+import { Account, AccountDictionary, Data, call, DonutData, useAppContext } from "client";
+import AccountRow from "./AccountRow";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
   institution?: boolean;

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Account } from "common";
-import { useAppContext, PATH } from "client";
+import { useAppContext, PATH, Account } from "client";
 import { AccountProperties } from "client/components";
 
 import "./index.css";

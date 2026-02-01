@@ -1,5 +1,5 @@
-import { numberToCommaString, currencyCodeToSymbol, InvestmentTransaction } from "common";
-import { useAppContext } from "client";
+import { numberToCommaString, currencyCodeToSymbol } from "common";
+import { InvestmentTransaction, useAppContext } from "client";
 import { InstitutionSpan } from "client/components";
 
 interface Props {

@@ -1,6 +1,6 @@
 import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
-import { getYearMonthString, numberToCommaString, ProjectionChart, ViewDate } from "common";
-import { useAccountGraph, useAppContext, useReorder } from "client";
+import { getYearMonthString, numberToCommaString, ViewDate } from "common";
+import { useAccountGraph, useAppContext, useReorder, ProjectionChart } from "client";
 import { ChevronDownIcon, ChevronUpIcon, DateLabel, Graph, MoneyLabel } from "client/components";
 import { calculateProjection } from "./lib";
 import "./index.css";

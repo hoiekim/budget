@@ -1,15 +1,16 @@
 import { ChangeEventHandler } from "react";
-import { useAppContext, call, PATH } from "client";
-import { ToggleInput } from "client/components";
+import { ChartType, numberToCommaString } from "common";
 import {
-  BalanceChartConfiguration,
-  Chart,
-  CHART_TYPE,
+  useAppContext,
+  call,
+  PATH,
   ChartDictionary,
   Data,
-  numberToCommaString,
+  BalanceChartConfiguration,
+  Chart,
   ProjectionChartConfiguration,
-} from "common";
+} from "client";
+import { ToggleInput } from "client/components";
 
 export const ChartAccountsPage = () => {
   const { data, setData, router, viewDate } = useAppContext();
@@ -29,7 +30,7 @@ export const ChartAccountsPage = () => {
   const { accounts, budgets } = data;
 
   const Configuration =
-    type === CHART_TYPE.BALANCE ? BalanceChartConfiguration : ProjectionChartConfiguration;
+    type === ChartType.BALANCE ? BalanceChartConfiguration : ProjectionChartConfiguration;
 
   const accountRows = accounts
     .filter((a) => !a.hide)
@@ -72,7 +73,7 @@ export const ChartAccountsPage = () => {
       );
     });
 
-  if (type !== CHART_TYPE.BALANCE) {
+  if (type !== ChartType.BALANCE) {
     return (
       <div className="ChartAccountsPage">
         <div className="Properties sidePadding">
@@ -134,7 +135,7 @@ export const ChartAccountsPage = () => {
       <div className="Properties sidePadding">
         <div className="propertyLabel">Select accounts</div>
         <div className="property">{accountRows}</div>
-        {type === CHART_TYPE.BALANCE && (
+        {type === ChartType.BALANCE && (
           <>
             <div className="propertyLabel">Select budgets</div>
             <div className="property">{budgetRows}</div>

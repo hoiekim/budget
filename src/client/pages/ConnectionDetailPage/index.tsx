@@ -1,9 +1,7 @@
-import { PATH, useAppContext } from "client";
-import { ConnectionProperties } from "client/components";
-
-import "./index.css";
 import { useEffect, useState } from "react";
-import { Item } from "common";
+import { Item, PATH, useAppContext } from "client";
+import { ConnectionProperties } from "client/components";
+import "./index.css";
 
 export const ConnectionDetailPage = () => {
   const { data, router } = useAppContext();

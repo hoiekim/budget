@@ -1,7 +1,7 @@
 import { Route, searchSplitTransactions, SearchSplitTransactionsOptions } from "server";
-import { SplitTransaction } from "common";
+import { JSONSplitTransaction } from "common";
 
-export type SplitTransactionsGetResponse = SplitTransaction[];
+export type SplitTransactionsGetResponse = JSONSplitTransaction[];
 
 export const getSplitTransactionsRoute = new Route<SplitTransactionsGetResponse>(
   "GET",
@@ -28,5 +28,5 @@ export const getSplitTransactionsRoute = new Route<SplitTransactionsGetResponse>
     const response = await searchSplitTransactions(user, options);
 
     return { status: "success", body: response.split_transactions };
-  }
+  },
 );

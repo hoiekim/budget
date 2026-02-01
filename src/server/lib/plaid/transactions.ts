@@ -8,16 +8,16 @@ import {
   PlaidErrorType,
 } from "plaid";
 import { MaskedUser, updateItemStatus } from "server";
-import { Item, ItemStatus, getDateString, getDateTimeString } from "common";
+import { JSONItem, ItemStatus, getDateString, getDateTimeString } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
 export interface PlaidTransaction extends Transaction {}
 
-export const getTransactions = async (user: MaskedUser, items: Item[]) => {
+export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
   const client = getClient(user);
 
   type PlaidTransactionsResponse = {
-    items: Item[];
+    items: JSONItem[];
     added: PlaidTransaction[];
     removed: RemovedTransaction[];
     modified: PlaidTransaction[];
@@ -72,8 +72,8 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
       }
     }
 
-    if (plaidError) data.items.push(new Item({ ...item, plaidError }));
-    else data.items.push(new Item(item));
+    if (plaidError) data.items.push({ ...item, plaidError });
+    else data.items.push(item);
 
     allAdded.push(thisItemAdded.flat());
     allRemoved.push(thisItemRemoved.flat());
@@ -93,11 +93,11 @@ export const getTransactions = async (user: MaskedUser, items: Item[]) => {
 
 export interface PlaidInvestmentTransaction extends InvestmentTransaction {}
 
-export const getInvestmentTransactions = async (user: MaskedUser, items: Item[]) => {
+export const getInvestmentTransactions = async (user: MaskedUser, items: JSONItem[]) => {
   const client = getClient(user);
 
   type PlaidInvestmentTransactionsResponse = {
-    items: Item[];
+    items: JSONItem[];
     investmentTransactions: PlaidInvestmentTransaction[];
   };
 
@@ -152,7 +152,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
         total = response.data.total_investment_transactions;
         allInvestmentTransactions.push(investmentTransactions);
         item.updated = end_date;
-        data.items.push(new Item(item));
+        data.items.push({ ...item });
       } catch (error: any) {
         const plaidError = error?.response?.data as PlaidError;
         if (!ignorable_error_codes.has(plaidError?.error_code)) {
@@ -163,7 +163,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: Item[])
               console.error("Failed to update item status to BAD:", e);
             });
           }
-          data.items.push(new Item({ ...item, plaidError }));
+          data.items.push({ ...item, plaidError });
         }
       }
 

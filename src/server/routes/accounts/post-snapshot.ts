@@ -1,4 +1,4 @@
-import { Account, getSquashedDateString, Snapshot } from "common";
+import { JSONAccount, getSquashedDateString, JSONSnapshot } from "common";
 import { Route, upsertSnapshots } from "server";
 
 export interface SnapshotPostResponse {
@@ -25,12 +25,12 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
     }
 
     // TODO: Snapshot can be holding or security snapshot as well
-    const account = new Account(req.body.account);
+    const account: JSONAccount = req.body.account;
     const date = req.body.snapshot.date ? new Date(req.body.snapshot.date) : new Date();
-    const snapshot = new Snapshot({
-      snapshot_id: `${account.id}-${getSquashedDateString(date)}`,
+    const snapshot: JSONSnapshot = {
+      snapshot_id: `${account.account_id}-${getSquashedDateString(date)}`,
       date: date.toISOString(),
-    });
+    };
 
     const { user_id } = user;
     const newSnapshot = { user: { user_id }, snapshot, account };
@@ -43,5 +43,5 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
       console.error(`Failed to update a snapshot: ${snapshot.snapshot_id}`);
       throw new Error(error);
     }
-  }
+  },
 );

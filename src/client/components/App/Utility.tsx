@@ -1,13 +1,5 @@
 import { useEffect } from "react";
-import {
-  useAppContext,
-  useDebounce,
-  useSync,
-  useBudgetCalculator,
-  useBalanceCalculator,
-  PATH,
-  statusTracker,
-} from "client";
+import { useAppContext, useSync, PATH } from "client";
 
 /**
  * This component is used to run useEffect hooks dependant on context variables.
@@ -15,15 +7,12 @@ import {
  * dev engineers to find them easily.
  */
 const Utility = () => {
-  const { user, router, setSelectedInterval, data, viewDate, updateStatus } = useAppContext();
-  const { transactions, splitTransactions, investmentTransactions, accounts } = data;
+  const { user, router, setSelectedInterval, data, calculate, viewDate } = useAppContext();
 
   const userLoggedIn = !!user;
   const { path, go } = router;
 
   const { sync, clean } = useSync();
-  const calculateBudget = useBudgetCalculator();
-  const calculateBalance = useBalanceCalculator();
 
   /**
    * Redirect to login page if not logged in
@@ -41,50 +30,13 @@ const Utility = () => {
     else clean();
   }, [userLoggedIn, sync, clean]);
 
-  const budgetDebouncer = useDebounce();
-  const balanceDebouncer = useDebounce();
-
-  /**
-   * Calculate budget roll over amounts when data is updated
-   */
-  useEffect(() => {
-    if (!statusTracker.serverData.isInit) return;
-    updateStatus({ budgetCalculation: { isLoading: true } });
-    budgetDebouncer(() => {
-      calculateBudget();
-      updateStatus({ budgetCalculation: { isInit: true, isLoading: false } });
-    });
-  }, [
-    transactions,
-    splitTransactions,
-    accounts,
-    viewDate,
-    updateStatus,
-    calculateBudget,
-    budgetDebouncer,
-  ]);
-
-  const accountBalances = JSON.stringify(accounts.toArray().map((a) => ({ [a.id]: a.balances })));
-
   /**
    * Calculate balance history when data is updated
    */
   useEffect(() => {
-    if (!statusTracker.serverData.isInit) return;
-    updateStatus({ balanceCalculation: { isLoading: true } });
-    balanceDebouncer(() => {
-      calculateBalance();
-      updateStatus({ balanceCalculation: { isInit: true, isLoading: false } });
-    });
-  }, [
-    transactions,
-    investmentTransactions,
-    accountBalances,
-    viewDate,
-    updateStatus,
-    calculateBalance,
-    balanceDebouncer,
-  ]);
+    if (!data.status.isInit) return;
+    calculate(data);
+  }, [data, calculate]);
 
   /**
    * Update viewDate when user selects different interval

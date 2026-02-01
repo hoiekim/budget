@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Transaction } from "common";
-import { useAppContext, PATH } from "client";
+import { Transaction, useAppContext, PATH } from "client";
 import { TransactionProperties } from "client/components";
 
 import "./index.css";
@@ -24,7 +23,7 @@ export const TransactionDetailPage = () => {
   useEffect(() => {
     const newTransaction = transactions.get(id);
     setTransaction(
-      (oldTransaction) => (newTransaction && new Transaction(newTransaction)) || oldTransaction
+      (oldTransaction) => (newTransaction && new Transaction(newTransaction)) || oldTransaction,
     );
   }, [id, transactions]);
 

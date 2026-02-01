@@ -1,21 +1,20 @@
 import { MouseEventHandler } from "react";
+import { AccountGraphOptions, ItemProvider, toTitleCase, toUpperCamelCase } from "common";
+import { AccountPostResponse } from "server";
 import {
   Account,
   AccountDictionary,
-  AccountGraphOptions,
   Data,
   Item,
   ItemDictionary,
-  ItemProvider,
-  toTitleCase,
-  toUpperCamelCase,
   TransactionDictionary,
-} from "common";
-import { call, InstitutionSpan, PlaidLinkButton, useAppContext } from "client";
-
-import "./index.css";
+  call,
+  InstitutionSpan,
+  PlaidLinkButton,
+  useAppContext,
+} from "client";
 import { ConnectedAccountRow } from "./ConnectedAccountRow";
-import { AccountPostResponse } from "server";
+import "./index.css";
 
 interface Props {
   item: Item;
@@ -84,10 +83,10 @@ export const ConnectionProperties = ({ item }: Props) => {
 
   const onClickAddManualAccount: MouseEventHandler<HTMLButtonElement> = async (e) => {
     e.stopPropagation();
-    const newAccountGraphOptions = new AccountGraphOptions({
+    const newAccountGraphOptions: AccountGraphOptions = {
       useSnapshots: true,
       useTransactions: false,
-    });
+    };
     const newAccount = new Account({ item_id: item.id, graphOptions: newAccountGraphOptions });
     const { status, body } = await call.post<AccountPostResponse>("/api/account", newAccount);
     if (status === "success" && body) {

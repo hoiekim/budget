@@ -1,4 +1,6 @@
-import { ChevronDownIcon, ScreenType, Sorter, useAppContext } from "client";
+import { AccountType } from "plaid";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { JSONInvestmentTransaction, JSONTransaction, toTitleCase } from "common";
 import {
   Account,
   Budget,
@@ -6,14 +8,15 @@ import {
   InvestmentTransaction,
   Section,
   SplitTransaction,
-  toTitleCase,
   Transaction,
-} from "common";
-import { useCallback, useEffect, useRef, useState } from "react";
+  ChevronDownIcon,
+  ScreenType,
+  Sorter,
+  useAppContext,
+} from "client";
 import { TransactionsHead } from "./TransactionsHead";
 import "./index.css";
 import { SearchBar } from "./SearchBar";
-import { AccountType } from "plaid";
 
 export type TransactionsPageType = "deposits" | "expenses" | "unsorted";
 
@@ -46,13 +49,13 @@ const typeToTitle = (type?: TransactionsPageType) => {
   return "All Transactions";
 };
 
-export type TransactionHeaders = { [k in keyof Transaction]?: boolean } & {
+export type TransactionHeaders = { [k in keyof JSONTransaction]?: boolean } & {
   account?: boolean;
   institution?: boolean;
   budget?: boolean;
 };
 
-export type InvestmentTransactionHeaders = { [k in keyof InvestmentTransaction]?: boolean } & {
+export type InvestmentTransactionHeaders = { [k in keyof JSONInvestmentTransaction]?: boolean } & {
   account?: boolean;
   institution?: boolean;
 };
@@ -128,7 +131,7 @@ export const TransactionsPageTitle = ({
         return key;
       }
     },
-    []
+    [],
   );
 
   const isInvestment = account?.type === AccountType.Investment;

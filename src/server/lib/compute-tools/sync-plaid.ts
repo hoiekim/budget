@@ -1,10 +1,10 @@
 import {
-  Account,
-  Item,
+  JSONAccount,
+  JSONItem,
   ItemProvider,
   RemovedInvestmentTransaction,
   TWO_WEEKS,
-  Transaction,
+  JSONTransaction,
   getDateString,
   getDateTimeString,
 } from "common";
@@ -57,7 +57,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const { items, added, removed, modified } = r;
 
       const modelize = (e: (typeof added)[0]) => {
-        const result = new Transaction(e);
+        const result: JSONTransaction = { ...e, label: {} };
         const { authorized_date: auth_date, date } = e;
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
@@ -148,7 +148,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
           console.error(
-            "Error occured during puting Plaid investment transanctions data into Elasticsearch"
+            "Error occured during puting Plaid investment transanctions data into Elasticsearch",
           );
           console.error(err);
         });
@@ -171,7 +171,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
 
   const { accounts: storedAccounts, holdings: storedHoldings } = await getStoredAccountsData(
     user,
-    item
+    item,
   );
   const storedAccountsMap = new Map(storedAccounts?.map((e) => [e.account_id, e]) || []);
 
@@ -179,7 +179,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
     .getAccounts(user, [item])
     .then(async (r) => {
       const accounts = r.accounts.map((a) => {
-        const newAccount = new Account(a);
+        const newAccount: JSONAccount = { ...a };
         const existing = storedAccountsMap.get(a.account_id);
         if (existing) {
           newAccount.hide = existing.hide;
@@ -218,7 +218,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
   return { accounts, investmentAccounts };
 };
 
-const getStoredAccountsData = async (user: MaskedUser, item: Item) => {
+const getStoredAccountsData = async (user: MaskedUser, item: JSONItem) => {
   const { item_id } = item;
   const accounts = await searchAccountsByItemId(user, item_id);
   const accountIds = accounts?.map((e) => e.account_id) || [];

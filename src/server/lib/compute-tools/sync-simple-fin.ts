@@ -1,14 +1,14 @@
 import { AccountType } from "plaid";
 import {
-  Account,
+  JSONAccount,
   getDateString,
   getDateTimeString,
-  Holding,
-  InvestmentTransaction,
-  Item,
+  JSONHolding,
+  JSONInvestmentTransaction,
+  JSONItem,
   RemovedInvestmentTransaction,
   RemovedTransaction,
-  Transaction,
+  JSONTransaction,
 } from "common";
 import {
   deleteInvestmentTransactions,
@@ -58,7 +58,7 @@ export const syncSimpleFinData = async (item_id: string) => {
   const removedInvestmentTransaction = getRemovedInvestmentTransactions(
     investmentTransactions,
     storedInvestmentTransactions,
-    startDate
+    startDate,
   );
 
   const processHoldingsPromise = upsertSecuritiesWithSnapshots(securities).then((idMap) => {
@@ -66,18 +66,19 @@ export const syncSimpleFinData = async (item_id: string) => {
       .map((h) => {
         const security_id = idMap[h.security_id];
         if (!security_id) return undefined;
-        return new Holding({ ...h, security_id });
+        const newHolding: JSONHolding = { ...h, security_id };
+        return newHolding;
       })
-      .filter((h): h is Holding => !!h);
+      .filter((h): h is JSONHolding => !!h);
     return upsertAndDeleteHoldingsWithSnapshots(user, mappedHoldings, storedHoldings);
   });
 
-  const investmentAccounts: Account[] = [];
-  const otherAccounts: Account[] = [];
+  const investmentAccounts: JSONAccount[] = [];
+  const otherAccounts: JSONAccount[] = [];
   const existingAccountsMap = new Map(storedAccounts.map((a) => [a.account_id, a]));
   accounts.forEach((a) => {
     const existingAccount = existingAccountsMap.get(a.account_id);
-    const incomingAccount = new Account(a);
+    const incomingAccount: JSONAccount = { ...a };
     if (existingAccount) {
       incomingAccount.hide = existingAccount.hide;
       incomingAccount.custom_name = existingAccount.custom_name;
@@ -101,12 +102,12 @@ export const syncSimpleFinData = async (item_id: string) => {
   await deleteInvestmentTransactions(user, removedInvestmentTransaction);
 
   const updated = getDateString();
-  await upsertItems(user, [new Item({ ...item, updated })]);
+  await upsertItems(user, [{ ...item, updated }]);
 
   return { accounts, transactions, investmentTransactions };
 };
 
-const getStartDate = (item: Item) => {
+const getStartDate = (item: JSONItem) => {
   const { updated } = item;
   if (updated) {
     const updatedDate = new Date(getDateTimeString(updated));
@@ -121,7 +122,7 @@ const getStartDate = (item: Item) => {
   }
 };
 
-const getStoredData = async (user: MaskedUser, item: Item, startDate: Date) => {
+const getStoredData = async (user: MaskedUser, item: JSONItem, startDate: Date) => {
   const { item_id } = item;
   const accounts = await searchAccountsByItemId(user, item_id);
   const accountIds = accounts?.map((e) => e.account_id) || [];
@@ -138,9 +139,9 @@ const getStoredData = async (user: MaskedUser, item: Item, startDate: Date) => {
 };
 
 const getRemovedTransactions = (
-  transactions: Transaction[],
-  storedTransactions: Transaction[],
-  startDate: Date
+  transactions: JSONTransaction[],
+  storedTransactions: JSONTransaction[],
+  startDate: Date,
 ) => {
   const accountIds = new Set(transactions.map((e) => e.account_id));
   const removedTransactions: RemovedTransaction[] = [];
@@ -155,9 +156,9 @@ const getRemovedTransactions = (
 };
 
 const getRemovedInvestmentTransactions = (
-  investmentTransactions: InvestmentTransaction[],
-  storedInvestmentTransactions: InvestmentTransaction[],
-  startDate: Date
+  investmentTransactions: JSONInvestmentTransaction[],
+  storedInvestmentTransactions: JSONInvestmentTransaction[],
+  startDate: Date,
 ) => {
   const accountIds = new Set(investmentTransactions.map((e) => e.account_id));
   const removedInvestmentTransactions: RemovedInvestmentTransaction[] = [];
@@ -166,7 +167,7 @@ const getRemovedInvestmentTransactions = (
     if (new Date(date) < startDate) return;
     if (!accountIds.has(t.account_id)) return;
     const found = investmentTransactions.find(
-      (f) => f.investment_transaction_id === investment_transaction_id
+      (f) => f.investment_transaction_id === investment_transaction_id,
     );
     if (!found) removedInvestmentTransactions.push({ investment_transaction_id });
   });

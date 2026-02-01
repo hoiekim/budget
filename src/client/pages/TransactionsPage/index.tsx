@@ -1,6 +1,15 @@
 import { AccountType } from "plaid";
 import { useMemo, useState } from "react";
-import { useAppContext, PATH, useSorter, ScreenType } from "client";
+import { DeepPartial, isSubset } from "common";
+import {
+  Transaction,
+  SplitTransaction,
+  InvestmentTransaction,
+  useAppContext,
+  PATH,
+  useSorter,
+  ScreenType,
+} from "client";
 import {
   InvestmentTransactionHeaders,
   TransactionHeaders,
@@ -8,13 +17,6 @@ import {
   TransactionsPageType,
   TransactionsTable,
 } from "client/components";
-import {
-  Transaction,
-  DeepPartial,
-  isSubset,
-  SplitTransaction,
-  InvestmentTransaction,
-} from "common";
 import { useTransactionHit } from "./hooks";
 
 export type TransactionsPageParams = {
@@ -148,7 +150,7 @@ export const TransactionsPage = () => {
         ...transactions.filter(filterTransaction),
         ...splitTransactions.filter(filterTransaction),
       ].sort((a, b) =>
-        a.transaction_id > b.transaction_id ? 1 : a.transaction_id === b.transaction_id ? 0 : -1
+        a.transaction_id > b.transaction_id ? 1 : a.transaction_id === b.transaction_id ? 0 : -1,
       );
 
       const sortedByColumns = sort(filtered, (e, key) => {

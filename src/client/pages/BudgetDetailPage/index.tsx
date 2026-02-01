@@ -9,8 +9,11 @@ import {
   MoneyLabel,
   ScreenType,
   TransactionsPageParams,
+  Budget,
+  Data,
+  Section,
+  SectionDictionary,
 } from "client";
-import { Budget, Data, Section, SectionDictionary } from "common";
 import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
 import { useBudgetGraph } from "./lib";
@@ -30,7 +33,7 @@ export const BudgetDetailPage = () => {
 
   const [sectionsOrder, setSectionsOrder] = useLocalStorageState<string[]>(
     `sectionsOrder_${budget_id}`,
-    []
+    [],
   );
 
   useEffect(() => {

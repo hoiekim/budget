@@ -1,6 +1,6 @@
 import { CountryCode, LinkTokenCreateRequest, Products } from "plaid";
 import { MaskedUser } from "server";
-import { Item } from "common";
+import { JSONItem } from "common";
 import { getClient } from "./util";
 
 const { HOST_NAME } = process.env;
@@ -44,7 +44,7 @@ export const getItem = async (access_token: string) => {
   return response.data.item;
 };
 
-export const deleteItem = async (user: MaskedUser, { access_token }: Item) => {
+export const deleteItem = async (user: MaskedUser, { access_token }: JSONItem) => {
   const client = getClient(user);
 
   const response = await client.itemRemove({ access_token });

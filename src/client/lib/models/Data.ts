@@ -1,21 +1,17 @@
-import {
-  TransactionLabel,
-  Transaction,
-  ValueOf,
-  environment,
-  Account,
-  Institution,
-  InvestmentTransaction,
-  Budget,
-  Section,
-  Category,
-  Item,
-  SplitTransaction,
-  Chart,
-  AccountSnapshot,
-  HoldingSnapshot,
-} from "common";
-import { BudgetFamily, BudgetFamilyType } from "./models/BudgetFamily";
+import { assign, ValueOf, environment } from "common";
+import { BalanceData } from "client";
+import { Account } from "./Account";
+import { Institution } from "./miscellaneous";
+import { BudgetFamily, BudgetFamilyType } from "./BudgetFamily";
+import { Transaction } from "./Transaction";
+import { InvestmentTransaction } from "./InvestmentTransaction";
+import { SplitTransaction } from "./SplitTransaction";
+import { Budget } from "./Budget";
+import { Section } from "./Section";
+import { Category } from "./Category";
+import { Item } from "./Item";
+import { Chart } from "./Chart";
+import { AccountSnapshot, HoldingSnapshot } from "./Snapshot";
 
 export class Dictionary<T = any, S extends Dictionary = any> extends Map<string, T> {
   toArray = () => Array.from(this.values());
@@ -109,16 +105,7 @@ export class HoldingSnapshotDictionary extends Dictionary<
   HoldingSnapshotDictionary
 > {}
 
-export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {
-  filterByLabel = (input: Partial<TransactionLabel>) => {
-    for (const key in input) {
-      const typedKey = key as keyof TransactionLabel;
-      const value = input[typedKey];
-      return this.filter((e) => e.label[typedKey] === value);
-    }
-    throw new Error(this.INPUT_ERROR_MESSAGE);
-  };
-}
+export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {}
 
 export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
   return type === "budget" ? Budget : type === "section" ? Section : Category;
@@ -128,6 +115,54 @@ export const getBudgetDictionaryClass = (type: BudgetFamilyType): typeof Diction
   return type === "budget"
     ? BudgetDictionary
     : type === "section"
-    ? SectionDictionary
-    : CategoryDictionary;
+      ? SectionDictionary
+      : CategoryDictionary;
 };
+
+export class Status {
+  isInit = false;
+  isLoading = false;
+  isError = false;
+}
+
+export class Calculations {
+  status = new Status();
+
+  balanceData = new BalanceData();
+  // budgetData = new BudgetData();
+
+  constructor(init?: Partial<Calculations>) {
+    assign(this, init);
+  }
+
+  update = (init?: Partial<Calculations>) => {
+    assign(this, init);
+  };
+}
+
+export class Data {
+  status = new Status();
+
+  institutions = new InstitutionDictionary();
+  accounts = new AccountDictionary();
+  transactions = new TransactionDictionary();
+  investmentTransactions = new InvestmentTransactionDictionary();
+  splitTransactions = new SplitTransactionDictionary();
+  budgets = new BudgetDictionary();
+  sections = new SectionDictionary();
+  categories = new CategoryDictionary();
+  items = new ItemDictionary();
+  charts = new ChartDictionary();
+  accountSnapshots = new AccountSnapshotDictionary();
+  holdingSnapshots = new HoldingSnapshotDictionary();
+
+  constructor(init?: Partial<Data>) {
+    assign(this, init);
+  }
+
+  update = (init?: Partial<Data>) => {
+    assign(this, init);
+  };
+}
+
+export const globalData = new Data();

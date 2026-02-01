@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Capacity, getDateTimeString } from "common";
-import { useAppContext, PATH } from "client";
+import { getDateTimeString } from "common";
+import { Capacity, useAppContext, PATH } from "client";
 import { NameInput, Bar, ActionButtons, BudgetProperties } from "client/components";
-import { BudgetFamily } from "common/models/BudgetFamily";
+import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { useEventHandlers } from "./lib";
 
 import "./index.css";

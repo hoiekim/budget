@@ -1,6 +1,11 @@
 import { CSSProperties } from "react";
-import { InvestmentTransaction, SplitTransaction, Transaction } from "common";
-import { InvestmentTransactionHeaders, Sorter } from "client";
+import {
+  InvestmentTransaction,
+  SplitTransaction,
+  Transaction,
+  InvestmentTransactionHeaders,
+  Sorter,
+} from "client";
 import { TransactionHeaders } from ".";
 
 interface Props {

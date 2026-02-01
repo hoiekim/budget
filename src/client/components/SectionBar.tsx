@@ -1,8 +1,18 @@
 import { Dispatch, SetStateAction, useEffect, useRef } from "react";
 import { NewCategoryGetResponse } from "server";
-import { PATH, call, useAppContext, useLocalStorageState, useMemoryState } from "client";
+import {
+  Budget,
+  Section,
+  Category,
+  Data,
+  CategoryDictionary,
+  PATH,
+  call,
+  useAppContext,
+  useLocalStorageState,
+  useMemoryState,
+} from "client";
 import { LabeledBar, CategoryBar } from "client/components";
-import { Budget, Section, Category, Data, CategoryDictionary } from "common";
 
 interface Props {
   section: Section & { sorted_amount?: number };
@@ -23,7 +33,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
 
   const [categoriesOrder, setCategoriesOrder] = useLocalStorageState<string[]>(
     `categoriesOrder_${section_id}`,
-    []
+    [],
   );
 
   useEffect(() => {
@@ -42,7 +52,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
     new ResizeObserver((entries) => {
       const { height } = entries[0].contentRect;
       setChildrenHeight(height);
-    })
+    }),
   );
 
   useEffect(() => {

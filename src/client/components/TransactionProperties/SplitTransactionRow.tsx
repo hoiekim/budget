@@ -1,13 +1,14 @@
 import { useState, useEffect, ChangeEventHandler, useMemo } from "react";
+import { currencyCodeToSymbol } from "common";
 import {
   TransactionLabel,
-  currencyCodeToSymbol,
   Category,
   Data,
   SplitTransactionDictionary,
   SplitTransaction,
-} from "common";
-import { useAppContext, call } from "client";
+  useAppContext,
+  call,
+} from "client";
 import { CapacityInput } from "client/components";
 
 interface Props {

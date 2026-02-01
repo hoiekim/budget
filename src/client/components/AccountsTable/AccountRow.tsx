@@ -1,6 +1,6 @@
 import { AccountType } from "plaid";
-import { Account, ItemProvider } from "common";
-import { useAppContext, useAccountGraph, PATH, NoLabel } from "client";
+import { ItemProvider } from "common";
+import { Account, useAppContext, useAccountGraph, PATH, NoLabel } from "client";
 import { InstitutionSpan, Graph } from "client/components";
 import { Balance } from "./Balance";
 import "./index.css";

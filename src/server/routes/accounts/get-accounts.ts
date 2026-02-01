@@ -1,10 +1,10 @@
-import { Account, Holding, Item } from "common";
+import { JSONAccount, JSONHolding, JSONItem } from "common";
 import { Route, searchAccounts, searchItems } from "server";
 
 export interface AccountsGetResponse {
-  items: Item[];
-  accounts: Account[];
-  holdings: Holding[];
+  items: JSONItem[];
+  accounts: JSONAccount[];
+  holdings: JSONHolding[];
 }
 
 export const getAccountsRoute = new Route<AccountsGetResponse>("GET", "/accounts", async (req) => {

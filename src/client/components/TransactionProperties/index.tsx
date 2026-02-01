@@ -1,21 +1,20 @@
 import { ChangeEventHandler, useMemo, useState } from "react";
+import { currencyCodeToSymbol, numberToCommaString } from "common";
+import { NewSplitTransactionGetResponse } from "server";
 import {
   Category,
-  currencyCodeToSymbol,
   Data,
-  numberToCommaString,
   SplitTransaction,
   SplitTransactionDictionary,
   Transaction,
   TransactionDictionary,
   TransactionLabel,
-} from "common";
-import { useAppContext, call } from "client";
+  useAppContext,
+  call,
+} from "client";
 import { InstitutionSpan } from "client/components";
-
-import "./index.css";
 import SplitTransactionRow from "./SplitTransactionRow";
-import { NewSplitTransactionGetResponse } from "server";
+import "./index.css";
 
 interface Props {
   transaction: Transaction;
@@ -148,7 +147,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const onClickAdd = async () => {
     const queryString = "?" + new URLSearchParams({ transaction_id, account_id }).toString();
     const newSplitTransactionResponse = await call.get<NewSplitTransactionGetResponse>(
-      "/api/new-split-transaction" + queryString
+      "/api/new-split-transaction" + queryString,
     );
     if (!newSplitTransactionResponse.body) {
       console.error("Failed to get a new split transaction id:", newSplitTransactionResponse);

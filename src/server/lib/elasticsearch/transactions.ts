@@ -1,9 +1,9 @@
 import {
-  Transaction,
+  JSONTransaction,
   RemovedTransaction,
-  InvestmentTransaction,
+  JSONInvestmentTransaction,
   RemovedInvestmentTransaction,
-  SplitTransaction,
+  JSONSplitTransaction,
   RemovedSplitTransaction,
   DeepPartial,
 } from "common";
@@ -16,7 +16,7 @@ import {
 } from "./scripts";
 import { index } from ".";
 
-export type PartialTransaction = { transaction_id: string } & Partial<Transaction>;
+export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
 
 /**
  * Updates or inserts transactions documents associated with given user.
@@ -28,7 +28,7 @@ export type PartialTransaction = { transaction_id: string } & Partial<Transactio
 export const upsertTransactions = async (
   user: MaskedUser,
   transactions: PartialTransaction[],
-  upsert: boolean = true
+  upsert: boolean = true,
 ) => {
   if (!transactions.length) return [];
   const { user_id } = user;
@@ -56,7 +56,7 @@ export const upsertTransactions = async (
 
 export interface SearchTransactionsOptions {
   range?: DateRange;
-  query?: DeepPartial<Transaction>;
+  query?: DeepPartial<JSONTransaction>;
 }
 
 interface DateRange {
@@ -79,8 +79,8 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
   const isValidRange = start && end && start < end;
 
   type Response = {
-    transaction: Transaction;
-    investment_transaction: InvestmentTransaction;
+    transaction: JSONTransaction;
+    investment_transaction: JSONInvestmentTransaction;
   };
 
   const filter: any[] = [
@@ -104,7 +104,7 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
       ...Object.entries(flatten(query)).map(([key, value]) => {
         const should = transactionTypes.map((type) => ({ term: { [`${type}.${key}`]: value } }));
         return { bool: { should } };
-      })
+      }),
     );
   }
 
@@ -116,8 +116,8 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
   });
 
   type Result = {
-    transactions: Transaction[];
-    investment_transactions: InvestmentTransaction[];
+    transactions: JSONTransaction[];
+    investment_transactions: JSONInvestmentTransaction[];
   };
 
   const result: Result = {
@@ -128,9 +128,9 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
   response.hits.hits.forEach(({ _source, _id }) => {
     if (!_source) return;
     const { transaction, investment_transaction } = _source;
-    if (transaction) result.transactions.push(new Transaction(transaction));
+    if (transaction) result.transactions.push(transaction);
     else if (investment_transaction) {
-      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
+      result.investment_transactions.push(investment_transaction);
     }
   });
 
@@ -139,7 +139,7 @@ export const searchTransactions = async (user: MaskedUser, options?: SearchTrans
 
 export interface SearchSplitTransactionsOptions {
   range?: DateRange;
-  query?: DeepPartial<SplitTransaction>;
+  query?: DeepPartial<JSONSplitTransaction>;
 }
 
 /**
@@ -150,7 +150,7 @@ export interface SearchSplitTransactionsOptions {
  */
 export const searchSplitTransactions = async (
   user: MaskedUser,
-  options?: SearchSplitTransactionsOptions
+  options?: SearchSplitTransactionsOptions,
 ) => {
   const { user_id } = user;
   const { range, query } = options || {};
@@ -158,7 +158,7 @@ export const searchSplitTransactions = async (
   const isValidRange = start && end && start < end;
 
   type Response = {
-    split_transaction: SplitTransaction;
+    split_transaction: JSONSplitTransaction;
   };
 
   const filter: any[] = [
@@ -181,7 +181,7 @@ export const searchSplitTransactions = async (
     filter.push(
       ...Object.entries(flatten(query)).map(([key, value]) => {
         return { term: { [`split_transaction.${key}`]: value } };
-      })
+      }),
     );
   }
 
@@ -193,7 +193,7 @@ export const searchSplitTransactions = async (
   });
 
   type Result = {
-    split_transactions: SplitTransaction[];
+    split_transactions: JSONSplitTransaction[];
   };
 
   const result: Result = {
@@ -205,7 +205,7 @@ export const searchSplitTransactions = async (
     const { split_transaction } = _source;
     if (split_transaction) {
       split_transaction.split_transaction_id = _id;
-      result.split_transactions.push(new SplitTransaction(split_transaction));
+      result.split_transactions.push(split_transaction);
     }
   });
 
@@ -222,12 +222,12 @@ export const searchSplitTransactions = async (
 export const searchTransactionsByAccountId = async (
   user: MaskedUser,
   accountIds: string[],
-  range?: DateRange
+  range?: DateRange,
 ) => {
   type Result = {
-    transactions: Transaction[];
-    investment_transactions: InvestmentTransaction[];
-    split_transactions: SplitTransaction[];
+    transactions: JSONTransaction[];
+    investment_transactions: JSONInvestmentTransaction[];
+    split_transactions: JSONSplitTransaction[];
   };
 
   if (!Array.isArray(accountIds) || !accountIds.length) {
@@ -243,9 +243,9 @@ export const searchTransactionsByAccountId = async (
   const isValidRange = start && end && start < end;
 
   type Response = {
-    transaction: Transaction;
-    investment_transaction: InvestmentTransaction;
-    split_transaction: SplitTransaction;
+    transaction: JSONTransaction;
+    investment_transaction: JSONInvestmentTransaction;
+    split_transaction: JSONSplitTransaction;
   };
 
   const filter: any[] = [
@@ -288,12 +288,12 @@ export const searchTransactionsByAccountId = async (
   response.hits.hits.forEach(({ _source, _id }) => {
     if (!_source || !_id) return;
     const { transaction, investment_transaction, split_transaction } = _source;
-    if (transaction) result.transactions.push(new Transaction(transaction));
+    if (transaction) result.transactions.push(transaction);
     else if (investment_transaction) {
-      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
+      result.investment_transactions.push(investment_transaction);
     } else if (split_transaction) {
       split_transaction.split_transaction_id = _id;
-      result.split_transactions.push(new SplitTransaction(split_transaction));
+      result.split_transactions.push(split_transaction);
     }
   });
 
@@ -347,7 +347,7 @@ export const getOldestTransactionDate = async (user: MaskedUser) => {
  */
 export const deleteTransactions = async (
   user: MaskedUser,
-  transactions: (Transaction | RemovedTransaction)[]
+  transactions: (JSONTransaction | RemovedTransaction)[],
 ) => {
   if (!Array.isArray(transactions) || !transactions.length) return;
   const { user_id } = user;
@@ -374,7 +374,7 @@ export const deleteTransactions = async (
 
 export type PartialInvestmentTransaction = {
   investment_transaction_id: string;
-} & Partial<InvestmentTransaction>;
+} & Partial<JSONInvestmentTransaction>;
 
 /**
  * Updates or inserts investment transactions with given data.
@@ -385,7 +385,7 @@ export type PartialInvestmentTransaction = {
 export const upsertInvestmentTransactions = async (
   user: MaskedUser,
   investment_transactions: PartialInvestmentTransaction[],
-  upsert: boolean = true
+  upsert: boolean = true,
 ) => {
   if (!investment_transactions.length) return [];
   const { user_id } = user;
@@ -424,7 +424,7 @@ export const upsertInvestmentTransactions = async (
  */
 export const deleteInvestmentTransactions = async (
   user: MaskedUser,
-  investment_transactions: (InvestmentTransaction | RemovedInvestmentTransaction)[]
+  investment_transactions: (JSONInvestmentTransaction | RemovedInvestmentTransaction)[],
 ) => {
   if (!Array.isArray(investment_transactions) || !investment_transactions.length) return;
   const { user_id } = user;
@@ -460,18 +460,19 @@ export const deleteInvestmentTransactions = async (
 export const createSplitTransaction = async (
   user: MaskedUser,
   transaction_id: string,
-  account_id: string
+  account_id: string,
 ) => {
   const { user_id } = user;
 
-  type UnindexedSplitTransaction = Omit<SplitTransaction, "split_transaction_id"> & {
-    split_transaction_id?: string;
-  };
-  const split_transaction: UnindexedSplitTransaction = new SplitTransaction({
+  type UnindexedSplitTransaction = Omit<JSONSplitTransaction, "split_transaction_id">;
+  const split_transaction: UnindexedSplitTransaction = {
     transaction_id,
     account_id,
-  });
-  delete split_transaction.split_transaction_id;
+    amount: 0,
+    date: new Date().toISOString(),
+    custom_name: "",
+    label: {},
+  };
 
   const response = await client.index({
     index,
@@ -481,7 +482,9 @@ export const createSplitTransaction = async (
   return response;
 };
 
-export type PartialSplitTransaction = { split_transaction_id: string } & Partial<SplitTransaction>;
+export type PartialSplitTransaction = {
+  split_transaction_id: string;
+} & Partial<JSONSplitTransaction>;
 
 /**
  * Updates or inserts split transactions documents associated with given user.
@@ -493,7 +496,7 @@ export type PartialSplitTransaction = { split_transaction_id: string } & Partial
 export const upsertSplitTransactions = async (
   user: MaskedUser,
   splitTransactions: PartialSplitTransaction[],
-  upsert: boolean = true
+  upsert: boolean = true,
 ) => {
   if (!splitTransactions.length) return [];
   const { user_id } = user;
@@ -532,7 +535,7 @@ export const upsertSplitTransactions = async (
  */
 export const deleteSplitTransactions = async (
   user: MaskedUser,
-  split_transactions: (SplitTransaction | RemovedSplitTransaction)[]
+  split_transactions: (JSONSplitTransaction | RemovedSplitTransaction)[],
 ) => {
   if (!Array.isArray(split_transactions) || !split_transactions.length) return;
   const { user_id } = user;
@@ -567,7 +570,7 @@ export const deleteSplitTransactions = async (
  */
 export const deleteSplitTransactionsByTransactionId = async (
   user: MaskedUser,
-  transactionIds: string[]
+  transactionIds: string[],
 ) => {
   if (!Array.isArray(transactionIds) || !transactionIds.length) return;
   const { user_id } = user;
@@ -602,7 +605,7 @@ export const deleteSplitTransactionsByTransactionId = async (
  */
 export const deleteSplitTransactionsByAccountId = async (
   user: MaskedUser,
-  accountIds: string[]
+  accountIds: string[],
 ) => {
   if (!Array.isArray(accountIds) || !accountIds.length) return;
   const { user_id } = user;

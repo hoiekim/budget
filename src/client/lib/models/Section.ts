@@ -1,5 +1,5 @@
-import { getRandomId, assign } from "common";
-import { BudgetFamily, JSONBudgetFamily } from "./BudgetFamily";
+import { getRandomId, assign, JSONSection } from "common";
+import { BudgetFamily } from "./BudgetFamily";
 
 export class Section extends BudgetFamily {
   get id() {
@@ -18,9 +18,8 @@ export class Section extends BudgetFamily {
     assign(this, init);
     this.fromJSON();
   }
-}
 
-export interface JSONSection extends JSONBudgetFamily {
-  section_id: string;
-  budget_id: string;
+  toJSON(): JSONSection {
+    return { ...this, ...super.toJSON() };
+  }
 }

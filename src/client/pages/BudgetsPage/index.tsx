@@ -1,8 +1,15 @@
 import { useEffect } from "react";
-import { PATH, call, useAppContext, useLocalStorageState } from "client";
-import { BudgetBar } from "client/components";
 import { NewBudgetGetResponse } from "server";
-import { Budget, BudgetDictionary, Data } from "common";
+import {
+  PATH,
+  call,
+  useAppContext,
+  useLocalStorageState,
+  Budget,
+  BudgetDictionary,
+  Data,
+} from "client";
+import { BudgetBar } from "client/components";
 import "./index.css";
 
 export const BudgetsPage = () => {

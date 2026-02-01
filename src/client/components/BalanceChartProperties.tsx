@@ -1,6 +1,15 @@
-import { call, PATH, useAppContext, useDebounce } from "client";
-import { BalanceChart, Chart, CHART_TYPE, ChartDictionary, Data } from "common";
 import { ChangeEventHandler, MouseEventHandler, ReactNode, useState } from "react";
+import { ChartType } from "common";
+import {
+  BalanceChart,
+  Chart,
+  ChartDictionary,
+  Data,
+  call,
+  PATH,
+  useAppContext,
+  useDebounce,
+} from "client";
 
 interface BalanceChartPropertiesProps {
   chart: BalanceChart;
@@ -16,7 +25,7 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
   const { accounts, budgets } = data;
 
   const [nameInput, setNameInput] = useState(name);
-  const [selectedType, setSelectedType] = useState<CHART_TYPE>(type);
+  const [selectedType, setSelectedType] = useState<ChartType>(type);
 
   const updateDebouncer = useDebounce();
 
@@ -44,7 +53,7 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
   };
 
   const onChangeType: ChangeEventHandler<HTMLSelectElement> = (e) => {
-    const newType = e.target.value as CHART_TYPE;
+    const newType = e.target.value as ChartType;
     setSelectedType(newType);
     updateChart({ type: newType });
   };
@@ -90,13 +99,13 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
         <div className="row keyValue">
           <span className="propertyName">Chart&nbsp;Type</span>
           <select value={selectedType} onChange={onChangeType}>
-            {Object.values(CHART_TYPE).map((v) => {
+            {Object.values(ChartType).map((v) => {
               const chartTypeName =
-                v === CHART_TYPE.BALANCE
+                v === ChartType.BALANCE
                   ? "Balance Chart"
-                  : CHART_TYPE.PROJECTION
-                  ? "Projection Chart"
-                  : "";
+                  : ChartType.PROJECTION
+                    ? "Projection Chart"
+                    : "";
               return (
                 <option key={`chart_type_option_${v}`} value={v}>
                   {chartTypeName}

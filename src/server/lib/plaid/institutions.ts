@@ -1,9 +1,12 @@
 import { CountryCode } from "plaid";
 import { MaskedUser } from "server";
-import { Institution } from "common";
+import { JSONInstitution } from "common";
 import { getClient } from "./util";
 
-export const getInstitution = async (user: MaskedUser, id: string) => {
+export const getInstitution = async (
+  user: MaskedUser,
+  id: string,
+): Promise<JSONInstitution | undefined> => {
   const client = getClient(user);
 
   try {
@@ -27,7 +30,7 @@ export const getInstitution = async (user: MaskedUser, id: string) => {
       status,
     } = institution;
 
-    return new Institution({
+    return {
       institution_id,
       name,
       products,
@@ -38,7 +41,7 @@ export const getInstitution = async (user: MaskedUser, id: string) => {
       routing_numbers,
       oauth,
       status,
-    });
+    };
   } catch (error) {
     console.error(error);
     console.error("Failed to get institutions data.");

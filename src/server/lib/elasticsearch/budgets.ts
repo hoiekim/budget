@@ -1,5 +1,5 @@
 import { MaskedUser } from "server";
-import { Budget, Section, Category, JSONBudget, JSONSection, JSONCategory } from "common";
+import { JSONBudget, JSONSection, JSONCategory, getRandomId } from "common";
 import { client } from "./client";
 import { getUpdateBudgetScript, getUpdateSectionScript, getUpdateCategoryScript } from "./scripts";
 import { index } from ".";
@@ -14,9 +14,13 @@ import { index } from ".";
 export const createBudget = async (user: MaskedUser) => {
   const { user_id } = user;
 
-  type UnindexedBudget = Omit<Budget, "budget_id"> & { budget_id?: string };
-  const budget: UnindexedBudget = new Budget();
-  delete budget.budget_id;
+  type UnindexedBudget = Omit<JSONBudget, "budget_id">;
+  const budget: UnindexedBudget = {
+    name: "Unnamed",
+    iso_currency_code: "USD",
+    capacities: [{ capacity_id: getRandomId(), month: 0 }],
+    roll_over: false,
+  };
 
   const updated = new Date().toISOString();
 
@@ -28,7 +32,7 @@ export const createBudget = async (user: MaskedUser) => {
   return response;
 };
 
-export type PartialBudget = { budget_id: string } & Partial<Budget>;
+export type PartialBudget = { budget_id: string } & Partial<JSONBudget>;
 
 /**
  * Updates budget document with given object.
@@ -101,9 +105,13 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
 export const createSection = async (user: MaskedUser, budget_id: string) => {
   const { user_id } = user;
 
-  type UnindexedSection = Omit<Section, "section_id"> & { section_id?: string };
-  const section: UnindexedSection = new Section({ budget_id });
-  delete section.section_id;
+  type UnindexedSection = Omit<JSONSection, "section_id">;
+  const section: UnindexedSection = {
+    name: "Unnamed",
+    budget_id,
+    capacities: [{ capacity_id: getRandomId(), month: 0 }],
+    roll_over: false,
+  };
 
   const updated = new Date().toISOString();
 
@@ -115,7 +123,7 @@ export const createSection = async (user: MaskedUser, budget_id: string) => {
   return response;
 };
 
-export type PartialSection = { section_id: string } & Partial<Section>;
+export type PartialSection = { section_id: string } & Partial<JSONSection>;
 
 /**
  * Updates section document with given object.
@@ -176,9 +184,13 @@ export const deleteSection = async (user: MaskedUser, section_id: string) => {
 export const createCategory = async (user: MaskedUser, section_id: string) => {
   const { user_id } = user;
 
-  type UnindexedCategory = Omit<Category, "category_id"> & { category_id?: string };
-  const category: UnindexedCategory = new Category({ section_id });
-  delete category.category_id;
+  type UnindexedCategory = Omit<JSONCategory, "category_id">;
+  const category: UnindexedCategory = {
+    name: "Unnamed",
+    section_id,
+    capacities: [{ capacity_id: getRandomId(), month: 0 }],
+    roll_over: false,
+  };
 
   const updated = new Date().toISOString();
 
@@ -190,7 +202,7 @@ export const createCategory = async (user: MaskedUser, section_id: string) => {
   return response;
 };
 
-export type PartialCategory = { category_id: string } & Partial<Category>;
+export type PartialCategory = { category_id: string } & Partial<JSONCategory>;
 
 /**
  * Updates category document with given object.

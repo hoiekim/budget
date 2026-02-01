@@ -2,23 +2,19 @@ import { MaskedUser } from "server";
 import { client } from "./client";
 import { index } from ".";
 import {
-  Account,
-  AccountSnapshot,
-  Budget,
-  Category,
-  Chart,
-  Holding,
-  HoldingSnapshot,
-  InvestmentTransaction,
-  Item,
+  JSONAccount,
+  JSONAccountSnapshot,
+  JSONHolding,
+  JSONHoldingSnapshot,
+  JSONInvestmentTransaction,
+  JSONItem,
   JSONBudget,
   JSONCategory,
   JSONChart,
   JSONSection,
-  Section,
-  Snapshot,
-  SplitTransaction,
-  Transaction,
+  JSONSnapshot,
+  JSONSplitTransaction,
+  JSONTransaction,
 } from "common";
 
 export const getUpdatedDocuments = async (user: MaskedUser, startDate: Date) => {
@@ -47,13 +43,13 @@ export const getUpdatedDocuments = async (user: MaskedUser, startDate: Date) => 
 
   // TODO: All of these are actually JSON object.
   type Response = {
-    account?: Account;
-    holding?: Holding;
-    item?: Item;
-    transaction?: Transaction;
-    split_transaction?: SplitTransaction;
-    investment_transaction?: InvestmentTransaction;
-    snapshot?: Snapshot;
+    account?: JSONAccount;
+    holding?: JSONHolding;
+    item?: JSONItem;
+    transaction?: JSONTransaction;
+    split_transaction?: JSONSplitTransaction;
+    investment_transaction?: JSONInvestmentTransaction;
+    snapshot?: JSONSnapshot;
     user?: { user_id: string };
     budget?: JSONBudget;
     section?: JSONSection;
@@ -69,17 +65,17 @@ export const getUpdatedDocuments = async (user: MaskedUser, startDate: Date) => 
   });
 
   type Result = {
-    accounts: Account[];
-    items: Item[];
-    transactions: Transaction[];
-    split_transactions: SplitTransaction[];
-    investment_transactions: InvestmentTransaction[];
-    account_snapshots: AccountSnapshot[];
-    holding_snapshots: HoldingSnapshot[];
-    budgets: Budget[];
-    sections: Section[];
-    categories: Category[];
-    charts: Chart[];
+    accounts: JSONAccount[];
+    items: JSONItem[];
+    transactions: JSONTransaction[];
+    split_transactions: JSONSplitTransaction[];
+    investment_transactions: JSONInvestmentTransaction[];
+    account_snapshots: JSONAccountSnapshot[];
+    holding_snapshots: JSONHoldingSnapshot[];
+    budgets: JSONBudget[];
+    sections: JSONSection[];
+    categories: JSONCategory[];
+    charts: JSONChart[];
   };
 
   const result: Result = {
@@ -96,7 +92,7 @@ export const getUpdatedDocuments = async (user: MaskedUser, startDate: Date) => 
     charts: [],
   };
 
-  response.hits.hits.forEach(({ _source, _id }) => {
+  response.hits.hits.forEach(({ _source }) => {
     if (!_source) return;
     const {
       account,
@@ -114,21 +110,21 @@ export const getUpdatedDocuments = async (user: MaskedUser, startDate: Date) => 
     } = _source;
     if (!user || user.user_id !== user_id) return;
     if (snapshot) {
-      if (account) result.account_snapshots.push(new AccountSnapshot({ user, snapshot, account }));
-      if (holding) result.holding_snapshots.push(new HoldingSnapshot({ user, snapshot, holding }));
+      if (account) result.account_snapshots.push({ user, snapshot, account });
+      if (holding) result.holding_snapshots.push({ user, snapshot, holding });
     } else if (account) {
-      result.accounts.push(new Account(account));
+      result.accounts.push(account);
     }
-    if (item) result.items.push(new Item(item));
-    if (transaction) result.transactions.push(new Transaction(transaction));
-    if (split_transaction) result.split_transactions.push(new SplitTransaction(split_transaction));
+    if (item) result.items.push(item);
+    if (transaction) result.transactions.push(transaction);
+    if (split_transaction) result.split_transactions.push(split_transaction);
     if (investment_transaction) {
-      result.investment_transactions.push(new InvestmentTransaction(investment_transaction));
+      result.investment_transactions.push(investment_transaction);
     }
-    if (budget) result.budgets.push(new Budget(budget));
-    if (section) result.sections.push(new Section(section));
-    if (category) result.categories.push(new Category(category));
-    if (chart) result.charts.push(new Chart(chart));
+    if (budget) result.budgets.push(budget);
+    if (section) result.sections.push(section);
+    if (category) result.categories.push(category);
+    if (chart) result.charts.push(chart);
   });
 
   return result;

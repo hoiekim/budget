@@ -1,5 +1,5 @@
 import { MaskedUser } from "server";
-import { Chart, JSONChart } from "common";
+import { ChartType, JSONBalanceChartConfiguration, JSONChart } from "common";
 import { client } from "./client";
 import { getUpdateChartScript } from "./scripts";
 import { index } from ".";
@@ -12,9 +12,16 @@ import { index } from ".";
 export const createChart = async (user: MaskedUser) => {
   const { user_id } = user;
 
-  type UnindexedChart = Omit<Chart, "chart_id"> & { chart_id?: string };
-  const chart: UnindexedChart = new Chart();
-  delete chart.chart_id;
+  type UnindexedChart = Omit<JSONChart, "chart_id">;
+  const defaultChartConfiguration: JSONBalanceChartConfiguration = {
+    account_ids: [],
+    budget_ids: [],
+  };
+  const chart: UnindexedChart = {
+    name: "Unnamed",
+    type: ChartType.BALANCE,
+    configuration: JSON.stringify(defaultChartConfiguration),
+  };
 
   const updated = new Date().toISOString();
 
@@ -26,7 +33,7 @@ export const createChart = async (user: MaskedUser) => {
   return response;
 };
 
-export type PartialChart = { chart_id: string } & Partial<Chart>;
+export type PartialChart = { chart_id: string } & Partial<JSONChart>;
 
 /**
  * Updates chart document with given object.

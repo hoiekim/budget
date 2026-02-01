@@ -1,17 +1,16 @@
-import { call, useAppContext, useDebounce } from "client";
 import {
   Account,
   AccountDictionary,
-  AccountGraphOptions,
   AccountSnapshot,
   AccountSnapshotDictionary,
   Data,
-  ItemProvider,
-  numberToCommaString,
   Snapshot,
   TransactionDictionary,
-  ViewDate,
-} from "common";
+  call,
+  useAppContext,
+  useDebounce,
+} from "client";
+import { AccountGraphOptions, ItemProvider, numberToCommaString, ViewDate } from "common";
 import { AccountType } from "plaid";
 import { ChangeEventHandler, MouseEventHandler, useEffect, useState } from "react";
 import { AccountPostResponse, SnapshotPostResponse } from "server";
@@ -46,7 +45,7 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
 
   const [isHidden, setIsHidden] = useState(hide);
   const [useTransactionsForGraph, setUseTransactionsForGraph] = useState(
-    graphOptions?.useTransactions
+    graphOptions?.useTransactions,
   );
   const [useSnapshotsForGraph, setUseSnapshotsForGraph] = useState(graphOptions?.useSnapshots);
 
@@ -144,7 +143,7 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
             const newData = new Data(oldData);
             const existingAccount = newData.accounts.get(account_id);
             if (!existingAccount) return oldData;
-            const newGraphOptions = new AccountGraphOptions(existingAccount.graphOptions);
+            const newGraphOptions: AccountGraphOptions = { ...existingAccount.graphOptions };
             newGraphOptions.useTransactions = checked;
             const newAccount = new Account({
               ...existingAccount,
@@ -175,7 +174,7 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
             const newData = new Data(oldData);
             const existingAccount = newData.accounts.get(account_id);
             if (!existingAccount) return oldData;
-            const newGraphOptions = new AccountGraphOptions(existingAccount.graphOptions);
+            const newGraphOptions: AccountGraphOptions = { ...existingAccount.graphOptions };
             newGraphOptions.useSnapshots = checked;
             const newAccount = new Account({
               ...existingAccount,

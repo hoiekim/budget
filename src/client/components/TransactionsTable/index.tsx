@@ -1,7 +1,7 @@
-import { InvestmentTransaction, SplitTransaction, Transaction } from "common";
+import { InvestmentTransaction, SplitTransaction, Transaction } from "client";
 import TransactionRow from "./TransactionRow";
-import "./index.css";
 import InvestmentTransactionRow from "./InvestmentTransactionRow";
+import "./index.css";
 
 interface Props {
   transactions: (Transaction | InvestmentTransaction | SplitTransaction)[];

@@ -1,5 +1,9 @@
-import { Data, Item, ItemDictionary, ItemProvider, ItemStatus, toUpperCamelCase } from "common";
+import { ItemProvider, ItemStatus, toUpperCamelCase } from "common";
+import { PbulicTokenPostResponse } from "server";
 import {
+  Data,
+  Item,
+  ItemDictionary,
   call,
   cleanCache,
   InstitutionSpan,
@@ -9,9 +13,7 @@ import {
   useSync,
 } from "client";
 import { SimpleFinLinkButton } from "client/components";
-
 import "./index.css";
-import { PbulicTokenPostResponse } from "server";
 
 export const Configuration = () => {
   const { setUser, data, setData, router } = useAppContext();

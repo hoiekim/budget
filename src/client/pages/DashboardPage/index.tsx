@@ -1,8 +1,18 @@
 import { useEffect } from "react";
-import { BalanceChart, Chart, CHART_TYPE, ChartDictionary, Data, ProjectionChart } from "common";
+import { ChartType } from "common";
 import { NewChartGetResponse } from "server";
+import {
+  BalanceChart,
+  Chart,
+  ProjectionChart,
+  call,
+  PATH,
+  useAppContext,
+  useLocalStorageState,
+  ChartDictionary,
+  Data,
+} from "client";
 import { BalanceChartRow, ProjectionChartRow } from "client/components";
-import { call, PATH, useAppContext, useLocalStorageState } from "client";
 import "./index.css";
 
 export const DashboardPage = () => {
@@ -31,7 +41,7 @@ export const DashboardPage = () => {
         params.append("chart_id", chart_id);
         router.go(PATH.CHART_DETAIL, { params });
       };
-      if (chart.type === CHART_TYPE.BALANCE) {
+      if (chart.type === ChartType.BALANCE) {
         return (
           <BalanceChartRow
             key={chart_id}

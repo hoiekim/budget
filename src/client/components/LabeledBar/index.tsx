@@ -1,14 +1,7 @@
 import { Dispatch, SetStateAction } from "react";
-import { useReorder, useAppContext } from "client";
+import { MAX_FLOAT, currencyCodeToSymbol, numberToCommaString } from "common";
+import { Budget, Category, Section, useReorder, useAppContext } from "client";
 import { Bar } from "client/components";
-import {
-  MAX_FLOAT,
-  Budget,
-  Category,
-  Section,
-  currencyCodeToSymbol,
-  numberToCommaString,
-} from "common";
 import EditButton from "./EditButton";
 import "./index.css";
 

@@ -1,6 +1,6 @@
-import { useAppContext } from "client";
-import { Account, currencyCodeToSymbol, numberToCommaString } from "common";
 import { AccountSubtype, AccountType } from "plaid";
+import { currencyCodeToSymbol, numberToCommaString } from "common";
+import { Account, useAppContext } from "client";
 
 interface BalanceProps {
   account: Account;
