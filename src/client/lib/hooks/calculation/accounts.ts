@@ -28,47 +28,6 @@ export const getAccountBalance = (account: Account) => {
   return value;
 };
 
-/**
- * Balance history stored by `accountId` and `span`. `span` is 0-indexed time interval
- * where 0 is today, 1 is one month(or year) ago, 2 is two month(or year) ago, etc.
- * @example const balanceAmount = balanceData.get(accountId, span);
- */
-class BalanceDataDeprecated {
-  private data = new Map<string, number[]>();
-
-  get size() {
-    return this.data.size;
-  }
-
-  length = 0;
-
-  set = (accountId: string, span: number, amount: number) => {
-    if (!this.data.has(accountId)) this.data.set(accountId, []);
-    const accountData = this.data.get(accountId)!;
-    accountData[span] = amount;
-    this.length = Math.max(this.length, accountData.length);
-  };
-
-  get(accountId: string, span: number): number | undefined;
-  get(accountId: string): number[];
-  get(accountId: string, span?: number) {
-    const accountData = this.data.get(accountId);
-    if (span === undefined) return accountData || [];
-    if (!accountData) return undefined;
-    return accountData[span];
-  }
-
-  /**
-   * Add amount to specified position. If data doesn't exist, assume it was 0.
-   */
-  add = (accountId: string, span: number, amount: number) => {
-    const existing = this.get(accountId, span) || 0;
-    this.set(accountId, span, existing + amount);
-  };
-
-  forEach = this.data.forEach;
-}
-
 const getBalanceDataFromTransactions = (
   accounts: AccountDictionary,
   transactions: TransactionDictionary,
@@ -175,16 +134,16 @@ export const getBalanceData = (data: Data) => {
   accounts.forEach(({ id, graphOptions }) => {
     const startDate1 = transactionBasedData.get(id).startDate!;
     const startDate2 = snapshotBasedData.get(id).startDate!;
-    const startDate = startDate1 < startDate2 ? startDate1 : startDate2;
+    const startDate = startDate1.getEndDate() < startDate2.getEndDate() ? startDate1 : startDate2;
 
     const endDate1 = transactionBasedData.get(id).endDate!;
     const endDate2 = snapshotBasedData.get(id).endDate!;
-    const endDate = endDate1 > endDate2 ? endDate1 : endDate2;
+    const endDate = endDate1.getEndDate() < endDate2.getEndDate() ? endDate2 : endDate1;
 
     const { useTransactions = true, useSnapshots = true } = graphOptions;
 
     let previouslyUsedBalance = 0;
-    while (startDate.getEndDate() < endDate.getEndDate()) {
+    while (startDate.getEndDate() <= endDate.getEndDate()) {
       const date = startDate.getEndDate();
       const transactionBasedBalance = transactionBasedData.get(id, date);
       const snapshotBasedBalance = snapshotBasedData.get(id, date);
@@ -212,7 +171,8 @@ interface UseAccountGraphOptions {
 }
 
 export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOptions = {}) => {
-  const { viewDate } = useAppContext();
+  const { viewDate, calculations } = useAppContext();
+  const { balanceData } = calculations;
   const { viewDate: inputViewDate, startDate, useLengthFixer = true } = options;
 
   const graphViewDate = useMemo(() => {
@@ -222,14 +182,15 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
 
   const { graphData, cursorAmount } = useMemo(() => {
     const flattened: number[] = [];
-    accounts.forEach(({ balanceHistory }) => {
+    accounts.forEach(({ id }) => {
+      const balanceArray = balanceData.get(id).toArray(graphViewDate);
       const maxLength = startDate
         ? graphViewDate.getSpanFrom(startDate) + 1
-        : balanceHistory?.length || 0;
+        : balanceArray.length || 0;
 
       for (let i = 0; i < maxLength; i++) {
         if (flattened[i] === undefined) flattened[i] = 0;
-        flattened[i] += balanceHistory?.[i] || 0;
+        flattened[i] += balanceArray[i] || 0;
       }
     });
 
@@ -254,7 +215,7 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
     const graphData: GraphInput = { lines: [{ sequence, color: "#097" }], points };
 
     return { graphData, cursorAmount };
-  }, [accounts, startDate, useLengthFixer, graphViewDate, viewDate]);
+  }, [accounts, balanceData, startDate, useLengthFixer, graphViewDate, viewDate]);
 
   return { graphViewDate, graphData, cursorAmount };
 };
@@ -280,7 +241,7 @@ class BalanceHistory {
   }
 
   private getKey = (date: Date) => getYearMonthString(date);
-  private getDate = (key: string) => new Date(`${key}-01`);
+  private getDate = (key: string) => new Date(`${key}-15`);
 
   getData = () => ({ ...this.data });
   getRange = () => this.range && [...this.range];

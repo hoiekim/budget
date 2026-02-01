@@ -7,16 +7,19 @@ interface BalanceProps {
 }
 
 export const Balance = ({ account }: BalanceProps) => {
-  const { viewDate } = useAppContext();
-  const { type, subtype, balances, balanceHistory } = account;
+  const { viewDate, calculations } = useAppContext();
+  const { balanceData } = calculations;
+  const { type, subtype, balances } = account;
+  const balanceHistory = balanceData.get(account.id);
   const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
   const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
   const currentString = numberToCommaString(current!);
 
-  const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
-  const dynamicAmount = balanceHistory?.[viewDateSpan];
-  const previousAmount = balanceHistory?.[viewDateSpan + 1];
+  const viewDateDate = viewDate.getEndDate();
+  const previousDate = viewDate.clone().previous().getEndDate();
+  const dynamicAmount = balanceHistory.get(viewDateDate) || 0;
+  const previousAmount = balanceHistory.get(previousDate) || 0;
 
   if (type === AccountType.Credit) {
     const availableString = numberToCommaString(available!);

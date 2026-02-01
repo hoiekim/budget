@@ -9,15 +9,17 @@ interface Props {
 }
 
 export const BalanceInfo = ({ balanceTotal, currencySymbol, donutData, isShrunk }: Props) => {
-  const { data, viewDate } = useAppContext();
+  const { data, calculations, viewDate } = useAppContext();
   const { accounts } = data;
+  const { balanceData } = calculations;
 
   const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
+  const previousDate = viewDate.clone().previous().getEndDate();
 
   const previousAmount = donutData.reduce((a, { id }) => {
-    const account = accounts.get(id);
-    if (!account) return a;
-    return a + (account.balanceHistory?.[viewDateSpan + 1] || 0);
+    const balanceHistory = balanceData.get(id);
+    if (!balanceHistory) return a;
+    return a + (balanceHistory.get(previousDate) || 0);
   }, 0);
 
   let totalCredit = 0;

@@ -6,22 +6,11 @@ import {
 } from "plaid";
 import { getRandomId, assign, JSONAccount, AccountLabel, AccountGraphOptions } from "common";
 
-const balanceMap = new Map<string, number[]>();
-
 export class Account implements JSONAccount {
   get id() {
     return this.account_id;
   }
   set id(_: string) {}
-
-  get balanceHistory() {
-    return balanceMap.get(this.id);
-  }
-
-  set balanceHistory(balanceHistory: number[] | undefined) {
-    if (balanceHistory) balanceMap.set(this.id, balanceHistory);
-    else balanceMap.delete(this.id);
-  }
 
   account_id: string = getRandomId();
   balances: AccountBalance = {

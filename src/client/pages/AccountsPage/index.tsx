@@ -6,7 +6,8 @@ import { AccountsDonut, AccountsTable, DonutData } from "client/components";
 import "./index.css";
 
 export const AccountsPage = () => {
-  const { data, viewDate, screenType } = useAppContext();
+  const { data, calculations, viewDate, screenType } = useAppContext();
+  const { balanceData } = calculations;
   const { accounts } = data;
 
   const [scrollY, setScrollY] = useState(0);
@@ -29,10 +30,11 @@ export const AccountsPage = () => {
         return !hide && type !== AccountType.Credit && (balances.current || balances.available);
       });
 
-    const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
+    const viewDateDate = viewDate.getEndDate();
 
     filteredAccounts.forEach((a, i) => {
-      const value = a.balanceHistory?.[viewDateSpan] || 0;
+      const balanceHistory = balanceData.get(a.id);
+      const value = balanceHistory.get(viewDateDate) || 0;
       balanceTotal += value;
       const color = colors[i % colors.length];
       const label = a.custom_name || a.name || "Unnamed";
@@ -46,7 +48,7 @@ export const AccountsPage = () => {
     const currencySymbol = currencyCodeToSymbol(currencyCode);
 
     return { donutData, currencySymbol, balanceTotal };
-  }, [accounts, viewDate]);
+  }, [accounts, balanceData, viewDate]);
 
   const isNarrow = screenType === ScreenType.Narrow;
 
