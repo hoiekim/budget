@@ -34,10 +34,11 @@ const BudgetDonut = ({
   defaultCapacityInput,
   onChangeAmount,
 }: Props) => {
-  const { viewDate } = useAppContext();
+  const { calculations, viewDate } = useAppContext();
+  const { capacityData } = calculations;
   const interval = viewDate.getInterval();
   const capacity = budgetLike.getActiveCapacity(date);
-  const { children_total, grand_children_total } = capacity;
+  const { children_total, grand_children_total } = capacityData.get(capacity.id);
   const children = budgetLike.getChildren().sort((a, b) => {
     return a.name === b.name ? 0 : a.name < b.name ? -1 : 1;
   });
@@ -76,7 +77,7 @@ const BudgetDonut = ({
           label: grandChildLabel,
         });
       });
-      const childDiff = childValue - childCapacity.children_total;
+      const childDiff = childValue - capacityData.get(childCapacity.id).children_total;
       if (isSyncedInput) {
         childrenDonutData[childrenDonutData.length - 1].value -= childDiff;
       } else if (childDiff > 0) {

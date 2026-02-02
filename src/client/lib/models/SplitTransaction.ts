@@ -8,12 +8,12 @@ export class SplitTransaction implements JSONSplitTransaction {
   }
   set id(_: string) {}
 
-  get hypotheticalTransaction() {
+  toTransaction = () => {
     const { id, transaction_id, amount, label } = this;
     const { transactions } = globalData;
     const parentTransaction = transactions.get(transaction_id);
     return new Transaction({ ...parentTransaction!, transaction_id: id, amount, label });
-  }
+  };
 
   split_transaction_id: string = getRandomId();
   transaction_id: string = "";

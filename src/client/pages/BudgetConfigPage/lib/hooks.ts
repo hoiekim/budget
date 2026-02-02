@@ -1,19 +1,15 @@
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import {
-  calculateBudgetSynchrony,
-  budgetCalculatorLambda,
   call,
   useAppContext,
   Data,
-  BudgetDictionary,
-  CategoryDictionary,
   getBudgetClass,
   getBudgetDictionaryClass,
-  SectionDictionary,
   Budget,
   Capacity,
   Category,
   Section,
+  CapacityData,
 } from "client";
 
 export const useEventHandlers = (isSynced: boolean, isIncome: boolean, isInfinite: boolean) => {
@@ -31,13 +27,14 @@ interface UpdatedBudgetFamily {
 }
 
 export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolean) => {
-  const { setData, viewDate } = useAppContext();
+  const { setData, calculations } = useAppContext();
+  const { capacityData } = calculations;
 
   const save = async <T extends BudgetFamily>(original: T, updated: UpdatedBudgetFamily) => {
     const toUpdateList = isSynced
       ? isInfinite
         ? getInfiniteBudgetsToSync(original, updated, isIncome)
-        : getLimitedBudgetsToSync(original, updated)
+        : getLimitedBudgetsToSync(original, updated, capacityData)
       : getNonSyncedBudgetsToUpdate(original, updated, isIncome, isInfinite);
 
     const iterator = toUpdateList.values();
@@ -65,10 +62,6 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
         current = iterator.next();
       }
 
-      const { budgets, sections, categories } = budgetCalculatorLambda(newData, viewDate);
-      newData.budgets = budgets;
-      newData.sections = sections;
-      newData.categories = categories;
       return newData;
     });
   };
@@ -106,6 +99,7 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
 const getLimitedBudgetsToSync = <T extends BudgetFamily>(
   original: T,
   updated: UpdatedBudgetFamily,
+  capacityData: CapacityData,
 ) => {
   const toUpdateList = new Set<BudgetFamily>();
 
@@ -116,14 +110,14 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
 
   if (original.type === "budget") {
     for (const capacity of budget.capacities) {
-      capacity.month = capacity.grand_children_total;
+      capacity.month = capacityData.get(capacity.id).grand_children_total;
     }
   }
 
   if (original.type === "budget" || original.type === "section") {
     for (const section of sections) {
       for (const capacity of section.capacities) {
-        capacity.month = capacity.children_total;
+        capacity.month = capacityData.get(capacity.id).children_total;
       }
     }
   }
@@ -188,17 +182,11 @@ const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
     });
   });
 
-  calculateBudgetSynchrony(
-    new BudgetDictionary([[budget.id, budget]]),
-    new SectionDictionary(sections.map((s) => [s.id, s])),
-    new CategoryDictionary(categories.map((c) => [c.id, c])),
-  );
-
   return { budget, sections, categories };
 };
 
 export const useRemove = () => {
-  const { data, setData, viewDate } = useAppContext();
+  const { data, setData } = useAppContext();
   const { transactions, categories } = data;
 
   const remove = async (deleted?: BudgetFamily) => {
@@ -250,10 +238,6 @@ export const useRemove = () => {
         const newDictionary = new DynamicBudgetFamilyDictionary(newData[dictionaryKey] as any);
         newDictionary.delete(id);
         newData[dictionaryKey] = newDictionary;
-        const { budgets, sections, categories } = budgetCalculatorLambda(newData, viewDate);
-        newData.budgets = budgets;
-        newData.sections = sections;
-        newData.categories = categories;
         return newData;
       });
     }

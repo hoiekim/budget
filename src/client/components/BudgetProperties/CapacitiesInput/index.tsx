@@ -19,7 +19,8 @@ const CapacitiesInput = ({
   setCapacitiesInput,
   isSyncedInput,
 }: Props) => {
-  const { viewDate } = useAppContext();
+  const { calculations, viewDate } = useAppContext();
+  const { capacityData } = calculations;
   const interval = "month";
   const defaultCapacities = useRef(budgetLike.capacities.map((c) => c.toInputs().capacityInput));
 
@@ -132,8 +133,11 @@ const CapacitiesInput = ({
       const newCapacityInit: Partial<Capacity> = { ...latestCapacity, active_from };
       delete newCapacityInit.capacity_id;
       const newCapacity = new Capacity(newCapacityInit);
-      newCapacity.children_total = latestCapacity.children_total;
-      newCapacity.grand_children_total = latestCapacity.grand_children_total;
+      // TODO: reconsider this logic. this doesn't trigger react state rendering.
+      const newCapacitySummary = capacityData.get(newCapacity.id);
+      const latestCapacitySummary = capacityData.get(latestCapacity.id);
+      newCapacitySummary.children_total = latestCapacitySummary.children_total;
+      newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
       newCapacities.push(newCapacity);
       defaultCapacities.current = newCapacities;
 

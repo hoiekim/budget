@@ -22,9 +22,8 @@ export const TransactionDetailPage = () => {
 
   useEffect(() => {
     const newTransaction = transactions.get(id);
-    setTransaction(
-      (oldTransaction) => (newTransaction && new Transaction(newTransaction)) || oldTransaction,
-    );
+    if (!newTransaction) return;
+    setTransaction(new Transaction(newTransaction));
   }, [id, transactions]);
 
   if (!transaction) return <></>;

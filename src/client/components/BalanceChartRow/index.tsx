@@ -21,8 +21,9 @@ export const BalanceChartRow = ({
   onClick,
   onSetOrder,
 }: BalanceChartRowProps) => {
-  const { data, viewDate } = useAppContext();
+  const { data, calculations, viewDate } = useAppContext();
   const { accounts, budgets } = data;
+  const { budgetData } = calculations;
   const { name, configuration } = chart;
 
   const {
@@ -49,11 +50,13 @@ export const BalanceChartRow = ({
     else if (a.type === AccountType.Loan) column2.push(stack);
   });
 
+  const date = viewDate.getEndDate();
+  const interval = viewDate.getInterval();
+
   budgets.forEach((b) => {
     if (!configuration.budget_ids.includes(b.id)) return;
-    const date = viewDate.getEndDate();
-    const interval = viewDate.getInterval();
-    const amount = b.roll_over ? b.rolled_over_amount : -b.getActiveCapacity(date)[interval];
+    const { rolled_over_amount } = budgetData.get(b.id, date);
+    const amount = b.roll_over ? rolled_over_amount : -b.getActiveCapacity(date)[interval];
     const stack = { type: "Budget", name: b.name, amount: Math.abs(amount) };
     if (amount > 0) return column1.push(stack);
     else column2.push(stack);

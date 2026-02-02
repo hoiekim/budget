@@ -27,7 +27,7 @@ export type TransactionsPageParams = {
 };
 
 export const TransactionsPage = () => {
-  const { data, viewDate, router, screenType } = useAppContext();
+  const { data, calculations, viewDate, router, screenType } = useAppContext();
   const {
     transactions,
     investmentTransactions,
@@ -38,6 +38,7 @@ export const TransactionsPage = () => {
     sections,
     categories,
   } = data;
+  const { transactionFamilies } = calculations;
   const { path, params, transition } = router;
   const { incomingParams } = transition;
 
@@ -167,7 +168,7 @@ export const TransactionsPage = () => {
             return e[key as keyof InvestmentTransaction] || e.id;
           }
         } else {
-          const { hypotheticalTransaction: t } = e;
+          const t = e.toTransaction();
           if (key === "date") {
             return new Date(t.authorized_date || t.date);
           } else if (key === "merchant_name") {
@@ -187,6 +188,8 @@ export const TransactionsPage = () => {
           } else if (key === "location") {
             const { city, region, country } = t.location;
             return [city, region || country].filter((e) => e).join(", ");
+          } else if (key === "amount") {
+            return t.getRemainingAmount(transactionFamilies);
           } else {
             return t[key as keyof Transaction] || t.id;
           }
@@ -222,6 +225,7 @@ export const TransactionsPage = () => {
     hit,
     searchValue,
     section,
+    transactionFamilies,
   ]);
 
   return (

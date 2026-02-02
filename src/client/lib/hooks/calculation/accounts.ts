@@ -62,7 +62,7 @@ const getBalanceDataFromTransactions = (
     const history = balanceData.get(accountId);
     const { startDate, endDate } = history;
     if (!startDate || !endDate) continue;
-    while (startDate.getEndDate() < endDate.getEndDate()) {
+    while (startDate.getEndDate() <= endDate.getEndDate()) {
       const amount = history.get(endDate.getEndDate()) || 0;
       const laterAmount = history.get(endDate.clone().next().getEndDate()) || 0;
       history.set(endDate.getEndDate(), laterAmount + amount);
@@ -332,5 +332,5 @@ export class BalanceData {
     this.get(accountId).add(date, amount);
   };
 
-  forEach = this.data.forEach;
+  forEach = (cb: (history: BalanceHistory, id: string) => void) => this.data.forEach(cb);
 }

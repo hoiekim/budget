@@ -23,8 +23,9 @@ export type BudgetDetailPageParams = {
 };
 
 export const BudgetDetailPage = () => {
-  const { data, setData, router, viewDate, screenType } = useAppContext();
+  const { data, setData, calculations, router, viewDate, screenType } = useAppContext();
   const { budgets, sections } = data;
+  const { budgetData } = calculations;
   const { path, params, transition } = router;
   let budget_id: string;
   if (path === PATH.BUDGET_DETAIL) budget_id = params.get("budget_id") || "";
@@ -96,9 +97,10 @@ export const BudgetDetailPage = () => {
 
   const { graphData, graphViewDate } = useBudgetGraph(budget || new Budget());
 
-  const { number_of_unsorted_items } = budget || {};
+  const date = viewDate.getEndDate();
+  const { number_of_unsorted_items } = budgetData.get(budget_id, date) || {};
 
-  const capacity = budget?.getActiveCapacity(viewDate.getEndDate());
+  const capacity = budget?.getActiveCapacity(date);
   const isInfinite = !!capacity?.isInfinite;
 
   return (

@@ -1,5 +1,5 @@
 import { assign, ValueOf, environment } from "common";
-import { BalanceData } from "client";
+import { BalanceData, BudgetData, CapacityData, TransactionFamilies } from "client";
 import { Account } from "./Account";
 import { Institution } from "./miscellaneous";
 import { BudgetFamily, BudgetFamilyType } from "./BudgetFamily";
@@ -129,13 +129,15 @@ export class Calculations {
   status = new Status();
 
   balanceData = new BalanceData();
-  // budgetData = new BudgetData();
+  budgetData = new BudgetData();
+  capacityData = new CapacityData();
+  transactionFamilies = new TransactionFamilies();
 
   constructor(init?: Partial<Calculations>) {
     assign(this, init);
   }
 
-  update = (init?: Partial<Calculations>) => {
+  update = (init: Partial<Calculations>) => {
     assign(this, init);
   };
 }
@@ -160,7 +162,7 @@ export class Data {
     assign(this, init);
   }
 
-  update = (init?: Partial<Data>) => {
+  update = (init: Partial<Data>) => {
     assign(this, init);
   };
 }

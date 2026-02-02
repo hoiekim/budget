@@ -3,43 +3,12 @@ import { JSONCapacity, MAX_FLOAT, assign, getDateTimeString, getRandomId } from 
 export type Interval = "year" | "month";
 export const intervals: Interval[] = ["year", "month"];
 
-class CapacitySummary {
-  children_total = 0;
-  grand_children_total = 0;
-}
-
-class CapacitySummaryCache extends Map<string, CapacitySummary> {
-  getOrNew = (id: string) => {
-    const existing = this.get(id);
-    if (existing) return existing;
-    const newData = new CapacitySummary();
-    this.set(id, newData);
-    return newData;
-  };
-}
-
-const summaryCache = new CapacitySummaryCache();
-
 export class Capacity {
   get id() {
     return this.capacity_id;
   }
 
   capacity_id = getRandomId();
-
-  get children_total() {
-    return summaryCache.getOrNew(this.id).children_total;
-  }
-  set children_total(n: number) {
-    summaryCache.getOrNew(this.id).children_total = n;
-  }
-
-  get grand_children_total() {
-    return summaryCache.getOrNew(this.id).grand_children_total;
-  }
-  set grand_children_total(n: number) {
-    summaryCache.getOrNew(this.id).grand_children_total = n;
-  }
 
   get year() {
     return this.month * 12;

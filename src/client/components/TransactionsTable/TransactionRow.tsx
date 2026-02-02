@@ -20,6 +20,10 @@ interface Props {
 }
 
 const TransactionRow = ({ transaction }: Props) => {
+  const { data, calculations, setData, router } = useAppContext();
+  const { transactionFamilies } = calculations;
+  const { transaction_id, amount, label } = transaction;
+  const parentTransaction = data.transactions.get(transaction_id)!;
   const {
     id,
     account_id,
@@ -27,13 +31,11 @@ const TransactionRow = ({ transaction }: Props) => {
     date,
     merchant_name,
     name,
-    amount,
-    label,
     location,
     iso_currency_code,
-  } = transaction.hypotheticalTransaction;
+  } = parentTransaction;
+  const amountAfterSplit = amount - transactionFamilies.getChildrenAmountTotal(transaction_id);
 
-  const { data, setData, router } = useAppContext();
   const { accounts, budgets, sections, categories } = data;
   const { path, go } = router;
 
@@ -85,7 +87,7 @@ const TransactionRow = ({ transaction }: Props) => {
     });
   }, [id, label.budget_id, account?.label.budget_id, sections, categories]);
 
-  const isSplitTransaction = transaction instanceof SplitTransaction;
+  const isSplitTransaction = parentTransaction instanceof SplitTransaction;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -112,14 +114,14 @@ const TransactionRow = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
-          const newSplitTransaction = new SplitTransaction(transaction);
+          const newSplitTransaction = new SplitTransaction(parentTransaction);
           const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           newSplitTransaction.label.budget_id = value || null;
           newSplitTransaction.label.category_id = null;
           newSplitTransactions.set(id, newSplitTransaction);
           newData.splitTransactions = newSplitTransactions;
         } else {
-          const newTransaction = new Transaction(transaction);
+          const newTransaction = new Transaction(parentTransaction);
           const newTransactions = new TransactionDictionary(newData.transactions);
           newTransaction.label.budget_id = value || null;
           newTransaction.label.category_id = null;
@@ -159,7 +161,7 @@ const TransactionRow = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
-          const newSplitTransaction = new SplitTransaction(transaction);
+          const newSplitTransaction = new SplitTransaction(parentTransaction);
           const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           if (!newSplitTransaction.label.budget_id) {
             newSplitTransaction.label.budget_id = account?.label.budget_id;
@@ -168,7 +170,7 @@ const TransactionRow = ({ transaction }: Props) => {
           newSplitTransactions.set(id, newSplitTransaction);
           newData.splitTransactions = newSplitTransactions;
         } else {
-          const newTransaction = new Transaction(transaction);
+          const newTransaction = new Transaction(parentTransaction);
           const newTransactions = new TransactionDictionary(newData.transactions);
           if (!newTransaction.label.budget_id) {
             newTransaction.label.budget_id = account?.label.budget_id;
@@ -187,7 +189,7 @@ const TransactionRow = ({ transaction }: Props) => {
   const onClickKebab = () => {
     if (path === PATH.TRANSACTION_DETAIL) return;
     const params = new URLSearchParams(router.params);
-    params.set("transaction_id", transaction.transaction_id);
+    params.set("transaction_id", parentTransaction.transaction_id);
     go(PATH.TRANSACTION_DETAIL, { params });
   };
 
@@ -214,9 +216,9 @@ const TransactionRow = ({ transaction }: Props) => {
           </div>
         </div>
         <div className="amount">
-          {amount < 0 && <>+&nbsp;</>}
+          {amountAfterSplit < 0 && <>+&nbsp;</>}
           {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
-          {numberToCommaString(Math.abs(amount))}
+          {numberToCommaString(Math.abs(amountAfterSplit))}
         </div>
       </div>
       <div className="budgetCategoryActions">

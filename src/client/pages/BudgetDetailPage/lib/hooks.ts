@@ -3,8 +3,10 @@ import { ViewDate } from "common";
 import { Budget, AreaInput, GraphInput, LineInput, useAppContext } from "client";
 
 export const useBudgetGraph = (budget: Budget) => {
-  const { data, viewDate } = useAppContext();
-  const { transactions, accounts } = data;
+  const { calculations, viewDate } = useAppContext();
+  const { budgetData } = calculations;
+  const { budget_id } = budget;
+  const budgetHistory = budgetData.get(budget_id);
 
   const interval = viewDate.getInterval();
   const graphViewDate = useMemo(() => {
@@ -15,30 +17,13 @@ export const useBudgetGraph = (budget: Budget) => {
   const graphData: GraphInput = useMemo(() => {
     if (!budget) return {};
 
-    const { budget_id } = budget;
-
     const currentCapacity = budget.getActiveCapacity(graphViewDate.getEndDate());
     const isIncome = currentCapacity[interval] < 0;
     const sign = isIncome ? -1 : 1;
 
-    const spendingHistory: number[] = [];
-
-    transactions.forEach((transaction) => {
-      const { authorized_date, date, getRemainingAmount, getChildren, account_id } = transaction;
-      const account = accounts.get(account_id);
-      if (!account) return;
-      const _budget_id = transaction.label.budget_id || account.label.budget_id;
-      if (budget_id !== _budget_id) return;
-      const transactionDate = new Date(authorized_date || date);
-      const span = graphViewDate.getSpanFrom(transactionDate);
-      if (!spendingHistory[span]) spendingHistory[span] = 0;
-      spendingHistory[span] += sign * getRemainingAmount();
-      getChildren().forEach((splitTransaction) => {
-        if (splitTransaction.label.budget_id !== budget_id) return;
-        if (!spendingHistory[span]) spendingHistory[span] = 0;
-        spendingHistory[span] += sign * splitTransaction.amount;
-      });
-    });
+    const spendingHistory: number[] = budgetHistory
+      .toArray(graphViewDate)
+      .map(({ sorted_amount, unsorted_amount }) => sorted_amount + unsorted_amount);
 
     const { length } = spendingHistory;
     if (length < 2) return {};
@@ -103,7 +88,7 @@ export const useBudgetGraph = (budget: Budget) => {
     }
 
     return { lines, areas, points };
-  }, [transactions, accounts, budget, graphViewDate, interval, viewDate]);
+  }, [budget, budgetHistory, graphViewDate, interval, viewDate]);
 
   return { graphViewDate, graphData };
 };

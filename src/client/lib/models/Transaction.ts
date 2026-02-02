@@ -15,9 +15,8 @@ import {
   JSONTransactionLabel,
   JSONTransaction,
 } from "common";
-
-import { SplitTransaction } from "./SplitTransaction";
-import { globalData, SplitTransactionDictionary } from "./Data";
+import { TransactionFamilies } from "client";
+import { globalData } from "./Data";
 
 export class TransactionLabel implements JSONTransactionLabel {
   budget_id?: string | null;
@@ -38,27 +37,13 @@ export class TransactionLabel implements JSONTransactionLabel {
   }
 }
 
-class TransactionSplitMap extends Map<string, SplitTransactionDictionary> {
-  getOrNew = (id: string) => {
-    const existing = this.get(id);
-    if (existing) return existing;
-    const newData = new SplitTransactionDictionary();
-    this.set(id, newData);
-    return newData;
-  };
-}
-
-const transactionSplitMap = new TransactionSplitMap();
-
 export class Transaction implements JSONTransaction {
   get id() {
     return this.transaction_id;
   }
   set id(_: string) {}
 
-  get hypotheticalTransaction(): Transaction {
-    return new Transaction({ ...this, amount: this.getRemainingAmount() });
-  }
+  toTransaction = () => this;
 
   transaction_type?: TransactionTransactionTypeEnum;
   pending_transaction_id: string | null = null;
@@ -111,19 +96,7 @@ export class Transaction implements JSONTransaction {
     assign(this, init);
   }
 
-  getChildren = () => transactionSplitMap.getOrNew(this.id);
-
-  addChild = (child: SplitTransaction) => this.getChildren().set(child.id, child);
-
-  removeChild = (id: string) => this.getChildren().delete(id);
-
-  removeAllChildren = () => transactionSplitMap.delete(this.id);
-
-  getRemainingAmount = () => {
-    let remaining = this.amount;
-    this.getChildren().forEach(({ amount }) => {
-      remaining -= amount;
-    });
-    return remaining;
+  getRemainingAmount = (transactionFamilies: TransactionFamilies) => {
+    return this.amount - transactionFamilies.getChildrenAmountTotal(this.id);
   };
 }

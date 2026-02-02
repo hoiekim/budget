@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAppContext, useSync, PATH } from "client";
+import { useAppContext, useSync, PATH, useDebounce } from "client";
 
 /**
  * This component is used to run useEffect hooks dependant on context variables.
@@ -13,6 +13,7 @@ const Utility = () => {
   const { path, go } = router;
 
   const { sync, clean } = useSync();
+  const debouncer = useDebounce();
 
   /**
    * Redirect to login page if not logged in
@@ -35,8 +36,8 @@ const Utility = () => {
    */
   useEffect(() => {
     if (!data.status.isInit) return;
-    calculate(data);
-  }, [data, calculate]);
+    debouncer(() => calculate(data));
+  }, [data, calculate, debouncer]);
 
   /**
    * Update viewDate when user selects different interval

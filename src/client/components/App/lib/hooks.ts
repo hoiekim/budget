@@ -1,4 +1,13 @@
-import { getBalanceData, ScreenType, useMemoryState, Calculations, Data, globalData } from "client";
+import {
+  getBalanceData,
+  ScreenType,
+  useMemoryState,
+  Calculations,
+  Data,
+  globalData,
+  getBudgetData,
+  getCapacityData,
+} from "client";
 import { Dispatch, SetStateAction, useCallback, useEffect, useState } from "react";
 
 export const useData = () => {
@@ -19,8 +28,12 @@ export const useData = () => {
     (data: Data) => {
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
+        newCalculations.update({
+          balanceData: getBalanceData(data),
+          capacityData: getCapacityData(data),
+          ...getBudgetData(data),
+        });
         newCalculations.status.isInit = true;
-        newCalculations.balanceData = getBalanceData(data);
         return newCalculations;
       });
     },

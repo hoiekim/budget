@@ -29,8 +29,10 @@ export type BudgetFamilyConfigPageParams = {
 };
 
 export const BudgetConfigPage = () => {
-  const { data, router, viewDate } = useAppContext();
+  const { data, calculations, router, viewDate } = useAppContext();
+  const { budgetData, capacityData } = calculations;
   const interval = viewDate.getInterval();
+  const date = viewDate.getEndDate();
   const { budgets, sections, categories } = data;
 
   const { path, params, transition } = router;
@@ -70,7 +72,7 @@ export const BudgetConfigPage = () => {
       return cloned;
     });
     const defaultIsSyncInput =
-      budgetLike.type !== "category" && !!budgetLike?.isChildrenSynced(viewDate.getInterval());
+      budgetLike.type !== "category" && !!budgetLike?.isChildrenSynced(capacityData);
 
     setNameInput(name);
     setCapacitiesInput(defaultCapInput);
@@ -79,23 +81,18 @@ export const BudgetConfigPage = () => {
     setIsRollOverInput(roll_over);
     setRollDateInput(roll_date || new Date());
     setIsSyncedInput(defaultIsSyncInput);
-  }, [budgetLike, viewDate]);
+  }, [budgetLike, capacityData, viewDate]);
 
-  const {
-    name,
-    sorted_amount,
-    unsorted_amount,
-    roll_over,
-    roll_over_start_date: roll_date,
-  } = budgetLike || {};
+  const { sorted_amount, unsorted_amount } = budgetData.get(id, date);
+  const { name, roll_over, roll_over_start_date: roll_date } = budgetLike || {};
 
-  const activeCapacity = budgetLike?.getActiveCapacity(viewDate.getEndDate());
+  const activeCapacity = budgetLike?.getActiveCapacity(date);
   const defaultInputs = activeCapacity?.toInputs();
   const allDates = budgetLike && getAllCapaciyDates(budgetLike);
   const defaultCapInput =
     budgetLike && allDates?.map((d) => budgetLike.getActiveCapacity(d || new Date(0)));
   const defaultIsSyncInput =
-    budgetLike?.type !== "category" && !!budgetLike?.isChildrenSynced(interval);
+    budgetLike?.type !== "category" && !!budgetLike?.isChildrenSynced(capacityData);
 
   const [nameInput, setNameInput] = useState(name);
   const [capacitiesInput, setCapacitiesInput] = useState<Capacity[]>(defaultCapInput || []);

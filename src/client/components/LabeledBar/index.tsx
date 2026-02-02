@@ -28,18 +28,14 @@ export const LabeledBar = ({
   onSetOrder,
   hideEditButton,
 }: Props) => {
-  const { viewDate } = useAppContext();
+  const { calculations, viewDate } = useAppContext();
+  const { budgetData, capacityData } = calculations;
+  const date = viewDate.getEndDate();
 
-  const {
-    name,
-    sorted_amount = 0,
-    unsorted_amount = 0,
-    rolled_over_amount,
-    roll_over,
-    roll_over_start_date,
-  } = barData;
+  const { name, roll_over, roll_over_start_date } = barData;
+  const { sorted_amount, unsorted_amount, rolled_over_amount } = budgetData.get(barData.id, date);
 
-  const capacity = barData.getActiveCapacity(viewDate.getEndDate());
+  const capacity = barData.getActiveCapacity(date);
   const interval = viewDate.getInterval();
   const capacityValue = capacity[interval];
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
@@ -80,7 +76,7 @@ export const LabeledBar = ({
     roll_over_start_date < viewDate.getEndDate();
 
   const editButtonClassName =
-    barData.isChildrenSynced(interval) || hideEditButton ? undefined : "notification";
+    barData.isChildrenSynced(capacityData) || hideEditButton ? undefined : "notification";
 
   return (
     <div

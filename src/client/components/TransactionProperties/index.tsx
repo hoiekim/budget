@@ -21,7 +21,8 @@ interface Props {
 }
 
 export const TransactionProperties = ({ transaction }: Props) => {
-  const { data, setData } = useAppContext();
+  const { data, setData, calculations } = useAppContext();
+  const { transactionFamilies } = calculations;
   const { accounts, budgets, sections, categories } = data;
 
   const {
@@ -142,7 +143,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
-  const remainingAmount = transaction.getRemainingAmount();
+  const remainingAmount = transaction.getRemainingAmount(transactionFamilies);
 
   const onClickAdd = async () => {
     const queryString = "?" + new URLSearchParams({ transaction_id, account_id }).toString();
@@ -174,9 +175,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
     });
   };
 
-  const splitTransactionInputRows = transaction
-    .getChildren()
-    .toArray()
+  const splitTransactionInputRows = transactionFamilies
+    .get(transaction_id)
+    ?.toArray()
     .map((s) => {
       return (
         <div key={s.id} className="row">
@@ -240,7 +241,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
         </div>
       </div>
-      {!splitTransactionInputRows.length && (
+      {!splitTransactionInputRows?.length && (
         <>
           <div className="propertyLabel">Budgets</div>
           <div className="property">
@@ -272,7 +273,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
       <div className="propertyLabel">Split&nbsp;Transactions</div>
       <div className="property">
         {splitTransactionInputRows}
-        {!!splitTransactionInputRows.length && (
+        {!!splitTransactionInputRows?.length && (
           <div className="row">
             <div className="SplitTransactionRow">
               <div className="amount">

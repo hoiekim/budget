@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { ViewDate, getDateString, THIRTY_DAYS } from "common";
+import { ViewDate, getDateString, THIRTY_DAYS, JSONInstitution } from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
@@ -37,6 +37,9 @@ import {
   ChartDictionary,
   AccountSnapshotDictionary,
   HoldingSnapshotDictionary,
+  InstitutionDictionary,
+  Institution,
+  useDebounce,
 } from "client";
 
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
@@ -231,9 +234,27 @@ const fetchCharts = async (): Promise<FetchChartsResult> => {
   return result;
 };
 
+interface FetchInstitutionResult {
+  institutions: InstitutionDictionary;
+}
+
+const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInstitutionResult> => {
+  const result = { institutions: new InstitutionDictionary() };
+  const promises = accounts.toArray().map(async ({ institution_id }) => {
+    if (institution_id === "Unknown") return;
+    const response = await cachedCall<JSONInstitution>(`/api/institution?id=${institution_id}`);
+    if (response) result.institutions.set(institution_id, new Institution(response.body));
+  });
+
+  await Promise.all(promises);
+
+  return result;
+};
+
 export const useSync = () => {
   const { user, setData } = useAppContext();
-  const sync = useCallback(async () => {
+  const debouncer = useDebounce();
+  const _sync = useCallback(async () => {
     if (!user) return;
     setData((oldData) => {
       const newData = new Data(oldData);
@@ -251,6 +272,7 @@ export const useSync = () => {
       const snapshotsPromise = oldestDatePromise.then((oldestDate) => fetchSnapshots(oldestDate));
       const budgetsPromise = fetchBudgets();
       const chartsPromise = fetchCharts();
+      const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
 
       const [
         { accounts, items },
@@ -259,6 +281,7 @@ export const useSync = () => {
         { accountSnapshots, holdingSnapshots },
         { budgets, sections, categories },
         { charts },
+        { institutions },
       ] = await Promise.all([
         accountsPromise,
         transactionsPromise,
@@ -266,6 +289,7 @@ export const useSync = () => {
         snapshotsPromise,
         budgetsPromise,
         chartsPromise,
+        institutionsPromise,
       ]);
 
       setData((oldData) => {
@@ -283,6 +307,7 @@ export const useSync = () => {
           sections,
           categories,
           charts,
+          institutions,
         });
 
         newData.status.isInit = true;
@@ -302,6 +327,8 @@ export const useSync = () => {
       });
     }
   }, [setData, user]);
+
+  const sync = useCallback(() => debouncer(_sync), [_sync, debouncer]);
 
   const clean = useCallback(() => setData(new Data()), [setData]);
 

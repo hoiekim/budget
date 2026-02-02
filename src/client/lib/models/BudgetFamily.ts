@@ -1,6 +1,7 @@
-import { ViewDate, assign, getDateTimeString, Interval, JSONBudgetFamily } from "common";
+import { assign, getDateTimeString, JSONBudgetFamily } from "common";
 import { Capacity, sortCapacities } from "./Capacity";
 import { globalData } from "./Data";
+import { CapacityData } from "client";
 
 export type BudgetFamilyType = "budget" | "section" | "category";
 export type BudgetFamilyDictionaryKey = "budgets" | "sections" | "categories";
@@ -15,25 +16,6 @@ const getParentType = (type: BudgetFamilyType) => {
       return "section";
   }
 };
-
-class BudgetSummary {
-  sorted_amount = 0;
-  unsorted_amount = 0;
-  number_of_unsorted_items = 0;
-  rolled_over_amount = 0;
-}
-
-class BudgetSummaryCache extends Map<string, BudgetSummary> {
-  getOrNew = (id: string) => {
-    const existing = this.get(id);
-    if (existing) return existing;
-    const newData = new BudgetSummary();
-    this.set(id, newData);
-    return newData;
-  };
-}
-
-const summaryCache = new BudgetSummaryCache();
 
 export class BudgetFamily {
   get id(): string {
@@ -55,34 +37,6 @@ export class BudgetFamily {
       default:
         throw new Error(`Unknown budget type: ${this.type}`);
     }
-  }
-
-  get sorted_amount() {
-    return summaryCache.getOrNew(this.id).sorted_amount;
-  }
-  set sorted_amount(n: number) {
-    summaryCache.getOrNew(this.id).sorted_amount = n;
-  }
-
-  get unsorted_amount() {
-    return summaryCache.getOrNew(this.id).unsorted_amount;
-  }
-  set unsorted_amount(n: number) {
-    summaryCache.getOrNew(this.id).unsorted_amount = n;
-  }
-
-  get number_of_unsorted_items() {
-    return summaryCache.getOrNew(this.id).number_of_unsorted_items;
-  }
-  set number_of_unsorted_items(n: number) {
-    summaryCache.getOrNew(this.id).number_of_unsorted_items = n;
-  }
-
-  get rolled_over_amount() {
-    return summaryCache.getOrNew(this.id).rolled_over_amount;
-  }
-  set rolled_over_amount(n: number) {
-    summaryCache.getOrNew(this.id).rolled_over_amount = n;
   }
 
   name: string = "";
@@ -127,32 +81,15 @@ export class BudgetFamily {
     return validCapacity || new Capacity();
   };
 
-  getAccumulatedCapacity = (startDate: Date, viewDate: ViewDate) => {
-    const interval = viewDate.getInterval();
-    let sum = 0;
-    this.sortCapacities().forEach((e, i, arr) => {
-      const from = e.active_from || startDate;
-      const nextCapacity = arr[i + 1];
-      const endDate = nextCapacity?.active_from;
-      if (endDate && endDate <= startDate) return;
-      const endDateAsNumber = endDate?.getTime() || Infinity;
-      const isEndDateEarlier = endDateAsNumber < viewDate.getEndDate().getTime();
-      const endViewDate = endDate ? new ViewDate(interval, endDate) : viewDate;
-      const dateHelper = isEndDateEarlier ? endViewDate : viewDate;
-      const span = dateHelper.getSpanFrom(from);
-      if (span > 0) sum += span * e[interval];
-    });
-    return sum;
-  };
-
-  isChildrenSynced = (interval: Interval) => {
+  isChildrenSynced = (capacityData: CapacityData) => {
     if (this.type === "category") return true;
     let isSynced = true;
     this.capacities.forEach((capacity) => {
-      const capacityAmount = capacity[interval];
-      const isChildrenSynced = capacity.children_total === capacityAmount;
+      const capacityAmount = capacity.month;
+      const isChildrenSynced = capacityData.get(capacity.id).children_total === capacityAmount;
       const isBudget = this.type === "budget";
-      const isGrandChildrenSynced = !isBudget || capacity.grand_children_total === capacityAmount;
+      const isGrandChildrenSynced =
+        !isBudget || capacityData.get(capacity.id).grand_children_total === capacityAmount;
       isSynced = isSynced && isChildrenSynced && isGrandChildrenSynced;
     });
     return isSynced;
