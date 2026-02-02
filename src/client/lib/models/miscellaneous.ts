@@ -78,3 +78,9 @@ export class Institution implements JSONInstitution {
     assign(this, init);
   }
 }
+
+export class Status {
+  isInit = false;
+  isLoading = false;
+  isError = false;
+}

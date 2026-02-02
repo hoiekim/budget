@@ -1,7 +1,6 @@
 import { assign, ValueOf, environment } from "common";
-import { BalanceData, BudgetData, CapacityData, TransactionFamilies } from "client";
 import { Account } from "./Account";
-import { Institution } from "./miscellaneous";
+import { Institution, Status } from "./miscellaneous";
 import { BudgetFamily, BudgetFamilyType } from "./BudgetFamily";
 import { Transaction } from "./Transaction";
 import { InvestmentTransaction } from "./InvestmentTransaction";
@@ -118,29 +117,6 @@ export const getBudgetDictionaryClass = (type: BudgetFamilyType): typeof Diction
       ? SectionDictionary
       : CategoryDictionary;
 };
-
-export class Status {
-  isInit = false;
-  isLoading = false;
-  isError = false;
-}
-
-export class Calculations {
-  status = new Status();
-
-  balanceData = new BalanceData();
-  budgetData = new BudgetData();
-  capacityData = new CapacityData();
-  transactionFamilies = new TransactionFamilies();
-
-  constructor(init?: Partial<Calculations>) {
-    assign(this, init);
-  }
-
-  update = (init: Partial<Calculations>) => {
-    assign(this, init);
-  };
-}
 
 export class Data {
   status = new Status();

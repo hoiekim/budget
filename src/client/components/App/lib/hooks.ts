@@ -28,14 +28,23 @@ export const useData = () => {
     (data: Data) => {
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
-        newCalculations.update({
-          balanceData: getBalanceData(data),
-          capacityData: getCapacityData(data),
-          ...getBudgetData(data),
-        });
-        newCalculations.status.isInit = true;
+        newCalculations.status.isLoading = true;
         return newCalculations;
       });
+
+      setTimeout(() => {
+        setCalculations((oldCalculations) => {
+          const newCalculations = new Calculations(oldCalculations);
+          newCalculations.update({
+            balanceData: getBalanceData(data),
+            capacityData: getCapacityData(data),
+            ...getBudgetData(data),
+          });
+          newCalculations.status.isInit = true;
+          newCalculations.status.isLoading = false;
+          return newCalculations;
+        });
+      }, 10);
     },
     [setCalculations],
   );

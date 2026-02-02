@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { AccountSubtype, AccountType } from "plaid";
-import { getYearMonthString, isDate, ViewDate } from "common";
+import { getYearMonthString, ViewDate } from "common";
 import {
   Account,
   AccountSnapshot,
@@ -13,6 +13,7 @@ import {
   AccountSnapshotDictionary,
   InvestmentTransactionDictionary,
   TransactionDictionary,
+  BalanceData,
 } from "client";
 
 export const getAccountBalance = (account: Account) => {
@@ -219,118 +220,3 @@ export const useAccountGraph = (accounts: Account[], options: UseAccountGraphOpt
 
   return { graphViewDate, graphData, cursorAmount };
 };
-
-/**
- * @example
- * {
- *    "2026-01": 100,
- *    "2026-02": 150
- * }
- */
-type AmountByMonth = { [k: string]: number };
-
-/**
- * Helper class to abstract balance history write & read processes.
- */
-class BalanceHistory {
-  private data: AmountByMonth = {};
-  private range?: [Date, Date];
-
-  constructor(data?: AmountByMonth) {
-    if (data) this.data = data;
-  }
-
-  private getKey = (date: Date) => getYearMonthString(date);
-  private getDate = (key: string) => new Date(`${key}-15`);
-
-  getData = () => ({ ...this.data });
-  getRange = () => this.range && [...this.range];
-
-  get startDate() {
-    return this.range && new ViewDate("month", this.range[0]);
-  }
-
-  get endDate() {
-    return this.range && new ViewDate("month", this.range[1]);
-  }
-
-  set = (date: Date, amount: number) => {
-    if (!this.range) this.range = [date, date];
-    else if (this.range[1] < date) this.range[1] = date;
-    else if (date < this.range[0]) this.range[0] = date;
-    this.data[this.getKey(date)] = amount;
-  };
-
-  get = (date: Date): number | undefined => {
-    return this.data[this.getKey(date)];
-  };
-
-  /**
-   * Add amount to the specified date's position.
-   * If amount doesn't exist in the position, assume it was 0.
-   */
-  add = (date: Date, amount: number) => {
-    const existing = this.get(date) || 0;
-    this.set(date, existing + amount);
-  };
-
-  /**
-   * Returns an array of balance history. Each value represents balance amount.
-   * Values are 0-indexed where 0 is the month of the given `viewDate`,
-   * 1 is the previous month, and so on.
-   */
-  toArray = (viewDate: ViewDate) => {
-    const result: number[] = [];
-    Object.entries(this.data).forEach(([key, value]) => {
-      const date = this.getDate(key);
-      if (!isDate(date)) return;
-      const span = viewDate.getSpanFrom(date);
-      if (span >= 0) result[span] = value;
-    });
-    return result;
-  };
-}
-
-/**
- * Balance history stored by `accountId` and `date`.
- * @example
- * const balanceData = new BalanceData();
- * const accountId = "a1b2c3";
- * const date = new Date("2026-01-01");
- *
- * balanceData.set(accountId, date, 100);
- * let balanceAmount = balanceData.get(accountId, date);
- * console.log(balanceAmount); // 100
- *
- * balanceData.add(accountId, date, 50);
- * balanceAmount = balanceData.get(accountId, date);
- * console.log(balanceAmount); // 150
- */
-export class BalanceData {
-  private data = new Map<string, BalanceHistory>();
-
-  get size() {
-    return this.data.size;
-  }
-
-  set(accountId: string, date: Date, amount: number) {
-    if (!this.data.has(accountId)) this.data.set(accountId, new BalanceHistory());
-    const accountData = this.data.get(accountId)!;
-    accountData.set(date!, amount!);
-  }
-
-  get(accountId: string): BalanceHistory;
-  get(accountId: string, date: Date): number | undefined;
-  get(accountId: string, date?: Date) {
-    if (!this.data.has(accountId)) this.data.set(accountId, new BalanceHistory());
-    const accountData = this.data.get(accountId)!;
-    if (date === undefined) return accountData;
-    return accountData.get(date);
-  }
-
-  add = (accountId: string, date: Date, amount: number) => {
-    this.get(accountId).add(date, amount);
-  };
-
-  forEach = (cb: (history: BalanceHistory, id: string) => void) => this.data.forEach(cb);
-}
