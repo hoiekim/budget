@@ -1,46 +1,23 @@
-import {
-  Data,
-  Account,
-  Item,
-  Transaction,
-  SplitTransaction,
-  InvestmentTransaction,
-  AccountSnapshot,
-  HoldingSnapshot,
-  Budget,
-  Section,
-  Category,
-  Chart,
-  Dictionary,
-} from "client";
-
 const DB_NAME = "BudgetApp";
 const DB_VERSION = 1;
-const STORES: (keyof Data)[] = [
-  "accounts",
-  "items",
-  "transactions",
-  "splitTransactions",
-  "investmentTransactions",
-  "accountSnapshots",
-  "holdingSnapshots",
-  "budgets",
-  "sections",
-  "categories",
-  "charts",
-];
+
+enum StoreName {
+  BalanceData = "balanceData",
+  BudgetData = "budgetData",
+  CapacityData = "capacityData",
+  TransactionFamilies = "transactionFamilies",
+}
 
 export class IndexedDb {
   private db: IDBDatabase | null = null;
 
   private dbName: string;
   private dbVersion: number;
-  private stores: (keyof Data)[];
+  private stores = Object.values(StoreName);
 
-  constructor(dbName = DB_NAME, dbVersion = DB_VERSION, stores = STORES) {
+  constructor(dbName = DB_NAME, dbVersion = DB_VERSION) {
     this.dbName = dbName;
     this.dbVersion = dbVersion;
-    this.stores = stores;
   }
 
   private init = (): Promise<IDBDatabase> => {
@@ -69,78 +46,38 @@ export class IndexedDb {
     });
   };
 
-  save = async (data: Data): Promise<void> => {
+  save = async (storeName: StoreName, key: string, data: any): Promise<void> => {
     const database = await this.init();
     const transaction = database.transaction(this.stores, "readwrite");
 
-    const promises = this.stores.map((storeName) => {
-      const store = transaction.objectStore(storeName);
-      const dictionary = data[storeName];
+    const store = transaction.objectStore(storeName);
 
-      if (dictionary && typeof dictionary === "object" && "forEach" in dictionary) {
-        const items: Promise<void>[] = [];
-        dictionary.forEach((item, id) => {
-          items.push(
-            new Promise<void>((resolve, reject) => {
-              const request = store.put(JSON.parse(JSON.stringify(item)), id);
-              request.onerror = () => reject(request.error);
-              request.onsuccess = () => resolve();
-            }),
-          );
-        });
-        return Promise.all(items);
-      }
-      return Promise.resolve();
+    return await new Promise<void>((resolve, reject) => {
+      const request = store.put(data, key);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
     });
-
-    await Promise.all(promises);
   };
 
-  load = async (): Promise<Data | null> => {
-    try {
-      const database = await this.init();
-      const transaction = database.transaction(this.stores, "readonly");
-      const data = new Data();
+  load = async <T>(storeName: StoreName): Promise<T[] | null> => {
+    const database = await this.init();
+    return await new Promise<T[] | null>((resolve, reject) => {
+      try {
+        const transaction = database.transaction(this.stores, "readonly");
+        const items: T[] = [];
 
-      const loadStore = <T>(storeName: keyof Data, Constructor: new (item: any) => T) => {
-        return new Promise<void>((resolve, reject) => {
-          const store = transaction.objectStore(storeName);
-          const request = store.openCursor();
-          request.onerror = () => reject(request.error);
-          request.onsuccess = () => {
-            const cursor = request.result;
-            if (cursor) {
-              const { key, value } = cursor;
-              if (typeof key === "string") {
-                const dictionary = data[storeName] as Dictionary;
-                dictionary.set(key, new Constructor(value));
-              }
-              cursor.continue();
-            } else {
-              resolve();
-            }
-          };
-        });
-      };
+        const store = transaction.objectStore(storeName);
+        const request = store.getAll();
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          request.result.forEach((item: T) => items.push(item));
+        };
 
-      await Promise.all([
-        loadStore("accounts", Account),
-        loadStore("items", Item),
-        loadStore("transactions", Transaction),
-        loadStore("splitTransactions", SplitTransaction),
-        loadStore("investmentTransactions", InvestmentTransaction),
-        loadStore("accountSnapshots", AccountSnapshot),
-        loadStore("holdingSnapshots", HoldingSnapshot),
-        loadStore("budgets", Budget),
-        loadStore("sections", Section),
-        loadStore("categories", Category),
-        loadStore("charts", Chart),
-      ]);
-
-      return data;
-    } catch {
-      return null;
-    }
+        resolve(items);
+      } catch (error) {
+        reject(error);
+      }
+    });
   };
 }
 

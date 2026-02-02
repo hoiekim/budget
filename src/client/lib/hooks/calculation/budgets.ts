@@ -120,10 +120,11 @@ export const getBudgetData = (data: Data): GetBudgetDataResult => {
     const startDate = new ViewDate("month", roll_over_start_date).next();
     const endDate = new ViewDate("month");
     while (startDate.getEndDate() <= endDate.getEndDate()) {
-      const capacity = getActiveCapacity(startDate.getEndDate());
-      const previousSummary = history.get(startDate.clone().previous().getEndDate());
+      const previousDate = startDate.clone().previous();
+      const previousSummary = history.get(previousDate.getEndDate());
+      const previousCapacity = getActiveCapacity(previousDate.getEndDate());
       history.add(startDate.getEndDate(), {
-        rolled_over_amount: previousSummary.rolled_over_amount - capacity.month,
+        rolled_over_amount: previousSummary.rolled_over_amount - previousCapacity.month,
       });
       startDate.next();
     }
