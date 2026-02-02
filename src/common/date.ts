@@ -48,7 +48,7 @@ export class ViewDate {
 
   constructor(interval: Interval, date?: Date) {
     this.interval = interval;
-    this.date = date ? new Date(date) : new Date();
+    this.date = date ?? new Date();
     this.current();
   }
 
@@ -191,8 +191,9 @@ const getDateComponents = (dateObject: Date) => {
   return { year, month, date, day };
 };
 
-const to2DString = (n: Number) => {
-  return n.toLocaleString(undefined, { minimumIntegerDigits: 2 });
+const to2DString = (n: number) => {
+  if (n < 10) return "0" + n;
+  else return n.toString();
 };
 
 /**

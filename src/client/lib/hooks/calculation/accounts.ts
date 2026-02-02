@@ -8,7 +8,6 @@ import {
   Transaction,
   GraphInput,
   useAppContext,
-  Data,
   AccountDictionary,
   AccountSnapshotDictionary,
   InvestmentTransactionDictionary,
@@ -119,9 +118,12 @@ const getBalanceDataFromSnapshots = (
   return balanceData;
 };
 
-export const getBalanceData = (data: Data) => {
-  const { accounts, accountSnapshots, transactions, investmentTransactions } = data;
-
+export const getBalanceData = (
+  accounts: AccountDictionary,
+  accountSnapshots: AccountSnapshotDictionary,
+  transactions: TransactionDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+) => {
   const transactionBasedData = getBalanceDataFromTransactions(
     accounts,
     transactions,

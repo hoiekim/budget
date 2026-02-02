@@ -27,12 +27,12 @@ export class Calculations {
  *    "2026-02": 150
  * }
  */
-type AmountByMonth = { [k: string]: number };
+export type AmountByMonth = { [k: string]: number };
 
 /**
  * Helper class to abstract balance history write & read processes.
  */
-class BalanceHistory {
+export class BalanceHistory {
   private data: AmountByMonth = {};
   private range?: [Date, Date];
 
@@ -43,8 +43,8 @@ class BalanceHistory {
   private getKey = (date: Date) => getYearMonthString(date);
   private getDate = (key: string) => new Date(`${key}-15`);
 
-  getData = () => ({ ...this.data });
-  getRange = () => this.range && [...this.range];
+  getData = (): AmountByMonth => ({ ...this.data });
+  getRange = (): [Date, Date] | undefined => this.range && [...this.range];
 
   get startDate() {
     return this.range && new ViewDate("month", this.range[0]);
@@ -113,10 +113,18 @@ export class BalanceData {
     return this.data.size;
   }
 
-  set(accountId: string, date: Date, amount: number) {
-    if (!this.data.has(accountId)) this.data.set(accountId, new BalanceHistory());
-    const accountData = this.data.get(accountId)!;
-    accountData.set(date!, amount!);
+  set(accountId: string, balanceHistory: BalanceHistory): void;
+  set(accountId: string, date: Date, amount: number): void;
+  set(accountId: string, dateOrBalanceHistory: Date | BalanceHistory, amount?: number) {
+    if (isDate(dateOrBalanceHistory) && amount) {
+      const date = dateOrBalanceHistory;
+      if (!this.data.has(accountId)) this.data.set(accountId, new BalanceHistory());
+      const accountData = this.data.get(accountId)!;
+      accountData.set(date!, amount!);
+    } else if (dateOrBalanceHistory instanceof BalanceHistory) {
+      const balanceHistory = dateOrBalanceHistory;
+      this.data.set(accountId, balanceHistory);
+    }
   }
 
   get(accountId: string): BalanceHistory;
@@ -220,13 +228,10 @@ export class BudgetHistory {
    * If amount doesn't exist in the position, assume it was 0.
    */
   add = (date: Date, query: Partial<BudgetSummary>) => {
-    const existing = this.get(date) || 0;
-    const addedQuery = { ...query };
+    const existing = this.get(date);
     Object.entries(query).forEach(([key, value]) => {
-      const existingAmount = existing[key as keyof BudgetSummary] || 0;
-      addedQuery[key as keyof BudgetSummary] = existingAmount + value;
+      existing[key as keyof BudgetSummary] += value;
     });
-    this.set(date, addedQuery);
   };
 
   /**
@@ -253,10 +258,22 @@ export class BudgetData {
     return this.data.size;
   }
 
-  set(budgetLikeId: string, date: Date, budgetSummary: Partial<BudgetSummary>) {
-    if (!this.data.has(budgetLikeId)) this.data.set(budgetLikeId, new BudgetHistory());
-    const accountData = this.data.get(budgetLikeId)!;
-    accountData.set(date!, budgetSummary!);
+  set(budgetLikeId: string, budgetHistory: BudgetHistory): void;
+  set(budgetLikeId: string, date: Date, budgetSummary: Partial<BudgetSummary>): void;
+  set(
+    budgetLikeId: string,
+    dateOrBudgetHistory: Date | BudgetHistory,
+    budgetSummary?: Partial<BudgetSummary>,
+  ) {
+    if (isDate(dateOrBudgetHistory) && budgetSummary) {
+      const date = dateOrBudgetHistory;
+      if (!this.data.has(budgetLikeId)) this.data.set(budgetLikeId, new BudgetHistory());
+      const accountData = this.data.get(budgetLikeId)!;
+      accountData.set(date!, budgetSummary!);
+    } else if (dateOrBudgetHistory instanceof BudgetHistory) {
+      const budgetHistory = dateOrBudgetHistory;
+      this.data.set(budgetLikeId, budgetHistory);
+    }
   }
 
   get(budgetLikeId: string): BudgetHistory;

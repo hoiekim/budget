@@ -1,7 +1,7 @@
 const DB_NAME = "BudgetApp";
 const DB_VERSION = 1;
 
-enum StoreName {
+export enum StoreName {
   BalanceData = "balanceData",
   BudgetData = "budgetData",
   CapacityData = "capacityData",
@@ -59,25 +59,40 @@ export class IndexedDb {
     });
   };
 
-  load = async <T>(storeName: StoreName): Promise<T[] | null> => {
+  load = async <T>(storeName: StoreName): Promise<{ [key: string]: T }> => {
     const database = await this.init();
-    return await new Promise<T[] | null>((resolve, reject) => {
-      try {
-        const transaction = database.transaction(this.stores, "readonly");
-        const items: T[] = [];
+    const transaction = database.transaction(this.stores, "readonly");
+    const store = transaction.objectStore(storeName);
 
-        const store = transaction.objectStore(storeName);
-        const request = store.getAll();
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-          request.result.forEach((item: T) => items.push(item));
-        };
+    const keyPromise = new Promise<string[]>((resolve, reject) => {
+      const keys: string[] = [];
+      const request = store.getAllKeys();
+      request.onsuccess = () => {
+        request.result.forEach((key, i) => {
+          if (typeof key === "string") keys[i] = key;
+        });
+      };
 
-        resolve(items);
-      } catch (error) {
-        reject(error);
-      }
+      resolve(keys);
     });
+
+    const valuePromise = new Promise<T[]>((resolve, reject) => {
+      const values: T[] = [];
+      const request = store.getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        request.result.forEach((value: T, i) => {
+          values[i] = value;
+        });
+        resolve(values);
+      };
+    });
+
+    const result: { [key: string]: T } = {};
+    const [keys, values] = await Promise.all([keyPromise, valuePromise]);
+    keys.forEach((key, i) => (result[key] = values[i]));
+
+    return result;
   };
 }
 

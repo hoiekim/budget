@@ -24,27 +24,48 @@ export const useData = () => {
   );
 
   const [calculations, setCalculations] = useState(new Calculations());
+
   const calculate = useCallback(
     (data: Data) => {
+      const {
+        accounts,
+        accountSnapshots,
+        transactions,
+        splitTransactions,
+        investmentTransactions,
+        budgets,
+        sections,
+        categories,
+      } = data;
+
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
-        newCalculations.status.isLoading = true;
+
+        const balanceData = getBalanceData(
+          accounts,
+          accountSnapshots,
+          transactions,
+          investmentTransactions,
+        );
+
+        const { transactionFamilies, budgetData } = getBudgetData(
+          transactions,
+          splitTransactions,
+          accounts,
+          budgets,
+          sections,
+          categories,
+        );
+
+        const capacityData = getCapacityData(budgets, sections, categories);
+
+        newCalculations.update({ balanceData, transactionFamilies, budgetData, capacityData });
+
+        newCalculations.status.isInit = true;
+        newCalculations.status.isLoading = false;
+
         return newCalculations;
       });
-
-      setTimeout(() => {
-        setCalculations((oldCalculations) => {
-          const newCalculations = new Calculations(oldCalculations);
-          newCalculations.update({
-            balanceData: getBalanceData(data),
-            capacityData: getCapacityData(data),
-            ...getBudgetData(data),
-          });
-          newCalculations.status.isInit = true;
-          newCalculations.status.isLoading = false;
-          return newCalculations;
-        });
-      }, 10);
     },
     [setCalculations],
   );
