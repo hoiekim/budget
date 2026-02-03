@@ -40,10 +40,13 @@ import {
   InstitutionDictionary,
   Institution,
   useDebounce,
+  indexedDb,
 } from "client";
 
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
-  const response = await call.get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date");
+  const response = await call
+    .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
+    .catch(console.error);
   if (!response?.body) return undefined;
   return response.body ? new Date(response.body) : undefined;
 };
@@ -86,7 +89,7 @@ const fetchTransactions = async (
         if (isRecent) {
           response = await call.get<TransactionsGetResponse>(path).catch(console.error);
         } else {
-          response = await cachedCall<TransactionsGetResponse>(path);
+          response = await cachedCall<TransactionsGetResponse>(path).catch(console.error);
         }
         if (!response?.body) return;
 
@@ -129,7 +132,8 @@ const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> =
       splitTransactions.forEach((t) => {
         result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
       });
-    });
+    })
+    .catch(console.error);
 
   return result;
 };
@@ -145,7 +149,7 @@ const fetchAccounts = async (): Promise<FetchAccountsResult> => {
     items: new ItemDictionary(),
   };
 
-  const response = await call.get<AccountsGetResponse>("/api/accounts");
+  const response = await call.get<AccountsGetResponse>("/api/accounts").catch(console.error);
   if (!response?.body) return result;
 
   const { accounts, items } = response.body;
@@ -163,7 +167,7 @@ interface FetchBudgetsResult {
 }
 
 const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
-  const response = await call.get<BudgetsGetResponse>("/api/budgets");
+  const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
   if (!response?.body)
     return {
       budgets: new BudgetDictionary(),
@@ -204,20 +208,23 @@ const fetchSnapshots = async (startDate?: Date): Promise<FetchSnapshotsResult> =
   params.append("end-date", getDateString(endDate));
   const path = "/api/snapshots?" + params.toString();
 
-  await call.get(path).then(({ body }) => {
-    if (!body) return;
-    const snapshots = body as SnapshotData[];
+  await call
+    .get(path)
+    .then(({ body }) => {
+      if (!body) return;
+      const snapshots = body as SnapshotData[];
 
-    snapshots.forEach((snapshot) => {
-      if ("account" in snapshot) {
-        const newSnapshot = new AccountSnapshot(snapshot);
-        result.accountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
-      } else if ("holding" in snapshot) {
-        const newSnapshot = new HoldingSnapshot(snapshot);
-        result.holdingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
-      }
-    });
-  });
+      snapshots.forEach((snapshot) => {
+        if ("account" in snapshot) {
+          const newSnapshot = new AccountSnapshot(snapshot);
+          result.accountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+        } else if ("holding" in snapshot) {
+          const newSnapshot = new HoldingSnapshot(snapshot);
+          result.holdingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+        }
+      });
+    })
+    .catch(console.error);
 
   return result;
 };
@@ -228,7 +235,7 @@ interface FetchChartsResult {
 
 const fetchCharts = async (): Promise<FetchChartsResult> => {
   const result = { charts: new ChartDictionary() };
-  const response = await call.get<ChartsGetResponse>("/api/charts");
+  const response = await call.get<ChartsGetResponse>("/api/charts").catch(console.error);
   if (!response?.body) return result;
   response.body.forEach((e) => result.charts.set(e.chart_id, new Chart(e)));
   return result;
@@ -242,7 +249,9 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   const result = { institutions: new InstitutionDictionary() };
   const promises = accounts.toArray().map(async ({ institution_id }) => {
     if (institution_id === "Unknown") return;
-    const response = await cachedCall<JSONInstitution>(`/api/institution?id=${institution_id}`);
+    const response = await cachedCall<JSONInstitution>(
+      `/api/institution?id=${institution_id}`,
+    ).catch(console.error);
     if (response) result.institutions.set(institution_id, new Institution(response.body));
   });
 
@@ -263,6 +272,27 @@ export const useSync = () => {
     });
 
     try {
+      indexedDb
+        .loadAllData()
+        .then((data) => {
+          // do not update data because API data is already available
+          if (data.status.isInit) return;
+          data.status.isInit = true;
+          data.status.isLoading = false;
+          data.status.isError = false;
+          setData(data);
+        })
+        .catch((error) => {
+          console.error(error);
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            newData.status.isInit = true;
+            newData.status.isLoading = false;
+            newData.status.isError = true;
+            return newData;
+          });
+        });
+
       const accountsPromise = fetchAccounts();
       const oldestDatePromise = getOldestTransactionDate();
       const transactionsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
@@ -292,30 +322,31 @@ export const useSync = () => {
         institutionsPromise,
       ]);
 
-      setData((oldData) => {
-        const newData = new Data(oldData);
-
-        newData.update({
-          accounts,
-          items,
-          transactions,
-          splitTransactions,
-          investmentTransactions,
-          accountSnapshots,
-          holdingSnapshots,
-          budgets,
-          sections,
-          categories,
-          charts,
-          institutions,
-        });
-
-        newData.status.isInit = true;
-        newData.status.isLoading = false;
-        newData.status.isError = false;
-
-        return newData;
+      const newData = new Data({
+        accounts,
+        items,
+        transactions,
+        splitTransactions,
+        investmentTransactions,
+        accountSnapshots,
+        holdingSnapshots,
+        budgets,
+        sections,
+        categories,
+        charts,
+        institutions,
       });
+
+      newData.status.isInit = true;
+      newData.status.isLoading = false;
+      newData.status.isError = false;
+
+      setData(newData);
+
+      indexedDb
+        .clearAllData()
+        .then(() => indexedDb.saveAllData(newData))
+        .catch(console.error);
     } catch (err) {
       console.error(err);
       setData((oldData) => {

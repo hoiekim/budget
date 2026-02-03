@@ -6,8 +6,8 @@ export const environment = isNodejs
     ? "server"
     : "unknown"
   : isBrowser
-  ? "client"
-  : "unknown";
+    ? "client"
+    : "unknown";
 
 export const numberToCommaString = (n: number, fixed = 2) => {
   const sign = n < 0 ? "-" : "";
@@ -56,8 +56,8 @@ export type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends (infer U)[]
     ? DeepPartial<U>[]
     : T[P] extends object
-    ? DeepPartial<T[P]>
-    : T[P];
+      ? DeepPartial<T[P]>
+      : T[P];
 };
 
 export type ValueOf<T> = T[keyof T];
@@ -144,4 +144,17 @@ export const toUpperCamelCase = (s: string) => {
   return toTitleCase(s).replace(/ /g, "");
 };
 
+export const excludeEnumeration = (obj: any, propertyNames: string[]) => {
+  propertyNames.forEach((name) => {
+    Object.defineProperty(obj, name, {
+      value: obj[name],
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    });
+  });
+};
+
 export * from "./search";
+export * from "./date";
+export * from "./math";

@@ -1,4 +1,4 @@
-import { assign, getDateTimeString, JSONBudgetFamily } from "common";
+import { assign, excludeEnumeration, getDateTimeString, JSONBudgetFamily } from "common";
 import { Capacity, sortCapacities } from "./Capacity";
 import { globalData } from "./Data";
 import { CapacityData } from "client";
@@ -47,6 +47,16 @@ export class BudgetFamily {
   constructor(init?: Partial<BudgetFamily | JSONBudgetFamily>) {
     assign(this, init);
     this.fromJSON();
+    excludeEnumeration(this, [
+      "fromJSON",
+      "toJSON",
+      "clone",
+      "sortCapacities",
+      "getActiveCapacity",
+      "isChildrenSynced",
+      "getChildren",
+      "getParent",
+    ]);
   }
 
   protected fromJSON = () => {

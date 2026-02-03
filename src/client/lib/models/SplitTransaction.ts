@@ -1,4 +1,10 @@
-import { getRandomId, assign, getDateTimeString, JSONSplitTransaction } from "common";
+import {
+  getRandomId,
+  assign,
+  getDateTimeString,
+  JSONSplitTransaction,
+  excludeEnumeration,
+} from "common";
 import { Transaction, TransactionLabel } from "./Transaction";
 import { globalData } from "./Data";
 
@@ -7,13 +13,6 @@ export class SplitTransaction implements JSONSplitTransaction {
     return this.split_transaction_id;
   }
   set id(_: string) {}
-
-  toTransaction = () => {
-    const { id, transaction_id, amount, label } = this;
-    const { transactions } = globalData;
-    const parentTransaction = transactions.get(transaction_id);
-    return new Transaction({ ...parentTransaction!, transaction_id: id, amount, label });
-  };
 
   split_transaction_id: string = getRandomId();
   transaction_id: string = "";
@@ -34,5 +33,13 @@ export class SplitTransaction implements JSONSplitTransaction {
   ) {
     assign(this, init);
     if (init.label) this.label = new TransactionLabel(init.label);
+    excludeEnumeration(this, ["toTransaction"]);
   }
+
+  toTransaction = () => {
+    const { id, transaction_id, amount, label } = this;
+    const { transactions } = globalData;
+    const parentTransaction = transactions.get(transaction_id);
+    return new Transaction({ ...parentTransaction!, transaction_id: id, amount, label });
+  };
 }

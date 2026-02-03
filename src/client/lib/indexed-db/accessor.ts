@@ -2,13 +2,27 @@ const DB_NAME = "BudgetApp";
 const DB_VERSION = 1;
 
 export enum StoreName {
-  BalanceData = "balanceData",
-  BudgetData = "budgetData",
-  CapacityData = "capacityData",
-  TransactionFamilies = "transactionFamilies",
+  // primary data
+  institutions = "institutions",
+  accounts = "accounts",
+  transactions = "transactions",
+  investmentTransactions = "investmentTransactions",
+  splitTransactions = "splitTransactions",
+  budgets = "budgets",
+  sections = "sections",
+  categories = "categories",
+  items = "items",
+  charts = "charts",
+  accountSnapshots = "accountSnapshots",
+  holdingSnapshots = "holdingSnapshots",
+  // calculations
+  balanceData = "balanceData",
+  budgetData = "budgetData",
+  capacityData = "capacityData",
+  transactionFamilies = "transactionFamilies",
 }
 
-export class IndexedDb {
+class IndexedDbAccessor {
   private db: IDBDatabase | null = null;
 
   private dbName: string;
@@ -48,7 +62,7 @@ export class IndexedDb {
 
   save = async (storeName: StoreName, key: string, data: any): Promise<void> => {
     const database = await this.init();
-    const transaction = database.transaction(this.stores, "readwrite");
+    const transaction = database.transaction(storeName, "readwrite");
 
     const store = transaction.objectStore(storeName);
 
@@ -59,9 +73,21 @@ export class IndexedDb {
     });
   };
 
+  saveMany = async (storeName: StoreName, items: [string, any][]): Promise<void> => {
+    const database = await this.init();
+    const transaction = database.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+
+    return new Promise<void>((resolve, reject) => {
+      transaction.onerror = () => reject(transaction.error);
+      transaction.oncomplete = () => resolve();
+      items.forEach(([key, data]) => store.put(data, key));
+    });
+  };
+
   load = async <T>(storeName: StoreName): Promise<{ [key: string]: T }> => {
     const database = await this.init();
-    const transaction = database.transaction(this.stores, "readonly");
+    const transaction = database.transaction(storeName, "readonly");
     const store = transaction.objectStore(storeName);
 
     const keyPromise = new Promise<string[]>((resolve, reject) => {
@@ -94,6 +120,18 @@ export class IndexedDb {
 
     return result;
   };
+
+  clear = async (storeName: StoreName): Promise<void> => {
+    const database = await this.init();
+    const transaction = database.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+
+    return new Promise<void>((resolve, reject) => {
+      const request = store.clear();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  };
 }
 
-export const indexedDb = new IndexedDb();
+export const indexedDbAccessor = new IndexedDbAccessor();

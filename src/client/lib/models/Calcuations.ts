@@ -21,6 +21,8 @@ export class Calculations {
 }
 
 /**
+ * Note: this type is used when saving data in IndexedDB
+ * so it must be a plain object without fancy method functions.
  * @example
  * {
  *    "2026-01": 100,
@@ -113,6 +115,8 @@ export class BalanceData {
     return this.data.size;
   }
 
+  getEntries = () => Array.from(this.data.entries());
+
   set(accountId: string, balanceHistory: BalanceHistory): void;
   set(accountId: string, date: Date, amount: number): void;
   set(accountId: string, dateOrBalanceHistory: Date | BalanceHistory, amount?: number) {
@@ -143,7 +147,7 @@ export class BalanceData {
   forEach = (cb: (history: BalanceHistory, id: string) => void) => this.data.forEach(cb);
 }
 
-class CapacitySummary {
+export class CapacitySummary {
   children_total = 0;
   grand_children_total = 0;
 }
@@ -158,6 +162,10 @@ export class CapacityData extends Map<string, CapacitySummary> {
   };
 }
 
+/**
+ * Note: this type is used when saving data in IndexedDB
+ * so it must be a plain object without fancy method functions.
+ */
 class BudgetSummary {
   sorted_amount = 0;
   unsorted_amount = 0;
@@ -182,7 +190,7 @@ class BudgetSummary {
  *    }
  * }
  */
-type BudgetSummaryByMonth = { [k: string]: BudgetSummary };
+export type BudgetSummaryByMonth = { [k: string]: BudgetSummary };
 
 /**
  * Helper class to abstract budget history write & read processes.
@@ -258,6 +266,8 @@ export class BudgetData {
     return this.data.size;
   }
 
+  getEntries = () => Array.from(this.data.entries());
+
   set(budgetLikeId: string, budgetHistory: BudgetHistory): void;
   set(budgetLikeId: string, date: Date, budgetSummary: Partial<BudgetSummary>): void;
   set(
@@ -304,6 +314,8 @@ export class TransactionFamilies {
     return this.data.size;
   }
 
+  getEntries = () => Array.from(this.data.entries());
+
   set = (transactionId: string, children: SplitTransactionDictionary) => {
     this.data.set(transactionId, children);
   };
@@ -327,5 +339,7 @@ export class TransactionFamilies {
     return total;
   };
 
-  forEach = this.data.forEach;
+  forEach = (cb: (children: SplitTransactionDictionary, id: string) => void) => {
+    this.data.forEach(cb);
+  };
 }

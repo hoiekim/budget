@@ -6,6 +6,7 @@ import {
   JSONBalanceChartConfiguration,
   JSONProjectionChartConfiguration,
   JSONAmountInTime,
+  excludeEnumeration,
 } from "common";
 
 type ChartConfiguration = BalanceChartConfiguration | ProjectionChartConfiguration;
@@ -23,6 +24,7 @@ export class Chart {
   constructor(init?: Partial<Chart | JSONChart>) {
     assign(this, init);
     this.fromJSON();
+    excludeEnumeration(this, ["fromJSON", "toJSON"]);
   }
 
   protected fromJSON = () => {

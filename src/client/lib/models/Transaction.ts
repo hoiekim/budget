@@ -14,6 +14,7 @@ import {
   assign,
   JSONTransactionLabel,
   JSONTransaction,
+  excludeEnumeration,
 } from "common";
 import { TransactionFamilies } from "client";
 import { globalData } from "./Data";
@@ -42,8 +43,6 @@ export class Transaction implements JSONTransaction {
     return this.transaction_id;
   }
   set id(_: string) {}
-
-  toTransaction = () => this;
 
   transaction_type?: TransactionTransactionTypeEnum;
   pending_transaction_id: string | null = null;
@@ -94,7 +93,10 @@ export class Transaction implements JSONTransaction {
 
   constructor(init: Partial<Transaction | JSONTransaction> & { account_id: string }) {
     assign(this, init);
+    excludeEnumeration(this, ["toTransaction", "getRemainingAmount"]);
   }
+
+  toTransaction = () => this;
 
   getRemainingAmount = (transactionFamilies: TransactionFamilies) => {
     return this.amount - transactionFamilies.getChildrenAmountTotal(this.id);
