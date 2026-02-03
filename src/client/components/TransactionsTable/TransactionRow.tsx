@@ -22,19 +22,11 @@ interface Props {
 const TransactionRow = ({ transaction }: Props) => {
   const { data, calculations, setData, router } = useAppContext();
   const { transactionFamilies } = calculations;
-  const { transaction_id, amount, label } = transaction;
+  const { id, transaction_id, amount, label } = transaction;
   const parentTransaction = data.transactions.get(transaction_id)!;
-  const {
-    id,
-    account_id,
-    authorized_date,
-    date,
-    merchant_name,
-    name,
-    location,
-    iso_currency_code,
-  } = parentTransaction;
-  const amountAfterSplit = amount - transactionFamilies.getChildrenAmountTotal(transaction_id);
+  const { account_id, authorized_date, date, merchant_name, name, location, iso_currency_code } =
+    parentTransaction;
+  const amountAfterSplit = amount - transactionFamilies.getChildrenAmountTotal(id);
 
   const { accounts, budgets, sections, categories } = data;
   const { path, go } = router;
@@ -87,7 +79,7 @@ const TransactionRow = ({ transaction }: Props) => {
     });
   }, [id, label.budget_id, account?.label.budget_id, sections, categories]);
 
-  const isSplitTransaction = parentTransaction instanceof SplitTransaction;
+  const isSplitTransaction = transaction instanceof SplitTransaction;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
