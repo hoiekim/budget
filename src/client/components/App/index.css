@@ -168,23 +168,66 @@ div.Spiner {
 }
 
 div.Spiner > div {
+  position: absolute;
   width: 40px;
   height: 40px;
   display: flex;
   justify-content: center;
   align-items: center;
-  animation: spin 2s linear infinite;
+  animation: spin 1.5s linear infinite;
 }
 
-div.Spiner > div::after {
-  content: "";
-  border: 4px solid #0002;
-  border-top-color: #fff;
-  border-radius: 50%;
+div.Spiner > div > div {
+  position: absolute;
   width: 40px;
   height: 40px;
-  box-sizing: border-box;
   animation: spin 2s ease-in-out infinite;
+}
+
+div.Spiner > div > div::after {
+  position: absolute;
+  content: "";
+  background-color: #bbb;
+  border-radius: 50%;
+  width: 5px;
+  height: 5px;
+  box-sizing: border-box;
+}
+
+div.Spiner > div > div:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+div.Spiner > div > div:nth-child(1)::after {
+  bottom: 50%;
+  left: 100%;
+}
+
+div.Spiner > div > div:nth-child(2) {
+  animation-delay: 100ms;
+}
+
+div.Spiner > div > div:nth-child(2)::after {
+  bottom: 58.68%;
+  left: 99.24%;
+}
+
+div.Spiner > div > div:nth-child(3) {
+  animation-delay: 250ms;
+}
+
+div.Spiner > div > div:nth-child(3)::after {
+  bottom: 67.1%;
+  left: 96.98%;
+}
+
+div.Spiner > div > div:nth-child(4) {
+  animation-delay: 450ms;
+}
+
+div.Spiner > div > div:nth-child(4)::after {
+  bottom: 75%;
+  left: 93.3%;
 }
 
 @keyframes spin {
