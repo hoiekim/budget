@@ -1,7 +1,7 @@
 import { pool } from "./client";
 import { searchUser, indexUser } from "./users";
 
-export const version = 6;
+export const version = "6";
 export const index = "budget" + (version ? `-${version}` : "");
 
 /**

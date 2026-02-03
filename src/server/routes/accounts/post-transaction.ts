@@ -18,14 +18,11 @@ export const postTrasactionRoute = new Route<TransactionPostResponse>(
 
     try {
       const response = await upsertTransactions(user, [req.body], false);
-      const updateResponse = response[0].update;
-      const updateStatus = updateResponse?.status;
-      const error = updateResponse?.error;
-      if (error || (updateStatus && updateStatus >= 400)) {
-        console.error(error);
-        throw new Error("Elasticsearch responded with an error.");
+      const result = response[0];
+      if (!result || result.status >= 400) {
+        throw new Error("Database responded with an error.");
       }
-      const transaction_id = response[0].update?._id || "";
+      const transaction_id = result.update._id || "";
       return { status: "success", body: { transaction_id } };
     } catch (error: any) {
       console.error(`Failed to update a transaction: ${req.body.transaction_id}`);
