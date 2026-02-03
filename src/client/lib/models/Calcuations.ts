@@ -1,4 +1,4 @@
-import { assign, getYearMonthString, isDate, ViewDate } from "common";
+import { assign, getYearMonthString, isDate, isUndefined, ViewDate } from "common";
 import { Status } from "./miscellaneous";
 import { SplitTransactionDictionary } from "./Data";
 import { SplitTransaction } from "./SplitTransaction";
@@ -116,7 +116,7 @@ export class BalanceData {
   set(accountId: string, balanceHistory: BalanceHistory): void;
   set(accountId: string, date: Date, amount: number): void;
   set(accountId: string, dateOrBalanceHistory: Date | BalanceHistory, amount?: number) {
-    if (isDate(dateOrBalanceHistory) && amount) {
+    if (isDate(dateOrBalanceHistory) && !isUndefined(amount)) {
       const date = dateOrBalanceHistory;
       if (!this.data.has(accountId)) this.data.set(accountId, new BalanceHistory());
       const accountData = this.data.get(accountId)!;
