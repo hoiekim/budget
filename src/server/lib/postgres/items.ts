@@ -1,15 +1,45 @@
-import { JSONItem, ItemStatus } from "common";
+import { JSONItem } from "common";
 import { pool } from "./client";
-import { MaskedUser, searchUser, User } from "./users";
+import { MaskedUser } from "./users";
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
 /**
- * Updates or inserts items documents associated with given user.
- * @param user
- * @param items
- * @param upsert
- * @returns A promise to be an array of result objects
+ * Converts an ES-style item object to Postgres columns.
+ */
+function itemToRow(item: PartialItem): Record<string, any> {
+  const row: Record<string, any> = {};
+  
+  if (item.item_id !== undefined) row.item_id = item.item_id;
+  if (item.access_token !== undefined) row.access_token = item.access_token;
+  if (item.institution_id !== undefined) row.institution_id = item.institution_id;
+  if (item.available_products !== undefined) row.available_products = item.available_products;
+  if (item.cursor !== undefined) row.cursor = item.cursor;
+  if (item.status !== undefined) row.status = item.status;
+  if (item.provider !== undefined) row.provider = item.provider;
+  
+  return row;
+}
+
+/**
+ * Converts a Postgres row to ES-style item object.
+ */
+function rowToItem(row: Record<string, any>): JSONItem {
+  return {
+    item_id: row.item_id,
+    user_id: row.user_id,
+    access_token: row.access_token,
+    institution_id: row.institution_id,
+    available_products: row.available_products,
+    cursor: row.cursor,
+    updated: row.updated,
+    status: row.status,
+    provider: row.provider,
+  } as JSONItem;
+}
+
+/**
+ * Updates or inserts items associated with given user.
  */
 export const upsertItems = async (
   user: MaskedUser,
@@ -19,31 +49,80 @@ export const upsertItems = async (
   if (!items.length) return [];
   const { user_id } = user;
   const results: { update: { _id: string }; status: number }[] = [];
-  const updated = new Date().toISOString();
 
   for (const item of items) {
-    const { item_id, plaidError, ...rest } = item;
-
-    if (upsert) {
-      const result = await pool.query(
-        `INSERT INTO items (item_id, user_id, data, updated)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (item_id) DO UPDATE SET
-           data = items.data || $3,
-           updated = $4
-         WHERE items.user_id = $2
-         RETURNING item_id`,
-        [item_id, user_id, JSON.stringify(rest), updated]
-      );
-      results.push({ update: { _id: item_id }, status: result.rowCount ? 200 : 404 });
-    } else {
-      const result = await pool.query(
-        `UPDATE items SET data = data || $3, updated = $4
-         WHERE item_id = $1 AND user_id = $2
-         RETURNING item_id`,
-        [item_id, user_id, JSON.stringify(rest), updated]
-      );
-      results.push({ update: { _id: item_id }, status: result.rowCount ? 200 : 404 });
+    const row = itemToRow(item);
+    row.user_id = user_id;
+    
+    try {
+      if (upsert) {
+        const columns = Object.keys(row);
+        const values = Object.values(row);
+        const placeholders = values.map((_, i) => `$${i + 1}`);
+        
+        const updateClauses = columns
+          .filter(col => col !== "item_id" && col !== "user_id")
+          .map(col => `${col} = EXCLUDED.${col}`);
+        updateClauses.push("updated = CURRENT_TIMESTAMP");
+        
+        const query = `
+          INSERT INTO items (${columns.join(", ")}, updated)
+          VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
+          ON CONFLICT (item_id) DO UPDATE SET
+            ${updateClauses.join(", ")}
+          WHERE items.user_id = $${columns.indexOf("user_id") + 1}
+          RETURNING item_id
+        `;
+        
+        const result = await pool.query(query, values);
+        results.push({
+          update: { _id: item.item_id },
+          status: result.rowCount ? 200 : 404,
+        });
+      } else {
+        // Update only
+        const updateData = { ...row };
+        delete updateData.item_id;
+        delete updateData.user_id;
+        
+        const setClauses: string[] = ["updated = CURRENT_TIMESTAMP"];
+        const values: any[] = [];
+        let paramIndex = 1;
+        
+        for (const [key, value] of Object.entries(updateData)) {
+          if (value !== undefined) {
+            setClauses.push(`${key} = $${paramIndex}`);
+            values.push(value);
+            paramIndex++;
+          }
+        }
+        
+        if (setClauses.length > 1) {
+          values.push(item.item_id, user_id);
+          const query = `
+            UPDATE items SET ${setClauses.join(", ")}
+            WHERE item_id = $${paramIndex} AND user_id = $${paramIndex + 1}
+            RETURNING item_id
+          `;
+          
+          const result = await pool.query(query, values);
+          results.push({
+            update: { _id: item.item_id },
+            status: result.rowCount ? 200 : 404,
+          });
+        } else {
+          results.push({
+            update: { _id: item.item_id },
+            status: 304,
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error(`Failed to upsert item ${item.item_id}:`, error.message);
+      results.push({
+        update: { _id: item.item_id },
+        status: 500,
+      });
     }
   }
 
@@ -51,133 +130,106 @@ export const upsertItems = async (
 };
 
 /**
- * Searches for items associated with given user.
- * @param user
- * @returns A promise to be an array of Item objects
+ * Retrieves all items for a user.
  */
-export const searchItems = async (user?: MaskedUser) => {
-  const { user_id } = user || {};
-
-  let query: string;
-  let values: any[];
-
-  if (user_id) {
-    query = `SELECT item_id, data FROM items WHERE user_id = $1`;
-    values = [user_id];
-  } else {
-    query = `SELECT item_id, data FROM items`;
-    values = [];
-  }
-
-  const result = await pool.query<{
-    item_id: string;
-    data: any;
-  }>(query, values);
-
-  return result.rows.map((row) => ({
-    ...row.data,
-    item_id: row.item_id,
-  })) as JSONItem[];
-};
-
-/**
- * Gets item associated with given item_id.
- * @param item_id
- * @returns A promise to be an Item object
- */
-export const getItem = async (item_id: string) => {
-  const result = await pool.query<{
-    item_id: string;
-    data: any;
-  }>(
-    `SELECT item_id, data FROM items WHERE item_id = $1`,
-    [item_id]
-  );
-
-  if (result.rows.length === 0) return undefined;
-
-  const row = result.rows[0];
-  return {
-    ...row.data,
-    item_id: row.item_id,
-  } as JSONItem;
-};
-
-export const updateItemStatus = async (item_id: string, status: ItemStatus) => {
-  const result = await pool.query<{
-    user_id: string;
-    data: any;
-  }>(
-    `SELECT user_id, data FROM items WHERE item_id = $1`,
-    [item_id]
-  );
-
-  if (result.rows.length === 0) return;
-
-  const { user_id } = result.rows[0];
-  const foundUser = await searchUser({ user_id });
-  if (!foundUser) return;
-
-  return await upsertItems(foundUser, [{ item_id, status }]);
-};
-
-export const getUserItem = async (
-  item_id: string
-): Promise<{ user: User; item: JSONItem } | undefined> => {
-  const result = await pool.query<{
-    item_id: string;
-    user_id: string;
-    data: any;
-  }>(
-    `SELECT item_id, user_id, data FROM items WHERE item_id = $1`,
-    [item_id]
-  );
-
-  if (result.rows.length === 0) return;
-
-  const row = result.rows[0];
-  const foundUser = await searchUser({ user_id: row.user_id });
-  if (!foundUser) return;
-
-  const item = {
-    ...row.data,
-    item_id: row.item_id,
-  } as JSONItem;
-
-  return { user: foundUser, item };
-};
-
-/**
- * Delete an item with given item_id.
- * Also deletes associated accounts, holdings, transactions, etc.
- * @param user
- * @param item_id
- * @returns A promise with the delete results
- */
-export const deleteItem = async (user: MaskedUser, item_id: string) => {
+export const getItems = async (user: MaskedUser): Promise<JSONItem[]> => {
   const { user_id } = user;
-
-  // Delete the item
-  const itemResult = pool.query(
-    `DELETE FROM items WHERE user_id = $1 AND item_id = $2`,
-    [user_id, item_id]
+  const result = await pool.query(
+    `SELECT * FROM items WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [user_id]
   );
+  return result.rows.map(rowToItem);
+};
 
-  // Get all account IDs for this item
-  const accountsQuery = await pool.query<{ account_id: string }>(
-    `SELECT account_id FROM accounts WHERE user_id = $1 AND data->>'item_id' = $2`,
-    [user_id, item_id]
+/**
+ * Retrieves a single item by ID.
+ */
+export const getItem = async (
+  user: MaskedUser,
+  item_id: string
+): Promise<JSONItem | null> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `SELECT * FROM items WHERE item_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [item_id, user_id]
   );
-  const accountIds = accountsQuery.rows.map((r) => r.account_id);
+  return result.rows.length > 0 ? rowToItem(result.rows[0]) : null;
+};
 
-  // Delete related data
-  const otherResults = accountIds.length > 0 ? Promise.all([
-    pool.query(`DELETE FROM accounts WHERE user_id = $1 AND account_id = ANY($2)`, [user_id, accountIds]),
-    pool.query(`DELETE FROM holdings WHERE user_id = $1 AND data->>'account_id' = ANY($2)`, [user_id, accountIds]),
-    pool.query(`DELETE FROM transactions WHERE user_id = $1 AND data->>'account_id' = ANY($2)`, [user_id, accountIds]),
-    pool.query(`DELETE FROM split_transactions WHERE user_id = $1 AND account_id = ANY($2)`, [user_id, accountIds]),
-    pool.query(`DELETE FROM investment_transactions WHERE user_id = $1 AND data->>'account_id' = ANY($2)`, [user_id, accountIds]),
-  ]) : Promise.resolve([]);
+/**
+ * Gets item by access token.
+ */
+export const getItemByAccessToken = async (
+  access_token: string
+): Promise<JSONItem | null> => {
+  const result = await pool.query(
+    `SELECT * FROM items WHERE access_token = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [access_token]
+  );
+  return result.rows.length > 0 ? rowToItem(result.rows[0]) : null;
+};
 
-  return Promise.all([itemResult, otherResults]);
+/**
+ * Deletes items (soft delete).
+ */
+export const deleteItems = async (
+  user: MaskedUser,
+  item_ids: string[]
+): Promise<{ deleted: number }> => {
+  if (!item_ids.length) return { deleted: 0 };
+  const { user_id } = user;
+  
+  const placeholders = item_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `UPDATE items SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE item_id IN (${placeholders}) AND user_id = $1
+     RETURNING item_id`,
+    [user_id, ...item_ids]
+  );
+  
+  return { deleted: result.rowCount || 0 };
+};
+
+/**
+ * Updates item cursor (for transaction syncing).
+ */
+export const updateItemCursor = async (
+  item_id: string,
+  cursor: string
+): Promise<boolean> => {
+  const result = await pool.query(
+    `UPDATE items SET cursor = $1, updated = CURRENT_TIMESTAMP WHERE item_id = $2 RETURNING item_id`,
+    [cursor, item_id]
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
+ * Updates item status.
+ */
+export const updateItemStatus = async (
+  item_id: string,
+  status: string
+): Promise<boolean> => {
+  const result = await pool.query(
+    `UPDATE items SET status = $1, updated = CURRENT_TIMESTAMP WHERE item_id = $2 RETURNING item_id`,
+    [status, item_id]
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
+ * Gets items by institution.
+ */
+export const getItemsByInstitution = async (
+  user: MaskedUser,
+  institution_id: string
+): Promise<JSONItem[]> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `SELECT * FROM items 
+     WHERE institution_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [institution_id, user_id]
+  );
+  return result.rows.map(rowToItem);
 };

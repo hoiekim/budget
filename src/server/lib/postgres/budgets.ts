@@ -1,407 +1,433 @@
-import { JSONBudget, JSONSection, JSONCategory, getRandomId } from "common";
+import { JSONBudget, JSONSection, JSONCategory, Capacity } from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
 
-/**
- * Creates a document that represents a budget.
- * Note: Budget > Section > Category
- * @param user
- * @returns A promise with the created budget id
- */
-export const createBudget = async (user: MaskedUser) => {
-  const { user_id } = user;
-  const updated = new Date().toISOString();
+// Note: capacities remains as JSONB since it's an array with complex nested structure
+// that requires array operations (adding/removing elements)
 
-  const budget = {
-    name: "Unnamed",
-    iso_currency_code: "USD",
-    capacities: [{ capacity_id: getRandomId(), month: 0 }],
-    roll_over: false,
-  };
-
-  const result = await pool.query(
-    `INSERT INTO budgets (user_id, name, iso_currency_code, capacities, roll_over, updated)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING budget_id`,
-    [user_id, budget.name, budget.iso_currency_code, JSON.stringify(budget.capacities), budget.roll_over, updated]
-  );
-
-  return { _id: result.rows[0].budget_id };
-};
-
-export type PartialBudget = { budget_id: string } & Partial<JSONBudget>;
+type PartialBudget = { budget_id?: string } & Partial<JSONBudget>;
+type PartialSection = { section_id?: string } & Partial<JSONSection>;
+type PartialCategory = { category_id?: string } & Partial<JSONCategory>;
 
 /**
- * Updates budget document with given object.
- * @param user
- * @param budget
- * @returns A promise with the update result
+ * Converts a budget to Postgres row.
  */
-export const updateBudget = async (user: MaskedUser, budget: PartialBudget) => {
-  const { user_id } = user;
-  const { budget_id, name, iso_currency_code, capacities, roll_over, roll_over_start_date } = budget;
-  const updated = new Date().toISOString();
-
-  const updates: string[] = [];
-  const values: any[] = [];
-  let paramIndex = 1;
-
-  if (name !== undefined) {
-    updates.push(`name = $${paramIndex++}`);
-    values.push(name);
-  }
-  if (iso_currency_code !== undefined) {
-    updates.push(`iso_currency_code = $${paramIndex++}`);
-    values.push(iso_currency_code);
-  }
-  if (capacities !== undefined) {
-    updates.push(`capacities = $${paramIndex++}`);
-    values.push(JSON.stringify(capacities));
-  }
-  if (roll_over !== undefined) {
-    updates.push(`roll_over = $${paramIndex++}`);
-    values.push(roll_over);
-  }
-  if (roll_over_start_date !== undefined) {
-    updates.push(`roll_over_start_date = $${paramIndex++}`);
-    values.push(roll_over_start_date);
-  }
-
-  updates.push(`updated = $${paramIndex++}`);
-  values.push(updated);
-
-  values.push(budget_id);
-  values.push(user_id);
-
-  const result = await pool.query(
-    `UPDATE budgets SET ${updates.join(", ")} 
-     WHERE budget_id = $${paramIndex++} AND user_id = $${paramIndex}`,
-    values
-  );
-
-  return result;
-};
+function budgetToRow(budget: PartialBudget): Record<string, any> {
+  const row: Record<string, any> = {};
+  
+  if (budget.budget_id !== undefined) row.budget_id = budget.budget_id;
+  if (budget.name !== undefined) row.name = budget.name;
+  if (budget.iso_currency_code !== undefined) row.iso_currency_code = budget.iso_currency_code;
+  if (budget.capacities !== undefined) row.capacities = JSON.stringify(budget.capacities);
+  if (budget.roll_over !== undefined) row.roll_over = budget.roll_over;
+  if (budget.roll_over_start_date !== undefined) row.roll_over_start_date = budget.roll_over_start_date;
+  
+  return row;
+}
 
 /**
- * Deletes budget document with given id.
- * Also deletes associated sections and categories.
- * @param user
- * @param budget_id
- * @returns A promise with the delete result
+ * Converts a Postgres row to budget.
  */
-export const deleteBudget = async (user: MaskedUser, budget_id: string) => {
-  if (!budget_id) return;
-  const { user_id } = user;
-
-  // Get all section_ids for this budget
-  const sectionsResult = await pool.query(
-    `SELECT section_id FROM sections WHERE budget_id = $1 AND user_id = $2`,
-    [budget_id, user_id]
-  );
-  const sectionIds = sectionsResult.rows.map((r) => r.section_id);
-
-  // Delete categories for those sections
-  if (sectionIds.length > 0) {
-    await pool.query(
-      `DELETE FROM categories WHERE user_id = $1 AND section_id = ANY($2)`,
-      [user_id, sectionIds]
-    );
-  }
-
-  // Delete sections
-  await pool.query(
-    `DELETE FROM sections WHERE user_id = $1 AND budget_id = $2`,
-    [user_id, budget_id]
-  );
-
-  // Delete budget
-  const result = await pool.query(
-    `DELETE FROM budgets WHERE user_id = $1 AND budget_id = $2`,
-    [user_id, budget_id]
-  );
-
-  return { deleted: result.rowCount };
-};
-
-/**
- * Creates a document that represents a section.
- * Note: Budget > Section > Category
- * @param user
- * @param budget_id parent budget's id
- * @returns A promise with the created section id
- */
-export const createSection = async (user: MaskedUser, budget_id: string) => {
-  const { user_id } = user;
-  const updated = new Date().toISOString();
-
-  const section = {
-    name: "Unnamed",
-    budget_id,
-    capacities: [{ capacity_id: getRandomId(), month: 0 }],
-    roll_over: false,
-  };
-
-  const result = await pool.query(
-    `INSERT INTO sections (user_id, budget_id, name, capacities, roll_over, updated)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING section_id`,
-    [user_id, budget_id, section.name, JSON.stringify(section.capacities), section.roll_over, updated]
-  );
-
-  return { _id: result.rows[0].section_id };
-};
-
-export type PartialSection = { section_id: string } & Partial<JSONSection>;
-
-/**
- * Updates section document with given object.
- * @param user
- * @param section
- * @returns A promise with the update result
- */
-export const updateSection = async (user: MaskedUser, section: PartialSection) => {
-  const { user_id } = user;
-  const { section_id, name, budget_id, capacities, roll_over, roll_over_start_date } = section;
-  const updated = new Date().toISOString();
-
-  const updates: string[] = [];
-  const values: any[] = [];
-  let paramIndex = 1;
-
-  if (name !== undefined) {
-    updates.push(`name = $${paramIndex++}`);
-    values.push(name);
-  }
-  if (budget_id !== undefined) {
-    updates.push(`budget_id = $${paramIndex++}`);
-    values.push(budget_id);
-  }
-  if (capacities !== undefined) {
-    updates.push(`capacities = $${paramIndex++}`);
-    values.push(JSON.stringify(capacities));
-  }
-  if (roll_over !== undefined) {
-    updates.push(`roll_over = $${paramIndex++}`);
-    values.push(roll_over);
-  }
-  if (roll_over_start_date !== undefined) {
-    updates.push(`roll_over_start_date = $${paramIndex++}`);
-    values.push(roll_over_start_date);
-  }
-
-  updates.push(`updated = $${paramIndex++}`);
-  values.push(updated);
-
-  values.push(section_id);
-  values.push(user_id);
-
-  const result = await pool.query(
-    `UPDATE sections SET ${updates.join(", ")} 
-     WHERE section_id = $${paramIndex++} AND user_id = $${paramIndex}`,
-    values
-  );
-
-  return result;
-};
-
-/**
- * Deletes section document with given id.
- * Also deletes associated categories.
- * @param user
- * @param section_id
- * @returns A promise with the delete result
- */
-export const deleteSection = async (user: MaskedUser, section_id: string) => {
-  if (!section_id) return;
-  const { user_id } = user;
-
-  // Delete categories for this section
-  await pool.query(
-    `DELETE FROM categories WHERE user_id = $1 AND section_id = $2`,
-    [user_id, section_id]
-  );
-
-  // Delete section
-  const result = await pool.query(
-    `DELETE FROM sections WHERE user_id = $1 AND section_id = $2`,
-    [user_id, section_id]
-  );
-
-  return { deleted: result.rowCount };
-};
-
-/**
- * Creates a document that represents a category.
- * Note: Budget > Section > Category
- * @param user
- * @param section_id parent section's id
- * @returns A promise with the created category id
- */
-export const createCategory = async (user: MaskedUser, section_id: string) => {
-  const { user_id } = user;
-  const updated = new Date().toISOString();
-
-  const category = {
-    name: "Unnamed",
-    section_id,
-    capacities: [{ capacity_id: getRandomId(), month: 0 }],
-    roll_over: false,
-  };
-
-  const result = await pool.query(
-    `INSERT INTO categories (user_id, section_id, name, capacities, roll_over, updated)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING category_id`,
-    [user_id, section_id, category.name, JSON.stringify(category.capacities), category.roll_over, updated]
-  );
-
-  return { _id: result.rows[0].category_id };
-};
-
-export type PartialCategory = { category_id: string } & Partial<JSONCategory>;
-
-/**
- * Updates category document with given object.
- * @param user
- * @param category
- * @returns A promise with the update result
- */
-export const updateCategory = async (user: MaskedUser, category: PartialCategory) => {
-  const { user_id } = user;
-  const { category_id, name, section_id, capacities, roll_over, roll_over_start_date } = category;
-  const updated = new Date().toISOString();
-
-  const updates: string[] = [];
-  const values: any[] = [];
-  let paramIndex = 1;
-
-  if (name !== undefined) {
-    updates.push(`name = $${paramIndex++}`);
-    values.push(name);
-  }
-  if (section_id !== undefined) {
-    updates.push(`section_id = $${paramIndex++}`);
-    values.push(section_id);
-  }
-  if (capacities !== undefined) {
-    updates.push(`capacities = $${paramIndex++}`);
-    values.push(JSON.stringify(capacities));
-  }
-  if (roll_over !== undefined) {
-    updates.push(`roll_over = $${paramIndex++}`);
-    values.push(roll_over);
-  }
-  if (roll_over_start_date !== undefined) {
-    updates.push(`roll_over_start_date = $${paramIndex++}`);
-    values.push(roll_over_start_date);
-  }
-
-  updates.push(`updated = $${paramIndex++}`);
-  values.push(updated);
-
-  values.push(category_id);
-  values.push(user_id);
-
-  const result = await pool.query(
-    `UPDATE categories SET ${updates.join(", ")} 
-     WHERE category_id = $${paramIndex++} AND user_id = $${paramIndex}`,
-    values
-  );
-
-  return result;
-};
-
-/**
- * Deletes category document with given id.
- * @param user
- * @param category_id
- * @returns A promise with the delete result
- */
-export const deleteCategory = async (user: MaskedUser, category_id: string) => {
-  if (!category_id) return;
-  const { user_id } = user;
-
-  const result = await pool.query(
-    `DELETE FROM categories WHERE user_id = $1 AND category_id = $2`,
-    [user_id, category_id]
-  );
-
-  return { deleted: result.rowCount };
-};
-
-/**
- * Searches for budgets associated with given user.
- * @param user
- * @returns A promise to be an object with budgets, sections, and categories arrays
- */
-export const searchBudgets = async (user: MaskedUser) => {
-  const { user_id } = user;
-
-  const budgetsResult = await pool.query<{
-    budget_id: string;
-    name: string;
-    iso_currency_code: string;
-    capacities: any;
-    roll_over: boolean;
-    roll_over_start_date: Date | null;
-  }>(
-    `SELECT budget_id, name, iso_currency_code, capacities, roll_over, roll_over_start_date 
-     FROM budgets WHERE user_id = $1`,
-    [user_id]
-  );
-
-  const sectionsResult = await pool.query<{
-    section_id: string;
-    budget_id: string;
-    name: string;
-    capacities: any;
-    roll_over: boolean;
-    roll_over_start_date: Date | null;
-  }>(
-    `SELECT section_id, budget_id, name, capacities, roll_over, roll_over_start_date 
-     FROM sections WHERE user_id = $1`,
-    [user_id]
-  );
-
-  const categoriesResult = await pool.query<{
-    category_id: string;
-    section_id: string;
-    name: string;
-    capacities: any;
-    roll_over: boolean;
-    roll_over_start_date: Date | null;
-  }>(
-    `SELECT category_id, section_id, name, capacities, roll_over, roll_over_start_date 
-     FROM categories WHERE user_id = $1`,
-    [user_id]
-  );
-
-  const budgets: JSONBudget[] = budgetsResult.rows.map((row) => ({
+function rowToBudget(row: Record<string, any>): JSONBudget {
+  return {
     budget_id: row.budget_id,
+    user_id: row.user_id,
     name: row.name,
     iso_currency_code: row.iso_currency_code,
-    capacities: row.capacities,
+    capacities: typeof row.capacities === 'string' ? JSON.parse(row.capacities) : row.capacities || [],
     roll_over: row.roll_over,
-    roll_over_start_date: row.roll_over_start_date || undefined,
-  }));
+    roll_over_start_date: row.roll_over_start_date,
+  } as JSONBudget;
+}
 
-  const sections: JSONSection[] = sectionsResult.rows.map((row) => ({
+/**
+ * Upserts budgets for a user.
+ */
+export const upsertBudgets = async (
+  user: MaskedUser,
+  budgets: PartialBudget[]
+) => {
+  if (!budgets.length) return [];
+  const { user_id } = user;
+  const results: { update: { _id: string }; status: number }[] = [];
+
+  for (const budget of budgets) {
+    const row = budgetToRow(budget);
+    row.user_id = user_id;
+    
+    try {
+      const columns = Object.keys(row);
+      const values = Object.values(row);
+      const placeholders = values.map((_, i) => `$${i + 1}`);
+      
+      if (budget.budget_id) {
+        // Update existing
+        const updateClauses = columns
+          .filter(col => col !== "budget_id" && col !== "user_id")
+          .map(col => `${col} = EXCLUDED.${col}`);
+        updateClauses.push("updated = CURRENT_TIMESTAMP");
+        
+        const query = `
+          INSERT INTO budgets (${columns.join(", ")}, updated)
+          VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
+          ON CONFLICT (budget_id) DO UPDATE SET
+            ${updateClauses.join(", ")}
+          WHERE budgets.user_id = $${columns.indexOf("user_id") + 1}
+          RETURNING budget_id
+        `;
+        
+        const result = await pool.query(query, values);
+        results.push({
+          update: { _id: budget.budget_id },
+          status: result.rowCount ? 200 : 404,
+        });
+      } else {
+        // Insert new with auto-generated UUID
+        const insertColumns = columns.filter(c => c !== "budget_id");
+        const insertValues = values.filter((_, i) => columns[i] !== "budget_id");
+        const insertPlaceholders = insertValues.map((_, i) => `$${i + 1}`);
+        
+        const query = `
+          INSERT INTO budgets (${insertColumns.join(", ")}, updated)
+          VALUES (${insertPlaceholders.join(", ")}, CURRENT_TIMESTAMP)
+          RETURNING budget_id
+        `;
+        
+        const result = await pool.query(query, insertValues);
+        const id = result.rows[0]?.budget_id;
+        results.push({
+          update: { _id: id },
+          status: result.rowCount ? 201 : 500,
+        });
+      }
+    } catch (error: any) {
+      console.error(`Failed to upsert budget:`, error.message);
+      results.push({
+        update: { _id: budget.budget_id || "unknown" },
+        status: 500,
+      });
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Gets all budgets for a user.
+ */
+export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `SELECT * FROM budgets WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [user_id]
+  );
+  return result.rows.map(rowToBudget);
+};
+
+/**
+ * Gets a single budget by ID.
+ */
+export const getBudget = async (
+  user: MaskedUser,
+  budget_id: string
+): Promise<JSONBudget | null> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `SELECT * FROM budgets WHERE budget_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [budget_id, user_id]
+  );
+  return result.rows.length > 0 ? rowToBudget(result.rows[0]) : null;
+};
+
+/**
+ * Deletes budgets (soft delete).
+ */
+export const deleteBudgets = async (
+  user: MaskedUser,
+  budget_ids: string[]
+): Promise<{ deleted: number }> => {
+  if (!budget_ids.length) return { deleted: 0 };
+  const { user_id } = user;
+  
+  const placeholders = budget_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `UPDATE budgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE budget_id IN (${placeholders}) AND user_id = $1
+     RETURNING budget_id`,
+    [user_id, ...budget_ids]
+  );
+  
+  return { deleted: result.rowCount || 0 };
+};
+
+// =====================================
+// Sections
+// =====================================
+
+function sectionToRow(section: PartialSection): Record<string, any> {
+  const row: Record<string, any> = {};
+  
+  if (section.section_id !== undefined) row.section_id = section.section_id;
+  if (section.budget_id !== undefined) row.budget_id = section.budget_id;
+  if (section.name !== undefined) row.name = section.name;
+  if (section.capacities !== undefined) row.capacities = JSON.stringify(section.capacities);
+  if (section.roll_over !== undefined) row.roll_over = section.roll_over;
+  if (section.roll_over_start_date !== undefined) row.roll_over_start_date = section.roll_over_start_date;
+  
+  return row;
+}
+
+function rowToSection(row: Record<string, any>): JSONSection {
+  return {
     section_id: row.section_id,
+    user_id: row.user_id,
     budget_id: row.budget_id,
     name: row.name,
-    capacities: row.capacities,
+    capacities: typeof row.capacities === 'string' ? JSON.parse(row.capacities) : row.capacities || [],
     roll_over: row.roll_over,
-    roll_over_start_date: row.roll_over_start_date || undefined,
-  }));
+    roll_over_start_date: row.roll_over_start_date,
+  } as JSONSection;
+}
 
-  const categories: JSONCategory[] = categoriesResult.rows.map((row) => ({
+export const upsertSections = async (
+  user: MaskedUser,
+  sections: PartialSection[]
+) => {
+  if (!sections.length) return [];
+  const { user_id } = user;
+  const results: { update: { _id: string }; status: number }[] = [];
+
+  for (const section of sections) {
+    const row = sectionToRow(section);
+    row.user_id = user_id;
+    
+    try {
+      const columns = Object.keys(row);
+      const values = Object.values(row);
+      const placeholders = values.map((_, i) => `$${i + 1}`);
+      
+      if (section.section_id) {
+        const updateClauses = columns
+          .filter(col => col !== "section_id" && col !== "user_id")
+          .map(col => `${col} = EXCLUDED.${col}`);
+        updateClauses.push("updated = CURRENT_TIMESTAMP");
+        
+        const query = `
+          INSERT INTO sections (${columns.join(", ")}, updated)
+          VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
+          ON CONFLICT (section_id) DO UPDATE SET
+            ${updateClauses.join(", ")}
+          WHERE sections.user_id = $${columns.indexOf("user_id") + 1}
+          RETURNING section_id
+        `;
+        
+        const result = await pool.query(query, values);
+        results.push({
+          update: { _id: section.section_id },
+          status: result.rowCount ? 200 : 404,
+        });
+      } else {
+        const insertColumns = columns.filter(c => c !== "section_id");
+        const insertValues = values.filter((_, i) => columns[i] !== "section_id");
+        const insertPlaceholders = insertValues.map((_, i) => `$${i + 1}`);
+        
+        const query = `
+          INSERT INTO sections (${insertColumns.join(", ")}, updated)
+          VALUES (${insertPlaceholders.join(", ")}, CURRENT_TIMESTAMP)
+          RETURNING section_id
+        `;
+        
+        const result = await pool.query(query, insertValues);
+        const id = result.rows[0]?.section_id;
+        results.push({
+          update: { _id: id },
+          status: result.rowCount ? 201 : 500,
+        });
+      }
+    } catch (error: any) {
+      console.error(`Failed to upsert section:`, error.message);
+      results.push({
+        update: { _id: section.section_id || "unknown" },
+        status: 500,
+      });
+    }
+  }
+
+  return results;
+};
+
+export const getSections = async (
+  user: MaskedUser,
+  budget_id?: string
+): Promise<JSONSection[]> => {
+  const { user_id } = user;
+  
+  if (budget_id) {
+    const result = await pool.query(
+      `SELECT * FROM sections 
+       WHERE budget_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+      [budget_id, user_id]
+    );
+    return result.rows.map(rowToSection);
+  }
+  
+  const result = await pool.query(
+    `SELECT * FROM sections WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [user_id]
+  );
+  return result.rows.map(rowToSection);
+};
+
+export const deleteSections = async (
+  user: MaskedUser,
+  section_ids: string[]
+): Promise<{ deleted: number }> => {
+  if (!section_ids.length) return { deleted: 0 };
+  const { user_id } = user;
+  
+  const placeholders = section_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `UPDATE sections SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE section_id IN (${placeholders}) AND user_id = $1
+     RETURNING section_id`,
+    [user_id, ...section_ids]
+  );
+  
+  return { deleted: result.rowCount || 0 };
+};
+
+// =====================================
+// Categories
+// =====================================
+
+function categoryToRow(category: PartialCategory): Record<string, any> {
+  const row: Record<string, any> = {};
+  
+  if (category.category_id !== undefined) row.category_id = category.category_id;
+  if (category.section_id !== undefined) row.section_id = category.section_id;
+  if (category.name !== undefined) row.name = category.name;
+  if (category.capacities !== undefined) row.capacities = JSON.stringify(category.capacities);
+  if (category.roll_over !== undefined) row.roll_over = category.roll_over;
+  if (category.roll_over_start_date !== undefined) row.roll_over_start_date = category.roll_over_start_date;
+  
+  return row;
+}
+
+function rowToCategory(row: Record<string, any>): JSONCategory {
+  return {
     category_id: row.category_id,
+    user_id: row.user_id,
     section_id: row.section_id,
     name: row.name,
-    capacities: row.capacities,
+    capacities: typeof row.capacities === 'string' ? JSON.parse(row.capacities) : row.capacities || [],
     roll_over: row.roll_over,
-    roll_over_start_date: row.roll_over_start_date || undefined,
-  }));
+    roll_over_start_date: row.roll_over_start_date,
+  } as JSONCategory;
+}
 
-  return { budgets, sections, categories };
+export const upsertCategories = async (
+  user: MaskedUser,
+  categories: PartialCategory[]
+) => {
+  if (!categories.length) return [];
+  const { user_id } = user;
+  const results: { update: { _id: string }; status: number }[] = [];
+
+  for (const category of categories) {
+    const row = categoryToRow(category);
+    row.user_id = user_id;
+    
+    try {
+      const columns = Object.keys(row);
+      const values = Object.values(row);
+      const placeholders = values.map((_, i) => `$${i + 1}`);
+      
+      if (category.category_id) {
+        const updateClauses = columns
+          .filter(col => col !== "category_id" && col !== "user_id")
+          .map(col => `${col} = EXCLUDED.${col}`);
+        updateClauses.push("updated = CURRENT_TIMESTAMP");
+        
+        const query = `
+          INSERT INTO categories (${columns.join(", ")}, updated)
+          VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
+          ON CONFLICT (category_id) DO UPDATE SET
+            ${updateClauses.join(", ")}
+          WHERE categories.user_id = $${columns.indexOf("user_id") + 1}
+          RETURNING category_id
+        `;
+        
+        const result = await pool.query(query, values);
+        results.push({
+          update: { _id: category.category_id },
+          status: result.rowCount ? 200 : 404,
+        });
+      } else {
+        const insertColumns = columns.filter(c => c !== "category_id");
+        const insertValues = values.filter((_, i) => columns[i] !== "category_id");
+        const insertPlaceholders = insertValues.map((_, i) => `$${i + 1}`);
+        
+        const query = `
+          INSERT INTO categories (${insertColumns.join(", ")}, updated)
+          VALUES (${insertPlaceholders.join(", ")}, CURRENT_TIMESTAMP)
+          RETURNING category_id
+        `;
+        
+        const result = await pool.query(query, insertValues);
+        const id = result.rows[0]?.category_id;
+        results.push({
+          update: { _id: id },
+          status: result.rowCount ? 201 : 500,
+        });
+      }
+    } catch (error: any) {
+      console.error(`Failed to upsert category:`, error.message);
+      results.push({
+        update: { _id: category.category_id || "unknown" },
+        status: 500,
+      });
+    }
+  }
+
+  return results;
+};
+
+export const getCategories = async (
+  user: MaskedUser,
+  section_id?: string
+): Promise<JSONCategory[]> => {
+  const { user_id } = user;
+  
+  if (section_id) {
+    const result = await pool.query(
+      `SELECT * FROM categories 
+       WHERE section_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+      [section_id, user_id]
+    );
+    return result.rows.map(rowToCategory);
+  }
+  
+  const result = await pool.query(
+    `SELECT * FROM categories WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [user_id]
+  );
+  return result.rows.map(rowToCategory);
+};
+
+export const deleteCategories = async (
+  user: MaskedUser,
+  category_ids: string[]
+): Promise<{ deleted: number }> => {
+  if (!category_ids.length) return { deleted: 0 };
+  const { user_id } = user;
+  
+  const placeholders = category_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `UPDATE categories SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE category_id IN (${placeholders}) AND user_id = $1
+     RETURNING category_id`,
+    [user_id, ...category_ids]
+  );
+  
+  return { deleted: result.rowCount || 0 };
 };
