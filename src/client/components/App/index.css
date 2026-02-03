@@ -159,7 +159,7 @@ div.Router > div {
     calc(110px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
 }
 
-div.Router div.loading {
+div.Spiner {
   width: 100vw;
   height: calc(100vh - 130px);
   display: flex;
@@ -167,14 +167,24 @@ div.Router div.loading {
   align-items: center;
 }
 
-div.Router div.loading::after {
+div.Spiner > div {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: spin 2s linear infinite;
+}
+
+div.Spiner > div::after {
   content: "";
   border: 4px solid #0002;
   border-top-color: #fff;
   border-radius: 50%;
   width: 40px;
   height: 40px;
-  animation: spin 1s ease-in-out infinite;
+  box-sizing: border-box;
+  animation: spin 2s ease-in-out infinite;
 }
 
 @keyframes spin {

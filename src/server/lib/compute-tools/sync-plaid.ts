@@ -13,7 +13,6 @@ import {
   deleteTransactions,
   plaid,
   getUserItem,
-  upsertAccounts,
   upsertInvestmentTransactions,
   upsertItems,
   upsertTransactions,
@@ -174,24 +173,21 @@ export const syncPlaidAccounts = async (item_id: string) => {
     item,
   );
   const storedAccountsMap = new Map(storedAccounts?.map((e) => [e.account_id, e]) || []);
+  const mergeWithExisting = (a: JSONAccount) => {
+    const newAccount: JSONAccount = { ...a };
+    const existing = storedAccountsMap.get(a.account_id);
+    if (existing) {
+      newAccount.hide = existing.hide;
+      newAccount.custom_name = existing.custom_name;
+      newAccount.label = existing.label;
+      newAccount.graphOptions = existing.graphOptions;
+    }
+    return newAccount;
+  };
 
   const syncAccounts = plaid
     .getAccounts(user, [item])
-    .then(async (r) => {
-      const accounts = r.accounts.map((a) => {
-        const newAccount: JSONAccount = { ...a };
-        const existing = storedAccountsMap.get(a.account_id);
-        if (existing) {
-          newAccount.hide = existing.hide;
-          newAccount.custom_name = existing.custom_name;
-          newAccount.label = existing.label;
-          newAccount.graphOptions = existing.graphOptions;
-        }
-        return newAccount;
-      });
-      await upsertAccounts(user, accounts);
-      return accounts;
-    })
+    .then(async (r) => r.accounts.map(mergeWithExisting))
     .then(async (accounts) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       return accounts;
@@ -203,6 +199,11 @@ export const syncPlaidAccounts = async (item_id: string) => {
     .then((r) => {
       if (!r) return;
       return plaid.getHoldings(user, [item]);
+    })
+    .then(async (r) => {
+      if (!r) return;
+      r.accounts = r.accounts.map(mergeWithExisting);
+      return r;
     })
     .then(async (r) => {
       if (!r) return;
