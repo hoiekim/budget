@@ -577,6 +577,82 @@ export const searchAccountsByItemId = async (
 };
 
 /**
+ * Searches accounts with optional filters.
+ */
+export const searchAccounts = async (
+  user: MaskedUser,
+  options: {
+    account_id?: string;
+    item_id?: string;
+    institution_id?: string;
+    type?: string;
+  } = {}
+): Promise<JSONAccount[]> => {
+  const { user_id } = user;
+  const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const values: any[] = [user_id];
+  let paramIndex = 2;
+
+  if (options.account_id) {
+    conditions.push(`account_id = $${paramIndex}`);
+    values.push(options.account_id);
+    paramIndex++;
+  }
+
+  if (options.item_id) {
+    conditions.push(`item_id = $${paramIndex}`);
+    values.push(options.item_id);
+    paramIndex++;
+  }
+
+  if (options.institution_id) {
+    conditions.push(`institution_id = $${paramIndex}`);
+    values.push(options.institution_id);
+    paramIndex++;
+  }
+
+  if (options.type) {
+    conditions.push(`type = $${paramIndex}`);
+    values.push(options.type);
+    paramIndex++;
+  }
+
+  const result = await pool.query(
+    `SELECT * FROM accounts WHERE ${conditions.join(" AND ")}`,
+    values
+  );
+  return result.rows.map(rowToAccount);
+};
+
+/**
+ * Searches accounts by IDs.
+ */
+export const searchAccountsById = async (
+  user: MaskedUser,
+  account_ids: string[]
+): Promise<JSONAccount[]> => {
+  if (!account_ids.length) return [];
+  const { user_id } = user;
+  
+  const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `SELECT * FROM accounts 
+     WHERE account_id IN (${placeholders}) AND user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [user_id, ...account_ids]
+  );
+  return result.rows.map(rowToAccount);
+};
+
+/**
+ * Searches institution by ID (alias for getInstitution).
+ */
+export const searchInstitutionById = async (
+  institution_id: string
+): Promise<JSONInstitution | null> => {
+  return getInstitution(institution_id);
+};
+
+/**
  * Searches holdings by account IDs.
  */
 export const searchHoldingsByAccountId = async (

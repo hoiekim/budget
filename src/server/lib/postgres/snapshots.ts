@@ -1,6 +1,16 @@
 import { pool } from "./client";
 import { MaskedUser } from "./users";
 
+export interface SearchSnapshotsOptions {
+  account_id?: string;
+  account_ids?: string[];
+  security_id?: string;
+  snapshot_type?: 'account_balance' | 'security' | 'holding';
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+}
+
 export interface AccountSnapshot {
   snapshot_id: string;
   snapshot_date: string;
@@ -447,6 +457,104 @@ export const aggregateAccountSnapshots = async (
     total_current: parseFloat(row.total_current) || 0,
     total_available: parseFloat(row.total_available) || 0,
   }));
+};
+
+/**
+ * Searches snapshots with flexible options.
+ */
+export const searchSnapshots = async (
+  user: MaskedUser | null,
+  options: SearchSnapshotsOptions = {}
+): Promise<any[]> => {
+  const conditions: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  if (user) {
+    conditions.push(`user_id = $${paramIndex}`);
+    values.push(user.user_id);
+    paramIndex++;
+  }
+
+  if (options.snapshot_type) {
+    conditions.push(`snapshot_type = $${paramIndex}`);
+    values.push(options.snapshot_type);
+    paramIndex++;
+  }
+
+  if (options.account_id) {
+    conditions.push(`account_id = $${paramIndex}`);
+    values.push(options.account_id);
+    paramIndex++;
+  }
+
+  if (options.account_ids && options.account_ids.length > 0) {
+    const placeholders = options.account_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
+    conditions.push(`account_id IN (${placeholders})`);
+    values.push(...options.account_ids);
+    paramIndex += options.account_ids.length;
+  }
+
+  if (options.security_id) {
+    conditions.push(`security_id = $${paramIndex}`);
+    values.push(options.security_id);
+    paramIndex++;
+  }
+
+  if (options.startDate) {
+    conditions.push(`snapshot_date >= $${paramIndex}`);
+    values.push(options.startDate);
+    paramIndex++;
+  }
+
+  if (options.endDate) {
+    conditions.push(`snapshot_date <= $${paramIndex}`);
+    values.push(options.endDate);
+    paramIndex++;
+  }
+
+  let query = `SELECT * FROM snapshots`;
+  if (conditions.length > 0) {
+    query += ` WHERE ${conditions.join(" AND ")}`;
+  }
+  query += ` ORDER BY snapshot_date DESC`;
+
+  if (options.limit) {
+    query += ` LIMIT $${paramIndex}`;
+    values.push(options.limit);
+  }
+
+  const result = await pool.query(query, values);
+  return result.rows;
+};
+
+/**
+ * Deletes snapshots by account ID.
+ */
+export const deleteSnapshotsByAccount = async (
+  user: MaskedUser,
+  account_id: string
+): Promise<{ deleted: number }> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `DELETE FROM snapshots WHERE account_id = $1 AND user_id = $2 RETURNING snapshot_id`,
+    [account_id, user_id]
+  );
+  return { deleted: result.rowCount || 0 };
+};
+
+/**
+ * Deletes all snapshots for a user.
+ */
+export const deleteSnapshotsByUser = async (
+  user: MaskedUser
+): Promise<{ deleted: number }> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `DELETE FROM snapshots WHERE user_id = $1 RETURNING snapshot_id`,
+    [user_id]
+  );
+  return { deleted: result.rowCount || 0 };
 };
 
 /**

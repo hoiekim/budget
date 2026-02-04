@@ -431,3 +431,313 @@ export const deleteCategories = async (
   
   return { deleted: result.rowCount || 0 };
 };
+
+// =====================================
+// Search, Create, Update, Delete (singular) functions
+// =====================================
+
+/**
+ * Searches budgets with optional filters.
+ */
+export const searchBudgets = async (
+  user: MaskedUser,
+  options: { budget_id?: string } = {}
+): Promise<JSONBudget[]> => {
+  const { user_id } = user;
+  const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const values: any[] = [user_id];
+  let paramIndex = 2;
+
+  if (options.budget_id) {
+    conditions.push(`budget_id = $${paramIndex}`);
+    values.push(options.budget_id);
+    paramIndex++;
+  }
+
+  const result = await pool.query(
+    `SELECT * FROM budgets WHERE ${conditions.join(" AND ")}`,
+    values
+  );
+  return result.rows.map(rowToBudget);
+};
+
+/**
+ * Creates a new budget.
+ */
+export const createBudget = async (
+  user: MaskedUser,
+  data: Partial<JSONBudget>
+): Promise<JSONBudget | null> => {
+  const { user_id } = user;
+  
+  try {
+    const result = await pool.query(
+      `INSERT INTO budgets (user_id, name, iso_currency_code, capacities, roll_over, roll_over_start_date, updated)
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+       RETURNING *`,
+      [
+        user_id,
+        data.name || "New Budget",
+        data.iso_currency_code || "USD",
+        JSON.stringify(data.capacities || []),
+        data.roll_over || false,
+        data.roll_over_start_date,
+      ]
+    );
+    return result.rows.length > 0 ? rowToBudget(result.rows[0]) : null;
+  } catch (error: any) {
+    console.error("Failed to create budget:", error.message);
+    return null;
+  }
+};
+
+/**
+ * Updates a budget.
+ */
+export const updateBudget = async (
+  user: MaskedUser,
+  budget_id: string,
+  data: Partial<JSONBudget>
+): Promise<boolean> => {
+  const { user_id } = user;
+  const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  if (data.name !== undefined) {
+    updates.push(`name = $${paramIndex}`);
+    values.push(data.name);
+    paramIndex++;
+  }
+  if (data.iso_currency_code !== undefined) {
+    updates.push(`iso_currency_code = $${paramIndex}`);
+    values.push(data.iso_currency_code);
+    paramIndex++;
+  }
+  if (data.capacities !== undefined) {
+    updates.push(`capacities = $${paramIndex}`);
+    values.push(JSON.stringify(data.capacities));
+    paramIndex++;
+  }
+  if (data.roll_over !== undefined) {
+    updates.push(`roll_over = $${paramIndex}`);
+    values.push(data.roll_over);
+    paramIndex++;
+  }
+  if (data.roll_over_start_date !== undefined) {
+    updates.push(`roll_over_start_date = $${paramIndex}`);
+    values.push(data.roll_over_start_date);
+    paramIndex++;
+  }
+
+  values.push(budget_id, user_id);
+
+  const result = await pool.query(
+    `UPDATE budgets SET ${updates.join(", ")} 
+     WHERE budget_id = $${paramIndex} AND user_id = $${paramIndex + 1}
+     RETURNING budget_id`,
+    values
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
+ * Deletes a single budget (soft delete).
+ */
+export const deleteBudget = async (
+  user: MaskedUser,
+  budget_id: string
+): Promise<boolean> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `UPDATE budgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE budget_id = $1 AND user_id = $2
+     RETURNING budget_id`,
+    [budget_id, user_id]
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
+ * Creates a new section.
+ */
+export const createSection = async (
+  user: MaskedUser,
+  data: Partial<JSONSection>
+): Promise<JSONSection | null> => {
+  const { user_id } = user;
+  
+  try {
+    const result = await pool.query(
+      `INSERT INTO sections (user_id, budget_id, name, capacities, roll_over, roll_over_start_date, updated)
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+       RETURNING *`,
+      [
+        user_id,
+        data.budget_id,
+        data.name || "New Section",
+        JSON.stringify(data.capacities || []),
+        data.roll_over || false,
+        data.roll_over_start_date,
+      ]
+    );
+    return result.rows.length > 0 ? rowToSection(result.rows[0]) : null;
+  } catch (error: any) {
+    console.error("Failed to create section:", error.message);
+    return null;
+  }
+};
+
+/**
+ * Updates a section.
+ */
+export const updateSection = async (
+  user: MaskedUser,
+  section_id: string,
+  data: Partial<JSONSection>
+): Promise<boolean> => {
+  const { user_id } = user;
+  const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  if (data.name !== undefined) {
+    updates.push(`name = $${paramIndex}`);
+    values.push(data.name);
+    paramIndex++;
+  }
+  if (data.capacities !== undefined) {
+    updates.push(`capacities = $${paramIndex}`);
+    values.push(JSON.stringify(data.capacities));
+    paramIndex++;
+  }
+  if (data.roll_over !== undefined) {
+    updates.push(`roll_over = $${paramIndex}`);
+    values.push(data.roll_over);
+    paramIndex++;
+  }
+  if (data.roll_over_start_date !== undefined) {
+    updates.push(`roll_over_start_date = $${paramIndex}`);
+    values.push(data.roll_over_start_date);
+    paramIndex++;
+  }
+
+  values.push(section_id, user_id);
+
+  const result = await pool.query(
+    `UPDATE sections SET ${updates.join(", ")} 
+     WHERE section_id = $${paramIndex} AND user_id = $${paramIndex + 1}
+     RETURNING section_id`,
+    values
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
+ * Deletes a single section (soft delete).
+ */
+export const deleteSection = async (
+  user: MaskedUser,
+  section_id: string
+): Promise<boolean> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `UPDATE sections SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE section_id = $1 AND user_id = $2
+     RETURNING section_id`,
+    [section_id, user_id]
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
+ * Creates a new category.
+ */
+export const createCategory = async (
+  user: MaskedUser,
+  data: Partial<JSONCategory>
+): Promise<JSONCategory | null> => {
+  const { user_id } = user;
+  
+  try {
+    const result = await pool.query(
+      `INSERT INTO categories (user_id, section_id, name, capacities, roll_over, roll_over_start_date, updated)
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+       RETURNING *`,
+      [
+        user_id,
+        data.section_id,
+        data.name || "New Category",
+        JSON.stringify(data.capacities || []),
+        data.roll_over || false,
+        data.roll_over_start_date,
+      ]
+    );
+    return result.rows.length > 0 ? rowToCategory(result.rows[0]) : null;
+  } catch (error: any) {
+    console.error("Failed to create category:", error.message);
+    return null;
+  }
+};
+
+/**
+ * Updates a category.
+ */
+export const updateCategory = async (
+  user: MaskedUser,
+  category_id: string,
+  data: Partial<JSONCategory>
+): Promise<boolean> => {
+  const { user_id } = user;
+  const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  if (data.name !== undefined) {
+    updates.push(`name = $${paramIndex}`);
+    values.push(data.name);
+    paramIndex++;
+  }
+  if (data.capacities !== undefined) {
+    updates.push(`capacities = $${paramIndex}`);
+    values.push(JSON.stringify(data.capacities));
+    paramIndex++;
+  }
+  if (data.roll_over !== undefined) {
+    updates.push(`roll_over = $${paramIndex}`);
+    values.push(data.roll_over);
+    paramIndex++;
+  }
+  if (data.roll_over_start_date !== undefined) {
+    updates.push(`roll_over_start_date = $${paramIndex}`);
+    values.push(data.roll_over_start_date);
+    paramIndex++;
+  }
+
+  values.push(category_id, user_id);
+
+  const result = await pool.query(
+    `UPDATE categories SET ${updates.join(", ")} 
+     WHERE category_id = $${paramIndex} AND user_id = $${paramIndex + 1}
+     RETURNING category_id`,
+    values
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
+ * Deletes a single category (soft delete).
+ */
+export const deleteCategory = async (
+  user: MaskedUser,
+  category_id: string
+): Promise<boolean> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `UPDATE categories SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE category_id = $1 AND user_id = $2
+     RETURNING category_id`,
+    [category_id, user_id]
+  );
+  return (result.rowCount || 0) > 0;
+};

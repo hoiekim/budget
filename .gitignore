@@ -23,3 +23,5 @@ yarn-error.log*
 
 .itemses_data.json
 init_db.js
+es_data.json
+init_db.js

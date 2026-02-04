@@ -3,6 +3,21 @@ import { pool } from "./client";
 import { MaskedUser } from "./users";
 import { buildUpdateQuery } from "./utils";
 
+export interface SearchTransactionsOptions {
+  account_id?: string;
+  account_ids?: string[];
+  startDate?: string;
+  endDate?: string;
+  pending?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface SearchSplitTransactionsOptions {
+  transaction_id?: string;
+  account_id?: string;
+}
+
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
 
 /**
@@ -634,4 +649,146 @@ export const deleteSplitTransactionsByTransactionId = async (
   );
   
   return { deleted: result.rowCount || 0 };
+};
+
+/**
+ * Searches transactions with flexible options.
+ */
+export const searchTransactions = async (
+  user: MaskedUser,
+  options: SearchTransactionsOptions = {}
+): Promise<JSONTransaction[]> => {
+  const { user_id } = user;
+  const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const values: any[] = [user_id];
+  let paramIndex = 2;
+
+  if (options.account_id) {
+    conditions.push(`account_id = $${paramIndex}`);
+    values.push(options.account_id);
+    paramIndex++;
+  }
+
+  if (options.account_ids && options.account_ids.length > 0) {
+    const placeholders = options.account_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
+    conditions.push(`account_id IN (${placeholders})`);
+    values.push(...options.account_ids);
+    paramIndex += options.account_ids.length;
+  }
+
+  if (options.startDate) {
+    conditions.push(`date >= $${paramIndex}`);
+    values.push(options.startDate);
+    paramIndex++;
+  }
+
+  if (options.endDate) {
+    conditions.push(`date <= $${paramIndex}`);
+    values.push(options.endDate);
+    paramIndex++;
+  }
+
+  if (options.pending !== undefined) {
+    conditions.push(`pending = $${paramIndex}`);
+    values.push(options.pending);
+    paramIndex++;
+  }
+
+  let query = `SELECT * FROM transactions WHERE ${conditions.join(" AND ")} ORDER BY date DESC`;
+
+  if (options.limit) {
+    query += ` LIMIT $${paramIndex}`;
+    values.push(options.limit);
+    paramIndex++;
+  }
+
+  if (options.offset) {
+    query += ` OFFSET $${paramIndex}`;
+    values.push(options.offset);
+  }
+
+  const result = await pool.query(query, values);
+  return result.rows.map(rowToTransaction);
+};
+
+/**
+ * Searches split transactions with options.
+ */
+export const searchSplitTransactions = async (
+  user: MaskedUser,
+  options: SearchSplitTransactionsOptions = {}
+): Promise<JSONSplitTransaction[]> => {
+  const { user_id } = user;
+  const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const values: any[] = [user_id];
+  let paramIndex = 2;
+
+  if (options.transaction_id) {
+    conditions.push(`transaction_id = $${paramIndex}`);
+    values.push(options.transaction_id);
+    paramIndex++;
+  }
+
+  if (options.account_id) {
+    conditions.push(`account_id = $${paramIndex}`);
+    values.push(options.account_id);
+    paramIndex++;
+  }
+
+  const result = await pool.query(
+    `SELECT * FROM split_transactions WHERE ${conditions.join(" AND ")}`,
+    values
+  );
+  return result.rows.map(rowToSplitTx);
+};
+
+/**
+ * Creates a new split transaction.
+ */
+export const createSplitTransaction = async (
+  user: MaskedUser,
+  data: Partial<JSONSplitTransaction>
+): Promise<JSONSplitTransaction | null> => {
+  const { user_id } = user;
+  
+  try {
+    const result = await pool.query(
+      `INSERT INTO split_transactions (
+        user_id, transaction_id, account_id, amount, date, custom_name,
+        label_budget_id, label_category_id, label_memo, updated
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+      RETURNING *`,
+      [
+        user_id,
+        data.transaction_id,
+        data.account_id,
+        data.amount || 0,
+        data.date,
+        data.custom_name || "",
+        data.label?.budget_id,
+        data.label?.category_id,
+        data.label?.memo,
+      ]
+    );
+    
+    return result.rows.length > 0 ? rowToSplitTx(result.rows[0]) : null;
+  } catch (error: any) {
+    console.error("Failed to create split transaction:", error.message);
+    return null;
+  }
+};
+
+/**
+ * Gets the oldest transaction date for a user.
+ */
+export const getOldestTransactionDate = async (
+  user: MaskedUser
+): Promise<string | null> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `SELECT MIN(date) as oldest_date FROM transactions 
+     WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [user_id]
+  );
+  return result.rows[0]?.oldest_date || null;
 };
