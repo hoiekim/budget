@@ -318,21 +318,28 @@ async function migrateBudgets() {
   const lines = readFileSync("backup_budgets.json", "utf-8").split("\n").filter(Boolean);
   for (const line of lines) {
     const row = JSON.parse(line);
-    const data = row.data || {};
+    // Data might be at root level or in data object
+    const data = row.data || row;
     
     await pool.query(
       `INSERT INTO budgets (
         budget_id, user_id, name, iso_currency_code, capacities, roll_over, roll_over_start_date, updated, is_deleted
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (budget_id) DO NOTHING`,
+       ON CONFLICT (budget_id) DO UPDATE SET
+         name = EXCLUDED.name,
+         iso_currency_code = EXCLUDED.iso_currency_code,
+         capacities = EXCLUDED.capacities,
+         roll_over = EXCLUDED.roll_over,
+         roll_over_start_date = EXCLUDED.roll_over_start_date,
+         updated = EXCLUDED.updated`,
       [
         row.budget_id || data.budget_id,
         row.user_id || data.user_id,
-        data.name,
-        data.iso_currency_code,
-        JSON.stringify(data.capacities || []),
-        data.roll_over,
-        data.roll_over_start_date,
+        data.name || row.name,
+        data.iso_currency_code || row.iso_currency_code,
+        JSON.stringify(data.capacities || row.capacities || []),
+        data.roll_over || row.roll_over,
+        data.roll_over_start_date || row.roll_over_start_date,
         row.updated,
         false,
       ]
@@ -345,21 +352,27 @@ async function migrateSections() {
   const lines = readFileSync("backup_sections.json", "utf-8").split("\n").filter(Boolean);
   for (const line of lines) {
     const row = JSON.parse(line);
-    const data = row.data || {};
+    const data = row.data || row;
     
     await pool.query(
       `INSERT INTO sections (
         section_id, user_id, budget_id, name, capacities, roll_over, roll_over_start_date, updated, is_deleted
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (section_id) DO NOTHING`,
+       ON CONFLICT (section_id) DO UPDATE SET
+         budget_id = EXCLUDED.budget_id,
+         name = EXCLUDED.name,
+         capacities = EXCLUDED.capacities,
+         roll_over = EXCLUDED.roll_over,
+         roll_over_start_date = EXCLUDED.roll_over_start_date,
+         updated = EXCLUDED.updated`,
       [
         row.section_id || data.section_id,
         row.user_id || data.user_id,
-        data.budget_id,
-        data.name,
-        JSON.stringify(data.capacities || []),
-        data.roll_over,
-        data.roll_over_start_date,
+        data.budget_id || row.budget_id,
+        data.name || row.name,
+        JSON.stringify(data.capacities || row.capacities || []),
+        data.roll_over || row.roll_over,
+        data.roll_over_start_date || row.roll_over_start_date,
         row.updated,
         false,
       ]
@@ -372,21 +385,27 @@ async function migrateCategories() {
   const lines = readFileSync("backup_categories.json", "utf-8").split("\n").filter(Boolean);
   for (const line of lines) {
     const row = JSON.parse(line);
-    const data = row.data || {};
+    const data = row.data || row;
     
     await pool.query(
       `INSERT INTO categories (
         category_id, user_id, section_id, name, capacities, roll_over, roll_over_start_date, updated, is_deleted
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (category_id) DO NOTHING`,
+       ON CONFLICT (category_id) DO UPDATE SET
+         section_id = EXCLUDED.section_id,
+         name = EXCLUDED.name,
+         capacities = EXCLUDED.capacities,
+         roll_over = EXCLUDED.roll_over,
+         roll_over_start_date = EXCLUDED.roll_over_start_date,
+         updated = EXCLUDED.updated`,
       [
         row.category_id || data.category_id,
         row.user_id || data.user_id,
-        data.section_id,
-        data.name,
-        JSON.stringify(data.capacities || []),
-        data.roll_over,
-        data.roll_over_start_date,
+        data.section_id || row.section_id,
+        data.name || row.name,
+        JSON.stringify(data.capacities || row.capacities || []),
+        data.roll_over || row.roll_over,
+        data.roll_over_start_date || row.roll_over_start_date,
         row.updated,
         false,
       ]

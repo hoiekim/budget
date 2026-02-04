@@ -147,9 +147,10 @@ function rowToAccount(row: AccountRow): JSONAccount {
     custom_name: row.custom_name,
     hide: row.hide,
     balances: {
-      available: row.balances_available,
-      current: row.balances_current,
-      limit: row.balances_limit,
+      // Convert string numbers from PostgreSQL NUMERIC to JavaScript numbers
+      available: row.balances_available != null ? Number(row.balances_available) : null,
+      current: row.balances_current != null ? Number(row.balances_current) : null,
+      limit: row.balances_limit != null ? Number(row.balances_limit) : null,
       iso_currency_code: row.balances_iso_currency_code,
       unofficial_currency_code: row.balances_unofficial_currency_code,
     },
