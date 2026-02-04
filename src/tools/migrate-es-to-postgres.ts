@@ -1,11 +1,12 @@
 /**
  * Migration Tool: Elasticsearch to PostgreSQL
- * 
+ *
  * This script migrates data from an Elasticsearch JSON dump to PostgreSQL.
- * 
+ * Matches the flattened PostgreSQL schema used by the budget app.
+ *
  * Usage:
  *   npx ts-node src/tools/migrate-es-to-postgres.ts
- * 
+ *
  * Environment Variables:
  *   ES_JSON_FILE - Path to JSON file with ES data (default: es_data.json)
  *   POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE
@@ -21,7 +22,8 @@ interface ESHit {
 }
 
 // JSON file with ES data
-const ES_JSON_FILE = process.env.ES_JSON_FILE || path.join(__dirname, "../../es_data.json");
+const ES_JSON_FILE =
+  process.env.ES_JSON_FILE || path.join(__dirname, "../../es_data.json");
 
 // PostgreSQL configuration
 const pgPool = new Pool({
@@ -32,728 +34,807 @@ const pgPool = new Pool({
   database: process.env.POSTGRES_DATABASE || "budget",
 });
 
-// Statistics
-const stats: Record<string, { migrated: number; errors: number }> = {};
-
-function initStats(type: string) {
-  if (!stats[type]) {
-    stats[type] = { migrated: 0, errors: 0 };
-  }
-}
-
-// Maps ES user_id to PostgreSQL UUID
+// ID Maps: ES ID -> PostgreSQL UUID
 const userIdMap = new Map<string, string>();
-
-async function migrateUser(doc: Record<string, any>): Promise<void> {
-  const user = doc.user;
-  if (!user) return;
-
-  const { user_id, username, password, email, expiry, token } = user;
-  
-  try {
-    // Check if user already exists
-    const existing = await pgPool.query(
-      "SELECT user_id FROM users WHERE username = $1",
-      [username]
-    );
-
-    let pgUserId: string;
-
-    if (existing.rows.length > 0) {
-      pgUserId = existing.rows[0].user_id;
-    } else {
-      const result = await pgPool.query(
-        `INSERT INTO users (username, password, email, expiry, token, updated)
-         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-         RETURNING user_id`,
-        [username, password, email, expiry, token]
-      );
-      pgUserId = result.rows[0].user_id;
-    }
-
-    userIdMap.set(user_id, pgUserId);
-    initStats("user");
-    stats.user.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate user ${username}:`, error.message);
-    initStats("user");
-    stats.user.errors++;
-  }
-}
-
-async function migrateSession(doc: Record<string, any>): Promise<void> {
-  const session = doc.session;
-  if (!session) return;
-
-  try {
-    await pgPool.query(
-      `INSERT INTO sessions (session_id, data, created_at)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (session_id) DO UPDATE SET data = $2`,
-      [doc._id, JSON.stringify(session)]
-    );
-    initStats("session");
-    stats.session.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate session:`, error.message);
-    initStats("session");
-    stats.session.errors++;
-  }
-}
-
-async function migrateInstitution(doc: Record<string, any>): Promise<void> {
-  const institution = doc.institution;
-  if (!institution) return;
-
-  try {
-    await pgPool.query(
-      `INSERT INTO institutions (institution_id, data, updated)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (institution_id) DO UPDATE SET data = $2`,
-      [institution.institution_id, JSON.stringify(institution)]
-    );
-    initStats("institution");
-    stats.institution.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate institution:`, error.message);
-    initStats("institution");
-    stats.institution.errors++;
-  }
-}
-
-async function migrateItem(doc: Record<string, any>): Promise<void> {
-  const item = doc.item;
-  if (!item) return;
-
-  const pgUserId = userIdMap.get(item.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for item ${item.item_id}, skipping`);
-    initStats("item");
-    stats.item.errors++;
-    return;
-  }
-
-  try {
-    await pgPool.query(
-      `INSERT INTO items (item_id, user_id, data, updated)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-       ON CONFLICT (item_id) DO UPDATE SET data = $3, user_id = $2`,
-      [item.item_id, pgUserId, JSON.stringify(item)]
-    );
-    initStats("item");
-    stats.item.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate item ${item.item_id}:`, error.message);
-    initStats("item");
-    stats.item.errors++;
-  }
-}
-
-async function migrateAccount(doc: Record<string, any>): Promise<void> {
-  const account = doc.account;
-  if (!account) return;
-
-  const pgUserId = userIdMap.get(account.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for account ${account.account_id}, skipping`);
-    initStats("account");
-    stats.account.errors++;
-    return;
-  }
-
-  try {
-    const balances = account.balances || {};
-    const label = account.label || {};
-    const graphOptions = account.graph_options || {};
-    
-    // Remove fields that are stored separately
-    const data = { ...account };
-    delete data.balances;
-    delete data.label;
-    delete data.graph_options;
-    delete data.user_id;
-
-    await pgPool.query(
-      `INSERT INTO accounts (account_id, user_id, balances, label, graph_options, data, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-       ON CONFLICT (account_id) DO UPDATE SET 
-         balances = $3, label = $4, graph_options = $5, data = $6, user_id = $2`,
-      [account.account_id, pgUserId, JSON.stringify(balances), JSON.stringify(label), 
-       JSON.stringify(graphOptions), JSON.stringify(data)]
-    );
-    initStats("account");
-    stats.account.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate account ${account.account_id}:`, error.message);
-    initStats("account");
-    stats.account.errors++;
-  }
-}
-
-async function migrateHolding(doc: Record<string, any>): Promise<void> {
-  const holding = doc.holding;
-  if (!holding) return;
-
-  const pgUserId = userIdMap.get(holding.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for holding, skipping`);
-    initStats("holding");
-    stats.holding.errors++;
-    return;
-  }
-
-  try {
-    const holdingId = doc._id || `${holding.account_id}-${holding.security_id}`;
-    await pgPool.query(
-      `INSERT INTO holdings (holding_id, user_id, data, updated)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-       ON CONFLICT (holding_id) DO UPDATE SET data = $3, user_id = $2`,
-      [holdingId, pgUserId, JSON.stringify(holding)]
-    );
-    initStats("holding");
-    stats.holding.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate holding:`, error.message);
-    initStats("holding");
-    stats.holding.errors++;
-  }
-}
-
-async function migrateSecurity(doc: Record<string, any>): Promise<void> {
-  const security = doc.security;
-  if (!security) return;
-
-  try {
-    await pgPool.query(
-      `INSERT INTO securities (security_id, data, updated)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (security_id) DO UPDATE SET data = $2`,
-      [security.security_id, JSON.stringify(security)]
-    );
-    initStats("security");
-    stats.security.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate security:`, error.message);
-    initStats("security");
-    stats.security.errors++;
-  }
-}
-
-async function migrateTransaction(doc: Record<string, any>): Promise<void> {
-  const transaction = doc.transaction;
-  if (!transaction) return;
-
-  const pgUserId = userIdMap.get(transaction.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for transaction ${transaction.transaction_id}, skipping`);
-    initStats("transaction");
-    stats.transaction.errors++;
-    return;
-  }
-
-  try {
-    const label = transaction.label || {};
-    const location = transaction.location || {};
-    const paymentMeta = transaction.payment_meta || {};
-    
-    // Map label IDs - need to map ES IDs to PostgreSQL UUIDs
-    let labelBudgetId = null;
-    let labelCategoryId = null;
-    if (label.budget_id) {
-      labelBudgetId = budgetIdMap.get(label.budget_id) || null;
-    }
-    if (label.category_id) {
-      labelCategoryId = categoryIdMap.get(label.category_id) || null;
-    }
-
-    await pgPool.query(
-      `INSERT INTO transactions (
-        transaction_id, user_id, account_id, pending_transaction_id,
-        category_id, category, account_owner, name, amount,
-        iso_currency_code, unofficial_currency_code, date, pending,
-        payment_channel, authorized_date, authorized_datetime, datetime,
-        transaction_code, location_address, location_city, location_region,
-        location_postal_code, location_country, location_store_number,
-        location_lat, location_lon, payment_meta_reference_number,
-        payment_meta_ppd_id, payment_meta_payee, payment_meta_by_order_of,
-        payment_meta_payer, payment_meta_payment_method,
-        payment_meta_payment_processor, payment_meta_reason,
-        label_budget_id, label_category_id, label_memo, updated
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-        $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32,
-        $33, $34, $35, $36, $37, CURRENT_TIMESTAMP
-      )
-      ON CONFLICT (transaction_id) DO UPDATE SET
-        account_id = EXCLUDED.account_id,
-        pending_transaction_id = EXCLUDED.pending_transaction_id,
-        category_id = EXCLUDED.category_id,
-        category = EXCLUDED.category,
-        account_owner = EXCLUDED.account_owner,
-        name = EXCLUDED.name,
-        amount = EXCLUDED.amount,
-        iso_currency_code = EXCLUDED.iso_currency_code,
-        unofficial_currency_code = EXCLUDED.unofficial_currency_code,
-        date = EXCLUDED.date,
-        pending = EXCLUDED.pending,
-        payment_channel = EXCLUDED.payment_channel,
-        authorized_date = EXCLUDED.authorized_date,
-        authorized_datetime = EXCLUDED.authorized_datetime,
-        datetime = EXCLUDED.datetime,
-        transaction_code = EXCLUDED.transaction_code,
-        location_address = EXCLUDED.location_address,
-        location_city = EXCLUDED.location_city,
-        location_region = EXCLUDED.location_region,
-        location_postal_code = EXCLUDED.location_postal_code,
-        location_country = EXCLUDED.location_country,
-        location_store_number = EXCLUDED.location_store_number,
-        location_lat = EXCLUDED.location_lat,
-        location_lon = EXCLUDED.location_lon,
-        payment_meta_reference_number = EXCLUDED.payment_meta_reference_number,
-        payment_meta_ppd_id = EXCLUDED.payment_meta_ppd_id,
-        payment_meta_payee = EXCLUDED.payment_meta_payee,
-        payment_meta_by_order_of = EXCLUDED.payment_meta_by_order_of,
-        payment_meta_payer = EXCLUDED.payment_meta_payer,
-        payment_meta_payment_method = EXCLUDED.payment_meta_payment_method,
-        payment_meta_payment_processor = EXCLUDED.payment_meta_payment_processor,
-        payment_meta_reason = EXCLUDED.payment_meta_reason,
-        label_budget_id = EXCLUDED.label_budget_id,
-        label_category_id = EXCLUDED.label_category_id,
-        label_memo = EXCLUDED.label_memo,
-        user_id = EXCLUDED.user_id,
-        updated = CURRENT_TIMESTAMP`,
-      [
-        transaction.transaction_id,
-        pgUserId,
-        transaction.account_id || null,
-        transaction.pending_transaction_id || null,
-        transaction.category_id || null,
-        transaction.category || null,
-        transaction.account_owner || null,
-        transaction.name || null,
-        transaction.amount || 0,
-        transaction.iso_currency_code || null,
-        transaction.unofficial_currency_code || null,
-        transaction.date || null,
-        transaction.pending || false,
-        transaction.payment_channel || null,
-        transaction.authorized_date || null,
-        transaction.authorized_datetime || null,
-        transaction.datetime || null,
-        transaction.transaction_code || null,
-        location.address || null,
-        location.city || null,
-        location.region || null,
-        location.postal_code || null,
-        location.country || null,
-        location.store_number || null,
-        location.lat || null,
-        location.lon || null,
-        paymentMeta.reference_number || null,
-        paymentMeta.ppd_id || null,
-        paymentMeta.payee || null,
-        paymentMeta.by_order_of || null,
-        paymentMeta.payer || null,
-        paymentMeta.payment_method || null,
-        paymentMeta.payment_processor || null,
-        paymentMeta.reason || null,
-        labelBudgetId,
-        labelCategoryId,
-        label.memo || null,
-      ]
-    );
-    initStats("transaction");
-    stats.transaction.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate transaction ${transaction.transaction_id}:`, error.message);
-    initStats("transaction");
-    stats.transaction.errors++;
-  }
-}
-
-async function migrateInvestmentTransaction(doc: Record<string, any>): Promise<void> {
-  const invTx = doc.investment_transaction;
-  if (!invTx) return;
-
-  const pgUserId = userIdMap.get(invTx.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for investment transaction, skipping`);
-    initStats("investment_transaction");
-    stats.investment_transaction.errors++;
-    return;
-  }
-
-  try {
-    await pgPool.query(
-      `INSERT INTO investment_transactions (investment_transaction_id, user_id, data, updated)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-       ON CONFLICT (investment_transaction_id) DO UPDATE SET data = $3, user_id = $2`,
-      [invTx.investment_transaction_id, pgUserId, JSON.stringify(invTx)]
-    );
-    initStats("investment_transaction");
-    stats.investment_transaction.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate investment transaction:`, error.message);
-    initStats("investment_transaction");
-    stats.investment_transaction.errors++;
-  }
-}
-
-async function migrateSplitTransaction(doc: Record<string, any>): Promise<void> {
-  const split = doc.split_transaction;
-  if (!split) return;
-
-  const pgUserId = userIdMap.get(split.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for split transaction, skipping`);
-    initStats("split_transaction");
-    stats.split_transaction.errors++;
-    return;
-  }
-
-  try {
-    const label = split.label || {};
-    await pgPool.query(
-      `INSERT INTO split_transactions (split_transaction_id, user_id, transaction_id, account_id, amount, date, custom_name, label, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
-       ON CONFLICT (split_transaction_id) DO UPDATE SET 
-         transaction_id = $3, account_id = $4, amount = $5, date = $6, custom_name = $7, label = $8, user_id = $2`,
-      [split.split_transaction_id || doc._id, pgUserId, split.transaction_id, split.account_id, 
-       split.amount || 0, split.date, split.custom_name || "", JSON.stringify(label)]
-    );
-    initStats("split_transaction");
-    stats.split_transaction.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate split transaction:`, error.message);
-    initStats("split_transaction");
-    stats.split_transaction.errors++;
-  }
-}
-
-// Map to store budget/section/category UUIDs
 const budgetIdMap = new Map<string, string>();
 const sectionIdMap = new Map<string, string>();
 const categoryIdMap = new Map<string, string>();
 
-async function migrateBudget(doc: Record<string, any>): Promise<void> {
-  const budget = doc.budget;
-  if (!budget) return;
-
-  const pgUserId = userIdMap.get(budget.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for budget, skipping`);
-    initStats("budget");
-    stats.budget.errors++;
-    return;
-  }
-
-  try {
-    const result = await pgPool.query(
-      `INSERT INTO budgets (user_id, name, iso_currency_code, capacities, roll_over, roll_over_start_date, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-       RETURNING budget_id`,
-      [pgUserId, budget.name || "Unnamed", budget.iso_currency_code || "USD", 
-       JSON.stringify(budget.capacities || []), budget.roll_over || false, budget.roll_over_start_date]
-    );
-    budgetIdMap.set(budget.budget_id || doc._id, result.rows[0].budget_id);
-    initStats("budget");
-    stats.budget.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate budget:`, error.message);
-    initStats("budget");
-    stats.budget.errors++;
-  }
-}
-
-async function migrateSection(doc: Record<string, any>): Promise<void> {
-  const section = doc.section;
-  if (!section) return;
-
-  const pgUserId = userIdMap.get(section.user_id);
-  const pgBudgetId = budgetIdMap.get(section.budget_id);
-  
-  if (!pgUserId || !pgBudgetId) {
-    console.warn(`User or budget not found for section, skipping`);
-    initStats("section");
-    stats.section.errors++;
-    return;
-  }
-
-  try {
-    const result = await pgPool.query(
-      `INSERT INTO sections (user_id, budget_id, name, capacities, roll_over, roll_over_start_date, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-       RETURNING section_id`,
-      [pgUserId, pgBudgetId, section.name || "Unnamed", 
-       JSON.stringify(section.capacities || []), section.roll_over || false, section.roll_over_start_date]
-    );
-    sectionIdMap.set(section.section_id || doc._id, result.rows[0].section_id);
-    initStats("section");
-    stats.section.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate section:`, error.message);
-    initStats("section");
-    stats.section.errors++;
-  }
-}
-
-async function migrateCategory(doc: Record<string, any>): Promise<void> {
-  const category = doc.category;
-  if (!category) return;
-
-  const pgUserId = userIdMap.get(category.user_id);
-  const pgSectionId = sectionIdMap.get(category.section_id);
-  
-  if (!pgUserId || !pgSectionId) {
-    console.warn(`User or section not found for category, skipping`);
-    initStats("category");
-    stats.category.errors++;
-    return;
-  }
-
-  try {
-    const result = await pgPool.query(
-      `INSERT INTO categories (user_id, section_id, name, capacities, roll_over, roll_over_start_date, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-       RETURNING category_id`,
-      [pgUserId, pgSectionId, category.name || "Unnamed", 
-       JSON.stringify(category.capacities || []), category.roll_over || false, category.roll_over_start_date]
-    );
-    // Store the mapping from ES category_id to PostgreSQL category_id
-    categoryIdMap.set(category.category_id || doc._id, result.rows[0].category_id);
-    initStats("category");
-    stats.category.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate category:`, error.message);
-    initStats("category");
-    stats.category.errors++;
-  }
-}
-
-async function migrateSnapshot(doc: Record<string, any>): Promise<void> {
-  const snapshot = doc.snapshot;
-  if (!snapshot) return;
-
-  // Determine snapshot type and user
-  let snapshotType = "balance";
-  let userId: string | undefined;
-  
-  if (doc.account) {
-    snapshotType = "account_balance";
-    userId = doc.account.user_id;
-  } else if (doc.security) {
-    snapshotType = "security";
-  } else if (doc.holding) {
-    snapshotType = "holding";
-    userId = doc.holding.user_id;
-  }
-
-  const pgUserId = userId ? userIdMap.get(userId) : null;
-
-  try {
-    const data = { ...doc };
-    delete data.type;
-    delete data._id;
-
-    await pgPool.query(
-      `INSERT INTO snapshots (snapshot_id, user_id, snapshot_date, snapshot_type, data, updated)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-       ON CONFLICT (snapshot_id) DO UPDATE SET data = $5, snapshot_type = $4`,
-      [snapshot.snapshot_id, pgUserId, snapshot.date, snapshotType, JSON.stringify(data)]
-    );
-    initStats("snapshot");
-    stats.snapshot.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate snapshot:`, error.message);
-    initStats("snapshot");
-    stats.snapshot.errors++;
-  }
-}
-
-async function migrateChart(doc: Record<string, any>): Promise<void> {
-  const chart = doc.chart;
-  if (!chart) return;
-
-  const pgUserId = userIdMap.get(chart.user_id);
-  if (!pgUserId) {
-    console.warn(`User not found for chart, skipping`);
-    initStats("chart");
-    stats.chart.errors++;
-    return;
-  }
-
-  try {
-    await pgPool.query(
-      `INSERT INTO charts (user_id, name, type, configuration, updated)
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)`,
-      [pgUserId, chart.name || "Unnamed", chart.type, JSON.stringify(chart.configuration || {})]
-    );
-    initStats("chart");
-    stats.chart.migrated++;
-  } catch (error: any) {
-    console.error(`Failed to migrate chart:`, error.message);
-    initStats("chart");
-    stats.chart.errors++;
-  }
-}
-
-async function migrateDocument(doc: ESHit): Promise<void> {
-  const source = doc._source;
-  const type = source.type;
-
-  switch (type) {
-    case "user":
-      await migrateUser(source);
-      break;
-    case "session":
-      await migrateSession({ ...source, _id: doc._id });
-      break;
-    case "institution":
-      await migrateInstitution(source);
-      break;
-    case "item":
-      await migrateItem(source);
-      break;
-    case "account":
-      await migrateAccount(source);
-      break;
-    case "holding":
-      await migrateHolding({ ...source, _id: doc._id });
-      break;
-    case "security":
-      await migrateSecurity(source);
-      break;
-    case "transaction":
-      await migrateTransaction(source);
-      break;
-    case "investment_transaction":
-      await migrateInvestmentTransaction(source);
-      break;
-    case "split_transaction":
-      await migrateSplitTransaction({ ...source, _id: doc._id });
-      break;
-    case "budget":
-      await migrateBudget({ ...source, _id: doc._id });
-      break;
-    case "section":
-      await migrateSection({ ...source, _id: doc._id });
-      break;
-    case "category":
-      await migrateCategory(source);
-      break;
-    case "snapshot":
-      await migrateSnapshot({ ...source, _id: doc._id });
-      break;
-    case "chart":
-      await migrateChart(source);
-      break;
-    default:
-      console.warn(`Unknown document type: ${type}`);
-  }
+/**
+ * Get the PostgreSQL user_id from an ES document source.
+ * Tries source.user.user_id first, then falls back to entity.user_id.
+ */
+function getPgUserId(
+  source: Record<string, any>,
+  entity: Record<string, any>
+): string | undefined {
+  const esUserId = source.user?.user_id || entity.user_id;
+  return esUserId ? userIdMap.get(esUserId) : undefined;
 }
 
 async function migrate(): Promise<void> {
-  console.log("========================================");
-  console.log("Elasticsearch to PostgreSQL Migration");
-  console.log("========================================");
-  console.log(`JSON File: ${ES_JSON_FILE}`);
-  console.log(`PG: ${process.env.POSTGRES_HOST || "localhost"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DATABASE || "budget"}`);
-  console.log("========================================\n");
+  console.log("=".repeat(50));
+  console.log("ES → PostgreSQL Migration");
+  console.log("=".repeat(50));
 
-  // Load JSON data
-  console.log("Loading JSON data...");
+  // Load data
+  console.log("\nLoading es_data.json...");
   if (!fs.existsSync(ES_JSON_FILE)) {
     console.error(`JSON file not found: ${ES_JSON_FILE}`);
     process.exit(1);
   }
-  
-  const jsonData = JSON.parse(fs.readFileSync(ES_JSON_FILE, "utf-8")) as ESHit[];
-  console.log(`✓ Loaded ${jsonData.length} documents from JSON file`);
+  const jsonData = JSON.parse(
+    fs.readFileSync(ES_JSON_FILE, "utf-8")
+  ) as ESHit[];
+  console.log(`  Loaded ${jsonData.length} documents`);
 
   // Test PostgreSQL connection
   try {
     const client = await pgPool.connect();
     client.release();
-    console.log("✓ PostgreSQL connection OK");
+    console.log("  PostgreSQL connection OK");
   } catch (error: any) {
-    console.error("✗ PostgreSQL connection failed:", error.message);
+    console.error("  PostgreSQL connection failed:", error.message);
     process.exit(1);
   }
 
-  const totalDocs = jsonData.length;
-  console.log(`\nTotal documents to migrate: ${totalDocs}\n`);
-
-  // Group documents by type
-  const docsByType: Record<string, ESHit[]> = {};
+  // Group by type
+  const byType: Record<string, ESHit[]> = {};
   for (const doc of jsonData) {
-    const type = doc._source.type || "unknown";
-    if (!docsByType[type]) docsByType[type] = [];
-    docsByType[type].push(doc);
+    const t = doc._source.type || "unknown";
+    if (!byType[t]) byType[t] = [];
+    byType[t].push(doc);
   }
 
-  console.log("Document types found:");
-  for (const [type, docs] of Object.entries(docsByType)) {
-    console.log(`  ${type}: ${docs.length}`);
+  for (const [t, docs] of Object.entries(byType).sort()) {
+    console.log(`  ${t}: ${docs.length}`);
   }
-  console.log("");
 
-  // Phase 1: Migrate users first (need IDs for foreign keys)
-  console.log("Phase 1: Migrating users...");
-  for (const doc of docsByType.user || []) {
-    await migrateDocument(doc);
+  // =========================================
+  // Phase 2: Migrate users
+  // =========================================
+  console.log("\n--- Phase 2: Migrate users ---");
+  let userCount = 0;
+  for (const doc of byType.user || []) {
+    const src = doc._source;
+    const u = src.user || {};
+    const esUserId = u.user_id || doc._id;
+    const username = u.username || "";
+    const password = u.password || "";
+
+    try {
+      const existing = await pgPool.query(
+        "SELECT user_id FROM users WHERE username = $1",
+        [username]
+      );
+
+      let pgUserId: string;
+      if (existing.rows.length > 0) {
+        pgUserId = existing.rows[0].user_id;
+      } else {
+        const result = await pgPool.query(
+          "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING user_id",
+          [username, password]
+        );
+        pgUserId = result.rows[0].user_id;
+      }
+
+      userIdMap.set(esUserId, pgUserId);
+      console.log(`  User: ${username} (${esUserId} -> ${pgUserId})`);
+      userCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating user ${username}:`, error.message);
+    }
   }
-  console.log(`  Users migrated: ${stats.user?.migrated || 0}`);
+  console.log(`  Migrated ${userCount} users`);
 
-  // Phase 2: Migrate budgets (before sections and categories)
-  console.log("Phase 2: Migrating budgets...");
-  for (const doc of docsByType.budget || []) {
-    await migrateDocument(doc);
+  // =========================================
+  // Phase 3: Migrate items
+  // =========================================
+  console.log("\n--- Phase 3: Migrate items ---");
+  let itemCount = 0;
+  for (const doc of byType.item || []) {
+    const src = doc._source;
+    const item = src.item || {};
+    const pgUserId = getPgUserId(src, item);
+    if (!pgUserId) continue;
+
+    try {
+      await pgPool.query(
+        `INSERT INTO items (item_id, user_id, access_token, institution_id, available_products, cursor, status, provider)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (item_id) DO UPDATE SET
+           access_token = EXCLUDED.access_token, institution_id = EXCLUDED.institution_id,
+           available_products = EXCLUDED.available_products, cursor = EXCLUDED.cursor,
+           status = EXCLUDED.status, provider = EXCLUDED.provider`,
+        [
+          item.item_id,
+          pgUserId,
+          item.access_token || null,
+          item.institution_id || null,
+          item.available_products || null,
+          item.cursor || null,
+          item.status || null,
+          item.provider || null,
+        ]
+      );
+      itemCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating item ${item.item_id}:`, error.message);
+    }
   }
-  console.log(`  Budgets migrated: ${stats.budget?.migrated || 0}`);
+  console.log(`  Migrated ${itemCount} items`);
 
-  // Phase 3: Migrate sections (before categories)
-  console.log("Phase 3: Migrating sections...");
-  for (const doc of docsByType.section || []) {
-    await migrateDocument(doc);
+  // =========================================
+  // Phase 4: Migrate institutions
+  // =========================================
+  console.log("\n--- Phase 4: Migrate institutions ---");
+  let instCount = 0;
+  for (const doc of byType.institution || []) {
+    const src = doc._source;
+    const inst = src.institution || {};
+
+    try {
+      await pgPool.query(
+        `INSERT INTO institutions (institution_id, name, url, primary_color, logo, oauth)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (institution_id) DO UPDATE SET
+           name = EXCLUDED.name, url = EXCLUDED.url`,
+        [
+          inst.institution_id,
+          inst.name || null,
+          inst.url || null,
+          inst.primary_color || null,
+          inst.logo || null,
+          inst.oauth ?? null,
+        ]
+      );
+      instCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating institution:`, error.message);
+    }
   }
-  console.log(`  Sections migrated: ${stats.section?.migrated || 0}`);
+  console.log(`  Migrated ${instCount} institutions`);
 
-  // Phase 4: Migrate categories (before transactions, so we can map label.category_id)
-  console.log("Phase 4: Migrating categories...");
-  for (const doc of docsByType.category || []) {
-    await migrateDocument(doc);
+  // =========================================
+  // Phase 5: Migrate accounts (with NULL label_budget_id initially)
+  // =========================================
+  console.log("\n--- Phase 5: Migrate accounts ---");
+  let acctCount = 0;
+  for (const doc of byType.account || []) {
+    const src = doc._source;
+    const acct = src.account || {};
+    const pgUserId = getPgUserId(src, acct);
+    if (!pgUserId) continue;
+
+    const bal = acct.balances || {};
+    const graph = acct.graph_options || {};
+
+    try {
+      await pgPool.query(
+        `INSERT INTO accounts (
+          account_id, user_id, item_id, institution_id,
+          balances_available, balances_current, balances_limit, balances_iso_currency_code,
+          mask, name, official_name, type, subtype, custom_name, hide,
+          label_budget_id, graph_options_use_snapshots, graph_options_use_transactions
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         ON CONFLICT (account_id) DO UPDATE SET
+           item_id = EXCLUDED.item_id, institution_id = EXCLUDED.institution_id,
+           balances_available = EXCLUDED.balances_available, balances_current = EXCLUDED.balances_current,
+           name = EXCLUDED.name, type = EXCLUDED.type, subtype = EXCLUDED.subtype,
+           custom_name = EXCLUDED.custom_name, hide = EXCLUDED.hide`,
+        [
+          acct.account_id,
+          pgUserId,
+          acct.item_id || null,
+          acct.institution_id || null,
+          bal.available ?? null,
+          bal.current ?? null,
+          bal.limit ?? null,
+          bal.iso_currency_code || null,
+          acct.mask || null,
+          acct.name || null,
+          acct.official_name || null,
+          acct.type || null,
+          acct.subtype || null,
+          acct.custom_name || null,
+          acct.hide ?? null,
+          null, // label_budget_id set to NULL initially, updated in Phase 16
+          graph.use_snapshots ?? true,
+          graph.use_transactions ?? true,
+        ]
+      );
+      acctCount++;
+    } catch (error: any) {
+      console.error(
+        `  Error migrating account ${acct.account_id}:`,
+        error.message
+      );
+    }
   }
-  console.log(`  Categories migrated: ${stats.category?.migrated || 0}`);
+  console.log(`  Migrated ${acctCount} accounts`);
 
-  // Phase 5: Migrate remaining documents
-  console.log("Phase 5: Migrating remaining documents...");
-  const skipTypes = new Set(["user", "budget", "section", "category"]);
-  let processed = (docsByType.user?.length || 0) + (docsByType.budget?.length || 0) + (docsByType.section?.length || 0) + (docsByType.category?.length || 0);
+  // =========================================
+  // Phase 6: Migrate budgets
+  // =========================================
+  console.log("\n--- Phase 6: Migrate budgets ---");
+  let budgetCount = 0;
+  for (const doc of byType.budget || []) {
+    const src = doc._source;
+    const budget = src.budget || {};
+    const pgUserId = getPgUserId(src, budget);
+    if (!pgUserId) continue;
 
-  for (const [type, docs] of Object.entries(docsByType)) {
-    if (skipTypes.has(type)) continue;
-    
-    for (const doc of docs) {
-      await migrateDocument(doc);
-      processed++;
-      
-      if (processed % 1000 === 0) {
-        console.log(`  Processed ${processed} / ${totalDocs} documents...`);
+    const esBid = budget.budget_id || doc._id;
+    try {
+      const result = await pgPool.query(
+        `INSERT INTO budgets (user_id, name, iso_currency_code, capacities, roll_over, roll_over_start_date)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING budget_id`,
+        [
+          pgUserId,
+          budget.name || null,
+          budget.iso_currency_code || "USD",
+          JSON.stringify(budget.capacities || []),
+          budget.roll_over ?? null,
+          budget.roll_over_start_date || null,
+        ]
+      );
+      budgetIdMap.set(esBid, result.rows[0].budget_id);
+      console.log(
+        `  Budget: ${budget.name} (${esBid} -> ${result.rows[0].budget_id})`
+      );
+      budgetCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating budget:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${budgetCount} budgets`);
+
+  // =========================================
+  // Phase 7: Migrate sections
+  // =========================================
+  console.log("\n--- Phase 7: Migrate sections ---");
+  let sectionCount = 0;
+  for (const doc of byType.section || []) {
+    const src = doc._source;
+    const section = src.section || {};
+    const pgUserId = getPgUserId(src, section);
+    const pgBudgetId = section.budget_id
+      ? budgetIdMap.get(section.budget_id)
+      : undefined;
+    if (!pgUserId || !pgBudgetId) continue;
+
+    const esSid = section.section_id || doc._id;
+    try {
+      const result = await pgPool.query(
+        `INSERT INTO sections (user_id, budget_id, name, capacities, roll_over, roll_over_start_date)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING section_id`,
+        [
+          pgUserId,
+          pgBudgetId,
+          section.name || null,
+          JSON.stringify(section.capacities || []),
+          section.roll_over ?? null,
+          section.roll_over_start_date || null,
+        ]
+      );
+      sectionIdMap.set(esSid, result.rows[0].section_id);
+      console.log(
+        `  Section: ${section.name} (${esSid} -> ${result.rows[0].section_id})`
+      );
+      sectionCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating section:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${sectionCount} sections`);
+
+  // =========================================
+  // Phase 8: Migrate categories
+  // =========================================
+  console.log("\n--- Phase 8: Migrate categories ---");
+  let categoryCount = 0;
+  for (const doc of byType.category || []) {
+    const src = doc._source;
+    const cat = src.category || {};
+    const pgUserId = getPgUserId(src, cat);
+    const pgSectionId = cat.section_id
+      ? sectionIdMap.get(cat.section_id)
+      : undefined;
+    if (!pgUserId || !pgSectionId) continue;
+
+    const esCid = cat.category_id || doc._id;
+    try {
+      const result = await pgPool.query(
+        `INSERT INTO categories (user_id, section_id, name, capacities, roll_over, roll_over_start_date)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING category_id`,
+        [
+          pgUserId,
+          pgSectionId,
+          cat.name || null,
+          JSON.stringify(cat.capacities || []),
+          cat.roll_over ?? null,
+          cat.roll_over_start_date || null,
+        ]
+      );
+      categoryIdMap.set(esCid, result.rows[0].category_id);
+      console.log(
+        `  Category: ${cat.name} (${esCid} -> ${result.rows[0].category_id})`
+      );
+      categoryCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating category:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${categoryCount} categories`);
+
+  // =========================================
+  // Phase 9: Migrate transactions
+  // =========================================
+  console.log("\n--- Phase 9: Migrate transactions ---");
+  let txCount = 0;
+  let txErrors = 0;
+  for (const doc of byType.transaction || []) {
+    const src = doc._source;
+    const tx = src.transaction || {};
+    const pgUserId = getPgUserId(src, tx);
+    if (!pgUserId) {
+      txErrors++;
+      continue;
+    }
+
+    const label = tx.label || {};
+    const loc = tx.location || {};
+    const pm = tx.payment_meta || {};
+
+    const pgBudgetId = label.budget_id
+      ? budgetIdMap.get(label.budget_id) || null
+      : null;
+    const pgCategoryId = label.category_id
+      ? categoryIdMap.get(label.category_id) || null
+      : null;
+
+    try {
+      await pgPool.query(
+        `INSERT INTO transactions (
+          transaction_id, user_id, account_id, pending_transaction_id,
+          category_id, category, account_owner, name, amount,
+          iso_currency_code, unofficial_currency_code, date, pending,
+          payment_channel, authorized_date, authorized_datetime, datetime, transaction_code,
+          location_address, location_city, location_region, location_postal_code,
+          location_country, location_store_number, location_lat, location_lon,
+          payment_meta_reference_number, payment_meta_ppd_id, payment_meta_payee,
+          payment_meta_by_order_of, payment_meta_payer, payment_meta_payment_method,
+          payment_meta_payment_processor, payment_meta_reason,
+          label_budget_id, label_category_id, label_memo
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+          $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32,
+          $33, $34, $35, $36, $37
+        ) ON CONFLICT (transaction_id) DO NOTHING`,
+        [
+          tx.transaction_id,
+          pgUserId,
+          tx.account_id || null,
+          tx.pending_transaction_id || null,
+          tx.category_id || null,
+          tx.category || null,
+          tx.account_owner || null,
+          tx.name || null,
+          tx.amount ?? 0,
+          tx.iso_currency_code || null,
+          tx.unofficial_currency_code || null,
+          tx.date || null,
+          tx.pending ?? false,
+          tx.payment_channel || null,
+          tx.authorized_date || null,
+          tx.authorized_datetime || null,
+          tx.datetime || null,
+          tx.transaction_code || null,
+          loc.address || null,
+          loc.city || null,
+          loc.region || null,
+          loc.postal_code || null,
+          loc.country || null,
+          loc.store_number || null,
+          loc.lat ?? null,
+          loc.lon ?? null,
+          pm.reference_number || null,
+          pm.ppd_id || null,
+          pm.payee || null,
+          pm.by_order_of || null,
+          pm.payer || null,
+          pm.payment_method || null,
+          pm.payment_processor || null,
+          pm.reason || null,
+          pgBudgetId,
+          pgCategoryId,
+          label.memo || null,
+        ]
+      );
+      txCount++;
+      if (txCount % 500 === 0) console.log(`  Progress: ${txCount}...`);
+    } catch (error: any) {
+      txErrors++;
+      if (txErrors <= 5) {
+        console.error(
+          `  Error migrating transaction ${tx.transaction_id}:`,
+          error.message
+        );
       }
     }
   }
+  console.log(`  Migrated ${txCount} transactions (${txErrors} errors)`);
 
-  // Print summary
-  console.log("\n========================================");
-  console.log("Migration Complete!");
-  console.log("========================================");
-  console.log("\nResults by type:");
-  for (const [type, { migrated, errors }] of Object.entries(stats)) {
-    console.log(`  ${type}: ${migrated} migrated, ${errors} errors`);
+  // =========================================
+  // Phase 10: Migrate investment transactions
+  // =========================================
+  console.log("\n--- Phase 10: Migrate investment transactions ---");
+  let invCount = 0;
+  for (const doc of byType.investment_transaction || []) {
+    const src = doc._source;
+    const inv = src.investment_transaction || {};
+    const pgUserId = getPgUserId(src, inv);
+    if (!pgUserId) continue;
+
+    try {
+      await pgPool.query(
+        `INSERT INTO investment_transactions (
+          investment_transaction_id, user_id, account_id, security_id,
+          date, name, quantity, amount, price, fees, type, subtype,
+          iso_currency_code, unofficial_currency_code
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         ON CONFLICT (investment_transaction_id) DO NOTHING`,
+        [
+          inv.investment_transaction_id,
+          pgUserId,
+          inv.account_id || null,
+          inv.security_id || null,
+          inv.date || null,
+          inv.name || null,
+          inv.quantity ?? null,
+          inv.amount ?? null,
+          inv.price ?? null,
+          inv.fees ?? null,
+          inv.type || null,
+          inv.subtype || null,
+          inv.iso_currency_code || null,
+          inv.unofficial_currency_code || null,
+        ]
+      );
+      invCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating investment transaction:`, error.message);
+    }
   }
-  console.log(`\nTotal processed: ${processed}`);
-  console.log("========================================\n");
+  console.log(`  Migrated ${invCount} investment transactions`);
 
+  // =========================================
+  // Phase 11: Migrate split transactions
+  // =========================================
+  console.log("\n--- Phase 11: Migrate split transactions ---");
+  let splitCount = 0;
+  for (const doc of byType.split_transaction || []) {
+    const src = doc._source;
+    const split = src.split_transaction || {};
+    const pgUserId = getPgUserId(src, split);
+    if (!pgUserId) continue;
+
+    const label = split.label || {};
+    const pgBudgetId = label.budget_id
+      ? budgetIdMap.get(label.budget_id) || null
+      : null;
+    const pgCategoryId = label.category_id
+      ? categoryIdMap.get(label.category_id) || null
+      : null;
+
+    try {
+      await pgPool.query(
+        `INSERT INTO split_transactions (
+          split_transaction_id, user_id, transaction_id, account_id,
+          amount, date, custom_name, label_budget_id, label_category_id, label_memo
+        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          pgUserId,
+          split.transaction_id || null,
+          split.account_id || null,
+          split.amount ?? 0,
+          split.date || null,
+          split.custom_name || "",
+          pgBudgetId,
+          pgCategoryId,
+          label.memo || null,
+        ]
+      );
+      splitCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating split transaction:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${splitCount} split transactions`);
+
+  // =========================================
+  // Phase 12: Migrate securities
+  // =========================================
+  console.log("\n--- Phase 12: Migrate securities ---");
+  let secCount = 0;
+  for (const doc of byType.security || []) {
+    const src = doc._source;
+    const sec = src.security || {};
+    const oc = sec.option_contract || {};
+    const fi = sec.fixed_income || {};
+
+    try {
+      await pgPool.query(
+        `INSERT INTO securities (
+          security_id, isin, cusip, sedol, institution_security_id, institution_id,
+          proxy_security_id, name, ticker_symbol, is_cash_equivalent, type,
+          close_price, close_price_as_of, iso_currency_code, unofficial_currency_code,
+          market_identifier_code, sector, industry, subtype,
+          option_contract_type, option_expiration_date, option_strike_price,
+          fixed_income_yield_rate, fixed_income_maturity_date
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+         ON CONFLICT (security_id) DO NOTHING`,
+        [
+          sec.security_id,
+          sec.isin || null,
+          sec.cusip || null,
+          sec.sedol || null,
+          sec.institution_security_id || null,
+          sec.institution_id || null,
+          sec.proxy_security_id || null,
+          sec.name || null,
+          sec.ticker_symbol || null,
+          sec.is_cash_equivalent ?? null,
+          sec.type || null,
+          sec.close_price ?? null,
+          sec.close_price_as_of || null,
+          sec.iso_currency_code || null,
+          sec.unofficial_currency_code || null,
+          sec.market_identifier_code || null,
+          sec.sector || null,
+          sec.industry || null,
+          sec.subtype || null,
+          oc.contract_type || null,
+          oc.expiration_date || null,
+          oc.strike_price ?? null,
+          fi.yield_rate ?? null,
+          fi.maturity_date || null,
+        ]
+      );
+      secCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating security:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${secCount} securities`);
+
+  // =========================================
+  // Phase 13: Migrate holdings
+  // =========================================
+  console.log("\n--- Phase 13: Migrate holdings ---");
+  let holdCount = 0;
+  for (const doc of byType.holding || []) {
+    const src = doc._source;
+    const hold = src.holding || {};
+    const esUserId = src.user?.user_id;
+    const pgUserId = esUserId ? userIdMap.get(esUserId) : undefined;
+    if (!pgUserId) continue;
+
+    const holdingId =
+      hold.holding_id || `${hold.account_id}_${hold.security_id}`;
+    try {
+      await pgPool.query(
+        `INSERT INTO holdings (
+          holding_id, user_id, account_id, security_id,
+          institution_price, institution_value, cost_basis, quantity,
+          iso_currency_code, unofficial_currency_code
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (holding_id) DO NOTHING`,
+        [
+          holdingId,
+          pgUserId,
+          hold.account_id || null,
+          hold.security_id || null,
+          hold.institution_price ?? null,
+          hold.institution_value ?? null,
+          hold.cost_basis ?? null,
+          hold.quantity ?? null,
+          hold.iso_currency_code || null,
+          hold.unofficial_currency_code || null,
+        ]
+      );
+      holdCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating holding:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${holdCount} holdings`);
+
+  // =========================================
+  // Phase 14: Migrate snapshots
+  // =========================================
+  console.log("\n--- Phase 14: Migrate snapshots ---");
+  let snapCount = 0;
+  for (const doc of byType.snapshot || []) {
+    const src = doc._source;
+    const snap = src.snapshot || {};
+    const esUserId = src.user?.user_id;
+    const pgUserId = esUserId ? userIdMap.get(esUserId) : null;
+
+    try {
+      if (src.security) {
+        // Security snapshot
+        const sec = src.security;
+        await pgPool.query(
+          `INSERT INTO snapshots (snapshot_id, snapshot_date, snapshot_type, security_id, close_price)
+           VALUES ($1, $2, 'security', $3, $4)
+           ON CONFLICT (snapshot_id) DO NOTHING`,
+          [snap.snapshot_id, snap.date, sec.security_id, sec.close_price ?? null]
+        );
+      } else if (src.holding) {
+        // Holding snapshot
+        const hold = src.holding;
+        await pgPool.query(
+          `INSERT INTO snapshots (
+            snapshot_id, user_id, snapshot_date, snapshot_type,
+            holding_account_id, holding_security_id,
+            institution_price, institution_value, cost_basis, quantity
+          ) VALUES ($1, $2, $3, 'holding', $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (snapshot_id) DO NOTHING`,
+          [
+            snap.snapshot_id,
+            pgUserId,
+            snap.date,
+            hold.account_id || null,
+            hold.security_id || null,
+            hold.institution_price ?? null,
+            hold.institution_value ?? null,
+            hold.cost_basis ?? null,
+            hold.quantity ?? null,
+          ]
+        );
+      } else if (src.account) {
+        // Account balance snapshot
+        const acct = src.account;
+        const bal = acct.balances || {};
+        await pgPool.query(
+          `INSERT INTO snapshots (
+            snapshot_id, user_id, snapshot_date, snapshot_type,
+            account_id, balances_available, balances_current, balances_limit,
+            balances_iso_currency_code
+          ) VALUES ($1, $2, $3, 'account_balance', $4, $5, $6, $7, $8)
+           ON CONFLICT (snapshot_id) DO NOTHING`,
+          [
+            snap.snapshot_id,
+            pgUserId,
+            snap.date,
+            acct.account_id || null,
+            bal.available ?? null,
+            bal.current ?? null,
+            bal.limit ?? null,
+            bal.iso_currency_code || null,
+          ]
+        );
+      } else {
+        continue;
+      }
+      snapCount++;
+      if (snapCount % 500 === 0) console.log(`  Progress: ${snapCount}...`);
+    } catch (error: any) {
+      console.error(`  Error migrating snapshot:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${snapCount} snapshots`);
+
+  // =========================================
+  // Phase 15: Migrate charts
+  // =========================================
+  console.log("\n--- Phase 15: Migrate charts ---");
+  let chartCount = 0;
+  for (const doc of byType.chart || []) {
+    const src = doc._source;
+    const chart = src.chart || {};
+    const pgUserId = getPgUserId(src, chart);
+    if (!pgUserId) continue;
+
+    const config = chart.configuration || {};
+    try {
+      await pgPool.query(
+        `INSERT INTO charts (user_id, name, type, configuration)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          pgUserId,
+          chart.name || null,
+          chart.type || null,
+          JSON.stringify(config),
+        ]
+      );
+      chartCount++;
+    } catch (error: any) {
+      console.error(`  Error migrating chart:`, error.message);
+    }
+  }
+  console.log(`  Migrated ${chartCount} charts`);
+
+  // =========================================
+  // Phase 16: Update account label_budget_id
+  // =========================================
+  console.log("\n--- Phase 16: Update account label_budget_id ---");
+  let acctLabelCount = 0;
+  for (const doc of byType.account || []) {
+    const src = doc._source;
+    const acct = src.account || {};
+    const label = acct.label || {};
+    const esBid = label.budget_id;
+    if (!esBid) continue;
+
+    const pgBid = budgetIdMap.get(esBid);
+    if (!pgBid) continue;
+
+    try {
+      await pgPool.query(
+        "UPDATE accounts SET label_budget_id = $1 WHERE account_id = $2",
+        [pgBid, acct.account_id]
+      );
+      acctLabelCount++;
+    } catch (error: any) {
+      console.error(`  Error updating account label:`, error.message);
+    }
+  }
+  console.log(`  Updated ${acctLabelCount} account labels`);
+
+  // =========================================
+  // Summary & Verification
+  // =========================================
+  console.log("\n" + "=".repeat(50));
+  console.log("Migration Complete!");
+  console.log("=".repeat(50));
+
+  const tables = [
+    "users",
+    "items",
+    "accounts",
+    "budgets",
+    "sections",
+    "categories",
+    "transactions",
+    "investment_transactions",
+    "split_transactions",
+    "securities",
+    "holdings",
+    "snapshots",
+    "charts",
+  ];
+  for (const table of tables) {
+    try {
+      const result = await pgPool.query(`SELECT COUNT(*) FROM ${table}`);
+      console.log(`  ${table}: ${result.rows[0].count}`);
+    } catch {
+      console.log(`  ${table}: ?`);
+    }
+  }
+
+  // Verify transaction labels
+  try {
+    const result = await pgPool.query(
+      `SELECT COUNT(*) as total,
+              COUNT(label_category_id) as with_category,
+              COUNT(label_budget_id) as with_budget
+       FROM transactions`
+    );
+    const row = result.rows[0];
+    console.log(
+      `\n  Transaction labels: total=${row.total}, with_category=${row.with_category}, with_budget=${row.with_budget}`
+    );
+  } catch (error: any) {
+    console.error(`  Error verifying transaction labels:`, error.message);
+  }
+
+  console.log("\nDone!");
   await pgPool.end();
   process.exit(0);
 }
