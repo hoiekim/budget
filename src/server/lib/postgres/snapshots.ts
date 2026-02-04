@@ -460,7 +460,67 @@ export const aggregateAccountSnapshots = async (
 };
 
 /**
+ * Transforms a raw snapshot row to JSONAccountSnapshot format.
+ */
+function rowToAccountSnapshot(row: any): any {
+  return {
+    snapshot: {
+      snapshot_id: row.snapshot_id,
+      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : row.snapshot_date,
+    },
+    user: { user_id: row.user_id },
+    account: {
+      account_id: row.account_id,
+      balances: {
+        current: row.balances_current != null ? Number(row.balances_current) : null,
+        available: row.balances_available != null ? Number(row.balances_available) : null,
+        limit: row.balances_limit != null ? Number(row.balances_limit) : null,
+        iso_currency_code: row.balances_iso_currency_code,
+      },
+    },
+  };
+}
+
+/**
+ * Transforms a raw snapshot row to JSONSecuritySnapshot format.
+ */
+function rowToSecuritySnapshot(row: any): any {
+  return {
+    snapshot: {
+      snapshot_id: row.snapshot_id,
+      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : row.snapshot_date,
+    },
+    security: {
+      security_id: row.security_id,
+      close_price: row.close_price != null ? Number(row.close_price) : null,
+    },
+  };
+}
+
+/**
+ * Transforms a raw snapshot row to JSONHoldingSnapshot format.
+ */
+function rowToHoldingSnapshot(row: any): any {
+  return {
+    snapshot: {
+      snapshot_id: row.snapshot_id,
+      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : row.snapshot_date,
+    },
+    user: { user_id: row.user_id },
+    holding: {
+      account_id: row.holding_account_id,
+      security_id: row.holding_security_id,
+      institution_price: row.institution_price != null ? Number(row.institution_price) : null,
+      institution_value: row.institution_value != null ? Number(row.institution_value) : null,
+      cost_basis: row.cost_basis != null ? Number(row.cost_basis) : null,
+      quantity: row.quantity != null ? Number(row.quantity) : null,
+    },
+  };
+}
+
+/**
  * Searches snapshots with flexible options.
+ * Returns snapshots in JSONSnapshotData format (JSONAccountSnapshot, JSONSecuritySnapshot, or JSONHoldingSnapshot).
  */
 export const searchSnapshots = async (
   user: MaskedUser | null,
@@ -525,7 +585,20 @@ export const searchSnapshots = async (
   }
 
   const result = await pool.query(query, values);
-  return result.rows;
+  
+  // Transform raw rows to JSONSnapshotData format based on snapshot_type
+  return result.rows.map(row => {
+    switch (row.snapshot_type) {
+      case 'account_balance':
+        return rowToAccountSnapshot(row);
+      case 'security':
+        return rowToSecuritySnapshot(row);
+      case 'holding':
+        return rowToHoldingSnapshot(row);
+      default:
+        return row;
+    }
+  });
 };
 
 /**
