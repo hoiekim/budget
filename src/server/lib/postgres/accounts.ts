@@ -555,13 +555,48 @@ export const getSecurity = async (security_id: string): Promise<JSONSecurity | n
 /**
  * Searches securities by IDs.
  */
-export const searchSecurities = async (security_ids: string[]): Promise<JSONSecurity[]> => {
-  if (!security_ids.length) return [];
+export const searchSecurities = async (
+  options: string[] | { security_id?: string; ticker_symbol?: string; security_ids?: string[] }
+): Promise<JSONSecurity[]> => {
+  // Handle legacy array-of-ids call
+  if (Array.isArray(options)) {
+    if (!options.length) return [];
+    const placeholders = options.map((_, i) => `$${i + 1}`).join(", ");
+    const result = await pool.query(
+      `SELECT * FROM securities WHERE security_id IN (${placeholders})`,
+      options
+    );
+    return result.rows.map(rowToSecurity);
+  }
   
-  const placeholders = security_ids.map((_, i) => `$${i + 1}`).join(", ");
+  // Handle options object
+  const conditions: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
+  
+  if (options.security_id) {
+    conditions.push(`security_id = $${paramIndex}`);
+    values.push(options.security_id);
+    paramIndex++;
+  }
+  
+  if (options.ticker_symbol) {
+    conditions.push(`ticker_symbol = $${paramIndex}`);
+    values.push(options.ticker_symbol);
+    paramIndex++;
+  }
+  
+  if (options.security_ids && options.security_ids.length > 0) {
+    const placeholders = options.security_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
+    conditions.push(`security_id IN (${placeholders})`);
+    values.push(...options.security_ids);
+  }
+  
+  if (!conditions.length) return [];
+  
   const result = await pool.query(
-    `SELECT * FROM securities WHERE security_id IN (${placeholders})`,
-    security_ids
+    `SELECT * FROM securities WHERE ${conditions.join(" AND ")}`,
+    values
   );
   return result.rows.map(rowToSecurity);
 };

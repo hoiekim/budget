@@ -558,6 +558,21 @@ export const deleteSnapshotsByUser = async (
 };
 
 /**
+ * Deletes a specific snapshot by ID.
+ */
+export const deleteSnapshotById = async (
+  user: MaskedUser,
+  snapshot_id: string
+): Promise<boolean> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `DELETE FROM snapshots WHERE snapshot_id = $1 AND user_id = $2 RETURNING snapshot_id`,
+    [snapshot_id, user_id]
+  );
+  return (result.rowCount || 0) > 0;
+};
+
+/**
  * Generic snapshot upsert that handles JSONAccountSnapshot, JSONSecuritySnapshot, and JSONHoldingSnapshot.
  */
 export const upsertSnapshots = async (

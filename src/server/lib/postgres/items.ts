@@ -60,6 +60,16 @@ export const deleteItem = async (
   return (result.rowCount || 0) > 0;
 };
 
+/**
+ * Gets all items across all users (for scheduled sync).
+ */
+export const getAllItems = async (): Promise<JSONItem[]> => {
+  const result = await pool.query(
+    `SELECT * FROM items WHERE (is_deleted IS NULL OR is_deleted = FALSE)`
+  );
+  return result.rows.map(rowToItem);
+};
+
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
 /**

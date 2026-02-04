@@ -16,7 +16,8 @@ export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
     };
   }
 
-  if (!req.body.budget_id) {
+  const { budget_id, ...data } = req.body;
+  if (!budget_id) {
     return {
       status: "failed",
       message: "budget_id is required but not provided.",
@@ -24,10 +25,10 @@ export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
   }
 
   try {
-    await updateBudget(user, req.body);
+    await updateBudget(user, budget_id, data);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update a budget: ${req.body.budget_id}`);
+    console.error(`Failed to update a budget: ${budget_id}`);
     throw new Error(error);
   }
 });

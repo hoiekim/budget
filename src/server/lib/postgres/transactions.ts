@@ -452,17 +452,18 @@ export const deleteInvestmentTransactions = async (
 
 /**
  * Searches transactions by account IDs within a date range.
+ * Returns both regular and investment transactions.
  */
 export const searchTransactionsByAccountId = async (
   user: MaskedUser,
   account_ids: string[],
   range?: { start: Date; end: Date }
-): Promise<JSONTransaction[]> => {
-  if (!account_ids.length) return [];
+): Promise<{ transactions: JSONTransaction[]; investment_transactions: JSONInvestmentTransaction[] }> => {
+  if (!account_ids.length) return { transactions: [], investment_transactions: [] };
   const { user_id } = user;
   
   const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const conditions = [
+  const baseConditions = [
     "user_id = $1",
     `account_id IN (${placeholders})`,
     "(is_deleted IS NULL OR is_deleted = FALSE)"
@@ -470,20 +471,33 @@ export const searchTransactionsByAccountId = async (
   const values: any[] = [user_id, ...account_ids];
   let paramIndex = account_ids.length + 2;
   
+  const rangeConditions: string[] = [];
   if (range) {
-    conditions.push(`date >= $${paramIndex}`);
+    rangeConditions.push(`date >= $${paramIndex}`);
     values.push(range.start.toISOString().split('T')[0]);
     paramIndex++;
     
-    conditions.push(`date <= $${paramIndex}`);
+    rangeConditions.push(`date <= $${paramIndex}`);
     values.push(range.end.toISOString().split('T')[0]);
   }
   
-  const result = await pool.query(
-    `SELECT * FROM transactions WHERE ${conditions.join(" AND ")} ORDER BY date DESC`,
-    values
-  );
-  return result.rows.map(rowToTransaction);
+  const allConditions = [...baseConditions, ...rangeConditions];
+  
+  const [txResult, invTxResult] = await Promise.all([
+    pool.query(
+      `SELECT * FROM transactions WHERE ${allConditions.join(" AND ")} ORDER BY date DESC`,
+      values
+    ),
+    pool.query(
+      `SELECT * FROM investment_transactions WHERE ${allConditions.join(" AND ")} ORDER BY date DESC`,
+      values
+    ),
+  ]);
+  
+  return {
+    transactions: txResult.rows.map(rowToTransaction),
+    investment_transactions: invTxResult.rows.map(rowToInvestmentTx),
+  };
 };
 
 // =====================================
@@ -653,11 +667,12 @@ export const deleteSplitTransactionsByTransactionId = async (
 
 /**
  * Searches transactions with flexible options.
+ * Returns both regular and investment transactions.
  */
 export const searchTransactions = async (
   user: MaskedUser,
   options: SearchTransactionsOptions = {}
-): Promise<JSONTransaction[]> => {
+): Promise<{ transactions: JSONTransaction[]; investment_transactions: JSONInvestmentTransaction[] }> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
   const values: any[] = [user_id];
@@ -694,21 +709,31 @@ export const searchTransactions = async (
     paramIndex++;
   }
 
-  let query = `SELECT * FROM transactions WHERE ${conditions.join(" AND ")} ORDER BY date DESC`;
+  let txQuery = `SELECT * FROM transactions WHERE ${conditions.join(" AND ")} ORDER BY date DESC`;
+  let invTxQuery = `SELECT * FROM investment_transactions WHERE ${conditions.join(" AND ")} ORDER BY date DESC`;
 
   if (options.limit) {
-    query += ` LIMIT $${paramIndex}`;
+    txQuery += ` LIMIT $${paramIndex}`;
+    invTxQuery += ` LIMIT $${paramIndex}`;
     values.push(options.limit);
     paramIndex++;
   }
 
   if (options.offset) {
-    query += ` OFFSET $${paramIndex}`;
+    txQuery += ` OFFSET $${paramIndex}`;
+    invTxQuery += ` OFFSET $${paramIndex}`;
     values.push(options.offset);
   }
 
-  const result = await pool.query(query, values);
-  return result.rows.map(rowToTransaction);
+  const [txResult, invTxResult] = await Promise.all([
+    pool.query(txQuery, values),
+    pool.query(invTxQuery, values),
+  ]);
+
+  return {
+    transactions: txResult.rows.map(rowToTransaction),
+    investment_transactions: invTxResult.rows.map(rowToInvestmentTx),
+  };
 };
 
 /**

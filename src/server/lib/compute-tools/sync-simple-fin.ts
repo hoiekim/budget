@@ -90,16 +90,19 @@ export const syncSimpleFinData = async (item_id: string) => {
   });
 
   const removedTransactionIds = removedTransactions.map((t) => t.transaction_id);
+  const removedInvestmentTransactionIds = removedInvestmentTransaction.map((t) => t.investment_transaction_id);
 
   await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
   await upsertAccounts(user, otherAccounts);
   await processHoldingsPromise;
   await upsertInstitutions(institutions);
   await upsertTransactions(user, transactions);
-  await deleteTransactions(user, removedTransactions);
-  await deleteSplitTransactionsByTransactionId(user, removedTransactionIds);
+  await deleteTransactions(user, removedTransactionIds);
+  for (const txId of removedTransactionIds) {
+    await deleteSplitTransactionsByTransactionId(user, txId);
+  }
   await upsertInvestmentTransactions(user, investmentTransactions);
-  await deleteInvestmentTransactions(user, removedInvestmentTransaction);
+  await deleteInvestmentTransactions(user, removedInvestmentTransactionIds);
 
   const updated = getDateString();
   await upsertItems(user, [{ ...item, updated }]);

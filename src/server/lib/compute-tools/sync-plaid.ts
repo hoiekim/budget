@@ -52,7 +52,8 @@ export const syncPlaidTransactions = async (item_id: string) => {
   const syncTransactions =
     item.available_products.includes(Products.Transactions) &&
     plaid.getTransactions(user, [item]).then(async (r) => {
-      const storedTransactions = (await storedTransactionsPromise) || [];
+      const storedData = (await storedTransactionsPromise) || { transactions: [], investment_transactions: [] };
+      const storedTransactions = storedData.transactions;
 
       const { items, added, removed, modified } = r;
 
@@ -61,7 +62,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         const { authorized_date: auth_date, date } = e;
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
-        const existing = storedTransactions.find((f) => {
+        const existing = storedTransactions.find((f: JSONTransaction) => {
           const idMatches = [f.transaction_id, f.pending_transaction_id].includes(e.transaction_id);
           const accountMatches = e.account_id === f.account_id;
           const nameMatches = e.name === f.name;
