@@ -5,7 +5,7 @@ export type NewBudgetGetResponse = { budget_id: string };
 export const getNewBudgetRoute = new Route<NewBudgetGetResponse>(
   "GET",
   "/new-budget",
-  async (req, res) => {
+  async (req) => {
     const { user } = req.session;
     if (!user) {
       return {
@@ -14,7 +14,10 @@ export const getNewBudgetRoute = new Route<NewBudgetGetResponse>(
       };
     }
 
-    const response = await createBudget(user);
-    return { status: "success", body: { budget_id: response._id } };
+    const response = await createBudget(user, {});
+    if (!response) {
+      return { status: "failed", message: "Failed to create budget." };
+    }
+    return { status: "success", body: { budget_id: response.budget_id } };
   }
 );

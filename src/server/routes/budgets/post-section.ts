@@ -16,7 +16,8 @@ export const postSectionRoute = new Route("POST", "/section", async (req) => {
     };
   }
 
-  if (!req.body.section_id) {
+  const { section_id, ...data } = req.body;
+  if (!section_id) {
     return {
       status: "failed",
       message: "section_id is required but not provided.",
@@ -24,10 +25,10 @@ export const postSectionRoute = new Route("POST", "/section", async (req) => {
   }
 
   try {
-    await updateSection(user, req.body);
+    await updateSection(user, section_id, data);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update a section: ${req.body.section_id}`);
+    console.error(`Failed to update a section: ${section_id}`);
     throw new Error(error);
   }
 });

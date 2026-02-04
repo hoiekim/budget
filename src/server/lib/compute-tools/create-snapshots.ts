@@ -96,7 +96,8 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
 
   await upsertHoldings(user, incomingHoldings);
   await upsertSnapshots(snapshots);
-  await deleteHoldings(user, removedHoldings);
+  const removedHoldingIds = removedHoldings.map(h => h.holding_id);
+  await deleteHoldings(user, removedHoldingIds);
 };
 
 export const upsertSecuritiesWithSnapshots = async (securities: JSONSecurity[]) => {

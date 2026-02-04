@@ -16,7 +16,8 @@ export const postChartRoute = new Route("POST", "/chart", async (req) => {
     };
   }
 
-  if (!req.body.chart_id) {
+  const { chart_id, ...data } = req.body;
+  if (!chart_id) {
     return {
       status: "failed",
       message: "chart_id is required but not provided.",
@@ -24,10 +25,10 @@ export const postChartRoute = new Route("POST", "/chart", async (req) => {
   }
 
   try {
-    await updateChart(user, req.body);
+    await updateChart(user, chart_id, data);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update a chart_id: ${req.body.chart_id}`);
+    console.error(`Failed to update a chart: ${chart_id}`);
     throw new Error(error);
   }
 });

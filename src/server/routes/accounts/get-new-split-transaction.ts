@@ -18,8 +18,12 @@ export const getNewSplitTransactionRoute = new Route<NewSplitTransactionGetRespo
     if (!transaction_id) throw new Error("transaction_id is required but not provided.");
     const account_id = req.query.account_id as string;
     if (!account_id) throw new Error("account_id is required but not provided.");
-    const response = await createSplitTransaction(user, transaction_id, account_id);
+    
+    const response = await createSplitTransaction(user, { transaction_id, account_id });
+    if (!response) {
+      return { status: "failed", message: "Failed to create split transaction." };
+    }
 
-    return { status: "success", body: { split_transaction_id: response._id } };
+    return { status: "success", body: { split_transaction_id: response.split_transaction_id } };
   }
 );
