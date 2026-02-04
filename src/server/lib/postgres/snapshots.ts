@@ -448,3 +448,113 @@ export const aggregateAccountSnapshots = async (
     total_available: parseFloat(row.total_available) || 0,
   }));
 };
+
+/**
+ * Generic snapshot upsert that handles JSONAccountSnapshot, JSONSecuritySnapshot, and JSONHoldingSnapshot.
+ */
+export const upsertSnapshots = async (
+  snapshots: any[]
+) => {
+  if (!snapshots.length) return [];
+  const results: { update: { _id: string }; status: number }[] = [];
+
+  for (const snapshotData of snapshots) {
+    const { snapshot } = snapshotData;
+    if (!snapshot?.snapshot_id) continue;
+
+    try {
+      // Determine type based on what's present
+      if (snapshotData.account) {
+        // Account snapshot
+        const { account } = snapshotData;
+        await pool.query(
+          `INSERT INTO snapshots (
+            snapshot_id, user_id, snapshot_date, snapshot_type, account_id,
+            balances_available, balances_current, balances_limit, balances_iso_currency_code,
+            data, updated
+          ) VALUES ($1, $2, $3, 'account_balance', $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+          ON CONFLICT (snapshot_id) DO UPDATE SET
+            balances_available = COALESCE($5, snapshots.balances_available),
+            balances_current = COALESCE($6, snapshots.balances_current),
+            balances_limit = COALESCE($7, snapshots.balances_limit),
+            data = $9,
+            updated = CURRENT_TIMESTAMP`,
+          [
+            snapshot.snapshot_id,
+            account.user_id,
+            snapshot.date,
+            account.account_id,
+            account.balances?.available,
+            account.balances?.current,
+            account.balances?.limit,
+            account.balances?.iso_currency_code,
+            JSON.stringify({ snapshot, account }),
+          ]
+        );
+      } else if (snapshotData.security) {
+        // Security snapshot
+        const { security } = snapshotData;
+        await pool.query(
+          `INSERT INTO snapshots (
+            snapshot_id, snapshot_date, snapshot_type, security_id, close_price,
+            data, updated
+          ) VALUES ($1, $2, 'security', $3, $4, $5, CURRENT_TIMESTAMP)
+          ON CONFLICT (snapshot_id) DO UPDATE SET
+            close_price = COALESCE($4, snapshots.close_price),
+            data = $5,
+            updated = CURRENT_TIMESTAMP`,
+          [
+            snapshot.snapshot_id,
+            snapshot.date,
+            security.security_id,
+            security.close_price,
+            JSON.stringify({ snapshot, security }),
+          ]
+        );
+      } else if (snapshotData.holding) {
+        // Holding snapshot
+        const { holding } = snapshotData;
+        await pool.query(
+          `INSERT INTO snapshots (
+            snapshot_id, user_id, snapshot_date, snapshot_type,
+            holding_account_id, holding_security_id,
+            institution_price, institution_value, cost_basis, quantity,
+            data, updated
+          ) VALUES ($1, $2, $3, 'holding', $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+          ON CONFLICT (snapshot_id) DO UPDATE SET
+            institution_price = COALESCE($6, snapshots.institution_price),
+            institution_value = COALESCE($7, snapshots.institution_value),
+            cost_basis = COALESCE($8, snapshots.cost_basis),
+            quantity = COALESCE($9, snapshots.quantity),
+            data = $10,
+            updated = CURRENT_TIMESTAMP`,
+          [
+            snapshot.snapshot_id,
+            holding.user_id,
+            snapshot.date,
+            holding.account_id,
+            holding.security_id,
+            holding.institution_price,
+            holding.institution_value,
+            holding.cost_basis,
+            holding.quantity,
+            JSON.stringify({ snapshot, holding }),
+          ]
+        );
+      }
+
+      results.push({
+        update: { _id: snapshot.snapshot_id },
+        status: 200,
+      });
+    } catch (error: any) {
+      console.error(`Failed to upsert snapshot ${snapshot.snapshot_id}:`, error.message);
+      results.push({
+        update: { _id: snapshot.snapshot_id },
+        status: 500,
+      });
+    }
+  }
+
+  return results;
+};

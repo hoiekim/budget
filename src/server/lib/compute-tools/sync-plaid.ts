@@ -15,6 +15,7 @@ import {
   plaid,
   getUserItem,
   upsertInvestmentTransactions,
+  getInvestmentTransactions,
   upsertItems,
   upsertTransactions,
   searchAccountsByItemId,
@@ -51,8 +52,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
   const syncTransactions =
     item.available_products.includes(Products.Transactions) &&
     plaid.getTransactions(user, [item]).then(async (r) => {
-      const storedTransactionsResult = await storedTransactionsPromise;
-      const storedTransactions = storedTransactionsResult?.transactions || [];
+      const storedTransactions = (await storedTransactionsPromise) || [];
 
       const { items, added, removed, modified } = r;
 
@@ -78,8 +78,8 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),
-        deleteTransactions(user, removed),
-        deleteSplitTransactionsByTransactionId(user, removedTransactionIds),
+        deleteTransactions(user, removedTransactionIds),
+        ...removedTransactionIds.map(txId => deleteSplitTransactionsByTransactionId(user, txId)),
       ];
 
       const updated = getDateString();
@@ -112,8 +112,11 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const filledInvestments = investmentTransactions.map(fillDateStrings);
 
-      const storedTransactionsResult = await storedTransactionsPromise;
-      const storedInvestmentTransactions = storedTransactionsResult?.investment_transactions || [];
+      // Get stored investment transactions (different from regular transactions)
+      const storedInvestmentTransactions = await getInvestmentTransactions(user, {
+        startDate: getTwoYearsAgo().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
+      }) || [];
 
       const removed: RemovedInvestmentTransaction[] = [];
 
@@ -134,9 +137,10 @@ export const syncPlaidTransactions = async (item_id: string) => {
         }
       });
 
+      const removedIds = removed.map(r => r.investment_transaction_id);
       const updateJobs = [
         upsertInvestmentTransactions(user, filledInvestments),
-        deleteInvestmentTransactions(user, removed),
+        deleteInvestmentTransactions(user, removedIds),
       ];
 
       const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));

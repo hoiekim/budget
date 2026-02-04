@@ -143,3 +143,29 @@ export const updateUser = async (user: PartialUser) => {
 
   return result;
 };
+
+/**
+ * Gets a user by ID.
+ * @param user_id
+ * @returns A promise with the user or undefined
+ */
+export const getUserById = async (user_id: string): Promise<User | undefined> => {
+  const result = await pool.query<User>(
+    `SELECT user_id, username, password FROM users WHERE user_id = $1`,
+    [user_id]
+  );
+  return result.rows[0];
+};
+
+/**
+ * Deletes a user by ID.
+ * @param user_id
+ * @returns A promise with true if deleted, false otherwise
+ */
+export const deleteUser = async (user_id: string): Promise<boolean> => {
+  const result = await pool.query(
+    `DELETE FROM users WHERE user_id = $1 RETURNING user_id`,
+    [user_id]
+  );
+  return (result.rowCount || 0) > 0;
+};

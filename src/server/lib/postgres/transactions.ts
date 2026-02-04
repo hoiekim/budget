@@ -414,6 +414,63 @@ export const getInvestmentTransactions = async (
   return result.rows.map(rowToInvestmentTx);
 };
 
+/**
+ * Deletes investment transactions (soft delete).
+ */
+export const deleteInvestmentTransactions = async (
+  user: MaskedUser,
+  investment_transaction_ids: string[]
+): Promise<{ deleted: number }> => {
+  if (!investment_transaction_ids.length) return { deleted: 0 };
+  const { user_id } = user;
+  
+  const placeholders = investment_transaction_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `UPDATE investment_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE investment_transaction_id IN (${placeholders}) AND user_id = $1
+     RETURNING investment_transaction_id`,
+    [user_id, ...investment_transaction_ids]
+  );
+  
+  return { deleted: result.rowCount || 0 };
+};
+
+/**
+ * Searches transactions by account IDs within a date range.
+ */
+export const searchTransactionsByAccountId = async (
+  user: MaskedUser,
+  account_ids: string[],
+  range?: { start: Date; end: Date }
+): Promise<JSONTransaction[]> => {
+  if (!account_ids.length) return [];
+  const { user_id } = user;
+  
+  const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const conditions = [
+    "user_id = $1",
+    `account_id IN (${placeholders})`,
+    "(is_deleted IS NULL OR is_deleted = FALSE)"
+  ];
+  const values: any[] = [user_id, ...account_ids];
+  let paramIndex = account_ids.length + 2;
+  
+  if (range) {
+    conditions.push(`date >= $${paramIndex}`);
+    values.push(range.start.toISOString().split('T')[0]);
+    paramIndex++;
+    
+    conditions.push(`date <= $${paramIndex}`);
+    values.push(range.end.toISOString().split('T')[0]);
+  }
+  
+  const result = await pool.query(
+    `SELECT * FROM transactions WHERE ${conditions.join(" AND ")} ORDER BY date DESC`,
+    values
+  );
+  return result.rows.map(rowToTransaction);
+};
+
 // =====================================
 // Split Transactions
 // =====================================
@@ -555,6 +612,25 @@ export const deleteSplitTransactions = async (
      WHERE split_transaction_id IN (${placeholders}) AND user_id = $1
      RETURNING split_transaction_id`,
     [user_id, ...split_transaction_ids]
+  );
+  
+  return { deleted: result.rowCount || 0 };
+};
+
+/**
+ * Deletes split transactions by parent transaction ID (soft delete).
+ */
+export const deleteSplitTransactionsByTransactionId = async (
+  user: MaskedUser,
+  transaction_id: string
+): Promise<{ deleted: number }> => {
+  const { user_id } = user;
+  
+  const result = await pool.query(
+    `UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE transaction_id = $1 AND user_id = $2
+     RETURNING split_transaction_id`,
+    [transaction_id, user_id]
   );
   
   return { deleted: result.rowCount || 0 };

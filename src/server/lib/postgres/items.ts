@@ -233,3 +233,29 @@ export const getItemsByInstitution = async (
   );
   return result.rows.map(rowToItem);
 };
+
+/**
+ * Gets an item along with its user information.
+ */
+export const getUserItem = async (
+  item_id: string
+): Promise<{ user: MaskedUser; item: JSONItem } | null> => {
+  const result = await pool.query(
+    `SELECT i.*, u.username 
+     FROM items i 
+     JOIN users u ON i.user_id = u.user_id
+     WHERE i.item_id = $1 AND (i.is_deleted IS NULL OR i.is_deleted = FALSE)`,
+    [item_id]
+  );
+  
+  if (result.rows.length === 0) return null;
+  
+  const row = result.rows[0];
+  return {
+    user: {
+      user_id: row.user_id,
+      username: row.username,
+    },
+    item: rowToItem(row),
+  };
+};
