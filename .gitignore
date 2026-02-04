@@ -25,3 +25,5 @@ yarn-error.log*
 init_db.js
 es_data.json
 init_db.js
+backup_*.json
+fix_charts.js
