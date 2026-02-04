@@ -6,7 +6,7 @@ overrideConsoleLog();
 import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
-import { initializeIndex, ElasticsearchSessionStore, scheduledSync } from "server";
+import { initializeIndex, PostgresSessionStore, scheduledSync } from "server";
 import * as routes from "server/routes";
 
 const app = express();
@@ -24,7 +24,7 @@ app.use(
       sameSite: "strict",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
-    store: new ElasticsearchSessionStore(),
+    store: new PostgresSessionStore(),
   })
 );
 

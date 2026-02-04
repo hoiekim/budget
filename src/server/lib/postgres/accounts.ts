@@ -333,6 +333,27 @@ export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
   return result.rows.map(rowToHolding);
 };
 
+/**
+ * Deletes holdings (soft delete).
+ */
+export const deleteHoldings = async (
+  user: MaskedUser,
+  holding_ids: string[]
+): Promise<{ deleted: number }> => {
+  if (!holding_ids.length) return { deleted: 0 };
+  const { user_id } = user;
+  
+  const placeholders = holding_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `UPDATE holdings SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE holding_id IN (${placeholders}) AND user_id = $1
+     RETURNING holding_id`,
+    [user_id, ...holding_ids]
+  );
+  
+  return { deleted: result.rowCount || 0 };
+};
+
 // =====================================
 // Institutions operations
 // =====================================
@@ -529,4 +550,47 @@ export const getSecurity = async (security_id: string): Promise<JSONSecurity | n
     [security_id]
   );
   return result.rows.length > 0 ? rowToSecurity(result.rows[0]) : null;
+};
+
+/**
+ * Searches securities by IDs.
+ */
+export const searchSecurities = async (security_ids: string[]): Promise<JSONSecurity[]> => {
+  if (!security_ids.length) return [];
+  
+  const placeholders = security_ids.map((_, i) => `$${i + 1}`).join(", ");
+  const result = await pool.query(
+    `SELECT * FROM securities WHERE security_id IN (${placeholders})`,
+    security_ids
+  );
+  return result.rows.map(rowToSecurity);
+};
+
+/**
+ * Searches accounts by item_id (alias for getAccountsByItem).
+ */
+export const searchAccountsByItemId = async (
+  user: MaskedUser,
+  item_id: string
+): Promise<JSONAccount[]> => {
+  return getAccountsByItem(user, item_id);
+};
+
+/**
+ * Searches holdings by account IDs.
+ */
+export const searchHoldingsByAccountId = async (
+  user: MaskedUser,
+  account_ids: string[]
+): Promise<JSONHolding[]> => {
+  if (!account_ids.length) return [];
+  const { user_id } = user;
+  
+  const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `SELECT * FROM holdings 
+     WHERE account_id IN (${placeholders}) AND user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [user_id, ...account_ids]
+  );
+  return result.rows.map(rowToHolding);
 };

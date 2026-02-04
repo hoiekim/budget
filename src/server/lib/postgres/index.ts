@@ -10,8 +10,8 @@ export { pool } from "./client";
 export { initializeIndex, version, index } from "./initialize";
 
 // Users & Sessions
+export type { MaskedUser } from "./users";
 export {
-  MaskedUser,
   searchUser,
   indexUser,
   deleteUser,
@@ -19,6 +19,7 @@ export {
 } from "./users";
 
 export {
+  PostgresSessionStore,
   getSession,
   setSession,
   destroySession,
@@ -34,6 +35,7 @@ export {
   updateItemCursor,
   updateItemStatus,
   getItemsByInstitution,
+  getUserItem,
 } from "./items";
 
 // Accounts, Holdings, Institutions, Securities
@@ -43,13 +45,17 @@ export {
   getAccount,
   deleteAccounts,
   getAccountsByItem,
+  searchAccountsByItemId,
   upsertHoldings,
   getHoldings,
+  deleteHoldings,
+  searchHoldingsByAccountId,
   upsertInstitutions,
   getInstitution,
   upsertSecurities,
   getSecurities,
   getSecurity,
+  searchSecurities,
 } from "./accounts";
 
 // Transactions
@@ -58,11 +64,14 @@ export {
   getTransactions,
   getTransaction,
   deleteTransactions,
+  searchTransactionsByAccountId,
   upsertInvestmentTransactions,
   getInvestmentTransactions,
+  deleteInvestmentTransactions,
   upsertSplitTransactions,
   getSplitTransactions,
   deleteSplitTransactions,
+  deleteSplitTransactionsByTransactionId,
 } from "./transactions";
 
 // Budgets, Sections, Categories
@@ -84,6 +93,7 @@ export {
   upsertAccountSnapshots,
   upsertSecuritySnapshots,
   upsertHoldingSnapshots,
+  upsertSnapshots,
   getAccountSnapshots,
   getSecuritySnapshots,
   getHoldingSnapshots,

@@ -1,4 +1,4 @@
-import { JSONBudget, JSONSection, JSONCategory, Capacity } from "common";
+import { JSONBudget, JSONSection, JSONCategory, JSONCapacity } from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
 

@@ -1,51 +1,34 @@
 /**
  * Migration Tool: Elasticsearch to PostgreSQL
  * 
- * This script migrates data from an Elasticsearch index to PostgreSQL.
+ * This script migrates data from an Elasticsearch JSON dump to PostgreSQL.
  * 
  * Usage:
  *   npx ts-node src/tools/migrate-es-to-postgres.ts
  * 
  * Environment Variables:
- *   ES_HOST - Elasticsearch host (default: localhost)
- *   ES_PORT - Elasticsearch port (default: 9200)
- *   ES_USER - Elasticsearch username (default: elastic)
- *   ES_PASSWORD - Elasticsearch password (default: elastic)
- *   ES_INDEX - Elasticsearch index name (default: budget-6)
+ *   ES_JSON_FILE - Path to JSON file with ES data (default: es_data.json)
  *   POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE
  */
 
 import { Pool } from "pg";
+import * as fs from "fs";
+import * as path from "path";
 
 interface ESHit {
   _id: string;
   _source: Record<string, any>;
 }
 
-interface ESScrollResponse {
-  _scroll_id: string;
-  hits: {
-    total: { value: number };
-    hits: ESHit[];
-  };
-}
-
-// Elasticsearch configuration
-const ES_HOST = process.env.ES_HOST || "localhost";
-const ES_PORT = process.env.ES_PORT || "9200";
-const ES_USER = process.env.ES_USER || "elastic";
-const ES_PASSWORD = process.env.ES_PASSWORD || "elastic";
-const ES_INDEX = process.env.ES_INDEX || "budget-6";
-
-const esBaseUrl = `http://${ES_HOST}:${ES_PORT}`;
-const esAuth = Buffer.from(`${ES_USER}:${ES_PASSWORD}`).toString("base64");
+// JSON file with ES data
+const ES_JSON_FILE = process.env.ES_JSON_FILE || path.join(__dirname, "../../es_data.json");
 
 // PostgreSQL configuration
 const pgPool = new Pool({
   host: process.env.POSTGRES_HOST || "localhost",
   port: parseInt(process.env.POSTGRES_PORT || "5432", 10),
-  user: process.env.POSTGRES_USER || "postgres",
-  password: process.env.POSTGRES_PASSWORD || "postgres",
+  user: process.env.POSTGRES_USER || "budget",
+  password: process.env.POSTGRES_PASSWORD || "budget",
   database: process.env.POSTGRES_DATABASE || "budget",
 });
 
@@ -56,27 +39,6 @@ function initStats(type: string) {
   if (!stats[type]) {
     stats[type] = { migrated: 0, errors: 0 };
   }
-}
-
-async function esRequest(
-  path: string,
-  method: string = "GET",
-  body?: object
-): Promise<any> {
-  const res = await fetch(`${esBaseUrl}${path}`, {
-    method,
-    headers: {
-      Authorization: `Basic ${esAuth}`,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!res.ok) {
-    throw new Error(`ES request failed: ${res.status} ${await res.text()}`);
-  }
-
-  return res.json();
 }
 
 // Maps ES user_id to PostgreSQL UUID
@@ -591,19 +553,21 @@ async function migrate(): Promise<void> {
   console.log("========================================");
   console.log("Elasticsearch to PostgreSQL Migration");
   console.log("========================================");
-  console.log(`ES: ${esBaseUrl}/${ES_INDEX}`);
+  console.log(`JSON File: ${ES_JSON_FILE}`);
   console.log(`PG: ${process.env.POSTGRES_HOST || "localhost"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DATABASE || "budget"}`);
   console.log("========================================\n");
 
-  // Test connections
-  try {
-    await esRequest("/");
-    console.log("✓ Elasticsearch connection OK");
-  } catch (error: any) {
-    console.error("✗ Elasticsearch connection failed:", error.message);
+  // Load JSON data
+  console.log("Loading JSON data...");
+  if (!fs.existsSync(ES_JSON_FILE)) {
+    console.error(`JSON file not found: ${ES_JSON_FILE}`);
     process.exit(1);
   }
+  
+  const jsonData = JSON.parse(fs.readFileSync(ES_JSON_FILE, "utf-8")) as ESHit[];
+  console.log(`✓ Loaded ${jsonData.length} documents from JSON file`);
 
+  // Test PostgreSQL connection
   try {
     const client = await pgPool.connect();
     client.release();
@@ -613,117 +577,60 @@ async function migrate(): Promise<void> {
     process.exit(1);
   }
 
-  // Get total document count
-  const countRes = await esRequest(`/${ES_INDEX}/_count`);
-  const totalDocs = countRes.count;
+  const totalDocs = jsonData.length;
   console.log(`\nTotal documents to migrate: ${totalDocs}\n`);
+
+  // Group documents by type
+  const docsByType: Record<string, ESHit[]> = {};
+  for (const doc of jsonData) {
+    const type = doc._source.type || "unknown";
+    if (!docsByType[type]) docsByType[type] = [];
+    docsByType[type].push(doc);
+  }
+
+  console.log("Document types found:");
+  for (const [type, docs] of Object.entries(docsByType)) {
+    console.log(`  ${type}: ${docs.length}`);
+  }
+  console.log("");
 
   // Phase 1: Migrate users first (need IDs for foreign keys)
   console.log("Phase 1: Migrating users...");
-  let scrollRes: ESScrollResponse = await esRequest(
-    `/${ES_INDEX}/_search?scroll=2m`,
-    "POST",
-    {
-      size: 1000,
-      query: { term: { type: "user" } },
-    }
-  );
-
-  let scrollId = scrollRes._scroll_id;
-  let processed = 0;
-
-  while (scrollRes.hits.hits.length > 0) {
-    for (const hit of scrollRes.hits.hits) {
-      await migrateDocument(hit);
-      processed++;
-    }
-
-    scrollRes = await esRequest("/_search/scroll", "POST", {
-      scroll: "2m",
-      scroll_id: scrollId,
-    });
-    scrollId = scrollRes._scroll_id;
+  for (const doc of docsByType.user || []) {
+    await migrateDocument(doc);
   }
-
   console.log(`  Users migrated: ${stats.user?.migrated || 0}`);
 
   // Phase 2: Migrate budgets (before sections and categories)
   console.log("Phase 2: Migrating budgets...");
-  scrollRes = await esRequest(`/${ES_INDEX}/_search?scroll=2m`, "POST", {
-    size: 1000,
-    query: { term: { type: "budget" } },
-  });
-  scrollId = scrollRes._scroll_id;
-
-  while (scrollRes.hits.hits.length > 0) {
-    for (const hit of scrollRes.hits.hits) {
-      await migrateDocument(hit);
-      processed++;
-    }
-    scrollRes = await esRequest("/_search/scroll", "POST", {
-      scroll: "2m",
-      scroll_id: scrollId,
-    });
-    scrollId = scrollRes._scroll_id;
+  for (const doc of docsByType.budget || []) {
+    await migrateDocument(doc);
   }
-
   console.log(`  Budgets migrated: ${stats.budget?.migrated || 0}`);
 
   // Phase 3: Migrate sections (before categories)
   console.log("Phase 3: Migrating sections...");
-  scrollRes = await esRequest(`/${ES_INDEX}/_search?scroll=2m`, "POST", {
-    size: 1000,
-    query: { term: { type: "section" } },
-  });
-  scrollId = scrollRes._scroll_id;
-
-  while (scrollRes.hits.hits.length > 0) {
-    for (const hit of scrollRes.hits.hits) {
-      await migrateDocument(hit);
-      processed++;
-    }
-    scrollRes = await esRequest("/_search/scroll", "POST", {
-      scroll: "2m",
-      scroll_id: scrollId,
-    });
-    scrollId = scrollRes._scroll_id;
+  for (const doc of docsByType.section || []) {
+    await migrateDocument(doc);
   }
-
   console.log(`  Sections migrated: ${stats.section?.migrated || 0}`);
 
   // Phase 4: Migrate remaining documents
   console.log("Phase 4: Migrating remaining documents...");
-  scrollRes = await esRequest(`/${ES_INDEX}/_search?scroll=2m`, "POST", {
-    size: 1000,
-    query: {
-      bool: {
-        must_not: [
-          { term: { type: "user" } },
-          { term: { type: "budget" } },
-          { term: { type: "section" } },
-        ],
-      },
-    },
-  });
-  scrollId = scrollRes._scroll_id;
+  const skipTypes = new Set(["user", "budget", "section"]);
+  let processed = (docsByType.user?.length || 0) + (docsByType.budget?.length || 0) + (docsByType.section?.length || 0);
 
-  let batchCount = 0;
-  while (scrollRes.hits.hits.length > 0) {
-    for (const hit of scrollRes.hits.hits) {
-      await migrateDocument(hit);
+  for (const [type, docs] of Object.entries(docsByType)) {
+    if (skipTypes.has(type)) continue;
+    
+    for (const doc of docs) {
+      await migrateDocument(doc);
       processed++;
+      
+      if (processed % 1000 === 0) {
+        console.log(`  Processed ${processed} / ${totalDocs} documents...`);
+      }
     }
-
-    batchCount++;
-    if (batchCount % 10 === 0) {
-      console.log(`  Processed ${processed} / ${totalDocs} documents...`);
-    }
-
-    scrollRes = await esRequest("/_search/scroll", "POST", {
-      scroll: "2m",
-      scroll_id: scrollId,
-    });
-    scrollId = scrollRes._scroll_id;
   }
 
   // Print summary
