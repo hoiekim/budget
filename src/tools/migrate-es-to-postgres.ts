@@ -253,15 +253,114 @@ async function migrateTransaction(doc: Record<string, any>): Promise<void> {
 
   try {
     const label = transaction.label || {};
-    const data = { ...transaction };
-    delete data.label;
-    delete data.user_id;
+    const location = transaction.location || {};
+    const paymentMeta = transaction.payment_meta || {};
+    
+    // Map label IDs - need to map ES IDs to PostgreSQL UUIDs
+    let labelBudgetId = null;
+    let labelCategoryId = null;
+    if (label.budget_id) {
+      labelBudgetId = budgetIdMap.get(label.budget_id) || null;
+    }
+    if (label.category_id) {
+      labelCategoryId = categoryIdMap.get(label.category_id) || null;
+    }
 
     await pgPool.query(
-      `INSERT INTO transactions (transaction_id, user_id, label, data, updated)
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-       ON CONFLICT (transaction_id) DO UPDATE SET label = $3, data = $4, user_id = $2`,
-      [transaction.transaction_id, pgUserId, JSON.stringify(label), JSON.stringify(data)]
+      `INSERT INTO transactions (
+        transaction_id, user_id, account_id, pending_transaction_id,
+        category_id, category, account_owner, name, amount,
+        iso_currency_code, unofficial_currency_code, date, pending,
+        payment_channel, authorized_date, authorized_datetime, datetime,
+        transaction_code, location_address, location_city, location_region,
+        location_postal_code, location_country, location_store_number,
+        location_lat, location_lon, payment_meta_reference_number,
+        payment_meta_ppd_id, payment_meta_payee, payment_meta_by_order_of,
+        payment_meta_payer, payment_meta_payment_method,
+        payment_meta_payment_processor, payment_meta_reason,
+        label_budget_id, label_category_id, label_memo, updated
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+        $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32,
+        $33, $34, $35, $36, $37, CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (transaction_id) DO UPDATE SET
+        account_id = EXCLUDED.account_id,
+        pending_transaction_id = EXCLUDED.pending_transaction_id,
+        category_id = EXCLUDED.category_id,
+        category = EXCLUDED.category,
+        account_owner = EXCLUDED.account_owner,
+        name = EXCLUDED.name,
+        amount = EXCLUDED.amount,
+        iso_currency_code = EXCLUDED.iso_currency_code,
+        unofficial_currency_code = EXCLUDED.unofficial_currency_code,
+        date = EXCLUDED.date,
+        pending = EXCLUDED.pending,
+        payment_channel = EXCLUDED.payment_channel,
+        authorized_date = EXCLUDED.authorized_date,
+        authorized_datetime = EXCLUDED.authorized_datetime,
+        datetime = EXCLUDED.datetime,
+        transaction_code = EXCLUDED.transaction_code,
+        location_address = EXCLUDED.location_address,
+        location_city = EXCLUDED.location_city,
+        location_region = EXCLUDED.location_region,
+        location_postal_code = EXCLUDED.location_postal_code,
+        location_country = EXCLUDED.location_country,
+        location_store_number = EXCLUDED.location_store_number,
+        location_lat = EXCLUDED.location_lat,
+        location_lon = EXCLUDED.location_lon,
+        payment_meta_reference_number = EXCLUDED.payment_meta_reference_number,
+        payment_meta_ppd_id = EXCLUDED.payment_meta_ppd_id,
+        payment_meta_payee = EXCLUDED.payment_meta_payee,
+        payment_meta_by_order_of = EXCLUDED.payment_meta_by_order_of,
+        payment_meta_payer = EXCLUDED.payment_meta_payer,
+        payment_meta_payment_method = EXCLUDED.payment_meta_payment_method,
+        payment_meta_payment_processor = EXCLUDED.payment_meta_payment_processor,
+        payment_meta_reason = EXCLUDED.payment_meta_reason,
+        label_budget_id = EXCLUDED.label_budget_id,
+        label_category_id = EXCLUDED.label_category_id,
+        label_memo = EXCLUDED.label_memo,
+        user_id = EXCLUDED.user_id,
+        updated = CURRENT_TIMESTAMP`,
+      [
+        transaction.transaction_id,
+        pgUserId,
+        transaction.account_id || null,
+        transaction.pending_transaction_id || null,
+        transaction.category_id || null,
+        transaction.category || null,
+        transaction.account_owner || null,
+        transaction.name || null,
+        transaction.amount || 0,
+        transaction.iso_currency_code || null,
+        transaction.unofficial_currency_code || null,
+        transaction.date || null,
+        transaction.pending || false,
+        transaction.payment_channel || null,
+        transaction.authorized_date || null,
+        transaction.authorized_datetime || null,
+        transaction.datetime || null,
+        transaction.transaction_code || null,
+        location.address || null,
+        location.city || null,
+        location.region || null,
+        location.postal_code || null,
+        location.country || null,
+        location.store_number || null,
+        location.lat || null,
+        location.lon || null,
+        paymentMeta.reference_number || null,
+        paymentMeta.ppd_id || null,
+        paymentMeta.payee || null,
+        paymentMeta.by_order_of || null,
+        paymentMeta.payer || null,
+        paymentMeta.payment_method || null,
+        paymentMeta.payment_processor || null,
+        paymentMeta.reason || null,
+        labelBudgetId,
+        labelCategoryId,
+        label.memo || null,
+      ]
     );
     initStats("transaction");
     stats.transaction.migrated++;
@@ -331,9 +430,10 @@ async function migrateSplitTransaction(doc: Record<string, any>): Promise<void> 
   }
 }
 
-// Map to store budget/section UUIDs
+// Map to store budget/section/category UUIDs
 const budgetIdMap = new Map<string, string>();
 const sectionIdMap = new Map<string, string>();
+const categoryIdMap = new Map<string, string>();
 
 async function migrateBudget(doc: Record<string, any>): Promise<void> {
   const budget = doc.budget;
@@ -412,12 +512,15 @@ async function migrateCategory(doc: Record<string, any>): Promise<void> {
   }
 
   try {
-    await pgPool.query(
+    const result = await pgPool.query(
       `INSERT INTO categories (user_id, section_id, name, capacities, roll_over, roll_over_start_date, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+       RETURNING category_id`,
       [pgUserId, pgSectionId, category.name || "Unnamed", 
        JSON.stringify(category.capacities || []), category.roll_over || false, category.roll_over_start_date]
     );
+    // Store the mapping from ES category_id to PostgreSQL category_id
+    categoryIdMap.set(category.category_id || doc._id, result.rows[0].category_id);
     initStats("category");
     stats.category.migrated++;
   } catch (error: any) {
@@ -615,10 +718,17 @@ async function migrate(): Promise<void> {
   }
   console.log(`  Sections migrated: ${stats.section?.migrated || 0}`);
 
-  // Phase 4: Migrate remaining documents
-  console.log("Phase 4: Migrating remaining documents...");
-  const skipTypes = new Set(["user", "budget", "section"]);
-  let processed = (docsByType.user?.length || 0) + (docsByType.budget?.length || 0) + (docsByType.section?.length || 0);
+  // Phase 4: Migrate categories (before transactions, so we can map label.category_id)
+  console.log("Phase 4: Migrating categories...");
+  for (const doc of docsByType.category || []) {
+    await migrateDocument(doc);
+  }
+  console.log(`  Categories migrated: ${stats.category?.migrated || 0}`);
+
+  // Phase 5: Migrate remaining documents
+  console.log("Phase 5: Migrating remaining documents...");
+  const skipTypes = new Set(["user", "budget", "section", "category"]);
+  let processed = (docsByType.user?.length || 0) + (docsByType.budget?.length || 0) + (docsByType.section?.length || 0) + (docsByType.category?.length || 0);
 
   for (const [type, docs] of Object.entries(docsByType)) {
     if (skipTypes.has(type)) continue;
