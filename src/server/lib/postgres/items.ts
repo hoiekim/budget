@@ -1,6 +1,64 @@
-import { JSONItem } from "common";
+import { JSONItem, ItemProvider } from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
+
+/**
+ * Searches items with optional filters.
+ */
+export const searchItems = async (
+  user: MaskedUser,
+  options: {
+    item_id?: string;
+    institution_id?: string;
+    provider?: ItemProvider;
+  } = {}
+): Promise<JSONItem[]> => {
+  const { user_id } = user;
+  const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const values: any[] = [user_id];
+  let paramIndex = 2;
+
+  if (options.item_id) {
+    conditions.push(`item_id = $${paramIndex}`);
+    values.push(options.item_id);
+    paramIndex++;
+  }
+
+  if (options.institution_id) {
+    conditions.push(`institution_id = $${paramIndex}`);
+    values.push(options.institution_id);
+    paramIndex++;
+  }
+
+  if (options.provider) {
+    conditions.push(`provider = $${paramIndex}`);
+    values.push(options.provider);
+    paramIndex++;
+  }
+
+  const result = await pool.query(
+    `SELECT * FROM items WHERE ${conditions.join(" AND ")}`,
+    values
+  );
+  return result.rows.map(rowToItem);
+};
+
+/**
+ * Deletes a single item (soft delete).
+ */
+export const deleteItem = async (
+  user: MaskedUser,
+  item_id: string
+): Promise<boolean> => {
+  const { user_id } = user;
+  const result = await pool.query(
+    `UPDATE items SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
+     WHERE item_id = $1 AND user_id = $2
+     RETURNING item_id`,
+    [item_id, user_id]
+  );
+  return (result.rowCount || 0) > 0;
+};
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 

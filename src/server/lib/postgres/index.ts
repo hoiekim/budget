@@ -12,6 +12,7 @@ export { initializeIndex, version, index } from "./initialize";
 // Users & Sessions
 export type { MaskedUser } from "./users";
 export {
+  maskUser,
   searchUser,
   indexUser,
   deleteUser,
@@ -32,10 +33,12 @@ export {
   getItem,
   getItemByAccessToken,
   deleteItems,
+  deleteItem,
   updateItemCursor,
   updateItemStatus,
   getItemsByInstitution,
   getUserItem,
+  searchItems,
 } from "./items";
 
 // Accounts, Holdings, Institutions, Securities
@@ -46,12 +49,15 @@ export {
   deleteAccounts,
   getAccountsByItem,
   searchAccountsByItemId,
+  searchAccounts,
+  searchAccountsById,
   upsertHoldings,
   getHoldings,
   deleteHoldings,
   searchHoldingsByAccountId,
   upsertInstitutions,
   getInstitution,
+  searchInstitutionById,
   upsertSecurities,
   getSecurities,
   getSecurity,
@@ -59,11 +65,13 @@ export {
 } from "./accounts";
 
 // Transactions
+export type { SearchTransactionsOptions, SearchSplitTransactionsOptions } from "./transactions";
 export {
   upsertTransactions,
   getTransactions,
   getTransaction,
   deleteTransactions,
+  searchTransactions,
   searchTransactionsByAccountId,
   upsertInvestmentTransactions,
   getInvestmentTransactions,
@@ -72,6 +80,9 @@ export {
   getSplitTransactions,
   deleteSplitTransactions,
   deleteSplitTransactionsByTransactionId,
+  searchSplitTransactions,
+  createSplitTransaction,
+  getOldestTransactionDate,
 } from "./transactions";
 
 // Budgets, Sections, Categories
@@ -80,24 +91,38 @@ export {
   getBudgets,
   getBudget,
   deleteBudgets,
+  deleteBudget,
+  searchBudgets,
+  createBudget,
+  updateBudget,
   upsertSections,
   getSections,
   deleteSections,
+  deleteSection,
+  createSection,
+  updateSection,
   upsertCategories,
   getCategories,
   deleteCategories,
+  deleteCategory,
+  createCategory,
+  updateCategory,
 } from "./budgets";
 
 // Snapshots
+export type { SearchSnapshotsOptions } from "./snapshots";
 export {
   upsertAccountSnapshots,
   upsertSecuritySnapshots,
   upsertHoldingSnapshots,
   upsertSnapshots,
+  searchSnapshots,
   getAccountSnapshots,
   getSecuritySnapshots,
   getHoldingSnapshots,
   deleteOldSnapshots,
+  deleteSnapshotsByAccount,
+  deleteSnapshotsByUser,
   getLatestAccountSnapshots,
   aggregateAccountSnapshots,
 } from "./snapshots";
@@ -108,6 +133,10 @@ export {
   getCharts,
   getChart,
   deleteCharts,
+  deleteChart,
+  searchCharts,
+  createChart,
+  updateChart,
 } from "./charts";
 
 // Utilities
