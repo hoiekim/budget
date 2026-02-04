@@ -236,9 +236,9 @@ export const getAccountSnapshots = async (
     snapshot_id: row.snapshot_id,
     snapshot_date: row.snapshot_date,
     account_id: row.account_id,
-    balances_available: row.balances_available ? parseFloat(row.balances_available) : undefined,
-    balances_current: row.balances_current ? parseFloat(row.balances_current) : undefined,
-    balances_limit: row.balances_limit ? parseFloat(row.balances_limit) : undefined,
+    balances_available: row.balances_available != null ? Number(row.balances_available) : undefined,
+    balances_current: row.balances_current != null ? Number(row.balances_current) : undefined,
+    balances_limit: row.balances_limit != null ? Number(row.balances_limit) : undefined,
     balances_iso_currency_code: row.balances_iso_currency_code,
   }));
 };
@@ -285,7 +285,7 @@ export const getSecuritySnapshots = async (
     snapshot_id: row.snapshot_id,
     snapshot_date: row.snapshot_date,
     security_id: row.security_id,
-    close_price: row.close_price ? parseFloat(row.close_price) : undefined,
+    close_price: row.close_price != null ? Number(row.close_price) : undefined,
   }));
 };
 
@@ -342,10 +342,10 @@ export const getHoldingSnapshots = async (
     snapshot_date: row.snapshot_date,
     holding_account_id: row.holding_account_id,
     holding_security_id: row.holding_security_id,
-    institution_price: row.institution_price ? parseFloat(row.institution_price) : undefined,
-    institution_value: row.institution_value ? parseFloat(row.institution_value) : undefined,
-    cost_basis: row.cost_basis ? parseFloat(row.cost_basis) : undefined,
-    quantity: row.quantity ? parseFloat(row.quantity) : undefined,
+    institution_price: row.institution_price != null ? Number(row.institution_price) : undefined,
+    institution_value: row.institution_value != null ? Number(row.institution_value) : undefined,
+    cost_basis: row.cost_basis != null ? Number(row.cost_basis) : undefined,
+    quantity: row.quantity != null ? Number(row.quantity) : undefined,
   }));
 };
 
@@ -385,9 +385,9 @@ export const getLatestAccountSnapshots = async (
     snapshot_id: row.snapshot_id,
     snapshot_date: row.snapshot_date,
     account_id: row.account_id,
-    balances_available: row.balances_available ? parseFloat(row.balances_available) : undefined,
-    balances_current: row.balances_current ? parseFloat(row.balances_current) : undefined,
-    balances_limit: row.balances_limit ? parseFloat(row.balances_limit) : undefined,
+    balances_available: row.balances_available != null ? Number(row.balances_available) : undefined,
+    balances_current: row.balances_current != null ? Number(row.balances_current) : undefined,
+    balances_limit: row.balances_limit != null ? Number(row.balances_limit) : undefined,
     balances_iso_currency_code: row.balances_iso_currency_code,
   }));
 };
