@@ -43,6 +43,7 @@ export const initializeIndex = async (): Promise<void> => {
       -- Sessions table
       CREATE TABLE IF NOT EXISTS sessions (
         session_id VARCHAR(255) PRIMARY KEY,
+        data JSONB DEFAULT '{}'::jsonb,
         user_user_id UUID,
         user_username VARCHAR(255),
         cookie_original_max_age BIGINT,

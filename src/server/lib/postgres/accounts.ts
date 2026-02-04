@@ -5,6 +5,80 @@ import { buildUpdateQuery, buildUpsertQuery } from "./utils";
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
+// Database row interfaces for type safety
+interface AccountRow {
+  account_id: string;
+  user_id?: string;
+  item_id?: string;
+  institution_id?: string;
+  balances_available?: number | null;
+  balances_current?: number | null;
+  balances_limit?: number | null;
+  balances_iso_currency_code?: string | null;
+  balances_unofficial_currency_code?: string | null;
+  mask?: string | null;
+  name?: string | null;
+  official_name?: string | null;
+  type?: string | null;
+  subtype?: string | null;
+  custom_name?: string | null;
+  hide?: boolean;
+  label_budget_id?: string | null;
+  graph_options_use_snapshots?: boolean;
+  graph_options_use_transactions?: boolean;
+  updated?: Date;
+  is_deleted?: boolean;
+}
+
+interface HoldingRow {
+  holding_id: string;
+  user_id?: string;
+  account_id?: string;
+  security_id?: string;
+  institution_price?: number | null;
+  institution_price_as_of?: string | null;
+  institution_value?: number | null;
+  cost_basis?: number | null;
+  quantity?: number | null;
+  iso_currency_code?: string | null;
+  unofficial_currency_code?: string | null;
+  updated?: Date;
+  is_deleted?: boolean;
+}
+
+interface InstitutionRow {
+  institution_id: string;
+  name?: string | null;
+  products?: string[];
+  country_codes?: string[];
+  url?: string | null;
+  primary_color?: string | null;
+  logo?: string | null;
+  routing_numbers?: string[];
+  oauth?: boolean | null;
+  status?: string | null;
+  updated?: Date;
+}
+
+interface SecurityRow {
+  security_id: string;
+  isin?: string | null;
+  cusip?: string | null;
+  sedol?: string | null;
+  institution_security_id?: string | null;
+  institution_id?: string | null;
+  proxy_security_id?: string | null;
+  name?: string | null;
+  ticker_symbol?: string | null;
+  is_cash_equivalent?: boolean | null;
+  type?: string | null;
+  close_price?: number | null;
+  close_price_as_of?: string | null;
+  iso_currency_code?: string | null;
+  unofficial_currency_code?: string | null;
+  updated?: Date;
+}
+
 // Column definitions for accounts table
 const ACCOUNT_COLUMNS = [
   "account_id", "user_id", "item_id", "institution_id",
@@ -18,8 +92,8 @@ const ACCOUNT_COLUMNS = [
 /**
  * Converts an ES-style account object to flat Postgres columns.
  */
-function accountToRow(account: PartialAccount): Record<string, any> {
-  const row: Record<string, any> = {};
+function accountToRow(account: PartialAccount): Partial<AccountRow> {
+  const row: Partial<AccountRow> = {};
   
   // Direct mappings
   if (account.account_id !== undefined) row.account_id = account.account_id;
@@ -59,7 +133,7 @@ function accountToRow(account: PartialAccount): Record<string, any> {
 /**
  * Converts a Postgres row to ES-style account object.
  */
-function rowToAccount(row: Record<string, any>): JSONAccount {
+function rowToAccount(row: AccountRow): JSONAccount {
   return {
     account_id: row.account_id,
     user_id: row.user_id,
@@ -243,8 +317,8 @@ export const getAccountsByItem = async (
 // Holdings operations
 // =====================================
 
-function holdingToRow(holding: Partial<JSONHolding>): Record<string, any> {
-  const row: Record<string, any> = {};
+function holdingToRow(holding: Partial<JSONHolding>): Partial<HoldingRow> {
+  const row: Partial<HoldingRow> = {};
   
   if (holding.account_id !== undefined) row.account_id = holding.account_id;
   if (holding.security_id !== undefined) row.security_id = holding.security_id;
@@ -259,7 +333,7 @@ function holdingToRow(holding: Partial<JSONHolding>): Record<string, any> {
   return row;
 }
 
-function rowToHolding(row: Record<string, any>): JSONHolding {
+function rowToHolding(row: HoldingRow): JSONHolding {
   return {
     holding_id: row.holding_id,
     user_id: row.user_id,
@@ -358,8 +432,8 @@ export const deleteHoldings = async (
 // Institutions operations
 // =====================================
 
-function institutionToRow(institution: Partial<JSONInstitution>): Record<string, any> {
-  const row: Record<string, any> = {};
+function institutionToRow(institution: Partial<JSONInstitution>): Partial<InstitutionRow> {
+  const row: Partial<InstitutionRow> = {};
   
   if (institution.institution_id !== undefined) row.institution_id = institution.institution_id;
   if (institution.name !== undefined) row.name = institution.name;
@@ -375,7 +449,7 @@ function institutionToRow(institution: Partial<JSONInstitution>): Record<string,
   return row;
 }
 
-function rowToInstitution(row: Record<string, any>): JSONInstitution {
+function rowToInstitution(row: InstitutionRow): JSONInstitution {
   return {
     institution_id: row.institution_id,
     name: row.name,
@@ -446,8 +520,8 @@ export const getInstitution = async (institution_id: string): Promise<JSONInstit
 // Securities operations
 // =====================================
 
-function securityToRow(security: Partial<JSONSecurity>): Record<string, any> {
-  const row: Record<string, any> = {};
+function securityToRow(security: Partial<JSONSecurity>): Partial<SecurityRow> {
+  const row: Partial<SecurityRow> = {};
   
   if (security.security_id !== undefined) row.security_id = security.security_id;
   if (security.isin !== undefined) row.isin = security.isin;
@@ -468,7 +542,7 @@ function securityToRow(security: Partial<JSONSecurity>): Record<string, any> {
   return row;
 }
 
-function rowToSecurity(row: Record<string, any>): JSONSecurity {
+function rowToSecurity(row: SecurityRow): JSONSecurity {
   return {
     security_id: row.security_id,
     isin: row.isin,
