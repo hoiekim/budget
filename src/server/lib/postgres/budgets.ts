@@ -9,11 +9,48 @@ type PartialBudget = { budget_id?: string } & Partial<JSONBudget>;
 type PartialSection = { section_id?: string } & Partial<JSONSection>;
 type PartialCategory = { category_id?: string } & Partial<JSONCategory>;
 
+// Database row interfaces
+interface BudgetRow {
+  budget_id: string;
+  user_id?: string;
+  name?: string;
+  iso_currency_code?: string;
+  capacities?: string | JSONCapacity[];
+  roll_over?: boolean;
+  roll_over_start_date?: string | Date;
+  updated?: Date;
+  is_deleted?: boolean;
+}
+
+interface SectionRow {
+  section_id: string;
+  user_id?: string;
+  budget_id?: string;
+  name?: string;
+  capacities?: string | JSONCapacity[];
+  roll_over?: boolean;
+  roll_over_start_date?: string | Date;
+  updated?: Date;
+  is_deleted?: boolean;
+}
+
+interface CategoryRow {
+  category_id: string;
+  user_id?: string;
+  section_id?: string;
+  name?: string;
+  capacities?: string | JSONCapacity[];
+  roll_over?: boolean;
+  roll_over_start_date?: string | Date;
+  updated?: Date;
+  is_deleted?: boolean;
+}
+
 /**
  * Converts a budget to Postgres row.
  */
-function budgetToRow(budget: PartialBudget): Record<string, any> {
-  const row: Record<string, any> = {};
+function budgetToRow(budget: PartialBudget): Partial<BudgetRow> {
+  const row: Partial<BudgetRow> = {};
   
   if (budget.budget_id !== undefined) row.budget_id = budget.budget_id;
   if (budget.name !== undefined) row.name = budget.name;
@@ -28,7 +65,7 @@ function budgetToRow(budget: PartialBudget): Record<string, any> {
 /**
  * Converts a Postgres row to budget.
  */
-function rowToBudget(row: Record<string, any>): JSONBudget {
+function rowToBudget(row: BudgetRow): JSONBudget {
   return {
     budget_id: row.budget_id,
     user_id: row.user_id,
@@ -164,8 +201,8 @@ export const deleteBudgets = async (
 // Sections
 // =====================================
 
-function sectionToRow(section: PartialSection): Record<string, any> {
-  const row: Record<string, any> = {};
+function sectionToRow(section: PartialSection): Partial<SectionRow> {
+  const row: Partial<SectionRow> = {};
   
   if (section.section_id !== undefined) row.section_id = section.section_id;
   if (section.budget_id !== undefined) row.budget_id = section.budget_id;
@@ -177,7 +214,7 @@ function sectionToRow(section: PartialSection): Record<string, any> {
   return row;
 }
 
-function rowToSection(row: Record<string, any>): JSONSection {
+function rowToSection(row: SectionRow): JSONSection {
   return {
     section_id: row.section_id,
     user_id: row.user_id,
@@ -300,8 +337,8 @@ export const deleteSections = async (
 // Categories
 // =====================================
 
-function categoryToRow(category: PartialCategory): Record<string, any> {
-  const row: Record<string, any> = {};
+function categoryToRow(category: PartialCategory): Partial<CategoryRow> {
+  const row: Partial<CategoryRow> = {};
   
   if (category.category_id !== undefined) row.category_id = category.category_id;
   if (category.section_id !== undefined) row.section_id = category.section_id;
@@ -313,7 +350,7 @@ function categoryToRow(category: PartialCategory): Record<string, any> {
   return row;
 }
 
-function rowToCategory(row: Record<string, any>): JSONCategory {
+function rowToCategory(row: CategoryRow): JSONCategory {
   return {
     category_id: row.category_id,
     user_id: row.user_id,
