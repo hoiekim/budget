@@ -205,41 +205,33 @@ async function migrate(): Promise<void> {
     const pgUserId = getPgUserId(src, acct);
     if (!pgUserId) continue;
 
-    const bal = acct.balances || {};
-    const graph = acct.graph_options || {};
+    const graph = acct.graph_options || acct.graphOptions || {};
 
     try {
       await pgPool.query(
         `INSERT INTO accounts (
           account_id, user_id, item_id, institution_id,
-          balances_available, balances_current, balances_limit, balances_iso_currency_code,
-          mask, name, official_name, type, subtype, custom_name, hide,
-          label_budget_id, graph_options_use_snapshots, graph_options_use_transactions
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          name, type, subtype, custom_name, hide,
+          label_budget_id, graph_options_use_snapshots, graph_options_use_transactions, raw
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (account_id) DO UPDATE SET
            item_id = EXCLUDED.item_id, institution_id = EXCLUDED.institution_id,
-           balances_available = EXCLUDED.balances_available, balances_current = EXCLUDED.balances_current,
            name = EXCLUDED.name, type = EXCLUDED.type, subtype = EXCLUDED.subtype,
-           custom_name = EXCLUDED.custom_name, hide = EXCLUDED.hide`,
+           custom_name = EXCLUDED.custom_name, hide = EXCLUDED.hide, raw = EXCLUDED.raw`,
         [
           acct.account_id,
           pgUserId,
           acct.item_id || null,
           acct.institution_id || null,
-          bal.available ?? null,
-          bal.current ?? null,
-          bal.limit ?? null,
-          bal.iso_currency_code || null,
-          acct.mask || null,
           acct.name || null,
-          acct.official_name || null,
           acct.type || null,
           acct.subtype || null,
           acct.custom_name || null,
           acct.hide ?? null,
           null, // label_budget_id set to NULL initially, updated in Phase 16
-          graph.use_snapshots ?? true,
-          graph.use_transactions ?? true,
+          graph.use_snapshots ?? graph.useSnapshots ?? true,
+          graph.use_transactions ?? graph.useTransactions ?? true,
+          JSON.stringify(acct),
         ]
       );
       acctCount++;
@@ -392,8 +384,14 @@ async function migrate(): Promise<void> {
     ...sectionCapacities.map(c => ({ ...c, parent_type: 'section' as const })),
     ...categoryCapacities.map(c => ({ ...c, parent_type: 'category' as const })),
   ];
+  const MAX_DECIMAL = 9999999999999.99; // DECIMAL(15,2) max
   for (const { pgId, pgUserId, capacities, parent_type } of allCapacities) {
     for (const cap of capacities) {
+      // Clamp values that exceed DECIMAL(15,2) range (e.g. MAX_FLOAT used for "infinite")
+      let monthVal = cap.month ?? 0;
+      if (Math.abs(monthVal) > MAX_DECIMAL) {
+        monthVal = monthVal > 0 ? MAX_DECIMAL : -MAX_DECIMAL;
+      }
       try {
         await pgPool.query(
           `INSERT INTO capacities (user_id, parent_id, parent_type, month, active_from)
@@ -402,7 +400,7 @@ async function migrate(): Promise<void> {
             pgUserId,
             pgId,
             parent_type,
-            cap.month ?? 0,
+            monthVal,
             cap.active_from || null,
           ]
         );
@@ -440,62 +438,28 @@ async function migrate(): Promise<void> {
       ? categoryIdMap.get(label.category_id) || null
       : null;
 
+    // Build the raw object with all data for JSONB storage
+    const rawTx = { ...tx, label: { ...label, budget_id: pgBudgetId, category_id: pgCategoryId } };
+
     try {
       await pgPool.query(
         `INSERT INTO transactions (
-          transaction_id, user_id, account_id, pending_transaction_id,
-          category_id, category, account_owner, name, amount,
-          iso_currency_code, unofficial_currency_code, date, pending,
-          payment_channel, authorized_date, authorized_datetime, datetime, transaction_code,
-          location_address, location_city, location_region, location_postal_code,
-          location_country, location_store_number, location_lat, location_lon,
-          payment_meta_reference_number, payment_meta_ppd_id, payment_meta_payee,
-          payment_meta_by_order_of, payment_meta_payer, payment_meta_payment_method,
-          payment_meta_payment_processor, payment_meta_reason,
-          label_budget_id, label_category_id, label_memo
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-          $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32,
-          $33, $34, $35, $36, $37
-        ) ON CONFLICT (transaction_id) DO NOTHING`,
+          transaction_id, user_id, account_id, name, amount, date, pending,
+          label_budget_id, label_category_id, label_memo, raw
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (transaction_id) DO NOTHING`,
         [
           tx.transaction_id,
           pgUserId,
           tx.account_id || null,
-          tx.pending_transaction_id || null,
-          tx.category_id || null,
-          tx.category || null,
-          tx.account_owner || null,
           tx.name || null,
           tx.amount ?? 0,
-          tx.iso_currency_code || null,
-          tx.unofficial_currency_code || null,
           tx.date || null,
           tx.pending ?? false,
-          tx.payment_channel || null,
-          tx.authorized_date || null,
-          tx.authorized_datetime || null,
-          tx.datetime || null,
-          tx.transaction_code || null,
-          loc.address || null,
-          loc.city || null,
-          loc.region || null,
-          loc.postal_code || null,
-          loc.country || null,
-          loc.store_number || null,
-          loc.lat ?? null,
-          loc.lon ?? null,
-          pm.reference_number || null,
-          pm.ppd_id || null,
-          pm.payee || null,
-          pm.by_order_of || null,
-          pm.payer || null,
-          pm.payment_method || null,
-          pm.payment_processor || null,
-          pm.reason || null,
           pgBudgetId,
           pgCategoryId,
           label.memo || null,
+          JSON.stringify(rawTx),
         ]
       );
       txCount++;
@@ -527,9 +491,8 @@ async function migrate(): Promise<void> {
       await pgPool.query(
         `INSERT INTO investment_transactions (
           investment_transaction_id, user_id, account_id, security_id,
-          date, name, quantity, amount, price, fees, type, subtype,
-          iso_currency_code, unofficial_currency_code
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          date, name, quantity, amount, price, type, raw
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (investment_transaction_id) DO NOTHING`,
         [
           inv.investment_transaction_id,
@@ -541,11 +504,8 @@ async function migrate(): Promise<void> {
           inv.quantity ?? null,
           inv.amount ?? null,
           inv.price ?? null,
-          inv.fees ?? null,
           inv.type || null,
-          inv.subtype || null,
-          inv.iso_currency_code || null,
-          inv.unofficial_currency_code || null,
+          JSON.stringify(inv),
         ]
       );
       invCount++;
@@ -613,39 +573,21 @@ async function migrate(): Promise<void> {
     try {
       await pgPool.query(
         `INSERT INTO securities (
-          security_id, isin, cusip, sedol, institution_security_id, institution_id,
-          proxy_security_id, name, ticker_symbol, is_cash_equivalent, type,
-          close_price, close_price_as_of, iso_currency_code, unofficial_currency_code,
-          market_identifier_code, sector, industry, subtype,
-          option_contract_type, option_expiration_date, option_strike_price,
-          fixed_income_yield_rate, fixed_income_maturity_date
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          security_id, name, ticker_symbol, type,
+          close_price, close_price_as_of, iso_currency_code, isin, cusip, raw
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (security_id) DO NOTHING`,
         [
           sec.security_id,
-          sec.isin || null,
-          sec.cusip || null,
-          sec.sedol || null,
-          sec.institution_security_id || null,
-          sec.institution_id || null,
-          sec.proxy_security_id || null,
           sec.name || null,
           sec.ticker_symbol || null,
-          sec.is_cash_equivalent ?? null,
           sec.type || null,
           sec.close_price ?? null,
           sec.close_price_as_of || null,
           sec.iso_currency_code || null,
-          sec.unofficial_currency_code || null,
-          sec.market_identifier_code || null,
-          sec.sector || null,
-          sec.industry || null,
-          sec.subtype || null,
-          oc.contract_type || null,
-          oc.expiration_date || null,
-          oc.strike_price ?? null,
-          fi.yield_rate ?? null,
-          fi.maturity_date || null,
+          sec.isin || null,
+          sec.cusip || null,
+          JSON.stringify(sec),
         ]
       );
       secCount++;
@@ -674,7 +616,7 @@ async function migrate(): Promise<void> {
         `INSERT INTO holdings (
           holding_id, user_id, account_id, security_id,
           institution_price, institution_value, cost_basis, quantity,
-          iso_currency_code, unofficial_currency_code
+          iso_currency_code, raw
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (holding_id) DO NOTHING`,
         [
@@ -687,7 +629,7 @@ async function migrate(): Promise<void> {
           hold.cost_basis ?? null,
           hold.quantity ?? null,
           hold.iso_currency_code || null,
-          hold.unofficial_currency_code || null,
+          JSON.stringify(hold),
         ]
       );
       holdCount++;
@@ -784,7 +726,24 @@ async function migrate(): Promise<void> {
     const pgUserId = getPgUserId(src, chart);
     if (!pgUserId) continue;
 
-    const config = chart.configuration || {};
+    // Parse configuration if it's a JSON string
+    let config = chart.configuration || {};
+    if (typeof config === 'string') {
+      try {
+        config = JSON.parse(config);
+      } catch {
+        config = {};
+      }
+    }
+    // Map budget_ids from ES IDs to PG UUIDs
+    if (config.budget_ids && Array.isArray(config.budget_ids)) {
+      const originalIds = [...config.budget_ids];
+      config.budget_ids = config.budget_ids
+        .map((esId: string) => budgetIdMap.get(esId))
+        .filter(Boolean);
+      console.log(`  Chart "${chart.name}": mapped ${originalIds.length} budget_ids -> ${config.budget_ids.length} valid UUIDs`);
+    }
+    // account_ids use original Plaid IDs, no mapping needed
     try {
       await pgPool.query(
         `INSERT INTO charts (user_id, name, type, configuration)
@@ -876,6 +835,113 @@ async function migrate(): Promise<void> {
     );
   } catch (error: any) {
     console.error(`  Error verifying transaction labels:`, error.message);
+  }
+
+  // =========================================
+  // Referential Integrity Checks
+  // =========================================
+  console.log("\n--- Referential Integrity Checks ---");
+  const integrityChecks = [
+    {
+      name: "transactions → budgets (label_budget_id)",
+      query: `SELECT COUNT(*) as orphans FROM transactions t
+               WHERE t.label_budget_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.budget_id = t.label_budget_id)`,
+    },
+    {
+      name: "transactions → categories (label_category_id)",
+      query: `SELECT COUNT(*) as orphans FROM transactions t
+               WHERE t.label_category_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.category_id = t.label_category_id)`,
+    },
+    {
+      name: "accounts → budgets (label_budget_id)",
+      query: `SELECT COUNT(*) as orphans FROM accounts a
+               WHERE a.label_budget_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.budget_id = a.label_budget_id)`,
+    },
+    {
+      name: "sections → budgets (budget_id)",
+      query: `SELECT COUNT(*) as orphans FROM sections s
+               WHERE NOT EXISTS (SELECT 1 FROM budgets b WHERE b.budget_id = s.budget_id)`,
+    },
+    {
+      name: "categories → sections (section_id)",
+      query: `SELECT COUNT(*) as orphans FROM categories c
+               WHERE NOT EXISTS (SELECT 1 FROM sections s WHERE s.section_id = c.section_id)`,
+    },
+    {
+      name: "capacities → parent (budget/section/category)",
+      query: `SELECT COUNT(*) as orphans FROM capacities cap
+               WHERE (cap.parent_type = 'budget' AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.budget_id = cap.parent_id))
+                  OR (cap.parent_type = 'section' AND NOT EXISTS (SELECT 1 FROM sections s WHERE s.section_id = cap.parent_id))
+                  OR (cap.parent_type = 'category' AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.category_id = cap.parent_id))`,
+    },
+    {
+      name: "split_transactions → budgets (label_budget_id)",
+      query: `SELECT COUNT(*) as orphans FROM split_transactions st
+               WHERE st.label_budget_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.budget_id = st.label_budget_id)`,
+    },
+    {
+      name: "split_transactions → categories (label_category_id)",
+      query: `SELECT COUNT(*) as orphans FROM split_transactions st
+               WHERE st.label_category_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.category_id = st.label_category_id)`,
+    },
+  ];
+
+  // Check chart configuration budget_ids
+  let chartOrphans = 0;
+  try {
+    const chartRows = await pgPool.query(`SELECT chart_id, configuration FROM charts`);
+    const budgetResult = await pgPool.query(`SELECT budget_id FROM budgets`);
+    const validBudgetIds = new Set(budgetResult.rows.map((r: any) => r.budget_id));
+    for (const row of chartRows.rows) {
+      try {
+        const config = typeof row.configuration === 'string' ? JSON.parse(row.configuration) : row.configuration;
+        if (config?.budget_ids) {
+          for (const bid of config.budget_ids) {
+            if (!validBudgetIds.has(bid)) {
+              chartOrphans++;
+              console.log(`  ⚠ Chart ${row.chart_id} references invalid budget_id: ${bid}`);
+            }
+          }
+        }
+      } catch { /* skip parse errors */ }
+    }
+  } catch (error: any) {
+    console.error(`  Error checking chart budget_ids:`, error.message);
+  }
+
+  let allGood = true;
+  for (const check of integrityChecks) {
+    try {
+      const result = await pgPool.query(check.query);
+      const orphans = parseInt(result.rows[0].orphans);
+      if (orphans > 0) {
+        console.log(`  ⚠ ${check.name}: ${orphans} orphaned references`);
+        allGood = false;
+      } else {
+        console.log(`  ✓ ${check.name}: OK`);
+      }
+    } catch (error: any) {
+      console.error(`  ✗ ${check.name}: ${error.message}`);
+      allGood = false;
+    }
+  }
+
+  if (chartOrphans > 0) {
+    console.log(`  ⚠ charts → budgets (configuration.budget_ids): ${chartOrphans} orphaned references`);
+    allGood = false;
+  } else {
+    console.log(`  ✓ charts → budgets (configuration.budget_ids): OK`);
+  }
+
+  if (allGood) {
+    console.log("\n  ✅ All referential integrity checks passed!");
+  } else {
+    console.log("\n  ❌ Some referential integrity issues found — review above warnings.");
   }
 
   console.log("\nDone!");
