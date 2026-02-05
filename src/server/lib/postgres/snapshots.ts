@@ -203,7 +203,7 @@ export const getAccountSnapshots = async (
   } = {}
 ): Promise<AccountSnapshot[]> => {
   const { user_id } = user;
-  const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'"];
+  const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
   const values: any[] = [user_id];
   let paramIndex = 2;
 
@@ -253,7 +253,7 @@ export const getSecuritySnapshots = async (
     endDate?: string;
   } = {}
 ): Promise<SecuritySnapshot[]> => {
-  const conditions: string[] = ["snapshot_type = 'security'"];
+  const conditions: string[] = ["snapshot_type = 'security'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
   const values: any[] = [];
   let paramIndex = 1;
 
@@ -302,7 +302,7 @@ export const getHoldingSnapshots = async (
   } = {}
 ): Promise<HoldingSnapshot[]> => {
   const { user_id } = user;
-  const conditions: string[] = ["user_id = $1", "snapshot_type = 'holding'"];
+  const conditions: string[] = ["user_id = $1", "snapshot_type = 'holding'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
   const values: any[] = [user_id];
   let paramIndex = 2;
 
@@ -350,13 +350,13 @@ export const getHoldingSnapshots = async (
 };
 
 /**
- * Deletes snapshots older than a certain date.
+ * Soft-deletes snapshots older than a certain date.
  */
 export const deleteOldSnapshots = async (
   beforeDate: string
 ): Promise<{ deleted: number }> => {
   const result = await pool.query(
-    `DELETE FROM snapshots WHERE snapshot_date < $1 RETURNING snapshot_id`,
+    `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE snapshot_date < $1 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
     [beforeDate]
   );
   
@@ -376,7 +376,7 @@ export const getLatestAccountSnapshots = async (
             snapshot_id, snapshot_date, account_id,
             balances_available, balances_current, balances_limit, balances_iso_currency_code
      FROM snapshots 
-     WHERE user_id = $1 AND snapshot_type = 'account_balance'
+     WHERE user_id = $1 AND snapshot_type = 'account_balance' AND (is_deleted IS NULL OR is_deleted = FALSE)
      ORDER BY account_id, snapshot_date DESC`,
     [user_id]
   );
@@ -405,7 +405,7 @@ export const aggregateAccountSnapshots = async (
   } = {}
 ): Promise<{ date: string; total_current: number; total_available: number }[]> => {
   const { user_id } = user;
-  const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'"];
+  const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
   const values: any[] = [user_id];
   let paramIndex = 2;
 
@@ -526,7 +526,7 @@ export const searchSnapshots = async (
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {}
 ): Promise<any[]> => {
-  const conditions: string[] = [];
+  const conditions: string[] = ["(is_deleted IS NULL OR is_deleted = FALSE)"];
   const values: any[] = [];
   let paramIndex = 1;
 
@@ -602,7 +602,7 @@ export const searchSnapshots = async (
 };
 
 /**
- * Deletes snapshots by account ID.
+ * Soft-deletes snapshots by account ID.
  */
 export const deleteSnapshotsByAccount = async (
   user: MaskedUser,
@@ -610,28 +610,28 @@ export const deleteSnapshotsByAccount = async (
 ): Promise<{ deleted: number }> => {
   const { user_id } = user;
   const result = await pool.query(
-    `DELETE FROM snapshots WHERE account_id = $1 AND user_id = $2 RETURNING snapshot_id`,
+    `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE account_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
     [account_id, user_id]
   );
   return { deleted: result.rowCount || 0 };
 };
 
 /**
- * Deletes all snapshots for a user.
+ * Soft-deletes all snapshots for a user.
  */
 export const deleteSnapshotsByUser = async (
   user: MaskedUser
 ): Promise<{ deleted: number }> => {
   const { user_id } = user;
   const result = await pool.query(
-    `DELETE FROM snapshots WHERE user_id = $1 RETURNING snapshot_id`,
+    `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
     [user_id]
   );
   return { deleted: result.rowCount || 0 };
 };
 
 /**
- * Deletes a specific snapshot by ID.
+ * Soft-deletes a specific snapshot by ID.
  */
 export const deleteSnapshotById = async (
   user: MaskedUser,
@@ -639,7 +639,7 @@ export const deleteSnapshotById = async (
 ): Promise<boolean> => {
   const { user_id } = user;
   const result = await pool.query(
-    `DELETE FROM snapshots WHERE snapshot_id = $1 AND user_id = $2 RETURNING snapshot_id`,
+    `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE snapshot_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
     [snapshot_id, user_id]
   );
   return (result.rowCount || 0) > 0;

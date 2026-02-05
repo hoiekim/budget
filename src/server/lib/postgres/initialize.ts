@@ -62,13 +62,14 @@ export const initializeIndex = async (): Promise<void> => {
       -- Items table (Plaid items)
       CREATE TABLE IF NOT EXISTS items (
         item_id VARCHAR(255) PRIMARY KEY,
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         access_token VARCHAR(255),
         institution_id VARCHAR(255),
         available_products TEXT[],
         cursor TEXT,
         status VARCHAR(50),
         provider VARCHAR(50),
+        raw JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
@@ -79,43 +80,25 @@ export const initializeIndex = async (): Promise<void> => {
       CREATE TABLE IF NOT EXISTS institutions (
         institution_id VARCHAR(255) PRIMARY KEY,
         name VARCHAR(255),
-        products TEXT[],
-        country_codes TEXT[],
-        url TEXT,
-        primary_color VARCHAR(50),
-        logo TEXT,
-        routing_numbers TEXT[],
-        oauth BOOLEAN,
-        status VARCHAR(50),
+        raw JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- Accounts table (flattened balances, label, graphOptions)
+      -- Accounts table (hybrid: indexed columns + raw JSONB)
       CREATE TABLE IF NOT EXISTS accounts (
         account_id VARCHAR(255) PRIMARY KEY,
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         item_id VARCHAR(255),
         institution_id VARCHAR(255),
-        -- Flattened balances
-        balances_available DECIMAL(15, 2),
-        balances_current DECIMAL(15, 2),
-        balances_limit DECIMAL(15, 2),
-        balances_iso_currency_code VARCHAR(10),
-        balances_unofficial_currency_code VARCHAR(50),
-        -- Account info
-        mask VARCHAR(50),
         name VARCHAR(255),
-        official_name VARCHAR(255),
         type VARCHAR(50),
         subtype VARCHAR(100),
         custom_name TEXT,
         hide BOOLEAN DEFAULT FALSE,
-        -- Flattened label
         label_budget_id UUID,
-        -- Flattened graphOptions
         graph_options_use_snapshots BOOLEAN DEFAULT TRUE,
         graph_options_use_transactions BOOLEAN DEFAULT TRUE,
-        -- Metadata
+        raw JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
@@ -123,19 +106,18 @@ export const initializeIndex = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_accounts_item_id ON accounts(item_id);
       CREATE INDEX IF NOT EXISTS idx_accounts_institution_id ON accounts(institution_id);
 
-      -- Holdings table (flattened)
+      -- Holdings table (hybrid: indexed columns + raw JSONB)
       CREATE TABLE IF NOT EXISTS holdings (
         holding_id VARCHAR(255) PRIMARY KEY,
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         account_id VARCHAR(255),
         security_id VARCHAR(255),
         institution_price DECIMAL(15, 6),
-        institution_price_as_of TIMESTAMP,
         institution_value DECIMAL(15, 2),
         cost_basis DECIMAL(15, 2),
         quantity DECIMAL(15, 6),
         iso_currency_code VARCHAR(10),
-        unofficial_currency_code VARCHAR(50),
+        raw JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
@@ -143,84 +125,34 @@ export const initializeIndex = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_holdings_account_id ON holdings(account_id);
       CREATE INDEX IF NOT EXISTS idx_holdings_security_id ON holdings(security_id);
 
-      -- Securities table
+      -- Securities table (hybrid: indexed columns + raw JSONB)
       CREATE TABLE IF NOT EXISTS securities (
         security_id VARCHAR(255) PRIMARY KEY,
-        isin VARCHAR(50),
-        cusip VARCHAR(50),
-        sedol VARCHAR(50),
-        institution_security_id VARCHAR(255),
-        institution_id VARCHAR(255),
-        proxy_security_id VARCHAR(255),
         name VARCHAR(255),
         ticker_symbol VARCHAR(50),
-        is_cash_equivalent BOOLEAN DEFAULT FALSE,
         type VARCHAR(50),
         close_price DECIMAL(15, 6),
         close_price_as_of TIMESTAMP,
         iso_currency_code VARCHAR(10),
-        unofficial_currency_code VARCHAR(50),
-        market_identifier_code VARCHAR(50),
-        sector VARCHAR(100),
-        industry VARCHAR(100),
-        -- Option contract fields (flattened)
-        option_contract_type VARCHAR(50),
-        option_expiration_date DATE,
-        option_strike_price DECIMAL(15, 2),
-        option_underlying_ticker VARCHAR(50),
-        -- Fixed income fields (flattened)
-        fixed_income_yield_rate DECIMAL(10, 6),
-        fixed_income_maturity_date DATE,
-        fixed_income_issue_date DATE,
-        fixed_income_face_value DECIMAL(15, 2),
-        subtype VARCHAR(100),
+        isin VARCHAR(50),
+        cusip VARCHAR(50),
+        raw JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- Transactions table (flattened location, payment_meta, label)
+      -- Transactions table (hybrid: indexed columns + raw JSONB)
       CREATE TABLE IF NOT EXISTS transactions (
         transaction_id VARCHAR(255) PRIMARY KEY,
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         account_id VARCHAR(255),
-        pending_transaction_id VARCHAR(255),
-        category_id VARCHAR(255),
-        category TEXT[],
-        -- Flattened location
-        location_address TEXT,
-        location_city VARCHAR(100),
-        location_region VARCHAR(100),
-        location_postal_code VARCHAR(50),
-        location_country VARCHAR(50),
-        location_store_number VARCHAR(50),
-        location_lat REAL,
-        location_lon REAL,
-        -- Flattened payment_meta
-        payment_meta_reference_number VARCHAR(255),
-        payment_meta_ppd_id VARCHAR(255),
-        payment_meta_payee VARCHAR(255),
-        payment_meta_by_order_of VARCHAR(255),
-        payment_meta_payer VARCHAR(255),
-        payment_meta_payment_method VARCHAR(100),
-        payment_meta_payment_processor VARCHAR(255),
-        payment_meta_reason TEXT,
-        -- Transaction info
-        account_owner VARCHAR(255),
         name TEXT,
         amount DECIMAL(15, 2),
-        iso_currency_code VARCHAR(10),
-        unofficial_currency_code VARCHAR(50),
         date DATE,
         pending BOOLEAN DEFAULT FALSE,
-        payment_channel VARCHAR(50),
-        authorized_date DATE,
-        authorized_datetime TIMESTAMP,
-        datetime TIMESTAMP,
-        transaction_code VARCHAR(50),
-        -- Flattened label
         label_budget_id UUID,
         label_category_id UUID,
         label_memo TEXT,
-        -- Metadata
+        raw JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
@@ -229,22 +161,19 @@ export const initializeIndex = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
       CREATE INDEX IF NOT EXISTS idx_transactions_pending ON transactions(pending);
 
-      -- Investment Transactions table
+      -- Investment Transactions table (hybrid: indexed columns + raw JSONB)
       CREATE TABLE IF NOT EXISTS investment_transactions (
         investment_transaction_id VARCHAR(255) PRIMARY KEY,
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         account_id VARCHAR(255),
         security_id VARCHAR(255),
         date DATE,
         name TEXT,
-        quantity DECIMAL(15, 6),
         amount DECIMAL(15, 2),
+        quantity DECIMAL(15, 6),
         price DECIMAL(15, 6),
-        fees DECIMAL(15, 2),
         type VARCHAR(50),
-        subtype VARCHAR(100),
-        iso_currency_code VARCHAR(10),
-        unofficial_currency_code VARCHAR(50),
+        raw JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
@@ -255,7 +184,7 @@ export const initializeIndex = async (): Promise<void> => {
       -- Split Transactions table (flattened label)
       CREATE TABLE IF NOT EXISTS split_transactions (
         split_transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         transaction_id VARCHAR(255),
         account_id VARCHAR(255),
         amount DECIMAL(15, 2) DEFAULT 0,
@@ -272,13 +201,12 @@ export const initializeIndex = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_split_transactions_transaction_id ON split_transactions(transaction_id);
       CREATE INDEX IF NOT EXISTS idx_split_transactions_account_id ON split_transactions(account_id);
 
-      -- Budgets table (capacities stays as JSONB since it's an array with nested structure)
+      -- Budgets table
       CREATE TABLE IF NOT EXISTS budgets (
         budget_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         name VARCHAR(255) DEFAULT 'Unnamed',
         iso_currency_code VARCHAR(10) DEFAULT 'USD',
-        capacities JSONB DEFAULT '[]',
         roll_over BOOLEAN DEFAULT FALSE,
         roll_over_start_date DATE,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -289,10 +217,9 @@ export const initializeIndex = async (): Promise<void> => {
       -- Sections table
       CREATE TABLE IF NOT EXISTS sections (
         section_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
-        budget_id UUID REFERENCES budgets(budget_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
+        budget_id UUID REFERENCES budgets(budget_id) ON DELETE RESTRICT,
         name VARCHAR(255) DEFAULT 'Unnamed',
-        capacities JSONB DEFAULT '[]',
         roll_over BOOLEAN DEFAULT FALSE,
         roll_over_start_date DATE,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -304,10 +231,9 @@ export const initializeIndex = async (): Promise<void> => {
       -- Categories table
       CREATE TABLE IF NOT EXISTS categories (
         category_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
-        section_id UUID REFERENCES sections(section_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
+        section_id UUID REFERENCES sections(section_id) ON DELETE RESTRICT,
         name VARCHAR(255) DEFAULT 'Unnamed',
-        capacities JSONB DEFAULT '[]',
         roll_over BOOLEAN DEFAULT FALSE,
         roll_over_start_date DATE,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -315,6 +241,20 @@ export const initializeIndex = async (): Promise<void> => {
       );
       CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
       CREATE INDEX IF NOT EXISTS idx_categories_section_id ON categories(section_id);
+
+      -- Capacities table (extracted from budgets/sections/categories JSONB)
+      CREATE TABLE IF NOT EXISTS capacities (
+        capacity_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
+        parent_id UUID NOT NULL,
+        parent_type VARCHAR(20) NOT NULL CHECK (parent_type IN ('budget', 'section', 'category')),
+        month DECIMAL(15, 2) DEFAULT 0,
+        active_from DATE,
+        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT FALSE
+      );
+      CREATE INDEX IF NOT EXISTS idx_capacities_user_id ON capacities(user_id);
+      CREATE INDEX IF NOT EXISTS idx_capacities_parent ON capacities(parent_id, parent_type);
 
       -- Snapshots table (stores account, security, holding snapshots)
       CREATE TABLE IF NOT EXISTS snapshots (
@@ -339,7 +279,8 @@ export const initializeIndex = async (): Promise<void> => {
         cost_basis DECIMAL(15, 2),
         quantity DECIMAL(15, 6),
         -- Metadata
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT FALSE
       );
       CREATE INDEX IF NOT EXISTS idx_snapshots_user_id ON snapshots(user_id);
       CREATE INDEX IF NOT EXISTS idx_snapshots_type ON snapshots(snapshot_type);
@@ -350,7 +291,7 @@ export const initializeIndex = async (): Promise<void> => {
       -- Charts table
       CREATE TABLE IF NOT EXISTS charts (
         chart_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         name VARCHAR(255) DEFAULT 'Unnamed',
         type VARCHAR(50),
         configuration TEXT,
