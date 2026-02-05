@@ -78,6 +78,44 @@ async function migrate(): Promise<void> {
     process.exit(1);
   }
 
+  // =========================================
+  // Phase 1: Clean existing data (except admin/demo users)
+  // =========================================
+  console.log("\n--- Phase 1: Clean existing data ---");
+  const tablesToClean = [
+    "charts",
+    "snapshots",
+    "holdings",
+    "securities",
+    "split_transactions",
+    "investment_transactions",
+    "transactions",
+    "capacities",
+    "categories",
+    "sections",
+    "budgets",
+    "accounts",
+    "institutions",
+    "items",
+  ];
+  for (const table of tablesToClean) {
+    try {
+      const result = await pgPool.query(`DELETE FROM ${table}`);
+      console.log(`  Cleared ${table}: ${result.rowCount} rows`);
+    } catch (error: any) {
+      console.error(`  Error clearing ${table}:`, error.message);
+    }
+  }
+  // Delete non-admin/demo users
+  try {
+    const result = await pgPool.query(
+      `DELETE FROM users WHERE username NOT IN ('admin', 'demo')`
+    );
+    console.log(`  Cleared users (except admin/demo): ${result.rowCount} rows`);
+  } catch (error: any) {
+    console.error(`  Error clearing users:`, error.message);
+  }
+
   // Group by type
   const byType: Record<string, ESHit[]> = {};
   for (const doc of jsonData) {
@@ -418,6 +456,8 @@ async function migrate(): Promise<void> {
   console.log("\n--- Phase 9: Migrate transactions ---");
   let txCount = 0;
   let txErrors = 0;
+  let txLabelsPreserved = 0;
+  let txLabelsMissing = 0;
   for (const doc of byType.transaction || []) {
     const src = doc._source;
     const tx = src.transaction || {};
@@ -437,6 +477,18 @@ async function migrate(): Promise<void> {
     const pgCategoryId = label.category_id
       ? categoryIdMap.get(label.category_id) || null
       : null;
+
+    // Track label mapping stats
+    if (label.budget_id || label.category_id) {
+      if (pgBudgetId || pgCategoryId) {
+        txLabelsPreserved++;
+      } else {
+        txLabelsMissing++;
+        if (txLabelsMissing <= 3) {
+          console.log(`  ⚠ Label not mapped for tx ${tx.transaction_id}: ES budget=${label.budget_id}, category=${label.category_id}`);
+        }
+      }
+    }
 
     // Build the raw object with all data for JSONB storage
     const rawTx = { ...tx, label: { ...label, budget_id: pgBudgetId, category_id: pgCategoryId } };
@@ -475,6 +527,7 @@ async function migrate(): Promise<void> {
     }
   }
   console.log(`  Migrated ${txCount} transactions (${txErrors} errors)`);
+  console.log(`  Labels: ${txLabelsPreserved} preserved, ${txLabelsMissing} missing mappings`);
 
   // =========================================
   // Phase 10: Migrate investment transactions
