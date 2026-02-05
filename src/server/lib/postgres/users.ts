@@ -158,13 +158,13 @@ export const getUserById = async (user_id: string): Promise<User | undefined> =>
 };
 
 /**
- * Deletes a user by ID.
+ * Soft-deletes a user by ID.
  * @param user_id
  * @returns A promise with true if deleted, false otherwise
  */
 export const deleteUser = async (user_id: string): Promise<boolean> => {
   const result = await pool.query(
-    `DELETE FROM users WHERE user_id = $1 RETURNING user_id`,
+    `UPDATE users SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE user_id = $1 RETURNING user_id`,
     [user_id]
   );
   return (result.rowCount || 0) > 0;

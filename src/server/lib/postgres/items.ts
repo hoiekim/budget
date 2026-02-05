@@ -45,12 +45,67 @@ export const searchItems = async (
 
 /**
  * Deletes a single item (soft delete).
+ * Cascades: soft-deletes child accounts → their transactions, investment_transactions, split_transactions, snapshots, holdings.
  */
 export const deleteItem = async (
   user: MaskedUser,
   item_id: string
 ): Promise<boolean> => {
   const { user_id } = user;
+
+  // Get account IDs for this item
+  const accountResult = await pool.query(
+    `SELECT account_id FROM accounts WHERE item_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [item_id, user_id]
+  );
+  const accountIds = accountResult.rows.map((r: any) => r.account_id);
+
+  if (accountIds.length > 0) {
+    const placeholders = accountIds.map((_: string, i: number) => `$${i + 2}`).join(", ");
+
+    // Cascade: soft-delete transactions
+    await pool.query(
+      `UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE account_id IN (${placeholders}) AND user_id = $1`,
+      [user_id, ...accountIds]
+    );
+
+    // Cascade: soft-delete investment_transactions
+    await pool.query(
+      `UPDATE investment_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE account_id IN (${placeholders}) AND user_id = $1`,
+      [user_id, ...accountIds]
+    );
+
+    // Cascade: soft-delete split_transactions
+    await pool.query(
+      `UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE account_id IN (${placeholders}) AND user_id = $1`,
+      [user_id, ...accountIds]
+    );
+
+    // Cascade: soft-delete snapshots
+    await pool.query(
+      `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE account_id IN (${placeholders}) AND user_id = $1`,
+      [user_id, ...accountIds]
+    );
+
+    // Cascade: soft-delete holdings
+    await pool.query(
+      `UPDATE holdings SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE account_id IN (${placeholders}) AND user_id = $1`,
+      [user_id, ...accountIds]
+    );
+
+    // Cascade: soft-delete accounts
+    await pool.query(
+      `UPDATE accounts SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE account_id IN (${placeholders}) AND user_id = $1`,
+      [user_id, ...accountIds]
+    );
+  }
+
   const result = await pool.query(
     `UPDATE items SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
      WHERE item_id = $1 AND user_id = $2
@@ -73,7 +128,7 @@ export const getAllItems = async (): Promise<JSONItem[]> => {
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
 /**
- * Converts an ES-style item object to Postgres columns.
+ * Converts an item object to Postgres columns + raw JSONB.
  */
 function itemToRow(item: PartialItem): Record<string, any> {
   const row: Record<string, any> = {};
@@ -85,24 +140,31 @@ function itemToRow(item: PartialItem): Record<string, any> {
   if (item.cursor !== undefined) row.cursor = item.cursor;
   if (item.status !== undefined) row.status = item.status;
   if (item.provider !== undefined) row.provider = item.provider;
+
+  // Store full provider object in raw
+  row.raw = JSON.stringify(item);
   
   return row;
 }
 
 /**
- * Converts a Postgres row to ES-style item object.
+ * Converts a Postgres row to item object.
+ * Merges raw JSONB with column values.
  */
 function rowToItem(row: Record<string, any>): JSONItem {
+  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
+  
   return {
+    ...raw,
     item_id: row.item_id,
     user_id: row.user_id,
-    access_token: row.access_token,
-    institution_id: row.institution_id,
-    available_products: row.available_products,
-    cursor: row.cursor,
-    updated: row.updated,
-    status: row.status,
-    provider: row.provider,
+    access_token: row.access_token ?? raw.access_token,
+    institution_id: row.institution_id ?? raw.institution_id,
+    available_products: row.available_products ?? raw.available_products,
+    cursor: row.cursor ?? raw.cursor,
+    updated: row.updated ?? raw.updated,
+    status: row.status ?? raw.status,
+    provider: row.provider ?? raw.provider,
   } as JSONItem;
 }
 

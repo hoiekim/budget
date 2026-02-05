@@ -4,7 +4,6 @@ import {
   assign,
   excludeEnumeration,
   getDateTimeString,
-  getRandomId,
 } from "common";
 
 export type Interval = "year" | "month";
@@ -15,7 +14,7 @@ export class Capacity {
     return this.capacity_id;
   }
 
-  capacity_id = getRandomId();
+  capacity_id = crypto.randomUUID();
 
   get year() {
     return this.month * 12;

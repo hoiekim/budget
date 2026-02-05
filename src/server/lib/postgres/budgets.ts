@@ -1,21 +1,18 @@
 import { JSONBudget, JSONSection, JSONCategory, JSONCapacity } from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
-
-// Note: capacities remains as JSONB since it's an array with complex nested structure
-// that requires array operations (adding/removing elements)
+import { getCapacitiesByParents, upsertCapacities, deleteCapacitiesByParent, ParentType } from "./capacities";
 
 type PartialBudget = { budget_id?: string } & Partial<JSONBudget>;
 type PartialSection = { section_id?: string } & Partial<JSONSection>;
 type PartialCategory = { category_id?: string } & Partial<JSONCategory>;
 
-// Database row interfaces
+// Database row interfaces (no more capacities column)
 interface BudgetRow {
   budget_id: string;
   user_id?: string;
   name?: string;
   iso_currency_code?: string;
-  capacities?: string | JSONCapacity[];
   roll_over?: boolean;
   roll_over_start_date?: string | Date;
   updated?: Date;
@@ -27,7 +24,6 @@ interface SectionRow {
   user_id?: string;
   budget_id?: string;
   name?: string;
-  capacities?: string | JSONCapacity[];
   roll_over?: boolean;
   roll_over_start_date?: string | Date;
   updated?: Date;
@@ -39,7 +35,6 @@ interface CategoryRow {
   user_id?: string;
   section_id?: string;
   name?: string;
-  capacities?: string | JSONCapacity[];
   roll_over?: boolean;
   roll_over_start_date?: string | Date;
   updated?: Date;
@@ -47,7 +42,7 @@ interface CategoryRow {
 }
 
 /**
- * Converts a budget to Postgres row.
+ * Converts a budget to Postgres row (no capacities column).
  */
 function budgetToRow(budget: PartialBudget): Partial<BudgetRow> {
   const row: Partial<BudgetRow> = {};
@@ -55,7 +50,6 @@ function budgetToRow(budget: PartialBudget): Partial<BudgetRow> {
   if (budget.budget_id !== undefined) row.budget_id = budget.budget_id;
   if (budget.name !== undefined) row.name = budget.name;
   if (budget.iso_currency_code !== undefined) row.iso_currency_code = budget.iso_currency_code;
-  if (budget.capacities !== undefined) row.capacities = JSON.stringify(budget.capacities);
   if (budget.roll_over !== undefined) row.roll_over = budget.roll_over;
   if (budget.roll_over_start_date !== undefined) row.roll_over_start_date = budget.roll_over_start_date;
   
@@ -63,15 +57,15 @@ function budgetToRow(budget: PartialBudget): Partial<BudgetRow> {
 }
 
 /**
- * Converts a Postgres row to budget.
+ * Converts a Postgres row to budget (capacities attached separately).
  */
-function rowToBudget(row: BudgetRow): JSONBudget {
+function rowToBudget(row: BudgetRow, capacities: JSONCapacity[] = []): JSONBudget {
   return {
     budget_id: row.budget_id,
     user_id: row.user_id,
     name: row.name,
     iso_currency_code: row.iso_currency_code,
-    capacities: typeof row.capacities === 'string' ? JSON.parse(row.capacities) : row.capacities || [],
+    capacities,
     roll_over: row.roll_over,
     roll_over_start_date: row.roll_over_start_date,
   } as JSONBudget;
@@ -114,6 +108,12 @@ export const upsertBudgets = async (
         `;
         
         const result = await pool.query(query, values);
+
+        // Upsert capacities separately
+        if (budget.capacities !== undefined) {
+          await upsertCapacities(user, budget.budget_id, "budget", budget.capacities);
+        }
+
         results.push({
           update: { _id: budget.budget_id },
           status: result.rowCount ? 200 : 404,
@@ -132,6 +132,12 @@ export const upsertBudgets = async (
         
         const result = await pool.query(query, insertValues);
         const id = result.rows[0]?.budget_id;
+
+        // Upsert capacities separately
+        if (id && budget.capacities) {
+          await upsertCapacities(user, id, "budget", budget.capacities);
+        }
+
         results.push({
           update: { _id: id },
           status: result.rowCount ? 201 : 500,
@@ -150,7 +156,7 @@ export const upsertBudgets = async (
 };
 
 /**
- * Gets all budgets for a user.
+ * Gets all budgets for a user (with capacities attached).
  */
 export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
   const { user_id } = user;
@@ -158,11 +164,15 @@ export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
     `SELECT * FROM budgets WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
     [user_id]
   );
-  return result.rows.map(rowToBudget);
+
+  const budgetIds = result.rows.map((r: BudgetRow) => r.budget_id);
+  const capsMap = await getCapacitiesByParents(budgetIds, "budget");
+
+  return result.rows.map((row: BudgetRow) => rowToBudget(row, capsMap.get(row.budget_id) || []));
 };
 
 /**
- * Gets a single budget by ID.
+ * Gets a single budget by ID (with capacities attached).
  */
 export const getBudget = async (
   user: MaskedUser,
@@ -173,7 +183,10 @@ export const getBudget = async (
     `SELECT * FROM budgets WHERE budget_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
     [budget_id, user_id]
   );
-  return result.rows.length > 0 ? rowToBudget(result.rows[0]) : null;
+  if (result.rows.length === 0) return null;
+
+  const capsMap = await getCapacitiesByParents([budget_id], "budget");
+  return rowToBudget(result.rows[0], capsMap.get(budget_id) || []);
 };
 
 /**
@@ -186,6 +199,11 @@ export const deleteBudgets = async (
   if (!budget_ids.length) return { deleted: 0 };
   const { user_id } = user;
   
+  // Cascade: soft-delete capacities for these budgets
+  for (const bid of budget_ids) {
+    await deleteCapacitiesByParent(user, bid);
+  }
+
   const placeholders = budget_ids.map((_, i) => `$${i + 2}`).join(", ");
   const result = await pool.query(
     `UPDATE budgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
@@ -207,20 +225,19 @@ function sectionToRow(section: PartialSection): Partial<SectionRow> {
   if (section.section_id !== undefined) row.section_id = section.section_id;
   if (section.budget_id !== undefined) row.budget_id = section.budget_id;
   if (section.name !== undefined) row.name = section.name;
-  if (section.capacities !== undefined) row.capacities = JSON.stringify(section.capacities);
   if (section.roll_over !== undefined) row.roll_over = section.roll_over;
   if (section.roll_over_start_date !== undefined) row.roll_over_start_date = section.roll_over_start_date;
   
   return row;
 }
 
-function rowToSection(row: SectionRow): JSONSection {
+function rowToSection(row: SectionRow, capacities: JSONCapacity[] = []): JSONSection {
   return {
     section_id: row.section_id,
     user_id: row.user_id,
     budget_id: row.budget_id,
     name: row.name,
-    capacities: typeof row.capacities === 'string' ? JSON.parse(row.capacities) : row.capacities || [],
+    capacities,
     roll_over: row.roll_over,
     roll_over_start_date: row.roll_over_start_date,
   } as JSONSection;
@@ -259,6 +276,12 @@ export const upsertSections = async (
         `;
         
         const result = await pool.query(query, values);
+
+        // Upsert capacities separately
+        if (section.capacities !== undefined) {
+          await upsertCapacities(user, section.section_id, "section", section.capacities);
+        }
+
         results.push({
           update: { _id: section.section_id },
           status: result.rowCount ? 200 : 404,
@@ -276,6 +299,12 @@ export const upsertSections = async (
         
         const result = await pool.query(query, insertValues);
         const id = result.rows[0]?.section_id;
+
+        // Upsert capacities separately
+        if (id && section.capacities) {
+          await upsertCapacities(user, id, "section", section.capacities);
+        }
+
         results.push({
           update: { _id: id },
           status: result.rowCount ? 201 : 500,
@@ -299,20 +328,24 @@ export const getSections = async (
 ): Promise<JSONSection[]> => {
   const { user_id } = user;
   
+  let result;
   if (budget_id) {
-    const result = await pool.query(
+    result = await pool.query(
       `SELECT * FROM sections 
        WHERE budget_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
       [budget_id, user_id]
     );
-    return result.rows.map(rowToSection);
+  } else {
+    result = await pool.query(
+      `SELECT * FROM sections WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+      [user_id]
+    );
   }
-  
-  const result = await pool.query(
-    `SELECT * FROM sections WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user_id]
-  );
-  return result.rows.map(rowToSection);
+
+  const sectionIds = result.rows.map((r: SectionRow) => r.section_id);
+  const capsMap = await getCapacitiesByParents(sectionIds, "section");
+
+  return result.rows.map((row: SectionRow) => rowToSection(row, capsMap.get(row.section_id) || []));
 };
 
 export const deleteSections = async (
@@ -321,6 +354,11 @@ export const deleteSections = async (
 ): Promise<{ deleted: number }> => {
   if (!section_ids.length) return { deleted: 0 };
   const { user_id } = user;
+
+  // Cascade: soft-delete capacities for these sections
+  for (const sid of section_ids) {
+    await deleteCapacitiesByParent(user, sid);
+  }
   
   const placeholders = section_ids.map((_, i) => `$${i + 2}`).join(", ");
   const result = await pool.query(
@@ -343,20 +381,19 @@ function categoryToRow(category: PartialCategory): Partial<CategoryRow> {
   if (category.category_id !== undefined) row.category_id = category.category_id;
   if (category.section_id !== undefined) row.section_id = category.section_id;
   if (category.name !== undefined) row.name = category.name;
-  if (category.capacities !== undefined) row.capacities = JSON.stringify(category.capacities);
   if (category.roll_over !== undefined) row.roll_over = category.roll_over;
   if (category.roll_over_start_date !== undefined) row.roll_over_start_date = category.roll_over_start_date;
   
   return row;
 }
 
-function rowToCategory(row: CategoryRow): JSONCategory {
+function rowToCategory(row: CategoryRow, capacities: JSONCapacity[] = []): JSONCategory {
   return {
     category_id: row.category_id,
     user_id: row.user_id,
     section_id: row.section_id,
     name: row.name,
-    capacities: typeof row.capacities === 'string' ? JSON.parse(row.capacities) : row.capacities || [],
+    capacities,
     roll_over: row.roll_over,
     roll_over_start_date: row.roll_over_start_date,
   } as JSONCategory;
@@ -395,6 +432,12 @@ export const upsertCategories = async (
         `;
         
         const result = await pool.query(query, values);
+
+        // Upsert capacities separately
+        if (category.capacities !== undefined) {
+          await upsertCapacities(user, category.category_id, "category", category.capacities);
+        }
+
         results.push({
           update: { _id: category.category_id },
           status: result.rowCount ? 200 : 404,
@@ -412,6 +455,12 @@ export const upsertCategories = async (
         
         const result = await pool.query(query, insertValues);
         const id = result.rows[0]?.category_id;
+
+        // Upsert capacities separately
+        if (id && category.capacities) {
+          await upsertCapacities(user, id, "category", category.capacities);
+        }
+
         results.push({
           update: { _id: id },
           status: result.rowCount ? 201 : 500,
@@ -435,20 +484,24 @@ export const getCategories = async (
 ): Promise<JSONCategory[]> => {
   const { user_id } = user;
   
+  let result;
   if (section_id) {
-    const result = await pool.query(
+    result = await pool.query(
       `SELECT * FROM categories 
        WHERE section_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
       [section_id, user_id]
     );
-    return result.rows.map(rowToCategory);
+  } else {
+    result = await pool.query(
+      `SELECT * FROM categories WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+      [user_id]
+    );
   }
-  
-  const result = await pool.query(
-    `SELECT * FROM categories WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user_id]
-  );
-  return result.rows.map(rowToCategory);
+
+  const categoryIds = result.rows.map((r: CategoryRow) => r.category_id);
+  const capsMap = await getCapacitiesByParents(categoryIds, "category");
+
+  return result.rows.map((row: CategoryRow) => rowToCategory(row, capsMap.get(row.category_id) || []));
 };
 
 export const deleteCategories = async (
@@ -457,6 +510,11 @@ export const deleteCategories = async (
 ): Promise<{ deleted: number }> => {
   if (!category_ids.length) return { deleted: 0 };
   const { user_id } = user;
+
+  // Cascade: soft-delete capacities for these categories
+  for (const cid of category_ids) {
+    await deleteCapacitiesByParent(user, cid);
+  }
   
   const placeholders = category_ids.map((_, i) => `$${i + 2}`).join(", ");
   const result = await pool.query(
@@ -495,7 +553,11 @@ export const searchBudgets = async (
     `SELECT * FROM budgets WHERE ${conditions.join(" AND ")}`,
     values
   );
-  return result.rows.map(rowToBudget);
+
+  const budgetIds = result.rows.map((r: BudgetRow) => r.budget_id);
+  const capsMap = await getCapacitiesByParents(budgetIds, "budget");
+
+  return result.rows.map((row: BudgetRow) => rowToBudget(row, capsMap.get(row.budget_id) || []));
 };
 
 /**
@@ -509,19 +571,26 @@ export const createBudget = async (
   
   try {
     const result = await pool.query(
-      `INSERT INTO budgets (user_id, name, iso_currency_code, capacities, roll_over, roll_over_start_date, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+      `INSERT INTO budgets (user_id, name, iso_currency_code, roll_over, roll_over_start_date, updated)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         user_id,
         data.name || "New Budget",
         data.iso_currency_code || "USD",
-        JSON.stringify(data.capacities || []),
         data.roll_over || false,
         data.roll_over_start_date,
       ]
     );
-    return result.rows.length > 0 ? rowToBudget(result.rows[0]) : null;
+    if (result.rows.length === 0) return null;
+
+    const budgetId = result.rows[0].budget_id;
+    const capacities = data.capacities || [];
+    if (capacities.length > 0) {
+      await upsertCapacities(user, budgetId, "budget", capacities);
+    }
+
+    return rowToBudget(result.rows[0], capacities);
   } catch (error: any) {
     console.error("Failed to create budget:", error.message);
     return null;
@@ -551,11 +620,6 @@ export const updateBudget = async (
     values.push(data.iso_currency_code);
     paramIndex++;
   }
-  if (data.capacities !== undefined) {
-    updates.push(`capacities = $${paramIndex}`);
-    values.push(JSON.stringify(data.capacities));
-    paramIndex++;
-  }
   if (data.roll_over !== undefined) {
     updates.push(`roll_over = $${paramIndex}`);
     values.push(data.roll_over);
@@ -575,17 +639,69 @@ export const updateBudget = async (
      RETURNING budget_id`,
     values
   );
+
+  // Upsert capacities separately
+  if (data.capacities !== undefined) {
+    await upsertCapacities(user, budget_id, "budget", data.capacities);
+  }
+
   return (result.rowCount || 0) > 0;
 };
 
 /**
  * Deletes a single budget (soft delete).
+ * Cascades: soft-deletes child sections → their categories → their capacities.
  */
 export const deleteBudget = async (
   user: MaskedUser,
   budget_id: string
 ): Promise<boolean> => {
   const { user_id } = user;
+
+  // Get section IDs for this budget
+  const sectionResult = await pool.query(
+    `SELECT section_id FROM sections WHERE budget_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [budget_id, user_id]
+  );
+  const sectionIds = sectionResult.rows.map((r: any) => r.section_id);
+
+  // Get category IDs for these sections
+  if (sectionIds.length > 0) {
+    const sPlaceholders = sectionIds.map((_: string, i: number) => `$${i + 2}`).join(", ");
+    const categoryResult = await pool.query(
+      `SELECT category_id FROM categories WHERE section_id IN (${sPlaceholders}) AND user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+      [user_id, ...sectionIds]
+    );
+    const categoryIds = categoryResult.rows.map((r: any) => r.category_id);
+
+    // Cascade: soft-delete capacities for categories
+    for (const cid of categoryIds) {
+      await deleteCapacitiesByParent(user, cid);
+    }
+
+    // Cascade: soft-delete categories
+    await pool.query(
+      `UPDATE categories SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE section_id IN (${sPlaceholders}) AND user_id = $1`,
+      [user_id, ...sectionIds]
+    );
+  }
+
+  // Cascade: soft-delete capacities for sections
+  for (const sid of sectionIds) {
+    await deleteCapacitiesByParent(user, sid);
+  }
+
+  // Cascade: soft-delete sections of this budget
+  await pool.query(
+    `UPDATE sections SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE budget_id = $1 AND user_id = $2`,
+    [budget_id, user_id]
+  );
+
+  // Cascade: soft-delete capacities for the budget itself
+  await deleteCapacitiesByParent(user, budget_id);
+
   const result = await pool.query(
     `UPDATE budgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
      WHERE budget_id = $1 AND user_id = $2
@@ -606,19 +722,26 @@ export const createSection = async (
   
   try {
     const result = await pool.query(
-      `INSERT INTO sections (user_id, budget_id, name, capacities, roll_over, roll_over_start_date, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+      `INSERT INTO sections (user_id, budget_id, name, roll_over, roll_over_start_date, updated)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         user_id,
         data.budget_id,
         data.name || "New Section",
-        JSON.stringify(data.capacities || []),
         data.roll_over || false,
         data.roll_over_start_date,
       ]
     );
-    return result.rows.length > 0 ? rowToSection(result.rows[0]) : null;
+    if (result.rows.length === 0) return null;
+
+    const sectionId = result.rows[0].section_id;
+    const capacities = data.capacities || [];
+    if (capacities.length > 0) {
+      await upsertCapacities(user, sectionId, "section", capacities);
+    }
+
+    return rowToSection(result.rows[0], capacities);
   } catch (error: any) {
     console.error("Failed to create section:", error.message);
     return null;
@@ -643,11 +766,6 @@ export const updateSection = async (
     values.push(data.name);
     paramIndex++;
   }
-  if (data.capacities !== undefined) {
-    updates.push(`capacities = $${paramIndex}`);
-    values.push(JSON.stringify(data.capacities));
-    paramIndex++;
-  }
   if (data.roll_over !== undefined) {
     updates.push(`roll_over = $${paramIndex}`);
     values.push(data.roll_over);
@@ -667,17 +785,47 @@ export const updateSection = async (
      RETURNING section_id`,
     values
   );
+
+  // Upsert capacities separately
+  if (data.capacities !== undefined) {
+    await upsertCapacities(user, section_id, "section", data.capacities);
+  }
+
   return (result.rowCount || 0) > 0;
 };
 
 /**
  * Deletes a single section (soft delete).
+ * Cascades: soft-deletes child categories → their capacities.
  */
 export const deleteSection = async (
   user: MaskedUser,
   section_id: string
 ): Promise<boolean> => {
   const { user_id } = user;
+
+  // Get category IDs for this section
+  const categoryResult = await pool.query(
+    `SELECT category_id FROM categories WHERE section_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [section_id, user_id]
+  );
+  const categoryIds = categoryResult.rows.map((r: any) => r.category_id);
+
+  // Cascade: soft-delete capacities for categories
+  for (const cid of categoryIds) {
+    await deleteCapacitiesByParent(user, cid);
+  }
+
+  // Cascade: soft-delete categories of this section
+  await pool.query(
+    `UPDATE categories SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE section_id = $1 AND user_id = $2`,
+    [section_id, user_id]
+  );
+
+  // Cascade: soft-delete capacities for the section itself
+  await deleteCapacitiesByParent(user, section_id);
+
   const result = await pool.query(
     `UPDATE sections SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
      WHERE section_id = $1 AND user_id = $2
@@ -698,19 +846,26 @@ export const createCategory = async (
   
   try {
     const result = await pool.query(
-      `INSERT INTO categories (user_id, section_id, name, capacities, roll_over, roll_over_start_date, updated)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+      `INSERT INTO categories (user_id, section_id, name, roll_over, roll_over_start_date, updated)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         user_id,
         data.section_id,
         data.name || "New Category",
-        JSON.stringify(data.capacities || []),
         data.roll_over || false,
         data.roll_over_start_date,
       ]
     );
-    return result.rows.length > 0 ? rowToCategory(result.rows[0]) : null;
+    if (result.rows.length === 0) return null;
+
+    const categoryId = result.rows[0].category_id;
+    const capacities = data.capacities || [];
+    if (capacities.length > 0) {
+      await upsertCapacities(user, categoryId, "category", capacities);
+    }
+
+    return rowToCategory(result.rows[0], capacities);
   } catch (error: any) {
     console.error("Failed to create category:", error.message);
     return null;
@@ -735,11 +890,6 @@ export const updateCategory = async (
     values.push(data.name);
     paramIndex++;
   }
-  if (data.capacities !== undefined) {
-    updates.push(`capacities = $${paramIndex}`);
-    values.push(JSON.stringify(data.capacities));
-    paramIndex++;
-  }
   if (data.roll_over !== undefined) {
     updates.push(`roll_over = $${paramIndex}`);
     values.push(data.roll_over);
@@ -759,17 +909,28 @@ export const updateCategory = async (
      RETURNING category_id`,
     values
   );
+
+  // Upsert capacities separately
+  if (data.capacities !== undefined) {
+    await upsertCapacities(user, category_id, "category", data.capacities);
+  }
+
   return (result.rowCount || 0) > 0;
 };
 
 /**
  * Deletes a single category (soft delete).
+ * Cascades: soft-deletes its capacities.
  */
 export const deleteCategory = async (
   user: MaskedUser,
   category_id: string
 ): Promise<boolean> => {
   const { user_id } = user;
+
+  // Cascade: soft-delete capacities
+  await deleteCapacitiesByParent(user, category_id);
+
   const result = await pool.query(
     `UPDATE categories SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
      WHERE category_id = $1 AND user_id = $2

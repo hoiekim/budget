@@ -86,6 +86,15 @@ export {
   getOldestTransactionDate,
 } from "./transactions";
 
+// Capacities
+export type { ParentType } from "./capacities";
+export {
+  getCapacitiesByParent,
+  getCapacitiesByParents,
+  upsertCapacities,
+  deleteCapacitiesByParent,
+} from "./capacities";
+
 // Budgets, Sections, Categories
 export {
   upsertBudgets,

@@ -21,112 +21,76 @@ export interface SearchSplitTransactionsOptions {
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
 
 /**
- * Converts an ES-style transaction object to flat Postgres columns.
+ * Converts a transaction object to flat Postgres columns + raw JSONB.
+ * Only extracts indexed/queried columns; stores the full provider object in raw.
  */
 function transactionToRow(tx: PartialTransaction): Record<string, any> {
   const row: Record<string, any> = {};
   
-  // Direct mappings
   if (tx.transaction_id !== undefined) row.transaction_id = tx.transaction_id;
   if (tx.account_id !== undefined) row.account_id = tx.account_id;
-  if (tx.pending_transaction_id !== undefined) row.pending_transaction_id = tx.pending_transaction_id;
-  if (tx.category_id !== undefined) row.category_id = tx.category_id;
-  if (tx.category !== undefined) row.category = tx.category;
-  if (tx.account_owner !== undefined) row.account_owner = tx.account_owner;
   if (tx.name !== undefined) row.name = tx.name;
   if (tx.amount !== undefined) row.amount = tx.amount;
-  if (tx.iso_currency_code !== undefined) row.iso_currency_code = tx.iso_currency_code;
-  if (tx.unofficial_currency_code !== undefined) row.unofficial_currency_code = tx.unofficial_currency_code;
   if (tx.date !== undefined) row.date = tx.date;
   if (tx.pending !== undefined) row.pending = tx.pending;
-  if (tx.payment_channel !== undefined) row.payment_channel = tx.payment_channel;
-  if (tx.authorized_date !== undefined) row.authorized_date = tx.authorized_date;
-  if (tx.authorized_datetime !== undefined) row.authorized_datetime = tx.authorized_datetime;
-  if (tx.datetime !== undefined) row.datetime = tx.datetime;
-  if (tx.transaction_code !== undefined) row.transaction_code = tx.transaction_code;
   
-  // Flatten location
-  if (tx.location) {
-    if (tx.location.address !== undefined) row.location_address = tx.location.address;
-    if (tx.location.city !== undefined) row.location_city = tx.location.city;
-    if (tx.location.region !== undefined) row.location_region = tx.location.region;
-    if (tx.location.postal_code !== undefined) row.location_postal_code = tx.location.postal_code;
-    if (tx.location.country !== undefined) row.location_country = tx.location.country;
-    if (tx.location.store_number !== undefined) row.location_store_number = tx.location.store_number;
-    if (tx.location.lat !== undefined) row.location_lat = tx.location.lat;
-    if (tx.location.lon !== undefined) row.location_lon = tx.location.lon;
-  }
-  
-  // Flatten payment_meta
-  if (tx.payment_meta) {
-    if (tx.payment_meta.reference_number !== undefined) row.payment_meta_reference_number = tx.payment_meta.reference_number;
-    if (tx.payment_meta.ppd_id !== undefined) row.payment_meta_ppd_id = tx.payment_meta.ppd_id;
-    if (tx.payment_meta.payee !== undefined) row.payment_meta_payee = tx.payment_meta.payee;
-    if (tx.payment_meta.by_order_of !== undefined) row.payment_meta_by_order_of = tx.payment_meta.by_order_of;
-    if (tx.payment_meta.payer !== undefined) row.payment_meta_payer = tx.payment_meta.payer;
-    if (tx.payment_meta.payment_method !== undefined) row.payment_meta_payment_method = tx.payment_meta.payment_method;
-    if (tx.payment_meta.payment_processor !== undefined) row.payment_meta_payment_processor = tx.payment_meta.payment_processor;
-    if (tx.payment_meta.reason !== undefined) row.payment_meta_reason = tx.payment_meta.reason;
-  }
-  
-  // Flatten label
+  // Flatten label (user-edited)
   if (tx.label) {
     if (tx.label.budget_id !== undefined) row.label_budget_id = tx.label.budget_id;
     if (tx.label.category_id !== undefined) row.label_category_id = tx.label.category_id;
     if (tx.label.memo !== undefined) row.label_memo = tx.label.memo;
   }
+
+  // Store full provider object in raw (excluding label which is user-edited)
+  const { label, ...providerData } = tx;
+  row.raw = JSON.stringify(providerData);
   
   return row;
 }
 
 /**
- * Converts a Postgres row to ES-style transaction object.
+ * Converts a Postgres row to transaction object.
+ * Merges raw JSONB with user-edited label columns.
  */
 function rowToTransaction(row: Record<string, any>): JSONTransaction {
+  // Start from raw JSONB if available, then overlay column values
+  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
+  
   return {
+    ...raw,
     transaction_id: row.transaction_id,
     user_id: row.user_id,
-    account_id: row.account_id,
-    pending_transaction_id: row.pending_transaction_id,
-    category_id: row.category_id,
-    category: row.category,
-    account_owner: row.account_owner,
-    name: row.name,
-    amount: row.amount != null ? Number(row.amount) : 0,
-    iso_currency_code: row.iso_currency_code,
-    unofficial_currency_code: row.unofficial_currency_code,
-    date: row.date,
-    pending: row.pending,
-    payment_channel: row.payment_channel,
-    authorized_date: row.authorized_date,
-    authorized_datetime: row.authorized_datetime,
-    datetime: row.datetime,
-    transaction_code: row.transaction_code,
-    location: {
-      address: row.location_address,
-      city: row.location_city,
-      region: row.location_region,
-      postal_code: row.location_postal_code,
-      country: row.location_country,
-      store_number: row.location_store_number,
-      lat: row.location_lat != null ? Number(row.location_lat) : null,
-      lon: row.location_lon != null ? Number(row.location_lon) : null,
-    },
-    payment_meta: {
-      reference_number: row.payment_meta_reference_number,
-      ppd_id: row.payment_meta_ppd_id,
-      payee: row.payment_meta_payee,
-      by_order_of: row.payment_meta_by_order_of,
-      payer: row.payment_meta_payer,
-      payment_method: row.payment_meta_payment_method,
-      payment_processor: row.payment_meta_payment_processor,
-      reason: row.payment_meta_reason,
-    },
+    account_id: row.account_id ?? raw.account_id,
+    name: row.name ?? raw.name,
+    amount: row.amount != null ? Number(row.amount) : (raw.amount ?? 0),
+    date: row.date ?? raw.date,
+    pending: row.pending ?? raw.pending,
+    // User-edited label always comes from columns (overrides raw)
     label: {
       budget_id: row.label_budget_id,
       category_id: row.label_category_id,
       memo: row.label_memo,
     },
+    // Ensure nested objects have defaults if not in raw
+    location: raw.location || {
+      address: null, city: null, region: null, postal_code: null,
+      country: null, store_number: null, lat: null, lon: null,
+    },
+    payment_meta: raw.payment_meta || {
+      reference_number: null, ppd_id: null, payee: null, by_order_of: null,
+      payer: null, payment_method: null, payment_processor: null, reason: null,
+    },
+    pending_transaction_id: raw.pending_transaction_id ?? null,
+    category_id: raw.category_id ?? null,
+    category: raw.category ?? null,
+    account_owner: raw.account_owner ?? null,
+    iso_currency_code: raw.iso_currency_code ?? null,
+    unofficial_currency_code: raw.unofficial_currency_code ?? null,
+    payment_channel: raw.payment_channel,
+    authorized_date: raw.authorized_date ?? null,
+    authorized_datetime: raw.authorized_datetime ?? null,
+    datetime: raw.datetime ?? null,
+    transaction_code: raw.transaction_code ?? null,
   } as JSONTransaction;
 }
 
@@ -317,34 +281,37 @@ function investmentTxToRow(tx: Partial<JSONInvestmentTransaction>): Record<strin
   if (tx.security_id !== undefined) row.security_id = tx.security_id;
   if (tx.date !== undefined) row.date = tx.date;
   if (tx.name !== undefined) row.name = tx.name;
-  if (tx.quantity !== undefined) row.quantity = tx.quantity;
   if (tx.amount !== undefined) row.amount = tx.amount;
+  if (tx.quantity !== undefined) row.quantity = tx.quantity;
   if (tx.price !== undefined) row.price = tx.price;
-  if (tx.fees !== undefined) row.fees = tx.fees;
   if (tx.type !== undefined) row.type = tx.type;
-  if (tx.subtype !== undefined) row.subtype = tx.subtype;
-  if (tx.iso_currency_code !== undefined) row.iso_currency_code = tx.iso_currency_code;
-  if (tx.unofficial_currency_code !== undefined) row.unofficial_currency_code = tx.unofficial_currency_code;
+
+  // Store full provider object in raw
+  row.raw = JSON.stringify(tx);
   
   return row;
 }
 
 function rowToInvestmentTx(row: Record<string, any>): JSONInvestmentTransaction {
+  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
+  
   return {
+    ...raw,
     investment_transaction_id: row.investment_transaction_id,
     user_id: row.user_id,
-    account_id: row.account_id,
-    security_id: row.security_id,
-    date: row.date,
-    name: row.name,
-    quantity: row.quantity != null ? Number(row.quantity) : 0,
-    amount: row.amount != null ? Number(row.amount) : 0,
-    price: row.price != null ? Number(row.price) : 0,
-    fees: row.fees != null ? Number(row.fees) : undefined,
-    type: row.type,
-    subtype: row.subtype,
-    iso_currency_code: row.iso_currency_code,
-    unofficial_currency_code: row.unofficial_currency_code,
+    account_id: row.account_id ?? raw.account_id,
+    security_id: row.security_id ?? raw.security_id,
+    date: row.date ?? raw.date,
+    name: row.name ?? raw.name,
+    quantity: row.quantity != null ? Number(row.quantity) : (raw.quantity ?? 0),
+    amount: row.amount != null ? Number(row.amount) : (raw.amount ?? 0),
+    price: row.price != null ? Number(row.price) : (raw.price ?? 0),
+    type: row.type ?? raw.type,
+    // Fields from raw only
+    fees: raw.fees != null ? Number(raw.fees) : undefined,
+    subtype: raw.subtype,
+    iso_currency_code: raw.iso_currency_code,
+    unofficial_currency_code: raw.unofficial_currency_code,
   } as JSONInvestmentTransaction;
 }
 
@@ -452,7 +419,6 @@ export const deleteInvestmentTransactions = async (
 
 /**
  * Searches transactions by account IDs within a date range.
- * Returns both regular and investment transactions.
  */
 export const searchTransactionsByAccountId = async (
   user: MaskedUser,
@@ -501,7 +467,7 @@ export const searchTransactionsByAccountId = async (
 };
 
 // =====================================
-// Split Transactions
+// Split Transactions (NO CHANGE - user-created, no provider data)
 // =====================================
 
 function splitTxToRow(tx: Partial<JSONSplitTransaction>): Record<string, any> {
@@ -558,7 +524,6 @@ export const upsertSplitTransactions = async (
       const values = Object.values(row);
       const placeholders = values.map((_, i) => `$${i + 1}`);
       
-      // Handle insert without split_transaction_id (generate UUID)
       let query: string;
       if (row.split_transaction_id) {
         const updateClauses = columns
@@ -574,7 +539,6 @@ export const upsertSplitTransactions = async (
           RETURNING split_transaction_id
         `;
       } else {
-        // Remove split_transaction_id from columns/values for auto-generation
         const insertColumns = columns.filter(c => c !== "split_transaction_id");
         const insertValues = values.filter((_, i) => columns[i] !== "split_transaction_id");
         const insertPlaceholders = insertValues.map((_, i) => `$${i + 1}`);
@@ -646,9 +610,6 @@ export const deleteSplitTransactions = async (
   return { deleted: result.rowCount || 0 };
 };
 
-/**
- * Deletes split transactions by parent transaction ID (soft delete).
- */
 export const deleteSplitTransactionsByTransactionId = async (
   user: MaskedUser,
   transaction_id: string
@@ -665,10 +626,6 @@ export const deleteSplitTransactionsByTransactionId = async (
   return { deleted: result.rowCount || 0 };
 };
 
-/**
- * Searches transactions with flexible options.
- * Returns both regular and investment transactions.
- */
 export const searchTransactions = async (
   user: MaskedUser,
   options: SearchTransactionsOptions = {}
@@ -736,9 +693,6 @@ export const searchTransactions = async (
   };
 };
 
-/**
- * Searches split transactions with options.
- */
 export const searchSplitTransactions = async (
   user: MaskedUser,
   options: SearchSplitTransactionsOptions = {}
@@ -767,9 +721,6 @@ export const searchSplitTransactions = async (
   return result.rows.map(rowToSplitTx);
 };
 
-/**
- * Creates a new split transaction.
- */
 export const createSplitTransaction = async (
   user: MaskedUser,
   data: Partial<JSONSplitTransaction>
@@ -803,9 +754,6 @@ export const createSplitTransaction = async (
   }
 };
 
-/**
- * Gets the oldest transaction date for a user.
- */
 export const getOldestTransactionDate = async (
   user: MaskedUser
 ): Promise<string | null> => {

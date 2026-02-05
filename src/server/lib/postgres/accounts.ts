@@ -5,172 +5,76 @@ import { buildUpdateQuery, buildUpsertQuery } from "./utils";
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
-// Database row interfaces for type safety
-interface AccountRow {
-  account_id: string;
-  user_id?: string;
-  item_id?: string;
-  institution_id?: string;
-  balances_available?: number | null;
-  balances_current?: number | null;
-  balances_limit?: number | null;
-  balances_iso_currency_code?: string | null;
-  balances_unofficial_currency_code?: string | null;
-  mask?: string | null;
-  name?: string | null;
-  official_name?: string | null;
-  type?: string | null;
-  subtype?: string | null;
-  custom_name?: string | null;
-  hide?: boolean;
-  label_budget_id?: string | null;
-  graph_options_use_snapshots?: boolean;
-  graph_options_use_transactions?: boolean;
-  updated?: Date;
-  is_deleted?: boolean;
-}
-
-interface HoldingRow {
-  holding_id: string;
-  user_id?: string;
-  account_id?: string;
-  security_id?: string;
-  institution_price?: number | null;
-  institution_price_as_of?: string | null;
-  institution_value?: number | null;
-  cost_basis?: number | null;
-  quantity?: number | null;
-  iso_currency_code?: string | null;
-  unofficial_currency_code?: string | null;
-  updated?: Date;
-  is_deleted?: boolean;
-}
-
-interface InstitutionRow {
-  institution_id: string;
-  name?: string | null;
-  products?: string[];
-  country_codes?: string[];
-  url?: string | null;
-  primary_color?: string | null;
-  logo?: string | null;
-  routing_numbers?: string[];
-  oauth?: boolean | null;
-  status?: string | null;
-  updated?: Date;
-}
-
-interface SecurityRow {
-  security_id: string;
-  isin?: string | null;
-  cusip?: string | null;
-  sedol?: string | null;
-  institution_security_id?: string | null;
-  institution_id?: string | null;
-  proxy_security_id?: string | null;
-  name?: string | null;
-  ticker_symbol?: string | null;
-  is_cash_equivalent?: boolean | null;
-  type?: string | null;
-  close_price?: number | null;
-  close_price_as_of?: string | null;
-  iso_currency_code?: string | null;
-  unofficial_currency_code?: string | null;
-  updated?: Date;
-}
-
-// Column definitions for accounts table
-const ACCOUNT_COLUMNS = [
-  "account_id", "user_id", "item_id", "institution_id",
-  "balances_available", "balances_current", "balances_limit",
-  "balances_iso_currency_code", "balances_unofficial_currency_code",
-  "mask", "name", "official_name", "type", "subtype", "custom_name", "hide",
-  "label_budget_id", "graph_options_use_snapshots", "graph_options_use_transactions",
-  "updated", "is_deleted"
-];
-
 /**
- * Converts an ES-style account object to flat Postgres columns.
+ * Converts an account object to flat Postgres columns + raw JSONB.
+ * Keeps indexed/user-edited columns; stores full provider object in raw.
  */
-function accountToRow(account: PartialAccount): Partial<AccountRow> {
-  const row: Partial<AccountRow> = {};
+function accountToRow(account: PartialAccount): Record<string, any> {
+  const row: Record<string, any> = {};
   
-  // Direct mappings
   if (account.account_id !== undefined) row.account_id = account.account_id;
   if (account.item_id !== undefined) row.item_id = account.item_id;
   if (account.institution_id !== undefined) row.institution_id = account.institution_id;
-  if (account.mask !== undefined) row.mask = account.mask;
   if (account.name !== undefined) row.name = account.name;
-  if (account.official_name !== undefined) row.official_name = account.official_name;
   if (account.type !== undefined) row.type = account.type;
   if (account.subtype !== undefined) row.subtype = account.subtype;
+  
+  // User-edited fields
   if (account.custom_name !== undefined) row.custom_name = account.custom_name;
   if (account.hide !== undefined) row.hide = account.hide;
-  
-  // Flatten balances
-  if (account.balances) {
-    if (account.balances.available !== undefined) row.balances_available = account.balances.available;
-    if (account.balances.current !== undefined) row.balances_current = account.balances.current;
-    if (account.balances.limit !== undefined) row.balances_limit = account.balances.limit;
-    if (account.balances.iso_currency_code !== undefined) row.balances_iso_currency_code = account.balances.iso_currency_code;
-    if (account.balances.unofficial_currency_code !== undefined) row.balances_unofficial_currency_code = account.balances.unofficial_currency_code;
-  }
-  
-  // Flatten label
   if (account.label) {
     if (account.label.budget_id !== undefined) row.label_budget_id = account.label.budget_id;
   }
-  
-  // Flatten graphOptions
   if (account.graphOptions) {
     if (account.graphOptions.useSnapshots !== undefined) row.graph_options_use_snapshots = account.graphOptions.useSnapshots;
     if (account.graphOptions.useTransactions !== undefined) row.graph_options_use_transactions = account.graphOptions.useTransactions;
   }
   
+  // Store full provider object in raw (excluding user-edited fields)
+  const { custom_name, hide, label, graphOptions, ...providerData } = account;
+  row.raw = JSON.stringify(providerData);
+  
   return row;
 }
 
 /**
- * Converts a Postgres row to ES-style account object.
+ * Converts a Postgres row to account object.
+ * Merges raw JSONB with user-edited column values.
  */
-function rowToAccount(row: AccountRow): JSONAccount {
+function rowToAccount(row: Record<string, any>): JSONAccount {
+  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
+  
   return {
+    ...raw,
     account_id: row.account_id,
     user_id: row.user_id,
-    item_id: row.item_id,
-    institution_id: row.institution_id,
-    mask: row.mask,
-    name: row.name,
-    official_name: row.official_name,
-    type: row.type,
-    subtype: row.subtype,
-    custom_name: row.custom_name,
-    hide: row.hide,
-    balances: {
-      // Convert string numbers from PostgreSQL NUMERIC to JavaScript numbers
-      available: row.balances_available != null ? Number(row.balances_available) : null,
-      current: row.balances_current != null ? Number(row.balances_current) : null,
-      limit: row.balances_limit != null ? Number(row.balances_limit) : null,
-      iso_currency_code: row.balances_iso_currency_code,
-      unofficial_currency_code: row.balances_unofficial_currency_code,
+    item_id: row.item_id ?? raw.item_id,
+    institution_id: row.institution_id ?? raw.institution_id,
+    name: row.name ?? raw.name,
+    type: row.type ?? raw.type,
+    subtype: row.subtype ?? raw.subtype,
+    // Fields from raw
+    mask: raw.mask ?? null,
+    official_name: raw.official_name ?? null,
+    balances: raw.balances || {
+      available: null, current: null, limit: null,
+      iso_currency_code: null, unofficial_currency_code: null,
     },
+    // User-edited fields from columns (always override raw)
+    custom_name: row.custom_name ?? "",
+    hide: row.hide ?? false,
     label: {
       budget_id: row.label_budget_id,
     },
     graphOptions: {
-      useSnapshots: row.graph_options_use_snapshots,
-      useTransactions: row.graph_options_use_transactions,
+      useSnapshots: row.graph_options_use_snapshots ?? true,
+      useTransactions: row.graph_options_use_transactions ?? true,
     },
   } as JSONAccount;
 }
 
 /**
  * Updates or inserts accounts associated with given user.
- * Uses dynamic UPDATE to only update defined fields.
- * @param user
- * @param accounts
- * @param upsert
- * @returns A promise to be an array of result objects
  */
 export const upsertAccounts = async (
   user: MaskedUser,
@@ -187,12 +91,10 @@ export const upsertAccounts = async (
     
     try {
       if (upsert) {
-        // Build dynamic INSERT ... ON CONFLICT DO UPDATE
         const columns = Object.keys(row);
         const values = Object.values(row);
         const placeholders = values.map((_, i) => `$${i + 1}`);
         
-        // Build SET clause for conflict - only update non-key columns
         const updateClauses = columns
           .filter(col => col !== "account_id" && col !== "user_id")
           .map(col => `${col} = EXCLUDED.${col}`);
@@ -213,7 +115,6 @@ export const upsertAccounts = async (
           status: result.rowCount ? 200 : 404,
         });
       } else {
-        // Update only - build dynamic UPDATE query
         const updateData = { ...row };
         delete updateData.account_id;
         delete updateData.user_id;
@@ -235,7 +136,7 @@ export const upsertAccounts = async (
         } else {
           results.push({
             update: { _id: account.account_id },
-            status: 304, // Not modified
+            status: 304,
           });
         }
       }
@@ -251,9 +152,6 @@ export const upsertAccounts = async (
   return results;
 };
 
-/**
- * Retrieves all accounts for a user.
- */
 export const getAccounts = async (user: MaskedUser): Promise<JSONAccount[]> => {
   const { user_id } = user;
   const result = await pool.query(
@@ -263,9 +161,6 @@ export const getAccounts = async (user: MaskedUser): Promise<JSONAccount[]> => {
   return result.rows.map(rowToAccount);
 };
 
-/**
- * Retrieves a single account by ID.
- */
 export const getAccount = async (
   user: MaskedUser,
   account_id: string
@@ -280,6 +175,7 @@ export const getAccount = async (
 
 /**
  * Deletes accounts (soft delete).
+ * Cascades: soft-deletes child transactions, investment_transactions, split_transactions, snapshots, holdings.
  */
 export const deleteAccounts = async (
   user: MaskedUser,
@@ -289,6 +185,42 @@ export const deleteAccounts = async (
   const { user_id } = user;
   
   const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
+
+  // Cascade: soft-delete transactions
+  await pool.query(
+    `UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE account_id IN (${placeholders}) AND user_id = $1`,
+    [user_id, ...account_ids]
+  );
+
+  // Cascade: soft-delete investment_transactions
+  await pool.query(
+    `UPDATE investment_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE account_id IN (${placeholders}) AND user_id = $1`,
+    [user_id, ...account_ids]
+  );
+
+  // Cascade: soft-delete split_transactions
+  await pool.query(
+    `UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE account_id IN (${placeholders}) AND user_id = $1`,
+    [user_id, ...account_ids]
+  );
+
+  // Cascade: soft-delete snapshots
+  await pool.query(
+    `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE account_id IN (${placeholders}) AND user_id = $1`,
+    [user_id, ...account_ids]
+  );
+
+  // Cascade: soft-delete holdings
+  await pool.query(
+    `UPDATE holdings SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE account_id IN (${placeholders}) AND user_id = $1`,
+    [user_id, ...account_ids]
+  );
+
   const result = await pool.query(
     `UPDATE accounts SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
      WHERE account_id IN (${placeholders}) AND user_id = $1
@@ -299,9 +231,6 @@ export const deleteAccounts = async (
   return { deleted: result.rowCount || 0 };
 };
 
-/**
- * Gets accounts by item_id.
- */
 export const getAccountsByItem = async (
   user: MaskedUser,
   item_id: string
@@ -318,35 +247,40 @@ export const getAccountsByItem = async (
 // Holdings operations
 // =====================================
 
-function holdingToRow(holding: Partial<JSONHolding>): Partial<HoldingRow> {
-  const row: Partial<HoldingRow> = {};
+function holdingToRow(holding: Partial<JSONHolding>): Record<string, any> {
+  const row: Record<string, any> = {};
   
   if (holding.account_id !== undefined) row.account_id = holding.account_id;
   if (holding.security_id !== undefined) row.security_id = holding.security_id;
   if (holding.institution_price !== undefined) row.institution_price = holding.institution_price;
-  if (holding.institution_price_as_of !== undefined) row.institution_price_as_of = holding.institution_price_as_of;
   if (holding.institution_value !== undefined) row.institution_value = holding.institution_value;
   if (holding.cost_basis !== undefined) row.cost_basis = holding.cost_basis;
   if (holding.quantity !== undefined) row.quantity = holding.quantity;
   if (holding.iso_currency_code !== undefined) row.iso_currency_code = holding.iso_currency_code;
-  if (holding.unofficial_currency_code !== undefined) row.unofficial_currency_code = holding.unofficial_currency_code;
+
+  // Store full provider object in raw
+  row.raw = JSON.stringify(holding);
   
   return row;
 }
 
-function rowToHolding(row: HoldingRow): JSONHolding {
+function rowToHolding(row: Record<string, any>): JSONHolding {
+  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
+  
   return {
+    ...raw,
     holding_id: row.holding_id,
     user_id: row.user_id,
-    account_id: row.account_id,
-    security_id: row.security_id,
-    institution_price: row.institution_price != null ? Number(row.institution_price) : null,
-    institution_price_as_of: row.institution_price_as_of,
-    institution_value: row.institution_value != null ? Number(row.institution_value) : null,
-    cost_basis: row.cost_basis != null ? Number(row.cost_basis) : null,
-    quantity: row.quantity != null ? Number(row.quantity) : null,
-    iso_currency_code: row.iso_currency_code,
-    unofficial_currency_code: row.unofficial_currency_code,
+    account_id: row.account_id ?? raw.account_id,
+    security_id: row.security_id ?? raw.security_id,
+    institution_price: row.institution_price != null ? Number(row.institution_price) : (raw.institution_price ?? null),
+    institution_value: row.institution_value != null ? Number(row.institution_value) : (raw.institution_value ?? null),
+    cost_basis: row.cost_basis != null ? Number(row.cost_basis) : (raw.cost_basis ?? null),
+    quantity: row.quantity != null ? Number(row.quantity) : (raw.quantity ?? null),
+    iso_currency_code: row.iso_currency_code ?? raw.iso_currency_code,
+    // Fields from raw only
+    institution_price_as_of: raw.institution_price_as_of,
+    unofficial_currency_code: raw.unofficial_currency_code,
   } as JSONHolding;
 }
 
@@ -408,9 +342,6 @@ export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
   return result.rows.map(rowToHolding);
 };
 
-/**
- * Deletes holdings (soft delete).
- */
 export const deleteHoldings = async (
   user: MaskedUser,
   holding_ids: string[]
@@ -433,35 +364,33 @@ export const deleteHoldings = async (
 // Institutions operations
 // =====================================
 
-function institutionToRow(institution: Partial<JSONInstitution>): Partial<InstitutionRow> {
-  const row: Partial<InstitutionRow> = {};
+function institutionToRow(institution: Partial<JSONInstitution>): Record<string, any> {
+  const row: Record<string, any> = {};
   
   if (institution.institution_id !== undefined) row.institution_id = institution.institution_id;
   if (institution.name !== undefined) row.name = institution.name;
-  if (institution.products !== undefined) row.products = institution.products;
-  if (institution.country_codes !== undefined) row.country_codes = institution.country_codes;
-  if (institution.url !== undefined) row.url = institution.url;
-  if (institution.primary_color !== undefined) row.primary_color = institution.primary_color;
-  if (institution.logo !== undefined) row.logo = institution.logo;
-  if (institution.routing_numbers !== undefined) row.routing_numbers = institution.routing_numbers;
-  if (institution.oauth !== undefined) row.oauth = institution.oauth;
-  if (institution.status !== undefined) row.status = JSON.stringify(institution.status);
+
+  // Store full provider object in raw
+  row.raw = JSON.stringify(institution);
   
   return row;
 }
 
-function rowToInstitution(row: InstitutionRow): JSONInstitution {
+function rowToInstitution(row: Record<string, any>): JSONInstitution {
+  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
+  
   return {
+    ...raw,
     institution_id: row.institution_id,
-    name: row.name,
-    products: row.products,
-    country_codes: row.country_codes,
-    url: row.url,
-    primary_color: row.primary_color,
-    logo: row.logo,
-    routing_numbers: row.routing_numbers,
-    oauth: row.oauth,
-    status: row.status ? JSON.parse(row.status) : undefined,
+    name: row.name ?? raw.name,
+    products: raw.products,
+    country_codes: raw.country_codes,
+    url: raw.url,
+    primary_color: raw.primary_color,
+    logo: raw.logo,
+    routing_numbers: raw.routing_numbers,
+    oauth: raw.oauth,
+    status: raw.status,
   } as JSONInstitution;
 }
 
@@ -521,45 +450,46 @@ export const getInstitution = async (institution_id: string): Promise<JSONInstit
 // Securities operations
 // =====================================
 
-function securityToRow(security: Partial<JSONSecurity>): Partial<SecurityRow> {
-  const row: Partial<SecurityRow> = {};
+function securityToRow(security: Partial<JSONSecurity>): Record<string, any> {
+  const row: Record<string, any> = {};
   
   if (security.security_id !== undefined) row.security_id = security.security_id;
-  if (security.isin !== undefined) row.isin = security.isin;
-  if (security.cusip !== undefined) row.cusip = security.cusip;
-  if (security.sedol !== undefined) row.sedol = security.sedol;
-  if (security.institution_security_id !== undefined) row.institution_security_id = security.institution_security_id;
-  if (security.institution_id !== undefined) row.institution_id = security.institution_id;
-  if (security.proxy_security_id !== undefined) row.proxy_security_id = security.proxy_security_id;
   if (security.name !== undefined) row.name = security.name;
   if (security.ticker_symbol !== undefined) row.ticker_symbol = security.ticker_symbol;
-  if (security.is_cash_equivalent !== undefined) row.is_cash_equivalent = security.is_cash_equivalent;
   if (security.type !== undefined) row.type = security.type;
   if (security.close_price !== undefined) row.close_price = security.close_price;
   if (security.close_price_as_of !== undefined) row.close_price_as_of = security.close_price_as_of;
   if (security.iso_currency_code !== undefined) row.iso_currency_code = security.iso_currency_code;
-  if (security.unofficial_currency_code !== undefined) row.unofficial_currency_code = security.unofficial_currency_code;
+  if (security.isin !== undefined) row.isin = security.isin;
+  if (security.cusip !== undefined) row.cusip = security.cusip;
+
+  // Store full provider object in raw
+  row.raw = JSON.stringify(security);
   
   return row;
 }
 
-function rowToSecurity(row: SecurityRow): JSONSecurity {
+function rowToSecurity(row: Record<string, any>): JSONSecurity {
+  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
+  
   return {
+    ...raw,
     security_id: row.security_id,
-    isin: row.isin,
-    cusip: row.cusip,
-    sedol: row.sedol,
-    institution_security_id: row.institution_security_id,
-    institution_id: row.institution_id,
-    proxy_security_id: row.proxy_security_id,
-    name: row.name,
-    ticker_symbol: row.ticker_symbol,
-    is_cash_equivalent: row.is_cash_equivalent,
-    type: row.type,
-    close_price: row.close_price != null ? Number(row.close_price) : null,
-    close_price_as_of: row.close_price_as_of,
-    iso_currency_code: row.iso_currency_code,
-    unofficial_currency_code: row.unofficial_currency_code,
+    name: row.name ?? raw.name,
+    ticker_symbol: row.ticker_symbol ?? raw.ticker_symbol,
+    type: row.type ?? raw.type,
+    close_price: row.close_price != null ? Number(row.close_price) : (raw.close_price ?? null),
+    close_price_as_of: row.close_price_as_of ?? raw.close_price_as_of,
+    iso_currency_code: row.iso_currency_code ?? raw.iso_currency_code,
+    isin: row.isin ?? raw.isin,
+    cusip: row.cusip ?? raw.cusip,
+    // Remaining fields from raw
+    sedol: raw.sedol,
+    institution_security_id: raw.institution_security_id,
+    institution_id: raw.institution_id,
+    proxy_security_id: raw.proxy_security_id,
+    is_cash_equivalent: raw.is_cash_equivalent,
+    unofficial_currency_code: raw.unofficial_currency_code,
   } as JSONSecurity;
 }
 
@@ -608,7 +538,6 @@ export const upsertSecurities = async (securities: Partial<JSONSecurity>[]) => {
 };
 
 export const getSecurities = async (user: MaskedUser): Promise<JSONSecurity[]> => {
-  // Securities are not user-specific, but we filter by holdings
   const { user_id } = user;
   const result = await pool.query(
     `SELECT DISTINCT s.* FROM securities s
@@ -627,13 +556,9 @@ export const getSecurity = async (security_id: string): Promise<JSONSecurity | n
   return result.rows.length > 0 ? rowToSecurity(result.rows[0]) : null;
 };
 
-/**
- * Searches securities by IDs.
- */
 export const searchSecurities = async (
   options: string[] | { security_id?: string; ticker_symbol?: string; security_ids?: string[] }
 ): Promise<JSONSecurity[]> => {
-  // Handle legacy array-of-ids call
   if (Array.isArray(options)) {
     if (!options.length) return [];
     const placeholders = options.map((_, i) => `$${i + 1}`).join(", ");
@@ -644,7 +569,6 @@ export const searchSecurities = async (
     return result.rows.map(rowToSecurity);
   }
   
-  // Handle options object
   const conditions: string[] = [];
   const values: any[] = [];
   let paramIndex = 1;
@@ -676,9 +600,6 @@ export const searchSecurities = async (
   return result.rows.map(rowToSecurity);
 };
 
-/**
- * Searches accounts by item_id (alias for getAccountsByItem).
- */
 export const searchAccountsByItemId = async (
   user: MaskedUser,
   item_id: string
@@ -686,9 +607,6 @@ export const searchAccountsByItemId = async (
   return getAccountsByItem(user, item_id);
 };
 
-/**
- * Searches accounts with optional filters.
- */
 export const searchAccounts = async (
   user: MaskedUser,
   options: {
@@ -734,9 +652,6 @@ export const searchAccounts = async (
   return result.rows.map(rowToAccount);
 };
 
-/**
- * Searches accounts by IDs.
- */
 export const searchAccountsById = async (
   user: MaskedUser,
   account_ids: string[]
@@ -753,18 +668,12 @@ export const searchAccountsById = async (
   return result.rows.map(rowToAccount);
 };
 
-/**
- * Searches institution by ID (alias for getInstitution).
- */
 export const searchInstitutionById = async (
   institution_id: string
 ): Promise<JSONInstitution | null> => {
   return getInstitution(institution_id);
 };
 
-/**
- * Searches holdings by account IDs.
- */
 export const searchHoldingsByAccountId = async (
   user: MaskedUser,
   account_ids: string[]
