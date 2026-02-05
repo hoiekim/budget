@@ -438,3 +438,48 @@ npm test                   # Unit tests (if any)
 - `src/client/lib/models/Capacity.ts` (model definition only)
 - `src/common/utils/index.ts` (optional: deprecate getRandomId)
 - `src/tools/migrate-es-to-postgres.ts`
+
+---
+
+## Migration Lessons Learned
+
+### 1. ID Mapping Must Cover All References
+
+When migrating from ES to PostgreSQL with new UUIDs, ALL ID references must be mapped:
+- **Transaction labels** (`label_budget_id`, `label_category_id`)
+- **Account labels** (`label_budget_id`)
+- **Section → Budget** (`budget_id`)
+- **Category → Section** (`section_id`)
+- **Capacity → Parent** (`parent_id`)
+- **Split transaction labels**
+- **Chart configuration** (`budget_ids` array inside JSON)
+
+### 2. JSON String vs Object
+
+ES stores some nested objects as JSON strings. Always check the type before accessing properties:
+
+```javascript
+// WRONG - if configuration is a string, this silently fails
+const config = chart.configuration || {};
+config.budget_ids = config.budget_ids.map(...);
+
+// CORRECT - parse if string
+let config = chart.configuration || {};
+if (typeof config === 'string') {
+  config = JSON.parse(config);
+}
+config.budget_ids = config.budget_ids.map(...);
+```
+
+### 3. Referential Integrity Checks
+
+The migration tool now includes comprehensive integrity checks at the end:
+- All foreign keys are validated
+- Chart configuration budget_ids are validated against the budgets table
+- Any orphaned references are reported
+
+**Always verify the integrity checks pass before declaring migration complete.**
+
+### 4. Capacity Numeric Overflow
+
+ES used `MAX_FLOAT` (~3.4e38) as a sentinel for "unlimited" capacity. PostgreSQL `DECIMAL(15,2)` max is ~9.99e12. The migration clamps these values. Consider using `-1` or `NULL` to represent unlimited in future schemas.
