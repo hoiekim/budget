@@ -15,18 +15,13 @@ export const getSplitTransactionsRoute = new Route<SplitTransactionsGetResponse>
       };
     }
 
-    const startString = req.query["start-date"] as string;
-    const endString = req.query["end-date"] as string;
     const account_id = req.query["account-id"] as string;
-    const start = new Date(startString);
-    const end = new Date(endString);
 
     const options: SearchSplitTransactionsOptions = {};
-    if (startString && endString) options.range = { start, end };
-    if (account_id) options.query = { account_id };
+    if (account_id) options.account_id = account_id;
 
-    const response = await searchSplitTransactions(user, options);
+    const splitTransactions = await searchSplitTransactions(user, options);
 
-    return { status: "success", body: response.split_transactions };
+    return { status: "success", body: splitTransactions };
   },
 );

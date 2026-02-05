@@ -14,6 +14,7 @@ import {
   plaid,
   getUserItem,
   upsertInvestmentTransactions,
+  getInvestmentTransactions,
   upsertItems,
   upsertTransactions,
   searchAccountsByItemId,
@@ -50,8 +51,8 @@ export const syncPlaidTransactions = async (item_id: string) => {
   const syncTransactions =
     item.available_products.includes(Products.Transactions) &&
     plaid.getTransactions(user, [item]).then(async (r) => {
-      const storedTransactionsResult = await storedTransactionsPromise;
-      const storedTransactions = storedTransactionsResult?.transactions || [];
+      const storedData = (await storedTransactionsPromise) || { transactions: [], investment_transactions: [] };
+      const storedTransactions = storedData.transactions;
 
       const { items, added, removed, modified } = r;
 
@@ -60,7 +61,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         const { authorized_date: auth_date, date } = e;
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
-        const existing = storedTransactions.find((f) => {
+        const existing = storedTransactions.find((f: JSONTransaction) => {
           const idMatches = [f.transaction_id, f.pending_transaction_id].includes(e.transaction_id);
           const accountMatches = e.account_id === f.account_id;
           const nameMatches = e.name === f.name;
@@ -77,8 +78,8 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),
-        deleteTransactions(user, removed),
-        deleteSplitTransactionsByTransactionId(user, removedTransactionIds),
+        deleteTransactions(user, removedTransactionIds),
+        ...removedTransactionIds.map(txId => deleteSplitTransactionsByTransactionId(user, txId)),
       ];
 
       const updated = getDateString();
@@ -111,8 +112,11 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const filledInvestments = investmentTransactions.map(fillDateStrings);
 
-      const storedTransactionsResult = await storedTransactionsPromise;
-      const storedInvestmentTransactions = storedTransactionsResult?.investment_transactions || [];
+      // Get stored investment transactions (different from regular transactions)
+      const storedInvestmentTransactions = await getInvestmentTransactions(user, {
+        startDate: getTwoYearsAgo().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
+      }) || [];
 
       const removed: RemovedInvestmentTransaction[] = [];
 
@@ -133,9 +137,10 @@ export const syncPlaidTransactions = async (item_id: string) => {
         }
       });
 
+      const removedIds = removed.map(r => r.investment_transaction_id);
       const updateJobs = [
         upsertInvestmentTransactions(user, filledInvestments),
-        deleteInvestmentTransactions(user, removed),
+        deleteInvestmentTransactions(user, removedIds),
       ];
 
       const partialItems = items.map(({ item_id, updated }) => ({ item_id, updated }));

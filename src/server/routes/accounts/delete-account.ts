@@ -27,7 +27,7 @@ export const deleteAccountRoute = new Route("DELETE", "/account", async (req) =>
     };
   }
 
-  const item = await getItem(account.item_id);
+  const item = await getItem(user, account.item_id);
   if (!item) {
     return {
       status: "failed",
@@ -42,8 +42,8 @@ export const deleteAccountRoute = new Route("DELETE", "/account", async (req) =>
     };
   }
 
-  await deleteAccounts(user, [{ account_id }]);
-  await deleteSnapshotsByAccount(user, [{ account: { account_id } }]);
+  await deleteAccounts(user, [account_id]);
+  await deleteSnapshotsByAccount(user, account_id);
 
   return { status: "success" };
 });

@@ -5,7 +5,7 @@ export type NewSectionGetResponse = { section_id: string };
 export const getNewSectionRoute = new Route<NewSectionGetResponse>(
   "GET",
   "/new-section",
-  async (req, res) => {
+  async (req) => {
     const { user } = req.session;
     if (!user) {
       return {
@@ -16,8 +16,11 @@ export const getNewSectionRoute = new Route<NewSectionGetResponse>(
 
     const budget_id = req.query.parent as string;
     if (!budget_id) throw new Error("Parent id is required but not provided.");
-    const response = await createSection(user, budget_id);
+    const response = await createSection(user, { budget_id });
 
-    return { status: "success", body: { section_id: response._id } };
+    if (!response) {
+      return { status: "failed", message: "Failed to create section." };
+    }
+    return { status: "success", body: { section_id: response.section_id } };
   }
 );

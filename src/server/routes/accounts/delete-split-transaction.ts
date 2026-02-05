@@ -13,7 +13,7 @@ export const deleteSplitTransactionRoute = new Route(
     }
 
     const split_transaction_id = req.query.id as string;
-    await deleteSplitTransactions(user, [{ split_transaction_id }]);
+    await deleteSplitTransactions(user, [split_transaction_id]);
 
     return { status: "success" };
   }

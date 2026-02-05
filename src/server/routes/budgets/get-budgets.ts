@@ -1,4 +1,4 @@
-import { searchBudgets, Route } from "server";
+import { searchBudgets, getSections, getCategories, Route } from "server";
 import { JSONBudget, JSONSection, JSONCategory } from "common";
 
 export interface BudgetsGetResponse {
@@ -10,7 +10,7 @@ export interface BudgetsGetResponse {
 export const getBudgetsRoute = new Route<BudgetsGetResponse>(
   "GET",
   "/budgets",
-  async (req, res) => {
+  async (req) => {
     const { user } = req.session;
     if (!user) {
       return {
@@ -19,8 +19,12 @@ export const getBudgetsRoute = new Route<BudgetsGetResponse>(
       };
     }
 
-    const body = await searchBudgets(user);
+    const [budgets, sections, categories] = await Promise.all([
+      searchBudgets(user),
+      getSections(user),
+      getCategories(user),
+    ]);
 
-    return { status: "success", body };
+    return { status: "success", body: { budgets, sections, categories } };
   }
 );
