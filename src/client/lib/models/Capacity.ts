@@ -9,12 +9,25 @@ import {
 export type Interval = "year" | "month";
 export const intervals: Interval[] = ["year", "month"];
 
+// Generate UUID with fallback for environments without crypto.randomUUID
+const generateUUID = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback: generate UUID v4 manually
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 export class Capacity {
   get id() {
     return this.capacity_id;
   }
 
-  capacity_id = crypto.randomUUID();
+  capacity_id!: string;
 
   get year() {
     return this.month * 12;
@@ -26,6 +39,10 @@ export class Capacity {
 
   constructor(init?: Partial<Capacity | JSONCapacity>) {
     assign(this, init);
+    // Only generate UUID if not provided
+    if (!this.capacity_id) {
+      this.capacity_id = generateUUID();
+    }
     if (typeof this.active_from === "string") {
       this.active_from = new Date(this.active_from);
     }
