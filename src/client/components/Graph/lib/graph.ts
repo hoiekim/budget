@@ -2,6 +2,11 @@ import { LabelDirection } from "./label";
 
 export type Point = [number, number];
 
+export interface Line {
+  start: number;
+  end: number;
+}
+
 export interface Range {
   x: Point;
   y: Point;

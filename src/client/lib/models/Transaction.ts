@@ -89,10 +89,17 @@ export class Transaction implements JSONTransaction {
   /**
    * Represents relations by pair of budget_id and category_id
    */
-  label: TransactionLabel = new TransactionLabel();
+  label: TransactionLabel;
 
   constructor(init: Partial<Transaction | JSONTransaction> & { account_id: string }) {
     assign(this, init);
+    if (init.label) {
+      if (init.label instanceof TransactionLabel) this.label = init.label;
+      else this.label = new TransactionLabel(init.label);
+    } else {
+      this.label = new TransactionLabel();
+    }
+
     excludeEnumeration(this, ["toTransaction", "getRemainingAmount"]);
   }
 

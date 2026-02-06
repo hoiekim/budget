@@ -27,5 +27,7 @@ export * from "./TransactionsPageTitle";
 export * from "./Icons";
 export * from "./BalanceChartRow";
 export * from "./ProjectionChartRow";
+export * from "./FlowChartRow";
 export * from "./ProjectionChartProperties";
 export * from "./BalanceChartProperties";
+export * from "./FlowChartProperties";

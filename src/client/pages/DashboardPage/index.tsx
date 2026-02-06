@@ -11,8 +11,9 @@ import {
   useLocalStorageState,
   ChartDictionary,
   Data,
+  FlowChart,
 } from "client";
-import { BalanceChartRow, ProjectionChartRow } from "client/components";
+import { BalanceChartRow, FlowChartRow, ProjectionChartRow } from "client/components";
 import "./index.css";
 
 export const DashboardPage = () => {
@@ -51,12 +52,22 @@ export const DashboardPage = () => {
             onSetOrder={setChartsOrder}
           />
         );
-      } else {
+      } else if (chart.type === ChartType.PROJECTION) {
         return (
           <ProjectionChartRow
             key={chart_id}
             showTable={false}
             chart={chart as ProjectionChart}
+            onClick={onClick}
+            onSetOrder={setChartsOrder}
+          />
+        );
+      } else {
+        return (
+          <FlowChartRow
+            key={chart_id}
+            showTable={false}
+            chart={chart as FlowChart}
             onClick={onClick}
             onSetOrder={setChartsOrder}
           />

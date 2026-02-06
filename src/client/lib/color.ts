@@ -38,3 +38,8 @@ export const colors = [
   "#DE9600",
   "#00DE78",
 ];
+
+export const alertColor = "#f43";
+export const okColor = "#097";
+export const greyColor = "#aaa";
+export const areaColor = "#a82";

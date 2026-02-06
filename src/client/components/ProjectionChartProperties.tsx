@@ -9,6 +9,7 @@ import {
   PATH,
   useAppContext,
   useDebounce,
+  getChartTypeName,
 } from "client";
 import {
   ChangeEventHandler,
@@ -180,12 +181,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
           <span className="propertyName">Chart&nbsp;Type</span>
           <select value={selectedType} onChange={onChangeType}>
             {Object.values(ChartType).map((v) => {
-              const chartTypeName =
-                v === ChartType.BALANCE
-                  ? "Balance Chart"
-                  : ChartType.PROJECTION
-                    ? "Projection Chart"
-                    : "";
+              const chartTypeName = getChartTypeName(v);
               return (
                 <option key={`chart_type_option_${v}`} value={v}>
                   {chartTypeName}

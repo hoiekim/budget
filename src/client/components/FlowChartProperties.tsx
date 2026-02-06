@@ -1,7 +1,7 @@
 import { ChangeEventHandler, MouseEventHandler, ReactNode, useState } from "react";
 import { ChartType } from "common";
 import {
-  BalanceChart,
+  FlowChart,
   Chart,
   ChartDictionary,
   Data,
@@ -12,18 +12,18 @@ import {
   getChartTypeName,
 } from "client";
 
-interface BalanceChartPropertiesProps {
-  chart: BalanceChart;
+interface FlowChartPropertiesProps {
+  chart: FlowChart;
   children?: ReactNode;
 }
 
-export const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps) => {
+export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProps) => {
   const { router } = useAppContext();
   const { name, chart_id, type, configuration } = chart;
-  const { account_ids, budget_ids } = configuration;
+  const { account_ids } = configuration;
 
   const { data, setData } = useAppContext();
-  const { accounts, budgets } = data;
+  const { accounts } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [selectedType, setSelectedType] = useState<ChartType>(type);
@@ -67,10 +67,6 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
     return !a.hide && account_ids.includes(a.id);
   }).length;
 
-  const selectedBudgetsCount = budgets.filter((b) => {
-    return budget_ids.includes(b.id);
-  }).length;
-
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
     if (!window.confirm("Do you want to delete this chart?")) return;
     const r = await call.delete(`/api/chart?id=${chart_id}`);
@@ -112,12 +108,10 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
         </div>
       </div>
 
-      <div className="propertyLabel">Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</div>
+      <div className="propertyLabel">Selected&nbsp;Accounts</div>
       <div className="property">
         <div className="row button">
-          <button onClick={onClickAccounts}>
-            {selectedAccountsCount + selectedBudgetsCount}&nbsp;selected
-          </button>
+          <button onClick={onClickAccounts}>{selectedAccountsCount}&nbsp;selected</button>
         </div>
       </div>
 

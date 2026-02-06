@@ -1,6 +1,7 @@
 export enum ChartType {
   BALANCE = "balance_chart",
   PROJECTION = "projection_chart",
+  FLOW = "flow_chart",
 }
 
 export interface JSONChart {
@@ -13,6 +14,10 @@ export interface JSONChart {
 export interface JSONBalanceChartConfiguration {
   account_ids: string[];
   budget_ids: string[];
+}
+
+export interface JSONFlowChartConfiguration {
+  account_ids: string[];
 }
 
 export interface JSONProjectionChartConfiguration {

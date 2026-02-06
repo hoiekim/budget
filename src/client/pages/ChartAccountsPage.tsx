@@ -9,6 +9,7 @@ import {
   BalanceChartConfiguration,
   Chart,
   ProjectionChartConfiguration,
+  FlowChartConfiguration,
 } from "client";
 import { ToggleInput } from "client/components";
 
@@ -29,9 +30,6 @@ export const ChartAccountsPage = () => {
   const { account_ids } = configuration;
   const { accounts, budgets } = data;
 
-  const Configuration =
-    type === ChartType.BALANCE ? BalanceChartConfiguration : ProjectionChartConfiguration;
-
   const accountRows = accounts
     .filter((a) => !a.hide)
     .map((a) => {
@@ -39,10 +37,18 @@ export const ChartAccountsPage = () => {
         const newAccountIds = account_ids.includes(a.account_id)
           ? account_ids.filter((id) => id !== a.account_id)
           : [...account_ids, a.account_id];
-        const updatedConfiguration = new Configuration({
-          ...configuration,
-          account_ids: newAccountIds,
-        });
+        let updatedConfiguration:
+          | BalanceChartConfiguration
+          | ProjectionChartConfiguration
+          | FlowChartConfiguration;
+        const updated = { ...configuration, account_ids: newAccountIds };
+        if (type === ChartType.BALANCE) {
+          updatedConfiguration = new BalanceChartConfiguration(updated);
+        } else if (type === ChartType.PROJECTION) {
+          updatedConfiguration = new ProjectionChartConfiguration(updated);
+        } else {
+          updatedConfiguration = new FlowChartConfiguration(updated);
+        }
         const r = await call.post("/api/chart", { chart_id, configuration: updatedConfiguration });
         if (r.status === "success") {
           setData((oldData) => {
@@ -86,49 +92,57 @@ export const ChartAccountsPage = () => {
 
   const { budget_ids } = chart.configuration as BalanceChartConfiguration;
 
-  const budgetRows = budgets.toArray().map((b) => {
-    const onChangeToggle: ChangeEventHandler<HTMLInputElement> = async () => {
-      const newBudgetIds = budget_ids.includes(b.id)
-        ? budget_ids.filter((id) => id !== b.id)
-        : [...budget_ids, b.id];
-      const updatedConfiguration = new Configuration({
-        ...configuration,
-        budget_ids: newBudgetIds,
-      });
-      const r = await call.post("/api/chart", { chart_id, configuration: updatedConfiguration });
-      if (r.status === "success") {
-        setData((oldData) => {
-          const newData = new Data(oldData);
-          const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
-          const newCharts = new ChartDictionary(newData.charts);
-          newCharts.set(chart_id, newChart);
-          newData.charts = newCharts;
-          return newData;
-        });
-      } else {
-        console.error(r.message);
-        throw new Error(r.message);
-      }
-    };
+  const budgetRows =
+    type === ChartType.BALANCE
+      ? budgets.toArray().map((b) => {
+          const onChangeToggle: ChangeEventHandler<HTMLInputElement> = async () => {
+            const newBudgetIds = budget_ids.includes(b.id)
+              ? budget_ids.filter((id) => id !== b.id)
+              : [...budget_ids, b.id];
+            const updatedConfiguration = new BalanceChartConfiguration({
+              ...configuration,
+              budget_ids: newBudgetIds,
+            });
+            const r = await call.post("/api/chart", {
+              chart_id,
+              configuration: updatedConfiguration,
+            });
+            if (r.status === "success") {
+              setData((oldData) => {
+                const newData = new Data(oldData);
+                const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
+                const newCharts = new ChartDictionary(newData.charts);
+                newCharts.set(chart_id, newChart);
+                newData.charts = newCharts;
+                return newData;
+              });
+            } else {
+              console.error(r.message);
+              throw new Error(r.message);
+            }
+          };
 
-    const capacity = b.getActiveCapacity(viewDate.getEndDate());
-    const interval = viewDate.getInterval();
-    const { isInfinite, isIncome } = capacity;
+          const capacity = b.getActiveCapacity(viewDate.getEndDate());
+          const interval = viewDate.getInterval();
+          const { isInfinite, isIncome } = capacity;
 
-    const capacityAmount = Math.abs(capacity[interval]);
-    const sign = isIncome ? "+" : "";
-    const capacityString = [sign, "$", numberToCommaString(capacityAmount, 0)].join(" ");
+          const capacityAmount = Math.abs(capacity[interval]);
+          const sign = isIncome ? "+" : "";
+          const capacityString = [sign, "$", numberToCommaString(capacityAmount, 0)].join(" ");
 
-    return (
-      <div key={b.id} className="row keyValue">
-        <div>
-          <span>{b.name}</span>
-          <span className="small">&nbsp;&nbsp;{isInfinite ? "Unlimited" : capacityString}</span>
-        </div>
-        <ToggleInput defaultChecked={budget_ids.includes(b.id)} onChange={onChangeToggle} />
-      </div>
-    );
-  });
+          return (
+            <div key={b.id} className="row keyValue">
+              <div>
+                <span>{b.name}</span>
+                <span className="small">
+                  &nbsp;&nbsp;{isInfinite ? "Unlimited" : capacityString}
+                </span>
+              </div>
+              <ToggleInput defaultChecked={budget_ids.includes(b.id)} onChange={onChangeToggle} />
+            </div>
+          );
+        })
+      : [];
 
   return (
     <div className="ChartAccountsPage">

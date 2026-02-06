@@ -1,0 +1,16 @@
+div.FlowChartRow > h3.title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.FlowChartRow > .title button {
+  background-color: inherit;
+  width: 32px;
+  height: 32px;
+}
+
+div.FlowChartRow > table {
+  margin-top: 10px;
+  text-align: center;
+}

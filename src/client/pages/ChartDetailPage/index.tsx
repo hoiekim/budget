@@ -1,8 +1,10 @@
 import { ChartType } from "common";
-import { BalanceChart, ProjectionChart, useAppContext, PATH } from "client";
+import { BalanceChart, ProjectionChart, useAppContext, PATH, FlowChart } from "client";
 import {
   BalanceChartProperties,
   BalanceChartRow,
+  FlowChartProperties,
+  FlowChartRow,
   ProjectionChartProperties,
   ProjectionChartRow,
 } from "client/components";
@@ -43,6 +45,17 @@ export const ChartDetailPage = () => {
         <ProjectionChartProperties chart={projectionChart}>
           <ProjectionChartRow showTitle={false} chart={projectionChart} />
         </ProjectionChartProperties>
+      </div>
+    );
+  }
+
+  if (chart.type === ChartType.FLOW) {
+    const projectionChart = chart as FlowChart;
+    return (
+      <div className="ChartDetailPage">
+        <FlowChartProperties chart={projectionChart}>
+          <FlowChartRow showTitle={false} chart={projectionChart} height={400} />
+        </FlowChartProperties>
       </div>
     );
   }

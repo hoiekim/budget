@@ -7,9 +7,13 @@ import {
   JSONProjectionChartConfiguration,
   JSONAmountInTime,
   excludeEnumeration,
+  JSONFlowChartConfiguration,
 } from "common";
 
-type ChartConfiguration = BalanceChartConfiguration | ProjectionChartConfiguration;
+type ChartConfiguration =
+  | BalanceChartConfiguration
+  | ProjectionChartConfiguration
+  | FlowChartConfiguration;
 
 export class Chart {
   get id() {
@@ -33,12 +37,16 @@ export class Chart {
         this.configuration = new BalanceChartConfiguration(JSON.parse(this.configuration));
       } else if (this.type === ChartType.PROJECTION) {
         this.configuration = new ProjectionChartConfiguration(JSON.parse(this.configuration));
+      } else if (this.type === ChartType.FLOW) {
+        this.configuration = new FlowChartConfiguration(JSON.parse(this.configuration));
       }
     } else if (this.configuration) {
       if (this.type === ChartType.BALANCE) {
         this.configuration = new BalanceChartConfiguration(this.configuration as any);
       } else if (this.type === ChartType.PROJECTION) {
         this.configuration = new ProjectionChartConfiguration(this.configuration as any);
+      } else if (this.type === ChartType.FLOW) {
+        this.configuration = new FlowChartConfiguration(this.configuration as any);
       }
     }
   };
@@ -73,6 +81,14 @@ export class ProjectionChartConfiguration implements JSONProjectionChartConfigur
   }
 }
 
+export class FlowChartConfiguration implements JSONFlowChartConfiguration {
+  account_ids: string[] = [];
+
+  constructor(init?: Partial<FlowChartConfiguration>) {
+    assign(this, init);
+  }
+}
+
 export class AmountInTime implements JSONAmountInTime {
   amount = 0;
   amountAsOf = new Date();
@@ -92,4 +108,9 @@ export type BalanceChart = Omit<Chart, "type" | "configuration"> & {
 export type ProjectionChart = Omit<Chart, "type" | "configuration"> & {
   type: ChartType.PROJECTION;
   configuration: ProjectionChartConfiguration;
+};
+
+export type FlowChart = Omit<Chart, "type" | "configuration"> & {
+  type: ChartType.FLOW;
+  configuration: FlowChartConfiguration;
 };
