@@ -3,9 +3,12 @@ import {
   Account,
   BudgetDictionary,
   CategoryDictionary,
+  InvestmentTransaction,
+  InvestmentTransactionDictionary,
   Line,
   Point,
   SectionDictionary,
+  Transaction,
   TransactionDictionary,
 } from "client";
 
@@ -17,6 +20,7 @@ export interface SankeyData {
 export const getSankeyData = (
   accounts: Account[],
   transactions: TransactionDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
@@ -30,8 +34,10 @@ export const getSankeyData = (
   let income = 0;
   let expense = 0;
 
-  transactions.forEach((t) => {
-    const transactionDate = new Date(t.authorized_date || t.date);
+  const processTransaction = (t: Transaction | InvestmentTransaction) => {
+    const isInvestment = t instanceof InvestmentTransaction;
+    const authorized_date = !isInvestment ? t.authorized_date : undefined;
+    const transactionDate = new Date(authorized_date || t.date);
     if (!viewDate.has(transactionDate)) return;
     const account = accounts.find((a) => a.id === t.account_id);
     if (!account) return;
@@ -42,54 +48,89 @@ export const getSankeyData = (
     const category = category_id && categories.get(category_id);
     const section_id = (category && category.section_id) || `${budget_id}_Unknown`;
     const section = sections.get(section_id);
-    if (t.amount < 0) {
-      income -= t.amount;
+    const amount = isInvestment ? -(t.price * t.quantity) : t.amount;
+    if (amount < 0) {
+      income -= amount;
       incomeSections.set(section_id, {
         id: section_id,
         name: section?.name || "Unsorted",
-        amount: (incomeSections.get(section_id)?.amount || 0) - t.amount,
+        amount: (incomeSections.get(section_id)?.amount || 0) - amount,
         next: budget_id,
       });
       incomeBudgets.set(budget_id, {
         id: budget_id,
         name: budgetName,
-        amount: (incomeBudgets.get(budget_id)?.amount || 0) - t.amount,
+        amount: (incomeBudgets.get(budget_id)?.amount || 0) - amount,
         next: "Total",
       });
-    } else if (t.amount > 0) {
-      expense += t.amount;
+    } else if (amount > 0) {
+      expense += amount;
       expenseSections.set(section_id, {
         id: section_id,
         name: section?.name || "Unsorted",
-        amount: (expenseSections.get(section_id)?.amount || 0) + t.amount,
+        amount: (expenseSections.get(section_id)?.amount || 0) + amount,
         next: budget_id,
       });
       expenseBudgets.set(budget_id, {
         id: budget_id,
         name: budgetName,
-        amount: (expenseBudgets.get(budget_id)?.amount || 0) + t.amount,
+        amount: (expenseBudgets.get(budget_id)?.amount || 0) + amount,
         next: "Total",
       });
     }
-  });
+  };
+
+  transactions.forEach(processTransaction);
+  investmentTransactions.forEach(processTransaction);
 
   const total = Math.max(income, expense);
 
+  const intersectionBudgets = new Map<string, number>();
+  incomeBudgets.forEach((v, k) => expenseBudgets.has(k) && intersectionBudgets.set(k, v.amount));
+
   const column1 = Array.from(incomeSections.values()).sort((a, b) => {
+    const isAIntersection = !!a.next && intersectionBudgets.has(a.next);
+    const isBIntersection = !!b.next && intersectionBudgets.has(b.next);
+    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
+    if (isAIntersection && isBIntersection) {
+      return intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
+    }
     const budgetA = a.next && incomeBudgets.get(a.next);
     const budgetB = b.next && incomeBudgets.get(b.next);
     if (!budgetA || !budgetB) return b.amount - a.amount;
     return budgetB.amount - budgetA.amount || b.amount - a.amount;
   });
-  const column2 = Array.from(incomeBudgets.values()).sort((a, b) => b.amount - a.amount);
+  const column2 = Array.from(incomeBudgets.values()).sort((a, b) => {
+    const isAIntersection = intersectionBudgets.has(a.id);
+    const isBIntersection = intersectionBudgets.has(b.id);
+    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
+    if (isAIntersection && isBIntersection) {
+      return intersectionBudgets.get(b.id)! - intersectionBudgets.get(a.id)!;
+    }
+    return b.amount - a.amount;
+  });
   const column3: SankeyColumn = total
     ? [
         { id: "padding", name: "", amount: 0 },
         { id: "Total", name: "", amount: total },
       ]
     : [];
-  const column4 = Array.from(expenseBudgets.values()).sort((a, b) => b.amount - a.amount);
+  const column4 = Array.from(expenseBudgets.values()).sort((a, b) => {
+    const isAIntersection = intersectionBudgets.has(a.id);
+    const isBIntersection = intersectionBudgets.has(b.id);
+    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
+    if (isAIntersection && isBIntersection) {
+      return intersectionBudgets.get(b.id)! - intersectionBudgets.get(a.id)!;
+    }
+    return b.amount - a.amount;
+  });
   const column5 = Array.from(expenseSections.values()).sort((a, b) => {
+    const isAIntersection = !!a.next && intersectionBudgets.has(a.next);
+    const isBIntersection = !!b.next && intersectionBudgets.has(b.next);
+    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
+    if (isAIntersection && isBIntersection) {
+      return intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
+    }
     const budgetA = a.next && expenseBudgets.get(a.next);
     const budgetB = b.next && expenseBudgets.get(b.next);
     if (!budgetA || !budgetB) return b.amount - a.amount;

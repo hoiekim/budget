@@ -46,7 +46,12 @@ export interface JSONTransaction extends PlaidTransaction {
   label: JSONTransactionLabel;
 }
 
-export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {}
+export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
+  /**
+   * Represents relations by pair of budget_id and category_id
+   */
+  label: JSONTransactionLabel;
+}
 
 export interface RemovedTransaction {
   transaction_id: string;

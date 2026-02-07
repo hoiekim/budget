@@ -7,6 +7,7 @@ import {
   JSONTransaction,
   getDateString,
   getDateTimeString,
+  JSONInvestmentTransaction,
 } from "common";
 import {
   deleteInvestmentTransactions,
@@ -103,7 +104,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const { items, investmentTransactions } = r;
 
       const fillDateStrings = (e: (typeof investmentTransactions)[0]) => {
-        const result = { ...e };
+        const result: JSONInvestmentTransaction = { ...e, label: {} };
         const { date } = e;
         if (date) result.date = getDateTimeString(date);
         return result;

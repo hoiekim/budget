@@ -1,6 +1,7 @@
 import { InvestmentTransactionSubtype, InvestmentTransactionType } from "plaid";
 
 import { getRandomId, getDateTimeString, assign, JSONInvestmentTransaction } from "common";
+import { TransactionLabel } from "./Transaction";
 
 export class InvestmentTransaction implements JSONInvestmentTransaction {
   get id() {
@@ -22,9 +23,17 @@ export class InvestmentTransaction implements JSONInvestmentTransaction {
   subtype = InvestmentTransactionSubtype.Buy;
   iso_currency_code: string | null = null;
   unofficial_currency_code: string | null = null;
+  /**
+   * Represents relations by pair of budget_id and category_id
+   */
+  label: TransactionLabel;
 
-  constructor(init: Partial<InvestmentTransaction> & { account_id: string }) {
+  constructor(
+    init: Partial<InvestmentTransaction | JSONInvestmentTransaction> & { account_id: string },
+  ) {
     assign(this, init);
+    if (init.label) this.label = new TransactionLabel(init.label);
+    else this.label = new TransactionLabel();
   }
 }
 

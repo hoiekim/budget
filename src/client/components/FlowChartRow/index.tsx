@@ -24,7 +24,7 @@ export const FlowChartRow = ({
   height = 100,
 }: FlowChartRowProps) => {
   const { data, viewDate } = useAppContext();
-  const { accounts, transactions, budgets, sections, categories } = data;
+  const { accounts, transactions, investmentTransactions, budgets, sections, categories } = data;
   const { configuration } = chart;
   const { account_ids } = configuration;
 
@@ -46,8 +46,25 @@ export const FlowChartRow = ({
   });
 
   const { graphData, tableData } = useMemo(
-    () => getSankeyData(selectedAccounts, transactions, budgets, sections, categories, viewDate),
-    [selectedAccounts, transactions, budgets, sections, categories, viewDate],
+    () =>
+      getSankeyData(
+        selectedAccounts,
+        transactions,
+        investmentTransactions,
+        budgets,
+        sections,
+        categories,
+        viewDate,
+      ),
+    [
+      selectedAccounts,
+      transactions,
+      investmentTransactions,
+      budgets,
+      sections,
+      categories,
+      viewDate,
+    ],
   );
 
   const { income, expense } = tableData;

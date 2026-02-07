@@ -40,13 +40,14 @@ const getBalanceDataFromTransactions = (
 
   // first aggregates transactions to sum amounts for each period
   const translate = (t: Transaction | InvestmentTransaction) => {
-    const authorized_date = "authorized_date" in t ? t.authorized_date : undefined;
+    const isInvestment = t instanceof InvestmentTransaction;
+    const authorized_date = !isInvestment ? t.authorized_date : undefined;
     const { account_id, date, amount } = t;
     if (!accounts.has(account_id)) return;
     const transactionDate = new Date(authorized_date || date);
     if (today < transactionDate) return;
     const previousMonthDate = new ViewDate("month", transactionDate).previous().getEndDate();
-    if ("price" in t && "quantity" in t) {
+    if (isInvestment) {
       const { price, quantity } = t as InvestmentTransaction;
       balanceData.add(account_id, previousMonthDate, -(price * quantity));
     } else {

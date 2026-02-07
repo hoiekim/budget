@@ -208,7 +208,15 @@
         "type": { "type": "keyword" },
         "subtype": { "type": "keyword" },
         "iso_currency_code": { "type": "keyword" },
-        "unofficial_currency_code": { "type": "keyword" }
+        "unofficial_currency_code": { "type": "keyword" },
+        "label": {
+          "type": "object",
+          "properties": {
+            "budget_id": { "type": "keyword" },
+            "category_id": { "type": "keyword" },
+            "memo": { "type": "text" }
+          }
+        }
       }
     },
     "holding": {

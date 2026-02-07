@@ -191,6 +191,7 @@ export const translateInvestmentTransaction = (
     fees: null,
     iso_currency_code: null,
     unofficial_currency_code: null,
+    label: {},
   };
 };
 

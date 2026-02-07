@@ -23,7 +23,7 @@ export class SplitTransaction implements JSONSplitTransaction {
   /**
    * Represents relations by pair of budget_id and category_id
    */
-  label: TransactionLabel = new TransactionLabel();
+  label: TransactionLabel;
 
   constructor(
     init: Partial<SplitTransaction | JSONSplitTransaction> & {
@@ -33,6 +33,7 @@ export class SplitTransaction implements JSONSplitTransaction {
   ) {
     assign(this, init);
     if (init.label) this.label = new TransactionLabel(init.label);
+    else this.label = new TransactionLabel();
     excludeEnumeration(this, ["toTransaction"]);
   }
 
