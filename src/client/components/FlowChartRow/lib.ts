@@ -144,6 +144,7 @@ export const getSankeyData = (
       amount: expense - income,
       color: "#f43",
       next: "Deficit",
+      priority: 1,
     });
     column2.push({
       id: "Deficit",
@@ -167,6 +168,7 @@ export const getSankeyData = (
       amount: income - expense,
       color: "#097",
       next: "Surplus",
+      priority: 1,
     });
   }
 
@@ -182,15 +184,19 @@ export interface SankeyRow {
   amount: number;
   next?: string;
   color?: string;
+  priority?: number;
 }
 
 export type SankeyColumn = SankeyRow[];
 
 export const getVerticalLines = (column: SankeyColumn, numberOfMargins: number): Line[] => {
   const margin = 0.03;
+  const numberOfMarginsInThisColumn = column.length - 1;
+  const unusedNumberOfMargins = numberOfMargins - numberOfMarginsInThisColumn;
+  const numberOfExtraMarginsOntheTop = unusedNumberOfMargins / 2;
   const maxHeight = 1 - numberOfMargins * margin;
   let total = column.reduce((acc, { amount }) => acc + amount, 0);
-  let yOffset = 1;
+  let yOffset = 1 - numberOfExtraMarginsOntheTop * margin;
   const result: { start: number; end: number }[] = [];
   column.forEach(({ amount }) => {
     const height = (amount / total) * maxHeight;

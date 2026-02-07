@@ -67,9 +67,9 @@ export const Sankey = ({ memoryKey, data, height }: SankeyProps) => {
     const numberOfMargins = Math.max(...data.map((col) => col.length)) - 1;
     return [
       getText(column1, numberOfMargins, height, [0, 0]),
-      getText(column2, numberOfMargins, height, [width * (1 / 3), 0], "middle"),
+      getText(column2, numberOfMargins, height, [width * (1 / 4), 0], "start"),
       getText(column3, numberOfMargins, height, [width * (1 / 2), 0], "middle"),
-      getText(column4, numberOfMargins, height, [width * (2 / 3), 0], "middle"),
+      getText(column4, numberOfMargins, height, [width * (3 / 4), 0], "end"),
       getText(column5, numberOfMargins, height, [width, 0], "end"),
     ];
   }, [column1, column2, column3, column4, column5, width, height, data]);
@@ -88,9 +88,9 @@ export const Sankey = ({ memoryKey, data, height }: SankeyProps) => {
         {link3}
         {link4}
         {text1}
-        {width > 350 && text2}
+        {text2}
         {text3}
-        {width > 350 && text4}
+        {text4}
         {text5}
       </svg>
     </div>
@@ -174,18 +174,30 @@ const getText = (
   textAnchor: "start" | "middle" | "end" = "start",
 ) => {
   const lines = getVerticalLines(column, numberOfMargins);
-  let y = 0;
+  let lastY = 0;
   return lines.map(({ start, end }, i) => {
+    const priority = column[i].priority || 0;
+    const nextPriority = column[i + 1]?.priority || 0;
+
+    const nextLine = lines[i + 1];
+    const nextMid = nextLine && (nextLine.start + nextLine.end) / 2;
+
     const mid = (start + end) / 2;
-    const newY = (1 - mid) * height;
-    if (y !== 0 && newY - y < 16) return undefined;
-    y = newY;
+    const y = (1 - mid) * height;
+    const nextY = nextMid && (1 - nextMid) * height;
+
+    if (lastY && y - lastY < 16) return undefined;
+    if (nextPriority && nextY && nextY - y < 16 && priority < nextPriority) return undefined;
+
+    lastY = y;
+
     return (
       <text
         key={column[i].id}
         x={offset[0]}
-        y={newY}
+        y={y}
         fill="#fff"
+        dominant-baseline="central"
         textAnchor={textAnchor}
         fontSize={10}
       >
