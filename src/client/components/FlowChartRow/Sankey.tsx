@@ -1,6 +1,6 @@
 import { Line, Point, useMemoryState } from "client";
 import { useEffect, useMemo, useRef } from "react";
-import { getLinkPathData, getVerticalLines, SankeyColumn } from "./lib";
+import { getLinkPathData, getVerticalLines, LinkPathResult, SankeyColumn } from "./lib";
 
 export interface SankeyProps {
   memoryKey: string;
@@ -108,7 +108,13 @@ const getLinkPath = (
   const sourceLines = getVerticalLines(sourceColumn, numberOfMargins);
   const targetLines = getVerticalLines(targetColumn, numberOfMargins);
   const targets = new Set(sourceColumn.map((row) => row.next));
-  const pathData: { key: string; d: string; startColor: string; endColor: string }[] = [];
+  const pathData: {
+    key: string;
+    d: string;
+    strokeWidth: number;
+    startColor: string;
+    endColor: string;
+  }[] = [];
   targetLines.forEach((targetLine, i) => {
     if (!targets.has(targetColumn[i]?.id)) return;
     const filteredSourceLines: Line[] = [];
@@ -119,16 +125,18 @@ const getLinkPath = (
       }
       return false;
     });
-    const data = getLinkPathData(
+    const results = getLinkPathData(
       filteredSourceLines,
       targetLine,
       sourceOffset,
       targetOffset,
       height,
-    ).map((d, j) => {
+    );
+    const data = results.map((result, j) => {
       return {
         key: `${filteredSourceRows[j]?.id}_${targetColumn[i]?.id}_link`,
-        d,
+        d: result.d,
+        strokeWidth: result.strokeWidth,
         startColor: filteredSourceRows[j]?.color || "#555",
         endColor: targetColumn[i]?.color || "#555",
       };
@@ -136,7 +144,7 @@ const getLinkPath = (
     pathData.push(...data);
   });
   const direction = sourceOffset < targetOffset;
-  return pathData.flatMap(({ key, d, startColor, endColor }) => {
+  return pathData.flatMap(({ key, d, strokeWidth, startColor, endColor }) => {
     const gradientId = `gradient-${key}`;
     return [
       startColor === endColor ? undefined : (
@@ -156,11 +164,10 @@ const getLinkPath = (
       <path
         key={key}
         d={d}
-        style={{
-          strokeLinecap: "square",
-          strokeLinejoin: "miter",
-          fill: startColor === endColor ? startColor : `url(#${gradientId})`,
-        }}
+        fill="none"
+        stroke={startColor === endColor ? startColor : `url(#${gradientId})`}
+        strokeWidth={strokeWidth}
+        strokeLinecap="butt"
       />,
     ];
   });

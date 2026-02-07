@@ -200,15 +200,21 @@ export const getVerticalLines = (column: SankeyColumn, numberOfMargins: number):
   return result;
 };
 
+export interface LinkPathResult {
+  d: string;
+  strokeWidth: number;
+}
+
 export const getLinkPathData = (
   sourceLines: Line[],
   targetLine: Line,
   sourceOffset: number,
   targetOffset: number,
   height: number,
-): string[] => {
+): LinkPathResult[] => {
   const targetLineLength = targetLine.start - targetLine.end;
   let targetOffsetTop = (1 - targetLine.start) * height;
+
   return sourceLines.map((sourceLine) => {
     const sourceLineLength = sourceLine.start - sourceLine.end;
     const scaleFactor = sourceLineLength / targetLineLength;
@@ -222,33 +228,18 @@ export const getLinkPathData = (
     };
     const offsetMid = (sourceOffset + targetOffset) / 2;
 
-    // a--b
-    // |  c--d
-    // |     |
-    // h--g  |
-    //    f--e
-    const a: Point = [sourceOffset, scaledSourceLine.start];
-    const b: Point = [offsetMid, scaledSourceLine.start];
-    const c: Point = [offsetMid, scaledTargetLine.start];
-    const d: Point = [targetOffset, scaledTargetLine.start];
-    const e: Point = [targetOffset, scaledTargetLine.end];
-    const f: Point = [offsetMid, scaledTargetLine.end];
-    const g: Point = [offsetMid, scaledSourceLine.end];
-    const h: Point = [sourceOffset, scaledSourceLine.end];
+    // Stroke width = the height of the flow
+    const strokeWidth = scaledSourceLine.end - scaledSourceLine.start;
+
+    // Center line endpoints
+    const sourceCenter = (scaledSourceLine.start + scaledSourceLine.end) / 2;
+    const targetCenter = (scaledTargetLine.start + scaledTargetLine.end) / 2;
 
     targetOffsetTop = scaledTargetLine.end;
 
-    return [
-      // move to a
-      `M${a[0]},${a[1]}`,
-      // draw cubic bezier curve from a through b and c to d
-      `C${b[0]},${b[1]},${c[0]},${c[1]},${d[0]},${d[1]}`,
-      // draw straight line to e
-      `L${e[0]},${e[1]}`,
-      // draw cubic bezier curve from e through f and g to h
-      `C${f[0]},${f[1]},${g[0]},${g[1]},${h[0]},${h[1]}`,
-      // draw straight line to a
-      `L${a[0]},${a[1]}`,
-    ].join(" ");
+    // Simple cubic bezier path along the center line
+    const d = `M${sourceOffset},${sourceCenter} C${offsetMid},${sourceCenter} ${offsetMid},${targetCenter} ${targetOffset},${targetCenter}`;
+
+    return { d, strokeWidth };
   });
 };
