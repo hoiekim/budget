@@ -13,6 +13,7 @@ import {
   JSONSection,
   JSONSplitTransaction,
   JSONTransaction,
+  ChartType,
 } from "common";
 
 export const getUpdatedDocuments = async (user: MaskedUser, startDate: Date) => {
@@ -232,7 +233,7 @@ export const getUpdatedDocuments = async (user: MaskedUser, startDate: Date) => 
   result.charts = chartsResult.rows.map((row) => ({
     chart_id: row.chart_id,
     name: row.name,
-    type: row.type as any,
+    type: row.type as ChartType,
     configuration: row.configuration,
   }));
 

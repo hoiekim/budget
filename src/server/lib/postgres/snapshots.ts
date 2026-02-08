@@ -1,5 +1,30 @@
+import { JSONAccountSnapshot, JSONSecuritySnapshot, JSONHoldingSnapshot } from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
+
+// Database row interface
+interface SnapshotRow {
+  snapshot_id: string;
+  user_id?: string;
+  snapshot_date: string | Date;
+  snapshot_type: 'account_balance' | 'security' | 'holding';
+  account_id?: string;
+  security_id?: string;
+  holding_account_id?: string;
+  holding_security_id?: string;
+  balances_available?: string | number;
+  balances_current?: string | number;
+  balances_limit?: string | number;
+  balances_iso_currency_code?: string;
+  close_price?: string | number;
+  institution_price?: string | number;
+  institution_value?: string | number;
+  cost_basis?: string | number;
+  quantity?: string | number;
+  data?: string;
+  updated?: Date;
+  is_deleted?: boolean;
+}
 
 export interface SearchSnapshotsOptions {
   account_id?: string;
@@ -18,7 +43,7 @@ export interface AccountSnapshot {
   balances_available?: number;
   balances_current?: number;
   balances_limit?: number;
-  balances_iso_currency_code?: string;
+  balances_iso_currency_code?: string | null;
 }
 
 export interface SecuritySnapshot {
@@ -83,8 +108,9 @@ export const upsertAccountSnapshots = async (
         update: { _id: snapshot.snapshot_id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert account snapshot:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert account snapshot:`, message);
       results.push({
         update: { _id: snapshot.snapshot_id },
         status: 500,
@@ -124,8 +150,9 @@ export const upsertSecuritySnapshots = async (snapshots: SecuritySnapshot[]) => 
         update: { _id: snapshot.snapshot_id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert security snapshot:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert security snapshot:`, message);
       results.push({
         update: { _id: snapshot.snapshot_id },
         status: 500,
@@ -179,8 +206,9 @@ export const upsertHoldingSnapshots = async (
         update: { _id: snapshot.snapshot_id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert holding snapshot:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert holding snapshot:`, message);
       results.push({
         update: { _id: snapshot.snapshot_id },
         status: 500,
@@ -204,7 +232,7 @@ export const getAccountSnapshots = async (
 ): Promise<AccountSnapshot[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.account_id) {
@@ -225,14 +253,22 @@ export const getAccountSnapshots = async (
     paramIndex++;
   }
 
-  const result = await pool.query(
+  const result = await pool.query<{
+    snapshot_id: string;
+    snapshot_date: string;
+    account_id: string;
+    balances_available: string | null;
+    balances_current: string | null;
+    balances_limit: string | null;
+    balances_iso_currency_code: string | null;
+  }>(
     `SELECT snapshot_id, snapshot_date, account_id, 
             balances_available, balances_current, balances_limit, balances_iso_currency_code
      FROM snapshots WHERE ${conditions.join(" AND ")} ORDER BY snapshot_date`,
     values
   );
 
-  return result.rows.map(row => ({
+  return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id,
     snapshot_date: row.snapshot_date,
     account_id: row.account_id,
@@ -254,7 +290,7 @@ export const getSecuritySnapshots = async (
   } = {}
 ): Promise<SecuritySnapshot[]> => {
   const conditions: string[] = ["snapshot_type = 'security'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [];
+  const values: string[] = [];
   let paramIndex = 1;
 
   if (options.security_id) {
@@ -275,13 +311,18 @@ export const getSecuritySnapshots = async (
     paramIndex++;
   }
 
-  const result = await pool.query(
+  const result = await pool.query<{
+    snapshot_id: string;
+    snapshot_date: string;
+    security_id: string;
+    close_price: string | null;
+  }>(
     `SELECT snapshot_id, snapshot_date, security_id, close_price
      FROM snapshots WHERE ${conditions.join(" AND ")} ORDER BY snapshot_date`,
     values
   );
 
-  return result.rows.map(row => ({
+  return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id,
     snapshot_date: row.snapshot_date,
     security_id: row.security_id,
@@ -303,7 +344,7 @@ export const getHoldingSnapshots = async (
 ): Promise<HoldingSnapshot[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "snapshot_type = 'holding'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.account_id) {
@@ -330,14 +371,23 @@ export const getHoldingSnapshots = async (
     paramIndex++;
   }
 
-  const result = await pool.query(
+  const result = await pool.query<{
+    snapshot_id: string;
+    snapshot_date: string;
+    holding_account_id: string;
+    holding_security_id: string;
+    institution_price: string | null;
+    institution_value: string | null;
+    cost_basis: string | null;
+    quantity: string | null;
+  }>(
     `SELECT snapshot_id, snapshot_date, holding_account_id, holding_security_id,
             institution_price, institution_value, cost_basis, quantity
      FROM snapshots WHERE ${conditions.join(" AND ")} ORDER BY snapshot_date`,
     values
   );
 
-  return result.rows.map(row => ({
+  return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id,
     snapshot_date: row.snapshot_date,
     holding_account_id: row.holding_account_id,
@@ -371,7 +421,15 @@ export const getLatestAccountSnapshots = async (
 ): Promise<AccountSnapshot[]> => {
   const { user_id } = user;
   
-  const result = await pool.query(
+  const result = await pool.query<{
+    snapshot_id: string;
+    snapshot_date: string;
+    account_id: string;
+    balances_available: string | null;
+    balances_current: string | null;
+    balances_limit: string | null;
+    balances_iso_currency_code: string | null;
+  }>(
     `SELECT DISTINCT ON (account_id) 
             snapshot_id, snapshot_date, account_id,
             balances_available, balances_current, balances_limit, balances_iso_currency_code
@@ -406,7 +464,7 @@ export const aggregateAccountSnapshots = async (
 ): Promise<{ date: string; total_current: number; total_available: number }[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.account_ids && options.account_ids.length > 0) {
@@ -462,60 +520,61 @@ export const aggregateAccountSnapshots = async (
 /**
  * Transforms a raw snapshot row to JSONAccountSnapshot format.
  */
-function rowToAccountSnapshot(row: any): any {
+function rowToAccountSnapshot(row: SnapshotRow): JSONAccountSnapshot {
   return {
     snapshot: {
       snapshot_id: row.snapshot_id,
-      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : row.snapshot_date,
+      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : String(row.snapshot_date),
     },
-    user: { user_id: row.user_id },
+    user: { user_id: row.user_id ?? "" },
     account: {
-      account_id: row.account_id,
+      account_id: row.account_id ?? "",
       balances: {
         current: row.balances_current != null ? Number(row.balances_current) : null,
         available: row.balances_available != null ? Number(row.balances_available) : null,
         limit: row.balances_limit != null ? Number(row.balances_limit) : null,
-        iso_currency_code: row.balances_iso_currency_code,
+        iso_currency_code: row.balances_iso_currency_code ?? null,
+        unofficial_currency_code: null,
       },
     },
-  };
+  } as JSONAccountSnapshot;
 }
 
 /**
  * Transforms a raw snapshot row to JSONSecuritySnapshot format.
  */
-function rowToSecuritySnapshot(row: any): any {
+function rowToSecuritySnapshot(row: SnapshotRow): JSONSecuritySnapshot {
   return {
     snapshot: {
       snapshot_id: row.snapshot_id,
-      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : row.snapshot_date,
+      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : String(row.snapshot_date),
     },
     security: {
-      security_id: row.security_id,
+      security_id: row.security_id ?? "",
       close_price: row.close_price != null ? Number(row.close_price) : null,
     },
-  };
+  } as JSONSecuritySnapshot;
 }
 
 /**
  * Transforms a raw snapshot row to JSONHoldingSnapshot format.
  */
-function rowToHoldingSnapshot(row: any): any {
+function rowToHoldingSnapshot(row: SnapshotRow): JSONHoldingSnapshot {
   return {
     snapshot: {
       snapshot_id: row.snapshot_id,
-      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : row.snapshot_date,
+      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : String(row.snapshot_date),
     },
-    user: { user_id: row.user_id },
+    user: { user_id: row.user_id ?? "" },
     holding: {
-      account_id: row.holding_account_id,
-      security_id: row.holding_security_id,
-      institution_price: row.institution_price != null ? Number(row.institution_price) : null,
-      institution_value: row.institution_value != null ? Number(row.institution_value) : null,
-      cost_basis: row.cost_basis != null ? Number(row.cost_basis) : null,
-      quantity: row.quantity != null ? Number(row.quantity) : null,
+      account_id: row.holding_account_id ?? "",
+      security_id: row.holding_security_id ?? "",
+      institution_price: row.institution_price != null ? Number(row.institution_price) : 0,
+      institution_value: row.institution_value != null ? Number(row.institution_value) : 0,
+      cost_basis: row.cost_basis != null ? Number(row.cost_basis) : 0,
+      quantity: row.quantity != null ? Number(row.quantity) : 0,
     },
-  };
+  } as JSONHoldingSnapshot;
 }
 
 /**
@@ -525,9 +584,9 @@ function rowToHoldingSnapshot(row: any): any {
 export const searchSnapshots = async (
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {}
-): Promise<any[]> => {
+): Promise<(JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot)[]> => {
   const conditions: string[] = ["(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [];
+  const values: (string | number)[] = [];
   let paramIndex = 1;
 
   if (user) {
@@ -584,10 +643,10 @@ export const searchSnapshots = async (
     values.push(options.limit);
   }
 
-  const result = await pool.query(query, values);
+  const result = await pool.query<SnapshotRow>(query, values);
   
   // Transform raw rows to JSONSnapshotData format based on snapshot_type
-  return result.rows.map(row => {
+  return result.rows.map((row): JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot => {
     switch (row.snapshot_type) {
       case 'account_balance':
         return rowToAccountSnapshot(row);
@@ -596,7 +655,8 @@ export const searchSnapshots = async (
       case 'holding':
         return rowToHoldingSnapshot(row);
       default:
-        return row;
+        // Default to account snapshot for unknown types
+        return rowToAccountSnapshot(row);
     }
   });
 };
@@ -645,11 +705,24 @@ export const deleteSnapshotById = async (
   return (result.rowCount || 0) > 0;
 };
 
+// Type guards for snapshot types
+function isAccountSnapshot(data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot): data is JSONAccountSnapshot {
+  return 'account' in data;
+}
+
+function isSecuritySnapshot(data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot): data is JSONSecuritySnapshot {
+  return 'security' in data;
+}
+
+function isHoldingSnapshot(data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot): data is JSONHoldingSnapshot {
+  return 'holding' in data;
+}
+
 /**
  * Generic snapshot upsert that handles JSONAccountSnapshot, JSONSecuritySnapshot, and JSONHoldingSnapshot.
  */
 export const upsertSnapshots = async (
-  snapshots: any[]
+  snapshots: (JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot)[]
 ) => {
   if (!snapshots.length) return [];
   const results: { update: { _id: string }; status: number }[] = [];
@@ -660,7 +733,7 @@ export const upsertSnapshots = async (
 
     try {
       // Determine type based on what's present
-      if (snapshotData.account) {
+      if (isAccountSnapshot(snapshotData)) {
         // Account snapshot
         const { account } = snapshotData;
         await pool.query(
@@ -677,7 +750,7 @@ export const upsertSnapshots = async (
             updated = CURRENT_TIMESTAMP`,
           [
             snapshot.snapshot_id,
-            account.user_id,
+            snapshotData.user?.user_id,
             snapshot.date,
             account.account_id,
             account.balances?.available,
@@ -687,7 +760,7 @@ export const upsertSnapshots = async (
             JSON.stringify({ snapshot, account }),
           ]
         );
-      } else if (snapshotData.security) {
+      } else if (isSecuritySnapshot(snapshotData)) {
         // Security snapshot
         const { security } = snapshotData;
         await pool.query(
@@ -707,7 +780,7 @@ export const upsertSnapshots = async (
             JSON.stringify({ snapshot, security }),
           ]
         );
-      } else if (snapshotData.holding) {
+      } else if (isHoldingSnapshot(snapshotData)) {
         // Holding snapshot
         const { holding } = snapshotData;
         await pool.query(
@@ -726,7 +799,7 @@ export const upsertSnapshots = async (
             updated = CURRENT_TIMESTAMP`,
           [
             snapshot.snapshot_id,
-            holding.user_id,
+            snapshotData.user?.user_id,
             snapshot.date,
             holding.account_id,
             holding.security_id,
@@ -743,8 +816,9 @@ export const upsertSnapshots = async (
         update: { _id: snapshot.snapshot_id },
         status: 200,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert snapshot ${snapshot.snapshot_id}:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert snapshot ${snapshot.snapshot_id}:`, message);
       results.push({
         update: { _id: snapshot.snapshot_id },
         status: 500,

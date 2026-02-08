@@ -5,12 +5,67 @@ import { buildUpdateQuery, buildUpsertQuery } from "./utils";
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
+// Database row interfaces
+interface AccountRow {
+  account_id: string;
+  user_id?: string | null;
+  item_id?: string | null;
+  institution_id?: string | null;
+  name?: string | null;
+  type?: string | null;
+  subtype?: string | null;
+  custom_name?: string | null;
+  hide?: boolean | null;
+  label_budget_id?: string | null;
+  graph_options_use_snapshots?: boolean | null;
+  graph_options_use_transactions?: boolean | null;
+  raw?: string | null;
+  updated?: Date | null;
+  is_deleted?: boolean | null;
+}
+
+interface HoldingRow {
+  holding_id: string;
+  user_id?: string | null;
+  account_id?: string | null;
+  security_id?: string | null;
+  institution_price?: string | number | null;
+  institution_value?: string | number | null;
+  cost_basis?: string | number | null;
+  quantity?: string | number | null;
+  iso_currency_code?: string | null;
+  raw?: string | null;
+  updated?: Date | null;
+  is_deleted?: boolean | null;
+}
+
+interface InstitutionRow {
+  institution_id: string;
+  name?: string | null;
+  raw?: string | null;
+  updated?: Date | null;
+}
+
+interface SecurityRow {
+  security_id: string;
+  name?: string | null;
+  ticker_symbol?: string | null;
+  type?: string | null;
+  close_price?: string | number | null;
+  close_price_as_of?: string | null;
+  iso_currency_code?: string | null;
+  isin?: string | null;
+  cusip?: string | null;
+  raw?: string | null;
+  updated?: Date | null;
+}
+
 /**
  * Converts an account object to flat Postgres columns + raw JSONB.
  * Keeps indexed/user-edited columns; stores full provider object in raw.
  */
-function accountToRow(account: PartialAccount): Record<string, any> {
-  const row: Record<string, any> = {};
+function accountToRow(account: PartialAccount): Partial<AccountRow> {
+  const row: Partial<AccountRow> = {};
   
   if (account.account_id !== undefined) row.account_id = account.account_id;
   if (account.item_id !== undefined) row.item_id = account.item_id;
@@ -41,7 +96,7 @@ function accountToRow(account: PartialAccount): Record<string, any> {
  * Converts a Postgres row to account object.
  * Merges raw JSONB with user-edited column values.
  */
-function rowToAccount(row: Record<string, any>): JSONAccount {
+function rowToAccount(row: AccountRow): JSONAccount {
   const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
   
   return {
@@ -140,8 +195,9 @@ export const upsertAccounts = async (
           });
         }
       }
-    } catch (error: any) {
-      console.error(`Failed to upsert account ${account.account_id}:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert account ${account.account_id}:`, message);
       results.push({
         update: { _id: account.account_id },
         status: 500,
@@ -247,8 +303,8 @@ export const getAccountsByItem = async (
 // Holdings operations
 // =====================================
 
-function holdingToRow(holding: Partial<JSONHolding>): Record<string, any> {
-  const row: Record<string, any> = {};
+function holdingToRow(holding: Partial<JSONHolding>): Partial<HoldingRow> {
+  const row: Partial<HoldingRow> = {};
   
   if (holding.account_id !== undefined) row.account_id = holding.account_id;
   if (holding.security_id !== undefined) row.security_id = holding.security_id;
@@ -264,7 +320,7 @@ function holdingToRow(holding: Partial<JSONHolding>): Record<string, any> {
   return row;
 }
 
-function rowToHolding(row: Record<string, any>): JSONHolding {
+function rowToHolding(row: HoldingRow): JSONHolding {
   const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
   
   return {
@@ -321,8 +377,9 @@ export const upsertHoldings = async (
         update: { _id: holding_id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert holding ${holding_id}:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert holding ${holding_id}:`, message);
       results.push({
         update: { _id: holding_id },
         status: 500,
@@ -364,8 +421,8 @@ export const deleteHoldings = async (
 // Institutions operations
 // =====================================
 
-function institutionToRow(institution: Partial<JSONInstitution>): Record<string, any> {
-  const row: Record<string, any> = {};
+function institutionToRow(institution: Partial<JSONInstitution>): Partial<InstitutionRow> {
+  const row: Partial<InstitutionRow> = {};
   
   if (institution.institution_id !== undefined) row.institution_id = institution.institution_id;
   if (institution.name !== undefined) row.name = institution.name;
@@ -376,7 +433,7 @@ function institutionToRow(institution: Partial<JSONInstitution>): Record<string,
   return row;
 }
 
-function rowToInstitution(row: Record<string, any>): JSONInstitution {
+function rowToInstitution(row: InstitutionRow): JSONInstitution {
   const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
   
   return {
@@ -426,8 +483,9 @@ export const upsertInstitutions = async (institutions: Partial<JSONInstitution>[
         update: { _id: institution.institution_id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert institution ${institution.institution_id}:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert institution ${institution.institution_id}:`, message);
       results.push({
         update: { _id: institution.institution_id },
         status: 500,
@@ -450,8 +508,8 @@ export const getInstitution = async (institution_id: string): Promise<JSONInstit
 // Securities operations
 // =====================================
 
-function securityToRow(security: Partial<JSONSecurity>): Record<string, any> {
-  const row: Record<string, any> = {};
+function securityToRow(security: Partial<JSONSecurity>): Partial<SecurityRow> {
+  const row: Partial<SecurityRow> = {};
   
   if (security.security_id !== undefined) row.security_id = security.security_id;
   if (security.name !== undefined) row.name = security.name;
@@ -469,7 +527,7 @@ function securityToRow(security: Partial<JSONSecurity>): Record<string, any> {
   return row;
 }
 
-function rowToSecurity(row: Record<string, any>): JSONSecurity {
+function rowToSecurity(row: SecurityRow): JSONSecurity {
   const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
   
   return {
@@ -525,8 +583,9 @@ export const upsertSecurities = async (securities: Partial<JSONSecurity>[]) => {
         update: { _id: security.security_id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert security ${security.security_id}:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert security ${security.security_id}:`, message);
       results.push({
         update: { _id: security.security_id },
         status: 500,
@@ -570,7 +629,7 @@ export const searchSecurities = async (
   }
   
   const conditions: string[] = [];
-  const values: any[] = [];
+  const values: (string | string[])[] = [];
   let paramIndex = 1;
   
   if (options.security_id) {
@@ -618,7 +677,7 @@ export const searchAccounts = async (
 ): Promise<JSONAccount[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.account_id) {

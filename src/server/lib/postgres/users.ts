@@ -82,7 +82,7 @@ export const searchUser = async (user: Partial<MaskedUser>): Promise<User | unde
   }
 
   const conditions: string[] = [];
-  const values: any[] = [];
+  const values: string[] = [];
   let paramIndex = 1;
 
   if (user.username) {
@@ -116,7 +116,7 @@ export const updateUser = async (user: PartialUser) => {
   const { user_id, username, password } = user;
 
   const updates: string[] = [];
-  const values: any[] = [];
+  const values: string[] = [];
   let paramIndex = 1;
 
   if (username !== undefined) {

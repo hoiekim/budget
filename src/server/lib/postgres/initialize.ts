@@ -17,8 +17,9 @@ export const initializeIndex = async (): Promise<void> => {
     const client = await pool.connect();
     client.release();
     console.info("PostgreSQL connection established.");
-  } catch (error: any) {
-    console.info(`PostgreSQL connection failed: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.info(`PostgreSQL connection failed: ${message}`);
     console.info("Restarting initialization in 10 seconds.");
     return new Promise((res) => {
       setTimeout(() => res(initializeIndex()), 10000);
@@ -302,7 +303,7 @@ export const initializeIndex = async (): Promise<void> => {
     `);
 
     console.info("Database tables created/verified successfully.");
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to create tables:", error);
     throw new Error("Failed to setup PostgreSQL tables.");
   }

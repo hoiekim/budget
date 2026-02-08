@@ -89,7 +89,7 @@ export const upsertCapacities = async (
      WHERE parent_id = $1 AND parent_type = $2 AND user_id = $3 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
     [parent_id, parent_type, user_id]
   );
-  const existingIds = new Set(existingResult.rows.map((r: any) => r.capacity_id));
+  const existingIds = new Set<string>(existingResult.rows.map((r: { capacity_id: string }) => r.capacity_id));
 
   const incomingIds = new Set<string>();
 

@@ -143,8 +143,9 @@ export const upsertBudgets = async (
           status: result.rowCount ? 201 : 500,
         });
       }
-    } catch (error: any) {
-      console.error(`Failed to upsert budget:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert budget:`, message);
       results.push({
         update: { _id: budget.budget_id || "unknown" },
         status: 500,
@@ -310,8 +311,9 @@ export const upsertSections = async (
           status: result.rowCount ? 201 : 500,
         });
       }
-    } catch (error: any) {
-      console.error(`Failed to upsert section:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert section:`, message);
       results.push({
         update: { _id: section.section_id || "unknown" },
         status: 500,
@@ -466,8 +468,9 @@ export const upsertCategories = async (
           status: result.rowCount ? 201 : 500,
         });
       }
-    } catch (error: any) {
-      console.error(`Failed to upsert category:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert category:`, message);
       results.push({
         update: { _id: category.category_id || "unknown" },
         status: 500,
@@ -540,7 +543,7 @@ export const searchBudgets = async (
 ): Promise<JSONBudget[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.budget_id) {
@@ -591,8 +594,9 @@ export const createBudget = async (
     }
 
     return rowToBudget(result.rows[0], capacities);
-  } catch (error: any) {
-    console.error("Failed to create budget:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed to create budget:", message);
     return null;
   }
 };
@@ -607,7 +611,7 @@ export const updateBudget = async (
 ): Promise<boolean> => {
   const { user_id } = user;
   const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
-  const values: any[] = [];
+  const values: (string | boolean | Date | undefined)[] = [];
   let paramIndex = 1;
 
   if (data.name !== undefined) {
@@ -659,20 +663,20 @@ export const deleteBudget = async (
   const { user_id } = user;
 
   // Get section IDs for this budget
-  const sectionResult = await pool.query(
+  const sectionResult = await pool.query<{ section_id: string }>(
     `SELECT section_id FROM sections WHERE budget_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
     [budget_id, user_id]
   );
-  const sectionIds = sectionResult.rows.map((r: any) => r.section_id);
+  const sectionIds = sectionResult.rows.map((r) => r.section_id);
 
   // Get category IDs for these sections
   if (sectionIds.length > 0) {
-    const sPlaceholders = sectionIds.map((_: string, i: number) => `$${i + 2}`).join(", ");
-    const categoryResult = await pool.query(
+    const sPlaceholders = sectionIds.map((_, i) => `$${i + 2}`).join(", ");
+    const categoryResult = await pool.query<{ category_id: string }>(
       `SELECT category_id FROM categories WHERE section_id IN (${sPlaceholders}) AND user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
       [user_id, ...sectionIds]
     );
-    const categoryIds = categoryResult.rows.map((r: any) => r.category_id);
+    const categoryIds = categoryResult.rows.map((r) => r.category_id);
 
     // Cascade: soft-delete capacities for categories
     for (const cid of categoryIds) {
@@ -742,8 +746,9 @@ export const createSection = async (
     }
 
     return rowToSection(result.rows[0], capacities);
-  } catch (error: any) {
-    console.error("Failed to create section:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed to create section:", message);
     return null;
   }
 };
@@ -758,7 +763,7 @@ export const updateSection = async (
 ): Promise<boolean> => {
   const { user_id } = user;
   const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
-  const values: any[] = [];
+  const values: (string | boolean | Date | undefined)[] = [];
   let paramIndex = 1;
 
   if (data.name !== undefined) {
@@ -805,11 +810,11 @@ export const deleteSection = async (
   const { user_id } = user;
 
   // Get category IDs for this section
-  const categoryResult = await pool.query(
+  const categoryResult = await pool.query<{ category_id: string }>(
     `SELECT category_id FROM categories WHERE section_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
     [section_id, user_id]
   );
-  const categoryIds = categoryResult.rows.map((r: any) => r.category_id);
+  const categoryIds = categoryResult.rows.map((r) => r.category_id);
 
   // Cascade: soft-delete capacities for categories
   for (const cid of categoryIds) {
@@ -866,8 +871,9 @@ export const createCategory = async (
     }
 
     return rowToCategory(result.rows[0], capacities);
-  } catch (error: any) {
-    console.error("Failed to create category:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed to create category:", message);
     return null;
   }
 };
@@ -882,7 +888,7 @@ export const updateCategory = async (
 ): Promise<boolean> => {
   const { user_id } = user;
   const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
-  const values: any[] = [];
+  const values: (string | boolean | Date | undefined)[] = [];
   let paramIndex = 1;
 
   if (data.name !== undefined) {

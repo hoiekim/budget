@@ -2,6 +2,22 @@ import { JSONItem, ItemProvider } from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
 
+// Database row interface
+interface ItemRow {
+  item_id: string;
+  user_id?: string | null;
+  access_token?: string | null;
+  institution_id?: string | null;
+  available_products?: string[] | null;
+  cursor?: string | null;
+  status?: string | null;
+  provider?: ItemProvider | null;
+  raw?: string | null;
+  updated?: Date | null;
+  is_deleted?: boolean | null;
+  username?: string | null; // From JOIN with users table
+}
+
 /**
  * Searches items with optional filters.
  */
@@ -15,7 +31,7 @@ export const searchItems = async (
 ): Promise<JSONItem[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: (string | ItemProvider)[] = [user_id];
   let paramIndex = 2;
 
   if (options.item_id) {
@@ -54,14 +70,14 @@ export const deleteItem = async (
   const { user_id } = user;
 
   // Get account IDs for this item
-  const accountResult = await pool.query(
+  const accountResult = await pool.query<{ account_id: string }>(
     `SELECT account_id FROM accounts WHERE item_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
     [item_id, user_id]
   );
-  const accountIds = accountResult.rows.map((r: any) => r.account_id);
+  const accountIds = accountResult.rows.map((r) => r.account_id);
 
   if (accountIds.length > 0) {
-    const placeholders = accountIds.map((_: string, i: number) => `$${i + 2}`).join(", ");
+    const placeholders = accountIds.map((_, i) => `$${i + 2}`).join(", ");
 
     // Cascade: soft-delete transactions
     await pool.query(
@@ -130,8 +146,8 @@ export type PartialItem = { item_id: string } & Partial<JSONItem>;
 /**
  * Converts an item object to Postgres columns + raw JSONB.
  */
-function itemToRow(item: PartialItem): Record<string, any> {
-  const row: Record<string, any> = {};
+function itemToRow(item: PartialItem): Partial<ItemRow> {
+  const row: Partial<ItemRow> = {};
   
   if (item.item_id !== undefined) row.item_id = item.item_id;
   if (item.access_token !== undefined) row.access_token = item.access_token;
@@ -151,7 +167,7 @@ function itemToRow(item: PartialItem): Record<string, any> {
  * Converts a Postgres row to item object.
  * Merges raw JSONB with column values.
  */
-function rowToItem(row: Record<string, any>): JSONItem {
+function rowToItem(row: ItemRow): JSONItem {
   const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
   
   return {
@@ -216,7 +232,7 @@ export const upsertItems = async (
         delete updateData.user_id;
         
         const setClauses: string[] = ["updated = CURRENT_TIMESTAMP"];
-        const values: any[] = [];
+        const values: unknown[] = [];
         let paramIndex = 1;
         
         for (const [key, value] of Object.entries(updateData)) {
@@ -247,8 +263,9 @@ export const upsertItems = async (
           });
         }
       }
-    } catch (error: any) {
-      console.error(`Failed to upsert item ${item.item_id}:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert item ${item.item_id}:`, message);
       results.push({
         update: { _id: item.item_id },
         status: 500,
