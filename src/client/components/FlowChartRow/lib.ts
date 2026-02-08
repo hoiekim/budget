@@ -93,43 +93,55 @@ export const getSankeyData = (
     const isBIntersection = !!b.next && intersectionBudgets.has(b.next);
     if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
     if (isAIntersection && isBIntersection) {
-      return intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
+      const intersectionBudgetDiff =
+        intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
+      if (intersectionBudgetDiff) return intersectionBudgetDiff;
     }
     const budgetA = a.next && incomeBudgets.get(a.next);
     const budgetB = b.next && incomeBudgets.get(b.next);
     if (!budgetA || !budgetB) return b.amount - a.amount;
     return budgetB.amount - budgetA.amount || b.amount - a.amount;
   });
+
   const column2 = Array.from(incomeBudgets.values()).sort((a, b) => {
     const isAIntersection = intersectionBudgets.has(a.id);
     const isBIntersection = intersectionBudgets.has(b.id);
     if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
     if (isAIntersection && isBIntersection) {
-      return intersectionBudgets.get(b.id)! - intersectionBudgets.get(a.id)!;
+      const intersectionBudgetDiff =
+        intersectionBudgets.get(b.id!)! - intersectionBudgets.get(a.id!)!;
+      if (intersectionBudgetDiff) return intersectionBudgetDiff;
     }
     return b.amount - a.amount;
   });
+
   const column3: SankeyColumn = total
     ? [
         { id: "padding", name: "", amount: 0 },
         { id: "Total", name: "", amount: total },
       ]
     : [];
+
   const column4 = Array.from(expenseBudgets.values()).sort((a, b) => {
     const isAIntersection = intersectionBudgets.has(a.id);
     const isBIntersection = intersectionBudgets.has(b.id);
     if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
     if (isAIntersection && isBIntersection) {
-      return intersectionBudgets.get(b.id)! - intersectionBudgets.get(a.id)!;
+      const intersectionBudgetDiff =
+        intersectionBudgets.get(b.id!)! - intersectionBudgets.get(a.id!)!;
+      if (intersectionBudgetDiff) return intersectionBudgetDiff;
     }
     return b.amount - a.amount;
   });
+
   const column5 = Array.from(expenseSections.values()).sort((a, b) => {
     const isAIntersection = !!a.next && intersectionBudgets.has(a.next);
     const isBIntersection = !!b.next && intersectionBudgets.has(b.next);
     if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
     if (isAIntersection && isBIntersection) {
-      return intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
+      const intersectionBudgetDiff =
+        intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
+      if (intersectionBudgetDiff) return intersectionBudgetDiff;
     }
     const budgetA = a.next && expenseBudgets.get(a.next);
     const budgetB = b.next && expenseBudgets.get(b.next);
@@ -154,6 +166,7 @@ export const getSankeyData = (
       next: "Total",
     });
   }
+
   if (income > expense) {
     column4.push({
       id: "Surplus",

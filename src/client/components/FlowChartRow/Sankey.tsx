@@ -1,6 +1,6 @@
 import { Line, Point, useMemoryState } from "client";
 import { useEffect, useMemo, useRef } from "react";
-import { getLinkPathData, getVerticalLines, SankeyColumn } from "./lib";
+import { getLinkPathData, getVerticalLines, SankeyColumn, SankeyRow } from "./lib";
 
 export interface SankeyProps {
   memoryKey: string;
@@ -32,17 +32,26 @@ export const Sankey = ({ memoryKey, data, height }: SankeyProps) => {
     };
   }, []);
 
+  const heightMinusBottomMargin = height - 5;
+
   const [link1, link2, link3, link4] = useMemo(() => {
     const numberOfMargins = Math.max(...data.map((col) => col.length)) - 1;
     return [
-      getLinkPath(column1, column2, numberOfMargins, 0, Math.ceil(width * (1 / 4)), height),
+      getLinkPath(
+        column1,
+        column2,
+        numberOfMargins,
+        0,
+        Math.ceil(width * (1 / 4)),
+        heightMinusBottomMargin,
+      ),
       getLinkPath(
         column2,
         column3,
         numberOfMargins,
         Math.floor(width * (1 / 4)),
         Math.ceil(width * (2 / 4)),
-        height,
+        heightMinusBottomMargin,
       ),
       getLinkPath(
         column4,
@@ -50,7 +59,7 @@ export const Sankey = ({ memoryKey, data, height }: SankeyProps) => {
         numberOfMargins,
         Math.ceil(width * (3 / 4)),
         Math.floor(width * (2 / 4)),
-        height,
+        heightMinusBottomMargin,
       ),
       getLinkPath(
         column5,
@@ -58,24 +67,24 @@ export const Sankey = ({ memoryKey, data, height }: SankeyProps) => {
         numberOfMargins,
         Math.ceil(width),
         Math.floor(width * (3 / 4)),
-        height,
+        heightMinusBottomMargin,
       ),
     ];
-  }, [column1, column2, column3, column4, column5, width, height, data]);
+  }, [column1, column2, column3, column4, column5, width, heightMinusBottomMargin, data]);
 
   const [text1, text2, text3, text4, text5] = useMemo(() => {
     const numberOfMargins = Math.max(...data.map((col) => col.length)) - 1;
     return [
-      getText(column1, numberOfMargins, height, [0, 0]),
-      getText(column2, numberOfMargins, height, [width * (1 / 4), 0], "start"),
-      getText(column3, numberOfMargins, height, [width * (1 / 2), 0], "middle"),
-      getText(column4, numberOfMargins, height, [width * (3 / 4), 0], "end"),
-      getText(column5, numberOfMargins, height, [width, 0], "end"),
+      getText(column1, numberOfMargins, heightMinusBottomMargin, [0, 0]),
+      getText(column2, numberOfMargins, heightMinusBottomMargin, [width * (1 / 4), 0], "start"),
+      getText(column3, numberOfMargins, heightMinusBottomMargin, [width * (1 / 2), 0], "middle"),
+      getText(column4, numberOfMargins, heightMinusBottomMargin, [width * (3 / 4), 0], "end"),
+      getText(column5, numberOfMargins, heightMinusBottomMargin, [width, 0], "end"),
     ];
-  }, [column1, column2, column3, column4, column5, width, height, data]);
+  }, [column1, column2, column3, column4, column5, width, heightMinusBottomMargin, data]);
 
   return (
-    <div className="Sankey" ref={divRef} style={{ width: "100%" }}>
+    <div className="Sankey" ref={divRef} style={{ width: "100%", height }}>
       <svg
         className="colored"
         height="100%"
@@ -174,35 +183,36 @@ const getText = (
   textAnchor: "start" | "middle" | "end" = "start",
 ) => {
   const lines = getVerticalLines(column, numberOfMargins);
-  let lastY = 0;
-  return lines.map(({ start, end }, i) => {
-    const priority = column[i].priority || 0;
-    const nextPriority = column[i + 1]?.priority || 0;
+  const combined: { line: Line; row: SankeyRow }[] = [];
+  column.forEach((row, i) => combined.push({ line: lines[i], row }));
 
-    const nextLine = lines[i + 1];
-    const nextMid = nextLine && (nextLine.start + nextLine.end) / 2;
+  const sorted = combined.sort((a, b) => {
+    return (b.row.priority ?? 0) - (a.row.priority ?? 0) || b.row.amount - a.row.amount;
+  });
 
+  const jsxElements: JSX.Element[] = [];
+  const ys: number[] = [];
+
+  sorted.forEach(({ line, row }) => {
+    const { start, end } = line;
     const mid = (start + end) / 2;
     const y = (1 - mid) * height;
-    const nextY = nextMid && (1 - nextMid) * height;
-
-    if (lastY && y - lastY < 16) return undefined;
-    if (nextPriority && nextY && nextY - y < 16 && priority < nextPriority) return undefined;
-
-    lastY = y;
-
-    return (
+    if (ys.find((e) => Math.abs(y - e) < 24)) return;
+    ys.push(y);
+    jsxElements.push(
       <text
-        key={column[i].id}
+        key={row.id}
         x={offset[0]}
         y={y}
         fill="#fff"
-        dominant-baseline="central"
+        dominantBaseline="central"
         textAnchor={textAnchor}
         fontSize={10}
       >
-        {column[i].name}
-      </text>
+        {row.name}
+      </text>,
     );
   });
+
+  return jsxElements;
 };
