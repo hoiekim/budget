@@ -4,11 +4,22 @@ import { MaskedUser } from "./users";
 
 type PartialChart = { chart_id?: string } & Partial<JSONChart>;
 
+// Database row interface
+interface ChartRow {
+  chart_id: string;
+  user_id?: string;
+  name?: string;
+  type?: string;
+  configuration?: string;
+  updated?: Date;
+  is_deleted?: boolean;
+}
+
 /**
  * Converts a chart to Postgres row.
  */
-function chartToRow(chart: PartialChart): Record<string, any> {
-  const row: Record<string, any> = {};
+function chartToRow(chart: PartialChart): Partial<ChartRow> {
+  const row: Partial<ChartRow> = {};
   
   if (chart.chart_id !== undefined) row.chart_id = chart.chart_id;
   if (chart.name !== undefined) row.name = chart.name;
@@ -25,7 +36,7 @@ function chartToRow(chart: PartialChart): Record<string, any> {
 /**
  * Converts a Postgres row to chart.
  */
-function rowToChart(row: Record<string, any>): JSONChart {
+function rowToChart(row: ChartRow): JSONChart {
   let configuration = row.configuration;
   if (configuration && typeof configuration === 'string') {
     try {
@@ -103,8 +114,9 @@ export const upsertCharts = async (
           status: result.rowCount ? 201 : 500,
         });
       }
-    } catch (error: any) {
-      console.error(`Failed to upsert chart:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert chart:`, message);
       results.push({
         update: { _id: chart.chart_id || "unknown" },
         status: 500,
@@ -172,7 +184,7 @@ export const searchCharts = async (
 ): Promise<JSONChart[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.chart_id) {
@@ -220,8 +232,9 @@ export const createChart = async (
       ]
     );
     return result.rows.length > 0 ? rowToChart(result.rows[0]) : null;
-  } catch (error: any) {
-    console.error("Failed to create chart:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed to create chart:", message);
     return null;
   }
 };
@@ -236,7 +249,7 @@ export const updateChart = async (
 ): Promise<boolean> => {
   const { user_id } = user;
   const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
-  const values: any[] = [];
+  const values: (string | undefined)[] = [];
   let paramIndex = 1;
 
   if (data.name !== undefined) {

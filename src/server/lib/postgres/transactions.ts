@@ -20,12 +20,60 @@ export interface SearchSplitTransactionsOptions {
 
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
 
+// Database row interfaces
+interface TransactionRow {
+  transaction_id: string;
+  user_id?: string | null;
+  account_id?: string | null;
+  name?: string | null;
+  amount?: string | number | null;
+  date?: string | null;
+  pending?: boolean | null;
+  label_budget_id?: string | null;
+  label_category_id?: string | null;
+  label_memo?: string | null;
+  raw?: string | null;
+  updated?: Date | null;
+  is_deleted?: boolean | null;
+}
+
+interface InvestmentTransactionRow {
+  investment_transaction_id: string;
+  user_id?: string | null;
+  account_id?: string | null;
+  security_id?: string | null;
+  date?: string | null;
+  name?: string | null;
+  amount?: string | number | null;
+  quantity?: string | number | null;
+  price?: string | number | null;
+  type?: string | null;
+  raw?: string | null;
+  updated?: Date | null;
+  is_deleted?: boolean | null;
+}
+
+interface SplitTransactionRow {
+  split_transaction_id: string;
+  user_id?: string | null;
+  transaction_id?: string | null;
+  account_id?: string | null;
+  amount?: string | number | null;
+  date?: string | null;
+  custom_name?: string | null;
+  label_budget_id?: string | null;
+  label_category_id?: string | null;
+  label_memo?: string | null;
+  updated?: Date | null;
+  is_deleted?: boolean | null;
+}
+
 /**
  * Converts a transaction object to flat Postgres columns + raw JSONB.
  * Only extracts indexed/queried columns; stores the full provider object in raw.
  */
-function transactionToRow(tx: PartialTransaction): Record<string, any> {
-  const row: Record<string, any> = {};
+function transactionToRow(tx: PartialTransaction): Partial<TransactionRow> {
+  const row: Partial<TransactionRow> = {};
   
   if (tx.transaction_id !== undefined) row.transaction_id = tx.transaction_id;
   if (tx.account_id !== undefined) row.account_id = tx.account_id;
@@ -52,7 +100,7 @@ function transactionToRow(tx: PartialTransaction): Record<string, any> {
  * Converts a Postgres row to transaction object.
  * Merges raw JSONB with user-edited label columns.
  */
-function rowToTransaction(row: Record<string, any>): JSONTransaction {
+function rowToTransaction(row: TransactionRow): JSONTransaction {
   // Start from raw JSONB if available, then overlay column values
   const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
   
@@ -161,8 +209,9 @@ export const upsertTransactions = async (
           });
         }
       }
-    } catch (error: any) {
-      console.error(`Failed to upsert transaction ${tx.transaction_id}:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert transaction ${tx.transaction_id}:`, message);
       results.push({
         update: { _id: tx.transaction_id },
         status: 500,
@@ -189,7 +238,7 @@ export const getTransactions = async (
 ): Promise<JSONTransaction[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: (string | number | boolean)[] = [user_id];
   let paramIndex = 2;
 
   if (options.account_id) {
@@ -273,8 +322,8 @@ export const deleteTransactions = async (
 // Investment Transactions
 // =====================================
 
-function investmentTxToRow(tx: Partial<JSONInvestmentTransaction>): Record<string, any> {
-  const row: Record<string, any> = {};
+function investmentTxToRow(tx: Partial<JSONInvestmentTransaction>): Partial<InvestmentTransactionRow> {
+  const row: Partial<InvestmentTransactionRow> = {};
   
   if (tx.investment_transaction_id !== undefined) row.investment_transaction_id = tx.investment_transaction_id;
   if (tx.account_id !== undefined) row.account_id = tx.account_id;
@@ -292,7 +341,7 @@ function investmentTxToRow(tx: Partial<JSONInvestmentTransaction>): Record<strin
   return row;
 }
 
-function rowToInvestmentTx(row: Record<string, any>): JSONInvestmentTransaction {
+function rowToInvestmentTx(row: InvestmentTransactionRow): JSONInvestmentTransaction {
   const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
   
   return {
@@ -350,8 +399,9 @@ export const upsertInvestmentTransactions = async (
         update: { _id: tx.investment_transaction_id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert investment transaction:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert investment transaction:`, message);
       results.push({
         update: { _id: tx.investment_transaction_id },
         status: 500,
@@ -368,7 +418,7 @@ export const getInvestmentTransactions = async (
 ): Promise<JSONInvestmentTransaction[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.account_id) {
@@ -434,7 +484,7 @@ export const searchTransactionsByAccountId = async (
     `account_id IN (${placeholders})`,
     "(is_deleted IS NULL OR is_deleted = FALSE)"
   ];
-  const values: any[] = [user_id, ...account_ids];
+  const values: string[] = [user_id, ...account_ids];
   let paramIndex = account_ids.length + 2;
   
   const rangeConditions: string[] = [];
@@ -470,8 +520,8 @@ export const searchTransactionsByAccountId = async (
 // Split Transactions (NO CHANGE - user-created, no provider data)
 // =====================================
 
-function splitTxToRow(tx: Partial<JSONSplitTransaction>): Record<string, any> {
-  const row: Record<string, any> = {};
+function splitTxToRow(tx: Partial<JSONSplitTransaction>): Partial<SplitTransactionRow> {
+  const row: Partial<SplitTransactionRow> = {};
   
   if (tx.split_transaction_id !== undefined) row.split_transaction_id = tx.split_transaction_id;
   if (tx.transaction_id !== undefined) row.transaction_id = tx.transaction_id;
@@ -490,7 +540,7 @@ function splitTxToRow(tx: Partial<JSONSplitTransaction>): Record<string, any> {
   return row;
 }
 
-function rowToSplitTx(row: Record<string, any>): JSONSplitTransaction {
+function rowToSplitTx(row: SplitTransactionRow): JSONSplitTransaction {
   return {
     split_transaction_id: row.split_transaction_id,
     user_id: row.user_id,
@@ -558,8 +608,9 @@ export const upsertSplitTransactions = async (
         update: { _id: id },
         status: result.rowCount ? 200 : 404,
       });
-    } catch (error: any) {
-      console.error(`Failed to upsert split transaction:`, error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert split transaction:`, message);
       results.push({
         update: { _id: tx.split_transaction_id || "unknown" },
         status: 500,
@@ -632,7 +683,7 @@ export const searchTransactions = async (
 ): Promise<{ transactions: JSONTransaction[]; investment_transactions: JSONInvestmentTransaction[] }> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: (string | number | boolean)[] = [user_id];
   let paramIndex = 2;
 
   if (options.account_id) {
@@ -699,7 +750,7 @@ export const searchSplitTransactions = async (
 ): Promise<JSONSplitTransaction[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: any[] = [user_id];
+  const values: string[] = [user_id];
   let paramIndex = 2;
 
   if (options.transaction_id) {
@@ -748,8 +799,9 @@ export const createSplitTransaction = async (
     );
     
     return result.rows.length > 0 ? rowToSplitTx(result.rows[0]) : null;
-  } catch (error: any) {
-    console.error("Failed to create split transaction:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Failed to create split transaction:", message);
     return null;
   }
 };
