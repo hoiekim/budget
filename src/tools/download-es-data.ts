@@ -1,18 +1,18 @@
 /**
  * Download Tool: Elasticsearch Data Export
- * 
+ *
  * This script downloads all data from Elasticsearch indices and saves them
  * as JSON files for migration to PostgreSQL.
- * 
+ *
  * Usage:
  *   npx ts-node src/tools/download-es-data.ts
- * 
+ *
  * Environment Variables:
  *   ELASTICSEARCH_HOST - ES host (default: http://localhost:9200)
  *   ELASTICSEARCH_USERNAME - ES username (optional)
  *   ELASTICSEARCH_PASSWORD - ES password (optional)
  *   OUTPUT_DIR - Directory for output files (default: current directory)
- * 
+ *
  * Output Files:
  *   - backup_users.json
  *   - backup_items.json
@@ -25,6 +25,9 @@
  *   - backup_snapshots.json
  */
 
+import { importConfig } from "../server/config";
+importConfig();
+
 import * as fs from "fs";
 import * as path from "path";
 import * as https from "https";
@@ -36,17 +39,7 @@ const ES_PASSWORD = process.env.ELASTICSEARCH_PASSWORD;
 const OUTPUT_DIR = process.env.OUTPUT_DIR || ".";
 
 // Index to filename mapping
-const INDICES = [
-  { index: "users", file: "backup_users.json" },
-  { index: "items", file: "backup_items.json" },
-  { index: "accounts", file: "backup_accounts.json" },
-  { index: "transactions", file: "backup_transactions.json" },
-  { index: "budgets", file: "backup_budgets.json" },
-  { index: "sections", file: "backup_sections.json" },
-  { index: "categories", file: "backup_categories.json" },
-  { index: "charts", file: "backup_charts.json" },
-  { index: "snapshots", file: "backup_snapshots.json" },
-];
+const INDICES = [{ index: "budget-6", file: "es_data.json" }];
 
 interface ESSearchResponse {
   hits: {
@@ -110,14 +103,12 @@ async function downloadIndex(indexName: string, outputFile: string): Promise<num
 
   try {
     // Initial search with scroll
-    let response: ESSearchResponse = await fetchFromES(
-      `/${indexName}/_search?scroll=5m`,
-      "POST",
-      {
-        size: batchSize,
-        query: { match_all: {} },
-      }
-    );
+    let response: ESSearchResponse = await fetchFromES(`/${indexName}/_search?scroll=5m`, "POST", {
+      size: batchSize,
+      query: { match_all: {} },
+    });
+
+    writeStream.write("[\n");
 
     // Process initial batch
     for (const hit of response.hits.hits) {
@@ -125,7 +116,8 @@ async function downloadIndex(indexName: string, outputFile: string): Promise<num
         _id: hit._id,
         ...hit._source,
       };
-      writeStream.write(JSON.stringify(doc) + "\n");
+      if (count > 0) writeStream.write(",\n");
+      writeStream.write(JSON.stringify(doc));
       count++;
     }
 
@@ -141,10 +133,13 @@ async function downloadIndex(indexName: string, outputFile: string): Promise<num
           _id: hit._id,
           ...hit._source,
         };
-        writeStream.write(JSON.stringify(doc) + "\n");
+        if (count > 0) writeStream.write(",\n");
+        writeStream.write(JSON.stringify(doc));
         count++;
       }
     }
+
+    writeStream.write("]");
 
     // Clean up scroll
     if (response._scroll_id) {
