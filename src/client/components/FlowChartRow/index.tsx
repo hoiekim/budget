@@ -21,7 +21,7 @@ export const FlowChartRow = ({
   chart,
   onClick,
   onSetOrder,
-  height = 100,
+  height = 150,
 }: FlowChartRowProps) => {
   const { data, viewDate } = useAppContext();
   const { accounts, transactions, investmentTransactions, budgets, sections, categories } = data;
