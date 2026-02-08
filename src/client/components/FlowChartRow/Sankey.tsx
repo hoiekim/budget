@@ -194,6 +194,7 @@ const getText = (
   const ys: number[] = [];
 
   sorted.forEach(({ line, row }) => {
+    if (!row.name) return;
     const { start, end } = line;
     const mid = (start + end) / 2;
     const y = (1 - mid) * height;
