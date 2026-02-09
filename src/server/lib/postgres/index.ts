@@ -1,6 +1,6 @@
 /**
  * PostgreSQL Database Module
- * 
+ *
  * Provides data access layer for the budget application, replacing Elasticsearch.
  * Uses flattened column structure for partial updates (no JSONB for nested objects
  * except for array fields like capacities).
@@ -11,20 +11,9 @@ export { initializeIndex, version, index } from "./initialize";
 
 // Users & Sessions
 export type { MaskedUser } from "./users";
-export {
-  maskUser,
-  searchUser,
-  indexUser,
-  deleteUser,
-  getUserById,
-} from "./users";
+export { maskUser, searchUser, indexUser, deleteUser, getUserById } from "./users";
 
-export {
-  PostgresSessionStore,
-  getSession,
-  setSession,
-  destroySession,
-} from "./session";
+export { PostgresSessionStore } from "./session";
 
 // Items & Institutions
 export {
@@ -86,18 +75,8 @@ export {
   getOldestTransactionDate,
 } from "./transactions";
 
-// Capacities
-export type { ParentType } from "./capacities";
-export {
-  getCapacitiesByParent,
-  getCapacitiesByParents,
-  upsertCapacities,
-  deleteCapacitiesByParent,
-} from "./capacities";
-
 // Budgets, Sections, Categories
 export {
-  upsertBudgets,
   getBudgets,
   getBudget,
   deleteBudgets,
@@ -105,13 +84,11 @@ export {
   searchBudgets,
   createBudget,
   updateBudget,
-  upsertSections,
   getSections,
   deleteSections,
   deleteSection,
   createSection,
   updateSection,
-  upsertCategories,
   getCategories,
   deleteCategories,
   deleteCategory,

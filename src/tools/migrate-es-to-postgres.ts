@@ -84,7 +84,6 @@ async function migrate(): Promise<void> {
     "split_transactions",
     "investment_transactions",
     "transactions",
-    "capacities",
     "categories",
     "sections",
     "budgets",
@@ -271,8 +270,6 @@ async function migrate(): Promise<void> {
   // =========================================
   console.log("\n--- Phase 6: Migrate budgets ---");
   let budgetCount = 0;
-  // Store capacities for later extraction
-  const budgetCapacities: { pgId: string; pgUserId: string; capacities: any[] }[] = [];
   for (const doc of byType.budget || []) {
     const src = doc;
     const budget = src.budget || {};
@@ -282,8 +279,8 @@ async function migrate(): Promise<void> {
     const esBid = budget.budget_id || doc._id;
     try {
       const result = await pgPool.query(
-        `INSERT INTO budgets (user_id, name, iso_currency_code, roll_over, roll_over_start_date)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO budgets (user_id, name, iso_currency_code, roll_over, roll_over_start_date, capacities)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING budget_id`,
         [
           pgUserId,
@@ -291,13 +288,11 @@ async function migrate(): Promise<void> {
           budget.iso_currency_code || "USD",
           budget.roll_over ?? null,
           budget.roll_over_start_date || null,
+          JSON.stringify(budget.capacities),
         ],
       );
       const pgBudgetId = result.rows[0].budget_id;
       budgetIdMap.set(esBid, pgBudgetId);
-      if (budget.capacities && budget.capacities.length > 0) {
-        budgetCapacities.push({ pgId: pgBudgetId, pgUserId, capacities: budget.capacities });
-      }
       console.log(`  Budget: ${budget.name} (${esBid} -> ${pgBudgetId})`);
       budgetCount++;
     } catch (error: any) {
@@ -311,7 +306,6 @@ async function migrate(): Promise<void> {
   // =========================================
   console.log("\n--- Phase 7: Migrate sections ---");
   let sectionCount = 0;
-  const sectionCapacities: { pgId: string; pgUserId: string; capacities: any[] }[] = [];
   for (const doc of byType.section || []) {
     const src = doc;
     const section = src.section || {};
@@ -322,8 +316,8 @@ async function migrate(): Promise<void> {
     const esSid = section.section_id || doc._id;
     try {
       const result = await pgPool.query(
-        `INSERT INTO sections (user_id, budget_id, name, roll_over, roll_over_start_date)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO sections (user_id, budget_id, name, roll_over, roll_over_start_date, capacities)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING section_id`,
         [
           pgUserId,
@@ -331,13 +325,11 @@ async function migrate(): Promise<void> {
           section.name || null,
           section.roll_over ?? null,
           section.roll_over_start_date || null,
+          JSON.stringify(section.capacities),
         ],
       );
       const pgSectionId = result.rows[0].section_id;
       sectionIdMap.set(esSid, pgSectionId);
-      if (section.capacities && section.capacities.length > 0) {
-        sectionCapacities.push({ pgId: pgSectionId, pgUserId, capacities: section.capacities });
-      }
       console.log(`  Section: ${section.name} (${esSid} -> ${pgSectionId})`);
       sectionCount++;
     } catch (error: any) {
@@ -351,7 +343,6 @@ async function migrate(): Promise<void> {
   // =========================================
   console.log("\n--- Phase 8: Migrate categories ---");
   let categoryCount = 0;
-  const categoryCapacities: { pgId: string; pgUserId: string; capacities: any[] }[] = [];
   for (const doc of byType.category || []) {
     const src = doc;
     const cat = src.category || {};
@@ -362,8 +353,8 @@ async function migrate(): Promise<void> {
     const esCid = cat.category_id || doc._id;
     try {
       const result = await pgPool.query(
-        `INSERT INTO categories (user_id, section_id, name, roll_over, roll_over_start_date)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO categories (user_id, section_id, name, roll_over, roll_over_start_date, capacities)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING category_id`,
         [
           pgUserId,
@@ -371,13 +362,11 @@ async function migrate(): Promise<void> {
           cat.name || null,
           cat.roll_over ?? null,
           cat.roll_over_start_date || null,
+          JSON.stringify(cat.capacities),
         ],
       );
       const pgCategoryId = result.rows[0].category_id;
       categoryIdMap.set(esCid, pgCategoryId);
-      if (cat.capacities && cat.capacities.length > 0) {
-        categoryCapacities.push({ pgId: pgCategoryId, pgUserId, capacities: cat.capacities });
-      }
       console.log(`  Category: ${cat.name} (${esCid} -> ${pgCategoryId})`);
       categoryCount++;
     } catch (error: any) {
@@ -385,38 +374,6 @@ async function migrate(): Promise<void> {
     }
   }
   console.log(`  Migrated ${categoryCount} categories`);
-
-  // =========================================
-  // Phase 8.5: Extract JSONB capacities into capacities table
-  // =========================================
-  console.log("\n--- Phase 8.5: Migrate capacities ---");
-  let capCount = 0;
-  const allCapacities = [
-    ...budgetCapacities.map((c) => ({ ...c, parent_type: "budget" as const })),
-    ...sectionCapacities.map((c) => ({ ...c, parent_type: "section" as const })),
-    ...categoryCapacities.map((c) => ({ ...c, parent_type: "category" as const })),
-  ];
-  const MAX_DECIMAL = 9999999999999.99; // DECIMAL(15,2) max
-  for (const { pgId, pgUserId, capacities, parent_type } of allCapacities) {
-    for (const cap of capacities) {
-      // Clamp values that exceed DECIMAL(15,2) range (e.g. MAX_FLOAT used for "infinite")
-      let monthVal = cap.month ?? 0;
-      if (Math.abs(monthVal) > MAX_DECIMAL) {
-        monthVal = monthVal > 0 ? MAX_DECIMAL : -MAX_DECIMAL;
-      }
-      try {
-        await pgPool.query(
-          `INSERT INTO capacities (user_id, parent_id, parent_type, month, active_from)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [pgUserId, pgId, parent_type, monthVal, cap.active_from || null],
-        );
-        capCount++;
-      } catch (error: any) {
-        console.error(`  Error migrating capacity:`, error.message);
-      }
-    }
-  }
-  console.log(`  Migrated ${capCount} capacities`);
 
   // =========================================
   // Phase 9: Migrate transactions
@@ -811,7 +768,6 @@ async function migrate(): Promise<void> {
     "budgets",
     "sections",
     "categories",
-    "capacities",
     "transactions",
     "investment_transactions",
     "split_transactions",
@@ -877,13 +833,6 @@ async function migrate(): Promise<void> {
       name: "categories → sections (section_id)",
       query: `SELECT COUNT(*) as orphans FROM categories c
                WHERE NOT EXISTS (SELECT 1 FROM sections s WHERE s.section_id = c.section_id)`,
-    },
-    {
-      name: "capacities → parent (budget/section/category)",
-      query: `SELECT COUNT(*) as orphans FROM capacities cap
-               WHERE (cap.parent_type = 'budget' AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.budget_id = cap.parent_id))
-                  OR (cap.parent_type = 'section' AND NOT EXISTS (SELECT 1 FROM sections s WHERE s.section_id = cap.parent_id))
-                  OR (cap.parent_type = 'category' AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.category_id = cap.parent_id))`,
     },
     {
       name: "split_transactions → budgets (label_budget_id)",

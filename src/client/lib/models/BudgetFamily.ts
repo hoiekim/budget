@@ -40,13 +40,14 @@ export class BudgetFamily {
   }
 
   name: string = "";
-  capacities = [new Capacity()];
+  capacities: Capacity[] = [];
   roll_over: boolean = false;
   roll_over_start_date?: Date;
 
   constructor(init?: Partial<BudgetFamily | JSONBudgetFamily>) {
     assign(this, init);
     this.fromJSON();
+    if (!this.capacities.length) this.capacities = [new Capacity()];
     excludeEnumeration(this, [
       "fromJSON",
       "toJSON",
@@ -83,12 +84,13 @@ export class BudgetFamily {
   };
 
   getActiveCapacity = (date: Date) => {
-    const validCapacity = this.sortCapacities("desc").find((capacity) => {
+    const sorted = this.sortCapacities("desc");
+    const validCapacity = sorted.find((capacity) => {
       const { active_from } = capacity;
       return new Date(active_from || 0) <= date;
     });
 
-    return validCapacity || new Capacity();
+    return validCapacity || sorted[sorted.length - 1];
   };
 
   isChildrenSynced = (capacityData: CapacityData) => {

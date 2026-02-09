@@ -1,10 +1,4 @@
-import {
-  JSONCapacity,
-  MAX_FLOAT,
-  assign,
-  excludeEnumeration,
-  getDateTimeString,
-} from "common";
+import { JSONCapacity, MAX_FLOAT, assign, excludeEnumeration, getDateTimeString } from "common";
 
 export type Interval = "year" | "month";
 export const intervals: Interval[] = ["year", "month"];

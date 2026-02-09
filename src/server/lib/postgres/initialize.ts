@@ -44,7 +44,6 @@ export const initializeIndex = async (): Promise<void> => {
       -- Sessions table
       CREATE TABLE IF NOT EXISTS sessions (
         session_id VARCHAR(255) PRIMARY KEY,
-        data JSONB DEFAULT '{}'::jsonb,
         user_user_id UUID,
         user_username VARCHAR(255),
         cookie_original_max_age BIGINT,
@@ -210,6 +209,7 @@ export const initializeIndex = async (): Promise<void> => {
         iso_currency_code VARCHAR(10) DEFAULT 'USD',
         roll_over BOOLEAN DEFAULT FALSE,
         roll_over_start_date DATE,
+        capacities JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
@@ -219,10 +219,11 @@ export const initializeIndex = async (): Promise<void> => {
       CREATE TABLE IF NOT EXISTS sections (
         section_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
-        budget_id UUID REFERENCES budgets(budget_id) ON DELETE RESTRICT,
+        budget_id UUID REFERENCES budgets(budget_id) ON DELETE RESTRICT NOT NULL,
         name VARCHAR(255) DEFAULT 'Unnamed',
         roll_over BOOLEAN DEFAULT FALSE,
         roll_over_start_date DATE,
+        capacities JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
@@ -233,29 +234,16 @@ export const initializeIndex = async (): Promise<void> => {
       CREATE TABLE IF NOT EXISTS categories (
         category_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
-        section_id UUID REFERENCES sections(section_id) ON DELETE RESTRICT,
+        section_id UUID REFERENCES sections(section_id) ON DELETE RESTRICT NOT NULL,
         name VARCHAR(255) DEFAULT 'Unnamed',
         roll_over BOOLEAN DEFAULT FALSE,
         roll_over_start_date DATE,
+        capacities JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );
       CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
       CREATE INDEX IF NOT EXISTS idx_categories_section_id ON categories(section_id);
-
-      -- Capacities table (extracted from budgets/sections/categories JSONB)
-      CREATE TABLE IF NOT EXISTS capacities (
-        capacity_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
-        parent_id UUID NOT NULL,
-        parent_type VARCHAR(20) NOT NULL CHECK (parent_type IN ('budget', 'section', 'category')),
-        month DECIMAL(15, 2) DEFAULT 0,
-        active_from DATE,
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        is_deleted BOOLEAN DEFAULT FALSE
-      );
-      CREATE INDEX IF NOT EXISTS idx_capacities_user_id ON capacities(user_id);
-      CREATE INDEX IF NOT EXISTS idx_capacities_parent ON capacities(parent_id, parent_type);
 
       -- Snapshots table (stores account, security, holding snapshots)
       CREATE TABLE IF NOT EXISTS snapshots (
@@ -295,7 +283,7 @@ export const initializeIndex = async (): Promise<void> => {
         user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT,
         name VARCHAR(255) DEFAULT 'Unnamed',
         type VARCHAR(50),
-        configuration TEXT,
+        configuration JSONB,
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
       );

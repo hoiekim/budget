@@ -7,7 +7,7 @@ interface SnapshotRow {
   snapshot_id: string;
   user_id?: string;
   snapshot_date: string | Date;
-  snapshot_type: 'account_balance' | 'security' | 'holding';
+  snapshot_type: "account_balance" | "security" | "holding";
   account_id?: string;
   security_id?: string;
   holding_account_id?: string;
@@ -30,7 +30,7 @@ export interface SearchSnapshotsOptions {
   account_id?: string;
   account_ids?: string[];
   security_id?: string;
-  snapshot_type?: 'account_balance' | 'security' | 'holding';
+  snapshot_type?: "account_balance" | "security" | "holding";
   startDate?: string;
   endDate?: string;
   limit?: number;
@@ -69,10 +69,7 @@ export type Snapshot = AccountSnapshot | SecuritySnapshot | HoldingSnapshot;
 /**
  * Upserts account balance snapshots.
  */
-export const upsertAccountSnapshots = async (
-  user: MaskedUser,
-  snapshots: AccountSnapshot[]
-) => {
+export const upsertAccountSnapshots = async (user: MaskedUser, snapshots: AccountSnapshot[]) => {
   if (!snapshots.length) return [];
   const { user_id } = user;
   const results: { update: { _id: string }; status: number }[] = [];
@@ -101,9 +98,9 @@ export const upsertAccountSnapshots = async (
           snapshot.balances_current,
           snapshot.balances_limit,
           snapshot.balances_iso_currency_code,
-        ]
+        ],
       );
-      
+
       results.push({
         update: { _id: snapshot.snapshot_id },
         status: result.rowCount ? 200 : 404,
@@ -138,14 +135,9 @@ export const upsertSecuritySnapshots = async (snapshots: SecuritySnapshot[]) => 
           close_price = COALESCE($4, snapshots.close_price),
           updated = CURRENT_TIMESTAMP
         RETURNING snapshot_id`,
-        [
-          snapshot.snapshot_id,
-          snapshot.snapshot_date,
-          snapshot.security_id,
-          snapshot.close_price,
-        ]
+        [snapshot.snapshot_id, snapshot.snapshot_date, snapshot.security_id, snapshot.close_price],
       );
-      
+
       results.push({
         update: { _id: snapshot.snapshot_id },
         status: result.rowCount ? 200 : 404,
@@ -166,10 +158,7 @@ export const upsertSecuritySnapshots = async (snapshots: SecuritySnapshot[]) => 
 /**
  * Upserts holding snapshots.
  */
-export const upsertHoldingSnapshots = async (
-  user: MaskedUser,
-  snapshots: HoldingSnapshot[]
-) => {
+export const upsertHoldingSnapshots = async (user: MaskedUser, snapshots: HoldingSnapshot[]) => {
   if (!snapshots.length) return [];
   const { user_id } = user;
   const results: { update: { _id: string }; status: number }[] = [];
@@ -199,9 +188,9 @@ export const upsertHoldingSnapshots = async (
           snapshot.institution_value,
           snapshot.cost_basis,
           snapshot.quantity,
-        ]
+        ],
       );
-      
+
       results.push({
         update: { _id: snapshot.snapshot_id },
         status: result.rowCount ? 200 : 404,
@@ -228,10 +217,14 @@ export const getAccountSnapshots = async (
     account_id?: string;
     startDate?: string;
     endDate?: string;
-  } = {}
+  } = {},
 ): Promise<AccountSnapshot[]> => {
   const { user_id } = user;
-  const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const conditions: string[] = [
+    "user_id = $1",
+    "snapshot_type = 'account_balance'",
+    "(is_deleted IS NULL OR is_deleted = FALSE)",
+  ];
   const values: string[] = [user_id];
   let paramIndex = 2;
 
@@ -265,7 +258,7 @@ export const getAccountSnapshots = async (
     `SELECT snapshot_id, snapshot_date, account_id, 
             balances_available, balances_current, balances_limit, balances_iso_currency_code
      FROM snapshots WHERE ${conditions.join(" AND ")} ORDER BY snapshot_date`,
-    values
+    values,
   );
 
   return result.rows.map((row) => ({
@@ -287,9 +280,12 @@ export const getSecuritySnapshots = async (
     security_id?: string;
     startDate?: string;
     endDate?: string;
-  } = {}
+  } = {},
 ): Promise<SecuritySnapshot[]> => {
-  const conditions: string[] = ["snapshot_type = 'security'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const conditions: string[] = [
+    "snapshot_type = 'security'",
+    "(is_deleted IS NULL OR is_deleted = FALSE)",
+  ];
   const values: string[] = [];
   let paramIndex = 1;
 
@@ -319,7 +315,7 @@ export const getSecuritySnapshots = async (
   }>(
     `SELECT snapshot_id, snapshot_date, security_id, close_price
      FROM snapshots WHERE ${conditions.join(" AND ")} ORDER BY snapshot_date`,
-    values
+    values,
   );
 
   return result.rows.map((row) => ({
@@ -340,10 +336,14 @@ export const getHoldingSnapshots = async (
     security_id?: string;
     startDate?: string;
     endDate?: string;
-  } = {}
+  } = {},
 ): Promise<HoldingSnapshot[]> => {
   const { user_id } = user;
-  const conditions: string[] = ["user_id = $1", "snapshot_type = 'holding'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const conditions: string[] = [
+    "user_id = $1",
+    "snapshot_type = 'holding'",
+    "(is_deleted IS NULL OR is_deleted = FALSE)",
+  ];
   const values: string[] = [user_id];
   let paramIndex = 2;
 
@@ -384,7 +384,7 @@ export const getHoldingSnapshots = async (
     `SELECT snapshot_id, snapshot_date, holding_account_id, holding_security_id,
             institution_price, institution_value, cost_basis, quantity
      FROM snapshots WHERE ${conditions.join(" AND ")} ORDER BY snapshot_date`,
-    values
+    values,
   );
 
   return result.rows.map((row) => ({
@@ -402,25 +402,21 @@ export const getHoldingSnapshots = async (
 /**
  * Soft-deletes snapshots older than a certain date.
  */
-export const deleteOldSnapshots = async (
-  beforeDate: string
-): Promise<{ deleted: number }> => {
+export const deleteOldSnapshots = async (beforeDate: string): Promise<{ deleted: number }> => {
   const result = await pool.query(
     `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE snapshot_date < $1 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
-    [beforeDate]
+    [beforeDate],
   );
-  
+
   return { deleted: result.rowCount || 0 };
 };
 
 /**
  * Gets the latest snapshot for each account.
  */
-export const getLatestAccountSnapshots = async (
-  user: MaskedUser
-): Promise<AccountSnapshot[]> => {
+export const getLatestAccountSnapshots = async (user: MaskedUser): Promise<AccountSnapshot[]> => {
   const { user_id } = user;
-  
+
   const result = await pool.query<{
     snapshot_id: string;
     snapshot_date: string;
@@ -436,10 +432,10 @@ export const getLatestAccountSnapshots = async (
      FROM snapshots 
      WHERE user_id = $1 AND snapshot_type = 'account_balance' AND (is_deleted IS NULL OR is_deleted = FALSE)
      ORDER BY account_id, snapshot_date DESC`,
-    [user_id]
+    [user_id],
   );
 
-  return result.rows.map(row => ({
+  return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id,
     snapshot_date: row.snapshot_date,
     account_id: row.account_id,
@@ -459,11 +455,15 @@ export const aggregateAccountSnapshots = async (
     account_ids?: string[];
     startDate?: string;
     endDate?: string;
-    interval?: 'day' | 'week' | 'month';
-  } = {}
+    interval?: "day" | "week" | "month";
+  } = {},
 ): Promise<{ date: string; total_current: number; total_available: number }[]> => {
   const { user_id } = user;
-  const conditions: string[] = ["user_id = $1", "snapshot_type = 'account_balance'", "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const conditions: string[] = [
+    "user_id = $1",
+    "snapshot_type = 'account_balance'",
+    "(is_deleted IS NULL OR is_deleted = FALSE)",
+  ];
   const values: string[] = [user_id];
   let paramIndex = 2;
 
@@ -486,13 +486,13 @@ export const aggregateAccountSnapshots = async (
     paramIndex++;
   }
 
-  const interval = options.interval || 'day';
+  const interval = options.interval || "day";
   let dateGroup: string;
   switch (interval) {
-    case 'week':
+    case "week":
       dateGroup = "date_trunc('week', snapshot_date)";
       break;
-    case 'month':
+    case "month":
       dateGroup = "date_trunc('month', snapshot_date)";
       break;
     default:
@@ -507,10 +507,10 @@ export const aggregateAccountSnapshots = async (
      WHERE ${conditions.join(" AND ")}
      GROUP BY ${dateGroup}
      ORDER BY date`,
-    values
+    values,
   );
 
-  return result.rows.map(row => ({
+  return result.rows.map((row) => ({
     date: row.date,
     total_current: parseFloat(row.total_current) || 0,
     total_available: parseFloat(row.total_available) || 0,
@@ -524,7 +524,10 @@ function rowToAccountSnapshot(row: SnapshotRow): JSONAccountSnapshot {
   return {
     snapshot: {
       snapshot_id: row.snapshot_id,
-      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : String(row.snapshot_date),
+      date:
+        row.snapshot_date instanceof Date
+          ? row.snapshot_date.toISOString()
+          : String(row.snapshot_date),
     },
     user: { user_id: row.user_id ?? "" },
     account: {
@@ -547,7 +550,10 @@ function rowToSecuritySnapshot(row: SnapshotRow): JSONSecuritySnapshot {
   return {
     snapshot: {
       snapshot_id: row.snapshot_id,
-      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : String(row.snapshot_date),
+      date:
+        row.snapshot_date instanceof Date
+          ? row.snapshot_date.toISOString()
+          : String(row.snapshot_date),
     },
     security: {
       security_id: row.security_id ?? "",
@@ -563,7 +569,10 @@ function rowToHoldingSnapshot(row: SnapshotRow): JSONHoldingSnapshot {
   return {
     snapshot: {
       snapshot_id: row.snapshot_id,
-      date: row.snapshot_date instanceof Date ? row.snapshot_date.toISOString() : String(row.snapshot_date),
+      date:
+        row.snapshot_date instanceof Date
+          ? row.snapshot_date.toISOString()
+          : String(row.snapshot_date),
     },
     user: { user_id: row.user_id ?? "" },
     holding: {
@@ -583,7 +592,7 @@ function rowToHoldingSnapshot(row: SnapshotRow): JSONHoldingSnapshot {
  */
 export const searchSnapshots = async (
   user: MaskedUser | null,
-  options: SearchSnapshotsOptions = {}
+  options: SearchSnapshotsOptions = {},
 ): Promise<(JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot)[]> => {
   const conditions: string[] = ["(is_deleted IS NULL OR is_deleted = FALSE)"];
   const values: (string | number)[] = [];
@@ -644,21 +653,23 @@ export const searchSnapshots = async (
   }
 
   const result = await pool.query<SnapshotRow>(query, values);
-  
+
   // Transform raw rows to JSONSnapshotData format based on snapshot_type
-  return result.rows.map((row): JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot => {
-    switch (row.snapshot_type) {
-      case 'account_balance':
-        return rowToAccountSnapshot(row);
-      case 'security':
-        return rowToSecuritySnapshot(row);
-      case 'holding':
-        return rowToHoldingSnapshot(row);
-      default:
-        // Default to account snapshot for unknown types
-        return rowToAccountSnapshot(row);
-    }
-  });
+  return result.rows.map(
+    (row): JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot => {
+      switch (row.snapshot_type) {
+        case "account_balance":
+          return rowToAccountSnapshot(row);
+        case "security":
+          return rowToSecuritySnapshot(row);
+        case "holding":
+          return rowToHoldingSnapshot(row);
+        default:
+          // Default to account snapshot for unknown types
+          return rowToAccountSnapshot(row);
+      }
+    },
+  );
 };
 
 /**
@@ -666,12 +677,12 @@ export const searchSnapshots = async (
  */
 export const deleteSnapshotsByAccount = async (
   user: MaskedUser,
-  account_id: string
+  account_id: string,
 ): Promise<{ deleted: number }> => {
   const { user_id } = user;
   const result = await pool.query(
     `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE account_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
-    [account_id, user_id]
+    [account_id, user_id],
   );
   return { deleted: result.rowCount || 0 };
 };
@@ -679,13 +690,11 @@ export const deleteSnapshotsByAccount = async (
 /**
  * Soft-deletes all snapshots for a user.
  */
-export const deleteSnapshotsByUser = async (
-  user: MaskedUser
-): Promise<{ deleted: number }> => {
+export const deleteSnapshotsByUser = async (user: MaskedUser): Promise<{ deleted: number }> => {
   const { user_id } = user;
   const result = await pool.query(
     `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
-    [user_id]
+    [user_id],
   );
   return { deleted: result.rowCount || 0 };
 };
@@ -695,34 +704,40 @@ export const deleteSnapshotsByUser = async (
  */
 export const deleteSnapshotById = async (
   user: MaskedUser,
-  snapshot_id: string
+  snapshot_id: string,
 ): Promise<boolean> => {
   const { user_id } = user;
   const result = await pool.query(
     `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE snapshot_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING snapshot_id`,
-    [snapshot_id, user_id]
+    [snapshot_id, user_id],
   );
   return (result.rowCount || 0) > 0;
 };
 
 // Type guards for snapshot types
-function isAccountSnapshot(data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot): data is JSONAccountSnapshot {
-  return 'account' in data;
+function isAccountSnapshot(
+  data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot,
+): data is JSONAccountSnapshot {
+  return "account" in data;
 }
 
-function isSecuritySnapshot(data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot): data is JSONSecuritySnapshot {
-  return 'security' in data;
+function isSecuritySnapshot(
+  data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot,
+): data is JSONSecuritySnapshot {
+  return "security" in data;
 }
 
-function isHoldingSnapshot(data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot): data is JSONHoldingSnapshot {
-  return 'holding' in data;
+function isHoldingSnapshot(
+  data: JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot,
+): data is JSONHoldingSnapshot {
+  return "holding" in data;
 }
 
 /**
  * Generic snapshot upsert that handles JSONAccountSnapshot, JSONSecuritySnapshot, and JSONHoldingSnapshot.
  */
 export const upsertSnapshots = async (
-  snapshots: (JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot)[]
+  snapshots: (JSONAccountSnapshot | JSONSecuritySnapshot | JSONHoldingSnapshot)[],
 ) => {
   if (!snapshots.length) return [];
   const results: { update: { _id: string }; status: number }[] = [];
@@ -740,13 +755,12 @@ export const upsertSnapshots = async (
           `INSERT INTO snapshots (
             snapshot_id, user_id, snapshot_date, snapshot_type, account_id,
             balances_available, balances_current, balances_limit, balances_iso_currency_code,
-            data, updated
-          ) VALUES ($1, $2, $3, 'account_balance', $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+            updated
+          ) VALUES ($1, $2, $3, 'account_balance', $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
           ON CONFLICT (snapshot_id) DO UPDATE SET
             balances_available = COALESCE($5, snapshots.balances_available),
             balances_current = COALESCE($6, snapshots.balances_current),
             balances_limit = COALESCE($7, snapshots.balances_limit),
-            data = $9,
             updated = CURRENT_TIMESTAMP`,
           [
             snapshot.snapshot_id,
@@ -757,8 +771,7 @@ export const upsertSnapshots = async (
             account.balances?.current,
             account.balances?.limit,
             account.balances?.iso_currency_code,
-            JSON.stringify({ snapshot, account }),
-          ]
+          ],
         );
       } else if (isSecuritySnapshot(snapshotData)) {
         // Security snapshot
@@ -766,19 +779,12 @@ export const upsertSnapshots = async (
         await pool.query(
           `INSERT INTO snapshots (
             snapshot_id, snapshot_date, snapshot_type, security_id, close_price,
-            data, updated
-          ) VALUES ($1, $2, 'security', $3, $4, $5, CURRENT_TIMESTAMP)
+            updated
+          ) VALUES ($1, $2, 'security', $3, $4, CURRENT_TIMESTAMP)
           ON CONFLICT (snapshot_id) DO UPDATE SET
             close_price = COALESCE($4, snapshots.close_price),
-            data = $5,
             updated = CURRENT_TIMESTAMP`,
-          [
-            snapshot.snapshot_id,
-            snapshot.date,
-            security.security_id,
-            security.close_price,
-            JSON.stringify({ snapshot, security }),
-          ]
+          [snapshot.snapshot_id, snapshot.date, security.security_id, security.close_price],
         );
       } else if (isHoldingSnapshot(snapshotData)) {
         // Holding snapshot
@@ -788,14 +794,13 @@ export const upsertSnapshots = async (
             snapshot_id, user_id, snapshot_date, snapshot_type,
             holding_account_id, holding_security_id,
             institution_price, institution_value, cost_basis, quantity,
-            data, updated
-          ) VALUES ($1, $2, $3, 'holding', $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+            updated
+          ) VALUES ($1, $2, $3, 'holding', $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
           ON CONFLICT (snapshot_id) DO UPDATE SET
             institution_price = COALESCE($6, snapshots.institution_price),
             institution_value = COALESCE($7, snapshots.institution_value),
             cost_basis = COALESCE($8, snapshots.cost_basis),
             quantity = COALESCE($9, snapshots.quantity),
-            data = $10,
             updated = CURRENT_TIMESTAMP`,
           [
             snapshot.snapshot_id,
@@ -807,8 +812,7 @@ export const upsertSnapshots = async (
             holding.institution_value,
             holding.cost_basis,
             holding.quantity,
-            JSON.stringify({ snapshot, holding }),
-          ]
+          ],
         );
       }
 

@@ -14,7 +14,7 @@ export class Budget extends BudgetFamily {
   iso_currency_code: string = "USD";
 
   constructor(init?: Partial<Budget | JSONBudget>) {
-    super();
+    super(init);
     assign(this, init);
     this.fromJSON();
   }
