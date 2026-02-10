@@ -47,75 +47,6 @@ function rowToChart(row: ChartRow): JSONChart {
 }
 
 /**
- * Upserts charts for a user.
- */
-export const upsertCharts = async (user: MaskedUser, charts: PartialChart[]) => {
-  if (!charts.length) return [];
-  const { user_id } = user;
-  const results: { update: { _id: string }; status: number }[] = [];
-
-  for (const chart of charts) {
-    const row = chartToRow(chart);
-    row.user_id = user_id;
-
-    try {
-      const columns = Object.keys(row);
-      const values = Object.values(row);
-      const placeholders = values.map((_, i) => `$${i + 1}`);
-
-      if (chart.chart_id) {
-        const updateClauses = columns
-          .filter((col) => col !== "chart_id" && col !== "user_id")
-          .map((col) => `${col} = EXCLUDED.${col}`);
-        updateClauses.push("updated = CURRENT_TIMESTAMP");
-
-        const query = `
-          INSERT INTO charts (${columns.join(", ")}, updated)
-          VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
-          ON CONFLICT (chart_id) DO UPDATE SET
-            ${updateClauses.join(", ")}
-          WHERE charts.user_id = $${columns.indexOf("user_id") + 1}
-          RETURNING chart_id
-        `;
-
-        const result = await pool.query(query, values);
-        results.push({
-          update: { _id: chart.chart_id },
-          status: result.rowCount ? 200 : 404,
-        });
-      } else {
-        // Insert new with auto-generated UUID
-        const insertColumns = columns.filter((c) => c !== "chart_id");
-        const insertValues = values.filter((_, i) => columns[i] !== "chart_id");
-        const insertPlaceholders = insertValues.map((_, i) => `$${i + 1}`);
-
-        const query = `
-          INSERT INTO charts (${insertColumns.join(", ")}, updated)
-          VALUES (${insertPlaceholders.join(", ")}, CURRENT_TIMESTAMP)
-          RETURNING chart_id
-        `;
-
-        const result = await pool.query(query, insertValues);
-        const id = result.rows[0]?.chart_id;
-        results.push({
-          update: { _id: id },
-          status: result.rowCount ? 201 : 500,
-        });
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to upsert chart:`, message);
-      results.push({
-        update: { _id: chart.chart_id || "unknown" },
-        status: 500,
-      });
-    }
-  }
-
-  return results;
-};
-
-/**
  * Gets all charts for a user.
  */
 export const getCharts = async (user: MaskedUser): Promise<JSONChart[]> => {
@@ -208,7 +139,7 @@ export const createChart = async (
       `INSERT INTO charts (user_id, name, type, configuration, updated)
        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
        RETURNING *`,
-      [user_id, data.name || "New Chart", data.type || "line", config],
+      [user_id, data.name || "New Chart", data.type || ChartType.BALANCE, config],
     );
     return result.rows.length > 0 ? rowToChart(result.rows[0]) : null;
   } catch (error: unknown) {

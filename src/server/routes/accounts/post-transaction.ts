@@ -1,4 +1,4 @@
-import { Route, upsertTransactions } from "server";
+import { Route, updateTransactions } from "server";
 
 export interface TransactionPostResponse {
   transaction_id: string;
@@ -17,7 +17,7 @@ export const postTrasactionRoute = new Route<TransactionPostResponse>(
     }
 
     try {
-      const response = await upsertTransactions(user, [req.body], false);
+      const response = await updateTransactions(user, [req.body]);
       const result = response[0];
       if (!result || result.status >= 400) {
         throw new Error("Database responded with an error.");
@@ -28,5 +28,5 @@ export const postTrasactionRoute = new Route<TransactionPostResponse>(
       console.error(`Failed to update a transaction: ${req.body.transaction_id}`);
       throw new Error(error);
     }
-  }
+  },
 );

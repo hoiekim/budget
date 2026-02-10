@@ -79,7 +79,7 @@ export const BudgetDetailPage = () => {
       return oldData;
     });
 
-    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: section_id }) });
+    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ section_id }) });
   };
 
   const onClickUnsorted = () => {

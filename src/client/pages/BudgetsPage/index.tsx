@@ -58,7 +58,7 @@ export const BudgetsPage = () => {
       return newData;
     });
 
-    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ id: budget_id }) });
+    router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ budget_id }) });
   };
 
   return (

@@ -27,7 +27,7 @@ export class AccountSnapshot implements JSONAccountSnapshot {
   user = { user_id: getRandomId() };
   account = new Account();
 
-  constructor(init?: Partial<AccountSnapshot>) {
+  constructor(init?: Partial<AccountSnapshot | JSONAccountSnapshot>) {
     assign(this, init);
     if (init?.snapshot) this.snapshot = new Snapshot(init.snapshot);
     if (init?.account) this.account = new Account(init.account);
@@ -39,7 +39,7 @@ export class HoldingSnapshot implements JSONHoldingSnapshot {
   user = { user_id: getRandomId() };
   holding = new Holding();
 
-  constructor(init?: Partial<HoldingSnapshot>) {
+  constructor(init?: Partial<HoldingSnapshot | JSONHoldingSnapshot>) {
     assign(this, init);
     if (init?.snapshot) this.snapshot = new Snapshot(init.snapshot);
     if (init?.holding) this.holding = new Holding(init.holding);

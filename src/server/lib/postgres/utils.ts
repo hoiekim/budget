@@ -3,6 +3,8 @@
  * Provides translation between nested ES document structure and flat Postgres columns.
  */
 
+import { isUndefined } from "common";
+
 /**
  * Converts a nested object to flat key-value pairs using underscore notation.
  * Example: { balances: { current: 100 } } → { balances_current: 100 }
@@ -10,12 +12,17 @@
 export function flattenObject(
   obj: Record<string, any>,
   prefix: string = "",
-  result: Record<string, any> = {}
+  result: Record<string, any> = {},
 ): Record<string, any> {
   for (const [key, value] of Object.entries(obj)) {
     const flatKey = prefix ? `${prefix}_${key}` : key;
 
-    if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !(value instanceof Date)
+    ) {
       flattenObject(value, flatKey, result);
     } else {
       result[flatKey] = value;
@@ -66,7 +73,7 @@ export function toCamelCase(str: string): string {
 /**
  * Builds a dynamic UPDATE query from a partial object.
  * Only includes fields that are defined (not undefined).
- * 
+ *
  * @param tableName - The table to update
  * @param primaryKey - The primary key column name
  * @param primaryKeyValue - The value of the primary key
@@ -82,7 +89,7 @@ export function buildUpdateQuery(
   options: {
     additionalWhere?: { column: string; value: any };
     returning?: string[];
-  } = {}
+  } = {},
 ): { query: string; values: any[] } | null {
   const setClauses: string[] = [];
   const values: any[] = [];
@@ -92,11 +99,11 @@ export function buildUpdateQuery(
   setClauses.push(`updated = CURRENT_TIMESTAMP`);
 
   for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
-      setClauses.push(`${key} = $${paramIndex}`);
-      values.push(value);
-      paramIndex++;
-    }
+    if (key === "raw") continue;
+    if (isUndefined(value)) continue;
+    setClauses.push(`${key} = $${paramIndex}`);
+    values.push(value);
+    paramIndex++;
   }
 
   // If only 'updated' timestamp would be set, skip the update
@@ -128,7 +135,7 @@ export function buildUpdateQuery(
 
 /**
  * Builds a dynamic INSERT query with ON CONFLICT handling.
- * 
+ *
  * @param tableName - The table to insert into
  * @param primaryKey - The primary key column name
  * @param data - The data to insert
@@ -139,7 +146,7 @@ export function buildUpsertQuery(
   tableName: string,
   primaryKey: string,
   data: Record<string, any>,
-  updateColumns: string[] = []
+  updateColumns: string[] = [],
 ): { query: string; values: any[] } {
   const columns: string[] = [];
   const placeholders: string[] = [];
@@ -163,8 +170,8 @@ export function buildUpsertQuery(
 
   if (updateColumns.length > 0) {
     const updateClauses = updateColumns
-      .filter(col => col !== primaryKey)
-      .map(col => `${col} = EXCLUDED.${col}`);
+      .filter((col) => col !== primaryKey)
+      .map((col) => `${col} = EXCLUDED.${col}`);
     updateClauses.push("updated = CURRENT_TIMESTAMP");
     query += ` ON CONFLICT (${primaryKey}) DO UPDATE SET ${updateClauses.join(", ")}`;
   } else {
@@ -179,18 +186,15 @@ export function buildUpsertQuery(
 /**
  * Maps Postgres row (snake_case, flat) to ES document format (camelCase, nested).
  */
-export function rowToDocument<T>(
-  row: Record<string, any>,
-  nestedFields: string[] = []
-): T {
+export function rowToDocument<T>(row: Record<string, any>, nestedFields: string[] = []): T {
   const result: Record<string, any> = {};
 
   for (const [key, value] of Object.entries(row)) {
     if (value === null || value === undefined) continue;
 
     // Check if this is a nested field prefix
-    const nestedPrefix = nestedFields.find(f => key.startsWith(f + "_"));
-    
+    const nestedPrefix = nestedFields.find((f) => key.startsWith(f + "_"));
+
     if (nestedPrefix) {
       // Initialize nested object if needed
       if (!result[nestedPrefix]) {
@@ -212,7 +216,7 @@ export function rowToDocument<T>(
  */
 export function documentToRow(
   doc: Record<string, any>,
-  nestedFields: string[] = []
+  nestedFields: string[] = [],
 ): Record<string, any> {
   const result: Record<string, any> = {};
 

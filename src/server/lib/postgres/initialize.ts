@@ -205,7 +205,7 @@ export const initializeIndex = async (): Promise<void> => {
         transaction_id VARCHAR(255) NOT NULL,
         account_id VARCHAR(255) NOT NULL,
         amount DECIMAL(15, 2) DEFAULT 0,
-        date DATE,
+        date DATE NOT NULL,
         custom_name TEXT DEFAULT '',
         -- Flattened label
         label_budget_id UUID,

@@ -256,7 +256,7 @@ export const createBudget = async (
   try {
     const result = await pool.query(
       `INSERT INTO budgets (user_id, name, iso_currency_code, roll_over, roll_over_start_date, capacities, updated)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         user_id,
@@ -382,7 +382,7 @@ export const createSection = async (
   try {
     const result = await pool.query(
       `INSERT INTO sections (user_id, budget_id, name, roll_over, roll_over_start_date, capacities, updated)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         user_id,
@@ -484,7 +484,7 @@ export const createCategory = async (
   try {
     const result = await pool.query(
       `INSERT INTO categories (user_id, section_id, name, roll_over, roll_over_start_date, capacities, updated)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         user_id,

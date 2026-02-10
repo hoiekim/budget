@@ -29,6 +29,9 @@ export interface SearchSplitTransactionsOptions {
 }
 
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
+export type PartialSplitTransaction = {
+  split_transaction_id: string;
+} & Partial<JSONSplitTransaction>;
 
 // Database row interfaces
 interface TransactionRow {
@@ -39,7 +42,7 @@ interface TransactionRow {
   merchant_name?: string | null;
   amount?: string | number | null;
   iso_currency_code?: string | null;
-  date: string;
+  date: Date;
   pending?: boolean | null;
   pending_transaction_id?: string | null;
   payment_channel?: string | null;
@@ -59,7 +62,7 @@ interface InvestmentTransactionRow {
   user_id: string;
   account_id: string;
   security_id?: string | null;
-  date: string;
+  date: Date;
   name?: string | null;
   amount?: string | number | null;
   quantity?: string | number | null;
@@ -81,7 +84,7 @@ interface SplitTransactionRow {
   transaction_id: string;
   account_id: string;
   amount?: string | number | null;
-  date?: string | null;
+  date: Date;
   custom_name?: string | null;
   label_budget_id?: string | null;
   label_category_id?: string | null;
@@ -103,7 +106,7 @@ function transactionToRow(tx: PartialTransaction): Partial<TransactionRow> {
   if (!isUndefined(tx.merchant_name)) row.merchant_name = tx.merchant_name;
   if (!isUndefined(tx.amount)) row.amount = tx.amount;
   if (!isUndefined(tx.iso_currency_code)) row.iso_currency_code = tx.iso_currency_code;
-  if (!isUndefined(tx.date)) row.date = tx.date;
+  if (!isUndefined(tx.date)) row.date = new Date(tx.date);
   if (!isUndefined(tx.pending)) row.pending = tx.pending;
   if (!isUndefined(tx.pending_transaction_id))
     row.pending_transaction_id = tx.pending_transaction_id;
@@ -139,7 +142,7 @@ function rowToTransaction(row: TransactionRow): JSONTransaction {
     merchant_name: row.merchant_name,
     amount: row.amount ? Number(row.amount) : 0,
     iso_currency_code: row.iso_currency_code || null,
-    date: row.date || new Date().toISOString().split("T")[0],
+    date: row.date.toISOString().split("T")[0],
     pending: !!row.pending,
     label: {
       budget_id: row.label_budget_id,
@@ -184,11 +187,7 @@ function rowToTransaction(row: TransactionRow): JSONTransaction {
 /**
  * Updates or inserts transactions associated with given user.
  */
-export const upsertTransactions = async (
-  user: MaskedUser,
-  transactions: PartialTransaction[],
-  upsert: boolean = true,
-) => {
+export const upsertTransactions = async (user: MaskedUser, transactions: JSONTransaction[]) => {
   if (!transactions.length) return [];
   const { user_id } = user;
   const results: { update: { _id: string }; status: number }[] = [];
@@ -198,17 +197,16 @@ export const upsertTransactions = async (
     row.user_id = user_id;
 
     try {
-      if (upsert) {
-        const columns = Object.keys(row);
-        const values = Object.values(row);
-        const placeholders = values.map((_, i) => `$${i + 1}`);
+      const columns = Object.keys(row);
+      const values = Object.values(row);
+      const placeholders = values.map((_, i) => `$${i + 1}`);
 
-        const updateClauses = columns
-          .filter((col) => col !== "transaction_id" && col !== "user_id")
-          .map((col) => `${col} = EXCLUDED.${col}`);
-        updateClauses.push("updated = CURRENT_TIMESTAMP");
+      const updateClauses = columns
+        .filter((col) => col !== "transaction_id" && col !== "user_id")
+        .map((col) => `${col} = EXCLUDED.${col}`);
+      updateClauses.push("updated = CURRENT_TIMESTAMP");
 
-        const query = `
+      const query = `
           INSERT INTO transactions (${columns.join(", ")}, updated)
           VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
           ON CONFLICT (transaction_id) DO UPDATE SET
@@ -217,36 +215,60 @@ export const upsertTransactions = async (
           RETURNING transaction_id
         `;
 
-        const result = await pool.query(query, values);
+      const result = await pool.query(query, values);
+      results.push({
+        update: { _id: tx.transaction_id },
+        status: result.rowCount ? 200 : 404,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert transaction ${tx.transaction_id}:`, message);
+      results.push({
+        update: { _id: tx.transaction_id },
+        status: 500,
+      });
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Updates transactions associated with given user.
+ */
+export const updateTransactions = async (user: MaskedUser, transactions: PartialTransaction[]) => {
+  if (!transactions.length) return [];
+  const { user_id } = user;
+  const results: { update: { _id: string }; status: number }[] = [];
+
+  for (const tx of transactions) {
+    const row = transactionToRow(tx);
+    row.user_id = user_id;
+
+    try {
+      const updateData = { ...row };
+      delete updateData.transaction_id;
+      delete updateData.user_id;
+
+      const queryResult = buildUpdateQuery(
+        "transactions",
+        "transaction_id",
+        tx.transaction_id,
+        updateData,
+        { additionalWhere: { column: "user_id", value: user_id }, returning: ["transaction_id"] },
+      );
+
+      if (queryResult) {
+        const result = await pool.query(queryResult.query, queryResult.values);
         results.push({
           update: { _id: tx.transaction_id },
           status: result.rowCount ? 200 : 404,
         });
       } else {
-        const updateData = { ...row };
-        delete updateData.transaction_id;
-        delete updateData.user_id;
-
-        const queryResult = buildUpdateQuery(
-          "transactions",
-          "transaction_id",
-          tx.transaction_id,
-          updateData,
-          { additionalWhere: { column: "user_id", value: user_id }, returning: ["transaction_id"] },
-        );
-
-        if (queryResult) {
-          const result = await pool.query(queryResult.query, queryResult.values);
-          results.push({
-            update: { _id: tx.transaction_id },
-            status: result.rowCount ? 200 : 404,
-          });
-        } else {
-          results.push({
-            update: { _id: tx.transaction_id },
-            status: 304,
-          });
-        }
+        results.push({
+          update: { _id: tx.transaction_id },
+          status: 304,
+        });
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -370,7 +392,7 @@ function investmentTxToRow(
     row.investment_transaction_id = tx.investment_transaction_id;
   if (tx.account_id !== undefined) row.account_id = tx.account_id;
   if (tx.security_id !== undefined) row.security_id = tx.security_id;
-  if (tx.date !== undefined) row.date = tx.date;
+  if (tx.date !== undefined) row.date = new Date(tx.date);
   if (tx.name !== undefined) row.name = tx.name;
   if (tx.amount !== undefined) row.amount = tx.amount;
   if (tx.quantity !== undefined) row.quantity = tx.quantity;
@@ -389,7 +411,7 @@ function rowToInvestmentTx(row: InvestmentTransactionRow): JSONInvestmentTransac
     investment_transaction_id: row.investment_transaction_id,
     account_id: row.account_id,
     security_id: row.security_id || null,
-    date: row.date,
+    date: row.date.toISOString().split("T")[0],
     name: row.name || "Unknown",
     quantity: row.quantity ? Number(row.quantity) : 0,
     amount: row.amount ? Number(row.amount) : 0,
@@ -410,7 +432,6 @@ function rowToInvestmentTx(row: InvestmentTransactionRow): JSONInvestmentTransac
 export const upsertInvestmentTransactions = async (
   user: MaskedUser,
   transactions: (Partial<JSONInvestmentTransaction> & { investment_transaction_id: string })[],
-  upsert: boolean = true,
 ) => {
   if (!transactions.length) return [];
   const { user_id } = user;
@@ -421,17 +442,16 @@ export const upsertInvestmentTransactions = async (
     row.user_id = user_id;
 
     try {
-      if (upsert) {
-        const columns = Object.keys(row);
-        const values = Object.values(row);
-        const placeholders = values.map((_, i) => `$${i + 1}`);
+      const columns = Object.keys(row);
+      const values = Object.values(row);
+      const placeholders = values.map((_, i) => `$${i + 1}`);
 
-        const updateClauses = columns
-          .filter((col) => col !== "investment_transaction_id" && col !== "user_id")
-          .map((col) => `${col} = EXCLUDED.${col}`);
-        updateClauses.push("updated = CURRENT_TIMESTAMP");
+      const updateClauses = columns
+        .filter((col) => col !== "investment_transaction_id" && col !== "user_id")
+        .map((col) => `${col} = EXCLUDED.${col}`);
+      updateClauses.push("updated = CURRENT_TIMESTAMP");
 
-        const query = `
+      const query = `
         INSERT INTO investment_transactions (${columns.join(", ")}, updated)
         VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
         ON CONFLICT (investment_transaction_id) DO UPDATE SET
@@ -439,39 +459,63 @@ export const upsertInvestmentTransactions = async (
         RETURNING investment_transaction_id
       `;
 
-        const result = await pool.query(query, values);
+      const result = await pool.query(query, values);
+      results.push({
+        update: { _id: tx.investment_transaction_id },
+        status: result.rowCount ? 200 : 404,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert investment transaction:`, message);
+      results.push({
+        update: { _id: tx.investment_transaction_id },
+        status: 500,
+      });
+    }
+  }
+
+  return results;
+};
+
+export const updateInvestmentTransactions = async (
+  user: MaskedUser,
+  transactions: (Partial<JSONInvestmentTransaction> & { investment_transaction_id: string })[],
+) => {
+  if (!transactions.length) return [];
+  const { user_id } = user;
+  const results: { update: { _id: string }; status: number }[] = [];
+
+  for (const tx of transactions) {
+    const row = investmentTxToRow(tx);
+    row.user_id = user_id;
+
+    try {
+      const updateData = { ...row };
+      delete updateData.investment_transaction_id;
+      delete updateData.user_id;
+
+      const queryResult = buildUpdateQuery(
+        "investment_transactions",
+        "investment_transaction_id",
+        tx.investment_transaction_id,
+        updateData,
+        {
+          additionalWhere: { column: "user_id", value: user_id },
+          returning: ["investment_transaction_id"],
+        },
+      );
+
+      if (queryResult) {
+        const result = await pool.query(queryResult.query, queryResult.values);
         results.push({
           update: { _id: tx.investment_transaction_id },
           status: result.rowCount ? 200 : 404,
         });
       } else {
-        const updateData = { ...row };
-        delete updateData.investment_transaction_id;
-        delete updateData.user_id;
-
-        const queryResult = buildUpdateQuery(
-          "investment_transactions",
-          "investment_transaction_id",
-          tx.investment_transaction_id,
-          updateData,
-          {
-            additionalWhere: { column: "user_id", value: user_id },
-            returning: ["investment_transaction_id"],
-          },
-        );
-
-        if (queryResult) {
-          const result = await pool.query(queryResult.query, queryResult.values);
-          results.push({
-            update: { _id: tx.investment_transaction_id },
-            status: result.rowCount ? 200 : 404,
-          });
-        } else {
-          results.push({
-            update: { _id: tx.investment_transaction_id },
-            status: 304,
-          });
-        }
+        results.push({
+          update: { _id: tx.investment_transaction_id },
+          status: 304,
+        });
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -604,7 +648,7 @@ function splitTxToRow(tx: Partial<JSONSplitTransaction>): Partial<SplitTransacti
   if (tx.transaction_id !== undefined) row.transaction_id = tx.transaction_id;
   if (tx.account_id !== undefined) row.account_id = tx.account_id;
   if (tx.amount !== undefined) row.amount = tx.amount;
-  if (tx.date !== undefined) row.date = tx.date;
+  if (tx.date !== undefined) row.date = new Date(tx.date);
   if (tx.custom_name !== undefined) row.custom_name = tx.custom_name;
 
   // Flatten label
@@ -620,23 +664,22 @@ function splitTxToRow(tx: Partial<JSONSplitTransaction>): Partial<SplitTransacti
 function rowToSplitTx(row: SplitTransactionRow): JSONSplitTransaction {
   return {
     split_transaction_id: row.split_transaction_id,
-    user_id: row.user_id,
     transaction_id: row.transaction_id,
     account_id: row.account_id,
     amount: row.amount ? Number(row.amount) : 0,
-    date: row.date,
-    custom_name: row.custom_name,
+    date: row.date.toISOString().split("T")[0],
+    custom_name: row.custom_name || "",
     label: {
       budget_id: row.label_budget_id,
       category_id: row.label_category_id,
       memo: row.label_memo,
     },
-  } as JSONSplitTransaction;
+  };
 }
 
-export const upsertSplitTransactions = async (
+export const updateSplitTransactions = async (
   user: MaskedUser,
-  transactions: Partial<JSONSplitTransaction>[],
+  transactions: PartialSplitTransaction[],
 ) => {
   if (!transactions.length) return [];
   const { user_id } = user;
@@ -647,44 +690,33 @@ export const upsertSplitTransactions = async (
     row.user_id = user_id;
 
     try {
-      const columns = Object.keys(row);
-      const values = Object.values(row);
-      const placeholders = values.map((_, i) => `$${i + 1}`);
+      const updateData = { ...row };
+      delete updateData.split_transaction_id;
+      delete updateData.user_id;
 
-      let query: string;
-      if (row.split_transaction_id) {
-        const updateClauses = columns
-          .filter((col) => col !== "split_transaction_id" && col !== "user_id")
-          .map((col) => `${col} = EXCLUDED.${col}`);
-        updateClauses.push("updated = CURRENT_TIMESTAMP");
+      const queryResult = buildUpdateQuery(
+        "split_transactions",
+        "split_transaction_id",
+        tx.split_transaction_id,
+        updateData,
+        {
+          additionalWhere: { column: "user_id", value: user_id },
+          returning: ["split_transaction_id"],
+        },
+      );
 
-        query = `
-          INSERT INTO split_transactions (${columns.join(", ")}, updated)
-          VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
-          ON CONFLICT (split_transaction_id) DO UPDATE SET
-            ${updateClauses.join(", ")}
-          RETURNING split_transaction_id
-        `;
+      if (queryResult) {
+        const result = await pool.query(queryResult.query, queryResult.values);
+        results.push({
+          update: { _id: tx.split_transaction_id },
+          status: result.rowCount ? 200 : 404,
+        });
       } else {
-        const insertColumns = columns.filter((c) => c !== "split_transaction_id");
-        const insertValues = values.filter((_, i) => columns[i] !== "split_transaction_id");
-        const insertPlaceholders = insertValues.map((_, i) => `$${i + 1}`);
-
-        query = `
-          INSERT INTO split_transactions (${insertColumns.join(", ")}, updated)
-          VALUES (${insertPlaceholders.join(", ")}, CURRENT_TIMESTAMP)
-          RETURNING split_transaction_id
-        `;
-        values.length = 0;
-        values.push(...insertValues);
+        results.push({
+          update: { _id: tx.split_transaction_id },
+          status: 304,
+        });
       }
-
-      const result = await pool.query(query, values);
-      const id = result.rows[0]?.split_transaction_id || tx.split_transaction_id;
-      results.push({
-        update: { _id: id },
-        status: result.rowCount ? 200 : 404,
-      });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Failed to upsert split transaction:`, message);
