@@ -7,6 +7,7 @@ import {
   globalData,
   getBudgetData,
   getCapacityData,
+  indexedDb,
 } from "client";
 import { Dispatch, SetStateAction, useCallback, useEffect, useState } from "react";
 
@@ -17,6 +18,10 @@ export const useData = () => {
       _setData((oldData) => {
         const newData = nextData instanceof Function ? nextData(oldData) : nextData;
         globalData.update(newData);
+        indexedDb
+          .clearAllData()
+          .then(() => indexedDb.saveAllData(newData))
+          .catch(console.error);
         return newData;
       });
     },

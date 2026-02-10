@@ -1,5 +1,12 @@
 import { useCallback } from "react";
-import { ViewDate, getDateString, THIRTY_DAYS, JSONInstitution, JSONSnapshotData } from "common";
+import {
+  ViewDate,
+  getDateString,
+  THIRTY_DAYS,
+  JSONInstitution,
+  JSONSnapshotData,
+  LocalDate,
+} from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
@@ -47,7 +54,7 @@ const getOldestTransactionDate = async (): Promise<Date | undefined> => {
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
     .catch(console.error);
   if (!response?.body) return undefined;
-  return response.body ? new Date(response.body) : undefined;
+  return response.body ? new LocalDate(response.body) : undefined;
 };
 
 interface FetchTransactionsResult {

@@ -571,7 +571,6 @@ function rowToSecurity(row: SecurityRow): JSONSecurity {
     iso_currency_code: row.iso_currency_code ?? null,
     isin: row.isin ?? null,
     cusip: row.cusip ?? null,
-    // Remaining fields from raw
     sedol: null,
     institution_security_id: null,
     institution_id: null,

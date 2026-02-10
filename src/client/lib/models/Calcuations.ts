@@ -1,4 +1,4 @@
-import { assign, getYearMonthString, isDate, isUndefined, ViewDate } from "common";
+import { assign, getYearMonthString, isDate, isUndefined, LocalDate, ViewDate } from "common";
 import { Status } from "./miscellaneous";
 import { SplitTransactionDictionary } from "./Data";
 import { SplitTransaction } from "./SplitTransaction";
@@ -43,7 +43,7 @@ export class BalanceHistory {
   }
 
   private getKey = (date: Date) => getYearMonthString(date);
-  private getDate = (key: string) => new Date(`${key}-15`);
+  private getDate = (key: string) => new LocalDate(`${key}-15`);
 
   getData = (): AmountByMonth => ({ ...this.data });
   getRange = (): [Date, Date] | undefined => this.range && [...this.range];
@@ -204,7 +204,7 @@ export class BudgetHistory {
   }
 
   private getKey = (date: Date) => getYearMonthString(date);
-  private getDate = (key: string) => new Date(`${key}-15`);
+  private getDate = (key: string) => new LocalDate(`${key}-15`);
 
   getData = () => ({ ...this.data });
   getRange = () => this.range && [...this.range];

@@ -1,4 +1,11 @@
-import { JSONCapacity, MAX_FLOAT, assign, excludeEnumeration, getDateTimeString } from "common";
+import {
+  JSONCapacity,
+  LocalDate,
+  MAX_FLOAT,
+  assign,
+  excludeEnumeration,
+  getDateTimeString,
+} from "common";
 
 export type Interval = "year" | "month";
 export const intervals: Interval[] = ["year", "month"];
@@ -27,7 +34,7 @@ export class Capacity {
       this.capacity_id = generateUUID();
     }
     if (typeof this.active_from === "string") {
-      this.active_from = new Date(this.active_from);
+      this.active_from = new LocalDate(this.active_from);
     }
     excludeEnumeration(this, ["toJSON", "fromInputs", "toInputs"]);
   }

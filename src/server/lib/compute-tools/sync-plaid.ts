@@ -9,6 +9,7 @@ import {
   getDateTimeString,
   JSONInvestmentTransaction,
   isDate,
+  LocalDate,
 } from "common";
 import {
   deleteInvestmentTransactions,
@@ -41,7 +42,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
   const accounts = await searchAccountsByItemId(user, item_id);
   const accountIds = accounts?.map((e) => e.account_id) || [];
 
-  const itemUpdated = item.updated ? new Date(item.updated) : undefined;
+  const itemUpdated = item.updated ? new LocalDate(item.updated) : undefined;
   const startDate = itemUpdated ? getOneMonthBefore(itemUpdated) : getTwoYearsAgo();
 
   const range = { start: startDate, end: new Date() };
@@ -122,7 +123,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const removed: RemovedInvestmentTransaction[] = [];
 
       storedInvestmentTransactions.forEach((e) => {
-        const age = new Date().getTime() - new Date(e.date).getTime();
+        const age = new Date().getTime() - new LocalDate(e.date).getTime();
         if (age > TWO_WEEKS) return;
 
         const { investment_transaction_id } = e;

@@ -1,6 +1,6 @@
 import { AccountType } from "plaid";
 import { useMemo, useState } from "react";
-import { DeepPartial, isSubset } from "common";
+import { DeepPartial, isSubset, LocalDate } from "common";
 import {
   Transaction,
   SplitTransaction,
@@ -102,7 +102,7 @@ export const TransactionsPage = () => {
         if (!e.amount) return false;
         const hidden = accounts.get(e.account_id)?.hide;
         if (hidden) return false;
-        const transactionDate = new Date(e.date);
+        const transactionDate = new LocalDate(e.date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
         if (type === "deposits" && e.amount > 0) return false;
@@ -125,7 +125,7 @@ export const TransactionsPage = () => {
         const hidden = accounts.get(e.account_id)?.hide;
         if (hidden) return false;
         const date = "authorized_date" in e ? e.authorized_date || e.date : e.date;
-        const transactionDate = new Date(date);
+        const transactionDate = new LocalDate(date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
         if (type === "unsorted" && e.label.category_id) return false;
@@ -157,7 +157,7 @@ export const TransactionsPage = () => {
       const sortedByColumns = sort(filtered, (e, key) => {
         if (e instanceof InvestmentTransaction) {
           if (key === "date") {
-            return new Date(e.date);
+            return new LocalDate(e.date);
           } else if (key === "account") {
             const account = accounts.get(e.account_id);
             return account?.custom_name || account?.name || "";
@@ -170,7 +170,7 @@ export const TransactionsPage = () => {
         } else {
           const t = e.toTransaction();
           if (key === "date") {
-            return new Date(t.authorized_date || t.date);
+            return new LocalDate(t.authorized_date || t.date);
           } else if (key === "merchant_name") {
             return t.merchant_name || t.name || "";
           } else if (key === "account") {

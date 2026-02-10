@@ -1,5 +1,5 @@
 import { ChangeEventHandler, Dispatch, SetStateAction } from "react";
-import { ViewDate, getDateString, getDateTimeString } from "common";
+import { LocalDate, ViewDate, getDateString } from "common";
 import { Capacity, useAppContext } from "client";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { ToggleInput } from "client/components";
@@ -41,7 +41,7 @@ export const BudgetProperties = ({
   const { viewDate } = useAppContext();
 
   const onChangeRollDate: ChangeEventHandler<HTMLInputElement> = (e) => {
-    const inputDate = new Date(getDateTimeString(e.target.value));
+    const inputDate = new LocalDate(e.target.value);
     const dateHelper = new ViewDate(viewDate.getInterval(), inputDate);
     const newRollDate = dateHelper.getStartDate();
     setRollOverStartDateInput(newRollDate);

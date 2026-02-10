@@ -1,4 +1,4 @@
-import { numberToCommaString, currencyCodeToSymbol } from "common";
+import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import {
   call,
   Category,
@@ -152,7 +152,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     <div className="TransactionRow">
       <div className="transactionInfo">
         <div className="authorized_date bigText">
-          {new Date(date).toLocaleString("en-US", {
+          {new LocalDate(date).toLocaleString("en-US", {
             month: "numeric",
             day: "numeric",
           })}

@@ -8,6 +8,7 @@ import {
   JSONAmountInTime,
   excludeEnumeration,
   JSONFlowChartConfiguration,
+  LocalDate,
 } from "common";
 
 type ChartConfiguration =
@@ -94,9 +95,9 @@ export class AmountInTime implements JSONAmountInTime {
   amountAsOf = new Date();
   taxRate?: number;
 
-  constructor(init?: Partial<AmountInTime>) {
+  constructor(init?: Partial<AmountInTime | JSONAmountInTime>) {
     assign(this, init);
-    if (init?.amountAsOf) this.amountAsOf = new Date(init.amountAsOf);
+    if (init?.amountAsOf) this.amountAsOf = new LocalDate(init.amountAsOf);
   }
 }
 

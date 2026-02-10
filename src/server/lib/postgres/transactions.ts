@@ -1,17 +1,18 @@
 import {
-  JSONTransaction,
-  JSONInvestmentTransaction,
-  JSONSplitTransaction,
-  isUndefined,
-} from "common";
-import { pool } from "./client";
-import { MaskedUser } from "./users";
-import { buildUpdateQuery } from "./utils";
-import {
   InvestmentTransactionSubtype,
   InvestmentTransactionType,
   TransactionPaymentChannelEnum,
 } from "plaid";
+import {
+  JSONTransaction,
+  JSONInvestmentTransaction,
+  JSONSplitTransaction,
+  isUndefined,
+  LocalDate,
+} from "common";
+import { pool } from "./client";
+import { MaskedUser } from "./users";
+import { buildUpdateQuery } from "./utils";
 
 export interface SearchTransactionsOptions {
   account_id?: string;
@@ -106,7 +107,8 @@ function transactionToRow(tx: PartialTransaction): Partial<TransactionRow> {
   if (!isUndefined(tx.merchant_name)) row.merchant_name = tx.merchant_name;
   if (!isUndefined(tx.amount)) row.amount = tx.amount;
   if (!isUndefined(tx.iso_currency_code)) row.iso_currency_code = tx.iso_currency_code;
-  if (!isUndefined(tx.date)) row.date = new Date(tx.date);
+  if (!isUndefined(tx.authorized_date || tx.date))
+    row.date = new LocalDate((tx.authorized_date || tx.date)!);
   if (!isUndefined(tx.pending)) row.pending = tx.pending;
   if (!isUndefined(tx.pending_transaction_id))
     row.pending_transaction_id = tx.pending_transaction_id;
@@ -392,16 +394,22 @@ function investmentTxToRow(
     row.investment_transaction_id = tx.investment_transaction_id;
   if (tx.account_id !== undefined) row.account_id = tx.account_id;
   if (tx.security_id !== undefined) row.security_id = tx.security_id;
-  if (tx.date !== undefined) row.date = new Date(tx.date);
+  if (tx.date !== undefined) row.date = new LocalDate(tx.date);
   if (tx.name !== undefined) row.name = tx.name;
   if (tx.amount !== undefined) row.amount = tx.amount;
   if (tx.quantity !== undefined) row.quantity = tx.quantity;
   if (tx.iso_currency_code !== undefined) row.iso_currency_code = tx.iso_currency_code;
   if (tx.price !== undefined) row.price = tx.price;
   if (tx.type !== undefined) row.type = tx.type;
+  if (tx.label) {
+    if (tx.label.budget_id !== undefined) row.label_budget_id = tx.label.budget_id;
+    if (tx.label.category_id !== undefined) row.label_category_id = tx.label.category_id;
+    if (tx.label.memo !== undefined) row.label_memo = tx.label.memo;
+  }
 
-  // Store full provider object in raw
-  row.raw = JSON.stringify(tx);
+  // Store full provider object in raw (excluding label which is user-edited)
+  const { label, ...providerData } = tx;
+  row.raw = JSON.stringify(providerData);
 
   return row;
 }
@@ -648,7 +656,7 @@ function splitTxToRow(tx: Partial<JSONSplitTransaction>): Partial<SplitTransacti
   if (tx.transaction_id !== undefined) row.transaction_id = tx.transaction_id;
   if (tx.account_id !== undefined) row.account_id = tx.account_id;
   if (tx.amount !== undefined) row.amount = tx.amount;
-  if (tx.date !== undefined) row.date = new Date(tx.date);
+  if (tx.date !== undefined) row.date = new LocalDate(tx.date);
   if (tx.custom_name !== undefined) row.custom_name = tx.custom_name;
 
   // Flatten label
