@@ -8,7 +8,7 @@ import {
   PlaidErrorType,
 } from "plaid";
 import { MaskedUser, updateItemStatus } from "server";
-import { JSONItem, ItemStatus, getDateString, getDateTimeString } from "common";
+import { JSONItem, ItemStatus, getDateString, getDateTimeString, LocalDate } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
 export interface PlaidTransaction extends Transaction {}
@@ -116,7 +116,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
     let start_date: string;
 
     if (updated) {
-      const updatedDate = new Date(getDateTimeString(updated));
+      const updatedDate = new LocalDate(updated);
       const date = updatedDate.getDate();
       updatedDate.setDate(date - 14);
       start_date = getDateString(updatedDate);

@@ -1,4 +1,4 @@
-import { Interval } from "common";
+import { Interval, isDate, isString, isUndefined } from "common";
 
 export const ONE_HOUR = 1000 * 60 * 60;
 export const TWO_WEEKS = 1000 * 60 * 60 * 24 * 14;
@@ -183,6 +183,17 @@ export class ViewDate {
   };
 }
 
+/**
+ * Same as `Date` but interprets date string without time part as local timezone.
+ */
+export class LocalDate extends Date {
+  constructor(date?: string | number | Date) {
+    if (isString(date) && /^\d{4}-\d{2}-\d{2}$/.test(date)) super(date + "T00:00:00");
+    else if (!isUndefined(date)) super(date);
+    else super();
+  }
+}
+
 const getDateComponents = (dateObject: Date) => {
   const year = dateObject.getFullYear();
   const month = dateObject.getMonth();
@@ -223,8 +234,7 @@ export const getSquashedDateString = (dateObject = new Date()) => {
  * @returns YYYY-MM-DDT00:00:00
  */
 export const getDateTimeString = (dateOrString: Date | string = getDateString()) => {
-  const isDate = dateOrString instanceof Date;
-  const dateString = isDate ? getDateString(dateOrString) : dateOrString;
+  const dateString = isDate(dateOrString) ? getDateString(dateOrString) : dateOrString;
   if (dateString.includes("T")) return dateString;
   return dateString + "T00:00:00";
 };

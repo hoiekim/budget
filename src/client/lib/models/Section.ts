@@ -14,7 +14,7 @@ export class Section extends BudgetFamily {
   budget_id: string = "";
 
   constructor(init: Partial<Section | JSONSection> & { budget_id: string }) {
-    super();
+    super(init);
     assign(this, init);
     this.fromJSON();
   }

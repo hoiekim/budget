@@ -16,7 +16,8 @@ export const postCategoryRoute = new Route("POST", "/category", async (req) => {
     };
   }
 
-  if (!req.body.category_id) {
+  const { category_id, ...data } = req.body;
+  if (!category_id) {
     return {
       status: "failed",
       message: "category_id is required but not provided.",
@@ -24,10 +25,10 @@ export const postCategoryRoute = new Route("POST", "/category", async (req) => {
   }
 
   try {
-    await updateCategory(user, req.body);
+    await updateCategory(user, category_id, data);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update a category: ${req.body.category_id}`);
+    console.error(`Failed to update a category: ${category_id}`);
     throw new Error(error);
   }
 });

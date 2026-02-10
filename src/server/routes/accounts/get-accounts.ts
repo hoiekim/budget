@@ -1,5 +1,5 @@
 import { JSONAccount, JSONHolding, JSONItem } from "common";
-import { Route, searchAccounts, searchItems } from "server";
+import { Route, searchAccounts, searchItems, getHoldings } from "server";
 
 export interface AccountsGetResponse {
   items: JSONItem[];
@@ -16,8 +16,11 @@ export const getAccountsRoute = new Route<AccountsGetResponse>("GET", "/accounts
     };
   }
 
-  const [items, accountsResponse] = await Promise.all([searchItems(user), searchAccounts(user)]);
-  const { accounts, holdings } = accountsResponse;
+  const [items, accounts, holdings] = await Promise.all([
+    searchItems(user),
+    searchAccounts(user),
+    getHoldings(user),
+  ]);
   const body = { items, accounts, holdings };
 
   return { status: "success", body };

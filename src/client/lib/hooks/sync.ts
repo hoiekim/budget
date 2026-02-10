@@ -1,5 +1,12 @@
 import { useCallback } from "react";
-import { ViewDate, getDateString, THIRTY_DAYS, JSONInstitution } from "common";
+import {
+  ViewDate,
+  getDateString,
+  THIRTY_DAYS,
+  JSONInstitution,
+  JSONSnapshotData,
+  LocalDate,
+} from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
@@ -19,7 +26,6 @@ import {
   Item,
   SplitTransaction,
   Chart,
-  SnapshotData,
   AccountSnapshot,
   HoldingSnapshot,
   useAppContext,
@@ -48,7 +54,7 @@ const getOldestTransactionDate = async (): Promise<Date | undefined> => {
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
     .catch(console.error);
   if (!response?.body) return undefined;
-  return response.body ? new Date(response.body) : undefined;
+  return response.body ? new LocalDate(response.body) : undefined;
 };
 
 interface FetchTransactionsResult {
@@ -195,7 +201,10 @@ interface FetchSnapshotsResult {
   holdingSnapshots: HoldingSnapshotDictionary;
 }
 
-const fetchSnapshots = async (startDate?: Date): Promise<FetchSnapshotsResult> => {
+const fetchSnapshots = async (
+  accounts: AccountDictionary,
+  startDate?: Date,
+): Promise<FetchSnapshotsResult> => {
   const result = {
     accountSnapshots: new AccountSnapshotDictionary(),
     holdingSnapshots: new HoldingSnapshotDictionary(),
@@ -212,10 +221,12 @@ const fetchSnapshots = async (startDate?: Date): Promise<FetchSnapshotsResult> =
     .get(path)
     .then(({ body }) => {
       if (!body) return;
-      const snapshots = body as SnapshotData[];
+      const snapshots = body as JSONSnapshotData[];
 
       snapshots.forEach((snapshot) => {
         if ("account" in snapshot) {
+          const account = accounts.get(snapshot.account.account_id) || {};
+          snapshot.account = { ...account, ...snapshot.account };
           const newSnapshot = new AccountSnapshot(snapshot);
           result.accountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
         } else if ("holding" in snapshot) {
@@ -299,7 +310,9 @@ export const useSync = () => {
         ([{ accounts }, oldestDate]) => fetchTransactions(accounts, oldestDate),
       );
       const splitTransactionsPromise = fetchSplitTransactions();
-      const snapshotsPromise = oldestDatePromise.then((oldestDate) => fetchSnapshots(oldestDate));
+      const snapshotsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
+        ([{ accounts }, oldestDate]) => fetchSnapshots(accounts, oldestDate),
+      );
       const budgetsPromise = fetchBudgets();
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));

@@ -1,4 +1,4 @@
-import { ViewDate } from "common";
+import { LocalDate, ViewDate } from "common";
 import {
   Account,
   BudgetDictionary,
@@ -37,7 +37,7 @@ export const getSankeyData = (
   const processTransaction = (t: Transaction | InvestmentTransaction) => {
     const isInvestment = t instanceof InvestmentTransaction;
     const authorized_date = !isInvestment ? t.authorized_date : undefined;
-    const transactionDate = new Date(authorized_date || t.date);
+    const transactionDate = new LocalDate(authorized_date || t.date);
     if (!viewDate.has(transactionDate)) return;
     const account = accounts.find((a) => a.id === t.account_id);
     if (!account) return;

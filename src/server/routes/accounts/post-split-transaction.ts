@@ -1,4 +1,4 @@
-import { Route, upsertSplitTransactions } from "server";
+import { Route, updateSplitTransactions } from "server";
 
 export interface SplitTransactionPostResponse {
   split_transaction_id: string;
@@ -17,12 +17,13 @@ export const postSplitTrasactionRoute = new Route<SplitTransactionPostResponse>(
     }
 
     try {
-      const response = await upsertSplitTransactions(user, [req.body], false);
+      console.log(req.body);
+      const response = await updateSplitTransactions(user, [req.body]);
       const split_transaction_id = response[0].update?._id || "";
       return { status: "success", body: { split_transaction_id } };
     } catch (error: any) {
       console.error(`Failed to update a split transaction: ${req.body.split_transaction_id}`);
       throw new Error(error);
     }
-  }
+  },
 );

@@ -5,7 +5,7 @@ export type NewChartGetResponse = { chart_id: string };
 export const getNewChartRoute = new Route<NewChartGetResponse>(
   "GET",
   "/new-chart",
-  async (req, res) => {
+  async (req) => {
     const { user } = req.session;
     if (!user) {
       return {
@@ -14,7 +14,10 @@ export const getNewChartRoute = new Route<NewChartGetResponse>(
       };
     }
 
-    const response = await createChart(user);
-    return { status: "success", body: { chart_id: response._id } };
+    const response = await createChart(user, {});
+    if (!response) {
+      return { status: "failed", message: "Failed to create chart." };
+    }
+    return { status: "success", body: { chart_id: response.chart_id } };
   }
 );

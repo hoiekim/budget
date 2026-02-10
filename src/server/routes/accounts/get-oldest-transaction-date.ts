@@ -18,7 +18,7 @@ export const getOldestTransactionDateRoute = new Route<OldestTransactionDateGetR
 
     return {
       status: "success",
-      body: response.toISOString(),
+      body: response || new Date().toISOString().split('T')[0],
     };
   }
 );

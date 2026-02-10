@@ -1,12 +1,12 @@
 import { ItemProvider, ONE_HOUR } from "common";
-import { searchItems } from "server";
+import { getAllItems } from "server";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 
 export const scheduledSync = async () => {
   console.log(`Scheduled sync started`);
   try {
-    const items = await searchItems();
+    const items = await getAllItems();
     for (const { item_id, provider } of items) {
       if (provider === ItemProvider.PLAID) {
         let accountsCount = 0;

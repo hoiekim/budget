@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getDateTimeString } from "common";
+import { getDateTimeString, LocalDate } from "common";
 import { Capacity, useAppContext, PATH } from "client";
 import { NameInput, Bar, ActionButtons, BudgetProperties } from "client/components";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
@@ -21,7 +21,7 @@ const getAllCapaciyDates = (budgetLike: BudgetFamily) => {
   });
   return Array.from(uniqueDates)
     .sort((a, b) => new Date(b || 0).getTime() - new Date(a || 0).getTime())
-    .map((s) => s && new Date(s)) as (Date | undefined)[];
+    .map((s) => s && new LocalDate(s)) as (Date | undefined)[];
 };
 
 export type BudgetFamilyConfigPageParams = {

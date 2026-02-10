@@ -1,21 +1,23 @@
 import {
   JSONCapacity,
+  LocalDate,
   MAX_FLOAT,
   assign,
   excludeEnumeration,
   getDateTimeString,
-  getRandomId,
 } from "common";
 
 export type Interval = "year" | "month";
 export const intervals: Interval[] = ["year", "month"];
+
+const generateUUID = (): string => crypto.randomUUID();
 
 export class Capacity {
   get id() {
     return this.capacity_id;
   }
 
-  capacity_id = getRandomId();
+  capacity_id!: string;
 
   get year() {
     return this.month * 12;
@@ -27,8 +29,12 @@ export class Capacity {
 
   constructor(init?: Partial<Capacity | JSONCapacity>) {
     assign(this, init);
+    // Only generate UUID if not provided
+    if (!this.capacity_id) {
+      this.capacity_id = generateUUID();
+    }
     if (typeof this.active_from === "string") {
-      this.active_from = new Date(this.active_from);
+      this.active_from = new LocalDate(this.active_from);
     }
     excludeEnumeration(this, ["toJSON", "fromInputs", "toInputs"]);
   }

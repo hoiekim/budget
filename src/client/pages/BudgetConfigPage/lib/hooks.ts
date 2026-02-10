@@ -11,6 +11,7 @@ import {
   Section,
   CapacityData,
 } from "client";
+import { LocalDate } from "common";
 
 export const useEventHandlers = (isSynced: boolean, isIncome: boolean, isInfinite: boolean) => {
   return {
@@ -151,8 +152,8 @@ const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
 
   const updateCapacities = (budgetLike: BudgetFamily) => {
     return updatedOriginal.capacities.map(({ active_from }) => {
-      const date = active_from && new Date(active_from);
-      const activeCapacity = budgetLike.getActiveCapacity(new Date(date || 0));
+      const date = active_from && new LocalDate(active_from);
+      const activeCapacity = budgetLike.getActiveCapacity(new LocalDate(date || 0));
       const clonedCapacity: Partial<Capacity> = new Capacity(activeCapacity);
       delete clonedCapacity.capacity_id;
       const newCapacity = new Capacity(clonedCapacity);

@@ -1,4 +1,4 @@
-import { ChartType, getDateString } from "common";
+import { ChartType, getDateString, LocalDate } from "common";
 import {
   Chart,
   ChartDictionary,
@@ -88,7 +88,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   };
 
   const onBlurInitialSavingDate: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newDate = new Date(e.target.value);
+    const newDate = new LocalDate(e.target.value);
     const newConfiguration = {
       ...configuration,
       initial_saving: { ...initial_saving, amountAsOf: newDate },
@@ -121,7 +121,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   };
 
   const onBlurLivingCostDate: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newDate = new Date(e.target.value);
+    const newDate = new LocalDate(e.target.value);
     const newConfiguration = {
       ...configuration,
       living_cost: { ...living_cost, amountAsOf: newDate },

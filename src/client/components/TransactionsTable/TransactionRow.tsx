@@ -1,5 +1,5 @@
 import { useState, useEffect, ChangeEventHandler, useMemo } from "react";
-import { numberToCommaString, currencyCodeToSymbol } from "common";
+import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import {
   useAppContext,
   call,
@@ -192,7 +192,7 @@ const TransactionRow = ({ transaction }: Props) => {
     <div className="TransactionRow">
       <div className="transactionInfo">
         <div className="authorized_date bigText">
-          {new Date(authorized_date || date).toLocaleString("en-US", {
+          {new LocalDate(authorized_date || date).toLocaleString("en-US", {
             month: "numeric",
             day: "numeric",
           })}

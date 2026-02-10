@@ -9,6 +9,7 @@ import {
   RemovedInvestmentTransaction,
   RemovedTransaction,
   JSONTransaction,
+  LocalDate,
 } from "common";
 import {
   deleteInvestmentTransactions,
@@ -90,16 +91,21 @@ export const syncSimpleFinData = async (item_id: string) => {
   });
 
   const removedTransactionIds = removedTransactions.map((t) => t.transaction_id);
+  const removedInvestmentTransactionIds = removedInvestmentTransaction.map(
+    (t) => t.investment_transaction_id,
+  );
 
   await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
   await upsertAccounts(user, otherAccounts);
   await processHoldingsPromise;
   await upsertInstitutions(institutions);
   await upsertTransactions(user, transactions);
-  await deleteTransactions(user, removedTransactions);
-  await deleteSplitTransactionsByTransactionId(user, removedTransactionIds);
+  await deleteTransactions(user, removedTransactionIds);
+  for (const txId of removedTransactionIds) {
+    await deleteSplitTransactionsByTransactionId(user, txId);
+  }
   await upsertInvestmentTransactions(user, investmentTransactions);
-  await deleteInvestmentTransactions(user, removedInvestmentTransaction);
+  await deleteInvestmentTransactions(user, removedInvestmentTransactionIds);
 
   const updated = getDateString();
   await upsertItems(user, [{ ...item, updated }]);
@@ -110,7 +116,7 @@ export const syncSimpleFinData = async (item_id: string) => {
 const getStartDate = (item: JSONItem) => {
   const { updated } = item;
   if (updated) {
-    const updatedDate = new Date(getDateTimeString(updated));
+    const updatedDate = new LocalDate(getDateTimeString(updated));
     const date = updatedDate.getDate();
     updatedDate.setDate(date - 14);
     return updatedDate;
@@ -147,7 +153,7 @@ const getRemovedTransactions = (
   const removedTransactions: RemovedTransaction[] = [];
   storedTransactions.forEach((t) => {
     const { transaction_id, date } = t;
-    if (new Date(date) < startDate) return;
+    if (new LocalDate(date) < startDate) return;
     if (!accountIds.has(t.account_id)) return;
     const found = transactions.find((f) => f.transaction_id === transaction_id);
     if (!found) removedTransactions.push({ transaction_id });
@@ -164,7 +170,7 @@ const getRemovedInvestmentTransactions = (
   const removedInvestmentTransactions: RemovedInvestmentTransaction[] = [];
   storedInvestmentTransactions.forEach((t) => {
     const { investment_transaction_id, date } = t;
-    if (new Date(date) < startDate) return;
+    if (new LocalDate(date) < startDate) return;
     if (!accountIds.has(t.account_id)) return;
     const found = investmentTransactions.find(
       (f) => f.investment_transaction_id === investment_transaction_id,

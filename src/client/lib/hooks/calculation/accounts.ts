@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { AccountSubtype, AccountType } from "plaid";
-import { getYearMonthString, ViewDate } from "common";
+import { getYearMonthString, LocalDate, ViewDate } from "common";
 import {
   Account,
   AccountSnapshot,
@@ -44,7 +44,7 @@ const getBalanceDataFromTransactions = (
     const authorized_date = !isInvestment ? t.authorized_date : undefined;
     const { account_id, date, amount } = t;
     if (!accounts.has(account_id)) return;
-    const transactionDate = new Date(authorized_date || date);
+    const transactionDate = new LocalDate(authorized_date || date);
     if (today < transactionDate) return;
     const previousMonthDate = new ViewDate("month", transactionDate).previous().getEndDate();
     if (isInvestment) {
@@ -87,7 +87,7 @@ const getBalanceDataFromSnapshots = (
     const { snapshot, account } = accountSnapshot;
     const { date } = snapshot;
     if (!account.balances.current && account.balances.current !== 0) return;
-    const snapshotDate = new Date(date);
+    const snapshotDate = new LocalDate(date);
     if (today < snapshotDate) return;
     const key = getYearMonthString(snapshotDate);
     const existing = snapshotHistory[key];
@@ -106,7 +106,7 @@ const getBalanceDataFromSnapshots = (
     for (const [accountId] of accounts) {
       const accountSnapshot = accountSnapshots[accountId];
       if (accountSnapshot) {
-        const snapshotDate = new Date(accountSnapshot.snapshot.date);
+        const snapshotDate = new LocalDate(accountSnapshot.snapshot.date);
         const snapshotBalance = getAccountBalance(accountSnapshot.account);
         balanceData.set(accountId, snapshotDate, snapshotBalance);
       }

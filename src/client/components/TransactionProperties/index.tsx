@@ -1,5 +1,5 @@
 import { ChangeEventHandler, useMemo, useState } from "react";
-import { currencyCodeToSymbol, numberToCommaString } from "common";
+import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
 import { NewSplitTransactionGetResponse } from "server";
 import {
   Category,
@@ -205,7 +205,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
         <div className="row keyValue">
           <span className="propertyName">Date</span>
           <span>
-            {new Date(authorized_date || date).toLocaleString("en-US", {
+            {new LocalDate(authorized_date || date).toLocaleString("en-US", {
               month: "long",
               day: "numeric",
               year: "numeric",

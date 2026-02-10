@@ -1,4 +1,4 @@
-import { JSONAccount, getSquashedDateString, JSONSnapshot } from "common";
+import { JSONAccount, getSquashedDateString, JSONSnapshot, LocalDate } from "common";
 import { Route, upsertSnapshots } from "server";
 
 export interface SnapshotPostResponse {
@@ -26,7 +26,7 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
 
     // TODO: Snapshot can be holding or security snapshot as well
     const account: JSONAccount = req.body.account;
-    const date = req.body.snapshot.date ? new Date(req.body.snapshot.date) : new Date();
+    const date = req.body.snapshot.date ? new LocalDate(req.body.snapshot.date) : new Date();
     const snapshot: JSONSnapshot = {
       snapshot_id: `${account.account_id}-${getSquashedDateString(date)}`,
       date: date.toISOString(),

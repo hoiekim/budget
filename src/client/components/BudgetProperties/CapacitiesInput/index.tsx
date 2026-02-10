@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from "react";
-import { ViewDate, currencyCodeToSymbol, getDateString, getDateTimeString } from "common";
+import { LocalDate, ViewDate, currencyCodeToSymbol, getDateString } from "common";
 import { Budget, Capacity, sortCapacities, useAppContext } from "client";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { CapacityInput } from "client/components";
@@ -35,7 +35,7 @@ const CapacitiesInput = ({
 
     const onChangeDate: ChangeEventHandler<HTMLInputElement> = (e) => {
       const newCapacity = new Capacity(capacity);
-      const inputDate = new Date(getDateTimeString(e.target.value));
+      const inputDate = new LocalDate(e.target.value);
       const dateHelper = new ViewDate(viewDate.getInterval(), inputDate);
       const newActiveFrom = dateHelper.getStartDate();
       newCapacity.active_from = newActiveFrom;

@@ -1,4 +1,4 @@
-import { assign, excludeEnumeration, getDateTimeString, JSONBudgetFamily } from "common";
+import { assign, excludeEnumeration, getDateTimeString, JSONBudgetFamily, LocalDate } from "common";
 import { Capacity, sortCapacities } from "./Capacity";
 import { globalData } from "./Data";
 import { CapacityData } from "client";
@@ -40,13 +40,14 @@ export class BudgetFamily {
   }
 
   name: string = "";
-  capacities = [new Capacity()];
+  capacities: Capacity[] = [];
   roll_over: boolean = false;
   roll_over_start_date?: Date;
 
   constructor(init?: Partial<BudgetFamily | JSONBudgetFamily>) {
     assign(this, init);
     this.fromJSON();
+    if (!this.capacities.length) this.capacities = [new Capacity()];
     excludeEnumeration(this, [
       "fromJSON",
       "toJSON",
@@ -61,7 +62,7 @@ export class BudgetFamily {
 
   protected fromJSON = () => {
     if (typeof this.roll_over_start_date === "string") {
-      this.roll_over_start_date = new Date(this.roll_over_start_date);
+      this.roll_over_start_date = new LocalDate(this.roll_over_start_date);
     }
     this.capacities = this.capacities.map((c) => new Capacity(c));
   };
@@ -83,12 +84,13 @@ export class BudgetFamily {
   };
 
   getActiveCapacity = (date: Date) => {
-    const validCapacity = this.sortCapacities("desc").find((capacity) => {
+    const sorted = this.sortCapacities("desc");
+    const validCapacity = sorted.find((capacity) => {
       const { active_from } = capacity;
-      return new Date(active_from || 0) <= date;
+      return new LocalDate(active_from || 0) <= date;
     });
 
-    return validCapacity || new Capacity();
+    return validCapacity || sorted[sorted.length - 1];
   };
 
   isChildrenSynced = (capacityData: CapacityData) => {

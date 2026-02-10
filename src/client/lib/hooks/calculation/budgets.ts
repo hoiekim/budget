@@ -1,4 +1,4 @@
-import { MAX_FLOAT, ViewDate } from "common";
+import { LocalDate, MAX_FLOAT, ViewDate } from "common";
 import {
   TransactionFamilies,
   BudgetData,
@@ -38,7 +38,7 @@ export const getBudgetData = (
 
   const processTransaction = (transaction: Transaction) => {
     const { transaction_id, authorized_date, date, account_id, label, amount } = transaction;
-    const transactionDate = new Date(authorized_date || date);
+    const transactionDate = new LocalDate(authorized_date || date);
     const account = accounts.get(account_id);
     if (!account || account.hide) return;
 
@@ -63,7 +63,7 @@ export const getBudgetData = (
       if (
         parentBudget.roll_over &&
         parentBudget.roll_over_start_date &&
-        new Date(parentBudget.roll_over_start_date) <= transactionDate
+        new LocalDate(parentBudget.roll_over_start_date) <= transactionDate
       ) {
         budgetData.add(parentBudget.id, nextMonthDate, {
           rolled_over_amount: amountAfterSplit,
@@ -82,7 +82,7 @@ export const getBudgetData = (
     if (
       parentCategory.roll_over &&
       parentCategory.roll_over_start_date &&
-      new Date(parentCategory.roll_over_start_date) <= transactionDate
+      new LocalDate(parentCategory.roll_over_start_date) <= transactionDate
     ) {
       budgetData.add(parentCategory.id, nextMonthDate, {
         rolled_over_amount: amountAfterSplit,
@@ -98,7 +98,7 @@ export const getBudgetData = (
     if (
       parentSection.roll_over &&
       parentSection.roll_over_start_date &&
-      new Date(parentSection.roll_over_start_date) <= transactionDate
+      new LocalDate(parentSection.roll_over_start_date) <= transactionDate
     ) {
       budgetData.add(parentSection.id, nextMonthDate, {
         rolled_over_amount: amountAfterSplit,
@@ -114,7 +114,7 @@ export const getBudgetData = (
     if (
       parentBudget.roll_over &&
       parentBudget.roll_over_start_date &&
-      new Date(parentBudget.roll_over_start_date) <= transactionDate
+      new LocalDate(parentBudget.roll_over_start_date) <= transactionDate
     ) {
       budgetData.add(parentBudget.id, nextMonthDate, {
         rolled_over_amount: amountAfterSplit,

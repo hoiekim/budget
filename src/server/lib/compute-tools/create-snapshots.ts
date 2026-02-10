@@ -8,6 +8,7 @@ import {
   isEqual,
   JSONSecurity,
   JSONSecuritySnapshot,
+  LocalDate,
 } from "common";
 import {
   deleteHoldings,
@@ -96,7 +97,8 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
 
   await upsertHoldings(user, incomingHoldings);
   await upsertSnapshots(snapshots);
-  await deleteHoldings(user, removedHoldings);
+  const removedHoldingIds = removedHoldings.map((h) => h.holding_id);
+  await deleteHoldings(user, removedHoldingIds);
 };
 
 export const upsertSecuritiesWithSnapshots = async (securities: JSONSecurity[]) => {
@@ -118,14 +120,14 @@ export const upsertSecuritiesWithSnapshots = async (securities: JSONSecurity[]) 
       const snapshot_id = `${existingSecurity.security_id}-${getSquashedDateString()}`;
 
       const existingDateString = existingSecurity.close_price_as_of;
-      const existingDate = existingDateString && new Date(existingDateString);
+      const existingDate = existingDateString && new LocalDate(existingDateString);
       if (existingDate) {
-        if (existingDate < new Date(close_price_as_of)) {
+        if (existingDate < new LocalDate(close_price_as_of)) {
           snapshots.push({
             snapshot: { snapshot_id, date: new Date().toISOString() },
             security: newSecurity,
           });
-        } else if (existingDate < new Date(getDateString())) {
+        } else if (existingDate < new LocalDate(getDateString())) {
           const todaySecurity = await getSecurityForSymbol(ticker_symbol);
           if (todaySecurity) {
             newSecurity.close_price = todaySecurity.close_price;
