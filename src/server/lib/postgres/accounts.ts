@@ -1,40 +1,46 @@
-import { JSONAccount, JSONHolding, JSONInstitution, JSONSecurity } from "common";
+import { isUndefined, JSONAccount, JSONHolding, JSONInstitution, JSONSecurity } from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
-import { buildUpdateQuery, buildUpsertQuery } from "./utils";
+import { buildUpdateQuery } from "./utils";
+import { AccountSubtype, AccountType } from "plaid";
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
 // Database row interfaces
 interface AccountRow {
   account_id: string;
-  user_id?: string | null;
-  item_id?: string | null;
-  institution_id?: string | null;
+  user_id: string;
+  item_id: string;
+  institution_id: string;
   name?: string | null;
   type?: string | null;
   subtype?: string | null;
+  balances_available?: string | number | null;
+  balances_current?: string | number | null;
+  balances_limit?: string | number | null;
+  balances_iso_currency_code?: string | null;
   custom_name?: string | null;
   hide?: boolean | null;
   label_budget_id?: string | null;
   graph_options_use_snapshots?: boolean | null;
   graph_options_use_transactions?: boolean | null;
-  raw?: string | null;
+  raw?: any;
   updated?: Date | null;
   is_deleted?: boolean | null;
 }
 
 interface HoldingRow {
   holding_id: string;
-  user_id?: string | null;
-  account_id?: string | null;
-  security_id?: string | null;
+  user_id: string;
+  account_id: string;
+  security_id: string;
   institution_price?: string | number | null;
+  institution_price_as_of?: string | null;
   institution_value?: string | number | null;
   cost_basis?: string | number | null;
   quantity?: string | number | null;
   iso_currency_code?: string | null;
-  raw?: string | null;
+  raw?: any;
   updated?: Date | null;
   is_deleted?: boolean | null;
 }
@@ -42,7 +48,7 @@ interface HoldingRow {
 interface InstitutionRow {
   institution_id: string;
   name?: string | null;
-  raw?: string | null;
+  raw?: any;
   updated?: Date | null;
 }
 
@@ -56,7 +62,7 @@ interface SecurityRow {
   iso_currency_code?: string | null;
   isin?: string | null;
   cusip?: string | null;
-  raw?: string | null;
+  raw?: any;
   updated?: Date | null;
 }
 
@@ -66,29 +72,39 @@ interface SecurityRow {
  */
 function accountToRow(account: PartialAccount): Partial<AccountRow> {
   const row: Partial<AccountRow> = {};
-  
-  if (account.account_id !== undefined) row.account_id = account.account_id;
-  if (account.item_id !== undefined) row.item_id = account.item_id;
-  if (account.institution_id !== undefined) row.institution_id = account.institution_id;
-  if (account.name !== undefined) row.name = account.name;
-  if (account.type !== undefined) row.type = account.type;
-  if (account.subtype !== undefined) row.subtype = account.subtype;
-  
+
+  if (!isUndefined(account.account_id)) row.account_id = account.account_id;
+  if (!isUndefined(account.item_id)) row.item_id = account.item_id;
+  if (!isUndefined(account.institution_id)) row.institution_id = account.institution_id;
+  if (!isUndefined(account.name)) row.name = account.name;
+  if (!isUndefined(account.type)) row.type = account.type;
+  if (!isUndefined(account.subtype)) row.subtype = account.subtype;
+
   // User-edited fields
-  if (account.custom_name !== undefined) row.custom_name = account.custom_name;
-  if (account.hide !== undefined) row.hide = account.hide;
+  if (!isUndefined(account.custom_name)) row.custom_name = account.custom_name;
+  if (!isUndefined(account.hide)) row.hide = account.hide;
   if (account.label) {
-    if (account.label.budget_id !== undefined) row.label_budget_id = account.label.budget_id;
+    if (!isUndefined(account.label.budget_id)) row.label_budget_id = account.label.budget_id;
+  }
+  if (account.balances) {
+    if (!isUndefined(account.balances.available))
+      row.balances_available = account.balances.available;
+    if (!isUndefined(account.balances.current)) row.balances_current = account.balances.current;
+    if (!isUndefined(account.balances.limit)) row.balances_limit = account.balances.limit;
+    if (!isUndefined(account.balances.iso_currency_code))
+      row.balances_iso_currency_code = account.balances.iso_currency_code;
   }
   if (account.graphOptions) {
-    if (account.graphOptions.useSnapshots !== undefined) row.graph_options_use_snapshots = account.graphOptions.useSnapshots;
-    if (account.graphOptions.useTransactions !== undefined) row.graph_options_use_transactions = account.graphOptions.useTransactions;
+    if (!isUndefined(account.graphOptions.useSnapshots))
+      row.graph_options_use_snapshots = account.graphOptions.useSnapshots;
+    if (!isUndefined(account.graphOptions.useTransactions))
+      row.graph_options_use_transactions = account.graphOptions.useTransactions;
   }
-  
+
   // Store full provider object in raw (excluding user-edited fields)
   const { custom_name, hide, label, graphOptions, ...providerData } = account;
   row.raw = JSON.stringify(providerData);
-  
+
   return row;
 }
 
@@ -97,45 +113,46 @@ function accountToRow(account: PartialAccount): Partial<AccountRow> {
  * Merges raw JSONB with user-edited column values.
  */
 function rowToAccount(row: AccountRow): JSONAccount {
-  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
-  
   return {
-    ...raw,
     account_id: row.account_id,
-    user_id: row.user_id,
-    item_id: row.item_id ?? raw.item_id,
-    institution_id: row.institution_id ?? raw.institution_id,
-    name: row.name ?? raw.name,
-    type: row.type ?? raw.type,
-    subtype: row.subtype ?? raw.subtype,
+    item_id: row.item_id,
+    institution_id: row.institution_id,
+    name: row.name || "Unknown",
+    type: (row.type as AccountType) || AccountType.Other,
+    subtype: (row.subtype as AccountSubtype) || AccountSubtype.Other,
     // Fields from raw
-    mask: raw.mask ?? null,
-    official_name: raw.official_name ?? null,
-    balances: raw.balances || {
-      available: null, current: null, limit: null,
-      iso_currency_code: null, unofficial_currency_code: null,
+    mask: null,
+    official_name: null,
+    balances: {
+      available: row.balances_available ? Number(row.balances_available) : 0,
+      current: row.balances_current ? Number(row.balances_current) : 0,
+      limit: row.balances_limit ? Number(row.balances_limit) : 0,
+      iso_currency_code: row.balances_iso_currency_code || "USD",
+      unofficial_currency_code: null,
     },
     // User-edited fields from columns (always override raw)
-    custom_name: row.custom_name ?? "",
-    hide: row.hide ?? false,
+    custom_name: row.custom_name || "",
+    hide: !!row.hide,
     label: {
       budget_id: row.label_budget_id,
     },
     graphOptions: {
-      useSnapshots: row.graph_options_use_snapshots ?? true,
-      useTransactions: row.graph_options_use_transactions ?? true,
+      useSnapshots:
+        typeof row.graph_options_use_snapshots === "boolean"
+          ? row.graph_options_use_snapshots
+          : true,
+      useTransactions:
+        typeof row.graph_options_use_transactions === "boolean"
+          ? row.graph_options_use_transactions
+          : true,
     },
-  } as JSONAccount;
+  };
 }
 
 /**
  * Updates or inserts accounts associated with given user.
  */
-export const upsertAccounts = async (
-  user: MaskedUser,
-  accounts: PartialAccount[],
-  upsert: boolean = true
-) => {
+export const upsertAccounts = async (user: MaskedUser, accounts: JSONAccount[]) => {
   if (!accounts.length) return [];
   const { user_id } = user;
   const results: { update: { _id: string }; status: number }[] = [];
@@ -143,19 +160,18 @@ export const upsertAccounts = async (
   for (const account of accounts) {
     const row = accountToRow(account);
     row.user_id = user_id;
-    
+
     try {
-      if (upsert) {
-        const columns = Object.keys(row);
-        const values = Object.values(row);
-        const placeholders = values.map((_, i) => `$${i + 1}`);
-        
-        const updateClauses = columns
-          .filter(col => col !== "account_id" && col !== "user_id")
-          .map(col => `${col} = EXCLUDED.${col}`);
-        updateClauses.push("updated = CURRENT_TIMESTAMP");
-        
-        const query = `
+      const columns = Object.keys(row);
+      const values = Object.values(row);
+      const placeholders = values.map((_, i) => `$${i + 1}`);
+
+      const updateClauses = columns
+        .filter((col) => col !== "account_id" && col !== "user_id")
+        .map((col) => `${col} = EXCLUDED.${col}`);
+      updateClauses.push("updated = CURRENT_TIMESTAMP");
+
+      const query = `
           INSERT INTO accounts (${columns.join(", ")}, updated)
           VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
           ON CONFLICT (account_id) DO UPDATE SET
@@ -163,37 +179,61 @@ export const upsertAccounts = async (
           WHERE accounts.user_id = $${columns.indexOf("user_id") + 1}
           RETURNING account_id
         `;
-        
-        const result = await pool.query(query, values);
+
+      const result = await pool.query(query, values);
+      results.push({
+        update: { _id: account.account_id },
+        status: result.rowCount ? 200 : 404,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to upsert account ${account.account_id}:`, message);
+      results.push({
+        update: { _id: account.account_id },
+        status: 500,
+      });
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Updates accounts associated with given user.
+ */
+export const updateAccounts = async (user: MaskedUser, accounts: PartialAccount[]) => {
+  if (!accounts.length) return [];
+  const { user_id } = user;
+  const results: { update: { _id: string }; status: number }[] = [];
+
+  for (const account of accounts) {
+    const row = accountToRow(account);
+    row.user_id = user_id;
+
+    try {
+      const updateData = { ...row };
+      delete updateData.account_id;
+      delete updateData.user_id;
+
+      const queryResult = buildUpdateQuery(
+        "accounts",
+        "account_id",
+        account.account_id,
+        updateData,
+        { additionalWhere: { column: "user_id", value: user_id }, returning: ["account_id"] },
+      );
+
+      if (queryResult) {
+        const result = await pool.query(queryResult.query, queryResult.values);
         results.push({
           update: { _id: account.account_id },
           status: result.rowCount ? 200 : 404,
         });
       } else {
-        const updateData = { ...row };
-        delete updateData.account_id;
-        delete updateData.user_id;
-        
-        const queryResult = buildUpdateQuery(
-          "accounts",
-          "account_id",
-          account.account_id,
-          updateData,
-          { additionalWhere: { column: "user_id", value: user_id }, returning: ["account_id"] }
-        );
-        
-        if (queryResult) {
-          const result = await pool.query(queryResult.query, queryResult.values);
-          results.push({
-            update: { _id: account.account_id },
-            status: result.rowCount ? 200 : 404,
-          });
-        } else {
-          results.push({
-            update: { _id: account.account_id },
-            status: 304,
-          });
-        }
+        results.push({
+          update: { _id: account.account_id },
+          status: 304,
+        });
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -212,19 +252,19 @@ export const getAccounts = async (user: MaskedUser): Promise<JSONAccount[]> => {
   const { user_id } = user;
   const result = await pool.query(
     `SELECT * FROM accounts WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user_id]
+    [user_id],
   );
   return result.rows.map(rowToAccount);
 };
 
 export const getAccount = async (
   user: MaskedUser,
-  account_id: string
+  account_id: string,
 ): Promise<JSONAccount | null> => {
   const { user_id } = user;
   const result = await pool.query(
     `SELECT * FROM accounts WHERE account_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [account_id, user_id]
+    [account_id, user_id],
   );
   return result.rows.length > 0 ? rowToAccount(result.rows[0]) : null;
 };
@@ -235,66 +275,66 @@ export const getAccount = async (
  */
 export const deleteAccounts = async (
   user: MaskedUser,
-  account_ids: string[]
+  account_ids: string[],
 ): Promise<{ deleted: number }> => {
   if (!account_ids.length) return { deleted: 0 };
   const { user_id } = user;
-  
+
   const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
 
   // Cascade: soft-delete transactions
   await pool.query(
     `UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
      WHERE account_id IN (${placeholders}) AND user_id = $1`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
 
   // Cascade: soft-delete investment_transactions
   await pool.query(
     `UPDATE investment_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
      WHERE account_id IN (${placeholders}) AND user_id = $1`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
 
   // Cascade: soft-delete split_transactions
   await pool.query(
     `UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
      WHERE account_id IN (${placeholders}) AND user_id = $1`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
 
   // Cascade: soft-delete snapshots
   await pool.query(
     `UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
      WHERE account_id IN (${placeholders}) AND user_id = $1`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
 
   // Cascade: soft-delete holdings
   await pool.query(
     `UPDATE holdings SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
      WHERE account_id IN (${placeholders}) AND user_id = $1`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
 
   const result = await pool.query(
     `UPDATE accounts SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
      WHERE account_id IN (${placeholders}) AND user_id = $1
      RETURNING account_id`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
-  
+
   return { deleted: result.rowCount || 0 };
 };
 
 export const getAccountsByItem = async (
   user: MaskedUser,
-  item_id: string
+  item_id: string,
 ): Promise<JSONAccount[]> => {
   const { user_id } = user;
   const result = await pool.query(
     `SELECT * FROM accounts WHERE item_id = $1 AND user_id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [item_id, user_id]
+    [item_id, user_id],
   );
   return result.rows.map(rowToAccount);
 };
@@ -305,44 +345,41 @@ export const getAccountsByItem = async (
 
 function holdingToRow(holding: Partial<JSONHolding>): Partial<HoldingRow> {
   const row: Partial<HoldingRow> = {};
-  
-  if (holding.account_id !== undefined) row.account_id = holding.account_id;
-  if (holding.security_id !== undefined) row.security_id = holding.security_id;
-  if (holding.institution_price !== undefined) row.institution_price = holding.institution_price;
-  if (holding.institution_value !== undefined) row.institution_value = holding.institution_value;
-  if (holding.cost_basis !== undefined) row.cost_basis = holding.cost_basis;
-  if (holding.quantity !== undefined) row.quantity = holding.quantity;
-  if (holding.iso_currency_code !== undefined) row.iso_currency_code = holding.iso_currency_code;
+
+  if (!isUndefined(holding.account_id)) row.account_id = holding.account_id;
+  if (!isUndefined(holding.security_id)) row.security_id = holding.security_id;
+  if (!isUndefined(holding.institution_price)) row.institution_price = holding.institution_price;
+  if (!isUndefined(holding.institution_price_as_of))
+    row.institution_price_as_of = holding.institution_price_as_of;
+  if (!isUndefined(holding.institution_value)) row.institution_value = holding.institution_value;
+  if (!isUndefined(holding.cost_basis)) row.cost_basis = holding.cost_basis;
+  if (!isUndefined(holding.quantity)) row.quantity = holding.quantity;
+  if (!isUndefined(holding.iso_currency_code)) row.iso_currency_code = holding.iso_currency_code;
 
   // Store full provider object in raw
   row.raw = JSON.stringify(holding);
-  
+
   return row;
 }
 
 function rowToHolding(row: HoldingRow): JSONHolding {
-  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
-  
   return {
-    ...raw,
     holding_id: row.holding_id,
-    user_id: row.user_id,
-    account_id: row.account_id ?? raw.account_id,
-    security_id: row.security_id ?? raw.security_id,
-    institution_price: row.institution_price != null ? Number(row.institution_price) : (raw.institution_price ?? null),
-    institution_value: row.institution_value != null ? Number(row.institution_value) : (raw.institution_value ?? null),
-    cost_basis: row.cost_basis != null ? Number(row.cost_basis) : (raw.cost_basis ?? null),
-    quantity: row.quantity != null ? Number(row.quantity) : (raw.quantity ?? null),
-    iso_currency_code: row.iso_currency_code ?? raw.iso_currency_code,
-    // Fields from raw only
-    institution_price_as_of: raw.institution_price_as_of,
-    unofficial_currency_code: raw.unofficial_currency_code,
-  } as JSONHolding;
+    account_id: row.account_id,
+    security_id: row.security_id,
+    institution_price: row.institution_price ? Number(row.institution_price) : 0,
+    institution_value: row.institution_value ? Number(row.institution_value) : 0,
+    cost_basis: row.cost_basis ? Number(row.cost_basis) : 0,
+    quantity: row.quantity ? Number(row.quantity) : 0,
+    iso_currency_code: row.iso_currency_code || "USD",
+    institution_price_as_of: row.institution_price_as_of,
+    unofficial_currency_code: null,
+  };
 }
 
 export const upsertHoldings = async (
   user: MaskedUser,
-  holdings: (Partial<JSONHolding> & { holding_id?: string })[]
+  holdings: (Partial<JSONHolding> & { holding_id?: string })[],
 ) => {
   if (!holdings.length) return [];
   const { user_id } = user;
@@ -353,17 +390,17 @@ export const upsertHoldings = async (
     const row = holdingToRow(holding);
     row.holding_id = holding_id;
     row.user_id = user_id;
-    
+
     try {
       const columns = Object.keys(row);
       const values = Object.values(row);
       const placeholders = values.map((_, i) => `$${i + 1}`);
-      
+
       const updateClauses = columns
-        .filter(col => col !== "holding_id" && col !== "user_id")
-        .map(col => `${col} = EXCLUDED.${col}`);
+        .filter((col) => col !== "holding_id" && col !== "user_id")
+        .map((col) => `${col} = EXCLUDED.${col}`);
       updateClauses.push("updated = CURRENT_TIMESTAMP");
-      
+
       const query = `
         INSERT INTO holdings (${columns.join(", ")}, updated)
         VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
@@ -371,7 +408,7 @@ export const upsertHoldings = async (
           ${updateClauses.join(", ")}
         RETURNING holding_id
       `;
-      
+
       const result = await pool.query(query, values);
       results.push({
         update: { _id: holding_id },
@@ -394,26 +431,26 @@ export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
   const { user_id } = user;
   const result = await pool.query(
     `SELECT * FROM holdings WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user_id]
+    [user_id],
   );
   return result.rows.map(rowToHolding);
 };
 
 export const deleteHoldings = async (
   user: MaskedUser,
-  holding_ids: string[]
+  holding_ids: string[],
 ): Promise<{ deleted: number }> => {
   if (!holding_ids.length) return { deleted: 0 };
   const { user_id } = user;
-  
+
   const placeholders = holding_ids.map((_, i) => `$${i + 2}`).join(", ");
   const result = await pool.query(
     `UPDATE holdings SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
      WHERE holding_id IN (${placeholders}) AND user_id = $1
      RETURNING holding_id`,
-    [user_id, ...holding_ids]
+    [user_id, ...holding_ids],
   );
-  
+
   return { deleted: result.rowCount || 0 };
 };
 
@@ -423,32 +460,29 @@ export const deleteHoldings = async (
 
 function institutionToRow(institution: Partial<JSONInstitution>): Partial<InstitutionRow> {
   const row: Partial<InstitutionRow> = {};
-  
+
   if (institution.institution_id !== undefined) row.institution_id = institution.institution_id;
   if (institution.name !== undefined) row.name = institution.name;
 
   // Store full provider object in raw
   row.raw = JSON.stringify(institution);
-  
+
   return row;
 }
 
 function rowToInstitution(row: InstitutionRow): JSONInstitution {
-  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
-  
   return {
-    ...raw,
     institution_id: row.institution_id,
-    name: row.name ?? raw.name,
-    products: raw.products,
-    country_codes: raw.country_codes,
-    url: raw.url,
-    primary_color: raw.primary_color,
-    logo: raw.logo,
-    routing_numbers: raw.routing_numbers,
-    oauth: raw.oauth,
-    status: raw.status,
-  } as JSONInstitution;
+    name: row.name || "Unknown",
+    products: [],
+    country_codes: [],
+    url: null,
+    primary_color: null,
+    logo: null,
+    routing_numbers: [],
+    oauth: false,
+    status: null,
+  };
 }
 
 export const upsertInstitutions = async (institutions: Partial<JSONInstitution>[]) => {
@@ -457,19 +491,19 @@ export const upsertInstitutions = async (institutions: Partial<JSONInstitution>[
 
   for (const institution of institutions) {
     if (!institution.institution_id) continue;
-    
+
     const row = institutionToRow(institution);
-    
+
     try {
       const columns = Object.keys(row);
       const values = Object.values(row);
       const placeholders = values.map((_, i) => `$${i + 1}`);
-      
+
       const updateClauses = columns
-        .filter(col => col !== "institution_id")
-        .map(col => `${col} = EXCLUDED.${col}`);
+        .filter((col) => col !== "institution_id")
+        .map((col) => `${col} = EXCLUDED.${col}`);
       updateClauses.push("updated = CURRENT_TIMESTAMP");
-      
+
       const query = `
         INSERT INTO institutions (${columns.join(", ")}, updated)
         VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
@@ -477,7 +511,7 @@ export const upsertInstitutions = async (institutions: Partial<JSONInstitution>[
           ${updateClauses.join(", ")}
         RETURNING institution_id
       `;
-      
+
       const result = await pool.query(query, values);
       results.push({
         update: { _id: institution.institution_id },
@@ -497,10 +531,9 @@ export const upsertInstitutions = async (institutions: Partial<JSONInstitution>[
 };
 
 export const getInstitution = async (institution_id: string): Promise<JSONInstitution | null> => {
-  const result = await pool.query(
-    `SELECT * FROM institutions WHERE institution_id = $1`,
-    [institution_id]
-  );
+  const result = await pool.query(`SELECT * FROM institutions WHERE institution_id = $1`, [
+    institution_id,
+  ]);
   return result.rows.length > 0 ? rowToInstitution(result.rows[0]) : null;
 };
 
@@ -510,7 +543,7 @@ export const getInstitution = async (institution_id: string): Promise<JSONInstit
 
 function securityToRow(security: Partial<JSONSecurity>): Partial<SecurityRow> {
   const row: Partial<SecurityRow> = {};
-  
+
   if (security.security_id !== undefined) row.security_id = security.security_id;
   if (security.name !== undefined) row.name = security.name;
   if (security.ticker_symbol !== undefined) row.ticker_symbol = security.ticker_symbol;
@@ -523,53 +556,55 @@ function securityToRow(security: Partial<JSONSecurity>): Partial<SecurityRow> {
 
   // Store full provider object in raw
   row.raw = JSON.stringify(security);
-  
+
   return row;
 }
 
 function rowToSecurity(row: SecurityRow): JSONSecurity {
-  const raw = row.raw ? (typeof row.raw === 'string' ? JSON.parse(row.raw) : row.raw) : {};
-  
   return {
-    ...raw,
     security_id: row.security_id,
-    name: row.name ?? raw.name,
-    ticker_symbol: row.ticker_symbol ?? raw.ticker_symbol,
-    type: row.type ?? raw.type,
-    close_price: row.close_price != null ? Number(row.close_price) : (raw.close_price ?? null),
-    close_price_as_of: row.close_price_as_of ?? raw.close_price_as_of,
-    iso_currency_code: row.iso_currency_code ?? raw.iso_currency_code,
-    isin: row.isin ?? raw.isin,
-    cusip: row.cusip ?? raw.cusip,
+    name: row.name ?? null,
+    ticker_symbol: row.ticker_symbol ?? null,
+    type: row.type ?? null,
+    close_price: row.close_price != null ? Number(row.close_price) : null,
+    close_price_as_of: row.close_price_as_of ?? null,
+    iso_currency_code: row.iso_currency_code ?? null,
+    isin: row.isin ?? null,
+    cusip: row.cusip ?? null,
     // Remaining fields from raw
-    sedol: raw.sedol,
-    institution_security_id: raw.institution_security_id,
-    institution_id: raw.institution_id,
-    proxy_security_id: raw.proxy_security_id,
-    is_cash_equivalent: raw.is_cash_equivalent,
-    unofficial_currency_code: raw.unofficial_currency_code,
-  } as JSONSecurity;
+    sedol: null,
+    institution_security_id: null,
+    institution_id: null,
+    proxy_security_id: null,
+    is_cash_equivalent: null,
+    unofficial_currency_code: null,
+    market_identifier_code: null,
+    sector: null,
+    industry: null,
+    option_contract: null,
+    fixed_income: null,
+  };
 }
 
-export const upsertSecurities = async (securities: Partial<JSONSecurity>[]) => {
+export const upsertSecurities = async (securities: JSONSecurity[]) => {
   if (!securities.length) return [];
   const results: { update: { _id: string }; status: number }[] = [];
 
   for (const security of securities) {
     if (!security.security_id) continue;
-    
+
     const row = securityToRow(security);
-    
+
     try {
       const columns = Object.keys(row);
       const values = Object.values(row);
       const placeholders = values.map((_, i) => `$${i + 1}`);
-      
+
       const updateClauses = columns
-        .filter(col => col !== "security_id")
-        .map(col => `${col} = EXCLUDED.${col}`);
+        .filter((col) => col !== "security_id")
+        .map((col) => `${col} = EXCLUDED.${col}`);
       updateClauses.push("updated = CURRENT_TIMESTAMP");
-      
+
       const query = `
         INSERT INTO securities (${columns.join(", ")}, updated)
         VALUES (${placeholders.join(", ")}, CURRENT_TIMESTAMP)
@@ -577,7 +612,7 @@ export const upsertSecurities = async (securities: Partial<JSONSecurity>[]) => {
           ${updateClauses.join(", ")}
         RETURNING security_id
       `;
-      
+
       const result = await pool.query(query, values);
       results.push({
         update: { _id: security.security_id },
@@ -602,66 +637,63 @@ export const getSecurities = async (user: MaskedUser): Promise<JSONSecurity[]> =
     `SELECT DISTINCT s.* FROM securities s
      INNER JOIN holdings h ON s.security_id = h.security_id
      WHERE h.user_id = $1 AND (h.is_deleted IS NULL OR h.is_deleted = FALSE)`,
-    [user_id]
+    [user_id],
   );
   return result.rows.map(rowToSecurity);
 };
 
 export const getSecurity = async (security_id: string): Promise<JSONSecurity | null> => {
-  const result = await pool.query(
-    `SELECT * FROM securities WHERE security_id = $1`,
-    [security_id]
-  );
+  const result = await pool.query(`SELECT * FROM securities WHERE security_id = $1`, [security_id]);
   return result.rows.length > 0 ? rowToSecurity(result.rows[0]) : null;
 };
 
 export const searchSecurities = async (
-  options: string[] | { security_id?: string; ticker_symbol?: string; security_ids?: string[] }
+  options: string[] | { security_id?: string; ticker_symbol?: string; security_ids?: string[] },
 ): Promise<JSONSecurity[]> => {
   if (Array.isArray(options)) {
     if (!options.length) return [];
     const placeholders = options.map((_, i) => `$${i + 1}`).join(", ");
     const result = await pool.query(
       `SELECT * FROM securities WHERE security_id IN (${placeholders})`,
-      options
+      options,
     );
     return result.rows.map(rowToSecurity);
   }
-  
+
   const conditions: string[] = [];
   const values: (string | string[])[] = [];
   let paramIndex = 1;
-  
+
   if (options.security_id) {
     conditions.push(`security_id = $${paramIndex}`);
     values.push(options.security_id);
     paramIndex++;
   }
-  
+
   if (options.ticker_symbol) {
     conditions.push(`ticker_symbol = $${paramIndex}`);
     values.push(options.ticker_symbol);
     paramIndex++;
   }
-  
+
   if (options.security_ids && options.security_ids.length > 0) {
     const placeholders = options.security_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
     conditions.push(`security_id IN (${placeholders})`);
     values.push(...options.security_ids);
   }
-  
+
   if (!conditions.length) return [];
-  
+
   const result = await pool.query(
     `SELECT * FROM securities WHERE ${conditions.join(" AND ")}`,
-    values
+    values,
   );
   return result.rows.map(rowToSecurity);
 };
 
 export const searchAccountsByItemId = async (
   user: MaskedUser,
-  item_id: string
+  item_id: string,
 ): Promise<JSONAccount[]> => {
   return getAccountsByItem(user, item_id);
 };
@@ -673,7 +705,7 @@ export const searchAccounts = async (
     item_id?: string;
     institution_id?: string;
     type?: string;
-  } = {}
+  } = {},
 ): Promise<JSONAccount[]> => {
   const { user_id } = user;
   const conditions: string[] = ["user_id = $1", "(is_deleted IS NULL OR is_deleted = FALSE)"];
@@ -706,45 +738,45 @@ export const searchAccounts = async (
 
   const result = await pool.query(
     `SELECT * FROM accounts WHERE ${conditions.join(" AND ")}`,
-    values
+    values,
   );
   return result.rows.map(rowToAccount);
 };
 
 export const searchAccountsById = async (
   user: MaskedUser,
-  account_ids: string[]
+  account_ids: string[],
 ): Promise<JSONAccount[]> => {
   if (!account_ids.length) return [];
   const { user_id } = user;
-  
+
   const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
   const result = await pool.query(
     `SELECT * FROM accounts 
      WHERE account_id IN (${placeholders}) AND user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
   return result.rows.map(rowToAccount);
 };
 
 export const searchInstitutionById = async (
-  institution_id: string
+  institution_id: string,
 ): Promise<JSONInstitution | null> => {
   return getInstitution(institution_id);
 };
 
 export const searchHoldingsByAccountId = async (
   user: MaskedUser,
-  account_ids: string[]
+  account_ids: string[],
 ): Promise<JSONHolding[]> => {
   if (!account_ids.length) return [];
   const { user_id } = user;
-  
+
   const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
   const result = await pool.query(
     `SELECT * FROM holdings 
      WHERE account_id IN (${placeholders}) AND user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user_id, ...account_ids]
+    [user_id, ...account_ids],
   );
   return result.rows.map(rowToHolding);
 };

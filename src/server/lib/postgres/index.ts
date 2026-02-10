@@ -34,6 +34,7 @@ export {
 // Accounts, Holdings, Institutions, Securities
 export {
   upsertAccounts,
+  updateAccounts,
   getAccounts,
   getAccount,
   deleteAccounts,

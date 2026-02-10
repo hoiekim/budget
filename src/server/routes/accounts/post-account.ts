@@ -1,4 +1,4 @@
-import { Route, upsertAccounts } from "server";
+import { Route, updateAccounts } from "server";
 
 export interface AccountPostResponse {
   account_id: string;
@@ -14,7 +14,7 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
   }
 
   try {
-    const response = await upsertAccounts(user, [req.body]);
+    const response = await updateAccounts(user, [req.body]);
     const result = response[0];
     if (!result || result.status >= 400) {
       throw new Error("Unknown error during account upsert");

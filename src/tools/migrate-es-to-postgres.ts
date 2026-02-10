@@ -163,18 +163,20 @@ async function migrate(): Promise<void> {
   let itemCount = 0;
   for (const doc of byType.item || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const item = src.item || {};
     const pgUserId = getPgUserId(src, item);
     if (!pgUserId) continue;
 
     try {
       await pgPool.query(
-        `INSERT INTO items (item_id, user_id, access_token, institution_id, available_products, cursor, status, provider, raw)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO items (item_id, user_id, access_token, institution_id, available_products, cursor, status, provider, raw, updated)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (item_id) DO UPDATE SET
            access_token = EXCLUDED.access_token, institution_id = EXCLUDED.institution_id,
            available_products = EXCLUDED.available_products, cursor = EXCLUDED.cursor,
-           status = EXCLUDED.status, provider = EXCLUDED.provider, raw = EXCLUDED.raw`,
+           status = EXCLUDED.status, provider = EXCLUDED.provider, raw = EXCLUDED.raw,
+           updated = EXCLUDED.updated`,
         [
           item.item_id,
           pgUserId,
@@ -185,6 +187,7 @@ async function migrate(): Promise<void> {
           item.status || null,
           item.provider || null,
           JSON.stringify(item),
+          updated,
         ],
       );
       itemCount++;
@@ -201,15 +204,16 @@ async function migrate(): Promise<void> {
   let instCount = 0;
   for (const doc of byType.institution || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const inst = src.institution || {};
 
     try {
       await pgPool.query(
-        `INSERT INTO institutions (institution_id, name, raw)
-         VALUES ($1, $2, $3)
+        `INSERT INTO institutions (institution_id, name, raw, updated)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (institution_id) DO UPDATE SET
-           name = EXCLUDED.name, raw = EXCLUDED.raw`,
-        [inst.institution_id, inst.name || null, JSON.stringify(inst)],
+           name = EXCLUDED.name, raw = EXCLUDED.raw, updated = EXCLUDED.updated`,
+        [inst.institution_id, inst.name || null, JSON.stringify(inst), updated],
       );
       instCount++;
     } catch (error: any) {
@@ -225,6 +229,7 @@ async function migrate(): Promise<void> {
   let acctCount = 0;
   for (const doc of byType.account || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const acct = src.account || {};
     const pgUserId = getPgUserId(src, acct);
     if (!pgUserId) continue;
@@ -234,14 +239,18 @@ async function migrate(): Promise<void> {
     try {
       await pgPool.query(
         `INSERT INTO accounts (
-          account_id, user_id, item_id, institution_id,
-          name, type, subtype, custom_name, hide,
-          label_budget_id, graph_options_use_snapshots, graph_options_use_transactions, raw
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          account_id, user_id, item_id, institution_id, name, type, subtype,
+          balances_available, balances_current, balances_limit, balances_iso_currency_code,
+          custom_name, hide, label_budget_id,
+          graph_options_use_snapshots, graph_options_use_transactions, raw, updated
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          ON CONFLICT (account_id) DO UPDATE SET
            item_id = EXCLUDED.item_id, institution_id = EXCLUDED.institution_id,
            name = EXCLUDED.name, type = EXCLUDED.type, subtype = EXCLUDED.subtype,
-           custom_name = EXCLUDED.custom_name, hide = EXCLUDED.hide, raw = EXCLUDED.raw`,
+           balances_available = EXCLUDED.balances_available, balances_current = EXCLUDED.balances_current,
+           balances_limit = EXCLUDED.balances_limit, balances_iso_currency_code = EXCLUDED.balances_iso_currency_code,
+           custom_name = EXCLUDED.custom_name, hide = EXCLUDED.hide, raw = EXCLUDED.raw,
+           updated = EXCLUDED.updated`,
         [
           acct.account_id,
           pgUserId,
@@ -250,12 +259,17 @@ async function migrate(): Promise<void> {
           acct.name || null,
           acct.type || null,
           acct.subtype || null,
+          acct.balances?.available ?? null,
+          acct.balances?.current ?? null,
+          acct.balances?.limit ?? null,
+          acct.balances?.iso_currency_code ?? null,
           acct.custom_name || null,
           acct.hide ?? null,
           null, // label_budget_id set to NULL initially, updated in Phase 16
           graph.use_snapshots ?? graph.useSnapshots ?? true,
           graph.use_transactions ?? graph.useTransactions ?? true,
           JSON.stringify(acct),
+          updated,
         ],
       );
       acctCount++;
@@ -272,6 +286,7 @@ async function migrate(): Promise<void> {
   let budgetCount = 0;
   for (const doc of byType.budget || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const budget = src.budget || {};
     const pgUserId = getPgUserId(src, budget);
     if (!pgUserId) continue;
@@ -279,8 +294,8 @@ async function migrate(): Promise<void> {
     const esBid = budget.budget_id || doc._id;
     try {
       const result = await pgPool.query(
-        `INSERT INTO budgets (user_id, name, iso_currency_code, roll_over, roll_over_start_date, capacities)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO budgets (user_id, name, iso_currency_code, roll_over, roll_over_start_date, capacities, updated)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING budget_id`,
         [
           pgUserId,
@@ -289,6 +304,7 @@ async function migrate(): Promise<void> {
           budget.roll_over ?? null,
           budget.roll_over_start_date || null,
           JSON.stringify(budget.capacities),
+          updated,
         ],
       );
       const pgBudgetId = result.rows[0].budget_id;
@@ -308,6 +324,7 @@ async function migrate(): Promise<void> {
   let sectionCount = 0;
   for (const doc of byType.section || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const section = src.section || {};
     const pgUserId = getPgUserId(src, section);
     const pgBudgetId = section.budget_id ? budgetIdMap.get(section.budget_id) : undefined;
@@ -316,8 +333,8 @@ async function migrate(): Promise<void> {
     const esSid = section.section_id || doc._id;
     try {
       const result = await pgPool.query(
-        `INSERT INTO sections (user_id, budget_id, name, roll_over, roll_over_start_date, capacities)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO sections (user_id, budget_id, name, roll_over, roll_over_start_date, capacities, updated)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING section_id`,
         [
           pgUserId,
@@ -326,6 +343,7 @@ async function migrate(): Promise<void> {
           section.roll_over ?? null,
           section.roll_over_start_date || null,
           JSON.stringify(section.capacities),
+          updated,
         ],
       );
       const pgSectionId = result.rows[0].section_id;
@@ -345,6 +363,7 @@ async function migrate(): Promise<void> {
   let categoryCount = 0;
   for (const doc of byType.category || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const cat = src.category || {};
     const pgUserId = getPgUserId(src, cat);
     const pgSectionId = cat.section_id ? sectionIdMap.get(cat.section_id) : undefined;
@@ -353,8 +372,8 @@ async function migrate(): Promise<void> {
     const esCid = cat.category_id || doc._id;
     try {
       const result = await pgPool.query(
-        `INSERT INTO categories (user_id, section_id, name, roll_over, roll_over_start_date, capacities)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO categories (user_id, section_id, name, roll_over, roll_over_start_date, capacities, updated)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING category_id`,
         [
           pgUserId,
@@ -363,6 +382,7 @@ async function migrate(): Promise<void> {
           cat.roll_over ?? null,
           cat.roll_over_start_date || null,
           JSON.stringify(cat.capacities),
+          updated,
         ],
       );
       const pgCategoryId = result.rows[0].category_id;
@@ -385,6 +405,7 @@ async function migrate(): Promise<void> {
   let txLabelsMissing = 0;
   for (const doc of byType.transaction || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const tx = src.transaction || {};
     const pgUserId = getPgUserId(src, tx);
     if (!pgUserId) {
@@ -393,8 +414,6 @@ async function migrate(): Promise<void> {
     }
 
     const label = tx.label || {};
-    const loc = tx.location || {};
-    const pm = tx.payment_meta || {};
 
     const pgBudgetId = label.budget_id ? budgetIdMap.get(label.budget_id) || null : null;
     const pgCategoryId = label.category_id ? categoryIdMap.get(label.category_id) || null : null;
@@ -419,22 +438,32 @@ async function migrate(): Promise<void> {
     try {
       await pgPool.query(
         `INSERT INTO transactions (
-          transaction_id, user_id, account_id, name, amount, date, pending,
-          label_budget_id, label_category_id, label_memo, raw
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          transaction_id, user_id, account_id, name, merchant_name, amount,
+          iso_currency_code, date, pending, pending_transaction_id, payment_channel,
+          location_country, location_region, location_city,
+          label_budget_id, label_category_id, label_memo, raw, updated
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          ON CONFLICT (transaction_id) DO NOTHING`,
         [
           tx.transaction_id,
           pgUserId,
           tx.account_id || null,
           tx.name || null,
-          tx.amount ?? 0,
-          tx.date || null,
+          tx.merchant_name || null,
+          tx.amount || 0,
+          tx.iso_currency_code || null,
+          tx.authorized_date || tx.date || null,
           tx.pending ?? false,
+          tx.pending_transaction_id || null,
+          tx.payment_channel || null,
+          tx.location?.country || null,
+          tx.location?.region || null,
+          tx.location?.city || null,
           pgBudgetId,
           pgCategoryId,
           label.memo || null,
           JSON.stringify(rawTx),
+          updated,
         ],
       );
       txCount++;
@@ -457,6 +486,8 @@ async function migrate(): Promise<void> {
   for (const doc of byType.investment_transaction || []) {
     const src = doc;
     const inv = src.investment_transaction || {};
+    const updated =
+      doc.updated || (inv.date ? new Date(inv.date + "Z").toISOString() : new Date().toISOString());
     const pgUserId = getPgUserId(src, inv);
     if (!pgUserId) continue;
 
@@ -464,8 +495,8 @@ async function migrate(): Promise<void> {
       await pgPool.query(
         `INSERT INTO investment_transactions (
           investment_transaction_id, user_id, account_id, security_id,
-          date, name, quantity, amount, price, type, raw
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          date, name, quantity, amount, price, iso_currency_code, type, subtype, raw, updated
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (investment_transaction_id) DO NOTHING`,
         [
           inv.investment_transaction_id,
@@ -477,8 +508,11 @@ async function migrate(): Promise<void> {
           inv.quantity ?? null,
           inv.amount ?? null,
           inv.price ?? null,
+          inv.iso_currency_code || null,
           inv.type || null,
+          inv.subtype || null,
           JSON.stringify(inv),
+          updated,
         ],
       );
       invCount++;
@@ -495,6 +529,7 @@ async function migrate(): Promise<void> {
   let splitCount = 0;
   for (const doc of byType.split_transaction || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const split = src.split_transaction || {};
     const pgUserId = getPgUserId(src, split);
     if (!pgUserId) continue;
@@ -507,8 +542,8 @@ async function migrate(): Promise<void> {
       await pgPool.query(
         `INSERT INTO split_transactions (
           split_transaction_id, user_id, transaction_id, account_id,
-          amount, date, custom_name, label_budget_id, label_category_id, label_memo
-        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          amount, date, custom_name, label_budget_id, label_category_id, label_memo, updated
+        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           pgUserId,
           split.transaction_id || null,
@@ -519,6 +554,7 @@ async function migrate(): Promise<void> {
           pgBudgetId,
           pgCategoryId,
           label.memo || null,
+          updated,
         ],
       );
       splitCount++;
@@ -535,16 +571,15 @@ async function migrate(): Promise<void> {
   let secCount = 0;
   for (const doc of byType.security || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const sec = src.security || {};
-    const oc = sec.option_contract || {};
-    const fi = sec.fixed_income || {};
 
     try {
       await pgPool.query(
         `INSERT INTO securities (
           security_id, name, ticker_symbol, type,
-          close_price, close_price_as_of, iso_currency_code, isin, cusip, raw
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          close_price, close_price_as_of, iso_currency_code, isin, cusip, raw, updated
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (security_id) DO NOTHING`,
         [
           sec.security_id,
@@ -557,6 +592,7 @@ async function migrate(): Promise<void> {
           sec.isin || null,
           sec.cusip || null,
           JSON.stringify(sec),
+          updated,
         ],
       );
       secCount++;
@@ -573,6 +609,7 @@ async function migrate(): Promise<void> {
   let holdCount = 0;
   for (const doc of byType.holding || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const hold = src.holding || {};
     const esUserId = src.user?.user_id;
     const pgUserId = esUserId ? userIdMap.get(esUserId) : undefined;
@@ -583,9 +620,9 @@ async function migrate(): Promise<void> {
       await pgPool.query(
         `INSERT INTO holdings (
           holding_id, user_id, account_id, security_id,
-          institution_price, institution_value, cost_basis, quantity,
-          iso_currency_code, raw
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          institution_price, institution_price_as_of, institution_value, cost_basis, quantity,
+          iso_currency_code, raw, updated
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (holding_id) DO NOTHING`,
         [
           holdingId,
@@ -593,11 +630,13 @@ async function migrate(): Promise<void> {
           hold.account_id || null,
           hold.security_id || null,
           hold.institution_price ?? null,
+          hold.institution_price_as_of || null,
           hold.institution_value ?? null,
           hold.cost_basis ?? null,
           hold.quantity ?? null,
           hold.iso_currency_code || null,
           JSON.stringify(hold),
+          updated,
         ],
       );
       holdCount++;
@@ -615,6 +654,7 @@ async function migrate(): Promise<void> {
   for (const doc of byType.snapshot || []) {
     const src = doc;
     const snap = src.snapshot || {};
+    const updated = doc.updated || snap.date || new Date().toISOString();
     const esUserId = src.user?.user_id;
     const pgUserId = esUserId ? userIdMap.get(esUserId) : null;
 
@@ -623,10 +663,10 @@ async function migrate(): Promise<void> {
         // Security snapshot
         const sec = src.security;
         await pgPool.query(
-          `INSERT INTO snapshots (snapshot_id, snapshot_date, snapshot_type, security_id, close_price)
-           VALUES ($1, $2, 'security', $3, $4)
+          `INSERT INTO snapshots (snapshot_id, snapshot_date, snapshot_type, security_id, close_price, updated)
+           VALUES ($1, $2, 'security', $3, $4, $5)
            ON CONFLICT (snapshot_id) DO NOTHING`,
-          [snap.snapshot_id, snap.date, sec.security_id, sec.close_price ?? null],
+          [snap.snapshot_id, snap.date, sec.security_id, sec.close_price ?? null, updated],
         );
       } else if (src.holding) {
         // Holding snapshot
@@ -635,8 +675,8 @@ async function migrate(): Promise<void> {
           `INSERT INTO snapshots (
             snapshot_id, user_id, snapshot_date, snapshot_type,
             holding_account_id, holding_security_id,
-            institution_price, institution_value, cost_basis, quantity
-          ) VALUES ($1, $2, $3, 'holding', $4, $5, $6, $7, $8, $9)
+            institution_price, institution_value, cost_basis, quantity, updated
+          ) VALUES ($1, $2, $3, 'holding', $4, $5, $6, $7, $8, $9, $10)
            ON CONFLICT (snapshot_id) DO NOTHING`,
           [
             snap.snapshot_id,
@@ -648,21 +688,29 @@ async function migrate(): Promise<void> {
             hold.institution_value ?? null,
             hold.cost_basis ?? null,
             hold.quantity ?? null,
+            updated,
           ],
         );
       } else if (src.account) {
         // Account balance snapshot
         const acct = src.account;
         const bal = acct.balances || {};
+
+        // fixes an existing minor data quality issue
+        const snapshot_id =
+          snap.snapshot_id.indexOf("undefined") === 0
+            ? acct.account_id + snap.snapshot_id.split("undefined")[1]
+            : snap.snapshot_id;
+
         await pgPool.query(
           `INSERT INTO snapshots (
             snapshot_id, user_id, snapshot_date, snapshot_type,
             account_id, balances_available, balances_current, balances_limit,
-            balances_iso_currency_code
-          ) VALUES ($1, $2, $3, 'account_balance', $4, $5, $6, $7, $8)
+            balances_iso_currency_code, updated
+          ) VALUES ($1, $2, $3, 'account_balance', $4, $5, $6, $7, $8, $9)
            ON CONFLICT (snapshot_id) DO NOTHING`,
           [
-            snap.snapshot_id,
+            snapshot_id,
             pgUserId,
             snap.date,
             acct.account_id || null,
@@ -670,6 +718,7 @@ async function migrate(): Promise<void> {
             bal.current ?? null,
             bal.limit ?? null,
             bal.iso_currency_code || null,
+            updated,
           ],
         );
       } else {
@@ -690,6 +739,7 @@ async function migrate(): Promise<void> {
   let chartCount = 0;
   for (const doc of byType.chart || []) {
     const src = doc;
+    const updated = doc.updated || new Date().toISOString();
     const chart = src.chart || {};
     const pgUserId = getPgUserId(src, chart);
     if (!pgUserId) continue;
@@ -716,9 +766,9 @@ async function migrate(): Promise<void> {
     // account_ids use original Plaid IDs, no mapping needed
     try {
       await pgPool.query(
-        `INSERT INTO charts (user_id, name, type, configuration)
-         VALUES ($1, $2, $3, $4)`,
-        [pgUserId, chart.name || null, chart.type || null, JSON.stringify(config)],
+        `INSERT INTO charts (user_id, name, type, configuration, updated)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [pgUserId, chart.name || null, chart.type || null, JSON.stringify(config), updated],
       );
       chartCount++;
     } catch (error: any) {

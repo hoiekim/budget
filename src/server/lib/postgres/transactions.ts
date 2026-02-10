@@ -1,7 +1,17 @@
-import { JSONTransaction, JSONInvestmentTransaction, JSONSplitTransaction } from "common";
+import {
+  JSONTransaction,
+  JSONInvestmentTransaction,
+  JSONSplitTransaction,
+  isUndefined,
+} from "common";
 import { pool } from "./client";
 import { MaskedUser } from "./users";
 import { buildUpdateQuery } from "./utils";
+import {
+  InvestmentTransactionSubtype,
+  InvestmentTransactionType,
+  TransactionPaymentChannelEnum,
+} from "plaid";
 
 export interface SearchTransactionsOptions {
   account_id?: string;
@@ -23,12 +33,19 @@ export type PartialTransaction = { transaction_id: string } & Partial<JSONTransa
 // Database row interfaces
 interface TransactionRow {
   transaction_id: string;
-  user_id?: string | null;
-  account_id?: string | null;
+  user_id: string;
+  account_id: string;
   name?: string | null;
+  merchant_name?: string | null;
   amount?: string | number | null;
-  date?: string | null;
+  iso_currency_code?: string | null;
+  date: string;
   pending?: boolean | null;
+  pending_transaction_id?: string | null;
+  payment_channel?: string | null;
+  location_country?: string | null;
+  location_region?: string | null;
+  location_city?: string | null;
   label_budget_id?: string | null;
   label_category_id?: string | null;
   label_memo?: string | null;
@@ -39,15 +56,20 @@ interface TransactionRow {
 
 interface InvestmentTransactionRow {
   investment_transaction_id: string;
-  user_id?: string | null;
-  account_id?: string | null;
+  user_id: string;
+  account_id: string;
   security_id?: string | null;
-  date?: string | null;
+  date: string;
   name?: string | null;
   amount?: string | number | null;
   quantity?: string | number | null;
   price?: string | number | null;
+  iso_currency_code?: string | null;
   type?: string | null;
+  subtype?: string | null;
+  label_budget_id?: string | null;
+  label_category_id?: string | null;
+  label_memo?: string | null;
   raw?: string | null;
   updated?: Date | null;
   is_deleted?: boolean | null;
@@ -55,9 +77,9 @@ interface InvestmentTransactionRow {
 
 interface SplitTransactionRow {
   split_transaction_id: string;
-  user_id?: string | null;
-  transaction_id?: string | null;
-  account_id?: string | null;
+  user_id: string;
+  transaction_id: string;
+  account_id: string;
   amount?: string | number | null;
   date?: string | null;
   custom_name?: string | null;
@@ -75,18 +97,28 @@ interface SplitTransactionRow {
 function transactionToRow(tx: PartialTransaction): Partial<TransactionRow> {
   const row: Partial<TransactionRow> = {};
 
-  if (tx.transaction_id !== undefined) row.transaction_id = tx.transaction_id;
-  if (tx.account_id !== undefined) row.account_id = tx.account_id;
-  if (tx.name !== undefined) row.name = tx.name;
-  if (tx.amount !== undefined) row.amount = tx.amount;
-  if (tx.date !== undefined) row.date = tx.date;
-  if (tx.pending !== undefined) row.pending = tx.pending;
+  if (!isUndefined(tx.transaction_id)) row.transaction_id = tx.transaction_id;
+  if (!isUndefined(tx.account_id)) row.account_id = tx.account_id;
+  if (!isUndefined(tx.name)) row.name = tx.name;
+  if (!isUndefined(tx.merchant_name)) row.merchant_name = tx.merchant_name;
+  if (!isUndefined(tx.amount)) row.amount = tx.amount;
+  if (!isUndefined(tx.iso_currency_code)) row.iso_currency_code = tx.iso_currency_code;
+  if (!isUndefined(tx.date)) row.date = tx.date;
+  if (!isUndefined(tx.pending)) row.pending = tx.pending;
+  if (!isUndefined(tx.pending_transaction_id))
+    row.pending_transaction_id = tx.pending_transaction_id;
+  if (!isUndefined(tx.payment_channel)) row.payment_channel = tx.payment_channel;
+  if (!isUndefined(tx.location)) {
+    if (!isUndefined(tx.location.country)) row.location_country = tx.location.country;
+    if (!isUndefined(tx.location.region)) row.location_region = tx.location.region;
+    if (!isUndefined(tx.location.city)) row.location_city = tx.location.city;
+  }
 
   // Flatten label (user-edited)
-  if (tx.label) {
-    if (tx.label.budget_id !== undefined) row.label_budget_id = tx.label.budget_id;
-    if (tx.label.category_id !== undefined) row.label_category_id = tx.label.category_id;
-    if (tx.label.memo !== undefined) row.label_memo = tx.label.memo;
+  if (!isUndefined(tx.label)) {
+    if (!isUndefined(tx.label.budget_id)) row.label_budget_id = tx.label.budget_id;
+    if (!isUndefined(tx.label.category_id)) row.label_category_id = tx.label.category_id;
+    if (!isUndefined(tx.label.memo)) row.label_memo = tx.label.memo;
   }
 
   // Store full provider object in raw (excluding label which is user-edited)
@@ -98,39 +130,33 @@ function transactionToRow(tx: PartialTransaction): Partial<TransactionRow> {
 
 /**
  * Converts a Postgres row to transaction object.
- * Merges raw JSONB with user-edited label columns.
  */
 function rowToTransaction(row: TransactionRow): JSONTransaction {
-  // Start from raw JSONB if available, then overlay column values
-  const raw = row.raw ? (typeof row.raw === "string" ? JSON.parse(row.raw) : row.raw) : {};
-
   return {
-    ...raw,
     transaction_id: row.transaction_id,
-    user_id: row.user_id,
-    account_id: row.account_id ?? raw.account_id,
-    name: row.name ?? raw.name,
-    amount: row.amount != null ? Number(row.amount) : (raw.amount ?? 0),
-    date: row.date ?? raw.date,
-    pending: row.pending ?? raw.pending,
-    // User-edited label always comes from columns (overrides raw)
+    account_id: row.account_id,
+    name: row.name || "Unknown",
+    merchant_name: row.merchant_name,
+    amount: row.amount ? Number(row.amount) : 0,
+    iso_currency_code: row.iso_currency_code || null,
+    date: row.date || new Date().toISOString().split("T")[0],
+    pending: !!row.pending,
     label: {
       budget_id: row.label_budget_id,
       category_id: row.label_category_id,
       memo: row.label_memo,
     },
-    // Ensure nested objects have defaults if not in raw
-    location: raw.location || {
+    location: {
       address: null,
-      city: null,
-      region: null,
+      city: row.location_city || null,
+      region: row.location_region || null,
       postal_code: null,
-      country: null,
+      country: row.location_country || null,
       store_number: null,
       lat: null,
       lon: null,
     },
-    payment_meta: raw.payment_meta || {
+    payment_meta: {
       reference_number: null,
       ppd_id: null,
       payee: null,
@@ -140,18 +166,19 @@ function rowToTransaction(row: TransactionRow): JSONTransaction {
       payment_processor: null,
       reason: null,
     },
-    pending_transaction_id: raw.pending_transaction_id ?? null,
-    category_id: raw.category_id ?? null,
-    category: raw.category ?? null,
-    account_owner: raw.account_owner ?? null,
-    iso_currency_code: raw.iso_currency_code ?? null,
-    unofficial_currency_code: raw.unofficial_currency_code ?? null,
-    payment_channel: raw.payment_channel,
-    authorized_date: raw.authorized_date ?? null,
-    authorized_datetime: raw.authorized_datetime ?? null,
-    datetime: raw.datetime ?? null,
-    transaction_code: raw.transaction_code ?? null,
-  } as JSONTransaction;
+    pending_transaction_id: row.pending_transaction_id ?? null,
+    category_id: null,
+    category: null,
+    account_owner: null,
+    unofficial_currency_code: null,
+    payment_channel:
+      (row.payment_channel as TransactionPaymentChannelEnum) ||
+      TransactionPaymentChannelEnum.InStore,
+    authorized_date: null,
+    authorized_datetime: null,
+    datetime: null,
+    transaction_code: null,
+  };
 }
 
 /**
@@ -347,6 +374,7 @@ function investmentTxToRow(
   if (tx.name !== undefined) row.name = tx.name;
   if (tx.amount !== undefined) row.amount = tx.amount;
   if (tx.quantity !== undefined) row.quantity = tx.quantity;
+  if (tx.iso_currency_code !== undefined) row.iso_currency_code = tx.iso_currency_code;
   if (tx.price !== undefined) row.price = tx.price;
   if (tx.type !== undefined) row.type = tx.type;
 
@@ -357,26 +385,26 @@ function investmentTxToRow(
 }
 
 function rowToInvestmentTx(row: InvestmentTransactionRow): JSONInvestmentTransaction {
-  const raw = row.raw ? (typeof row.raw === "string" ? JSON.parse(row.raw) : row.raw) : {};
-
   return {
-    ...raw,
     investment_transaction_id: row.investment_transaction_id,
-    user_id: row.user_id,
-    account_id: row.account_id ?? raw.account_id,
-    security_id: row.security_id ?? raw.security_id,
-    date: row.date ?? raw.date,
-    name: row.name ?? raw.name,
-    quantity: row.quantity != null ? Number(row.quantity) : (raw.quantity ?? 0),
-    amount: row.amount != null ? Number(row.amount) : (raw.amount ?? 0),
-    price: row.price != null ? Number(row.price) : (raw.price ?? 0),
-    type: row.type ?? raw.type,
-    // Fields from raw only
-    fees: raw.fees != null ? Number(raw.fees) : undefined,
-    subtype: raw.subtype,
-    iso_currency_code: raw.iso_currency_code,
-    unofficial_currency_code: raw.unofficial_currency_code,
-  } as JSONInvestmentTransaction;
+    account_id: row.account_id,
+    security_id: row.security_id || null,
+    date: row.date,
+    name: row.name || "Unknown",
+    quantity: row.quantity ? Number(row.quantity) : 0,
+    amount: row.amount ? Number(row.amount) : 0,
+    price: row.price ? Number(row.price) : 0,
+    iso_currency_code: row.iso_currency_code || null,
+    type: (row.type as InvestmentTransactionType) || InvestmentTransactionType.Transfer,
+    fees: null,
+    subtype: (row.subtype as InvestmentTransactionSubtype) || InvestmentTransactionSubtype.Transfer,
+    unofficial_currency_code: null,
+    label: {
+      budget_id: row.label_budget_id,
+      category_id: row.label_category_id,
+      memo: row.label_memo,
+    },
+  };
 }
 
 export const upsertInvestmentTransactions = async (
@@ -595,7 +623,7 @@ function rowToSplitTx(row: SplitTransactionRow): JSONSplitTransaction {
     user_id: row.user_id,
     transaction_id: row.transaction_id,
     account_id: row.account_id,
-    amount: row.amount != null ? Number(row.amount) : 0,
+    amount: row.amount ? Number(row.amount) : 0,
     date: row.date,
     custom_name: row.custom_name,
     label: {
