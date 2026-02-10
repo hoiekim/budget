@@ -17,7 +17,6 @@ export const postSplitTrasactionRoute = new Route<SplitTransactionPostResponse>(
     }
 
     try {
-      console.log(req.body);
       const response = await updateSplitTransactions(user, [req.body]);
       const split_transaction_id = response[0].update?._id || "";
       return { status: "success", body: { split_transaction_id } };

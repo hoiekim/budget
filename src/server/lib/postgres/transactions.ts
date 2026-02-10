@@ -85,7 +85,7 @@ interface SplitTransactionRow {
   transaction_id: string;
   account_id: string;
   amount?: string | number | null;
-  date: Date;
+  date?: Date | null;
   custom_name?: string | null;
   label_budget_id?: string | null;
   label_category_id?: string | null;
@@ -675,7 +675,7 @@ function rowToSplitTx(row: SplitTransactionRow): JSONSplitTransaction {
     transaction_id: row.transaction_id,
     account_id: row.account_id,
     amount: row.amount ? Number(row.amount) : 0,
-    date: row.date.toISOString().split("T")[0],
+    date: row.date?.toISOString().split("T")[0],
     custom_name: row.custom_name || "",
     label: {
       budget_id: row.label_budget_id,

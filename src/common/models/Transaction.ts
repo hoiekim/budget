@@ -66,7 +66,7 @@ export interface JSONSplitTransaction {
   transaction_id: string;
   account_id: string;
   amount: number;
-  date: string;
+  date?: string;
   custom_name: string;
   /**
    * Represents relations by pair of budget_id and category_id
