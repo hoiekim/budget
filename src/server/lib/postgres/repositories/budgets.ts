@@ -5,7 +5,7 @@
 import { JSONBudget, JSONSection, JSONCategory } from "common";
 import { QueryResult } from "pg";
 import { pool } from "../client";
-import { buildSelectWithFilters } from "../database";
+import { buildSelectWithFilters, selectWithFilters } from "../database";
 import {
   MaskedUser,
   BudgetModel,
@@ -39,13 +39,10 @@ const rowToCategory = (row: CategoryRow): JSONCategory => new CategoryModel(row)
  * Gets all budgets for a user.
  */
 export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
-  const result = await pool.query<BudgetRow>(
-    `SELECT * FROM ${BUDGETS}
-     WHERE ${USER_ID} = $1
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user.user_id]
-  );
-  return result.rows.map(rowToBudget);
+  const rows = await selectWithFilters<BudgetRow>(pool, BUDGETS, "*", {
+    user_id: user.user_id,
+  });
+  return rows.map(rowToBudget);
 };
 
 /**
@@ -55,13 +52,11 @@ export const getBudget = async (
   user: MaskedUser,
   budget_id: string
 ): Promise<JSONBudget | null> => {
-  const result = await pool.query<BudgetRow>(
-    `SELECT * FROM ${BUDGETS}
-     WHERE ${BUDGET_ID} = $1 AND ${USER_ID} = $2
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [budget_id, user.user_id]
-  );
-  return result.rows.length > 0 ? rowToBudget(result.rows[0]) : null;
+  const rows = await selectWithFilters<BudgetRow>(pool, BUDGETS, "*", {
+    user_id: user.user_id,
+    primaryKey: { column: BUDGET_ID, value: budget_id },
+  });
+  return rows.length > 0 ? rowToBudget(rows[0]) : null;
 };
 
 /**

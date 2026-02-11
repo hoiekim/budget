@@ -33,6 +33,8 @@ import {
   buildUpsert,
   buildUpdate,
   buildSelectWithFilters,
+  selectWithFilters,
+  SOFT_DELETE_CONDITION,
   UpsertResult,
   successResult,
   errorResult,
@@ -63,13 +65,10 @@ const rowToSecurity = (row: SecurityRow): JSONSecurity => new SecurityModel(row)
  * Gets all accounts for a user.
  */
 export const getAccounts = async (user: MaskedUser): Promise<JSONAccount[]> => {
-  const result = await pool.query<AccountRow>(
-    `SELECT * FROM ${ACCOUNTS}
-     WHERE ${USER_ID} = $1
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user.user_id]
-  );
-  return result.rows.map(rowToAccount);
+  const rows = await selectWithFilters<AccountRow>(pool, ACCOUNTS, "*", {
+    user_id: user.user_id,
+  });
+  return rows.map(rowToAccount);
 };
 
 /**
@@ -79,13 +78,11 @@ export const getAccount = async (
   user: MaskedUser,
   account_id: string
 ): Promise<JSONAccount | null> => {
-  const result = await pool.query<AccountRow>(
-    `SELECT * FROM ${ACCOUNTS}
-     WHERE ${ACCOUNT_ID} = $1 AND ${USER_ID} = $2
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [account_id, user.user_id]
-  );
-  return result.rows.length > 0 ? rowToAccount(result.rows[0]) : null;
+  const rows = await selectWithFilters<AccountRow>(pool, ACCOUNTS, "*", {
+    user_id: user.user_id,
+    primaryKey: { column: ACCOUNT_ID, value: account_id },
+  });
+  return rows.length > 0 ? rowToAccount(rows[0]) : null;
 };
 
 /**
@@ -95,13 +92,11 @@ export const getAccountsByItem = async (
   user: MaskedUser,
   item_id: string
 ): Promise<JSONAccount[]> => {
-  const result = await pool.query<AccountRow>(
-    `SELECT * FROM ${ACCOUNTS}
-     WHERE ${ITEM_ID} = $1 AND ${USER_ID} = $2
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [item_id, user.user_id]
-  );
-  return result.rows.map(rowToAccount);
+  const rows = await selectWithFilters<AccountRow>(pool, ACCOUNTS, "*", {
+    user_id: user.user_id,
+    filters: { [ITEM_ID]: item_id },
+  });
+  return rows.map(rowToAccount);
 };
 
 /**

@@ -17,6 +17,16 @@ import {
 } from "./models/base";
 
 // =============================================
+// Constants
+// =============================================
+
+/**
+ * SQL condition for excluding soft-deleted records.
+ * Use this when buildSelectWithFilters isn't suitable.
+ */
+export const SOFT_DELETE_CONDITION = "(is_deleted IS NULL OR is_deleted = FALSE)";
+
+// =============================================
 // Types
 // =============================================
 
