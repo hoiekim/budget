@@ -409,6 +409,145 @@ export function buildBulkSoftDelete(
 }
 
 // =============================================
+// Filter Options for Search Queries
+// =============================================
+
+/**
+ * Common filter options for search queries.
+ */
+export interface SearchFilters {
+  /** User ID for ownership filtering */
+  user_id?: string;
+  /** Primary key value */
+  primaryKey?: { column: string; value: ParamValue };
+  /** Additional equality filters */
+  filters?: QueryData;
+  /** IN clause filters (column IN (values)) */
+  inFilters?: Record<string, ParamValue[]>;
+  /** Date range filters */
+  dateRange?: {
+    column: string;
+    start?: string | Date;
+    end?: string | Date;
+  };
+  /** Exclude soft-deleted records */
+  excludeDeleted?: boolean;
+  /** ORDER BY clause */
+  orderBy?: string;
+  /** LIMIT value */
+  limit?: number;
+  /** OFFSET value */
+  offset?: number;
+}
+
+/**
+ * Builds a SELECT query with dynamic filters from a partial object.
+ * This is the generic query builder for repository search functions.
+ */
+export function buildSelectWithFilters(
+  tableName: string,
+  columns: string[] | "*",
+  options: SearchFilters = {}
+): PreparedQuery {
+  const {
+    user_id,
+    primaryKey,
+    filters = {},
+    inFilters = {},
+    dateRange,
+    excludeDeleted = true,
+    orderBy,
+    limit,
+    offset,
+  } = options;
+
+  const conditions: string[] = [];
+  const values: ParamValue[] = [];
+  let paramIndex = 1;
+
+  // User ownership filter
+  if (user_id) {
+    conditions.push(`user_id = $${paramIndex++}`);
+    values.push(user_id);
+  }
+
+  // Primary key filter
+  if (primaryKey) {
+    conditions.push(`${primaryKey.column} = $${paramIndex++}`);
+    values.push(primaryKey.value);
+  }
+
+  // Equality filters from partial object
+  for (const [key, value] of Object.entries(filters)) {
+    if (isUndefined(value)) continue;
+    if (isNull(value)) {
+      conditions.push(`${key} IS NULL`);
+    } else {
+      conditions.push(`${key} = $${paramIndex++}`);
+      values.push(prepareParamValue(value as ParamValue));
+    }
+  }
+
+  // IN clause filters
+  for (const [column, valueArray] of Object.entries(inFilters)) {
+    if (!valueArray || valueArray.length === 0) continue;
+    const placeholders = valueArray.map((_, i) => `$${paramIndex + i}`).join(", ");
+    conditions.push(`${column} IN (${placeholders})`);
+    values.push(...valueArray);
+    paramIndex += valueArray.length;
+  }
+
+  // Date range filter
+  if (dateRange) {
+    if (dateRange.start) {
+      conditions.push(`${dateRange.column} >= $${paramIndex++}`);
+      values.push(
+        isDate(dateRange.start)
+          ? dateRange.start.toISOString().split("T")[0]
+          : dateRange.start
+      );
+    }
+    if (dateRange.end) {
+      conditions.push(`${dateRange.column} <= $${paramIndex++}`);
+      values.push(
+        isDate(dateRange.end)
+          ? dateRange.end.toISOString().split("T")[0]
+          : dateRange.end
+      );
+    }
+  }
+
+  // Soft delete filter
+  if (excludeDeleted) {
+    conditions.push("(is_deleted IS NULL OR is_deleted = FALSE)");
+  }
+
+  // Build query
+  const columnList = columns === "*" ? "*" : columns.join(", ");
+  let sql = `SELECT ${columnList} FROM ${tableName}`;
+
+  if (conditions.length > 0) {
+    sql += ` WHERE ${conditions.join(" AND ")}`;
+  }
+
+  if (orderBy) {
+    sql += ` ORDER BY ${orderBy}`;
+  }
+
+  if (limit !== undefined) {
+    sql += ` LIMIT $${paramIndex++}`;
+    values.push(limit);
+  }
+
+  if (offset !== undefined) {
+    sql += ` OFFSET $${paramIndex}`;
+    values.push(offset);
+  }
+
+  return { sql, values };
+}
+
+// =============================================
 // Query Execution Helpers
 // =============================================
 
@@ -433,6 +572,20 @@ export async function queryOne<T extends QueryResultRow>(
 ): Promise<T | null> {
   const result = await pool.query<T>(sql, values);
   return result.rows[0] || null;
+}
+
+/**
+ * Executes a select query with filters and returns rows.
+ */
+export async function selectWithFilters<T extends QueryResultRow>(
+  pool: Pool,
+  tableName: string,
+  columns: string[] | "*",
+  options: SearchFilters = {}
+): Promise<T[]> {
+  const { sql, values } = buildSelectWithFilters(tableName, columns, options);
+  const result = await pool.query<T>(sql, values);
+  return result.rows;
 }
 
 /**

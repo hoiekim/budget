@@ -32,6 +32,7 @@ import {
 import {
   buildUpsert,
   buildUpdate,
+  buildSelectWithFilters,
   UpsertResult,
   successResult,
   errorResult,
@@ -120,37 +121,17 @@ export const searchAccounts = async (
     type?: string;
   } = {}
 ): Promise<JSONAccount[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: string[] = [user.user_id];
-  let paramIndex = 2;
+  const { sql, values } = buildSelectWithFilters(ACCOUNTS, "*", {
+    user_id: user.user_id,
+    filters: {
+      [ACCOUNT_ID]: options.account_id,
+      [ITEM_ID]: options.item_id,
+      [INSTITUTION_ID]: options.institution_id,
+      type: options.type,
+    },
+  });
 
-  if (options.account_id) {
-    conditions.push(`${ACCOUNT_ID} = $${paramIndex++}`);
-    values.push(options.account_id);
-  }
-
-  if (options.item_id) {
-    conditions.push(`${ITEM_ID} = $${paramIndex++}`);
-    values.push(options.item_id);
-  }
-
-  if (options.institution_id) {
-    conditions.push(`${INSTITUTION_ID} = $${paramIndex++}`);
-    values.push(options.institution_id);
-  }
-
-  if (options.type) {
-    conditions.push(`type = $${paramIndex++}`);
-    values.push(options.type);
-  }
-
-  const result = await pool.query<AccountRow>(
-    `SELECT * FROM ${ACCOUNTS} WHERE ${conditions.join(" AND ")}`,
-    values
-  );
+  const result = await pool.query<AccountRow>(sql, values);
   return result.rows.map(rowToAccount);
 };
 
@@ -518,42 +499,34 @@ export const getSecurities = async (user: MaskedUser): Promise<JSONSecurity[]> =
 export const searchSecurities = async (
   options: string[] | { security_id?: string; ticker_symbol?: string; security_ids?: string[] }
 ): Promise<JSONSecurity[]> => {
+  // Handle array of security IDs
   if (Array.isArray(options)) {
     if (!options.length) return [];
-    const placeholders = options.map((_, i) => `$${i + 1}`).join(", ");
-    const result = await pool.query<SecurityRow>(
-      `SELECT * FROM ${SECURITIES} WHERE ${SECURITY_ID} IN (${placeholders})`,
-      options
-    );
+    const { sql, values } = buildSelectWithFilters(SECURITIES, "*", {
+      inFilters: { [SECURITY_ID]: options },
+      excludeDeleted: false, // Securities don't have soft delete
+    });
+    const result = await pool.query<SecurityRow>(sql, values);
     return result.rows.map(rowToSecurity);
   }
 
-  const conditions: string[] = [];
-  const values: (string | string[])[] = [];
-  let paramIndex = 1;
-
-  if (options.security_id) {
-    conditions.push(`${SECURITY_ID} = $${paramIndex++}`);
-    values.push(options.security_id);
+  // Handle options object
+  if (!options.security_id && !options.ticker_symbol && !options.security_ids?.length) {
+    return [];
   }
 
-  if (options.ticker_symbol) {
-    conditions.push(`ticker_symbol = $${paramIndex++}`);
-    values.push(options.ticker_symbol);
-  }
+  const { sql, values } = buildSelectWithFilters(SECURITIES, "*", {
+    filters: {
+      [SECURITY_ID]: options.security_id,
+      ticker_symbol: options.ticker_symbol,
+    },
+    inFilters: options.security_ids?.length
+      ? { [SECURITY_ID]: options.security_ids }
+      : undefined,
+    excludeDeleted: false, // Securities don't have soft delete
+  });
 
-  if (options.security_ids && options.security_ids.length > 0) {
-    const placeholders = options.security_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
-    conditions.push(`${SECURITY_ID} IN (${placeholders})`);
-    values.push(...options.security_ids);
-  }
-
-  if (!conditions.length) return [];
-
-  const result = await pool.query<SecurityRow>(
-    `SELECT * FROM ${SECURITIES} WHERE ${conditions.join(" AND ")}`,
-    values
-  );
+  const result = await pool.query<SecurityRow>(sql, values);
   return result.rows.map(rowToSecurity);
 };
 

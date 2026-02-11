@@ -68,21 +68,21 @@ export interface AccountRow {
   user_id: string;
   item_id: string;
   institution_id: string;
-  name: string | null;
-  type: string | null;
-  subtype: string | null;
-  balances_available: string | number | null;
-  balances_current: string | number | null;
-  balances_limit: string | number | null;
-  balances_iso_currency_code: string | null;
-  custom_name: string | null;
-  hide: boolean | null;
-  label_budget_id: string | null;
-  graph_options_use_snapshots: boolean | null;
-  graph_options_use_transactions: boolean | null;
-  raw: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  name: string | null | undefined;
+  type: string | null | undefined;
+  subtype: string | null | undefined;
+  balances_available: string | number | null | undefined;
+  balances_current: string | number | null | undefined;
+  balances_limit: string | number | null | undefined;
+  balances_iso_currency_code: string | null | undefined;
+  custom_name: string | null | undefined;
+  hide: boolean | null | undefined;
+  label_budget_id: string | null | undefined;
+  graph_options_use_snapshots: boolean | null | undefined;
+  graph_options_use_transactions: boolean | null | undefined;
+  raw: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -124,7 +124,7 @@ export class AccountModel {
     this.balances_iso_currency_code = row.balances_iso_currency_code || "USD";
     this.custom_name = row.custom_name || "";
     this.hide = row.hide ?? false;
-    this.label_budget_id = row.label_budget_id;
+    this.label_budget_id = row.label_budget_id ?? null;
     this.graph_options_use_snapshots = row.graph_options_use_snapshots ?? true;
     this.graph_options_use_transactions = row.graph_options_use_transactions ?? true;
     this.updated = row.updated ? toDate(row.updated) : new Date();
@@ -268,15 +268,15 @@ export interface HoldingRow {
   user_id: string;
   account_id: string;
   security_id: string;
-  institution_price: string | number | null;
-  institution_price_as_of: string | null;
-  institution_value: string | number | null;
-  cost_basis: string | number | null;
-  quantity: string | number | null;
-  iso_currency_code: string | null;
-  raw: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  institution_price: string | number | null | undefined;
+  institution_price_as_of: string | null | undefined;
+  institution_value: string | number | null | undefined;
+  cost_basis: string | number | null | undefined;
+  quantity: string | number | null | undefined;
+  iso_currency_code: string | null | undefined;
+  raw: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 export class HoldingModel {
@@ -300,7 +300,7 @@ export class HoldingModel {
     this.account_id = row.account_id;
     this.security_id = row.security_id;
     this.institution_price = toNullableNumber(row.institution_price) ?? 0;
-    this.institution_price_as_of = row.institution_price_as_of;
+    this.institution_price_as_of = row.institution_price_as_of ?? null;
     this.institution_value = toNullableNumber(row.institution_value) ?? 0;
     this.cost_basis = toNullableNumber(row.cost_basis) ?? 0;
     this.quantity = toNullableNumber(row.quantity) ?? 0;
@@ -401,9 +401,9 @@ export const holdingIndexes = [
 
 export interface InstitutionRow {
   institution_id: string;
-  name: string | null;
-  raw: string | null;
-  updated: Date | null;
+  name: string | null | undefined;
+  raw: string | null | undefined;
+  updated: Date | null | undefined;
 }
 
 export class InstitutionModel {
@@ -471,16 +471,16 @@ export const institutionColumns = Object.keys(institutionSchema);
 
 export interface SecurityRow {
   security_id: string;
-  name: string | null;
-  ticker_symbol: string | null;
-  type: string | null;
-  close_price: string | number | null;
-  close_price_as_of: string | null;
-  iso_currency_code: string | null;
-  isin: string | null;
-  cusip: string | null;
-  raw: string | null;
-  updated: Date | null;
+  name: string | null | undefined;
+  ticker_symbol: string | null | undefined;
+  type: string | null | undefined;
+  close_price: string | number | null | undefined;
+  close_price_as_of: string | null | undefined;
+  iso_currency_code: string | null | undefined;
+  isin: string | null | undefined;
+  cusip: string | null | undefined;
+  raw: string | null | undefined;
+  updated: Date | null | undefined;
 }
 
 export class SecurityModel {
@@ -498,14 +498,14 @@ export class SecurityModel {
   constructor(row: SecurityRow) {
     SecurityModel.assertType(row);
     this.security_id = row.security_id;
-    this.name = row.name;
-    this.ticker_symbol = row.ticker_symbol;
-    this.type = row.type;
+    this.name = row.name ?? null;
+    this.ticker_symbol = row.ticker_symbol ?? null;
+    this.type = row.type ?? null;
     this.close_price = toNullableNumber(row.close_price);
-    this.close_price_as_of = row.close_price_as_of;
-    this.iso_currency_code = row.iso_currency_code;
-    this.isin = row.isin;
-    this.cusip = row.cusip;
+    this.close_price_as_of = row.close_price_as_of ?? null;
+    this.iso_currency_code = row.iso_currency_code ?? null;
+    this.isin = row.isin ?? null;
+    this.cusip = row.cusip ?? null;
     this.updated = row.updated ? toDate(row.updated) : new Date();
   }
 

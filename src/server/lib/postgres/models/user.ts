@@ -35,12 +35,12 @@ import {
 export interface UserRow {
   user_id: string;
   username: string;
-  password: string | null;
-  email: string | null;
-  expiry: Date | null;
-  token: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  password: string | null | undefined;
+  email: string | null | undefined;
+  expiry: Date | null | undefined;
+  token: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 /**
@@ -74,10 +74,10 @@ export class UserModel {
     UserModel.assertType(row);
     this.user_id = row.user_id;
     this.username = row.username;
-    this.password = row.password;
-    this.email = row.email;
+    this.password = row.password ?? null;
+    this.email = row.email ?? null;
     this.expiry = row.expiry ? toDate(row.expiry) : null;
-    this.token = row.token;
+    this.token = row.token ?? null;
     this.updated = row.updated ? toDate(row.updated) : new Date();
     this.is_deleted = row.is_deleted ?? false;
   }

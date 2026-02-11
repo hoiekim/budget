@@ -59,28 +59,28 @@ export type SnapshotType = "account_balance" | "security" | "holding";
 
 export interface SnapshotRow {
   snapshot_id: string;
-  user_id: string | null;
+  user_id: string | null | undefined;
   snapshot_date: Date | string;
   snapshot_type: SnapshotType;
   // Account balance fields
-  account_id: string | null;
-  balances_available: string | number | null;
-  balances_current: string | number | null;
-  balances_limit: string | number | null;
-  balances_iso_currency_code: string | null;
+  account_id: string | null | undefined;
+  balances_available: string | number | null | undefined;
+  balances_current: string | number | null | undefined;
+  balances_limit: string | number | null | undefined;
+  balances_iso_currency_code: string | null | undefined;
   // Security fields
-  security_id: string | null;
-  close_price: string | number | null;
+  security_id: string | null | undefined;
+  close_price: string | number | null | undefined;
   // Holding fields
-  holding_account_id: string | null;
-  holding_security_id: string | null;
-  institution_price: string | number | null;
-  institution_value: string | number | null;
-  cost_basis: string | number | null;
-  quantity: string | number | null;
+  holding_account_id: string | null | undefined;
+  holding_security_id: string | null | undefined;
+  institution_price: string | number | null | undefined;
+  institution_value: string | number | null | undefined;
+  cost_basis: string | number | null | undefined;
+  quantity: string | number | null | undefined;
   // Metadata
-  updated: Date | null;
-  is_deleted: boolean | null;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -115,18 +115,18 @@ export class SnapshotModel {
   constructor(row: SnapshotRow) {
     SnapshotModel.assertType(row);
     this.snapshot_id = row.snapshot_id;
-    this.user_id = row.user_id;
+    this.user_id = row.user_id ?? null;
     this.snapshot_date = toISOString(row.snapshot_date);
     this.snapshot_type = row.snapshot_type;
-    this.account_id = row.account_id;
+    this.account_id = row.account_id ?? null;
     this.balances_available = toNullableNumber(row.balances_available);
     this.balances_current = toNullableNumber(row.balances_current);
     this.balances_limit = toNullableNumber(row.balances_limit);
-    this.balances_iso_currency_code = row.balances_iso_currency_code;
-    this.security_id = row.security_id;
+    this.balances_iso_currency_code = row.balances_iso_currency_code ?? null;
+    this.security_id = row.security_id ?? null;
     this.close_price = toNullableNumber(row.close_price);
-    this.holding_account_id = row.holding_account_id;
-    this.holding_security_id = row.holding_security_id;
+    this.holding_account_id = row.holding_account_id ?? null;
+    this.holding_security_id = row.holding_security_id ?? null;
     this.institution_price = toNullableNumber(row.institution_price);
     this.institution_value = toNullableNumber(row.institution_value);
     this.cost_basis = toNullableNumber(row.cost_basis);

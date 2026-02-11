@@ -5,6 +5,7 @@
 import { JSONBudget, JSONSection, JSONCategory } from "common";
 import { QueryResult } from "pg";
 import { pool } from "../client";
+import { buildSelectWithFilters } from "../database";
 import {
   MaskedUser,
   BudgetModel,
@@ -70,22 +71,12 @@ export const searchBudgets = async (
   user: MaskedUser,
   options: { budget_id?: string } = {}
 ): Promise<JSONBudget[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: string[] = [user.user_id];
-  let paramIndex = 2;
+  const { sql, values } = buildSelectWithFilters(BUDGETS, "*", {
+    user_id: user.user_id,
+    filters: { [BUDGET_ID]: options.budget_id },
+  });
 
-  if (options.budget_id) {
-    conditions.push(`${BUDGET_ID} = $${paramIndex++}`);
-    values.push(options.budget_id);
-  }
-
-  const result = await pool.query<BudgetRow>(
-    `SELECT * FROM ${BUDGETS} WHERE ${conditions.join(" AND ")}`,
-    values
-  );
+  const result = await pool.query<BudgetRow>(sql, values);
   return result.rows.map(rowToBudget);
 };
 

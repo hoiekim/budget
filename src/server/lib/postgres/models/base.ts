@@ -3,6 +3,30 @@
  * Provides utilities for model validation and type checking.
  */
 
+// Import basic type checkers from common
+import {
+  isNull,
+  isUndefined,
+  isString,
+  isNumber,
+  isBoolean,
+  isDate,
+  isObject,
+  isArray,
+} from "common";
+
+// Re-export from common for convenience
+export {
+  isNull,
+  isUndefined,
+  isString,
+  isNumber,
+  isBoolean,
+  isDate,
+  isObject,
+  isArray,
+};
+
 // =============================================
 // Validation Error Class
 // =============================================
@@ -22,51 +46,32 @@ export class ModelValidationError extends Error {
 }
 
 // =============================================
-// Type Checkers
+// Additional Type Checkers
 // =============================================
 
-export const isNull = (v: unknown): v is null => v === null;
-
-export const isUndefined = (v: unknown): v is undefined => v === undefined;
-
 export const isDefined = <T>(v: T | undefined): v is T => v !== undefined;
-
-export const isString = (v: unknown): v is string => typeof v === "string";
-
-export const isNumber = (v: unknown): v is number =>
-  typeof v === "number" && !Number.isNaN(v);
-
-export const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
-
-export const isDate = (v: unknown): v is Date => v instanceof Date && !isNaN(v.getTime());
 
 export const isPotentialDate = (v: unknown): boolean =>
   isDate(v) || (isString(v) && !isNaN(Date.parse(v)));
 
-export const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-export const isArray = <T>(v: unknown, itemCheck?: (item: unknown) => item is T): v is T[] =>
-  Array.isArray(v) && (!itemCheck || v.every(itemCheck));
-
 export const isStringArray = (v: unknown): v is string[] =>
-  isArray(v, isString);
+  isArray(v) && v.every(isString);
 
 // =============================================
-// Nullable/Optional Checkers
+// Nullable/Optional Checkers (pg returns undefined for NULL)
 // =============================================
 
-export const isNullableString = (v: unknown): v is string | null =>
-  isNull(v) || isString(v);
+export const isNullableString = (v: unknown): v is string | null | undefined =>
+  isUndefined(v) || isNull(v) || isString(v);
 
-export const isNullableNumber = (v: unknown): v is number | null =>
-  isNull(v) || isNumber(v);
+export const isNullableNumber = (v: unknown): v is number | null | undefined =>
+  isUndefined(v) || isNull(v) || isNumber(v);
 
-export const isNullableBoolean = (v: unknown): v is boolean | null =>
-  isNull(v) || isBoolean(v);
+export const isNullableBoolean = (v: unknown): v is boolean | null | undefined =>
+  isUndefined(v) || isNull(v) || isBoolean(v);
 
-export const isNullableDate = (v: unknown): v is Date | null =>
-  isNull(v) || isPotentialDate(v);
+export const isNullableDate = (v: unknown): v is Date | null | undefined =>
+  isUndefined(v) || isNull(v) || isPotentialDate(v);
 
 export const isOptionalString = (v: unknown): v is string | undefined =>
   isUndefined(v) || isString(v);
@@ -78,17 +83,12 @@ export const isOptionalBoolean = (v: unknown): v is boolean | undefined =>
   isUndefined(v) || isBoolean(v);
 
 // =============================================
-// Composite Checkers
+// Composite Checkers (aliases for clarity)
 // =============================================
 
-export const isNullableOrUndefinedString = (v: unknown): v is string | null | undefined =>
-  isUndefined(v) || isNull(v) || isString(v);
-
-export const isNullableOrUndefinedNumber = (v: unknown): v is number | null | undefined =>
-  isUndefined(v) || isNull(v) || isNumber(v);
-
-export const isNullableOrUndefinedBoolean = (v: unknown): v is boolean | null | undefined =>
-  isUndefined(v) || isNull(v) || isBoolean(v);
+export const isNullableOrUndefinedString = isNullableString;
+export const isNullableOrUndefinedNumber = isNullableNumber;
+export const isNullableOrUndefinedBoolean = isNullableBoolean;
 
 // =============================================
 // Schema Types

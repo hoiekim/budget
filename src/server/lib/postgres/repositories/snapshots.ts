@@ -24,7 +24,7 @@ import {
   SECURITY_ID,
   USER_ID,
 } from "../models";
-import { UpsertResult, successResult, errorResult } from "../database";
+import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
 
 // =============================================
 // Types
@@ -86,59 +86,24 @@ export const searchSnapshots = async (
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {}
 ): Promise<JSONSnapshotData[]> => {
-  const conditions: string[] = ["(is_deleted IS NULL OR is_deleted = FALSE)"];
-  const values: (string | number)[] = [];
-  let paramIndex = 1;
+  const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
+    user_id: user?.user_id,
+    filters: {
+      [SNAPSHOT_TYPE]: options.snapshot_type,
+      [ACCOUNT_ID]: options.account_id,
+      [SECURITY_ID]: options.security_id,
+    },
+    inFilters: options.account_ids?.length
+      ? { [ACCOUNT_ID]: options.account_ids }
+      : undefined,
+    dateRange: options.startDate || options.endDate
+      ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+      : undefined,
+    orderBy: `${SNAPSHOT_DATE} DESC`,
+    limit: options.limit,
+  });
 
-  if (user) {
-    conditions.push(`${USER_ID} = $${paramIndex++}`);
-    values.push(user.user_id);
-  }
-
-  if (options.snapshot_type) {
-    conditions.push(`${SNAPSHOT_TYPE} = $${paramIndex++}`);
-    values.push(options.snapshot_type);
-  }
-
-  if (options.account_id) {
-    conditions.push(`${ACCOUNT_ID} = $${paramIndex++}`);
-    values.push(options.account_id);
-  }
-
-  if (options.account_ids && options.account_ids.length > 0) {
-    const placeholders = options.account_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
-    conditions.push(`${ACCOUNT_ID} IN (${placeholders})`);
-    values.push(...options.account_ids);
-    paramIndex += options.account_ids.length;
-  }
-
-  if (options.security_id) {
-    conditions.push(`${SECURITY_ID} = $${paramIndex++}`);
-    values.push(options.security_id);
-  }
-
-  if (options.startDate) {
-    conditions.push(`${SNAPSHOT_DATE} >= $${paramIndex++}`);
-    values.push(options.startDate);
-  }
-
-  if (options.endDate) {
-    conditions.push(`${SNAPSHOT_DATE} <= $${paramIndex++}`);
-    values.push(options.endDate);
-  }
-
-  let query = `SELECT * FROM ${SNAPSHOTS}`;
-  if (conditions.length > 0) {
-    query += ` WHERE ${conditions.join(" AND ")}`;
-  }
-  query += ` ORDER BY ${SNAPSHOT_DATE} DESC`;
-
-  if (options.limit) {
-    query += ` LIMIT $${paramIndex}`;
-    values.push(options.limit);
-  }
-
-  const result = await pool.query<SnapshotRow>(query, values);
+  const result = await pool.query<SnapshotRow>(sql, values);
   return result.rows.map(rowToSnapshot);
 };
 

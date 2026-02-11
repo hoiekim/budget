@@ -51,15 +51,3 @@ export * from "./models";
 
 // Repositories - all CRUD operations
 export * from "./repositories";
-
-// Legacy utils (for backward compatibility during migration)
-export {
-  flattenObject,
-  unflattenObject,
-  toSnakeCase,
-  toCamelCase,
-  buildUpdateQuery,
-  buildUpsertQuery,
-  rowToDocument,
-  documentToRow,
-} from "./utils";

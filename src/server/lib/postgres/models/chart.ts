@@ -34,11 +34,11 @@ import {
 export interface ChartRow {
   chart_id: string;
   user_id: string;
-  name: string | null;
-  type: string | null;
-  configuration: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  name: string | null | undefined;
+  type: string | null | undefined;
+  configuration: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================

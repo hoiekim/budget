@@ -42,15 +42,15 @@ export interface SessionRow {
   session_id: string;
   user_user_id: string;
   user_username: string;
-  cookie_original_max_age: string | null;
-  cookie_max_age: string | null;
-  cookie_signed: boolean | null;
-  cookie_expires: Date | null;
-  cookie_http_only: boolean | null;
-  cookie_path: string | null;
-  cookie_domain: string | null;
-  cookie_secure: boolean | null;
-  cookie_same_site: string | null;
+  cookie_original_max_age: string | null | undefined;
+  cookie_max_age: string | null | undefined;
+  cookie_signed: boolean | null | undefined;
+  cookie_expires: Date | null | undefined;
+  cookie_http_only: boolean | null | undefined;
+  cookie_path: string | null | undefined;
+  cookie_domain: string | null | undefined;
+  cookie_secure: boolean | null | undefined;
+  cookie_same_site: string | null | undefined;
   created_at: Date;
   updated: Date;
 }
@@ -98,7 +98,7 @@ export class SessionModel {
   }
 
   private parseSameSite(
-    value: string | null
+    value: string | null | undefined
   ): boolean | "lax" | "strict" | "none" | undefined {
     switch (value) {
       case "true":

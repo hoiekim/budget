@@ -32,6 +32,7 @@ import {
   toDate,
   isArray,
   isNull,
+  isUndefined,
 } from "./base";
 
 // =============================================
@@ -44,17 +45,17 @@ import {
 export interface ItemRow {
   item_id: string;
   user_id: string;
-  access_token: string | null;
-  institution_id: string | null;
-  available_products: string[] | null;
-  cursor: string | null;
-  status: string | null;
-  provider: string | null;
-  raw: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  access_token: string | null | undefined;
+  institution_id: string | null | undefined;
+  available_products: string[] | null | undefined;
+  cursor: string | null | undefined;
+  status: string | null | undefined;
+  provider: string | null | undefined;
+  raw: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
   // Optional from JOIN
-  username?: string | null;
+  username?: string | null | undefined;
 }
 
 // =============================================
@@ -78,7 +79,7 @@ export class ItemModel {
     this.item_id = row.item_id;
     this.user_id = row.user_id;
     this.access_token = row.access_token || "no_access_token";
-    this.institution_id = row.institution_id;
+    this.institution_id = row.institution_id ?? null;
     this.available_products = (row.available_products as Products[]) || [];
     this.cursor = row.cursor ?? undefined;
     this.status = row.status ? (row.status as ItemStatus) : undefined;
@@ -130,7 +131,8 @@ export class ItemModel {
     user_id: isString,
     access_token: isNullableString,
     institution_id: isNullableString,
-    available_products: (v): v is string[] | null => isNull(v) || isArray(v),
+    available_products: (v): v is string[] | null | undefined =>
+      isUndefined(v) || isNull(v) || isArray(v),
     cursor: isNullableString,
     status: isNullableString,
     provider: isNullableString,

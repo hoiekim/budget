@@ -22,7 +22,14 @@ import {
   USER_ID,
   DATE,
 } from "../models";
-import { buildUpdate, UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import {
+  buildUpdate,
+  buildSelectWithFilters,
+  UpsertResult,
+  successResult,
+  errorResult,
+  noChangeResult,
+} from "../database";
 
 // =============================================
 // Types
@@ -75,46 +82,21 @@ export const getTransactions = async (
     offset?: number;
   } = {}
 ): Promise<JSONTransaction[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: (string | number | boolean)[] = [user.user_id];
-  let paramIndex = 2;
+  const { sql, values } = buildSelectWithFilters(TRANSACTIONS, "*", {
+    user_id: user.user_id,
+    filters: {
+      [ACCOUNT_ID]: options.account_id,
+      pending: options.pending,
+    },
+    dateRange: options.startDate || options.endDate
+      ? { column: DATE, start: options.startDate, end: options.endDate }
+      : undefined,
+    orderBy: `${DATE} DESC`,
+    limit: options.limit,
+    offset: options.offset,
+  });
 
-  if (options.account_id) {
-    conditions.push(`${ACCOUNT_ID} = $${paramIndex++}`);
-    values.push(options.account_id);
-  }
-
-  if (options.startDate) {
-    conditions.push(`${DATE} >= $${paramIndex++}`);
-    values.push(options.startDate);
-  }
-
-  if (options.endDate) {
-    conditions.push(`${DATE} <= $${paramIndex++}`);
-    values.push(options.endDate);
-  }
-
-  if (options.pending !== undefined) {
-    conditions.push(`pending = $${paramIndex++}`);
-    values.push(options.pending);
-  }
-
-  let query = `SELECT * FROM ${TRANSACTIONS} WHERE ${conditions.join(" AND ")} ORDER BY ${DATE} DESC`;
-
-  if (options.limit) {
-    query += ` LIMIT $${paramIndex++}`;
-    values.push(options.limit);
-  }
-
-  if (options.offset) {
-    query += ` OFFSET $${paramIndex}`;
-    values.push(options.offset);
-  }
-
-  const result = await pool.query<TransactionRow>(query, values);
+  const result = await pool.query<TransactionRow>(sql, values);
   return result.rows.map(rowToTransaction);
 };
 
@@ -316,59 +298,29 @@ export const searchTransactions = async (
   transactions: JSONTransaction[];
   investment_transactions: JSONInvestmentTransaction[];
 }> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: (string | number | boolean)[] = [user.user_id];
-  let paramIndex = 2;
+  const searchOptions = {
+    user_id: user.user_id,
+    filters: {
+      [ACCOUNT_ID]: options.account_id,
+      pending: options.pending,
+    },
+    inFilters: options.account_ids?.length
+      ? { [ACCOUNT_ID]: options.account_ids }
+      : undefined,
+    dateRange: options.startDate || options.endDate
+      ? { column: DATE, start: options.startDate, end: options.endDate }
+      : undefined,
+    orderBy: `${DATE} DESC`,
+    limit: options.limit,
+    offset: options.offset,
+  };
 
-  if (options.account_id) {
-    conditions.push(`${ACCOUNT_ID} = $${paramIndex++}`);
-    values.push(options.account_id);
-  }
-
-  if (options.account_ids && options.account_ids.length > 0) {
-    const placeholders = options.account_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
-    conditions.push(`${ACCOUNT_ID} IN (${placeholders})`);
-    values.push(...options.account_ids);
-    paramIndex += options.account_ids.length;
-  }
-
-  if (options.startDate) {
-    conditions.push(`${DATE} >= $${paramIndex++}`);
-    values.push(options.startDate);
-  }
-
-  if (options.endDate) {
-    conditions.push(`${DATE} <= $${paramIndex++}`);
-    values.push(options.endDate);
-  }
-
-  if (options.pending !== undefined) {
-    conditions.push(`pending = $${paramIndex++}`);
-    values.push(options.pending);
-  }
-
-  let txQuery = `SELECT * FROM ${TRANSACTIONS} WHERE ${conditions.join(" AND ")} ORDER BY ${DATE} DESC`;
-  let invTxQuery = `SELECT * FROM ${INVESTMENT_TRANSACTIONS} WHERE ${conditions.join(" AND ")} ORDER BY ${DATE} DESC`;
-
-  if (options.limit) {
-    txQuery += ` LIMIT $${paramIndex}`;
-    invTxQuery += ` LIMIT $${paramIndex}`;
-    values.push(options.limit);
-    paramIndex++;
-  }
-
-  if (options.offset) {
-    txQuery += ` OFFSET $${paramIndex}`;
-    invTxQuery += ` OFFSET $${paramIndex}`;
-    values.push(options.offset);
-  }
+  const txQuery = buildSelectWithFilters(TRANSACTIONS, "*", searchOptions);
+  const invTxQuery = buildSelectWithFilters(INVESTMENT_TRANSACTIONS, "*", searchOptions);
 
   const [txResult, invTxResult] = await Promise.all([
-    pool.query<TransactionRow>(txQuery, values),
-    pool.query<InvestmentTransactionRow>(invTxQuery, values),
+    pool.query<TransactionRow>(txQuery.sql, txQuery.values),
+    pool.query<InvestmentTransactionRow>(invTxQuery.sql, invTxQuery.values),
   ]);
 
   return {
@@ -388,32 +340,16 @@ export const getInvestmentTransactions = async (
   user: MaskedUser,
   options: { account_id?: string; startDate?: string; endDate?: string } = {}
 ): Promise<JSONInvestmentTransaction[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: string[] = [user.user_id];
-  let paramIndex = 2;
+  const { sql, values } = buildSelectWithFilters(INVESTMENT_TRANSACTIONS, "*", {
+    user_id: user.user_id,
+    filters: { [ACCOUNT_ID]: options.account_id },
+    dateRange: options.startDate || options.endDate
+      ? { column: DATE, start: options.startDate, end: options.endDate }
+      : undefined,
+    orderBy: `${DATE} DESC`,
+  });
 
-  if (options.account_id) {
-    conditions.push(`${ACCOUNT_ID} = $${paramIndex++}`);
-    values.push(options.account_id);
-  }
-
-  if (options.startDate) {
-    conditions.push(`${DATE} >= $${paramIndex++}`);
-    values.push(options.startDate);
-  }
-
-  if (options.endDate) {
-    conditions.push(`${DATE} <= $${paramIndex++}`);
-    values.push(options.endDate);
-  }
-
-  const result = await pool.query<InvestmentTransactionRow>(
-    `SELECT * FROM ${INVESTMENT_TRANSACTIONS} WHERE ${conditions.join(" AND ")} ORDER BY ${DATE} DESC`,
-    values
-  );
+  const result = await pool.query<InvestmentTransactionRow>(sql, values);
   return result.rows.map(rowToInvestmentTransaction);
 };
 
@@ -560,27 +496,15 @@ export const searchSplitTransactions = async (
   user: MaskedUser,
   options: SearchSplitTransactionsOptions = {}
 ): Promise<JSONSplitTransaction[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: string[] = [user.user_id];
-  let paramIndex = 2;
+  const { sql, values } = buildSelectWithFilters(SPLIT_TRANSACTIONS, "*", {
+    user_id: user.user_id,
+    filters: {
+      [TRANSACTION_ID]: options.transaction_id,
+      [ACCOUNT_ID]: options.account_id,
+    },
+  });
 
-  if (options.transaction_id) {
-    conditions.push(`${TRANSACTION_ID} = $${paramIndex++}`);
-    values.push(options.transaction_id);
-  }
-
-  if (options.account_id) {
-    conditions.push(`${ACCOUNT_ID} = $${paramIndex++}`);
-    values.push(options.account_id);
-  }
-
-  const result = await pool.query<SplitTransactionRow>(
-    `SELECT * FROM ${SPLIT_TRANSACTIONS} WHERE ${conditions.join(" AND ")}`,
-    values
-  );
+  const result = await pool.query<SplitTransactionRow>(sql, values);
   return result.rows.map(rowToSplitTransaction);
 };
 

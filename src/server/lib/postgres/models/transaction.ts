@@ -72,23 +72,23 @@ export interface TransactionRow {
   transaction_id: string;
   user_id: string;
   account_id: string;
-  name: string | null;
-  merchant_name: string | null;
-  amount: string | number | null;
-  iso_currency_code: string | null;
+  name: string | null | undefined;
+  merchant_name: string | null | undefined;
+  amount: string | number | null | undefined;
+  iso_currency_code: string | null | undefined;
   date: Date;
-  pending: boolean | null;
-  pending_transaction_id: string | null;
-  payment_channel: string | null;
-  location_country: string | null;
-  location_region: string | null;
-  location_city: string | null;
-  label_budget_id: string | null;
-  label_category_id: string | null;
-  label_memo: string | null;
-  raw: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  pending: boolean | null | undefined;
+  pending_transaction_id: string | null | undefined;
+  payment_channel: string | null | undefined;
+  location_country: string | null | undefined;
+  location_region: string | null | undefined;
+  location_city: string | null | undefined;
+  label_budget_id: string | null | undefined;
+  label_category_id: string | null | undefined;
+  label_memo: string | null | undefined;
+  raw: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -122,21 +122,21 @@ export class TransactionModel {
     this.user_id = row.user_id;
     this.account_id = row.account_id;
     this.name = row.name || "Unknown";
-    this.merchant_name = row.merchant_name;
+    this.merchant_name = row.merchant_name ?? null;
     this.amount = toNullableNumber(row.amount) ?? 0;
-    this.iso_currency_code = row.iso_currency_code;
+    this.iso_currency_code = row.iso_currency_code ?? null;
     this.date = toISODateString(row.date);
     this.pending = row.pending ?? false;
-    this.pending_transaction_id = row.pending_transaction_id;
+    this.pending_transaction_id = row.pending_transaction_id ?? null;
     this.payment_channel =
       (row.payment_channel as TransactionPaymentChannelEnum) ||
       TransactionPaymentChannelEnum.InStore;
-    this.location_country = row.location_country;
-    this.location_region = row.location_region;
-    this.location_city = row.location_city;
-    this.label_budget_id = row.label_budget_id;
-    this.label_category_id = row.label_category_id;
-    this.label_memo = row.label_memo;
+    this.location_country = row.location_country ?? null;
+    this.location_region = row.location_region ?? null;
+    this.location_city = row.location_city ?? null;
+    this.label_budget_id = row.label_budget_id ?? null;
+    this.label_category_id = row.label_category_id ?? null;
+    this.label_memo = row.label_memo ?? null;
     this.updated = row.updated ? toDate(row.updated) : new Date();
     this.is_deleted = row.is_deleted ?? false;
   }
@@ -297,21 +297,21 @@ export interface InvestmentTransactionRow {
   investment_transaction_id: string;
   user_id: string;
   account_id: string;
-  security_id: string | null;
+  security_id: string | null | undefined;
   date: Date;
-  name: string | null;
-  amount: string | number | null;
-  quantity: string | number | null;
-  price: string | number | null;
-  iso_currency_code: string | null;
-  type: string | null;
-  subtype: string | null;
-  label_budget_id: string | null;
-  label_category_id: string | null;
-  label_memo: string | null;
-  raw: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  name: string | null | undefined;
+  amount: string | number | null | undefined;
+  quantity: string | number | null | undefined;
+  price: string | number | null | undefined;
+  iso_currency_code: string | null | undefined;
+  type: string | null | undefined;
+  subtype: string | null | undefined;
+  label_budget_id: string | null | undefined;
+  label_category_id: string | null | undefined;
+  label_memo: string | null | undefined;
+  raw: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -342,19 +342,19 @@ export class InvestmentTransactionModel {
     this.investment_transaction_id = row.investment_transaction_id;
     this.user_id = row.user_id;
     this.account_id = row.account_id;
-    this.security_id = row.security_id;
+    this.security_id = row.security_id ?? null;
     this.date = toISODateString(row.date);
     this.name = row.name || "Unknown";
     this.amount = toNullableNumber(row.amount) ?? 0;
     this.quantity = toNullableNumber(row.quantity) ?? 0;
     this.price = toNullableNumber(row.price) ?? 0;
-    this.iso_currency_code = row.iso_currency_code;
+    this.iso_currency_code = row.iso_currency_code ?? null;
     this.type = (row.type as InvestmentTransactionType) || InvestmentTransactionType.Transfer;
     this.subtype =
       (row.subtype as InvestmentTransactionSubtype) || InvestmentTransactionSubtype.Transfer;
-    this.label_budget_id = row.label_budget_id;
-    this.label_category_id = row.label_category_id;
-    this.label_memo = row.label_memo;
+    this.label_budget_id = row.label_budget_id ?? null;
+    this.label_category_id = row.label_category_id ?? null;
+    this.label_memo = row.label_memo ?? null;
     this.updated = row.updated ? toDate(row.updated) : new Date();
     this.is_deleted = row.is_deleted ?? false;
   }
@@ -479,14 +479,14 @@ export interface SplitTransactionRow {
   user_id: string;
   transaction_id: string;
   account_id: string;
-  amount: string | number | null;
+  amount: string | number | null | undefined;
   date: Date;
-  custom_name: string | null;
-  label_budget_id: string | null;
-  label_category_id: string | null;
-  label_memo: string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  custom_name: string | null | undefined;
+  label_budget_id: string | null | undefined;
+  label_category_id: string | null | undefined;
+  label_memo: string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -516,9 +516,9 @@ export class SplitTransactionModel {
     this.amount = toNullableNumber(row.amount) ?? 0;
     this.date = toISODateString(row.date);
     this.custom_name = row.custom_name || "";
-    this.label_budget_id = row.label_budget_id;
-    this.label_category_id = row.label_category_id;
-    this.label_memo = row.label_memo;
+    this.label_budget_id = row.label_budget_id ?? null;
+    this.label_category_id = row.label_category_id ?? null;
+    this.label_memo = row.label_memo ?? null;
     this.updated = row.updated ? toDate(row.updated) : new Date();
     this.is_deleted = row.is_deleted ?? false;
   }

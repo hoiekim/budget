@@ -4,6 +4,7 @@
 
 import { JSONChart, ChartType } from "common";
 import { pool } from "../client";
+import { buildSelectWithFilters } from "../database";
 import {
   MaskedUser,
   ChartModel,
@@ -59,27 +60,15 @@ export const searchCharts = async (
   user: MaskedUser,
   options: { chart_id?: string; type?: string } = {}
 ): Promise<JSONChart[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: string[] = [user.user_id];
-  let paramIndex = 2;
+  const { sql, values } = buildSelectWithFilters(CHARTS, "*", {
+    user_id: user.user_id,
+    filters: {
+      [CHART_ID]: options.chart_id,
+      type: options.type,
+    },
+  });
 
-  if (options.chart_id) {
-    conditions.push(`${CHART_ID} = $${paramIndex++}`);
-    values.push(options.chart_id);
-  }
-
-  if (options.type) {
-    conditions.push(`type = $${paramIndex++}`);
-    values.push(options.type);
-  }
-
-  const result = await pool.query<ChartRow>(
-    `SELECT * FROM ${CHARTS} WHERE ${conditions.join(" AND ")}`,
-    values
-  );
+  const result = await pool.query<ChartRow>(sql, values);
   return result.rows.map(rowToChart);
 };
 

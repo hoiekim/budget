@@ -23,6 +23,7 @@ import {
   buildUpsert,
   buildUpdate,
   buildBulkSoftDelete,
+  buildSelectWithFilters,
   UpsertResult,
   successResult,
   errorResult,
@@ -96,32 +97,16 @@ export const searchItems = async (
     provider?: ItemProvider;
   } = {}
 ): Promise<JSONItem[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: (string | ItemProvider)[] = [user.user_id];
-  let paramIndex = 2;
+  const { sql, values } = buildSelectWithFilters(ITEMS, "*", {
+    user_id: user.user_id,
+    filters: {
+      [ITEM_ID]: options.item_id,
+      [INSTITUTION_ID]: options.institution_id,
+      provider: options.provider,
+    },
+  });
 
-  if (options.item_id) {
-    conditions.push(`${ITEM_ID} = $${paramIndex++}`);
-    values.push(options.item_id);
-  }
-
-  if (options.institution_id) {
-    conditions.push(`${INSTITUTION_ID} = $${paramIndex++}`);
-    values.push(options.institution_id);
-  }
-
-  if (options.provider) {
-    conditions.push(`provider = $${paramIndex++}`);
-    values.push(options.provider);
-  }
-
-  const result = await pool.query<ItemRow>(
-    `SELECT * FROM ${ITEMS} WHERE ${conditions.join(" AND ")}`,
-    values
-  );
+  const result = await pool.query<ItemRow>(sql, values);
   return result.rows.map(rowToItem);
 };
 

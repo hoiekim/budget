@@ -33,6 +33,7 @@ import {
   toDate,
   isArray,
   isNull,
+  isUndefined,
 } from "./base";
 
 // =============================================
@@ -42,13 +43,13 @@ import {
 export interface BudgetRow {
   budget_id: string;
   user_id: string;
-  name: string | null;
-  iso_currency_code: string | null;
-  roll_over: boolean | null;
-  roll_over_start_date: Date | null;
-  capacities: JSONCapacity[] | string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  name: string | null | undefined;
+  iso_currency_code: string | null | undefined;
+  roll_over: boolean | null | undefined;
+  roll_over_start_date: Date | null | undefined;
+  capacities: JSONCapacity[] | string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -81,7 +82,7 @@ export class BudgetModel {
     this.is_deleted = row.is_deleted ?? false;
   }
 
-  private parseCapacities(value: JSONCapacity[] | string | null): JSONCapacity[] {
+  private parseCapacities(value: JSONCapacity[] | string | null | undefined): JSONCapacity[] {
     if (!value) return [];
     if (typeof value === "string") {
       try {
@@ -117,7 +118,7 @@ export class BudgetModel {
     if (budget.roll_over_start_date !== undefined)
       row.roll_over_start_date = budget.roll_over_start_date;
     if (budget.capacities !== undefined)
-      row.capacities = JSON.stringify(budget.capacities) as unknown as JSONCapacity[];
+      row.capacities = JSON.stringify(budget.capacities);
 
     return row;
   }
@@ -129,8 +130,8 @@ export class BudgetModel {
     iso_currency_code: isNullableString,
     roll_over: isNullableBoolean,
     roll_over_start_date: isNullableDate,
-    capacities: (v): v is JSONCapacity[] | string | null =>
-      isNull(v) || isString(v) || isArray(v),
+    capacities: (v): v is JSONCapacity[] | string | null | undefined =>
+      isUndefined(v) || isNull(v) || isString(v) || isArray(v),
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   } as PropertyChecker<BudgetRow>);
@@ -166,12 +167,12 @@ export interface SectionRow {
   section_id: string;
   user_id: string;
   budget_id: string;
-  name: string | null;
-  roll_over: boolean | null;
-  roll_over_start_date: Date | null;
-  capacities: JSONCapacity[] | string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  name: string | null | undefined;
+  roll_over: boolean | null | undefined;
+  roll_over_start_date: Date | null | undefined;
+  capacities: JSONCapacity[] | string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -204,7 +205,7 @@ export class SectionModel {
     this.is_deleted = row.is_deleted ?? false;
   }
 
-  private parseCapacities(value: JSONCapacity[] | string | null): JSONCapacity[] {
+  private parseCapacities(value: JSONCapacity[] | string | null | undefined): JSONCapacity[] {
     if (!value) return [];
     if (typeof value === "string") {
       try {
@@ -240,7 +241,7 @@ export class SectionModel {
     if (section.roll_over_start_date !== undefined)
       row.roll_over_start_date = section.roll_over_start_date;
     if (section.capacities !== undefined)
-      row.capacities = JSON.stringify(section.capacities) as unknown as JSONCapacity[];
+      row.capacities = JSON.stringify(section.capacities);
 
     return row;
   }
@@ -252,8 +253,8 @@ export class SectionModel {
     name: isNullableString,
     roll_over: isNullableBoolean,
     roll_over_start_date: isNullableDate,
-    capacities: (v): v is JSONCapacity[] | string | null =>
-      isNull(v) || isString(v) || isArray(v),
+    capacities: (v): v is JSONCapacity[] | string | null | undefined =>
+      isUndefined(v) || isNull(v) || isString(v) || isArray(v),
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   } as PropertyChecker<SectionRow>);
@@ -292,12 +293,12 @@ export interface CategoryRow {
   category_id: string;
   user_id: string;
   section_id: string;
-  name: string | null;
-  roll_over: boolean | null;
-  roll_over_start_date: Date | null;
-  capacities: JSONCapacity[] | string | null;
-  updated: Date | null;
-  is_deleted: boolean | null;
+  name: string | null | undefined;
+  roll_over: boolean | null | undefined;
+  roll_over_start_date: Date | null | undefined;
+  capacities: JSONCapacity[] | string | null | undefined;
+  updated: Date | null | undefined;
+  is_deleted: boolean | null | undefined;
 }
 
 // =============================================
@@ -330,7 +331,7 @@ export class CategoryModel {
     this.is_deleted = row.is_deleted ?? false;
   }
 
-  private parseCapacities(value: JSONCapacity[] | string | null): JSONCapacity[] {
+  private parseCapacities(value: JSONCapacity[] | string | null | undefined): JSONCapacity[] {
     if (!value) return [];
     if (typeof value === "string") {
       try {
@@ -366,7 +367,7 @@ export class CategoryModel {
     if (category.roll_over_start_date !== undefined)
       row.roll_over_start_date = category.roll_over_start_date;
     if (category.capacities !== undefined)
-      row.capacities = JSON.stringify(category.capacities) as unknown as JSONCapacity[];
+      row.capacities = JSON.stringify(category.capacities);
 
     return row;
   }
@@ -378,8 +379,8 @@ export class CategoryModel {
     name: isNullableString,
     roll_over: isNullableBoolean,
     roll_over_start_date: isNullableDate,
-    capacities: (v): v is JSONCapacity[] | string | null =>
-      isNull(v) || isString(v) || isArray(v),
+    capacities: (v): v is JSONCapacity[] | string | null | undefined =>
+      isUndefined(v) || isNull(v) || isString(v) || isArray(v),
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   } as PropertyChecker<CategoryRow>);
