@@ -271,7 +271,7 @@ export class SnapshotModel extends Model<SnapshotRow, JSONSnapshotData> {
     quantity: isNullableNumber,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<SnapshotRow>);
+  });
 }
 
 // Snapshot Schema

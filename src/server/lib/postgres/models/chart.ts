@@ -99,7 +99,7 @@ export class ChartModel extends Model<ChartRow, JSONChart> {
     configuration: isNullableString,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<ChartRow>);
+  });
 }
 
 // Chart Schema

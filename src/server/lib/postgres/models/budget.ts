@@ -138,7 +138,7 @@ export class BudgetModel extends Model<BudgetRow, JSONBudget> {
       isUndefined(v) || isNull(v) || isString(v) || isArray(v),
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<BudgetRow>);
+  });
 }
 
 // Budget Schema
@@ -256,7 +256,7 @@ export class SectionModel extends Model<SectionRow, JSONSection> {
       isUndefined(v) || isNull(v) || isString(v) || isArray(v),
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<SectionRow>);
+  });
 }
 
 // Section Schema
@@ -377,7 +377,7 @@ export class CategoryModel extends Model<CategoryRow, JSONCategory> {
       isUndefined(v) || isNull(v) || isString(v) || isArray(v),
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<CategoryRow>);
+  });
 }
 
 // Category Schema

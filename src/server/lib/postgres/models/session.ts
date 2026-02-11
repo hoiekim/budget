@@ -177,7 +177,7 @@ export class SessionModel extends Model<SessionRow, ExpressSessionData> {
     cookie_same_site: isNullableString,
     created_at: isNullableDate,
     updated: isNullableDate,
-  } as PropertyChecker<SessionRow>);
+  });
 }
 
 // Schema Definition

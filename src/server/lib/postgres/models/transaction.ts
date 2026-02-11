@@ -248,7 +248,7 @@ export class TransactionModel extends Model<TransactionRow, JSONTransaction> {
     raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<TransactionRow>);
+  });
 }
 
 // Transaction Schema
@@ -427,7 +427,7 @@ export class InvestmentTransactionModel extends Model<InvestmentTransactionRow, 
     raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<InvestmentTransactionRow>);
+  });
 }
 
 // Investment Transaction Schema
@@ -564,7 +564,7 @@ export class SplitTransactionModel extends Model<SplitTransactionRow, JSONSplitT
     label_memo: isNullableString,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<SplitTransactionRow>);
+  });
 }
 
 // Split Transaction Schema

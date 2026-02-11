@@ -100,7 +100,7 @@ export class UserModel extends Model<UserRow, MaskedUser> {
     token: isNullableString,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<UserRow>);
+  });
 }
 
 export const userSchema: Schema<UserRow> = {
