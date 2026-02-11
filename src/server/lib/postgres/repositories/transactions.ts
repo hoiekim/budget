@@ -25,6 +25,7 @@ import {
 import {
   buildUpdate,
   buildSelectWithFilters,
+  selectWithFilters,
   UpsertResult,
   successResult,
   errorResult,
@@ -107,13 +108,11 @@ export const getTransaction = async (
   user: MaskedUser,
   transaction_id: string
 ): Promise<JSONTransaction | null> => {
-  const result = await pool.query<TransactionRow>(
-    `SELECT * FROM ${TRANSACTIONS}
-     WHERE ${TRANSACTION_ID} = $1 AND ${USER_ID} = $2
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [transaction_id, user.user_id]
-  );
-  return result.rows.length > 0 ? rowToTransaction(result.rows[0]) : null;
+  const rows = await selectWithFilters<TransactionRow>(pool, TRANSACTIONS, "*", {
+    user_id: user.user_id,
+    primaryKey: { column: TRANSACTION_ID, value: transaction_id },
+  });
+  return rows.length > 0 ? rowToTransaction(rows[0]) : null;
 };
 
 /**
