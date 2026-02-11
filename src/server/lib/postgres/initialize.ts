@@ -6,7 +6,7 @@ import { pool } from "./client";
 import { searchUser, indexUser } from "./repositories";
 import { buildCreateTable, buildCreateIndex } from "./database";
 import {
-  Table,
+  TableDefinition,
   userTable,
   sessionTable,
   institutionTable,
@@ -27,7 +27,7 @@ import {
 export const version = "6";
 export const index = "budget" + (version ? `-${version}` : "");
 
-const tables: Table[] = [
+const tables: TableDefinition[] = [
   userTable,
   sessionTable,
   institutionTable,
@@ -71,7 +71,7 @@ export const initializeIndex = async (): Promise<void> => {
       await pool.query(createTableSql);
 
       for (const idx of table.indexes) {
-        const createIndexSql = buildCreateIndex(idx.table, idx.column);
+        const createIndexSql = buildCreateIndex(table.name, idx.column);
         await pool.query(createIndexSql);
       }
     }

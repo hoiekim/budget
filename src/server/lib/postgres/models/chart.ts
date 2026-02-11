@@ -17,7 +17,7 @@ import {
 import {
   Schema,
   Constraints,
-  Table,
+  TableDefinition,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -117,9 +117,9 @@ export const chartConstraints: Constraints = [];
 
 export const chartColumns = Object.keys(chartSchema);
 
-export const chartIndexes = [{ table: CHARTS, column: USER_ID }];
+export const chartIndexes = [{ column: USER_ID }];
 
-export const chartTable: Table = {
+export const chartTable: TableDefinition = {
   name: CHARTS,
   schema: chartSchema as Schema<Record<string, unknown>>,
   constraints: chartConstraints,

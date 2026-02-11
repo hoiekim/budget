@@ -1,18 +1,22 @@
-/**
- * Base model helpers for validation and type checking.
- * For basic type checkers (isNull, isString, etc.), import from "common" directly.
- */
+import { QueryResultRow } from "pg";
+import { pool } from "../client";
+import { buildSelectWithFilters, SearchFilters, ParamValue } from "../database";
 
-import {
-  isNull,
-  isUndefined,
-  isString,
-  isNumber,
-  isBoolean,
-  isDate,
-  isArray,
-  isObject,
+export {
+  isDefined,
+  isPotentialDate,
+  isStringArray,
+  isNullableString,
+  isNullableNumber,
+  isNullableBoolean,
+  isNullableDate,
+  isNullableObject,
+  isOptionalString,
+  isOptionalNumber,
+  isOptionalBoolean,
 } from "common";
+
+export { toNumber, toNullableNumber, toDate, toISODateString, toISOString } from "../util";
 
 export class ModelValidationError extends Error {
   public readonly errors: string[];
@@ -24,38 +28,6 @@ export class ModelValidationError extends Error {
   }
 }
 
-export const isDefined = <T>(v: T | undefined): v is T => v !== undefined;
-
-export const isPotentialDate = (v: unknown): boolean =>
-  isDate(v) || (isString(v) && !isNaN(Date.parse(v)));
-
-export const isStringArray = (v: unknown): v is string[] =>
-  isArray(v) && v.every(isString);
-
-export const isNullableString = (v: unknown): v is string | null | undefined =>
-  isUndefined(v) || isNull(v) || isString(v);
-
-export const isNullableNumber = (v: unknown): v is number | null | undefined =>
-  isUndefined(v) || isNull(v) || isNumber(v);
-
-export const isNullableBoolean = (v: unknown): v is boolean | null | undefined =>
-  isUndefined(v) || isNull(v) || isBoolean(v);
-
-export const isNullableDate = (v: unknown): v is Date | null | undefined =>
-  isUndefined(v) || isNull(v) || isPotentialDate(v);
-
-export const isNullableObject = (v: unknown): v is Record<string, unknown> | null | undefined =>
-  isUndefined(v) || isNull(v) || isObject(v);
-
-export const isOptionalString = (v: unknown): v is string | undefined =>
-  isUndefined(v) || isString(v);
-
-export const isOptionalNumber = (v: unknown): v is number | undefined =>
-  isUndefined(v) || isNumber(v);
-
-export const isOptionalBoolean = (v: unknown): v is boolean | undefined =>
-  isUndefined(v) || isBoolean(v);
-
 export type ColumnDefinition = string;
 
 export type Schema<T> = { [K in keyof T]: ColumnDefinition };
@@ -63,11 +35,11 @@ export type Schema<T> = { [K in keyof T]: ColumnDefinition };
 export type Constraints = string[];
 
 export interface IndexDefinition {
-  table: string;
   column: string;
 }
 
-export interface Table {
+// Legacy Table interface for backward compatibility
+export interface TableDefinition {
   name: string;
   schema: Schema<Record<string, unknown>>;
   constraints: Constraints;
@@ -117,38 +89,40 @@ export function createAssertType<T extends object>(
 
 export abstract class Model<TRow, TJSON> {
   abstract toJSON(): TJSON;
-  static assertType: AssertTypeFn<unknown>;
+  static assertType: AssertTypeFn<any>;
 }
 
-export function toNumber(v: unknown, defaultValue: number = 0): number {
-  if (isNumber(v)) return v;
-  if (isString(v)) {
-    const parsed = parseFloat(v);
-    return isNaN(parsed) ? defaultValue : parsed;
+export interface TableSearchFilters<T> extends Omit<SearchFilters, 'filters'> {
+  filters?: Partial<Record<keyof T, ParamValue>>;
+}
+
+export abstract class Table<TRow extends QueryResultRow, TModel extends Model<TRow, any>> {
+  abstract readonly name: string;
+  abstract readonly schema: Schema<TRow>;
+  abstract readonly constraints: Constraints;
+  abstract readonly indexes: IndexDefinition[];
+  abstract readonly ModelClass: new (row: TRow) => TModel;
+
+  async selectWithFilters(
+    columns: (keyof TRow)[] | "*",
+    options: TableSearchFilters<TRow> = {}
+  ): Promise<TRow[]> {
+    const colList = columns === "*" ? "*" : columns as string[];
+    const { sql, values } = buildSelectWithFilters(this.name, colList, {
+      ...options,
+      filters: options.filters as Record<string, ParamValue>,
+    });
+    const result = await pool.query<TRow>(sql, values);
+    return result.rows;
   }
-  return defaultValue;
-}
 
-export function toNullableNumber(v: unknown): number | null {
-  if (isNull(v) || isUndefined(v)) return null;
-  if (isNumber(v)) return v;
-  if (isString(v)) {
-    const parsed = parseFloat(v);
-    return isNaN(parsed) ? null : parsed;
+  async findAll(options: TableSearchFilters<TRow> = {}): Promise<TModel[]> {
+    const rows = await this.selectWithFilters("*", options);
+    return rows.map(row => new this.ModelClass(row));
   }
-  return null;
-}
 
-export function toDate(v: unknown): Date {
-  if (isDate(v)) return v;
-  if (isString(v)) return new Date(v);
-  return new Date();
-}
-
-export function toISODateString(v: unknown): string {
-  return toDate(v).toISOString().split("T")[0];
-}
-
-export function toISOString(v: unknown): string {
-  return toDate(v).toISOString();
+  async findOne(options: TableSearchFilters<TRow>): Promise<TModel | null> {
+    const rows = await this.selectWithFilters("*", { ...options, limit: 1 });
+    return rows.length > 0 ? new this.ModelClass(rows[0]) : null;
+  }
 }

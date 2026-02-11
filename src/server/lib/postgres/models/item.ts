@@ -18,7 +18,7 @@ import {
 import {
   Schema,
   Constraints,
-  Table,
+  TableDefinition,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -137,11 +137,11 @@ export const itemConstraints: Constraints = [];
 export const itemColumns = Object.keys(itemSchema);
 
 export const itemIndexes = [
-  { table: ITEMS, column: USER_ID },
-  { table: ITEMS, column: INSTITUTION_ID },
+  { column: USER_ID },
+  { column: INSTITUTION_ID },
 ];
 
-export const itemTable: Table = {
+export const itemTable: TableDefinition = {
   name: ITEMS,
   schema: itemSchema as Schema<Record<string, unknown>>,
   constraints: itemConstraints,

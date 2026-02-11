@@ -94,24 +94,28 @@ export {
   budgetColumns,
   budgetIndexes,
   budgetTable,
+} from "./budget";
+export type { BudgetRow } from "./budget";
+
+export {
   SectionModel,
   sectionSchema,
   sectionConstraints,
   sectionColumns,
   sectionIndexes,
   sectionTable,
+} from "./section";
+export type { SectionRow } from "./section";
+
+export {
   CategoryModel,
   categorySchema,
   categoryConstraints,
   categoryColumns,
   categoryIndexes,
   categoryTable,
-} from "./budget";
-export type {
-  BudgetRow,
-  SectionRow,
-  CategoryRow,
-} from "./budget";
+} from "./category";
+export type { CategoryRow } from "./category";
 
 export {
   SnapshotModel,

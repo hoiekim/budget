@@ -49,7 +49,7 @@ import {
 import {
   Schema,
   Constraints,
-  Table,
+  TableDefinition,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -233,9 +233,9 @@ export const accountSchema: Schema<AccountRow> = {
 export const accountConstraints: Constraints = [];
 export const accountColumns = Object.keys(accountSchema);
 export const accountIndexes = [
-  { table: ACCOUNTS, column: USER_ID },
-  { table: ACCOUNTS, column: ITEM_ID },
-  { table: ACCOUNTS, column: INSTITUTION_ID },
+  { column: USER_ID },
+  { column: ITEM_ID },
+  { column: INSTITUTION_ID },
 ];
 
 export interface HoldingRow {
@@ -351,9 +351,9 @@ export const holdingSchema: Schema<HoldingRow> = {
 export const holdingConstraints: Constraints = [];
 export const holdingColumns = Object.keys(holdingSchema);
 export const holdingIndexes = [
-  { table: HOLDINGS, column: USER_ID },
-  { table: HOLDINGS, column: ACCOUNT_ID },
-  { table: HOLDINGS, column: SECURITY_ID },
+  { column: USER_ID },
+  { column: ACCOUNT_ID },
+  { column: SECURITY_ID },
 ];
 
 export interface InstitutionRow {
@@ -528,28 +528,28 @@ export const securitySchema: Schema<SecurityRow> = {
 
 export const securityColumns = Object.keys(securitySchema);
 
-export const accountTable: Table = {
+export const accountTable: TableDefinition = {
   name: ACCOUNTS,
   schema: accountSchema as Schema<Record<string, unknown>>,
   constraints: accountConstraints,
   indexes: accountIndexes,
 };
 
-export const holdingTable: Table = {
+export const holdingTable: TableDefinition = {
   name: HOLDINGS,
   schema: holdingSchema as Schema<Record<string, unknown>>,
   constraints: holdingConstraints,
   indexes: holdingIndexes,
 };
 
-export const institutionTable: Table = {
+export const institutionTable: TableDefinition = {
   name: INSTITUTIONS,
   schema: institutionSchema as Schema<Record<string, unknown>>,
   constraints: [],
   indexes: [],
 };
 
-export const securityTable: Table = {
+export const securityTable: TableDefinition = {
   name: SECURITIES,
   schema: securitySchema as Schema<Record<string, unknown>>,
   constraints: [],

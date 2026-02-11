@@ -21,7 +21,7 @@ import {
 } from "./common";
 import {
   Schema,
-  Table,
+  TableDefinition,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -200,7 +200,7 @@ export const sessionSchema: Schema<SessionRow> = {
 
 export const sessionColumns = Object.keys(sessionSchema);
 
-export const sessionTable: Table = {
+export const sessionTable: TableDefinition = {
   name: "sessions",
   schema: sessionSchema as Schema<Record<string, unknown>>,
   constraints: [],

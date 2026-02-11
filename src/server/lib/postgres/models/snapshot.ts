@@ -35,7 +35,7 @@ import {
 import {
   Schema,
   Constraints,
-  Table,
+  TableDefinition,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -306,14 +306,14 @@ export const snapshotConstraints: Constraints = [];
 export const snapshotColumns = Object.keys(snapshotSchema);
 
 export const snapshotIndexes = [
-  { table: SNAPSHOTS, column: USER_ID },
-  { table: SNAPSHOTS, column: SNAPSHOT_TYPE },
-  { table: SNAPSHOTS, column: SNAPSHOT_DATE },
-  { table: SNAPSHOTS, column: ACCOUNT_ID },
-  { table: SNAPSHOTS, column: SECURITY_ID },
+  { column: USER_ID },
+  { column: SNAPSHOT_TYPE },
+  { column: SNAPSHOT_DATE },
+  { column: ACCOUNT_ID },
+  { column: SECURITY_ID },
 ];
 
-export const snapshotTable: Table = {
+export const snapshotTable: TableDefinition = {
   name: SNAPSHOTS,
   schema: snapshotSchema as Schema<Record<string, unknown>>,
   constraints: snapshotConstraints,

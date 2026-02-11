@@ -17,7 +17,7 @@ import {
 import {
   Schema,
   Constraints,
-  Table,
+  TableDefinition,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -117,7 +117,7 @@ export const userConstraints: Constraints = [];
 
 export const userColumns = Object.keys(userSchema);
 
-export const userTable: Table = {
+export const userTable: TableDefinition = {
   name: USERS,
   schema: userSchema as Schema<Record<string, unknown>>,
   constraints: userConstraints,

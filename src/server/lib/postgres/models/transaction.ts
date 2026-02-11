@@ -52,7 +52,7 @@ import {
 import {
   Schema,
   Constraints,
-  Table,
+  TableDefinition,
   AssertTypeFn,
   createAssertType,
   isNullableString,
@@ -280,10 +280,10 @@ export const transactionConstraints: Constraints = [];
 export const transactionColumns = Object.keys(transactionSchema);
 
 export const transactionIndexes = [
-  { table: TRANSACTIONS, column: USER_ID },
-  { table: TRANSACTIONS, column: ACCOUNT_ID },
-  { table: TRANSACTIONS, column: DATE },
-  { table: TRANSACTIONS, column: PENDING },
+  { column: USER_ID },
+  { column: ACCOUNT_ID },
+  { column: DATE },
+  { column: PENDING },
 ];
 
 // Investment Transaction Interfaces
@@ -457,9 +457,9 @@ export const investmentTransactionConstraints: Constraints = [];
 export const investmentTransactionColumns = Object.keys(investmentTransactionSchema);
 
 export const investmentTransactionIndexes = [
-  { table: INVESTMENT_TRANSACTIONS, column: USER_ID },
-  { table: INVESTMENT_TRANSACTIONS, column: ACCOUNT_ID },
-  { table: INVESTMENT_TRANSACTIONS, column: DATE },
+  { column: USER_ID },
+  { column: ACCOUNT_ID },
+  { column: DATE },
 ];
 
 // Split Transaction Interfaces
@@ -588,26 +588,26 @@ export const splitTransactionConstraints: Constraints = [];
 export const splitTransactionColumns = Object.keys(splitTransactionSchema);
 
 export const splitTransactionIndexes = [
-  { table: SPLIT_TRANSACTIONS, column: USER_ID },
-  { table: SPLIT_TRANSACTIONS, column: TRANSACTION_ID },
-  { table: SPLIT_TRANSACTIONS, column: ACCOUNT_ID },
+  { column: USER_ID },
+  { column: TRANSACTION_ID },
+  { column: ACCOUNT_ID },
 ];
 
-export const transactionTable: Table = {
+export const transactionTable: TableDefinition = {
   name: TRANSACTIONS,
   schema: transactionSchema as Schema<Record<string, unknown>>,
   constraints: transactionConstraints,
   indexes: transactionIndexes,
 };
 
-export const investmentTransactionTable: Table = {
+export const investmentTransactionTable: TableDefinition = {
   name: INVESTMENT_TRANSACTIONS,
   schema: investmentTransactionSchema as Schema<Record<string, unknown>>,
   constraints: investmentTransactionConstraints,
   indexes: investmentTransactionIndexes,
 };
 
-export const splitTransactionTable: Table = {
+export const splitTransactionTable: TableDefinition = {
   name: SPLIT_TRANSACTIONS,
   schema: splitTransactionSchema as Schema<Record<string, unknown>>,
   constraints: splitTransactionConstraints,
