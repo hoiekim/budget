@@ -1,7 +1,7 @@
 import { TransactionPaymentChannelEnum, InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import {
   JSONTransaction, JSONInvestmentTransaction, JSONSplitTransaction, LocalDate, isString, isUndefined,
-  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate, isNullableObject,
+  isNullableString, isNullableNumber, isNullableNumericLike, isNullableBoolean, isNullableDate, isNullableObject,
 } from "common";
 import {
   TRANSACTION_ID, USER_ID, ACCOUNT_ID, NAME, MERCHANT_NAME, AMOUNT, ISO_CURRENCY_CODE, DATE,
@@ -91,7 +91,7 @@ export class TransactionModel extends Model<JSONTransaction> {
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("TransactionModel", {
     transaction_id: isString, user_id: isString, account_id: isString, name: isNullableString,
-    merchant_name: isNullableString, amount: isNullableNumber, iso_currency_code: isNullableString,
+    merchant_name: isNullableString, amount: isNullableNumericLike, iso_currency_code: isNullableString,
     date: isNullableDate, pending: isNullableBoolean, pending_transaction_id: isNullableString,
     payment_channel: isNullableString, location_country: isNullableString, location_region: isNullableString,
     location_city: isNullableString, label_budget_id: isNullableString, label_category_id: isNullableString,
@@ -181,8 +181,8 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("InvestmentTransactionModel", {
     investment_transaction_id: isString, user_id: isString, account_id: isString, security_id: isNullableString,
-    date: isNullableDate, name: isNullableString, amount: isNullableNumber, quantity: isNullableNumber,
-    price: isNullableNumber, iso_currency_code: isNullableString, type: isNullableString, subtype: isNullableString,
+    date: isNullableDate, name: isNullableString, amount: isNullableNumericLike, quantity: isNullableNumericLike,
+    price: isNullableNumericLike, iso_currency_code: isNullableString, type: isNullableString, subtype: isNullableString,
     label_budget_id: isNullableString, label_category_id: isNullableString, label_memo: isNullableString,
     raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
   });
@@ -254,7 +254,7 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SplitTransactionModel", {
     split_transaction_id: isString, user_id: isString, transaction_id: isString, account_id: isString,
-    amount: isNullableNumber, date: isNullableDate, custom_name: isNullableString,
+    amount: isNullableNumericLike, date: isNullableDate, custom_name: isNullableString,
     label_budget_id: isNullableString, label_category_id: isNullableString, label_memo: isNullableString,
     updated: isNullableDate, is_deleted: isNullableBoolean,
   });

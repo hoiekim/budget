@@ -1,6 +1,6 @@
 import {
   JSONAccountSnapshot, JSONSecuritySnapshot, JSONHoldingSnapshot, JSONSnapshotData, isString,
-  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate,
+  isNullableString, isNullableNumber, isNullableNumericLike, isNullableBoolean, isNullableDate,
 } from "common";
 import {
   SNAPSHOT_ID, USER_ID, SNAPSHOT_DATE, SNAPSHOT_TYPE, ACCOUNT_ID, SECURITY_ID,
@@ -121,11 +121,11 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SnapshotModel", {
     snapshot_id: isString, user_id: isNullableString, snapshot_date: isNullableDate, snapshot_type: isString,
-    account_id: isNullableString, balances_available: isNullableNumber, balances_current: isNullableNumber,
-    balances_limit: isNullableNumber, balances_iso_currency_code: isNullableString, security_id: isNullableString,
-    close_price: isNullableNumber, holding_account_id: isNullableString, holding_security_id: isNullableString,
-    institution_price: isNullableNumber, institution_value: isNullableNumber, cost_basis: isNullableNumber,
-    quantity: isNullableNumber, updated: isNullableDate, is_deleted: isNullableBoolean,
+    account_id: isNullableString, balances_available: isNullableNumericLike, balances_current: isNullableNumericLike,
+    balances_limit: isNullableNumericLike, balances_iso_currency_code: isNullableString, security_id: isNullableString,
+    close_price: isNullableNumericLike, holding_account_id: isNullableString, holding_security_id: isNullableString,
+    institution_price: isNullableNumericLike, institution_value: isNullableNumericLike, cost_basis: isNullableNumericLike,
+    quantity: isNullableNumericLike, updated: isNullableDate, is_deleted: isNullableBoolean,
   });
 }
 

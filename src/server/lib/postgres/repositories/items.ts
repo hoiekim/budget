@@ -183,11 +183,11 @@ export const upsertItems = async (
           returning: [ITEM_ID],
         });
 
-        // Add WHERE clause for user_id check
+        // Add WHERE clause for user_id check (must be before RETURNING)
         const sql = query.sql.replace(
-          "DO UPDATE SET",
-          `DO UPDATE SET`
-        ) + ` WHERE ${ITEMS}.${USER_ID} = '${user.user_id}'`;
+          " RETURNING",
+          ` WHERE ${ITEMS}.${USER_ID} = '${user.user_id}' RETURNING`
+        );
 
         const result = await pool.query(sql, query.values);
         results.push(successResult(item.item_id, result.rowCount));

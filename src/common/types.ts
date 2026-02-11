@@ -44,6 +44,13 @@ export const isNullableString = (v: unknown): v is string | null | undefined =>
 export const isNullableNumber = (v: unknown): v is number | null | undefined =>
   isUndefined(v) || isNull(v) || isNumber(v);
 
+// Accepts number OR numeric string (PostgreSQL DECIMAL returns strings)
+export const isNumericLike = (v: unknown): boolean =>
+  isNumber(v) || (isString(v) && !isNaN(parseFloat(v)));
+
+export const isNullableNumericLike = (v: unknown): boolean =>
+  isUndefined(v) || isNull(v) || isNumericLike(v);
+
 export const isNullableBoolean = (v: unknown): v is boolean | null | undefined =>
   isUndefined(v) || isNull(v) || isBoolean(v);
 

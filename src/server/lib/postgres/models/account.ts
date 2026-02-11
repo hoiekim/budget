@@ -1,7 +1,7 @@
 import { AccountType, AccountSubtype } from "plaid";
 import {
   JSONAccount, JSONHolding, JSONInstitution, JSONSecurity, isString, isUndefined,
-  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate, isNullableObject,
+  isNullableString, isNullableNumber, isNullableNumericLike, isNullableBoolean, isNullableDate, isNullableObject,
 } from "common";
 import {
   ACCOUNT_ID, USER_ID, ITEM_ID, INSTITUTION_ID, NAME, TYPE, SUBTYPE,
@@ -13,7 +13,7 @@ import {
   CLOSE_PRICE_AS_OF, ISIN, CUSIP, ACCOUNTS, HOLDINGS, INSTITUTIONS, SECURITIES, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber } from "../util";
+import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class AccountModel extends Model<JSONAccount> {
   account_id: string; user_id: string; item_id: string; institution_id: string;
@@ -90,7 +90,7 @@ export class AccountModel extends Model<JSONAccount> {
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("AccountModel", {
     account_id: isString, user_id: isString, item_id: isString, institution_id: isString,
     name: isNullableString, type: isNullableString, subtype: isNullableString,
-    balances_available: isNullableNumber, balances_current: isNullableNumber, balances_limit: isNullableNumber,
+    balances_available: isNullableNumericLike, balances_current: isNullableNumericLike, balances_limit: isNullableNumericLike,
     balances_iso_currency_code: isNullableString, custom_name: isNullableString, hide: isNullableBoolean,
     label_budget_id: isNullableString, graph_options_use_snapshots: isNullableBoolean,
     graph_options_use_transactions: isNullableBoolean, raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
@@ -129,7 +129,7 @@ export class HoldingModel extends Model<JSONHolding> {
     this.account_id = r.account_id as string;
     this.security_id = r.security_id as string;
     this.institution_price = toNullableNumber(r.institution_price) ?? 0;
-    this.institution_price_as_of = (r.institution_price_as_of as string) ?? null;
+    this.institution_price_as_of = r.institution_price_as_of ? toISODateString(r.institution_price_as_of) : null;
     this.institution_value = toNullableNumber(r.institution_value) ?? 0;
     this.cost_basis = toNullableNumber(r.cost_basis) ?? 0;
     this.quantity = toNullableNumber(r.quantity) ?? 0;
@@ -163,8 +163,8 @@ export class HoldingModel extends Model<JSONHolding> {
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("HoldingModel", {
     holding_id: isString, user_id: isString, account_id: isString, security_id: isString,
-    institution_price: isNullableNumber, institution_price_as_of: isNullableString, institution_value: isNullableNumber,
-    cost_basis: isNullableNumber, quantity: isNullableNumber, iso_currency_code: isNullableString,
+    institution_price: isNullableNumericLike, institution_price_as_of: isNullableDate, institution_value: isNullableNumericLike,
+    cost_basis: isNullableNumericLike, quantity: isNullableNumericLike, iso_currency_code: isNullableString,
     raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
   });
 }
@@ -241,7 +241,7 @@ export class SecurityModel extends Model<JSONSecurity> {
     this.ticker_symbol = (r.ticker_symbol as string) ?? null;
     this.type = (r.type as string) ?? null;
     this.close_price = toNullableNumber(r.close_price);
-    this.close_price_as_of = (r.close_price_as_of as string) ?? null;
+    this.close_price_as_of = r.close_price_as_of ? toISODateString(r.close_price_as_of) : null;
     this.iso_currency_code = (r.iso_currency_code as string) ?? null;
     this.isin = (r.isin as string) ?? null;
     this.cusip = (r.cusip as string) ?? null;
@@ -275,7 +275,7 @@ export class SecurityModel extends Model<JSONSecurity> {
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SecurityModel", {
     security_id: isString, name: isNullableString, ticker_symbol: isNullableString, type: isNullableString,
-    close_price: isNullableNumber, close_price_as_of: isNullableString, iso_currency_code: isNullableString,
+    close_price: isNullableNumericLike, close_price_as_of: isNullableDate, iso_currency_code: isNullableString,
     isin: isNullableString, cusip: isNullableString, raw: isNullableObject, updated: isNullableDate,
   });
 }
