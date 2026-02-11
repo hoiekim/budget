@@ -94,7 +94,7 @@ export interface TransactionRow {
 
 // Transaction Model Class
 
-export class TransactionModel {
+export class TransactionModel extends Model<TransactionRow, JSONTransaction> {
   transaction_id: string;
   user_id: string;
   account_id: string;
@@ -116,6 +116,7 @@ export class TransactionModel {
   is_deleted: boolean;
 
   constructor(row: TransactionRow) {
+    super();
     TransactionModel.assertType(row);
     this.transaction_id = row.transaction_id;
     this.user_id = row.user_id;
@@ -311,7 +312,7 @@ export interface InvestmentTransactionRow {
 
 // Investment Transaction Model Class
 
-export class InvestmentTransactionModel {
+export class InvestmentTransactionModel extends Model<InvestmentTransactionRow, JSONInvestmentTransaction> {
   investment_transaction_id: string;
   user_id: string;
   account_id: string;
@@ -331,6 +332,7 @@ export class InvestmentTransactionModel {
   is_deleted: boolean;
 
   constructor(row: InvestmentTransactionRow) {
+    super();
     InvestmentTransactionModel.assertType(row);
     this.investment_transaction_id = row.investment_transaction_id;
     this.user_id = row.user_id;
@@ -480,7 +482,7 @@ export interface SplitTransactionRow {
 
 // Split Transaction Model Class
 
-export class SplitTransactionModel {
+export class SplitTransactionModel extends Model<SplitTransactionRow, JSONSplitTransaction> {
   split_transaction_id: string;
   user_id: string;
   transaction_id: string;
@@ -495,6 +497,7 @@ export class SplitTransactionModel {
   is_deleted: boolean;
 
   constructor(row: SplitTransactionRow) {
+    super();
     SplitTransactionModel.assertType(row);
     this.split_transaction_id = row.split_transaction_id;
     this.user_id = row.user_id;

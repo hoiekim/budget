@@ -21,6 +21,7 @@ import {
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
+  Model,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
@@ -41,7 +42,7 @@ export interface ChartRow {
 
 // Chart Model Class
 
-export class ChartModel {
+export class ChartModel extends Model<ChartRow, JSONChart> {
   chart_id: string;
   user_id: string;
   name: string;
@@ -51,6 +52,7 @@ export class ChartModel {
   is_deleted: boolean;
 
   constructor(row: ChartRow) {
+    super();
     ChartModel.assertType(row);
     this.chart_id = row.chart_id;
     this.user_id = row.user_id;

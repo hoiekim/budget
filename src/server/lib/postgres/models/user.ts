@@ -21,6 +21,7 @@ import {
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
+  Model,
   isNullableString,
   isNullableDate,
   isNullableBoolean,
@@ -45,7 +46,7 @@ export interface MaskedUser {
 
 export type User = MaskedUser & { password: string };
 
-export class UserModel {
+export class UserModel extends Model<UserRow, MaskedUser> {
   user_id: string;
   username: string;
   password: string | null;
@@ -56,6 +57,7 @@ export class UserModel {
   is_deleted: boolean;
 
   constructor(row: UserRow) {
+    super();
     UserModel.assertType(row);
     this.user_id = row.user_id;
     this.username = row.username;
@@ -65,6 +67,10 @@ export class UserModel {
     this.token = row.token ?? null;
     this.updated = row.updated ? toDate(row.updated) : new Date();
     this.is_deleted = row.is_deleted ?? false;
+  }
+
+  toJSON(): MaskedUser {
+    return this.toMaskedUser();
   }
 
   toMaskedUser(): MaskedUser {

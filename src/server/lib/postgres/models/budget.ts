@@ -36,6 +36,7 @@ import {
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
+  Model,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
@@ -58,7 +59,7 @@ export interface BudgetRow {
 
 // Budget Model Class
 
-export class BudgetModel {
+export class BudgetModel extends Model<BudgetRow, JSONBudget> {
   budget_id: string;
   user_id: string;
   name: string;
@@ -70,6 +71,7 @@ export class BudgetModel {
   is_deleted: boolean;
 
   constructor(row: BudgetRow) {
+    super();
     BudgetModel.assertType(row);
     this.budget_id = row.budget_id;
     this.user_id = row.user_id;
@@ -175,7 +177,7 @@ export interface SectionRow {
 
 // Section Model Class
 
-export class SectionModel {
+export class SectionModel extends Model<SectionRow, JSONSection> {
   section_id: string;
   user_id: string;
   budget_id: string;
@@ -187,6 +189,7 @@ export class SectionModel {
   is_deleted: boolean;
 
   constructor(row: SectionRow) {
+    super();
     SectionModel.assertType(row);
     this.section_id = row.section_id;
     this.user_id = row.user_id;
@@ -295,7 +298,7 @@ export interface CategoryRow {
 
 // Category Model Class
 
-export class CategoryModel {
+export class CategoryModel extends Model<CategoryRow, JSONCategory> {
   category_id: string;
   user_id: string;
   section_id: string;
@@ -307,6 +310,7 @@ export class CategoryModel {
   is_deleted: boolean;
 
   constructor(row: CategoryRow) {
+    super();
     CategoryModel.assertType(row);
     this.category_id = row.category_id;
     this.user_id = row.user_id;

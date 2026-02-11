@@ -39,6 +39,7 @@ import {
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
+  Model,
   isNullableString,
   isNullableNumber,
   isNullableBoolean,
@@ -82,7 +83,7 @@ export interface SnapshotRow {
 
 // Snapshot Model Class
 
-export class SnapshotModel {
+export class SnapshotModel extends Model<SnapshotRow, JSONSnapshotData> {
   snapshot_id: string;
   user_id: string | null;
   snapshot_date: string;
@@ -108,6 +109,7 @@ export class SnapshotModel {
   is_deleted: boolean;
 
   constructor(row: SnapshotRow) {
+    super();
     SnapshotModel.assertType(row);
     this.snapshot_id = row.snapshot_id;
     this.user_id = row.user_id ?? null;

@@ -25,6 +25,7 @@ import {
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
+  Model,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
@@ -56,7 +57,7 @@ export interface SessionRow {
 
 // Model Class
 
-export class SessionModel {
+export class SessionModel extends Model<SessionRow, ExpressSessionData> {
   session_id: string;
   user_user_id: string;
   user_username: string;
@@ -73,6 +74,7 @@ export class SessionModel {
   updated: Date;
 
   constructor(row: SessionRow) {
+    super();
     SessionModel.assertType(row);
     this.session_id = row.session_id;
     this.user_user_id = row.user_user_id;
@@ -116,6 +118,10 @@ export class SessionModel {
   /**
    * Converts to ExpressSessionData format.
    */
+  toJSON(): ExpressSessionData {
+    return this.toSessionData();
+  }
+
   toSessionData(): ExpressSessionData {
     return {
       user: {
