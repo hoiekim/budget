@@ -48,15 +48,11 @@ import {
   toISOString,
 } from "./base";
 
-// =============================================
 // Snapshot Types
-// =============================================
 
 export type SnapshotType = "account_balance" | "security" | "holding";
 
-// =============================================
 // Snapshot Row Interface
-// =============================================
 
 export interface SnapshotRow {
   snapshot_id: string;
@@ -84,9 +80,7 @@ export interface SnapshotRow {
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Snapshot Model Class
-// =============================================
 
 export class SnapshotModel {
   snapshot_id: string;
@@ -278,9 +272,7 @@ export class SnapshotModel {
   } as PropertyChecker<SnapshotRow>);
 }
 
-// =============================================
 // Snapshot Schema
-// =============================================
 
 export const snapshotSchema: Schema<SnapshotRow> = {
   [SNAPSHOT_ID]: "VARCHAR(255) PRIMARY KEY",

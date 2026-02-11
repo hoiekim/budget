@@ -42,9 +42,7 @@ import {
   toDate,
 } from "./base";
 
-// =============================================
 // Budget Interfaces
-// =============================================
 
 export interface BudgetRow {
   budget_id: string;
@@ -58,9 +56,7 @@ export interface BudgetRow {
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Budget Model Class
-// =============================================
 
 export class BudgetModel {
   budget_id: string;
@@ -143,9 +139,7 @@ export class BudgetModel {
   } as PropertyChecker<BudgetRow>);
 }
 
-// =============================================
 // Budget Schema
-// =============================================
 
 export const budgetSchema: Schema<BudgetRow> = {
   [BUDGET_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
@@ -165,9 +159,7 @@ export const budgetColumns = Object.keys(budgetSchema);
 
 export const budgetIndexes = [{ table: BUDGETS, column: USER_ID }];
 
-// =============================================
 // Section Interfaces
-// =============================================
 
 export interface SectionRow {
   section_id: string;
@@ -181,9 +173,7 @@ export interface SectionRow {
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Section Model Class
-// =============================================
 
 export class SectionModel {
   section_id: string;
@@ -266,9 +256,7 @@ export class SectionModel {
   } as PropertyChecker<SectionRow>);
 }
 
-// =============================================
 // Section Schema
-// =============================================
 
 export const sectionSchema: Schema<SectionRow> = {
   [SECTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
@@ -291,9 +279,7 @@ export const sectionIndexes = [
   { table: SECTIONS, column: BUDGET_ID },
 ];
 
-// =============================================
 // Category Interfaces
-// =============================================
 
 export interface CategoryRow {
   category_id: string;
@@ -307,9 +293,7 @@ export interface CategoryRow {
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Category Model Class
-// =============================================
 
 export class CategoryModel {
   category_id: string;
@@ -392,9 +376,7 @@ export class CategoryModel {
   } as PropertyChecker<CategoryRow>);
 }
 
-// =============================================
 // Category Schema
-// =============================================
 
 export const categorySchema: Schema<CategoryRow> = {
   [CATEGORY_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",

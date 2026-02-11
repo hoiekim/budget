@@ -1,7 +1,3 @@
-/**
- * Item model and schema definition.
- */
-
 import { Products } from "plaid";
 import { ItemStatus, ItemProvider, JSONItem, isString, isArray, isNull, isUndefined } from "common";
 import {
@@ -26,19 +22,14 @@ import {
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
+  Model,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
+  isNullableObject,
   toDate,
 } from "./base";
 
-// =============================================
-// Interfaces
-// =============================================
-
-/**
- * Item row as stored in the database.
- */
 export interface ItemRow {
   item_id: string;
   user_id: string;
@@ -48,18 +39,13 @@ export interface ItemRow {
   cursor: string | null | undefined;
   status: string | null | undefined;
   provider: string | null | undefined;
-  raw: string | null | undefined;
+  raw: Record<string, unknown> | null | undefined;
   updated: Date | null | undefined;
   is_deleted: boolean | null | undefined;
-  // Optional from JOIN
   username?: string | null | undefined;
 }
 
-// =============================================
-// Model Class
-// =============================================
-
-export class ItemModel {
+export class ItemModel extends Model<ItemRow, JSONItem> {
   item_id: string;
   user_id: string;
   access_token: string;
@@ -72,6 +58,7 @@ export class ItemModel {
   is_deleted: boolean;
 
   constructor(row: ItemRow) {
+    super();
     ItemModel.assertType(row);
     this.item_id = row.item_id;
     this.user_id = row.user_id;
@@ -85,9 +72,6 @@ export class ItemModel {
     this.is_deleted = row.is_deleted ?? false;
   }
 
-  /**
-   * Converts to JSONItem format.
-   */
   toJSON(): JSONItem {
     return {
       item_id: this.item_id,
@@ -101,9 +85,6 @@ export class ItemModel {
     };
   }
 
-  /**
-   * Creates an ItemRow from a JSONItem.
-   */
   static fromJSON(item: Partial<JSONItem> & { item_id: string }, user_id: string): Partial<ItemRow> {
     const row: Partial<ItemRow> = {
       item_id: item.item_id,
@@ -116,9 +97,7 @@ export class ItemModel {
     if (item.cursor !== undefined) row.cursor = item.cursor ?? null;
     if (item.status !== undefined) row.status = item.status ?? null;
     if (item.provider !== undefined) row.provider = item.provider;
-    
-    // Store full object in raw
-    row.raw = JSON.stringify(item);
+    row.raw = item as Record<string, unknown>;
 
     return row;
   }
@@ -133,16 +112,12 @@ export class ItemModel {
     cursor: isNullableString,
     status: isNullableString,
     provider: isNullableString,
-    raw: isNullableString,
+    raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
     username: isNullableString,
-  } as PropertyChecker<ItemRow>);
+  });
 }
-
-// =============================================
-// Schema Definition
-// =============================================
 
 export const itemSchema: Schema<ItemRow> = {
   [ITEM_ID]: "VARCHAR(255) PRIMARY KEY",

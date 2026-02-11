@@ -11,6 +11,7 @@ import {
   isBoolean,
   isDate,
   isArray,
+  isObject,
 } from "common";
 
 export class ModelValidationError extends Error {
@@ -42,6 +43,9 @@ export const isNullableBoolean = (v: unknown): v is boolean | null | undefined =
 
 export const isNullableDate = (v: unknown): v is Date | null | undefined =>
   isUndefined(v) || isNull(v) || isPotentialDate(v);
+
+export const isNullableObject = (v: unknown): v is Record<string, unknown> | null | undefined =>
+  isUndefined(v) || isNull(v) || isObject(v);
 
 export const isOptionalString = (v: unknown): v is string | undefined =>
   isUndefined(v) || isString(v);
@@ -109,6 +113,11 @@ export function createAssertType<T extends object>(
       throw new ModelValidationError(modelName, errors);
     }
   };
+}
+
+export abstract class Model<TRow, TJSON> {
+  abstract toJSON(): TJSON;
+  static assertType: AssertTypeFn<unknown>;
 }
 
 export function toNumber(v: unknown, defaultValue: number = 0): number {

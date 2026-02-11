@@ -27,9 +27,7 @@ import {
   toDate,
 } from "./base";
 
-// =============================================
 // Chart Row Interface
-// =============================================
 
 export interface ChartRow {
   chart_id: string;
@@ -41,9 +39,7 @@ export interface ChartRow {
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Chart Model Class
-// =============================================
 
 export class ChartModel {
   chart_id: string;
@@ -104,9 +100,7 @@ export class ChartModel {
   } as PropertyChecker<ChartRow>);
 }
 
-// =============================================
 // Chart Schema
-// =============================================
 
 export const chartSchema: Schema<ChartRow> = {
   [CHART_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",

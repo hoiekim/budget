@@ -1,7 +1,3 @@
-/**
- * Account, Holding, Institution, and Security models and schema definitions.
- */
-
 import { AccountType, AccountSubtype } from "plaid";
 import {
   JSONAccount,
@@ -54,20 +50,17 @@ import {
   Schema,
   Constraints,
   Table,
-  PropertyChecker,
   AssertTypeFn,
   createAssertType,
+  Model,
   isNullableString,
   isNullableNumber,
   isNullableBoolean,
   isNullableDate,
+  isNullableObject,
   toDate,
   toNullableNumber,
 } from "./base";
-
-// =============================================
-// Account Interfaces
-// =============================================
 
 export interface AccountRow {
   account_id: string;
@@ -86,16 +79,12 @@ export interface AccountRow {
   label_budget_id: string | null | undefined;
   graph_options_use_snapshots: boolean | null | undefined;
   graph_options_use_transactions: boolean | null | undefined;
-  raw: string | null | undefined;
+  raw: Record<string, unknown> | null | undefined;
   updated: Date | null | undefined;
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
-// Account Model Class
-// =============================================
-
-export class AccountModel {
+export class AccountModel extends Model<AccountRow, JSONAccount> {
   account_id: string;
   user_id: string;
   item_id: string;
@@ -116,6 +105,7 @@ export class AccountModel {
   is_deleted: boolean;
 
   constructor(row: AccountRow) {
+    super();
     AccountModel.assertType(row);
     this.account_id = row.account_id;
     this.user_id = row.user_id;
@@ -156,9 +146,7 @@ export class AccountModel {
       },
       custom_name: this.custom_name,
       hide: this.hide,
-      label: {
-        budget_id: this.label_budget_id,
-      },
+      label: { budget_id: this.label_budget_id },
       graphOptions: {
         useSnapshots: this.graph_options_use_snapshots,
         useTransactions: this.graph_options_use_transactions,
@@ -171,7 +159,6 @@ export class AccountModel {
     user_id: string
   ): Partial<AccountRow> {
     const row: Partial<AccountRow> = { user_id };
-
     if (!isUndefined(account.account_id)) row.account_id = account.account_id;
     if (!isUndefined(account.item_id)) row.item_id = account.item_id;
     if (!isUndefined(account.institution_id)) row.institution_id = account.institution_id;
@@ -180,29 +167,21 @@ export class AccountModel {
     if (!isUndefined(account.subtype)) row.subtype = account.subtype;
     if (!isUndefined(account.custom_name)) row.custom_name = account.custom_name;
     if (!isUndefined(account.hide)) row.hide = account.hide;
-
     if (account.label) {
       if (!isUndefined(account.label.budget_id)) row.label_budget_id = account.label.budget_id;
     }
     if (account.balances) {
-      if (!isUndefined(account.balances.available))
-        row.balances_available = account.balances.available;
+      if (!isUndefined(account.balances.available)) row.balances_available = account.balances.available;
       if (!isUndefined(account.balances.current)) row.balances_current = account.balances.current;
       if (!isUndefined(account.balances.limit)) row.balances_limit = account.balances.limit;
-      if (!isUndefined(account.balances.iso_currency_code))
-        row.balances_iso_currency_code = account.balances.iso_currency_code;
+      if (!isUndefined(account.balances.iso_currency_code)) row.balances_iso_currency_code = account.balances.iso_currency_code;
     }
     if (account.graphOptions) {
-      if (!isUndefined(account.graphOptions.useSnapshots))
-        row.graph_options_use_snapshots = account.graphOptions.useSnapshots;
-      if (!isUndefined(account.graphOptions.useTransactions))
-        row.graph_options_use_transactions = account.graphOptions.useTransactions;
+      if (!isUndefined(account.graphOptions.useSnapshots)) row.graph_options_use_snapshots = account.graphOptions.useSnapshots;
+      if (!isUndefined(account.graphOptions.useTransactions)) row.graph_options_use_transactions = account.graphOptions.useTransactions;
     }
-
-    // Store provider data in raw (excluding user-edited fields)
     const { custom_name, hide, label, graphOptions, ...providerData } = account;
-    row.raw = JSON.stringify(providerData);
-
+    row.raw = providerData as Record<string, unknown>;
     return row;
   }
 
@@ -223,15 +202,11 @@ export class AccountModel {
     label_budget_id: isNullableString,
     graph_options_use_snapshots: isNullableBoolean,
     graph_options_use_transactions: isNullableBoolean,
-    raw: isNullableString,
+    raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<AccountRow>);
+  });
 }
-
-// =============================================
-// Account Schema
-// =============================================
 
 export const accountSchema: Schema<AccountRow> = {
   [ACCOUNT_ID]: "VARCHAR(255) PRIMARY KEY",
@@ -256,18 +231,12 @@ export const accountSchema: Schema<AccountRow> = {
 };
 
 export const accountConstraints: Constraints = [];
-
 export const accountColumns = Object.keys(accountSchema);
-
 export const accountIndexes = [
   { table: ACCOUNTS, column: USER_ID },
   { table: ACCOUNTS, column: ITEM_ID },
   { table: ACCOUNTS, column: INSTITUTION_ID },
 ];
-
-// =============================================
-// Holding Interfaces & Model
-// =============================================
 
 export interface HoldingRow {
   holding_id: string;
@@ -280,12 +249,12 @@ export interface HoldingRow {
   cost_basis: string | number | null | undefined;
   quantity: string | number | null | undefined;
   iso_currency_code: string | null | undefined;
-  raw: string | null | undefined;
+  raw: Record<string, unknown> | null | undefined;
   updated: Date | null | undefined;
   is_deleted: boolean | null | undefined;
 }
 
-export class HoldingModel {
+export class HoldingModel extends Model<HoldingRow, JSONHolding> {
   holding_id: string;
   user_id: string;
   account_id: string;
@@ -300,6 +269,7 @@ export class HoldingModel {
   is_deleted: boolean;
 
   constructor(row: HoldingRow) {
+    super();
     HoldingModel.assertType(row);
     this.holding_id = row.holding_id;
     this.user_id = row.user_id;
@@ -330,27 +300,18 @@ export class HoldingModel {
     };
   }
 
-  static fromJSON(
-    holding: Partial<JSONHolding> & { holding_id?: string },
-    user_id: string
-  ): Partial<HoldingRow> {
+  static fromJSON(holding: Partial<JSONHolding> & { holding_id?: string }, user_id: string): Partial<HoldingRow> {
     const row: Partial<HoldingRow> = { user_id };
-
-    // Generate holding_id if not provided
     row.holding_id = holding.holding_id || `${holding.account_id}-${holding.security_id}`;
-
     if (!isUndefined(holding.account_id)) row.account_id = holding.account_id;
     if (!isUndefined(holding.security_id)) row.security_id = holding.security_id;
     if (!isUndefined(holding.institution_price)) row.institution_price = holding.institution_price;
-    if (!isUndefined(holding.institution_price_as_of))
-      row.institution_price_as_of = holding.institution_price_as_of;
+    if (!isUndefined(holding.institution_price_as_of)) row.institution_price_as_of = holding.institution_price_as_of;
     if (!isUndefined(holding.institution_value)) row.institution_value = holding.institution_value;
     if (!isUndefined(holding.cost_basis)) row.cost_basis = holding.cost_basis;
     if (!isUndefined(holding.quantity)) row.quantity = holding.quantity;
     if (!isUndefined(holding.iso_currency_code)) row.iso_currency_code = holding.iso_currency_code;
-
-    row.raw = JSON.stringify(holding);
-
+    row.raw = holding as Record<string, unknown>;
     return row;
   }
 
@@ -365,15 +326,11 @@ export class HoldingModel {
     cost_basis: isNullableNumber,
     quantity: isNullableNumber,
     iso_currency_code: isNullableString,
-    raw: isNullableString,
+    raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-  } as PropertyChecker<HoldingRow>);
+  });
 }
-
-// =============================================
-// Holding Schema
-// =============================================
 
 export const holdingSchema: Schema<HoldingRow> = {
   [HOLDING_ID]: "VARCHAR(255) PRIMARY KEY",
@@ -392,32 +349,27 @@ export const holdingSchema: Schema<HoldingRow> = {
 };
 
 export const holdingConstraints: Constraints = [];
-
 export const holdingColumns = Object.keys(holdingSchema);
-
 export const holdingIndexes = [
   { table: HOLDINGS, column: USER_ID },
   { table: HOLDINGS, column: ACCOUNT_ID },
   { table: HOLDINGS, column: SECURITY_ID },
 ];
 
-// =============================================
-// Institution Interfaces & Model
-// =============================================
-
 export interface InstitutionRow {
   institution_id: string;
   name: string | null | undefined;
-  raw: string | null | undefined;
+  raw: Record<string, unknown> | null | undefined;
   updated: Date | null | undefined;
 }
 
-export class InstitutionModel {
+export class InstitutionModel extends Model<InstitutionRow, JSONInstitution> {
   institution_id: string;
   name: string;
   updated: Date;
 
   constructor(row: InstitutionRow) {
+    super();
     InstitutionModel.assertType(row);
     this.institution_id = row.institution_id;
     this.name = row.name || "Unknown";
@@ -441,26 +393,19 @@ export class InstitutionModel {
 
   static fromJSON(institution: Partial<JSONInstitution>): Partial<InstitutionRow> {
     const row: Partial<InstitutionRow> = {};
-
     if (institution.institution_id !== undefined) row.institution_id = institution.institution_id;
     if (institution.name !== undefined) row.name = institution.name;
-
-    row.raw = JSON.stringify(institution);
-
+    row.raw = institution as Record<string, unknown>;
     return row;
   }
 
   static assertType: AssertTypeFn<InstitutionRow> = createAssertType<InstitutionRow>("InstitutionModel", {
     institution_id: isString,
     name: isNullableString,
-    raw: isNullableString,
+    raw: isNullableObject,
     updated: isNullableDate,
-  } as PropertyChecker<InstitutionRow>);
+  });
 }
-
-// =============================================
-// Institution Schema
-// =============================================
 
 export const institutionSchema: Schema<InstitutionRow> = {
   [INSTITUTION_ID]: "VARCHAR(255) PRIMARY KEY",
@@ -470,10 +415,6 @@ export const institutionSchema: Schema<InstitutionRow> = {
 };
 
 export const institutionColumns = Object.keys(institutionSchema);
-
-// =============================================
-// Security Interfaces & Model
-// =============================================
 
 export interface SecurityRow {
   security_id: string;
@@ -485,11 +426,11 @@ export interface SecurityRow {
   iso_currency_code: string | null | undefined;
   isin: string | null | undefined;
   cusip: string | null | undefined;
-  raw: string | null | undefined;
+  raw: Record<string, unknown> | null | undefined;
   updated: Date | null | undefined;
 }
 
-export class SecurityModel {
+export class SecurityModel extends Model<SecurityRow, JSONSecurity> {
   security_id: string;
   name: string | null;
   ticker_symbol: string | null;
@@ -502,6 +443,7 @@ export class SecurityModel {
   updated: Date;
 
   constructor(row: SecurityRow) {
+    super();
     SecurityModel.assertType(row);
     this.security_id = row.security_id;
     this.name = row.name ?? null;
@@ -542,7 +484,6 @@ export class SecurityModel {
 
   static fromJSON(security: Partial<JSONSecurity>): Partial<SecurityRow> {
     const row: Partial<SecurityRow> = {};
-
     if (security.security_id !== undefined) row.security_id = security.security_id;
     if (security.name !== undefined) row.name = security.name;
     if (security.ticker_symbol !== undefined) row.ticker_symbol = security.ticker_symbol;
@@ -552,9 +493,7 @@ export class SecurityModel {
     if (security.iso_currency_code !== undefined) row.iso_currency_code = security.iso_currency_code;
     if (security.isin !== undefined) row.isin = security.isin;
     if (security.cusip !== undefined) row.cusip = security.cusip;
-
-    row.raw = JSON.stringify(security);
-
+    row.raw = security as Record<string, unknown>;
     return row;
   }
 
@@ -568,14 +507,10 @@ export class SecurityModel {
     iso_currency_code: isNullableString,
     isin: isNullableString,
     cusip: isNullableString,
-    raw: isNullableString,
+    raw: isNullableObject,
     updated: isNullableDate,
-  } as PropertyChecker<SecurityRow>);
+  });
 }
-
-// =============================================
-// Security Schema
-// =============================================
 
 export const securitySchema: Schema<SecurityRow> = {
   [SECURITY_ID]: "VARCHAR(255) PRIMARY KEY",

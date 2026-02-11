@@ -32,9 +32,7 @@ import {
 } from "./base";
 import { SessionData as ExpressSessionData } from "express-session";
 
-// =============================================
 // Interfaces
-// =============================================
 
 /**
  * Session row as stored in the database.
@@ -56,9 +54,7 @@ export interface SessionRow {
   updated: Date;
 }
 
-// =============================================
 // Model Class
-// =============================================
 
 export class SessionModel {
   session_id: string;
@@ -178,9 +174,7 @@ export class SessionModel {
   } as PropertyChecker<SessionRow>);
 }
 
-// =============================================
 // Schema Definition
-// =============================================
 
 export const sessionSchema: Schema<SessionRow> = {
   [SESSION_ID]: "VARCHAR(255) PRIMARY KEY",

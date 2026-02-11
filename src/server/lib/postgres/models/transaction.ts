@@ -63,11 +63,11 @@ import {
   toDate,
   toNullableNumber,
   toISODateString,
+  isNullableObject,
+  Model,
 } from "./base";
 
-// =============================================
 // Transaction Interfaces
-// =============================================
 
 export interface TransactionRow {
   transaction_id: string;
@@ -87,14 +87,12 @@ export interface TransactionRow {
   label_budget_id: string | null | undefined;
   label_category_id: string | null | undefined;
   label_memo: string | null | undefined;
-  raw: string | null | undefined;
+  raw: Record<string, unknown> | null | undefined;
   updated: Date | null | undefined;
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Transaction Model Class
-// =============================================
 
 export class TransactionModel {
   transaction_id: string;
@@ -223,7 +221,7 @@ export class TransactionModel {
 
     // Store full provider object in raw (excluding label which is user-edited)
     const { label, ...providerData } = tx;
-    row.raw = JSON.stringify(providerData);
+    row.raw = providerData as Record<string, unknown>;
 
     return row;
   }
@@ -246,15 +244,13 @@ export class TransactionModel {
     label_budget_id: isNullableString,
     label_category_id: isNullableString,
     label_memo: isNullableString,
-    raw: isNullableString,
+    raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   } as PropertyChecker<TransactionRow>);
 }
 
-// =============================================
 // Transaction Schema
-// =============================================
 
 export const transactionSchema: Schema<TransactionRow> = {
   [TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
@@ -290,9 +286,7 @@ export const transactionIndexes = [
   { table: TRANSACTIONS, column: PENDING },
 ];
 
-// =============================================
 // Investment Transaction Interfaces
-// =============================================
 
 export interface InvestmentTransactionRow {
   investment_transaction_id: string;
@@ -310,14 +304,12 @@ export interface InvestmentTransactionRow {
   label_budget_id: string | null | undefined;
   label_category_id: string | null | undefined;
   label_memo: string | null | undefined;
-  raw: string | null | undefined;
+  raw: Record<string, unknown> | null | undefined;
   updated: Date | null | undefined;
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Investment Transaction Model Class
-// =============================================
 
 export class InvestmentTransactionModel {
   investment_transaction_id: string;
@@ -409,7 +401,7 @@ export class InvestmentTransactionModel {
     }
 
     const { label, ...providerData } = tx;
-    row.raw = JSON.stringify(providerData);
+    row.raw = providerData as Record<string, unknown>;
 
     return row;
   }
@@ -430,15 +422,13 @@ export class InvestmentTransactionModel {
     label_budget_id: isNullableString,
     label_category_id: isNullableString,
     label_memo: isNullableString,
-    raw: isNullableString,
+    raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   } as PropertyChecker<InvestmentTransactionRow>);
 }
 
-// =============================================
 // Investment Transaction Schema
-// =============================================
 
 export const investmentTransactionSchema: Schema<InvestmentTransactionRow> = {
   [INVESTMENT_TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
@@ -471,9 +461,7 @@ export const investmentTransactionIndexes = [
   { table: INVESTMENT_TRANSACTIONS, column: DATE },
 ];
 
-// =============================================
 // Split Transaction Interfaces
-// =============================================
 
 export interface SplitTransactionRow {
   split_transaction_id: string;
@@ -490,9 +478,7 @@ export interface SplitTransactionRow {
   is_deleted: boolean | null | undefined;
 }
 
-// =============================================
 // Split Transaction Model Class
-// =============================================
 
 export class SplitTransactionModel {
   split_transaction_id: string;
@@ -578,9 +564,7 @@ export class SplitTransactionModel {
   } as PropertyChecker<SplitTransactionRow>);
 }
 
-// =============================================
 // Split Transaction Schema
-// =============================================
 
 export const splitTransactionSchema: Schema<SplitTransactionRow> = {
   [SPLIT_TRANSACTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
