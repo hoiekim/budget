@@ -24,6 +24,7 @@ import {
   buildUpdate,
   buildBulkSoftDelete,
   buildSelectWithFilters,
+  selectWithFilters,
   UpsertResult,
   successResult,
   errorResult,
@@ -50,13 +51,10 @@ const rowToItem = (row: ItemRow): JSONItem => new ItemModel(row).toJSON();
  * Gets all items for a user.
  */
 export const getItems = async (user: MaskedUser): Promise<JSONItem[]> => {
-  const result = await pool.query<ItemRow>(
-    `SELECT * FROM ${ITEMS}
-     WHERE ${USER_ID} = $1
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user.user_id]
-  );
-  return result.rows.map(rowToItem);
+  const rows = await selectWithFilters<ItemRow>(pool, ITEMS, "*", {
+    user_id: user.user_id,
+  });
+  return rows.map(rowToItem);
 };
 
 /**
@@ -66,13 +64,11 @@ export const getItem = async (
   user: MaskedUser,
   item_id: string
 ): Promise<JSONItem | null> => {
-  const result = await pool.query<ItemRow>(
-    `SELECT * FROM ${ITEMS}
-     WHERE ${ITEM_ID} = $1 AND ${USER_ID} = $2
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [item_id, user.user_id]
-  );
-  return result.rows.length > 0 ? rowToItem(result.rows[0]) : null;
+  const rows = await selectWithFilters<ItemRow>(pool, ITEMS, "*", {
+    user_id: user.user_id,
+    primaryKey: { column: ITEM_ID, value: item_id },
+  });
+  return rows.length > 0 ? rowToItem(rows[0]) : null;
 };
 
 /**

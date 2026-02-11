@@ -4,7 +4,7 @@
 
 import { JSONChart, ChartType } from "common";
 import { pool } from "../client";
-import { buildSelectWithFilters } from "../database";
+import { buildSelectWithFilters, selectWithFilters } from "../database";
 import {
   MaskedUser,
   ChartModel,
@@ -28,13 +28,10 @@ const rowToChart = (row: ChartRow): JSONChart => new ChartModel(row).toJSON();
  * Gets all charts for a user.
  */
 export const getCharts = async (user: MaskedUser): Promise<JSONChart[]> => {
-  const result = await pool.query<ChartRow>(
-    `SELECT * FROM ${CHARTS}
-     WHERE ${USER_ID} = $1
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user.user_id]
-  );
-  return result.rows.map(rowToChart);
+  const rows = await selectWithFilters<ChartRow>(pool, CHARTS, "*", {
+    user_id: user.user_id,
+  });
+  return rows.map(rowToChart);
 };
 
 /**
@@ -44,13 +41,11 @@ export const getChart = async (
   user: MaskedUser,
   chart_id: string
 ): Promise<JSONChart | null> => {
-  const result = await pool.query<ChartRow>(
-    `SELECT * FROM ${CHARTS}
-     WHERE ${CHART_ID} = $1 AND ${USER_ID} = $2
-     AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [chart_id, user.user_id]
-  );
-  return result.rows.length > 0 ? rowToChart(result.rows[0]) : null;
+  const rows = await selectWithFilters<ChartRow>(pool, CHARTS, "*", {
+    user_id: user.user_id,
+    primaryKey: { column: CHART_ID, value: chart_id },
+  });
+  return rows.length > 0 ? rowToChart(rows[0]) : null;
 };
 
 /**
