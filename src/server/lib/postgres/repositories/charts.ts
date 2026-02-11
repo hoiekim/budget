@@ -14,15 +14,11 @@ import {
   USER_ID,
 } from "../models";
 
-// =============================================
 // Query Helpers
-// =============================================
 
 const rowToChart = (row: ChartRow): JSONChart => new ChartModel(row).toJSON();
 
-// =============================================
 // Repository Functions
-// =============================================
 
 /**
  * Gets all charts for a user.

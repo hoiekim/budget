@@ -41,15 +41,11 @@ import {
   noChangeResult,
 } from "../database";
 
-// =============================================
 // Types
-// =============================================
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
-// =============================================
 // Query Helpers
-// =============================================
 
 const rowToAccount = (row: AccountRow): JSONAccount => new AccountModel(row).toJSON();
 const rowToHolding = (row: HoldingRow): JSONHolding => new HoldingModel(row).toJSON();
@@ -57,9 +53,7 @@ const rowToInstitution = (row: InstitutionRow): JSONInstitution =>
   new InstitutionModel(row).toJSON();
 const rowToSecurity = (row: SecurityRow): JSONSecurity => new SecurityModel(row).toJSON();
 
-// =============================================
 // Account Repository Functions
-// =============================================
 
 /**
  * Gets all accounts for a user.
@@ -293,9 +287,7 @@ export const deleteAccounts = async (
   return { deleted: result.rowCount || 0 };
 };
 
-// =============================================
 // Holding Repository Functions
-// =============================================
 
 /**
  * Gets all holdings for a user.
@@ -392,9 +384,7 @@ export const deleteHoldings = async (
   return { deleted: result.rowCount || 0 };
 };
 
-// =============================================
 // Institution Repository Functions
-// =============================================
 
 /**
  * Gets an institution by ID.
@@ -457,9 +447,7 @@ export const upsertInstitutions = async (
   return results;
 };
 
-// =============================================
 // Security Repository Functions
-// =============================================
 
 /**
  * Gets a security by ID.

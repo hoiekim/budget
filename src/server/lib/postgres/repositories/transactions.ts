@@ -32,9 +32,7 @@ import {
   noChangeResult,
 } from "../database";
 
-// =============================================
 // Types
-// =============================================
 
 export interface SearchTransactionsOptions {
   account_id?: string;
@@ -54,9 +52,7 @@ export interface SearchSplitTransactionsOptions {
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
 export type PartialSplitTransaction = { split_transaction_id: string } & Partial<JSONSplitTransaction>;
 
-// =============================================
 // Query Helpers
-// =============================================
 
 const rowToTransaction = (row: TransactionRow): JSONTransaction =>
   new TransactionModel(row).toJSON();
@@ -65,9 +61,7 @@ const rowToInvestmentTransaction = (row: InvestmentTransactionRow): JSONInvestme
 const rowToSplitTransaction = (row: SplitTransactionRow): JSONSplitTransaction =>
   new SplitTransactionModel(row).toJSON();
 
-// =============================================
 // Transaction Repository Functions
-// =============================================
 
 /**
  * Gets transactions for a user with optional filters.
@@ -328,9 +322,7 @@ export const searchTransactions = async (
   };
 };
 
-// =============================================
 // Investment Transaction Repository Functions
-// =============================================
 
 /**
  * Gets investment transactions for a user.
@@ -458,9 +450,7 @@ export const deleteInvestmentTransactions = async (
   return { deleted: result.rowCount || 0 };
 };
 
-// =============================================
 // Split Transaction Repository Functions
-// =============================================
 
 /**
  * Gets split transactions for a user.

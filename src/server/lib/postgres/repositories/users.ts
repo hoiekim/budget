@@ -21,9 +21,7 @@ import {
   errorResult,
 } from "../database";
 
-// =============================================
 // Types
-// =============================================
 
 export type IndexUserInput = Omit<User, "user_id"> & {
   user_id?: string;
@@ -31,9 +29,7 @@ export type IndexUserInput = Omit<User, "user_id"> & {
 
 export type PartialUser = { user_id: string } & DeepPartial<User>;
 
-// =============================================
 // Helpers
-// =============================================
 
 /**
  * Creates a MaskedUser from a User.
@@ -43,9 +39,7 @@ export const maskUser = (user: User): MaskedUser => {
   return { user_id, username };
 };
 
-// =============================================
 // Repository Functions
-// =============================================
 
 /**
  * Creates or updates a user.

@@ -33,7 +33,6 @@ import {
   Schema,
   Constraints,
   Table,
-  PropertyChecker,
   AssertTypeFn,
   createAssertType,
   Model,

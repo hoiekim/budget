@@ -22,7 +22,6 @@ import {
 import {
   Schema,
   Table,
-  PropertyChecker,
   AssertTypeFn,
   createAssertType,
   Model,

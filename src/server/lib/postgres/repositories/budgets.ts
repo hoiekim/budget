@@ -23,17 +23,13 @@ import {
   USER_ID,
 } from "../models";
 
-// =============================================
 // Query Helpers
-// =============================================
 
 const rowToBudget = (row: BudgetRow): JSONBudget => new BudgetModel(row).toJSON();
 const rowToSection = (row: SectionRow): JSONSection => new SectionModel(row).toJSON();
 const rowToCategory = (row: CategoryRow): JSONCategory => new CategoryModel(row).toJSON();
 
-// =============================================
 // Budget Repository Functions
-// =============================================
 
 /**
  * Gets all budgets for a user.
@@ -212,9 +208,7 @@ export const deleteBudgets = async (
   return { deleted: result.rowCount || 0 };
 };
 
-// =============================================
 // Section Repository Functions
-// =============================================
 
 /**
  * Gets sections for a user.
@@ -358,9 +352,7 @@ export const deleteSections = async (
   return { deleted: result.rowCount || 0 };
 };
 
-// =============================================
 // Category Repository Functions
-// =============================================
 
 /**
  * Gets categories for a user.

@@ -26,9 +26,7 @@ import {
 } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
 
-// =============================================
 // Types
-// =============================================
 
 export interface SearchSnapshotsOptions {
   account_id?: string;
@@ -68,16 +66,12 @@ export interface HoldingSnapshot {
   quantity?: number;
 }
 
-// =============================================
 // Query Helpers
-// =============================================
 
 const rowToSnapshot = (row: SnapshotRow): JSONSnapshotData =>
   new SnapshotModel(row).toJSON();
 
-// =============================================
 // Repository Functions
-// =============================================
 
 /**
  * Searches snapshots with flexible options.

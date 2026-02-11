@@ -31,21 +31,15 @@ import {
   noChangeResult,
 } from "../database";
 
-// =============================================
 // Types
-// =============================================
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
-// =============================================
 // Query Helpers
-// =============================================
 
 const rowToItem = (row: ItemRow): JSONItem => new ItemModel(row).toJSON();
 
-// =============================================
 // Repository Functions
-// =============================================
 
 /**
  * Gets all items for a user.
