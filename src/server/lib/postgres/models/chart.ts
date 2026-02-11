@@ -1,4 +1,4 @@
-import { JSONChart, ChartType, isString } from "common";
+import { JSONChart, ChartType, isString, isNullableString, isNullableBoolean, isNullableDate } from "common";
 import {
   CHART_ID,
   USER_ID,
@@ -10,19 +10,8 @@ import {
   CHARTS,
   USERS,
 } from "./common";
-import {
-  Schema,
-  Constraints,
-  IndexDefinition,
-  Table,
-  AssertTypeFn,
-  createAssertType,
-  Model,
-  isNullableString,
-  isNullableBoolean,
-  isNullableDate,
-  toDate,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate } from "../util";
 
 export class ChartModel extends Model<JSONChart> {
   chart_id: string;

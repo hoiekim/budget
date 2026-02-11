@@ -1,4 +1,4 @@
-import { isString } from "common";
+import { isString, isNullableString, isNullableDate, isNullableBoolean } from "common";
 import {
   USER_ID,
   USERNAME,
@@ -10,19 +10,8 @@ import {
   IS_DELETED,
   USERS,
 } from "./common";
-import {
-  Schema,
-  Constraints,
-  IndexDefinition,
-  Table,
-  AssertTypeFn,
-  createAssertType,
-  Model,
-  isNullableString,
-  isNullableDate,
-  isNullableBoolean,
-  toDate,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate } from "../util";
 
 export interface MaskedUser {
   user_id: string;

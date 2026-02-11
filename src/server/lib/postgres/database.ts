@@ -3,9 +3,9 @@
  */
 
 import { Pool, QueryResult, QueryResultRow } from "pg";
-import { isNull, isUndefined, isDate, isNumber, isString } from "common";
+import { isNull, isUndefined, isDate, isNumber, isString, isDefined } from "common";
 import { NULL } from "./models/common";
-import { Schema, Constraints, isDefined } from "./models/base";
+import { Schema, Constraints } from "./models/base";
 
 export const SOFT_DELETE_CONDITION = "(is_deleted IS NULL OR is_deleted = FALSE)";
 

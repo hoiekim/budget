@@ -1,4 +1,4 @@
-import { isString } from "common";
+import { isString, isNullableString, isNullableBoolean, isNullableDate } from "common";
 import { SessionData as ExpressSessionData } from "express-session";
 import {
   SESSION_ID,
@@ -17,19 +17,8 @@ import {
   UPDATED,
   SESSIONS,
 } from "./common";
-import {
-  Schema,
-  Constraints,
-  IndexDefinition,
-  Table,
-  AssertTypeFn,
-  createAssertType,
-  Model,
-  isNullableString,
-  isNullableBoolean,
-  isNullableDate,
-  toDate,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate } from "../util";
 
 export class SessionModel extends Model<ExpressSessionData> {
   session_id: string;

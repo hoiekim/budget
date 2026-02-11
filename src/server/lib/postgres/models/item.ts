@@ -1,5 +1,17 @@
 import { Products } from "plaid";
-import { ItemStatus, ItemProvider, JSONItem, isString, isArray, isNull, isUndefined } from "common";
+import {
+  ItemStatus,
+  ItemProvider,
+  JSONItem,
+  isString,
+  isArray,
+  isNull,
+  isUndefined,
+  isNullableString,
+  isNullableBoolean,
+  isNullableDate,
+  isNullableObject,
+} from "common";
 import {
   ITEM_ID,
   USER_ID,
@@ -15,20 +27,8 @@ import {
   ITEMS,
   USERS,
 } from "./common";
-import {
-  Schema,
-  Constraints,
-  IndexDefinition,
-  Table,
-  AssertTypeFn,
-  createAssertType,
-  Model,
-  isNullableString,
-  isNullableBoolean,
-  isNullableDate,
-  isNullableObject,
-  toDate,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate } from "../util";
 
 export class ItemModel extends Model<JSONItem> {
   item_id: string;

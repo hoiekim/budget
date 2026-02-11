@@ -4,6 +4,10 @@ import {
   JSONHoldingSnapshot,
   JSONSnapshotData,
   isString,
+  isNullableString,
+  isNullableNumber,
+  isNullableBoolean,
+  isNullableDate,
 } from "common";
 import {
   SNAPSHOT_ID, USER_ID, SNAPSHOT_DATE, SNAPSHOT_TYPE, ACCOUNT_ID, SECURITY_ID,
@@ -11,11 +15,8 @@ import {
   CLOSE_PRICE, HOLDING_ACCOUNT_ID, HOLDING_SECURITY_ID, INSTITUTION_PRICE,
   INSTITUTION_VALUE, COST_BASIS, QUANTITY, UPDATED, IS_DELETED, SNAPSHOTS,
 } from "./common";
-import {
-  Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model,
-  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate,
-  toDate, toNullableNumber, toISOString,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate, toNullableNumber, toISOString } from "../util";
 
 export type SnapshotType = "account_balance" | "security" | "holding";
 

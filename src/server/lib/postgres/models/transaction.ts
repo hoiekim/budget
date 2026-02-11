@@ -3,6 +3,7 @@ import {
 } from "plaid";
 import {
   JSONTransaction, JSONInvestmentTransaction, JSONSplitTransaction, LocalDate, isString, isUndefined,
+  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate, isNullableObject,
 } from "common";
 import {
   TRANSACTION_ID, USER_ID, ACCOUNT_ID, NAME, MERCHANT_NAME, AMOUNT, ISO_CURRENCY_CODE, DATE,
@@ -11,11 +12,8 @@ import {
   INVESTMENT_TRANSACTION_ID, SECURITY_ID, QUANTITY, PRICE, TYPE, SUBTYPE, SPLIT_TRANSACTION_ID,
   CUSTOM_NAME, TRANSACTIONS, INVESTMENT_TRANSACTIONS, SPLIT_TRANSACTIONS, USERS,
 } from "./common";
-import {
-  Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model,
-  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate, isNullableObject,
-  toDate, toNullableNumber, toISODateString,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class TransactionModel extends Model<JSONTransaction> {
   transaction_id: string;

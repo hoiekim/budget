@@ -1,4 +1,14 @@
-import { JSONSection, JSONCapacity, isString, isArray, isNull, isUndefined } from "common";
+import {
+  JSONSection,
+  JSONCapacity,
+  isString,
+  isArray,
+  isNull,
+  isUndefined,
+  isNullableString,
+  isNullableBoolean,
+  isNullableDate,
+} from "common";
 import {
   SECTION_ID,
   BUDGET_ID,
@@ -13,19 +23,8 @@ import {
   BUDGETS,
   USERS,
 } from "./common";
-import {
-  Schema,
-  Constraints,
-  IndexDefinition,
-  Table,
-  AssertTypeFn,
-  createAssertType,
-  Model,
-  isNullableString,
-  isNullableBoolean,
-  isNullableDate,
-  toDate,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate } from "../util";
 
 export class SectionModel extends Model<JSONSection> {
   section_id: string;

@@ -1,22 +1,6 @@
 import { pool } from "../client";
 import { buildSelectWithFilters, SearchFilters, ParamValue } from "../database";
 
-export {
-  isDefined,
-  isPotentialDate,
-  isStringArray,
-  isNullableString,
-  isNullableNumber,
-  isNullableBoolean,
-  isNullableDate,
-  isNullableObject,
-  isOptionalString,
-  isOptionalNumber,
-  isOptionalBoolean,
-} from "common";
-
-export { toNumber, toNullableNumber, toDate, toISODateString, toISOString } from "../util";
-
 export class ModelValidationError extends Error {
   public readonly errors: string[];
 
@@ -35,13 +19,6 @@ export type Constraints = string[];
 
 export interface IndexDefinition {
   column: string;
-}
-
-export interface TableDefinition {
-  name: string;
-  schema: Schema<Record<string, unknown>>;
-  constraints: Constraints;
-  indexes: IndexDefinition[];
 }
 
 export type PropertyChecker<T> = {

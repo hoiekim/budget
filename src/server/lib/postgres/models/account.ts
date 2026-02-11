@@ -6,6 +6,11 @@ import {
   JSONSecurity,
   isString,
   isUndefined,
+  isNullableString,
+  isNullableNumber,
+  isNullableBoolean,
+  isNullableDate,
+  isNullableObject,
 } from "common";
 import {
   ACCOUNT_ID, USER_ID, ITEM_ID, INSTITUTION_ID, NAME, TYPE, SUBTYPE,
@@ -16,11 +21,8 @@ import {
   COST_BASIS, QUANTITY, ISO_CURRENCY_CODE, TICKER_SYMBOL, CLOSE_PRICE,
   CLOSE_PRICE_AS_OF, ISIN, CUSIP, ACCOUNTS, HOLDINGS, INSTITUTIONS, SECURITIES, USERS,
 } from "./common";
-import {
-  Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model,
-  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate, isNullableObject,
-  toDate, toNullableNumber,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate, toNullableNumber } from "../util";
 
 export class AccountModel extends Model<JSONAccount> {
   account_id: string;

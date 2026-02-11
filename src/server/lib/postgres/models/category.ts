@@ -1,4 +1,14 @@
-import { JSONCategory, JSONCapacity, isString, isArray, isNull, isUndefined } from "common";
+import {
+  JSONCategory,
+  JSONCapacity,
+  isString,
+  isArray,
+  isNull,
+  isUndefined,
+  isNullableString,
+  isNullableBoolean,
+  isNullableDate,
+} from "common";
 import {
   CATEGORY_ID,
   SECTION_ID,
@@ -13,19 +23,8 @@ import {
   SECTIONS,
   USERS,
 } from "./common";
-import {
-  Schema,
-  Constraints,
-  IndexDefinition,
-  Table,
-  AssertTypeFn,
-  createAssertType,
-  Model,
-  isNullableString,
-  isNullableBoolean,
-  isNullableDate,
-  toDate,
-} from "./base";
+import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { toDate } from "../util";
 
 export class CategoryModel extends Model<JSONCategory> {
   category_id: string;
