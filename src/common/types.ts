@@ -38,27 +38,20 @@ export const isPotentialDate = (v: unknown): boolean =>
 export const isStringArray = (v: unknown): v is string[] =>
   isArray(v) && v.every(isString);
 
-export const isNullableString = (v: unknown): v is string | null | undefined =>
-  isUndefined(v) || isNull(v) || isString(v);
+export const isNullableString = (v: unknown): v is string | null =>
+  isNull(v) || isString(v);
 
-export const isNullableNumber = (v: unknown): v is number | null | undefined =>
-  isUndefined(v) || isNull(v) || isNumber(v);
+export const isNullableNumber = (v: unknown): v is number | null =>
+  isNull(v) || isNumber(v);
 
-// Accepts number OR numeric string (PostgreSQL DECIMAL returns strings)
-export const isNumericLike = (v: unknown): boolean =>
-  isNumber(v) || (isString(v) && !isNaN(parseFloat(v)));
+export const isNullableBoolean = (v: unknown): v is boolean | null =>
+  isNull(v) || isBoolean(v);
 
-export const isNullableNumericLike = (v: unknown): boolean =>
-  isUndefined(v) || isNull(v) || isNumericLike(v);
+export const isNullableDate = (v: unknown): v is Date | null =>
+  isNull(v) || isPotentialDate(v);
 
-export const isNullableBoolean = (v: unknown): v is boolean | null | undefined =>
-  isUndefined(v) || isNull(v) || isBoolean(v);
-
-export const isNullableDate = (v: unknown): v is Date | null | undefined =>
-  isUndefined(v) || isNull(v) || isPotentialDate(v);
-
-export const isNullableObject = (v: unknown): v is Record<string, unknown> | null | undefined =>
-  isUndefined(v) || isNull(v) || isObject(v);
+export const isNullableObject = (v: unknown): v is Record<string, unknown> | null =>
+  isNull(v) || isObject(v);
 
 export const isOptionalString = (v: unknown): v is string | undefined =>
   isUndefined(v) || isString(v);

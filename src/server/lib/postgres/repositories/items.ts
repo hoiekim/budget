@@ -169,7 +169,7 @@ export const upsertItems = async (
   const results: UpsertResult[] = [];
 
   for (const item of items) {
-    const row = ItemModel.fromJSON(item, user.user_id);
+    const row = ItemModel.toRow(item, user.user_id);
 
     try {
       if (upsert) {

@@ -50,7 +50,7 @@ export class SectionModel extends Model<JSONSection> {
     };
   }
 
-  static fromJSON(s: Partial<JSONSection>, user_id: string): Record<string, unknown> {
+  static toRow(s: Partial<JSONSection>, user_id: string): Record<string, unknown> {
     const r: Record<string, unknown> = { user_id };
     if (s.section_id !== undefined) r.section_id = s.section_id;
     if (s.budget_id !== undefined) r.budget_id = s.budget_id;
@@ -76,6 +76,7 @@ export class SectionModel extends Model<JSONSection> {
 
 export const sectionsTable = createTable({
   name: SECTIONS,
+  primaryKey: SECTION_ID,
   schema: {
     [SECTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,

@@ -109,6 +109,7 @@ export class SessionModel extends Model<ExpressSessionData> {
 
 export const sessionsTable = createTable({
   name: SESSIONS,
+  primaryKey: SESSION_ID,
   schema: {
     [SESSION_ID]: "VARCHAR(255) PRIMARY KEY",
     [USER_USER_ID]: "UUID",
@@ -120,7 +121,7 @@ export const sessionsTable = createTable({
     [COOKIE_HTTP_ONLY]: "BOOLEAN",
     [COOKIE_PATH]: "TEXT",
     [COOKIE_DOMAIN]: "TEXT",
-    [COOKIE_SECURE]: "VARCHAR(50)",
+    [COOKIE_SECURE]: "BOOLEAN",
     [COOKIE_SAME_SITE]: "VARCHAR(50)",
     [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",

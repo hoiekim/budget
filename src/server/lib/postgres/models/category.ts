@@ -50,7 +50,7 @@ export class CategoryModel extends Model<JSONCategory> {
     };
   }
 
-  static fromJSON(c: Partial<JSONCategory>, user_id: string): Record<string, unknown> {
+  static toRow(c: Partial<JSONCategory>, user_id: string): Record<string, unknown> {
     const r: Record<string, unknown> = { user_id };
     if (c.category_id !== undefined) r.category_id = c.category_id;
     if (c.section_id !== undefined) r.section_id = c.section_id;
@@ -76,6 +76,7 @@ export class CategoryModel extends Model<JSONCategory> {
 
 export const categoriesTable = createTable({
   name: CATEGORIES,
+  primaryKey: CATEGORY_ID,
   schema: {
     [CATEGORY_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,

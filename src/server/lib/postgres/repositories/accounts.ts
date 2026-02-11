@@ -150,7 +150,7 @@ export const upsertAccounts = async (
   const results: UpsertResult[] = [];
 
   for (const account of accounts) {
-    const row = AccountModel.fromJSON(account, user.user_id);
+    const row = AccountModel.toRow(account, user.user_id);
 
     try {
       const columns = Object.keys(row);
@@ -193,7 +193,7 @@ export const updateAccounts = async (
   const results: UpsertResult[] = [];
 
   for (const account of accounts) {
-    const row = AccountModel.fromJSON(account, user.user_id);
+    const row = AccountModel.toRow(account, user.user_id);
 
     try {
       const updateData = { ...row };
@@ -328,7 +328,7 @@ export const upsertHoldings = async (
   const results: UpsertResult[] = [];
 
   for (const holding of holdings) {
-    const row = HoldingModel.fromJSON(holding, user.user_id);
+    const row = HoldingModel.toRow(holding, user.user_id);
     const holding_id = row.holding_id as string;
 
     try {
@@ -412,7 +412,7 @@ export const upsertInstitutions = async (
   for (const institution of institutions) {
     if (!institution.institution_id) continue;
 
-    const row = InstitutionModel.fromJSON(institution);
+    const row = InstitutionModel.toRow(institution);
 
     try {
       const columns = Object.keys(row);
@@ -521,7 +521,7 @@ export const upsertSecurities = async (
   for (const security of securities) {
     if (!security.security_id) continue;
 
-    const row = SecurityModel.fromJSON(security);
+    const row = SecurityModel.toRow(security);
 
     try {
       const columns = Object.keys(row);

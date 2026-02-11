@@ -132,7 +132,7 @@ export const upsertTransactions = async (
   const results: UpsertResult[] = [];
 
   for (const tx of transactions) {
-    const row = TransactionModel.fromJSON(tx, user.user_id);
+    const row = TransactionModel.toRow(tx, user.user_id);
 
     try {
       const columns = Object.keys(row);
@@ -175,7 +175,7 @@ export const updateTransactions = async (
   const results: UpsertResult[] = [];
 
   for (const tx of transactions) {
-    const row = TransactionModel.fromJSON(tx, user.user_id);
+    const row = TransactionModel.toRow(tx, user.user_id);
 
     try {
       const updateData = { ...row };
@@ -352,7 +352,7 @@ export const upsertInvestmentTransactions = async (
   const results: UpsertResult[] = [];
 
   for (const tx of transactions) {
-    const row = InvestmentTransactionModel.fromJSON(tx, user.user_id);
+    const row = InvestmentTransactionModel.toRow(tx, user.user_id);
 
     try {
       const columns = Object.keys(row);
@@ -394,7 +394,7 @@ export const updateInvestmentTransactions = async (
   const results: UpsertResult[] = [];
 
   for (const tx of transactions) {
-    const row = InvestmentTransactionModel.fromJSON(tx, user.user_id);
+    const row = InvestmentTransactionModel.toRow(tx, user.user_id);
 
     try {
       const updateData = { ...row };
@@ -539,7 +539,7 @@ export const updateSplitTransactions = async (
   const results: UpsertResult[] = [];
 
   for (const tx of transactions) {
-    const row = SplitTransactionModel.fromJSON(tx, user.user_id);
+    const row = SplitTransactionModel.toRow(tx, user.user_id);
 
     try {
       const updateData = { ...row };

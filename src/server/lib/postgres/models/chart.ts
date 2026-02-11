@@ -29,7 +29,7 @@ export class ChartModel extends Model<JSONChart> {
     return { chart_id: this.chart_id, name: this.name, type: this.type, configuration: this.configuration };
   }
 
-  static fromJSON(c: Partial<JSONChart>, user_id: string): Record<string, unknown> {
+  static toRow(c: Partial<JSONChart>, user_id: string): Record<string, unknown> {
     const r: Record<string, unknown> = { user_id };
     if (c.chart_id !== undefined) r.chart_id = c.chart_id;
     if (c.name !== undefined) r.name = c.name;
@@ -53,6 +53,7 @@ export class ChartModel extends Model<JSONChart> {
 
 export const chartsTable = createTable({
   name: CHARTS,
+  primaryKey: CHART_ID,
   schema: {
     [CHART_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT`,

@@ -51,7 +51,7 @@ export class ItemModel extends Model<JSONItem> {
     };
   }
 
-  static fromJSON(item: Partial<JSONItem> & { item_id: string }, user_id: string): Record<string, unknown> {
+  static toRow(item: Partial<JSONItem> & { item_id: string }, user_id: string): Record<string, unknown> {
     const r: Record<string, unknown> = { item_id: item.item_id, user_id };
     if (item.access_token !== undefined) r.access_token = item.access_token;
     if (item.institution_id !== undefined) r.institution_id = item.institution_id || null;
@@ -81,6 +81,7 @@ export class ItemModel extends Model<JSONItem> {
 
 export const itemsTable = createTable({
   name: ITEMS,
+  primaryKey: ITEM_ID,
   schema: {
     [ITEM_ID]: "VARCHAR(255) PRIMARY KEY",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,

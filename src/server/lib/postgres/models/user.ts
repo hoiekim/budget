@@ -61,6 +61,7 @@ export class UserModel extends Model<MaskedUser> {
 
 export const usersTable = createTable({
   name: USERS,
+  primaryKey: USER_ID,
   schema: {
     [USER_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USERNAME]: "VARCHAR(255) UNIQUE NOT NULL",

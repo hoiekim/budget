@@ -1,5 +1,5 @@
 import { pool } from "../client";
-import { buildSelectWithFilters, SearchFilters, ParamValue } from "../database";
+import { buildSelectWithFilters, buildInsert, buildUpdate, buildUpsert, buildSoftDelete, SearchFilters, ParamValue, QueryData } from "../database";
 
 export class ModelValidationError extends Error {
   public readonly errors: string[];
@@ -79,25 +79,56 @@ export interface TableSearchFilters extends Omit<SearchFilters, 'filters'> {
 
 export abstract class Table<TJSON, TModel extends Model<TJSON>> {
   abstract readonly name: string;
+  abstract readonly primaryKey: string;
   abstract readonly schema: Schema<Record<string, unknown>>;
   abstract readonly constraints: Constraints;
   abstract readonly indexes: IndexDefinition[];
   abstract readonly ModelClass: ModelClass<TJSON, TModel>;
 
-  async query(options: TableSearchFilters = {}): Promise<TModel[]> {
-    const { sql, values } = buildSelectWithFilters(this.name, "*", options);
+  async query(filters: Record<string, ParamValue> = {}): Promise<TModel[]> {
+    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters });
     const result = await pool.query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
   }
 
-  async queryOne(options: TableSearchFilters): Promise<TModel | null> {
-    const models = await this.query({ ...options, limit: 1 });
-    return models.length > 0 ? models[0] : null;
+  async queryOne(filters: Record<string, ParamValue>): Promise<TModel | null> {
+    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters, limit: 1 });
+    const result = await pool.query(sql, values);
+    return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
+  }
+
+  async insert(data: QueryData, returning?: string[]): Promise<TModel | null> {
+    const { sql, values } = buildInsert(this.name, data as Record<string, ParamValue>, returning ?? [this.primaryKey]);
+    const result = await pool.query(sql, values);
+    return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
+  }
+
+  async update(primaryKeyValue: ParamValue, data: QueryData, returning?: string[]): Promise<TModel | null> {
+    const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, { returning: returning ?? [this.primaryKey] });
+    if (!query) return null;
+    const result = await pool.query(query.sql, query.values);
+    return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
+  }
+
+  async upsert(data: QueryData, updateColumns?: string[]): Promise<TModel | null> {
+    const { sql, values } = buildUpsert(this.name, this.primaryKey, data, {
+      updateColumns: updateColumns ?? Object.keys(data).filter(k => k !== this.primaryKey),
+      returning: ["*"],
+    });
+    const result = await pool.query(sql, values);
+    return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
+  }
+
+  async softDelete(primaryKeyValue: ParamValue): Promise<boolean> {
+    const { sql, values } = buildSoftDelete(this.name, this.primaryKey, primaryKeyValue);
+    const result = await pool.query(sql, values);
+    return result.rowCount !== null && result.rowCount > 0;
   }
 }
 
 export interface TableConfig<TJSON, TModel extends Model<TJSON>> {
   name: string;
+  primaryKey: string;
   schema: Schema<Record<string, unknown>>;
   constraints?: Constraints;
   indexes?: IndexDefinition[];
@@ -109,6 +140,7 @@ export function createTable<TJSON, TModel extends Model<TJSON>>(
 ): Table<TJSON, TModel> {
   return new (class extends Table<TJSON, TModel> {
     readonly name = config.name;
+    readonly primaryKey = config.primaryKey;
     readonly schema = config.schema;
     readonly constraints = config.constraints ?? [];
     readonly indexes = config.indexes ?? [];

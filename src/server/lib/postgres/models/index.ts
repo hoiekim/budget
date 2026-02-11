@@ -8,18 +8,14 @@ export { SessionModel, sessionsTable, sessionColumns } from "./session";
 
 export { ItemModel, itemsTable, itemColumns } from "./item";
 
-export {
-  AccountModel, accountsTable, accountColumns,
-  HoldingModel, holdingsTable, holdingColumns,
-  InstitutionModel, institutionsTable, institutionColumns,
-  SecurityModel, securitiesTable, securityColumns,
-} from "./account";
+export { AccountModel, accountsTable, accountColumns } from "./account";
+export { HoldingModel, holdingsTable, holdingColumns } from "./holding";
+export { InstitutionModel, institutionsTable, institutionColumns } from "./institution";
+export { SecurityModel, securitiesTable, securityColumns } from "./security";
 
-export {
-  TransactionModel, transactionsTable, transactionColumns,
-  InvestmentTransactionModel, investmentTransactionsTable, investmentTransactionColumns,
-  SplitTransactionModel, splitTransactionsTable, splitTransactionColumns,
-} from "./transaction";
+export { TransactionModel, transactionsTable, transactionColumns } from "./transaction";
+export { InvestmentTransactionModel, investmentTransactionsTable, investmentTransactionColumns } from "./investment_transaction";
+export { SplitTransactionModel, splitTransactionsTable, splitTransactionColumns } from "./split_transaction";
 
 export { BudgetModel, budgetsTable, budgetColumns } from "./budget";
 export { SectionModel, sectionsTable, sectionColumns } from "./section";

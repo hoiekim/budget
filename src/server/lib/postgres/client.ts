@@ -1,4 +1,4 @@
-import { Pool, PoolConfig } from "pg";
+import { Pool, PoolConfig, types } from "pg";
 
 const {
   POSTGRES_HOST: host = "localhost",
@@ -17,6 +17,12 @@ const config: PoolConfig = {
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
+  types: {
+    getTypeParser(id, format) {
+      if (id === types.builtins.NUMERIC) return parseFloat;
+      return types.getTypeParser(id, format);
+    },
+  },
 };
 
 export const pool = new Pool(config);

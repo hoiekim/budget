@@ -50,7 +50,7 @@ export class BudgetModel extends Model<JSONBudget> {
     };
   }
 
-  static fromJSON(b: Partial<JSONBudget>, user_id: string): Record<string, unknown> {
+  static toRow(b: Partial<JSONBudget>, user_id: string): Record<string, unknown> {
     const r: Record<string, unknown> = { user_id };
     if (b.budget_id !== undefined) r.budget_id = b.budget_id;
     if (b.name !== undefined) r.name = b.name;
@@ -76,6 +76,7 @@ export class BudgetModel extends Model<JSONBudget> {
 
 export const budgetsTable = createTable({
   name: BUDGETS,
+  primaryKey: BUDGET_ID,
   schema: {
     [BUDGET_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
