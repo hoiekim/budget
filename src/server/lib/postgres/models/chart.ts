@@ -2,7 +2,7 @@
  * Chart model and schema definition.
  */
 
-import { JSONChart, ChartType } from "common";
+import { JSONChart, ChartType, isString } from "common";
 import {
   CHART_ID,
   USER_ID,
@@ -17,10 +17,10 @@ import {
 import {
   Schema,
   Constraints,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
@@ -123,3 +123,10 @@ export const chartConstraints: Constraints = [];
 export const chartColumns = Object.keys(chartSchema);
 
 export const chartIndexes = [{ table: CHARTS, column: USER_ID }];
+
+export const chartTable: Table = {
+  name: CHARTS,
+  schema: chartSchema as Schema<Record<string, unknown>>,
+  constraints: chartConstraints,
+  indexes: chartIndexes,
+};

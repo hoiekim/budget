@@ -2,7 +2,16 @@
  * Budget, Section, and Category models and schema definitions.
  */
 
-import { JSONBudget, JSONSection, JSONCategory, JSONCapacity } from "common";
+import {
+  JSONBudget,
+  JSONSection,
+  JSONCategory,
+  JSONCapacity,
+  isString,
+  isArray,
+  isNull,
+  isUndefined,
+} from "common";
 import {
   BUDGET_ID,
   SECTION_ID,
@@ -23,17 +32,14 @@ import {
 import {
   Schema,
   Constraints,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
   toDate,
-  isArray,
-  isNull,
-  isUndefined,
 } from "./base";
 
 // =============================================
@@ -410,3 +416,24 @@ export const categoryIndexes = [
   { table: CATEGORIES, column: USER_ID },
   { table: CATEGORIES, column: SECTION_ID },
 ];
+
+export const budgetTable: Table = {
+  name: BUDGETS,
+  schema: budgetSchema as Schema<Record<string, unknown>>,
+  constraints: budgetConstraints,
+  indexes: budgetIndexes,
+};
+
+export const sectionTable: Table = {
+  name: SECTIONS,
+  schema: sectionSchema as Schema<Record<string, unknown>>,
+  constraints: sectionConstraints,
+  indexes: sectionIndexes,
+};
+
+export const categoryTable: Table = {
+  name: CATEGORIES,
+  schema: categorySchema as Schema<Record<string, unknown>>,
+  constraints: categoryConstraints,
+  indexes: categoryIndexes,
+};

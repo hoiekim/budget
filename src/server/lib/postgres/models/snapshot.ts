@@ -8,6 +8,7 @@ import {
   JSONSecuritySnapshot,
   JSONHoldingSnapshot,
   JSONSnapshotData,
+  isString,
 } from "common";
 import {
   SNAPSHOT_ID,
@@ -34,10 +35,10 @@ import {
 import {
   Schema,
   Constraints,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableNumber,
   isNullableBoolean,
@@ -319,9 +320,12 @@ export const snapshotIndexes = [
   { table: SNAPSHOTS, column: SECURITY_ID },
 ];
 
-// =============================================
-// Type Guards
-// =============================================
+export const snapshotTable: Table = {
+  name: SNAPSHOTS,
+  schema: snapshotSchema as Schema<Record<string, unknown>>,
+  constraints: snapshotConstraints,
+  indexes: snapshotIndexes,
+};
 
 export function isAccountSnapshot(
   data: JSONSnapshotData

@@ -3,7 +3,14 @@
  */
 
 import { AccountType, AccountSubtype } from "plaid";
-import { JSONAccount, JSONHolding, JSONInstitution, JSONSecurity } from "common";
+import {
+  JSONAccount,
+  JSONHolding,
+  JSONInstitution,
+  JSONSecurity,
+  isString,
+  isUndefined,
+} from "common";
 import {
   ACCOUNT_ID,
   USER_ID,
@@ -46,17 +53,16 @@ import {
 import {
   Schema,
   Constraints,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableNumber,
   isNullableBoolean,
   isNullableDate,
   toDate,
   toNullableNumber,
-  isUndefined,
 } from "./base";
 
 // =============================================
@@ -586,3 +592,31 @@ export const securitySchema: Schema<SecurityRow> = {
 };
 
 export const securityColumns = Object.keys(securitySchema);
+
+export const accountTable: Table = {
+  name: ACCOUNTS,
+  schema: accountSchema as Schema<Record<string, unknown>>,
+  constraints: accountConstraints,
+  indexes: accountIndexes,
+};
+
+export const holdingTable: Table = {
+  name: HOLDINGS,
+  schema: holdingSchema as Schema<Record<string, unknown>>,
+  constraints: holdingConstraints,
+  indexes: holdingIndexes,
+};
+
+export const institutionTable: Table = {
+  name: INSTITUTIONS,
+  schema: institutionSchema as Schema<Record<string, unknown>>,
+  constraints: [],
+  indexes: [],
+};
+
+export const securityTable: Table = {
+  name: SECURITIES,
+  schema: securitySchema as Schema<Record<string, unknown>>,
+  constraints: [],
+  indexes: [],
+};

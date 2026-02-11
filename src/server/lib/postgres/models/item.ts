@@ -3,7 +3,7 @@
  */
 
 import { Products } from "plaid";
-import { ItemStatus, ItemProvider, JSONItem } from "common";
+import { ItemStatus, ItemProvider, JSONItem, isString, isArray, isNull, isUndefined } from "common";
 import {
   ITEM_ID,
   USER_ID,
@@ -22,17 +22,14 @@ import {
 import {
   Schema,
   Constraints,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
   toDate,
-  isArray,
-  isNull,
-  isUndefined,
 } from "./base";
 
 // =============================================
@@ -169,3 +166,10 @@ export const itemIndexes = [
   { table: ITEMS, column: USER_ID },
   { table: ITEMS, column: INSTITUTION_ID },
 ];
+
+export const itemTable: Table = {
+  name: ITEMS,
+  schema: itemSchema as Schema<Record<string, unknown>>,
+  constraints: itemConstraints,
+  indexes: itemIndexes,
+};

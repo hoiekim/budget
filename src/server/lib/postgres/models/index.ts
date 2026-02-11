@@ -1,60 +1,58 @@
 /**
- * Models index - re-exports all models and schemas.
+ * Models index - re-exports all models, schemas, and tables.
  */
 
-// Common constants and base types
 export * from "./common";
 export * from "./base";
 
-// User model
 export {
   UserModel,
   userSchema,
   userConstraints,
   userColumns,
+  userTable,
 } from "./user";
 export type { UserRow, MaskedUser, User } from "./user";
 
-// Session model
 export {
   SessionModel,
   sessionSchema,
   sessionColumns,
+  sessionTable,
 } from "./session";
 export type { SessionRow } from "./session";
 
-// Item model
 export {
   ItemModel,
   itemSchema,
   itemConstraints,
   itemColumns,
   itemIndexes,
+  itemTable,
 } from "./item";
 export type { ItemRow } from "./item";
 
-// Account-related models
 export {
-  // Account
   AccountModel,
   accountSchema,
   accountConstraints,
   accountColumns,
   accountIndexes,
-  // Holding
+  accountTable,
   HoldingModel,
   holdingSchema,
   holdingConstraints,
   holdingColumns,
   holdingIndexes,
-  // Institution
+  holdingTable,
   InstitutionModel,
   institutionSchema,
   institutionColumns,
-  // Security
+  institutionTable,
   SecurityModel,
   securitySchema,
   securityColumns,
+  securityTable,
 } from "./account";
 export type {
   AccountRow,
@@ -63,26 +61,25 @@ export type {
   SecurityRow,
 } from "./account";
 
-// Transaction-related models
 export {
-  // Transaction
   TransactionModel,
   transactionSchema,
   transactionConstraints,
   transactionColumns,
   transactionIndexes,
-  // Investment Transaction
+  transactionTable,
   InvestmentTransactionModel,
   investmentTransactionSchema,
   investmentTransactionConstraints,
   investmentTransactionColumns,
   investmentTransactionIndexes,
-  // Split Transaction
+  investmentTransactionTable,
   SplitTransactionModel,
   splitTransactionSchema,
   splitTransactionConstraints,
   splitTransactionColumns,
   splitTransactionIndexes,
+  splitTransactionTable,
 } from "./transaction";
 export type {
   TransactionRow,
@@ -90,26 +87,25 @@ export type {
   SplitTransactionRow,
 } from "./transaction";
 
-// Budget-related models
 export {
-  // Budget
   BudgetModel,
   budgetSchema,
   budgetConstraints,
   budgetColumns,
   budgetIndexes,
-  // Section
+  budgetTable,
   SectionModel,
   sectionSchema,
   sectionConstraints,
   sectionColumns,
   sectionIndexes,
-  // Category
+  sectionTable,
   CategoryModel,
   categorySchema,
   categoryConstraints,
   categoryColumns,
   categoryIndexes,
+  categoryTable,
 } from "./budget";
 export type {
   BudgetRow,
@@ -117,25 +113,25 @@ export type {
   CategoryRow,
 } from "./budget";
 
-// Snapshot model
 export {
   SnapshotModel,
   snapshotSchema,
   snapshotConstraints,
   snapshotColumns,
   snapshotIndexes,
+  snapshotTable,
   isAccountSnapshot,
   isSecuritySnapshot,
   isHoldingSnapshot,
 } from "./snapshot";
 export type { SnapshotRow, SnapshotType } from "./snapshot";
 
-// Chart model
 export {
   ChartModel,
   chartSchema,
   chartConstraints,
   chartColumns,
   chartIndexes,
+  chartTable,
 } from "./chart";
 export type { ChartRow } from "./chart";

@@ -2,6 +2,7 @@
  * Session model and schema definition.
  */
 
+import { isString } from "common";
 import {
   SESSION_ID,
   USER_USER_ID,
@@ -20,10 +21,10 @@ import {
 } from "./common";
 import {
   Schema,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
@@ -199,3 +200,10 @@ export const sessionSchema: Schema<SessionRow> = {
 };
 
 export const sessionColumns = Object.keys(sessionSchema);
+
+export const sessionTable: Table = {
+  name: "sessions",
+  schema: sessionSchema as Schema<Record<string, unknown>>,
+  constraints: [],
+  indexes: [],
+};

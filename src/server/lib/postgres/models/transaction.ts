@@ -12,6 +12,8 @@ import {
   JSONInvestmentTransaction,
   JSONSplitTransaction,
   LocalDate,
+  isString,
+  isUndefined,
 } from "common";
 import {
   TRANSACTION_ID,
@@ -50,10 +52,10 @@ import {
 import {
   Schema,
   Constraints,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableNumber,
   isNullableBoolean,
@@ -61,7 +63,6 @@ import {
   toDate,
   toNullableNumber,
   toISODateString,
-  isUndefined,
 } from "./base";
 
 // =============================================
@@ -605,3 +606,24 @@ export const splitTransactionIndexes = [
   { table: SPLIT_TRANSACTIONS, column: TRANSACTION_ID },
   { table: SPLIT_TRANSACTIONS, column: ACCOUNT_ID },
 ];
+
+export const transactionTable: Table = {
+  name: TRANSACTIONS,
+  schema: transactionSchema as Schema<Record<string, unknown>>,
+  constraints: transactionConstraints,
+  indexes: transactionIndexes,
+};
+
+export const investmentTransactionTable: Table = {
+  name: INVESTMENT_TRANSACTIONS,
+  schema: investmentTransactionSchema as Schema<Record<string, unknown>>,
+  constraints: investmentTransactionConstraints,
+  indexes: investmentTransactionIndexes,
+};
+
+export const splitTransactionTable: Table = {
+  name: SPLIT_TRANSACTIONS,
+  schema: splitTransactionSchema as Schema<Record<string, unknown>>,
+  constraints: splitTransactionConstraints,
+  indexes: splitTransactionIndexes,
+};

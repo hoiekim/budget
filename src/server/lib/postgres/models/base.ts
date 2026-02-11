@@ -1,9 +1,8 @@
 /**
- * Base model helpers and type checkers.
- * Provides utilities for model validation and type checking.
+ * Base model helpers for validation and type checking.
+ * For basic type checkers (isNull, isString, etc.), import from "common" directly.
  */
 
-// Import basic type checkers from common
 import {
   isNull,
   isUndefined,
@@ -11,30 +10,9 @@ import {
   isNumber,
   isBoolean,
   isDate,
-  isObject,
   isArray,
 } from "common";
 
-// Re-export from common for convenience
-export {
-  isNull,
-  isUndefined,
-  isString,
-  isNumber,
-  isBoolean,
-  isDate,
-  isObject,
-  isArray,
-};
-
-// =============================================
-// Validation Error Class
-// =============================================
-
-/**
- * Error thrown when model validation fails.
- * Contains details about which fields failed validation.
- */
 export class ModelValidationError extends Error {
   public readonly errors: string[];
 
@@ -45,10 +23,6 @@ export class ModelValidationError extends Error {
   }
 }
 
-// =============================================
-// Additional Type Checkers
-// =============================================
-
 export const isDefined = <T>(v: T | undefined): v is T => v !== undefined;
 
 export const isPotentialDate = (v: unknown): boolean =>
@@ -56,10 +30,6 @@ export const isPotentialDate = (v: unknown): boolean =>
 
 export const isStringArray = (v: unknown): v is string[] =>
   isArray(v) && v.every(isString);
-
-// =============================================
-// Nullable/Optional Checkers (pg returns undefined for NULL)
-// =============================================
 
 export const isNullableString = (v: unknown): v is string | null | undefined =>
   isUndefined(v) || isNull(v) || isString(v);
@@ -82,49 +52,28 @@ export const isOptionalNumber = (v: unknown): v is number | undefined =>
 export const isOptionalBoolean = (v: unknown): v is boolean | undefined =>
   isUndefined(v) || isBoolean(v);
 
-// =============================================
-// Composite Checkers (aliases for clarity)
-// =============================================
-
-export const isNullableOrUndefinedString = isNullableString;
-export const isNullableOrUndefinedNumber = isNullableNumber;
-export const isNullableOrUndefinedBoolean = isNullableBoolean;
-
-// =============================================
-// Schema Types
-// =============================================
-
-/**
- * PostgreSQL type definition for a column.
- * Maps a column name to its PostgreSQL type declaration.
- */
 export type ColumnDefinition = string;
 
-/**
- * Schema mapping column names to their PostgreSQL type definitions.
- */
 export type Schema<T> = { [K in keyof T]: ColumnDefinition };
 
-/**
- * Constraint definitions for a table (e.g., foreign keys).
- */
 export type Constraints = string[];
 
-// =============================================
-// Assertion Helpers
-// =============================================
+export interface IndexDefinition {
+  table: string;
+  column: string;
+}
 
-/**
- * Type definition for a property validator.
- */
+export interface Table {
+  name: string;
+  schema: Schema<Record<string, unknown>>;
+  constraints: Constraints;
+  indexes: IndexDefinition[];
+}
+
 export type PropertyChecker<T> = {
   [K in keyof T]: (value: unknown) => boolean;
 };
 
-/**
- * Creates an assertType function for a model.
- * Returns an array of error messages (empty if valid).
- */
 export function validateObject<T extends object>(
   input: unknown,
   checker: PropertyChecker<T>,
@@ -148,35 +97,20 @@ export function validateObject<T extends object>(
   return errors;
 }
 
-/**
- * Type for the assertType function.
- */
 export type AssertTypeFn<T> = (input: unknown, skip?: (keyof T)[]) => asserts input is T;
 
-/**
- * Creates an assertType static method implementation.
- * Throws ModelValidationError if validation fails.
- */
 export function createAssertType<T extends object>(
   modelName: string,
   checker: PropertyChecker<T>
 ): AssertTypeFn<T> {
-  const assertType: AssertTypeFn<T> = (input: unknown, skip: (keyof T)[] = []): asserts input is T => {
+  return (input: unknown, skip: (keyof T)[] = []): asserts input is T => {
     const errors = validateObject(input, checker, skip);
     if (errors.length > 0) {
       throw new ModelValidationError(modelName, errors);
     }
   };
-  return assertType;
 }
 
-// =============================================
-// Value Conversion Helpers
-// =============================================
-
-/**
- * Safely converts a value to a number, returning a default if conversion fails.
- */
 export function toNumber(v: unknown, defaultValue: number = 0): number {
   if (isNumber(v)) return v;
   if (isString(v)) {
@@ -186,9 +120,6 @@ export function toNumber(v: unknown, defaultValue: number = 0): number {
   return defaultValue;
 }
 
-/**
- * Safely converts a value to a nullable number.
- */
 export function toNullableNumber(v: unknown): number | null {
   if (isNull(v) || isUndefined(v)) return null;
   if (isNumber(v)) return v;
@@ -199,27 +130,16 @@ export function toNullableNumber(v: unknown): number | null {
   return null;
 }
 
-/**
- * Safely converts a value to a Date.
- */
 export function toDate(v: unknown): Date {
   if (isDate(v)) return v;
   if (isString(v)) return new Date(v);
   return new Date();
 }
 
-/**
- * Safely converts a value to an ISO date string (YYYY-MM-DD).
- */
 export function toISODateString(v: unknown): string {
-  const date = toDate(v);
-  return date.toISOString().split("T")[0];
+  return toDate(v).toISOString().split("T")[0];
 }
 
-/**
- * Safely converts a value to an ISO timestamp string.
- */
 export function toISOString(v: unknown): string {
-  const date = toDate(v);
-  return date.toISOString();
+  return toDate(v).toISOString();
 }

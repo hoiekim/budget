@@ -2,6 +2,7 @@
  * User model and schema definition.
  */
 
+import { isString } from "common";
 import {
   USER_ID,
   USERNAME,
@@ -11,27 +12,21 @@ import {
   TOKEN,
   UPDATED,
   IS_DELETED,
+  USERS,
 } from "./common";
 import {
   Schema,
   Constraints,
+  Table,
   PropertyChecker,
   AssertTypeFn,
   createAssertType,
-  isString,
   isNullableString,
   isNullableDate,
   isNullableBoolean,
   toDate,
 } from "./base";
 
-// =============================================
-// Interfaces
-// =============================================
-
-/**
- * User row as stored in the database.
- */
 export interface UserRow {
   user_id: string;
   username: string;
@@ -43,22 +38,12 @@ export interface UserRow {
   is_deleted: boolean | null | undefined;
 }
 
-/**
- * Masked user (without password) for external use.
- */
 export interface MaskedUser {
   user_id: string;
   username: string;
 }
 
-/**
- * Full user type including password.
- */
 export type User = MaskedUser & { password: string };
-
-// =============================================
-// Model Class
-// =============================================
 
 export class UserModel {
   user_id: string;
@@ -82,9 +67,6 @@ export class UserModel {
     this.is_deleted = row.is_deleted ?? false;
   }
 
-  /**
-   * Creates a MaskedUser from this model.
-   */
   toMaskedUser(): MaskedUser {
     return {
       user_id: this.user_id,
@@ -92,10 +74,6 @@ export class UserModel {
     };
   }
 
-  /**
-   * Creates a User from this model (includes password).
-   * Throws if password is null.
-   */
   toUser(): User {
     if (this.password === null) {
       throw new Error("User has no password set");
@@ -119,10 +97,6 @@ export class UserModel {
   } as PropertyChecker<UserRow>);
 }
 
-// =============================================
-// Schema Definition
-// =============================================
-
 export const userSchema: Schema<UserRow> = {
   [USER_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
   [USERNAME]: "VARCHAR(255) UNIQUE NOT NULL",
@@ -137,3 +111,10 @@ export const userSchema: Schema<UserRow> = {
 export const userConstraints: Constraints = [];
 
 export const userColumns = Object.keys(userSchema);
+
+export const userTable: Table = {
+  name: USERS,
+  schema: userSchema as Schema<Record<string, unknown>>,
+  constraints: userConstraints,
+  indexes: [],
+};
