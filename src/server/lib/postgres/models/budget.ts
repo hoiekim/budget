@@ -2,28 +2,16 @@ import {
   JSONBudget,
   JSONCapacity,
   isString,
-  isArray,
-  isNull,
-  isUndefined,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
 } from "common";
 import {
-  BUDGET_ID,
-  USER_ID,
-  NAME,
-  ISO_CURRENCY_CODE,
-  ROLL_OVER,
-  ROLL_OVER_START_DATE,
-  CAPACITIES,
-  UPDATED,
-  IS_DELETED,
-  BUDGETS,
-  USERS,
+  BUDGET_ID, USER_ID, NAME, ISO_CURRENCY_CODE, ROLL_OVER,
+  ROLL_OVER_START_DATE, CAPACITIES, UPDATED, IS_DELETED, BUDGETS, USERS,
 } from "./common";
-import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
-import { toDate } from "../util";
+import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { toDate, parseJSONB, isNullableJSONB } from "../util";
 
 export class BudgetModel extends Model<JSONBudget> {
   budget_id: string;
@@ -39,26 +27,16 @@ export class BudgetModel extends Model<JSONBudget> {
   constructor(data: unknown) {
     super();
     BudgetModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.budget_id = row.budget_id as string;
-    this.user_id = row.user_id as string;
-    this.name = (row.name as string) || "Unnamed";
-    this.iso_currency_code = (row.iso_currency_code as string) || "USD";
-    this.roll_over = (row.roll_over as boolean) ?? false;
-    this.roll_over_start_date = row.roll_over_start_date
-      ? toDate(row.roll_over_start_date)
-      : undefined;
-    this.capacities = this.parseCapacities(row.capacities);
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
-  }
-
-  private parseCapacities(value: unknown): JSONCapacity[] {
-    if (!value) return [];
-    if (typeof value === "string") {
-      try { return JSON.parse(value); } catch { return []; }
-    }
-    return value as JSONCapacity[];
+    const r = data as Record<string, unknown>;
+    this.budget_id = r.budget_id as string;
+    this.user_id = r.user_id as string;
+    this.name = (r.name as string) || "Unnamed";
+    this.iso_currency_code = (r.iso_currency_code as string) || "USD";
+    this.roll_over = (r.roll_over as boolean) ?? false;
+    this.roll_over_start_date = r.roll_over_start_date ? toDate(r.roll_over_start_date) : undefined;
+    this.capacities = parseJSONB<JSONCapacity[]>(r.capacities, []);
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONBudget {
@@ -72,15 +50,15 @@ export class BudgetModel extends Model<JSONBudget> {
     };
   }
 
-  static fromJSON(budget: Partial<JSONBudget>, user_id: string): Record<string, unknown> {
-    const row: Record<string, unknown> = { user_id };
-    if (budget.budget_id !== undefined) row.budget_id = budget.budget_id;
-    if (budget.name !== undefined) row.name = budget.name;
-    if (budget.iso_currency_code !== undefined) row.iso_currency_code = budget.iso_currency_code;
-    if (budget.roll_over !== undefined) row.roll_over = budget.roll_over;
-    if (budget.roll_over_start_date !== undefined) row.roll_over_start_date = budget.roll_over_start_date;
-    if (budget.capacities !== undefined) row.capacities = JSON.stringify(budget.capacities);
-    return row;
+  static fromJSON(b: Partial<JSONBudget>, user_id: string): Record<string, unknown> {
+    const r: Record<string, unknown> = { user_id };
+    if (b.budget_id !== undefined) r.budget_id = b.budget_id;
+    if (b.name !== undefined) r.name = b.name;
+    if (b.iso_currency_code !== undefined) r.iso_currency_code = b.iso_currency_code;
+    if (b.roll_over !== undefined) r.roll_over = b.roll_over;
+    if (b.roll_over_start_date !== undefined) r.roll_over_start_date = b.roll_over_start_date;
+    if (b.capacities !== undefined) r.capacities = JSON.stringify(b.capacities);
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("BudgetModel", {
@@ -90,15 +68,15 @@ export class BudgetModel extends Model<JSONBudget> {
     iso_currency_code: isNullableString,
     roll_over: isNullableBoolean,
     roll_over_start_date: isNullableDate,
-    capacities: (v): v is unknown => isUndefined(v) || isNull(v) || isString(v) || isArray(v),
+    capacities: isNullableJSONB,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   });
 }
 
-export class BudgetsTable extends Table<JSONBudget, BudgetModel> {
-  readonly name = BUDGETS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const budgetsTable = createTable({
+  name: BUDGETS,
+  schema: {
     [BUDGET_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
     [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
@@ -108,11 +86,9 @@ export class BudgetsTable extends Table<JSONBudget, BudgetModel> {
     [CAPACITIES]: "JSONB",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
     [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [{ column: USER_ID }];
-  readonly ModelClass = BudgetModel;
-}
+  } as Schema<Record<string, unknown>>,
+  indexes: [{ column: USER_ID }],
+  ModelClass: BudgetModel,
+});
 
-export const budgetsTable = new BudgetsTable();
 export const budgetColumns = Object.keys(budgetsTable.schema);

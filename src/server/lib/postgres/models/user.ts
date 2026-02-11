@@ -1,16 +1,6 @@
 import { isString, isNullableString, isNullableDate, isNullableBoolean } from "common";
-import {
-  USER_ID,
-  USERNAME,
-  PASSWORD,
-  EMAIL,
-  EXPIRY,
-  TOKEN,
-  UPDATED,
-  IS_DELETED,
-  USERS,
-} from "./common";
-import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { USER_ID, USERNAME, PASSWORD, EMAIL, EXPIRY, TOKEN, UPDATED, IS_DELETED, USERS } from "./common";
+import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 import { toDate } from "../util";
 
 export interface MaskedUser {
@@ -33,37 +23,28 @@ export class UserModel extends Model<MaskedUser> {
   constructor(data: unknown) {
     super();
     UserModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.user_id = row.user_id as string;
-    this.username = row.username as string;
-    this.password = (row.password as string) ?? null;
-    this.email = (row.email as string) ?? null;
-    this.expiry = row.expiry ? toDate(row.expiry) : null;
-    this.token = (row.token as string) ?? null;
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
+    const r = data as Record<string, unknown>;
+    this.user_id = r.user_id as string;
+    this.username = r.username as string;
+    this.password = (r.password as string) ?? null;
+    this.email = (r.email as string) ?? null;
+    this.expiry = r.expiry ? toDate(r.expiry) : null;
+    this.token = (r.token as string) ?? null;
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): MaskedUser {
-    return this.toMaskedUser();
+    return { user_id: this.user_id, username: this.username };
   }
 
   toMaskedUser(): MaskedUser {
-    return {
-      user_id: this.user_id,
-      username: this.username,
-    };
+    return this.toJSON();
   }
 
   toUser(): User {
-    if (this.password === null) {
-      throw new Error("User has no password set");
-    }
-    return {
-      user_id: this.user_id,
-      username: this.username,
-      password: this.password,
-    };
+    if (this.password === null) throw new Error("User has no password set");
+    return { user_id: this.user_id, username: this.username, password: this.password };
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("UserModel", {
@@ -78,9 +59,9 @@ export class UserModel extends Model<MaskedUser> {
   });
 }
 
-export class UsersTable extends Table<MaskedUser, UserModel> {
-  readonly name = USERS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const usersTable = createTable({
+  name: USERS,
+  schema: {
     [USER_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USERNAME]: "VARCHAR(255) UNIQUE NOT NULL",
     [PASSWORD]: "VARCHAR(255)",
@@ -89,11 +70,8 @@ export class UsersTable extends Table<MaskedUser, UserModel> {
     [TOKEN]: "VARCHAR(255)",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
     [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [];
-  readonly ModelClass = UserModel;
-}
+  } as Schema<Record<string, unknown>>,
+  ModelClass: UserModel,
+});
 
-export const usersTable = new UsersTable();
 export const userColumns = Object.keys(usersTable.schema);

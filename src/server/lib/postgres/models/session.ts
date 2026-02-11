@@ -1,23 +1,11 @@
 import { isString, isNullableString, isNullableBoolean, isNullableDate } from "common";
 import { SessionData as ExpressSessionData } from "express-session";
 import {
-  SESSION_ID,
-  USER_USER_ID,
-  USER_USERNAME,
-  COOKIE_ORIGINAL_MAX_AGE,
-  COOKIE_MAX_AGE,
-  COOKIE_SIGNED,
-  COOKIE_EXPIRES,
-  COOKIE_HTTP_ONLY,
-  COOKIE_PATH,
-  COOKIE_DOMAIN,
-  COOKIE_SECURE,
-  COOKIE_SAME_SITE,
-  CREATED_AT,
-  UPDATED,
-  SESSIONS,
+  SESSION_ID, USER_USER_ID, USER_USERNAME, COOKIE_ORIGINAL_MAX_AGE, COOKIE_MAX_AGE,
+  COOKIE_SIGNED, COOKIE_EXPIRES, COOKIE_HTTP_ONLY, COOKIE_PATH, COOKIE_DOMAIN,
+  COOKIE_SECURE, COOKIE_SAME_SITE, CREATED_AT, UPDATED, SESSIONS,
 } from "./common";
-import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 import { toDate } from "../util";
 
 export class SessionModel extends Model<ExpressSessionData> {
@@ -39,36 +27,28 @@ export class SessionModel extends Model<ExpressSessionData> {
   constructor(data: unknown) {
     super();
     SessionModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.session_id = row.session_id as string;
-    this.user_user_id = row.user_user_id as string;
-    this.user_username = row.user_username as string;
-    this.cookie_original_max_age = row.cookie_original_max_age
-      ? parseInt(row.cookie_original_max_age as string, 10)
-      : null;
-    this.cookie_max_age = row.cookie_max_age
-      ? parseInt(row.cookie_max_age as string, 10)
-      : undefined;
-    this.cookie_signed = (row.cookie_signed as boolean) ?? undefined;
-    this.cookie_expires = row.cookie_expires ? toDate(row.cookie_expires) : undefined;
-    this.cookie_http_only = (row.cookie_http_only as boolean) ?? undefined;
-    this.cookie_path = (row.cookie_path as string) ?? undefined;
-    this.cookie_domain = (row.cookie_domain as string) ?? undefined;
-    this.cookie_secure = (row.cookie_secure as boolean) ?? undefined;
-    this.cookie_same_site = this.parseSameSite(row.cookie_same_site as string);
-    this.created_at = row.created_at ? toDate(row.created_at) : new Date();
-    this.updated = row.updated ? toDate(row.updated) : new Date();
+    const r = data as Record<string, unknown>;
+    this.session_id = r.session_id as string;
+    this.user_user_id = r.user_user_id as string;
+    this.user_username = r.user_username as string;
+    this.cookie_original_max_age = r.cookie_original_max_age ? parseInt(r.cookie_original_max_age as string, 10) : null;
+    this.cookie_max_age = r.cookie_max_age ? parseInt(r.cookie_max_age as string, 10) : undefined;
+    this.cookie_signed = (r.cookie_signed as boolean) ?? undefined;
+    this.cookie_expires = r.cookie_expires ? toDate(r.cookie_expires) : undefined;
+    this.cookie_http_only = (r.cookie_http_only as boolean) ?? undefined;
+    this.cookie_path = (r.cookie_path as string) ?? undefined;
+    this.cookie_domain = (r.cookie_domain as string) ?? undefined;
+    this.cookie_secure = (r.cookie_secure as boolean) ?? undefined;
+    this.cookie_same_site = this.parseSameSite(r.cookie_same_site as string);
+    this.created_at = r.created_at ? toDate(r.created_at) : new Date();
+    this.updated = r.updated ? toDate(r.updated) : new Date();
   }
 
-  private parseSameSite(value: string | null | undefined): boolean | "lax" | "strict" | "none" | undefined {
-    switch (value) {
-      case "true": return true;
-      case "false": return false;
-      case "lax": return "lax";
-      case "strict": return "strict";
-      case "none": return "none";
-      default: return undefined;
-    }
+  private parseSameSite(v: string | null | undefined): boolean | "lax" | "strict" | "none" | undefined {
+    if (v === "true") return true;
+    if (v === "false") return false;
+    if (v === "lax" || v === "strict" || v === "none") return v;
+    return undefined;
   }
 
   toJSON(): ExpressSessionData {
@@ -127,9 +107,9 @@ export class SessionModel extends Model<ExpressSessionData> {
   });
 }
 
-export class SessionsTable extends Table<ExpressSessionData, SessionModel> {
-  readonly name = SESSIONS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const sessionsTable = createTable({
+  name: SESSIONS,
+  schema: {
     [SESSION_ID]: "VARCHAR(255) PRIMARY KEY",
     [USER_USER_ID]: "UUID",
     [USER_USERNAME]: "VARCHAR(255)",
@@ -144,11 +124,8 @@ export class SessionsTable extends Table<ExpressSessionData, SessionModel> {
     [COOKIE_SAME_SITE]: "VARCHAR(50)",
     [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [];
-  readonly ModelClass = SessionModel;
-}
+  } as Schema<Record<string, unknown>>,
+  ModelClass: SessionModel,
+});
 
-export const sessionsTable = new SessionsTable();
 export const sessionColumns = Object.keys(sessionsTable.schema);

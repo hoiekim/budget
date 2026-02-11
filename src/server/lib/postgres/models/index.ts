@@ -1,34 +1,34 @@
 export * from "./common";
 export * from "./base";
 
-export { UserModel, UsersTable, usersTable, userColumns } from "./user";
+export { UserModel, usersTable, userColumns } from "./user";
 export type { MaskedUser, User } from "./user";
 
-export { SessionModel, SessionsTable, sessionsTable, sessionColumns } from "./session";
+export { SessionModel, sessionsTable, sessionColumns } from "./session";
 
-export { ItemModel, ItemsTable, itemsTable, itemColumns } from "./item";
+export { ItemModel, itemsTable, itemColumns } from "./item";
 
 export {
-  AccountModel, AccountsTable, accountsTable, accountColumns,
-  HoldingModel, HoldingsTable, holdingsTable, holdingColumns,
-  InstitutionModel, InstitutionsTable, institutionsTable, institutionColumns,
-  SecurityModel, SecuritiesTable, securitiesTable, securityColumns,
+  AccountModel, accountsTable, accountColumns,
+  HoldingModel, holdingsTable, holdingColumns,
+  InstitutionModel, institutionsTable, institutionColumns,
+  SecurityModel, securitiesTable, securityColumns,
 } from "./account";
 
 export {
-  TransactionModel, TransactionsTable, transactionsTable, transactionColumns,
-  InvestmentTransactionModel, InvestmentTransactionsTable, investmentTransactionsTable, investmentTransactionColumns,
-  SplitTransactionModel, SplitTransactionsTable, splitTransactionsTable, splitTransactionColumns,
+  TransactionModel, transactionsTable, transactionColumns,
+  InvestmentTransactionModel, investmentTransactionsTable, investmentTransactionColumns,
+  SplitTransactionModel, splitTransactionsTable, splitTransactionColumns,
 } from "./transaction";
 
-export { BudgetModel, BudgetsTable, budgetsTable, budgetColumns } from "./budget";
-export { SectionModel, SectionsTable, sectionsTable, sectionColumns } from "./section";
-export { CategoryModel, CategoriesTable, categoriesTable, categoryColumns } from "./category";
+export { BudgetModel, budgetsTable, budgetColumns } from "./budget";
+export { SectionModel, sectionsTable, sectionColumns } from "./section";
+export { CategoryModel, categoriesTable, categoryColumns } from "./category";
 
 export {
-  SnapshotModel, SnapshotsTable, snapshotsTable, snapshotColumns,
+  SnapshotModel, snapshotsTable, snapshotColumns,
   isAccountSnapshot, isSecuritySnapshot, isHoldingSnapshot,
 } from "./snapshot";
 export type { SnapshotType } from "./snapshot";
 
-export { ChartModel, ChartsTable, chartsTable, chartColumns } from "./chart";
+export { ChartModel, chartsTable, chartColumns } from "./chart";

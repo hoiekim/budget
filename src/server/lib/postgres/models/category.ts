@@ -2,29 +2,16 @@ import {
   JSONCategory,
   JSONCapacity,
   isString,
-  isArray,
-  isNull,
-  isUndefined,
   isNullableString,
   isNullableBoolean,
   isNullableDate,
 } from "common";
 import {
-  CATEGORY_ID,
-  SECTION_ID,
-  USER_ID,
-  NAME,
-  ROLL_OVER,
-  ROLL_OVER_START_DATE,
-  CAPACITIES,
-  UPDATED,
-  IS_DELETED,
-  CATEGORIES,
-  SECTIONS,
-  USERS,
+  CATEGORY_ID, SECTION_ID, USER_ID, NAME, ROLL_OVER,
+  ROLL_OVER_START_DATE, CAPACITIES, UPDATED, IS_DELETED, CATEGORIES, SECTIONS, USERS,
 } from "./common";
-import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
-import { toDate } from "../util";
+import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { toDate, parseJSONB, isNullableJSONB } from "../util";
 
 export class CategoryModel extends Model<JSONCategory> {
   category_id: string;
@@ -40,26 +27,16 @@ export class CategoryModel extends Model<JSONCategory> {
   constructor(data: unknown) {
     super();
     CategoryModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.category_id = row.category_id as string;
-    this.user_id = row.user_id as string;
-    this.section_id = row.section_id as string;
-    this.name = (row.name as string) || "Unnamed";
-    this.roll_over = (row.roll_over as boolean) ?? false;
-    this.roll_over_start_date = row.roll_over_start_date
-      ? toDate(row.roll_over_start_date)
-      : undefined;
-    this.capacities = this.parseCapacities(row.capacities);
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
-  }
-
-  private parseCapacities(value: unknown): JSONCapacity[] {
-    if (!value) return [];
-    if (typeof value === "string") {
-      try { return JSON.parse(value); } catch { return []; }
-    }
-    return value as JSONCapacity[];
+    const r = data as Record<string, unknown>;
+    this.category_id = r.category_id as string;
+    this.user_id = r.user_id as string;
+    this.section_id = r.section_id as string;
+    this.name = (r.name as string) || "Unnamed";
+    this.roll_over = (r.roll_over as boolean) ?? false;
+    this.roll_over_start_date = r.roll_over_start_date ? toDate(r.roll_over_start_date) : undefined;
+    this.capacities = parseJSONB<JSONCapacity[]>(r.capacities, []);
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONCategory {
@@ -73,15 +50,15 @@ export class CategoryModel extends Model<JSONCategory> {
     };
   }
 
-  static fromJSON(category: Partial<JSONCategory>, user_id: string): Record<string, unknown> {
-    const row: Record<string, unknown> = { user_id };
-    if (category.category_id !== undefined) row.category_id = category.category_id;
-    if (category.section_id !== undefined) row.section_id = category.section_id;
-    if (category.name !== undefined) row.name = category.name;
-    if (category.roll_over !== undefined) row.roll_over = category.roll_over;
-    if (category.roll_over_start_date !== undefined) row.roll_over_start_date = category.roll_over_start_date;
-    if (category.capacities !== undefined) row.capacities = JSON.stringify(category.capacities);
-    return row;
+  static fromJSON(c: Partial<JSONCategory>, user_id: string): Record<string, unknown> {
+    const r: Record<string, unknown> = { user_id };
+    if (c.category_id !== undefined) r.category_id = c.category_id;
+    if (c.section_id !== undefined) r.section_id = c.section_id;
+    if (c.name !== undefined) r.name = c.name;
+    if (c.roll_over !== undefined) r.roll_over = c.roll_over;
+    if (c.roll_over_start_date !== undefined) r.roll_over_start_date = c.roll_over_start_date;
+    if (c.capacities !== undefined) r.capacities = JSON.stringify(c.capacities);
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("CategoryModel", {
@@ -91,15 +68,15 @@ export class CategoryModel extends Model<JSONCategory> {
     name: isNullableString,
     roll_over: isNullableBoolean,
     roll_over_start_date: isNullableDate,
-    capacities: (v): v is unknown => isUndefined(v) || isNull(v) || isString(v) || isArray(v),
+    capacities: isNullableJSONB,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   });
 }
 
-export class CategoriesTable extends Table<JSONCategory, CategoryModel> {
-  readonly name = CATEGORIES;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const categoriesTable = createTable({
+  name: CATEGORIES,
+  schema: {
     [CATEGORY_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
     [SECTION_ID]: `UUID REFERENCES ${SECTIONS}(${SECTION_ID}) ON DELETE RESTRICT NOT NULL`,
@@ -109,11 +86,9 @@ export class CategoriesTable extends Table<JSONCategory, CategoryModel> {
     [CAPACITIES]: "JSONB",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
     [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [{ column: USER_ID }, { column: SECTION_ID }];
-  readonly ModelClass = CategoryModel;
-}
+  } as Schema<Record<string, unknown>>,
+  indexes: [{ column: USER_ID }, { column: SECTION_ID }],
+  ModelClass: CategoryModel,
+});
 
-export const categoriesTable = new CategoriesTable();
 export const categoryColumns = Object.keys(categoriesTable.schema);

@@ -1,6 +1,4 @@
-import {
-  TransactionPaymentChannelEnum, InvestmentTransactionType, InvestmentTransactionSubtype,
-} from "plaid";
+import { TransactionPaymentChannelEnum, InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import {
   JSONTransaction, JSONInvestmentTransaction, JSONSplitTransaction, LocalDate, isString, isUndefined,
   isNullableString, isNullableNumber, isNullableBoolean, isNullableDate, isNullableObject,
@@ -12,53 +10,40 @@ import {
   INVESTMENT_TRANSACTION_ID, SECURITY_ID, QUANTITY, PRICE, TYPE, SUBTYPE, SPLIT_TRANSACTION_ID,
   CUSTOM_NAME, TRANSACTIONS, INVESTMENT_TRANSACTIONS, SPLIT_TRANSACTIONS, USERS,
 } from "./common";
-import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class TransactionModel extends Model<JSONTransaction> {
-  transaction_id: string;
-  user_id: string;
-  account_id: string;
-  name: string;
-  merchant_name: string | null;
-  amount: number;
-  iso_currency_code: string | null;
-  date: string;
-  pending: boolean;
-  pending_transaction_id: string | null;
-  payment_channel: TransactionPaymentChannelEnum;
-  location_country: string | null;
-  location_region: string | null;
-  location_city: string | null;
-  label_budget_id: string | null;
-  label_category_id: string | null;
-  label_memo: string | null;
-  updated: Date;
-  is_deleted: boolean;
+  transaction_id: string; user_id: string; account_id: string; name: string; merchant_name: string | null;
+  amount: number; iso_currency_code: string | null; date: string; pending: boolean;
+  pending_transaction_id: string | null; payment_channel: TransactionPaymentChannelEnum;
+  location_country: string | null; location_region: string | null; location_city: string | null;
+  label_budget_id: string | null; label_category_id: string | null; label_memo: string | null;
+  updated: Date; is_deleted: boolean;
 
   constructor(data: unknown) {
     super();
     TransactionModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.transaction_id = row.transaction_id as string;
-    this.user_id = row.user_id as string;
-    this.account_id = row.account_id as string;
-    this.name = (row.name as string) || "Unknown";
-    this.merchant_name = (row.merchant_name as string) ?? null;
-    this.amount = toNullableNumber(row.amount) ?? 0;
-    this.iso_currency_code = (row.iso_currency_code as string) ?? null;
-    this.date = toISODateString(row.date);
-    this.pending = (row.pending as boolean) ?? false;
-    this.pending_transaction_id = (row.pending_transaction_id as string) ?? null;
-    this.payment_channel = (row.payment_channel as TransactionPaymentChannelEnum) || TransactionPaymentChannelEnum.InStore;
-    this.location_country = (row.location_country as string) ?? null;
-    this.location_region = (row.location_region as string) ?? null;
-    this.location_city = (row.location_city as string) ?? null;
-    this.label_budget_id = (row.label_budget_id as string) ?? null;
-    this.label_category_id = (row.label_category_id as string) ?? null;
-    this.label_memo = (row.label_memo as string) ?? null;
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
+    const r = data as Record<string, unknown>;
+    this.transaction_id = r.transaction_id as string;
+    this.user_id = r.user_id as string;
+    this.account_id = r.account_id as string;
+    this.name = (r.name as string) || "Unknown";
+    this.merchant_name = (r.merchant_name as string) ?? null;
+    this.amount = toNullableNumber(r.amount) ?? 0;
+    this.iso_currency_code = (r.iso_currency_code as string) ?? null;
+    this.date = toISODateString(r.date);
+    this.pending = (r.pending as boolean) ?? false;
+    this.pending_transaction_id = (r.pending_transaction_id as string) ?? null;
+    this.payment_channel = (r.payment_channel as TransactionPaymentChannelEnum) || TransactionPaymentChannelEnum.InStore;
+    this.location_country = (r.location_country as string) ?? null;
+    this.location_region = (r.location_region as string) ?? null;
+    this.location_city = (r.location_city as string) ?? null;
+    this.label_budget_id = (r.label_budget_id as string) ?? null;
+    this.label_category_id = (r.label_category_id as string) ?? null;
+    this.label_memo = (r.label_memo as string) ?? null;
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONTransaction {
@@ -78,30 +63,30 @@ export class TransactionModel extends Model<JSONTransaction> {
   }
 
   static fromJSON(tx: Partial<JSONTransaction> & { transaction_id: string }, user_id: string): Record<string, unknown> {
-    const row: Record<string, unknown> = { user_id };
-    if (!isUndefined(tx.transaction_id)) row.transaction_id = tx.transaction_id;
-    if (!isUndefined(tx.account_id)) row.account_id = tx.account_id;
-    if (!isUndefined(tx.name)) row.name = tx.name;
-    if (!isUndefined(tx.merchant_name)) row.merchant_name = tx.merchant_name;
-    if (!isUndefined(tx.amount)) row.amount = tx.amount;
-    if (!isUndefined(tx.iso_currency_code)) row.iso_currency_code = tx.iso_currency_code;
-    if (!isUndefined(tx.authorized_date || tx.date)) row.date = new LocalDate((tx.authorized_date || tx.date)!);
-    if (!isUndefined(tx.pending)) row.pending = tx.pending;
-    if (!isUndefined(tx.pending_transaction_id)) row.pending_transaction_id = tx.pending_transaction_id;
-    if (!isUndefined(tx.payment_channel)) row.payment_channel = tx.payment_channel;
-    if (!isUndefined(tx.location)) {
-      if (!isUndefined(tx.location.country)) row.location_country = tx.location.country;
-      if (!isUndefined(tx.location.region)) row.location_region = tx.location.region;
-      if (!isUndefined(tx.location.city)) row.location_city = tx.location.city;
+    const r: Record<string, unknown> = { user_id };
+    if (!isUndefined(tx.transaction_id)) r.transaction_id = tx.transaction_id;
+    if (!isUndefined(tx.account_id)) r.account_id = tx.account_id;
+    if (!isUndefined(tx.name)) r.name = tx.name;
+    if (!isUndefined(tx.merchant_name)) r.merchant_name = tx.merchant_name;
+    if (!isUndefined(tx.amount)) r.amount = tx.amount;
+    if (!isUndefined(tx.iso_currency_code)) r.iso_currency_code = tx.iso_currency_code;
+    if (!isUndefined(tx.authorized_date || tx.date)) r.date = new LocalDate((tx.authorized_date || tx.date)!);
+    if (!isUndefined(tx.pending)) r.pending = tx.pending;
+    if (!isUndefined(tx.pending_transaction_id)) r.pending_transaction_id = tx.pending_transaction_id;
+    if (!isUndefined(tx.payment_channel)) r.payment_channel = tx.payment_channel;
+    if (tx.location) {
+      if (!isUndefined(tx.location.country)) r.location_country = tx.location.country;
+      if (!isUndefined(tx.location.region)) r.location_region = tx.location.region;
+      if (!isUndefined(tx.location.city)) r.location_city = tx.location.city;
     }
-    if (!isUndefined(tx.label)) {
-      if (!isUndefined(tx.label.budget_id)) row.label_budget_id = tx.label.budget_id;
-      if (!isUndefined(tx.label.category_id)) row.label_category_id = tx.label.category_id;
-      if (!isUndefined(tx.label.memo)) row.label_memo = tx.label.memo;
+    if (tx.label) {
+      if (!isUndefined(tx.label.budget_id)) r.label_budget_id = tx.label.budget_id;
+      if (!isUndefined(tx.label.category_id)) r.label_category_id = tx.label.category_id;
+      if (!isUndefined(tx.label.memo)) r.label_memo = tx.label.memo;
     }
     const { label, ...providerData } = tx;
-    row.raw = providerData;
-    return row;
+    r.raw = providerData;
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("TransactionModel", {
@@ -114,9 +99,9 @@ export class TransactionModel extends Model<JSONTransaction> {
   });
 }
 
-export class TransactionsTable extends Table<JSONTransaction, TransactionModel> {
-  readonly name = TRANSACTIONS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const transactionsTable = createTable({
+  name: TRANSACTIONS,
+  schema: {
     [TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
     [ACCOUNT_ID]: "VARCHAR(255) NOT NULL", [NAME]: "TEXT", [MERCHANT_NAME]: "TEXT",
@@ -125,54 +110,40 @@ export class TransactionsTable extends Table<JSONTransaction, TransactionModel> 
     [LOCATION_COUNTRY]: "TEXT", [LOCATION_REGION]: "TEXT", [LOCATION_CITY]: "TEXT",
     [LABEL_BUDGET_ID]: "UUID", [LABEL_CATEGORY_ID]: "UUID", [LABEL_MEMO]: "TEXT", [RAW]: "JSONB",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP", [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: DATE }, { column: PENDING }];
-  readonly ModelClass = TransactionModel;
-}
-export const transactionsTable = new TransactionsTable();
+  } as Schema<Record<string, unknown>>,
+  indexes: [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: DATE }, { column: PENDING }],
+  ModelClass: TransactionModel,
+});
 export const transactionColumns = Object.keys(transactionsTable.schema);
 
 export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction> {
-  investment_transaction_id: string;
-  user_id: string;
-  account_id: string;
-  security_id: string | null;
-  date: string;
-  name: string;
-  amount: number;
-  quantity: number;
-  price: number;
-  iso_currency_code: string | null;
-  type: InvestmentTransactionType;
-  subtype: InvestmentTransactionSubtype;
-  label_budget_id: string | null;
-  label_category_id: string | null;
-  label_memo: string | null;
-  updated: Date;
-  is_deleted: boolean;
+  investment_transaction_id: string; user_id: string; account_id: string; security_id: string | null;
+  date: string; name: string; amount: number; quantity: number; price: number;
+  iso_currency_code: string | null; type: InvestmentTransactionType; subtype: InvestmentTransactionSubtype;
+  label_budget_id: string | null; label_category_id: string | null; label_memo: string | null;
+  updated: Date; is_deleted: boolean;
 
   constructor(data: unknown) {
     super();
     InvestmentTransactionModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.investment_transaction_id = row.investment_transaction_id as string;
-    this.user_id = row.user_id as string;
-    this.account_id = row.account_id as string;
-    this.security_id = (row.security_id as string) ?? null;
-    this.date = toISODateString(row.date);
-    this.name = (row.name as string) || "Unknown";
-    this.amount = toNullableNumber(row.amount) ?? 0;
-    this.quantity = toNullableNumber(row.quantity) ?? 0;
-    this.price = toNullableNumber(row.price) ?? 0;
-    this.iso_currency_code = (row.iso_currency_code as string) ?? null;
-    this.type = (row.type as InvestmentTransactionType) || InvestmentTransactionType.Transfer;
-    this.subtype = (row.subtype as InvestmentTransactionSubtype) || InvestmentTransactionSubtype.Transfer;
-    this.label_budget_id = (row.label_budget_id as string) ?? null;
-    this.label_category_id = (row.label_category_id as string) ?? null;
-    this.label_memo = (row.label_memo as string) ?? null;
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
+    const r = data as Record<string, unknown>;
+    this.investment_transaction_id = r.investment_transaction_id as string;
+    this.user_id = r.user_id as string;
+    this.account_id = r.account_id as string;
+    this.security_id = (r.security_id as string) ?? null;
+    this.date = toISODateString(r.date);
+    this.name = (r.name as string) || "Unknown";
+    this.amount = toNullableNumber(r.amount) ?? 0;
+    this.quantity = toNullableNumber(r.quantity) ?? 0;
+    this.price = toNullableNumber(r.price) ?? 0;
+    this.iso_currency_code = (r.iso_currency_code as string) ?? null;
+    this.type = (r.type as InvestmentTransactionType) || InvestmentTransactionType.Transfer;
+    this.subtype = (r.subtype as InvestmentTransactionSubtype) || InvestmentTransactionSubtype.Transfer;
+    this.label_budget_id = (r.label_budget_id as string) ?? null;
+    this.label_category_id = (r.label_category_id as string) ?? null;
+    this.label_memo = (r.label_memo as string) ?? null;
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONInvestmentTransaction {
@@ -186,26 +157,26 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
   }
 
   static fromJSON(tx: Partial<JSONInvestmentTransaction> & { investment_transaction_id: string }, user_id: string): Record<string, unknown> {
-    const row: Record<string, unknown> = { user_id };
-    if (tx.investment_transaction_id !== undefined) row.investment_transaction_id = tx.investment_transaction_id;
-    if (tx.account_id !== undefined) row.account_id = tx.account_id;
-    if (tx.security_id !== undefined) row.security_id = tx.security_id;
-    if (tx.date !== undefined) row.date = new LocalDate(tx.date);
-    if (tx.name !== undefined) row.name = tx.name;
-    if (tx.amount !== undefined) row.amount = tx.amount;
-    if (tx.quantity !== undefined) row.quantity = tx.quantity;
-    if (tx.price !== undefined) row.price = tx.price;
-    if (tx.iso_currency_code !== undefined) row.iso_currency_code = tx.iso_currency_code;
-    if (tx.type !== undefined) row.type = tx.type;
-    if (tx.subtype !== undefined) row.subtype = tx.subtype;
+    const r: Record<string, unknown> = { user_id };
+    if (tx.investment_transaction_id !== undefined) r.investment_transaction_id = tx.investment_transaction_id;
+    if (tx.account_id !== undefined) r.account_id = tx.account_id;
+    if (tx.security_id !== undefined) r.security_id = tx.security_id;
+    if (tx.date !== undefined) r.date = new LocalDate(tx.date);
+    if (tx.name !== undefined) r.name = tx.name;
+    if (tx.amount !== undefined) r.amount = tx.amount;
+    if (tx.quantity !== undefined) r.quantity = tx.quantity;
+    if (tx.price !== undefined) r.price = tx.price;
+    if (tx.iso_currency_code !== undefined) r.iso_currency_code = tx.iso_currency_code;
+    if (tx.type !== undefined) r.type = tx.type;
+    if (tx.subtype !== undefined) r.subtype = tx.subtype;
     if (tx.label) {
-      if (tx.label.budget_id !== undefined) row.label_budget_id = tx.label.budget_id;
-      if (tx.label.category_id !== undefined) row.label_category_id = tx.label.category_id;
-      if (tx.label.memo !== undefined) row.label_memo = tx.label.memo;
+      if (tx.label.budget_id !== undefined) r.label_budget_id = tx.label.budget_id;
+      if (tx.label.category_id !== undefined) r.label_category_id = tx.label.category_id;
+      if (tx.label.memo !== undefined) r.label_memo = tx.label.memo;
     }
     const { label, ...providerData } = tx;
-    row.raw = providerData;
-    return row;
+    r.raw = providerData;
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("InvestmentTransactionModel", {
@@ -217,9 +188,9 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
   });
 }
 
-export class InvestmentTransactionsTable extends Table<JSONInvestmentTransaction, InvestmentTransactionModel> {
-  readonly name = INVESTMENT_TRANSACTIONS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const investmentTransactionsTable = createTable({
+  name: INVESTMENT_TRANSACTIONS,
+  schema: {
     [INVESTMENT_TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
     [ACCOUNT_ID]: "VARCHAR(255) NOT NULL", [SECURITY_ID]: "VARCHAR(255)", [DATE]: "DATE NOT NULL",
@@ -227,44 +198,34 @@ export class InvestmentTransactionsTable extends Table<JSONInvestmentTransaction
     [ISO_CURRENCY_CODE]: "VARCHAR(10)", [TYPE]: "TEXT", [SUBTYPE]: "TEXT",
     [LABEL_BUDGET_ID]: "UUID", [LABEL_CATEGORY_ID]: "UUID", [LABEL_MEMO]: "TEXT", [RAW]: "JSONB",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP", [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: DATE }];
-  readonly ModelClass = InvestmentTransactionModel;
-}
-export const investmentTransactionsTable = new InvestmentTransactionsTable();
+  } as Schema<Record<string, unknown>>,
+  indexes: [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: DATE }],
+  ModelClass: InvestmentTransactionModel,
+});
 export const investmentTransactionColumns = Object.keys(investmentTransactionsTable.schema);
 
 export class SplitTransactionModel extends Model<JSONSplitTransaction> {
-  split_transaction_id: string;
-  user_id: string;
-  transaction_id: string;
-  account_id: string;
-  amount: number;
-  date: string;
-  custom_name: string;
-  label_budget_id: string | null;
-  label_category_id: string | null;
-  label_memo: string | null;
-  updated: Date;
-  is_deleted: boolean;
+  split_transaction_id: string; user_id: string; transaction_id: string; account_id: string;
+  amount: number; date: string; custom_name: string;
+  label_budget_id: string | null; label_category_id: string | null; label_memo: string | null;
+  updated: Date; is_deleted: boolean;
 
   constructor(data: unknown) {
     super();
     SplitTransactionModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.split_transaction_id = row.split_transaction_id as string;
-    this.user_id = row.user_id as string;
-    this.transaction_id = row.transaction_id as string;
-    this.account_id = row.account_id as string;
-    this.amount = toNullableNumber(row.amount) ?? 0;
-    this.date = toISODateString(row.date);
-    this.custom_name = (row.custom_name as string) || "";
-    this.label_budget_id = (row.label_budget_id as string) ?? null;
-    this.label_category_id = (row.label_category_id as string) ?? null;
-    this.label_memo = (row.label_memo as string) ?? null;
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
+    const r = data as Record<string, unknown>;
+    this.split_transaction_id = r.split_transaction_id as string;
+    this.user_id = r.user_id as string;
+    this.transaction_id = r.transaction_id as string;
+    this.account_id = r.account_id as string;
+    this.amount = toNullableNumber(r.amount) ?? 0;
+    this.date = toISODateString(r.date);
+    this.custom_name = (r.custom_name as string) || "";
+    this.label_budget_id = (r.label_budget_id as string) ?? null;
+    this.label_category_id = (r.label_category_id as string) ?? null;
+    this.label_memo = (r.label_memo as string) ?? null;
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONSplitTransaction {
@@ -276,19 +237,19 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
   }
 
   static fromJSON(tx: Partial<JSONSplitTransaction>, user_id: string): Record<string, unknown> {
-    const row: Record<string, unknown> = { user_id };
-    if (tx.split_transaction_id !== undefined) row.split_transaction_id = tx.split_transaction_id;
-    if (tx.transaction_id !== undefined) row.transaction_id = tx.transaction_id;
-    if (tx.account_id !== undefined) row.account_id = tx.account_id;
-    if (tx.amount !== undefined) row.amount = tx.amount;
-    if (tx.date !== undefined) row.date = new LocalDate(tx.date);
-    if (tx.custom_name !== undefined) row.custom_name = tx.custom_name;
+    const r: Record<string, unknown> = { user_id };
+    if (tx.split_transaction_id !== undefined) r.split_transaction_id = tx.split_transaction_id;
+    if (tx.transaction_id !== undefined) r.transaction_id = tx.transaction_id;
+    if (tx.account_id !== undefined) r.account_id = tx.account_id;
+    if (tx.amount !== undefined) r.amount = tx.amount;
+    if (tx.date !== undefined) r.date = new LocalDate(tx.date);
+    if (tx.custom_name !== undefined) r.custom_name = tx.custom_name;
     if (tx.label) {
-      if (tx.label.budget_id !== undefined) row.label_budget_id = tx.label.budget_id;
-      if (tx.label.category_id !== undefined) row.label_category_id = tx.label.category_id;
-      if (tx.label.memo !== undefined) row.label_memo = tx.label.memo;
+      if (tx.label.budget_id !== undefined) r.label_budget_id = tx.label.budget_id;
+      if (tx.label.category_id !== undefined) r.label_category_id = tx.label.category_id;
+      if (tx.label.memo !== undefined) r.label_memo = tx.label.memo;
     }
-    return row;
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SplitTransactionModel", {
@@ -299,19 +260,17 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
   });
 }
 
-export class SplitTransactionsTable extends Table<JSONSplitTransaction, SplitTransactionModel> {
-  readonly name = SPLIT_TRANSACTIONS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const splitTransactionsTable = createTable({
+  name: SPLIT_TRANSACTIONS,
+  schema: {
     [SPLIT_TRANSACTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
     [TRANSACTION_ID]: "VARCHAR(255) NOT NULL", [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
     [AMOUNT]: "DECIMAL(15, 2) DEFAULT 0", [DATE]: "DATE NOT NULL", [CUSTOM_NAME]: "TEXT DEFAULT ''",
     [LABEL_BUDGET_ID]: "UUID", [LABEL_CATEGORY_ID]: "UUID", [LABEL_MEMO]: "TEXT",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP", [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [{ column: USER_ID }, { column: TRANSACTION_ID }, { column: ACCOUNT_ID }];
-  readonly ModelClass = SplitTransactionModel;
-}
-export const splitTransactionsTable = new SplitTransactionsTable();
+  } as Schema<Record<string, unknown>>,
+  indexes: [{ column: USER_ID }, { column: TRANSACTION_ID }, { column: ACCOUNT_ID }],
+  ModelClass: SplitTransactionModel,
+});
 export const splitTransactionColumns = Object.keys(splitTransactionsTable.schema);

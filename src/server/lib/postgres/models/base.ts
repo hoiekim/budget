@@ -95,3 +95,23 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
     return models.length > 0 ? models[0] : null;
   }
 }
+
+export interface TableConfig<TJSON, TModel extends Model<TJSON>> {
+  name: string;
+  schema: Schema<Record<string, unknown>>;
+  constraints?: Constraints;
+  indexes?: IndexDefinition[];
+  ModelClass: ModelClass<TJSON, TModel>;
+}
+
+export function createTable<TJSON, TModel extends Model<TJSON>>(
+  config: TableConfig<TJSON, TModel>
+): Table<TJSON, TModel> {
+  return new (class extends Table<TJSON, TModel> {
+    readonly name = config.name;
+    readonly schema = config.schema;
+    readonly constraints = config.constraints ?? [];
+    readonly indexes = config.indexes ?? [];
+    readonly ModelClass = config.ModelClass;
+  })();
+}

@@ -1,16 +1,7 @@
 import { AccountType, AccountSubtype } from "plaid";
 import {
-  JSONAccount,
-  JSONHolding,
-  JSONInstitution,
-  JSONSecurity,
-  isString,
-  isUndefined,
-  isNullableString,
-  isNullableNumber,
-  isNullableBoolean,
-  isNullableDate,
-  isNullableObject,
+  JSONAccount, JSONHolding, JSONInstitution, JSONSecurity, isString, isUndefined,
+  isNullableString, isNullableNumber, isNullableBoolean, isNullableDate, isNullableObject,
 } from "common";
 import {
   ACCOUNT_ID, USER_ID, ITEM_ID, INSTITUTION_ID, NAME, TYPE, SUBTYPE,
@@ -21,106 +12,79 @@ import {
   COST_BASIS, QUANTITY, ISO_CURRENCY_CODE, TICKER_SYMBOL, CLOSE_PRICE,
   CLOSE_PRICE_AS_OF, ISIN, CUSIP, ACCOUNTS, HOLDINGS, INSTITUTIONS, SECURITIES, USERS,
 } from "./common";
-import { Schema, Constraints, IndexDefinition, Table, AssertTypeFn, createAssertType, Model } from "./base";
+import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 import { toDate, toNullableNumber } from "../util";
 
 export class AccountModel extends Model<JSONAccount> {
-  account_id: string;
-  user_id: string;
-  item_id: string;
-  institution_id: string;
-  name: string;
-  type: AccountType;
-  subtype: AccountSubtype | null;
-  balances_available: number;
-  balances_current: number;
-  balances_limit: number;
-  balances_iso_currency_code: string;
-  custom_name: string;
-  hide: boolean;
-  label_budget_id: string | null;
-  graph_options_use_snapshots: boolean;
-  graph_options_use_transactions: boolean;
-  updated: Date;
-  is_deleted: boolean;
+  account_id: string; user_id: string; item_id: string; institution_id: string;
+  name: string; type: AccountType; subtype: AccountSubtype | null;
+  balances_available: number; balances_current: number; balances_limit: number;
+  balances_iso_currency_code: string; custom_name: string; hide: boolean;
+  label_budget_id: string | null; graph_options_use_snapshots: boolean;
+  graph_options_use_transactions: boolean; updated: Date; is_deleted: boolean;
 
   constructor(data: unknown) {
     super();
     AccountModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.account_id = row.account_id as string;
-    this.user_id = row.user_id as string;
-    this.item_id = row.item_id as string;
-    this.institution_id = row.institution_id as string;
-    this.name = (row.name as string) || "Unknown";
-    this.type = (row.type as AccountType) || AccountType.Other;
-    this.subtype = (row.subtype as AccountSubtype) || null;
-    this.balances_available = toNullableNumber(row.balances_available) ?? 0;
-    this.balances_current = toNullableNumber(row.balances_current) ?? 0;
-    this.balances_limit = toNullableNumber(row.balances_limit) ?? 0;
-    this.balances_iso_currency_code = (row.balances_iso_currency_code as string) || "USD";
-    this.custom_name = (row.custom_name as string) || "";
-    this.hide = (row.hide as boolean) ?? false;
-    this.label_budget_id = (row.label_budget_id as string) ?? null;
-    this.graph_options_use_snapshots = (row.graph_options_use_snapshots as boolean) ?? true;
-    this.graph_options_use_transactions = (row.graph_options_use_transactions as boolean) ?? true;
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
+    const r = data as Record<string, unknown>;
+    this.account_id = r.account_id as string;
+    this.user_id = r.user_id as string;
+    this.item_id = r.item_id as string;
+    this.institution_id = r.institution_id as string;
+    this.name = (r.name as string) || "Unknown";
+    this.type = (r.type as AccountType) || AccountType.Other;
+    this.subtype = (r.subtype as AccountSubtype) || null;
+    this.balances_available = toNullableNumber(r.balances_available) ?? 0;
+    this.balances_current = toNullableNumber(r.balances_current) ?? 0;
+    this.balances_limit = toNullableNumber(r.balances_limit) ?? 0;
+    this.balances_iso_currency_code = (r.balances_iso_currency_code as string) || "USD";
+    this.custom_name = (r.custom_name as string) || "";
+    this.hide = (r.hide as boolean) ?? false;
+    this.label_budget_id = (r.label_budget_id as string) ?? null;
+    this.graph_options_use_snapshots = (r.graph_options_use_snapshots as boolean) ?? true;
+    this.graph_options_use_transactions = (r.graph_options_use_transactions as boolean) ?? true;
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONAccount {
     return {
-      account_id: this.account_id,
-      item_id: this.item_id,
-      institution_id: this.institution_id,
-      name: this.name,
-      type: this.type,
-      subtype: this.subtype,
-      mask: null,
-      official_name: null,
+      account_id: this.account_id, item_id: this.item_id, institution_id: this.institution_id,
+      name: this.name, type: this.type, subtype: this.subtype, mask: null, official_name: null,
       balances: {
-        available: this.balances_available,
-        current: this.balances_current,
-        limit: this.balances_limit,
-        iso_currency_code: this.balances_iso_currency_code,
+        available: this.balances_available, current: this.balances_current,
+        limit: this.balances_limit, iso_currency_code: this.balances_iso_currency_code,
         unofficial_currency_code: null,
       },
-      custom_name: this.custom_name,
-      hide: this.hide,
-      label: { budget_id: this.label_budget_id },
-      graphOptions: {
-        useSnapshots: this.graph_options_use_snapshots,
-        useTransactions: this.graph_options_use_transactions,
-      },
+      custom_name: this.custom_name, hide: this.hide, label: { budget_id: this.label_budget_id },
+      graphOptions: { useSnapshots: this.graph_options_use_snapshots, useTransactions: this.graph_options_use_transactions },
     };
   }
 
-  static fromJSON(account: Partial<JSONAccount> & { account_id: string }, user_id: string): Record<string, unknown> {
-    const row: Record<string, unknown> = { user_id };
-    if (!isUndefined(account.account_id)) row.account_id = account.account_id;
-    if (!isUndefined(account.item_id)) row.item_id = account.item_id;
-    if (!isUndefined(account.institution_id)) row.institution_id = account.institution_id;
-    if (!isUndefined(account.name)) row.name = account.name;
-    if (!isUndefined(account.type)) row.type = account.type;
-    if (!isUndefined(account.subtype)) row.subtype = account.subtype;
-    if (!isUndefined(account.custom_name)) row.custom_name = account.custom_name;
-    if (!isUndefined(account.hide)) row.hide = account.hide;
-    if (account.label) {
-      if (!isUndefined(account.label.budget_id)) row.label_budget_id = account.label.budget_id;
+  static fromJSON(a: Partial<JSONAccount> & { account_id: string }, user_id: string): Record<string, unknown> {
+    const r: Record<string, unknown> = { user_id };
+    if (!isUndefined(a.account_id)) r.account_id = a.account_id;
+    if (!isUndefined(a.item_id)) r.item_id = a.item_id;
+    if (!isUndefined(a.institution_id)) r.institution_id = a.institution_id;
+    if (!isUndefined(a.name)) r.name = a.name;
+    if (!isUndefined(a.type)) r.type = a.type;
+    if (!isUndefined(a.subtype)) r.subtype = a.subtype;
+    if (!isUndefined(a.custom_name)) r.custom_name = a.custom_name;
+    if (!isUndefined(a.hide)) r.hide = a.hide;
+    if (a.label && !isUndefined(a.label.budget_id)) r.label_budget_id = a.label.budget_id;
+    if (a.balances) {
+      if (!isUndefined(a.balances.available)) r.balances_available = a.balances.available;
+      if (!isUndefined(a.balances.current)) r.balances_current = a.balances.current;
+      if (!isUndefined(a.balances.limit)) r.balances_limit = a.balances.limit;
+      if (!isUndefined(a.balances.iso_currency_code)) r.balances_iso_currency_code = a.balances.iso_currency_code;
     }
-    if (account.balances) {
-      if (!isUndefined(account.balances.available)) row.balances_available = account.balances.available;
-      if (!isUndefined(account.balances.current)) row.balances_current = account.balances.current;
-      if (!isUndefined(account.balances.limit)) row.balances_limit = account.balances.limit;
-      if (!isUndefined(account.balances.iso_currency_code)) row.balances_iso_currency_code = account.balances.iso_currency_code;
+    if (a.graphOptions) {
+      if (!isUndefined(a.graphOptions.useSnapshots)) r.graph_options_use_snapshots = a.graphOptions.useSnapshots;
+      if (!isUndefined(a.graphOptions.useTransactions)) r.graph_options_use_transactions = a.graphOptions.useTransactions;
     }
-    if (account.graphOptions) {
-      if (!isUndefined(account.graphOptions.useSnapshots)) row.graph_options_use_snapshots = account.graphOptions.useSnapshots;
-      if (!isUndefined(account.graphOptions.useTransactions)) row.graph_options_use_transactions = account.graphOptions.useTransactions;
-    }
-    const { custom_name, hide, label, graphOptions, ...providerData } = account;
-    row.raw = providerData;
-    return row;
+    const { custom_name, hide, label, graphOptions, ...providerData } = a;
+    r.raw = providerData;
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("AccountModel", {
@@ -133,9 +97,9 @@ export class AccountModel extends Model<JSONAccount> {
   });
 }
 
-export class AccountsTable extends Table<JSONAccount, AccountModel> {
-  readonly name = ACCOUNTS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const accountsTable = createTable({
+  name: ACCOUNTS,
+  schema: {
     [ACCOUNT_ID]: "VARCHAR(255) PRIMARY KEY",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
     [ITEM_ID]: "VARCHAR(255) NOT NULL", [INSTITUTION_ID]: "VARCHAR(255) NOT NULL",
@@ -145,44 +109,33 @@ export class AccountsTable extends Table<JSONAccount, AccountModel> {
     [LABEL_BUDGET_ID]: "UUID", [GRAPH_OPTIONS_USE_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
     [GRAPH_OPTIONS_USE_TRANSACTIONS]: "BOOLEAN DEFAULT TRUE", [RAW]: "JSONB",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP", [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [{ column: USER_ID }, { column: ITEM_ID }, { column: INSTITUTION_ID }];
-  readonly ModelClass = AccountModel;
-}
-export const accountsTable = new AccountsTable();
+  } as Schema<Record<string, unknown>>,
+  indexes: [{ column: USER_ID }, { column: ITEM_ID }, { column: INSTITUTION_ID }],
+  ModelClass: AccountModel,
+});
 export const accountColumns = Object.keys(accountsTable.schema);
 
 export class HoldingModel extends Model<JSONHolding> {
-  holding_id: string;
-  user_id: string;
-  account_id: string;
-  security_id: string;
-  institution_price: number;
-  institution_price_as_of: string | null;
-  institution_value: number;
-  cost_basis: number;
-  quantity: number;
-  iso_currency_code: string;
-  updated: Date;
-  is_deleted: boolean;
+  holding_id: string; user_id: string; account_id: string; security_id: string;
+  institution_price: number; institution_price_as_of: string | null; institution_value: number;
+  cost_basis: number; quantity: number; iso_currency_code: string; updated: Date; is_deleted: boolean;
 
   constructor(data: unknown) {
     super();
     HoldingModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.holding_id = row.holding_id as string;
-    this.user_id = row.user_id as string;
-    this.account_id = row.account_id as string;
-    this.security_id = row.security_id as string;
-    this.institution_price = toNullableNumber(row.institution_price) ?? 0;
-    this.institution_price_as_of = (row.institution_price_as_of as string) ?? null;
-    this.institution_value = toNullableNumber(row.institution_value) ?? 0;
-    this.cost_basis = toNullableNumber(row.cost_basis) ?? 0;
-    this.quantity = toNullableNumber(row.quantity) ?? 0;
-    this.iso_currency_code = (row.iso_currency_code as string) || "USD";
-    this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = (row.is_deleted as boolean) ?? false;
+    const r = data as Record<string, unknown>;
+    this.holding_id = r.holding_id as string;
+    this.user_id = r.user_id as string;
+    this.account_id = r.account_id as string;
+    this.security_id = r.security_id as string;
+    this.institution_price = toNullableNumber(r.institution_price) ?? 0;
+    this.institution_price_as_of = (r.institution_price_as_of as string) ?? null;
+    this.institution_value = toNullableNumber(r.institution_value) ?? 0;
+    this.cost_basis = toNullableNumber(r.cost_basis) ?? 0;
+    this.quantity = toNullableNumber(r.quantity) ?? 0;
+    this.iso_currency_code = (r.iso_currency_code as string) || "USD";
+    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONHolding {
@@ -194,19 +147,18 @@ export class HoldingModel extends Model<JSONHolding> {
     };
   }
 
-  static fromJSON(holding: Partial<JSONHolding> & { holding_id?: string }, user_id: string): Record<string, unknown> {
-    const row: Record<string, unknown> = { user_id };
-    row.holding_id = holding.holding_id || `${holding.account_id}-${holding.security_id}`;
-    if (!isUndefined(holding.account_id)) row.account_id = holding.account_id;
-    if (!isUndefined(holding.security_id)) row.security_id = holding.security_id;
-    if (!isUndefined(holding.institution_price)) row.institution_price = holding.institution_price;
-    if (!isUndefined(holding.institution_price_as_of)) row.institution_price_as_of = holding.institution_price_as_of;
-    if (!isUndefined(holding.institution_value)) row.institution_value = holding.institution_value;
-    if (!isUndefined(holding.cost_basis)) row.cost_basis = holding.cost_basis;
-    if (!isUndefined(holding.quantity)) row.quantity = holding.quantity;
-    if (!isUndefined(holding.iso_currency_code)) row.iso_currency_code = holding.iso_currency_code;
-    row.raw = holding;
-    return row;
+  static fromJSON(h: Partial<JSONHolding> & { holding_id?: string }, user_id: string): Record<string, unknown> {
+    const r: Record<string, unknown> = { user_id, holding_id: h.holding_id || `${h.account_id}-${h.security_id}` };
+    if (!isUndefined(h.account_id)) r.account_id = h.account_id;
+    if (!isUndefined(h.security_id)) r.security_id = h.security_id;
+    if (!isUndefined(h.institution_price)) r.institution_price = h.institution_price;
+    if (!isUndefined(h.institution_price_as_of)) r.institution_price_as_of = h.institution_price_as_of;
+    if (!isUndefined(h.institution_value)) r.institution_value = h.institution_value;
+    if (!isUndefined(h.cost_basis)) r.cost_basis = h.cost_basis;
+    if (!isUndefined(h.quantity)) r.quantity = h.quantity;
+    if (!isUndefined(h.iso_currency_code)) r.iso_currency_code = h.iso_currency_code;
+    r.raw = h;
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("HoldingModel", {
@@ -217,9 +169,9 @@ export class HoldingModel extends Model<JSONHolding> {
   });
 }
 
-export class HoldingsTable extends Table<JSONHolding, HoldingModel> {
-  readonly name = HOLDINGS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const holdingsTable = createTable({
+  name: HOLDINGS,
+  schema: {
     [HOLDING_ID]: "VARCHAR(255) PRIMARY KEY",
     [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
     [ACCOUNT_ID]: "VARCHAR(255) NOT NULL", [SECURITY_ID]: "VARCHAR(255) NOT NULL",
@@ -227,26 +179,22 @@ export class HoldingsTable extends Table<JSONHolding, HoldingModel> {
     [INSTITUTION_VALUE]: "DECIMAL(15, 2)", [COST_BASIS]: "DECIMAL(15, 2)", [QUANTITY]: "DECIMAL(15, 6)",
     [ISO_CURRENCY_CODE]: "VARCHAR(10)", [RAW]: "JSONB",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP", [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: SECURITY_ID }];
-  readonly ModelClass = HoldingModel;
-}
-export const holdingsTable = new HoldingsTable();
+  } as Schema<Record<string, unknown>>,
+  indexes: [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: SECURITY_ID }],
+  ModelClass: HoldingModel,
+});
 export const holdingColumns = Object.keys(holdingsTable.schema);
 
 export class InstitutionModel extends Model<JSONInstitution> {
-  institution_id: string;
-  name: string;
-  updated: Date;
+  institution_id: string; name: string; updated: Date;
 
   constructor(data: unknown) {
     super();
     InstitutionModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.institution_id = row.institution_id as string;
-    this.name = (row.name as string) || "Unknown";
-    this.updated = row.updated ? toDate(row.updated) : new Date();
+    const r = data as Record<string, unknown>;
+    this.institution_id = r.institution_id as string;
+    this.name = (r.name as string) || "Unknown";
+    this.updated = r.updated ? toDate(r.updated) : new Date();
   }
 
   toJSON(): JSONInstitution {
@@ -256,12 +204,12 @@ export class InstitutionModel extends Model<JSONInstitution> {
     };
   }
 
-  static fromJSON(institution: Partial<JSONInstitution>): Record<string, unknown> {
-    const row: Record<string, unknown> = {};
-    if (institution.institution_id !== undefined) row.institution_id = institution.institution_id;
-    if (institution.name !== undefined) row.name = institution.name;
-    row.raw = institution;
-    return row;
+  static fromJSON(i: Partial<JSONInstitution>): Record<string, unknown> {
+    const r: Record<string, unknown> = {};
+    if (i.institution_id !== undefined) r.institution_id = i.institution_id;
+    if (i.name !== undefined) r.name = i.name;
+    r.raw = i;
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("InstitutionModel", {
@@ -269,45 +217,35 @@ export class InstitutionModel extends Model<JSONInstitution> {
   });
 }
 
-export class InstitutionsTable extends Table<JSONInstitution, InstitutionModel> {
-  readonly name = INSTITUTIONS;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const institutionsTable = createTable({
+  name: INSTITUTIONS,
+  schema: {
     [INSTITUTION_ID]: "VARCHAR(255) PRIMARY KEY", [NAME]: "VARCHAR(255)", [RAW]: "JSONB",
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [];
-  readonly ModelClass = InstitutionModel;
-}
-export const institutionsTable = new InstitutionsTable();
+  } as Schema<Record<string, unknown>>,
+  ModelClass: InstitutionModel,
+});
 export const institutionColumns = Object.keys(institutionsTable.schema);
 
 export class SecurityModel extends Model<JSONSecurity> {
-  security_id: string;
-  name: string | null;
-  ticker_symbol: string | null;
-  type: string | null;
-  close_price: number | null;
-  close_price_as_of: string | null;
-  iso_currency_code: string | null;
-  isin: string | null;
-  cusip: string | null;
-  updated: Date;
+  security_id: string; name: string | null; ticker_symbol: string | null; type: string | null;
+  close_price: number | null; close_price_as_of: string | null; iso_currency_code: string | null;
+  isin: string | null; cusip: string | null; updated: Date;
 
   constructor(data: unknown) {
     super();
     SecurityModel.assertType(data);
-    const row = data as Record<string, unknown>;
-    this.security_id = row.security_id as string;
-    this.name = (row.name as string) ?? null;
-    this.ticker_symbol = (row.ticker_symbol as string) ?? null;
-    this.type = (row.type as string) ?? null;
-    this.close_price = toNullableNumber(row.close_price);
-    this.close_price_as_of = (row.close_price_as_of as string) ?? null;
-    this.iso_currency_code = (row.iso_currency_code as string) ?? null;
-    this.isin = (row.isin as string) ?? null;
-    this.cusip = (row.cusip as string) ?? null;
-    this.updated = row.updated ? toDate(row.updated) : new Date();
+    const r = data as Record<string, unknown>;
+    this.security_id = r.security_id as string;
+    this.name = (r.name as string) ?? null;
+    this.ticker_symbol = (r.ticker_symbol as string) ?? null;
+    this.type = (r.type as string) ?? null;
+    this.close_price = toNullableNumber(r.close_price);
+    this.close_price_as_of = (r.close_price_as_of as string) ?? null;
+    this.iso_currency_code = (r.iso_currency_code as string) ?? null;
+    this.isin = (r.isin as string) ?? null;
+    this.cusip = (r.cusip as string) ?? null;
+    this.updated = r.updated ? toDate(r.updated) : new Date();
   }
 
   toJSON(): JSONSecurity {
@@ -320,19 +258,19 @@ export class SecurityModel extends Model<JSONSecurity> {
     };
   }
 
-  static fromJSON(security: Partial<JSONSecurity>): Record<string, unknown> {
-    const row: Record<string, unknown> = {};
-    if (security.security_id !== undefined) row.security_id = security.security_id;
-    if (security.name !== undefined) row.name = security.name;
-    if (security.ticker_symbol !== undefined) row.ticker_symbol = security.ticker_symbol;
-    if (security.type !== undefined) row.type = security.type;
-    if (security.close_price !== undefined) row.close_price = security.close_price;
-    if (security.close_price_as_of !== undefined) row.close_price_as_of = security.close_price_as_of;
-    if (security.iso_currency_code !== undefined) row.iso_currency_code = security.iso_currency_code;
-    if (security.isin !== undefined) row.isin = security.isin;
-    if (security.cusip !== undefined) row.cusip = security.cusip;
-    row.raw = security;
-    return row;
+  static fromJSON(s: Partial<JSONSecurity>): Record<string, unknown> {
+    const r: Record<string, unknown> = {};
+    if (s.security_id !== undefined) r.security_id = s.security_id;
+    if (s.name !== undefined) r.name = s.name;
+    if (s.ticker_symbol !== undefined) r.ticker_symbol = s.ticker_symbol;
+    if (s.type !== undefined) r.type = s.type;
+    if (s.close_price !== undefined) r.close_price = s.close_price;
+    if (s.close_price_as_of !== undefined) r.close_price_as_of = s.close_price_as_of;
+    if (s.iso_currency_code !== undefined) r.iso_currency_code = s.iso_currency_code;
+    if (s.isin !== undefined) r.isin = s.isin;
+    if (s.cusip !== undefined) r.cusip = s.cusip;
+    r.raw = s;
+    return r;
   }
 
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SecurityModel", {
@@ -342,17 +280,14 @@ export class SecurityModel extends Model<JSONSecurity> {
   });
 }
 
-export class SecuritiesTable extends Table<JSONSecurity, SecurityModel> {
-  readonly name = SECURITIES;
-  readonly schema: Schema<Record<string, unknown>> = {
+export const securitiesTable = createTable({
+  name: SECURITIES,
+  schema: {
     [SECURITY_ID]: "VARCHAR(255) PRIMARY KEY", [NAME]: "VARCHAR(255)", [TICKER_SYMBOL]: "VARCHAR(50)",
     [TYPE]: "VARCHAR(50)", [CLOSE_PRICE]: "DECIMAL(15, 6)", [CLOSE_PRICE_AS_OF]: "DATE",
     [ISO_CURRENCY_CODE]: "VARCHAR(10)", [ISIN]: "VARCHAR(50)", [CUSIP]: "VARCHAR(50)",
     [RAW]: "JSONB", [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  };
-  readonly constraints: Constraints = [];
-  readonly indexes: IndexDefinition[] = [];
-  readonly ModelClass = SecurityModel;
-}
-export const securitiesTable = new SecuritiesTable();
+  } as Schema<Record<string, unknown>>,
+  ModelClass: SecurityModel,
+});
 export const securityColumns = Object.keys(securitiesTable.schema);
