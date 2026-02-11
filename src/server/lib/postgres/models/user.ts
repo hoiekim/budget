@@ -1,7 +1,3 @@
-/**
- * User model and schema definition.
- */
-
 import { isString } from "common";
 import {
   USER_ID,
@@ -17,7 +13,8 @@ import {
 import {
   Schema,
   Constraints,
-  TableDefinition,
+  IndexDefinition,
+  Table,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -27,17 +24,6 @@ import {
   toDate,
 } from "./base";
 
-export interface UserRow {
-  user_id: string;
-  username: string;
-  password: string | null | undefined;
-  email: string | null | undefined;
-  expiry: Date | null | undefined;
-  token: string | null | undefined;
-  updated: Date | null | undefined;
-  is_deleted: boolean | null | undefined;
-}
-
 export interface MaskedUser {
   user_id: string;
   username: string;
@@ -45,7 +31,7 @@ export interface MaskedUser {
 
 export type User = MaskedUser & { password: string };
 
-export class UserModel extends Model<UserRow, MaskedUser> {
+export class UserModel extends Model<MaskedUser> {
   user_id: string;
   username: string;
   password: string | null;
@@ -55,17 +41,18 @@ export class UserModel extends Model<UserRow, MaskedUser> {
   updated: Date;
   is_deleted: boolean;
 
-  constructor(row: UserRow) {
+  constructor(data: unknown) {
     super();
-    UserModel.assertType(row);
-    this.user_id = row.user_id;
-    this.username = row.username;
-    this.password = row.password ?? null;
-    this.email = row.email ?? null;
+    UserModel.assertType(data);
+    const row = data as Record<string, unknown>;
+    this.user_id = row.user_id as string;
+    this.username = row.username as string;
+    this.password = (row.password as string) ?? null;
+    this.email = (row.email as string) ?? null;
     this.expiry = row.expiry ? toDate(row.expiry) : null;
-    this.token = row.token ?? null;
+    this.token = (row.token as string) ?? null;
     this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = row.is_deleted ?? false;
+    this.is_deleted = (row.is_deleted as boolean) ?? false;
   }
 
   toJSON(): MaskedUser {
@@ -90,7 +77,7 @@ export class UserModel extends Model<UserRow, MaskedUser> {
     };
   }
 
-  static assertType: AssertTypeFn<UserRow> = createAssertType<UserRow>("UserModel", {
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("UserModel", {
     user_id: isString,
     username: isString,
     password: isNullableString,
@@ -102,24 +89,22 @@ export class UserModel extends Model<UserRow, MaskedUser> {
   });
 }
 
-export const userSchema: Schema<UserRow> = {
-  [USER_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-  [USERNAME]: "VARCHAR(255) UNIQUE NOT NULL",
-  [PASSWORD]: "VARCHAR(255)",
-  [EMAIL]: "VARCHAR(255)",
-  [EXPIRY]: "TIMESTAMPTZ",
-  [TOKEN]: "VARCHAR(255)",
-  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-};
+export class UsersTable extends Table<MaskedUser, UserModel> {
+  readonly name = USERS;
+  readonly schema: Schema<Record<string, unknown>> = {
+    [USER_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+    [USERNAME]: "VARCHAR(255) UNIQUE NOT NULL",
+    [PASSWORD]: "VARCHAR(255)",
+    [EMAIL]: "VARCHAR(255)",
+    [EXPIRY]: "TIMESTAMPTZ",
+    [TOKEN]: "VARCHAR(255)",
+    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+  };
+  readonly constraints: Constraints = [];
+  readonly indexes: IndexDefinition[] = [];
+  readonly ModelClass = UserModel;
+}
 
-export const userConstraints: Constraints = [];
-
-export const userColumns = Object.keys(userSchema);
-
-export const userTable: TableDefinition = {
-  name: USERS,
-  schema: userSchema as Schema<Record<string, unknown>>,
-  constraints: userConstraints,
-  indexes: [],
-};
+export const usersTable = new UsersTable();
+export const userColumns = Object.keys(usersTable.schema);

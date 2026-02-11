@@ -8,7 +8,6 @@ import { buildSelectWithFilters, selectWithFilters } from "../database";
 import {
   MaskedUser,
   ChartModel,
-  ChartRow,
   CHARTS,
   CHART_ID,
   USER_ID,
@@ -16,7 +15,7 @@ import {
 
 // Query Helpers
 
-const rowToChart = (row: ChartRow): JSONChart => new ChartModel(row).toJSON();
+const rowToChart = (row: Record<string, unknown>): JSONChart => new ChartModel(row).toJSON();
 
 // Repository Functions
 
@@ -24,7 +23,7 @@ const rowToChart = (row: ChartRow): JSONChart => new ChartModel(row).toJSON();
  * Gets all charts for a user.
  */
 export const getCharts = async (user: MaskedUser): Promise<JSONChart[]> => {
-  const rows = await selectWithFilters<ChartRow>(pool, CHARTS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, CHARTS, "*", {
     user_id: user.user_id,
   });
   return rows.map(rowToChart);
@@ -37,7 +36,7 @@ export const getChart = async (
   user: MaskedUser,
   chart_id: string
 ): Promise<JSONChart | null> => {
-  const rows = await selectWithFilters<ChartRow>(pool, CHARTS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, CHARTS, "*", {
     user_id: user.user_id,
     primaryKey: { column: CHART_ID, value: chart_id },
   });
@@ -59,7 +58,7 @@ export const searchCharts = async (
     },
   });
 
-  const result = await pool.query<ChartRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToChart);
 };
 
@@ -77,7 +76,7 @@ export const createChart = async (
         : JSON.stringify(data.configuration)
       : "{}";
 
-    const result = await pool.query<ChartRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `INSERT INTO ${CHARTS} (${USER_ID}, name, type, configuration, updated)
        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
        RETURNING *`,

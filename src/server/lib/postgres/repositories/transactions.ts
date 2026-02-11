@@ -7,11 +7,8 @@ import { pool } from "../client";
 import {
   MaskedUser,
   TransactionModel,
-  TransactionRow,
   InvestmentTransactionModel,
-  InvestmentTransactionRow,
   SplitTransactionModel,
-  SplitTransactionRow,
   TRANSACTIONS,
   INVESTMENT_TRANSACTIONS,
   SPLIT_TRANSACTIONS,
@@ -54,11 +51,11 @@ export type PartialSplitTransaction = { split_transaction_id: string } & Partial
 
 // Query Helpers
 
-const rowToTransaction = (row: TransactionRow): JSONTransaction =>
+const rowToTransaction = (row: Record<string, unknown>): JSONTransaction =>
   new TransactionModel(row).toJSON();
-const rowToInvestmentTransaction = (row: InvestmentTransactionRow): JSONInvestmentTransaction =>
+const rowToInvestmentTransaction = (row: Record<string, unknown>): JSONInvestmentTransaction =>
   new InvestmentTransactionModel(row).toJSON();
-const rowToSplitTransaction = (row: SplitTransactionRow): JSONSplitTransaction =>
+const rowToSplitTransaction = (row: Record<string, unknown>): JSONSplitTransaction =>
   new SplitTransactionModel(row).toJSON();
 
 // Transaction Repository Functions
@@ -91,7 +88,7 @@ export const getTransactions = async (
     offset: options.offset,
   });
 
-  const result = await pool.query<TransactionRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToTransaction);
 };
 
@@ -102,7 +99,7 @@ export const getTransaction = async (
   user: MaskedUser,
   transaction_id: string
 ): Promise<JSONTransaction | null> => {
-  const rows = await selectWithFilters<TransactionRow>(pool, TRANSACTIONS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, TRANSACTIONS, "*", {
     user_id: user.user_id,
     primaryKey: { column: TRANSACTION_ID, value: transaction_id },
   });
@@ -265,11 +262,11 @@ export const searchTransactionsByAccountId = async (
   const allConditions = [...baseConditions, ...rangeConditions];
 
   const [txResult, invTxResult] = await Promise.all([
-    pool.query<TransactionRow>(
+    pool.query<Record<string, unknown>>(
       `SELECT * FROM ${TRANSACTIONS} WHERE ${allConditions.join(" AND ")} ORDER BY ${DATE} DESC`,
       values
     ),
-    pool.query<InvestmentTransactionRow>(
+    pool.query<Record<string, unknown>>(
       `SELECT * FROM ${INVESTMENT_TRANSACTIONS} WHERE ${allConditions.join(" AND ")} ORDER BY ${DATE} DESC`,
       values
     ),
@@ -312,8 +309,8 @@ export const searchTransactions = async (
   const invTxQuery = buildSelectWithFilters(INVESTMENT_TRANSACTIONS, "*", searchOptions);
 
   const [txResult, invTxResult] = await Promise.all([
-    pool.query<TransactionRow>(txQuery.sql, txQuery.values),
-    pool.query<InvestmentTransactionRow>(invTxQuery.sql, invTxQuery.values),
+    pool.query<Record<string, unknown>>(txQuery.sql, txQuery.values),
+    pool.query<Record<string, unknown>>(invTxQuery.sql, invTxQuery.values),
   ]);
 
   return {
@@ -340,7 +337,7 @@ export const getInvestmentTransactions = async (
     orderBy: `${DATE} DESC`,
   });
 
-  const result = await pool.query<InvestmentTransactionRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToInvestmentTransaction);
 };
 
@@ -460,7 +457,7 @@ export const getSplitTransactions = async (
   transaction_id?: string
 ): Promise<JSONSplitTransaction[]> => {
   if (transaction_id) {
-    const result = await pool.query<SplitTransactionRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `SELECT * FROM ${SPLIT_TRANSACTIONS}
        WHERE ${TRANSACTION_ID} = $1 AND ${USER_ID} = $2
        AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -469,7 +466,7 @@ export const getSplitTransactions = async (
     return result.rows.map(rowToSplitTransaction);
   }
 
-  const result = await pool.query<SplitTransactionRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${SPLIT_TRANSACTIONS}
      WHERE ${USER_ID} = $1
      AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -493,7 +490,7 @@ export const searchSplitTransactions = async (
     },
   });
 
-  const result = await pool.query<SplitTransactionRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToSplitTransaction);
 };
 
@@ -505,7 +502,7 @@ export const createSplitTransaction = async (
   data: Partial<JSONSplitTransaction>
 ): Promise<JSONSplitTransaction | null> => {
   try {
-    const result = await pool.query<SplitTransactionRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `INSERT INTO ${SPLIT_TRANSACTIONS} (
         ${USER_ID}, ${TRANSACTION_ID}, ${ACCOUNT_ID}, amount, ${DATE}, custom_name,
         label_budget_id, label_category_id, label_memo, updated

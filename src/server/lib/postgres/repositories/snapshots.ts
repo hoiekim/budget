@@ -12,7 +12,6 @@ import { pool } from "../client";
 import {
   MaskedUser,
   SnapshotModel,
-  SnapshotRow,
   isAccountSnapshot,
   isSecuritySnapshot,
   isHoldingSnapshot,
@@ -68,7 +67,7 @@ export interface HoldingSnapshot {
 
 // Query Helpers
 
-const rowToSnapshot = (row: SnapshotRow): JSONSnapshotData =>
+const rowToSnapshot = (row: Record<string, unknown>): JSONSnapshotData =>
   new SnapshotModel(row).toJSON();
 
 // Repository Functions
@@ -97,7 +96,7 @@ export const searchSnapshots = async (
     limit: options.limit,
   });
 
-  const result = await pool.query<SnapshotRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToSnapshot);
 };
 
@@ -135,19 +134,19 @@ export const getAccountSnapshots = async (
     values.push(options.endDate);
   }
 
-  const result = await pool.query<SnapshotRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${SNAPSHOTS} WHERE ${conditions.join(" AND ")} ORDER BY ${SNAPSHOT_DATE}`,
     values
   );
 
   return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id,
+    snapshot_id: row.snapshot_id as string,
     snapshot_date: String(row.snapshot_date),
-    account_id: row.account_id!,
+    account_id: row.account_id as string,
     balances_available: row.balances_available != null ? Number(row.balances_available) : undefined,
     balances_current: row.balances_current != null ? Number(row.balances_current) : undefined,
     balances_limit: row.balances_limit != null ? Number(row.balances_limit) : undefined,
-    balances_iso_currency_code: row.balances_iso_currency_code,
+    balances_iso_currency_code: row.balances_iso_currency_code as string | undefined,
   }));
 };
 
@@ -183,15 +182,15 @@ export const getSecuritySnapshots = async (
     values.push(options.endDate);
   }
 
-  const result = await pool.query<SnapshotRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${SNAPSHOTS} WHERE ${conditions.join(" AND ")} ORDER BY ${SNAPSHOT_DATE}`,
     values
   );
 
   return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id,
+    snapshot_id: row.snapshot_id as string,
     snapshot_date: String(row.snapshot_date),
-    security_id: row.security_id!,
+    security_id: row.security_id as string,
     close_price: row.close_price != null ? Number(row.close_price) : undefined,
   }));
 };
@@ -236,16 +235,16 @@ export const getHoldingSnapshots = async (
     values.push(options.endDate);
   }
 
-  const result = await pool.query<SnapshotRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${SNAPSHOTS} WHERE ${conditions.join(" AND ")} ORDER BY ${SNAPSHOT_DATE}`,
     values
   );
 
   return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id,
+    snapshot_id: row.snapshot_id as string,
     snapshot_date: String(row.snapshot_date),
-    holding_account_id: row.holding_account_id!,
-    holding_security_id: row.holding_security_id!,
+    holding_account_id: row.holding_account_id as string,
+    holding_security_id: row.holding_security_id as string,
     institution_price: row.institution_price != null ? Number(row.institution_price) : undefined,
     institution_value: row.institution_value != null ? Number(row.institution_value) : undefined,
     cost_basis: row.cost_basis != null ? Number(row.cost_basis) : undefined,
@@ -259,7 +258,7 @@ export const getHoldingSnapshots = async (
 export const getLatestAccountSnapshots = async (
   user: MaskedUser
 ): Promise<AccountSnapshot[]> => {
-  const result = await pool.query<SnapshotRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT DISTINCT ON (${ACCOUNT_ID})
             ${SNAPSHOT_ID}, ${SNAPSHOT_DATE}, ${ACCOUNT_ID},
             balances_available, balances_current, balances_limit, balances_iso_currency_code
@@ -271,13 +270,13 @@ export const getLatestAccountSnapshots = async (
   );
 
   return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id,
+    snapshot_id: row.snapshot_id as string,
     snapshot_date: String(row.snapshot_date),
-    account_id: row.account_id!,
+    account_id: row.account_id as string,
     balances_available: row.balances_available != null ? Number(row.balances_available) : undefined,
     balances_current: row.balances_current != null ? Number(row.balances_current) : undefined,
     balances_limit: row.balances_limit != null ? Number(row.balances_limit) : undefined,
-    balances_iso_currency_code: row.balances_iso_currency_code,
+    balances_iso_currency_code: row.balances_iso_currency_code as string | undefined,
   }));
 };
 

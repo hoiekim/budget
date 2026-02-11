@@ -1,7 +1,3 @@
-/**
- * Chart model and schema definition.
- */
-
 import { JSONChart, ChartType, isString } from "common";
 import {
   CHART_ID,
@@ -17,7 +13,8 @@ import {
 import {
   Schema,
   Constraints,
-  TableDefinition,
+  IndexDefinition,
+  Table,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -27,21 +24,7 @@ import {
   toDate,
 } from "./base";
 
-// Chart Row Interface
-
-export interface ChartRow {
-  chart_id: string;
-  user_id: string;
-  name: string | null | undefined;
-  type: string | null | undefined;
-  configuration: string | null | undefined;
-  updated: Date | null | undefined;
-  is_deleted: boolean | null | undefined;
-}
-
-// Chart Model Class
-
-export class ChartModel extends Model<ChartRow, JSONChart> {
+export class ChartModel extends Model<JSONChart> {
   chart_id: string;
   user_id: string;
   name: string;
@@ -50,16 +33,17 @@ export class ChartModel extends Model<ChartRow, JSONChart> {
   updated: Date;
   is_deleted: boolean;
 
-  constructor(row: ChartRow) {
+  constructor(data: unknown) {
     super();
-    ChartModel.assertType(row);
-    this.chart_id = row.chart_id;
-    this.user_id = row.user_id;
-    this.name = row.name || "Unnamed";
+    ChartModel.assertType(data);
+    const row = data as Record<string, unknown>;
+    this.chart_id = row.chart_id as string;
+    this.user_id = row.user_id as string;
+    this.name = (row.name as string) || "Unnamed";
     this.type = (row.type as ChartType) || ChartType.BALANCE;
-    this.configuration = row.configuration || "";
+    this.configuration = (row.configuration as string) || "";
     this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = row.is_deleted ?? false;
+    this.is_deleted = (row.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONChart {
@@ -71,26 +55,20 @@ export class ChartModel extends Model<ChartRow, JSONChart> {
     };
   }
 
-  static fromJSON(
-    chart: Partial<JSONChart>,
-    user_id: string
-  ): Partial<ChartRow> {
-    const row: Partial<ChartRow> = { user_id };
-
+  static fromJSON(chart: Partial<JSONChart>, user_id: string): Record<string, unknown> {
+    const row: Record<string, unknown> = { user_id };
     if (chart.chart_id !== undefined) row.chart_id = chart.chart_id;
     if (chart.name !== undefined) row.name = chart.name;
     if (chart.type !== undefined) row.type = chart.type;
     if (chart.configuration !== undefined) {
-      row.configuration =
-        typeof chart.configuration === "string"
-          ? chart.configuration
-          : JSON.stringify(chart.configuration);
+      row.configuration = typeof chart.configuration === "string"
+        ? chart.configuration
+        : JSON.stringify(chart.configuration);
     }
-
     return row;
   }
 
-  static assertType: AssertTypeFn<ChartRow> = createAssertType<ChartRow>("ChartModel", {
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("ChartModel", {
     chart_id: isString,
     user_id: isString,
     name: isNullableString,
@@ -101,27 +79,21 @@ export class ChartModel extends Model<ChartRow, JSONChart> {
   });
 }
 
-// Chart Schema
+export class ChartsTable extends Table<JSONChart, ChartModel> {
+  readonly name = CHARTS;
+  readonly schema: Schema<Record<string, unknown>> = {
+    [CHART_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT`,
+    [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
+    [TYPE]: "VARCHAR(50)",
+    [CONFIGURATION]: "JSONB",
+    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+  };
+  readonly constraints: Constraints = [];
+  readonly indexes: IndexDefinition[] = [{ column: USER_ID }];
+  readonly ModelClass = ChartModel;
+}
 
-export const chartSchema: Schema<ChartRow> = {
-  [CHART_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT`,
-  [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
-  [TYPE]: "VARCHAR(50)",
-  [CONFIGURATION]: "JSONB",
-  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-};
-
-export const chartConstraints: Constraints = [];
-
-export const chartColumns = Object.keys(chartSchema);
-
-export const chartIndexes = [{ column: USER_ID }];
-
-export const chartTable: TableDefinition = {
-  name: CHARTS,
-  schema: chartSchema as Schema<Record<string, unknown>>,
-  constraints: chartConstraints,
-  indexes: chartIndexes,
-};
+export const chartsTable = new ChartsTable();
+export const chartColumns = Object.keys(chartsTable.schema);

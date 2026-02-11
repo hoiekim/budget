@@ -1,48 +1,44 @@
-/**
- * Database initialization using model schemas.
- */
-
 import { pool } from "./client";
 import { searchUser, indexUser } from "./repositories";
 import { buildCreateTable, buildCreateIndex } from "./database";
 import {
-  TableDefinition,
-  userTable,
-  sessionTable,
-  institutionTable,
-  securityTable,
-  itemTable,
-  accountTable,
-  holdingTable,
-  transactionTable,
-  investmentTransactionTable,
-  splitTransactionTable,
-  budgetTable,
-  sectionTable,
-  categoryTable,
-  snapshotTable,
-  chartTable,
+  Table,
+  usersTable,
+  sessionsTable,
+  institutionsTable,
+  securitiesTable,
+  itemsTable,
+  accountsTable,
+  holdingsTable,
+  transactionsTable,
+  investmentTransactionsTable,
+  splitTransactionsTable,
+  budgetsTable,
+  sectionsTable,
+  categoriesTable,
+  snapshotsTable,
+  chartsTable,
 } from "./models";
 
 export const version = "6";
 export const index = "budget" + (version ? `-${version}` : "");
 
-const tables: TableDefinition[] = [
-  userTable,
-  sessionTable,
-  institutionTable,
-  securityTable,
-  itemTable,
-  accountTable,
-  holdingTable,
-  transactionTable,
-  investmentTransactionTable,
-  splitTransactionTable,
-  budgetTable,
-  sectionTable,
-  categoryTable,
-  snapshotTable,
-  chartTable,
+const tables: Table<unknown, any>[] = [
+  usersTable,
+  sessionsTable,
+  institutionsTable,
+  securitiesTable,
+  itemsTable,
+  accountsTable,
+  holdingsTable,
+  transactionsTable,
+  investmentTransactionsTable,
+  splitTransactionsTable,
+  budgetsTable,
+  sectionsTable,
+  categoriesTable,
+  snapshotsTable,
+  chartsTable,
 ];
 
 export const initializeIndex = async (): Promise<void> => {
@@ -63,11 +59,7 @@ export const initializeIndex = async (): Promise<void> => {
 
   try {
     for (const table of tables) {
-      const createTableSql = buildCreateTable(
-        table.name,
-        table.schema,
-        table.constraints
-      );
+      const createTableSql = buildCreateTable(table.name, table.schema, table.constraints);
       await pool.query(createTableSql);
 
       for (const idx of table.indexes) {
@@ -75,7 +67,6 @@ export const initializeIndex = async (): Promise<void> => {
         await pool.query(createIndexSql);
       }
     }
-
     console.info("Database tables created/verified successfully.");
   } catch (error: unknown) {
     console.error("Failed to create tables:", error);
@@ -85,18 +76,15 @@ export const initializeIndex = async (): Promise<void> => {
   const { ADMIN_PASSWORD, DEMO_PASSWORD } = process.env;
 
   const existingAdminUser = await searchUser({ username: "admin" });
-
   const indexingAdminUserResult = await indexUser({
     user_id: existingAdminUser?.user_id,
     username: "admin",
     password: ADMIN_PASSWORD || "budget",
   });
-
   const createdAdminUserId = indexingAdminUserResult?._id;
   if (!createdAdminUserId) throw new Error("Failed to create admin user");
 
   const existingDemoUser = await searchUser({ username: "demo" });
-
   await indexUser({
     user_id: existingDemoUser?.user_id,
     username: "demo",

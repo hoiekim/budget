@@ -9,11 +9,8 @@ import { buildSelectWithFilters, selectWithFilters } from "../database";
 import {
   MaskedUser,
   BudgetModel,
-  BudgetRow,
   SectionModel,
-  SectionRow,
   CategoryModel,
-  CategoryRow,
   BUDGETS,
   SECTIONS,
   CATEGORIES,
@@ -25,9 +22,9 @@ import {
 
 // Query Helpers
 
-const rowToBudget = (row: BudgetRow): JSONBudget => new BudgetModel(row).toJSON();
-const rowToSection = (row: SectionRow): JSONSection => new SectionModel(row).toJSON();
-const rowToCategory = (row: CategoryRow): JSONCategory => new CategoryModel(row).toJSON();
+const rowToBudget = (row: Record<string, unknown>): JSONBudget => new BudgetModel(row).toJSON();
+const rowToSection = (row: Record<string, unknown>): JSONSection => new SectionModel(row).toJSON();
+const rowToCategory = (row: Record<string, unknown>): JSONCategory => new CategoryModel(row).toJSON();
 
 // Budget Repository Functions
 
@@ -35,7 +32,7 @@ const rowToCategory = (row: CategoryRow): JSONCategory => new CategoryModel(row)
  * Gets all budgets for a user.
  */
 export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
-  const rows = await selectWithFilters<BudgetRow>(pool, BUDGETS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, BUDGETS, "*", {
     user_id: user.user_id,
   });
   return rows.map(rowToBudget);
@@ -48,7 +45,7 @@ export const getBudget = async (
   user: MaskedUser,
   budget_id: string
 ): Promise<JSONBudget | null> => {
-  const rows = await selectWithFilters<BudgetRow>(pool, BUDGETS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, BUDGETS, "*", {
     user_id: user.user_id,
     primaryKey: { column: BUDGET_ID, value: budget_id },
   });
@@ -67,7 +64,7 @@ export const searchBudgets = async (
     filters: { [BUDGET_ID]: options.budget_id },
   });
 
-  const result = await pool.query<BudgetRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToBudget);
 };
 
@@ -79,7 +76,7 @@ export const createBudget = async (
   data: Partial<JSONBudget>
 ): Promise<JSONBudget | null> => {
   try {
-    const result = await pool.query<BudgetRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `INSERT INTO ${BUDGETS} (${USER_ID}, name, iso_currency_code, roll_over, roll_over_start_date, capacities, updated)
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
        RETURNING *`,
@@ -217,17 +214,17 @@ export const getSections = async (
   user: MaskedUser,
   budget_id?: string
 ): Promise<JSONSection[]> => {
-  let result: QueryResult<SectionRow>;
+  let result: QueryResult<Record<string, unknown>>;
   
   if (budget_id) {
-    result = await pool.query<SectionRow>(
+    result = await pool.query<Record<string, unknown>>(
       `SELECT * FROM ${SECTIONS}
        WHERE ${BUDGET_ID} = $1 AND ${USER_ID} = $2
        AND (is_deleted IS NULL OR is_deleted = FALSE)`,
       [budget_id, user.user_id]
     );
   } else {
-    result = await pool.query<SectionRow>(
+    result = await pool.query<Record<string, unknown>>(
       `SELECT * FROM ${SECTIONS}
        WHERE ${USER_ID} = $1
        AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -246,7 +243,7 @@ export const createSection = async (
   data: Partial<JSONSection>
 ): Promise<JSONSection | null> => {
   try {
-    const result = await pool.query<SectionRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `INSERT INTO ${SECTIONS} (${USER_ID}, ${BUDGET_ID}, name, roll_over, roll_over_start_date, capacities, updated)
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
        RETURNING *`,
@@ -361,17 +358,17 @@ export const getCategories = async (
   user: MaskedUser,
   section_id?: string
 ): Promise<JSONCategory[]> => {
-  let result: QueryResult<CategoryRow>;
+  let result: QueryResult<Record<string, unknown>>;
   
   if (section_id) {
-    result = await pool.query<CategoryRow>(
+    result = await pool.query<Record<string, unknown>>(
       `SELECT * FROM ${CATEGORIES}
        WHERE ${SECTION_ID} = $1 AND ${USER_ID} = $2
        AND (is_deleted IS NULL OR is_deleted = FALSE)`,
       [section_id, user.user_id]
     );
   } else {
-    result = await pool.query<CategoryRow>(
+    result = await pool.query<Record<string, unknown>>(
       `SELECT * FROM ${CATEGORIES}
        WHERE ${USER_ID} = $1
        AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -390,7 +387,7 @@ export const createCategory = async (
   data: Partial<JSONCategory>
 ): Promise<JSONCategory | null> => {
   try {
-    const result = await pool.query<CategoryRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `INSERT INTO ${CATEGORIES} (${USER_ID}, ${SECTION_ID}, name, roll_over, roll_over_start_date, capacities, updated)
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
        RETURNING *`,

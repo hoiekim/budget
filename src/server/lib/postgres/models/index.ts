@@ -1,141 +1,34 @@
-/**
- * Models index - re-exports all models, schemas, and tables.
- */
-
 export * from "./common";
 export * from "./base";
 
-export {
-  UserModel,
-  userSchema,
-  userConstraints,
-  userColumns,
-  userTable,
-} from "./user";
-export type { UserRow, MaskedUser, User } from "./user";
+export { UserModel, UsersTable, usersTable, userColumns } from "./user";
+export type { MaskedUser, User } from "./user";
+
+export { SessionModel, SessionsTable, sessionsTable, sessionColumns } from "./session";
+
+export { ItemModel, ItemsTable, itemsTable, itemColumns } from "./item";
 
 export {
-  SessionModel,
-  sessionSchema,
-  sessionColumns,
-  sessionTable,
-} from "./session";
-export type { SessionRow } from "./session";
-
-export {
-  ItemModel,
-  itemSchema,
-  itemConstraints,
-  itemColumns,
-  itemIndexes,
-  itemTable,
-} from "./item";
-export type { ItemRow } from "./item";
-
-export {
-  AccountModel,
-  accountSchema,
-  accountConstraints,
-  accountColumns,
-  accountIndexes,
-  accountTable,
-  HoldingModel,
-  holdingSchema,
-  holdingConstraints,
-  holdingColumns,
-  holdingIndexes,
-  holdingTable,
-  InstitutionModel,
-  institutionSchema,
-  institutionColumns,
-  institutionTable,
-  SecurityModel,
-  securitySchema,
-  securityColumns,
-  securityTable,
-} from "./account";
-export type {
-  AccountRow,
-  HoldingRow,
-  InstitutionRow,
-  SecurityRow,
+  AccountModel, AccountsTable, accountsTable, accountColumns,
+  HoldingModel, HoldingsTable, holdingsTable, holdingColumns,
+  InstitutionModel, InstitutionsTable, institutionsTable, institutionColumns,
+  SecurityModel, SecuritiesTable, securitiesTable, securityColumns,
 } from "./account";
 
 export {
-  TransactionModel,
-  transactionSchema,
-  transactionConstraints,
-  transactionColumns,
-  transactionIndexes,
-  transactionTable,
-  InvestmentTransactionModel,
-  investmentTransactionSchema,
-  investmentTransactionConstraints,
-  investmentTransactionColumns,
-  investmentTransactionIndexes,
-  investmentTransactionTable,
-  SplitTransactionModel,
-  splitTransactionSchema,
-  splitTransactionConstraints,
-  splitTransactionColumns,
-  splitTransactionIndexes,
-  splitTransactionTable,
-} from "./transaction";
-export type {
-  TransactionRow,
-  InvestmentTransactionRow,
-  SplitTransactionRow,
+  TransactionModel, TransactionsTable, transactionsTable, transactionColumns,
+  InvestmentTransactionModel, InvestmentTransactionsTable, investmentTransactionsTable, investmentTransactionColumns,
+  SplitTransactionModel, SplitTransactionsTable, splitTransactionsTable, splitTransactionColumns,
 } from "./transaction";
 
-export {
-  BudgetModel,
-  budgetSchema,
-  budgetConstraints,
-  budgetColumns,
-  budgetIndexes,
-  budgetTable,
-} from "./budget";
-export type { BudgetRow } from "./budget";
+export { BudgetModel, BudgetsTable, budgetsTable, budgetColumns } from "./budget";
+export { SectionModel, SectionsTable, sectionsTable, sectionColumns } from "./section";
+export { CategoryModel, CategoriesTable, categoriesTable, categoryColumns } from "./category";
 
 export {
-  SectionModel,
-  sectionSchema,
-  sectionConstraints,
-  sectionColumns,
-  sectionIndexes,
-  sectionTable,
-} from "./section";
-export type { SectionRow } from "./section";
-
-export {
-  CategoryModel,
-  categorySchema,
-  categoryConstraints,
-  categoryColumns,
-  categoryIndexes,
-  categoryTable,
-} from "./category";
-export type { CategoryRow } from "./category";
-
-export {
-  SnapshotModel,
-  snapshotSchema,
-  snapshotConstraints,
-  snapshotColumns,
-  snapshotIndexes,
-  snapshotTable,
-  isAccountSnapshot,
-  isSecuritySnapshot,
-  isHoldingSnapshot,
+  SnapshotModel, SnapshotsTable, snapshotsTable, snapshotColumns,
+  isAccountSnapshot, isSecuritySnapshot, isHoldingSnapshot,
 } from "./snapshot";
-export type { SnapshotRow, SnapshotType } from "./snapshot";
+export type { SnapshotType } from "./snapshot";
 
-export {
-  ChartModel,
-  chartSchema,
-  chartConstraints,
-  chartColumns,
-  chartIndexes,
-  chartTable,
-} from "./chart";
-export type { ChartRow } from "./chart";
+export { ChartModel, ChartsTable, chartsTable, chartColumns } from "./chart";

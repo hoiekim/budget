@@ -18,7 +18,8 @@ import {
 import {
   Schema,
   Constraints,
-  TableDefinition,
+  IndexDefinition,
+  Table,
   AssertTypeFn,
   createAssertType,
   Model,
@@ -29,22 +30,7 @@ import {
   toDate,
 } from "./base";
 
-export interface ItemRow {
-  item_id: string;
-  user_id: string;
-  access_token: string | null | undefined;
-  institution_id: string | null | undefined;
-  available_products: string[] | null | undefined;
-  cursor: string | null | undefined;
-  status: string | null | undefined;
-  provider: string | null | undefined;
-  raw: Record<string, unknown> | null | undefined;
-  updated: Date | null | undefined;
-  is_deleted: boolean | null | undefined;
-  username?: string | null | undefined;
-}
-
-export class ItemModel extends Model<ItemRow, JSONItem> {
+export class ItemModel extends Model<JSONItem> {
   item_id: string;
   user_id: string;
   access_token: string;
@@ -56,19 +42,20 @@ export class ItemModel extends Model<ItemRow, JSONItem> {
   updated: Date;
   is_deleted: boolean;
 
-  constructor(row: ItemRow) {
+  constructor(data: unknown) {
     super();
-    ItemModel.assertType(row);
-    this.item_id = row.item_id;
-    this.user_id = row.user_id;
-    this.access_token = row.access_token || "no_access_token";
-    this.institution_id = row.institution_id ?? null;
+    ItemModel.assertType(data);
+    const row = data as Record<string, unknown>;
+    this.item_id = row.item_id as string;
+    this.user_id = row.user_id as string;
+    this.access_token = (row.access_token as string) || "no_access_token";
+    this.institution_id = (row.institution_id as string) ?? null;
     this.available_products = (row.available_products as Products[]) || [];
-    this.cursor = row.cursor ?? undefined;
+    this.cursor = (row.cursor as string) ?? undefined;
     this.status = row.status ? (row.status as ItemStatus) : undefined;
     this.provider = (row.provider as ItemProvider) || ItemProvider.MANUAL;
     this.updated = row.updated ? toDate(row.updated) : new Date();
-    this.is_deleted = row.is_deleted ?? false;
+    this.is_deleted = (row.is_deleted as boolean) ?? false;
   }
 
   toJSON(): JSONItem {
@@ -84,30 +71,27 @@ export class ItemModel extends Model<ItemRow, JSONItem> {
     };
   }
 
-  static fromJSON(item: Partial<JSONItem> & { item_id: string }, user_id: string): Partial<ItemRow> {
-    const row: Partial<ItemRow> = {
+  static fromJSON(item: Partial<JSONItem> & { item_id: string }, user_id: string): Record<string, unknown> {
+    const row: Record<string, unknown> = {
       item_id: item.item_id,
       user_id,
     };
-
     if (item.access_token !== undefined) row.access_token = item.access_token;
     if (item.institution_id !== undefined) row.institution_id = item.institution_id || null;
     if (item.available_products !== undefined) row.available_products = item.available_products;
     if (item.cursor !== undefined) row.cursor = item.cursor ?? null;
     if (item.status !== undefined) row.status = item.status ?? null;
     if (item.provider !== undefined) row.provider = item.provider;
-    row.raw = item as Record<string, unknown>;
-
+    row.raw = item;
     return row;
   }
 
-  static assertType: AssertTypeFn<ItemRow> = createAssertType<ItemRow>("ItemModel", {
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("ItemModel", {
     item_id: isString,
     user_id: isString,
     access_token: isNullableString,
     institution_id: isNullableString,
-    available_products: (v): v is string[] | null | undefined =>
-      isUndefined(v) || isNull(v) || isArray(v),
+    available_products: (v): v is unknown => isUndefined(v) || isNull(v) || isArray(v),
     cursor: isNullableString,
     status: isNullableString,
     provider: isNullableString,
@@ -118,32 +102,25 @@ export class ItemModel extends Model<ItemRow, JSONItem> {
   });
 }
 
-export const itemSchema: Schema<ItemRow> = {
-  [ITEM_ID]: "VARCHAR(255) PRIMARY KEY",
-  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-  [ACCESS_TOKEN]: "VARCHAR(255)",
-  [INSTITUTION_ID]: "VARCHAR(255)",
-  [AVAILABLE_PRODUCTS]: "TEXT[]",
-  [CURSOR]: "TEXT",
-  [STATUS]: "VARCHAR(50)",
-  [PROVIDER]: "VARCHAR(50)",
-  [RAW]: "JSONB",
-  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-};
+export class ItemsTable extends Table<JSONItem, ItemModel> {
+  readonly name = ITEMS;
+  readonly schema: Schema<Record<string, unknown>> = {
+    [ITEM_ID]: "VARCHAR(255) PRIMARY KEY",
+    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+    [ACCESS_TOKEN]: "VARCHAR(255)",
+    [INSTITUTION_ID]: "VARCHAR(255)",
+    [AVAILABLE_PRODUCTS]: "TEXT[]",
+    [CURSOR]: "TEXT",
+    [STATUS]: "VARCHAR(50)",
+    [PROVIDER]: "VARCHAR(50)",
+    [RAW]: "JSONB",
+    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+  };
+  readonly constraints: Constraints = [];
+  readonly indexes: IndexDefinition[] = [{ column: USER_ID }, { column: INSTITUTION_ID }];
+  readonly ModelClass = ItemModel;
+}
 
-export const itemConstraints: Constraints = [];
-
-export const itemColumns = Object.keys(itemSchema);
-
-export const itemIndexes = [
-  { column: USER_ID },
-  { column: INSTITUTION_ID },
-];
-
-export const itemTable: TableDefinition = {
-  name: ITEMS,
-  schema: itemSchema as Schema<Record<string, unknown>>,
-  constraints: itemConstraints,
-  indexes: itemIndexes,
-};
+export const itemsTable = new ItemsTable();
+export const itemColumns = Object.keys(itemsTable.schema);

@@ -1,7 +1,7 @@
 import { Store, SessionData as ExpressSessionData } from "express-session";
 import { QueryResult } from "pg";
 import { pool } from "../client";
-import { SessionModel, SessionRow, SESSIONS, SESSION_ID } from "../models";
+import { SessionModel, SESSIONS, SESSION_ID } from "../models";
 import { buildUpsert, buildUpdate, selectWithFilters } from "../database";
 
 export class PostgresSessionStore extends Store {
@@ -9,7 +9,7 @@ export class PostgresSessionStore extends Store {
     sid: string,
     callback: (err: Error | null, session?: ExpressSessionData | null) => void
   ): void {
-    selectWithFilters<SessionRow>(pool, SESSIONS, "*", {
+    selectWithFilters<Record<string, unknown>>(pool, SESSIONS, "*", {
       primaryKey: { column: SESSION_ID, value: sid },
       excludeDeleted: false,
     })

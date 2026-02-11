@@ -9,7 +9,6 @@ import {
   MaskedUser,
   User,
   UserModel,
-  UserRow,
   USERS,
   USER_ID,
 } from "../models";
@@ -101,12 +100,12 @@ export const searchUser = async (
 ): Promise<User | undefined> => {
   try {
     if (user.user_id) {
-      const result = await pool.query<UserRow>(
+      const result = await pool.query<Record<string, unknown>>(
         `SELECT ${USER_ID}, username, password FROM ${USERS} WHERE ${USER_ID} = $1`,
         [user.user_id]
       );
       if (result.rows[0]) {
-        const model = new UserModel(result.rows[0] as UserRow);
+        const model = new UserModel(result.rows[0] as Record<string, unknown>);
         return model.toUser();
       }
       return undefined;
@@ -123,7 +122,7 @@ export const searchUser = async (
 
     if (conditions.length === 0) return undefined;
 
-    const result = await pool.query<UserRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `SELECT ${USER_ID}, username, password FROM ${USERS} WHERE ${conditions.join(" AND ")}`,
       values
     );
@@ -133,7 +132,7 @@ export const searchUser = async (
     }
 
     if (result.rows[0]) {
-      const model = new UserModel(result.rows[0] as UserRow);
+      const model = new UserModel(result.rows[0] as Record<string, unknown>);
       return model.toUser();
     }
     return undefined;
@@ -188,12 +187,12 @@ export const updateUser = async (user: PartialUser): Promise<boolean> => {
  */
 export const getUserById = async (user_id: string): Promise<User | undefined> => {
   try {
-    const result = await pool.query<UserRow>(
+    const result = await pool.query<Record<string, unknown>>(
       `SELECT ${USER_ID}, username, password FROM ${USERS} WHERE ${USER_ID} = $1`,
       [user_id]
     );
     if (result.rows[0]) {
-      const model = new UserModel(result.rows[0] as UserRow);
+      const model = new UserModel(result.rows[0] as Record<string, unknown>);
       return model.toUser();
     }
     return undefined;

@@ -7,13 +7,9 @@ import { pool } from "../client";
 import {
   MaskedUser,
   AccountModel,
-  AccountRow,
   HoldingModel,
-  HoldingRow,
   InstitutionModel,
-  InstitutionRow,
   SecurityModel,
-  SecurityRow,
   ACCOUNTS,
   HOLDINGS,
   INSTITUTIONS,
@@ -47,11 +43,11 @@ export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
 // Query Helpers
 
-const rowToAccount = (row: AccountRow): JSONAccount => new AccountModel(row).toJSON();
-const rowToHolding = (row: HoldingRow): JSONHolding => new HoldingModel(row).toJSON();
-const rowToInstitution = (row: InstitutionRow): JSONInstitution =>
+const rowToAccount = (row: Record<string, unknown>): JSONAccount => new AccountModel(row).toJSON();
+const rowToHolding = (row: Record<string, unknown>): JSONHolding => new HoldingModel(row).toJSON();
+const rowToInstitution = (row: Record<string, unknown>): JSONInstitution =>
   new InstitutionModel(row).toJSON();
-const rowToSecurity = (row: SecurityRow): JSONSecurity => new SecurityModel(row).toJSON();
+const rowToSecurity = (row: Record<string, unknown>): JSONSecurity => new SecurityModel(row).toJSON();
 
 // Account Repository Functions
 
@@ -59,7 +55,7 @@ const rowToSecurity = (row: SecurityRow): JSONSecurity => new SecurityModel(row)
  * Gets all accounts for a user.
  */
 export const getAccounts = async (user: MaskedUser): Promise<JSONAccount[]> => {
-  const rows = await selectWithFilters<AccountRow>(pool, ACCOUNTS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, ACCOUNTS, "*", {
     user_id: user.user_id,
   });
   return rows.map(rowToAccount);
@@ -72,7 +68,7 @@ export const getAccount = async (
   user: MaskedUser,
   account_id: string
 ): Promise<JSONAccount | null> => {
-  const rows = await selectWithFilters<AccountRow>(pool, ACCOUNTS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, ACCOUNTS, "*", {
     user_id: user.user_id,
     primaryKey: { column: ACCOUNT_ID, value: account_id },
   });
@@ -86,7 +82,7 @@ export const getAccountsByItem = async (
   user: MaskedUser,
   item_id: string
 ): Promise<JSONAccount[]> => {
-  const rows = await selectWithFilters<AccountRow>(pool, ACCOUNTS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, ACCOUNTS, "*", {
     user_id: user.user_id,
     filters: { [ITEM_ID]: item_id },
   });
@@ -120,7 +116,7 @@ export const searchAccounts = async (
     },
   });
 
-  const result = await pool.query<AccountRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToAccount);
 };
 
@@ -134,7 +130,7 @@ export const searchAccountsById = async (
   if (!account_ids.length) return [];
 
   const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const result = await pool.query<AccountRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${ACCOUNTS}
      WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1
      AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -293,7 +289,7 @@ export const deleteAccounts = async (
  * Gets all holdings for a user.
  */
 export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
-  const result = await pool.query<HoldingRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${HOLDINGS}
      WHERE ${USER_ID} = $1
      AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -312,7 +308,7 @@ export const searchHoldingsByAccountId = async (
   if (!account_ids.length) return [];
 
   const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const result = await pool.query<HoldingRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${HOLDINGS}
      WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1
      AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -333,7 +329,7 @@ export const upsertHoldings = async (
 
   for (const holding of holdings) {
     const row = HoldingModel.fromJSON(holding, user.user_id);
-    const holding_id = row.holding_id!;
+    const holding_id = row.holding_id as string;
 
     try {
       const columns = Object.keys(row);
@@ -392,7 +388,7 @@ export const deleteHoldings = async (
 export const getInstitution = async (
   institution_id: string
 ): Promise<JSONInstitution | null> => {
-  const result = await pool.query<InstitutionRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${INSTITUTIONS} WHERE ${INSTITUTION_ID} = $1`,
     [institution_id]
   );
@@ -455,7 +451,7 @@ export const upsertInstitutions = async (
 export const getSecurity = async (
   security_id: string
 ): Promise<JSONSecurity | null> => {
-  const result = await pool.query<SecurityRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${SECURITIES} WHERE ${SECURITY_ID} = $1`,
     [security_id]
   );
@@ -466,7 +462,7 @@ export const getSecurity = async (
  * Gets all securities for a user (via holdings).
  */
 export const getSecurities = async (user: MaskedUser): Promise<JSONSecurity[]> => {
-  const result = await pool.query<SecurityRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT DISTINCT s.* FROM ${SECURITIES} s
      INNER JOIN ${HOLDINGS} h ON s.${SECURITY_ID} = h.${SECURITY_ID}
      WHERE h.${USER_ID} = $1
@@ -489,7 +485,7 @@ export const searchSecurities = async (
       inFilters: { [SECURITY_ID]: options },
       excludeDeleted: false, // Securities don't have soft delete
     });
-    const result = await pool.query<SecurityRow>(sql, values);
+    const result = await pool.query<Record<string, unknown>>(sql, values);
     return result.rows.map(rowToSecurity);
   }
 
@@ -509,7 +505,7 @@ export const searchSecurities = async (
     excludeDeleted: false, // Securities don't have soft delete
   });
 
-  const result = await pool.query<SecurityRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToSecurity);
 };
 

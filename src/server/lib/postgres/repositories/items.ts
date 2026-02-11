@@ -7,7 +7,6 @@ import { pool } from "../client";
 import {
   MaskedUser,
   ItemModel,
-  ItemRow,
   ITEMS,
   ITEM_ID,
   USER_ID,
@@ -37,7 +36,7 @@ export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
 // Query Helpers
 
-const rowToItem = (row: ItemRow): JSONItem => new ItemModel(row).toJSON();
+const rowToItem = (row: Record<string, unknown>): JSONItem => new ItemModel(row).toJSON();
 
 // Repository Functions
 
@@ -45,7 +44,7 @@ const rowToItem = (row: ItemRow): JSONItem => new ItemModel(row).toJSON();
  * Gets all items for a user.
  */
 export const getItems = async (user: MaskedUser): Promise<JSONItem[]> => {
-  const rows = await selectWithFilters<ItemRow>(pool, ITEMS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, ITEMS, "*", {
     user_id: user.user_id,
   });
   return rows.map(rowToItem);
@@ -58,7 +57,7 @@ export const getItem = async (
   user: MaskedUser,
   item_id: string
 ): Promise<JSONItem | null> => {
-  const rows = await selectWithFilters<ItemRow>(pool, ITEMS, "*", {
+  const rows = await selectWithFilters<Record<string, unknown>>(pool, ITEMS, "*", {
     user_id: user.user_id,
     primaryKey: { column: ITEM_ID, value: item_id },
   });
@@ -69,7 +68,7 @@ export const getItem = async (
  * Gets all items (across all users) for scheduled sync.
  */
 export const getAllItems = async (): Promise<JSONItem[]> => {
-  const result = await pool.query<ItemRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${ITEMS}
      WHERE (is_deleted IS NULL OR is_deleted = FALSE)`
   );
@@ -96,7 +95,7 @@ export const searchItems = async (
     },
   });
 
-  const result = await pool.query<ItemRow>(sql, values);
+  const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map(rowToItem);
 };
 
@@ -106,7 +105,7 @@ export const searchItems = async (
 export const getItemByAccessToken = async (
   access_token: string
 ): Promise<JSONItem | null> => {
-  const result = await pool.query<ItemRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${ITEMS}
      WHERE access_token = $1
      AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -122,7 +121,7 @@ export const getItemsByInstitution = async (
   user: MaskedUser,
   institution_id: string
 ): Promise<JSONItem[]> => {
-  const result = await pool.query<ItemRow>(
+  const result = await pool.query<Record<string, unknown>>(
     `SELECT * FROM ${ITEMS}
      WHERE ${INSTITUTION_ID} = $1 AND ${USER_ID} = $2
      AND (is_deleted IS NULL OR is_deleted = FALSE)`,
@@ -137,7 +136,7 @@ export const getItemsByInstitution = async (
 export const getUserItem = async (
   item_id: string
 ): Promise<{ user: MaskedUser; item: JSONItem } | null> => {
-  const result = await pool.query<ItemRow & { username: string }>(
+  const result = await pool.query<Record<string, unknown> & { username: string }>(
     `SELECT i.*, u.username
      FROM ${ITEMS} i
      JOIN users u ON i.${USER_ID} = u.${USER_ID}
@@ -151,8 +150,8 @@ export const getUserItem = async (
   const row = result.rows[0];
   return {
     user: {
-      user_id: row.user_id,
-      username: row.username,
+      user_id: row.user_id as string,
+      username: row.username as string,
     },
     item: rowToItem(row),
   };

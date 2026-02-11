@@ -1,11 +1,6 @@
-/**
- * Conversion utilities for database values.
- * Use these after assertType validation.
- */
-
 import { isNumber, isString, isDate, isNull, isUndefined } from "common";
 
-export function toNumber(v: string | number | null | undefined, defaultValue: number = 0): number {
+export function toNumber(v: unknown, defaultValue: number = 0): number {
   if (isNumber(v)) return v;
   if (isString(v)) {
     const parsed = parseFloat(v);
@@ -14,7 +9,7 @@ export function toNumber(v: string | number | null | undefined, defaultValue: nu
   return defaultValue;
 }
 
-export function toNullableNumber(v: string | number | null | undefined): number | null {
+export function toNullableNumber(v: unknown): number | null {
   if (isNull(v) || isUndefined(v)) return null;
   if (isNumber(v)) return v;
   if (isString(v)) {
@@ -24,16 +19,16 @@ export function toNullableNumber(v: string | number | null | undefined): number 
   return null;
 }
 
-export function toDate(v: string | Date | null | undefined): Date {
+export function toDate(v: unknown): Date {
   if (isDate(v)) return v;
   if (isString(v)) return new Date(v);
   return new Date();
 }
 
-export function toISODateString(v: string | Date | null | undefined): string {
+export function toISODateString(v: unknown): string {
   return toDate(v).toISOString().split("T")[0];
 }
 
-export function toISOString(v: string | Date | null | undefined): string {
+export function toISOString(v: unknown): string {
   return toDate(v).toISOString();
 }
