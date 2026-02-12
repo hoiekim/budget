@@ -45,14 +45,6 @@ export class BudgetModel extends Model<JSONBudget> {
     Object.keys(BudgetModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.name = this.name || "Unnamed";
-    this.iso_currency_code = this.iso_currency_code || "USD";
-    this.roll_over = this.roll_over ?? false;
-    this.roll_over_start_date = this.roll_over_start_date ?? undefined;
-    this.capacities = this.capacities ?? [];
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONBudget {

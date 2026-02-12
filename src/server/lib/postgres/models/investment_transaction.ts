@@ -34,21 +34,8 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
     Object.keys(InvestmentTransactionModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.security_id = this.security_id ?? null;
+    // Type conversion: DATE column returns as Date object, need ISO string
     this.date = (this.date as unknown as Date).toISOString().split("T")[0];
-    this.name = this.name || "Unknown";
-    this.amount = this.amount ?? 0;
-    this.quantity = this.quantity ?? 0;
-    this.price = this.price ?? 0;
-    this.iso_currency_code = this.iso_currency_code ?? null;
-    this.type = this.type || InvestmentTransactionType.Transfer;
-    this.subtype = this.subtype || InvestmentTransactionSubtype.Transfer;
-    this.label_budget_id = this.label_budget_id ?? null;
-    this.label_category_id = this.label_category_id ?? null;
-    this.label_memo = this.label_memo ?? null;
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONInvestmentTransaction {

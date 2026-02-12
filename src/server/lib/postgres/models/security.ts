@@ -27,16 +27,8 @@ export class SecurityModel extends Model<JSONSecurity> {
     Object.keys(SecurityModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.name = this.name ?? null;
-    this.ticker_symbol = this.ticker_symbol ?? null;
-    this.type = this.type ?? null;
-    this.close_price = this.close_price ?? null;
+    // Type conversion: DATE column returns as Date object, need ISO string
     this.close_price_as_of = this.close_price_as_of ? (this.close_price_as_of as unknown as Date).toISOString().split("T")[0] : null;
-    this.iso_currency_code = this.iso_currency_code ?? null;
-    this.isin = this.isin ?? null;
-    this.cusip = this.cusip ?? null;
-    this.updated = this.updated ?? new Date();
   }
 
   toJSON(): JSONSecurity {

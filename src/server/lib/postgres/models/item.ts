@@ -44,15 +44,6 @@ export class ItemModel extends Model<JSONItem> {
     Object.keys(ItemModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.access_token = this.access_token || "no_access_token";
-    this.institution_id = this.institution_id ?? null;
-    this.available_products = this.available_products || [];
-    this.cursor = this.cursor ?? undefined;
-    this.status = this.status ? this.status : undefined;
-    this.provider = this.provider || ItemProvider.MANUAL;
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONItem {

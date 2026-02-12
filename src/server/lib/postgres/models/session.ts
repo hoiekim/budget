@@ -49,18 +49,10 @@ export class SessionModel extends Model<ExpressSessionData> {
     Object.keys(SessionModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults and conversions
+    // Type conversions (BIGINT returns as string)
     this.cookie_original_max_age = this.cookie_original_max_age ? parseInt(this.cookie_original_max_age as unknown as string, 10) : null;
     this.cookie_max_age = this.cookie_max_age ? parseInt(this.cookie_max_age as unknown as string, 10) : undefined;
-    this.cookie_signed = this.cookie_signed ?? undefined;
-    this.cookie_expires = this.cookie_expires ?? undefined;
-    this.cookie_http_only = this.cookie_http_only ?? undefined;
-    this.cookie_path = this.cookie_path ?? undefined;
-    this.cookie_domain = this.cookie_domain ?? undefined;
-    this.cookie_secure = this.cookie_secure ?? undefined;
     this.cookie_same_site = this.parseSameSite(this.cookie_same_site as unknown as string);
-    this.created_at = this.created_at ?? new Date();
-    this.updated = this.updated ?? new Date();
   }
 
   private parseSameSite(v: string | null | undefined): boolean | "lax" | "strict" | "none" | undefined {

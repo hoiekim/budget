@@ -30,13 +30,8 @@ export class ChartModel extends Model<JSONChart> {
     Object.keys(ChartModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.name = this.name || "Unnamed";
-    this.type = this.type || ChartType.BALANCE;
-    // pg parses JSONB to object, need to stringify for our string type
-    this.configuration = typeof this.configuration === "object" ? JSON.stringify(this.configuration) : this.configuration || "";
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
+    // Type conversion: pg parses JSONB to object, need to stringify for our string type
+    this.configuration = typeof this.configuration === "object" ? JSON.stringify(this.configuration) : (this.configuration as string);
   }
 
   toJSON(): JSONChart {

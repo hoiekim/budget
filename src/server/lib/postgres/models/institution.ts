@@ -18,9 +18,6 @@ export class InstitutionModel extends Model<JSONInstitution> {
     Object.keys(InstitutionModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.name = this.name || "Unknown";
-    this.updated = this.updated ?? new Date();
   }
 
   toJSON(): JSONInstitution {

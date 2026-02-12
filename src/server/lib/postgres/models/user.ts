@@ -39,13 +39,6 @@ export class UserModel extends Model<MaskedUser> {
     Object.keys(UserModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.password = this.password ?? null;
-    this.email = this.email ?? null;
-    this.expiry = this.expiry ?? null;
-    this.token = this.token ?? null;
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): MaskedUser {

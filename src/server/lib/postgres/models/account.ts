@@ -37,21 +37,6 @@ export class AccountModel extends Model<JSONAccount> {
     Object.keys(AccountModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.name = this.name || "Unknown";
-    this.type = this.type || AccountType.Other;
-    this.subtype = this.subtype || null;
-    this.balances_available = this.balances_available ?? 0;
-    this.balances_current = this.balances_current ?? 0;
-    this.balances_limit = this.balances_limit ?? 0;
-    this.balances_iso_currency_code = this.balances_iso_currency_code || "USD";
-    this.custom_name = this.custom_name || "";
-    this.hide = this.hide ?? false;
-    this.label_budget_id = this.label_budget_id ?? null;
-    this.graph_options_use_snapshots = this.graph_options_use_snapshots ?? true;
-    this.graph_options_use_transactions = this.graph_options_use_transactions ?? true;
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONAccount {

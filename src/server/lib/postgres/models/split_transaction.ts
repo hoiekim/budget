@@ -30,15 +30,8 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
     Object.keys(SplitTransactionModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.amount = this.amount ?? 0;
+    // Type conversion: DATE column returns as Date object, need ISO string
     this.date = (this.date as unknown as Date).toISOString().split("T")[0];
-    this.custom_name = this.custom_name || "";
-    this.label_budget_id = this.label_budget_id ?? null;
-    this.label_category_id = this.label_category_id ?? null;
-    this.label_memo = this.label_memo ?? null;
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONSplitTransaction {

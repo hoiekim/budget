@@ -37,23 +37,8 @@ export class TransactionModel extends Model<JSONTransaction> {
     Object.keys(TransactionModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.name = this.name || "Unknown";
-    this.merchant_name = this.merchant_name ?? null;
-    this.amount = this.amount ?? 0;
-    this.iso_currency_code = this.iso_currency_code ?? null;
+    // Type conversion: DATE column returns as Date object, need ISO string
     this.date = (this.date as unknown as Date).toISOString().split("T")[0];
-    this.pending = this.pending ?? false;
-    this.pending_transaction_id = this.pending_transaction_id ?? null;
-    this.payment_channel = this.payment_channel || TransactionPaymentChannelEnum.InStore;
-    this.location_country = this.location_country ?? null;
-    this.location_region = this.location_region ?? null;
-    this.location_city = this.location_city ?? null;
-    this.label_budget_id = this.label_budget_id ?? null;
-    this.label_category_id = this.label_category_id ?? null;
-    this.label_memo = this.label_memo ?? null;
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONTransaction {

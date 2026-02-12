@@ -39,24 +39,8 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
     Object.keys(SnapshotModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.user_id = this.user_id ?? null;
+    // Type conversion: TIMESTAMPTZ returns as Date object, need ISO string
     this.snapshot_date = (this.snapshot_date as unknown as Date).toISOString();
-    this.account_id = this.account_id ?? null;
-    this.balances_available = this.balances_available ?? null;
-    this.balances_current = this.balances_current ?? null;
-    this.balances_limit = this.balances_limit ?? null;
-    this.balances_iso_currency_code = this.balances_iso_currency_code ?? null;
-    this.security_id = this.security_id ?? null;
-    this.close_price = this.close_price ?? null;
-    this.holding_account_id = this.holding_account_id ?? null;
-    this.holding_security_id = this.holding_security_id ?? null;
-    this.institution_price = this.institution_price ?? null;
-    this.institution_value = this.institution_value ?? null;
-    this.cost_basis = this.cost_basis ?? null;
-    this.quantity = this.quantity ?? null;
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONSnapshotData {

@@ -29,15 +29,8 @@ export class HoldingModel extends Model<JSONHolding> {
     Object.keys(HoldingModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Apply defaults
-    this.institution_price = this.institution_price ?? 0;
+    // Type conversion: DATE column returns as Date object, need ISO string
     this.institution_price_as_of = this.institution_price_as_of ? (this.institution_price_as_of as unknown as Date).toISOString().split("T")[0] : null;
-    this.institution_value = this.institution_value ?? 0;
-    this.cost_basis = this.cost_basis ?? 0;
-    this.quantity = this.quantity ?? 0;
-    this.iso_currency_code = this.iso_currency_code || "USD";
-    this.updated = this.updated ?? new Date();
-    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONHolding {
