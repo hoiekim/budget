@@ -3,26 +3,40 @@ import { CHART_ID, USER_ID, NAME, TYPE, CONFIGURATION, UPDATED, IS_DELETED, CHAR
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class ChartModel extends Model<JSONChart> {
-  chart_id: string;
-  user_id: string;
-  name: string;
-  type: ChartType;
-  configuration: string;
-  updated: Date;
-  is_deleted: boolean;
+  chart_id!: string;
+  user_id!: string;
+  name!: string;
+  type!: ChartType;
+  configuration!: string;
+  updated!: Date;
+  is_deleted!: boolean;
+
+  static typeChecker = {
+    chart_id: isString,
+    user_id: isString,
+    name: isNullableString,
+    type: isNullableString,
+    configuration: isNullableObject,
+    updated: isNullableDate,
+    is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("ChartModel", ChartModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     ChartModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.chart_id = r.chart_id as string;
-    this.user_id = r.user_id as string;
-    this.name = (r.name as string) || "Unnamed";
-    this.type = (r.type as ChartType) || ChartType.BALANCE;
+    Object.keys(ChartModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.name = this.name || "Unnamed";
+    this.type = this.type || ChartType.BALANCE;
     // pg parses JSONB to object, need to stringify for our string type
-    this.configuration = typeof r.configuration === "object" ? JSON.stringify(r.configuration) : (r.configuration as string) || "";
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    this.configuration = typeof this.configuration === "object" ? JSON.stringify(this.configuration) : this.configuration || "";
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONChart {
@@ -39,16 +53,6 @@ export class ChartModel extends Model<JSONChart> {
     }
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("ChartModel", {
-    chart_id: isString,
-    user_id: isString,
-    name: isNullableString,
-    type: isNullableString,
-    configuration: isNullableObject,
-    updated: isNullableDate,
-    is_deleted: isNullableBoolean,
-  });
 }
 
 export const chartsTable = createTable({

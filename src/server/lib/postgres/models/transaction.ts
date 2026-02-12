@@ -12,36 +12,48 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class TransactionModel extends Model<JSONTransaction> {
-  transaction_id: string; user_id: string; account_id: string; name: string; merchant_name: string | null;
-  amount: number; iso_currency_code: string | null; date: string; pending: boolean;
-  pending_transaction_id: string | null; payment_channel: TransactionPaymentChannelEnum;
-  location_country: string | null; location_region: string | null; location_city: string | null;
-  label_budget_id: string | null; label_category_id: string | null; label_memo: string | null;
-  updated: Date; is_deleted: boolean;
+  transaction_id!: string; user_id!: string; account_id!: string; name!: string; merchant_name!: string | null;
+  amount!: number; iso_currency_code!: string | null; date!: string; pending!: boolean;
+  pending_transaction_id!: string | null; payment_channel!: TransactionPaymentChannelEnum;
+  location_country!: string | null; location_region!: string | null; location_city!: string | null;
+  label_budget_id!: string | null; label_category_id!: string | null; label_memo!: string | null;
+  updated!: Date; is_deleted!: boolean;
+
+  static typeChecker = {
+    transaction_id: isString, user_id: isString, account_id: isString, name: isNullableString,
+    merchant_name: isNullableString, amount: isNullableNumber, iso_currency_code: isNullableString,
+    date: isNullableDate, pending: isNullableBoolean, pending_transaction_id: isNullableString,
+    payment_channel: isNullableString, location_country: isNullableString, location_region: isNullableString,
+    location_city: isNullableString, label_budget_id: isNullableString, label_category_id: isNullableString,
+    label_memo: isNullableString, raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("TransactionModel", TransactionModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     TransactionModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.transaction_id = r.transaction_id as string;
-    this.user_id = r.user_id as string;
-    this.account_id = r.account_id as string;
-    this.name = (r.name as string) || "Unknown";
-    this.merchant_name = (r.merchant_name as string) ?? null;
-    this.amount = (r.amount as number) ?? 0;
-    this.iso_currency_code = (r.iso_currency_code as string) ?? null;
-    this.date = (r.date as Date).toISOString().split("T")[0];
-    this.pending = (r.pending as boolean) ?? false;
-    this.pending_transaction_id = (r.pending_transaction_id as string) ?? null;
-    this.payment_channel = (r.payment_channel as TransactionPaymentChannelEnum) || TransactionPaymentChannelEnum.InStore;
-    this.location_country = (r.location_country as string) ?? null;
-    this.location_region = (r.location_region as string) ?? null;
-    this.location_city = (r.location_city as string) ?? null;
-    this.label_budget_id = (r.label_budget_id as string) ?? null;
-    this.label_category_id = (r.label_category_id as string) ?? null;
-    this.label_memo = (r.label_memo as string) ?? null;
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(TransactionModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.name = this.name || "Unknown";
+    this.merchant_name = this.merchant_name ?? null;
+    this.amount = this.amount ?? 0;
+    this.iso_currency_code = this.iso_currency_code ?? null;
+    this.date = (this.date as unknown as Date).toISOString().split("T")[0];
+    this.pending = this.pending ?? false;
+    this.pending_transaction_id = this.pending_transaction_id ?? null;
+    this.payment_channel = this.payment_channel || TransactionPaymentChannelEnum.InStore;
+    this.location_country = this.location_country ?? null;
+    this.location_region = this.location_region ?? null;
+    this.location_city = this.location_city ?? null;
+    this.label_budget_id = this.label_budget_id ?? null;
+    this.label_category_id = this.label_category_id ?? null;
+    this.label_memo = this.label_memo ?? null;
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONTransaction {
@@ -86,15 +98,6 @@ export class TransactionModel extends Model<JSONTransaction> {
     r.raw = providerData;
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("TransactionModel", {
-    transaction_id: isString, user_id: isString, account_id: isString, name: isNullableString,
-    merchant_name: isNullableString, amount: isNullableNumber, iso_currency_code: isNullableString,
-    date: isNullableDate, pending: isNullableBoolean, pending_transaction_id: isNullableString,
-    payment_channel: isNullableString, location_country: isNullableString, location_region: isNullableString,
-    location_city: isNullableString, label_budget_id: isNullableString, label_category_id: isNullableString,
-    label_memo: isNullableString, raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
-  });
 }
 
 export const transactionsTable = createTable({

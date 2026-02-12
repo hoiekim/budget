@@ -8,24 +8,35 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class SecurityModel extends Model<JSONSecurity> {
-  security_id: string; name: string | null; ticker_symbol: string | null; type: string | null;
-  close_price: number | null; close_price_as_of: string | null; iso_currency_code: string | null;
-  isin: string | null; cusip: string | null; updated: Date;
+  security_id!: string; name!: string | null; ticker_symbol!: string | null; type!: string | null;
+  close_price!: number | null; close_price_as_of!: string | null; iso_currency_code!: string | null;
+  isin!: string | null; cusip!: string | null; updated!: Date;
+
+  static typeChecker = {
+    security_id: isString, name: isNullableString, ticker_symbol: isNullableString, type: isNullableString,
+    close_price: isNullableNumber, close_price_as_of: isNullableDate, iso_currency_code: isNullableString,
+    isin: isNullableString, cusip: isNullableString, raw: isNullableObject, updated: isNullableDate,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SecurityModel", SecurityModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     SecurityModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.security_id = r.security_id as string;
-    this.name = (r.name as string) ?? null;
-    this.ticker_symbol = (r.ticker_symbol as string) ?? null;
-    this.type = (r.type as string) ?? null;
-    this.close_price = (r.close_price as number) ?? null;
-    this.close_price_as_of = r.close_price_as_of ? (r.close_price_as_of as Date).toISOString().split("T")[0] : null;
-    this.iso_currency_code = (r.iso_currency_code as string) ?? null;
-    this.isin = (r.isin as string) ?? null;
-    this.cusip = (r.cusip as string) ?? null;
-    this.updated = (r.updated as Date) ?? new Date();
+    Object.keys(SecurityModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.name = this.name ?? null;
+    this.ticker_symbol = this.ticker_symbol ?? null;
+    this.type = this.type ?? null;
+    this.close_price = this.close_price ?? null;
+    this.close_price_as_of = this.close_price_as_of ? (this.close_price_as_of as unknown as Date).toISOString().split("T")[0] : null;
+    this.iso_currency_code = this.iso_currency_code ?? null;
+    this.isin = this.isin ?? null;
+    this.cusip = this.cusip ?? null;
+    this.updated = this.updated ?? new Date();
   }
 
   toJSON(): JSONSecurity {
@@ -52,12 +63,6 @@ export class SecurityModel extends Model<JSONSecurity> {
     r.raw = s;
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SecurityModel", {
-    security_id: isString, name: isNullableString, ticker_symbol: isNullableString, type: isNullableString,
-    close_price: isNullableNumber, close_price_as_of: isNullableDate, iso_currency_code: isNullableString,
-    isin: isNullableString, cusip: isNullableString, raw: isNullableObject, updated: isNullableDate,
-  });
 }
 
 export const securitiesTable = createTable({

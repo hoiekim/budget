@@ -14,29 +14,44 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class CategoryModel extends Model<JSONCategory> {
-  category_id: string;
-  user_id: string;
-  section_id: string;
-  name: string;
-  roll_over: boolean;
-  roll_over_start_date: Date | undefined;
-  capacities: JSONCapacity[];
-  updated: Date;
-  is_deleted: boolean;
+  category_id!: string;
+  user_id!: string;
+  section_id!: string;
+  name!: string;
+  roll_over!: boolean;
+  roll_over_start_date!: Date | undefined;
+  capacities!: JSONCapacity[];
+  updated!: Date;
+  is_deleted!: boolean;
+
+  static typeChecker = {
+    category_id: isString,
+    user_id: isString,
+    section_id: isString,
+    name: isNullableString,
+    roll_over: isNullableBoolean,
+    roll_over_start_date: isNullableDate,
+    capacities: isNullableArray,
+    updated: isNullableDate,
+    is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("CategoryModel", CategoryModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     CategoryModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.category_id = r.category_id as string;
-    this.user_id = r.user_id as string;
-    this.section_id = r.section_id as string;
-    this.name = (r.name as string) || "Unnamed";
-    this.roll_over = (r.roll_over as boolean) ?? false;
-    this.roll_over_start_date = (r.roll_over_start_date as Date) ?? undefined;
-    this.capacities = (r.capacities as JSONCapacity[]) ?? [];
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(CategoryModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.name = this.name || "Unnamed";
+    this.roll_over = this.roll_over ?? false;
+    this.roll_over_start_date = this.roll_over_start_date ?? undefined;
+    this.capacities = this.capacities ?? [];
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONCategory {
@@ -60,18 +75,6 @@ export class CategoryModel extends Model<JSONCategory> {
     if (c.capacities !== undefined) r.capacities = JSON.stringify(c.capacities);
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("CategoryModel", {
-    category_id: isString,
-    user_id: isString,
-    section_id: isString,
-    name: isNullableString,
-    roll_over: isNullableBoolean,
-    roll_over_start_date: isNullableDate,
-    capacities: isNullableArray,
-    updated: isNullableDate,
-    is_deleted: isNullableBoolean,
-  });
 }
 
 export const categoriesTable = createTable({

@@ -11,33 +11,44 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction> {
-  investment_transaction_id: string; user_id: string; account_id: string; security_id: string | null;
-  date: string; name: string; amount: number; quantity: number; price: number;
-  iso_currency_code: string | null; type: InvestmentTransactionType; subtype: InvestmentTransactionSubtype;
-  label_budget_id: string | null; label_category_id: string | null; label_memo: string | null;
-  updated: Date; is_deleted: boolean;
+  investment_transaction_id!: string; user_id!: string; account_id!: string; security_id!: string | null;
+  date!: string; name!: string; amount!: number; quantity!: number; price!: number;
+  iso_currency_code!: string | null; type!: InvestmentTransactionType; subtype!: InvestmentTransactionSubtype;
+  label_budget_id!: string | null; label_category_id!: string | null; label_memo!: string | null;
+  updated!: Date; is_deleted!: boolean;
+
+  static typeChecker = {
+    investment_transaction_id: isString, user_id: isString, account_id: isString, security_id: isNullableString,
+    date: isNullableDate, name: isNullableString, amount: isNullableNumber, quantity: isNullableNumber,
+    price: isNullableNumber, iso_currency_code: isNullableString, type: isNullableString, subtype: isNullableString,
+    label_budget_id: isNullableString, label_category_id: isNullableString, label_memo: isNullableString,
+    raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("InvestmentTransactionModel", InvestmentTransactionModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     InvestmentTransactionModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.investment_transaction_id = r.investment_transaction_id as string;
-    this.user_id = r.user_id as string;
-    this.account_id = r.account_id as string;
-    this.security_id = (r.security_id as string) ?? null;
-    this.date = (r.date as Date).toISOString().split("T")[0];
-    this.name = (r.name as string) || "Unknown";
-    this.amount = (r.amount as number) ?? 0;
-    this.quantity = (r.quantity as number) ?? 0;
-    this.price = (r.price as number) ?? 0;
-    this.iso_currency_code = (r.iso_currency_code as string) ?? null;
-    this.type = (r.type as InvestmentTransactionType) || InvestmentTransactionType.Transfer;
-    this.subtype = (r.subtype as InvestmentTransactionSubtype) || InvestmentTransactionSubtype.Transfer;
-    this.label_budget_id = (r.label_budget_id as string) ?? null;
-    this.label_category_id = (r.label_category_id as string) ?? null;
-    this.label_memo = (r.label_memo as string) ?? null;
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(InvestmentTransactionModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.security_id = this.security_id ?? null;
+    this.date = (this.date as unknown as Date).toISOString().split("T")[0];
+    this.name = this.name || "Unknown";
+    this.amount = this.amount ?? 0;
+    this.quantity = this.quantity ?? 0;
+    this.price = this.price ?? 0;
+    this.iso_currency_code = this.iso_currency_code ?? null;
+    this.type = this.type || InvestmentTransactionType.Transfer;
+    this.subtype = this.subtype || InvestmentTransactionSubtype.Transfer;
+    this.label_budget_id = this.label_budget_id ?? null;
+    this.label_category_id = this.label_category_id ?? null;
+    this.label_memo = this.label_memo ?? null;
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONInvestmentTransaction {
@@ -72,14 +83,6 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
     r.raw = providerData;
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("InvestmentTransactionModel", {
-    investment_transaction_id: isString, user_id: isString, account_id: isString, security_id: isNullableString,
-    date: isNullableDate, name: isNullableString, amount: isNullableNumber, quantity: isNullableNumber,
-    price: isNullableNumber, iso_currency_code: isNullableString, type: isNullableString, subtype: isNullableString,
-    label_budget_id: isNullableString, label_category_id: isNullableString, label_memo: isNullableString,
-    raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
-  });
 }
 
 export const investmentTransactionsTable = createTable({

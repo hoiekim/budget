@@ -13,37 +13,50 @@ import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./ba
 export type SnapshotType = "account_balance" | "security" | "holding";
 
 export class SnapshotModel extends Model<JSONSnapshotData> {
-  snapshot_id: string; user_id: string | null; snapshot_date: string; snapshot_type: SnapshotType;
-  account_id: string | null; balances_available: number | null; balances_current: number | null;
-  balances_limit: number | null; balances_iso_currency_code: string | null;
-  security_id: string | null; close_price: number | null;
-  holding_account_id: string | null; holding_security_id: string | null;
-  institution_price: number | null; institution_value: number | null;
-  cost_basis: number | null; quantity: number | null; updated: Date; is_deleted: boolean;
+  snapshot_id!: string; user_id!: string | null; snapshot_date!: string; snapshot_type!: SnapshotType;
+  account_id!: string | null; balances_available!: number | null; balances_current!: number | null;
+  balances_limit!: number | null; balances_iso_currency_code!: string | null;
+  security_id!: string | null; close_price!: number | null;
+  holding_account_id!: string | null; holding_security_id!: string | null;
+  institution_price!: number | null; institution_value!: number | null;
+  cost_basis!: number | null; quantity!: number | null; updated!: Date; is_deleted!: boolean;
+
+  static typeChecker = {
+    snapshot_id: isString, user_id: isNullableString, snapshot_date: isNullableDate, snapshot_type: isString,
+    account_id: isNullableString, balances_available: isNullableNumber, balances_current: isNullableNumber,
+    balances_limit: isNullableNumber, balances_iso_currency_code: isNullableString, security_id: isNullableString,
+    close_price: isNullableNumber, holding_account_id: isNullableString, holding_security_id: isNullableString,
+    institution_price: isNullableNumber, institution_value: isNullableNumber, cost_basis: isNullableNumber,
+    quantity: isNullableNumber, updated: isNullableDate, is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SnapshotModel", SnapshotModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     SnapshotModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.snapshot_id = r.snapshot_id as string;
-    this.user_id = (r.user_id as string) ?? null;
-    this.snapshot_date = (r.snapshot_date as Date).toISOString();
-    this.snapshot_type = r.snapshot_type as SnapshotType;
-    this.account_id = (r.account_id as string) ?? null;
-    this.balances_available = (r.balances_available as number) ?? null;
-    this.balances_current = (r.balances_current as number) ?? null;
-    this.balances_limit = (r.balances_limit as number) ?? null;
-    this.balances_iso_currency_code = (r.balances_iso_currency_code as string) ?? null;
-    this.security_id = (r.security_id as string) ?? null;
-    this.close_price = (r.close_price as number) ?? null;
-    this.holding_account_id = (r.holding_account_id as string) ?? null;
-    this.holding_security_id = (r.holding_security_id as string) ?? null;
-    this.institution_price = (r.institution_price as number) ?? null;
-    this.institution_value = (r.institution_value as number) ?? null;
-    this.cost_basis = (r.cost_basis as number) ?? null;
-    this.quantity = (r.quantity as number) ?? null;
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(SnapshotModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.user_id = this.user_id ?? null;
+    this.snapshot_date = (this.snapshot_date as unknown as Date).toISOString();
+    this.account_id = this.account_id ?? null;
+    this.balances_available = this.balances_available ?? null;
+    this.balances_current = this.balances_current ?? null;
+    this.balances_limit = this.balances_limit ?? null;
+    this.balances_iso_currency_code = this.balances_iso_currency_code ?? null;
+    this.security_id = this.security_id ?? null;
+    this.close_price = this.close_price ?? null;
+    this.holding_account_id = this.holding_account_id ?? null;
+    this.holding_security_id = this.holding_security_id ?? null;
+    this.institution_price = this.institution_price ?? null;
+    this.institution_value = this.institution_value ?? null;
+    this.cost_basis = this.cost_basis ?? null;
+    this.quantity = this.quantity ?? null;
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONSnapshotData {
@@ -117,15 +130,6 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
       cost_basis: d.holding.cost_basis ?? null, quantity: d.holding.quantity ?? null,
     };
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SnapshotModel", {
-    snapshot_id: isString, user_id: isNullableString, snapshot_date: isNullableDate, snapshot_type: isString,
-    account_id: isNullableString, balances_available: isNullableNumber, balances_current: isNullableNumber,
-    balances_limit: isNullableNumber, balances_iso_currency_code: isNullableString, security_id: isNullableString,
-    close_price: isNullableNumber, holding_account_id: isNullableString, holding_security_id: isNullableString,
-    institution_price: isNullableNumber, institution_value: isNullableNumber, cost_basis: isNullableNumber,
-    quantity: isNullableNumber, updated: isNullableDate, is_deleted: isNullableBoolean,
-  });
 }
 
 export const snapshotsTable = createTable({

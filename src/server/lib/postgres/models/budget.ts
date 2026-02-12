@@ -14,29 +14,45 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class BudgetModel extends Model<JSONBudget> {
-  budget_id: string;
-  user_id: string;
-  name: string;
-  iso_currency_code: string;
-  roll_over: boolean;
-  roll_over_start_date: Date | undefined;
-  capacities: JSONCapacity[];
-  updated: Date;
-  is_deleted: boolean;
+  budget_id!: string;
+  user_id!: string;
+  name!: string;
+  iso_currency_code!: string;
+  roll_over!: boolean;
+  roll_over_start_date!: Date | undefined;
+  capacities!: JSONCapacity[];
+  updated!: Date;
+  is_deleted!: boolean;
+
+  static typeChecker = {
+    budget_id: isString,
+    user_id: isString,
+    name: isNullableString,
+    iso_currency_code: isNullableString,
+    roll_over: isNullableBoolean,
+    roll_over_start_date: isNullableDate,
+    capacities: isNullableArray,
+    updated: isNullableDate,
+    is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("BudgetModel", BudgetModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     BudgetModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.budget_id = r.budget_id as string;
-    this.user_id = r.user_id as string;
-    this.name = (r.name as string) || "Unnamed";
-    this.iso_currency_code = (r.iso_currency_code as string) || "USD";
-    this.roll_over = (r.roll_over as boolean) ?? false;
-    this.roll_over_start_date = (r.roll_over_start_date as Date) ?? undefined;
-    this.capacities = (r.capacities as JSONCapacity[]) ?? [];
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(BudgetModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.name = this.name || "Unnamed";
+    this.iso_currency_code = this.iso_currency_code || "USD";
+    this.roll_over = this.roll_over ?? false;
+    this.roll_over_start_date = this.roll_over_start_date ?? undefined;
+    this.capacities = this.capacities ?? [];
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONBudget {
@@ -60,18 +76,6 @@ export class BudgetModel extends Model<JSONBudget> {
     if (b.capacities !== undefined) r.capacities = JSON.stringify(b.capacities);
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("BudgetModel", {
-    budget_id: isString,
-    user_id: isString,
-    name: isNullableString,
-    iso_currency_code: isNullableString,
-    roll_over: isNullableBoolean,
-    roll_over_start_date: isNullableDate,
-    capacities: isNullableArray,
-    updated: isNullableDate,
-    is_deleted: isNullableBoolean,
-  });
 }
 
 export const budgetsTable = createTable({

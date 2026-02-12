@@ -10,27 +10,42 @@ export interface MaskedUser {
 export type User = MaskedUser & { password: string };
 
 export class UserModel extends Model<MaskedUser> {
-  user_id: string;
-  username: string;
-  password: string | null;
-  email: string | null;
-  expiry: Date | null;
-  token: string | null;
-  updated: Date;
-  is_deleted: boolean;
+  user_id!: string;
+  username!: string;
+  password!: string | null;
+  email!: string | null;
+  expiry!: Date | null;
+  token!: string | null;
+  updated!: Date;
+  is_deleted!: boolean;
+
+  static typeChecker = {
+    user_id: isString,
+    username: isString,
+    password: isNullableString,
+    email: isNullableString,
+    expiry: isNullableDate,
+    token: isNullableString,
+    updated: isNullableDate,
+    is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("UserModel", UserModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     UserModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.user_id = r.user_id as string;
-    this.username = r.username as string;
-    this.password = (r.password as string) ?? null;
-    this.email = (r.email as string) ?? null;
-    this.expiry = (r.expiry as Date) ?? null;
-    this.token = (r.token as string) ?? null;
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(UserModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.password = this.password ?? null;
+    this.email = this.email ?? null;
+    this.expiry = this.expiry ?? null;
+    this.token = this.token ?? null;
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): MaskedUser {
@@ -45,17 +60,6 @@ export class UserModel extends Model<MaskedUser> {
     if (this.password === null) throw new Error("User has no password set");
     return { user_id: this.user_id, username: this.username, password: this.password };
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("UserModel", {
-    user_id: isString,
-    username: isString,
-    password: isNullableString,
-    email: isNullableString,
-    expiry: isNullableDate,
-    token: isNullableString,
-    updated: isNullableDate,
-    is_deleted: isNullableBoolean,
-  });
 }
 
 export const usersTable = createTable({

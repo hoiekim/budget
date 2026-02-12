@@ -9,26 +9,35 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class HoldingModel extends Model<JSONHolding> {
-  holding_id: string; user_id: string; account_id: string; security_id: string;
-  institution_price: number; institution_price_as_of: string | null; institution_value: number;
-  cost_basis: number; quantity: number; iso_currency_code: string; updated: Date; is_deleted: boolean;
+  holding_id!: string; user_id!: string; account_id!: string; security_id!: string;
+  institution_price!: number; institution_price_as_of!: string | null; institution_value!: number;
+  cost_basis!: number; quantity!: number; iso_currency_code!: string; updated!: Date; is_deleted!: boolean;
+
+  static typeChecker = {
+    holding_id: isString, user_id: isString, account_id: isString, security_id: isString,
+    institution_price: isNullableNumber, institution_price_as_of: isNullableDate, institution_value: isNullableNumber,
+    cost_basis: isNullableNumber, quantity: isNullableNumber, iso_currency_code: isNullableString,
+    raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("HoldingModel", HoldingModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     HoldingModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.holding_id = r.holding_id as string;
-    this.user_id = r.user_id as string;
-    this.account_id = r.account_id as string;
-    this.security_id = r.security_id as string;
-    this.institution_price = (r.institution_price as number) ?? 0;
-    this.institution_price_as_of = r.institution_price_as_of ? (r.institution_price_as_of as Date).toISOString().split("T")[0] : null;
-    this.institution_value = (r.institution_value as number) ?? 0;
-    this.cost_basis = (r.cost_basis as number) ?? 0;
-    this.quantity = (r.quantity as number) ?? 0;
-    this.iso_currency_code = (r.iso_currency_code as string) || "USD";
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(HoldingModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.institution_price = this.institution_price ?? 0;
+    this.institution_price_as_of = this.institution_price_as_of ? (this.institution_price_as_of as unknown as Date).toISOString().split("T")[0] : null;
+    this.institution_value = this.institution_value ?? 0;
+    this.cost_basis = this.cost_basis ?? 0;
+    this.quantity = this.quantity ?? 0;
+    this.iso_currency_code = this.iso_currency_code || "USD";
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONHolding {
@@ -53,13 +62,6 @@ export class HoldingModel extends Model<JSONHolding> {
     r.raw = h;
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("HoldingModel", {
-    holding_id: isString, user_id: isString, account_id: isString, security_id: isString,
-    institution_price: isNullableNumber, institution_price_as_of: isNullableDate, institution_value: isNullableNumber,
-    cost_basis: isNullableNumber, quantity: isNullableNumber, iso_currency_code: isNullableString,
-    raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
-  });
 }
 
 export const holdingsTable = createTable({

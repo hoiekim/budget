@@ -8,39 +8,59 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class SessionModel extends Model<ExpressSessionData> {
-  session_id: string;
-  user_user_id: string;
-  user_username: string;
-  cookie_original_max_age: number | null;
-  cookie_max_age: number | undefined;
-  cookie_signed: boolean | undefined;
-  cookie_expires: Date | undefined;
-  cookie_http_only: boolean | undefined;
-  cookie_path: string | undefined;
-  cookie_domain: string | undefined;
-  cookie_secure: boolean | undefined;
-  cookie_same_site: boolean | "lax" | "strict" | "none" | undefined;
-  created_at: Date;
-  updated: Date;
+  session_id!: string;
+  user_user_id!: string;
+  user_username!: string;
+  cookie_original_max_age!: number | null;
+  cookie_max_age!: number | undefined;
+  cookie_signed!: boolean | undefined;
+  cookie_expires!: Date | undefined;
+  cookie_http_only!: boolean | undefined;
+  cookie_path!: string | undefined;
+  cookie_domain!: string | undefined;
+  cookie_secure!: boolean | undefined;
+  cookie_same_site!: boolean | "lax" | "strict" | "none" | undefined;
+  created_at!: Date;
+  updated!: Date;
+
+  static typeChecker = {
+    session_id: isString,
+    user_user_id: isString,
+    user_username: isString,
+    cookie_original_max_age: isNullableString,
+    cookie_max_age: isNullableString,
+    cookie_signed: isNullableBoolean,
+    cookie_expires: isNullableDate,
+    cookie_http_only: isNullableBoolean,
+    cookie_path: isNullableString,
+    cookie_domain: isNullableString,
+    cookie_secure: isNullableBoolean,
+    cookie_same_site: isNullableString,
+    created_at: isNullableDate,
+    updated: isNullableDate,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SessionModel", SessionModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     SessionModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.session_id = r.session_id as string;
-    this.user_user_id = r.user_user_id as string;
-    this.user_username = r.user_username as string;
-    this.cookie_original_max_age = r.cookie_original_max_age ? parseInt(r.cookie_original_max_age as string, 10) : null;
-    this.cookie_max_age = r.cookie_max_age ? parseInt(r.cookie_max_age as string, 10) : undefined;
-    this.cookie_signed = (r.cookie_signed as boolean) ?? undefined;
-    this.cookie_expires = (r.cookie_expires as Date) ?? undefined;
-    this.cookie_http_only = (r.cookie_http_only as boolean) ?? undefined;
-    this.cookie_path = (r.cookie_path as string) ?? undefined;
-    this.cookie_domain = (r.cookie_domain as string) ?? undefined;
-    this.cookie_secure = (r.cookie_secure as boolean) ?? undefined;
-    this.cookie_same_site = this.parseSameSite(r.cookie_same_site as string);
-    this.created_at = (r.created_at as Date) ?? new Date();
-    this.updated = (r.updated as Date) ?? new Date();
+    Object.keys(SessionModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults and conversions
+    this.cookie_original_max_age = this.cookie_original_max_age ? parseInt(this.cookie_original_max_age as unknown as string, 10) : null;
+    this.cookie_max_age = this.cookie_max_age ? parseInt(this.cookie_max_age as unknown as string, 10) : undefined;
+    this.cookie_signed = this.cookie_signed ?? undefined;
+    this.cookie_expires = this.cookie_expires ?? undefined;
+    this.cookie_http_only = this.cookie_http_only ?? undefined;
+    this.cookie_path = this.cookie_path ?? undefined;
+    this.cookie_domain = this.cookie_domain ?? undefined;
+    this.cookie_secure = this.cookie_secure ?? undefined;
+    this.cookie_same_site = this.parseSameSite(this.cookie_same_site as unknown as string);
+    this.created_at = this.created_at ?? new Date();
+    this.updated = this.updated ?? new Date();
   }
 
   private parseSameSite(v: string | null | undefined): boolean | "lax" | "strict" | "none" | undefined {
@@ -87,23 +107,6 @@ export class SessionModel extends Model<ExpressSessionData> {
       cookie_same_site: data.cookie.sameSite?.toString() ?? null,
     };
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SessionModel", {
-    session_id: isString,
-    user_user_id: isString,
-    user_username: isString,
-    cookie_original_max_age: isNullableString,
-    cookie_max_age: isNullableString,
-    cookie_signed: isNullableBoolean,
-    cookie_expires: isNullableDate,
-    cookie_http_only: isNullableBoolean,
-    cookie_path: isNullableString,
-    cookie_domain: isNullableString,
-    cookie_secure: isNullableBoolean,
-    cookie_same_site: isNullableString,
-    created_at: isNullableDate,
-    updated: isNullableDate,
-  });
 }
 
 export const sessionsTable = createTable({

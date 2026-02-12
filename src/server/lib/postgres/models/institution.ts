@@ -3,15 +3,24 @@ import { INSTITUTION_ID, NAME, RAW, UPDATED, INSTITUTIONS } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class InstitutionModel extends Model<JSONInstitution> {
-  institution_id: string; name: string; updated: Date;
+  institution_id!: string; name!: string; updated!: Date;
+
+  static typeChecker = {
+    institution_id: isString, name: isNullableString, raw: isNullableObject, updated: isNullableDate,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("InstitutionModel", InstitutionModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     InstitutionModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.institution_id = r.institution_id as string;
-    this.name = (r.name as string) || "Unknown";
-    this.updated = (r.updated as Date) ?? new Date();
+    Object.keys(InstitutionModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.name = this.name || "Unknown";
+    this.updated = this.updated ?? new Date();
   }
 
   toJSON(): JSONInstitution {
@@ -28,10 +37,6 @@ export class InstitutionModel extends Model<JSONInstitution> {
     r.raw = i;
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("InstitutionModel", {
-    institution_id: isString, name: isNullableString, raw: isNullableObject, updated: isNullableDate,
-  });
 }
 
 export const institutionsTable = createTable({

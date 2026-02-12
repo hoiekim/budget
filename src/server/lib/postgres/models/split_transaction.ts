@@ -9,27 +9,36 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class SplitTransactionModel extends Model<JSONSplitTransaction> {
-  split_transaction_id: string; user_id: string; transaction_id: string; account_id: string;
-  amount: number; date: string; custom_name: string;
-  label_budget_id: string | null; label_category_id: string | null; label_memo: string | null;
-  updated: Date; is_deleted: boolean;
+  split_transaction_id!: string; user_id!: string; transaction_id!: string; account_id!: string;
+  amount!: number; date!: string; custom_name!: string;
+  label_budget_id!: string | null; label_category_id!: string | null; label_memo!: string | null;
+  updated!: Date; is_deleted!: boolean;
+
+  static typeChecker = {
+    split_transaction_id: isString, user_id: isString, transaction_id: isString, account_id: isString,
+    amount: isNullableNumber, date: isNullableDate, custom_name: isNullableString,
+    label_budget_id: isNullableString, label_category_id: isNullableString, label_memo: isNullableString,
+    updated: isNullableDate, is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SplitTransactionModel", SplitTransactionModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     SplitTransactionModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.split_transaction_id = r.split_transaction_id as string;
-    this.user_id = r.user_id as string;
-    this.transaction_id = r.transaction_id as string;
-    this.account_id = r.account_id as string;
-    this.amount = (r.amount as number) ?? 0;
-    this.date = (r.date as Date).toISOString().split("T")[0];
-    this.custom_name = (r.custom_name as string) || "";
-    this.label_budget_id = (r.label_budget_id as string) ?? null;
-    this.label_category_id = (r.label_category_id as string) ?? null;
-    this.label_memo = (r.label_memo as string) ?? null;
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(SplitTransactionModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.amount = this.amount ?? 0;
+    this.date = (this.date as unknown as Date).toISOString().split("T")[0];
+    this.custom_name = this.custom_name || "";
+    this.label_budget_id = this.label_budget_id ?? null;
+    this.label_category_id = this.label_category_id ?? null;
+    this.label_memo = this.label_memo ?? null;
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONSplitTransaction {
@@ -55,13 +64,6 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
     }
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SplitTransactionModel", {
-    split_transaction_id: isString, user_id: isString, transaction_id: isString, account_id: isString,
-    amount: isNullableNumber, date: isNullableDate, custom_name: isNullableString,
-    label_budget_id: isNullableString, label_category_id: isNullableString, label_memo: isNullableString,
-    updated: isNullableDate, is_deleted: isNullableBoolean,
-  });
 }
 
 export const splitTransactionsTable = createTable({

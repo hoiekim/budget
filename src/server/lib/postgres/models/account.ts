@@ -12,35 +12,46 @@ import {
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class AccountModel extends Model<JSONAccount> {
-  account_id: string; user_id: string; item_id: string; institution_id: string;
-  name: string; type: AccountType; subtype: AccountSubtype | null;
-  balances_available: number; balances_current: number; balances_limit: number;
-  balances_iso_currency_code: string; custom_name: string; hide: boolean;
-  label_budget_id: string | null; graph_options_use_snapshots: boolean;
-  graph_options_use_transactions: boolean; updated: Date; is_deleted: boolean;
+  account_id!: string; user_id!: string; item_id!: string; institution_id!: string;
+  name!: string; type!: AccountType; subtype!: AccountSubtype | null;
+  balances_available!: number; balances_current!: number; balances_limit!: number;
+  balances_iso_currency_code!: string; custom_name!: string; hide!: boolean;
+  label_budget_id!: string | null; graph_options_use_snapshots!: boolean;
+  graph_options_use_transactions!: boolean; updated!: Date; is_deleted!: boolean;
+
+  static typeChecker = {
+    account_id: isString, user_id: isString, item_id: isString, institution_id: isString,
+    name: isNullableString, type: isNullableString, subtype: isNullableString,
+    balances_available: isNullableNumber, balances_current: isNullableNumber, balances_limit: isNullableNumber,
+    balances_iso_currency_code: isNullableString, custom_name: isNullableString, hide: isNullableBoolean,
+    label_budget_id: isNullableString, graph_options_use_snapshots: isNullableBoolean,
+    graph_options_use_transactions: isNullableBoolean, raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
+  };
+
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("AccountModel", AccountModel.typeChecker);
 
   constructor(data: unknown) {
     super();
     AccountModel.assertType(data);
     const r = data as Record<string, unknown>;
-    this.account_id = r.account_id as string;
-    this.user_id = r.user_id as string;
-    this.item_id = r.item_id as string;
-    this.institution_id = r.institution_id as string;
-    this.name = (r.name as string) || "Unknown";
-    this.type = (r.type as AccountType) || AccountType.Other;
-    this.subtype = (r.subtype as AccountSubtype) || null;
-    this.balances_available = (r.balances_available as number) ?? 0;
-    this.balances_current = (r.balances_current as number) ?? 0;
-    this.balances_limit = (r.balances_limit as number) ?? 0;
-    this.balances_iso_currency_code = (r.balances_iso_currency_code as string) || "USD";
-    this.custom_name = (r.custom_name as string) || "";
-    this.hide = (r.hide as boolean) ?? false;
-    this.label_budget_id = (r.label_budget_id as string) ?? null;
-    this.graph_options_use_snapshots = (r.graph_options_use_snapshots as boolean) ?? true;
-    this.graph_options_use_transactions = (r.graph_options_use_transactions as boolean) ?? true;
-    this.updated = (r.updated as Date) ?? new Date();
-    this.is_deleted = (r.is_deleted as boolean) ?? false;
+    Object.keys(AccountModel.typeChecker).forEach((k) => {
+      (this as Record<string, unknown>)[k] = r[k];
+    });
+    // Apply defaults
+    this.name = this.name || "Unknown";
+    this.type = this.type || AccountType.Other;
+    this.subtype = this.subtype || null;
+    this.balances_available = this.balances_available ?? 0;
+    this.balances_current = this.balances_current ?? 0;
+    this.balances_limit = this.balances_limit ?? 0;
+    this.balances_iso_currency_code = this.balances_iso_currency_code || "USD";
+    this.custom_name = this.custom_name || "";
+    this.hide = this.hide ?? false;
+    this.label_budget_id = this.label_budget_id ?? null;
+    this.graph_options_use_snapshots = this.graph_options_use_snapshots ?? true;
+    this.graph_options_use_transactions = this.graph_options_use_transactions ?? true;
+    this.updated = this.updated ?? new Date();
+    this.is_deleted = this.is_deleted ?? false;
   }
 
   toJSON(): JSONAccount {
@@ -82,15 +93,6 @@ export class AccountModel extends Model<JSONAccount> {
     r.raw = providerData;
     return r;
   }
-
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("AccountModel", {
-    account_id: isString, user_id: isString, item_id: isString, institution_id: isString,
-    name: isNullableString, type: isNullableString, subtype: isNullableString,
-    balances_available: isNullableNumber, balances_current: isNullableNumber, balances_limit: isNullableNumber,
-    balances_iso_currency_code: isNullableString, custom_name: isNullableString, hide: isNullableBoolean,
-    label_budget_id: isNullableString, graph_options_use_snapshots: isNullableBoolean,
-    graph_options_use_transactions: isNullableBoolean, raw: isNullableObject, updated: isNullableDate, is_deleted: isNullableBoolean,
-  });
 }
 
 export const accountsTable = createTable({
