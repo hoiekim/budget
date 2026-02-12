@@ -75,7 +75,6 @@ export class ItemModel extends Model<JSONItem> {
     raw: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
-    username: isNullableString,
   });
 }
 
