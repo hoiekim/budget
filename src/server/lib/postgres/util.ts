@@ -42,7 +42,7 @@ export function parseJSONB<T>(value: unknown, defaultValue: T): T {
 }
 
 export const isNullableJSONB = (v: unknown): boolean =>
-  isUndefined(v) || isNull(v) || isString(v) || isArray(v);
+  isUndefined(v) || isNull(v) || isString(v) || isArray(v) || (typeof v === "object" && v !== null);
 
 export function copyDefined<T extends Record<string, unknown>>(
   source: Partial<T>,
