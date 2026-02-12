@@ -1,5 +1,5 @@
 import { JSONChart, ChartType } from "common";
-import { MaskedUser, ChartModel, chartsTable, CHART_ID, USER_ID } from "../models";
+import { MaskedUser, chartsTable, CHART_ID, USER_ID } from "../models";
 
 export const getCharts = async (user: MaskedUser): Promise<JSONChart[]> => {
   const models = await chartsTable.query({ [USER_ID]: user.user_id });

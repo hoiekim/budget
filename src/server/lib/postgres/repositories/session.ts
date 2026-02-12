@@ -1,5 +1,4 @@
 import { Store, SessionData as ExpressSessionData } from "express-session";
-import { QueryResult } from "pg";
 import { pool } from "../client";
 import { SessionModel, SESSIONS, SESSION_ID } from "../models";
 import { buildUpsert, buildUpdate, selectWithFilters } from "../database";
