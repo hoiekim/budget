@@ -100,15 +100,8 @@ export const deleteInvestmentTransactions = async (
   transaction_ids: string[]
 ): Promise<{ deleted: number }> => {
   if (!transaction_ids.length) return { deleted: 0 };
-  const placeholders = transaction_ids.map((_, i) => `$${i + 2}`).join(", ");
-
-  const result = await pool.query(
-    `UPDATE investment_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
-     WHERE ${INVESTMENT_TRANSACTION_ID} IN (${placeholders}) AND ${USER_ID} = $1 
-     RETURNING ${INVESTMENT_TRANSACTION_ID}`,
-    [user.user_id, ...transaction_ids]
-  );
-  return { deleted: result.rowCount ?? 0 };
+  const deleted = await investmentTransactionsTable.bulkSoftDelete(transaction_ids, { [USER_ID]: user.user_id });
+  return { deleted };
 };
 
 export const deleteInvestmentTransactionsByAccount = async (

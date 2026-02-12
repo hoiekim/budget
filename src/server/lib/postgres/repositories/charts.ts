@@ -1,166 +1,74 @@
-/**
- * Chart repository - CRUD operations for charts.
- */
-
 import { JSONChart, ChartType } from "common";
-import { pool } from "../client";
-import { buildSelectWithFilters, selectWithFilters } from "../database";
-import {
-  MaskedUser,
-  ChartModel,
-  CHARTS,
-  CHART_ID,
-  USER_ID,
-} from "../models";
+import { MaskedUser, ChartModel, chartsTable, CHART_ID, USER_ID } from "../models";
 
-// Query Helpers
-
-const rowToChart = (row: Record<string, unknown>): JSONChart => new ChartModel(row).toJSON();
-
-// Repository Functions
-
-/**
- * Gets all charts for a user.
- */
 export const getCharts = async (user: MaskedUser): Promise<JSONChart[]> => {
-  const rows = await selectWithFilters<Record<string, unknown>>(pool, CHARTS, "*", {
-    user_id: user.user_id,
-  });
-  return rows.map(rowToChart);
+  const models = await chartsTable.query({ [USER_ID]: user.user_id });
+  return models.map(m => m.toJSON());
 };
 
-/**
- * Gets a single chart by ID.
- */
-export const getChart = async (
-  user: MaskedUser,
-  chart_id: string
-): Promise<JSONChart | null> => {
-  const rows = await selectWithFilters<Record<string, unknown>>(pool, CHARTS, "*", {
-    user_id: user.user_id,
-    primaryKey: { column: CHART_ID, value: chart_id },
-  });
-  return rows.length > 0 ? rowToChart(rows[0]) : null;
+export const getChart = async (user: MaskedUser, chart_id: string): Promise<JSONChart | null> => {
+  const model = await chartsTable.queryOne({ [USER_ID]: user.user_id, [CHART_ID]: chart_id });
+  return model?.toJSON() ?? null;
 };
 
-/**
- * Searches charts with optional filters.
- */
 export const searchCharts = async (
   user: MaskedUser,
   options: { chart_id?: string; type?: string } = {}
 ): Promise<JSONChart[]> => {
-  const { sql, values } = buildSelectWithFilters(CHARTS, "*", {
-    user_id: user.user_id,
-    filters: {
-      [CHART_ID]: options.chart_id,
-      type: options.type,
-    },
-  });
-
-  const result = await pool.query<Record<string, unknown>>(sql, values);
-  return result.rows.map(rowToChart);
+  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  if (options.chart_id) filters[CHART_ID] = options.chart_id;
+  if (options.type) filters.type = options.type;
+  
+  const models = await chartsTable.query(filters);
+  return models.map(m => m.toJSON());
 };
 
-/**
- * Creates a new chart.
- */
-export const createChart = async (
-  user: MaskedUser,
-  data: Partial<JSONChart>
-): Promise<JSONChart | null> => {
+export const createChart = async (user: MaskedUser, data: Partial<JSONChart>): Promise<JSONChart | null> => {
   try {
     const config = data.configuration
-      ? typeof data.configuration === "string"
-        ? data.configuration
-        : JSON.stringify(data.configuration)
+      ? typeof data.configuration === "string" ? data.configuration : JSON.stringify(data.configuration)
       : "{}";
 
-    const result = await pool.query<Record<string, unknown>>(
-      `INSERT INTO ${CHARTS} (${USER_ID}, name, type, configuration, updated)
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-       RETURNING *`,
-      [user.user_id, data.name || "New Chart", data.type || ChartType.BALANCE, config]
-    );
-    return result.rows.length > 0 ? rowToChart(result.rows[0]) : null;
+    const row = {
+      [USER_ID]: user.user_id,
+      name: data.name || "New Chart",
+      type: data.type || ChartType.BALANCE,
+      configuration: config,
+    };
+    
+    const model = await chartsTable.insert(row, ["*"]);
+    return model?.toJSON() ?? null;
   } catch (error) {
     console.error("Failed to create chart:", error);
     return null;
   }
 };
 
-/**
- * Updates a chart.
- */
-export const updateChart = async (
-  user: MaskedUser,
-  chart_id: string,
-  data: Partial<JSONChart>
-): Promise<boolean> => {
-  const updates: string[] = ["updated = CURRENT_TIMESTAMP"];
-  const values: (string | undefined)[] = [];
-  let paramIndex = 1;
-
-  if (data.name !== undefined) {
-    updates.push(`name = $${paramIndex++}`);
-    values.push(data.name);
-  }
-  if (data.type !== undefined) {
-    updates.push(`type = $${paramIndex++}`);
-    values.push(data.type);
-  }
+export const updateChart = async (user: MaskedUser, chart_id: string, data: Partial<JSONChart>): Promise<boolean> => {
+  const updates: Record<string, unknown> = {};
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.type !== undefined) updates.type = data.type;
   if (data.configuration !== undefined) {
-    updates.push(`configuration = $${paramIndex++}`);
-    values.push(
-      typeof data.configuration === "string"
-        ? data.configuration
-        : JSON.stringify(data.configuration)
-    );
+    updates.configuration = typeof data.configuration === "string"
+      ? data.configuration
+      : JSON.stringify(data.configuration);
   }
 
-  values.push(chart_id, user.user_id);
+  if (Object.keys(updates).length === 0) return false;
 
-  const result = await pool.query(
-    `UPDATE ${CHARTS} SET ${updates.join(", ")}
-     WHERE ${CHART_ID} = $${paramIndex} AND ${USER_ID} = $${paramIndex + 1}
-     RETURNING ${CHART_ID}`,
-    values
-  );
-  return (result.rowCount || 0) > 0;
+  const model = await chartsTable.update(chart_id, updates);
+  return model !== null;
 };
 
-/**
- * Deletes a single chart.
- */
-export const deleteChart = async (
-  user: MaskedUser,
-  chart_id: string
-): Promise<boolean> => {
-  const result = await pool.query(
-    `UPDATE ${CHARTS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
-     WHERE ${CHART_ID} = $1 AND ${USER_ID} = $2
-     RETURNING ${CHART_ID}`,
-    [chart_id, user.user_id]
-  );
-  return (result.rowCount || 0) > 0;
+export const deleteChart = async (user: MaskedUser, chart_id: string): Promise<boolean> => {
+  return await chartsTable.softDelete(chart_id);
 };
 
-/**
- * Deletes multiple charts.
- */
-export const deleteCharts = async (
-  user: MaskedUser,
-  chart_ids: string[]
-): Promise<{ deleted: number }> => {
+export const deleteCharts = async (user: MaskedUser, chart_ids: string[]): Promise<{ deleted: number }> => {
   if (!chart_ids.length) return { deleted: 0 };
-
-  const placeholders = chart_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const result = await pool.query(
-    `UPDATE ${CHARTS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
-     WHERE ${CHART_ID} IN (${placeholders}) AND ${USER_ID} = $1
-     RETURNING ${CHART_ID}`,
-    [user.user_id, ...chart_ids]
-  );
-
-  return { deleted: result.rowCount || 0 };
+  let deleted = 0;
+  for (const id of chart_ids) {
+    if (await chartsTable.softDelete(id)) deleted++;
+  }
+  return { deleted };
 };

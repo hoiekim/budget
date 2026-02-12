@@ -1,9 +1,8 @@
 import { JSONHolding } from "common";
 import {
-  MaskedUser, HoldingModel, holdingsTable,
-  HOLDING_ID, USER_ID, ACCOUNT_ID, SECURITY_ID, SNAPSHOTS,
+  MaskedUser, HoldingModel, holdingsTable, snapshotsTable,
+  HOLDING_ID, USER_ID, ACCOUNT_ID, SECURITY_ID,
 } from "../models";
-import { pool } from "../client";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 
 export type PartialHolding = { holding_id?: string; account_id: string; security_id: string } & Partial<JSONHolding>;
@@ -79,20 +78,14 @@ export const updateHoldings = async (user: MaskedUser, holdings: PartialHolding[
 export const deleteHoldings = async (user: MaskedUser, holding_ids: string[]): Promise<{ deleted: number }> => {
   if (!holding_ids.length) return { deleted: 0 };
   const { user_id } = user;
-  const placeholders = holding_ids.map((_, i) => `$${i + 2}`).join(", ");
 
-  await pool.query(
-    `UPDATE ${SNAPSHOTS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
-     WHERE holding_account_id || '-' || holding_security_id IN (${placeholders}) AND ${USER_ID} = $1`,
-    [user_id, ...holding_ids]
-  );
+  // Soft-delete related snapshots for these holdings
+  for (const holding_id of holding_ids) {
+    await snapshotsTable.bulkSoftDeleteByColumn("holding_account_id", holding_id.split("-")[0], user_id);
+  }
 
-  const result = await pool.query(
-    `UPDATE holdings SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
-     WHERE ${HOLDING_ID} IN (${placeholders}) AND ${USER_ID} = $1 RETURNING ${HOLDING_ID}`,
-    [user_id, ...holding_ids]
-  );
-  return { deleted: result.rowCount ?? 0 };
+  const deleted = await holdingsTable.bulkSoftDelete(holding_ids, { [USER_ID]: user_id });
+  return { deleted };
 };
 
 export const deleteHoldingsByAccount = async (user: MaskedUser, account_id: string): Promise<{ deleted: number }> => {
@@ -103,10 +96,10 @@ export const deleteHoldingsByAccount = async (user: MaskedUser, account_id: stri
 
 export const searchHoldingsByAccountId = async (user: MaskedUser, account_ids: string[]): Promise<JSONHolding[]> => {
   if (!account_ids.length) return [];
-  const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const result = await pool.query<Record<string, unknown>>(
-    `SELECT * FROM holdings WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user.user_id, ...account_ids]
-  );
-  return result.rows.map(row => new HoldingModel(row).toJSON());
+  const results: JSONHolding[] = [];
+  for (const account_id of account_ids) {
+    const models = await holdingsTable.query({ [ACCOUNT_ID]: account_id, [USER_ID]: user.user_id });
+    results.push(...models.map(m => m.toJSON()));
+  }
+  return results;
 };

@@ -1,10 +1,9 @@
 import { JSONAccount } from "common";
 import {
-  MaskedUser, AccountModel, accountsTable,
+  MaskedUser, AccountModel, accountsTable, transactionsTable, investmentTransactionsTable,
+  splitTransactionsTable, snapshotsTable, holdingsTable,
   ACCOUNT_ID, USER_ID, ITEM_ID, INSTITUTION_ID,
-  TRANSACTIONS, INVESTMENT_TRANSACTIONS, SPLIT_TRANSACTIONS, SNAPSHOTS,
 } from "../models";
-import { pool } from "../client";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
@@ -42,12 +41,8 @@ export const searchAccounts = async (
 
 export const searchAccountsById = async (user: MaskedUser, account_ids: string[]): Promise<JSONAccount[]> => {
   if (!account_ids.length) return [];
-  const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const result = await pool.query<Record<string, unknown>>(
-    `SELECT * FROM accounts WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user.user_id, ...account_ids]
-  );
-  return result.rows.map(row => new AccountModel(row).toJSON());
+  const models = await accountsTable.queryByIds(account_ids, { [USER_ID]: user.user_id });
+  return models.map(m => m.toJSON());
 };
 
 export const upsertAccounts = async (user: MaskedUser, accounts: JSONAccount[]): Promise<UpsertResult[]> => {
@@ -90,30 +85,17 @@ export const updateAccounts = async (user: MaskedUser, accounts: PartialAccount[
 export const deleteAccounts = async (user: MaskedUser, account_ids: string[]): Promise<{ deleted: number }> => {
   if (!account_ids.length) return { deleted: 0 };
   const { user_id } = user;
-  const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
 
-  await pool.query(
-    `UPDATE ${TRANSACTIONS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1`,
-    [user_id, ...account_ids]
-  );
-  await pool.query(
-    `UPDATE ${INVESTMENT_TRANSACTIONS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1`,
-    [user_id, ...account_ids]
-  );
-  await pool.query(
-    `UPDATE ${SPLIT_TRANSACTIONS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1`,
-    [user_id, ...account_ids]
-  );
-  await pool.query(
-    `UPDATE ${SNAPSHOTS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1`,
-    [user_id, ...account_ids]
-  );
+  for (const account_id of account_ids) {
+    await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
+    await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
+    await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
+    await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
+    await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
+  }
 
-  const result = await pool.query(
-    `UPDATE accounts SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1 RETURNING ${ACCOUNT_ID}`,
-    [user_id, ...account_ids]
-  );
-  return { deleted: result.rowCount ?? 0 };
+  const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: user_id });
+  return { deleted };
 };
 
 export const deleteAccountsByItem = async (user: MaskedUser, item_id: string): Promise<{ deleted: number }> => {

@@ -1,6 +1,6 @@
 import { JSONTransaction, JSONInvestmentTransaction } from "common";
 import {
-  MaskedUser, TransactionModel, InvestmentTransactionModel, transactionsTable,
+  MaskedUser, TransactionModel, InvestmentTransactionModel, transactionsTable, splitTransactionsTable,
   TRANSACTION_ID, ACCOUNT_ID, USER_ID, DATE,
 } from "../models";
 import { pool } from "../client";
@@ -66,12 +66,8 @@ export const searchTransactions = async (
 
 export const searchTransactionsById = async (user: MaskedUser, transaction_ids: string[]): Promise<JSONTransaction[]> => {
   if (!transaction_ids.length) return [];
-  const placeholders = transaction_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const result = await pool.query<Record<string, unknown>>(
-    `SELECT * FROM transactions WHERE ${TRANSACTION_ID} IN (${placeholders}) AND ${USER_ID} = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [user.user_id, ...transaction_ids]
-  );
-  return result.rows.map(row => new TransactionModel(row).toJSON());
+  const models = await transactionsTable.queryByIds(transaction_ids, { [USER_ID]: user.user_id });
+  return models.map(m => m.toJSON());
 };
 
 export const upsertTransactions = async (user: MaskedUser, transactions: JSONTransaction[]): Promise<UpsertResult[]> => {
@@ -113,18 +109,13 @@ export const updateTransactions = async (user: MaskedUser, transactions: Partial
 
 export const deleteTransactions = async (user: MaskedUser, transaction_ids: string[]): Promise<{ deleted: number }> => {
   if (!transaction_ids.length) return { deleted: 0 };
-  const placeholders = transaction_ids.map((_, i) => `$${i + 2}`).join(", ");
 
-  await pool.query(
-    `UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${TRANSACTION_ID} IN (${placeholders}) AND ${USER_ID} = $1`,
-    [user.user_id, ...transaction_ids]
-  );
+  for (const tx_id of transaction_ids) {
+    await splitTransactionsTable.bulkSoftDeleteByColumn(TRANSACTION_ID, tx_id, user.user_id);
+  }
 
-  const result = await pool.query(
-    `UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${TRANSACTION_ID} IN (${placeholders}) AND ${USER_ID} = $1 RETURNING ${TRANSACTION_ID}`,
-    [user.user_id, ...transaction_ids]
-  );
-  return { deleted: result.rowCount ?? 0 };
+  const deleted = await transactionsTable.bulkSoftDelete(transaction_ids, { [USER_ID]: user.user_id });
+  return { deleted };
 };
 
 export const deleteTransactionsByAccount = async (user: MaskedUser, account_id: string): Promise<{ deleted: number }> => {

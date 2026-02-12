@@ -101,15 +101,8 @@ export const deleteSplitTransactions = async (
   split_transaction_ids: string[]
 ): Promise<{ deleted: number }> => {
   if (!split_transaction_ids.length) return { deleted: 0 };
-  const placeholders = split_transaction_ids.map((_, i) => `$${i + 2}`).join(", ");
-
-  const result = await pool.query(
-    `UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP 
-     WHERE ${SPLIT_TRANSACTION_ID} IN (${placeholders}) AND ${USER_ID} = $1 
-     RETURNING ${SPLIT_TRANSACTION_ID}`,
-    [user.user_id, ...split_transaction_ids]
-  );
-  return { deleted: result.rowCount ?? 0 };
+  const deleted = await splitTransactionsTable.bulkSoftDelete(split_transaction_ids, { [USER_ID]: user.user_id });
+  return { deleted };
 };
 
 export const deleteSplitTransactionsByTransaction = async (

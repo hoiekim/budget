@@ -1,6 +1,5 @@
 import { JSONSecurity } from "common";
-import { SecurityModel, securitiesTable, SECURITY_ID, SNAPSHOTS } from "../models";
-import { pool } from "../client";
+import { SecurityModel, securitiesTable, snapshotsTable, SECURITY_ID } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 
 export const getSecurities = async (): Promise<JSONSecurity[]> => {
@@ -54,16 +53,11 @@ export const upsertSecurities = async (securities: JSONSecurity[]): Promise<Upse
 
 export const deleteSecurities = async (security_ids: string[]): Promise<{ deleted: number }> => {
   if (!security_ids.length) return { deleted: 0 };
-  const placeholders = security_ids.map((_, i) => `$${i + 1}`).join(", ");
 
-  await pool.query(
-    `UPDATE ${SNAPSHOTS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${SECURITY_ID} IN (${placeholders})`,
-    security_ids
-  );
+  for (const security_id of security_ids) {
+    await snapshotsTable.bulkSoftDeleteByColumn(SECURITY_ID, security_id);
+  }
 
-  const result = await pool.query(
-    `DELETE FROM securities WHERE ${SECURITY_ID} IN (${placeholders}) RETURNING ${SECURITY_ID}`,
-    security_ids
-  );
-  return { deleted: result.rowCount ?? 0 };
+  const deleted = await securitiesTable.bulkSoftDelete(security_ids);
+  return { deleted };
 };

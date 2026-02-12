@@ -124,6 +124,57 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
     const result = await pool.query(sql, values);
     return result.rowCount !== null && result.rowCount > 0;
   }
+
+  async queryByIds(ids: ParamValue[], additionalFilters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+    let sql = `SELECT * FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders}) AND (is_deleted IS NULL OR is_deleted = FALSE)`;
+    const values: ParamValue[] = [...ids];
+    
+    let paramIdx = ids.length + 1;
+    for (const [key, value] of Object.entries(additionalFilters)) {
+      if (value !== undefined) {
+        sql += ` AND ${key} = $${paramIdx++}`;
+        values.push(value as ParamValue);
+      }
+    }
+    
+    const result = await pool.query(sql, values);
+    return result.rows.map((row: unknown) => new this.ModelClass(row));
+  }
+
+  async bulkSoftDelete(ids: ParamValue[], additionalFilters: Record<string, ParamValue | unknown> = {}): Promise<number> {
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+    let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${this.primaryKey} IN (${placeholders})`;
+    const values: ParamValue[] = [...ids];
+    
+    let paramIdx = ids.length + 1;
+    for (const [key, value] of Object.entries(additionalFilters)) {
+      if (value !== undefined) {
+        sql += ` AND ${key} = $${paramIdx++}`;
+        values.push(value as ParamValue);
+      }
+    }
+    sql += ` RETURNING ${this.primaryKey}`;
+    
+    const result = await pool.query(sql, values);
+    return result.rowCount ?? 0;
+  }
+
+  async bulkSoftDeleteByColumn(column: string, columnValue: ParamValue, userIdValue?: ParamValue): Promise<number> {
+    let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${column} = $1`;
+    const values: ParamValue[] = [columnValue];
+    
+    if (userIdValue !== undefined) {
+      sql += ` AND user_id = $2`;
+      values.push(userIdValue);
+    }
+    sql += ` RETURNING ${this.primaryKey}`;
+    
+    const result = await pool.query(sql, values);
+    return result.rowCount ?? 0;
+  }
 }
 
 export interface TableConfig<TJSON, TModel extends Model<TJSON>> {
