@@ -121,6 +121,7 @@ export const sessionsTable = createTable({
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   } as Schema<Record<string, unknown>>,
   ModelClass: SessionModel,
+  supportsSoftDelete: false,
 });
 
 export const sessionColumns = Object.keys(sessionsTable.schema);

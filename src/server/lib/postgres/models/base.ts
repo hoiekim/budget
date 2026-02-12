@@ -84,15 +84,16 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
   abstract readonly constraints: Constraints;
   abstract readonly indexes: IndexDefinition[];
   abstract readonly ModelClass: ModelClass<TJSON, TModel>;
+  abstract readonly supportsSoftDelete: boolean;
 
   async query(filters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
-    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters });
+    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters, excludeDeleted: this.supportsSoftDelete });
     const result = await pool.query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
   }
 
   async queryOne(filters: Record<string, ParamValue | unknown>): Promise<TModel | null> {
-    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters, limit: 1 });
+    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters, limit: 1, excludeDeleted: this.supportsSoftDelete });
     const result = await pool.query(sql, values);
     return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
   }
@@ -128,7 +129,10 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
   async queryByIds(ids: ParamValue[], additionalFilters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
     if (ids.length === 0) return [];
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
-    let sql = `SELECT * FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders}) AND (is_deleted IS NULL OR is_deleted = FALSE)`;
+    let sql = `SELECT * FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders})`;
+    if (this.supportsSoftDelete) {
+      sql += ` AND (is_deleted IS NULL OR is_deleted = FALSE)`;
+    }
     const values: ParamValue[] = [...ids];
     
     let paramIdx = ids.length + 1;
@@ -204,6 +208,7 @@ export interface TableConfig<TJSON, TModel extends Model<TJSON>> {
   constraints?: Constraints;
   indexes?: IndexDefinition[];
   ModelClass: ModelClass<TJSON, TModel>;
+  supportsSoftDelete?: boolean;
 }
 
 export function createTable<TJSON, TModel extends Model<TJSON>>(
@@ -216,5 +221,6 @@ export function createTable<TJSON, TModel extends Model<TJSON>>(
     readonly constraints = config.constraints ?? [];
     readonly indexes = config.indexes ?? [];
     readonly ModelClass = config.ModelClass;
+    readonly supportsSoftDelete = config.supportsSoftDelete ?? true;
   })();
 }

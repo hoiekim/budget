@@ -67,6 +67,7 @@ export const securitiesTable = createTable({
     [RAW]: "JSONB", [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   } as Schema<Record<string, unknown>>,
   ModelClass: SecurityModel,
+  supportsSoftDelete: false,
 });
 
 export const securityColumns = Object.keys(securitiesTable.schema);

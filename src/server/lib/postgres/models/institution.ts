@@ -44,6 +44,7 @@ export const institutionsTable = createTable({
     [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   } as Schema<Record<string, unknown>>,
   ModelClass: InstitutionModel,
+  supportsSoftDelete: false,
 });
 
 export const institutionColumns = Object.keys(institutionsTable.schema);
