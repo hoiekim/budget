@@ -85,13 +85,13 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
   abstract readonly indexes: IndexDefinition[];
   abstract readonly ModelClass: ModelClass<TJSON, TModel>;
 
-  async query(filters: Record<string, ParamValue> = {}): Promise<TModel[]> {
+  async query(filters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
     const { sql, values } = buildSelectWithFilters(this.name, "*", { filters });
     const result = await pool.query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
   }
 
-  async queryOne(filters: Record<string, ParamValue>): Promise<TModel | null> {
+  async queryOne(filters: Record<string, ParamValue | unknown>): Promise<TModel | null> {
     const { sql, values } = buildSelectWithFilters(this.name, "*", { filters, limit: 1 });
     const result = await pool.query(sql, values);
     return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
