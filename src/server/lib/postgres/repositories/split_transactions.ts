@@ -61,8 +61,8 @@ export const upsertSplitTransactions = async (
   for (const tx of transactions) {
     try {
       const row = SplitTransactionModel.toRow(tx, user.user_id);
-      const model = await splitTransactionsTable.upsert(row);
-      const id = model ? model.split_transaction_id : tx.split_transaction_id;
+      const result = await splitTransactionsTable.upsert(row);
+      const id = result ? (result.split_transaction_id as string) : tx.split_transaction_id;
       results.push(successResult(id, 1));
     } catch (error) {
       console.error(`Failed to upsert split transaction ${tx.split_transaction_id}:`, error);
@@ -125,7 +125,8 @@ export const createSplitTransaction = async (
     custom_name: '',
   }, user.user_id);
   
-  const model = await splitTransactionsTable.insert(row, ['*']);
-  if (!model) throw new Error('Failed to create split transaction');
+  const result = await splitTransactionsTable.insert(row, ['*']);
+  if (!result) throw new Error('Failed to create split transaction');
+  const model = new SplitTransactionModel(result);
   return model.toJSON();
 };

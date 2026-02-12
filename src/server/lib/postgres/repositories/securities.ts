@@ -54,10 +54,11 @@ export const upsertSecurities = async (securities: JSONSecurity[]): Promise<Upse
 export const deleteSecurities = async (security_ids: string[]): Promise<{ deleted: number }> => {
   if (!security_ids.length) return { deleted: 0 };
 
+  // Securities table doesn't have is_deleted column - use hard delete
   for (const security_id of security_ids) {
-    await snapshotsTable.bulkSoftDeleteByColumn(SECURITY_ID, security_id);
+    await snapshotsTable.hardDeleteByColumn(SECURITY_ID, security_id);
   }
 
-  const deleted = await securitiesTable.bulkSoftDelete(security_ids);
+  const deleted = await securitiesTable.bulkHardDelete(security_ids);
   return { deleted };
 };

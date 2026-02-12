@@ -1,7 +1,6 @@
 import { JSONInstitution, isString, isNullableString, isNullableDate, isNullableObject } from "common";
 import { INSTITUTION_ID, NAME, RAW, UPDATED, INSTITUTIONS } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate } from "../util";
 
 export class InstitutionModel extends Model<JSONInstitution> {
   institution_id: string; name: string; updated: Date;
@@ -12,7 +11,7 @@ export class InstitutionModel extends Model<JSONInstitution> {
     const r = data as Record<string, unknown>;
     this.institution_id = r.institution_id as string;
     this.name = (r.name as string) || "Unknown";
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
   }
 
   toJSON(): JSONInstitution {

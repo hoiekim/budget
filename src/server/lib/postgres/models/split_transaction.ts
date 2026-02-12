@@ -7,7 +7,6 @@ import {
   LABEL_BUDGET_ID, LABEL_CATEGORY_ID, LABEL_MEMO, UPDATED, IS_DELETED, SPLIT_TRANSACTIONS, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class SplitTransactionModel extends Model<JSONSplitTransaction> {
   split_transaction_id: string; user_id: string; transaction_id: string; account_id: string;
@@ -23,13 +22,13 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
     this.user_id = r.user_id as string;
     this.transaction_id = r.transaction_id as string;
     this.account_id = r.account_id as string;
-    this.amount = toNullableNumber(r.amount) ?? 0;
-    this.date = toISODateString(r.date);
+    this.amount = (r.amount as number) ?? 0;
+    this.date = (r.date as Date).toISOString().split("T")[0];
     this.custom_name = (r.custom_name as string) || "";
     this.label_budget_id = (r.label_budget_id as string) ?? null;
     this.label_category_id = (r.label_category_id as string) ?? null;
     this.label_memo = (r.label_memo as string) ?? null;
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 

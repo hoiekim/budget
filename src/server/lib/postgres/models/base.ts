@@ -97,26 +97,26 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
     return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
   }
 
-  async insert(data: QueryData, returning?: string[]): Promise<TModel | null> {
+  async insert(data: QueryData, returning?: string[]): Promise<Record<string, unknown> | null> {
     const { sql, values } = buildInsert(this.name, data as Record<string, ParamValue>, returning ?? [this.primaryKey]);
     const result = await pool.query(sql, values);
-    return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
+    return result.rows.length > 0 ? result.rows[0] : null;
   }
 
-  async update(primaryKeyValue: ParamValue, data: QueryData, returning?: string[]): Promise<TModel | null> {
+  async update(primaryKeyValue: ParamValue, data: QueryData, returning?: string[]): Promise<Record<string, unknown> | null> {
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, { returning: returning ?? [this.primaryKey] });
     if (!query) return null;
     const result = await pool.query(query.sql, query.values);
-    return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
+    return result.rows.length > 0 ? result.rows[0] : null;
   }
 
-  async upsert(data: QueryData, updateColumns?: string[]): Promise<TModel | null> {
+  async upsert(data: QueryData, updateColumns?: string[]): Promise<Record<string, unknown> | null> {
     const { sql, values } = buildUpsert(this.name, this.primaryKey, data, {
       updateColumns: updateColumns ?? Object.keys(data).filter(k => k !== this.primaryKey),
       returning: ["*"],
     });
     const result = await pool.query(sql, values);
-    return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
+    return result.rows.length > 0 ? result.rows[0] : null;
   }
 
   async softDelete(primaryKeyValue: ParamValue): Promise<boolean> {
@@ -173,6 +173,26 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
     sql += ` RETURNING ${this.primaryKey}`;
     
     const result = await pool.query(sql, values);
+    return result.rowCount ?? 0;
+  }
+
+  async hardDelete(primaryKeyValue: ParamValue): Promise<boolean> {
+    const sql = `DELETE FROM ${this.name} WHERE ${this.primaryKey} = $1 RETURNING ${this.primaryKey}`;
+    const result = await pool.query(sql, [primaryKeyValue]);
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async bulkHardDelete(ids: ParamValue[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+    const sql = `DELETE FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders}) RETURNING ${this.primaryKey}`;
+    const result = await pool.query(sql, ids);
+    return result.rowCount ?? 0;
+  }
+
+  async hardDeleteByColumn(column: string, columnValue: ParamValue): Promise<number> {
+    const sql = `DELETE FROM ${this.name} WHERE ${column} = $1 RETURNING ${this.primaryKey}`;
+    const result = await pool.query(sql, [columnValue]);
     return result.rowCount ?? 0;
   }
 }

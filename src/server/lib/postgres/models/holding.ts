@@ -7,7 +7,6 @@ import {
   INSTITUTION_VALUE, COST_BASIS, QUANTITY, ISO_CURRENCY_CODE, RAW, UPDATED, IS_DELETED, HOLDINGS, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class HoldingModel extends Model<JSONHolding> {
   holding_id: string; user_id: string; account_id: string; security_id: string;
@@ -22,13 +21,13 @@ export class HoldingModel extends Model<JSONHolding> {
     this.user_id = r.user_id as string;
     this.account_id = r.account_id as string;
     this.security_id = r.security_id as string;
-    this.institution_price = toNullableNumber(r.institution_price) ?? 0;
-    this.institution_price_as_of = r.institution_price_as_of ? toISODateString(r.institution_price_as_of) : null;
-    this.institution_value = toNullableNumber(r.institution_value) ?? 0;
-    this.cost_basis = toNullableNumber(r.cost_basis) ?? 0;
-    this.quantity = toNullableNumber(r.quantity) ?? 0;
+    this.institution_price = (r.institution_price as number) ?? 0;
+    this.institution_price_as_of = r.institution_price_as_of ? (r.institution_price_as_of as Date).toISOString().split("T")[0] : null;
+    this.institution_value = (r.institution_value as number) ?? 0;
+    this.cost_basis = (r.cost_basis as number) ?? 0;
+    this.quantity = (r.quantity as number) ?? 0;
     this.iso_currency_code = (r.iso_currency_code as string) || "USD";
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 

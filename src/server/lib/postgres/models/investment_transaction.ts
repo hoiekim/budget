@@ -9,7 +9,6 @@ import {
   LABEL_MEMO, RAW, UPDATED, IS_DELETED, INVESTMENT_TRANSACTIONS, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction> {
   investment_transaction_id: string; user_id: string; account_id: string; security_id: string | null;
@@ -26,18 +25,18 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
     this.user_id = r.user_id as string;
     this.account_id = r.account_id as string;
     this.security_id = (r.security_id as string) ?? null;
-    this.date = toISODateString(r.date);
+    this.date = (r.date as Date).toISOString().split("T")[0];
     this.name = (r.name as string) || "Unknown";
-    this.amount = toNullableNumber(r.amount) ?? 0;
-    this.quantity = toNullableNumber(r.quantity) ?? 0;
-    this.price = toNullableNumber(r.price) ?? 0;
+    this.amount = (r.amount as number) ?? 0;
+    this.quantity = (r.quantity as number) ?? 0;
+    this.price = (r.price as number) ?? 0;
     this.iso_currency_code = (r.iso_currency_code as string) ?? null;
     this.type = (r.type as InvestmentTransactionType) || InvestmentTransactionType.Transfer;
     this.subtype = (r.subtype as InvestmentTransactionSubtype) || InvestmentTransactionSubtype.Transfer;
     this.label_budget_id = (r.label_budget_id as string) ?? null;
     this.label_category_id = (r.label_category_id as string) ?? null;
     this.label_memo = (r.label_memo as string) ?? null;
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 

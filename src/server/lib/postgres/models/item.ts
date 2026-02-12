@@ -1,14 +1,13 @@
 import { Products } from "plaid";
 import {
   ItemStatus, ItemProvider, JSONItem, isString, isNullableString,
-  isNullableBoolean, isNullableDate, isNullableObject,
+  isNullableBoolean, isNullableDate, isNullableObject, isNullableArray,
 } from "common";
 import {
   ITEM_ID, USER_ID, ACCESS_TOKEN, INSTITUTION_ID, AVAILABLE_PRODUCTS,
   CURSOR, STATUS, PROVIDER, RAW, UPDATED, IS_DELETED, ITEMS, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, isNullableJSONB } from "../util";
 
 export class ItemModel extends Model<JSONItem> {
   item_id: string;
@@ -34,7 +33,7 @@ export class ItemModel extends Model<JSONItem> {
     this.cursor = (r.cursor as string) ?? undefined;
     this.status = r.status ? (r.status as ItemStatus) : undefined;
     this.provider = (r.provider as ItemProvider) || ItemProvider.MANUAL;
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
@@ -68,7 +67,7 @@ export class ItemModel extends Model<JSONItem> {
     user_id: isString,
     access_token: isNullableString,
     institution_id: isNullableString,
-    available_products: isNullableJSONB,
+    available_products: isNullableArray,
     cursor: isNullableString,
     status: isNullableString,
     provider: isNullableString,

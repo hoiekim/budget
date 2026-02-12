@@ -5,13 +5,13 @@ import {
   isNullableString,
   isNullableBoolean,
   isNullableDate,
+  isNullableArray,
 } from "common";
 import {
   CATEGORY_ID, SECTION_ID, USER_ID, NAME, ROLL_OVER,
   ROLL_OVER_START_DATE, CAPACITIES, UPDATED, IS_DELETED, CATEGORIES, SECTIONS, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, parseJSONB, isNullableJSONB } from "../util";
 
 export class CategoryModel extends Model<JSONCategory> {
   category_id: string;
@@ -33,9 +33,9 @@ export class CategoryModel extends Model<JSONCategory> {
     this.section_id = r.section_id as string;
     this.name = (r.name as string) || "Unnamed";
     this.roll_over = (r.roll_over as boolean) ?? false;
-    this.roll_over_start_date = r.roll_over_start_date ? toDate(r.roll_over_start_date) : undefined;
-    this.capacities = parseJSONB<JSONCapacity[]>(r.capacities, []);
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.roll_over_start_date = (r.roll_over_start_date as Date) ?? undefined;
+    this.capacities = (r.capacities as JSONCapacity[]) ?? [];
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
@@ -68,7 +68,7 @@ export class CategoryModel extends Model<JSONCategory> {
     name: isNullableString,
     roll_over: isNullableBoolean,
     roll_over_start_date: isNullableDate,
-    capacities: isNullableJSONB,
+    capacities: isNullableArray,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   });

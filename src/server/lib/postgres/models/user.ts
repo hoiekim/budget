@@ -1,7 +1,6 @@
 import { isString, isNullableString, isNullableDate, isNullableBoolean } from "common";
 import { USER_ID, USERNAME, PASSWORD, EMAIL, EXPIRY, TOKEN, UPDATED, IS_DELETED, USERS } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate } from "../util";
 
 export interface MaskedUser {
   user_id: string;
@@ -28,9 +27,9 @@ export class UserModel extends Model<MaskedUser> {
     this.username = r.username as string;
     this.password = (r.password as string) ?? null;
     this.email = (r.email as string) ?? null;
-    this.expiry = r.expiry ? toDate(r.expiry) : null;
+    this.expiry = (r.expiry as Date) ?? null;
     this.token = (r.token as string) ?? null;
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 

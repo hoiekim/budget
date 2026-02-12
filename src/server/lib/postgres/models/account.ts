@@ -10,7 +10,6 @@ import {
   GRAPH_OPTIONS_USE_TRANSACTIONS, RAW, UPDATED, IS_DELETED, ACCOUNTS, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber } from "../util";
 
 export class AccountModel extends Model<JSONAccount> {
   account_id: string; user_id: string; item_id: string; institution_id: string;
@@ -31,16 +30,16 @@ export class AccountModel extends Model<JSONAccount> {
     this.name = (r.name as string) || "Unknown";
     this.type = (r.type as AccountType) || AccountType.Other;
     this.subtype = (r.subtype as AccountSubtype) || null;
-    this.balances_available = toNullableNumber(r.balances_available) ?? 0;
-    this.balances_current = toNullableNumber(r.balances_current) ?? 0;
-    this.balances_limit = toNullableNumber(r.balances_limit) ?? 0;
+    this.balances_available = (r.balances_available as number) ?? 0;
+    this.balances_current = (r.balances_current as number) ?? 0;
+    this.balances_limit = (r.balances_limit as number) ?? 0;
     this.balances_iso_currency_code = (r.balances_iso_currency_code as string) || "USD";
     this.custom_name = (r.custom_name as string) || "";
     this.hide = (r.hide as boolean) ?? false;
     this.label_budget_id = (r.label_budget_id as string) ?? null;
     this.graph_options_use_snapshots = (r.graph_options_use_snapshots as boolean) ?? true;
     this.graph_options_use_transactions = (r.graph_options_use_transactions as boolean) ?? true;
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 

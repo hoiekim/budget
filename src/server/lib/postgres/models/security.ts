@@ -6,7 +6,6 @@ import {
   ISO_CURRENCY_CODE, ISIN, CUSIP, RAW, UPDATED, SECURITIES,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class SecurityModel extends Model<JSONSecurity> {
   security_id: string; name: string | null; ticker_symbol: string | null; type: string | null;
@@ -21,12 +20,12 @@ export class SecurityModel extends Model<JSONSecurity> {
     this.name = (r.name as string) ?? null;
     this.ticker_symbol = (r.ticker_symbol as string) ?? null;
     this.type = (r.type as string) ?? null;
-    this.close_price = toNullableNumber(r.close_price);
-    this.close_price_as_of = r.close_price_as_of ? toISODateString(r.close_price_as_of) : null;
+    this.close_price = (r.close_price as number) ?? null;
+    this.close_price_as_of = r.close_price_as_of ? (r.close_price_as_of as Date).toISOString().split("T")[0] : null;
     this.iso_currency_code = (r.iso_currency_code as string) ?? null;
     this.isin = (r.isin as string) ?? null;
     this.cusip = (r.cusip as string) ?? null;
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
   }
 
   toJSON(): JSONSecurity {

@@ -9,7 +9,6 @@ import {
   INSTITUTION_VALUE, COST_BASIS, QUANTITY, UPDATED, IS_DELETED, SNAPSHOTS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber, toISOString } from "../util";
 
 export type SnapshotType = "account_balance" | "security" | "holding";
 
@@ -28,22 +27,22 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
     const r = data as Record<string, unknown>;
     this.snapshot_id = r.snapshot_id as string;
     this.user_id = (r.user_id as string) ?? null;
-    this.snapshot_date = toISOString(r.snapshot_date);
+    this.snapshot_date = (r.snapshot_date as Date).toISOString();
     this.snapshot_type = r.snapshot_type as SnapshotType;
     this.account_id = (r.account_id as string) ?? null;
-    this.balances_available = toNullableNumber(r.balances_available);
-    this.balances_current = toNullableNumber(r.balances_current);
-    this.balances_limit = toNullableNumber(r.balances_limit);
+    this.balances_available = (r.balances_available as number) ?? null;
+    this.balances_current = (r.balances_current as number) ?? null;
+    this.balances_limit = (r.balances_limit as number) ?? null;
     this.balances_iso_currency_code = (r.balances_iso_currency_code as string) ?? null;
     this.security_id = (r.security_id as string) ?? null;
-    this.close_price = toNullableNumber(r.close_price);
+    this.close_price = (r.close_price as number) ?? null;
     this.holding_account_id = (r.holding_account_id as string) ?? null;
     this.holding_security_id = (r.holding_security_id as string) ?? null;
-    this.institution_price = toNullableNumber(r.institution_price);
-    this.institution_value = toNullableNumber(r.institution_value);
-    this.cost_basis = toNullableNumber(r.cost_basis);
-    this.quantity = toNullableNumber(r.quantity);
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.institution_price = (r.institution_price as number) ?? null;
+    this.institution_value = (r.institution_value as number) ?? null;
+    this.cost_basis = (r.cost_basis as number) ?? null;
+    this.quantity = (r.quantity as number) ?? null;
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 

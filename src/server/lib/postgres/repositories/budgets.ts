@@ -31,8 +31,10 @@ export const createBudget = async (user: MaskedUser, data: Partial<JSONBudget>):
       roll_over_start_date: data.roll_over_start_date,
       capacities: data.capacities || [],
     }, user.user_id);
-    const model = await budgetsTable.insert(row, ["*"]);
-    return model?.toJSON() ?? null;
+    const result = await budgetsTable.insert(row, ["*"]);
+    if (!result) return null;
+    const model = new BudgetModel(result);
+    return model.toJSON();
   } catch (error) {
     console.error("Failed to create budget:", error);
     return null;
@@ -94,8 +96,10 @@ export const createSection = async (user: MaskedUser, data: Partial<JSONSection>
       roll_over_start_date: data.roll_over_start_date,
       capacities: data.capacities || [],
     }, user.user_id);
-    const model = await sectionsTable.insert(row, ["*"]);
-    return model?.toJSON() ?? null;
+    const result = await sectionsTable.insert(row, ["*"]);
+    if (!result) return null;
+    const model = new SectionModel(result);
+    return model.toJSON();
   } catch (error) {
     console.error("Failed to create section:", error);
     return null;
@@ -147,8 +151,10 @@ export const createCategory = async (user: MaskedUser, data: Partial<JSONCategor
       roll_over_start_date: data.roll_over_start_date,
       capacities: data.capacities || [],
     }, user.user_id);
-    const model = await categoriesTable.insert(row, ["*"]);
-    return model?.toJSON() ?? null;
+    const result = await categoriesTable.insert(row, ["*"]);
+    if (!result) return null;
+    const model = new CategoryModel(result);
+    return model.toJSON();
   } catch (error) {
     console.error("Failed to create category:", error);
     return null;

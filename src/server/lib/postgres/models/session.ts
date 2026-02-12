@@ -6,7 +6,6 @@ import {
   COOKIE_SECURE, COOKIE_SAME_SITE, CREATED_AT, UPDATED, SESSIONS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate } from "../util";
 
 export class SessionModel extends Model<ExpressSessionData> {
   session_id: string;
@@ -34,14 +33,14 @@ export class SessionModel extends Model<ExpressSessionData> {
     this.cookie_original_max_age = r.cookie_original_max_age ? parseInt(r.cookie_original_max_age as string, 10) : null;
     this.cookie_max_age = r.cookie_max_age ? parseInt(r.cookie_max_age as string, 10) : undefined;
     this.cookie_signed = (r.cookie_signed as boolean) ?? undefined;
-    this.cookie_expires = r.cookie_expires ? toDate(r.cookie_expires) : undefined;
+    this.cookie_expires = (r.cookie_expires as Date) ?? undefined;
     this.cookie_http_only = (r.cookie_http_only as boolean) ?? undefined;
     this.cookie_path = (r.cookie_path as string) ?? undefined;
     this.cookie_domain = (r.cookie_domain as string) ?? undefined;
     this.cookie_secure = (r.cookie_secure as boolean) ?? undefined;
     this.cookie_same_site = this.parseSameSite(r.cookie_same_site as string);
-    this.created_at = r.created_at ? toDate(r.created_at) : new Date();
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.created_at = (r.created_at as Date) ?? new Date();
+    this.updated = (r.updated as Date) ?? new Date();
   }
 
   private parseSameSite(v: string | null | undefined): boolean | "lax" | "strict" | "none" | undefined {

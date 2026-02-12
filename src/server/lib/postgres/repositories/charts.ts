@@ -1,5 +1,5 @@
 import { JSONChart, ChartType } from "common";
-import { MaskedUser, chartsTable, CHART_ID, USER_ID } from "../models";
+import { MaskedUser, chartsTable, ChartModel, CHART_ID, USER_ID } from "../models";
 
 export const getCharts = async (user: MaskedUser): Promise<JSONChart[]> => {
   const models = await chartsTable.query({ [USER_ID]: user.user_id });
@@ -36,8 +36,10 @@ export const createChart = async (user: MaskedUser, data: Partial<JSONChart>): P
       configuration: config,
     };
     
-    const model = await chartsTable.insert(row, ["*"]);
-    return model?.toJSON() ?? null;
+    const result = await chartsTable.insert(row, ["*"]);
+    if (!result) return null;
+    const model = new ChartModel(result);
+    return model.toJSON();
   } catch (error) {
     console.error("Failed to create chart:", error);
     return null;

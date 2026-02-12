@@ -53,6 +53,9 @@ export const isNullableDate = (v: unknown): v is Date | null =>
 export const isNullableObject = (v: unknown): v is Record<string, unknown> | null =>
   isNull(v) || isObject(v);
 
+export const isNullableArray = <T>(v: unknown): v is T[] | null =>
+  isNull(v) || isArray(v);
+
 export const isOptionalString = (v: unknown): v is string | undefined =>
   isUndefined(v) || isString(v);
 

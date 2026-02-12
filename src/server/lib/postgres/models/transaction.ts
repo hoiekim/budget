@@ -10,7 +10,6 @@ import {
   TRANSACTIONS, USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, toNullableNumber, toISODateString } from "../util";
 
 export class TransactionModel extends Model<JSONTransaction> {
   transaction_id: string; user_id: string; account_id: string; name: string; merchant_name: string | null;
@@ -29,9 +28,9 @@ export class TransactionModel extends Model<JSONTransaction> {
     this.account_id = r.account_id as string;
     this.name = (r.name as string) || "Unknown";
     this.merchant_name = (r.merchant_name as string) ?? null;
-    this.amount = toNullableNumber(r.amount) ?? 0;
+    this.amount = (r.amount as number) ?? 0;
     this.iso_currency_code = (r.iso_currency_code as string) ?? null;
-    this.date = toISODateString(r.date);
+    this.date = (r.date as Date).toISOString().split("T")[0];
     this.pending = (r.pending as boolean) ?? false;
     this.pending_transaction_id = (r.pending_transaction_id as string) ?? null;
     this.payment_channel = (r.payment_channel as TransactionPaymentChannelEnum) || TransactionPaymentChannelEnum.InStore;
@@ -41,7 +40,7 @@ export class TransactionModel extends Model<JSONTransaction> {
     this.label_budget_id = (r.label_budget_id as string) ?? null;
     this.label_category_id = (r.label_category_id as string) ?? null;
     this.label_memo = (r.label_memo as string) ?? null;
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 

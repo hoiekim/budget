@@ -1,7 +1,6 @@
-import { JSONChart, ChartType, isString, isNullableString, isNullableBoolean, isNullableDate } from "common";
+import { JSONChart, ChartType, isString, isNullableString, isNullableBoolean, isNullableDate, isNullableObject } from "common";
 import { CHART_ID, USER_ID, NAME, TYPE, CONFIGURATION, UPDATED, IS_DELETED, CHARTS, USERS } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
-import { toDate, isNullableJSONB } from "../util";
 
 export class ChartModel extends Model<JSONChart> {
   chart_id: string;
@@ -20,8 +19,9 @@ export class ChartModel extends Model<JSONChart> {
     this.user_id = r.user_id as string;
     this.name = (r.name as string) || "Unnamed";
     this.type = (r.type as ChartType) || ChartType.BALANCE;
+    // pg parses JSONB to object, need to stringify for our string type
     this.configuration = typeof r.configuration === "object" ? JSON.stringify(r.configuration) : (r.configuration as string) || "";
-    this.updated = r.updated ? toDate(r.updated) : new Date();
+    this.updated = (r.updated as Date) ?? new Date();
     this.is_deleted = (r.is_deleted as boolean) ?? false;
   }
 
@@ -45,7 +45,7 @@ export class ChartModel extends Model<JSONChart> {
     user_id: isString,
     name: isNullableString,
     type: isNullableString,
-    configuration: isNullableJSONB,
+    configuration: isNullableObject,
     updated: isNullableDate,
     is_deleted: isNullableBoolean,
   });
