@@ -40,7 +40,7 @@ export const upsertSecurities = async (securities: JSONSecurity[]): Promise<Upse
 
   for (const security of securities) {
     try {
-      const row = SecurityModel.toRow(security);
+      const row = SecurityModel.fromJSON(security);
       await securitiesTable.upsert(row);
       results.push(successResult(security.security_id, 1));
     } catch (error) {

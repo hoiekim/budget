@@ -36,7 +36,7 @@ export interface UpsertOptions {
 
 export function buildCreateTable(
   tableName: string,
-  schema: Schema<Record<string, unknown>>,
+  schema: Schema,
   constraints: Constraints = [],
 ): string {
   const columnDefs = Object.entries(schema).map(

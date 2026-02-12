@@ -21,9 +21,27 @@ import {
   SPLIT_TRANSACTIONS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class SplitTransactionModel extends Model<JSONSplitTransaction> {
+const splitTxSchema = {
+  [SPLIT_TRANSACTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [TRANSACTION_ID]: "VARCHAR(255) NOT NULL",
+  [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
+  [AMOUNT]: "DECIMAL(15, 2) DEFAULT 0",
+  [DATE]: "DATE NOT NULL",
+  [CUSTOM_NAME]: "TEXT DEFAULT ''",
+  [LABEL_BUDGET_ID]: "UUID",
+  [LABEL_CATEGORY_ID]: "UUID",
+  [LABEL_MEMO]: "TEXT",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type SplitTxSchema = typeof splitTxSchema;
+type SplitTxRow = { [k in keyof SplitTxSchema]: RowValueType };
+
+export class SplitTransactionModel extends Model<JSONSplitTransaction, SplitTxSchema> implements SplitTxRow {
   split_transaction_id!: string;
   user_id!: string;
   transaction_id!: string;
@@ -52,18 +70,8 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "SplitTransactionModel",
-    SplitTransactionModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    SplitTransactionModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(SplitTransactionModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, SplitTransactionModel.typeChecker);
   }
 
   toJSON(): JSONSplitTransaction {
@@ -82,8 +90,8 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
     };
   }
 
-  static toRow(tx: Partial<JSONSplitTransaction>, user_id: string): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  static fromJSON(tx: Partial<JSONSplitTransaction>, user_id: string): Partial<SplitTxRow> {
+    const r: Partial<SplitTxRow> = { user_id };
     if (tx.split_transaction_id !== undefined) r.split_transaction_id = tx.split_transaction_id;
     if (tx.transaction_id !== undefined) r.transaction_id = tx.transaction_id;
     if (tx.account_id !== undefined) r.account_id = tx.account_id;
@@ -102,20 +110,7 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction> {
 export const splitTransactionsTable = createTable({
   name: SPLIT_TRANSACTIONS,
   primaryKey: SPLIT_TRANSACTION_ID,
-  schema: {
-    [SPLIT_TRANSACTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [TRANSACTION_ID]: "VARCHAR(255) NOT NULL",
-    [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
-    [AMOUNT]: "DECIMAL(15, 2) DEFAULT 0",
-    [DATE]: "DATE NOT NULL",
-    [CUSTOM_NAME]: "TEXT DEFAULT ''",
-    [LABEL_BUDGET_ID]: "UUID",
-    [LABEL_CATEGORY_ID]: "UUID",
-    [LABEL_MEMO]: "TEXT",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: splitTxSchema,
   indexes: [{ column: USER_ID }, { column: TRANSACTION_ID }, { column: ACCOUNT_ID }],
   ModelClass: SplitTransactionModel,
 });

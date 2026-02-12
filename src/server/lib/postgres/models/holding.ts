@@ -24,9 +24,28 @@ import {
   HOLDINGS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class HoldingModel extends Model<JSONHolding> {
+const holdingSchema = {
+  [HOLDING_ID]: "VARCHAR(255) PRIMARY KEY",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
+  [SECURITY_ID]: "VARCHAR(255) NOT NULL",
+  [INSTITUTION_PRICE]: "DECIMAL(15, 6)",
+  [INSTITUTION_PRICE_AS_OF]: "DATE",
+  [INSTITUTION_VALUE]: "DECIMAL(15, 2)",
+  [COST_BASIS]: "DECIMAL(15, 2)",
+  [QUANTITY]: "DECIMAL(15, 6)",
+  [ISO_CURRENCY_CODE]: "VARCHAR(10)",
+  [RAW]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type HoldingSchema = typeof holdingSchema;
+type HoldingRow = { [k in keyof HoldingSchema]: RowValueType };
+
+export class HoldingModel extends Model<JSONHolding, HoldingSchema> implements HoldingRow {
   holding_id!: string;
   user_id!: string;
   account_id!: string;
@@ -37,6 +56,7 @@ export class HoldingModel extends Model<JSONHolding> {
   cost_basis!: number;
   quantity!: number;
   iso_currency_code!: string;
+  raw!: object | null;
   updated!: string | null;
   is_deleted!: boolean;
 
@@ -56,18 +76,8 @@ export class HoldingModel extends Model<JSONHolding> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "HoldingModel",
-    HoldingModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    HoldingModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(HoldingModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, HoldingModel.typeChecker);
   }
 
   toJSON(): JSONHolding {
@@ -85,11 +95,11 @@ export class HoldingModel extends Model<JSONHolding> {
     };
   }
 
-  static toRow(
+  static fromJSON(
     h: Partial<JSONHolding> & { holding_id?: string },
     user_id: string,
-  ): Record<string, unknown> {
-    const r: Record<string, unknown> = {
+  ): Partial<HoldingRow> {
+    const r: Partial<HoldingRow> = {
       user_id,
       holding_id: h.holding_id || `${h.account_id}-${h.security_id}`,
     };
@@ -110,21 +120,7 @@ export class HoldingModel extends Model<JSONHolding> {
 export const holdingsTable = createTable({
   name: HOLDINGS,
   primaryKey: HOLDING_ID,
-  schema: {
-    [HOLDING_ID]: "VARCHAR(255) PRIMARY KEY",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
-    [SECURITY_ID]: "VARCHAR(255) NOT NULL",
-    [INSTITUTION_PRICE]: "DECIMAL(15, 6)",
-    [INSTITUTION_PRICE_AS_OF]: "DATE",
-    [INSTITUTION_VALUE]: "DECIMAL(15, 2)",
-    [COST_BASIS]: "DECIMAL(15, 2)",
-    [QUANTITY]: "DECIMAL(15, 6)",
-    [ISO_CURRENCY_CODE]: "VARCHAR(10)",
-    [RAW]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: holdingSchema,
   indexes: [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: SECURITY_ID }],
   ModelClass: HoldingModel,
 });

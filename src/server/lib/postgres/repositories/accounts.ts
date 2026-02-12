@@ -72,7 +72,7 @@ export const upsertAccounts = async (
 
   for (const account of accounts) {
     try {
-      const row = AccountModel.toRow(account, user.user_id);
+      const row = AccountModel.fromJSON(account, user.user_id);
       await accountsTable.upsert(row);
       results.push(successResult(account.account_id, 1));
     } catch (error) {
@@ -92,7 +92,7 @@ export const updateAccounts = async (
 
   for (const account of accounts) {
     try {
-      const row = AccountModel.toRow(account, user.user_id);
+      const row = AccountModel.fromJSON(account, user.user_id);
       delete row.account_id;
       delete row.user_id;
 

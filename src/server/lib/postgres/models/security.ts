@@ -19,9 +19,26 @@ import {
   UPDATED,
   SECURITIES,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class SecurityModel extends Model<JSONSecurity> {
+const securitySchema = {
+  [SECURITY_ID]: "VARCHAR(255) PRIMARY KEY",
+  [NAME]: "VARCHAR(255)",
+  [TICKER_SYMBOL]: "VARCHAR(50)",
+  [TYPE]: "VARCHAR(50)",
+  [CLOSE_PRICE]: "DECIMAL(15, 6)",
+  [CLOSE_PRICE_AS_OF]: "DATE",
+  [ISO_CURRENCY_CODE]: "VARCHAR(10)",
+  [ISIN]: "VARCHAR(50)",
+  [CUSIP]: "VARCHAR(50)",
+  [RAW]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+};
+
+type SecuritySchema = typeof securitySchema;
+type SecurityRow = { [k in keyof SecuritySchema]: RowValueType };
+
+export class SecurityModel extends Model<JSONSecurity, SecuritySchema> implements SecurityRow {
   security_id!: string;
   name!: string | null;
   ticker_symbol!: string | null;
@@ -31,6 +48,7 @@ export class SecurityModel extends Model<JSONSecurity> {
   iso_currency_code!: string | null;
   isin!: string | null;
   cusip!: string | null;
+  raw!: object | null;
   updated!: string | null;
 
   static typeChecker = {
@@ -47,18 +65,8 @@ export class SecurityModel extends Model<JSONSecurity> {
     updated: isNullableString,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "SecurityModel",
-    SecurityModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    SecurityModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(SecurityModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, SecurityModel.typeChecker);
   }
 
   toJSON(): JSONSecurity {
@@ -86,8 +94,8 @@ export class SecurityModel extends Model<JSONSecurity> {
     };
   }
 
-  static toRow(s: Partial<JSONSecurity>): Record<string, unknown> {
-    const r: Record<string, unknown> = {};
+  static fromJSON(s: Partial<JSONSecurity>): Partial<SecurityRow> {
+    const r: Partial<SecurityRow> = {};
     if (s.security_id !== undefined) r.security_id = s.security_id;
     if (s.name !== undefined) r.name = s.name;
     if (s.ticker_symbol !== undefined) r.ticker_symbol = s.ticker_symbol;
@@ -105,19 +113,7 @@ export class SecurityModel extends Model<JSONSecurity> {
 export const securitiesTable = createTable({
   name: SECURITIES,
   primaryKey: SECURITY_ID,
-  schema: {
-    [SECURITY_ID]: "VARCHAR(255) PRIMARY KEY",
-    [NAME]: "VARCHAR(255)",
-    [TICKER_SYMBOL]: "VARCHAR(50)",
-    [TYPE]: "VARCHAR(50)",
-    [CLOSE_PRICE]: "DECIMAL(15, 6)",
-    [CLOSE_PRICE_AS_OF]: "DATE",
-    [ISO_CURRENCY_CODE]: "VARCHAR(10)",
-    [ISIN]: "VARCHAR(50)",
-    [CUSIP]: "VARCHAR(50)",
-    [RAW]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  } as Schema<Record<string, unknown>>,
+  schema: securitySchema,
   ModelClass: SecurityModel,
   supportsSoftDelete: false,
 });

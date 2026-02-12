@@ -20,9 +20,24 @@ import {
   BUDGETS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class SectionModel extends Model<JSONSection> {
+const sectionSchema = {
+  [SECTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [BUDGET_ID]: `UUID REFERENCES ${BUDGETS}(${BUDGET_ID}) ON DELETE RESTRICT NOT NULL`,
+  [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
+  [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
+  [ROLL_OVER_START_DATE]: "DATE",
+  [CAPACITIES]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type SectionSchema = typeof sectionSchema;
+type SectionRow = { [k in keyof SectionSchema]: RowValueType };
+
+export class SectionModel extends Model<JSONSection, SectionSchema> implements SectionRow {
   section_id!: string;
   user_id!: string;
   budget_id!: string;
@@ -45,18 +60,8 @@ export class SectionModel extends Model<JSONSection> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "SectionModel",
-    SectionModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    SectionModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(SectionModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, SectionModel.typeChecker);
   }
 
   toJSON(): JSONSection {
@@ -70,8 +75,8 @@ export class SectionModel extends Model<JSONSection> {
     };
   }
 
-  static toRow(s: Partial<JSONSection>, user_id: string): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  static fromJSON(s: Partial<JSONSection>, user_id: string): Partial<SectionRow> {
+    const r: Partial<SectionRow> = { user_id };
     if (s.section_id !== undefined) r.section_id = s.section_id;
     if (s.budget_id !== undefined) r.budget_id = s.budget_id;
     if (s.name !== undefined) r.name = s.name;
@@ -85,17 +90,7 @@ export class SectionModel extends Model<JSONSection> {
 export const sectionsTable = createTable({
   name: SECTIONS,
   primaryKey: SECTION_ID,
-  schema: {
-    [SECTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [BUDGET_ID]: `UUID REFERENCES ${BUDGETS}(${BUDGET_ID}) ON DELETE RESTRICT NOT NULL`,
-    [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
-    [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
-    [ROLL_OVER_START_DATE]: "DATE",
-    [CAPACITIES]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: sectionSchema,
   indexes: [{ column: USER_ID }, { column: BUDGET_ID }],
   ModelClass: SectionModel,
 });

@@ -24,9 +24,26 @@ import {
   ITEMS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class ItemModel extends Model<JSONItem> {
+const itemSchema = {
+  [ITEM_ID]: "VARCHAR(255) PRIMARY KEY",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [ACCESS_TOKEN]: "VARCHAR(255)",
+  [INSTITUTION_ID]: "VARCHAR(255)",
+  [AVAILABLE_PRODUCTS]: "TEXT[]",
+  [CURSOR]: "TEXT",
+  [STATUS]: "VARCHAR(50)",
+  [PROVIDER]: "VARCHAR(50)",
+  [RAW]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type ItemSchema = typeof itemSchema;
+type ItemRow = { [k in keyof ItemSchema]: RowValueType };
+
+export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
   item_id!: string;
   user_id!: string;
   access_token!: string;
@@ -35,6 +52,7 @@ export class ItemModel extends Model<JSONItem> {
   cursor!: string | null;
   status!: ItemStatus | null;
   provider!: ItemProvider;
+  raw!: object | null;
   updated!: string | null;
   is_deleted!: boolean;
 
@@ -52,18 +70,8 @@ export class ItemModel extends Model<JSONItem> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "ItemModel",
-    ItemModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    ItemModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(ItemModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, ItemModel.typeChecker);
   }
 
   toJSON(): JSONItem {
@@ -79,11 +87,11 @@ export class ItemModel extends Model<JSONItem> {
     };
   }
 
-  static toRow(
+  static fromJSON(
     item: Partial<JSONItem> & { item_id: string },
     user_id: string,
-  ): Record<string, unknown> {
-    const r: Record<string, unknown> = { item_id: item.item_id, user_id };
+  ): Partial<ItemRow> {
+    const r: Partial<ItemRow> = { item_id: item.item_id, user_id };
     if (item.access_token !== undefined) r.access_token = item.access_token;
     if (item.institution_id !== undefined) r.institution_id = item.institution_id || null;
     if (item.available_products !== undefined) r.available_products = item.available_products;
@@ -98,19 +106,7 @@ export class ItemModel extends Model<JSONItem> {
 export const itemsTable = createTable({
   name: ITEMS,
   primaryKey: ITEM_ID,
-  schema: {
-    [ITEM_ID]: "VARCHAR(255) PRIMARY KEY",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [ACCESS_TOKEN]: "VARCHAR(255)",
-    [INSTITUTION_ID]: "VARCHAR(255)",
-    [AVAILABLE_PRODUCTS]: "TEXT[]",
-    [CURSOR]: "TEXT",
-    [STATUS]: "VARCHAR(50)",
-    [PROVIDER]: "VARCHAR(50)",
-    [RAW]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: itemSchema,
   indexes: [{ column: USER_ID }, { column: INSTITUTION_ID }],
   ModelClass: ItemModel,
 });

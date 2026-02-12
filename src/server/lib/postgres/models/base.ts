@@ -5,7 +5,6 @@ import {
   buildUpdate,
   buildUpsert,
   buildSoftDelete,
-  SearchFilters,
   ParamValue,
   QueryData,
 } from "../database";
@@ -22,16 +21,18 @@ export class ModelValidationError extends Error {
 
 export type ColumnDefinition = string;
 
-export type Schema<T> = { [K in keyof T]?: ColumnDefinition };
+export type Schema = { [k: string]: ColumnDefinition };
 
 export type Constraints = string[];
+
+export type RowValueType = string | number | Date | boolean | null | Object;
 
 export interface IndexDefinition {
   column: string;
 }
 
 export type PropertyChecker<T> = {
-  [K in keyof T]?: (value: unknown) => boolean;
+  [K in keyof T]: (value: unknown) => boolean;
 };
 
 export function validateObject<T extends Record<string, unknown>>(
@@ -58,38 +59,32 @@ export function validateObject<T extends Record<string, unknown>>(
   return errors;
 }
 
-export type AssertTypeFn<T> = (input: unknown, skip?: (keyof T)[]) => asserts input is T;
-
-export function createAssertType<T extends Record<string, unknown>>(
-  modelName: string,
-  checker: PropertyChecker<T>,
-): AssertTypeFn<T> {
-  return (input: unknown, skip: (keyof T)[] = []): asserts input is T => {
-    const errors = validateObject(input, checker, skip);
-    if (errors.length > 0) {
-      throw new ModelValidationError(modelName, errors);
-    }
-  };
-}
-
-export abstract class Model<TJSON> {
+export abstract class Model<TJSON, TSchema extends Schema> {
   abstract toJSON(): TJSON;
-  static assertType: AssertTypeFn<Record<string, unknown>>;
+
+  constructor(data: unknown, typeChecker: PropertyChecker<TSchema>) {
+    // asserts type
+    const errors = validateObject(data, typeChecker);
+    if (errors.length > 0) throw new ModelValidationError(this.constructor.name, errors);
+    // assigns value
+    Object.keys(typeChecker).forEach((k) => {
+      (this as any)[k] = (data as TSchema)[k];
+    });
+  }
 }
 
-export interface ModelClass<TJSON, TModel extends Model<TJSON>> {
+export interface ModelClass<TJSON, TModel extends Model<TJSON, Schema>> {
   new (data: unknown): TModel;
-  assertType: AssertTypeFn<Record<string, unknown>>;
 }
 
-export interface TableSearchFilters extends Omit<SearchFilters, "filters"> {
-  filters?: Record<string, ParamValue>;
-}
-
-export abstract class Table<TJSON, TModel extends Model<TJSON>> {
+export abstract class Table<
+  TJSON,
+  TSchema extends Schema,
+  TModel extends Model<TJSON, TSchema> = Model<TJSON, TSchema>,
+> {
   abstract readonly name: string;
   abstract readonly primaryKey: string;
-  abstract readonly schema: Schema<Record<string, unknown>>;
+  abstract readonly schema: TSchema;
   abstract readonly constraints: Constraints;
   abstract readonly indexes: IndexDefinition[];
   abstract readonly ModelClass: ModelClass<TJSON, TModel>;
@@ -237,20 +232,20 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
   }
 }
 
-export interface TableConfig<TJSON, TModel extends Model<TJSON>> {
+export interface TableConfig<TJSON, TSchema extends Schema, TModel extends Model<TJSON, TSchema>> {
   name: string;
   primaryKey: string;
-  schema: Schema<Record<string, unknown>>;
+  schema: TSchema;
   constraints?: Constraints;
   indexes?: IndexDefinition[];
   ModelClass: ModelClass<TJSON, TModel>;
   supportsSoftDelete?: boolean;
 }
 
-export function createTable<TJSON, TModel extends Model<TJSON>>(
-  config: TableConfig<TJSON, TModel>,
-): Table<TJSON, TModel> {
-  return new (class extends Table<TJSON, TModel> {
+export function createTable<TJSON, TSchema extends Schema, TModel extends Model<TJSON, TSchema>>(
+  config: TableConfig<TJSON, TSchema, TModel>,
+): Table<TJSON, TSchema, TModel> {
+  return new (class extends Table<TJSON, TSchema, TModel> {
     readonly name = config.name;
     readonly primaryKey = config.primaryKey;
     readonly schema = config.schema;

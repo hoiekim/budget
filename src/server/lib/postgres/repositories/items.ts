@@ -88,7 +88,7 @@ export const upsertItems = async (
 
   for (const item of items) {
     try {
-      const row = ItemModel.toRow(item, user.user_id);
+      const row = ItemModel.fromJSON(item, user.user_id);
       if (upsert) {
         await itemsTable.upsert(row);
         results.push(successResult(item.item_id, 1));

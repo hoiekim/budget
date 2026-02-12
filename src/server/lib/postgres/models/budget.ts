@@ -19,9 +19,24 @@ import {
   BUDGETS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class BudgetModel extends Model<JSONBudget> {
+const budgetSchema = {
+  [BUDGET_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
+  [ISO_CURRENCY_CODE]: "VARCHAR(10) DEFAULT 'USD'",
+  [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
+  [ROLL_OVER_START_DATE]: "DATE",
+  [CAPACITIES]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type BudgetSchema = typeof budgetSchema;
+type BudgetRow = { [k in keyof BudgetSchema]: RowValueType };
+
+export class BudgetModel extends Model<JSONBudget, BudgetSchema> implements BudgetRow {
   budget_id!: string;
   user_id!: string;
   name!: string;
@@ -44,18 +59,8 @@ export class BudgetModel extends Model<JSONBudget> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "BudgetModel",
-    BudgetModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    BudgetModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(BudgetModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, BudgetModel.typeChecker);
   }
 
   toJSON(): JSONBudget {
@@ -69,8 +74,8 @@ export class BudgetModel extends Model<JSONBudget> {
     };
   }
 
-  static toRow(b: Partial<JSONBudget>, user_id: string): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  static fromJSON(b: Partial<JSONBudget>, user_id: string): Partial<BudgetRow> {
+    const r: Partial<BudgetRow> = { user_id };
     if (b.budget_id !== undefined) r.budget_id = b.budget_id;
     if (b.name !== undefined) r.name = b.name;
     if (b.iso_currency_code !== undefined) r.iso_currency_code = b.iso_currency_code;
@@ -84,17 +89,7 @@ export class BudgetModel extends Model<JSONBudget> {
 export const budgetsTable = createTable({
   name: BUDGETS,
   primaryKey: BUDGET_ID,
-  schema: {
-    [BUDGET_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
-    [ISO_CURRENCY_CODE]: "VARCHAR(10) DEFAULT 'USD'",
-    [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
-    [ROLL_OVER_START_DATE]: "DATE",
-    [CAPACITIES]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: budgetSchema,
   indexes: [{ column: USER_ID }],
   ModelClass: BudgetModel,
 });

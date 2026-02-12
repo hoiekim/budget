@@ -32,9 +32,35 @@ import {
   TRANSACTIONS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class TransactionModel extends Model<JSONTransaction> {
+const txSchema = {
+  [TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
+  [NAME]: "TEXT",
+  [MERCHANT_NAME]: "TEXT",
+  [AMOUNT]: "DECIMAL(15, 2)",
+  [ISO_CURRENCY_CODE]: "VARCHAR(10)",
+  [DATE]: "DATE NOT NULL",
+  [PENDING]: "BOOLEAN DEFAULT FALSE",
+  [PENDING_TRANSACTION_ID]: "VARCHAR(255)",
+  [PAYMENT_CHANNEL]: "TEXT",
+  [LOCATION_COUNTRY]: "TEXT",
+  [LOCATION_REGION]: "TEXT",
+  [LOCATION_CITY]: "TEXT",
+  [LABEL_BUDGET_ID]: "UUID",
+  [LABEL_CATEGORY_ID]: "UUID",
+  [LABEL_MEMO]: "TEXT",
+  [RAW]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type TxSchema = typeof txSchema;
+type TxRow = { [k in keyof TxSchema]: RowValueType };
+
+export class TransactionModel extends Model<JSONTransaction, TxSchema> implements TxRow {
   transaction_id!: string;
   user_id!: string;
   account_id!: string;
@@ -52,6 +78,7 @@ export class TransactionModel extends Model<JSONTransaction> {
   label_budget_id!: string | null;
   label_category_id!: string | null;
   label_memo!: string | null;
+  raw!: object | null;
   updated!: string;
   is_deleted!: boolean;
 
@@ -78,18 +105,8 @@ export class TransactionModel extends Model<JSONTransaction> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "TransactionModel",
-    TransactionModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    TransactionModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(TransactionModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, TransactionModel.typeChecker);
   }
 
   toJSON(): JSONTransaction {
@@ -140,11 +157,11 @@ export class TransactionModel extends Model<JSONTransaction> {
     };
   }
 
-  static toRow(
+  static fromJSON(
     tx: Partial<JSONTransaction> & { transaction_id: string },
     user_id: string,
-  ): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  ): Partial<TxRow> {
+    const r: Partial<TxRow> = { user_id };
     if (!isUndefined(tx.transaction_id)) r.transaction_id = tx.transaction_id;
     if (!isUndefined(tx.account_id)) r.account_id = tx.account_id;
     if (!isUndefined(tx.name)) r.name = tx.name;
@@ -175,28 +192,7 @@ export class TransactionModel extends Model<JSONTransaction> {
 export const transactionsTable = createTable({
   name: TRANSACTIONS,
   primaryKey: TRANSACTION_ID,
-  schema: {
-    [TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
-    [NAME]: "TEXT",
-    [MERCHANT_NAME]: "TEXT",
-    [AMOUNT]: "DECIMAL(15, 2)",
-    [ISO_CURRENCY_CODE]: "VARCHAR(10)",
-    [DATE]: "DATE NOT NULL",
-    [PENDING]: "BOOLEAN DEFAULT FALSE",
-    [PENDING_TRANSACTION_ID]: "VARCHAR(255)",
-    [PAYMENT_CHANNEL]: "TEXT",
-    [LOCATION_COUNTRY]: "TEXT",
-    [LOCATION_REGION]: "TEXT",
-    [LOCATION_CITY]: "TEXT",
-    [LABEL_BUDGET_ID]: "UUID",
-    [LABEL_CATEGORY_ID]: "UUID",
-    [LABEL_MEMO]: "TEXT",
-    [RAW]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: txSchema,
   indexes: [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: DATE }, { column: PENDING }],
   ModelClass: TransactionModel,
 });
