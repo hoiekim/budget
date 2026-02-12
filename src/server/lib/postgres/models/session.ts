@@ -1,4 +1,4 @@
-import { isString, isNullableString, isNullableBoolean, isNullableDate, isNull, isUndefined } from "common";
+import { isString, isNullableString, isNullableBoolean, isNullableDate } from "common";
 import { SessionData as ExpressSessionData } from "express-session";
 import {
   SESSION_ID, USER_USER_ID, USER_USERNAME, COOKIE_ORIGINAL_MAX_AGE, COOKIE_MAX_AGE,
@@ -33,21 +33,15 @@ export class SessionModel extends Model<ExpressSessionData> {
     this.user_username = r.user_username as string;
     this.cookie_original_max_age = r.cookie_original_max_age ? parseInt(r.cookie_original_max_age as string, 10) : null;
     this.cookie_max_age = r.cookie_max_age ? parseInt(r.cookie_max_age as string, 10) : undefined;
-    this.cookie_signed = this.parseBoolean(r.cookie_signed);
+    this.cookie_signed = (r.cookie_signed as boolean) ?? undefined;
     this.cookie_expires = r.cookie_expires ? toDate(r.cookie_expires) : undefined;
-    this.cookie_http_only = this.parseBoolean(r.cookie_http_only);
+    this.cookie_http_only = (r.cookie_http_only as boolean) ?? undefined;
     this.cookie_path = (r.cookie_path as string) ?? undefined;
     this.cookie_domain = (r.cookie_domain as string) ?? undefined;
-    this.cookie_secure = this.parseBoolean(r.cookie_secure);
+    this.cookie_secure = (r.cookie_secure as boolean) ?? undefined;
     this.cookie_same_site = this.parseSameSite(r.cookie_same_site as string);
     this.created_at = r.created_at ? toDate(r.created_at) : new Date();
     this.updated = r.updated ? toDate(r.updated) : new Date();
-  }
-
-  private parseBoolean(v: unknown): boolean | undefined {
-    if (v === true || v === "true") return true;
-    if (v === false || v === "false") return false;
-    return undefined;
   }
 
   private parseSameSite(v: string | null | undefined): boolean | "lax" | "strict" | "none" | undefined {
@@ -95,22 +89,18 @@ export class SessionModel extends Model<ExpressSessionData> {
     };
   }
 
-  // Helper to accept boolean or string boolean values (for legacy data)
-  private static isNullableBooleanOrStringBoolean = (v: unknown): boolean =>
-    isNull(v) || isUndefined(v) || typeof v === "boolean" || v === "true" || v === "false";
-
   static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SessionModel", {
     session_id: isString,
     user_user_id: isString,
     user_username: isString,
     cookie_original_max_age: isNullableString,
     cookie_max_age: isNullableString,
-    cookie_signed: SessionModel.isNullableBooleanOrStringBoolean,
+    cookie_signed: isNullableBoolean,
     cookie_expires: isNullableDate,
-    cookie_http_only: SessionModel.isNullableBooleanOrStringBoolean,
+    cookie_http_only: isNullableBoolean,
     cookie_path: isNullableString,
     cookie_domain: isNullableString,
-    cookie_secure: SessionModel.isNullableBooleanOrStringBoolean,
+    cookie_secure: isNullableBoolean,
     cookie_same_site: isNullableString,
     created_at: isNullableDate,
     updated: isNullableDate,
