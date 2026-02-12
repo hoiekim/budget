@@ -19,7 +19,7 @@ export const indexUser = async (user: IndexUserInput): Promise<{ _id: string } |
     if (user_id) row.user_id = user_id;
     
     const model = await usersTable.upsert(row);
-    if (model) return { _id: (model as any).user_id };
+    if (model) return { _id: model.user_id };
     return undefined;
   } catch (error) {
     console.error("Failed to index user:", error);

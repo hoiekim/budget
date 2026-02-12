@@ -98,7 +98,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
   const { user_id } = user;
 
   const accounts = await accountsTable.query({ [ITEM_ID]: item_id, [USER_ID]: user_id });
-  const accountIds = accounts.map(a => (a as any).account_id);
+  const accountIds = accounts.map(a => a.account_id);
 
   for (const account_id of accountIds) {
     await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);

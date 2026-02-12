@@ -3,7 +3,6 @@ import {
   MaskedUser, SplitTransactionModel, splitTransactionsTable,
   SPLIT_TRANSACTION_ID, TRANSACTION_ID, ACCOUNT_ID, USER_ID,
 } from "../models";
-import { pool } from "../client";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 
 export interface SearchSplitTransactionsOptions {
@@ -63,7 +62,7 @@ export const upsertSplitTransactions = async (
     try {
       const row = SplitTransactionModel.toRow(tx, user.user_id);
       const model = await splitTransactionsTable.upsert(row);
-      const id = model ? (model as any).split_transaction_id : tx.split_transaction_id;
+      const id = model ? model.split_transaction_id : tx.split_transaction_id;
       results.push(successResult(id, 1));
     } catch (error) {
       console.error(`Failed to upsert split transaction ${tx.split_transaction_id}:`, error);

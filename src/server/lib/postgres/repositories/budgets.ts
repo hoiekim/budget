@@ -4,7 +4,6 @@ import {
   budgetsTable, sectionsTable, categoriesTable,
   BUDGET_ID, SECTION_ID, CATEGORY_ID, USER_ID,
 } from "../models";
-import { pool } from "../client";
 
 export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
   const models = await budgetsTable.query({ [USER_ID]: user.user_id });
@@ -55,7 +54,7 @@ export const updateBudget = async (user: MaskedUser, budget_id: string, data: Pa
 
 export const deleteBudget = async (user: MaskedUser, budget_id: string): Promise<boolean> => {
   const sections = await sectionsTable.query({ [USER_ID]: user.user_id, [BUDGET_ID]: budget_id });
-  const sectionIds = sections.map(s => (s as any).section_id);
+  const sectionIds = sections.map(s => s.section_id);
 
   if (sectionIds.length > 0) {
     for (const sid of sectionIds) {
@@ -118,7 +117,7 @@ export const updateSection = async (user: MaskedUser, section_id: string, data: 
 export const deleteSection = async (user: MaskedUser, section_id: string): Promise<boolean> => {
   const categories = await categoriesTable.query({ [USER_ID]: user.user_id, [SECTION_ID]: section_id });
   for (const cat of categories) {
-    await categoriesTable.softDelete((cat as any).category_id);
+    await categoriesTable.softDelete(cat.category_id);
   }
   return await sectionsTable.softDelete(section_id);
 };
