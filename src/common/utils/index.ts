@@ -60,6 +60,10 @@ export type DeepPartial<T> = {
       : T[P];
 };
 
+export type Optional<T, P extends keyof T> = Omit<T, P> & {
+  [P in keyof T]?: T[P] | undefined;
+};
+
 export type ValueOf<T> = T[keyof T];
 
 export const assign = <T>(target: T, source: any) => {

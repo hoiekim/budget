@@ -60,7 +60,7 @@ export const upsertHoldings = async (
 
   for (const holding of holdings) {
     try {
-      const row = HoldingModel.toRow(holding, user.user_id);
+      const row = HoldingModel.fromJSON(holding, user.user_id);
       const holdingId =
         (row.holding_id as string) || `${holding.account_id}-${holding.security_id}`;
       await holdingsTable.upsert(row);
@@ -84,7 +84,7 @@ export const updateHoldings = async (
   for (const holding of holdings) {
     const holdingId = holding.holding_id || `${holding.account_id}-${holding.security_id}`;
     try {
-      const row = HoldingModel.toRow(holding, user.user_id);
+      const row = HoldingModel.fromJSON(holding, user.user_id);
       delete row.holding_id;
       delete row.user_id;
 

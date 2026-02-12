@@ -31,7 +31,7 @@ export const upsertInstitutions = async (
 
   for (const institution of institutions) {
     try {
-      const row = InstitutionModel.toRow(institution);
+      const row = InstitutionModel.fromJSON(institution);
       await institutionsTable.upsert(row);
       results.push(successResult(institution.institution_id, 1));
     } catch (error) {

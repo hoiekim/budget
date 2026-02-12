@@ -67,7 +67,7 @@ export const upsertSplitTransactions = async (
 
   for (const tx of transactions) {
     try {
-      const row = SplitTransactionModel.toRow(tx, user.user_id);
+      const row = SplitTransactionModel.fromJSON(tx, user.user_id);
       const result = await splitTransactionsTable.upsert(row);
       const id = result ? (result.split_transaction_id as string) : tx.split_transaction_id;
       results.push(successResult(id, 1));
@@ -88,7 +88,7 @@ export const updateSplitTransactions = async (
 
   for (const tx of transactions) {
     try {
-      const row = SplitTransactionModel.toRow(tx, user.user_id);
+      const row = SplitTransactionModel.fromJSON(tx, user.user_id);
       delete row.split_transaction_id;
       delete row.user_id;
 
@@ -133,7 +133,7 @@ export const createSplitTransaction = async (
   user: MaskedUser,
   input: { transaction_id: string; account_id: string },
 ): Promise<JSONSplitTransaction> => {
-  const row = SplitTransactionModel.toRow(
+  const row = SplitTransactionModel.fromJSON(
     {
       transaction_id: input.transaction_id,
       account_id: input.account_id,

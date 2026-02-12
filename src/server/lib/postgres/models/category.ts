@@ -20,9 +20,24 @@ import {
   SECTIONS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class CategoryModel extends Model<JSONCategory> {
+const categorySchema = {
+  [CATEGORY_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [SECTION_ID]: `UUID REFERENCES ${SECTIONS}(${SECTION_ID}) ON DELETE RESTRICT NOT NULL`,
+  [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
+  [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
+  [ROLL_OVER_START_DATE]: "DATE",
+  [CAPACITIES]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type CategorySchema = typeof categorySchema;
+type CategoryRow = { [k in keyof CategorySchema]: RowValueType };
+
+export class CategoryModel extends Model<JSONCategory, CategorySchema> implements CategoryRow {
   category_id!: string;
   user_id!: string;
   section_id!: string;
@@ -45,18 +60,8 @@ export class CategoryModel extends Model<JSONCategory> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "CategoryModel",
-    CategoryModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    CategoryModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(CategoryModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, CategoryModel.typeChecker);
   }
 
   toJSON(): JSONCategory {
@@ -70,8 +75,8 @@ export class CategoryModel extends Model<JSONCategory> {
     };
   }
 
-  static toRow(c: Partial<JSONCategory>, user_id: string): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  static fromJSON(c: Partial<JSONCategory>, user_id: string): Partial<CategoryRow> {
+    const r: Partial<CategoryRow> = { user_id };
     if (c.category_id !== undefined) r.category_id = c.category_id;
     if (c.section_id !== undefined) r.section_id = c.section_id;
     if (c.name !== undefined) r.name = c.name;
@@ -85,17 +90,7 @@ export class CategoryModel extends Model<JSONCategory> {
 export const categoriesTable = createTable({
   name: CATEGORIES,
   primaryKey: CATEGORY_ID,
-  schema: {
-    [CATEGORY_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [SECTION_ID]: `UUID REFERENCES ${SECTIONS}(${SECTION_ID}) ON DELETE RESTRICT NOT NULL`,
-    [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
-    [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
-    [ROLL_OVER_START_DATE]: "DATE",
-    [CAPACITIES]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: categorySchema,
   indexes: [{ column: USER_ID }, { column: SECTION_ID }],
   ModelClass: CategoryModel,
 });

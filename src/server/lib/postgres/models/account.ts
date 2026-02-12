@@ -31,9 +31,34 @@ import {
   ACCOUNTS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class AccountModel extends Model<JSONAccount> {
+const accountSchema = {
+  [ACCOUNT_ID]: "VARCHAR(255) PRIMARY KEY",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [ITEM_ID]: "VARCHAR(255) NOT NULL",
+  [INSTITUTION_ID]: "VARCHAR(255) NOT NULL",
+  [NAME]: "VARCHAR(255)",
+  [TYPE]: "VARCHAR(50)",
+  [SUBTYPE]: "VARCHAR(100)",
+  [BALANCES_AVAILABLE]: "DECIMAL(15, 2)",
+  [BALANCES_CURRENT]: "DECIMAL(15, 2)",
+  [BALANCES_LIMIT]: "DECIMAL(15, 2)",
+  [BALANCES_ISO_CURRENCY_CODE]: "VARCHAR(10)",
+  [CUSTOM_NAME]: "TEXT",
+  [HIDE]: "BOOLEAN DEFAULT FALSE",
+  [LABEL_BUDGET_ID]: "UUID",
+  [GRAPH_OPTIONS_USE_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
+  [GRAPH_OPTIONS_USE_TRANSACTIONS]: "BOOLEAN DEFAULT TRUE",
+  [RAW]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type AccountSchema = typeof accountSchema;
+type AccountRow = { [k in keyof AccountSchema]: RowValueType };
+
+export class AccountModel extends Model<JSONAccount, AccountSchema> implements AccountRow {
   account_id!: string;
   user_id!: string;
   item_id!: string;
@@ -50,6 +75,7 @@ export class AccountModel extends Model<JSONAccount> {
   label_budget_id!: string | null;
   graph_options_use_snapshots!: boolean;
   graph_options_use_transactions!: boolean;
+  raw!: object | null;
   updated!: string | null;
   is_deleted!: boolean;
 
@@ -75,18 +101,8 @@ export class AccountModel extends Model<JSONAccount> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "AccountModel",
-    AccountModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    AccountModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(AccountModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, AccountModel.typeChecker);
   }
 
   toJSON(): JSONAccount {
@@ -116,11 +132,11 @@ export class AccountModel extends Model<JSONAccount> {
     };
   }
 
-  static toRow(
+  static fromJSON(
     a: Partial<JSONAccount> & { account_id: string },
     user_id: string,
-  ): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  ): Partial<AccountRow> {
+    const r: Partial<AccountRow> = { user_id };
     if (!isUndefined(a.account_id)) r.account_id = a.account_id;
     if (!isUndefined(a.item_id)) r.item_id = a.item_id;
     if (!isUndefined(a.institution_id)) r.institution_id = a.institution_id;
@@ -152,27 +168,7 @@ export class AccountModel extends Model<JSONAccount> {
 export const accountsTable = createTable({
   name: ACCOUNTS,
   primaryKey: ACCOUNT_ID,
-  schema: {
-    [ACCOUNT_ID]: "VARCHAR(255) PRIMARY KEY",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [ITEM_ID]: "VARCHAR(255) NOT NULL",
-    [INSTITUTION_ID]: "VARCHAR(255) NOT NULL",
-    [NAME]: "VARCHAR(255)",
-    [TYPE]: "VARCHAR(50)",
-    [SUBTYPE]: "VARCHAR(100)",
-    [BALANCES_AVAILABLE]: "DECIMAL(15, 2)",
-    [BALANCES_CURRENT]: "DECIMAL(15, 2)",
-    [BALANCES_LIMIT]: "DECIMAL(15, 2)",
-    [BALANCES_ISO_CURRENCY_CODE]: "VARCHAR(10)",
-    [CUSTOM_NAME]: "TEXT",
-    [HIDE]: "BOOLEAN DEFAULT FALSE",
-    [LABEL_BUDGET_ID]: "UUID",
-    [GRAPH_OPTIONS_USE_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
-    [GRAPH_OPTIONS_USE_TRANSACTIONS]: "BOOLEAN DEFAULT TRUE",
-    [RAW]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: accountSchema,
   indexes: [{ column: USER_ID }, { column: ITEM_ID }, { column: INSTITUTION_ID }],
   ModelClass: AccountModel,
 });

@@ -1,10 +1,24 @@
-import { JSONInstitution, isString, isNullableString, isNullableObject } from "common";
+import { JSONInstitution, isString, isNullableString, isNullableObject, Optional } from "common";
 import { INSTITUTION_ID, NAME, RAW, UPDATED, INSTITUTIONS } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class InstitutionModel extends Model<JSONInstitution> {
+const institutionSchema = {
+  [INSTITUTION_ID]: "VARCHAR(255) PRIMARY KEY",
+  [NAME]: "VARCHAR(255)",
+  [RAW]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+};
+
+type InstitutionSchema = typeof institutionSchema;
+type InstitutionRow = { [k in keyof InstitutionSchema]: RowValueType };
+
+export class InstitutionModel
+  extends Model<JSONInstitution, InstitutionSchema>
+  implements InstitutionRow
+{
   institution_id!: string;
   name!: string;
+  raw!: object | null;
   updated!: string | null;
 
   static typeChecker = {
@@ -14,18 +28,8 @@ export class InstitutionModel extends Model<JSONInstitution> {
     updated: isNullableString,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "InstitutionModel",
-    InstitutionModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    InstitutionModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(InstitutionModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, InstitutionModel.typeChecker);
   }
 
   toJSON(): JSONInstitution {
@@ -43,8 +47,8 @@ export class InstitutionModel extends Model<JSONInstitution> {
     };
   }
 
-  static toRow(i: Partial<JSONInstitution>): Record<string, unknown> {
-    const r: Record<string, unknown> = {};
+  static fromJSON(i: Partial<JSONInstitution>): Partial<InstitutionRow> {
+    const r: Partial<InstitutionRow> = {};
     if (i.institution_id !== undefined) r.institution_id = i.institution_id;
     if (i.name !== undefined) r.name = i.name;
     r.raw = i;
@@ -55,12 +59,7 @@ export class InstitutionModel extends Model<JSONInstitution> {
 export const institutionsTable = createTable({
   name: INSTITUTIONS,
   primaryKey: INSTITUTION_ID,
-  schema: {
-    [INSTITUTION_ID]: "VARCHAR(255) PRIMARY KEY",
-    [NAME]: "VARCHAR(255)",
-    [RAW]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  } as Schema<Record<string, unknown>>,
+  schema: institutionSchema,
   ModelClass: InstitutionModel,
   supportsSoftDelete: false,
 });

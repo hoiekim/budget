@@ -17,9 +17,22 @@ import {
   CHARTS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class ChartModel extends Model<JSONChart> {
+const chartSchema = {
+  [CHART_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT`,
+  [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
+  [TYPE]: "VARCHAR(50)",
+  [CONFIGURATION]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type ChartSchema = typeof chartSchema;
+type ChartRow = { [k in keyof ChartSchema]: RowValueType };
+
+export class ChartModel extends Model<JSONChart, ChartSchema> implements ChartRow {
   chart_id!: string;
   user_id!: string;
   name!: string;
@@ -38,18 +51,8 @@ export class ChartModel extends Model<JSONChart> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "ChartModel",
-    ChartModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    ChartModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(ChartModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, ChartModel.typeChecker);
     // Type conversion: pg parses JSONB to object, need to stringify for our string type
     this.configuration =
       typeof this.configuration === "object"
@@ -66,8 +69,8 @@ export class ChartModel extends Model<JSONChart> {
     };
   }
 
-  static toRow(c: Partial<JSONChart>, user_id: string): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  static fromJSON(c: Partial<JSONChart>, user_id: string): Partial<ChartRow> {
+    const r: Partial<ChartRow> = { user_id };
     if (c.chart_id !== undefined) r.chart_id = c.chart_id;
     if (c.name !== undefined) r.name = c.name;
     if (c.type !== undefined) r.type = c.type;
@@ -82,15 +85,7 @@ export class ChartModel extends Model<JSONChart> {
 export const chartsTable = createTable({
   name: CHARTS,
   primaryKey: CHART_ID,
-  schema: {
-    [CHART_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT`,
-    [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
-    [TYPE]: "VARCHAR(50)",
-    [CONFIGURATION]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: chartSchema,
   indexes: [{ column: USER_ID }],
   ModelClass: ChartModel,
 });

@@ -17,7 +17,7 @@ import {
   UPDATED,
   SESSIONS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
 const isValidSameSiteValue = (v: unknown): boolean => {
   if (typeof v === "boolean") return true;
@@ -28,7 +28,27 @@ const isValidSameSiteValue = (v: unknown): boolean => {
   return false;
 };
 
-export class SessionModel extends Model<ExpressSessionData> {
+const sessionSchema = {
+  [SESSION_ID]: "VARCHAR(255) PRIMARY KEY",
+  [USER_USER_ID]: "UUID",
+  [USER_USERNAME]: "VARCHAR(255)",
+  [COOKIE_ORIGINAL_MAX_AGE]: "BIGINT",
+  [COOKIE_MAX_AGE]: "BIGINT",
+  [COOKIE_SIGNED]: "BOOLEAN",
+  [COOKIE_EXPIRES]: "TIMESTAMPTZ",
+  [COOKIE_HTTP_ONLY]: "BOOLEAN",
+  [COOKIE_PATH]: "TEXT",
+  [COOKIE_DOMAIN]: "TEXT",
+  [COOKIE_SECURE]: "BOOLEAN",
+  [COOKIE_SAME_SITE]: "VARCHAR(50)",
+  [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+};
+
+type SessionSchema = typeof sessionSchema;
+type SessionRow = { [k in keyof SessionSchema]: RowValueType };
+
+export class SessionModel extends Model<ExpressSessionData, SessionSchema> implements SessionRow {
   session_id!: string;
   user_user_id!: string;
   user_username!: string;
@@ -61,18 +81,8 @@ export class SessionModel extends Model<ExpressSessionData> {
     updated: isNullableString,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "SessionModel",
-    SessionModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    SessionModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(SessionModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, SessionModel.typeChecker);
   }
 
   toJSON(): ExpressSessionData {
@@ -92,7 +102,7 @@ export class SessionModel extends Model<ExpressSessionData> {
     };
   }
 
-  static fromSessionData(sid: string, data: ExpressSessionData): Record<string, unknown> {
+  static fromSessionData(sid: string, data: ExpressSessionData): Partial<SessionRow> {
     return {
       session_id: sid,
       user_user_id: data.user.user_id,
@@ -113,22 +123,7 @@ export class SessionModel extends Model<ExpressSessionData> {
 export const sessionsTable = createTable({
   name: SESSIONS,
   primaryKey: SESSION_ID,
-  schema: {
-    [SESSION_ID]: "VARCHAR(255) PRIMARY KEY",
-    [USER_USER_ID]: "UUID",
-    [USER_USERNAME]: "VARCHAR(255)",
-    [COOKIE_ORIGINAL_MAX_AGE]: "BIGINT",
-    [COOKIE_MAX_AGE]: "BIGINT",
-    [COOKIE_SIGNED]: "BOOLEAN",
-    [COOKIE_EXPIRES]: "TIMESTAMPTZ",
-    [COOKIE_HTTP_ONLY]: "BOOLEAN",
-    [COOKIE_PATH]: "TEXT",
-    [COOKIE_DOMAIN]: "TEXT",
-    [COOKIE_SECURE]: "BOOLEAN",
-    [COOKIE_SAME_SITE]: "VARCHAR(50)",
-    [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-  } as Schema<Record<string, unknown>>,
+  schema: sessionSchema,
   ModelClass: SessionModel,
   supportsSoftDelete: false,
 });

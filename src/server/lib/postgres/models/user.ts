@@ -10,7 +10,7 @@ import {
   IS_DELETED,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
 export interface MaskedUser {
   user_id: string;
@@ -19,7 +19,21 @@ export interface MaskedUser {
 
 export type User = MaskedUser & { password: string };
 
-export class UserModel extends Model<MaskedUser> {
+const userSchema = {
+  [USER_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+  [USERNAME]: "VARCHAR(255) UNIQUE NOT NULL",
+  [PASSWORD]: "VARCHAR(255)",
+  [EMAIL]: "VARCHAR(255)",
+  [EXPIRY]: "TIMESTAMPTZ",
+  [TOKEN]: "VARCHAR(255)",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type UserSchema = typeof userSchema;
+type UserRow = { [k in keyof UserSchema]: RowValueType };
+
+export class UserModel extends Model<MaskedUser, UserSchema> implements UserRow {
   user_id!: string;
   username!: string;
   password!: string | null;
@@ -40,18 +54,8 @@ export class UserModel extends Model<MaskedUser> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "UserModel",
-    UserModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    UserModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(UserModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, UserModel.typeChecker);
   }
 
   toJSON(): MaskedUser {
@@ -71,16 +75,7 @@ export class UserModel extends Model<MaskedUser> {
 export const usersTable = createTable({
   name: USERS,
   primaryKey: USER_ID,
-  schema: {
-    [USER_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-    [USERNAME]: "VARCHAR(255) UNIQUE NOT NULL",
-    [PASSWORD]: "VARCHAR(255)",
-    [EMAIL]: "VARCHAR(255)",
-    [EXPIRY]: "TIMESTAMPTZ",
-    [TOKEN]: "VARCHAR(255)",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: userSchema,
   ModelClass: UserModel,
 });
 

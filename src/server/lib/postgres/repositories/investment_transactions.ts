@@ -1,7 +1,7 @@
 import { JSONInvestmentTransaction } from "common";
 import {
   MaskedUser,
-  InvestmentTransactionModel,
+  InvTxModel,
   investmentTransactionsTable,
   INVESTMENT_TRANSACTION_ID,
   ACCOUNT_ID,
@@ -45,7 +45,7 @@ export const getInvestmentTransactions = async (
     offset: options.offset,
   });
   const result = await pool.query<Record<string, unknown>>(sql, values);
-  return result.rows.map((row) => new InvestmentTransactionModel(row).toJSON());
+  return result.rows.map((row) => new InvTxModel(row).toJSON());
 };
 
 export const getInvestmentTransaction = async (
@@ -75,7 +75,7 @@ export const upsertInvestmentTransactions = async (
 
   for (const tx of transactions) {
     try {
-      const row = InvestmentTransactionModel.toRow(tx, user.user_id);
+      const row = InvTxModel.fromJSON(tx, user.user_id);
       await investmentTransactionsTable.upsert(row);
       results.push(successResult(tx.investment_transaction_id, 1));
     } catch (error) {
@@ -98,7 +98,7 @@ export const updateInvestmentTransactions = async (
 
   for (const tx of transactions) {
     try {
-      const row = InvestmentTransactionModel.toRow(tx, user.user_id);
+      const row = InvTxModel.fromJSON(tx, user.user_id);
       delete row.investment_transaction_id;
       delete row.user_id;
 

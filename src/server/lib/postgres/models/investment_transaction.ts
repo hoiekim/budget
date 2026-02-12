@@ -1,6 +1,6 @@
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import {
-  JSONInvestmentTransaction,
+  JSONInvestmentTransaction as JSONInvTx,
   isString,
   isNullableString,
   isNullableNumber,
@@ -29,9 +29,33 @@ import {
   INVESTMENT_TRANSACTIONS,
   USERS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
-export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction> {
+const invTxSchema = {
+  [INVESTMENT_TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
+  [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
+  [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
+  [SECURITY_ID]: "VARCHAR(255)",
+  [DATE]: "DATE NOT NULL",
+  [NAME]: "TEXT",
+  [AMOUNT]: "DECIMAL(15, 2)",
+  [QUANTITY]: "DECIMAL(15, 6)",
+  [PRICE]: "DECIMAL(15, 6)",
+  [ISO_CURRENCY_CODE]: "VARCHAR(10)",
+  [TYPE]: "TEXT",
+  [SUBTYPE]: "TEXT",
+  [LABEL_BUDGET_ID]: "UUID",
+  [LABEL_CATEGORY_ID]: "UUID",
+  [LABEL_MEMO]: "TEXT",
+  [RAW]: "JSONB",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type InvTxSchema = typeof invTxSchema;
+type InvTxRow = { [k in keyof InvTxSchema]: RowValueType };
+
+export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRow {
   investment_transaction_id!: string;
   user_id!: string;
   account_id!: string;
@@ -47,6 +71,7 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
   label_budget_id!: string | null;
   label_category_id!: string | null;
   label_memo!: string | null;
+  raw!: object | null;
   updated!: string | null;
   is_deleted!: boolean;
 
@@ -71,21 +96,11 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "InvestmentTransactionModel",
-    InvestmentTransactionModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    InvestmentTransactionModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(InvestmentTransactionModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, InvTxModel.typeChecker);
   }
 
-  toJSON(): JSONInvestmentTransaction {
+  toJSON(): JSONInvTx {
     return {
       investment_transaction_id: this.investment_transaction_id,
       account_id: this.account_id,
@@ -108,11 +123,11 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
     };
   }
 
-  static toRow(
-    tx: Partial<JSONInvestmentTransaction> & { investment_transaction_id: string },
+  static fromJSON(
+    tx: Partial<JSONInvTx> & { investment_transaction_id: string },
     user_id: string,
-  ): Record<string, unknown> {
-    const r: Record<string, unknown> = { user_id };
+  ): Partial<InvTxRow> {
+    const r: Partial<InvTxRow> = { user_id };
     if (tx.investment_transaction_id !== undefined)
       r.investment_transaction_id = tx.investment_transaction_id;
     if (tx.account_id !== undefined) r.account_id = tx.account_id;
@@ -139,28 +154,9 @@ export class InvestmentTransactionModel extends Model<JSONInvestmentTransaction>
 export const investmentTransactionsTable = createTable({
   name: INVESTMENT_TRANSACTIONS,
   primaryKey: INVESTMENT_TRANSACTION_ID,
-  schema: {
-    [INVESTMENT_TRANSACTION_ID]: "VARCHAR(255) PRIMARY KEY",
-    [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-    [ACCOUNT_ID]: "VARCHAR(255) NOT NULL",
-    [SECURITY_ID]: "VARCHAR(255)",
-    [DATE]: "DATE NOT NULL",
-    [NAME]: "TEXT",
-    [AMOUNT]: "DECIMAL(15, 2)",
-    [QUANTITY]: "DECIMAL(15, 6)",
-    [PRICE]: "DECIMAL(15, 6)",
-    [ISO_CURRENCY_CODE]: "VARCHAR(10)",
-    [TYPE]: "TEXT",
-    [SUBTYPE]: "TEXT",
-    [LABEL_BUDGET_ID]: "UUID",
-    [LABEL_CATEGORY_ID]: "UUID",
-    [LABEL_MEMO]: "TEXT",
-    [RAW]: "JSONB",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: invTxSchema,
   indexes: [{ column: USER_ID }, { column: ACCOUNT_ID }, { column: DATE }],
-  ModelClass: InvestmentTransactionModel,
+  ModelClass: InvTxModel,
 });
 
 export const investmentTransactionColumns = Object.keys(investmentTransactionsTable.schema);

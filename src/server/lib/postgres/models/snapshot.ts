@@ -30,11 +30,36 @@ import {
   IS_DELETED,
   SNAPSHOTS,
 } from "./common";
-import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+import { Model, RowValueType, createTable } from "./base";
 
 export type SnapshotType = "account_balance" | "security" | "holding";
 
-export class SnapshotModel extends Model<JSONSnapshotData> {
+const snapshotSchema = {
+  [SNAPSHOT_ID]: "VARCHAR(255) PRIMARY KEY",
+  [USER_ID]: "UUID",
+  [SNAPSHOT_DATE]: "TIMESTAMPTZ NOT NULL",
+  [SNAPSHOT_TYPE]: "VARCHAR(50) NOT NULL",
+  [ACCOUNT_ID]: "VARCHAR(255)",
+  [BALANCES_AVAILABLE]: "DECIMAL(15, 2)",
+  [BALANCES_CURRENT]: "DECIMAL(15, 2)",
+  [BALANCES_LIMIT]: "DECIMAL(15, 2)",
+  [BALANCES_ISO_CURRENCY_CODE]: "VARCHAR(10)",
+  [SECURITY_ID]: "VARCHAR(255)",
+  [CLOSE_PRICE]: "DECIMAL(15, 6)",
+  [HOLDING_ACCOUNT_ID]: "VARCHAR(255)",
+  [HOLDING_SECURITY_ID]: "VARCHAR(255)",
+  [INSTITUTION_PRICE]: "DECIMAL(15, 6)",
+  [INSTITUTION_VALUE]: "DECIMAL(15, 2)",
+  [COST_BASIS]: "DECIMAL(15, 2)",
+  [QUANTITY]: "DECIMAL(15, 6)",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+};
+
+type SnapshotSchema = typeof snapshotSchema;
+type SnapshotRow = { [k in keyof SnapshotSchema]: RowValueType };
+
+export class SnapshotModel extends Model<JSONSnapshotData, SnapshotSchema> implements SnapshotRow {
   snapshot_id!: string;
   user_id!: string | null;
   snapshot_date!: string;
@@ -77,18 +102,8 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
-    "SnapshotModel",
-    SnapshotModel.typeChecker,
-  );
-
   constructor(data: unknown) {
-    super();
-    SnapshotModel.assertType(data);
-    const r = data as Record<string, unknown>;
-    Object.keys(SnapshotModel.typeChecker).forEach((k) => {
-      (this as Record<string, unknown>)[k] = r[k];
-    });
+    super(data, SnapshotModel.typeChecker);
   }
 
   toJSON(): JSONSnapshotData {
@@ -141,7 +156,7 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
     } as JSONHoldingSnapshot;
   }
 
-  static fromAccountSnapshot(d: JSONAccountSnapshot, user_id: string): Record<string, unknown> {
+  static fromAccountSnapshot(d: JSONAccountSnapshot, user_id: string): Partial<SnapshotRow> {
     return {
       snapshot_id: d.snapshot.snapshot_id,
       user_id,
@@ -155,7 +170,7 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
     };
   }
 
-  static fromSecuritySnapshot(d: JSONSecuritySnapshot): Record<string, unknown> {
+  static fromSecuritySnapshot(d: JSONSecuritySnapshot): Partial<SnapshotRow> {
     return {
       snapshot_id: d.snapshot.snapshot_id,
       snapshot_date: d.snapshot.date,
@@ -165,7 +180,7 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
     };
   }
 
-  static fromHoldingSnapshot(d: JSONHoldingSnapshot, user_id: string): Record<string, unknown> {
+  static fromHoldingSnapshot(d: JSONHoldingSnapshot, user_id: string): Partial<SnapshotRow> {
     return {
       snapshot_id: d.snapshot.snapshot_id,
       user_id,
@@ -184,27 +199,7 @@ export class SnapshotModel extends Model<JSONSnapshotData> {
 export const snapshotsTable = createTable({
   name: SNAPSHOTS,
   primaryKey: SNAPSHOT_ID,
-  schema: {
-    [SNAPSHOT_ID]: "VARCHAR(255) PRIMARY KEY",
-    [USER_ID]: "UUID",
-    [SNAPSHOT_DATE]: "TIMESTAMPTZ NOT NULL",
-    [SNAPSHOT_TYPE]: "VARCHAR(50) NOT NULL",
-    [ACCOUNT_ID]: "VARCHAR(255)",
-    [BALANCES_AVAILABLE]: "DECIMAL(15, 2)",
-    [BALANCES_CURRENT]: "DECIMAL(15, 2)",
-    [BALANCES_LIMIT]: "DECIMAL(15, 2)",
-    [BALANCES_ISO_CURRENCY_CODE]: "VARCHAR(10)",
-    [SECURITY_ID]: "VARCHAR(255)",
-    [CLOSE_PRICE]: "DECIMAL(15, 6)",
-    [HOLDING_ACCOUNT_ID]: "VARCHAR(255)",
-    [HOLDING_SECURITY_ID]: "VARCHAR(255)",
-    [INSTITUTION_PRICE]: "DECIMAL(15, 6)",
-    [INSTITUTION_VALUE]: "DECIMAL(15, 2)",
-    [COST_BASIS]: "DECIMAL(15, 2)",
-    [QUANTITY]: "DECIMAL(15, 6)",
-    [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
-    [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
-  } as Schema<Record<string, unknown>>,
+  schema: snapshotSchema,
   indexes: [
     { column: USER_ID },
     { column: SNAPSHOT_TYPE },

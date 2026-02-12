@@ -40,7 +40,7 @@ export const createBudget = async (
   data: Partial<JSONBudget>,
 ): Promise<JSONBudget | null> => {
   try {
-    const row = BudgetModel.toRow(
+    const row = BudgetModel.fromJSON(
       {
         name: data.name || "New Budget",
         iso_currency_code: data.iso_currency_code || "USD",
@@ -119,7 +119,7 @@ export const createSection = async (
   data: Partial<JSONSection>,
 ): Promise<JSONSection | null> => {
   try {
-    const row = SectionModel.toRow(
+    const row = SectionModel.fromJSON(
       {
         budget_id: data.budget_id,
         name: data.name || "New Section",
@@ -194,7 +194,7 @@ export const createCategory = async (
   data: Partial<JSONCategory>,
 ): Promise<JSONCategory | null> => {
   try {
-    const row = CategoryModel.toRow(
+    const row = CategoryModel.fromJSON(
       {
         section_id: data.section_id,
         name: data.name || "New Category",
