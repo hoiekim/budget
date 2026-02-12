@@ -1,3 +1,4 @@
+import { test, expect } from "bun:test";
 import { getHitScore } from "./search";
 
 test("getHitScore should ignore cases", () => {

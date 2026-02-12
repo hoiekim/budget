@@ -1,11 +1,13 @@
 {
   "compilerOptions": {
-    "target": "es2016",
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "module": "commonjs",
     "resolveJsonModule": true,
     "outDir": "./build/server",
     "baseUrl": "./src",
@@ -17,8 +19,9 @@
       "common": ["./common"],
       "common/*": ["./common/*"]
     },
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "types": ["bun-types"]
   },
   "include": ["src"],
-  "exclude": ["*.test.ts", "**/*.test.ts"]
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
 }
