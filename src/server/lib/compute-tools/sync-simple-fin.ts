@@ -13,7 +13,7 @@ import {
 } from "common";
 import {
   deleteInvestmentTransactions,
-  deleteSplitTransactionsByTransactionId,
+  deleteSplitTransactionsByTransaction,
   deleteTransactions,
   getUserItem,
   MaskedUser,
@@ -102,7 +102,7 @@ export const syncSimpleFinData = async (item_id: string) => {
   await upsertTransactions(user, transactions);
   await deleteTransactions(user, removedTransactionIds);
   for (const txId of removedTransactionIds) {
-    await deleteSplitTransactionsByTransactionId(user, txId);
+    await deleteSplitTransactionsByTransaction(user, txId);
   }
   await upsertInvestmentTransactions(user, investmentTransactions);
   await deleteInvestmentTransactions(user, removedInvestmentTransactionIds);

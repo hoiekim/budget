@@ -1,5 +1,14 @@
 import { pool } from "../client";
-import { buildSelectWithFilters, buildInsert, buildUpdate, buildUpsert, buildSoftDelete, SearchFilters, ParamValue, QueryData } from "../database";
+import {
+  buildSelectWithFilters,
+  buildInsert,
+  buildUpdate,
+  buildUpsert,
+  buildSoftDelete,
+  SearchFilters,
+  ParamValue,
+  QueryData,
+} from "../database";
 
 export class ModelValidationError extends Error {
   public readonly errors: string[];
@@ -28,7 +37,7 @@ export type PropertyChecker<T> = {
 export function validateObject<T extends Record<string, unknown>>(
   input: unknown,
   checker: PropertyChecker<T>,
-  skip: (keyof T)[] = []
+  skip: (keyof T)[] = [],
 ): string[] {
   if (typeof input !== "object" || input === null) {
     return [`Input is not a valid object: ${String(input)}`];
@@ -53,7 +62,7 @@ export type AssertTypeFn<T> = (input: unknown, skip?: (keyof T)[]) => asserts in
 
 export function createAssertType<T extends Record<string, unknown>>(
   modelName: string,
-  checker: PropertyChecker<T>
+  checker: PropertyChecker<T>,
 ): AssertTypeFn<T> {
   return (input: unknown, skip: (keyof T)[] = []): asserts input is T => {
     const errors = validateObject(input, checker, skip);
@@ -73,7 +82,7 @@ export interface ModelClass<TJSON, TModel extends Model<TJSON>> {
   assertType: AssertTypeFn<Record<string, unknown>>;
 }
 
-export interface TableSearchFilters extends Omit<SearchFilters, 'filters'> {
+export interface TableSearchFilters extends Omit<SearchFilters, "filters"> {
   filters?: Record<string, ParamValue>;
 }
 
@@ -87,25 +96,42 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
   abstract readonly supportsSoftDelete: boolean;
 
   async query(filters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
-    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters, excludeDeleted: this.supportsSoftDelete });
+    const { sql, values } = buildSelectWithFilters(this.name, "*", {
+      filters,
+      excludeDeleted: this.supportsSoftDelete,
+    });
     const result = await pool.query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
   }
 
   async queryOne(filters: Record<string, ParamValue | unknown>): Promise<TModel | null> {
-    const { sql, values } = buildSelectWithFilters(this.name, "*", { filters, limit: 1, excludeDeleted: this.supportsSoftDelete });
+    const { sql, values } = buildSelectWithFilters(this.name, "*", {
+      filters,
+      limit: 1,
+      excludeDeleted: this.supportsSoftDelete,
+    });
     const result = await pool.query(sql, values);
     return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
   }
 
   async insert(data: QueryData, returning?: string[]): Promise<Record<string, unknown> | null> {
-    const { sql, values } = buildInsert(this.name, data as Record<string, ParamValue>, returning ?? [this.primaryKey]);
+    const { sql, values } = buildInsert(
+      this.name,
+      data as Record<string, ParamValue>,
+      returning ?? [this.primaryKey],
+    );
     const result = await pool.query(sql, values);
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 
-  async update(primaryKeyValue: ParamValue, data: QueryData, returning?: string[]): Promise<Record<string, unknown> | null> {
-    const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, { returning: returning ?? [this.primaryKey] });
+  async update(
+    primaryKeyValue: ParamValue,
+    data: QueryData,
+    returning?: string[],
+  ): Promise<Record<string, unknown> | null> {
+    const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {
+      returning: returning ?? [this.primaryKey],
+    });
     if (!query) return null;
     const result = await pool.query(query.sql, query.values);
     return result.rows.length > 0 ? result.rows[0] : null;
@@ -113,7 +139,7 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
 
   async upsert(data: QueryData, updateColumns?: string[]): Promise<Record<string, unknown> | null> {
     const { sql, values } = buildUpsert(this.name, this.primaryKey, data, {
-      updateColumns: updateColumns ?? Object.keys(data).filter(k => k !== this.primaryKey),
+      updateColumns: updateColumns ?? Object.keys(data).filter((k) => k !== this.primaryKey),
       returning: ["*"],
     });
     const result = await pool.query(sql, values);
@@ -126,7 +152,10 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
     return result.rowCount !== null && result.rowCount > 0;
   }
 
-  async queryByIds(ids: ParamValue[], additionalFilters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
+  async queryByIds(
+    ids: ParamValue[],
+    additionalFilters: Record<string, ParamValue | unknown> = {},
+  ): Promise<TModel[]> {
     if (ids.length === 0) return [];
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     let sql = `SELECT * FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders})`;
@@ -134,7 +163,7 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
       sql += ` AND (is_deleted IS NULL OR is_deleted = FALSE)`;
     }
     const values: ParamValue[] = [...ids];
-    
+
     let paramIdx = ids.length + 1;
     for (const [key, value] of Object.entries(additionalFilters)) {
       if (value !== undefined) {
@@ -142,17 +171,20 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
         values.push(value as ParamValue);
       }
     }
-    
+
     const result = await pool.query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
   }
 
-  async bulkSoftDelete(ids: ParamValue[], additionalFilters: Record<string, ParamValue | unknown> = {}): Promise<number> {
+  async bulkSoftDelete(
+    ids: ParamValue[],
+    additionalFilters: Record<string, ParamValue | unknown> = {},
+  ): Promise<number> {
     if (ids.length === 0) return 0;
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${this.primaryKey} IN (${placeholders})`;
     const values: ParamValue[] = [...ids];
-    
+
     let paramIdx = ids.length + 1;
     for (const [key, value] of Object.entries(additionalFilters)) {
       if (value !== undefined) {
@@ -161,21 +193,25 @@ export abstract class Table<TJSON, TModel extends Model<TJSON>> {
       }
     }
     sql += ` RETURNING ${this.primaryKey}`;
-    
+
     const result = await pool.query(sql, values);
     return result.rowCount ?? 0;
   }
 
-  async bulkSoftDeleteByColumn(column: string, columnValue: ParamValue, userIdValue?: ParamValue): Promise<number> {
+  async bulkSoftDeleteByColumn(
+    column: string,
+    columnValue: ParamValue,
+    userIdValue?: ParamValue,
+  ): Promise<number> {
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${column} = $1`;
     const values: ParamValue[] = [columnValue];
-    
+
     if (userIdValue !== undefined) {
       sql += ` AND user_id = $2`;
       values.push(userIdValue);
     }
     sql += ` RETURNING ${this.primaryKey}`;
-    
+
     const result = await pool.query(sql, values);
     return result.rowCount ?? 0;
   }
@@ -212,7 +248,7 @@ export interface TableConfig<TJSON, TModel extends Model<TJSON>> {
 }
 
 export function createTable<TJSON, TModel extends Model<TJSON>>(
-  config: TableConfig<TJSON, TModel>
+  config: TableConfig<TJSON, TModel>,
 ): Table<TJSON, TModel> {
   return new (class extends Table<TJSON, TModel> {
     readonly name = config.name;

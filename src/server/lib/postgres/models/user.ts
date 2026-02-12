@@ -1,5 +1,15 @@
-import { isString, isNullableString, isNullableDate, isNullableBoolean } from "common";
-import { USER_ID, USERNAME, PASSWORD, EMAIL, EXPIRY, TOKEN, UPDATED, IS_DELETED, USERS } from "./common";
+import { isString, isNullableString, isNullableBoolean } from "common";
+import {
+  USER_ID,
+  USERNAME,
+  PASSWORD,
+  EMAIL,
+  EXPIRY,
+  TOKEN,
+  UPDATED,
+  IS_DELETED,
+  USERS,
+} from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export interface MaskedUser {
@@ -14,9 +24,9 @@ export class UserModel extends Model<MaskedUser> {
   username!: string;
   password!: string | null;
   email!: string | null;
-  expiry!: Date | null;
+  expiry!: string | null;
   token!: string | null;
-  updated!: Date;
+  updated!: string;
   is_deleted!: boolean;
 
   static typeChecker = {
@@ -24,13 +34,16 @@ export class UserModel extends Model<MaskedUser> {
     username: isString,
     password: isNullableString,
     email: isNullableString,
-    expiry: isNullableDate,
+    expiry: isNullableString,
     token: isNullableString,
-    updated: isNullableDate,
+    updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("UserModel", UserModel.typeChecker);
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
+    "UserModel",
+    UserModel.typeChecker,
+  );
 
   constructor(data: unknown) {
     super();

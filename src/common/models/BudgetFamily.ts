@@ -10,7 +10,7 @@ export interface JSONBudgetFamily {
   name: string;
   capacities: JSONCapacity[];
   roll_over: boolean;
-  roll_over_start_date?: Date;
+  roll_over_start_date?: string;
 }
 
 export interface JSONBudget extends JSONBudgetFamily {

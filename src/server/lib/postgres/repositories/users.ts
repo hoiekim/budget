@@ -10,19 +10,19 @@ export const maskUser = (user: User): MaskedUser => {
   return { user_id, username };
 };
 
-export const indexUser = async (user: IndexUserInput): Promise<{ _id: string } | undefined> => {
+export const writeUser = async (user: IndexUserInput): Promise<{ _id: string } | undefined> => {
   const { user_id, username, password } = user;
   const hashedPassword = password ? await bcrypt.hash(password, 10) : undefined;
 
   try {
     const row: Record<string, unknown> = { username, password: hashedPassword };
     if (user_id) row.user_id = user_id;
-    
+
     const result = await usersTable.upsert(row);
     if (result) return { _id: result.user_id as string };
     return undefined;
   } catch (error) {
-    console.error("Failed to index user:", error);
+    console.error("Failed to write user:", error);
     return undefined;
   }
 };
@@ -32,9 +32,9 @@ export const searchUser = async (user: Partial<MaskedUser>): Promise<User | unde
     const filters: Record<string, unknown> = {};
     if (user.user_id) filters[USER_ID] = user.user_id;
     if (user.username) filters.username = user.username;
-    
+
     if (Object.keys(filters).length === 0) return undefined;
-    
+
     const model = await usersTable.queryOne(filters);
     return model?.toUser();
   } catch (error) {

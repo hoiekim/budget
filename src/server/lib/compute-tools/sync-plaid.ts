@@ -17,14 +17,13 @@ import {
   plaid,
   getUserItem,
   upsertInvestmentTransactions,
-  getInvestmentTransactions,
   upsertItems,
   upsertTransactions,
   searchAccountsByItemId,
   searchTransactionsByAccountId,
   searchHoldingsByAccountId,
   MaskedUser,
-  deleteSplitTransactionsByTransactionId,
+  deleteSplitTransactionsByTransaction,
 } from "server";
 import {
   upsertAccountsWithSnapshots,
@@ -83,7 +82,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),
         deleteTransactions(user, removedTransactionIds),
-        ...removedTransactionIds.map((txId) => deleteSplitTransactionsByTransactionId(user, txId)),
+        ...removedTransactionIds.map((txId) => deleteSplitTransactionsByTransaction(user, txId)),
       ];
 
       const updated = getDateString();
@@ -97,7 +96,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         })
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
-          console.error("Error occured during puting Plaid transanctions data into Elasticsearch");
+          console.error("Error occured during puting Plaid transanctions data into database");
           console.error(err);
         });
     });
@@ -155,7 +154,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
           console.error(
-            "Error occured during puting Plaid investment transanctions data into Elasticsearch",
+            "Error occured during puting Plaid investment transanctions data into database",
           );
           console.error(err);
         });

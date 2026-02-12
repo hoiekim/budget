@@ -4,7 +4,7 @@ import { UpsertResult, successResult, errorResult } from "../database";
 
 export const getSecurities = async (): Promise<JSONSecurity[]> => {
   const models = await securitiesTable.query({});
-  return models.map(m => m.toJSON());
+  return models.map((m) => m.toJSON());
 };
 
 export const getSecurity = async (security_id: string): Promise<JSONSecurity | null> => {
@@ -13,15 +13,15 @@ export const getSecurity = async (security_id: string): Promise<JSONSecurity | n
 };
 
 export const searchSecurities = async (
-  options: { security_id?: string; ticker_symbol?: string; name?: string } = {}
+  options: { security_id?: string; ticker_symbol?: string; name?: string } = {},
 ): Promise<JSONSecurity[]> => {
   const filters: Record<string, unknown> = {};
   if (options.security_id) filters[SECURITY_ID] = options.security_id;
   if (options.ticker_symbol) filters.ticker_symbol = options.ticker_symbol;
   if (options.name) filters.name = options.name;
-  
+
   const models = await securitiesTable.query(filters);
-  return models.map(m => m.toJSON());
+  return models.map((m) => m.toJSON());
 };
 
 export const searchSecuritiesById = async (security_ids: string[]): Promise<JSONSecurity[]> => {

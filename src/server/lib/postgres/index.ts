@@ -13,41 +13,8 @@
  * - initialize.ts: Table creation
  */
 
-// Client (connection pool)
-export { pool } from "./client";
-
-// Initialization
-export { initializeIndex, version, index } from "./initialize";
-
-// Database query helpers
-export {
-  buildCreateTable,
-  buildCreateIndex,
-  buildInsert,
-  buildUpdate,
-  buildUpsert,
-  buildSelect,
-  buildSoftDelete,
-  buildBulkSoftDelete,
-  prepareQuery,
-  prepareValue,
-  prepareParamValue,
-  query,
-  queryOne,
-  successResult,
-  errorResult,
-  noChangeResult,
-  type PreparedQuery,
-  type WhereOptions,
-  type UpdateOptions,
-  type UpsertOptions,
-  type ParamValue,
-  type QueryData,
-  type UpsertResult,
-} from "./database";
-
-// Models - schemas and model classes
+export * from "./client";
+export * from "./initialize";
+export * from "./database";
 export * from "./models";
-
-// Repositories - all CRUD operations
 export * from "./repositories";

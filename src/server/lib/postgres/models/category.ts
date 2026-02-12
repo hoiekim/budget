@@ -4,12 +4,21 @@ import {
   isString,
   isNullableString,
   isNullableBoolean,
-  isNullableDate,
   isNullableArray,
 } from "common";
 import {
-  CATEGORY_ID, SECTION_ID, USER_ID, NAME, ROLL_OVER,
-  ROLL_OVER_START_DATE, CAPACITIES, UPDATED, IS_DELETED, CATEGORIES, SECTIONS, USERS,
+  CATEGORY_ID,
+  SECTION_ID,
+  USER_ID,
+  NAME,
+  ROLL_OVER,
+  ROLL_OVER_START_DATE,
+  CAPACITIES,
+  UPDATED,
+  IS_DELETED,
+  CATEGORIES,
+  SECTIONS,
+  USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
@@ -19,9 +28,9 @@ export class CategoryModel extends Model<JSONCategory> {
   section_id!: string;
   name!: string;
   roll_over!: boolean;
-  roll_over_start_date!: Date | undefined;
+  roll_over_start_date!: string | null;
   capacities!: JSONCapacity[];
-  updated!: Date;
+  updated!: string | null;
   is_deleted!: boolean;
 
   static typeChecker = {
@@ -30,13 +39,16 @@ export class CategoryModel extends Model<JSONCategory> {
     section_id: isString,
     name: isNullableString,
     roll_over: isNullableBoolean,
-    roll_over_start_date: isNullableDate,
+    roll_over_start_date: isNullableString,
     capacities: isNullableArray,
-    updated: isNullableDate,
+    updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("CategoryModel", CategoryModel.typeChecker);
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
+    "CategoryModel",
+    CategoryModel.typeChecker,
+  );
 
   constructor(data: unknown) {
     super();
@@ -53,7 +65,7 @@ export class CategoryModel extends Model<JSONCategory> {
       section_id: this.section_id,
       name: this.name,
       roll_over: this.roll_over,
-      roll_over_start_date: this.roll_over_start_date,
+      roll_over_start_date: this.roll_over_start_date || undefined,
       capacities: this.capacities,
     };
   }

@@ -4,12 +4,20 @@ import {
   isString,
   isNullableString,
   isNullableBoolean,
-  isNullableDate,
   isNullableArray,
 } from "common";
 import {
-  BUDGET_ID, USER_ID, NAME, ISO_CURRENCY_CODE, ROLL_OVER,
-  ROLL_OVER_START_DATE, CAPACITIES, UPDATED, IS_DELETED, BUDGETS, USERS,
+  BUDGET_ID,
+  USER_ID,
+  NAME,
+  ISO_CURRENCY_CODE,
+  ROLL_OVER,
+  ROLL_OVER_START_DATE,
+  CAPACITIES,
+  UPDATED,
+  IS_DELETED,
+  BUDGETS,
+  USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
@@ -19,9 +27,9 @@ export class BudgetModel extends Model<JSONBudget> {
   name!: string;
   iso_currency_code!: string;
   roll_over!: boolean;
-  roll_over_start_date!: Date | undefined;
+  roll_over_start_date!: string | null;
   capacities!: JSONCapacity[];
-  updated!: Date;
+  updated!: string | null;
   is_deleted!: boolean;
 
   static typeChecker = {
@@ -30,13 +38,16 @@ export class BudgetModel extends Model<JSONBudget> {
     name: isNullableString,
     iso_currency_code: isNullableString,
     roll_over: isNullableBoolean,
-    roll_over_start_date: isNullableDate,
+    roll_over_start_date: isNullableString,
     capacities: isNullableArray,
-    updated: isNullableDate,
+    updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("BudgetModel", BudgetModel.typeChecker);
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
+    "BudgetModel",
+    BudgetModel.typeChecker,
+  );
 
   constructor(data: unknown) {
     super();
@@ -53,7 +64,7 @@ export class BudgetModel extends Model<JSONBudget> {
       name: this.name,
       iso_currency_code: this.iso_currency_code,
       roll_over: this.roll_over,
-      roll_over_start_date: this.roll_over_start_date,
+      roll_over_start_date: this.roll_over_start_date || undefined,
       capacities: this.capacities,
     };
   }

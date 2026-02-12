@@ -1,4 +1,4 @@
-import { plaid, Route, searchInstitutionById, upsertInstitutions } from "server";
+import { plaid, Route, getInstitution, upsertInstitutions } from "server";
 import { JSONInstitution } from "common";
 
 export type InstitutionGetResponse = JSONInstitution;
@@ -16,7 +16,7 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
     }
 
     const id = req.query.id as string;
-    const storedInstitution = await searchInstitutionById(id);
+    const storedInstitution = await getInstitution(id);
     if (storedInstitution) {
       return { status: "success", body: storedInstitution };
     } else {

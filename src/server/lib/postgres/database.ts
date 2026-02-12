@@ -37,10 +37,10 @@ export interface UpsertOptions {
 export function buildCreateTable(
   tableName: string,
   schema: Schema<Record<string, unknown>>,
-  constraints: Constraints = []
+  constraints: Constraints = [],
 ): string {
   const columnDefs = Object.entries(schema).map(
-    ([column, definition]) => `${column} ${definition}`
+    ([column, definition]) => `${column} ${definition}`,
   );
 
   return `
@@ -50,11 +50,7 @@ export function buildCreateTable(
   `.trim();
 }
 
-export function buildCreateIndex(
-  tableName: string,
-  column: string,
-  indexName?: string
-): string {
+export function buildCreateIndex(tableName: string, column: string, indexName?: string): string {
   const name = indexName || `idx_${tableName}_${column}`;
   return `CREATE INDEX IF NOT EXISTS ${name} ON ${tableName}(${column})`;
 }
@@ -72,19 +68,16 @@ export function prepareParamValue(value: ParamValue): ParamValue {
   return value;
 }
 
-export function prepareQuery(
-  data: QueryData,
-  options: WhereOptions = {}
-): PreparedQuery {
+export function prepareQuery(data: QueryData, options: WhereOptions = {}): PreparedQuery {
   const { conditions: additionalConditions = [], startIndex = 1, excludeDeleted = true } = options;
-  
+
   const conditions: string[] = [...additionalConditions];
   const values: ParamValue[] = [];
   let paramIndex = startIndex;
 
   for (const [key, value] of Object.entries(data)) {
     if (isUndefined(value)) continue;
-    
+
     if (isNull(value)) {
       conditions.push(`${key} IS NULL`);
     } else {
@@ -105,7 +98,7 @@ export function prepareQuery(
 export function buildInsert(
   tableName: string,
   data: Record<string, ParamValue>,
-  returning?: string[]
+  returning?: string[],
 ): PreparedQuery {
   const columns: string[] = ["updated"];
   const placeholders: string[] = ["CURRENT_TIMESTAMP"];
@@ -134,7 +127,7 @@ export function buildUpdate(
   primaryKey: string,
   primaryKeyValue: ParamValue,
   data: QueryData,
-  options: UpdateOptions = {}
+  options: UpdateOptions = {},
 ): PreparedQuery | null {
   const setClauses: string[] = ["updated = CURRENT_TIMESTAMP"];
   const values: ParamValue[] = [];
@@ -175,7 +168,7 @@ export function buildUpsert(
   tableName: string,
   primaryKey: string,
   data: QueryData,
-  options: UpsertOptions = {}
+  options: UpsertOptions = {},
 ): PreparedQuery {
   const { updateColumns = [], returning = [primaryKey] } = options;
 
@@ -217,7 +210,7 @@ export function buildSelect(
   whereClause?: PreparedQuery,
   orderBy?: string,
   limit?: number,
-  offset?: number
+  offset?: number,
 ): PreparedQuery {
   const columnList = columns === "*" ? "*" : columns.join(", ");
   let sql = `SELECT ${columnList} FROM ${tableName}`;
@@ -248,7 +241,7 @@ export function buildSoftDelete(
   tableName: string,
   primaryKey: string,
   primaryKeyValue: ParamValue,
-  additionalWhere?: { column: string; value: ParamValue }
+  additionalWhere?: { column: string; value: ParamValue },
 ): PreparedQuery {
   const values: ParamValue[] = [primaryKeyValue];
   let sql = `UPDATE ${tableName} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${primaryKey} = $1`;
@@ -267,7 +260,7 @@ export function buildBulkSoftDelete(
   tableName: string,
   primaryKey: string,
   primaryKeyValues: ParamValue[],
-  additionalWhere?: { column: string; value: ParamValue }
+  additionalWhere?: { column: string; value: ParamValue },
 ): PreparedQuery {
   if (primaryKeyValues.length === 0) {
     return { sql: "", values: [] };
@@ -316,7 +309,7 @@ export interface SearchFilters {
 export function buildSelectWithFilters(
   tableName: string,
   columns: string[] | "*",
-  options: SearchFilters = {}
+  options: SearchFilters = {},
 ): PreparedQuery {
   const {
     user_id,
@@ -366,17 +359,13 @@ export function buildSelectWithFilters(
     if (dateRange.start) {
       conditions.push(`${dateRange.column} >= $${paramIndex++}`);
       values.push(
-        isDate(dateRange.start)
-          ? dateRange.start.toISOString().split("T")[0]
-          : dateRange.start
+        isDate(dateRange.start) ? dateRange.start.toISOString().split("T")[0] : dateRange.start,
       );
     }
     if (dateRange.end) {
       conditions.push(`${dateRange.column} <= $${paramIndex++}`);
       values.push(
-        isDate(dateRange.end)
-          ? dateRange.end.toISOString().split("T")[0]
-          : dateRange.end
+        isDate(dateRange.end) ? dateRange.end.toISOString().split("T")[0] : dateRange.end,
       );
     }
   }
@@ -412,7 +401,7 @@ export function buildSelectWithFilters(
 export async function query<T extends QueryResultRow>(
   pool: Pool,
   sql: string,
-  values?: ParamValue[]
+  values?: ParamValue[],
 ): Promise<QueryResult<T>> {
   return pool.query<T>(sql, values);
 }
@@ -420,7 +409,7 @@ export async function query<T extends QueryResultRow>(
 export async function queryOne<T extends QueryResultRow>(
   pool: Pool,
   sql: string,
-  values?: ParamValue[]
+  values?: ParamValue[],
 ): Promise<T | null> {
   const result = await pool.query<T>(sql, values);
   return result.rows[0] || null;
@@ -430,7 +419,7 @@ export async function selectWithFilters<T extends QueryResultRow>(
   pool: Pool,
   tableName: string,
   columns: string[] | "*",
-  options: SearchFilters = {}
+  options: SearchFilters = {},
 ): Promise<T[]> {
   const { sql, values } = buildSelectWithFilters(tableName, columns, options);
   const result = await pool.query<T>(sql, values);

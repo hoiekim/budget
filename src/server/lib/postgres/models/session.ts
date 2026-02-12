@@ -1,46 +1,70 @@
-import { isString, isNullableString, isNullableBoolean, isNullableDate } from "common";
+import { isString, isNullableString, isNullableBoolean, isNullableNumber } from "common";
 import { SessionData as ExpressSessionData } from "express-session";
 import {
-  SESSION_ID, USER_USER_ID, USER_USERNAME, COOKIE_ORIGINAL_MAX_AGE, COOKIE_MAX_AGE,
-  COOKIE_SIGNED, COOKIE_EXPIRES, COOKIE_HTTP_ONLY, COOKIE_PATH, COOKIE_DOMAIN,
-  COOKIE_SECURE, COOKIE_SAME_SITE, CREATED_AT, UPDATED, SESSIONS,
+  SESSION_ID,
+  USER_USER_ID,
+  USER_USERNAME,
+  COOKIE_ORIGINAL_MAX_AGE,
+  COOKIE_MAX_AGE,
+  COOKIE_SIGNED,
+  COOKIE_EXPIRES,
+  COOKIE_HTTP_ONLY,
+  COOKIE_PATH,
+  COOKIE_DOMAIN,
+  COOKIE_SECURE,
+  COOKIE_SAME_SITE,
+  CREATED_AT,
+  UPDATED,
+  SESSIONS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
+
+const isValidSameSiteValue = (v: unknown): boolean => {
+  if (typeof v === "boolean") return true;
+  if (v === "true") return true;
+  if (v === "false") return true;
+  if (v === "lax" || v === "strict" || v === "none") return true;
+  if (v === null) return true;
+  return false;
+};
 
 export class SessionModel extends Model<ExpressSessionData> {
   session_id!: string;
   user_user_id!: string;
   user_username!: string;
   cookie_original_max_age!: number | null;
-  cookie_max_age!: number | undefined;
-  cookie_signed!: boolean | undefined;
-  cookie_expires!: Date | undefined;
-  cookie_http_only!: boolean | undefined;
-  cookie_path!: string | undefined;
-  cookie_domain!: string | undefined;
-  cookie_secure!: boolean | undefined;
-  cookie_same_site!: boolean | "lax" | "strict" | "none" | undefined;
-  created_at!: Date;
-  updated!: Date;
+  cookie_max_age!: number | null;
+  cookie_signed!: boolean | null;
+  cookie_expires!: string | null;
+  cookie_http_only!: boolean | null;
+  cookie_path!: string | null;
+  cookie_domain!: string | null;
+  cookie_secure!: boolean | null;
+  cookie_same_site!: boolean | "lax" | "strict" | "none" | null;
+  created_at!: string | null;
+  updated!: string | null;
 
   static typeChecker = {
     session_id: isString,
     user_user_id: isString,
     user_username: isString,
-    cookie_original_max_age: isNullableString,
-    cookie_max_age: isNullableString,
+    cookie_original_max_age: isNullableNumber,
+    cookie_max_age: isNullableNumber,
     cookie_signed: isNullableBoolean,
-    cookie_expires: isNullableDate,
+    cookie_expires: isNullableString,
     cookie_http_only: isNullableBoolean,
     cookie_path: isNullableString,
     cookie_domain: isNullableString,
     cookie_secure: isNullableBoolean,
-    cookie_same_site: isNullableString,
-    created_at: isNullableDate,
-    updated: isNullableDate,
+    cookie_same_site: isValidSameSiteValue,
+    created_at: isNullableString,
+    updated: isNullableString,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("SessionModel", SessionModel.typeChecker);
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
+    "SessionModel",
+    SessionModel.typeChecker,
+  );
 
   constructor(data: unknown) {
     super();
@@ -49,36 +73,21 @@ export class SessionModel extends Model<ExpressSessionData> {
     Object.keys(SessionModel.typeChecker).forEach((k) => {
       (this as Record<string, unknown>)[k] = r[k];
     });
-    // Type conversions (BIGINT returns as string)
-    this.cookie_original_max_age = this.cookie_original_max_age ? parseInt(this.cookie_original_max_age as unknown as string, 10) : null;
-    this.cookie_max_age = this.cookie_max_age ? parseInt(this.cookie_max_age as unknown as string, 10) : undefined;
-    this.cookie_same_site = this.parseSameSite(this.cookie_same_site as unknown as string);
-  }
-
-  private parseSameSite(v: string | null | undefined): boolean | "lax" | "strict" | "none" | undefined {
-    if (v === "true") return true;
-    if (v === "false") return false;
-    if (v === "lax" || v === "strict" || v === "none") return v;
-    return undefined;
   }
 
   toJSON(): ExpressSessionData {
-    return this.toSessionData();
-  }
-
-  toSessionData(): ExpressSessionData {
     return {
       user: { user_id: this.user_user_id, username: this.user_username },
       cookie: {
         originalMaxAge: this.cookie_original_max_age,
-        maxAge: this.cookie_max_age,
-        signed: this.cookie_signed,
-        expires: this.cookie_expires,
-        httpOnly: this.cookie_http_only,
-        path: this.cookie_path,
-        domain: this.cookie_domain,
-        secure: this.cookie_secure,
-        sameSite: this.cookie_same_site,
+        maxAge: this.cookie_max_age || undefined,
+        signed: this.cookie_signed || undefined,
+        expires: this.cookie_expires ? new Date(this.cookie_expires) : undefined,
+        httpOnly: this.cookie_http_only || undefined,
+        path: this.cookie_path || undefined,
+        domain: this.cookie_domain || undefined,
+        secure: this.cookie_secure || undefined,
+        sameSite: this.cookie_same_site || undefined,
       },
     };
   }

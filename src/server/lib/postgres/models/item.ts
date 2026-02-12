@@ -1,11 +1,28 @@
 import { Products } from "plaid";
 import {
-  ItemStatus, ItemProvider, JSONItem, isString, isNullableString,
-  isNullableBoolean, isNullableDate, isNullableObject, isNullableArray,
+  ItemStatus,
+  ItemProvider,
+  JSONItem,
+  isString,
+  isNullableString,
+  isNullableBoolean,
+  isNullableObject,
+  isNullableArray,
 } from "common";
 import {
-  ITEM_ID, USER_ID, ACCESS_TOKEN, INSTITUTION_ID, AVAILABLE_PRODUCTS,
-  CURSOR, STATUS, PROVIDER, RAW, UPDATED, IS_DELETED, ITEMS, USERS,
+  ITEM_ID,
+  USER_ID,
+  ACCESS_TOKEN,
+  INSTITUTION_ID,
+  AVAILABLE_PRODUCTS,
+  CURSOR,
+  STATUS,
+  PROVIDER,
+  RAW,
+  UPDATED,
+  IS_DELETED,
+  ITEMS,
+  USERS,
 } from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
@@ -15,10 +32,10 @@ export class ItemModel extends Model<JSONItem> {
   access_token!: string;
   institution_id!: string | null;
   available_products!: Products[];
-  cursor!: string | undefined;
-  status!: ItemStatus | undefined;
+  cursor!: string | null;
+  status!: ItemStatus | null;
   provider!: ItemProvider;
-  updated!: Date;
+  updated!: string | null;
   is_deleted!: boolean;
 
   static typeChecker = {
@@ -31,11 +48,14 @@ export class ItemModel extends Model<JSONItem> {
     status: isNullableString,
     provider: isNullableString,
     raw: isNullableObject,
-    updated: isNullableDate,
+    updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("ItemModel", ItemModel.typeChecker);
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
+    "ItemModel",
+    ItemModel.typeChecker,
+  );
 
   constructor(data: unknown) {
     super();
@@ -52,14 +72,17 @@ export class ItemModel extends Model<JSONItem> {
       access_token: this.access_token,
       institution_id: this.institution_id,
       available_products: this.available_products,
-      cursor: this.cursor,
-      status: this.status,
+      cursor: this.cursor || undefined,
+      status: this.status || undefined,
       provider: this.provider,
-      updated: this.updated.toISOString(),
+      updated: this.updated || undefined,
     };
   }
 
-  static toRow(item: Partial<JSONItem> & { item_id: string }, user_id: string): Record<string, unknown> {
+  static toRow(
+    item: Partial<JSONItem> & { item_id: string },
+    user_id: string,
+  ): Record<string, unknown> {
     const r: Record<string, unknown> = { item_id: item.item_id, user_id };
     if (item.access_token !== undefined) r.access_token = item.access_token;
     if (item.institution_id !== undefined) r.institution_id = item.institution_id || null;

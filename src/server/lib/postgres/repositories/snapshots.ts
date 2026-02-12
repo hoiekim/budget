@@ -1,10 +1,24 @@
 import {
-  JSONAccountSnapshot, JSONSecuritySnapshot, JSONHoldingSnapshot, JSONSnapshotData,
+  JSONAccountSnapshot,
+  JSONSecuritySnapshot,
+  JSONHoldingSnapshot,
+  JSONSnapshotData,
 } from "common";
 import { pool } from "../client";
 import {
-  MaskedUser, SnapshotModel, snapshotsTable, isAccountSnapshot, isSecuritySnapshot, isHoldingSnapshot,
-  SNAPSHOTS, SNAPSHOT_ID, SNAPSHOT_TYPE, SNAPSHOT_DATE, ACCOUNT_ID, SECURITY_ID, USER_ID,
+  MaskedUser,
+  SnapshotModel,
+  snapshotsTable,
+  isAccountSnapshot,
+  isSecuritySnapshot,
+  isHoldingSnapshot,
+  SNAPSHOTS,
+  SNAPSHOT_ID,
+  SNAPSHOT_TYPE,
+  SNAPSHOT_DATE,
+  ACCOUNT_ID,
+  SECURITY_ID,
+  USER_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
 
@@ -46,14 +60,25 @@ export interface HoldingSnapshot {
   quantity?: number;
 }
 
-const rowToSnapshot = (row: Record<string, unknown>): JSONSnapshotData => new SnapshotModel(row).toJSON();
+const rowToSnapshot = (row: Record<string, unknown>): JSONSnapshotData =>
+  new SnapshotModel(row).toJSON();
 
-export const searchSnapshots = async (user: MaskedUser | null, options: SearchSnapshotsOptions = {}): Promise<JSONSnapshotData[]> => {
+export const searchSnapshots = async (
+  user: MaskedUser | null,
+  options: SearchSnapshotsOptions = {},
+): Promise<JSONSnapshotData[]> => {
   const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
     user_id: user?.user_id,
-    filters: { [SNAPSHOT_TYPE]: options.snapshot_type, [ACCOUNT_ID]: options.account_id, [SECURITY_ID]: options.security_id },
+    filters: {
+      [SNAPSHOT_TYPE]: options.snapshot_type,
+      [ACCOUNT_ID]: options.account_id,
+      [SECURITY_ID]: options.security_id,
+    },
     inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
-    dateRange: options.startDate || options.endDate ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate } : undefined,
+    dateRange:
+      options.startDate || options.endDate
+        ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+        : undefined,
     orderBy: `${SNAPSHOT_DATE} DESC`,
     limit: options.limit,
   });
@@ -61,19 +86,28 @@ export const searchSnapshots = async (user: MaskedUser | null, options: SearchSn
   return result.rows.map(rowToSnapshot);
 };
 
-export const getAccountSnapshots = async (user: MaskedUser, options: { account_id?: string; startDate?: string; endDate?: string } = {}): Promise<AccountSnapshot[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id, [SNAPSHOT_TYPE]: "account_balance" };
+export const getAccountSnapshots = async (
+  user: MaskedUser,
+  options: { account_id?: string; startDate?: string; endDate?: string } = {},
+): Promise<AccountSnapshot[]> => {
+  const filters: Record<string, unknown> = {
+    [USER_ID]: user.user_id,
+    [SNAPSHOT_TYPE]: "account_balance",
+  };
   if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
-  
+
   // Date range filtering requires raw query
   const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
     user_id: user.user_id,
     filters: { [SNAPSHOT_TYPE]: "account_balance", [ACCOUNT_ID]: options.account_id },
-    dateRange: options.startDate || options.endDate ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate } : undefined,
+    dateRange:
+      options.startDate || options.endDate
+        ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+        : undefined,
     orderBy: SNAPSHOT_DATE,
   });
   const result = await pool.query<Record<string, unknown>>(sql, values);
-  
+
   return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id as string,
     snapshot_date: String(row.snapshot_date),
@@ -85,14 +119,19 @@ export const getAccountSnapshots = async (user: MaskedUser, options: { account_i
   }));
 };
 
-export const getSecuritySnapshots = async (options: { security_id?: string; startDate?: string; endDate?: string } = {}): Promise<SecuritySnapshot[]> => {
+export const getSecuritySnapshots = async (
+  options: { security_id?: string; startDate?: string; endDate?: string } = {},
+): Promise<SecuritySnapshot[]> => {
   const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
     filters: { [SNAPSHOT_TYPE]: "security", [SECURITY_ID]: options.security_id },
-    dateRange: options.startDate || options.endDate ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate } : undefined,
+    dateRange:
+      options.startDate || options.endDate
+        ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+        : undefined,
     orderBy: SNAPSHOT_DATE,
   });
   const result = await pool.query<Record<string, unknown>>(sql, values);
-  
+
   return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id as string,
     snapshot_date: String(row.snapshot_date),
@@ -101,19 +140,25 @@ export const getSecuritySnapshots = async (options: { security_id?: string; star
   }));
 };
 
-export const getHoldingSnapshots = async (user: MaskedUser, options: { account_id?: string; security_id?: string; startDate?: string; endDate?: string } = {}): Promise<HoldingSnapshot[]> => {
+export const getHoldingSnapshots = async (
+  user: MaskedUser,
+  options: { account_id?: string; security_id?: string; startDate?: string; endDate?: string } = {},
+): Promise<HoldingSnapshot[]> => {
   const filters: Record<string, unknown> = { [SNAPSHOT_TYPE]: "holding" };
   if (options.account_id) filters.holding_account_id = options.account_id;
   if (options.security_id) filters.holding_security_id = options.security_id;
-  
+
   const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
     user_id: user.user_id,
     filters,
-    dateRange: options.startDate || options.endDate ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate } : undefined,
+    dateRange:
+      options.startDate || options.endDate
+        ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+        : undefined,
     orderBy: SNAPSHOT_DATE,
   });
   const result = await pool.query<Record<string, unknown>>(sql, values);
-  
+
   return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id as string,
     snapshot_date: String(row.snapshot_date),
@@ -129,7 +174,7 @@ export const getHoldingSnapshots = async (user: MaskedUser, options: { account_i
 export const getLatestAccountSnapshots = async (user: MaskedUser): Promise<AccountSnapshot[]> => {
   const result = await pool.query<Record<string, unknown>>(
     `SELECT DISTINCT ON (${ACCOUNT_ID}) ${SNAPSHOT_ID}, ${SNAPSHOT_DATE}, ${ACCOUNT_ID}, balances_available, balances_current, balances_limit, balances_iso_currency_code FROM ${SNAPSHOTS} WHERE ${USER_ID} = $1 AND ${SNAPSHOT_TYPE} = 'account_balance' AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY ${ACCOUNT_ID}, ${SNAPSHOT_DATE} DESC`,
-    [user.user_id]
+    [user.user_id],
   );
   return result.rows.map((row) => ({
     snapshot_id: row.snapshot_id as string,
@@ -142,7 +187,10 @@ export const getLatestAccountSnapshots = async (user: MaskedUser): Promise<Accou
   }));
 };
 
-export const upsertAccountSnapshots = async (user: MaskedUser, snapshots: AccountSnapshot[]): Promise<UpsertResult[]> => {
+export const upsertAccountSnapshots = async (
+  user: MaskedUser,
+  snapshots: AccountSnapshot[],
+): Promise<UpsertResult[]> => {
   if (!snapshots.length) return [];
   const results: UpsertResult[] = [];
 
@@ -168,7 +216,9 @@ export const upsertAccountSnapshots = async (user: MaskedUser, snapshots: Accoun
   return results;
 };
 
-export const upsertSecuritySnapshots = async (snapshots: SecuritySnapshot[]): Promise<UpsertResult[]> => {
+export const upsertSecuritySnapshots = async (
+  snapshots: SecuritySnapshot[],
+): Promise<UpsertResult[]> => {
   if (!snapshots.length) return [];
   const results: UpsertResult[] = [];
 
@@ -190,7 +240,10 @@ export const upsertSecuritySnapshots = async (snapshots: SecuritySnapshot[]): Pr
   return results;
 };
 
-export const upsertHoldingSnapshots = async (user: MaskedUser, snapshots: HoldingSnapshot[]): Promise<UpsertResult[]> => {
+export const upsertHoldingSnapshots = async (
+  user: MaskedUser,
+  snapshots: HoldingSnapshot[],
+): Promise<UpsertResult[]> => {
   if (!snapshots.length) return [];
   const results: UpsertResult[] = [];
 
@@ -275,12 +328,15 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
 export const deleteOldSnapshots = async (beforeDate: string): Promise<{ deleted: number }> => {
   const result = await pool.query(
     `UPDATE ${SNAPSHOTS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${SNAPSHOT_DATE} < $1 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING ${SNAPSHOT_ID}`,
-    [beforeDate]
+    [beforeDate],
   );
   return { deleted: result.rowCount || 0 };
 };
 
-export const deleteSnapshotsByAccount = async (user: MaskedUser, account_id: string): Promise<{ deleted: number }> => {
+export const deleteSnapshotsByAccount = async (
+  user: MaskedUser,
+  account_id: string,
+): Promise<{ deleted: number }> => {
   const deleted = await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user.user_id);
   return { deleted };
 };
@@ -290,15 +346,27 @@ export const deleteSnapshotsByUser = async (user: MaskedUser): Promise<{ deleted
   return { deleted };
 };
 
-export const deleteSnapshotById = async (user: MaskedUser, snapshot_id: string): Promise<boolean> => {
+export const deleteSnapshotById = async (
+  user: MaskedUser,
+  snapshot_id: string,
+): Promise<boolean> => {
   return await snapshotsTable.softDelete(snapshot_id);
 };
 
 export const aggregateAccountSnapshots = async (
   user: MaskedUser,
-  options: { account_ids?: string[]; startDate?: string; endDate?: string; interval?: "day" | "week" | "month" } = {}
+  options: {
+    account_ids?: string[];
+    startDate?: string;
+    endDate?: string;
+    interval?: "day" | "week" | "month";
+  } = {},
 ): Promise<{ date: string; total_current: number; total_available: number }[]> => {
-  const conditions: string[] = [`${USER_ID} = $1`, `${SNAPSHOT_TYPE} = 'account_balance'`, "(is_deleted IS NULL OR is_deleted = FALSE)"];
+  const conditions: string[] = [
+    `${USER_ID} = $1`,
+    `${SNAPSHOT_TYPE} = 'account_balance'`,
+    "(is_deleted IS NULL OR is_deleted = FALSE)",
+  ];
   const values: string[] = [user.user_id];
   let paramIndex = 2;
 
@@ -308,15 +376,30 @@ export const aggregateAccountSnapshots = async (
     values.push(...options.account_ids);
     paramIndex += options.account_ids.length;
   }
-  if (options.startDate) { conditions.push(`${SNAPSHOT_DATE} >= $${paramIndex++}`); values.push(options.startDate); }
-  if (options.endDate) { conditions.push(`${SNAPSHOT_DATE} <= $${paramIndex++}`); values.push(options.endDate); }
+  if (options.startDate) {
+    conditions.push(`${SNAPSHOT_DATE} >= $${paramIndex++}`);
+    values.push(options.startDate);
+  }
+  if (options.endDate) {
+    conditions.push(`${SNAPSHOT_DATE} <= $${paramIndex++}`);
+    values.push(options.endDate);
+  }
 
   const interval = options.interval || "day";
-  const dateGroup = interval === "week" ? `date_trunc('week', ${SNAPSHOT_DATE})` : interval === "month" ? `date_trunc('month', ${SNAPSHOT_DATE})` : `date_trunc('day', ${SNAPSHOT_DATE})`;
+  const dateGroup =
+    interval === "week"
+      ? `date_trunc('week', ${SNAPSHOT_DATE})`
+      : interval === "month"
+        ? `date_trunc('month', ${SNAPSHOT_DATE})`
+        : `date_trunc('day', ${SNAPSHOT_DATE})`;
 
   const result = await pool.query<{ date: string; total_current: string; total_available: string }>(
     `SELECT ${dateGroup} as date, SUM(COALESCE(balances_current, 0)) as total_current, SUM(COALESCE(balances_available, 0)) as total_available FROM ${SNAPSHOTS} WHERE ${conditions.join(" AND ")} GROUP BY ${dateGroup} ORDER BY date`,
-    values
+    values,
   );
-  return result.rows.map((row) => ({ date: row.date, total_current: parseFloat(row.total_current) || 0, total_available: parseFloat(row.total_available) || 0 }));
+  return result.rows.map((row) => ({
+    date: row.date,
+    total_current: parseFloat(row.total_current) || 0,
+    total_available: parseFloat(row.total_available) || 0,
+  }));
 };

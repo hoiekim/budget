@@ -1,5 +1,22 @@
-import { JSONChart, ChartType, isString, isNullableString, isNullableBoolean, isNullableDate, isNullableObject } from "common";
-import { CHART_ID, USER_ID, NAME, TYPE, CONFIGURATION, UPDATED, IS_DELETED, CHARTS, USERS } from "./common";
+import {
+  JSONChart,
+  ChartType,
+  isString,
+  isNullableString,
+  isNullableBoolean,
+  isNullableObject,
+} from "common";
+import {
+  CHART_ID,
+  USER_ID,
+  NAME,
+  TYPE,
+  CONFIGURATION,
+  UPDATED,
+  IS_DELETED,
+  CHARTS,
+  USERS,
+} from "./common";
 import { Schema, AssertTypeFn, createAssertType, Model, createTable } from "./base";
 
 export class ChartModel extends Model<JSONChart> {
@@ -8,7 +25,7 @@ export class ChartModel extends Model<JSONChart> {
   name!: string;
   type!: ChartType;
   configuration!: string;
-  updated!: Date;
+  updated!: string | null;
   is_deleted!: boolean;
 
   static typeChecker = {
@@ -17,11 +34,14 @@ export class ChartModel extends Model<JSONChart> {
     name: isNullableString,
     type: isNullableString,
     configuration: isNullableObject,
-    updated: isNullableDate,
+    updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
 
-  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType("ChartModel", ChartModel.typeChecker);
+  static assertType: AssertTypeFn<Record<string, unknown>> = createAssertType(
+    "ChartModel",
+    ChartModel.typeChecker,
+  );
 
   constructor(data: unknown) {
     super();
@@ -31,11 +51,19 @@ export class ChartModel extends Model<JSONChart> {
       (this as Record<string, unknown>)[k] = r[k];
     });
     // Type conversion: pg parses JSONB to object, need to stringify for our string type
-    this.configuration = typeof this.configuration === "object" ? JSON.stringify(this.configuration) : (this.configuration as string);
+    this.configuration =
+      typeof this.configuration === "object"
+        ? JSON.stringify(this.configuration)
+        : (this.configuration as string);
   }
 
   toJSON(): JSONChart {
-    return { chart_id: this.chart_id, name: this.name, type: this.type, configuration: this.configuration };
+    return {
+      chart_id: this.chart_id,
+      name: this.name,
+      type: this.type,
+      configuration: this.configuration,
+    };
   }
 
   static toRow(c: Partial<JSONChart>, user_id: string): Record<string, unknown> {
@@ -44,7 +72,8 @@ export class ChartModel extends Model<JSONChart> {
     if (c.name !== undefined) r.name = c.name;
     if (c.type !== undefined) r.type = c.type;
     if (c.configuration !== undefined) {
-      r.configuration = typeof c.configuration === "string" ? c.configuration : JSON.stringify(c.configuration);
+      r.configuration =
+        typeof c.configuration === "string" ? c.configuration : JSON.stringify(c.configuration);
     }
     return r;
   }

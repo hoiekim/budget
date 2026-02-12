@@ -6,7 +6,7 @@ import { buildUpsert, buildUpdate, selectWithFilters } from "../database";
 export class PostgresSessionStore extends Store {
   get(
     sid: string,
-    callback: (err: Error | null, session?: ExpressSessionData | null) => void
+    callback: (err: Error | null, session?: ExpressSessionData | null) => void,
   ): void {
     selectWithFilters<Record<string, unknown>>(pool, SESSIONS, "*", {
       primaryKey: { column: SESSION_ID, value: sid },
@@ -16,7 +16,7 @@ export class PostgresSessionStore extends Store {
         if (rows.length === 0) return callback(null, null);
         try {
           const model = new SessionModel(rows[0]);
-          callback(null, model.toSessionData());
+          callback(null, model.toJSON());
         } catch (error) {
           callback(error instanceof Error ? error : new Error(String(error)));
         }
@@ -27,7 +27,7 @@ export class PostgresSessionStore extends Store {
   set(sid: string, session: ExpressSessionData, callback?: (err?: Error) => void): void {
     const row = SessionModel.fromSessionData(sid, session);
     const { sql, values } = buildUpsert(SESSIONS, SESSION_ID, row, {
-      updateColumns: Object.keys(row).filter(k => k !== SESSION_ID),
+      updateColumns: Object.keys(row).filter((k) => k !== SESSION_ID),
       returning: [SESSION_ID],
     });
 
@@ -48,7 +48,7 @@ export class PostgresSessionStore extends Store {
     const row = SessionModel.fromSessionData(sid, session);
     const updateData = { ...row };
     delete (updateData as Record<string, unknown>)[SESSION_ID];
-    
+
     const query = buildUpdate(SESSIONS, SESSION_ID, sid, updateData);
     if (!query) {
       callback && callback();

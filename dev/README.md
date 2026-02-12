@@ -10,7 +10,7 @@ Budget is a web application for tracking financial accounts and transactions. It
 
 - **Frontend**: React (TypeScript)
 - **Backend**: Node.js with Express (TypeScript)
-- **Database**: Elasticsearch
+- **Database**: PostgreSQL
 - **Containerization**: Docker
 - **External APIs**: Plaid, SimpleFin, Polygon
 
@@ -25,7 +25,7 @@ budget/
 │   │   └── lib/              # Frontend utilities
 │   ├── server/               # Backend Express server
 │   │   ├── lib/              # Server utilities and integrations
-│   │   │   ├── elasticsearch/  # Elasticsearch client and operations
+│   │   │   ├── postgres/     # PostgreSQL client and operations
 │   │   │   ├── plaid/        # Plaid API integration
 │   │   │   ├── simple-fin/   # SimpleFin API integration
 │   │   │   └── compute-tools/  # Data processing utilities
@@ -51,56 +51,62 @@ budget/
 - Node.js (v14 or higher)
 - npm (v6 or higher)
 - Docker and Docker Compose (optional, for containerized development)
-- Elasticsearch instance (local or remote)
+- PostgreSQL instance (local or remote)
 
 ### Local Development Setup
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/hoiekim/budget.git
    cd budget
    ```
 
 2. **Set up environment variables**
+
    ```bash
    cp .env.example .env.local
    ```
-   
+
    Edit `.env.local` with your configuration:
    - `ADMIN_PASSWORD`: Password for the admin user
-   - `ELASTICSEARCH_HOST`: URL to your Elasticsearch instance
+   - `POSTGRES_HOST`: URL to your PostgreSQL instance
    - `PLAID_CLIENT_ID` and `PLAID_SECRET_*`: Credentials for Plaid API (optional)
    - `HOST_NAME`: Domain name for hosting (required for OAuth with Plaid)
    - `POLYGON_API_KEY`: API key for Polygon.io (optional, for investment metadata)
 
 3. **Install dependencies**
+
    ```bash
    npm install
    ```
 
 4. **Start the development server**
-   
+
    For client development:
+
    ```bash
    npm run dev-client
    ```
-   
+
    For server development:
+
    ```bash
    npm run dev-server
    ```
-   
+
    For full stack development, run both commands in separate terminals.
 
 ### Docker Development Setup
 
 1. **Build and start the containers**
+
    ```bash
    docker-compose up -d
    ```
 
 2. **Access the application**
-   
+
    The application will be available at http://localhost:3005
 
 ## Build Process
@@ -108,15 +114,19 @@ budget/
 The project uses a multi-step build process:
 
 1. **Build the server**
+
    ```bash
    npm run build-server
    ```
+
    This compiles TypeScript files and bundles the server code.
 
 2. **Build the client**
+
    ```bash
    npm run build-client
    ```
+
    This creates an optimized production build of the React application.
 
 3. **Build everything**
@@ -128,6 +138,7 @@ The project uses a multi-step build process:
 ## Testing
 
 Run tests with:
+
 ```bash
 npm test
 ```
@@ -160,13 +171,14 @@ SimpleFin provides an alternative method to connect to financial institutions. T
 
 Polygon.io is used to fetch metadata for investment items when not available from the primary data providers. The integration is in `src/server/lib/polygon.ts`.
 
-## Database (Elasticsearch)
+## Database (PostgreSQL)
 
-The application uses Elasticsearch to store and query financial data. The Elasticsearch client and operations are defined in `src/server/lib/elasticsearch/`.
+The application uses PostgreSQL to store and query financial data. The PostgreSQL client and operations are defined in `src/server/lib/postgres/`.
 
 ## Contributing Guidelines
 
 1. **Create a feature branch**
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -182,6 +194,7 @@ The application uses Elasticsearch to store and query financial data. The Elasti
 ### Production Deployment
 
 1. **Build the application**
+
    ```bash
    npm run build
    ```
@@ -193,7 +206,7 @@ The application uses Elasticsearch to store and query financial data. The Elasti
 
 ### Docker Deployment
 
-Use the provided `docker-compose.yml` file to deploy the application with Elasticsearch:
+Use the provided `docker-compose.yml` file to deploy the application with PostgreSQL:
 
 ```bash
 docker-compose up -d
@@ -203,16 +216,11 @@ docker-compose up -d
 
 ### Common Issues
 
-1. **Elasticsearch connection issues**
-   - Verify Elasticsearch is running
-   - Check the `ELASTICSEARCH_HOST` environment variable
-   - Ensure network connectivity between the app and Elasticsearch
-
-2. **Plaid API errors**
+1. **Plaid API errors**
    - Verify Plaid API credentials
    - Check API request logs for specific error messages
 
-3. **Build errors**
+2. **Build errors**
    - Clear the build directory: `rm -rf build/`
    - Reinstall dependencies: `npm ci`
    - Try building again: `npm run build`
@@ -221,6 +229,5 @@ docker-compose up -d
 
 - [Plaid API Documentation](https://plaid.com/docs/)
 - [SimpleFin Documentation](https://www.simplefin.org/documentation/)
-- [Elasticsearch Documentation](https://www.elastic.co/guide/index.html)
 - [React Documentation](https://reactjs.org/docs/getting-started.html)
 - [TypeScript Documentation](https://www.typescriptlang.org/docs/)

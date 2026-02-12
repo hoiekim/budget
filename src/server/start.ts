@@ -6,7 +6,7 @@ overrideConsoleLog();
 import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
-import { initializeIndex, PostgresSessionStore, scheduledSync } from "server";
+import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
 import * as routes from "server/routes";
 
 const app = express();
@@ -25,7 +25,7 @@ app.use(
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
     store: new PostgresSessionStore(),
-  })
+  }),
 );
 
 const router = Router();
@@ -48,7 +48,7 @@ app.get("*", (_req, res) => {
 });
 
 app.listen(process.env.PORT || 3005, async () => {
-  await initializeIndex();
+  await initializePostgres();
   console.info("Budget app server is up.");
   scheduledSync();
 });

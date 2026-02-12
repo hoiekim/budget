@@ -54,7 +54,7 @@ We need some environment configuration. Copy the content of `.env.example` file 
 
 - `ADMIN_PASSWORD` is password that you will use when login to Budget as administrator user. Choose one that you would like.
 
-- `ELASTICSEARCH_HOST` is an address to an Elasticsearch server. You can download it from their [official website](https://elastic.co) for free and install it on your local machine. Or consider using free external hosting service, [Learndatabases](https://learndatabases.dev).
+- `POSTGRES_HOST` is an address to a PostgreSQL server.
 
 - (optional) `PLAID_CLIENT_ID`, `PLAID_SECRET_PRODUCTION` are kinds of password that you need to request data from Plaid API. Go to [Plaid](https://plaid.com), sign up and get your secret key. You don't need this if you use SimpleFin to connect bank accounts.
 

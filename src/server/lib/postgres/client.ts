@@ -20,6 +20,9 @@ const config: PoolConfig = {
   types: {
     getTypeParser(id, format) {
       if (id === types.builtins.NUMERIC) return parseFloat;
+      if (id === types.builtins.INT8) return parseFloat;
+      if (id === types.builtins.DATE) return (s: string) => s;
+      if (id === types.builtins.TIMESTAMPTZ) return (s: string) => s;
       return types.getTypeParser(id, format);
     },
   },

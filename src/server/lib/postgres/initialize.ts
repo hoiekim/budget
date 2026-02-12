@@ -1,5 +1,5 @@
 import { pool } from "./client";
-import { searchUser, indexUser } from "./repositories";
+import { searchUser, writeUser } from "./repositories";
 import { buildCreateTable, buildCreateIndex } from "./database";
 import {
   Table,
@@ -41,7 +41,7 @@ const tables: Table<unknown, any>[] = [
   chartsTable,
 ];
 
-export const initializeIndex = async (): Promise<void> => {
+export const initializePostgres = async (): Promise<void> => {
   console.info("Initialization started.");
 
   try {
@@ -53,7 +53,7 @@ export const initializeIndex = async (): Promise<void> => {
     console.info(`PostgreSQL connection failed: ${message}`);
     console.info("Restarting initialization in 10 seconds.");
     return new Promise((res) => {
-      setTimeout(() => res(initializeIndex()), 10000);
+      setTimeout(() => res(initializePostgres()), 10000);
     });
   }
 
@@ -76,7 +76,7 @@ export const initializeIndex = async (): Promise<void> => {
   const { ADMIN_PASSWORD, DEMO_PASSWORD } = process.env;
 
   const existingAdminUser = await searchUser({ username: "admin" });
-  const indexingAdminUserResult = await indexUser({
+  const indexingAdminUserResult = await writeUser({
     user_id: existingAdminUser?.user_id,
     username: "admin",
     password: ADMIN_PASSWORD || "budget",
@@ -85,7 +85,7 @@ export const initializeIndex = async (): Promise<void> => {
   if (!createdAdminUserId) throw new Error("Failed to create admin user");
 
   const existingDemoUser = await searchUser({ username: "demo" });
-  await indexUser({
+  await writeUser({
     user_id: existingDemoUser?.user_id,
     username: "demo",
     password: DEMO_PASSWORD || "budget",
