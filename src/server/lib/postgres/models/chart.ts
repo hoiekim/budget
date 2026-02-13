@@ -33,13 +33,13 @@ type ChartSchema = typeof chartSchema;
 type ChartRow = { [k in keyof ChartSchema]: RowValueType };
 
 export class ChartModel extends Model<JSONChart, ChartSchema> implements ChartRow {
-  chart_id!: string;
-  user_id!: string;
-  name!: string;
-  type!: ChartType;
-  configuration!: string;
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare chart_id: string;
+  declare user_id: string;
+  declare name: string;
+  declare type: ChartType;
+  declare configuration: string;
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     chart_id: isString,

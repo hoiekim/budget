@@ -61,26 +61,26 @@ type TxSchema = typeof txSchema;
 type TxRow = { [k in keyof TxSchema]: RowValueType };
 
 export class TransactionModel extends Model<JSONTransaction, TxSchema> implements TxRow {
-  transaction_id!: string;
-  user_id!: string;
-  account_id!: string;
-  name!: string;
-  merchant_name!: string | null;
-  amount!: number;
-  iso_currency_code!: string | null;
-  date!: string;
-  pending!: boolean;
-  pending_transaction_id!: string | null;
-  payment_channel!: TransactionPaymentChannelEnum;
-  location_country!: string | null;
-  location_region!: string | null;
-  location_city!: string | null;
-  label_budget_id!: string | null;
-  label_category_id!: string | null;
-  label_memo!: string | null;
-  raw!: object | null;
-  updated!: string;
-  is_deleted!: boolean;
+  declare transaction_id: string;
+  declare user_id: string;
+  declare account_id: string;
+  declare name: string;
+  declare merchant_name: string | null;
+  declare amount: number;
+  declare iso_currency_code: string | null;
+  declare date: string;
+  declare pending: boolean;
+  declare pending_transaction_id: string | null;
+  declare payment_channel: TransactionPaymentChannelEnum;
+  declare location_country: string | null;
+  declare location_region: string | null;
+  declare location_city: string | null;
+  declare label_budget_id: string | null;
+  declare label_category_id: string | null;
+  declare label_memo: string | null;
+  declare raw: object | null;
+  declare updated: string;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     transaction_id: isString,

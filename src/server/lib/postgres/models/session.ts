@@ -49,20 +49,20 @@ type SessionSchema = typeof sessionSchema;
 type SessionRow = { [k in keyof SessionSchema]: RowValueType };
 
 export class SessionModel extends Model<ExpressSessionData, SessionSchema> implements SessionRow {
-  session_id!: string;
-  user_user_id!: string;
-  user_username!: string;
-  cookie_original_max_age!: number | null;
-  cookie_max_age!: number | null;
-  cookie_signed!: boolean | null;
-  cookie_expires!: string | null;
-  cookie_http_only!: boolean | null;
-  cookie_path!: string | null;
-  cookie_domain!: string | null;
-  cookie_secure!: boolean | null;
-  cookie_same_site!: boolean | "lax" | "strict" | "none" | null;
-  created_at!: string | null;
-  updated!: string | null;
+  declare session_id: string;
+  declare user_user_id: string;
+  declare user_username: string;
+  declare cookie_original_max_age: number | null;
+  declare cookie_max_age: number | null;
+  declare cookie_signed: boolean | null;
+  declare cookie_expires: string | null;
+  declare cookie_http_only: boolean | null;
+  declare cookie_path: string | null;
+  declare cookie_domain: string | null;
+  declare cookie_secure: boolean | null;
+  declare cookie_same_site: boolean | "lax" | "strict" | "none" | null;
+  declare created_at: string | null;
+  declare updated: string | null;
 
   static typeChecker = {
     session_id: isString,

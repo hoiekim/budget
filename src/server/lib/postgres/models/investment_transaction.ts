@@ -56,24 +56,24 @@ type InvTxSchema = typeof invTxSchema;
 type InvTxRow = { [k in keyof InvTxSchema]: RowValueType };
 
 export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRow {
-  investment_transaction_id!: string;
-  user_id!: string;
-  account_id!: string;
-  security_id!: string | null;
-  date!: string;
-  name!: string;
-  amount!: number;
-  quantity!: number;
-  price!: number;
-  iso_currency_code!: string | null;
-  type!: InvestmentTransactionType;
-  subtype!: InvestmentTransactionSubtype;
-  label_budget_id!: string | null;
-  label_category_id!: string | null;
-  label_memo!: string | null;
-  raw!: object | null;
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare investment_transaction_id: string;
+  declare user_id: string;
+  declare account_id: string;
+  declare security_id: string | null;
+  declare date: string;
+  declare name: string;
+  declare amount: number;
+  declare quantity: number;
+  declare price: number;
+  declare iso_currency_code: string | null;
+  declare type: InvestmentTransactionType;
+  declare subtype: InvestmentTransactionSubtype;
+  declare label_budget_id: string | null;
+  declare label_category_id: string | null;
+  declare label_memo: string | null;
+  declare raw: object | null;
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     investment_transaction_id: isString,

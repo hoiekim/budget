@@ -60,25 +60,25 @@ type SnapshotSchema = typeof snapshotSchema;
 type SnapshotRow = { [k in keyof SnapshotSchema]: RowValueType };
 
 export class SnapshotModel extends Model<JSONSnapshotData, SnapshotSchema> implements SnapshotRow {
-  snapshot_id!: string;
-  user_id!: string | null;
-  snapshot_date!: string;
-  snapshot_type!: SnapshotType;
-  account_id!: string | null;
-  balances_available!: number | null;
-  balances_current!: number | null;
-  balances_limit!: number | null;
-  balances_iso_currency_code!: string | null;
-  security_id!: string | null;
-  close_price!: number | null;
-  holding_account_id!: string | null;
-  holding_security_id!: string | null;
-  institution_price!: number | null;
-  institution_value!: number | null;
-  cost_basis!: number | null;
-  quantity!: number | null;
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare snapshot_id: string;
+  declare user_id: string | null;
+  declare snapshot_date: string;
+  declare snapshot_type: SnapshotType;
+  declare account_id: string | null;
+  declare balances_available: number | null;
+  declare balances_current: number | null;
+  declare balances_limit: number | null;
+  declare balances_iso_currency_code: string | null;
+  declare security_id: string | null;
+  declare close_price: number | null;
+  declare holding_account_id: string | null;
+  declare holding_security_id: string | null;
+  declare institution_price: number | null;
+  declare institution_value: number | null;
+  declare cost_basis: number | null;
+  declare quantity: number | null;
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     snapshot_id: isString,
