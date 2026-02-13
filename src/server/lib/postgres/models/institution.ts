@@ -16,10 +16,10 @@ export class InstitutionModel
   extends Model<JSONInstitution, InstitutionSchema>
   implements InstitutionRow
 {
-  institution_id!: string;
-  name!: string;
-  raw!: object | null;
-  updated!: string | null;
+  declare institution_id: string;
+  declare name: string;
+  declare raw: object | null;
+  declare updated: string | null;
 
   static typeChecker = {
     institution_id: isString,

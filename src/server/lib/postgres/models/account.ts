@@ -59,25 +59,25 @@ type AccountSchema = typeof accountSchema;
 type AccountRow = { [k in keyof AccountSchema]: RowValueType };
 
 export class AccountModel extends Model<JSONAccount, AccountSchema> implements AccountRow {
-  account_id!: string;
-  user_id!: string;
-  item_id!: string;
-  institution_id!: string;
-  name!: string;
-  type!: AccountType;
-  subtype!: AccountSubtype | null;
-  balances_available!: number;
-  balances_current!: number;
-  balances_limit!: number;
-  balances_iso_currency_code!: string;
-  custom_name!: string;
-  hide!: boolean;
-  label_budget_id!: string | null;
-  graph_options_use_snapshots!: boolean;
-  graph_options_use_transactions!: boolean;
-  raw!: object | null;
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare account_id: string;
+  declare user_id: string;
+  declare item_id: string;
+  declare institution_id: string;
+  declare name: string;
+  declare type: AccountType;
+  declare subtype: AccountSubtype | null;
+  declare balances_available: number;
+  declare balances_current: number;
+  declare balances_limit: number;
+  declare balances_iso_currency_code: string;
+  declare custom_name: string;
+  declare hide: boolean;
+  declare label_budget_id: string | null;
+  declare graph_options_use_snapshots: boolean;
+  declare graph_options_use_transactions: boolean;
+  declare raw: object | null;
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     account_id: isString,

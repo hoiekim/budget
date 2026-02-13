@@ -34,14 +34,14 @@ type UserSchema = typeof userSchema;
 type UserRow = { [k in keyof UserSchema]: RowValueType };
 
 export class UserModel extends Model<MaskedUser, UserSchema> implements UserRow {
-  user_id!: string;
-  username!: string;
-  password!: string | null;
-  email!: string | null;
-  expiry!: string | null;
-  token!: string | null;
-  updated!: string;
-  is_deleted!: boolean;
+  declare user_id: string;
+  declare username: string;
+  declare password: string | null;
+  declare email: string | null;
+  declare expiry: string | null;
+  declare token: string | null;
+  declare updated: string;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     user_id: isString,

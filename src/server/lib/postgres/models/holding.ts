@@ -46,19 +46,19 @@ type HoldingSchema = typeof holdingSchema;
 type HoldingRow = { [k in keyof HoldingSchema]: RowValueType };
 
 export class HoldingModel extends Model<JSONHolding, HoldingSchema> implements HoldingRow {
-  holding_id!: string;
-  user_id!: string;
-  account_id!: string;
-  security_id!: string;
-  institution_price!: number;
-  institution_price_as_of!: string | null;
-  institution_value!: number;
-  cost_basis!: number;
-  quantity!: number;
-  iso_currency_code!: string;
-  raw!: object | null;
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare holding_id: string;
+  declare user_id: string;
+  declare account_id: string;
+  declare security_id: string;
+  declare institution_price: number;
+  declare institution_price_as_of: string | null;
+  declare institution_value: number;
+  declare cost_basis: number;
+  declare quantity: number;
+  declare iso_currency_code: string;
+  declare raw: object | null;
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     holding_id: isString,

@@ -1,20 +1,23 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "noFallthroughCasesInSwitch": true,
-    "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
     "baseUrl": "./src",
     "paths": {
       "client": ["./client"],
@@ -23,18 +26,10 @@
       "server/*": ["./server/*"],
       "common": ["./common"],
       "common/*": ["./common/*"]
-    }
+    },
+    "types": ["bun-types"]
   },
   "include": ["src"],
-  "exclude": ["*.test.ts", "*.test.tsx", "**/*.test.ts", "**/*.test.tsx"],
-  "ts-node": {
-    "compilerOptions": {
-      "target": "es2016",
-      "skipLibCheck": true,
-      "esModuleInterop": true,
-      "strict": true,
-      "module": "commonjs",
-      "resolveJsonModule": true
-    }
-  }
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"],
+  "references": [{ "path": "./tsconfig.node.json" }]
 }

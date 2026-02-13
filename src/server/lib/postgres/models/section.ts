@@ -38,15 +38,15 @@ type SectionSchema = typeof sectionSchema;
 type SectionRow = { [k in keyof SectionSchema]: RowValueType };
 
 export class SectionModel extends Model<JSONSection, SectionSchema> implements SectionRow {
-  section_id!: string;
-  user_id!: string;
-  budget_id!: string;
-  name!: string;
-  roll_over!: boolean;
-  roll_over_start_date!: string | null;
-  capacities!: JSONCapacity[];
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare section_id: string;
+  declare user_id: string;
+  declare budget_id: string;
+  declare name: string;
+  declare roll_over: boolean;
+  declare roll_over_start_date: string | null;
+  declare capacities: JSONCapacity[];
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     section_id: isString,

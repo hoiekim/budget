@@ -44,17 +44,17 @@ type ItemSchema = typeof itemSchema;
 type ItemRow = { [k in keyof ItemSchema]: RowValueType };
 
 export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
-  item_id!: string;
-  user_id!: string;
-  access_token!: string;
-  institution_id!: string | null;
-  available_products!: Products[];
-  cursor!: string | null;
-  status!: ItemStatus | null;
-  provider!: ItemProvider;
-  raw!: object | null;
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare item_id: string;
+  declare user_id: string;
+  declare access_token: string;
+  declare institution_id: string | null;
+  declare available_products: Products[];
+  declare cursor: string | null;
+  declare status: ItemStatus | null;
+  declare provider: ItemProvider;
+  declare raw: object | null;
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     item_id: isString,

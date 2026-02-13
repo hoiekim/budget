@@ -39,17 +39,17 @@ type SecuritySchema = typeof securitySchema;
 type SecurityRow = { [k in keyof SecuritySchema]: RowValueType };
 
 export class SecurityModel extends Model<JSONSecurity, SecuritySchema> implements SecurityRow {
-  security_id!: string;
-  name!: string | null;
-  ticker_symbol!: string | null;
-  type!: string | null;
-  close_price!: number | null;
-  close_price_as_of!: string | null;
-  iso_currency_code!: string | null;
-  isin!: string | null;
-  cusip!: string | null;
-  raw!: object | null;
-  updated!: string | null;
+  declare security_id: string;
+  declare name: string | null;
+  declare ticker_symbol: string | null;
+  declare type: string | null;
+  declare close_price: number | null;
+  declare close_price_as_of: string | null;
+  declare iso_currency_code: string | null;
+  declare isin: string | null;
+  declare cusip: string | null;
+  declare raw: object | null;
+  declare updated: string | null;
 
   static typeChecker = {
     security_id: isString,

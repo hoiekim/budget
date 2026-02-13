@@ -42,18 +42,18 @@ type SplitTxSchema = typeof splitTxSchema;
 type SplitTxRow = { [k in keyof SplitTxSchema]: RowValueType };
 
 export class SplitTransactionModel extends Model<JSONSplitTransaction, SplitTxSchema> implements SplitTxRow {
-  split_transaction_id!: string;
-  user_id!: string;
-  transaction_id!: string;
-  account_id!: string;
-  amount!: number;
-  date!: string | null;
-  custom_name!: string;
-  label_budget_id!: string | null;
-  label_category_id!: string | null;
-  label_memo!: string | null;
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare split_transaction_id: string;
+  declare user_id: string;
+  declare transaction_id: string;
+  declare account_id: string;
+  declare amount: number;
+  declare date: string | null;
+  declare custom_name: string;
+  declare label_budget_id: string | null;
+  declare label_category_id: string | null;
+  declare label_memo: string | null;
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     split_transaction_id: isString,

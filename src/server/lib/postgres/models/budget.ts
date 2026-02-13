@@ -37,15 +37,15 @@ type BudgetSchema = typeof budgetSchema;
 type BudgetRow = { [k in keyof BudgetSchema]: RowValueType };
 
 export class BudgetModel extends Model<JSONBudget, BudgetSchema> implements BudgetRow {
-  budget_id!: string;
-  user_id!: string;
-  name!: string;
-  iso_currency_code!: string;
-  roll_over!: boolean;
-  roll_over_start_date!: string | null;
-  capacities!: JSONCapacity[];
-  updated!: string | null;
-  is_deleted!: boolean;
+  declare budget_id: string;
+  declare user_id: string;
+  declare name: string;
+  declare iso_currency_code: string;
+  declare roll_over: boolean;
+  declare roll_over_start_date: string | null;
+  declare capacities: JSONCapacity[];
+  declare updated: string | null;
+  declare is_deleted: boolean;
 
   static typeChecker = {
     budget_id: isString,
