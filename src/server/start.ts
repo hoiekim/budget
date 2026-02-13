@@ -39,7 +39,7 @@ Object.values(routes).forEach(({ path, handler }) => router.use(path, handler));
 
 app.use("/api", router);
 
-const clientPath = path.resolve(__dirname, "..", "client");
+const clientPath = path.resolve(import.meta.dir, "..", "client");
 
 app.use(express.static(clientPath));
 

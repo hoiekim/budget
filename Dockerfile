@@ -1,9 +1,9 @@
-FROM oven/bun:1 AS builder
+FROM --platform=linux/AMD64 oven/bun:1 AS builder
 
 WORKDIR /app
 
 COPY package.json bun.lockb* ./
-COPY tsconfig.json tsconfig.server.json tsconfig.node.json ./
+COPY tsconfig.json tsconfig.node.json ./
 COPY vite.config.ts ./
 COPY src src
 COPY public public
@@ -14,11 +14,10 @@ RUN bun install
 RUN bun test
 RUN bun run build
 
-FROM oven/bun:1
+FROM --platform=linux/AMD64 oven/bun:1
 
 WORKDIR /app
 
 COPY --from=builder /app/build ./build
-COPY --from=builder /app/node_modules ./node_modules
 
 CMD ["bun", "./build/server/bundle.js"]
