@@ -85,6 +85,18 @@ class IndexedDbAccessor {
     });
   };
 
+  delete = async (storeName: StoreName, key: string): Promise<void> => {
+    const database = await this.init();
+    const transaction = database.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+
+    return new Promise<void>((resolve, reject) => {
+      const request = store.delete(key);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  };
+
   load = async <T>(storeName: StoreName): Promise<{ [key: string]: T }> => {
     const database = await this.init();
     const transaction = database.transaction(storeName, "readonly");

@@ -10,6 +10,7 @@ import {
   Chart,
   ProjectionChartConfiguration,
   FlowChartConfiguration,
+  indexedDb,
 } from "client";
 import { ToggleInput } from "client/components";
 
@@ -54,6 +55,7 @@ export const ChartAccountsPage = () => {
           setData((oldData) => {
             const newData = new Data(oldData);
             const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
+            indexedDb.save(newChart).catch(console.error);
             const newCharts = new ChartDictionary(newData.charts);
             newCharts.set(chart_id, newChart);
             newData.charts = newCharts;
@@ -111,6 +113,7 @@ export const ChartAccountsPage = () => {
               setData((oldData) => {
                 const newData = new Data(oldData);
                 const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
+                indexedDb.save(newChart).catch(console.error);
                 const newCharts = new ChartDictionary(newData.charts);
                 newCharts.set(chart_id, newChart);
                 newData.charts = newCharts;

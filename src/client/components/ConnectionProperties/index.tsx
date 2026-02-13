@@ -12,6 +12,8 @@ import {
   InstitutionSpan,
   PlaidLinkButton,
   useAppContext,
+  indexedDb,
+  StoreName,
 } from "client";
 import { ConnectedAccountRow } from "./ConnectedAccountRow";
 import "./index.css";
@@ -54,6 +56,7 @@ export const ConnectionProperties = ({ item }: Props) => {
           const newData = new Data(oldData);
 
           const newItems = new ItemDictionary(newData.items);
+          indexedDb.remove(StoreName.items, item_id).catch(console.error);
           newItems.delete(item_id);
           newData.items = newItems;
 
@@ -62,6 +65,7 @@ export const ConnectionProperties = ({ item }: Props) => {
             if (e.item_id === item_id) accountsInItem.push(e);
           });
           accountsInItem.forEach((e) => {
+            indexedDb.remove(StoreName.accounts, e.account_id).catch(console.error);
             newAccounts.delete(e.account_id);
           });
           newData.accounts = newAccounts;
@@ -69,6 +73,7 @@ export const ConnectionProperties = ({ item }: Props) => {
           const newTransactions = new TransactionDictionary(newData.transactions);
           newTransactions.forEach((e) => {
             if (accountsInItem.find((f) => e.account_id === f.account_id)) {
+              indexedDb.remove(StoreName.transactions, e.transaction_id).catch(console.error);
               newTransactions.delete(e.transaction_id);
             }
           });
@@ -92,6 +97,7 @@ export const ConnectionProperties = ({ item }: Props) => {
     if (status === "success" && body) {
       setData((oldData) => {
         const newData = new Data(oldData);
+        indexedDb.save(newAccount).catch(console.error);
         const newAccounts = new AccountDictionary(newData.accounts);
         newAccounts.set(newAccount.id, newAccount);
         newData.accounts = newAccounts;

@@ -11,6 +11,7 @@ import {
   PlaidLinkButton,
   useAppContext,
   useSync,
+  indexedDb,
 } from "client";
 import { SimpleFinLinkButton } from "client/components";
 import "./index.css";
@@ -80,6 +81,7 @@ export const Configuration = () => {
       const newItem = new Item(item);
       setData((oldData) => {
         const newData = new Data(oldData);
+        indexedDb.save(newItem).catch(console.error);
         const newItems = new ItemDictionary(newData.items);
         newItems.set(newItem.id, newItem);
         newData.items = newItems;

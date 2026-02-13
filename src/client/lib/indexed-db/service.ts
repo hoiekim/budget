@@ -307,3 +307,66 @@ export const saveAllCalculations = async (data: Calculations) => {
     saveCapacityData(capacityData),
   ]);
 };
+
+type StoredModel =
+  | Account
+  | Institution
+  | Transaction
+  | InvestmentTransaction
+  | SplitTransaction
+  | Budget
+  | Section
+  | Category
+  | Item
+  | Chart
+  | AccountSnapshot
+  | HoldingSnapshot;
+
+export const save = (data: StoredModel) => {
+  let storeName: StoreName;
+  switch (data.constructor) {
+    case Account:
+      storeName = StoreName.accounts;
+      break;
+    case Institution:
+      storeName = StoreName.institutions;
+      break;
+    case Transaction:
+      storeName = StoreName.transactions;
+      break;
+    case InvestmentTransaction:
+      storeName = StoreName.investmentTransactions;
+      break;
+    case SplitTransaction:
+      storeName = StoreName.splitTransactions;
+      break;
+    case Budget:
+      storeName = StoreName.budgets;
+      break;
+    case Section:
+      storeName = StoreName.sections;
+      break;
+    case Category:
+      storeName = StoreName.categories;
+      break;
+    case Item:
+      storeName = StoreName.items;
+      break;
+    case Chart:
+      storeName = StoreName.charts;
+      break;
+    case AccountSnapshot:
+      storeName = StoreName.accountSnapshots;
+      break;
+    case HoldingSnapshot:
+      storeName = StoreName.holdingSnapshots;
+      break;
+    default:
+      throw new Error(`unknown model: ${data.constructor.name}`);
+  }
+  return indexedDbAccessor.save(storeName, data.id, data);
+};
+
+export const remove = (storeName: StoreName, id: string) => {
+  return indexedDbAccessor.delete(storeName, id);
+};

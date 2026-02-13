@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { ItemProvider, ItemStatus } from "common";
 import { PbulicTokenPostResponse } from "server";
-import { Data, Item, ItemDictionary, useAppContext, call, useSync } from "client";
+import { Data, Item, ItemDictionary, useAppContext, call, useSync, indexedDb } from "client";
 
 interface Props {
   children?: ReactNode;
@@ -26,6 +26,7 @@ export const SimpleFinLinkButton = ({ children }: Props) => {
             const newData = new Data(oldData);
             const newItems = new ItemDictionary(newData.items);
             const newItem = new Item({ ...item, status: ItemStatus.OK });
+            indexedDb.save(newItem).catch(console.error);
             newItems.set(item.item_id, newItem);
             newData.items = newItems;
             return newData;

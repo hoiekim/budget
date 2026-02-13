@@ -11,6 +11,7 @@ import {
   TransactionLabel,
   useAppContext,
   call,
+  indexedDb,
 } from "client";
 import { InstitutionSpan } from "client/components";
 import SplitTransactionRow from "./SplitTransactionRow";
@@ -102,9 +103,10 @@ export const TransactionProperties = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         const newTransaction = new Transaction(transaction);
-        const newTransactions = new TransactionDictionary(newData.transactions);
         newTransaction.label.budget_id = value || null;
         newTransaction.label.category_id = null;
+        indexedDb.save(newTransaction).catch(console.error);
+        const newTransactions = new TransactionDictionary(newData.transactions);
         newTransactions.set(transaction_id, newTransaction);
         newData.transactions = newTransactions;
         return newData;
@@ -129,11 +131,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         const newTransaction = new Transaction(transaction);
-        const newTransactions = new TransactionDictionary(newData.transactions);
         if (!newTransaction.label.budget_id) {
           newTransaction.label.budget_id = account?.label.budget_id;
         }
         newTransaction.label.category_id = value || null;
+        indexedDb.save(newTransaction).catch(console.error);
+        const newTransactions = new TransactionDictionary(newData.transactions);
         newTransactions.set(transaction_id, newTransaction);
         newData.transactions = newTransactions;
         return newData;
@@ -168,6 +171,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
 
     setData((oldData) => {
       const newData = new Data(oldData);
+      indexedDb.save(newSplitTransaction).catch(console.error);
       const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
       newSplitTransactions.set(newSplitTransaction.split_transaction_id, newSplitTransaction);
       newData.splitTransactions = newSplitTransactions;

@@ -8,6 +8,7 @@ import {
   Budget,
   BudgetDictionary,
   Data,
+  indexedDb,
 } from "client";
 import { BudgetBar } from "client/components";
 import "./index.css";
@@ -52,6 +53,7 @@ export const BudgetsPage = () => {
     setData((oldData) => {
       const newData = new Data(oldData);
       const newBudget = new Budget({ budget_id });
+      indexedDb.save(newBudget).catch(console.error);
       const newBudgets = new BudgetDictionary(newData.budgets);
       newBudgets.set(budget_id, newBudget);
       newData.budgets = newBudgets;

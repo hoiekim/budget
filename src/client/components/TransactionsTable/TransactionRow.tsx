@@ -11,6 +11,7 @@ import {
   TransactionDictionary,
   SplitTransaction,
   SplitTransactionDictionary,
+  indexedDb,
 } from "client";
 import { InstitutionSpan, KebabIcon } from "client/components";
 import { ApiResponse } from "server";
@@ -107,16 +108,18 @@ const TransactionRow = ({ transaction }: Props) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
           const newSplitTransaction = new SplitTransaction(parentTransaction);
-          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           newSplitTransaction.label.budget_id = value || null;
           newSplitTransaction.label.category_id = null;
+          indexedDb.save(newSplitTransaction).catch(console.error);
+          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           newSplitTransactions.set(id, newSplitTransaction);
           newData.splitTransactions = newSplitTransactions;
         } else {
           const newTransaction = new Transaction(parentTransaction);
-          const newTransactions = new TransactionDictionary(newData.transactions);
           newTransaction.label.budget_id = value || null;
           newTransaction.label.category_id = null;
+          indexedDb.save(newTransaction).catch(console.error);
+          const newTransactions = new TransactionDictionary(newData.transactions);
           newTransactions.set(id, newTransaction);
           newData.transactions = newTransactions;
         }
@@ -154,20 +157,22 @@ const TransactionRow = ({ transaction }: Props) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
           const newSplitTransaction = new SplitTransaction(parentTransaction);
-          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           if (!newSplitTransaction.label.budget_id) {
             newSplitTransaction.label.budget_id = account?.label.budget_id;
           }
           newSplitTransaction.label.category_id = value || null;
+          indexedDb.save(newSplitTransaction).catch(console.error);
+          const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           newSplitTransactions.set(id, newSplitTransaction);
           newData.splitTransactions = newSplitTransactions;
         } else {
           const newTransaction = new Transaction(parentTransaction);
-          const newTransactions = new TransactionDictionary(newData.transactions);
           if (!newTransaction.label.budget_id) {
             newTransaction.label.budget_id = account?.label.budget_id;
           }
           newTransaction.label.category_id = value || null;
+          indexedDb.save(newTransaction).catch(console.error);
+          const newTransactions = new TransactionDictionary(newData.transactions);
           newTransactions.set(id, newTransaction);
           newData.transactions = newTransactions;
         }
