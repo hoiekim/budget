@@ -8,6 +8,8 @@ import {
   SplitTransaction,
   useAppContext,
   call,
+  indexedDb,
+  StoreName,
 } from "client";
 import { CapacityInput } from "client/components";
 
@@ -95,9 +97,10 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         const newSplit = new SplitTransaction(splitTransaction);
-        const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         newSplit.label.budget_id = value || null;
         newSplit.label.category_id = null;
+        indexedDb.save(newSplit).catch(console.error);
+        const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         newSplits.set(split_transaction_id, newSplit);
         newData.splitTransactions = newSplits;
         return newData;
@@ -125,11 +128,12 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         const newSplit = new SplitTransaction(splitTransaction);
-        const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         if (!newSplit.label.budget_id) {
           newSplit.label.budget_id = account?.label.budget_id;
         }
         newSplit.label.category_id = value || null;
+        indexedDb.save(newSplit).catch(console.error);
+        const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         newSplits.set(split_transaction_id, newSplit);
         newData.splitTransactions = newSplits;
         return newData;
@@ -146,6 +150,7 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
       await call.delete(`/api/split-transaction?id=${split_transaction_id}`);
       setData((oldData) => {
         const newData = new Data(oldData);
+        indexedDb.remove(StoreName.splitTransactions, split_transaction_id).catch(console.error);
         const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         newSplits.delete(split_transaction_id);
         newData.splitTransactions = newSplits;
@@ -160,8 +165,9 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
     setData((oldData) => {
       const newData = new Data(oldData);
       const newSplit = new SplitTransaction(splitTransaction);
-      const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
       newSplit.amount = newAmount;
+      indexedDb.save(newSplit).catch(console.error);
+      const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
       newSplits.set(split_transaction_id, newSplit);
       newData.splitTransactions = newSplits;
       return newData;

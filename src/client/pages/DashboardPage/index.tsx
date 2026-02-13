@@ -12,6 +12,7 @@ import {
   ChartDictionary,
   Data,
   FlowChart,
+  indexedDb,
 } from "client";
 import { BalanceChartRow, FlowChartRow, ProjectionChartRow } from "client/components";
 import "./index.css";
@@ -84,6 +85,7 @@ export const DashboardPage = () => {
     setData((oldData) => {
       const newData = new Data(oldData);
       const newChart = new Chart({ chart_id });
+      indexedDb.save(newChart).catch(console.error);
       const newCharts = new ChartDictionary(newData.charts);
       newCharts.set(chart_id, newChart);
       newData.charts = newCharts;

@@ -1,6 +1,6 @@
 import { CSSProperties, ReactNode } from "react";
 import { AccountType } from "plaid";
-import { Account, AccountDictionary, Data, call, DonutData, useAppContext } from "client";
+import { Account, AccountDictionary, Data, call, DonutData, useAppContext, indexedDb } from "client";
 import AccountRow from "./AccountRow";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
@@ -48,6 +48,7 @@ export const AccountsTable = ({ donutData, style }: Props) => {
 
           if (r.status === "success") {
             const newAccount = new Account({ ...e, hide: false });
+            indexedDb.save(newAccount).catch(console.error);
             newAccounts.set(account_id, newAccount);
           }
         } catch (error: any) {

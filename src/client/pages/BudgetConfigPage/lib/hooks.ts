@@ -10,6 +10,8 @@ import {
   Category,
   Section,
   CapacityData,
+  indexedDb,
+  StoreName,
 } from "client";
 import { LocalDate } from "common";
 
@@ -59,6 +61,7 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
         if (!oldData[dictionaryKey].has(id)) return oldData;
         const DynamicBudgetFamily = getBudgetClass(type);
         const newBudgetLike = new DynamicBudgetFamily(budgetLike);
+        indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
         newData[dictionaryKey].set(id, newBudgetLike as any);
         current = iterator.next();
       }
@@ -236,6 +239,8 @@ export const useRemove = () => {
     if (status === "success") {
       setData((oldData) => {
         const newData = new Data(oldData);
+        const storeName = type === "budget" ? StoreName.budgets : type === "section" ? StoreName.sections : StoreName.categories;
+        indexedDb.remove(storeName, id).catch(console.error);
         const newDictionary = new DynamicBudgetFamilyDictionary(newData[dictionaryKey] as any);
         newDictionary.delete(id);
         newData[dictionaryKey] = newDictionary;

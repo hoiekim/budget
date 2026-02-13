@@ -10,6 +10,8 @@ import {
   useAppContext,
   useDebounce,
   getChartTypeName,
+  indexedDb,
+  StoreName,
 } from "client";
 import {
   ChangeEventHandler,
@@ -51,6 +53,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
       setData((oldData) => {
         const newData = new Data(oldData);
         const newChart = new Chart({ ...chart, ...updatedChart });
+        indexedDb.save(newChart).catch(console.error);
         const newCharts = new ChartDictionary(newData.charts);
         newCharts.set(chart_id, newChart);
         newData.charts = newCharts;
@@ -158,6 +161,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
       setData((oldData) => {
         const newData = new Data(oldData);
         const newCharts = new ChartDictionary(newData.charts);
+        indexedDb.remove(StoreName.charts, chart_id).catch(console.error);
         newCharts.delete(chart_id);
         newData.charts = newCharts;
         return newData;

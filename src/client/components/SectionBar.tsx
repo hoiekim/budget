@@ -11,6 +11,7 @@ import {
   useAppContext,
   useLocalStorageState,
   useMemoryState,
+  indexedDb,
 } from "client";
 import { LabeledBar, CategoryBar } from "client/components";
 
@@ -116,6 +117,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
       if (category_id) {
         const newData = new Data(oldData);
         const newCategory = new Category({ category_id, section_id });
+        indexedDb.save(newCategory).catch(console.error);
         const newCategories = new CategoryDictionary(newData.categories);
         newCategories.set(category_id, newCategory);
         newData.categories = newCategories;

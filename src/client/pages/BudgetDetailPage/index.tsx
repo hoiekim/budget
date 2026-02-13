@@ -13,6 +13,7 @@ import {
   Data,
   Section,
   SectionDictionary,
+  indexedDb,
 } from "client";
 import { BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
@@ -71,6 +72,7 @@ export const BudgetDetailPage = () => {
       if (section_id) {
         const newData = new Data(oldData);
         const newSection = new Section({ section_id, budget_id });
+        indexedDb.save(newSection).catch(console.error);
         const newSections = new SectionDictionary(newData.sections);
         newSections.set(section_id, newSection);
         newData.sections = newSections;

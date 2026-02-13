@@ -10,6 +10,7 @@ import {
   call,
   useSync,
   useLocalStorageState,
+  indexedDb,
 } from "client";
 
 interface Props {
@@ -52,6 +53,7 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
                 const newData = new Data(oldData);
                 const newItems = new ItemDictionary(newData.items);
                 const newItem = new Item({ ...item, status: ItemStatus.OK });
+                indexedDb.save(newItem).catch(console.error);
                 newItems.set(item.item_id, newItem);
                 newData.items = newItems;
                 return newData;

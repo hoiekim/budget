@@ -8,6 +8,7 @@ import {
   PATH,
   TransactionLabel,
   useAppContext,
+  indexedDb,
 } from "client";
 import { InstitutionSpan, KebabIcon } from "client/components";
 import { ChangeEventHandler, useEffect, useMemo, useState } from "react";
@@ -96,9 +97,10 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
       setData((oldData) => {
         const newData = new Data(oldData);
         const newTransaction = new InvestmentTransaction(investmentTransaction);
-        const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);
         newTransaction.label.budget_id = value || null;
         newTransaction.label.category_id = null;
+        indexedDb.save(newTransaction).catch(console.error);
+        const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);
         newTransactions.set(id, newTransaction);
         newData.investmentTransactions = newTransactions;
         return newData;
@@ -127,11 +129,12 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
       setData((oldData) => {
         const newData = new Data(oldData);
         const newTransaction = new InvestmentTransaction(investmentTransaction);
-        const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);
         if (!newTransaction.label.budget_id) {
           newTransaction.label.budget_id = account?.label.budget_id;
         }
         newTransaction.label.category_id = value || null;
+        indexedDb.save(newTransaction).catch(console.error);
+        const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);
         newTransactions.set(id, newTransaction);
         newData.investmentTransactions = newTransactions;
         return newData;

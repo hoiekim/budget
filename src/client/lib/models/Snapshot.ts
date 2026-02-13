@@ -23,6 +23,10 @@ export class Snapshot implements JSONSnapshot {
 }
 
 export class AccountSnapshot implements JSONAccountSnapshot {
+  get id() {
+    return this.snapshot.snapshot_id;
+  }
+
   snapshot = new Snapshot();
   user = { user_id: getRandomId() };
   account = new Account();
@@ -35,6 +39,10 @@ export class AccountSnapshot implements JSONAccountSnapshot {
 }
 
 export class HoldingSnapshot implements JSONHoldingSnapshot {
+  get id() {
+    return this.snapshot.snapshot_id;
+  }
+
   snapshot = new Snapshot();
   user = { user_id: getRandomId() };
   holding = new Holding();
