@@ -1,6 +1,14 @@
 import { CSSProperties, ReactNode } from "react";
 import { AccountType } from "plaid";
-import { Account, AccountDictionary, Data, call, DonutData, useAppContext, indexedDb } from "client";
+import {
+  Account,
+  AccountDictionary,
+  Data,
+  call,
+  DonutData,
+  useAppContext,
+  indexedDb,
+} from "client";
 import AccountRow from "./AccountRow";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
@@ -27,6 +35,7 @@ export const AccountsTable = ({ donutData, style }: Props) => {
   const creditAccounts: ReactNode[] = [];
 
   accounts.forEach((a) => {
+    if (a.hide) return;
     const element = <AccountRow key={a.account_id} account={a} />;
     if (a.type === AccountType.Credit) creditAccounts.push(element);
   });
