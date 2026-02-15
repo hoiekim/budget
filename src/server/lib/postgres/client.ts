@@ -8,6 +8,13 @@ const {
   POSTGRES_DATABASE: database = "budget",
 } = process.env;
 
+const timestampToIso = (s: string) => {
+  return s.replace(
+    /(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2})(:\d{2})?$/,
+    (_, d, t, m) => `${d}T${t}${m || ":00"}`,
+  );
+};
+
 const config: PoolConfig = {
   host,
   port: parseInt(port, 10),
@@ -22,7 +29,7 @@ const config: PoolConfig = {
       if (id === types.builtins.NUMERIC) return parseFloat;
       if (id === types.builtins.INT8) return parseFloat;
       if (id === types.builtins.DATE) return (s: string) => s;
-      if (id === types.builtins.TIMESTAMPTZ) return (s: string) => s;
+      if (id === types.builtins.TIMESTAMPTZ) return timestampToIso;
       return types.getTypeParser(id, format);
     },
   },
