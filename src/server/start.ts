@@ -13,9 +13,16 @@ const app = express();
 
 app.use(express.json({ limit: "50mb" }));
 
+const sessionSecret = process.env.SECRET || "secret";
+if (!process.env.SECRET) {
+  console.warn(
+    "⚠️  WARNING: SECRET env var not set. Using insecure default. Set SECRET in production!",
+  );
+}
+
 app.use(
   session({
-    secret: process.env.SECRET || "secret",
+    secret: sessionSecret,
     resave: true,
     saveUninitialized: false,
     rolling: true,
