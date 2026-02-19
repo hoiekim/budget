@@ -9,6 +9,7 @@ import {
   ACCOUNT_ID,
   USER_ID,
   DATE,
+  UPDATED,
   INVESTMENT_TRANSACTIONS,
   TRANSACTIONS,
 } from "../models";
@@ -42,7 +43,7 @@ export const getTransactions = async (
     filters: { [ACCOUNT_ID]: options.account_id, pending: options.pending },
     dateRange:
       options.startDate || options.endDate
-        ? { column: DATE, start: options.startDate, end: options.endDate }
+        ? { column: UPDATED, start: options.startDate, end: options.endDate }
         : undefined,
     orderBy: `${DATE} DESC`,
     limit: options.limit,
@@ -78,7 +79,7 @@ export const searchTransactions = async (
     filters: { [ACCOUNT_ID]: options.account_id },
     dateRange:
       options.startDate || options.endDate
-        ? { column: DATE, start: options.startDate, end: options.endDate }
+        ? { column: UPDATED, start: options.startDate, end: options.endDate }
         : undefined,
     orderBy: `${DATE} DESC`,
     limit: options.limit,
