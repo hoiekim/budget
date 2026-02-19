@@ -21,6 +21,7 @@
     "dev-client": "vite",
     "dev-server": "bun --watch ./src/server/start.ts",
     "test": "bun test",
+    "test:coverage": "bun test --coverage",
     "preview": "vite preview"
   },
   "devDependencies": {
