@@ -6,6 +6,7 @@ import {
   requireBodyObject,
   requireStringField,
   requireNumberField,
+  validationError,
 } from "./validation";
 
 // Helper to create a mock Request with query params
@@ -152,5 +153,61 @@ describe("requireNumberField", () => {
     const result = requireNumberField(obj, "count");
     expect(result.success).toBe(false);
     expect(result.error).toContain("number");
+  });
+});
+
+describe("optionalQueryString edge cases", () => {
+  it("should return undefined for empty string", () => {
+    const req = mockRequest({ filter: "" });
+    const result = optionalQueryString(req, "filter");
+    expect(result.success).toBe(true);
+    expect(result.data).toBeUndefined();
+  });
+
+  it("should return undefined for null parameter", () => {
+    const req = mockRequest({ filter: null });
+    const result = optionalQueryString(req, "filter");
+    expect(result.success).toBe(true);
+    expect(result.data).toBeUndefined();
+  });
+});
+
+describe("requireQueryString edge cases", () => {
+  it("should fail for null parameter", () => {
+    const req = mockRequest({ id: null });
+    const result = requireQueryString(req, "id");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing");
+  });
+
+  it("should fail for non-string types", () => {
+    const req = mockRequest({ id: 123 });
+    const result = requireQueryString(req, "id");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("string");
+  });
+});
+
+describe("requireBodyObject edge cases", () => {
+  it("should fail for undefined body", () => {
+    const req = mockRequest({}, undefined);
+    const result = requireBodyObject(req);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("required");
+  });
+
+  it("should fail for primitive body", () => {
+    const req = mockRequest({}, "string body");
+    const result = requireBodyObject(req);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("object");
+  });
+});
+
+describe("validationError", () => {
+  it("should return failed status with message", () => {
+    const result = validationError("Invalid input");
+    expect(result.status).toBe("failed");
+    expect(result.message).toBe("Invalid input");
   });
 });
