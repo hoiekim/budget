@@ -13,12 +13,14 @@ const app = express();
 
 app.use(express.json({ limit: "50mb" }));
 
-const sessionSecret = process.env.SECRET || "secret";
 if (!process.env.SECRET) {
-  console.warn(
-    "⚠️  WARNING: SECRET env var not set. Using insecure default. Set SECRET in production!",
-  );
+  if (process.env.NODE_ENV === "production") {
+    console.error("❌ FATAL: SECRET env var must be set in production!");
+    process.exit(1);
+  }
+  console.warn("⚠️  WARNING: SECRET env var not set. Using insecure default.");
 }
+const sessionSecret = process.env.SECRET || "secret";
 
 app.use(
   session({
