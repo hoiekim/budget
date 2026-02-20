@@ -5,6 +5,8 @@ import {
   searchAccountsById,
   getItem,
   deleteSnapshotsByAccount,
+  requireQueryString,
+  validationError,
 } from "server";
 
 export const deleteAccountRoute = new Route("DELETE", "/account", async (req) => {
@@ -16,7 +18,11 @@ export const deleteAccountRoute = new Route("DELETE", "/account", async (req) =>
     };
   }
 
-  const account_id = req.query.id as string;
+  const idResult = requireQueryString(req, "id");
+  if (!idResult.success) {
+    return validationError(idResult.error!);
+  }
+  const account_id = idResult.data!;
 
   const accounts = await searchAccountsById(user, [account_id]);
   const account = accounts[0];

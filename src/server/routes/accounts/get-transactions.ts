@@ -1,4 +1,4 @@
-import { Route, searchTransactions, SearchTransactionsOptions } from "server";
+import { Route, searchTransactions, SearchTransactionsOptions, optionalQueryString, validationError } from "server";
 import { JSONTransaction, JSONInvestmentTransaction } from "common";
 
 export interface TransactionsGetResponse {
@@ -18,14 +18,19 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
       };
     }
 
-    const startString = req.query["start-date"] as string;
-    const endString = req.query["end-date"] as string;
-    const account_id = req.query["account-id"] as string;
+    const startResult = optionalQueryString(req, "start-date");
+    if (!startResult.success) return validationError(startResult.error!);
+    
+    const endResult = optionalQueryString(req, "end-date");
+    if (!endResult.success) return validationError(endResult.error!);
+    
+    const accountResult = optionalQueryString(req, "account-id");
+    if (!accountResult.success) return validationError(accountResult.error!);
 
     const options: SearchTransactionsOptions = {};
-    if (startString) options.startDate = startString;
-    if (endString) options.endDate = endString;
-    if (account_id) options.account_id = account_id;
+    if (startResult.data) options.startDate = startResult.data;
+    if (endResult.data) options.endDate = endResult.data;
+    if (accountResult.data) options.account_id = accountResult.data;
 
     const response = await searchTransactions(user, options);
 

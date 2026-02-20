@@ -5,3 +5,4 @@ export * as polygon from "./polygon";
 export * from "./postgres";
 export * from "./object";
 export * from "./compute-tools";
+export * from "./validation";
