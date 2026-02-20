@@ -1,4 +1,4 @@
-import { Route, deleteBudget } from "server";
+import { Route, deleteBudget, requireQueryString, validationError } from "server";
 
 export const deleteBudgetRoute = new Route("DELETE", "/budget", async (req) => {
   const { user } = req.session;
@@ -9,16 +9,10 @@ export const deleteBudgetRoute = new Route("DELETE", "/budget", async (req) => {
     };
   }
 
-  const budget_id = req.query.id as string;
+  const idResult = requireQueryString(req, "id");
+  if (!idResult.success) return validationError(idResult.error!);
 
-  if (!budget_id) {
-    return {
-      status: "failed",
-      message: "id is required but not provided.",
-    };
-  }
-
-  await deleteBudget(user, budget_id);
+  await deleteBudget(user, idResult.data!);
 
   return { status: "success" };
 });

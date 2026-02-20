@@ -1,4 +1,4 @@
-import { Route, updateInvestmentTransactions } from "server";
+import { Route, updateInvestmentTransactions, requireBodyObject, validationError } from "server";
 
 export interface InvestmentTransactionPostResponse {
   investment_transaction_id: string;
@@ -16,8 +16,13 @@ export const postInvestmentTrasactionRoute = new Route<InvestmentTransactionPost
       };
     }
 
+    const bodyResult = requireBodyObject(req);
+    if (!bodyResult.success) return validationError(bodyResult.error!);
+
+    const body = bodyResult.data;
+
     try {
-      const response = await updateInvestmentTransactions(user, [req.body]);
+      const response = await updateInvestmentTransactions(user, [body as any]);
       const result = response[0];
       if (!result || result.status >= 400) {
         throw new Error("Database responded with an error.");
@@ -26,7 +31,7 @@ export const postInvestmentTrasactionRoute = new Route<InvestmentTransactionPost
       return { status: "success", body: { investment_transaction_id } };
     } catch (error: any) {
       console.error(
-        `Failed to update an investment transaction: ${req.body.investment_transaction_id}`,
+        `Failed to update an investment transaction: ${(body as any).investment_transaction_id}`,
       );
       throw new Error(error);
     }

@@ -1,4 +1,4 @@
-import { Route, deleteSection } from "server";
+import { Route, deleteSection, requireQueryString, validationError } from "server";
 
 export const deleteSectionRoute = new Route("DELETE", "/section", async (req) => {
   const { user } = req.session;
@@ -9,16 +9,10 @@ export const deleteSectionRoute = new Route("DELETE", "/section", async (req) =>
     };
   }
 
-  const section_id = req.query.id as string;
+  const idResult = requireQueryString(req, "id");
+  if (!idResult.success) return validationError(idResult.error!);
 
-  if (!section_id) {
-    return {
-      status: "failed",
-      message: "id is required but not provided.",
-    };
-  }
-
-  await deleteSection(user, section_id);
+  await deleteSection(user, idResult.data!);
 
   return { status: "success" };
 });

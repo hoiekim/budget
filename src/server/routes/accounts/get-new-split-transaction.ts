@@ -1,4 +1,4 @@
-import { Route, createSplitTransaction } from "server";
+import { Route, createSplitTransaction, requireQueryString, validationError } from "server";
 
 export type NewSplitTransactionGetResponse = { split_transaction_id: string };
 
@@ -14,12 +14,16 @@ export const getNewSplitTransactionRoute = new Route<NewSplitTransactionGetRespo
       };
     }
 
-    const transaction_id = req.query.transaction_id as string;
-    if (!transaction_id) throw new Error("transaction_id is required but not provided.");
-    const account_id = req.query.account_id as string;
-    if (!account_id) throw new Error("account_id is required but not provided.");
+    const transactionResult = requireQueryString(req, "transaction_id");
+    if (!transactionResult.success) return validationError(transactionResult.error!);
+
+    const accountResult = requireQueryString(req, "account_id");
+    if (!accountResult.success) return validationError(accountResult.error!);
     
-    const response = await createSplitTransaction(user, { transaction_id, account_id });
+    const response = await createSplitTransaction(user, { 
+      transaction_id: transactionResult.data!, 
+      account_id: accountResult.data! 
+    });
     if (!response) {
       return { status: "failed", message: "Failed to create split transaction." };
     }

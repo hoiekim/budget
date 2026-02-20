@@ -1,4 +1,4 @@
-import { Route, createSection } from "server";
+import { Route, createSection, requireQueryString, validationError } from "server";
 
 export type NewSectionGetResponse = { section_id: string };
 
@@ -14,9 +14,10 @@ export const getNewSectionRoute = new Route<NewSectionGetResponse>(
       };
     }
 
-    const budget_id = req.query.parent as string;
-    if (!budget_id) throw new Error("Parent id is required but not provided.");
-    const response = await createSection(user, { budget_id });
+    const parentResult = requireQueryString(req, "parent");
+    if (!parentResult.success) return validationError(parentResult.error!);
+
+    const response = await createSection(user, { budget_id: parentResult.data! });
 
     if (!response) {
       return { status: "failed", message: "Failed to create section." };

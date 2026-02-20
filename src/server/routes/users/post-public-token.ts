@@ -9,6 +9,9 @@ import {
   syncPlaidAccounts,
   syncPlaidTransactions,
   searchItems,
+  requireQueryString,
+  requireBodyObject,
+  validationError,
 } from "server";
 import { getDateString, JSONItem, ItemProvider, ItemStatus, getRandomId } from "common";
 
@@ -28,7 +31,10 @@ export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
       };
     }
 
-    const { provider } = req.query;
+    const providerResult = requireQueryString(req, "provider");
+    if (!providerResult.success) return validationError(providerResult.error!);
+
+    const provider = providerResult.data;
 
     if (provider === ItemProvider.SIMPLE_FIN) {
       const { public_token } = req.body;
