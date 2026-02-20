@@ -6,7 +6,7 @@ import {
   requireBodyObject,
   requireStringField,
   requireNumberField,
-} from "../../src/server/lib/validation";
+} from "./validation";
 
 // Helper to create a mock Request with query params
 const mockRequest = (query: Record<string, unknown>, body?: unknown): Request =>

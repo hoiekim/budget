@@ -1,9 +1,17 @@
 /**
  * Lightweight request parameter validation helpers.
- * No external dependencies - uses manual type checking.
+ * Uses type checking utilities from the common module.
  */
 
 import { Request } from "express";
+import {
+  isString,
+  isNumber,
+  isArray,
+  isObject,
+  isUndefined,
+  isNull,
+} from "common";
 
 export interface ValidationResult<T> {
   success: boolean;
@@ -21,19 +29,19 @@ export function requireQueryString(
 ): ValidationResult<string> {
   const value = req.query[param];
 
-  if (value === undefined || value === null) {
+  if (isUndefined(value) || isNull(value)) {
     return { success: false, error: `Missing required parameter: ${param}` };
   }
 
   // Express can parse ?id=a&id=b as an array
-  if (Array.isArray(value)) {
+  if (isArray(value)) {
     return {
       success: false,
       error: `Parameter ${param} must be a single value, not an array`,
     };
   }
 
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     return {
       success: false,
       error: `Parameter ${param} must be a string`,
@@ -57,19 +65,19 @@ export function optionalQueryString(
 ): ValidationResult<string | undefined> {
   const value = req.query[param];
 
-  if (value === undefined || value === null) {
+  if (isUndefined(value) || isNull(value)) {
     return { success: true, data: undefined };
   }
 
   // Express can parse ?id=a&id=b as an array
-  if (Array.isArray(value)) {
+  if (isArray(value)) {
     return {
       success: false,
       error: `Parameter ${param} must be a single value, not an array`,
     };
   }
 
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     return {
       success: false,
       error: `Parameter ${param} must be a string`,
@@ -85,11 +93,11 @@ export function optionalQueryString(
 export function requireBodyObject(req: Request): ValidationResult<object> {
   const body = req.body;
 
-  if (body === undefined || body === null) {
+  if (isUndefined(body) || isNull(body)) {
     return { success: false, error: "Request body is required" };
   }
 
-  if (typeof body !== "object" || Array.isArray(body)) {
+  if (!isObject(body) || isArray(body)) {
     return { success: false, error: "Request body must be an object" };
   }
 
@@ -105,11 +113,11 @@ export function requireStringField<T extends object>(
 ): ValidationResult<string> {
   const value = obj[field];
 
-  if (value === undefined || value === null) {
+  if (isUndefined(value) || isNull(value)) {
     return { success: false, error: `Missing required field: ${String(field)}` };
   }
 
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     return {
       success: false,
       error: `Field ${String(field)} must be a string`,
@@ -128,11 +136,11 @@ export function requireNumberField<T extends object>(
 ): ValidationResult<number> {
   const value = obj[field];
 
-  if (value === undefined || value === null) {
+  if (isUndefined(value) || isNull(value)) {
     return { success: false, error: `Missing required field: ${String(field)}` };
   }
 
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+  if (!isNumber(value) || !Number.isFinite(value)) {
     return {
       success: false,
       error: `Field ${String(field)} must be a number`,
