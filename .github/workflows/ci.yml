@@ -1,0 +1,9 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  call-build:
+    uses: ./.github/workflows/test-and-build.yml
