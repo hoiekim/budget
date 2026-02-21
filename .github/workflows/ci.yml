@@ -27,7 +27,9 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage/lcov.info
-          fail_ci_if_error: true
+          # Token required for reliable uploads - tokenless hits rate limits
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
           verbose: true
 
   build:
