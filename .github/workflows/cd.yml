@@ -5,11 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  call-build:
-    uses: ./.github/workflows/test-and-build.yml
-
   docker-push:
-    needs: call-build
     runs-on: ubuntu-latest
 
     steps:
