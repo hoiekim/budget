@@ -1,4 +1,4 @@
-import { Route, updateCategory } from "server";
+import { Route, updateCategory, requireBodyObject, requireStringField, validationError } from "server";
 
 export const postCategoryRoute = new Route("POST", "/category", async (req) => {
   const { user } = req.session;
@@ -9,23 +9,17 @@ export const postCategoryRoute = new Route("POST", "/category", async (req) => {
     };
   }
 
-  if (!req.body || !Object.keys(req.body).length) {
-    return {
-      status: "failed",
-      message: "Request body is required but not provided.",
-    };
-  }
+  const bodyResult = requireBodyObject(req);
+  if (!bodyResult.success) return validationError(bodyResult.error!);
 
-  const { category_id, ...data } = req.body;
-  if (!category_id) {
-    return {
-      status: "failed",
-      message: "category_id is required but not provided.",
-    };
-  }
+  const body = bodyResult.data as Record<string, unknown>;
+  const idResult = requireStringField(body, "category_id");
+  if (!idResult.success) return validationError(idResult.error!);
+
+  const { category_id, ...data } = body;
 
   try {
-    await updateCategory(user, category_id, data);
+    await updateCategory(user, category_id as string, data);
     return { status: "success" };
   } catch (error: any) {
     console.error(`Failed to update a category: ${category_id}`);

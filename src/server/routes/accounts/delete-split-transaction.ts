@@ -1,4 +1,4 @@
-import { Route, deleteSplitTransactions } from "server";
+import { Route, deleteSplitTransactions, requireQueryString, validationError } from "server";
 
 export const deleteSplitTransactionRoute = new Route(
   "DELETE",
@@ -12,8 +12,10 @@ export const deleteSplitTransactionRoute = new Route(
       };
     }
 
-    const split_transaction_id = req.query.id as string;
-    await deleteSplitTransactions(user, [split_transaction_id]);
+    const idResult = requireQueryString(req, "id");
+    if (!idResult.success) return validationError(idResult.error!);
+
+    await deleteSplitTransactions(user, [idResult.data!]);
 
     return { status: "success" };
   }

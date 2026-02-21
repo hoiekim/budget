@@ -1,5 +1,5 @@
 import { ItemProvider } from "common";
-import { Route, deleteItem, plaid, searchItems } from "server";
+import { Route, deleteItem, plaid, searchItems, requireQueryString, validationError } from "server";
 
 export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   const { user } = req.session;
@@ -10,10 +10,11 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
     };
   }
 
-  const item_id = req.query.id as string;
+  const idResult = requireQueryString(req, "id");
+  if (!idResult.success) return validationError(idResult.error!);
 
   const items = await searchItems(user);
-  const item = items.find((e) => e.item_id === item_id);
+  const item = items.find((e) => e.item_id === idResult.data);
   if (!item) {
     return {
       status: "failed",
@@ -25,7 +26,7 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
     await plaid.deleteItem(user, item);
   }
 
-  await deleteItem(user, item_id);
+  await deleteItem(user, idResult.data!);
 
   return { status: "success" };
 });

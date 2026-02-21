@@ -1,16 +1,19 @@
 import { ItemStatus } from "common";
-import { Route, updateItemStatus, syncPlaidTransactions } from "server";
+import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError } from "server";
 
 interface PlaidWebhookBody {
-  webhook_type: "TRANSACTIONS" | "ITEM";
+  webhook_type: "TRANSACTIONS" | "ITEM" | "HOLDINGS" | "INVESTMENTS_TRANSACTIONS";
   webhook_code: string;
   item_id: string;
-  error: { error_code: string };
+  error?: { error_code: string };
 }
 
 // TODO: verify request sender is plaid
 export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req) => {
-  const { webhook_type, webhook_code, item_id, error } = req.body as PlaidWebhookBody;
+  const bodyResult = requireBodyObject(req);
+  if (!bodyResult.success) return validationError(bodyResult.error!);
+
+  const { webhook_type, webhook_code, item_id, error } = bodyResult.data as PlaidWebhookBody;
   if (webhook_type === "TRANSACTIONS") {
     if (webhook_code === "SYNC_UPDATES_AVAILABLE") {
       return await syncAndLog(item_id);
@@ -27,7 +30,7 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req) =
     } else if (webhook_code === "PENDING_EXPIRATION") {
       return await markBadItem(item_id);
     } else if (webhook_code === "ERROR") {
-      const { error_code } = error;
+      const error_code = error?.error_code;
       if (error_code === "ITEM_LOGIN_REQUIRED") {
         return await markBadItem(item_id);
       }

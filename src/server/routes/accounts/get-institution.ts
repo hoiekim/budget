@@ -1,4 +1,4 @@
-import { plaid, Route, getInstitution, upsertInstitutions } from "server";
+import { plaid, Route, getInstitution, upsertInstitutions, requireQueryString, validationError } from "server";
 import { JSONInstitution } from "common";
 
 export type InstitutionGetResponse = JSONInstitution;
@@ -15,12 +15,14 @@ export const getInstitutionRoute = new Route<InstitutionGetResponse>(
       };
     }
 
-    const id = req.query.id as string;
-    const storedInstitution = await getInstitution(id);
+    const idResult = requireQueryString(req, "id");
+    if (!idResult.success) return validationError(idResult.error!);
+
+    const storedInstitution = await getInstitution(idResult.data!);
     if (storedInstitution) {
       return { status: "success", body: storedInstitution };
     } else {
-      const newInstitution = await plaid.getInstitution(user, id);
+      const newInstitution = await plaid.getInstitution(user, idResult.data!);
       if (!newInstitution) throw new Error("Server failed to get institutions.");
       upsertInstitutions([newInstitution]).catch(console.error);
       return { status: "success", body: newInstitution };

@@ -1,4 +1,4 @@
-import { Route, deleteCategory } from "server";
+import { Route, deleteCategory, requireQueryString, validationError } from "server";
 
 export const deleteCategoryRoute = new Route("DELETE", "/category", async (req) => {
   const { user } = req.session;
@@ -9,16 +9,10 @@ export const deleteCategoryRoute = new Route("DELETE", "/category", async (req) 
     };
   }
 
-  const category_id = req.query.id as string;
+  const idResult = requireQueryString(req, "id");
+  if (!idResult.success) return validationError(idResult.error!);
 
-  if (!category_id) {
-    return {
-      status: "failed",
-      message: "id is required but not provided.",
-    };
-  }
-
-  await deleteCategory(user, category_id);
+  await deleteCategory(user, idResult.data!);
 
   return { status: "success" };
 });

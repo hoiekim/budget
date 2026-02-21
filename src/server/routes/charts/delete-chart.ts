@@ -1,4 +1,4 @@
-import { Route, deleteChart } from "server";
+import { Route, deleteChart, requireQueryString, validationError } from "server";
 
 export const deleteChartRoute = new Route("DELETE", "/chart", async (req) => {
   const { user } = req.session;
@@ -9,14 +9,11 @@ export const deleteChartRoute = new Route("DELETE", "/chart", async (req) => {
     };
   }
 
-  const chart_id = req.query.id as string;
-
-  if (!chart_id) {
-    return {
-      status: "failed",
-      message: "id is required but not provided.",
-    };
+  const idResult = requireQueryString(req, "id");
+  if (!idResult.success) {
+    return validationError(idResult.error!);
   }
+  const chart_id = idResult.data!;
 
   await deleteChart(user, chart_id);
 

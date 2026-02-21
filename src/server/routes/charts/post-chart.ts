@@ -1,4 +1,4 @@
-import { Route, updateChart } from "server";
+import { Route, updateChart, requireBodyObject, requireStringField, validationError } from "server";
 
 export const postChartRoute = new Route("POST", "/chart", async (req) => {
   const { user } = req.session;
@@ -9,23 +9,17 @@ export const postChartRoute = new Route("POST", "/chart", async (req) => {
     };
   }
 
-  if (!req.body || !Object.keys(req.body).length) {
-    return {
-      status: "failed",
-      message: "Request body is required but not provided.",
-    };
-  }
+  const bodyResult = requireBodyObject(req);
+  if (!bodyResult.success) return validationError(bodyResult.error!);
 
-  const { chart_id, ...data } = req.body;
-  if (!chart_id) {
-    return {
-      status: "failed",
-      message: "chart_id is required but not provided.",
-    };
-  }
+  const body = bodyResult.data as Record<string, unknown>;
+  const idResult = requireStringField(body, "chart_id");
+  if (!idResult.success) return validationError(idResult.error!);
+
+  const { chart_id, ...data } = body;
 
   try {
-    await updateChart(user, chart_id, data);
+    await updateChart(user, chart_id as string, data);
     return { status: "success" };
   } catch (error: any) {
     console.error(`Failed to update a chart: ${chart_id}`);
