@@ -1,5 +1,5 @@
 import { ContextType } from "client";
-import { Header } from "client/components";
+import { Header, ErrorBoundary } from "client/components";
 import Utility from "./Utility";
 import Router from "./Router";
 import AppContext from "./AppContext";
@@ -14,8 +14,10 @@ export const App = ({ initialUser }: Props) => {
   return (
     <AppContext initialUser={initialUser}>
       <Utility />
-      <Header />
-      <Router />
+      <ErrorBoundary>
+        <Header />
+        <Router />
+      </ErrorBoundary>
     </AppContext>
   );
 };
