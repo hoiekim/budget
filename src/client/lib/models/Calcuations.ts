@@ -304,11 +304,6 @@ export class BudgetData {
 }
 
 /**
- * Represents transaction <-> split transaction relationship.
- * The parent transaction id is the key and the children split transactions are
- * the value of the data.
- */
-/**
  * Summary of a holding's value at a point in time.
  * Note: this type is used when saving data in IndexedDB
  * so it must be a plain object without fancy method functions.
