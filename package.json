@@ -22,8 +22,8 @@
     "dev-server": "bun --watch ./src/server/start.ts",
     "test": "bun test",
     "test:coverage": "bun test --coverage --coverage-reporter=lcov",
-    "lint": "eslint src",
-    "lint:fix": "eslint src --fix",
+    "lint": "bun --bun eslint src",
+    "lint:fix": "bun --bun eslint src --fix",
     "preview": "vite preview"
   },
   "devDependencies": {

@@ -90,7 +90,7 @@ const fetchTransactions = async (
       const path = transactionsApiPath + "?" + params.toString();
       const isRecent = new Date().getTime() - endDate.getTime() < THIRTY_DAYS;
 
-      const promise = (async () => {
+      const fetchTransactionsForAccount = async () => {
         let response: ApiResponse<TransactionsGetResponse> | void;
         if (isRecent) {
           response = await call.get<TransactionsGetResponse>(path).catch(console.error);
@@ -109,7 +109,8 @@ const fetchTransactions = async (
             new InvestmentTransaction(t),
           );
         });
-      })();
+      };
+      const promise = fetchTransactionsForAccount();
 
       promises.push(promise);
     });

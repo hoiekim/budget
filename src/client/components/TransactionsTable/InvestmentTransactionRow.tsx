@@ -87,8 +87,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     setSelectedBudgetIdLabel(value);
     setSelectedCategoryIdLabel("");
 
-    let response: ApiResponse;
-    response = await call.post("/api/investment-transaction", {
+    const response: ApiResponse = await call.post("/api/investment-transaction", {
       investment_transaction_id: id,
       label: { budget_id: value || null, category_id: null },
     });
@@ -119,8 +118,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     const labelQuery = new TransactionLabel({ category_id: value || null });
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
 
-    let response: ApiResponse;
-    response = await call.post("/api/investment-transaction", {
+    const response: ApiResponse = await call.post("/api/investment-transaction", {
       investment_transaction_id: id,
       label: labelQuery,
     });

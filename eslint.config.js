@@ -40,7 +40,7 @@ export default [
 
       // Helpful rules
       "no-console": "off", // Allow console
-      "prefer-const": "warn",
+      "prefer-const": "error",
     },
   },
   {
