@@ -475,21 +475,21 @@ export class HoldingsValueData {
   };
 
   getAccountUnrealizedGain = (accountId: string, date: Date): number | null => {
-    let total: number | null = 0;
-    let hasData = false;
-    this.data.forEach((history, holdingId) => {
+    let total = 0;
+    let hasValidGain = false;
+    this.data.forEach((history) => {
       const summary = history.get(date);
       if (summary && summary.account_id === accountId) {
-        hasData = true;
         const gain = summary.unrealizedGain;
-        if (gain !== null && total !== null) {
+        if (gain !== null) {
+          hasValidGain = true;
           total += gain;
-        } else {
-          // If any holding has null gain, mark total as partial (still sum others)
         }
+        // Holdings with null gain are skipped - we sum what we can
       }
     });
-    return hasData ? total : null;
+    // Return null only if no holdings had valid gain data
+    return hasValidGain ? total : null;
   };
 
   // --- Discovery methods ---
