@@ -23,14 +23,6 @@ jobs:
         run: bun install
       - name: Run tests with coverage
         run: bun run test:coverage
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage/lcov.info
-          token: ${{ secrets.CODECOV_TOKEN }}
-          # Don't fail CI for fork PRs (secrets not available)
-          fail_ci_if_error: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-          verbose: true
 
   build:
     needs: test
