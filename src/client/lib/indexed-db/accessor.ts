@@ -1,5 +1,5 @@
 const DB_NAME = "BudgetApp";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export enum StoreName {
   // primary data
