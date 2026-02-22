@@ -8,7 +8,7 @@ export const useTransactionHit = () => {
   const hit = useCallback(
     (searchValue: string, transaction: Transaction | InvestmentTransaction | SplitTransaction) => {
       if (!searchValue) return 0;
-      let searchPool: string[] = [];
+      const searchPool: string[] = [];
       if (transaction instanceof Transaction) {
         const { name, merchant_name, account_id, label } = transaction;
         if (name) searchPool.push(name);
