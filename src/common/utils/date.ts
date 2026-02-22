@@ -176,9 +176,10 @@ export class ViewDate {
       case "year":
         return thisDate.getFullYear() - date.getFullYear();
       case "month":
-      default:
+      default: {
         const yearDistance = thisDate.getFullYear() - date.getFullYear();
         return yearDistance * 12 + (thisDate.getMonth() - date.getMonth());
+      }
     }
   };
 }

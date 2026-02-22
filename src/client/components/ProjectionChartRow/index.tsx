@@ -55,7 +55,7 @@ export const ProjectionChartRow = ({
   const adjustedInitialSaving = useMemo(() => {
     const saving = { ...initial_saving };
     const savingViewDate = new ViewDate("month", saving.amountAsOf);
-    while (!!savingViewDate.getStartDate().getMonth()) {
+    while (savingViewDate.getStartDate().getMonth()) {
       saving.amount /= momInflation;
       savingViewDate.previous();
     }

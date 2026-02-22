@@ -19,7 +19,7 @@ export const numberToCommaString = (n: number, fixed = 2) => {
   const { length } = firstPart;
   let integer = "";
   let i = 0;
-  let skip = length % 3;
+  const skip = length % 3;
   while (i < length) {
     if (i && !((i - skip) % 3)) integer += ",";
     integer += firstPart[i];
@@ -91,7 +91,7 @@ export const isEqual = (x: any, y: any, options?: IsEqualOptions) => {
       return false;
     }
     for (const prop in y) {
-      if (!x.hasOwnProperty(prop)) return false;
+      if (!Object.hasOwn(x, prop)) return false;
       else if (!isEqual(x[prop], y[prop], options)) return false;
     }
     return true;

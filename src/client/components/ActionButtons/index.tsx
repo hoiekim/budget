@@ -11,7 +11,7 @@ export const ActionButtons = ({ onComplete, onCancel, onDelete }: Props) => {
   const [isDeleteButtonLocked, setIsDeleteButtonLocked] = useState(true);
 
   const classes = ["ActionButtons"];
-  if (!!onDelete) classes.push("lockable");
+  if (onDelete) classes.push("lockable");
   if (isDeleteButtonLocked) classes.push("locked");
 
   return (

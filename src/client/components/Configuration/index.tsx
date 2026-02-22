@@ -37,7 +37,7 @@ export const Configuration = () => {
         <div className="row button" key={id}>
           <button className={buttonClassNames.join(" ")} onClick={onClickConnection}>
             <div>
-              {!!institution_id ? (
+              {institution_id ? (
                 <InstitutionSpan institution_id={institution_id} />
               ) : (
                 <span>{id.slice(0, 6).toUpperCase()}</span>

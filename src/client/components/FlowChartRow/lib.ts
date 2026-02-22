@@ -208,7 +208,7 @@ export const getVerticalLines = (column: SankeyColumn, numberOfMargins: number):
   const unusedNumberOfMargins = numberOfMargins - numberOfMarginsInThisColumn;
   const numberOfExtraMarginsOntheTop = unusedNumberOfMargins / 2;
   const maxHeight = 1 - numberOfMargins * margin;
-  let total = column.reduce((acc, { amount }) => acc + amount, 0);
+  const total = column.reduce((acc, { amount }) => acc + amount, 0);
   let yOffset = 1 - numberOfExtraMarginsOntheTop * margin;
   const result: { start: number; end: number }[] = [];
   column.forEach(({ amount }) => {
