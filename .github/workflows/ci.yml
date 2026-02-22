@@ -29,7 +29,7 @@ jobs:
           files: ./coverage/lcov.info
           # Token required for reliable uploads - tokenless hits rate limits
           token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           verbose: true
 
   build:
