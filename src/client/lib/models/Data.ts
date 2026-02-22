@@ -10,7 +10,7 @@ import { Section } from "./Section";
 import { Category } from "./Category";
 import { Item } from "./Item";
 import { Chart } from "./Chart";
-import { AccountSnapshot, HoldingSnapshot } from "./Snapshot";
+import { AccountSnapshot, HoldingSnapshot, SecuritySnapshot } from "./Snapshot";
 
 export class Dictionary<T = any, S extends Dictionary = any> extends Map<string, T> {
   toArray = () => Array.from(this.values());
@@ -104,6 +104,11 @@ export class HoldingSnapshotDictionary extends Dictionary<
   HoldingSnapshotDictionary
 > {}
 
+export class SecuritySnapshotDictionary extends Dictionary<
+  SecuritySnapshot,
+  SecuritySnapshotDictionary
+> {}
+
 export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {}
 
 export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
@@ -133,6 +138,7 @@ export class Data {
   charts = new ChartDictionary();
   accountSnapshots = new AccountSnapshotDictionary();
   holdingSnapshots = new HoldingSnapshotDictionary();
+  securitySnapshots = new SecuritySnapshotDictionary();
 
   constructor(init?: Partial<Data>) {
     assign(this, init);

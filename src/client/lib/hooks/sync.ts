@@ -28,6 +28,7 @@ import {
   Chart,
   AccountSnapshot,
   HoldingSnapshot,
+  SecuritySnapshot,
   useAppContext,
   call,
   cachedCall,
@@ -43,6 +44,7 @@ import {
   ChartDictionary,
   AccountSnapshotDictionary,
   HoldingSnapshotDictionary,
+  SecuritySnapshotDictionary,
   InstitutionDictionary,
   Institution,
   useDebounce,
@@ -199,6 +201,7 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
 interface FetchSnapshotsResult {
   accountSnapshots: AccountSnapshotDictionary;
   holdingSnapshots: HoldingSnapshotDictionary;
+  securitySnapshots: SecuritySnapshotDictionary;
 }
 
 const fetchSnapshots = async (
@@ -208,6 +211,7 @@ const fetchSnapshots = async (
   const result = {
     accountSnapshots: new AccountSnapshotDictionary(),
     holdingSnapshots: new HoldingSnapshotDictionary(),
+    securitySnapshots: new SecuritySnapshotDictionary(),
   };
 
   const params = new URLSearchParams();
@@ -232,6 +236,9 @@ const fetchSnapshots = async (
         } else if ("holding" in snapshot) {
           const newSnapshot = new HoldingSnapshot(snapshot);
           result.holdingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+        } else if ("security" in snapshot) {
+          const newSnapshot = new SecuritySnapshot(snapshot);
+          result.securitySnapshots.set(newSnapshot.snapshot.id, newSnapshot);
         }
       });
     })
@@ -321,7 +328,7 @@ export const useSync = () => {
         { accounts, items },
         { transactions, investmentTransactions },
         { splitTransactions },
-        { accountSnapshots, holdingSnapshots },
+        { accountSnapshots, holdingSnapshots, securitySnapshots },
         { budgets, sections, categories },
         { charts },
         { institutions },
@@ -343,6 +350,7 @@ export const useSync = () => {
         investmentTransactions,
         accountSnapshots,
         holdingSnapshots,
+        securitySnapshots,
         budgets,
         sections,
         categories,

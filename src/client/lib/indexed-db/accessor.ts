@@ -15,6 +15,7 @@ export enum StoreName {
   charts = "charts",
   accountSnapshots = "accountSnapshots",
   holdingSnapshots = "holdingSnapshots",
+  securitySnapshots = "securitySnapshots",
   // calculations
   balanceData = "balanceData",
   budgetData = "budgetData",
