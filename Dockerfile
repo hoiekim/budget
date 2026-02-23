@@ -11,6 +11,7 @@ COPY index.html ./
 COPY .env .env
 
 RUN bun install
+RUN bun run typecheck
 RUN bun test
 RUN bun run build
 
