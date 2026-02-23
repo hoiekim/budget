@@ -3,7 +3,7 @@
  */
 
 import { Pool, QueryResult, QueryResultRow } from "pg";
-import { isNull, isUndefined, isDate, isNumber, isString, isDefined } from "common";
+import { isNull, isUndefined, isDate, isNumber, isString } from "common";
 import { NULL } from "./models/common";
 import { Schema, Constraints } from "./models/base";
 

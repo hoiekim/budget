@@ -15,8 +15,8 @@ const RadioInputs = ({
   name,
   options,
   checkedOptionId,
-  children,
-  style,
+  children: _children,
+  style: _style,
   disabled,
   ...rest
 }: Props) => {

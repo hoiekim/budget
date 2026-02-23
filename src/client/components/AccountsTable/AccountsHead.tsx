@@ -32,7 +32,7 @@ const AccountsHead = ({ sorter, getHeader }: Props) => {
     "action",
   ];
 
-  const headerComponents = headerKeys.map((key, i) => {
+  const headerComponents = headerKeys.map((key, _i) => {
     return (
       <div key={`accounts_header_${key}`}>
         <button onClick={() => setSortBy(key)}>

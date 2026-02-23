@@ -10,7 +10,6 @@ import {
   syncPlaidTransactions,
   searchItems,
   requireQueryString,
-  requireBodyObject,
   validationError,
 } from "server";
 import { getDateString, JSONItem, ItemProvider, ItemStatus, getRandomId } from "common";

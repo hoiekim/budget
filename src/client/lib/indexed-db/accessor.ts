@@ -102,7 +102,7 @@ class IndexedDbAccessor {
     const transaction = database.transaction(storeName, "readonly");
     const store = transaction.objectStore(storeName);
 
-    const keyPromise = new Promise<string[]>((resolve, reject) => {
+    const keyPromise = new Promise<string[]>((resolve, _reject) => {
       const keys: string[] = [];
       const request = store.getAllKeys();
       request.onsuccess = () => {
