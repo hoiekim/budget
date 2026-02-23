@@ -1,6 +1,6 @@
 import { ApiResponse } from "server";
 
-const call = async <T = any>(path: string, options?: RequestInit) => {
+const call = async <T = unknown>(path: string, options?: RequestInit) => {
   const method = options?.method || "GET";
   const body = options?.body;
 
@@ -19,7 +19,7 @@ const call = async <T = any>(path: string, options?: RequestInit) => {
 };
 
 call.get = <T>(path: string) => call<T>(path);
-call.post = <T>(path: string, body: any) => call<T>(path, { method: "POST", body });
+call.post = <T>(path: string, body: unknown) => call<T>(path, { method: "POST", body });
 call.delete = <T>(path: string) => call<T>(path, { method: "DELETE" });
 
 export { call };
@@ -31,7 +31,7 @@ const getCache = () => promisedCache;
 
 export const cleanCache = () => window.caches?.delete(CACHE_KEY);
 
-export const cachedCall = async <T = any>(path: string) => {
+export const cachedCall = async <T = unknown>(path: string) => {
   const cache = await getCache();
   if (!cache) return call.get<T>(path);
   try {
@@ -50,9 +50,9 @@ export const cachedCall = async <T = any>(path: string) => {
   }
 };
 
-export const read = async <T = any>(
+export const read = async <T = unknown>(
   path: string,
-  callback: (response: ApiResponse<T>) => any,
+  callback: (response: ApiResponse<T>) => void,
   options?: RequestInit,
 ) => {
   const response = await fetch(path, options);
@@ -61,7 +61,7 @@ export const read = async <T = any>(
 
   let streamBuilder = "";
 
-  const start = async (controller: ReadableStreamController<any>) => {
+  const start = async (controller: ReadableStreamController<Uint8Array>) => {
     const push = async () => {
       try {
         const { done, value } = await reader.read();
