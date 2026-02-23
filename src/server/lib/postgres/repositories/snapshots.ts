@@ -1,9 +1,4 @@
-import {
-  JSONAccountSnapshot,
-  JSONSecuritySnapshot,
-  JSONHoldingSnapshot,
-  JSONSnapshotData,
-} from "common";
+import { JSONSnapshotData } from "common";
 import { pool } from "../client";
 import {
   MaskedUser,

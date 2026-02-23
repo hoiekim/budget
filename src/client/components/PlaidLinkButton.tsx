@@ -77,7 +77,7 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
     if (oauth_state_id || tokens.has(access_token)) return;
 
     if (promisedTokens.has(access_token)) {
-      promisedTokens.get(access_token)?.then((r) => {
+      promisedTokens.get(access_token)?.then((_r) => {
         const existingToken = tokens.get(access_token);
         if (existingToken) setToken(existingToken);
       });

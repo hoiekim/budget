@@ -77,7 +77,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     updateChart({ type: newType });
   };
 
-  const onClickAccounts: MouseEventHandler<HTMLButtonElement> = (e) => {
+  const onClickAccounts: MouseEventHandler<HTMLButtonElement> = (_e) => {
     router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ chart_id }) });
   };
 

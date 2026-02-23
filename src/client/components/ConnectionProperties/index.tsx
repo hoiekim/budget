@@ -49,7 +49,7 @@ export const ConnectionProperties = ({ item }: Props) => {
 
     if (confirmed) {
       const { item_id } = item;
-      call.delete(`/api/item?id=${item_id}`).then((r) => {
+      call.delete(`/api/item?id=${item_id}`).then((_r) => {
         const accountsInItem: Account[] = [];
 
         setData((oldData) => {

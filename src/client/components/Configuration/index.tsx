@@ -52,7 +52,7 @@ export const Configuration = () => {
   const { clean, sync } = useSync();
 
   const logout = () => {
-    call.delete("/api/login").then((r) => {
+    call.delete("/api/login").then((_r) => {
       setUser(undefined);
       clean();
     });
