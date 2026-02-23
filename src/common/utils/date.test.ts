@@ -103,6 +103,70 @@ describe("LocalDate", () => {
     const now = new Date();
     expect(local.getFullYear()).toBe(now.getFullYear());
   });
+
+  // Timezone-specific tests
+  describe("timezone handling", () => {
+    it("should avoid off-by-one day issues that occur with regular Date parsing", () => {
+      // Regular Date("YYYY-MM-DD") interprets as UTC midnight, which can shift
+      // the local date backwards in negative UTC offset timezones (e.g., PST/PDT).
+      // LocalDate should always give the expected local date.
+      const dateString = "2024-01-15";
+      const localDate = new LocalDate(dateString);
+
+      // LocalDate should always return the date as written in the string
+      expect(localDate.getDate()).toBe(15);
+      expect(localDate.getMonth()).toBe(0); // January
+      expect(localDate.getFullYear()).toBe(2024);
+    });
+
+    it("should preserve date components regardless of timezone offset", () => {
+      // Test multiple dates throughout the year to catch DST edge cases
+      const testDates = [
+        "2024-01-01", // New Year's Day (standard time)
+        "2024-03-10", // DST transition day (US)
+        "2024-06-15", // Summer (daylight time)
+        "2024-11-03", // DST fall-back day (US)
+        "2024-12-31", // New Year's Eve
+      ];
+
+      for (const dateString of testDates) {
+        const localDate = new LocalDate(dateString);
+        const [year, month, day] = dateString.split("-").map(Number);
+
+        expect(localDate.getFullYear()).toBe(year);
+        expect(localDate.getMonth()).toBe(month - 1); // JS months are 0-indexed
+        expect(localDate.getDate()).toBe(day);
+      }
+    });
+
+    it("should handle ISO date strings with time component normally", () => {
+      // When a time component is included, LocalDate should behave like regular Date
+      const isoString = "2024-06-15T12:30:00";
+      const localDate = new LocalDate(isoString);
+      const regularDate = new Date(isoString);
+
+      expect(localDate.getTime()).toBe(regularDate.getTime());
+    });
+
+    it("should have different internal time than regular Date for YYYY-MM-DD strings", () => {
+      // This test demonstrates the core difference: LocalDate interprets the
+      // date string as local midnight, while regular Date interprets it as UTC midnight
+      const dateString = "2024-06-15";
+      const localDate = new LocalDate(dateString);
+      const regularDate = new Date(dateString);
+
+      // They should represent the same calendar date in local time
+      expect(localDate.getDate()).toBe(15);
+
+      // But their internal timestamps differ by the timezone offset
+      // (unless in UTC+0 timezone)
+      const timezoneOffsetMs = localDate.getTimezoneOffset() * 60 * 1000;
+      if (timezoneOffsetMs !== 0) {
+        expect(localDate.getTime()).not.toBe(regularDate.getTime());
+        expect(localDate.getTime() - regularDate.getTime()).toBe(timezoneOffsetMs);
+      }
+    });
+  });
 });
 
 describe("ViewDate", () => {
