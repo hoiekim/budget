@@ -25,7 +25,7 @@ export const TransactionsHead = ({ sorter, getHeaderName, headerKeys, style }: P
 
   const headerComponents = headerKeys
     .sort((a, b) => sortOrder.indexOf(b) - sortOrder.indexOf(a))
-    .map((key, i) => {
+    .map((key, _i) => {
       return (
         <div key={`transactions_header_${key}`}>
           <button onClick={() => setSortBy(key)}>

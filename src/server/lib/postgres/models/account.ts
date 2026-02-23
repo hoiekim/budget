@@ -159,7 +159,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
       if (!isUndefined(a.graphOptions.useTransactions))
         r.graph_options_use_transactions = a.graphOptions.useTransactions;
     }
-    const { custom_name, hide, label, graphOptions, ...providerData } = a;
+    const { custom_name: _custom_name, hide: _hide, label: _label, graphOptions: _graphOptions, ...providerData } = a;
     r.raw = providerData;
     return r;
   }

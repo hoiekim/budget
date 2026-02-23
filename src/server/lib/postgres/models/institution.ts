@@ -1,4 +1,4 @@
-import { JSONInstitution, isString, isNullableString, isNullableObject, Optional } from "common";
+import { JSONInstitution, isString, isNullableString, isNullableObject } from "common";
 import { INSTITUTION_ID, NAME, RAW, UPDATED, INSTITUTIONS } from "./common";
 import { Model, RowValueType, createTable } from "./base";
 

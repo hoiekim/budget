@@ -145,7 +145,7 @@ export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRo
       if (tx.label.category_id !== undefined) r.label_category_id = tx.label.category_id;
       if (tx.label.memo !== undefined) r.label_memo = tx.label.memo;
     }
-    const { label, ...providerData } = tx;
+    const { label: _label, ...providerData } = tx;
     r.raw = providerData;
     return r;
   }

@@ -3,7 +3,7 @@ import { JSONChart } from "common";
 
 export type ChartsGetResponse = JSONChart[];
 
-export const getChartsRoute = new Route<ChartsGetResponse>("GET", "/charts", async (req, res) => {
+export const getChartsRoute = new Route<ChartsGetResponse>("GET", "/charts", async (req, _res) => {
   const { user } = req.session;
   if (!user) {
     return {

@@ -5,7 +5,7 @@ export type NewSplitTransactionGetResponse = { split_transaction_id: string };
 export const getNewSplitTransactionRoute = new Route<NewSplitTransactionGetResponse>(
   "GET",
   "/new-split-transaction",
-  async (req, res) => {
+  async (req, _res) => {
     const { user } = req.session;
     if (!user) {
       return {

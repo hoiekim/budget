@@ -7,7 +7,7 @@ type Props = {
   onEdit: MouseEventHandler<HTMLButtonElement>;
 } & ButtonHTMLAttributes<HTMLButtonElement>;
 
-const EditButton = ({ isCompact, onEdit, className, type, ...rest }: Props) => {
+const EditButton = ({ isCompact, onEdit, className, type: _type, ...rest }: Props) => {
   let _className = ["EditButton", className].filter(Boolean).join(" ");
   if (isCompact) _className += " small";
   else _className += " big";
