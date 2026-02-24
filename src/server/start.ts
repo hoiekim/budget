@@ -6,6 +6,7 @@ overrideConsoleLog();
 import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
+import rateLimit from "express-rate-limit";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
 import * as routes from "server/routes";
 
@@ -28,12 +29,26 @@ app.use(
   }),
 );
 
+// Rate limiter for login endpoint: 5 attempts per 15 minutes per IP
+// skipSuccessfulRequests allows legitimate users to continue after successful login
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 5,
+  message: { status: "failed", message: "Too many login attempts, try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
+
 const router = Router();
 
 router.use((req, _res, next) => {
   console.info(`<${req.method}> /api${req.url}`);
   next();
 });
+
+// Apply rate limiting to login endpoint (POST only)
+router.post("/login", loginLimiter);
 
 Object.values(routes).forEach(({ path, handler }) => router.use(path, handler));
 
