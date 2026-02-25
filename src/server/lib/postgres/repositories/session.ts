@@ -1,9 +1,45 @@
 import { Store, SessionData as ExpressSessionData } from "express-session";
 import { pool } from "../client";
-import { SessionModel, SESSIONS, SESSION_ID } from "../models";
+import { SessionModel, SESSIONS, SESSION_ID, COOKIE_EXPIRES } from "../models";
 import { buildUpsert, buildUpdate, selectWithFilters } from "../database";
 
+/**
+ * Remove expired sessions from the database.
+ * @returns The number of sessions purged
+ */
+export async function purgeSessions(): Promise<number> {
+  const sql = `DELETE FROM ${SESSIONS} WHERE ${COOKIE_EXPIRES} <= NOW() RETURNING ${SESSION_ID}`;
+  const result = await pool.query(sql);
+  return result.rowCount ?? 0;
+}
+
 export class PostgresSessionStore extends Store {
+  private cleanupInterval: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    super();
+    this.startCleanupScheduler();
+  }
+
+  private startCleanupScheduler(): void {
+    // Run cleanup every hour
+    const runCleanup = () => {
+      purgeSessions()
+        .then((count) => {
+          if (count > 0) {
+            console.info(`Purged ${count} expired session(s)`);
+          }
+        })
+        .catch((error) => {
+          console.error("Session cleanup error:", error);
+        });
+      this.cleanupInterval = setTimeout(runCleanup, 1000 * 60 * 60);
+    };
+
+    // Initial cleanup after 1 minute (give server time to start)
+    this.cleanupInterval = setTimeout(runCleanup, 1000 * 60);
+  }
+
   get(
     sid: string,
     callback: (err: Error | null, session?: ExpressSessionData | null) => void,
