@@ -11,6 +11,11 @@ import * as routes from "server/routes";
 
 const app = express();
 
+// Trust first proxy for secure cookie detection behind reverse proxy
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 app.use(express.json({ limit: "50mb" }));
 
 app.use(
@@ -20,7 +25,7 @@ app.use(
     saveUninitialized: false,
     rolling: true,
     cookie: {
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
