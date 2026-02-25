@@ -10,18 +10,20 @@ interface PlaidWebhookBody {
   error?: { error_code: string };
 }
 
-export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req) => {
+export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, res) => {
   // Verify webhook signature from Plaid
   const signedJwt = req.headers["plaid-verification"] as string | undefined;
   const rawBody = (req as any).rawBody as string | undefined;
 
   if (!rawBody) {
     console.error("[Plaid Webhook] Raw body not available for verification");
+    res.status(401);
     return { status: "failed", message: "Webhook verification failed" };
   }
 
   const isValid = await verifyWebhook(rawBody, signedJwt);
   if (!isValid) {
+    res.status(401);
     return { status: "failed", message: "Invalid webhook signature" };
   }
 
