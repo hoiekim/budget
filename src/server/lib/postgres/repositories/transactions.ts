@@ -21,6 +21,7 @@ import {
   errorResult,
   noChangeResult,
 } from "../database";
+import { logger } from "../../logger";
 
 export interface SearchTransactionsOptions {
   account_id?: string;
@@ -113,7 +114,7 @@ export const upsertTransactions = async (
       await transactionsTable.upsert(row);
       results.push(successResult(tx.transaction_id, 1));
     } catch (error) {
-      console.error(`Failed to upsert transaction ${tx.transaction_id}:`, error);
+      logger.error("Failed to upsert transaction", { transactionId: tx.transaction_id }, error);
       results.push(errorResult(tx.transaction_id));
     }
   }
@@ -138,7 +139,7 @@ export const updateTransactions = async (
         updated ? successResult(tx.transaction_id, 1) : noChangeResult(tx.transaction_id),
       );
     } catch (error) {
-      console.error(`Failed to update transaction ${tx.transaction_id}:`, error);
+      logger.error("Failed to update transaction", { transactionId: tx.transaction_id }, error);
       results.push(errorResult(tx.transaction_id));
     }
   }

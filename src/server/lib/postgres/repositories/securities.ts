@@ -1,6 +1,7 @@
 import { JSONSecurity } from "common";
 import { SecurityModel, securitiesTable, snapshotsTable, SECURITY_ID } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
+import { logger } from "../../logger";
 
 export const getSecurities = async (): Promise<JSONSecurity[]> => {
   const models = await securitiesTable.query({});
@@ -44,7 +45,7 @@ export const upsertSecurities = async (securities: JSONSecurity[]): Promise<Upse
       await securitiesTable.upsert(row);
       results.push(successResult(security.security_id, 1));
     } catch (error) {
-      console.error(`Failed to upsert security ${security.security_id}:`, error);
+      logger.error("Failed to upsert security", { securityId: security.security_id }, error);
       results.push(errorResult(security.security_id));
     }
   }

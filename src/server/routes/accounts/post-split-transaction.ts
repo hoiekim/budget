@@ -1,4 +1,5 @@
 import { Route, updateSplitTransactions, requireBodyObject, validationError } from "server";
+import { logger } from "server/lib/logger";
 
 export interface SplitTransactionPostResponse {
   split_transaction_id: string;
@@ -26,7 +27,7 @@ export const postSplitTrasactionRoute = new Route<SplitTransactionPostResponse>(
       const split_transaction_id = response[0].update?._id || "";
       return { status: "success", body: { split_transaction_id } };
     } catch (error: any) {
-      console.error(`Failed to update a split transaction: ${(body as any).split_transaction_id}`);
+      logger.error("Failed to update split transaction", { splitTransactionId: (body as any).split_transaction_id }, error);
       throw new Error(error);
     }
   },

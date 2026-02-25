@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { DeepPartial } from "common";
 import { MaskedUser, User, usersTable, USER_ID } from "../models";
+import { logger } from "../../logger";
 
 export type IndexUserInput = Omit<User, "user_id"> & { user_id?: string };
 export type PartialUser = { user_id: string } & DeepPartial<User>;
@@ -22,7 +23,7 @@ export const writeUser = async (user: IndexUserInput): Promise<{ _id: string } |
     if (result) return { _id: result.user_id as string };
     return undefined;
   } catch (error) {
-    console.error("Failed to write user:", error);
+    logger.error("Failed to write user", {}, error);
     return undefined;
   }
 };
@@ -38,7 +39,7 @@ export const searchUser = async (user: Partial<MaskedUser>): Promise<User | unde
     const model = await usersTable.queryOne(filters);
     return model?.toUser();
   } catch (error) {
-    console.error("Failed to search user:", error);
+    logger.error("Failed to search user", {}, error);
     return undefined;
   }
 };
@@ -57,7 +58,7 @@ export const updateUser = async (user: PartialUser): Promise<boolean> => {
     const model = await usersTable.update(user_id, updates);
     return model !== null;
   } catch (error) {
-    console.error("Failed to update user:", error);
+    logger.error("Failed to update user", {}, error);
     return false;
   }
 };
@@ -67,7 +68,7 @@ export const getUserById = async (user_id: string): Promise<User | undefined> =>
     const model = await usersTable.queryOne({ [USER_ID]: user_id });
     return model?.toUser();
   } catch (error) {
-    console.error("Failed to get user by ID:", error);
+    logger.error("Failed to get user by ID", { userId: user_id }, error);
     return undefined;
   }
 };
@@ -76,7 +77,7 @@ export const deleteUser = async (user_id: string): Promise<boolean> => {
   try {
     return await usersTable.softDelete(user_id);
   } catch (error) {
-    console.error("Failed to delete user:", error);
+    logger.error("Failed to delete user", { userId: user_id }, error);
     return false;
   }
 };

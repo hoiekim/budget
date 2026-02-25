@@ -1,5 +1,6 @@
 import { ItemStatus } from "common";
 import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError } from "server";
+import { logger } from "server/lib/logger";
 
 interface PlaidWebhookBody {
   webhook_type: "TRANSACTIONS" | "ITEM" | "HOLDINGS" | "INVESTMENTS_TRANSACTIONS";
@@ -45,17 +46,14 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req) =
     }
   }
 
-  console.log(`Unhandled hook called for item ${item_id}`);
-  console.log("Request body:", req.body);
+  logger.warn("Unhandled webhook", { itemId: item_id, webhookType: webhook_type, webhookCode: webhook_code, body: req.body });
 });
 
 const syncAndLog = async (item_id: string) => {
   const response = await syncPlaidTransactions(item_id);
   if (!response) return { status: "failed" as const };
   const { added, modified, removed } = response;
-  console.group(`Synced transactions for item: ${item_id}`);
-  console.log(`${added} added, ${modified} modified, ${removed} removed`);
-  console.groupEnd();
+  logger.info("Synced transactions via webhook", { itemId: item_id, added, modified, removed });
   return { status: "success" as const };
 };
 

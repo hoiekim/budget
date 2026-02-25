@@ -1,5 +1,6 @@
 import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
 import { MaskedUser } from "server";
+import { logger } from "../logger";
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_PRODUCTION, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;
@@ -9,7 +10,7 @@ if (
   !(PLAID_SECRET_PRODUCTION || PLAID_SECRET_DEVELOPMENT) ||
   !PLAID_SECRET_SANDBOX
 ) {
-  console.warn("Plaid is not cofigured. Check env vars.");
+  logger.warn("Plaid is not configured. Check env vars.");
 }
 
 export const getClient = (user?: MaskedUser) => {

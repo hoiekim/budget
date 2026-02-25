@@ -1,4 +1,5 @@
 import { Route, updateCategory, requireBodyObject, requireStringField, validationError } from "server";
+import { logger } from "server/lib/logger";
 
 export const postCategoryRoute = new Route("POST", "/category", async (req) => {
   const { user } = req.session;
@@ -22,7 +23,7 @@ export const postCategoryRoute = new Route("POST", "/category", async (req) => {
     await updateCategory(user, category_id as string, data);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update a category: ${category_id}`);
+    logger.error("Failed to update category", { categoryId: category_id }, error);
     throw new Error(error);
   }
 });

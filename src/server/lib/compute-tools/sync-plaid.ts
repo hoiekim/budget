@@ -31,6 +31,7 @@ import {
   upsertSecuritiesWithSnapshots,
 } from "./create-snapshots";
 import { Products } from "plaid";
+import { logger } from "../logger";
 
 export const syncPlaidTransactions = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -96,8 +97,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         })
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
-          console.error("Error occured during puting Plaid transanctions data into database");
-          console.error(err);
+          logger.error("Error occurred during storing Plaid transactions data", { itemId: item_id }, err);
         });
     });
 
@@ -153,10 +153,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         })
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
-          console.error(
-            "Error occured during puting Plaid investment transanctions data into database",
-          );
-          console.error(err);
+          logger.error("Error occurred during storing Plaid investment transactions data", { itemId: item_id }, err);
         });
     });
 
@@ -199,7 +196,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       return accounts;
     })
-    .catch(console.error);
+    .catch((error) => logger.error("Sync accounts failed", { itemId: item_id }, error));
 
   const isInvestmentAvailable = item.available_products.includes(Products.Investments);
   const syncHoldings = Promise.resolve(isInvestmentAvailable)
@@ -220,7 +217,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertSecuritiesWithSnapshots(securities);
       return accounts;
     })
-    .catch(console.error);
+    .catch((error) => logger.error("Sync holdings failed", { itemId: item_id }, error));
 
   const [accounts, investmentAccounts] = await Promise.all([syncAccounts, syncHoldings]);
   return { accounts, investmentAccounts };

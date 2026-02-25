@@ -1,4 +1,5 @@
 import { RequestHandler, Request, Response } from "express";
+import { logger } from "./logger";
 
 export type Method = "GET" | "POST" | "DELETE";
 
@@ -33,7 +34,7 @@ export class Route<T> {
           else res.end();
           return;
         } catch (error: any) {
-          console.error(error);
+          logger.error("Route handler error", { method, path }, error);
           res.status(500).json({ status: "error", info: error?.message });
         }
       }

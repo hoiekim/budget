@@ -1,4 +1,5 @@
 import { Route, updateSection, requireBodyObject, requireStringField, validationError } from "server";
+import { logger } from "server/lib/logger";
 
 export const postSectionRoute = new Route("POST", "/section", async (req) => {
   const { user } = req.session;
@@ -22,7 +23,7 @@ export const postSectionRoute = new Route("POST", "/section", async (req) => {
     await updateSection(user, section_id as string, data);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update a section: ${section_id}`);
+    logger.error("Failed to update section", { sectionId: section_id }, error);
     throw new Error(error);
   }
 });

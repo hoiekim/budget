@@ -1,6 +1,7 @@
 import { JSONInstitution } from "common";
 import { InstitutionModel, institutionsTable, INSTITUTION_ID } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
+import { logger } from "../../logger";
 
 export const getInstitutions = async (): Promise<JSONInstitution[]> => {
   const models = await institutionsTable.query({});
@@ -35,7 +36,7 @@ export const upsertInstitutions = async (
       await institutionsTable.upsert(row);
       results.push(successResult(institution.institution_id, 1));
     } catch (error) {
-      console.error(`Failed to upsert institution ${institution.institution_id}:`, error);
+      logger.error("Failed to upsert institution", { institutionId: institution.institution_id }, error);
       results.push(errorResult(institution.institution_id));
     }
   }

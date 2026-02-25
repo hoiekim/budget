@@ -1,4 +1,5 @@
 import { Route, updateBudget, requireBodyObject, requireStringField, validationError } from "server";
+import { logger } from "server/lib/logger";
 
 export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
   const { user } = req.session;
@@ -22,7 +23,7 @@ export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
     await updateBudget(user, budget_id as string, data);
     return { status: "success" };
   } catch (error: any) {
-    console.error(`Failed to update a budget: ${budget_id}`);
+    logger.error("Failed to update budget", { budgetId: budget_id }, error);
     throw new Error(error);
   }
 });

@@ -11,6 +11,7 @@ import {
   SECTION_ID,
   USER_ID,
 } from "../models";
+import { logger } from "../../logger";
 
 export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
   const models = await budgetsTable.query({ [USER_ID]: user.user_id });
@@ -55,7 +56,7 @@ export const createBudget = async (
     const model = new BudgetModel(result);
     return model.toJSON();
   } catch (error) {
-    console.error("Failed to create budget:", error);
+    logger.error("Failed to create budget", {}, error);
     return null;
   }
 };
@@ -134,7 +135,7 @@ export const createSection = async (
     const model = new SectionModel(result);
     return model.toJSON();
   } catch (error) {
-    console.error("Failed to create section:", error);
+    logger.error("Failed to create section", {}, error);
     return null;
   }
 };
@@ -209,7 +210,7 @@ export const createCategory = async (
     const model = new CategoryModel(result);
     return model.toJSON();
   } catch (error) {
-    console.error("Failed to create category:", error);
+    logger.error("Failed to create category", {}, error);
     return null;
   }
 };

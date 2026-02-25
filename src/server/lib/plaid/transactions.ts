@@ -10,6 +10,7 @@ import {
 import { MaskedUser, updateItemStatus } from "server";
 import { JSONItem, ItemStatus, getDateString, LocalDate } from "common";
 import { getClient, ignorable_error_codes } from "./util";
+import { logger } from "../logger";
 
 export interface PlaidTransaction extends Transaction {}
 
@@ -61,11 +62,10 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
         item.cursor = next_cursor;
       } catch (error: any) {
         plaidError = error?.response?.data as PlaidError;
-        console.error(plaidError || error);
-        console.error("Failed to get transactions data for item:", item_id);
+        logger.error("Failed to get transactions data", { itemId: item_id }, plaidError || error);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
           updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
-            console.error("Failed to update item status to BAD:", e);
+            logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
         }
         hasMore = false;
@@ -156,11 +156,10 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
       } catch (error: any) {
         const plaidError = error?.response?.data as PlaidError;
         if (!ignorable_error_codes.has(plaidError?.error_code)) {
-          console.error(plaidError);
-          console.error("Failed to get investment transaction data for item:", item_id);
+          logger.error("Failed to get investment transaction data", { itemId: item_id }, plaidError || error);
           if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
             updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
-              console.error("Failed to update item status to BAD:", e);
+              logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
             });
           }
           data.items.push({ ...item, plaidError });

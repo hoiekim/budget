@@ -8,6 +8,7 @@ import express, { Router } from "express";
 import session from "express-session";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
 import * as routes from "server/routes";
+import { logger } from "server/lib/logger";
 
 const app = express();
 
@@ -31,7 +32,7 @@ app.use(
 const router = Router();
 
 router.use((req, _res, next) => {
-  console.info(`<${req.method}> /api${req.url}`);
+  logger.info("API request", { method: req.method, path: `/api${req.url}` });
   next();
 });
 
@@ -49,6 +50,6 @@ app.get("*", (_req, res) => {
 
 app.listen(process.env.PORT || 3005, async () => {
   await initializePostgres();
-  console.info("Budget app server is up.");
+  logger.info("Budget app server is up", { port: process.env.PORT || 3005 });
   scheduledSync();
 });
