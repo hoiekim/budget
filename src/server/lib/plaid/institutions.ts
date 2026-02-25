@@ -2,6 +2,7 @@ import { CountryCode } from "plaid";
 import { MaskedUser } from "server";
 import { JSONInstitution } from "common";
 import { getClient } from "./util";
+import { logger } from "../logger";
 
 export const getInstitution = async (
   user: MaskedUser,
@@ -43,7 +44,6 @@ export const getInstitution = async (
       status,
     };
   } catch (error) {
-    console.error(error);
-    console.error("Failed to get institutions data.");
+    logger.error("Failed to get institution data", { institutionId: id }, error);
   }
 };

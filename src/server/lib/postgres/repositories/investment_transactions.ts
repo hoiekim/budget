@@ -16,6 +16,7 @@ import {
   errorResult,
   noChangeResult,
 } from "../database";
+import { logger } from "../../logger";
 
 export interface SearchInvestmentTransactionsOptions {
   account_id?: string;
@@ -79,10 +80,7 @@ export const upsertInvestmentTransactions = async (
       await investmentTransactionsTable.upsert(row);
       results.push(successResult(tx.investment_transaction_id, 1));
     } catch (error) {
-      console.error(
-        `Failed to upsert investment transaction ${tx.investment_transaction_id}:`,
-        error,
-      );
+      logger.error("Failed to upsert investment transaction", { investmentTransactionId: tx.investment_transaction_id }, error);
       results.push(errorResult(tx.investment_transaction_id));
     }
   }
@@ -109,10 +107,7 @@ export const updateInvestmentTransactions = async (
           : noChangeResult(tx.investment_transaction_id),
       );
     } catch (error) {
-      console.error(
-        `Failed to update investment transaction ${tx.investment_transaction_id}:`,
-        error,
-      );
+      logger.error("Failed to update investment transaction", { investmentTransactionId: tx.investment_transaction_id }, error);
       results.push(errorResult(tx.investment_transaction_id));
     }
   }

@@ -2,9 +2,10 @@ import { ItemProvider, ONE_HOUR } from "common";
 import { getAllItems } from "server";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
+import { logger } from "../logger";
 
 export const scheduledSync = async () => {
-  console.log(`Scheduled sync started`);
+  logger.info("Scheduled sync started");
   try {
     const items = await getAllItems();
     for (const { item_id, provider } of items) {
@@ -18,7 +19,7 @@ export const scheduledSync = async () => {
             const { accounts, investmentAccounts } = r;
             accountsCount += (accounts?.length || 0) + (investmentAccounts?.length || 0);
           })
-          .catch(console.error);
+          .catch((error) => logger.error("Sync Plaid accounts failed", { itemId: item_id }, error));
 
         await syncPlaidTransactions(item_id)
           .then((r) => {
@@ -26,31 +27,32 @@ export const scheduledSync = async () => {
             const { added, modified, removed } = r;
             transactionsCount += added + modified + removed;
           })
-          .catch(console.error);
+          .catch((error) => logger.error("Sync Plaid transactions failed", { itemId: item_id }, error));
 
-        console.group(`Synced all data for Plaid item: ${item_id}`);
-        console.log(`${accountsCount} accounts updated`);
-        console.log(`${transactionsCount} transactions updated`);
-        console.groupEnd();
+        logger.info("Synced Plaid item", {
+          itemId: item_id,
+          accountsUpdated: accountsCount,
+          transactionsUpdated: transactionsCount,
+        });
       } else if (provider === ItemProvider.SIMPLE_FIN) {
         await syncSimpleFinData(item_id)
           .then((r) => {
             if (!r) throw new Error("Error occured during syncAllSimpleFinData");
             const { accounts, transactions, investmentTransactions } = r;
-            console.group(`Synced all data for SimpleFin item: ${item_id}`);
-            console.log(`${accounts?.length || 0} accounts updated`);
             const transactionsCount = transactions.length + investmentTransactions.length;
-            console.log(`${transactionsCount} transactions updated`);
-            console.groupEnd();
+            logger.info("Synced SimpleFin item", {
+              itemId: item_id,
+              accountsUpdated: accounts?.length || 0,
+              transactionsUpdated: transactionsCount,
+            });
           })
-          .catch(console.error);
+          .catch((error) => logger.error("Sync SimpleFin data failed", { itemId: item_id }, error));
       }
     }
   } catch (err) {
-    console.error("Error occured during scheduled sync");
-    console.error(err);
+    logger.error("Error occurred during scheduled sync", {}, err);
   } finally {
-    console.log("Scheduled sync completed");
+    logger.info("Scheduled sync completed");
     setTimeout(scheduledSync, ONE_HOUR);
   }
 };

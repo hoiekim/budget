@@ -1,5 +1,6 @@
 import { Route, updateAccounts, requireBodyObject, requireStringField, validationError } from "server";
 import type { PartialAccount } from "server";
+import { logger } from "server/lib/logger";
 
 export interface AccountPostResponse {
   account_id: string;
@@ -32,7 +33,7 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
     if (!account_id) throw new Error("Account ID is missing after upsert");
     return { status: "success", body: { account_id } };
   } catch (error: unknown) {
-    console.error(`Failed to update an account: ${idResult.data}`);
+    logger.error("Failed to update account", { accountId: idResult.data }, error);
     throw error instanceof Error ? error : new Error(String(error));
   }
 });

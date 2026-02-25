@@ -1,5 +1,6 @@
 import { Route, updateInvestmentTransactions, requireBodyObject, requireStringField, validationError } from "server";
 import type { PartialInvestmentTransaction } from "server";
+import { logger } from "server/lib/logger";
 
 export interface InvestmentTransactionPostResponse {
   investment_transaction_id: string;
@@ -34,9 +35,7 @@ export const postInvestmentTrasactionRoute = new Route<InvestmentTransactionPost
       const investment_transaction_id = result.update._id || "";
       return { status: "success", body: { investment_transaction_id } };
     } catch (error: unknown) {
-      console.error(
-        `Failed to update an investment transaction: ${idResult.data}`,
-      );
+      logger.error("Failed to update investment transaction", { investmentTransactionId: idResult.data }, error);
       throw error instanceof Error ? error : new Error(String(error));
     }
   },
