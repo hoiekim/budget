@@ -105,8 +105,8 @@ describe("requireStringField", () => {
   });
 
   it("should fail for missing field", () => {
-    const obj = { value: 123 };
-    const result = requireStringField(obj as any, "name");
+    const obj = { value: 123 } as Record<string, unknown>;
+    const result = requireStringField(obj, "name");
     expect(result.success).toBe(false);
     expect(result.error).toContain("Missing");
   });
@@ -128,8 +128,8 @@ describe("requireNumberField", () => {
   });
 
   it("should fail for missing field", () => {
-    const obj = {};
-    const result = requireNumberField(obj as any, "count");
+    const obj = {} as Record<string, unknown>;
+    const result = requireNumberField(obj, "count");
     expect(result.success).toBe(false);
     expect(result.error).toContain("Missing");
   });

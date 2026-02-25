@@ -66,6 +66,7 @@ export type Optional<T, P extends keyof T> = Omit<T, P> & {
 
 export type ValueOf<T> = T[keyof T];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const assign = <T>(target: T, source: any) => {
   for (const key in source) {
     const value = source[key];
@@ -80,19 +81,21 @@ interface IsEqualOptions {
   ignoreFunctions?: boolean;
 }
 
-export const isEqual = (x: any, y: any, options?: IsEqualOptions) => {
+export const isEqual = (x: unknown, y: unknown, options?: IsEqualOptions): boolean => {
   const { usePartialMatch = false, ignoreFunctions = true } = options || {};
   if (x === y) {
     return true;
   } else if (ignoreFunctions && typeof x === "function" && typeof y === "function") {
     return true;
   } else if (x && typeof x === "object" && y && typeof y === "object") {
-    if (!usePartialMatch && Object.keys(x).length !== Object.keys(y).length) {
+    const xObj = x as Record<string, unknown>;
+    const yObj = y as Record<string, unknown>;
+    if (!usePartialMatch && Object.keys(xObj).length !== Object.keys(yObj).length) {
       return false;
     }
-    for (const prop in y) {
-      if (!Object.hasOwn(x, prop)) return false;
-      else if (!isEqual(x[prop], y[prop], options)) return false;
+    for (const prop in yObj) {
+      if (!Object.hasOwn(xObj, prop)) return false;
+      else if (!isEqual(xObj[prop], yObj[prop], options)) return false;
     }
     return true;
   } else {
@@ -100,7 +103,7 @@ export const isEqual = (x: any, y: any, options?: IsEqualOptions) => {
   }
 };
 
-export const isSubset = (whole: any, part: any) => {
+export const isSubset = (whole: unknown, part: unknown) => {
   return isEqual(whole, part, { usePartialMatch: true });
 };
 
@@ -148,10 +151,10 @@ export const toUpperCamelCase = (s: string) => {
   return toTitleCase(s).replace(/ /g, "");
 };
 
-export const excludeEnumeration = (obj: any, propertyNames: string[]) => {
+export const excludeEnumeration = (obj: object, propertyNames: string[]) => {
   propertyNames.forEach((name) => {
     Object.defineProperty(obj, name, {
-      value: obj[name],
+      value: (obj as Record<string, unknown>)[name],
       enumerable: false,
       writable: true,
       configurable: true,

@@ -21,8 +21,8 @@ export const postChartRoute = new Route("POST", "/chart", async (req) => {
   try {
     await updateChart(user, chart_id as string, data);
     return { status: "success" };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Failed to update a chart: ${chart_id}`);
-    throw new Error(error);
+    throw error instanceof Error ? error : new Error(String(error));
   }
 });

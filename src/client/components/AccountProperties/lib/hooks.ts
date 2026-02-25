@@ -337,6 +337,6 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
   };
 };
 
-const isAccountType = (value: any): value is AccountType => {
-  return Object.values(AccountType).includes(value);
+const isAccountType = (value: unknown): value is AccountType => {
+  return Object.values(AccountType).includes(value as AccountType);
 };

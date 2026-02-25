@@ -76,7 +76,8 @@ export class BudgetFamily {
 
   clone = (override?: Partial<BudgetFamily | JSONBudgetFamily>): this => {
     const overrode = override ? assign(this.clone(), override) : this;
-    return new (this.constructor as any)(overrode);
+    const Constructor = this.constructor as new (init?: Partial<BudgetFamily | JSONBudgetFamily>) => this;
+    return new Constructor(overrode);
   };
 
   sortCapacities = (order: "asc" | "desc" = "asc") => {
@@ -120,7 +121,7 @@ export class BudgetFamily {
     const parentType = getParentType(type);
     const parentIdKey = `${parentType}_id`;
     // Assuming each budget member has correct parent id property
-    const parentId = (this as any)[parentIdKey] as string;
+    const parentId = (this as unknown as Record<string, string>)[parentIdKey];
     if (!parentId || typeof parentId !== "string") return;
     const { budgets, sections } = globalData;
     const parentBudget = budgets.get(parentId);

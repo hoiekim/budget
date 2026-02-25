@@ -21,8 +21,8 @@ export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
   try {
     await updateBudget(user, budget_id as string, data);
     return { status: "success" };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Failed to update a budget: ${budget_id}`);
-    throw new Error(error);
+    throw error instanceof Error ? error : new Error(String(error));
   }
 });
