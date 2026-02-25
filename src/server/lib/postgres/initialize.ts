@@ -1,6 +1,7 @@
 import { pool } from "./client";
 import { searchUser, writeUser } from "./repositories";
 import { buildCreateTable, buildCreateIndex } from "./database";
+import { runMigrations } from "./migration";
 import {
   Table,
   usersTable,
@@ -68,6 +69,9 @@ export const initializePostgres = async (): Promise<void> => {
       }
     }
     console.info("Database tables created/verified successfully.");
+
+    // Run automatic schema migrations to add any missing columns
+    await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
   } catch (error: unknown) {
     console.error("Failed to create tables:", error);
     throw new Error("Failed to setup PostgreSQL tables.");
