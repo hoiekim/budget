@@ -4,9 +4,10 @@ setModulePaths();
 overrideConsoleLog();
 
 import path from "path";
-import express, { Request, Response, NextFunction, Router } from "express";
+import express, { Router } from "express";
 import session from "express-session";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
+import { loginLimiter } from "server/lib/rate-limit";
 import * as routes from "server/routes";
 
 const app = express();
@@ -27,29 +28,6 @@ app.use(
     store: new PostgresSessionStore(),
   }),
 );
-
-// Simple in-memory rate limiter for login endpoint
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_ATTEMPTS = 5;
-
-const loginLimiter = (req: Request, res: Response, next: NextFunction) => {
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  const now = Date.now();
-  const record = loginAttempts.get(ip);
-
-  if (record && now < record.resetAt) {
-    if (record.count >= MAX_ATTEMPTS) {
-      res.status(429).json({ status: "failed", message: "Too many login attempts, try again later" });
-      return;
-    }
-    record.count++;
-  } else {
-    loginAttempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-  }
-
-  next();
-};
 
 const router = Router();
 
