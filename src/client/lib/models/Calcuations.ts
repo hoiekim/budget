@@ -10,6 +10,7 @@ export class Calculations {
   budgetData = new BudgetData();
   capacityData = new CapacityData();
   transactionFamilies = new TransactionFamilies();
+  holdingsValueData = new HoldingsValueData();
 
   constructor(init?: Partial<Calculations>) {
     assign(this, init);
@@ -300,6 +301,230 @@ export class BudgetData {
   };
 
   forEach = (cb: (history: BudgetHistory, id: string) => void) => this.data.forEach(cb);
+}
+
+/**
+ * Summary of a holding's value at a point in time.
+ * Note: this type is used when saving data in IndexedDB
+ * so it must be a plain object without fancy method functions.
+ */
+export class HoldingValueSummary {
+  value: number = 0;
+  costBasis: number | null = null;
+  quantity: number = 0;
+  price: number = 0;
+  security_id: string = "";
+  account_id: string = "";
+  costBasisInferred: boolean = false;
+
+  constructor(init?: Partial<HoldingValueSummary>) {
+    if (init) assign(this, init);
+  }
+
+  get unrealizedGain(): number | null {
+    if (this.costBasis === null) return null;
+    return this.value - this.costBasis;
+  }
+
+  get returnPercent(): number | null {
+    if (this.costBasis === null || this.costBasis === 0) return null;
+    return ((this.value - this.costBasis) / this.costBasis) * 100;
+  }
+
+  get isCostBasisEstimated(): boolean {
+    return this.costBasisInferred;
+  }
+}
+
+/**
+ * @example
+ * {
+ *    "2026-01": { value: 1000, costBasis: 900, ... },
+ *    "2026-02": { value: 1100, costBasis: 900, ... }
+ * }
+ */
+export type HoldingValueByMonth = { [k: string]: HoldingValueSummary };
+
+/**
+ * Helper class to abstract holding value history write & read processes.
+ * Similar to BalanceHistory but stores HoldingValueSummary instead of number.
+ */
+export class HoldingValueHistory {
+  private data: HoldingValueByMonth = {};
+  private range?: [Date, Date];
+
+  constructor(data?: HoldingValueByMonth) {
+    if (data) this.data = data;
+  }
+
+  private getKey = (date: Date) => getYearMonthString(date);
+  private getDate = (key: string) => new LocalDate(`${key}-15`);
+
+  getData = (): HoldingValueByMonth => ({ ...this.data });
+  getRange = (): [Date, Date] | undefined => this.range && [...this.range];
+
+  get startDate() {
+    return this.range && new ViewDate("month", this.range[0]);
+  }
+
+  get endDate() {
+    return this.range && new ViewDate("month", this.range[1]);
+  }
+
+  set = (date: Date, summary: HoldingValueSummary) => {
+    if (!this.range) this.range = [date, date];
+    else if (this.range[1] < date) this.range[1] = date;
+    else if (date < this.range[0]) this.range[0] = date;
+    this.data[this.getKey(date)] = summary;
+  };
+
+  get = (date: Date): HoldingValueSummary | undefined => {
+    return this.data[this.getKey(date)];
+  };
+
+  /**
+   * Returns an array of holding value history.
+   * Values are 0-indexed where 0 is the month of the given `viewDate`,
+   * 1 is the previous month, and so on.
+   */
+  toArray = (viewDate: ViewDate) => {
+    const result: HoldingValueSummary[] = [];
+    Object.entries(this.data).forEach(([key, value]) => {
+      const date = this.getDate(key);
+      if (!isDate(date)) return;
+      const span = viewDate.getSpanFrom(date);
+      if (span >= 0) result[span] = value;
+    });
+    return result;
+  };
+}
+
+/**
+ * Holdings value data stored by `holdingId` (account_id + security_id).
+ * Provides direct access, aggregation, and discovery methods.
+ *
+ * @example
+ * const holdingsValueData = new HoldingsValueData();
+ * const holdingId = "account1_security1";
+ * const date = new Date("2026-01-01");
+ *
+ * holdingsValueData.set(holdingId, date, new HoldingValueSummary({
+ *   value: 1000, costBasis: 900, quantity: 10, price: 100,
+ *   security_id: "security1", account_id: "account1"
+ * }));
+ *
+ * console.log(holdingsValueData.getHoldingValue(holdingId, date)); // 1000
+ * console.log(holdingsValueData.getAccountTotalValue("account1", date)); // 1000
+ */
+export class HoldingsValueData {
+  private data = new Map<string, HoldingValueHistory>();
+
+  get size() {
+    return this.data.size;
+  }
+
+  getEntries = () => Array.from(this.data.entries());
+
+  // --- Direct access methods ---
+
+  set(holdingId: string, history: HoldingValueHistory): void;
+  set(holdingId: string, date: Date, summary: HoldingValueSummary): void;
+  set(holdingId: string, dateOrHistory: Date | HoldingValueHistory, summary?: HoldingValueSummary) {
+    if (isDate(dateOrHistory) && summary) {
+      const date = dateOrHistory;
+      if (!this.data.has(holdingId)) this.data.set(holdingId, new HoldingValueHistory());
+      const holdingData = this.data.get(holdingId)!;
+      holdingData.set(date, summary);
+    } else if (dateOrHistory instanceof HoldingValueHistory) {
+      this.data.set(holdingId, dateOrHistory);
+    }
+  }
+
+  getHistory(holdingId: string): HoldingValueHistory {
+    if (!this.data.has(holdingId)) this.data.set(holdingId, new HoldingValueHistory());
+    return this.data.get(holdingId)!;
+  }
+
+  getHoldingValue = (holdingId: string, date: Date): number | undefined => {
+    return this.getHistory(holdingId).get(date)?.value;
+  };
+
+  getHoldingPrice = (holdingId: string, date: Date): number | undefined => {
+    return this.getHistory(holdingId).get(date)?.price;
+  };
+
+  getHoldingCostBasis = (holdingId: string, date: Date): number | null | undefined => {
+    return this.getHistory(holdingId).get(date)?.costBasis;
+  };
+
+  getHoldingUnrealizedGain = (holdingId: string, date: Date): number | null | undefined => {
+    return this.getHistory(holdingId).get(date)?.unrealizedGain;
+  };
+
+  // --- Aggregation methods ---
+
+  getAccountTotalValue = (accountId: string, date: Date): number => {
+    let total = 0;
+    this.data.forEach((history, holdingId) => {
+      const summary = history.get(date);
+      if (summary && summary.account_id === accountId) {
+        total += summary.value;
+      }
+    });
+    return total;
+  };
+
+  getAccountUnrealizedGain = (accountId: string, date: Date): number | null => {
+    let total = 0;
+    let hasValidGain = false;
+    this.data.forEach((history) => {
+      const summary = history.get(date);
+      if (summary && summary.account_id === accountId) {
+        const gain = summary.unrealizedGain;
+        if (gain !== null) {
+          hasValidGain = true;
+          total += gain;
+        }
+        // Holdings with null gain are skipped - we sum what we can
+      }
+    });
+    // Return null only if no holdings had valid gain data
+    return hasValidGain ? total : null;
+  };
+
+  // --- Discovery methods ---
+
+  getHoldingsForAccount = (accountId: string): string[] => {
+    const holdings: string[] = [];
+    this.data.forEach((history, holdingId) => {
+      // Check any entry to get the account_id
+      const data = history.getData();
+      const firstEntry = Object.values(data)[0];
+      if (firstEntry && firstEntry.account_id === accountId) {
+        holdings.push(holdingId);
+      }
+    });
+    return holdings;
+  };
+
+  getAllHoldingIds = (): string[] => {
+    return Array.from(this.data.keys());
+  };
+
+  getDateRange = (): [Date, Date] | undefined => {
+    let minDate: Date | undefined;
+    let maxDate: Date | undefined;
+    this.data.forEach((history) => {
+      const range = history.getRange();
+      if (range) {
+        if (!minDate || range[0] < minDate) minDate = range[0];
+        if (!maxDate || range[1] > maxDate) maxDate = range[1];
+      }
+    });
+    return minDate && maxDate ? [minDate, maxDate] : undefined;
+  };
+
+  forEach = (cb: (history: HoldingValueHistory, id: string) => void) => this.data.forEach(cb);
 }
 
 /**
