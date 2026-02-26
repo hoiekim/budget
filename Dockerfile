@@ -8,7 +8,6 @@ COPY vite.config.ts ./
 COPY src src
 COPY public public
 COPY index.html ./
-COPY .env .env
 
 RUN bun install
 RUN bun run typecheck
@@ -21,4 +20,7 @@ WORKDIR /app
 
 COPY --from=builder /app/build ./build
 
+# Environment variables should be provided at runtime, not baked into the image.
+# Use: docker run --env-file .env ...
+# Or Docker Compose: env_file: - .env
 CMD ["bun", "./build/server/bundle.js"]
