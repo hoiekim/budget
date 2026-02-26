@@ -133,11 +133,19 @@ const CapacitiesInput = ({
       const newCapacityInit: Partial<Capacity> = { ...latestCapacity, active_from };
       delete newCapacityInit.capacity_id;
       const newCapacity = new Capacity(newCapacityInit);
-      // TODO: reconsider this logic. this doesn't trigger react state rendering.
+
+      // Initialize capacity summary for the new capacity period.
+      // This direct mutation is intentional: we're initializing NEW data for a capacity
+      // that doesn't exist yet (capacityData.get auto-creates entries). The re-render
+      // is triggered by returning newCapacities below. This provides reasonable initial
+      // values until the next full recalculation.
       const newCapacitySummary = capacityData.get(newCapacity.id);
       const latestCapacitySummary = capacityData.get(latestCapacity.id);
-      newCapacitySummary.children_total = latestCapacitySummary.children_total;
-      newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
+      if (latestCapacitySummary) {
+        newCapacitySummary.children_total = latestCapacitySummary.children_total;
+        newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
+      }
+
       newCapacities.push(newCapacity);
       defaultCapacities.current = newCapacities;
 
