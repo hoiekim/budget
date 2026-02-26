@@ -18,13 +18,18 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/budget:latest
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/budget:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/budget:sha-${{ steps.sha.outputs.short }}
 
   deploy:
     needs: docker-push
