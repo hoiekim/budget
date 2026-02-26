@@ -52,10 +52,23 @@ export const Configuration = () => {
   const { clean, sync } = useSync();
 
   const logout = () => {
-    call.delete("/api/login").then((_r) => {
-      setUser(undefined);
-      clean();
-    });
+    call
+      .delete("/api/login")
+      .then((r) => {
+        if (r.status === "success" || r.status === "failed") {
+          // Clear local state even if server reports failure
+          setUser(undefined);
+          clean();
+        } else {
+          console.error("Logout failed:", r.message);
+        }
+      })
+      .catch((error) => {
+        console.error("Logout request failed:", error);
+        // Still clear local state on network error
+        setUser(undefined);
+        clean();
+      });
   };
 
   const onClickRefresh = async () => {
