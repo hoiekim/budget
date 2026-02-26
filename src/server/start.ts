@@ -4,9 +4,8 @@ setModulePaths();
 overrideConsoleLog();
 
 import path from "path";
-import express, { Router } from "express";
+import express, { Request, Response, NextFunction, Router } from "express";
 import session from "express-session";
-import rateLimit from "express-rate-limit";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
 import * as routes from "server/routes";
 
@@ -29,16 +28,28 @@ app.use(
   }),
 );
 
-// Rate limiter for login endpoint: 5 attempts per 15 minutes per IP
-// skipSuccessfulRequests allows legitimate users to continue after successful login
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 5,
-  message: { status: "failed", message: "Too many login attempts, try again later" },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true,
-});
+// Simple in-memory rate limiter for login endpoint
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_ATTEMPTS = 5;
+
+const loginLimiter = (req: Request, res: Response, next: NextFunction) => {
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+
+  if (record && now < record.resetAt) {
+    if (record.count >= MAX_ATTEMPTS) {
+      res.status(429).json({ status: "failed", message: "Too many login attempts, try again later" });
+      return;
+    }
+    record.count++;
+  } else {
+    loginAttempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+  }
+
+  next();
+};
 
 const router = Router();
 
