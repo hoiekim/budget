@@ -32,6 +32,8 @@ import {
   AccountSnapshot,
   HoldingSnapshotDictionary,
   HoldingSnapshot,
+  SecuritySnapshotDictionary,
+  SecuritySnapshot,
   CapacityData,
   CapacitySummary,
   Data,
@@ -215,6 +217,14 @@ export const loadHoldingSnapshots = () => {
   return loadDictionary<HoldingSnapshotDictionary>(StoreName.holdingSnapshots, HoldingSnapshot);
 };
 
+export const saveSecuritySnapshots = async (data: SecuritySnapshotDictionary) => {
+  await saveDictionary(StoreName.securitySnapshots, data);
+};
+
+export const loadSecuritySnapshots = () => {
+  return loadDictionary<SecuritySnapshotDictionary>(StoreName.securitySnapshots, SecuritySnapshot);
+};
+
 export const clearAllData = async () => {
   const stores = Object.values(StoreName);
   const promises = stores.map((store) => indexedDbAccessor.clear(store));
@@ -235,6 +245,7 @@ export const saveAllData = async (data: Data) => {
     charts,
     accountSnapshots,
     holdingSnapshots,
+    securitySnapshots,
   } = data;
 
   await Promise.all([
@@ -250,6 +261,7 @@ export const saveAllData = async (data: Data) => {
     saveCharts(charts),
     saveAccountSnapshots(accountSnapshots),
     saveHoldingSnapshots(holdingSnapshots),
+    saveSecuritySnapshots(securitySnapshots),
   ]);
 };
 
@@ -267,6 +279,7 @@ export const loadAllData = async () => {
     charts,
     accountSnapshots,
     holdingSnapshots,
+    securitySnapshots,
   ] = await Promise.all([
     loadInstitutions(),
     loadAccounts(),
@@ -280,6 +293,7 @@ export const loadAllData = async () => {
     loadCharts(),
     loadAccountSnapshots(),
     loadHoldingSnapshots(),
+    loadSecuritySnapshots(),
   ]);
 
   return new Data({
@@ -295,6 +309,7 @@ export const loadAllData = async () => {
     charts,
     accountSnapshots,
     holdingSnapshots,
+    securitySnapshots,
   });
 };
 
@@ -320,7 +335,8 @@ type StoredModel =
   | Item
   | Chart
   | AccountSnapshot
-  | HoldingSnapshot;
+  | HoldingSnapshot
+  | SecuritySnapshot;
 
 export const save = (data: StoredModel) => {
   let storeName: StoreName;
@@ -360,6 +376,9 @@ export const save = (data: StoredModel) => {
       break;
     case HoldingSnapshot:
       storeName = StoreName.holdingSnapshots;
+      break;
+    case SecuritySnapshot:
+      storeName = StoreName.securitySnapshots;
       break;
     default:
       throw new Error(`unknown model: ${data.constructor.name}`);

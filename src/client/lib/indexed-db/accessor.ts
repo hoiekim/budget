@@ -1,5 +1,5 @@
 const DB_NAME = "BudgetApp";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export enum StoreName {
   // primary data
@@ -15,6 +15,7 @@ export enum StoreName {
   charts = "charts",
   accountSnapshots = "accountSnapshots",
   holdingSnapshots = "holdingSnapshots",
+  securitySnapshots = "securitySnapshots",
   // calculations
   balanceData = "balanceData",
   budgetData = "budgetData",

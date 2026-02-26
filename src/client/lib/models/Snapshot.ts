@@ -55,10 +55,14 @@ export class HoldingSnapshot implements JSONHoldingSnapshot {
 }
 
 export class SecuritySnapshot implements JSONSecuritySnapshot {
+  get id() {
+    return this.snapshot.snapshot_id;
+  }
+
   snapshot = new Snapshot();
   security = new Security();
 
-  constructor(init?: Partial<SecuritySnapshot>) {
+  constructor(init?: Partial<SecuritySnapshot | JSONSecuritySnapshot>) {
     assign(this, init);
     if (init?.snapshot) this.snapshot = new Snapshot(init.snapshot);
     if (init?.security) this.security = new Security(init.security);
