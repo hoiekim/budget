@@ -239,7 +239,7 @@ export abstract class Table<
    * @returns Number of rows deleted
    */
   async deleteByCondition(
-    column: string,
+    column: keyof TSchema & string,
     operator: "=" | "<=" | ">=" | "<" | ">" | "!=",
     value: ParamValue,
   ): Promise<number> {
