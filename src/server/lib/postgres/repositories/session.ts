@@ -1,16 +1,12 @@
 import { Store, SessionData as ExpressSessionData } from "express-session";
-import { pool } from "../client";
-import { SessionModel, SESSIONS, SESSION_ID, COOKIE_EXPIRES } from "../models";
-import { buildUpsert, buildUpdate, selectWithFilters } from "../database";
+import { sessionsTable, SessionModel, SESSION_ID, COOKIE_EXPIRES } from "../models";
 
 /**
  * Remove expired sessions from the database.
  * @returns The number of sessions purged
  */
 export async function purgeSessions(): Promise<number> {
-  const sql = `DELETE FROM ${SESSIONS} WHERE ${COOKIE_EXPIRES} <= NOW() RETURNING ${SESSION_ID}`;
-  const result = await pool.query(sql);
-  return result.rowCount ?? 0;
+  return sessionsTable.deleteByCondition(COOKIE_EXPIRES, "<=", new Date());
 }
 
 export class PostgresSessionStore extends Store {
@@ -44,38 +40,26 @@ export class PostgresSessionStore extends Store {
     sid: string,
     callback: (err: Error | null, session?: ExpressSessionData | null) => void,
   ): void {
-    selectWithFilters<Record<string, unknown>>(pool, SESSIONS, "*", {
-      primaryKey: { column: SESSION_ID, value: sid },
-      excludeDeleted: false,
-    })
-      .then((rows) => {
-        if (rows.length === 0) return callback(null, null);
-        try {
-          const model = new SessionModel(rows[0]);
-          callback(null, model.toJSON());
-        } catch (error) {
-          callback(error instanceof Error ? error : new Error(String(error)));
-        }
+    sessionsTable
+      .queryOne({ [SESSION_ID]: sid })
+      .then((model) => {
+        if (!model) return callback(null, null);
+        callback(null, model.toJSON());
       })
       .catch(callback);
   }
 
   set(sid: string, session: ExpressSessionData, callback?: (err?: Error) => void): void {
     const row = SessionModel.fromSessionData(sid, session);
-    const { sql, values } = buildUpsert(SESSIONS, SESSION_ID, row, {
-      updateColumns: Object.keys(row).filter((k) => k !== SESSION_ID),
-      returning: [SESSION_ID],
-    });
-
-    pool
-      .query(sql, values)
+    sessionsTable
+      .upsert(row, Object.keys(row).filter((k) => k !== SESSION_ID))
       .then(() => callback && callback())
       .catch((error: Error) => callback && callback(error));
   }
 
   destroy(sid: string, callback?: (err?: Error) => void): void {
-    pool
-      .query(`DELETE FROM ${SESSIONS} WHERE ${SESSION_ID} = $1`, [sid])
+    sessionsTable
+      .hardDelete(sid)
       .then(() => callback && callback())
       .catch((error: Error) => callback && callback(error));
   }
@@ -85,14 +69,8 @@ export class PostgresSessionStore extends Store {
     const updateData = { ...row };
     delete (updateData as Record<string, unknown>)[SESSION_ID];
 
-    const query = buildUpdate(SESSIONS, SESSION_ID, sid, updateData);
-    if (!query) {
-      callback && callback();
-      return;
-    }
-
-    pool
-      .query(query.sql, query.values)
+    sessionsTable
+      .update(sid, updateData)
       .then(() => callback && callback())
       .catch((error: Error) => callback && callback(error));
   }
