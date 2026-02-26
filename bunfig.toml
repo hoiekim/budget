@@ -1,0 +1,2 @@
+[test]
+preload = ["./src/client/lib/hooks/calculation/test-preload.ts"]
