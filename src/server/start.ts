@@ -7,6 +7,7 @@ import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
+import { loginLimiter } from "server/lib/rate-limit";
 import * as routes from "server/routes";
 
 const app = express();
@@ -34,6 +35,9 @@ router.use((req, _res, next) => {
   console.info(`<${req.method}> /api${req.url}`);
   next();
 });
+
+// Apply rate limiting to login endpoint (POST only)
+router.post("/login", loginLimiter);
 
 Object.values(routes).forEach(({ path, handler }) => router.use(path, handler));
 
