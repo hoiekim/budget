@@ -1,5 +1,5 @@
 import { ItemProvider, ONE_HOUR } from "common";
-import { getAllItems } from "server";
+import { getAllItems, updateItemSyncStatus } from "server";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 
@@ -11,6 +11,7 @@ export const scheduledSync = async () => {
       if (provider === ItemProvider.PLAID) {
         let accountsCount = 0;
         let transactionsCount = 0;
+        let syncError: string | undefined;
 
         await syncPlaidAccounts(item_id)
           .then((r) => {
@@ -18,21 +19,37 @@ export const scheduledSync = async () => {
             const { accounts, investmentAccounts } = r;
             accountsCount += (accounts?.length || 0) + (investmentAccounts?.length || 0);
           })
-          .catch(console.error);
+          .catch((err) => {
+            console.error(err);
+            syncError = err instanceof Error ? err.message : String(err);
+          });
 
-        await syncPlaidTransactions(item_id)
-          .then((r) => {
-            if (!r) throw new Error("Error occured during syncAllPlaidTransactions");
-            const { added, modified, removed } = r;
-            transactionsCount += added + modified + removed;
-          })
-          .catch(console.error);
+        if (!syncError) {
+          await syncPlaidTransactions(item_id)
+            .then((r) => {
+              if (!r) throw new Error("Error occured during syncAllPlaidTransactions");
+              const { added, modified, removed } = r;
+              transactionsCount += added + modified + removed;
+            })
+            .catch((err) => {
+              console.error(err);
+              syncError = err instanceof Error ? err.message : String(err);
+            });
+        }
+
+        await updateItemSyncStatus(item_id, {
+          success: !syncError,
+          error: syncError,
+        });
 
         console.group(`Synced all data for Plaid item: ${item_id}`);
         console.log(`${accountsCount} accounts updated`);
         console.log(`${transactionsCount} transactions updated`);
+        if (syncError) console.log(`Sync error: ${syncError}`);
         console.groupEnd();
       } else if (provider === ItemProvider.SIMPLE_FIN) {
+        let syncError: string | undefined;
+
         await syncSimpleFinData(item_id)
           .then((r) => {
             if (!r) throw new Error("Error occured during syncAllSimpleFinData");
@@ -43,7 +60,15 @@ export const scheduledSync = async () => {
             console.log(`${transactionsCount} transactions updated`);
             console.groupEnd();
           })
-          .catch(console.error);
+          .catch((err) => {
+            console.error(err);
+            syncError = err instanceof Error ? err.message : String(err);
+          });
+
+        await updateItemSyncStatus(item_id, {
+          success: !syncError,
+          error: syncError,
+        });
       }
     }
   } catch (err) {
