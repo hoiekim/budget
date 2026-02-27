@@ -1,5 +1,5 @@
 import * as jose from "jose";
-import { getClient } from "./util";
+import { getProductionClient } from "./util";
 
 // Cache for verification keys (keyed by key_id)
 const keyCache = new Map<string, { key: jose.JWK; fetchedAt: number }>();
@@ -85,8 +85,8 @@ const getVerificationKey = async (keyId: string): Promise<jose.JWK | null> => {
   }
 
   try {
-    // Webhook verification doesn't require user context - use sandbox client
-    const client = getClient();
+    // Webhooks only come from production - always use production client
+    const client = getProductionClient();
     const response = await client.webhookVerificationKeyGet({ key_id: keyId });
     const key = response.data.key as jose.JWK;
 
