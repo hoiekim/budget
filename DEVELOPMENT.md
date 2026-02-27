@@ -149,6 +149,35 @@ Connection configured via environment variables:
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
 
+### Table Class Methods (Convention)
+
+**Use Table class methods instead of direct SQL/pool operations.**
+
+The `Table` base class (`src/server/lib/postgres/models/base.ts`) provides type-safe methods for common operations:
+
+```typescript
+// ✅ Good - Use Table class methods
+const user = await UsersTable.findById(userId);
+const users = await UsersTable.findByCondition("email", email);
+await UsersTable.insert(userData);
+await UsersTable.update(userId, updates);
+await UsersTable.deleteById(userId);
+
+// ❌ Avoid - Direct pool.query
+const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+```
+
+**Benefits:**
+- Type safety for column names and values
+- Consistent error handling
+- Automatic parameter sanitization
+- Easier to test and mock
+
+**When to use direct SQL:**
+- Complex joins or aggregations not supported by Table methods
+- Performance-critical bulk operations
+- One-off migrations
+
 ### Repository Pattern
 
 Database operations are in `src/server/lib/postgres/repositories/`:
