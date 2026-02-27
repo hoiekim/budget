@@ -78,7 +78,7 @@ export function parseColumnDefinition(definition: string): ColumnInfo | null {
   } else if (rawType === "BIGSERIAL") {
     pgType = "BIGINT";
   } else if (rawType.startsWith("DECIMAL") || rawType.startsWith("NUMERIC")) {
-    pgType = "NUMERIC"; // DECIMAL/NUMERIC with precision are all NUMERIC
+    pgType = "NUMERIC"; // DECIMAL/NUMERIC with any precision are equivalent
   } else if (rawType === "REAL" || rawType === "FLOAT" || rawType === "FLOAT4" || rawType === "FLOAT8" || twoWordType === "DOUBLE PRECISION") {
     pgType = "FLOAT"; // Float variations all normalize to FLOAT
   } else {
