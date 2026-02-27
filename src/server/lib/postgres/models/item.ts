@@ -2,6 +2,7 @@ import { Products } from "plaid";
 import {
   ItemStatus,
   ItemProvider,
+  SyncStatus,
   JSONItem,
   isString,
   isNullableString,
@@ -18,6 +19,9 @@ import {
   CURSOR,
   STATUS,
   PROVIDER,
+  LAST_SYNC_STATUS,
+  LAST_SYNC_AT,
+  LAST_SYNC_ERROR,
   RAW,
   UPDATED,
   IS_DELETED,
@@ -35,6 +39,9 @@ const itemSchema = {
   [CURSOR]: "TEXT",
   [STATUS]: "VARCHAR(50)",
   [PROVIDER]: "VARCHAR(50)",
+  [LAST_SYNC_STATUS]: "VARCHAR(20)",
+  [LAST_SYNC_AT]: "TIMESTAMPTZ",
+  [LAST_SYNC_ERROR]: "TEXT",
   [RAW]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
@@ -52,6 +59,9 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
   declare cursor: string | null;
   declare status: ItemStatus | null;
   declare provider: ItemProvider;
+  declare last_sync_status: SyncStatus | null;
+  declare last_sync_at: string | null;
+  declare last_sync_error: string | null;
   declare raw: object | null;
   declare updated: string | null;
   declare is_deleted: boolean;
@@ -65,6 +75,9 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
     cursor: isNullableString,
     status: isNullableString,
     provider: isNullableString,
+    last_sync_status: isNullableString,
+    last_sync_at: isNullableString,
+    last_sync_error: isNullableString,
     raw: isNullableObject,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
@@ -84,6 +97,9 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
       status: this.status || undefined,
       provider: this.provider,
       updated: this.updated || undefined,
+      last_sync_status: this.last_sync_status || undefined,
+      last_sync_at: this.last_sync_at || undefined,
+      last_sync_error: this.last_sync_error || undefined,
     };
   }
 
@@ -98,6 +114,9 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
     if (item.cursor !== undefined) r.cursor = item.cursor ?? null;
     if (item.status !== undefined) r.status = item.status ?? null;
     if (item.provider !== undefined) r.provider = item.provider;
+    if (item.last_sync_status !== undefined) r.last_sync_status = item.last_sync_status ?? null;
+    if (item.last_sync_at !== undefined) r.last_sync_at = item.last_sync_at ?? null;
+    if (item.last_sync_error !== undefined) r.last_sync_error = item.last_sync_error ?? null;
     r.raw = item;
     return r;
   }

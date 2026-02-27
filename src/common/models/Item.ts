@@ -6,6 +6,12 @@ export enum ItemStatus {
   INACTIVE = "inactive",
 }
 
+export enum SyncStatus {
+  SUCCESS = "success",
+  FAILED = "failed",
+  PENDING = "pending",
+}
+
 export enum ItemProvider {
   PLAID = "plaid",
   SIMPLE_FIN = "simple_fin",
@@ -25,4 +31,16 @@ export interface JSONItem {
    * Timestamp in YYYY-MM-DD format.
    */
   updated?: string;
+  /**
+   * Status of the last sync attempt.
+   */
+  last_sync_status?: SyncStatus;
+  /**
+   * ISO timestamp of the last sync attempt.
+   */
+  last_sync_at?: string;
+  /**
+   * Error message from the last failed sync, if any.
+   */
+  last_sync_error?: string;
 }
