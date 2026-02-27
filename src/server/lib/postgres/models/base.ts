@@ -1,3 +1,4 @@
+import { PoolClient } from "pg";
 import { pool } from "../client";
 import {
   buildSelectWithFilters,
@@ -8,6 +9,9 @@ import {
   ParamValue,
   QueryData,
 } from "../database";
+
+/** Query executor - either pool or a transaction client */
+export type QueryExecutor = typeof pool | PoolClient;
 
 export class ModelValidationError extends Error {
   public readonly errors: string[];
@@ -174,6 +178,7 @@ export abstract class Table<
   async bulkSoftDelete(
     ids: ParamValue[],
     additionalFilters: Record<string, ParamValue | unknown> = {},
+    client?: QueryExecutor,
   ): Promise<number> {
     if (ids.length === 0) return 0;
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
@@ -189,7 +194,8 @@ export abstract class Table<
     }
     sql += ` RETURNING ${this.primaryKey}`;
 
-    const result = await pool.query(sql, values);
+    const executor = client ?? pool;
+    const result = await executor.query(sql, values);
     return result.rowCount ?? 0;
   }
 
@@ -197,6 +203,7 @@ export abstract class Table<
     column: string,
     columnValue: ParamValue,
     userIdValue?: ParamValue,
+    client?: QueryExecutor,
   ): Promise<number> {
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${column} = $1`;
     const values: ParamValue[] = [columnValue];
@@ -207,7 +214,8 @@ export abstract class Table<
     }
     sql += ` RETURNING ${this.primaryKey}`;
 
-    const result = await pool.query(sql, values);
+    const executor = client ?? pool;
+    const result = await executor.query(sql, values);
     return result.rowCount ?? 0;
   }
 

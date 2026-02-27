@@ -14,6 +14,7 @@ import {
   INSTITUTION_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { withTransaction } from "../client";
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
@@ -115,16 +116,25 @@ export const deleteAccounts = async (
   if (!account_ids.length) return { deleted: 0 };
   const { user_id } = user;
 
-  for (const account_id of account_ids) {
-    await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-  }
+  // Wrap all delete operations in a transaction for atomicity.
+  // If any operation fails, all changes are rolled back.
+  return withTransaction(async (client) => {
+    for (const account_id of account_ids) {
+      await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await investmentTransactionsTable.bulkSoftDeleteByColumn(
+        ACCOUNT_ID,
+        account_id,
+        user_id,
+        client,
+      );
+      await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+    }
 
-  const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: user_id });
-  return { deleted };
+    const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: user_id }, client);
+    return { deleted };
+  });
 };
 
 export const deleteAccountsByItem = async (
