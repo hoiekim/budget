@@ -16,6 +16,7 @@ import {
   USER_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
+import { logger } from "../../logger";
 
 export interface SearchSnapshotsOptions {
   account_id?: string;
@@ -204,7 +205,7 @@ export const upsertAccountSnapshots = async (
       });
       results.push(successResult(snapshot.snapshot_id, 1));
     } catch (error) {
-      console.error("Failed to upsert account snapshot:", error);
+      logger.error("Failed to upsert account snapshot", { snapshotId: snapshot.snapshot_id }, error);
       results.push(errorResult(snapshot.snapshot_id));
     }
   }
@@ -228,7 +229,7 @@ export const upsertSecuritySnapshots = async (
       });
       results.push(successResult(snapshot.snapshot_id, 1));
     } catch (error) {
-      console.error("Failed to upsert security snapshot:", error);
+      logger.error("Failed to upsert security snapshot", { snapshotId: snapshot.snapshot_id }, error);
       results.push(errorResult(snapshot.snapshot_id));
     }
   }
@@ -258,7 +259,7 @@ export const upsertHoldingSnapshots = async (
       });
       results.push(successResult(snapshot.snapshot_id, 1));
     } catch (error) {
-      console.error("Failed to upsert holding snapshot:", error);
+      logger.error("Failed to upsert holding snapshot", { snapshotId: snapshot.snapshot_id }, error);
       results.push(errorResult(snapshot.snapshot_id));
     }
   }
@@ -313,7 +314,7 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
       }
       results.push(successResult(snapshot.snapshot_id, 1));
     } catch (error) {
-      console.error(`Failed to upsert snapshot ${snapshot.snapshot_id}:`, error);
+      logger.error("Failed to upsert snapshot", { snapshotId: snapshot.snapshot_id }, error);
       results.push(errorResult(snapshot.snapshot_id));
     }
   }

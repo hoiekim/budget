@@ -9,6 +9,7 @@ import {
   USER_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { logger } from "../../logger";
 
 export interface SearchSplitTransactionsOptions {
   transaction_id?: string;
@@ -72,7 +73,7 @@ export const upsertSplitTransactions = async (
       const id = result ? (result.split_transaction_id as string) : tx.split_transaction_id;
       results.push(successResult(id, 1));
     } catch (error) {
-      console.error(`Failed to upsert split transaction ${tx.split_transaction_id}:`, error);
+      logger.error("Failed to upsert split transaction", { splitTransactionId: tx.split_transaction_id }, error);
       results.push(errorResult(tx.split_transaction_id || "unknown"));
     }
   }
@@ -99,7 +100,7 @@ export const updateSplitTransactions = async (
           : noChangeResult(tx.split_transaction_id),
       );
     } catch (error) {
-      console.error(`Failed to update split transaction ${tx.split_transaction_id}:`, error);
+      logger.error("Failed to update split transaction", { splitTransactionId: tx.split_transaction_id }, error);
       results.push(errorResult(tx.split_transaction_id));
     }
   }

@@ -4,6 +4,7 @@
  */
 
 import { getDateString, getDateTimeString, getRandomId, JSONSecurity } from "common";
+import { logger } from "./logger";
 
 const POLYGON_HOST = "https://api.polygon.io";
 const { POLYGON_API_KEY } = process.env;
@@ -17,7 +18,10 @@ export const getClosePrice = async (ticker_symbol: string, date: Date) => {
   const path = `${POLYGON_HOST}/v2/aggs/${tickerParameter}/${rangeParameter}?apiKey=${POLYGON_API_KEY}`;
   const { results } = await fetch(path)
     .then((r) => r.json())
-    .catch(console.warn);
+    .catch((error) => {
+      logger.warn("Failed to fetch close price from Polygon", { ticker: ticker_symbol, date: dateString }, error);
+      return {};
+    });
   if (!results) return undefined;
   // c = close price
   return results[0].c as number;
@@ -27,7 +31,10 @@ export const getTickerDetail = async (ticker_symbol: string) => {
   const path = `${POLYGON_HOST}/v3/reference/tickers/${ticker_symbol}?apiKey=${POLYGON_API_KEY}`;
   const { results } = await fetch(path)
     .then((r) => r.json())
-    .catch(console.warn);
+    .catch((error) => {
+      logger.warn("Failed to fetch ticker detail from Polygon", { ticker: ticker_symbol }, error);
+      return {};
+    });
   if (!results) return undefined;
   const name = results.name as string;
   const currency_name = results.currency_name as string;

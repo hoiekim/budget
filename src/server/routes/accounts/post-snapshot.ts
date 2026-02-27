@@ -1,5 +1,6 @@
 import { JSONAccount, getSquashedDateString, JSONSnapshot, LocalDate } from "common";
 import { Route, upsertSnapshots, requireBodyObject, validationError } from "server";
+import { logger } from "server/lib/logger";
 
 export interface SnapshotPostResponse {
   snapshot_id: string;
@@ -42,7 +43,7 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
       const snapshot_id = response[0].update?._id || "";
       return { status: "success", body: { snapshot_id } };
     } catch (error: any) {
-      console.error(`Failed to update a snapshot: ${snapshot.snapshot_id}`);
+      logger.error("Failed to update snapshot", { snapshotId: snapshot.snapshot_id }, error);
       throw new Error(error);
     }
   },
