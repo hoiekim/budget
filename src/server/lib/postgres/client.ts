@@ -1,4 +1,4 @@
-import { Pool, PoolConfig, types } from "pg";
+import { Pool, PoolClient, PoolConfig, types } from "pg";
 
 const {
   POSTGRES_HOST: host = "localhost",
@@ -47,3 +47,28 @@ process.on("SIGTERM", async () => {
   await pool.end();
   process.exit(0);
 });
+
+/**
+ * Execute a function within a database transaction.
+ * Automatically handles BEGIN, COMMIT, and ROLLBACK.
+ *
+ * @param fn - Function to execute with the transaction client
+ * @returns The result of the function
+ * @throws Re-throws any error after rolling back the transaction
+ */
+export async function withTransaction<T>(
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}

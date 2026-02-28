@@ -3,7 +3,7 @@ import { Dictionary } from "client";
 
 const parseMap = (s: string) => new Map(JSON.parse(s));
 const parseDictionary = (s: string) => new Dictionary(JSON.parse(s));
-const stringifyMap = (m: any) => JSON.stringify([...m]);
+const stringifyMap = (m: Map<unknown, unknown>) => JSON.stringify([...m]);
 
 export const useLocalStorageState = <T>(key: string, initialValue: T) => {
   const isMap = key.indexOf("map_") === 0;
@@ -39,7 +39,7 @@ export const useLocalStorageState = <T>(key: string, initialValue: T) => {
   return [storedValue, setValue] as const;
 };
 
-export const stateMemory = new Map<string, any>();
+export const stateMemory = new Map<string, unknown>();
 
 export const useMemoryState = <T>(key: string | undefined, initialValue: T) => {
   const [state, _setState] = useState<T>(() => {

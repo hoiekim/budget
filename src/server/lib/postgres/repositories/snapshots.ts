@@ -328,14 +328,6 @@ export const deleteOldSnapshots = async (beforeDate: string): Promise<{ deleted:
   return { deleted: result.rowCount || 0 };
 };
 
-export const deleteSnapshotsByAccount = async (
-  user: MaskedUser,
-  account_id: string,
-): Promise<{ deleted: number }> => {
-  const deleted = await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user.user_id);
-  return { deleted };
-};
-
 export const deleteSnapshotsByUser = async (user: MaskedUser): Promise<{ deleted: number }> => {
   const deleted = await snapshotsTable.bulkSoftDeleteByColumn(USER_ID, user.user_id);
   return { deleted };

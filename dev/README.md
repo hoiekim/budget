@@ -40,7 +40,6 @@ budget/
 │       └── utils/            # Shared utilities
 ├── public/                   # Static assets
 ├── build/                    # Compiled output
-├── test/                     # Test files
 └── _manual_tools/            # Development and maintenance tools
 ```
 
@@ -48,8 +47,7 @@ budget/
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
-- npm (v6 or higher)
+- [Bun](https://bun.sh) (v1.0 or higher) - JavaScript runtime and package manager
 - Docker and Docker Compose (optional, for containerized development)
 - PostgreSQL instance (local or remote)
 
@@ -78,24 +76,23 @@ budget/
 3. **Install dependencies**
 
    ```bash
-   npm install
+   bun install
    ```
 
 4. **Start the development server**
 
-   For client development:
+   For full stack development (client + server):
 
    ```bash
-   npm run dev-client
+   bun dev
    ```
 
-   For server development:
+   Or run client and server separately:
 
    ```bash
-   npm run dev-server
+   bun dev-client    # Frontend only
+   bun dev-server    # Backend only
    ```
-
-   For full stack development, run both commands in separate terminals.
 
 ### Docker Development Setup
 
@@ -113,37 +110,34 @@ budget/
 
 The project uses a multi-step build process:
 
-1. **Build the server**
-
+1. **Build everything**
    ```bash
-   npm run build-server
-   ```
-
-   This compiles TypeScript files and bundles the server code.
-
-2. **Build the client**
-
-   ```bash
-   npm run build-client
-   ```
-
-   This creates an optimized production build of the React application.
-
-3. **Build everything**
-   ```bash
-   npm run build
+   bun run build
    ```
    This runs both server and client builds.
+
+2. **Build individually** (if needed)
+
+   ```bash
+   bun run build-server   # Server only
+   bun run build-client   # Client only
+   ```
 
 ## Testing
 
 Run tests with:
 
 ```bash
-npm test
+bun test
 ```
 
-The project uses Jest for testing.
+Run tests with coverage reporting:
+
+```bash
+bun test:coverage
+```
+
+The project uses Bun's native test runner. Tests are co-located with source files (e.g., `src/server/lib/validation.test.ts`).
 
 ## Data Models
 
@@ -196,12 +190,12 @@ The application uses PostgreSQL to store and query financial data. The PostgreSQ
 1. **Build the application**
 
    ```bash
-   npm run build
+   bun run build
    ```
 
 2. **Start the production server**
    ```bash
-   npm run start-server
+   bun run start-server
    ```
 
 ### Docker Deployment
@@ -222,8 +216,8 @@ docker-compose up -d
 
 2. **Build errors**
    - Clear the build directory: `rm -rf build/`
-   - Reinstall dependencies: `npm ci`
-   - Try building again: `npm run build`
+   - Reinstall dependencies: `bun install`
+   - Try building again: `bun run build`
 
 ## Resources
 

@@ -59,8 +59,9 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
 
         hasMore = has_more;
         item.cursor = next_cursor;
-      } catch (error: any) {
-        plaidError = error?.response?.data as PlaidError;
+      } catch (error: unknown) {
+        const errorWithResponse = error as { response?: { data?: PlaidError } };
+        plaidError = errorWithResponse?.response?.data ?? null;
         console.error(plaidError || error);
         console.error("Failed to get transactions data for item:", item_id);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
@@ -153,9 +154,11 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
         allInvestmentTransactions.push(investmentTransactions);
         item.updated = end_date;
         data.items.push({ ...item });
-      } catch (error: any) {
-        const plaidError = error?.response?.data as PlaidError;
-        if (!ignorable_error_codes.has(plaidError?.error_code)) {
+      } catch (error: unknown) {
+        const errorWithResponse = error as { response?: { data?: PlaidError } };
+        const plaidError = errorWithResponse?.response?.data;
+        const errorCode = plaidError?.error_code;
+        if (!errorCode || !ignorable_error_codes.has(errorCode)) {
           console.error(plaidError);
           console.error("Failed to get investment transaction data for item:", item_id);
           if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {

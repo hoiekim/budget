@@ -4,7 +4,6 @@ import {
   deleteAccounts,
   searchAccountsById,
   getItem,
-  deleteSnapshotsByAccount,
   requireQueryString,
   validationError,
 } from "server";
@@ -48,8 +47,9 @@ export const deleteAccountRoute = new Route("DELETE", "/account", async (req) =>
     };
   }
 
+  // deleteAccounts already handles soft-deleting related data
+  // (transactions, investment_transactions, split_transactions, snapshots, holdings)
   await deleteAccounts(user, [account_id]);
-  await deleteSnapshotsByAccount(user, account_id);
 
   return { status: "success" };
 });

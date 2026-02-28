@@ -1,5 +1,5 @@
 const DB_NAME = "BudgetApp";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export enum StoreName {
   // primary data
@@ -15,6 +15,7 @@ export enum StoreName {
   charts = "charts",
   accountSnapshots = "accountSnapshots",
   holdingSnapshots = "holdingSnapshots",
+  securitySnapshots = "securitySnapshots",
   // calculations
   balanceData = "balanceData",
   budgetData = "budgetData",
@@ -60,7 +61,7 @@ class IndexedDbAccessor {
     });
   };
 
-  save = async (storeName: StoreName, key: string, data: any): Promise<void> => {
+  save = async (storeName: StoreName, key: string, data: unknown): Promise<void> => {
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
 
@@ -73,7 +74,7 @@ class IndexedDbAccessor {
     });
   };
 
-  saveMany = async (storeName: StoreName, items: [string, any][]): Promise<void> => {
+  saveMany = async (storeName: StoreName, items: [string, unknown][]): Promise<void> => {
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);

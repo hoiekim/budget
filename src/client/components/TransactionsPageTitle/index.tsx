@@ -166,9 +166,9 @@ export const TransactionsPageTitle = ({
       )}
       <SearchBar onChange={onChangeSearchValue} style={{ top: transactionsHeadTop }} />
       <TransactionsHead
-        sorter={sorter as any}
+        sorter={sorter}
         getHeaderName={getHeader}
-        headerKeys={headerKeys as any}
+        headerKeys={headerKeys as (keyof TransactionHeaders | keyof InvestmentTransactionHeaders)[]}
         style={{ top: transactionsHeadTop }}
       />
     </>

@@ -38,8 +38,9 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
       });
       allAccounts.push(filledAccounts);
       data.items.push({ ...item });
-    } catch (error: any) {
-      const plaidError = error?.response?.data as PlaidError;
+    } catch (error: unknown) {
+      const errorWithResponse = error as { response?: { data?: PlaidError } };
+      const plaidError = errorWithResponse?.response?.data;
       console.error(plaidError);
       console.error("Failed to get accounts data for item:", item_id);
       if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
@@ -108,9 +109,11 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       allHoldings.push(filledHoldings);
       allSecurities.push(securities);
       data.items.push({ ...item });
-    } catch (error: any) {
-      const plaidError = error?.response?.data as PlaidError;
-      if (!ignorable_error_codes.has(plaidError?.error_code)) {
+    } catch (error: unknown) {
+      const errorWithResponse = error as { response?: { data?: PlaidError } };
+      const plaidError = errorWithResponse?.response?.data;
+      const errorCode = plaidError?.error_code;
+      if (!errorCode || !ignorable_error_codes.has(errorCode)) {
         console.error(plaidError);
         console.error("Failed to get holdings data for item:", item_id);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {

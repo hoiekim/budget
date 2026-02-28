@@ -12,13 +12,13 @@ class Comparable<T> {
     this.B = b;
   }
 
-  format = (callback: (e: T) => any) => {
+  format = (callback: (e: T) => string | number | Date | unknown) => {
     const a = callback(this.A);
     const b = callback(this.B);
 
     if (
       (typeof a === "number" && typeof b === "number") ||
-      (typeof b === "string" && typeof b === "string") ||
+      (typeof a === "string" && typeof b === "string") ||
       (a instanceof Date && b instanceof Date)
     ) {
       this.a = a;
@@ -36,9 +36,9 @@ type GetArrow<H> = (key: keyof H) => "↑" | "↓" | "";
 type Visibles<H> = { [k in keyof H]?: boolean };
 type GetVisible<H> = (key: keyof H) => boolean;
 type ToggleVisible<H> = (key: keyof H) => void;
-type Formatter<T, H> = (e: T, key: keyof H) => any;
+type Formatter<T, H> = (e: T, key: keyof H) => string | number | Date | unknown;
 
-export interface Sorter<T = any, H = any> {
+export interface Sorter<T = unknown, H = unknown> {
   sort: (array: T[], formatter: Formatter<T, H>) => T[];
   setSortBy: SetSortBy<H>;
   getArrow: GetArrow<H>;

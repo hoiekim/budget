@@ -1,4 +1,11 @@
+# Ignore dot files
 .*
-!.env*
+
+# Ignore build outputs
 build
 node_modules
+
+# Ignore environment files - secrets should not be in Docker images
+# Pass environment at runtime: docker run --env-file .env ...
+.env
+.env.*

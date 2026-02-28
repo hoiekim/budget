@@ -68,7 +68,7 @@ export abstract class Model<TJSON, TSchema extends Schema> {
     if (errors.length > 0) throw new ModelValidationError(this.constructor.name, errors);
     // assigns value
     Object.keys(typeChecker).forEach((k) => {
-      (this as any)[k] = (data as TSchema)[k];
+      (this as Record<string, unknown>)[k] = (data as TSchema)[k];
     });
   }
 }
@@ -228,6 +228,23 @@ export abstract class Table<
   async hardDeleteByColumn(column: string, columnValue: ParamValue): Promise<number> {
     const sql = `DELETE FROM ${this.name} WHERE ${column} = $1 RETURNING ${this.primaryKey}`;
     const result = await pool.query(sql, [columnValue]);
+    return result.rowCount ?? 0;
+  }
+
+  /**
+   * Delete rows matching a condition with comparison operator.
+   * @param column Column name to filter on
+   * @param operator Comparison operator (=, <=, >=, <, >, !=)
+   * @param value Value to compare against
+   * @returns Number of rows deleted
+   */
+  async deleteByCondition(
+    column: keyof TSchema & string,
+    operator: "=" | "<=" | ">=" | "<" | ">" | "!=",
+    value: ParamValue,
+  ): Promise<number> {
+    const sql = `DELETE FROM ${this.name} WHERE ${column} ${operator} $1 RETURNING ${this.primaryKey}`;
+    const result = await pool.query(sql, [value]);
     return result.rowCount ?? 0;
   }
 }

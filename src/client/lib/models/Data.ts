@@ -10,9 +10,10 @@ import { Section } from "./Section";
 import { Category } from "./Category";
 import { Item } from "./Item";
 import { Chart } from "./Chart";
-import { AccountSnapshot, HoldingSnapshot } from "./Snapshot";
+import { AccountSnapshot, HoldingSnapshot, SecuritySnapshot } from "./Snapshot";
 
-export class Dictionary<T = any, S extends Dictionary = any> extends Map<string, T> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class Dictionary<T = any, S extends Dictionary<T> = any> extends Map<string, T> {
   toArray = () => Array.from(this.values());
 
   protected INPUT_ERROR_MESSAGE = "At least one key-value pair is required as input.";
@@ -57,11 +58,11 @@ export class Dictionary<T = any, S extends Dictionary = any> extends Map<string,
 
   map = (callback: (value: T, key: string, map: Map<string, T>) => T) => {
     const clone = this.clone();
-    clone.forEach((v, k, m) => m.set(k, callback(v, k, m)));
+    clone.forEach((v, k, m) => m.set(k, callback(v as T, k, m)));
     return clone;
   };
 
-  clone = () => new Dictionary<T>(this) as S extends any ? Dictionary<T> : S;
+  clone = () => new Dictionary<T>(this) as S;
 
   override set = (key: string, value: T) => {
     if (environment === "server") {
@@ -104,13 +105,18 @@ export class HoldingSnapshotDictionary extends Dictionary<
   HoldingSnapshotDictionary
 > {}
 
+export class SecuritySnapshotDictionary extends Dictionary<
+  SecuritySnapshot,
+  SecuritySnapshotDictionary
+> {}
+
 export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {}
 
 export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
   return type === "budget" ? Budget : type === "section" ? Section : Category;
 };
 
-export const getBudgetDictionaryClass = (type: BudgetFamilyType): typeof Dictionary => {
+export const getBudgetDictionaryClass = (type: BudgetFamilyType): typeof BudgetDictionary | typeof SectionDictionary | typeof CategoryDictionary => {
   return type === "budget"
     ? BudgetDictionary
     : type === "section"
@@ -133,6 +139,7 @@ export class Data {
   charts = new ChartDictionary();
   accountSnapshots = new AccountSnapshotDictionary();
   holdingSnapshots = new HoldingSnapshotDictionary();
+  securitySnapshots = new SecuritySnapshotDictionary();
 
   constructor(init?: Partial<Data>) {
     assign(this, init);
