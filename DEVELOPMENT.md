@@ -109,6 +109,13 @@ describe("featureName", () => {
 });
 ```
 
+### Test Requirements
+
+**Always write unit tests for new code files.** When adding a new utility, helper, or module:
+- Create `<filename>.test.ts` alongside the source file
+- Test the public interface and edge cases
+- PRs adding new code without tests will require justification
+
 ## Code Style
 
 ### TypeScript
@@ -129,6 +136,27 @@ try {
   res.status(500).json({ status: "error", info: error?.message });
 }
 ```
+
+### Async Error Propagation
+
+**Don't swallow errors with `.catch(console.error)`.** This pattern silently hides failures:
+
+```typescript
+// ❌ Bad - Error is logged but not propagated
+await doSomething().catch(console.error);
+// Calling code thinks this succeeded
+
+// ✅ Good - Log and re-throw
+await doSomething().catch((error) => {
+  console.error("Operation failed:", error);
+  throw error;  // Propagate to caller
+});
+
+// ✅ Good - Let caller handle it
+await doSomething();  // Throws naturally
+```
+
+This is especially important in scheduled tasks where failures need to be tracked.
 
 ### Time Constants
 
