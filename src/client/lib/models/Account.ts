@@ -49,6 +49,7 @@ export class Account implements JSONAccount {
    */
   graphOptions: AccountGraphOptions = {
     useSnapshots: true,
+    useHoldingSnapshots: true,
     useTransactions: true,
   };
 

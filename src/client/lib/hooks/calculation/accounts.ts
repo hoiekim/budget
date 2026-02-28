@@ -1,19 +1,20 @@
 import { useMemo } from "react";
 import { AccountSubtype, AccountType } from "plaid";
 import { getYearMonthString, LocalDate, ViewDate } from "common";
+import { Account } from "../../models/Account";
+import { AccountSnapshot, HoldingSnapshot } from "../../models/Snapshot";
+import { InvestmentTransaction } from "../../models/InvestmentTransaction";
+import { Transaction } from "../../models/Transaction";
+import { useAppContext } from "../context";
+import { GraphInput } from "../../../components/Graph/lib/graph";
 import {
-  Account,
-  AccountSnapshot,
-  InvestmentTransaction,
-  Transaction,
-  GraphInput,
-  useAppContext,
   AccountDictionary,
   AccountSnapshotDictionary,
+  HoldingSnapshotDictionary,
   InvestmentTransactionDictionary,
   TransactionDictionary,
-  BalanceData,
-} from "client";
+} from "../../models/Data";
+import { BalanceData } from "../../models/Calcuations";
 
 export const getAccountBalance = (account: Account) => {
   const balanceCurrent = account.balances.current || 0;
@@ -119,9 +120,81 @@ const getBalanceDataFromSnapshots = (
   return balanceData;
 };
 
+/**
+ * Calculate balance data from holding snapshots.
+ * For investment accounts, the balance is the sum of all holding values (quantity * price).
+ * This provides historical balance data when account snapshots are not available.
+ */
+const getBalanceDataFromHoldingSnapshots = (
+  accounts: AccountDictionary,
+  holdingSnapshots: HoldingSnapshotDictionary,
+): BalanceData => {
+  // Group holding snapshots by yearMonth and account_id
+  // Structure: { yearMonth: { account_id: { holding_id: HoldingSnapshot } } }
+  const snapshotHistory: {
+    [yearMonth: string]: { [account_id: string]: { [holding_id: string]: HoldingSnapshot } };
+  } = {};
+
+  const today = new Date();
+
+  // Aggregate holding snapshots, keeping the latest snapshot per holding per period
+  holdingSnapshots.forEach((holdingSnapshot) => {
+    const { snapshot, holding } = holdingSnapshot;
+    const { date } = snapshot;
+    const { account_id, holding_id } = holding;
+
+    // Skip if account doesn't exist in our accounts dictionary
+    if (!accounts.has(account_id)) return;
+
+    const snapshotDate = new LocalDate(date);
+    if (today < snapshotDate) return;
+
+    const key = getYearMonthString(snapshotDate);
+
+    if (!snapshotHistory[key]) {
+      snapshotHistory[key] = {};
+    }
+    if (!snapshotHistory[key][account_id]) {
+      snapshotHistory[key][account_id] = {};
+    }
+
+    const existingHolding = snapshotHistory[key][account_id][holding_id];
+    if (!existingHolding || existingHolding.snapshot.date < date) {
+      snapshotHistory[key][account_id][holding_id] = holdingSnapshot;
+    }
+  });
+
+  // Transform into balance data by summing holding values per account
+  const balanceData = new BalanceData();
+
+  Object.entries(snapshotHistory).forEach(([yearMonth, accountHoldings]) => {
+    // Get a representative date for this month
+    const monthDate = new LocalDate(`${yearMonth}-15`);
+
+    for (const [accountId, holdings] of Object.entries(accountHoldings)) {
+      // Sum up all holding values for this account in this period
+      let totalValue = 0;
+      for (const holdingSnapshot of Object.values(holdings)) {
+        // Use institution_value which is quantity * price
+        totalValue += holdingSnapshot.holding.institution_value || 0;
+      }
+      balanceData.set(accountId, monthDate, totalValue);
+    }
+  });
+
+  return balanceData;
+};
+
+/**
+ * Calculate balance data using 3-tier fallback:
+ * 1. Account Snapshots (highest priority) - direct balance from Plaid snapshots
+ * 2. Holding Snapshots (medium priority) - calculated from sum of holding values
+ * 3. Transactions (lowest priority) - derived from transaction history
+ */
 export const getBalanceData = (
   accounts: AccountDictionary,
   accountSnapshots: AccountSnapshotDictionary,
+  holdingSnapshots: HoldingSnapshotDictionary,
   transactions: TransactionDictionary,
   investmentTransactions: InvestmentTransactionDictionary,
 ) => {
@@ -131,34 +204,62 @@ export const getBalanceData = (
     investmentTransactions,
   );
 
-  const snapshotBasedData = getBalanceDataFromSnapshots(accounts, accountSnapshots);
+  const accountSnapshotBasedData = getBalanceDataFromSnapshots(accounts, accountSnapshots);
+
+  const holdingSnapshotBasedData = getBalanceDataFromHoldingSnapshots(accounts, holdingSnapshots);
 
   const mergedData = new BalanceData();
 
   accounts.forEach(({ id, graphOptions }) => {
-    const startDate1 = transactionBasedData.get(id).startDate!;
-    const startDate2 = snapshotBasedData.get(id).startDate!;
-    const startDate = startDate1.getEndDate() < startDate2.getEndDate() ? startDate1 : startDate2;
+    // Collect all available date ranges from all sources
+    const ranges: ViewDate[] = [];
+    const txHistory = transactionBasedData.get(id);
+    const acctHistory = accountSnapshotBasedData.get(id);
+    const holdHistory = holdingSnapshotBasedData.get(id);
 
-    const endDate1 = transactionBasedData.get(id).endDate!;
-    const endDate2 = snapshotBasedData.get(id).endDate!;
-    const endDate = endDate1.getEndDate() < endDate2.getEndDate() ? endDate2 : endDate1;
+    if (txHistory.startDate) ranges.push(txHistory.startDate);
+    if (acctHistory.startDate) ranges.push(acctHistory.startDate);
+    if (holdHistory.startDate) ranges.push(holdHistory.startDate);
 
-    const { useTransactions = true, useSnapshots = true } = graphOptions;
+    // If no data exists for this account, skip it
+    if (ranges.length === 0) return;
+
+    // Find earliest start date
+    const startDate = ranges.reduce((earliest, current) =>
+      current.getEndDate() < earliest.getEndDate() ? current : earliest,
+    );
+
+    // Find latest end date
+    const endRanges: ViewDate[] = [];
+    if (txHistory.endDate) endRanges.push(txHistory.endDate);
+    if (acctHistory.endDate) endRanges.push(acctHistory.endDate);
+    if (holdHistory.endDate) endRanges.push(holdHistory.endDate);
+
+    const endDate = endRanges.reduce((latest, current) =>
+      current.getEndDate() > latest.getEndDate() ? current : latest,
+    );
+
+    const { useTransactions = true, useSnapshots = true, useHoldingSnapshots = true } = graphOptions;
 
     let previouslyUsedBalance = 0;
     while (startDate.getEndDate() <= endDate.getEndDate()) {
       const date = startDate.getEndDate();
       const transactionBasedBalance = transactionBasedData.get(id, date);
-      const snapshotBasedBalance = snapshotBasedData.get(id, date);
+      const accountSnapshotBasedBalance = accountSnapshotBasedData.get(id, date);
+      const holdingSnapshotBasedBalance = holdingSnapshotBasedData.get(id, date);
+
+      // 3-tier fallback: account snapshots → holding snapshots → transactions
       let balance = 0;
-      if (useSnapshots && snapshotBasedBalance) {
-        balance = snapshotBasedBalance;
-      } else if (useTransactions && transactionBasedBalance) {
+      if (useSnapshots && accountSnapshotBasedBalance !== undefined) {
+        balance = accountSnapshotBasedBalance;
+      } else if (useHoldingSnapshots && holdingSnapshotBasedBalance !== undefined) {
+        balance = holdingSnapshotBasedBalance;
+      } else if (useTransactions && transactionBasedBalance !== undefined) {
         balance = transactionBasedBalance;
       } else {
         balance = previouslyUsedBalance;
       }
+
       mergedData.set(id, date, balance);
       previouslyUsedBalance = balance;
       startDate.next();
