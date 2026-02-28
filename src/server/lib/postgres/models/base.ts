@@ -230,6 +230,23 @@ export abstract class Table<
     const result = await pool.query(sql, [columnValue]);
     return result.rowCount ?? 0;
   }
+
+  /**
+   * Delete rows matching a condition with comparison operator.
+   * @param column Column name to filter on
+   * @param operator Comparison operator (=, <=, >=, <, >, !=)
+   * @param value Value to compare against
+   * @returns Number of rows deleted
+   */
+  async deleteByCondition(
+    column: keyof TSchema & string,
+    operator: "=" | "<=" | ">=" | "<" | ">" | "!=",
+    value: ParamValue,
+  ): Promise<number> {
+    const sql = `DELETE FROM ${this.name} WHERE ${column} ${operator} $1 RETURNING ${this.primaryKey}`;
+    const result = await pool.query(sql, [value]);
+    return result.rowCount ?? 0;
+  }
 }
 
 export interface TableConfig<TJSON, TSchema extends Schema, TModel extends Model<TJSON, TSchema>> {
