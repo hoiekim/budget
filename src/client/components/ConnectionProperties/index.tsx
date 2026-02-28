@@ -90,6 +90,7 @@ export const ConnectionProperties = ({ item }: Props) => {
     e.stopPropagation();
     const newAccountGraphOptions: AccountGraphOptions = {
       useSnapshots: true,
+      useHoldingSnapshots: true,
       useTransactions: false,
     };
     const newAccount = new Account({ item_id: item.id, graphOptions: newAccountGraphOptions });
