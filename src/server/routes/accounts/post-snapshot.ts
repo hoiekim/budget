@@ -41,9 +41,9 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
       const response = await upsertSnapshots([newSnapshot]);
       const snapshot_id = response[0].update?._id || "";
       return { status: "success", body: { snapshot_id } };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`Failed to update a snapshot: ${snapshot.snapshot_id}`);
-      throw new Error(error);
+      throw error instanceof Error ? error : new Error(String(error));
     }
   },
 );

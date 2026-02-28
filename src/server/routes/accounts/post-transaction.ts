@@ -38,9 +38,9 @@ export const postTrasactionRoute = new Route<TransactionPostResponse>(
       }
       const transaction_id = result.update._id || "";
       return { status: "success", body: { transaction_id } };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`Failed to update a transaction: ${txIdResult.data}`);
-      throw new Error(error);
+      throw error instanceof Error ? error : new Error(String(error));
     }
   },
 );

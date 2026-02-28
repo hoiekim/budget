@@ -1,5 +1,5 @@
-export const flatten = (obj: { [k: string]: any }) => {
-  const set = new Set<[string, any]>();
+export const flatten = (obj: Record<string, unknown>) => {
+  const set = new Set<[string, unknown]>();
   for (const key in obj) set.add([key, obj[key]]);
 
   const queue = set.values();
@@ -9,14 +9,14 @@ export const flatten = (obj: { [k: string]: any }) => {
   const map: { [k: string]: ValidDataType | ValidDataType[] } = {};
 
   while (cue.value) {
-    const [address, any] = cue.value;
-    const type = typeof any;
+    const [address, value] = cue.value;
+    const type = typeof value;
 
-    const isArray = Array.isArray(any);
+    const isArray = Array.isArray(value);
 
-    if (type === "object" && !isArray && any !== null) {
-      Object.entries(any).forEach(([key, value]) => {
-        set.add([address + "." + key, value]);
+    if (type === "object" && !isArray && value !== null) {
+      Object.entries(value as Record<string, unknown>).forEach(([key, v]) => {
+        set.add([address + "." + key, v]);
       });
     }
 
@@ -25,14 +25,15 @@ export const flatten = (obj: { [k: string]: any }) => {
       type === "number" ||
       type === "string" ||
       type === "boolean" ||
-      any === null
+      value === null
     ) {
       const existingData = map[address];
+      const validValue = value as ValidDataType;
       if (existingData) {
-        if (!Array.isArray(existingData)) map[address] = [existingData, any];
-        else existingData.push(any);
+        if (!Array.isArray(existingData)) map[address] = [existingData, validValue];
+        else existingData.push(validValue);
       } else {
-        map[address] = any;
+        map[address] = validValue;
       }
     }
 

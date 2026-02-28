@@ -61,7 +61,7 @@ class IndexedDbAccessor {
     });
   };
 
-  save = async (storeName: StoreName, key: string, data: any): Promise<void> => {
+  save = async (storeName: StoreName, key: string, data: unknown): Promise<void> => {
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
 
@@ -74,7 +74,7 @@ class IndexedDbAccessor {
     });
   };
 
-  saveMany = async (storeName: StoreName, items: [string, any][]): Promise<void> => {
+  saveMany = async (storeName: StoreName, items: [string, unknown][]): Promise<void> => {
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
