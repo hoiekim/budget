@@ -107,7 +107,7 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: JSONI
     custom_name: "",
     hide: false,
     label: {},
-    graphOptions: { useSnapshots: true, useTransactions: true },
+    graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
   };
 
   return { institution, account };

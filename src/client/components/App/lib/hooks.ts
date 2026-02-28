@@ -30,6 +30,7 @@ export const useData = () => {
       const {
         accounts,
         accountSnapshots,
+        holdingSnapshots,
         transactions,
         splitTransactions,
         investmentTransactions,
@@ -44,6 +45,7 @@ export const useData = () => {
         const balanceData = getBalanceData(
           accounts,
           accountSnapshots,
+          holdingSnapshots,
           transactions,
           investmentTransactions,
         );

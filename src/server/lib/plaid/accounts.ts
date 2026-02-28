@@ -33,7 +33,7 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
           custom_name: "",
           hide: false,
           label: { budget_id: null },
-          graphOptions: { useSnapshots: true, useTransactions: true },
+          graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
         };
       });
       allAccounts.push(filledAccounts);
@@ -96,7 +96,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
           custom_name: "",
           hide: false,
           label: { budget_id: null },
-          graphOptions: { useSnapshots: true, useTransactions: true },
+          graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
         };
       });
       allAccounts.push(filledAccounts);

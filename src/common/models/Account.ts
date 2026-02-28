@@ -11,6 +11,7 @@ export interface AccountLabel {
 
 export interface AccountGraphOptions {
   useSnapshots: boolean;
+  useHoldingSnapshots: boolean;
   useTransactions: boolean;
 }
 
