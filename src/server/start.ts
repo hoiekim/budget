@@ -17,7 +17,18 @@ if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-app.use(express.json({ limit: "50mb" }));
+// Parse JSON and store raw body for webhook verification
+app.use(
+  express.json({
+    limit: "50mb",
+    verify: (req, _res, buf) => {
+      // Store raw body for Plaid webhook verification
+      if (req.url === "/plaid-hook") {
+        (req as any).rawBody = buf.toString();
+      }
+    },
+  })
+);
 
 app.use(
   session({
