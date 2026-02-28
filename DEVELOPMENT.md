@@ -84,6 +84,16 @@ if (!fieldResult.success) return validationError(fieldResult.error!);
 
 ## Testing
 
+### Test Requirements (Mandatory)
+
+**Always write unit tests for new code files and lines.** This is a project rule, not a suggestion.
+
+- New files: Create a corresponding `*.test.ts` file
+- New functions: Add test cases covering expected behavior and edge cases
+- Bug fixes: Add regression tests that would have caught the bug
+
+Write additional tests for existing uncovered lines when feasible. Check coverage with `bun test --coverage`.
+
 ### Running Tests
 
 ```bash

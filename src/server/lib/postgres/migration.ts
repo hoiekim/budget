@@ -100,8 +100,9 @@ export function parseColumnDefinition(definition: string): ColumnInfo | null {
 
 /**
  * Map PostgreSQL data_type and udt_name to normalized type for comparison.
+ * @internal Exported for testing
  */
-function normalizeDbType(dataType: string, udtName: string): NormalizedPgType {
+export function normalizeDbType(dataType: string, udtName: string): NormalizedPgType {
   const type = dataType.toUpperCase();
   const udt = udtName.toUpperCase();
 
@@ -145,8 +146,9 @@ function normalizeDbType(dataType: string, udtName: string): NormalizedPgType {
 /**
  * Check if two types are compatible.
  * Returns true if they're the same or one is a compatible variation.
+ * @internal Exported for testing
  */
-function typesCompatible(schemaType: NormalizedPgType, dbType: NormalizedPgType): boolean {
+export function typesCompatible(schemaType: NormalizedPgType, dbType: NormalizedPgType): boolean {
   // Direct match
   if (schemaType === dbType) return true;
   
@@ -196,8 +198,9 @@ async function getExistingColumns(
 
 /**
  * Build an ALTER TABLE statement to add a missing column.
+ * @internal Exported for testing
  */
-function buildAddColumnSql(tableName: string, columnName: string, definition: string): string {
+export function buildAddColumnSql(tableName: string, columnName: string, definition: string): string {
   // Clean the definition for ALTER TABLE context
   // Remove PRIMARY KEY (can't add via ALTER TABLE easily)
   let cleanDef = definition.replace(/PRIMARY\s+KEY/gi, "");
