@@ -49,40 +49,49 @@ export const ConnectionProperties = ({ item }: Props) => {
 
     if (confirmed) {
       const { item_id } = item;
-      call.delete(`/api/item?id=${item_id}`).then((_r) => {
-        const accountsInItem: Account[] = [];
+      call
+        .delete(`/api/item?id=${item_id}`)
+        .then((r) => {
+          if (r.status === "success") {
+            const accountsInItem: Account[] = [];
 
-        setData((oldData) => {
-          const newData = new Data(oldData);
+            setData((oldData) => {
+              const newData = new Data(oldData);
 
-          const newItems = new ItemDictionary(newData.items);
-          indexedDb.remove(StoreName.items, item_id).catch(console.error);
-          newItems.delete(item_id);
-          newData.items = newItems;
+              const newItems = new ItemDictionary(newData.items);
+              indexedDb.remove(StoreName.items, item_id).catch(console.error);
+              newItems.delete(item_id);
+              newData.items = newItems;
 
-          const newAccounts = new AccountDictionary(newData.accounts);
-          newAccounts.forEach((e) => {
-            if (e.item_id === item_id) accountsInItem.push(e);
-          });
-          accountsInItem.forEach((e) => {
-            indexedDb.remove(StoreName.accounts, e.account_id).catch(console.error);
-            newAccounts.delete(e.account_id);
-          });
-          newData.accounts = newAccounts;
+              const newAccounts = new AccountDictionary(newData.accounts);
+              newAccounts.forEach((e) => {
+                if (e.item_id === item_id) accountsInItem.push(e);
+              });
+              accountsInItem.forEach((e) => {
+                indexedDb.remove(StoreName.accounts, e.account_id).catch(console.error);
+                newAccounts.delete(e.account_id);
+              });
+              newData.accounts = newAccounts;
 
-          const newTransactions = new TransactionDictionary(newData.transactions);
-          newTransactions.forEach((e) => {
-            if (accountsInItem.find((f) => e.account_id === f.account_id)) {
-              indexedDb.remove(StoreName.transactions, e.transaction_id).catch(console.error);
-              newTransactions.delete(e.transaction_id);
-            }
-          });
-          newData.transactions = newTransactions;
-          return newData;
+              const newTransactions = new TransactionDictionary(newData.transactions);
+              newTransactions.forEach((e) => {
+                if (accountsInItem.find((f) => e.account_id === f.account_id)) {
+                  indexedDb.remove(StoreName.transactions, e.transaction_id).catch(console.error);
+                  newTransactions.delete(e.transaction_id);
+                }
+              });
+              newData.transactions = newTransactions;
+              return newData;
+            });
+
+            router.back();
+          } else {
+            console.error("Failed to delete connection:", r.message);
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to delete connection:", error);
         });
-
-        router.back();
-      });
     }
   };
 
@@ -93,16 +102,25 @@ export const ConnectionProperties = ({ item }: Props) => {
       useTransactions: false,
     };
     const newAccount = new Account({ item_id: item.id, graphOptions: newAccountGraphOptions });
-    const { status, body } = await call.post<AccountPostResponse>("/api/account", newAccount);
-    if (status === "success" && body) {
-      setData((oldData) => {
-        const newData = new Data(oldData);
-        indexedDb.save(newAccount).catch(console.error);
-        const newAccounts = new AccountDictionary(newData.accounts);
-        newAccounts.set(newAccount.id, newAccount);
-        newData.accounts = newAccounts;
-        return newData;
-      });
+    try {
+      const { status, body, message } = await call.post<AccountPostResponse>(
+        "/api/account",
+        newAccount,
+      );
+      if (status === "success" && body) {
+        setData((oldData) => {
+          const newData = new Data(oldData);
+          indexedDb.save(newAccount).catch(console.error);
+          const newAccounts = new AccountDictionary(newData.accounts);
+          newAccounts.set(newAccount.id, newAccount);
+          newData.accounts = newAccounts;
+          return newData;
+        });
+      } else {
+        console.error("Failed to add manual account:", message);
+      }
+    } catch (error) {
+      console.error("Failed to add manual account:", error);
     }
   };
 
