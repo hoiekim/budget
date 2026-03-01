@@ -116,6 +116,23 @@ export const updateItemStatus = async (item_id: string, status: string): Promise
   return updated !== null;
 };
 
+export interface SyncResult {
+  success: boolean;
+  error?: string;
+}
+
+export const updateItemSyncStatus = async (
+  item_id: string,
+  result: SyncResult,
+): Promise<boolean> => {
+  const updated = await itemsTable.update(item_id, {
+    last_sync_status: result.success ? "success" : "failed",
+    last_sync_at: new Date().toISOString(),
+    last_sync_error: result.error ?? null,
+  });
+  return updated !== null;
+};
+
 export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boolean> => {
   const { user_id } = user;
 

@@ -98,6 +98,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         .catch((err) => {
           console.error("Error occured during puting Plaid transanctions data into database");
           console.error(err);
+          throw err; // Re-throw to propagate error to caller
         });
     });
 
@@ -157,6 +158,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
             "Error occured during puting Plaid investment transanctions data into database",
           );
           console.error(err);
+          throw err; // Re-throw to propagate error to caller
         });
     });
 
@@ -199,7 +201,10 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       return accounts;
     })
-    .catch(console.error);
+    .catch((err) => {
+      console.error("Failed to sync Plaid accounts:", err);
+      throw err; // Re-throw to propagate error to caller
+    });
 
   const isInvestmentAvailable = item.available_products.includes(Products.Investments);
   const syncHoldings = Promise.resolve(isInvestmentAvailable)
@@ -220,7 +225,10 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertSecuritiesWithSnapshots(securities);
       return accounts;
     })
-    .catch(console.error);
+    .catch((err) => {
+      console.error("Failed to sync Plaid holdings:", err);
+      throw err; // Re-throw to propagate error to caller
+    });
 
   const [accounts, investmentAccounts] = await Promise.all([syncAccounts, syncHoldings]);
   return { accounts, investmentAccounts };

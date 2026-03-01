@@ -21,7 +21,7 @@ import {
   chartsTable,
 } from "./models";
 
-export const version = "6";
+export const version = "7";
 export const index = "budget" + (version ? `-${version}` : "");
 
 const tables: Table<unknown, Schema>[] = [
@@ -72,6 +72,20 @@ export const initializePostgres = async (): Promise<void> => {
   } catch (error: unknown) {
     console.error("Failed to create tables:", error);
     throw new Error("Failed to setup PostgreSQL tables.");
+  }
+
+  // Migration: Add sync status columns to items table (v7)
+  try {
+    await pool.query(`
+      ALTER TABLE items
+      ADD COLUMN IF NOT EXISTS last_sync_status VARCHAR(20),
+      ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS last_sync_error TEXT
+    `);
+    console.info("Migration: sync status columns verified.");
+  } catch (error: unknown) {
+    console.error("Migration warning:", error);
+    // Non-fatal - columns may already exist
   }
 
   const { ADMIN_PASSWORD, DEMO_PASSWORD } = process.env;

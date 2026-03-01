@@ -51,6 +51,9 @@ export const AVAILABLE_PRODUCTS = "available_products";
 export const CURSOR = "cursor";
 export const STATUS = "status";
 export const PROVIDER = "provider";
+export const LAST_SYNC_STATUS = "last_sync_status";
+export const LAST_SYNC_AT = "last_sync_at";
+export const LAST_SYNC_ERROR = "last_sync_error";
 
 export const NAME = "name";
 
