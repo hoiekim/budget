@@ -35,7 +35,7 @@ export class Route<T> {
         } catch (error: unknown) {
           console.error(error);
           const message = error instanceof Error ? error.message : String(error);
-          res.status(500).json({ status: "error", info: message });
+          res.status(500).json({ status: "error", message });
         }
       }
       next();
