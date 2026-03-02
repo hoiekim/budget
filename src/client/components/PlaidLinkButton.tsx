@@ -1,5 +1,4 @@
 import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
-import { PlaidLinkOnSuccessMetadata, usePlaidLink } from "react-plaid-link";
 import { ItemProvider, ItemStatus } from "common";
 import { PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
 import {
@@ -12,6 +11,7 @@ import {
   useLocalStorageState,
   indexedDb,
 } from "client";
+import { usePlaidLinkContext, PlaidLinkOnSuccessMetadata } from "./PlaidLinkContext";
 
 interface Props {
   item?: Item;
@@ -23,6 +23,7 @@ const promisedTokens = new Map<string, Promise<string>>();
 
 export const PlaidLinkButton = ({ item, children }: Props) => {
   const { user, setData } = useAppContext();
+  const { scriptLoaded, openLink } = usePlaidLinkContext();
 
   const access_token = (item && item.access_token) || "";
   const [token, setToken] = useState(tokens.get(access_token) || "");
@@ -33,40 +34,37 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
   const urlParams = new URLSearchParams(window.location.search);
   const oauth_state_id = urlParams.get("oauth_state_id");
 
-  const { open, ready } = usePlaidLink({
-    token: oauth_state_id ? storedToken : token,
-    receivedRedirectUri: oauth_state_id ? window.location.href : undefined,
-    onSuccess: (public_token: string, metadata: PlaidLinkOnSuccessMetadata) => {
-      const { institution } = metadata;
-      const institution_id = institution && institution.institution_id;
-      const params = new URLSearchParams({ provider: ItemProvider.PLAID });
-      call
-        .post<PbulicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
-          public_token,
-          institution_id,
-        })
-        .then((r) => {
-          const { status, body } = r;
-          if (status === "success" && body?.item) {
-            if (item) {
-              setData((oldData) => {
-                const newData = new Data(oldData);
-                const newItems = new ItemDictionary(newData.items);
-                const newItem = new Item({ ...item, status: ItemStatus.OK });
-                indexedDb.save(newItem).catch(console.error);
-                newItems.set(item.item_id, newItem);
-                newData.items = newItems;
-                return newData;
-              });
-            }
-            setTimeout(sync, 1000);
-          }
-        });
-    },
-  });
-
   const userLoggedIn = !!user;
-  const disabled = !ready;
+  const effectiveToken = oauth_state_id ? storedToken : token;
+  const disabled = !scriptLoaded || !effectiveToken;
+
+  const handleSuccess = (public_token: string, metadata: PlaidLinkOnSuccessMetadata) => {
+    const { institution } = metadata;
+    const institution_id = institution && institution.institution_id;
+    const params = new URLSearchParams({ provider: ItemProvider.PLAID });
+    call
+      .post<PbulicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
+        public_token,
+        institution_id,
+      })
+      .then((r) => {
+        const { status, body } = r;
+        if (status === "success" && body?.item) {
+          if (item) {
+            setData((oldData) => {
+              const newData = new Data(oldData);
+              const newItems = new ItemDictionary(newData.items);
+              const newItem = new Item({ ...item, status: ItemStatus.OK });
+              indexedDb.save(newItem).catch(console.error);
+              newItems.set(item.item_id, newItem);
+              newData.items = newItems;
+              return newData;
+            });
+          }
+          setTimeout(sync, 1000);
+        }
+      });
+  };
 
   useEffect(() => {
     if (!userLoggedIn) {
@@ -103,9 +101,13 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
 
   const onClick: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation();
-    if (!token) return;
-    setStoredToken(token);
-    open();
+    if (!effectiveToken) return;
+    setStoredToken(effectiveToken);
+    openLink({
+      token: effectiveToken,
+      receivedRedirectUri: oauth_state_id ? window.location.href : undefined,
+      onSuccess: handleSuccess,
+    });
   };
 
   const className = disabled || !item || item.status === ItemStatus.OK ? "" : "notification";
