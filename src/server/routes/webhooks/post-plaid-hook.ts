@@ -1,5 +1,7 @@
 import { ItemStatus } from "common";
-import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError } from "server";
+import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError, plaid } from "server";
+
+const { verifyWebhook } = plaid;
 
 interface PlaidWebhookBody {
   webhook_type: "TRANSACTIONS" | "ITEM" | "HOLDINGS" | "INVESTMENTS_TRANSACTIONS";
@@ -8,8 +10,23 @@ interface PlaidWebhookBody {
   error?: { error_code: string };
 }
 
-// TODO: verify request sender is plaid
-export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req) => {
+export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, res) => {
+  // Verify webhook signature from Plaid
+  const signedJwt = req.headers["plaid-verification"] as string | undefined;
+  const rawBody = (req as any).rawBody as string | undefined;
+
+  if (!rawBody) {
+    console.error("[Plaid Webhook] Raw body not available for verification");
+    res.status(401);
+    return { status: "failed", message: "Webhook verification failed" };
+  }
+
+  const isValid = await verifyWebhook(rawBody, signedJwt);
+  if (!isValid) {
+    res.status(401);
+    return { status: "failed", message: "Invalid webhook signature" };
+  }
+
   const bodyResult = requireBodyObject(req);
   if (!bodyResult.success) return validationError(bodyResult.error!);
 
