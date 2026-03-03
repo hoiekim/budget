@@ -223,7 +223,7 @@ export const saveSecuritySnapshots = async (data: SecuritySnapshotDictionary) =>
 };
 
 export const loadSecuritySnapshots = () => {
-  return loadDictionary<SecuritySnapshotDictionary>(StoreName.securitySnapshots, SecuritySnapshot);
+  return loadDictionary<SecuritySnapshotDictionary, SecuritySnapshot>(StoreName.securitySnapshots, SecuritySnapshot);
 };
 
 export const clearAllData = async () => {
