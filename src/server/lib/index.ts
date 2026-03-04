@@ -1,3 +1,5 @@
+// logger must be exported first - other modules depend on it
+export { logger } from "./logger";
 export * from "./route";
 export * as plaid from "./plaid";
 export * as simpleFin from "./simple-fin";
@@ -6,4 +8,3 @@ export * from "./postgres";
 export * from "./object";
 export * from "./compute-tools";
 export * from "./validation";
-export { logger } from "./logger";
