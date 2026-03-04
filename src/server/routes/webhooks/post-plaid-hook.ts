@@ -2,8 +2,6 @@ import { ItemStatus } from "common";
 import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError, plaid } from "server";
 import { logger } from "server/lib/logger";
 
-const { verifyWebhook } = plaid;
-
 interface PlaidWebhookBody {
   webhook_type: "TRANSACTIONS" | "ITEM" | "HOLDINGS" | "INVESTMENTS_TRANSACTIONS";
   webhook_code: string;
@@ -22,7 +20,7 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
     return { status: "failed", message: "Webhook verification failed" };
   }
 
-  const isValid = await verifyWebhook(rawBody, signedJwt);
+  const isValid = await plaid.verifyWebhook(rawBody, signedJwt);
   if (!isValid) {
     res.status(401);
     return { status: "failed", message: "Invalid webhook signature" };
