@@ -1,8 +1,7 @@
 import { ItemProvider, ONE_HOUR } from "common";
-import { getAllItems } from "server";
+import { getAllItems, logger } from "server";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
-import { logger } from "../logger";
 
 export const scheduledSync = async () => {
   logger.info("Scheduled sync started");

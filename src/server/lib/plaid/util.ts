@@ -1,6 +1,5 @@
 import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
-import { MaskedUser } from "server";
-import { logger } from "../logger";
+import { MaskedUser, logger } from "server";
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_PRODUCTION, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;

@@ -1,5 +1,5 @@
 import { RequestHandler, Request, Response } from "express";
-import { logger } from "./logger";
+import { logger } from "server";
 
 export type Method = "GET" | "POST" | "DELETE";
 

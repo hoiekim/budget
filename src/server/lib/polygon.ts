@@ -4,7 +4,7 @@
  */
 
 import { getDateString, getDateTimeString, getRandomId, JSONSecurity } from "common";
-import { logger } from "./logger";
+import { logger } from "server";
 
 const POLYGON_HOST = "https://api.polygon.io";
 const { POLYGON_API_KEY } = process.env;

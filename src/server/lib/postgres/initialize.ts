@@ -2,7 +2,7 @@ import { pool } from "./client";
 import { searchUser, writeUser } from "./repositories";
 import { buildCreateTable, buildCreateIndex } from "./database";
 import { runMigrations } from "./migration";
-import { logger } from "../logger";
+import { logger } from "server";
 import {
   Table,
   Schema,

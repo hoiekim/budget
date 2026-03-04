@@ -24,6 +24,7 @@ import {
   searchHoldingsByAccountId,
   MaskedUser,
   deleteSplitTransactionsByTransaction,
+  logger,
 } from "server";
 import {
   upsertAccountsWithSnapshots,
@@ -31,7 +32,6 @@ import {
   upsertSecuritiesWithSnapshots,
 } from "./create-snapshots";
 import { Products } from "plaid";
-import { logger } from "../logger";
 
 export const syncPlaidTransactions = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
