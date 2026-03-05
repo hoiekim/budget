@@ -258,8 +258,23 @@ Merges to `main` trigger:
 2. Add `index.tsx` and optional `index.css`
 3. Export from `src/client/components/index.ts`
 
-### Adding Database Tables
+### Adding Database Tables/Columns
+
+Schema migrations run automatically on server startup. The migration system compares TypeScript model definitions with the actual database schema and adds missing columns.
 
 1. Add model in `src/server/lib/postgres/models/`
 2. Add repository in `src/server/lib/postgres/repositories/`
-3. Add migration SQL (manual for now - see issue #62)
+3. Define the schema in your model class (schema is compared against database)
+4. Server startup will automatically add any missing columns
+
+**What's automatic:**
+- Adding new columns to existing tables
+- Detecting type mismatches (logged as warnings)
+
+**What's NOT automatic (requires manual migration):**
+- Dropping columns (safety precaution)
+- Renaming columns
+- Changing column types
+- Creating new tables (add to `initialize.ts`)
+
+See `src/server/lib/postgres/migration.ts` for implementation details.
