@@ -13,13 +13,14 @@ export const SimpleFinLinkButton = ({ children }: Props) => {
 
   const onClick = () => {
     const public_token = prompt("Enter setup token");
+    if (!public_token) return;
     const params = new URLSearchParams({ provider: ItemProvider.SIMPLE_FIN });
     call
       .post<PbulicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
         public_token,
       })
       .then((r) => {
-        const { status, body } = r;
+        const { status, body, message } = r;
         if (status === "success" && body?.item) {
           const item = body.item;
           setData((oldData) => {
@@ -32,7 +33,12 @@ export const SimpleFinLinkButton = ({ children }: Props) => {
             return newData;
           });
           setTimeout(sync, 1000);
+        } else {
+          console.error("Failed to connect SimpleFin:", message);
         }
+      })
+      .catch((error) => {
+        console.error("Failed to connect SimpleFin:", error);
       });
   };
 
