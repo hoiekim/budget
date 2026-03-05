@@ -1,7 +1,6 @@
 import { ItemStatus } from "common";
 import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError, plaid } from "server";
-
-const { verifyWebhook } = plaid;
+import { logger } from "server/lib/logger";
 
 interface PlaidWebhookBody {
   webhook_type: "TRANSACTIONS" | "ITEM" | "HOLDINGS" | "INVESTMENTS_TRANSACTIONS";
@@ -13,15 +12,15 @@ interface PlaidWebhookBody {
 export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, res) => {
   // Verify webhook signature from Plaid
   const signedJwt = req.headers["plaid-verification"] as string | undefined;
-  const rawBody = (req as any).rawBody as string | undefined;
+  const rawBody = (req as { rawBody?: string }).rawBody;
 
   if (!rawBody) {
-    console.error("[Plaid Webhook] Raw body not available for verification");
+    logger.error("[Plaid Webhook] Raw body not available for verification");
     res.status(401);
     return { status: "failed", message: "Webhook verification failed" };
   }
 
-  const isValid = await verifyWebhook(rawBody, signedJwt);
+  const isValid = await plaid.verifyWebhook(rawBody, signedJwt);
   if (!isValid) {
     res.status(401);
     return { status: "failed", message: "Invalid webhook signature" };
@@ -62,17 +61,14 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
     }
   }
 
-  console.log(`Unhandled hook called for item ${item_id}`);
-  console.log("Request body:", req.body);
+  logger.warn("Unhandled webhook", { itemId: item_id, webhookType: webhook_type, webhookCode: webhook_code, body: req.body });
 });
 
 const syncAndLog = async (item_id: string) => {
   const response = await syncPlaidTransactions(item_id);
   if (!response) return { status: "failed" as const };
   const { added, modified, removed } = response;
-  console.group(`Synced transactions for item: ${item_id}`);
-  console.log(`${added} added, ${modified} modified, ${removed} removed`);
-  console.groupEnd();
+  logger.info("Synced transactions via webhook", { itemId: item_id, added, modified, removed });
   return { status: "success" as const };
 };
 

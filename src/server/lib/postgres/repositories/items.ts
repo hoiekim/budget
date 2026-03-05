@@ -16,6 +16,7 @@ import {
 } from "../models";
 import { pool } from "../client";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { logger } from "../../logger";
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
@@ -99,7 +100,7 @@ export const upsertItems = async (
         results.push(updated ? successResult(item.item_id, 1) : noChangeResult(item.item_id));
       }
     } catch (error) {
-      console.error(`Failed to upsert item ${item.item_id}:`, error);
+      logger.error("Failed to upsert item", { itemId: item.item_id }, error);
       results.push(errorResult(item.item_id));
     }
   }
