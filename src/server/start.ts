@@ -9,6 +9,7 @@ import session from "express-session";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
 import { loginLimiter } from "server/lib/rate-limit";
 import * as routes from "server/routes";
+import { logger } from "server/lib/logger";
 
 const app = express();
 
@@ -17,7 +18,18 @@ if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-app.use(express.json({ limit: "50mb" }));
+// Parse JSON and store raw body for webhook verification
+app.use(
+  express.json({
+    limit: "50mb",
+    verify: (req, _res, buf) => {
+      // Store raw body for Plaid webhook verification
+      if (req.url === "/plaid-hook") {
+        (req as any).rawBody = buf.toString();
+      }
+    },
+  })
+);
 
 app.use(
   session({
@@ -37,7 +49,7 @@ app.use(
 const router = Router();
 
 router.use((req, _res, next) => {
-  console.info(`<${req.method}> /api${req.url}`);
+  logger.info("API request", { method: req.method, path: `/api${req.url}` });
   next();
 });
 
@@ -58,6 +70,6 @@ app.get("*", (_req, res) => {
 
 app.listen(process.env.PORT || 3005, async () => {
   await initializePostgres();
-  console.info("Budget app server is up.");
+  logger.info("Budget app server is up", { port: process.env.PORT || 3005 });
   scheduledSync();
 });

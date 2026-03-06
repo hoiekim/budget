@@ -15,6 +15,7 @@ import {
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { withTransaction } from "../client";
+import { logger } from "../../logger";
 
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
@@ -77,7 +78,7 @@ export const upsertAccounts = async (
       await accountsTable.upsert(row);
       results.push(successResult(account.account_id, 1));
     } catch (error) {
-      console.error(`Failed to upsert account ${account.account_id}:`, error);
+      logger.error("Failed to upsert account", { accountId: account.account_id }, error);
       results.push(errorResult(account.account_id));
     }
   }
@@ -102,7 +103,7 @@ export const updateAccounts = async (
         updated ? successResult(account.account_id, 1) : noChangeResult(account.account_id),
       );
     } catch (error) {
-      console.error(`Failed to update account ${account.account_id}:`, error);
+      logger.error("Failed to update account", { accountId: account.account_id }, error);
       results.push(errorResult(account.account_id));
     }
   }

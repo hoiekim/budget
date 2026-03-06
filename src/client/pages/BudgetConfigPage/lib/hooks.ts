@@ -4,11 +4,13 @@ import {
   useAppContext,
   Data,
   getBudgetClass,
-  getBudgetDictionaryClass,
   Budget,
+  BudgetDictionary,
   Capacity,
   Category,
+  CategoryDictionary,
   Section,
+  SectionDictionary,
   CapacityData,
   indexedDb,
   StoreName,
@@ -62,7 +64,7 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
         const DynamicBudgetFamily = getBudgetClass(type);
         const newBudgetLike = new DynamicBudgetFamily(budgetLike);
         indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
-        newData[dictionaryKey].set(id, newBudgetLike as any);
+        newData[dictionaryKey].set(id, newBudgetLike as Budget & Section & Category);
         current = iterator.next();
       }
 
@@ -197,8 +199,7 @@ export const useRemove = () => {
     if (!deleted) return;
 
     const name = deleted.name || "Unnamed";
-    const { id, type, dictionaryKey } = deleted;
-    const DynamicBudgetFamilyDictionary = getBudgetDictionaryClass(type);
+    const { id, type } = deleted;
 
     const queryString = "?" + new URLSearchParams({ id }).toString();
 
@@ -241,9 +242,19 @@ export const useRemove = () => {
         const newData = new Data(oldData);
         const storeName = type === "budget" ? StoreName.budgets : type === "section" ? StoreName.sections : StoreName.categories;
         indexedDb.remove(storeName, id).catch(console.error);
-        const newDictionary = new DynamicBudgetFamilyDictionary(newData[dictionaryKey] as any);
-        newDictionary.delete(id);
-        newData[dictionaryKey] = newDictionary;
+        if (type === "budget") {
+          const newDictionary = new BudgetDictionary(newData.budgets);
+          newDictionary.delete(id);
+          newData.budgets = newDictionary;
+        } else if (type === "section") {
+          const newDictionary = new SectionDictionary(newData.sections);
+          newDictionary.delete(id);
+          newData.sections = newDictionary;
+        } else {
+          const newDictionary = new CategoryDictionary(newData.categories);
+          newDictionary.delete(id);
+          newData.categories = newDictionary;
+        }
         return newData;
       });
     }

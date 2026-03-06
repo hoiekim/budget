@@ -1,5 +1,5 @@
 import { PlaidError, PlaidErrorType } from "plaid";
-import { MaskedUser, updateItemStatus } from "server";
+import { MaskedUser, updateItemStatus, logger } from "server";
 import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, JSONAccount } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
@@ -33,18 +33,18 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
           custom_name: "",
           hide: false,
           label: { budget_id: null },
-          graphOptions: { useSnapshots: true, useTransactions: true },
+          graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
         };
       });
       allAccounts.push(filledAccounts);
       data.items.push({ ...item });
-    } catch (error: any) {
-      const plaidError = error?.response?.data as PlaidError;
-      console.error(plaidError);
-      console.error("Failed to get accounts data for item:", item_id);
+    } catch (error: unknown) {
+      const errorWithResponse = error as { response?: { data?: PlaidError } };
+      const plaidError = errorWithResponse?.response?.data;
+      logger.error("Failed to get accounts data", { itemId: item_id }, plaidError || error);
       if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
         updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
-          console.error("Failed to update item status to BAD:", e);
+          logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
         });
       }
       data.items.push({ ...item, plaidError });
@@ -95,7 +95,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
           custom_name: "",
           hide: false,
           label: { budget_id: null },
-          graphOptions: { useSnapshots: true, useTransactions: true },
+          graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
         };
       });
       allAccounts.push(filledAccounts);
@@ -108,14 +108,15 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       allHoldings.push(filledHoldings);
       allSecurities.push(securities);
       data.items.push({ ...item });
-    } catch (error: any) {
-      const plaidError = error?.response?.data as PlaidError;
-      if (!ignorable_error_codes.has(plaidError?.error_code)) {
-        console.error(plaidError);
-        console.error("Failed to get holdings data for item:", item_id);
+    } catch (error: unknown) {
+      const errorWithResponse = error as { response?: { data?: PlaidError } };
+      const plaidError = errorWithResponse?.response?.data;
+      const errorCode = plaidError?.error_code;
+      if (!errorCode || !ignorable_error_codes.has(errorCode)) {
+        logger.error("Failed to get holdings data", { itemId: item_id }, plaidError || error);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
           updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
-            console.error("Failed to update item status to BAD:", e);
+            logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
         }
         data.items.push({ ...item, plaidError });

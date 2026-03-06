@@ -60,7 +60,7 @@ export const AccountsTable = ({ donutData, style }: Props) => {
             indexedDb.save(newAccount).catch(console.error);
             newAccounts.set(account_id, newAccount);
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(error);
         }
       };

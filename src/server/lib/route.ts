@@ -1,4 +1,5 @@
 import { RequestHandler, Request, Response } from "express";
+import { logger } from "server";
 
 export type Method = "GET" | "POST" | "DELETE";
 
@@ -10,7 +11,7 @@ export interface ApiResponse<T = undefined> {
 
 export type Stream<T = undefined> = (response: ApiResponse<T>) => void;
 
-export type GetResponse<T = any> = (
+export type GetResponse<T = undefined> = (
   req: Request,
   res: Response,
   stream: Stream<T>
@@ -32,9 +33,10 @@ export class Route<T> {
           if (result) res.json(result);
           else res.end();
           return;
-        } catch (error: any) {
-          console.error(error);
-          res.status(500).json({ status: "error", info: error?.message });
+        } catch (error: unknown) {
+          logger.error("Route handler error", { method, path }, error);
+          const message = error instanceof Error ? error.message : String(error);
+          res.status(500).json({ status: "error", message });
         }
       }
       next();

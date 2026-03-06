@@ -26,10 +26,15 @@ export { call };
 
 const CACHE_KEY = "budget-cache";
 
-const promisedCache = window.caches?.open(CACHE_KEY);
-const getCache = () => promisedCache;
+// Lazy-initialize cache to avoid window reference during SSR/tests
+let promisedCache: Promise<Cache> | undefined;
+const getCache = () => {
+  if (typeof window === "undefined") return undefined;
+  if (!promisedCache) promisedCache = window.caches?.open(CACHE_KEY);
+  return promisedCache;
+};
 
-export const cleanCache = () => window.caches?.delete(CACHE_KEY);
+export const cleanCache = () => typeof window !== "undefined" && window.caches?.delete(CACHE_KEY);
 
 export const cachedCall = async <T = unknown>(path: string) => {
   const cache = await getCache();
