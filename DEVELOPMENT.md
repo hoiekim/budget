@@ -128,6 +128,27 @@ describe("featureName", () => {
 
 ## Code Style
 
+### Module Imports
+
+**Always import from the highest module alias** (`common`, `server`, or `client`). Do not use relative import paths.
+
+```typescript
+// ✅ Good - Import from module aliases
+import { Account, useAppContext, GraphInput } from "client";
+import { LocalDate, ViewDate } from "common";
+import { pgGetUsers } from "server";
+
+// ❌ Bad - Relative imports
+import { Account } from "../../models/Account";
+import { useAppContext } from "../context";
+import { GraphInput } from "../../../components/Graph/lib/graph";
+```
+
+**Benefits:**
+- Consistent import style across the codebase
+- Easier refactoring (moving files doesn't break imports)
+- Clear module boundaries
+
 ### TypeScript
 
 - Avoid `any` - use proper types or `unknown` with type guards

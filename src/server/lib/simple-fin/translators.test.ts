@@ -147,7 +147,7 @@ describe("translateAccount", () => {
     expect(account.custom_name).toBe("");
     expect(account.hide).toBe(false);
     expect(account.label).toEqual({});
-    expect(account.graphOptions).toEqual({ useSnapshots: true, useTransactions: true });
+    expect(account.graphOptions).toEqual({ useSnapshots: true, useHoldingSnapshots: true, useTransactions: true });
   });
 });
 

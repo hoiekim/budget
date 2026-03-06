@@ -24,6 +24,7 @@ import {
   HIDE,
   LABEL_BUDGET_ID,
   GRAPH_OPTIONS_USE_SNAPSHOTS,
+  GRAPH_OPTIONS_USE_HOLDING_SNAPSHOTS,
   GRAPH_OPTIONS_USE_TRANSACTIONS,
   RAW,
   UPDATED,
@@ -49,6 +50,7 @@ const accountSchema = {
   [HIDE]: "BOOLEAN DEFAULT FALSE",
   [LABEL_BUDGET_ID]: "UUID",
   [GRAPH_OPTIONS_USE_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
+  [GRAPH_OPTIONS_USE_HOLDING_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
   [GRAPH_OPTIONS_USE_TRANSACTIONS]: "BOOLEAN DEFAULT TRUE",
   [RAW]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
@@ -74,6 +76,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
   declare hide: boolean;
   declare label_budget_id: string | null;
   declare graph_options_use_snapshots: boolean;
+  declare graph_options_use_holding_snapshots: boolean;
   declare graph_options_use_transactions: boolean;
   declare raw: object | null;
   declare updated: string | null;
@@ -95,6 +98,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
     hide: isNullableBoolean,
     label_budget_id: isNullableString,
     graph_options_use_snapshots: isNullableBoolean,
+    graph_options_use_holding_snapshots: isNullableBoolean,
     graph_options_use_transactions: isNullableBoolean,
     raw: isNullableObject,
     updated: isNullableString,
@@ -127,6 +131,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
       label: { budget_id: this.label_budget_id },
       graphOptions: {
         useSnapshots: this.graph_options_use_snapshots,
+        useHoldingSnapshots: this.graph_options_use_holding_snapshots ?? true,
         useTransactions: this.graph_options_use_transactions,
       },
     };
@@ -156,6 +161,8 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
     if (a.graphOptions) {
       if (!isUndefined(a.graphOptions.useSnapshots))
         r.graph_options_use_snapshots = a.graphOptions.useSnapshots;
+      if (!isUndefined(a.graphOptions.useHoldingSnapshots))
+        r.graph_options_use_holding_snapshots = a.graphOptions.useHoldingSnapshots;
       if (!isUndefined(a.graphOptions.useTransactions))
         r.graph_options_use_transactions = a.graphOptions.useTransactions;
     }
