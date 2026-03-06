@@ -10,6 +10,7 @@ import {
   SECURITY_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { logger } from "../../logger";
 
 export type PartialHolding = {
   holding_id?: string;
@@ -67,7 +68,7 @@ export const upsertHoldings = async (
       results.push(successResult(holdingId, 1));
     } catch (error) {
       const holdingId = holding.holding_id || `${holding.account_id}-${holding.security_id}`;
-      console.error(`Failed to upsert holding ${holdingId}:`, error);
+      logger.error("Failed to upsert holding", { holdingId }, error);
       results.push(errorResult(holdingId));
     }
   }
@@ -91,7 +92,7 @@ export const updateHoldings = async (
       const updated = await holdingsTable.update(holdingId, row);
       results.push(updated ? successResult(holdingId, 1) : noChangeResult(holdingId));
     } catch (error) {
-      console.error(`Failed to update holding ${holdingId}:`, error);
+      logger.error("Failed to update holding", { holdingId }, error);
       results.push(errorResult(holdingId));
     }
   }

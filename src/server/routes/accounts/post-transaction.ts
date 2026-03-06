@@ -1,5 +1,6 @@
 import { Route, updateTransactions, requireBodyObject, requireStringField, validationError } from "server";
 import type { PartialTransaction } from "server";
+import { logger } from "server/lib/logger";
 
 export interface TransactionPostResponse {
   transaction_id: string;
@@ -38,9 +39,9 @@ export const postTrasactionRoute = new Route<TransactionPostResponse>(
       }
       const transaction_id = result.update._id || "";
       return { status: "success", body: { transaction_id } };
-    } catch (error: any) {
-      console.error(`Failed to update a transaction: ${txIdResult.data}`);
-      throw new Error(error);
+    } catch (error: unknown) {
+      logger.error("Failed to update transaction", { transactionId: txIdResult.data }, error);
+      throw error instanceof Error ? error : new Error(String(error));
     }
   },
 );

@@ -37,7 +37,7 @@ export const getData = async (item: JSONItem, options: GetSimpleFinDataOptions) 
     headers: { Authorization: `Basic ${credentials}` },
   });
 
-  type ResponseData = { errors: any[]; accounts: SimpleFinAccount[] };
+  type ResponseData = { errors: unknown[]; accounts: SimpleFinAccount[] };
   const data: ResponseData = await response.json();
 
   return modelize(item, data.accounts);

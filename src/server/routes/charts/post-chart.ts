@@ -1,4 +1,5 @@
 import { Route, updateChart, requireBodyObject, requireStringField, validationError } from "server";
+import { logger } from "server/lib/logger";
 
 export const postChartRoute = new Route("POST", "/chart", async (req) => {
   const { user } = req.session;
@@ -21,8 +22,8 @@ export const postChartRoute = new Route("POST", "/chart", async (req) => {
   try {
     await updateChart(user, chart_id as string, data);
     return { status: "success" };
-  } catch (error: any) {
-    console.error(`Failed to update a chart: ${chart_id}`);
-    throw new Error(error);
+  } catch (error: unknown) {
+    logger.error("Failed to update chart", { chartId: chart_id }, error);
+    throw error instanceof Error ? error : new Error(String(error));
   }
 });

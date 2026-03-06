@@ -1,8 +1,11 @@
 import { pool } from "./client";
 import { searchUser, writeUser } from "./repositories";
 import { buildCreateTable, buildCreateIndex } from "./database";
+import { runMigrations } from "./migration";
+import { logger } from "server";
 import {
   Table,
+  Schema,
   usersTable,
   sessionsTable,
   institutionsTable,
@@ -23,7 +26,7 @@ import {
 export const version = "6";
 export const index = "budget" + (version ? `-${version}` : "");
 
-const tables: Table<unknown, any>[] = [
+const tables: Table<unknown, Schema>[] = [
   usersTable,
   sessionsTable,
   institutionsTable,
@@ -42,16 +45,14 @@ const tables: Table<unknown, any>[] = [
 ];
 
 export const initializePostgres = async (): Promise<void> => {
-  console.info("Initialization started.");
+  logger.info("Initialization started");
 
   try {
     const client = await pool.connect();
     client.release();
-    console.info("PostgreSQL connection established.");
+    logger.info("PostgreSQL connection established");
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.info(`PostgreSQL connection failed: ${message}`);
-    console.info("Restarting initialization in 10 seconds.");
+    logger.warn("PostgreSQL connection failed, retrying in 10 seconds", {}, error);
     return new Promise((res) => {
       setTimeout(() => res(initializePostgres()), 10000);
     });
@@ -67,9 +68,12 @@ export const initializePostgres = async (): Promise<void> => {
         await pool.query(createIndexSql);
       }
     }
-    console.info("Database tables created/verified successfully.");
+    logger.info("Database tables created/verified successfully");
+
+    // Run automatic schema migrations to add any missing columns
+    await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
   } catch (error: unknown) {
-    console.error("Failed to create tables:", error);
+    logger.error("Failed to create tables", {}, error);
     throw new Error("Failed to setup PostgreSQL tables.");
   }
 
@@ -91,5 +95,5 @@ export const initializePostgres = async (): Promise<void> => {
     password: DEMO_PASSWORD || "budget",
   });
 
-  console.info("Successfully initialized PostgreSQL database and setup default users.");
+  logger.info("Successfully initialized PostgreSQL database and setup default users");
 };

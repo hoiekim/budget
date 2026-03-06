@@ -43,11 +43,11 @@ export class Chart {
       }
     } else if (this.configuration) {
       if (this.type === ChartType.BALANCE) {
-        this.configuration = new BalanceChartConfiguration(this.configuration as any);
+        this.configuration = new BalanceChartConfiguration(this.configuration as Partial<BalanceChartConfiguration>);
       } else if (this.type === ChartType.PROJECTION) {
-        this.configuration = new ProjectionChartConfiguration(this.configuration as any);
+        this.configuration = new ProjectionChartConfiguration(this.configuration as Partial<ProjectionChartConfiguration>);
       } else if (this.type === ChartType.FLOW) {
-        this.configuration = new FlowChartConfiguration(this.configuration as any);
+        this.configuration = new FlowChartConfiguration(this.configuration as Partial<FlowChartConfiguration>);
       }
     }
   };

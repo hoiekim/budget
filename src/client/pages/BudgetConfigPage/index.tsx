@@ -122,7 +122,7 @@ export const BudgetConfigPage = () => {
         roll_over: isRollOverInput,
         roll_over_start_date: rollDateInput,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
     }
 
@@ -132,7 +132,7 @@ export const BudgetConfigPage = () => {
   const onDelete = async () => {
     try {
       await remove(budgetLike);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
     }
 
