@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { AccountType, AccountSubtype } from "plaid";
 import { getAccountBalance } from "./accounts";
-import { Account } from "../../models/Account";
+import { Account } from "client";
 
 describe("getAccountBalance", () => {
   test("should return current balance for depository accounts", () => {
