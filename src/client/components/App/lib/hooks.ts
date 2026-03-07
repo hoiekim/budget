@@ -9,7 +9,11 @@ import {
   getCapacityData,
   CapacityData,
 } from "client";
-import { Dispatch, SetStateAction, useCallback, useEffect, useState } from "react";
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+
+type CalculateFn = ((data: Data) => void) & {
+  capacityData: (updater: (current: CapacityData) => void) => void;
+};
 
 export const useData = () => {
   const [data, _setData] = useMemoryState<Data>("data", globalData);
@@ -26,7 +30,7 @@ export const useData = () => {
 
   const [calculations, setCalculations] = useState(new Calculations());
 
-  const calculate = useCallback(
+  const calculateAll = useCallback(
     (data: Data) => {
       const {
         accounts,
@@ -74,18 +78,15 @@ export const useData = () => {
   );
 
   /**
-   * Update capacityData without triggering a full recalculation.
+   * Partial update: recalculate only capacityData.
    * Accepts a mutator function that modifies the current capacityData in place.
-   * The function creates a new Calculations object to trigger React re-render.
+   * Creates a new Calculations object to trigger React re-render.
    */
-  const updateCapacityData = useCallback(
+  const calculateCapacityData = useCallback(
     (updater: (current: CapacityData) => void) => {
       setCalculations((oldCalculations) => {
-        // Create a new CapacityData with entries from the old one
         const newCapacityData = new CapacityData(oldCalculations.capacityData);
-        // Apply the update
         updater(newCapacityData);
-        // Create new Calculations with the updated capacityData
         const newCalculations = new Calculations(oldCalculations);
         newCalculations.update({ capacityData: newCapacityData });
         return newCalculations;
@@ -94,7 +95,14 @@ export const useData = () => {
     [setCalculations],
   );
 
-  return [data, setData, calculations, calculate, updateCapacityData] as const;
+  // Combine into calculate() with calculate.capacityData() pattern
+  const calculate: CalculateFn = useMemo(() => {
+    const fn = calculateAll as CalculateFn;
+    fn.capacityData = calculateCapacityData;
+    return fn;
+  }, [calculateAll, calculateCapacityData]);
+
+  return [data, setData, calculations, calculate] as const;
 };
 
 export const useScreenType = () => {

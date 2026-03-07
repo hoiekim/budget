@@ -19,7 +19,7 @@ const CapacitiesInput = ({
   setCapacitiesInput,
   isSyncedInput,
 }: Props) => {
-  const { calculations, viewDate, updateCapacityData } = useAppContext();
+  const { calculations, viewDate, calculate } = useAppContext();
   const { capacityData } = calculations;
   const interval = "month";
   const defaultCapacities = useRef(budgetLike.capacities.map((c) => c.toInputs().capacityInput));
@@ -136,7 +136,7 @@ const CapacitiesInput = ({
 
       // Update capacityData via context to trigger React re-render for other components.
       // This creates a new Calculations object with initialized capacity summary.
-      updateCapacityData((data) => {
+      calculate.capacityData((data) => {
         const newCapacitySummary = data.get(newCapacity.id);
         const latestCapacitySummary = data.get(latestCapacity.id);
         if (latestCapacitySummary) {

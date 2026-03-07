@@ -9,12 +9,15 @@ export enum ScreenType {
   Wide,
 }
 
+type CalculateFn = ((data: Data) => void) & {
+  capacityData: (updater: (current: CapacityData) => void) => void;
+};
+
 export interface ContextType {
   data: Data;
   setData: Dispatch<SetStateAction<Data>>;
   calculations: Calculations;
-  calculate: (data: Data) => void;
-  updateCapacityData: (updater: (current: CapacityData) => void) => void;
+  calculate: CalculateFn;
   status: Status;
   user: MaskedUser | undefined;
   setUser: Dispatch<SetStateAction<MaskedUser | undefined>>;
