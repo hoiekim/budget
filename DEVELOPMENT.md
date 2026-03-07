@@ -168,6 +168,35 @@ try {
 }
 ```
 
+### Structured Logging
+
+**Use the logger module instead of `console.*` methods.**
+
+```typescript
+import { logger } from "server/lib/logger";
+
+// Info-level logging with context
+logger.info("Sync completed", { userId: user.id, itemCount: 42 });
+
+// Warning with context
+logger.warn("Rate limit approaching", { endpoint: "/api/sync", remaining: 5 });
+
+// Error logging (automatically captures stack traces)
+logger.error("Sync failed", { userId: user.id }, error);
+
+// Debug logging (only shown when LOG_LEVEL=debug)
+logger.debug("Processing item", { itemId, data });
+```
+
+**Environment behavior:**
+- **Production:** JSON output for log aggregators
+- **Development:** Human-readable colored output
+- **Test:** Silent by default (set `LOG_LEVEL=debug` to enable)
+
+**Log levels:** `debug` < `info` < `warn` < `error`
+
+Set minimum level with `LOG_LEVEL` environment variable.
+
 ### Async Error Propagation
 
 **Don't swallow errors with `.catch(console.error)`.** This pattern silently hides failures:
