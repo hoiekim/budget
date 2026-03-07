@@ -1,5 +1,6 @@
 export * from "./App";
 export * from "./ErrorBoundary";
+export * from "./PlaidLinkContext";
 export * from "./PlaidLinkButton";
 export * from "./SimpleFinLinkButton";
 export * from "./TransactionsTable";
