@@ -1,5 +1,5 @@
 import { ItemProvider, ONE_HOUR } from "common";
-import { getAllItems, logger } from "server";
+import { getAllItems, logger, updateItemSyncStatus } from "server";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 
@@ -11,6 +11,7 @@ export const scheduledSync = async () => {
       if (provider === ItemProvider.PLAID) {
         let accountsCount = 0;
         let transactionsCount = 0;
+        let syncError: string | undefined;
 
         await syncPlaidAccounts(item_id)
           .then((r) => {
@@ -18,22 +19,38 @@ export const scheduledSync = async () => {
             const { accounts, investmentAccounts } = r;
             accountsCount += (accounts?.length || 0) + (investmentAccounts?.length || 0);
           })
-          .catch((error) => logger.error("Sync Plaid accounts failed", { itemId: item_id }, error));
+          .catch((error) => {
+            logger.error("Sync Plaid accounts failed", { itemId: item_id }, error);
+            syncError = error instanceof Error ? error.message : String(error);
+          });
 
-        await syncPlaidTransactions(item_id)
-          .then((r) => {
-            if (!r) throw new Error("Error occured during syncAllPlaidTransactions");
-            const { added, modified, removed } = r;
-            transactionsCount += added + modified + removed;
-          })
-          .catch((error) => logger.error("Sync Plaid transactions failed", { itemId: item_id }, error));
+        if (!syncError) {
+          await syncPlaidTransactions(item_id)
+            .then((r) => {
+              if (!r) throw new Error("Error occured during syncAllPlaidTransactions");
+              const { added, modified, removed } = r;
+              transactionsCount += added + modified + removed;
+            })
+            .catch((error) => {
+              logger.error("Sync Plaid transactions failed", { itemId: item_id }, error);
+              syncError = error instanceof Error ? error.message : String(error);
+            });
+        }
+
+        await updateItemSyncStatus(item_id, {
+          success: !syncError,
+          error: syncError,
+        });
 
         logger.info("Synced Plaid item", {
           itemId: item_id,
           accountsUpdated: accountsCount,
           transactionsUpdated: transactionsCount,
+          syncError,
         });
       } else if (provider === ItemProvider.SIMPLE_FIN) {
+        let syncError: string | undefined;
+
         await syncSimpleFinData(item_id)
           .then((r) => {
             if (!r) throw new Error("Error occured during syncAllSimpleFinData");
@@ -45,7 +62,15 @@ export const scheduledSync = async () => {
               transactionsUpdated: transactionsCount,
             });
           })
-          .catch((error) => logger.error("Sync SimpleFin data failed", { itemId: item_id }, error));
+          .catch((error) => {
+            logger.error("Sync SimpleFin data failed", { itemId: item_id }, error);
+            syncError = error instanceof Error ? error.message : String(error);
+          });
+
+        await updateItemSyncStatus(item_id, {
+          success: !syncError,
+          error: syncError,
+        });
       }
     }
   } catch (err) {

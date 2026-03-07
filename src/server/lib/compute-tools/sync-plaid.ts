@@ -98,6 +98,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
           logger.error("Error occurred during storing Plaid transactions data", { itemId: item_id }, err);
+          throw err; // Re-throw to propagate error to caller
         });
     });
 
@@ -154,6 +155,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
           logger.error("Error occurred during storing Plaid investment transactions data", { itemId: item_id }, err);
+          throw err; // Re-throw to propagate error to caller
         });
     });
 
@@ -196,7 +198,10 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       return accounts;
     })
-    .catch((error) => logger.error("Sync accounts failed", { itemId: item_id }, error));
+    .catch((error) => {
+      logger.error("Sync accounts failed", { itemId: item_id }, error);
+      throw error; // Re-throw to propagate error to caller
+    });
 
   const isInvestmentAvailable = item.available_products.includes(Products.Investments);
   const syncHoldings = Promise.resolve(isInvestmentAvailable)
@@ -217,7 +222,10 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertSecuritiesWithSnapshots(securities);
       return accounts;
     })
-    .catch((error) => logger.error("Sync holdings failed", { itemId: item_id }, error));
+    .catch((error) => {
+      logger.error("Sync holdings failed", { itemId: item_id }, error);
+      throw error; // Re-throw to propagate error to caller
+    });
 
   const [accounts, investmentAccounts] = await Promise.all([syncAccounts, syncHoldings]);
   return { accounts, investmentAccounts };
