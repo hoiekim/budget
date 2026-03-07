@@ -22,7 +22,7 @@
     "dev-server": "bun --watch ./src/server/start.ts",
     "test": "bun run test:client && bun run test:server",
     "test:client": "bun test --preload ./src/client/test-setup.ts src/client src/common",
-    "test:server": "bun test src/server",
+    "test:server": "bun test src/server src/common",
     "test:coverage": "bun test --preload ./src/client/test-setup.ts --coverage --coverage-reporter=lcov",
     "lint": "bun --bun eslint src",
     "lint:fix": "bun --bun eslint src --fix",
