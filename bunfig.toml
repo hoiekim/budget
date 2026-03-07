@@ -1,2 +1,2 @@
-[test]
-preload = ["./src/client/test-setup.ts"]
+# Test preload is configured via npm scripts in package.json
+# Use `bun run test:client` or `bun run test:server` for isolated test runs
