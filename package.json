@@ -23,7 +23,7 @@
     "test": "bun run test:client && bun run test:server",
     "test:client": "bun test --preload ./src/client/test-setup.ts src/client src/common",
     "test:server": "bun test src/server",
-    "test:coverage": "bun test --coverage --coverage-reporter=lcov",
+    "test:coverage": "bun test --preload ./src/client/test-setup.ts --coverage --coverage-reporter=lcov",
     "lint": "bun --bun eslint src",
     "lint:fix": "bun --bun eslint src --fix",
     "typecheck": "bun run --bun tsc --noEmit",
