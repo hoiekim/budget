@@ -7,6 +7,7 @@ import {
   globalData,
   getBudgetData,
   getCapacityData,
+  CapacityData,
 } from "client";
 import { Dispatch, SetStateAction, useCallback, useEffect, useState } from "react";
 
@@ -72,7 +73,28 @@ export const useData = () => {
     [setCalculations],
   );
 
-  return [data, setData, calculations, calculate] as const;
+  /**
+   * Update capacityData without triggering a full recalculation.
+   * Accepts a mutator function that modifies the current capacityData in place.
+   * The function creates a new Calculations object to trigger React re-render.
+   */
+  const updateCapacityData = useCallback(
+    (updater: (current: CapacityData) => void) => {
+      setCalculations((oldCalculations) => {
+        // Create a new CapacityData with entries from the old one
+        const newCapacityData = new CapacityData(oldCalculations.capacityData);
+        // Apply the update
+        updater(newCapacityData);
+        // Create new Calculations with the updated capacityData
+        const newCalculations = new Calculations(oldCalculations);
+        newCalculations.update({ capacityData: newCapacityData });
+        return newCalculations;
+      });
+    },
+    [setCalculations],
+  );
+
+  return [data, setData, calculations, calculate, updateCapacityData] as const;
 };
 
 export const useScreenType = () => {

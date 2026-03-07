@@ -19,7 +19,7 @@ const CapacitiesInput = ({
   setCapacitiesInput,
   isSyncedInput,
 }: Props) => {
-  const { calculations, viewDate } = useAppContext();
+  const { calculations, viewDate, updateCapacityData } = useAppContext();
   const { capacityData } = calculations;
   const interval = "month";
   const defaultCapacities = useRef(budgetLike.capacities.map((c) => c.toInputs().capacityInput));
@@ -134,17 +134,16 @@ const CapacitiesInput = ({
       delete newCapacityInit.capacity_id;
       const newCapacity = new Capacity(newCapacityInit);
 
-      // Initialize capacity summary for the new capacity period.
-      // This direct mutation is intentional: we're initializing NEW data for a capacity
-      // that doesn't exist yet (capacityData.get auto-creates entries). The re-render
-      // is triggered by returning newCapacities below. This provides reasonable initial
-      // values until the next full recalculation.
-      const newCapacitySummary = capacityData.get(newCapacity.id);
-      const latestCapacitySummary = capacityData.get(latestCapacity.id);
-      if (latestCapacitySummary) {
-        newCapacitySummary.children_total = latestCapacitySummary.children_total;
-        newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
-      }
+      // Update capacityData via context to trigger React re-render for other components.
+      // This creates a new Calculations object with initialized capacity summary.
+      updateCapacityData((data) => {
+        const newCapacitySummary = data.get(newCapacity.id);
+        const latestCapacitySummary = data.get(latestCapacity.id);
+        if (latestCapacitySummary) {
+          newCapacitySummary.children_total = latestCapacitySummary.children_total;
+          newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
+        }
+      });
 
       newCapacities.push(newCapacity);
       defaultCapacities.current = newCapacities;

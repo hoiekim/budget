@@ -11,7 +11,7 @@ interface Props {
 
 const AppContext = ({ initialUser, children }: Props) => {
   const screenType = useScreenType();
-  const [data, setData, calculations, calculate] = useData();
+  const [data, setData, calculations, calculate, updateCapacityData] = useData();
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
   const [selectedInterval, setSelectedInterval] = useLocalStorageState<Interval>(
     "selectedInterval",
@@ -28,6 +28,7 @@ const AppContext = ({ initialUser, children }: Props) => {
     setData,
     calculations,
     calculate,
+    updateCapacityData,
     status,
     user,
     setUser,
