@@ -20,6 +20,10 @@ export class Capacity {
   capacity_id!: string;
 
   get year() {
+    // Preserve MAX_FLOAT for infinite capacities to avoid overflow
+    if (this.isInfinite) {
+      return this.month > 0 ? MAX_FLOAT : -MAX_FLOAT;
+    }
     return this.month * 12;
   }
 
