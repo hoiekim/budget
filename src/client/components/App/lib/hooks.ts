@@ -7,8 +7,15 @@ import {
   globalData,
   getBudgetData,
   getCapacityData,
+  CapacityData,
 } from "client";
-import { Dispatch, SetStateAction, useCallback, useEffect, useState } from "react";
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+
+type CalculateFn = ((data: Data) => void) & {
+  cache: {
+    capacityData: (updater: (current: CapacityData) => CapacityData) => void;
+  };
+};
 
 export const useData = () => {
   const [data, _setData] = useMemoryState<Data>("data", globalData);
@@ -25,7 +32,7 @@ export const useData = () => {
 
   const [calculations, setCalculations] = useState(new Calculations());
 
-  const calculate = useCallback(
+  const calculateAll = useCallback(
     (data: Data) => {
       const {
         accounts,
@@ -71,6 +78,30 @@ export const useData = () => {
     },
     [setCalculations],
   );
+
+  /**
+   * Cache update: replace capacityData with a new value returned by the updater.
+   * Unlike calculate(), this does not run the full calculation process —
+   * it directly updates the cached capacityData in the Calculations object.
+   */
+  const cacheCapacityData = useCallback(
+    (updater: (current: CapacityData) => CapacityData) => {
+      setCalculations((oldCalculations) => {
+        const newCapacityData = updater(oldCalculations.capacityData);
+        const newCalculations = new Calculations(oldCalculations);
+        newCalculations.update({ capacityData: newCapacityData });
+        return newCalculations;
+      });
+    },
+    [setCalculations],
+  );
+
+  // Combine into calculate() with calculate.cache.* pattern for direct cache updates
+  const calculate: CalculateFn = useMemo(() => {
+    const fn = calculateAll as CalculateFn;
+    fn.cache = { capacityData: cacheCapacityData };
+    return fn;
+  }, [calculateAll, cacheCapacityData]);
 
   return [data, setData, calculations, calculate] as const;
 };

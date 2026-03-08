@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from "react";
 import { LocalDate, ViewDate, currencyCodeToSymbol, getDateString } from "common";
-import { Budget, Capacity, sortCapacities, useAppContext } from "client";
+import { Budget, Capacity, CapacityData, sortCapacities, useAppContext } from "client";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { CapacityInput } from "client/components";
 import BudgetDonut from "./BudgetDonut";
@@ -19,7 +19,7 @@ const CapacitiesInput = ({
   setCapacitiesInput,
   isSyncedInput,
 }: Props) => {
-  const { calculations, viewDate } = useAppContext();
+  const { calculations, viewDate, calculate } = useAppContext();
   const { capacityData } = calculations;
   const interval = "month";
   const defaultCapacities = useRef(budgetLike.capacities.map((c) => c.toInputs().capacityInput));
@@ -133,11 +133,20 @@ const CapacitiesInput = ({
       const newCapacityInit: Partial<Capacity> = { ...latestCapacity, active_from };
       delete newCapacityInit.capacity_id;
       const newCapacity = new Capacity(newCapacityInit);
-      // TODO: reconsider this logic. this doesn't trigger react state rendering.
-      const newCapacitySummary = capacityData.get(newCapacity.id);
-      const latestCapacitySummary = capacityData.get(latestCapacity.id);
-      newCapacitySummary.children_total = latestCapacitySummary.children_total;
-      newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
+
+      // Directly update cached capacityData to trigger React re-render for other components.
+      // Uses calculate.cache.capacityData() to update the cache without re-running calculation.
+      calculate.cache.capacityData((data) => {
+        const newData = new CapacityData(data);
+        const newCapacitySummary = newData.get(newCapacity.id);
+        const latestCapacitySummary = data.get(latestCapacity.id);
+        if (latestCapacitySummary) {
+          newCapacitySummary.children_total = latestCapacitySummary.children_total;
+          newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
+        }
+        return newData;
+      });
+
       newCapacities.push(newCapacity);
       defaultCapacities.current = newCapacities;
 
