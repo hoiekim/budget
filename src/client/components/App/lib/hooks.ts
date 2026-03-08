@@ -12,7 +12,9 @@ import {
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 
 type CalculateFn = ((data: Data) => void) & {
-  capacityData: (updater: (current: CapacityData) => void) => void;
+  cache: {
+    capacityData: (updater: (current: CapacityData) => CapacityData) => void;
+  };
 };
 
 export const useData = () => {
@@ -78,15 +80,14 @@ export const useData = () => {
   );
 
   /**
-   * Partial update: recalculate only capacityData.
-   * Accepts a mutator function that modifies the current capacityData in place.
-   * Creates a new Calculations object to trigger React re-render.
+   * Cache update: replace capacityData with a new value returned by the updater.
+   * Unlike calculate(), this does not run the full calculation process —
+   * it directly updates the cached capacityData in the Calculations object.
    */
-  const calculateCapacityData = useCallback(
-    (updater: (current: CapacityData) => void) => {
+  const cacheCapacityData = useCallback(
+    (updater: (current: CapacityData) => CapacityData) => {
       setCalculations((oldCalculations) => {
-        const newCapacityData = new CapacityData(oldCalculations.capacityData);
-        updater(newCapacityData);
+        const newCapacityData = updater(oldCalculations.capacityData);
         const newCalculations = new Calculations(oldCalculations);
         newCalculations.update({ capacityData: newCapacityData });
         return newCalculations;
@@ -95,12 +96,12 @@ export const useData = () => {
     [setCalculations],
   );
 
-  // Combine into calculate() with calculate.capacityData() pattern
+  // Combine into calculate() with calculate.cache.* pattern for direct cache updates
   const calculate: CalculateFn = useMemo(() => {
     const fn = calculateAll as CalculateFn;
-    fn.capacityData = calculateCapacityData;
+    fn.cache = { capacityData: cacheCapacityData };
     return fn;
-  }, [calculateAll, calculateCapacityData]);
+  }, [calculateAll, cacheCapacityData]);
 
   return [data, setData, calculations, calculate] as const;
 };

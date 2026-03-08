@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from "react";
 import { LocalDate, ViewDate, currencyCodeToSymbol, getDateString } from "common";
-import { Budget, Capacity, sortCapacities, useAppContext } from "client";
+import { Budget, Capacity, CapacityData, sortCapacities, useAppContext } from "client";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { CapacityInput } from "client/components";
 import BudgetDonut from "./BudgetDonut";
@@ -134,15 +134,17 @@ const CapacitiesInput = ({
       delete newCapacityInit.capacity_id;
       const newCapacity = new Capacity(newCapacityInit);
 
-      // Update capacityData via context to trigger React re-render for other components.
-      // This creates a new Calculations object with initialized capacity summary.
-      calculate.capacityData((data) => {
-        const newCapacitySummary = data.get(newCapacity.id);
+      // Directly update cached capacityData to trigger React re-render for other components.
+      // Uses calculate.cache.capacityData() to update the cache without re-running calculation.
+      calculate.cache.capacityData((data) => {
+        const newData = new CapacityData(data);
+        const newCapacitySummary = newData.get(newCapacity.id);
         const latestCapacitySummary = data.get(latestCapacity.id);
         if (latestCapacitySummary) {
           newCapacitySummary.children_total = latestCapacitySummary.children_total;
           newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
         }
+        return newData;
       });
 
       newCapacities.push(newCapacity);

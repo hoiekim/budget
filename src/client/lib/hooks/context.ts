@@ -10,7 +10,9 @@ export enum ScreenType {
 }
 
 type CalculateFn = ((data: Data) => void) & {
-  capacityData: (updater: (current: CapacityData) => void) => void;
+  cache: {
+    capacityData: (updater: (current: CapacityData) => CapacityData) => void;
+  };
 };
 
 export interface ContextType {
