@@ -293,6 +293,50 @@ Merges to `main` trigger:
 2. Push to Docker Hub
 3. Deployment webhook
 
+## Design Patterns
+
+### Balance Calculation: 3-Tier Price Fallback
+
+Investment account balances use a prioritized price resolution strategy:
+
+1. **Institution price** — brokerage-reported price (most authoritative)
+2. **Security snapshot** — market data from Polygon API
+3. **Inferred price** — calculated from `institution_value / quantity`
+
+See `src/client/lib/hooks/calculation/holdings.ts` for the `getPriceForHolding` implementation.
+
+Always use `getAccountBalance(account)` instead of accessing `account.balances.current` directly — it handles investment accounts correctly using this fallback chain.
+
+### Transaction Atomicity
+
+Multi-step database operations must be wrapped in transactions:
+
+```typescript
+const client = await pool.connect();
+try {
+  await client.query("BEGIN");
+  // ... multiple operations ...
+  await client.query("COMMIT");
+} catch (error) {
+  await client.query("ROLLBACK");
+  throw error;
+} finally {
+  client.release();
+}
+```
+
+See `deleteAccounts` in `src/server/lib/postgres/repositories/accounts.ts` for an example.
+
+### External API Graceful Degradation
+
+When calling external APIs (Plaid, Polygon), handle unavailability gracefully:
+
+- **Service not configured:** Return 503 with a clear message (e.g., "Plaid integration is not configured")
+- **API failure:** Log the error, return partial results or fallback values — don't crash the request
+- **Rate limiting:** Implement backoff, notify user if sync is delayed
+
+See `src/server/lib/polygon.ts` for the Polygon API graceful degradation pattern.
+
 ## Common Tasks
 
 ### Adding a New API Route
