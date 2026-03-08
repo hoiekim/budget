@@ -4,11 +4,12 @@ import { MaskedUser, logger } from "server";
 const { PLAID_CLIENT_ID, PLAID_SECRET_PRODUCTION, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;
 
-if (
-  !PLAID_CLIENT_ID ||
-  !(PLAID_SECRET_PRODUCTION || PLAID_SECRET_DEVELOPMENT) ||
-  !PLAID_SECRET_SANDBOX
-) {
+export const isPlaidConfigured =
+  !!PLAID_CLIENT_ID &&
+  !!(PLAID_SECRET_PRODUCTION || PLAID_SECRET_DEVELOPMENT) &&
+  !!PLAID_SECRET_SANDBOX;
+
+if (!isPlaidConfigured) {
   logger.warn("Plaid is not configured. Check env vars.");
 }
 

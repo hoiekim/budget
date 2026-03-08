@@ -14,6 +14,13 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
       };
     }
 
+    if (!plaid.isPlaidConfigured) {
+      return {
+        status: "failed",
+        message: "Plaid integration is not configured on this server.",
+      };
+    }
+
     const accessTokenResult = optionalQueryString(req, "access_token");
     if (!accessTokenResult.success) return validationError(accessTokenResult.error!);
 
