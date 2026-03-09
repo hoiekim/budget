@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { MAX_FLOAT, currencyCodeToSymbol, numberToCommaString } from "common";
+import { MAX_FLOAT, ViewDate, currencyCodeToSymbol, numberToCommaString } from "common";
 import { Budget, Category, Section, useReorder, useAppContext } from "client";
 import { Bar } from "client/components";
 import EditButton from "./EditButton";
@@ -31,12 +31,18 @@ export const LabeledBar = ({
   const { calculations, viewDate } = useAppContext();
   const { budgetData, capacityData } = calculations;
   const date = viewDate.getEndDate();
+  const interval = viewDate.getInterval();
+  // For yearly view, future months' data isn't computed yet (year-end key returns $0).
+  // Use min(yearEnd, currentMonthEnd) so the current year uses the most-recent computed month,
+  // while past years (where the full year is populated) still use their Dec key correctly.
+  const currentMonthEnd = new ViewDate("month").getEndDate();
+  const rolledDate = interval === "year" && date > currentMonthEnd ? currentMonthEnd : date;
 
   const { name, roll_over, roll_over_start_date } = barData;
-  const { sorted_amount, unsorted_amount, rolled_over_amount } = budgetData.get(barData.id, date);
+  const { sorted_amount, unsorted_amount } = budgetData.get(barData.id, date);
+  const { rolled_over_amount } = budgetData.get(barData.id, rolledDate);
 
   const capacity = barData.getActiveCapacity(date);
-  const interval = viewDate.getInterval();
   const capacityValue = capacity[interval];
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
   const isIncome = capacityValue < 0;
