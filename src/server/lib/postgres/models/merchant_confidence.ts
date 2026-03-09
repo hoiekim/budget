@@ -30,7 +30,7 @@ import { Model, RowValueType, createTable } from "./base";
 
 const MERCHANT_CONFIDENCE_ID = "merchant_confidence_id";
 
-const merchantConfidenceSchema = {
+const merchantCategoryMapSchema = {
   [MERCHANT_CONFIDENCE_ID]: "UUID DEFAULT gen_random_uuid() PRIMARY KEY",
   [MERCHANT_HASH]: "VARCHAR(64) NOT NULL",
   [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE CASCADE NOT NULL`,
@@ -40,10 +40,10 @@ const merchantConfidenceSchema = {
   [LAST_REJECTED_AT]: "TIMESTAMPTZ",
 };
 
-type MerchantConfidenceSchema = typeof merchantConfidenceSchema;
-type MerchantConfidenceRow = { [k in keyof MerchantConfidenceSchema]: RowValueType };
+type MerchantCategoryMapSchema = typeof merchantCategoryMapSchema;
+type MerchantCategoryMapRow = { [k in keyof MerchantCategoryMapSchema]: RowValueType };
 
-export interface JSONMerchantConfidence {
+export interface JSONMerchantCategoryMap {
   merchant_confidence_id?: string;
   merchant_hash: string;
   user_id: string;
@@ -55,9 +55,9 @@ export interface JSONMerchantConfidence {
   confidence?: number;
 }
 
-export class MerchantConfidenceModel
-  extends Model<JSONMerchantConfidence, MerchantConfidenceSchema>
-  implements MerchantConfidenceRow
+export class MerchantCategoryMapModel
+  extends Model<JSONMerchantCategoryMap, MerchantCategoryMapSchema>
+  implements MerchantCategoryMapRow
 {
   declare merchant_confidence_id: string;
   declare merchant_hash: string;
@@ -78,7 +78,7 @@ export class MerchantConfidenceModel
   };
 
   constructor(data: unknown) {
-    super(data, MerchantConfidenceModel.typeChecker);
+    super(data, MerchantCategoryMapModel.typeChecker);
   }
 
   /** Compute confidence score for this merchant → category mapping. */
@@ -100,7 +100,7 @@ export class MerchantConfidenceModel
     return base * decay;
   }
 
-  toJSON(): JSONMerchantConfidence {
+  toJSON(): JSONMerchantCategoryMap {
     return {
       merchant_confidence_id: this.merchant_confidence_id,
       merchant_hash: this.merchant_hash,
@@ -113,8 +113,8 @@ export class MerchantConfidenceModel
     };
   }
 
-  static fromJSON(data: Partial<JSONMerchantConfidence>): Partial<MerchantConfidenceRow> {
-    const r: Partial<MerchantConfidenceRow> = {};
+  static fromJSON(data: Partial<JSONMerchantCategoryMap>): Partial<MerchantCategoryMapRow> {
+    const r: Partial<MerchantCategoryMapRow> = {};
     if (data.merchant_confidence_id !== undefined)
       r.merchant_confidence_id = data.merchant_confidence_id;
     if (data.merchant_hash !== undefined) r.merchant_hash = data.merchant_hash;
@@ -130,13 +130,13 @@ export class MerchantConfidenceModel
 export const merchantCategoryConfidenceTable = createTable({
   name: MERCHANT_CATEGORY_CONFIDENCE,
   primaryKey: MERCHANT_CONFIDENCE_ID,
-  schema: merchantConfidenceSchema,
+  schema: merchantCategoryMapSchema,
   constraints: [
     // Unique constraint ensures one record per (user, merchant, category) combination
     `CONSTRAINT merchant_confidence_unique UNIQUE (${MERCHANT_HASH}, ${USER_ID}, ${CATEGORY_ID})`,
   ],
   indexes: [{ column: USER_ID }, { column: MERCHANT_HASH }],
-  ModelClass: MerchantConfidenceModel,
+  ModelClass: MerchantCategoryMapModel,
   supportsSoftDelete: false,
 });
 

@@ -14,7 +14,7 @@ export interface JSONTransactionLabel {
   category_id?: string | null;
   memo?: string | null;
   /** True when this label was auto-suggested (not user-confirmed) */
-  is_suggested?: boolean | null;
+  is_labels_suggested?: boolean | null;
 }
 
 export interface JSONTransaction extends PlaidTransaction {
