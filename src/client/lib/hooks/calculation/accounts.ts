@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { AccountSubtype, AccountType } from "plaid";
 import { getYearMonthString, LocalDate, ViewDate } from "common";
 import {
   Account,
@@ -18,16 +17,10 @@ import {
 } from "client";
 
 export const getAccountBalance = (account: Account) => {
-  const balanceCurrent = account.balances.current || 0;
-  const balanceAvailalbe = account.balances.available || 0;
-  let value = 0;
-  if (account.type === AccountType.Investment) {
-    if (account.subtype === AccountSubtype.CryptoExchange) value = balanceCurrent;
-    else value = balanceCurrent + balanceAvailalbe;
-  } else {
-    value = balanceCurrent;
-  }
-  return value;
+  // Use `current` for all account types. For investment accounts, Plaid's
+  // `available` represents the cash component which is already included in
+  // `current` — adding both would double-count cash/buying power.
+  return account.balances.current || 0;
 };
 
 const getBalanceDataFromTransactions = (
