@@ -109,6 +109,17 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
 ) => {
   const toUpdateList = new Set<BudgetFamily>();
 
+  // Capture references to original objects BEFORE cloning so we can look up
+  // their original capacity IDs in capacityData. getBudgetsToUpdatePeriod
+  // deletes capacity_id and generates new UUIDs, which would result in
+  // capacityData.get() returning zero defaults for all totals.
+  const originalBudget: Budget =
+    original.type === "budget"
+      ? (original as unknown as Budget)
+      : original.type === "section"
+        ? (original.getParent()! as Budget)
+        : (original.getParent()?.getParent()! as Budget);
+
   const { budget, sections, categories } = getBudgetsToUpdatePeriod(original, updated);
   toUpdateList.add(budget);
   sections.forEach((c) => toUpdateList.add(c));
@@ -116,14 +127,21 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
 
   if (original.type === "budget") {
     for (const capacity of budget.capacities) {
-      capacity.month = capacityData.get(capacity.id).grand_children_total;
+      const date = capacity.active_from ? new LocalDate(capacity.active_from) : new LocalDate(0);
+      const originalCapacity = originalBudget.getActiveCapacity(date);
+      capacity.month = capacityData.get(originalCapacity.id).grand_children_total;
     }
   }
 
   if (original.type === "budget" || original.type === "section") {
+    const originalSections = originalBudget.getChildren() as Section[];
     for (const section of sections) {
+      const originalSection = originalSections.find((s) => s.id === section.id);
+      if (!originalSection) continue;
       for (const capacity of section.capacities) {
-        capacity.month = capacityData.get(capacity.id).children_total;
+        const date = capacity.active_from ? new LocalDate(capacity.active_from) : new LocalDate(0);
+        const originalCapacity = originalSection.getActiveCapacity(date);
+        capacity.month = capacityData.get(originalCapacity.id).children_total;
       }
     }
   }
