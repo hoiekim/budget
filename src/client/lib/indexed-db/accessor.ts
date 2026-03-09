@@ -44,7 +44,22 @@ class IndexedDbAccessor {
 
       const request = indexedDB.open(this.dbName, this.dbVersion);
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        // When the stored DB version is higher than the requested version (e.g. after
+        // a code rollback), IndexedDB throws a VersionError.  Recover by deleting the
+        // stale database so the next init() call starts fresh at the current version.
+        if (request.error?.name === "VersionError") {
+          console.warn(
+            `[IndexedDB] VersionError: stored version is newer than ${this.dbVersion}. ` +
+              "Deleting database and retrying.",
+          );
+          const deleteRequest = indexedDB.deleteDatabase(this.dbName);
+          deleteRequest.onsuccess = () => this.init().then(resolve, reject);
+          deleteRequest.onerror = () => reject(deleteRequest.error);
+          return;
+        }
+        reject(request.error);
+      };
       request.onsuccess = () => {
         this.db = request.result;
         resolve(this.db);
