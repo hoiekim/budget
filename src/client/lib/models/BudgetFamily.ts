@@ -65,6 +65,7 @@ export class BudgetFamily {
       this.roll_over_start_date = new LocalDate(this.roll_over_start_date);
     }
     this.capacities = this.capacities.map((c) => new Capacity(c));
+    if (!this.capacities.length) this.capacities = [new Capacity()];
   };
 
   toJSON(): JSONBudgetFamily {
@@ -92,7 +93,7 @@ export class BudgetFamily {
       return new LocalDate(active_from || 0) <= date;
     });
 
-    return validCapacity || sorted[sorted.length - 1];
+    return validCapacity || sorted[sorted.length - 1] || new Capacity();
   };
 
   isChildrenSynced = (capacityData: CapacityData) => {
