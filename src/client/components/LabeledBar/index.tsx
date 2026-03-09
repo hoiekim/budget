@@ -32,9 +32,11 @@ export const LabeledBar = ({
   const { budgetData, capacityData } = calculations;
   const date = viewDate.getEndDate();
   const interval = viewDate.getInterval();
-  // For yearly view, use current month's end date for rolled_over_amount lookup.
-  // Future months' data isn't calculated yet, so the year-end key (e.g. "2026-12") returns $0.
-  const rolledDate = interval === "year" ? new ViewDate("month").getEndDate() : date;
+  // For yearly view, future months' data isn't computed yet (year-end key returns $0).
+  // Use min(yearEnd, currentMonthEnd) so the current year uses the most-recent computed month,
+  // while past years (where the full year is populated) still use their Dec key correctly.
+  const currentMonthEnd = new ViewDate("month").getEndDate();
+  const rolledDate = interval === "year" && date > currentMonthEnd ? currentMonthEnd : date;
 
   const { name, roll_over, roll_over_start_date } = barData;
   const { sorted_amount, unsorted_amount } = budgetData.get(barData.id, date);
