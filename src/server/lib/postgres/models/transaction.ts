@@ -129,7 +129,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
         budget_id: this.label_budget_id,
         category_id: this.label_category_id,
         memo: this.label_memo,
-        is_suggested: this.label_is_suggested,
+        is_labels_suggested: this.label_is_suggested,
       },
       location: {
         address: null,
@@ -187,7 +187,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
       if (!isUndefined(tx.label.budget_id)) r.label_budget_id = tx.label.budget_id;
       if (!isUndefined(tx.label.category_id)) r.label_category_id = tx.label.category_id;
       if (!isUndefined(tx.label.memo)) r.label_memo = tx.label.memo;
-      if (!isUndefined(tx.label.is_suggested)) r.label_is_suggested = tx.label.is_suggested;
+      if (!isUndefined(tx.label.is_labels_suggested)) r.label_is_suggested = tx.label.is_labels_suggested;
     }
     const { label: _label, ...providerData } = tx;
     r.raw = providerData;
