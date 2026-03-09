@@ -18,8 +18,10 @@ FROM oven/bun:1
 
 WORKDIR /app
 
-COPY --from=builder /app/build ./build
-COPY healthcheck.js ./healthcheck.js
+COPY --chown=bun:bun --from=builder /app/build ./build
+COPY --chown=bun:bun healthcheck.js ./healthcheck.js
+
+USER bun
 
 # Environment variables should be provided at runtime, not baked into the image.
 # Use: docker run --env-file .env ...
