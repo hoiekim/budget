@@ -18,7 +18,16 @@ FROM oven/bun:1
 
 WORKDIR /app
 
+# Create a non-root user to run the application
+RUN groupadd --gid 1001 appgroup && \
+    useradd --uid 1001 --gid appgroup --shell /bin/bash --create-home appuser
+
 COPY --from=builder /app/build ./build
+
+# Transfer ownership to non-root user
+RUN chown -R appuser:appgroup /app
+
+USER appuser
 
 # Environment variables should be provided at runtime, not baked into the image.
 # Use: docker run --env-file .env ...
