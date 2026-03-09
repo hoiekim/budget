@@ -7,6 +7,7 @@ import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
+import { pool } from "server/lib/postgres/client";
 import { loginLimiter } from "server/lib/rate-limit";
 import * as routes from "server/routes";
 import { logger } from "server/lib/logger";
@@ -68,8 +69,25 @@ app.get("*", (_req, res) => {
   res.sendFile(path.join(clientPath, "index.html"));
 });
 
-app.listen(process.env.PORT || 3005, async () => {
+const httpServer = app.listen(process.env.PORT || 3005, async () => {
   await initializePostgres();
   logger.info("Budget app server is up", { port: process.env.PORT || 3005 });
   scheduledSync();
 });
+
+const shutdown = async (signal: string) => {
+  logger.info(`${signal} received — shutting down gracefully`);
+
+  // Stop accepting new connections; wait for in-flight requests to finish
+  await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  logger.info("HTTP server closed");
+
+  // Close the database connection pool
+  await pool.end();
+  logger.info("Database pool closed");
+
+  process.exit(0);
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

@@ -37,17 +37,6 @@ const config: PoolConfig = {
 
 export const pool = new Pool(config);
 
-// Graceful shutdown
-process.on("SIGINT", async () => {
-  await pool.end();
-  process.exit(0);
-});
-
-process.on("SIGTERM", async () => {
-  await pool.end();
-  process.exit(0);
-});
-
 /**
  * Execute a function within a database transaction.
  * Automatically handles BEGIN, COMMIT, and ROLLBACK.
