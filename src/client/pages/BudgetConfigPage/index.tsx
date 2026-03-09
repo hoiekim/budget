@@ -61,6 +61,7 @@ export const BudgetConfigPage = () => {
     const { name, roll_over, roll_over_start_date: roll_date } = budgetLike;
 
     const activeCapacity = budgetLike.getActiveCapacity(viewDate.getEndDate());
+    if (!activeCapacity) return;
     const defaultInputs = activeCapacity.toInputs();
     const allDates = budgetLike && getAllCapaciyDates(budgetLike);
     const defaultCapInput = allDates?.map((d) => {
@@ -105,8 +106,9 @@ export const BudgetConfigPage = () => {
   const { save, remove } = useEventHandlers(isSyncedInput, isIncomeInput, isInfiniteInput);
 
   if (!budgetLike) return <></>;
+  if (!activeCapacity) return <></>;
 
-  const activeCapInput = activeCapacity!.toInputs().capacityInput;
+  const activeCapInput = activeCapacity.toInputs().capacityInput;
   const barCapacity = Capacity.fromInputs(activeCapInput, isIncomeInput, isInfiniteInput);
   const barCapacityValue = barCapacity[interval];
   const labeledRatio = isInfiniteInput ? undefined : sorted_amount! / barCapacityValue;
