@@ -15,15 +15,20 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
   if (!passwordResult.success) return validationError(passwordResult.error!);
 
   const user = await searchUser({ username: usernameResult.data! });
-  if (!user) return { status: "failed", message: "User is not found." };
 
-  const pwMatches = await bcrypt.compare(passwordResult.data!, user.password);
+  // Use constant-time comparison even when user not found to prevent timing attacks
+  const dummyHash = "$2b$10$invalidhashfortimingattackprevention000000000000000000000";
+  const pwMatches = user
+    ? await bcrypt.compare(passwordResult.data!, user.password)
+    : await bcrypt.compare(passwordResult.data!, dummyHash).then(() => false);
 
-  if (pwMatches) {
+  if (pwMatches && user) {
     const maskedUser = maskUser(user);
     req.session.user = maskedUser;
     return { status: "success", body: maskedUser };
   }
 
-  return { status: "failed", message: "Wrong password." };
+  // Return the same generic message regardless of whether the username exists
+  // to prevent username enumeration attacks.
+  return { status: "failed", message: "Invalid username or password." };
 });
