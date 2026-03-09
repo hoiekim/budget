@@ -21,7 +21,7 @@ if (process.env.NODE_ENV === "production") {
 // Parse JSON and store raw body for webhook verification
 app.use(
   express.json({
-    limit: "50mb",
+    limit: "1mb",
     verify: (req, _res, buf) => {
       // Store raw body for Plaid webhook verification
       if (req.url === "/plaid-hook") {
