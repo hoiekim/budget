@@ -1,6 +1,6 @@
 import { AccountType } from "plaid";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { JSONInvestmentTransaction, JSONTransaction, toTitleCase } from "common";
+import { JSONInvestmentTransaction, JSONTransaction } from "common";
 import {
   Account,
   Budget,
@@ -161,7 +161,7 @@ export const TransactionsPageTitle = ({
       </h2>
       {!!subtitle && (
         <h3 className="heading">
-          <span>{toTitleCase(subtitle)}</span>
+          <span>{subtitle}</span>
         </h3>
       )}
       <SearchBar onChange={onChangeSearchValue} style={{ top: transactionsHeadTop }} />
