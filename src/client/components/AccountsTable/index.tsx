@@ -33,9 +33,13 @@ export const AccountsTable = ({ donutData, style }: Props) => {
   });
 
   const creditAccounts: ReactNode[] = [];
+  let hasHiddenAccounts = false;
 
   accounts.forEach((a) => {
-    if (a.hide) return;
+    if (a.hide) {
+      hasHiddenAccounts = true;
+      return;
+    }
     const element = <AccountRow key={a.account_id} account={a} />;
     if (a.type === AccountType.Credit) creditAccounts.push(element);
   });
@@ -80,7 +84,7 @@ export const AccountsTable = ({ donutData, style }: Props) => {
     <div className="AccountsTable" style={style}>
       {!!donutAccounts.length && <div className="rows">{donutAccounts}</div>}
       {!!creditAccounts.length && <div className="rows">{creditAccounts}</div>}
-      <div>{!!accounts.size && <button onClick={onClickUnhide}>Unhide&nbsp;All</button>}</div>
+      <div>{hasHiddenAccounts && <button onClick={onClickUnhide}>Unhide&nbsp;All</button>}</div>
       {!accounts.size && (
         <div className="placeholder">
           You don't have any connected accounts! Click this button to connect your accounts.
