@@ -22,13 +22,14 @@ describe("getAccountBalance", () => {
     expect(getAccountBalance(account)).toBe(500);
   });
 
-  test("should return current + available for investment accounts", () => {
+  test("should return only current for investment accounts (available is already included in current)", () => {
     const account = new Account({
       account_id: "acc1",
       type: AccountType.Investment,
       balances: { current: 1000, available: 500, limit: null, iso_currency_code: "USD", unofficial_currency_code: null },
     });
-    expect(getAccountBalance(account)).toBe(1500);
+    // available (cash/buying power) is already counted in current — must not double-count
+    expect(getAccountBalance(account)).toBe(1000);
   });
 
   test("should return only current for crypto exchange accounts", () => {

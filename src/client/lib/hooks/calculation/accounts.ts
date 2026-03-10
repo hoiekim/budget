@@ -19,11 +19,12 @@ import {
 
 export const getAccountBalance = (account: Account) => {
   const balanceCurrent = account.balances.current || 0;
-  const balanceAvailalbe = account.balances.available || 0;
   let value = 0;
   if (account.type === AccountType.Investment) {
-    if (account.subtype === AccountSubtype.CryptoExchange) value = balanceCurrent;
-    else value = balanceCurrent + balanceAvailalbe;
+    // For investment accounts, `current` already includes cash/buying power.
+    // `available` represents the cash component which is already counted in `current`,
+    // so adding it would double-count. Use `current` only for all investment subtypes.
+    value = balanceCurrent;
   } else {
     value = balanceCurrent;
   }
