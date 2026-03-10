@@ -56,6 +56,21 @@ router.use((req, _res, next) => {
 // Apply rate limiting to login endpoint (POST only)
 router.post("/login", loginLimiter);
 
+// Auth middleware: require authenticated session for all routes except public ones.
+// Public routes: /login (all methods — GET for session check, POST for login, DELETE for logout),
+// /plaid-hook (verified externally via Plaid signature), and /health (for monitoring/load balancers).
+const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
+router.use((req, res, next) => {
+  if (PUBLIC_PATHS.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
+    return next();
+  }
+  if (!req.session.user) {
+    res.status(401).json({ status: "failed", message: "Not authenticated." });
+    return;
+  }
+  next();
+});
+
 Object.values(routes).forEach(({ path, handler }) => router.use(path, handler));
 
 app.use("/api", router);
