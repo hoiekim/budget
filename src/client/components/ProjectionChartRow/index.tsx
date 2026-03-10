@@ -1,4 +1,4 @@
-import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
+import React, { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction, useMemo } from "react";
 import { getYearMonthString, numberToCommaString, ViewDate } from "common";
 import { useAccountGraph, useAppContext, useReorder, ProjectionChart } from "client";
 import { ChevronDownIcon, ChevronUpIcon, DateLabel, Graph, MoneyLabel } from "client/components";
@@ -71,9 +71,23 @@ export const ProjectionChartRow = ({
     useLengthFixer: false,
   });
 
+  const onKeyDownChart = (e: KeyboardEvent<HTMLDivElement>) => {
+    if ((e.key === "Enter" || e.key === " ") && onClick) {
+      e.preventDefault();
+      onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
+    }
+  };
+
   if (!account_ids?.length) {
     return (
-      <div className="ProjectionChartRow" onClick={onClick}>
+      <div
+        className="ProjectionChartRow"
+        onClick={onClick}
+        onKeyDown={onClick ? onKeyDownChart : undefined}
+        role={onClick ? "button" : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        aria-label={chart.name}
+      >
         {showTitle && <div className="title">{chart.name}</div>}
         <Graph height={200} input={{}} />
       </div>
@@ -149,6 +163,10 @@ export const ProjectionChartRow = ({
     <div
       className={classes.join(" ")}
       onClick={onClick}
+      onKeyDown={onClick ? onKeyDownChart : undefined}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={chart.name}
       draggable={true}
       onDragStart={onDragStart}
       onDragEnter={onDragEnter}

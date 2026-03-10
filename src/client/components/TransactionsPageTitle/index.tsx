@@ -1,5 +1,5 @@
 import { AccountType } from "plaid";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { JSONInvestmentTransaction, JSONTransaction, toTitleCase } from "common";
 import {
   Account,
@@ -151,9 +151,21 @@ export const TransactionsPageTitle = ({
         </button>
         {isSelecting && (
           <div ref={selectBoxRef} className="select" onMouseLeave={closeSelect}>
-            <div className="selectLabel" onClick={closeSelect}>
+            <div
+              className="selectLabel"
+              onClick={closeSelect}
+              onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+                if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+                  e.preventDefault();
+                  closeSelect();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label="Close transaction type selector"
+            >
               <span>Select&nbsp;transaction&nbsp;type</span>
-              <button className="closeButton">✕</button>
+              <button className="closeButton" aria-hidden="true">✕</button>
             </div>
             <div className="options">{options}</div>
           </div>
