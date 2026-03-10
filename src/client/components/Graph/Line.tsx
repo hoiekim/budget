@@ -35,7 +35,11 @@ const Line = ({
   const offsetDebouncer = useDebounce();
 
   useEffect(() => {
+    let cancelled = false;
+
     const recurUntilRef = () => {
+      if (cancelled) return;
+
       const path = pathRef.current;
       if (!path) {
         setTimeout(recurUntilRef, 100);
@@ -66,6 +70,10 @@ const Line = ({
     };
 
     setTimeout(recurUntilRef, 100);
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     points,
     transitioning,
