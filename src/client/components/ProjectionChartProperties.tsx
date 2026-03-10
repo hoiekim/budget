@@ -179,7 +179,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Chart&nbsp;Name</span>
-          <input value={nameInput} onChange={onChangeName} />
+          <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
         </div>
         <div className="row keyValue">
           <span className="propertyName">Chart&nbsp;Type</span>
@@ -224,6 +224,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             type="date"
             defaultValue={getDateString(initial_saving.amountAsOf)}
             onBlur={onBlurInitialSavingDate}
+            aria-label="Initial saving as of date"
           />
         </div>
         <div className="row keyValue">
@@ -271,6 +272,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             type="date"
             defaultValue={getDateString(living_cost.amountAsOf)}
             onBlur={onBlurLivingCostDate}
+            aria-label="Living cost as of date"
           />
         </div>
         <div className="row keyValue">

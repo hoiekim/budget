@@ -1,4 +1,5 @@
 import { AccountType } from "plaid";
+import { KeyboardEvent } from "react";
 import { ItemProvider } from "common";
 import { Account, useAppContext, useAccountGraph, PATH, NoLabel } from "client";
 import { InstitutionSpan, Graph } from "client/components";
@@ -27,11 +28,26 @@ const AccountRow = ({ account, color }: Props) => {
     router.go(PATH.ACCOUNT_DETAIL, { params });
   };
 
+  const onKeyDownAccount = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClickAccount();
+    }
+  };
+
   const noLabel = new NoLabel();
+  const accountLabel = custom_name || name || "Account";
 
   if (showGraph && !!graphData.lines) {
     return (
-      <div className="AccountRow threeChildren" onClick={onClickAccount}>
+      <div
+        className="AccountRow threeChildren"
+        onClick={onClickAccount}
+        onKeyDown={onKeyDownAccount}
+        role="button"
+        tabIndex={0}
+        aria-label={accountLabel}
+      >
         <div className="accountTitle">
           <div className="colorTag colored" style={{ backgroundColor: color }} />
           <div className="textTag">
@@ -62,7 +78,14 @@ const AccountRow = ({ account, color }: Props) => {
   }
 
   return (
-    <div className="AccountRow twoChildren" onClick={onClickAccount}>
+    <div
+      className="AccountRow twoChildren"
+      onClick={onClickAccount}
+      onKeyDown={onKeyDownAccount}
+      role="button"
+      tabIndex={0}
+      aria-label={accountLabel}
+    >
       <div className="accountTitle">
         <div className="textTag">
           <div>{custom_name || name}</div>
