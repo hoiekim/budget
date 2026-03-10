@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { MAX_FLOAT, currencyCodeToSymbol, numberToCommaString } from "common";
+import { MAX_FLOAT, ViewDate, currencyCodeToSymbol, numberToCommaString } from "common";
 import { Budget, Category, Section, useReorder, useAppContext } from "client";
 import { Bar } from "client/components";
 import EditButton from "./EditButton";
@@ -31,12 +31,45 @@ export const LabeledBar = ({
   const { calculations, viewDate } = useAppContext();
   const { budgetData, capacityData } = calculations;
   const date = viewDate.getEndDate();
+  const interval = viewDate.getInterval();
 
   const { name, roll_over, roll_over_start_date } = barData;
-  const { sorted_amount, unsorted_amount, rolled_over_amount } = budgetData.get(barData.id, date);
+
+  // For yearly view, aggregate spending across all months in the year.
+  // rolled_over_amount is cumulative (propagated month-to-month), so we use
+  // the last available month's value rather than summing.
+  let sorted_amount: number;
+  let unsorted_amount: number;
+  let rolled_over_amount: number;
+
+  if (interval === "year") {
+    const currentMonthEnd = new ViewDate("month").getEndDate();
+    const yearEndCapped = date < currentMonthEnd ? date : currentMonthEnd;
+
+    let totalSorted = 0;
+    let totalUnsorted = 0;
+    let lastRolledOver = 0;
+
+    const cursor = new ViewDate("month", new Date(date.getFullYear(), 0, 1));
+    while (cursor.getEndDate() <= yearEndCapped) {
+      const summary = budgetData.get(barData.id, cursor.getEndDate());
+      totalSorted += summary.sorted_amount;
+      totalUnsorted += summary.unsorted_amount;
+      lastRolledOver = summary.rolled_over_amount;
+      cursor.next();
+    }
+
+    sorted_amount = totalSorted;
+    unsorted_amount = totalUnsorted;
+    rolled_over_amount = lastRolledOver;
+  } else {
+    const summary = budgetData.get(barData.id, date);
+    sorted_amount = summary.sorted_amount;
+    unsorted_amount = summary.unsorted_amount;
+    rolled_over_amount = summary.rolled_over_amount;
+  }
 
   const capacity = barData.getActiveCapacity(date);
-  const interval = viewDate.getInterval();
   const capacityValue = capacity[interval];
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
   const isIncome = capacityValue < 0;
