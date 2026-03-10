@@ -337,6 +337,69 @@ When calling external APIs (Plaid, Polygon), handle unavailability gracefully:
 
 See `src/server/lib/polygon.ts` for the Polygon API graceful degradation pattern.
 
+## Accessibility
+
+### Interactive Elements
+
+**Use semantic HTML for interactive elements.** Non-interactive elements with `onClick` are not keyboard-accessible or screen-reader-friendly.
+
+```tsx
+// ❌ Bad - div is not keyboard-accessible
+<div className="AccountRow" onClick={onClickAccount}>
+
+// ✅ Good - button is focusable and announces as interactive
+<button className="AccountRow" onClick={onClickAccount}>
+
+// ✅ Acceptable - when button styling is impractical
+<div role="button" tabIndex={0} onClick={onClickAccount}
+  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClickAccount(); }}>
+```
+
+### Form Inputs
+
+**Every `<input>` must have an associated label:**
+
+```tsx
+// ✅ Good - explicit label
+<label htmlFor="budget-name">Budget Name</label>
+<input id="budget-name" value={name} onChange={onChange} />
+
+// ✅ Good - aria-label when visual label exists nearby
+<input aria-label="Budget capacity amount" value={amount} onChange={onChange} />
+```
+
+## Timer Cleanup in React
+
+**Every `setTimeout`/`setInterval` in a `useEffect` must be cleaned up on unmount.**
+
+```tsx
+// ❌ Bad - timer fires after unmount
+useEffect(() => {
+  const id = setTimeout(() => setSomething(true), 500);
+}, [dep]);
+
+// ✅ Good - cleanup prevents stale updates
+useEffect(() => {
+  const id = setTimeout(() => setSomething(true), 500);
+  return () => clearTimeout(id);
+}, [dep]);
+```
+
+For recursive polling patterns (e.g., waiting for a ref to be available), use a cancellation flag:
+
+```tsx
+useEffect(() => {
+  let cancelled = false;
+  const poll = () => {
+    if (cancelled) return;
+    if (!ref.current) { setTimeout(poll, 100); return; }
+    // ... use ref
+  };
+  const id = setTimeout(poll, 100);
+  return () => { cancelled = true; clearTimeout(id); };
+}, [deps]);
+```
+
 ## Common Tasks
 
 ### Adding a New API Route
