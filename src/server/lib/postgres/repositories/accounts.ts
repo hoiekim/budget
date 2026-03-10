@@ -98,7 +98,7 @@ export const updateAccounts = async (
       delete row.account_id;
       delete row.user_id;
 
-      const updated = await accountsTable.update(account.account_id, row);
+      const updated = await accountsTable.update(account.account_id, row, undefined, user.user_id);
       results.push(
         updated ? successResult(account.account_id, 1) : noChangeResult(account.account_id),
       );
