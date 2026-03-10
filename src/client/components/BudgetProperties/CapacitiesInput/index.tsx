@@ -88,6 +88,7 @@ const CapacitiesInput = ({
                     type="date"
                     defaultValue={getDateString(active_from)}
                     onBlur={onChangeDate}
+                    aria-label="Capacity active from date"
                   />
                 </>
               ) : (

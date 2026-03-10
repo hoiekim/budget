@@ -1,4 +1,4 @@
-import { Dispatch, MouseEventHandler, SetStateAction } from "react";
+import { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction } from "react";
 import { AccountType } from "plaid";
 import { numberToCommaString, toTitleCase } from "common";
 import { BalanceChart, getAccountBalance, useAppContext, useReorder } from "client";
@@ -84,7 +84,23 @@ export const BalanceChartRow = ({
       }
     };
     return (
-      <tr key={`${i}_${name}`} onClick={onClickOverspentBudget}>
+      <tr
+        key={`${i}_${name}`}
+        onClick={onClickOverspentBudget}
+        onKeyDown={
+          isOverspentBudget
+            ? (e: KeyboardEvent<HTMLTableRowElement>) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onClickOverspentBudget();
+                }
+              }
+            : undefined
+        }
+        role={isOverspentBudget ? "button" : undefined}
+        tabIndex={isOverspentBudget ? 0 : undefined}
+        aria-label={isOverspentBudget ? `Overspent budget: ${name}` : undefined}
+      >
         <td className="type">
           {toTitleCase(type)}
           {isOverspentBudget && (

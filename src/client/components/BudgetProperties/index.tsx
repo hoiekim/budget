@@ -96,6 +96,7 @@ export const BudgetProperties = ({
                   type="date"
                   value={getDateString(rollOverStartDateInput)}
                   onChange={onChangeRollDate}
+                  aria-label="Roll over start date"
                 />
               </div>
             </div>

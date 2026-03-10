@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useEffect, useRef } from "react";
+import { Dispatch, KeyboardEvent, SetStateAction, useEffect, useRef } from "react";
 import { NewCategoryGetResponse } from "server";
 import {
   Budget,
@@ -134,7 +134,19 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   return (
     <div className="SectionBar">
       {isOpen ? (
-        <div className="openLabel" onClick={onClickInfo}>
+        <div
+          className="openLabel"
+          onClick={onClickInfo}
+          onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onClickInfo();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={`Collapse ${section.name}`}
+        >
           <span>{section.name}</span>
         </div>
       ) : (
