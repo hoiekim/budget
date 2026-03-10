@@ -134,7 +134,7 @@ export const updateTransactions = async (
       delete row.transaction_id;
       delete row.user_id;
 
-      const updated = await transactionsTable.update(tx.transaction_id, row);
+      const updated = await transactionsTable.update(tx.transaction_id, row, undefined, user.user_id);
       results.push(
         updated ? successResult(tx.transaction_id, 1) : noChangeResult(tx.transaction_id),
       );
