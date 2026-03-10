@@ -338,7 +338,7 @@ export const deleteSnapshotById = async (
   user: MaskedUser,
   snapshot_id: string,
 ): Promise<boolean> => {
-  return await snapshotsTable.softDelete(snapshot_id);
+  return await snapshotsTable.softDelete(snapshot_id, user.user_id);
 };
 
 export const aggregateAccountSnapshots = async (

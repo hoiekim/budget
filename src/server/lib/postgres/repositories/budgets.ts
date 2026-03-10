@@ -75,7 +75,7 @@ export const updateBudget = async (
   if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
 
   if (Object.keys(updates).length === 0) return false;
-  const model = await budgetsTable.update(budget_id, updates);
+  const model = await budgetsTable.update(budget_id, updates, undefined, user.user_id);
   return model !== null;
 };
 
@@ -83,17 +83,15 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string): Promise
   const sections = await sectionsTable.query({ [USER_ID]: user.user_id, [BUDGET_ID]: budget_id });
   const sectionIds = sections.map((s) => s.section_id);
 
-  if (sectionIds.length > 0) {
-    for (const sid of sectionIds) {
-      await categoriesTable.softDelete(sid);
-    }
+  for (const sid of sectionIds) {
+    await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, sid, user.user_id);
   }
 
   for (const sid of sectionIds) {
-    await sectionsTable.softDelete(sid);
+    await sectionsTable.softDelete(sid, user.user_id);
   }
 
-  return await budgetsTable.softDelete(budget_id);
+  return await budgetsTable.softDelete(budget_id, user.user_id);
 };
 
 export const deleteBudgets = async (
@@ -153,19 +151,13 @@ export const updateSection = async (
   if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
 
   if (Object.keys(updates).length === 0) return false;
-  const model = await sectionsTable.update(section_id, updates);
+  const model = await sectionsTable.update(section_id, updates, undefined, user.user_id);
   return model !== null;
 };
 
 export const deleteSection = async (user: MaskedUser, section_id: string): Promise<boolean> => {
-  const categories = await categoriesTable.query({
-    [USER_ID]: user.user_id,
-    [SECTION_ID]: section_id,
-  });
-  for (const cat of categories) {
-    await categoriesTable.softDelete(cat.category_id);
-  }
-  return await sectionsTable.softDelete(section_id);
+  await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, section_id, user.user_id);
+  return await sectionsTable.softDelete(section_id, user.user_id);
 };
 
 export const deleteSections = async (
@@ -228,12 +220,12 @@ export const updateCategory = async (
   if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
 
   if (Object.keys(updates).length === 0) return false;
-  const model = await categoriesTable.update(category_id, updates);
+  const model = await categoriesTable.update(category_id, updates, undefined, user.user_id);
   return model !== null;
 };
 
 export const deleteCategory = async (user: MaskedUser, category_id: string): Promise<boolean> => {
-  return await categoriesTable.softDelete(category_id);
+  return await categoriesTable.softDelete(category_id, user.user_id);
 };
 
 export const deleteCategories = async (
@@ -241,9 +233,6 @@ export const deleteCategories = async (
   category_ids: string[],
 ): Promise<{ deleted: number }> => {
   if (!category_ids.length) return { deleted: 0 };
-  let deleted = 0;
-  for (const id of category_ids) {
-    if (await categoriesTable.softDelete(id)) deleted++;
-  }
+  const deleted = await categoriesTable.bulkSoftDelete(category_ids, { user_id: user.user_id });
   return { deleted };
 };
