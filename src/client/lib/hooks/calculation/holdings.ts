@@ -283,3 +283,117 @@ export const getHoldingsValueData = ({
 
 // Note: React hook (useHoldingsValueData) is provided separately in the client barrel
 // to avoid bundling React dependencies in pure calculation functions.
+
+// ---------------------------------------------------------------------------
+// Earnings calculation
+// ---------------------------------------------------------------------------
+
+export interface HoldingEarningsResult {
+  holding_id: string;
+  security_id: string;
+  account_id: string;
+  startValue: number;
+  endValue: number;
+  costBasis: number | null;
+  costBasisInferred: boolean;
+  /** endValue - costBasis (null when costBasis is unavailable) */
+  unrealizedGain: number | null;
+  /** endValue - startValue */
+  periodReturn: number;
+}
+
+export interface EarningsResult {
+  holdings: HoldingEarningsResult[];
+  totalStartValue: number;
+  totalEndValue: number;
+  totalCostBasis: number | null;
+  totalUnrealizedGain: number | null;
+  totalPeriodReturn: number;
+}
+
+/**
+ * Calculates earnings for all holdings over a given date range.
+ *
+ * For each holding the function resolves:
+ * - startValue  — value at the *start* date (or 0 if no data before that point)
+ * - endValue    — value at the *end* date   (or 0 if no data after that point)
+ * - unrealizedGain = endValue − costBasis   (null when costBasis is unknown)
+ * - periodReturn   = endValue − startValue
+ *
+ * @param holdingsValueData  Pre-computed holdings value history
+ * @param startDate          Beginning of the period (inclusive)
+ * @param endDate            End of the period (inclusive)
+ */
+export const getEarningsForPeriod = (
+  holdingsValueData: HoldingsValueData,
+  startDate: Date,
+  endDate: Date
+): EarningsResult => {
+  const holdings: HoldingEarningsResult[] = [];
+
+  let totalStartValue = 0;
+  let totalEndValue = 0;
+  let totalCostBasisAccum: number | null = 0;
+  let totalUnrealizedGainAccum: number | null = 0;
+
+  holdingsValueData.forEach((history, holding_id) => {
+    const startSummary = history.get(startDate);
+    const endSummary = history.get(endDate);
+
+    // Skip holdings that have no data at all in the requested range
+    if (!startSummary && !endSummary) return;
+
+    const startValue = startSummary?.value ?? 0;
+    const endValue = endSummary?.value ?? 0;
+
+    // Use end-date snapshot for cost-basis / meta (most current view)
+    const refSummary = endSummary ?? startSummary!;
+    const { security_id, account_id, costBasis, costBasisInferred } = refSummary;
+
+    const unrealizedGain =
+      costBasis !== null ? endValue - costBasis : null;
+
+    const periodReturn = endValue - startValue;
+
+    holdings.push({
+      holding_id,
+      security_id,
+      account_id,
+      startValue,
+      endValue,
+      costBasis,
+      costBasisInferred,
+      unrealizedGain,
+      periodReturn,
+    });
+
+    totalStartValue += startValue;
+    totalEndValue += endValue;
+
+    if (totalCostBasisAccum !== null) {
+      if (costBasis !== null) {
+        totalCostBasisAccum += costBasis;
+      } else {
+        // One unknown cost-basis makes the aggregate unknown
+        totalCostBasisAccum = null;
+      }
+    }
+
+    if (totalUnrealizedGainAccum !== null) {
+      if (unrealizedGain !== null) {
+        totalUnrealizedGainAccum += unrealizedGain;
+      } else {
+        totalUnrealizedGainAccum = null;
+      }
+    }
+  });
+
+  return {
+    holdings,
+    totalStartValue,
+    totalEndValue,
+    totalCostBasis: totalCostBasisAccum,
+    totalUnrealizedGain: totalUnrealizedGainAccum,
+    totalPeriodReturn: totalEndValue - totalStartValue,
+  };
+};
