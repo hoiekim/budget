@@ -32,15 +32,16 @@ export const LabeledBar = ({
   const { budgetData, capacityData } = calculations;
   const date = viewDate.getEndDate();
   const interval = viewDate.getInterval();
-  // For yearly view, future months' data isn't computed yet (year-end key returns $0).
-  // Use min(yearEnd, currentMonthEnd) so the current year uses the most-recent computed month,
-  // while past years (where the full year is populated) still use their Dec key correctly.
-  const currentMonthEnd = new ViewDate("month").getEndDate();
-  const rolledDate = interval === "year" && date > currentMonthEnd ? currentMonthEnd : date;
+  // For yearly view of the current (incomplete) year, the end date (Dec 31) has no
+  // budget data yet. Cap the lookup to the current month so rolled/spent amounts
+  // reflect what is actually accumulated so far.
+  const today = new Date();
+  const lookupDate = interval === "year" && date > today
+    ? new ViewDate("month").getEndDate()
+    : date;
 
   const { name, roll_over, roll_over_start_date } = barData;
-  const { sorted_amount, unsorted_amount } = budgetData.get(barData.id, date);
-  const { rolled_over_amount } = budgetData.get(barData.id, rolledDate);
+  const { sorted_amount, unsorted_amount, rolled_over_amount } = budgetData.get(barData.id, lookupDate);
 
   const capacity = barData.getActiveCapacity(date);
   const capacityValue = capacity[interval];
