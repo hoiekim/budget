@@ -104,9 +104,9 @@ export const BudgetConfigPage = () => {
 
   const { save, remove } = useEventHandlers(isSyncedInput, isIncomeInput, isInfiniteInput);
 
-  if (!budgetLike) return <></>;
+  if (!budgetLike || !activeCapacity) return <></>;
 
-  const activeCapInput = activeCapacity!.toInputs().capacityInput;
+  const activeCapInput = activeCapacity.toInputs().capacityInput;
   const barCapacity = Capacity.fromInputs(activeCapInput, isIncomeInput, isInfiniteInput);
   const barCapacityValue = barCapacity[interval];
   const labeledRatio = isInfiniteInput ? undefined : sorted_amount! / barCapacityValue;

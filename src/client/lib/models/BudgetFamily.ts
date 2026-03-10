@@ -47,7 +47,6 @@ export class BudgetFamily {
   constructor(init?: Partial<BudgetFamily | JSONBudgetFamily>) {
     assign(this, init);
     this.fromJSON();
-    if (!this.capacities.length) this.capacities = [new Capacity()];
     excludeEnumeration(this, [
       "fromJSON",
       "toJSON",
@@ -65,6 +64,9 @@ export class BudgetFamily {
       this.roll_over_start_date = new LocalDate(this.roll_over_start_date);
     }
     this.capacities = this.capacities.map((c) => new Capacity(c));
+    // Ensure there is always at least one capacity.  Subclasses call assign() + fromJSON()
+    // after super(), which would overwrite the parent-constructor guard, so keep it here.
+    if (!this.capacities.length) this.capacities = [new Capacity()];
   };
 
   toJSON(): JSONBudgetFamily {
