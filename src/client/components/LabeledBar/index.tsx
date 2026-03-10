@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { MAX_FLOAT, currencyCodeToSymbol, numberToCommaString } from "common";
+import { MAX_FLOAT, ViewDate, currencyCodeToSymbol, numberToCommaString } from "common";
 import { Budget, Category, Section, useReorder, useAppContext } from "client";
 import { Bar } from "client/components";
 import EditButton from "./EditButton";
@@ -32,8 +32,16 @@ export const LabeledBar = ({
   const { budgetData, capacityData } = calculations;
   const date = viewDate.getEndDate();
 
+  // For yearly view of the current (incomplete) year, the end date (Dec 31) has no
+  // budget data yet. Cap the lookup to the current month so rolled/spent amounts
+  // reflect what is actually accumulated so far.
+  const today = new Date();
+  const lookupDate = viewDate.getInterval() === "year" && date > today
+    ? new ViewDate("month").getEndDate()
+    : date;
+
   const { name, roll_over, roll_over_start_date } = barData;
-  const { sorted_amount, unsorted_amount, rolled_over_amount } = budgetData.get(barData.id, date);
+  const { sorted_amount, unsorted_amount, rolled_over_amount } = budgetData.get(barData.id, lookupDate);
 
   const capacity = barData.getActiveCapacity(date);
   const interval = viewDate.getInterval();
