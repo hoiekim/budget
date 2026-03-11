@@ -240,6 +240,34 @@ describe("ViewDate", () => {
     expect(view.getSpanFrom(new Date(2024, 5, 1))).toBe(0); // Same month
     expect(view.getSpanFrom(new Date(2024, 7, 1))).toBe(-2); // August -> June = -2 months
   });
+
+  describe("setInterval", () => {
+    it("should clamp to current month when switching from year to month for current/future year", () => {
+      // Create a yearly view far in the future (guaranteed to be future)
+      const futureYear = new Date().getFullYear() + 1;
+      const view = new ViewDate("year", new Date(futureYear, 5, 15));
+      // End date should be Dec 31 of futureYear
+      expect(view.getEndDate().getFullYear()).toBe(futureYear);
+      expect(view.getEndDate().getMonth()).toBe(11); // December
+
+      // Switch to month — should clamp to current month since Dec futureYear is future
+      view.setInterval("month");
+      const now = new Date();
+      expect(view.getEndDate().getMonth()).toBe(now.getMonth());
+      expect(view.getEndDate().getFullYear()).toBe(now.getFullYear());
+    });
+
+    it("should keep December when switching from past year to month", () => {
+      const view = new ViewDate("year", new Date(2020, 5, 15));
+      expect(view.getEndDate().getFullYear()).toBe(2020);
+      expect(view.getEndDate().getMonth()).toBe(11); // December
+
+      // Switch to month — Dec 2020 is in the past, should stay
+      view.setInterval("month");
+      expect(view.getEndDate().getMonth()).toBe(11); // December
+      expect(view.getEndDate().getFullYear()).toBe(2020);
+    });
+  });
 });
 
 describe("IsDate", () => {
