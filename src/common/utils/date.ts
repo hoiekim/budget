@@ -64,6 +64,15 @@ export class ViewDate {
   setInterval = (interval: Interval) => {
     this.interval = interval;
     this.current();
+
+    // When switching from year to month, the stored year-end date (Dec 31)
+    // causes current() to land on December. If that's in the future,
+    // clamp to the current month instead.
+    if (interval === "month" && this.date > new Date()) {
+      this.date = new Date();
+      this.current();
+    }
+
     return this;
   };
 
