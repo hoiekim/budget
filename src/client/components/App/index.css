@@ -117,6 +117,13 @@ div.LoginPage > div {
   margin: 10px 0;
 }
 
+div.LoginPage-error {
+  color: #c0392b;
+  font-size: 0.875rem;
+  text-align: center;
+  margin: 8px 0;
+}
+
 div.Router {
   position: relative;
 }
