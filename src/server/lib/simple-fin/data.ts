@@ -37,8 +37,24 @@ export const getData = async (item: JSONItem, options: GetSimpleFinDataOptions) 
     headers: { Authorization: `Basic ${credentials}` },
   });
 
+  if (!response.ok) {
+    throw new Error(
+      `SimpleFin API error: ${response.status} ${response.statusText} (${url})`
+    );
+  }
+
   type ResponseData = { errors: unknown[]; accounts: SimpleFinAccount[] };
   const data: ResponseData = await response.json();
+
+  if (!Array.isArray(data.accounts)) {
+    throw new Error(
+      `SimpleFin API returned unexpected response shape: missing accounts array`
+    );
+  }
+
+  if (data.errors && data.errors.length > 0) {
+    throw new Error(`SimpleFin API returned errors: ${JSON.stringify(data.errors)}`);
+  }
 
   return modelize(item, data.accounts);
 };

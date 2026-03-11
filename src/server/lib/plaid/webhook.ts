@@ -5,6 +5,14 @@ import { getProductionClient } from "./util";
 const keyCache = new Map<string, { key: jose.JWK; fetchedAt: number }>();
 const KEY_CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
+// Periodically evict stale key cache entries to prevent unbounded growth.
+setInterval(() => {
+  const now = Date.now();
+  for (const [keyId, entry] of keyCache) {
+    if (now - entry.fetchedAt >= KEY_CACHE_TTL) keyCache.delete(keyId);
+  }
+}, KEY_CACHE_TTL).unref();
+
 /**
  * Verify a Plaid webhook request.
  * 
