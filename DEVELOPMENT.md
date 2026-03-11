@@ -337,6 +337,43 @@ When calling external APIs (Plaid, Polygon), handle unavailability gracefully:
 
 See `src/server/lib/polygon.ts` for the Polygon API graceful degradation pattern.
 
+### Typed Result Pattern for External APIs
+
+Use discriminated unions for external API results instead of throwing:
+
+```typescript
+type ApiResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: "no_api_key" | "api_error" | "no_data"; message: string };
+```
+
+This forces callers to handle all failure modes explicitly. See `PolygonResult<T>` in `src/server/lib/polygon.ts`.
+
+**Always validate HTTP responses** before parsing:
+```typescript
+const response = await fetch(url);
+if (!response.ok) {
+  return { success: false, error: "api_error", message: `HTTP ${response.status}` };
+}
+const data = await response.json();
+```
+
+### SimpleFin Integration
+
+SimpleFin provides financial data through the [SimpleFin Bridge Protocol](https://www.simplefin.org/protocol.html):
+
+1. **Setup token** → base64-decoded URL → POST exchange → access URL
+2. **Access URL** → embedded credentials → Basic auth for data fetching
+3. **Data translation** → SimpleFin types are mapped to internal Plaid-compatible types
+
+Key files:
+- `src/server/lib/simple-fin/tokens.ts` — token exchange and URL decoding
+- `src/server/lib/simple-fin/data.ts` — data fetching
+- `src/server/lib/simple-fin/translators.ts` — type mapping to internal models
+- `src/server/lib/compute-tools/sync-simple-fin.ts` — sync orchestration
+
+The translator layer maps SimpleFin account types to Plaid `AccountType` enums, preserving compatibility with the rest of the codebase.
+
 ## Common Tasks
 
 ### Adding a New API Route
