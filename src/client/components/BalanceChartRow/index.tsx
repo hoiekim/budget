@@ -23,7 +23,7 @@ export const BalanceChartRow = ({
 }: BalanceChartRowProps) => {
   const { data, calculations, viewDate } = useAppContext();
   const { accounts, budgets } = data;
-  const { budgetData } = calculations;
+  const { budgetData, balanceData } = calculations;
   const { name, configuration } = chart;
 
   const {
@@ -37,21 +37,25 @@ export const BalanceChartRow = ({
     isDragging,
   } = useReorder(chart.id, onSetOrder);
 
+  const date = viewDate.getEndDate();
+  const interval = viewDate.getInterval();
+
   const column1: StackData[] = [];
   const column2: StackData[] = [];
 
   accounts.forEach((a) => {
     if (a.hide) return;
-    const stack = { type: a.type, name: a.custom_name || a.name, amount: getAccountBalance(a) };
+    // Use historical balance for the selected view date so that switching
+    // to a past month reflects the balance at that time rather than today's
+    // live Plaid balance.
+    const historicalBalance = balanceData.get(a.id, date) || getAccountBalance(a);
+    const stack = { type: a.type, name: a.custom_name || a.name, amount: historicalBalance };
     if (!configuration.account_ids.includes(a.id)) return;
     if (a.type === AccountType.Depository) column1.push(stack);
     else if (a.type === AccountType.Investment) column1.push(stack);
     else if (a.type === AccountType.Credit) column2.push(stack);
     else if (a.type === AccountType.Loan) column2.push(stack);
   });
-
-  const date = viewDate.getEndDate();
-  const interval = viewDate.getInterval();
 
   budgets.forEach((b) => {
     if (!configuration.budget_ids.includes(b.id)) return;
