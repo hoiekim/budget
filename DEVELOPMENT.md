@@ -168,6 +168,30 @@ try {
 }
 ```
 
+### Authentication Security
+
+**Prevent timing-based username enumeration.** Always run the password comparison even when the user is not found, using a pre-computed dummy hash:
+
+```typescript
+const DUMMY_HASH = "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+const pwMatches = user
+  ? await bcrypt.compare(password, user.password)
+  : await bcrypt.compare(password, DUMMY_HASH).then(() => false);
+```
+
+Without the dummy comparison, `bcrypt.compare` (~100ms) only runs when the user exists, letting attackers measure response times to enumerate valid usernames.
+
+Also return the same generic error message regardless of failure reason:
+
+```typescript
+// ✅ Good - Same message for both cases
+return { status: "failed", message: "Invalid username or password." };
+
+// ❌ Bad - Reveals whether username exists
+return { status: "failed", message: "User is not found." };
+return { status: "failed", message: "Wrong password." };
+```
+
 ### Structured Logging
 
 **Use the logger module instead of `console.*` methods.**
