@@ -13,6 +13,7 @@ import {
   DynamicCapacityInput,
   Graph,
   HoldingsComposition,
+  HoldingsManager,
   InstitutionSpan,
   MoneyLabel,
   ToggleInput,
@@ -214,6 +215,9 @@ export const AccountProperties = ({ account }: Props) => {
       )}
 
       {type === AccountType.Investment && <HoldingsComposition account={account} />}
+      {isManualAccount && type === AccountType.Investment && (
+        <HoldingsManager accountId={account_id} />
+      )}
       <div className="propertyLabel">Navigate</div>
       <div className="property">
         <div className="row button">
