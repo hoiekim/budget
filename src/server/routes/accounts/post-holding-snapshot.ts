@@ -1,9 +1,10 @@
-import { getSquashedDateString, LocalDate } from "common";
+import { getSquashedDateString, LocalDate, JSONHolding } from "common";
 import {
   Route,
   requireBodyObject,
   validationError,
   upsertHoldingSnapshots,
+  upsertHoldings,
   searchSecurities,
   upsertSecurities,
   polygon,
@@ -84,6 +85,23 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
 
     try {
       await upsertHoldingSnapshots(user, [snapshot]);
+
+      // Sync to current holdings so portfolio value reflects latest snapshot.
+      // The holdings table stores current (most-recent) positions for each account/security pair.
+      const holding: JSONHolding = {
+        holding_id: `${account_id}-${security_id}`,
+        account_id,
+        security_id,
+        quantity,
+        cost_basis: cost_basis ?? null,
+        institution_price: institution_price ?? 0,
+        institution_price_as_of: date.toISOString(),
+        institution_value: institution_value ?? quantity * (institution_price ?? 0),
+        iso_currency_code: null,
+        unofficial_currency_code: null,
+      };
+      await upsertHoldings(user, [holding]);
+
       return { status: "success", body: { snapshot_id, security_id } };
     } catch (error: unknown) {
       logger.error("Failed to upsert holding snapshot", { snapshot_id }, error);
