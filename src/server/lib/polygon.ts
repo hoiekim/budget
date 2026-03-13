@@ -29,6 +29,14 @@ export type PolygonResult<T> =
 const priceCache = new Map<string, { price: number; fetchedAt: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// Periodically evict stale price cache entries to prevent unbounded growth.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of priceCache) {
+    if (now - entry.fetchedAt >= CACHE_TTL_MS) priceCache.delete(key);
+  }
+}, CACHE_TTL_MS).unref();
+
 /**
  * Fetch with retry logic for transient failures
  */
