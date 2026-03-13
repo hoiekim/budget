@@ -1,4 +1,5 @@
 export * from "./App";
+export * from "./HoldingsManager";
 export * from "./ErrorBoundary";
 export * from "./PlaidLinkContext";
 export * from "./PlaidLinkButton";
