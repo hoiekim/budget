@@ -429,3 +429,210 @@ describe("getHoldingsValueData", () => {
     expect(value).toBe(1650);
   });
 });
+
+describe("getEarningsForPeriod", () => {
+  // Avoid a circular import in tests — import directly from the file
+  const { getEarningsForPeriod } = require("./holdings");
+
+  test("should return zero totals for empty holdings data", () => {
+    const { HoldingsValueData } = require("../../models/Calcuations");
+    const holdingsValueData = new HoldingsValueData();
+
+    const result = getEarningsForPeriod({
+      holdingsValueData,
+      startDate: new Date("2026-01-15"),
+      endDate: new Date("2026-02-15"),
+    });
+
+    expect(result.holdings).toHaveLength(0);
+    expect(result.totalStartValue).toBe(0);
+    expect(result.totalEndValue).toBe(0);
+    expect(result.totalCostBasis).toBe(0);
+    expect(result.totalUnrealizedGain).toBe(0);
+    expect(result.totalPeriodReturn).toBe(0);
+  });
+
+  test("should compute earnings for a single holding", () => {
+    const { HoldingsValueData, HoldingValueSummary } = require("../../models/Calcuations");
+    const holdingsValueData = new HoldingsValueData();
+
+    holdingsValueData.set(
+      "acc1_sec1",
+      new Date("2026-01-15"),
+      new HoldingValueSummary({
+        value: 1000,
+        costBasis: 800,
+        quantity: 10,
+        price: 100,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+    holdingsValueData.set(
+      "acc1_sec1",
+      new Date("2026-02-15"),
+      new HoldingValueSummary({
+        value: 1200,
+        costBasis: 800,
+        quantity: 10,
+        price: 120,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+
+    const result = getEarningsForPeriod({
+      holdingsValueData,
+      startDate: new Date("2026-01-15"),
+      endDate: new Date("2026-02-15"),
+    });
+
+    expect(result.holdings).toHaveLength(1);
+    const h = result.holdings[0];
+    expect(h.startValue).toBe(1000);
+    expect(h.endValue).toBe(1200);
+    expect(h.costBasis).toBe(800);
+    expect(h.unrealizedGain).toBe(400); // 1200 - 800
+    expect(h.periodReturn).toBe(200);   // 1200 - 1000
+
+    expect(result.totalStartValue).toBe(1000);
+    expect(result.totalEndValue).toBe(1200);
+    expect(result.totalCostBasis).toBe(800);
+    expect(result.totalUnrealizedGain).toBe(400);
+    expect(result.totalPeriodReturn).toBe(200);
+  });
+
+  test("should use 0 as startValue when no data exists for startDate", () => {
+    const { HoldingsValueData, HoldingValueSummary } = require("../../models/Calcuations");
+    const holdingsValueData = new HoldingsValueData();
+
+    // Only end snapshot — no start
+    holdingsValueData.set(
+      "acc1_sec1",
+      new Date("2026-02-15"),
+      new HoldingValueSummary({
+        value: 1200,
+        costBasis: 900,
+        quantity: 10,
+        price: 120,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: true,
+      })
+    );
+
+    const result = getEarningsForPeriod({
+      holdingsValueData,
+      startDate: new Date("2026-01-15"),
+      endDate: new Date("2026-02-15"),
+    });
+
+    expect(result.holdings).toHaveLength(1);
+    expect(result.holdings[0].startValue).toBe(0);
+    expect(result.holdings[0].periodReturn).toBe(1200);
+    expect(result.holdings[0].costBasisInferred).toBe(true);
+  });
+
+  test("should skip holdings with no end-of-period data", () => {
+    const { HoldingsValueData, HoldingValueSummary } = require("../../models/Calcuations");
+    const holdingsValueData = new HoldingsValueData();
+
+    // Only start snapshot — no end
+    holdingsValueData.set(
+      "acc1_sec1",
+      new Date("2026-01-15"),
+      new HoldingValueSummary({
+        value: 1000,
+        costBasis: 800,
+        quantity: 10,
+        price: 100,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+
+    const result = getEarningsForPeriod({
+      holdingsValueData,
+      startDate: new Date("2026-01-15"),
+      endDate: new Date("2026-02-15"),
+    });
+
+    expect(result.holdings).toHaveLength(0);
+    expect(result.totalEndValue).toBe(0);
+  });
+
+  test("should handle null costBasis (unrealizedGain is null)", () => {
+    const { HoldingsValueData, HoldingValueSummary } = require("../../models/Calcuations");
+    const holdingsValueData = new HoldingsValueData();
+
+    holdingsValueData.set(
+      "acc1_sec1",
+      new Date("2026-02-15"),
+      new HoldingValueSummary({
+        value: 1200,
+        costBasis: null,
+        quantity: 10,
+        price: 120,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+
+    const result = getEarningsForPeriod({
+      holdingsValueData,
+      startDate: new Date("2026-01-15"),
+      endDate: new Date("2026-02-15"),
+    });
+
+    expect(result.holdings[0].unrealizedGain).toBeNull();
+    expect(result.totalCostBasis).toBe(0);
+    expect(result.totalUnrealizedGain).toBe(0);
+  });
+
+  test("should aggregate multiple holdings", () => {
+    const { HoldingsValueData, HoldingValueSummary } = require("../../models/Calcuations");
+    const holdingsValueData = new HoldingsValueData();
+
+    holdingsValueData.set(
+      "acc1_sec1",
+      new Date("2026-02-15"),
+      new HoldingValueSummary({
+        value: 1000,
+        costBasis: 800,
+        quantity: 10,
+        price: 100,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+    holdingsValueData.set(
+      "acc1_sec2",
+      new Date("2026-02-15"),
+      new HoldingValueSummary({
+        value: 500,
+        costBasis: 400,
+        quantity: 5,
+        price: 100,
+        security_id: "sec2",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+
+    const result = getEarningsForPeriod({
+      holdingsValueData,
+      startDate: new Date("2026-01-15"),
+      endDate: new Date("2026-02-15"),
+    });
+
+    expect(result.holdings).toHaveLength(2);
+    expect(result.totalEndValue).toBe(1500);
+    expect(result.totalCostBasis).toBe(1200);
+    expect(result.totalUnrealizedGain).toBe(300);
+  });
+});
