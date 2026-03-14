@@ -1,6 +1,6 @@
 import { ApiResponse } from "server";
 
-const call = async <T = unknown>(path: string, options?: RequestInit) => {
+const call = async <T = unknown>(path: string, options?: RequestInit): Promise<ApiResponse<T>> => {
   const method = options?.method || "GET";
   const body = options?.body;
 
@@ -11,11 +11,14 @@ const call = async <T = unknown>(path: string, options?: RequestInit) => {
     (init as RequestInit).body = JSON.stringify(body);
   }
 
-  const response: ApiResponse<T> = await fetch(path, init).then((r) => {
-    return r.json();
-  });
-
-  return response;
+  try {
+    const httpResponse = await fetch(path, init);
+    const response: ApiResponse<T> = await httpResponse.json();
+    return response;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Network or parse error";
+    return { status: "error", message };
+  }
 };
 
 call.get = <T>(path: string) => call<T>(path);
