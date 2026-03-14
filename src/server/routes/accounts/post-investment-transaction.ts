@@ -6,7 +6,7 @@ export interface InvestmentTransactionPostResponse {
   investment_transaction_id: string;
 }
 
-export const postInvestmentTrasactionRoute = new Route<InvestmentTransactionPostResponse>(
+export const postInvestmentTransactionRoute = new Route<InvestmentTransactionPostResponse>(
   "POST",
   "/investment-transaction",
   async (req) => {
