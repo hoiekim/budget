@@ -11,6 +11,7 @@ import {
   SECTION_ID,
   USER_ID,
 } from "../models";
+import { withTransaction } from "../client";
 import { logger } from "../../logger";
 
 export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
@@ -83,15 +84,18 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string): Promise
   const sections = await sectionsTable.query({ [USER_ID]: user.user_id, [BUDGET_ID]: budget_id });
   const sectionIds = sections.map((s) => s.section_id);
 
-  for (const sid of sectionIds) {
-    await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, sid, user.user_id);
-  }
+  return withTransaction(async (client) => {
+    for (const sid of sectionIds) {
+      await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, sid, user.user_id, client);
+    }
 
-  for (const sid of sectionIds) {
-    await sectionsTable.softDelete(sid, user.user_id);
-  }
+    if (sectionIds.length > 0) {
+      await sectionsTable.bulkSoftDelete(sectionIds, { [USER_ID]: user.user_id }, client);
+    }
 
-  return await budgetsTable.softDelete(budget_id, user.user_id);
+    const deleted = await budgetsTable.bulkSoftDelete([budget_id], { [USER_ID]: user.user_id }, client);
+    return deleted > 0;
+  });
 };
 
 export const deleteBudgets = async (
@@ -156,8 +160,11 @@ export const updateSection = async (
 };
 
 export const deleteSection = async (user: MaskedUser, section_id: string): Promise<boolean> => {
-  await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, section_id, user.user_id);
-  return await sectionsTable.softDelete(section_id, user.user_id);
+  return withTransaction(async (client) => {
+    await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, section_id, user.user_id, client);
+    const deleted = await sectionsTable.bulkSoftDelete([section_id], { [USER_ID]: user.user_id }, client);
+    return deleted > 0;
+  });
 };
 
 export const deleteSections = async (
