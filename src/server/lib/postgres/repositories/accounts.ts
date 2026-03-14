@@ -12,6 +12,7 @@ import {
   USER_ID,
   ITEM_ID,
   INSTITUTION_ID,
+  QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { withTransaction } from "../client";
@@ -68,6 +69,7 @@ export const searchAccountsById = async (
 export const upsertAccounts = async (
   user: MaskedUser,
   accounts: JSONAccount[],
+  client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!accounts.length) return [];
   const results: UpsertResult[] = [];
@@ -75,7 +77,7 @@ export const upsertAccounts = async (
   for (const account of accounts) {
     try {
       const row = AccountModel.fromJSON(account, user.user_id);
-      await accountsTable.upsert(row);
+      await accountsTable.upsert(row, undefined, client);
       results.push(successResult(account.account_id, 1));
     } catch (error) {
       logger.error("Failed to upsert account", { accountId: account.account_id }, error);
