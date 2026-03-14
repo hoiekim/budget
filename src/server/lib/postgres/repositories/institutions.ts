@@ -1,5 +1,5 @@
 import { JSONInstitution } from "common";
-import { InstitutionModel, institutionsTable, INSTITUTION_ID } from "../models";
+import { InstitutionModel, institutionsTable, INSTITUTION_ID, QueryExecutor } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
@@ -26,6 +26,7 @@ export const searchInstitutions = async (
 
 export const upsertInstitutions = async (
   institutions: JSONInstitution[],
+  client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!institutions.length) return [];
   const results: UpsertResult[] = [];
@@ -33,7 +34,7 @@ export const upsertInstitutions = async (
   for (const institution of institutions) {
     try {
       const row = InstitutionModel.fromJSON(institution);
-      await institutionsTable.upsert(row);
+      await institutionsTable.upsert(row, undefined, client);
       results.push(successResult(institution.institution_id, 1));
     } catch (error) {
       logger.error("Failed to upsert institution", { institutionId: institution.institution_id }, error);
