@@ -6,7 +6,7 @@ export interface SplitTransactionPostResponse {
   split_transaction_id: string;
 }
 
-export const postSplitTrasactionRoute = new Route<SplitTransactionPostResponse>(
+export const postSplitTransactionRoute = new Route<SplitTransactionPostResponse>(
   "POST",
   "/split-transaction",
   async (req) => {
