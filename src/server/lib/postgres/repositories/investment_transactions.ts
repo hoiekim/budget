@@ -7,6 +7,7 @@ import {
   ACCOUNT_ID,
   USER_ID,
   DATE,
+  QueryExecutor,
 } from "../models";
 import { pool } from "../client";
 import {
@@ -70,6 +71,7 @@ export const searchInvestmentTransactions = async (
 export const upsertInvestmentTransactions = async (
   user: MaskedUser,
   transactions: JSONInvestmentTransaction[],
+  client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!transactions.length) return [];
   const results: UpsertResult[] = [];
@@ -77,7 +79,7 @@ export const upsertInvestmentTransactions = async (
   for (const tx of transactions) {
     try {
       const row = InvTxModel.fromJSON(tx, user.user_id);
-      await investmentTransactionsTable.upsert(row);
+      await investmentTransactionsTable.upsert(row, undefined, client);
       results.push(successResult(tx.investment_transaction_id, 1));
     } catch (error) {
       logger.error("Failed to upsert investment transaction", { investmentTransactionId: tx.investment_transaction_id }, error);
@@ -117,11 +119,14 @@ export const updateInvestmentTransactions = async (
 export const deleteInvestmentTransactions = async (
   user: MaskedUser,
   transaction_ids: string[],
+  client?: QueryExecutor,
 ): Promise<{ deleted: number }> => {
   if (!transaction_ids.length) return { deleted: 0 };
-  const deleted = await investmentTransactionsTable.bulkSoftDelete(transaction_ids, {
-    [USER_ID]: user.user_id,
-  });
+  const deleted = await investmentTransactionsTable.bulkSoftDelete(
+    transaction_ids,
+    { [USER_ID]: user.user_id },
+    client,
+  );
   return { deleted };
 };
 

@@ -12,6 +12,7 @@ import {
   UPDATED,
   INVESTMENT_TRANSACTIONS,
   TRANSACTIONS,
+  QueryExecutor,
 } from "../models";
 import { pool } from "../client";
 import {
@@ -104,6 +105,7 @@ export const searchTransactionsById = async (
 export const upsertTransactions = async (
   user: MaskedUser,
   transactions: JSONTransaction[],
+  client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!transactions.length) return [];
   const results: UpsertResult[] = [];
@@ -111,7 +113,7 @@ export const upsertTransactions = async (
   for (const tx of transactions) {
     try {
       const row = TransactionModel.fromJSON(tx, user.user_id);
-      await transactionsTable.upsert(row);
+      await transactionsTable.upsert(row, undefined, client);
       results.push(successResult(tx.transaction_id, 1));
     } catch (error) {
       logger.error("Failed to upsert transaction", { transactionId: tx.transaction_id }, error);
@@ -149,16 +151,19 @@ export const updateTransactions = async (
 export const deleteTransactions = async (
   user: MaskedUser,
   transaction_ids: string[],
+  client?: QueryExecutor,
 ): Promise<{ deleted: number }> => {
   if (!transaction_ids.length) return { deleted: 0 };
 
   for (const tx_id of transaction_ids) {
-    await splitTransactionsTable.bulkSoftDeleteByColumn(TRANSACTION_ID, tx_id, user.user_id);
+    await splitTransactionsTable.bulkSoftDeleteByColumn(TRANSACTION_ID, tx_id, user.user_id, client);
   }
 
-  const deleted = await transactionsTable.bulkSoftDelete(transaction_ids, {
-    [USER_ID]: user.user_id,
-  });
+  const deleted = await transactionsTable.bulkSoftDelete(
+    transaction_ids,
+    { [USER_ID]: user.user_id },
+    client,
+  );
   return { deleted };
 };
 

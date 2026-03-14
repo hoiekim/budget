@@ -7,6 +7,7 @@ import {
   TRANSACTION_ID,
   ACCOUNT_ID,
   USER_ID,
+  QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { logger } from "../../logger";
@@ -110,23 +111,28 @@ export const updateSplitTransactions = async (
 export const deleteSplitTransactions = async (
   user: MaskedUser,
   split_transaction_ids: string[],
+  client?: QueryExecutor,
 ): Promise<{ deleted: number }> => {
   if (!split_transaction_ids.length) return { deleted: 0 };
-  const deleted = await splitTransactionsTable.bulkSoftDelete(split_transaction_ids, {
-    [USER_ID]: user.user_id,
-  });
+  const deleted = await splitTransactionsTable.bulkSoftDelete(
+    split_transaction_ids,
+    { [USER_ID]: user.user_id },
+    client,
+  );
   return { deleted };
 };
 
 export const deleteSplitTransactionsByTransaction = async (
   user: MaskedUser,
   transaction_id: string,
+  client?: QueryExecutor,
 ): Promise<{ deleted: number }> => {
   const txs = await getSplitTransactionsByTransaction(user, transaction_id);
   if (!txs.length) return { deleted: 0 };
   return deleteSplitTransactions(
     user,
     txs.map((t) => t.split_transaction_id),
+    client,
   );
 };
 
