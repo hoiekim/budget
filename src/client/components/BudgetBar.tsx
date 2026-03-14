@@ -15,6 +15,7 @@ export const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
   const { path, go } = router;
 
   const { budget_id, iso_currency_code } = budget;
+  const isUnnamed = !budget.name;
 
   const onClickInfo = () => {
     if (path === BUDGET_DETAIL) return;
@@ -27,16 +28,18 @@ export const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
     go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ budget_id }) });
   };
 
+  const displayBudget = isUnnamed ? new Budget({ ...budget, name: "Unnamed Budget" }) : budget;
+
   return (
     <LabeledBar
       key={budget_id}
       dataId={budget_id}
-      barData={budget}
+      barData={displayBudget}
       iso_currency_code={iso_currency_code}
       onClickInfo={onClickInfo}
       onClickEdit={onClickEdit}
       onSetOrder={onSetOrder}
-      hideEditButton={hideEditButton}
+      hideEditButton={isUnnamed ? false : hideEditButton}
     />
   );
 };
