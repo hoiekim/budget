@@ -60,18 +60,25 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const { items, added, removed, modified } = r;
 
+      // Build lookup maps once (O(n)) to avoid O(n²) in modelize
+      const storedByTransactionId = new Map<string, JSONTransaction>();
+      const storedByPendingId = new Map<string, JSONTransaction>();
+      const storedByCompoundKey = new Map<string, JSONTransaction>();
+      for (const f of storedTransactions) {
+        storedByTransactionId.set(f.transaction_id, f);
+        if (f.pending_transaction_id) storedByPendingId.set(f.pending_transaction_id, f);
+        storedByCompoundKey.set(`${f.account_id}:${f.name}:${f.amount}`, f);
+      }
+
       const modelize = (e: (typeof added)[0]) => {
         const result: JSONTransaction = { ...e, label: {} };
         const { authorized_date: auth_date, date } = e;
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
-        const existing = storedTransactions.find((f) => {
-          const idMatches = [f.transaction_id, f.pending_transaction_id].includes(e.transaction_id);
-          const accountMatches = e.account_id === f.account_id;
-          const nameMatches = e.name === f.name;
-          const amountMatches = e.amount === f.amount;
-          return idMatches || (accountMatches && nameMatches && amountMatches);
-        });
+        const existing =
+          storedByTransactionId.get(e.transaction_id) ??
+          storedByPendingId.get(e.transaction_id) ??
+          storedByCompoundKey.get(`${e.account_id}:${e.name}:${e.amount}`);
         if (existing) result.label = existing.label;
         return result;
       };
@@ -122,18 +129,20 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const removed: RemovedInvestmentTransaction[] = [];
 
+      // Build lookup Set once (O(n)) to avoid O(n²) in forEach
+      const investmentTransactionIds = new Set(
+        investmentTransactions.map((f) => f.investment_transaction_id),
+      );
+
       storedInvestmentTransactions.forEach((e) => {
         const age = new Date().getTime() - new LocalDate(e.date).getTime();
         if (age > TWO_WEEKS) return;
 
         const { investment_transaction_id } = e;
 
-        const found = investmentTransactions.find((f) => {
-          return investment_transaction_id === f.investment_transaction_id;
-        });
-
-        if (!found) removed.push({ investment_transaction_id });
-        else {
+        if (!investmentTransactionIds.has(investment_transaction_id)) {
+          removed.push({ investment_transaction_id });
+        } else {
           modifiedCount += 1;
           addedCount -= 1;
         }

@@ -150,13 +150,13 @@ const getRemovedTransactions = (
   startDate: Date,
 ) => {
   const accountIds = new Set(transactions.map((e) => e.account_id));
+  const transactionIds = new Set(transactions.map((e) => e.transaction_id));
   const removedTransactions: RemovedTransaction[] = [];
   storedTransactions.forEach((t) => {
     const { transaction_id, date } = t;
     if (new LocalDate(date) < startDate) return;
     if (!accountIds.has(t.account_id)) return;
-    const found = transactions.find((f) => f.transaction_id === transaction_id);
-    if (!found) removedTransactions.push({ transaction_id });
+    if (!transactionIds.has(transaction_id)) removedTransactions.push({ transaction_id });
   });
   return removedTransactions;
 };
@@ -167,15 +167,17 @@ const getRemovedInvestmentTransactions = (
   startDate: Date,
 ) => {
   const accountIds = new Set(investmentTransactions.map((e) => e.account_id));
+  const investmentTransactionIds = new Set(
+    investmentTransactions.map((e) => e.investment_transaction_id),
+  );
   const removedInvestmentTransactions: RemovedInvestmentTransaction[] = [];
   storedInvestmentTransactions.forEach((t) => {
     const { investment_transaction_id, date } = t;
     if (new LocalDate(date) < startDate) return;
     if (!accountIds.has(t.account_id)) return;
-    const found = investmentTransactions.find(
-      (f) => f.investment_transaction_id === investment_transaction_id,
-    );
-    if (!found) removedInvestmentTransactions.push({ investment_transaction_id });
+    if (!investmentTransactionIds.has(investment_transaction_id)) {
+      removedInvestmentTransactions.push({ investment_transaction_id });
+    }
   });
   return removedInvestmentTransactions;
 };
