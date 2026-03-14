@@ -14,7 +14,7 @@ import {
   INSTITUTION_ID,
   ACCOUNT_ID,
 } from "../models";
-import { pool } from "../client";
+import { pool, withTransaction } from "../client";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { logger } from "../../logger";
 
@@ -140,16 +140,22 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
   const accounts = await accountsTable.query({ [ITEM_ID]: item_id, [USER_ID]: user_id });
   const accountIds = accounts.map((a) => a.account_id);
 
-  for (const account_id of accountIds) {
-    await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id);
-    await accountsTable.softDelete(account_id);
-  }
+  return withTransaction(async (client) => {
+    for (const account_id of accountIds) {
+      await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+    }
 
-  return await itemsTable.softDelete(item_id);
+    if (accountIds.length > 0) {
+      await accountsTable.bulkSoftDelete(accountIds, { [USER_ID]: user_id }, client);
+    }
+
+    const deleted = await itemsTable.bulkSoftDelete([item_id], { [USER_ID]: user_id }, client);
+    return deleted > 0;
+  });
 };
 
 export const deleteItems = async (
