@@ -27,6 +27,7 @@ import {
   upsertItems,
   upsertTransactions,
 } from "server";
+import { withTransaction } from "../postgres/client";
 import {
   upsertSecuritiesWithSnapshots,
   upsertAccountsWithSnapshots,
@@ -95,20 +96,28 @@ export const syncSimpleFinData = async (item_id: string) => {
     (t) => t.investment_transaction_id,
   );
 
+  // Phase 1: idempotent writes (accounts, holdings, institutions) — safe to run outside a
+  // transaction because they can be retried on the next sync without data loss.
   await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
   await upsertAccounts(user, otherAccounts);
   await processHoldingsPromise;
   await upsertInstitutions(institutions);
-  await upsertTransactions(user, transactions);
-  await deleteTransactions(user, removedTransactionIds);
-  for (const txId of removedTransactionIds) {
-    await deleteSplitTransactionsByTransaction(user, txId);
-  }
-  await upsertInvestmentTransactions(user, investmentTransactions);
-  await deleteInvestmentTransactions(user, removedInvestmentTransactionIds);
 
-  const updated = getDateString();
-  await upsertItems(user, [{ ...item, updated }]);
+  // Phase 2: transactional writes — transactions + cursor update must be atomic.
+  // If the process crashes mid-way, the DB rolls back the entire block and the item cursor
+  // is not advanced, so the next sync re-processes the same window safely.
+  await withTransaction(async (client) => {
+    await upsertTransactions(user, transactions, client);
+    await deleteTransactions(user, removedTransactionIds, client);
+    for (const txId of removedTransactionIds) {
+      await deleteSplitTransactionsByTransaction(user, txId, client);
+    }
+    await upsertInvestmentTransactions(user, investmentTransactions, client);
+    await deleteInvestmentTransactions(user, removedInvestmentTransactionIds, client);
+
+    const updated = getDateString();
+    await upsertItems(user, [{ ...item, updated }], true, client);
+  });
 
   return { accounts, transactions, investmentTransactions };
 };
