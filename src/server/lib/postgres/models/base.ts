@@ -127,23 +127,29 @@ export abstract class Table<
     primaryKeyValue: ParamValue,
     data: QueryData,
     returning?: string[],
-    userId?: ParamValue,
+    client?: QueryExecutor,
   ): Promise<Record<string, unknown> | null> {
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {
       returning: returning ?? [this.primaryKey],
       additionalWhere: userId !== undefined ? { column: "user_id", value: userId } : undefined,
     });
     if (!query) return null;
-    const result = await pool.query(query.sql, query.values);
+    const executor = client ?? pool;
+    const result = await executor.query(query.sql, query.values);
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 
-  async upsert(data: QueryData, updateColumns?: string[]): Promise<Record<string, unknown> | null> {
+  async upsert(
+    data: QueryData,
+    updateColumns?: string[],
+    client?: QueryExecutor,
+  ): Promise<Record<string, unknown> | null> {
     const { sql, values } = buildUpsert(this.name, this.primaryKey, data, {
       updateColumns: updateColumns ?? Object.keys(data).filter((k) => k !== this.primaryKey),
       returning: ["*"],
     });
-    const result = await pool.query(sql, values);
+    const executor = client ?? pool;
+    const result = await executor.query(sql, values);
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 

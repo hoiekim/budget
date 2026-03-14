@@ -13,6 +13,7 @@ import {
   USER_ID,
   INSTITUTION_ID,
   ACCOUNT_ID,
+  QueryExecutor,
 } from "../models";
 import { pool } from "../client";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
@@ -83,6 +84,7 @@ export const upsertItems = async (
   user: MaskedUser,
   items: PartialItem[],
   upsert: boolean = true,
+  client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!items.length) return [];
   const results: UpsertResult[] = [];
@@ -91,12 +93,12 @@ export const upsertItems = async (
     try {
       const row = ItemModel.fromJSON(item, user.user_id);
       if (upsert) {
-        await itemsTable.upsert(row);
+        await itemsTable.upsert(row, undefined, client);
         results.push(successResult(item.item_id, 1));
       } else {
         delete row.item_id;
         delete row.user_id;
-        const updated = await itemsTable.update(item.item_id, row);
+        const updated = await itemsTable.update(item.item_id, row, undefined, client);
         results.push(updated ? successResult(item.item_id, 1) : noChangeResult(item.item_id));
       }
     } catch (error) {
