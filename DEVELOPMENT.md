@@ -337,6 +337,50 @@ When calling external APIs (Plaid, Polygon), handle unavailability gracefully:
 
 See `src/server/lib/polygon.ts` for the Polygon API graceful degradation pattern.
 
+### Resource Ownership Verification
+
+**Every delete/update route must verify the resource belongs to the authenticated user.**
+
+Repository-level `softDelete` by primary key alone is NOT sufficient — it doesn't scope by `user_id`:
+
+```typescript
+// ❌ Dangerous - deletes any user's resource
+await snapshotsTable.softDelete(snapshot_id);
+
+// ✅ Safe - verify ownership first
+const snapshot = await searchSnapshots(user, { snapshot_id });
+if (!snapshot) return { status: "failed", message: "Not found" };
+await snapshotsTable.softDelete(snapshot_id);
+
+// ✅ Better - scope the delete query itself by user_id
+await pool.query(
+  "UPDATE snapshots SET is_deleted = TRUE WHERE snapshot_id = $1 AND user_id = $2",
+  [snapshot_id, user.user_id]
+);
+```
+
+Routes like `deleteAccounts` correctly use `searchAccountsById(user, ...)` to verify ownership before deleting. All delete/update routes should follow this pattern.
+
+### Collection Lookup Performance
+
+When matching items across two collections (e.g., finding removed transactions), **pre-build lookup structures** instead of nested iteration:
+
+```typescript
+// ❌ O(n²) - .find() inside .forEach()
+storedTransactions.forEach((t) => {
+  const found = incoming.find((f) => f.id === t.id);
+  if (!found) removed.push(t);
+});
+
+// ✅ O(n) - Set lookup
+const incomingIds = new Set(incoming.map((t) => t.id));
+storedTransactions.forEach((t) => {
+  if (!incomingIds.has(t.id)) removed.push(t);
+});
+```
+
+This matters in sync operations where transaction lists can grow to thousands of entries.
+
 ## Common Tasks
 
 ### Adding a New API Route
