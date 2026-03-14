@@ -1,6 +1,6 @@
 import { getYearMonthString, LocalDate } from "common";
 import { InvestmentTransactionType } from "plaid";
-import { HoldingValueSummary, HoldingsValueData } from "../../models/Calcuations";
+import { HoldingValueSummary, HoldingsValueData } from "../../models/Calculations";
 import {
   HoldingSnapshotDictionary,
   InvestmentTransactionDictionary,
