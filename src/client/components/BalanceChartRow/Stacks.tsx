@@ -25,6 +25,7 @@ export const Stacks = ({ data }: StacksProps) => {
             <div
               className="stack colored"
               style={{ height: `${(amount / total) * 100}%`, backgroundColor: color }}
+              title={name}
               key={j}
             >
               {amount / max > 0.1 && <span>{name}</span>}
