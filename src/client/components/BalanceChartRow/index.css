@@ -97,3 +97,13 @@ div.Stacks > div.column > div.stack > span {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+.BalanceChartRow p.accountSummary {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: #888;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

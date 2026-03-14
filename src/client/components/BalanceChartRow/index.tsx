@@ -155,6 +155,11 @@ export const BalanceChartRow = ({
           </div>
         </div>
       </div>
+      {!showTable && [...column1, ...column2].length > 1 && (
+        <p className="accountSummary">
+          {[...column1, ...column2].map(({ name }) => name).join(" · ")}
+        </p>
+      )}
       {showTable && (
         <table width="100%">
           <thead>
