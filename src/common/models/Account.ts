@@ -15,6 +15,17 @@ export interface AccountGraphOptions {
   useTransactions: boolean;
 }
 
+/**
+ * Default graph display preferences applied to newly-created accounts.
+ * This constant should only be referenced in the composition/sync layer,
+ * never in external data-fetch layers (Plaid, SimpleFin, etc.).
+ */
+export const DEFAULT_GRAPH_OPTIONS: AccountGraphOptions = {
+  useSnapshots: true,
+  useHoldingSnapshots: true,
+  useTransactions: true,
+};
+
 export interface JSONAccount extends PlaidAccount {
   account_id: string;
   balances: AccountBalance;

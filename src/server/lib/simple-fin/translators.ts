@@ -17,6 +17,9 @@ import {
   JSONTransaction,
 } from "common";
 
+/** Account data translated from SimpleFin, before app-specific fields are composed in. */
+export type SimpleFinRawAccount = Omit<JSONAccount, "graphOptions">;
+
 export interface SimpleFinAccount {
   id: string;
   org: SimpleFinOrganization;
@@ -94,7 +97,7 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: JSONI
     name.toLowerCase().includes("investment") ||
     org.name.toLowerCase().includes("investment");
 
-  const account: JSONAccount = {
+  const account: SimpleFinRawAccount = {
     account_id: accountId,
     name,
     balances,
@@ -107,7 +110,6 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: JSONI
     custom_name: "",
     hide: false,
     label: {},
-    graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
   };
 
   return { institution, account };
