@@ -1,4 +1,4 @@
-import { JSONBudget, JSONSection, JSONCategory } from "common";
+import { JSONBudget, JSONSection, JSONCategory, getRandomId } from "common";
 import {
   MaskedUser,
   BudgetModel,
@@ -47,7 +47,10 @@ export const createBudget = async (
         iso_currency_code: data.iso_currency_code || "USD",
         roll_over: data.roll_over || false,
         roll_over_start_date: data.roll_over_start_date,
-        capacities: data.capacities || [],
+        capacities:
+          data.capacities && data.capacities.length > 0
+            ? data.capacities
+            : [{ month: 0, capacity_id: getRandomId() }],
       },
       user.user_id,
     );
@@ -126,7 +129,10 @@ export const createSection = async (
         name: data.name || "New Section",
         roll_over: data.roll_over || false,
         roll_over_start_date: data.roll_over_start_date,
-        capacities: data.capacities || [],
+        capacities:
+          data.capacities && data.capacities.length > 0
+            ? data.capacities
+            : [{ month: 0, capacity_id: getRandomId() }],
       },
       user.user_id,
     );
@@ -201,7 +207,10 @@ export const createCategory = async (
         name: data.name || "New Category",
         roll_over: data.roll_over || false,
         roll_over_start_date: data.roll_over_start_date,
-        capacities: data.capacities || [],
+        capacities:
+          data.capacities && data.capacities.length > 0
+            ? data.capacities
+            : [{ month: 0, capacity_id: getRandomId() }],
       },
       user.user_id,
     );
