@@ -1,5 +1,4 @@
 import {
-  JSONAccount,
   JSONHolding,
   JSONInstitution,
   JSONInvestmentTransaction,
@@ -14,6 +13,7 @@ import {
   translateInvestmentTransaction,
   translateTransaction,
   SimpleFinAccount,
+  SimpleFinRawAccount,
 } from "./translators";
 
 export interface GetSimpleFinDataOptions {
@@ -60,7 +60,7 @@ export const getData = async (item: JSONItem, options: GetSimpleFinDataOptions) 
 };
 
 const modelize = async (item: JSONItem, simpleFinAccounts: SimpleFinAccount[]) => {
-  const accounts: JSONAccount[] = [];
+  const accounts: SimpleFinRawAccount[] = [];
   const institutions: JSONInstitution[] = [];
   const transactions: JSONTransaction[] = [];
   const investmentTransactions: JSONInvestmentTransaction[] = [];

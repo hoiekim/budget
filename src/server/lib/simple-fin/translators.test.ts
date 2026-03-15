@@ -147,7 +147,9 @@ describe("translateAccount", () => {
     expect(account.custom_name).toBe("");
     expect(account.hide).toBe(false);
     expect(account.label).toEqual({});
-    expect(account.graphOptions).toEqual({ useSnapshots: true, useHoldingSnapshots: true, useTransactions: true });
+    // graphOptions is no longer set in the translator layer — it is applied
+    // in the sync/composition layer (sync-simple-fin.ts) using DEFAULT_GRAPH_OPTIONS.
+    expect((account as { graphOptions?: unknown }).graphOptions).toBeUndefined();
   });
 });
 
