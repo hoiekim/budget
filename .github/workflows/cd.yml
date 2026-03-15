@@ -1,28 +1,51 @@
 name: CD
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches: [main]
 
 jobs:
-  docker-push:
+  check-secrets:
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      secrets-exist: ${{ steps.check-secrets-step.outputs.defined }}
+    steps:
+      - name: Check for Secret availability
+        id: check-secrets-step
+        shell: bash
+        run: |
+          if [[ '${{ secrets.DOCKER_HUB_USERNAME }}' != '' && '${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}' != '' && '${{ secrets.DEPLOY_URL }}' != '' && '${{ secrets.DEPLOY_SECRET }}' != '' ]]; then
+            echo "defined=true" >> $GITHUB_OUTPUT;
+          else
+            echo "defined=false" >> $GITHUB_OUTPUT;
+          fi
+
+  docker-push:
+    needs: check-secrets
+    runs-on: ubuntu-latest
+    if: needs.check-secrets.outputs.secrets-exist == 'true'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       - name: Get short SHA
         id: sha
-        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: echo "short=$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
       - name: Build and push
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -32,9 +55,9 @@ jobs:
             ${{ secrets.DOCKER_HUB_USERNAME }}/budget:sha-${{ steps.sha.outputs.short }}
 
   deploy:
-    needs: docker-push
+    needs: [check-secrets, docker-push]
     runs-on: ubuntu-latest
-
+    if: needs.check-secrets.outputs.secrets-exist == 'true'
     steps:
       - name: Trigger deploy
         run: |
