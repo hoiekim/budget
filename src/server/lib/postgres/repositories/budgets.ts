@@ -11,7 +11,6 @@ import {
   SECTION_ID,
   USER_ID,
 } from "../models";
-import { logger } from "../../logger";
 
 export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
   const models = await budgetsTable.query({ [USER_ID]: user.user_id });
@@ -40,25 +39,20 @@ export const createBudget = async (
   user: MaskedUser,
   data: Partial<JSONBudget>,
 ): Promise<JSONBudget | null> => {
-  try {
-    const row = BudgetModel.fromJSON(
-      {
-        name: data.name || "New Budget",
-        iso_currency_code: data.iso_currency_code || "USD",
-        roll_over: data.roll_over || false,
-        roll_over_start_date: data.roll_over_start_date,
-        capacities: data.capacities || [],
-      },
-      user.user_id,
-    );
-    const result = await budgetsTable.insert(row, ["*"]);
-    if (!result) return null;
-    const model = new BudgetModel(result);
-    return model.toJSON();
-  } catch (error) {
-    logger.error("Failed to create budget", {}, error);
-    return null;
-  }
+  const row = BudgetModel.fromJSON(
+    {
+      name: data.name || "New Budget",
+      iso_currency_code: data.iso_currency_code || "USD",
+      roll_over: data.roll_over || false,
+      roll_over_start_date: data.roll_over_start_date,
+      capacities: data.capacities || [],
+    },
+    user.user_id,
+  );
+  const result = await budgetsTable.insert(row, ["*"]);
+  if (!result) return null;
+  const model = new BudgetModel(result);
+  return model.toJSON();
 };
 
 export const updateBudget = async (
@@ -119,25 +113,20 @@ export const createSection = async (
   user: MaskedUser,
   data: Partial<JSONSection>,
 ): Promise<JSONSection | null> => {
-  try {
-    const row = SectionModel.fromJSON(
-      {
-        budget_id: data.budget_id,
-        name: data.name || "New Section",
-        roll_over: data.roll_over || false,
-        roll_over_start_date: data.roll_over_start_date,
-        capacities: data.capacities || [],
-      },
-      user.user_id,
-    );
-    const result = await sectionsTable.insert(row, ["*"]);
-    if (!result) return null;
-    const model = new SectionModel(result);
-    return model.toJSON();
-  } catch (error) {
-    logger.error("Failed to create section", {}, error);
-    return null;
-  }
+  const row = SectionModel.fromJSON(
+    {
+      budget_id: data.budget_id,
+      name: data.name || "New Section",
+      roll_over: data.roll_over || false,
+      roll_over_start_date: data.roll_over_start_date,
+      capacities: data.capacities || [],
+    },
+    user.user_id,
+  );
+  const result = await sectionsTable.insert(row, ["*"]);
+  if (!result) return null;
+  const model = new SectionModel(result);
+  return model.toJSON();
 };
 
 export const updateSection = async (
@@ -194,25 +183,20 @@ export const createCategory = async (
   user: MaskedUser,
   data: Partial<JSONCategory>,
 ): Promise<JSONCategory | null> => {
-  try {
-    const row = CategoryModel.fromJSON(
-      {
-        section_id: data.section_id,
-        name: data.name || "New Category",
-        roll_over: data.roll_over || false,
-        roll_over_start_date: data.roll_over_start_date,
-        capacities: data.capacities || [],
-      },
-      user.user_id,
-    );
-    const result = await categoriesTable.insert(row, ["*"]);
-    if (!result) return null;
-    const model = new CategoryModel(result);
-    return model.toJSON();
-  } catch (error) {
-    logger.error("Failed to create category", {}, error);
-    return null;
-  }
+  const row = CategoryModel.fromJSON(
+    {
+      section_id: data.section_id,
+      name: data.name || "New Category",
+      roll_over: data.roll_over || false,
+      roll_over_start_date: data.roll_over_start_date,
+      capacities: data.capacities || [],
+    },
+    user.user_id,
+  );
+  const result = await categoriesTable.insert(row, ["*"]);
+  if (!result) return null;
+  const model = new CategoryModel(result);
+  return model.toJSON();
 };
 
 export const updateCategory = async (
