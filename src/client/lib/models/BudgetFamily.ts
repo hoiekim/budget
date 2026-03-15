@@ -86,6 +86,7 @@ export class BudgetFamily {
 
   getActiveCapacity = (date: Date) => {
     const sorted = this.sortCapacities("desc");
+    if (!sorted.length) return new Capacity();
     const validCapacity = sorted.find((capacity) => {
       const { active_from } = capacity;
       return new LocalDate(active_from || 0) <= date;
