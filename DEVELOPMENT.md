@@ -295,6 +295,47 @@ Merges to `main` trigger:
 
 ## Design Patterns
 
+### Entity ID Preservation During Sync
+
+When cloning or transforming entities for sync operations, **preserve references to original IDs** before any mutation. Cloning an object and then looking up data by the clone's ID will fail if the clone gets a new ID.
+
+```typescript
+// ❌ Bad — cloned capacity gets new ID, lookup returns wrong data
+const cloned = structuredClone(budget);
+delete cloned.capacity_id; // new UUID generated
+const data = capacityData.get(cloned.getActiveCapacity().id); // always misses
+
+// ✅ Good — capture original reference before cloning
+const originalCapacity = budget.getActiveCapacity();
+const cloned = structuredClone(budget);
+const data = capacityData.get(originalCapacity.id); // correct lookup
+```
+
+This pattern was critical in PR #134 where budget sync zeroed out all amounts because cloned capacities had new UUIDs.
+
+**Rule:** When a function both transforms entities and looks up related data, capture all necessary references from the originals first.
+
+### Authentication: Anti-Enumeration
+
+Login endpoints must not reveal whether a username exists:
+
+- **Generic error messages:** Always return "Invalid username or password" regardless of which is wrong
+- **Constant-time comparison:** When a user is not found, perform a dummy `bcrypt.compare` against a valid hash to prevent timing attacks
+
+```typescript
+// ❌ Bad — reveals valid usernames
+if (!user) return res.json({ message: "User is not found" });
+if (!match) return res.json({ message: "Wrong password" });
+
+// ✅ Good — constant-time, generic message
+if (!user) {
+  await bcrypt.compare(password, DUMMY_HASH); // prevent timing leak
+  return res.json({ message: "Invalid username or password" });
+}
+```
+
+See `src/server/routes/users/post-login.ts` for the implementation (PR #136).
+
 ### Balance Calculation: 3-Tier Price Fallback
 
 Investment account balances use a prioritized price resolution strategy:
