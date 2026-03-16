@@ -66,11 +66,14 @@ export const PlaidLinkProvider = ({ children }: PlaidLinkProviderProps) => {
         return;
       }
       // Wait for existing script to load
-      existingScript.addEventListener("load", () => setScriptLoaded(true));
-      existingScript.addEventListener("error", () =>
-        setScriptError(new Error("Failed to load Plaid script"))
-      );
-      return;
+      const onLoad = () => setScriptLoaded(true);
+      const onError = () => setScriptError(new Error("Failed to load Plaid script"));
+      existingScript.addEventListener("load", onLoad);
+      existingScript.addEventListener("error", onError);
+      return () => {
+        existingScript.removeEventListener("load", onLoad);
+        existingScript.removeEventListener("error", onError);
+      };
     }
 
     const script = document.createElement("script");

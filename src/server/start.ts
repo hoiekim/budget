@@ -6,8 +6,7 @@ overrideConsoleLog();
 import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
-import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
-import { pool } from "server/lib/postgres/client";
+import { initializePostgres, PostgresSessionStore, scheduledSync, pool } from "server";
 import { loginLimiter } from "server/lib/rate-limit";
 import * as routes from "server/routes";
 import { logger } from "server/lib/logger";
@@ -112,19 +111,33 @@ const httpServer = app.listen(process.env.PORT || 3005, async () => {
   scheduledSync();
 });
 
+// Graceful shutdown — stop accepting connections, drain pool, then exit
 const shutdown = async (signal: string) => {
   logger.info(`${signal} received — shutting down gracefully`);
-
-  // Stop accepting new connections; wait for in-flight requests to finish
   await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   logger.info("HTTP server closed");
-
-  // Close the database connection pool
-  await pool.end();
+  try {
+    await pool.end();
+  } catch {
+    // ignore pool shutdown errors
+  }
   logger.info("Database pool closed");
-
   process.exit(0);
 };
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection", {}, reason);
+});
+
+process.on("uncaughtException", async (error) => {
+  logger.error("Uncaught exception", {}, error);
+  try {
+    await pool.end();
+  } catch {
+    // ignore pool shutdown errors during crash
+  }
+  process.exit(1);
+});

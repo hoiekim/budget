@@ -37,22 +37,6 @@ const config: PoolConfig = {
 
 export const pool = new Pool(config);
 
-// Process-level error handlers (SIGTERM/SIGINT are handled in start.ts for ordered shutdown)
-process.on("unhandledRejection", (reason) => {
-  console.error("Unhandled promise rejection:", reason);
-});
-
-process.on("uncaughtException", async (error) => {
-  console.error("Uncaught exception:", error);
-  try {
-    await pool.end();
-  } catch (e) {
-    // ignore pool shutdown errors during crash
-  }
-  process.exit(1);
-});
-
-
 /**
  * Execute a function within a database transaction.
  * Automatically handles BEGIN, COMMIT, and ROLLBACK.
