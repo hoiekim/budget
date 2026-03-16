@@ -477,6 +477,55 @@ try {
 
 See `deleteAccounts` in `src/server/lib/postgres/repositories/accounts.ts` for an example.
 
+### Scheduled Task Concurrency
+
+Long-running scheduled tasks (e.g., sync) must guard against overlapping execution:
+
+```typescript
+let isSyncing = false;
+
+export const scheduledSync = async () => {
+  if (isSyncing) {
+    logger.warn('Skipping scheduled sync — previous still running');
+    setTimeout(scheduledSync, ONE_HOUR);
+    return;
+  }
+  isSyncing = true;
+  try {
+    // ... sync logic ...
+  } finally {
+    isSyncing = false;
+    setTimeout(scheduledSync, ONE_HOUR);
+  }
+};
+```
+
+Without this guard, slow API responses or network timeouts can cause concurrent syncs that race on the same data.
+
+### Process Lifecycle Handlers
+
+Process-level handlers (`SIGINT`, `SIGTERM`, `unhandledRejection`, `uncaughtException`) belong in the application entry point (`start.ts`), not in library modules. Shutdown should drain resources in order:
+
+1. Stop accepting new connections (close HTTP server)
+2. Close database pool
+3. Exit process
+
+```typescript
+// start.ts — NOT in postgres/client.ts
+const server = app.listen(port, ...);
+
+const gracefulShutdown = async () => {
+  server.close();
+  await pool.end();
+  process.exit(0);
+};
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+```
+
+Library modules should not register global process handlers as side effects of import.
+
 ### External API Graceful Degradation
 
 When calling external APIs (Plaid, Polygon), handle unavailability gracefully:
