@@ -13,8 +13,14 @@ export interface JSONTransactionLabel {
   budget_id?: string | null;
   category_id?: string | null;
   memo?: string | null;
-  /** True when this label was auto-suggested (not user-confirmed) */
-  is_labels_suggested?: boolean | null;
+  /**
+   * Encodes the suggestion state for this label:
+   * - null: never labeled
+   * - 0.0: rejected (labels_category_id is also null)
+   * - 0 < x < 1: suggested, unreviewed — value is the actual FTS score
+   * - 1.0: confirmed (user accepted or manually set)
+   */
+  labels_category_confidence?: number | null;
 }
 
 export interface JSONTransaction extends PlaidTransaction {

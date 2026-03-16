@@ -26,7 +26,7 @@ import {
   LABEL_BUDGET_ID,
   LABEL_CATEGORY_ID,
   LABEL_MEMO,
-  LABEL_IS_SUGGESTED,
+  LABEL_CATEGORY_CONFIDENCE,
   RAW,
   UPDATED,
   IS_DELETED,
@@ -53,7 +53,7 @@ const txSchema = {
   [LABEL_BUDGET_ID]: "UUID",
   [LABEL_CATEGORY_ID]: "UUID",
   [LABEL_MEMO]: "TEXT",
-  [LABEL_IS_SUGGESTED]: "BOOLEAN DEFAULT FALSE",
+  [LABEL_CATEGORY_CONFIDENCE]: "FLOAT",
   [RAW]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
@@ -80,7 +80,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
   declare label_budget_id: string | null;
   declare label_category_id: string | null;
   declare label_memo: string | null;
-  declare label_is_suggested: boolean | null;
+  declare labels_category_confidence: number | null;
   declare raw: object | null;
   declare updated: string;
   declare is_deleted: boolean;
@@ -103,7 +103,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
     label_budget_id: isNullableString,
     label_category_id: isNullableString,
     label_memo: isNullableString,
-    label_is_suggested: isNullableBoolean,
+    labels_category_confidence: isNullableNumber,
     raw: isNullableObject,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
@@ -129,7 +129,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
         budget_id: this.label_budget_id,
         category_id: this.label_category_id,
         memo: this.label_memo,
-        is_labels_suggested: this.label_is_suggested,
+        labels_category_confidence: this.labels_category_confidence,
       },
       location: {
         address: null,
@@ -187,7 +187,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
       if (!isUndefined(tx.label.budget_id)) r.label_budget_id = tx.label.budget_id;
       if (!isUndefined(tx.label.category_id)) r.label_category_id = tx.label.category_id;
       if (!isUndefined(tx.label.memo)) r.label_memo = tx.label.memo;
-      if (!isUndefined(tx.label.is_labels_suggested)) r.label_is_suggested = tx.label.is_labels_suggested;
+      if (!isUndefined(tx.label.labels_category_confidence)) r.labels_category_confidence = tx.label.labels_category_confidence;
     }
     const { label: _label, ...providerData } = tx;
     r.raw = providerData;

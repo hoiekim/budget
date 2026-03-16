@@ -99,7 +99,7 @@ export const LOCATION_REGION = "location_region";
 export const LOCATION_CITY = "location_city";
 export const LABEL_CATEGORY_ID = "label_category_id";
 export const LABEL_MEMO = "label_memo";
-export const LABEL_IS_SUGGESTED = "label_is_suggested";
+export const LABEL_CATEGORY_CONFIDENCE = "labels_category_confidence";
 
 export const MERCHANT_HASH = "merchant_hash";
 export const ACCEPT_COUNT = "accept_count";
