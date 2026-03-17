@@ -26,6 +26,12 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
 
   if (pwMatches && user) {
     const maskedUser = maskUser(user);
+    await new Promise<void>((resolve, reject) => {
+      req.session.regenerate((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
     req.session.user = maskedUser;
     return { status: "success", body: maskedUser };
   }
