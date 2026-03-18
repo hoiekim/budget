@@ -34,7 +34,7 @@ export const AccountsPage = () => {
 
     filteredAccounts.forEach((a, i) => {
       const balanceHistory = balanceData.get(a.id);
-      const value = balanceHistory.get(viewDateDate) || 0;
+      const value = balanceHistory.get(viewDateDate) || getAccountBalance(a);
       balanceTotal += value;
       const color = colors[i % colors.length];
       const label = a.custom_name || a.name || "Unnamed";
