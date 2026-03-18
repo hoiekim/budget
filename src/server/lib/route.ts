@@ -35,7 +35,12 @@ export class Route<T> {
           return;
         } catch (error: unknown) {
           logger.error("Route handler error", { method, path }, error);
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            process.env.NODE_ENV === "production"
+              ? "Internal server error"
+              : error instanceof Error
+                ? error.message
+                : String(error);
           res.status(500).json({ status: "error", message });
         }
       }
