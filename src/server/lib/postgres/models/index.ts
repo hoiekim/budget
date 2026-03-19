@@ -15,4 +15,3 @@ export * from "./section";
 export * from "./category";
 export * from "./snapshot";
 export * from "./chart";
-export * from "./merchant_confidence";

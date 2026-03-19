@@ -80,7 +80,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
   declare label_budget_id: string | null;
   declare label_category_id: string | null;
   declare label_memo: string | null;
-  declare labels_category_confidence: number | null;
+  declare label_category_confidence: number | null;
   declare raw: object | null;
   declare updated: string;
   declare is_deleted: boolean;
@@ -103,7 +103,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
     label_budget_id: isNullableString,
     label_category_id: isNullableString,
     label_memo: isNullableString,
-    labels_category_confidence: isNullableNumber,
+    label_category_confidence: isNullableNumber,
     raw: isNullableObject,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
@@ -129,7 +129,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
         budget_id: this.label_budget_id,
         category_id: this.label_category_id,
         memo: this.label_memo,
-        labels_category_confidence: this.labels_category_confidence,
+        category_confidence: this.label_category_confidence,
       },
       location: {
         address: null,
@@ -187,7 +187,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
       if (!isUndefined(tx.label.budget_id)) r.label_budget_id = tx.label.budget_id;
       if (!isUndefined(tx.label.category_id)) r.label_category_id = tx.label.category_id;
       if (!isUndefined(tx.label.memo)) r.label_memo = tx.label.memo;
-      if (!isUndefined(tx.label.labels_category_confidence)) r.labels_category_confidence = tx.label.labels_category_confidence;
+      if (!isUndefined(tx.label.category_confidence)) r.label_category_confidence = tx.label.category_confidence;
     }
     const { label: _label, ...providerData } = tx;
     r.raw = providerData;

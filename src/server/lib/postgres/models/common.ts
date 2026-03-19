@@ -13,7 +13,6 @@ export const SECURITIES = "securities";
 export const TRANSACTIONS = "transactions";
 export const INVESTMENT_TRANSACTIONS = "investment_transactions";
 export const SPLIT_TRANSACTIONS = "split_transactions";
-export const MERCHANT_CATEGORY_CONFIDENCE = "merchant_category_confidence";
 export const BUDGETS = "budgets";
 export const SECTIONS = "sections";
 export const CATEGORIES = "categories";
@@ -99,12 +98,8 @@ export const LOCATION_REGION = "location_region";
 export const LOCATION_CITY = "location_city";
 export const LABEL_CATEGORY_ID = "label_category_id";
 export const LABEL_MEMO = "label_memo";
-export const LABEL_CATEGORY_CONFIDENCE = "labels_category_confidence";
+export const LABEL_CATEGORY_CONFIDENCE = "label_category_confidence";
 
-export const MERCHANT_HASH = "merchant_hash";
-export const ACCEPT_COUNT = "accept_count";
-export const REJECT_COUNT = "reject_count";
-export const LAST_REJECTED_AT = "last_rejected_at";
 
 export const INVESTMENT_TRANSACTION_ID = "investment_transaction_id";
 export const PRICE = "price";

@@ -16,11 +16,11 @@ export interface JSONTransactionLabel {
   /**
    * Encodes the suggestion state for this label:
    * - null: never labeled
-   * - 0.0: rejected (labels_category_id is also null)
+   * - 0.0: rejected (label.category_id is also null)
    * - 0 < x < 1: suggested, unreviewed — value is the actual FTS score
    * - 1.0: confirmed (user accepted or manually set)
    */
-  labels_category_confidence?: number | null;
+  category_confidence?: number | null;
 }
 
 export interface JSONTransaction extends PlaidTransaction {
