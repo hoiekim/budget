@@ -6,8 +6,9 @@ overrideConsoleLog();
 import path from "path";
 import express, { Router } from "express";
 import session from "express-session";
-import { initializePostgres, PostgresSessionStore, scheduledSync, pool } from "server";
-import { loginLimiter } from "server/lib/rate-limit";
+import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
+import { pool } from "server/lib/postgres/client";
+import { loginLimiter, startRateLimitCleanup, stopRateLimitCleanup } from "server/lib/rate-limit";
 import * as routes from "server/routes";
 import { logger } from "server/lib/logger";
 
@@ -125,16 +126,17 @@ app.get("*", (_req, res) => {
 
 const httpServer = app.listen(process.env.PORT || 3005, async () => {
   await initializePostgres();
-  logger.info("Budget app server is up", {
-    port: process.env.PORT || 3005,
-    env: process.env.NODE_ENV,
-  });
+  startRateLimitCleanup();
+  logger.info("Budget app server is up", { port: process.env.PORT || 3005 });
   scheduledSync();
 });
 
 // Graceful shutdown — stop accepting connections, drain pool, then exit
 const shutdown = async (signal: string) => {
   logger.info(`${signal} received — shutting down gracefully`);
+  stopRateLimitCleanup();
+
+  // Stop accepting new connections; wait for in-flight requests to finish
   await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   logger.info("HTTP server closed");
   try {
@@ -144,6 +146,12 @@ const shutdown = async (signal: string) => {
   }
   logger.info("Database pool closed");
   process.exit(0);
+
+  // Force exit after 10 seconds if connections don't drain
+  setTimeout(() => {
+    logger.info("Forcing shutdown after timeout");
+    process.exit(1);
+  }, 10_000).unref();
 };
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
