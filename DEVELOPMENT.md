@@ -538,149 +538,50 @@ When calling external APIs (Plaid, Polygon), handle unavailability gracefully:
 
 See `src/server/lib/polygon.ts` for the Polygon API graceful degradation pattern.
 
-### Typed Result Pattern for External APIs
+### Custom Hook Lifecycle: Timer Cleanup
 
-Use discriminated unions for external API results instead of throwing:
+Custom hooks that create timers (`setTimeout`, `setInterval`) **must** clean up on unmount. Without cleanup, callbacks fire after the component is gone, causing stale state updates or React warnings.
 
 ```typescript
-type ApiResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: "no_api_key" | "api_error" | "no_data"; message: string };
-```
-
-This forces callers to handle all failure modes explicitly. See `PolygonResult<T>` in `src/server/lib/polygon.ts`.
-
-**Always validate HTTP responses** before parsing:
-```typescript
-const response = await fetch(url);
-if (!response.ok) {
-  return { success: false, error: "api_error", message: `HTTP ${response.status}` };
-}
-const data = await response.json();
-```
-
-### SimpleFin Integration
-
-SimpleFin provides financial data through the [SimpleFin Bridge Protocol](https://www.simplefin.org/protocol.html):
-
-1. **Setup token** → base64-decoded URL → POST exchange → access URL
-2. **Access URL** → embedded credentials → Basic auth for data fetching
-3. **Data translation** → SimpleFin types are mapped to internal Plaid-compatible types
-
-Key files:
-- `src/server/lib/simple-fin/tokens.ts` — token exchange and URL decoding
-- `src/server/lib/simple-fin/data.ts` — data fetching
-- `src/server/lib/simple-fin/translators.ts` — type mapping to internal models
-- `src/server/lib/compute-tools/sync-simple-fin.ts` — sync orchestration
-
-The translator layer maps SimpleFin account types to Plaid `AccountType` enums, preserving compatibility with the rest of the codebase.
-
-## Accessibility
-
-### Interactive Elements
-
-**Use semantic HTML for interactive elements.** Non-interactive elements with `onClick` are not keyboard-accessible or screen-reader-friendly.
-
-```tsx
-// ❌ Bad - div is not keyboard-accessible
-<div className="AccountRow" onClick={onClickAccount}>
-
-// ✅ Good - button is focusable and announces as interactive
-<button className="AccountRow" onClick={onClickAccount}>
-
-// ✅ Acceptable - when button styling is impractical
-<div role="button" tabIndex={0} onClick={onClickAccount}
-  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClickAccount(); }}>
-```
-
-### Form Inputs
-
-**Every `<input>` must have an associated label:**
-
-```tsx
-// ✅ Good - explicit label
-<label htmlFor="budget-name">Budget Name</label>
-<input id="budget-name" value={name} onChange={onChange} />
-
-// ✅ Good - aria-label when visual label exists nearby
-<input aria-label="Budget capacity amount" value={amount} onChange={onChange} />
-```
-
-## Timer Cleanup in React
-
-**Every `setTimeout`/`setInterval` in a `useEffect` must be cleaned up on unmount.**
-
-```tsx
-// ❌ Bad - timer fires after unmount
-useEffect(() => {
-  const id = setTimeout(() => setSomething(true), 500);
-}, [dep]);
-
-// ✅ Good - cleanup prevents stale updates
-useEffect(() => {
-  const id = setTimeout(() => setSomething(true), 500);
-  return () => clearTimeout(id);
-}, [dep]);
-```
-
-For recursive polling patterns (e.g., waiting for a ref to be available), use a cancellation flag:
-
-```tsx
-useEffect(() => {
-  let cancelled = false;
-  const poll = () => {
-    if (cancelled) return;
-    if (!ref.current) { setTimeout(poll, 100); return; }
-    // ... use ref
+// ❌ Bad — timer leaks on unmount
+export const useDebounce = () => {
+  const timeout = useRef<NodeJS.Timeout | null>(null);
+  const debounce = (callback: () => void, delay = 50) => {
+    if (timeout.current) clearTimeout(timeout.current);
+    timeout.current = setTimeout(callback, delay);
   };
-  const id = setTimeout(poll, 100);
-  return () => { cancelled = true; clearTimeout(id); };
-}, [deps]);
+  return useCallback(debounce, []);
+};
+
+// ✅ Good — cleanup effect clears pending timers
+export const useDebounce = () => {
+  const timeout = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeout.current) clearTimeout(timeout.current);
+    };
+  }, []);
+
+  const debounce = useCallback((callback: () => void, delay = 50) => {
+    if (timeout.current) clearTimeout(timeout.current);
+    timeout.current = setTimeout(callback, delay);
+  }, []);
+
+  return debounce;
+};
 ```
 
-### Resource Ownership Verification
+**Rule:** Any hook that stores a timer ref must include a `useEffect` cleanup that clears it. This applies to `useDebounce`, `useThrottle`, and any custom animation/polling hooks.
 
-**Every delete/update route must verify the resource belongs to the authenticated user.**
+### Module-Level State Caching
 
-Repository-level `softDelete` by primary key alone is NOT sufficient — it doesn't scope by `user_id`:
+`stateMemory` (used by `useMemoryState`) is a module-level `Map` that persists across re-renders without localStorage I/O. Be aware:
 
-```typescript
-// ❌ Dangerous - deletes any user's resource
-await snapshotsTable.softDelete(snapshot_id);
-
-// ✅ Safe - verify ownership first
-const snapshot = await searchSnapshots(user, { snapshot_id });
-if (!snapshot) return { status: "failed", message: "Not found" };
-await snapshotsTable.softDelete(snapshot_id);
-
-// ✅ Better - scope the delete query itself by user_id
-await pool.query(
-  "UPDATE snapshots SET is_deleted = TRUE WHERE snapshot_id = $1 AND user_id = $2",
-  [snapshot_id, user.user_id]
-);
-```
-
-Routes like `deleteAccounts` correctly use `searchAccountsById(user, ...)` to verify ownership before deleting. All delete/update routes should follow this pattern.
-
-### Collection Lookup Performance
-
-When matching items across two collections (e.g., finding removed transactions), **pre-build lookup structures** instead of nested iteration:
-
-```typescript
-// ❌ O(n²) - .find() inside .forEach()
-storedTransactions.forEach((t) => {
-  const found = incoming.find((f) => f.id === t.id);
-  if (!found) removed.push(t);
-});
-
-// ✅ O(n) - Set lookup
-const incomingIds = new Set(incoming.map((t) => t.id));
-storedTransactions.forEach((t) => {
-  if (!incomingIds.has(t.id)) removed.push(t);
-});
-```
-
-This matters in sync operations where transaction lists can grow to thousands of entries.
+- Entries are **never evicted** — the map grows over the session lifetime
+- Use for small, bounded data (animation state, UI toggles)
+- Avoid for unbounded dynamic keys that grow with data size
+- If a component creates keys based on data IDs, old keys remain after data changes
 
 ## Common Tasks
 
