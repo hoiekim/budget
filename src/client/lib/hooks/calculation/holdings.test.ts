@@ -7,8 +7,10 @@ import {
   getPriceForHolding,
   inferCostBasis,
   getHoldingsValueData,
+  getEarningsForPeriod,
   SecurityPriceIndex,
 } from "./holdings";
+import { HoldingsValueData, HoldingValueSummary, HoldingValueHistory } from "../../models/Calcuations";
 import {
   HoldingSnapshotDictionary,
   SecuritySnapshotDictionary,
@@ -427,5 +429,177 @@ describe("getHoldingsValueData", () => {
     // Should use the Jan 20 snapshot (15 * 110 = 1650)
     const value = result.getHoldingValue("acc1_sec1", new Date("2026-01-15"));
     expect(value).toBe(1650);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getEarningsForPeriod tests
+// ---------------------------------------------------------------------------
+
+describe("getEarningsForPeriod", () => {
+  /**
+   * Build HoldingsValueData directly (bypasses Dictionary.set constraints
+   * in server test context) so we can test getEarningsForPeriod in isolation.
+   */
+  const jan = new Date("2026-01-15");
+  const feb = new Date("2026-02-15");
+
+  const buildData = (): HoldingsValueData => {
+    const data = new HoldingsValueData();
+    const history = new HoldingValueHistory();
+    history.set(
+      jan,
+      new HoldingValueSummary({
+        value: 1000,
+        costBasis: 800,
+        quantity: 10,
+        price: 100,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+    history.set(
+      feb,
+      new HoldingValueSummary({
+        value: 1200,
+        costBasis: 800,
+        quantity: 10,
+        price: 120,
+        security_id: "sec1",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+    data.set("acc1_sec1", history);
+    return data;
+  };
+
+  test("calculates periodReturn and unrealizedGain for a single holding", () => {
+    const data = buildData();
+    const result = getEarningsForPeriod(data, jan, feb);
+
+    expect(result.holdings).toHaveLength(1);
+    const h = result.holdings[0];
+
+    expect(h.holding_id).toBe("acc1_sec1");
+    expect(h.security_id).toBe("sec1");
+    expect(h.account_id).toBe("acc1");
+    expect(h.startValue).toBe(1000);
+    expect(h.endValue).toBe(1200);
+    expect(h.costBasis).toBe(800);
+    expect(h.unrealizedGain).toBe(400);  // 1200 - 800
+    expect(h.periodReturn).toBe(200);    // 1200 - 1000
+    expect(h.costBasisInferred).toBe(false);
+  });
+
+  test("aggregates totals correctly", () => {
+    const data = buildData();
+    const result = getEarningsForPeriod(data, jan, feb);
+
+    expect(result.totalStartValue).toBe(1000);
+    expect(result.totalEndValue).toBe(1200);
+    expect(result.totalCostBasis).toBe(800);
+    expect(result.totalUnrealizedGain).toBe(400);
+    expect(result.totalPeriodReturn).toBe(200);
+  });
+
+  test("uses 0 for startValue when no data at start date", () => {
+    const data = buildData();
+    const dec = new Date("2025-12-15");
+    // Dec has no snapshot; Jan does → startValue=0, endValue=1000
+    const result = getEarningsForPeriod(data, dec, jan);
+
+    expect(result.holdings).toHaveLength(1);
+    expect(result.holdings[0].startValue).toBe(0);
+    expect(result.holdings[0].endValue).toBe(1000);
+    expect(result.totalPeriodReturn).toBe(1000);
+  });
+
+  test("returns null totals when any holding lacks cost basis", () => {
+    const data = new HoldingsValueData();
+    const history = new HoldingValueHistory();
+    history.set(
+      jan,
+      new HoldingValueSummary({
+        value: 250,
+        costBasis: null,
+        quantity: 5,
+        price: 50,
+        security_id: "sec2",
+        account_id: "acc2",
+        costBasisInferred: false,
+      })
+    );
+    history.set(
+      feb,
+      new HoldingValueSummary({
+        value: 300,
+        costBasis: null,
+        quantity: 5,
+        price: 60,
+        security_id: "sec2",
+        account_id: "acc2",
+        costBasisInferred: false,
+      })
+    );
+    data.set("acc2_sec2", history);
+
+    const result = getEarningsForPeriod(data, jan, feb);
+    expect(result.holdings[0].costBasis).toBeNull();
+    expect(result.holdings[0].unrealizedGain).toBeNull();
+    expect(result.totalCostBasis).toBeNull();
+    expect(result.totalUnrealizedGain).toBeNull();
+    expect(result.totalPeriodReturn).toBe(50); // 300 - 250
+  });
+
+  test("returns empty result for empty holdingsValueData", () => {
+    const data = new HoldingsValueData();
+    const result = getEarningsForPeriod(data, jan, feb);
+    expect(result.holdings).toHaveLength(0);
+    expect(result.totalStartValue).toBe(0);
+    expect(result.totalEndValue).toBe(0);
+    expect(result.totalCostBasis).toBe(0);
+    expect(result.totalUnrealizedGain).toBe(0);
+    expect(result.totalPeriodReturn).toBe(0);
+  });
+
+  test("sums across multiple holdings", () => {
+    const data = buildData();
+    // Add a second holding
+    const history2 = new HoldingValueHistory();
+    history2.set(
+      jan,
+      new HoldingValueSummary({
+        value: 500,
+        costBasis: 400,
+        quantity: 5,
+        price: 100,
+        security_id: "sec3",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+    history2.set(
+      feb,
+      new HoldingValueSummary({
+        value: 600,
+        costBasis: 400,
+        quantity: 5,
+        price: 120,
+        security_id: "sec3",
+        account_id: "acc1",
+        costBasisInferred: false,
+      })
+    );
+    data.set("acc1_sec3", history2);
+
+    const result = getEarningsForPeriod(data, jan, feb);
+    expect(result.holdings).toHaveLength(2);
+    expect(result.totalStartValue).toBe(1500);  // 1000 + 500
+    expect(result.totalEndValue).toBe(1800);    // 1200 + 600
+    expect(result.totalCostBasis).toBe(1200);   // 800 + 400
+    expect(result.totalUnrealizedGain).toBe(600); // 400 + 200
+    expect(result.totalPeriodReturn).toBe(300);   // 200 + 100
   });
 });
