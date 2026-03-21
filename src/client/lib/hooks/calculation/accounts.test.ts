@@ -22,13 +22,15 @@ describe("getAccountBalance", () => {
     expect(getAccountBalance(account)).toBe(500);
   });
 
-  test("should return current + available for investment accounts", () => {
+  test("should return only current for investment accounts (available is already included in current)", () => {
     const account = new Account({
       account_id: "acc1",
       type: AccountType.Investment,
       balances: { current: 1000, available: 500, limit: null, iso_currency_code: "USD", unofficial_currency_code: null },
     });
-    expect(getAccountBalance(account)).toBe(1500);
+    // Plaid's `available` for investment accounts represents the cash component
+    // which is already included in `current`. Adding both would double-count cash.
+    expect(getAccountBalance(account)).toBe(1000);
   });
 
   test("should return only current for crypto exchange accounts", () => {
