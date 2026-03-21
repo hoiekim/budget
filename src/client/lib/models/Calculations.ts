@@ -244,6 +244,38 @@ export class BudgetHistory {
   };
 
   /**
+   * Aggregates all monthly data for a given year into a single BudgetSummary.
+   *
+   * - `sorted_amount` and `unsorted_amount` are summed across all months.
+   * - `number_of_unsorted_items` is summed across all months.
+   * - `rolled_over_amount` uses January's value (the amount rolled into this year
+   *   from the prior year's carry-forward).
+   */
+  aggregateYear = (year: number): BudgetSummary => {
+    const result = new BudgetSummary();
+    const januaryKey = `${year}-01`;
+    let hasJanuaryRollover = false;
+
+    Object.entries(this.data).forEach(([key, value]) => {
+      const keyYear = parseInt(key.split("-")[0], 10);
+      if (keyYear !== year) return;
+      result.sorted_amount += value.sorted_amount;
+      result.unsorted_amount += value.unsorted_amount;
+      result.number_of_unsorted_items += value.number_of_unsorted_items;
+      if (key === januaryKey) {
+        result.rolled_over_amount = value.rolled_over_amount;
+        hasJanuaryRollover = true;
+      }
+    });
+
+    if (!hasJanuaryRollover) {
+      result.rolled_over_amount = 0;
+    }
+
+    return result;
+  };
+
+  /**
    * Returns an array of budget history.
    * Values are 0-indexed where 0 is the month of the given `viewDate`,
    * 1 is the previous month, and so on.
