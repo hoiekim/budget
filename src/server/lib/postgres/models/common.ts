@@ -98,6 +98,8 @@ export const LOCATION_REGION = "location_region";
 export const LOCATION_CITY = "location_city";
 export const LABEL_CATEGORY_ID = "label_category_id";
 export const LABEL_MEMO = "label_memo";
+export const LABEL_CATEGORY_CONFIDENCE = "label_category_confidence";
+
 
 export const INVESTMENT_TRANSACTION_ID = "investment_transaction_id";
 export const PRICE = "price";
