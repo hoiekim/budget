@@ -293,6 +293,67 @@ Merges to `main` trigger:
 2. Push to Docker Hub
 3. Deployment webhook
 
+## Security Patterns
+
+### Centralized Authentication Middleware
+
+Authentication is enforced at the router level in `src/server/start.ts`, not per-route. All API endpoints require an authenticated session by default.
+
+```typescript
+const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
+router.use((req, res, next) => {
+  if (PUBLIC_PATHS.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
+    return next();
+  }
+  if (!req.session.user) {
+    res.status(401).json({ status: "failed", message: "Not authenticated." });
+    return;
+  }
+  next();
+});
+```
+
+**Rules:**
+- **New routes are protected automatically** — no need to add auth checks per route
+- **To make a route public**, add its path to `PUBLIC_PATHS` with justification
+- **Per-route `req.session.user` checks** remain as defense-in-depth but are not the primary gate
+- **Public routes must have external verification** (e.g., `/plaid-hook` verifies Plaid signatures)
+
+### Session Fixation Prevention
+
+On successful login, the session ID is regenerated to prevent session fixation attacks:
+
+```typescript
+await new Promise<void>((resolve, reject) => {
+  req.session.regenerate((err) => {
+    if (err) reject(err);
+    else resolve();
+  });
+});
+req.session.user = maskedUser;
+```
+
+This ensures that a pre-authentication session ID cannot be reused after login.
+
+### Input Validation
+
+Use the validation helpers from `src/server/lib/validation.ts`:
+
+```typescript
+import { requireBodyObject, requireStringField, validationError } from "server";
+
+const bodyResult = requireBodyObject(req);
+if (!bodyResult.success) return validationError(bodyResult.error!);
+
+const idResult = requireStringField(body, "account_id");
+if (!idResult.success) return validationError(idResult.error!);
+```
+
+**Rules:**
+- Always validate `req.body` is an object before accessing fields
+- Use `requireStringField` / `requireQueryString` for required parameters
+- Return structured validation errors, not raw error messages
+
 ## Design Patterns
 
 ### Balance Calculation: 3-Tier Price Fallback
