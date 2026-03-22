@@ -112,7 +112,8 @@ div.LoginPage {
   padding-top: 100px;
 }
 
-div.LoginPage > div {
+div.LoginPage > div,
+div.LoginPage > form > div {
   text-align: center;
   margin: 10px 0;
 }
