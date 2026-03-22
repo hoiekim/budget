@@ -1,4 +1,4 @@
-import { useCallback, useState, Dispatch, SetStateAction, useRef } from "react";
+import { useCallback, useEffect, useState, Dispatch, SetStateAction, useRef } from "react";
 import { Dictionary } from "client";
 
 const parseMap = (s: string) => new Map(JSON.parse(s));
@@ -63,29 +63,48 @@ export const useMemoryState = <T>(key: string | undefined, initialValue: T) => {
 
 export const useDebounce = () => {
   const timeout = useRef<NodeJS.Timeout | null>(null);
-  const debounce = (callback: () => void, delay = 50) => {
+
+  useEffect(() => {
+    return () => {
+      if (timeout.current) clearTimeout(timeout.current);
+    };
+  }, []);
+
+  const debounce = useCallback((callback: () => void, delay = 50) => {
     if (timeout.current) clearTimeout(timeout.current);
     timeout.current = setTimeout(callback, delay);
-  };
-  return useCallback(debounce, [timeout]);
+  }, []);
+
+  return debounce;
 };
 
 export const useThrottle = () => {
   const timeout = useRef<NodeJS.Timeout | null>(null);
   const timestamp = useRef<number | null>(null);
   const callbackStack = useRef<(() => void) | null>(null);
-  const throttle = (callback: () => void, threshold = 5000) => {
+
+  useEffect(() => {
+    return () => {
+      if (timeout.current) clearTimeout(timeout.current);
+      callbackStack.current = null;
+    };
+  }, []);
+
+  const throttle = useCallback((callback: () => void, threshold = 5000) => {
     callbackStack.current = callback;
     const now = Date.now();
     const latest = timestamp.current;
     const delay = threshold - (now - (latest || 0));
     if (latest && delay > 0) {
       if (timeout.current) clearTimeout(timeout.current);
-      timeout.current = setTimeout(callbackStack.current, delay);
+      timeout.current = setTimeout(() => {
+        if (callbackStack.current) callbackStack.current();
+      }, delay);
       return;
     }
     timestamp.current = now;
     callbackStack.current();
-  };
-  return useCallback(throttle, [timestamp]);
+  }, []);
+
+  return throttle;
 };
