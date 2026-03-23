@@ -167,7 +167,7 @@ div.Router > div {
     calc(110px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
 }
 
-div.Spiner {
+div.Spinner {
   width: 100vw;
   height: calc(100vh - 130px);
   display: flex;
@@ -175,24 +175,53 @@ div.Spiner {
   align-items: center;
 }
 
-div.Spiner > div {
+div.Spinner > div.svgContainer {
   position: absolute;
-  width: 40px;
-  height: 40px;
+  width: 58px;
+  height: 58px;
   display: flex;
   justify-content: center;
   align-items: center;
-  animation: spin 1.5s linear infinite;
+  animation: spin 2s linear infinite;
 }
 
-div.Spiner > div > div {
-  position: absolute;
-  width: 40px;
-  height: 40px;
+div.Spinner > div.svgContainer > svg {
+  width: 100%;
+  height: 100%;
   animation: spin 2s ease-in-out infinite;
 }
 
-div.Spiner > div > div::after {
+div.Spinner > div.svgContainer > svg > .arc {
+  animation: spinnerEffect 1s ease-in-out infinite alternate;
+}
+
+@keyframes spinnerEffect {
+  from {
+    stroke-dasharray: 0 157;
+  }
+  to {
+    stroke-dasharray: 78 157;
+  }
+}
+
+div.Spinner > div.dots {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: spin 2s linear infinite;
+}
+
+div.Spinner > div.dots > div {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  animation: spin 3s ease-in-out infinite;
+}
+
+div.Spinner > div.dots > div::after {
   position: absolute;
   content: "";
   background-color: #bbb;
@@ -202,45 +231,45 @@ div.Spiner > div > div::after {
   box-sizing: border-box;
 }
 
-div.Spiner > div > div:nth-child(1) {
+div.Spinner > div.dots > div:nth-child(1) {
   animation-delay: 0ms;
 }
 
-div.Spiner > div > div:nth-child(1)::after {
+div.Spinner > div.dots > div:nth-child(1)::after {
   bottom: 50%;
   left: 100%;
 }
 
-div.Spiner > div > div:nth-child(2) {
-  animation-delay: 100ms;
+div.Spinner > div.dots > div:nth-child(2) {
+  animation-delay: 50ms;
 }
 
-div.Spiner > div > div:nth-child(2)::after {
+div.Spinner > div.dots > div:nth-child(2)::after {
   bottom: 58.68%;
   left: 99.24%;
 }
 
-div.Spiner > div > div:nth-child(3) {
-  animation-delay: 250ms;
+div.Spinner > div.dots > div:nth-child(3) {
+  animation-delay: 100ms;
 }
 
-div.Spiner > div > div:nth-child(3)::after {
+div.Spinner > div.dots > div:nth-child(3)::after {
   bottom: 67.1%;
   left: 96.98%;
 }
 
-div.Spiner > div > div:nth-child(4) {
-  animation-delay: 450ms;
+div.Spinner > div.dots > div:nth-child(4) {
+  animation-delay: 200ms;
 }
 
-div.Spiner > div > div:nth-child(4)::after {
+div.Spinner > div.dots > div:nth-child(4)::after {
   bottom: 75%;
   left: 93.3%;
 }
 
 @keyframes spin {
   to {
-    transform: rotate(360deg);
+    transform: rotate(720deg);
   }
 }
 

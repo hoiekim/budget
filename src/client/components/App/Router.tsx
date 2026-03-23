@@ -15,7 +15,7 @@ import {
   ChartAccountsPage,
   AccountDetailPage,
 } from "client/pages";
-import { Spiner } from "./Spiner";
+import { Spinner } from "./Spinner";
 
 const getPage = (path: string) => {
   if (path === PATH.LOGIN) return <LoginPage />;
@@ -60,7 +60,7 @@ const Router = () => {
           {transitioning && direction === "backward" && incomingPage}
         </div>
         <div className="currentPage">
-          {!user ? <></> : status.isInit ? currentPage : <Spiner />}
+          {!user ? <></> : status.isInit ? currentPage : <Spinner />}
         </div>
         <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
       </div>
@@ -81,7 +81,7 @@ const Router = () => {
           </aside>
         </>
       ) : (
-        <Spiner />
+        <Spinner />
       )}
     </div>
   );
