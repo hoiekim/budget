@@ -17,6 +17,11 @@ type AccessUrl = string;
 export const exchangeSetupToken = async (setupToken: SetupToken): Promise<AccessUrl> => {
   const setupUrl = Buffer.from(setupToken, "base64").toString();
   const response = await fetch(setupUrl, { method: "POST", headers: { "Content-Length": "0" } });
+  if (!response.ok) {
+    throw new Error(
+      `SimpleFin token exchange failed: ${response.status} ${response.statusText}`
+    );
+  }
   return await response.text();
 };
 
