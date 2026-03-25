@@ -200,7 +200,7 @@ div.Spinner > div.svgContainer > svg > .arc {
     stroke-dasharray: 0 157;
   }
   to {
-    stroke-dasharray: 78 157;
+    stroke-dasharray: 100 157;
   }
 }
 
@@ -218,7 +218,7 @@ div.Spinner > div.dots > div {
   position: absolute;
   width: 44px;
   height: 44px;
-  animation: spin 3s ease-in-out infinite;
+  animation: spin 2s ease-in-out infinite;
 }
 
 div.Spinner > div.dots > div::after {
@@ -250,7 +250,7 @@ div.Spinner > div.dots > div:nth-child(2)::after {
 }
 
 div.Spinner > div.dots > div:nth-child(3) {
-  animation-delay: 100ms;
+  animation-delay: 200ms;
 }
 
 div.Spinner > div.dots > div:nth-child(3)::after {
@@ -259,7 +259,7 @@ div.Spinner > div.dots > div:nth-child(3)::after {
 }
 
 div.Spinner > div.dots > div:nth-child(4) {
-  animation-delay: 200ms;
+  animation-delay: 500ms;
 }
 
 div.Spinner > div.dots > div:nth-child(4)::after {
