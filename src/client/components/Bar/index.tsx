@@ -41,6 +41,7 @@ export const Bar = ({
   const totalRatio = ratio + unlabeledRatio;
 
   const barColorTransitionTimeout = useRef<Timeout>();
+  const barAlertStepTimeout = useRef<Timeout>();
 
   useEffect(() => {
     if (!transitioning) {
@@ -49,12 +50,17 @@ export const Bar = ({
         const newAlertLevel = noAlert ? 0 : Math.floor(totalRatio);
         if (newAlertLevel === 2) {
           setAlertLevel(1);
-          setTimeout(() => setAlertLevel(2), 500);
+          clearTimeout(barAlertStepTimeout.current);
+          barAlertStepTimeout.current = setTimeout(() => setAlertLevel(2), 500);
         } else {
           setAlertLevel(newAlertLevel);
         }
       }, 500);
     }
+    return () => {
+      clearTimeout(barColorTransitionTimeout.current);
+      clearTimeout(barAlertStepTimeout.current);
+    };
   }, [transitioning, noAlert, totalRatio, setAlertLevel]);
 
   const alertClasses = [];
@@ -99,6 +105,9 @@ export const Bar = ({
         });
       }
     }
+    return () => {
+      clearTimeout(barMovingTimeout.current);
+    };
   }, [
     ratio,
     unlabeledRatio,
