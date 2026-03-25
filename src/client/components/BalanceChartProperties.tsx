@@ -99,7 +99,7 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Chart&nbsp;Name</span>
-          <input value={nameInput} onChange={onChangeName} />
+          <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
         </div>
         <div className="row keyValue">
           <span className="propertyName">Chart&nbsp;Type</span>
