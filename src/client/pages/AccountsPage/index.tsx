@@ -1,6 +1,6 @@
 import { AccountType } from "plaid";
 import { useEffect, useMemo, useState } from "react";
-import { cap, currencyCodeToSymbol } from "common";
+import { cap, currencyCodeToSymbol, ViewDate } from "common";
 import { colors, getAccountBalance, ScreenType, useAppContext, useDebounce } from "client";
 import { AccountsDonut, AccountsTable, DonutData } from "client/components";
 import "./index.css";
@@ -30,7 +30,15 @@ export const AccountsPage = () => {
         return !hide && type !== AccountType.Credit && (balances.current || balances.available);
       });
 
-    const viewDateDate = viewDate.getEndDate();
+    // For yearly view of the current (incomplete) year, viewDate.getEndDate()
+    // returns Dec 31 which has no balance data yet. Cap the lookup to the
+    // current month so the donut reflects actual accumulated balances.
+    const endDate = viewDate.getEndDate();
+    const today = new Date();
+    const viewDateDate =
+      viewDate.getInterval() === "year" && endDate > today
+        ? new ViewDate("month").getEndDate()
+        : endDate;
 
     filteredAccounts.forEach((a, i) => {
       const balanceHistory = balanceData.get(a.id);
