@@ -127,9 +127,11 @@ export abstract class Table<
     primaryKeyValue: ParamValue,
     data: QueryData,
     returning?: string[],
+    userId?: ParamValue,
   ): Promise<Record<string, unknown> | null> {
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {
       returning: returning ?? [this.primaryKey],
+      additionalWhere: userId !== undefined ? { column: "user_id", value: userId } : undefined,
     });
     if (!query) return null;
     const result = await pool.query(query.sql, query.values);
@@ -145,8 +147,13 @@ export abstract class Table<
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 
-  async softDelete(primaryKeyValue: ParamValue): Promise<boolean> {
-    const { sql, values } = buildSoftDelete(this.name, this.primaryKey, primaryKeyValue);
+  async softDelete(primaryKeyValue: ParamValue, userId?: ParamValue): Promise<boolean> {
+    const { sql, values } = buildSoftDelete(
+      this.name,
+      this.primaryKey,
+      primaryKeyValue,
+      userId !== undefined ? { column: "user_id", value: userId } : undefined,
+    );
     const result = await pool.query(sql, values);
     return result.rowCount !== null && result.rowCount > 0;
   }

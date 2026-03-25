@@ -69,12 +69,12 @@ export const updateChart = async (
 
   if (Object.keys(updates).length === 0) return false;
 
-  const model = await chartsTable.update(chart_id, updates);
+  const model = await chartsTable.update(chart_id, updates, undefined, user.user_id);
   return model !== null;
 };
 
 export const deleteChart = async (user: MaskedUser, chart_id: string): Promise<boolean> => {
-  return await chartsTable.softDelete(chart_id);
+  return await chartsTable.softDelete(chart_id, user.user_id);
 };
 
 export const deleteCharts = async (
@@ -84,7 +84,7 @@ export const deleteCharts = async (
   if (!chart_ids.length) return { deleted: 0 };
   let deleted = 0;
   for (const id of chart_ids) {
-    if (await chartsTable.softDelete(id)) deleted++;
+    if (await chartsTable.softDelete(id, user.user_id)) deleted++;
   }
   return { deleted };
 };
