@@ -144,7 +144,7 @@ const getStoredData = async (user: MaskedUser, item: JSONItem, startDate: Date) 
   return { accounts, holdings, transactions, investment_transactions };
 };
 
-const getRemovedTransactions = (
+export const getRemovedTransactions = (
   transactions: JSONTransaction[],
   storedTransactions: JSONTransaction[],
   startDate: Date,
@@ -161,7 +161,7 @@ const getRemovedTransactions = (
   return removedTransactions;
 };
 
-const getRemovedInvestmentTransactions = (
+export const getRemovedInvestmentTransactions = (
   investmentTransactions: JSONInvestmentTransaction[],
   storedInvestmentTransactions: JSONInvestmentTransaction[],
   startDate: Date,
