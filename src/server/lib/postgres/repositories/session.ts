@@ -1,5 +1,6 @@
 import { Store, SessionData as ExpressSessionData } from "express-session";
 import { sessionsTable, SessionModel, SESSION_ID, COOKIE_EXPIRES } from "../models";
+import { logger } from "../../logger";
 
 /**
  * Remove expired sessions from the database.
@@ -23,11 +24,11 @@ export class PostgresSessionStore extends Store {
       purgeSessions()
         .then((count) => {
           if (count > 0) {
-            console.info(`Purged ${count} expired session(s)`);
+            logger.info(`Purged ${count} expired session(s)`, { component: "sessions" });
           }
         })
         .catch((error) => {
-          console.error("Session cleanup error:", error);
+          logger.error("Session cleanup error", { component: "sessions" }, error);
         });
       this.cleanupInterval = setTimeout(runCleanup, 1000 * 60 * 60);
     };

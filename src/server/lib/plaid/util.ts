@@ -53,7 +53,7 @@ export const getProductionClient = () => {
   const { production } = PlaidEnvironments;
 
   if (!PLAID_SECRET_PRODUCTION) {
-    console.warn("[Plaid] Production secret not configured - webhook verification will fail");
+    logger.warn("Production secret not configured - webhook verification will fail", { component: "plaid" });
   }
 
   const config = new Configuration({
