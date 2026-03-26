@@ -93,11 +93,14 @@ router.use((req, _res, next) => {
 router.post("/login", loginLimiter);
 
 // Auth middleware: require authenticated session for all routes except public ones.
-// Public routes: /login (all methods — GET for session check, POST for login, DELETE for logout),
-// /plaid-hook (verified externally via Plaid signature), and /health (for monitoring/load balancers).
-const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
+// Public routes:
+//   /login  — GET (session check), POST (login), DELETE (logout). All methods needed.
+//   /plaid-hook — POST only. Plaid verifies authenticity via HMAC signature; no session needed.
+//   /health — GET only. Required by monitoring and load balancers without a session.
+// Exact match only — prefix matching would silently expose future sub-routes.
+const PUBLIC_PATHS = new Set(["/login", "/plaid-hook", "/health"]);
 router.use((req, res, next) => {
-  if (PUBLIC_PATHS.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
+  if (PUBLIC_PATHS.has(req.path)) {
     return next();
   }
   if (!req.session.user) {
