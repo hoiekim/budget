@@ -10,7 +10,7 @@ import {
   getEarningsForPeriod,
   SecurityPriceIndex,
 } from "./holdings";
-import { HoldingsValueData, HoldingValueSummary, HoldingValueHistory } from "../../models/Calcuations";
+import { HoldingsValueData, HoldingValueSummary, HoldingValueHistory } from "../../models/Calculations";
 import {
   HoldingSnapshotDictionary,
   SecuritySnapshotDictionary,
