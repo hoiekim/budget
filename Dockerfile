@@ -24,6 +24,6 @@ COPY --from=builder /app/build ./build
 # Use: docker run --env-file .env ...
 # Or Docker Compose: env_file: - .env
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:3005/api/health || exit 1
+  CMD bun -e "fetch('http://localhost:3005/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["bun", "./build/server/bundle.js"]
