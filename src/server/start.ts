@@ -114,15 +114,15 @@ Object.values(routes).forEach(({ path, handler }) => router.use(path, handler));
 
 app.use("/api", router);
 
-// In dev mode, Vite's dev server (port 3000) serves static files and proxies /api here.
-// Static file serving is only needed in production where the build output exists.
-if (process.env.NODE_ENV === "production") {
-  const clientPath = path.resolve(import.meta.dir, "..", "client");
-  app.use(express.static(clientPath));
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(clientPath, "index.html"));
-  });
-}
+// Serve the built client. In dev, the client/ dir doesn't exist (Vite serves it
+// on its own port), so express.static is a no-op and the wildcard never matches
+// real requests — safe to register unconditionally.
+// Guarding on NODE_ENV caused a prod outage when the env var was unset (PR #197).
+const clientPath = path.resolve(import.meta.dir, "..", "client");
+app.use(express.static(clientPath));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(clientPath, "index.html"));
+});
 
 const httpServer = app.listen(process.env.PORT || 3005, async () => {
   await initializePostgres();
