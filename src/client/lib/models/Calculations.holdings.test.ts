@@ -3,7 +3,7 @@ import {
   HoldingValueSummary,
   HoldingValueHistory,
   HoldingsValueData,
-} from "./Calcuations";
+} from "./Calculations";
 import { ViewDate } from "../../../common/utils";
 
 describe("HoldingValueSummary", () => {

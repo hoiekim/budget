@@ -6,7 +6,7 @@ export interface TransactionPostResponse {
   transaction_id: string;
 }
 
-export const postTrasactionRoute = new Route<TransactionPostResponse>(
+export const postTransactionRoute = new Route<TransactionPostResponse>(
   "POST",
   "/transaction",
   async (req) => {
