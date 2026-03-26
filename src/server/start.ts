@@ -35,8 +35,10 @@ app.use(
   express.json({
     limit: "1mb",
     verify: (req, _res, buf) => {
-      // Store raw body for Plaid webhook verification
-      if (req.url === "/plaid-hook") {
+      // Store raw body for Plaid webhook verification.
+      // req.url at this middleware level includes the /api prefix, so we match
+      // against "/api/plaid-hook" (not just "/plaid-hook").
+      if (req.url === "/api/plaid-hook") {
         (req as any).rawBody = buf.toString();
       }
     },
