@@ -19,7 +19,7 @@ export const setModulePaths = () => {
 };
 
 export const overrideConsoleLog = () => {
-  process.env.TZ = "America/Los_Angeles";
+  process.env.TZ = process.env.APP_TIMEZONE || "America/Los_Angeles";
   const { log, info, error } = console;
   console.log = (...args: unknown[]) => {
     const now = new Date();
