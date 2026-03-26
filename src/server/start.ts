@@ -42,7 +42,7 @@ app.use(
         (req as any).rawBody = buf.toString();
       }
     },
-  })
+  }),
 );
 
 app.use(
@@ -61,12 +61,12 @@ app.use(
 );
 
 app.use((_req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader(
-    'Content-Security-Policy',
+    "Content-Security-Policy",
     [
       "default-src 'self'",
       "script-src 'self' https://cdn.plaid.com",
@@ -77,7 +77,7 @@ app.use((_req, res, next) => {
       "font-src 'self' data:",
       "object-src 'none'",
       "base-uri 'self'",
-    ].join('; ')
+    ].join("; "),
   );
   next();
 });
@@ -126,7 +126,10 @@ if (process.env.NODE_ENV === "production") {
 
 const httpServer = app.listen(process.env.PORT || 3005, async () => {
   await initializePostgres();
-  logger.info("Budget app server is up", { port: process.env.PORT || 3005 });
+  logger.info("Budget app server is up", {
+    port: process.env.PORT || 3005,
+    env: process.env.NODE_ENV,
+  });
   scheduledSync();
 });
 
