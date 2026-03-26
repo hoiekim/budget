@@ -10,6 +10,13 @@ async function bundle() {
     target: "bun",
     external: ["bcrypt", "pg", "plaid"],
     minify: false,
+    // Prevent Bun from inlining process.env.NODE_ENV at bundle time.
+    // Without this, Bun bakes in the value of NODE_ENV from the build environment
+    // (typically "development" in Docker builder stages), making it a compile-time
+    // constant that runtime env config cannot override.
+    define: {
+      "process.env.NODE_ENV": 'process.env["NODE_ENV"]',
+    },
   });
 
   if (!result.success) {
