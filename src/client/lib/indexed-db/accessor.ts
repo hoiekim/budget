@@ -25,6 +25,7 @@ export enum StoreName {
 
 class IndexedDbAccessor {
   private db: IDBDatabase | null = null;
+  private available = true;
 
   private dbName: string;
   private dbVersion: number;
@@ -35,16 +36,37 @@ class IndexedDbAccessor {
     this.dbVersion = dbVersion;
   }
 
+  isAvailable(): boolean {
+    return this.available;
+  }
+
   private init = (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
+      if (!this.available) {
+        reject(new Error("IndexedDB is not available"));
+        return;
+      }
+
       if (this.db) {
         resolve(this.db);
         return;
       }
 
-      const request = indexedDB.open(this.dbName, this.dbVersion);
+      let request: IDBOpenDBRequest;
+      try {
+        request = indexedDB.open(this.dbName, this.dbVersion);
+      } catch (err) {
+        this.available = false;
+        console.warn("IndexedDB unavailable; local caching disabled.", err);
+        reject(err);
+        return;
+      }
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        this.available = false;
+        console.warn("IndexedDB unavailable; local caching disabled.", request.error);
+        reject(request.error);
+      };
       request.onsuccess = () => {
         this.db = request.result;
         resolve(this.db);
@@ -62,6 +84,7 @@ class IndexedDbAccessor {
   };
 
   save = async (storeName: StoreName, key: string, data: unknown): Promise<void> => {
+    if (!this.available) return;
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
 
@@ -75,6 +98,7 @@ class IndexedDbAccessor {
   };
 
   saveMany = async (storeName: StoreName, items: [string, unknown][]): Promise<void> => {
+    if (!this.available) return;
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
@@ -87,6 +111,7 @@ class IndexedDbAccessor {
   };
 
   delete = async (storeName: StoreName, key: string): Promise<void> => {
+    if (!this.available) return;
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
@@ -99,6 +124,7 @@ class IndexedDbAccessor {
   };
 
   load = async <T>(storeName: StoreName): Promise<{ [key: string]: T }> => {
+    if (!this.available) return {};
     const database = await this.init();
     const transaction = database.transaction(storeName, "readonly");
     const store = transaction.objectStore(storeName);
@@ -135,6 +161,7 @@ class IndexedDbAccessor {
   };
 
   clear = async (storeName: StoreName): Promise<void> => {
+    if (!this.available) return;
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
