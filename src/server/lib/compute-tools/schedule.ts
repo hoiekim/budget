@@ -3,7 +3,15 @@ import { getAllItems, logger, updateItemSyncStatus } from "server";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 
+let isSyncing = false;
+
 export const scheduledSync = async () => {
+  if (isSyncing) {
+    logger.warn("Skipping scheduled sync — previous sync still running");
+    setTimeout(scheduledSync, ONE_HOUR);
+    return;
+  }
+  isSyncing = true;
   logger.info("Scheduled sync started");
   try {
     const items = await getAllItems();
@@ -76,6 +84,7 @@ export const scheduledSync = async () => {
   } catch (err) {
     logger.error("Error occurred during scheduled sync", {}, err);
   } finally {
+    isSyncing = false;
     logger.info("Scheduled sync completed");
     setTimeout(scheduledSync, ONE_HOUR);
   }
