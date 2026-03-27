@@ -41,6 +41,30 @@ src/
 
 ## API Patterns
 
+### Authentication
+
+All API routes require an authenticated session by default. Authentication is enforced by centralized middleware in `start.ts` — individual routes do **not** need to check `req.session.user`.
+
+Public routes (login, webhooks, health) are explicitly allowlisted:
+
+```typescript
+const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
+```
+
+When adding a new public endpoint, add its path to `PUBLIC_PATHS`. All other routes automatically return 401 if no session exists.
+
+### Security Headers
+
+Security response headers are set globally in `start.ts` middleware:
+
+- **Content-Security-Policy** — restricts script/style/image sources to `'self'`
+- **X-Content-Type-Options: nosniff** — prevents MIME type sniffing
+- **X-Frame-Options: DENY** — prevents clickjacking
+- **X-XSS-Protection** — legacy XSS filter (defense-in-depth)
+- **Referrer-Policy: strict-origin-when-cross-origin**
+
+When adding new frontend features that load external resources (fonts, images, scripts), update the CSP directives in `start.ts` rather than disabling CSP.
+
 ### Route Definition
 
 Routes use a custom `Route` class:
