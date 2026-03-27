@@ -1,7 +1,7 @@
 import { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction } from "react";
 import { AccountType } from "plaid";
 import { numberToCommaString, toTitleCase } from "common";
-import { BalanceChart, getAccountBalance, useAppContext, useReorder } from "client";
+import { BalanceChart, useAppContext, useReorder } from "client";
 import { ChevronDownIcon, ChevronUpIcon, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
 import "./index.css";
@@ -48,7 +48,7 @@ export const BalanceChartRow = ({
     // Use historical balance for the selected view date so that switching
     // to a past month reflects the balance at that time rather than today's
     // live Plaid balance.
-    const historicalBalance = balanceData.get(a.id, date) || getAccountBalance(a);
+    const historicalBalance = balanceData.get(a.id, date) ?? 0;
     const stack = { type: a.type, name: a.custom_name || a.name, amount: historicalBalance };
     if (!configuration.account_ids.includes(a.id)) return;
     if (a.type === AccountType.Depository) column1.push(stack);
