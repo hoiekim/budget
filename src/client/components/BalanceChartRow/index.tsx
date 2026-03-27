@@ -38,6 +38,7 @@ export const BalanceChartRow = ({
   } = useReorder(chart.id, onSetOrder);
 
   const date = viewDate.getEndDate();
+  const today = new Date();
   const interval = viewDate.getInterval();
 
   const column1: StackData[] = [];
@@ -48,7 +49,8 @@ export const BalanceChartRow = ({
     // Use historical balance for the selected view date so that switching
     // to a past month reflects the balance at that time rather than today's
     // live Plaid balance.
-    const historicalBalance = balanceData.get(a.id, date) || getAccountBalance(a);
+    const fallback = date > today ? getAccountBalance(a) : 0;
+    const historicalBalance = balanceData.get(a.id, date) ?? fallback;
     const stack = { type: a.type, name: a.custom_name || a.name, amount: historicalBalance };
     if (!configuration.account_ids.includes(a.id)) return;
     if (a.type === AccountType.Depository) column1.push(stack);
