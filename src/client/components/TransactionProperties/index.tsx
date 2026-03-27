@@ -1,4 +1,4 @@
-import { ChangeEventHandler, useMemo, useState } from "react";
+import { ChangeEventHandler, useMemo, useState, useEffect } from "react";
 import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
 import { NewSplitTransactionGetResponse } from "server";
 import {
@@ -146,6 +146,42 @@ export const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
+  const [memoValue, setMemoValue] = useState(label.memo ?? "");
+
+  // Sync memo state when the transaction changes (e.g., user selects a different transaction)
+  useEffect(() => {
+    setMemoValue(label.memo ?? "");
+  }, [transaction_id, label.memo]);
+
+  const onChangeMemo: ChangeEventHandler<HTMLInputElement> = (e) => {
+    setMemoValue(e.target.value);
+  };
+
+  const onBlurMemo = async () => {
+    const trimmed = memoValue.trim();
+    const current = label.memo ?? "";
+    if (trimmed === current) return;
+    const newMemo = trimmed || null;
+    const r = await call.post("/api/transaction", {
+      transaction_id,
+      label: { memo: newMemo },
+    });
+    if (r.status === "success") {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const newTransactions = new TransactionDictionary(oldData.transactions);
+        const existing = newTransactions.get(transaction_id);
+        if (existing) {
+          const updated = new Transaction(existing);
+          updated.label.memo = newMemo;
+          newTransactions.set(transaction_id, updated);
+        }
+        newData.transactions = newTransactions;
+        return newData;
+      });
+    }
+  };
+
   const remainingAmount = transaction.getRemainingAmount(transactionFamilies);
 
   const onClickAdd = async () => {
@@ -243,6 +279,16 @@ export const TransactionProperties = ({ transaction }: Props) => {
         <div className="row keyValue">
           <span className="propertyName">Institution</span>
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
+        </div>
+        <div className="row keyValue">
+          <span className="propertyName">Memo</span>
+          <input
+            type="text"
+            value={memoValue}
+            placeholder="Add a note…"
+            onChange={onChangeMemo}
+            onBlur={onBlurMemo}
+          />
         </div>
       </div>
       {!splitTransactionInputRows?.length && (
