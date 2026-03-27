@@ -316,13 +316,11 @@ div.Router:not(.transitioning.backward) > div.currentPage {
   left: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  .colored {
-    filter: invert(100%);
-  }
-  .notification::after {
-    filter: invert(100%);
-  }
+.colored {
+  filter: invert(100%);
+}
+.notification::after {
+  filter: invert(100%);
 }
 
 .notification {
