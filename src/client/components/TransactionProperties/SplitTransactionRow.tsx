@@ -45,6 +45,7 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
+      if (!e.name.trim()) return;
       const component = (
         <option
           key={`split_transaction_${split_transaction_id}_budget_option_${e.budget_id}`}

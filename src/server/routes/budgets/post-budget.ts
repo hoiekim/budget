@@ -19,6 +19,10 @@ export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
 
   const { budget_id, ...data } = body;
 
+  if (typeof data.name === "string" && data.name.trim() === "") {
+    return { status: "failed", message: "Budget name cannot be empty." };
+  }
+
   try {
     await updateBudget(user, budget_id as string, data);
     return { status: "success" };

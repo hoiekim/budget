@@ -44,6 +44,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
+      if (!e.name.trim()) return;
       const component = (
         <option
           key={`investment_transaction_${id}_budget_option_${e.budget_id}`}
