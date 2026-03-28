@@ -165,7 +165,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const storedInvestmentTransactions = storedTransactionsResult.investment_transactions || [];
 
       const removed = getPlaidRemovedInvestmentTransactions(
-        investmentTransactions,
+        filledInvestments,
         storedInvestmentTransactions,
       );
       const removedIdSet = new Set(removed.map((r) => r.investment_transaction_id));
