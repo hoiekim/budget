@@ -6,8 +6,8 @@
 # Install dependencies
 bun install
 
-# Run tests
-bun test
+# Run tests (see Testing section for important details)
+bun run test
 
 # Run development server
 bun run dev
@@ -121,10 +121,15 @@ Write additional tests for existing uncovered lines when feasible. Check coverag
 ### Running Tests
 
 ```bash
-bun test                    # Run all tests
+bun run test               # All tests (use this — not bare `bun test`)
+bun run test:client        # Client-only tests (React components, hooks, common)
+bun run test:server        # Server-only tests (routes, repositories, utilities)
 bun test --watch           # Watch mode
-bun test src/path/file.test.ts  # Single file
+bun test src/path/file.test.ts  # Single file (server-side only; client tests need preload)
+bun run test:coverage      # With coverage report
 ```
+
+> **Always use `bun run test`, not bare `bun test`.** Client tests require a preload file (`src/client/test-setup.ts`) to initialize browser globals. Bare `bun test` mixes client and server contexts and causes `Dictionary.set() is disabled in server` failures for holdings calculation tests.
 
 ### Test Location
 
