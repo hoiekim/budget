@@ -39,7 +39,7 @@ export const BudgetBar = ({ budget, onSetOrder, hideEditButton }: Props) => {
       onClickInfo={onClickInfo}
       onClickEdit={onClickEdit}
       onSetOrder={onSetOrder}
-      hideEditButton={isUnnamed ? false : hideEditButton}
+      hideEditButton={hideEditButton}
     />
   );
 };
