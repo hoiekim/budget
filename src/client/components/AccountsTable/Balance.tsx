@@ -1,6 +1,6 @@
 import { AccountSubtype, AccountType } from "plaid";
 import { currencyCodeToSymbol, numberToCommaString } from "common";
-import { Account, useAppContext } from "client";
+import { Account, getAccountBalance, useAppContext } from "client";
 
 interface BalanceProps {
   account: Account;
@@ -16,9 +16,14 @@ export const Balance = ({ account }: BalanceProps) => {
   const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
   const currentString = numberToCommaString(current!);
 
+  const today = new Date();
   const viewDateDate = viewDate.getEndDate();
   const previousDate = viewDate.clone().previous().getEndDate();
-  const dynamicAmount = balanceHistory.get(viewDateDate) || 0;
+  // For future dates (e.g. year-end of the current year), fall back to the
+  // current balance rather than 0 so the row shows a meaningful value.
+  // For past dates with no history, show 0 (data was never recorded).
+  const fallback = viewDateDate > today ? getAccountBalance(account) : 0;
+  const dynamicAmount = balanceHistory.get(viewDateDate) ?? fallback;
   const previousAmount = balanceHistory.get(previousDate) || 0;
 
   if (type === AccountType.Credit) {
@@ -52,15 +57,14 @@ export const Balance = ({ account }: BalanceProps) => {
       </div>
     );
   } else if (type === AccountType.Investment) {
-    const combined = numberToCommaString(available! + current!);
     return (
       <div className="Balance">
         <div>
           {symbol}
-          {dynamicAmount ? numberToCommaString(dynamicAmount) : combined}
+          {dynamicAmount ? numberToCommaString(dynamicAmount) : currentString}
         </div>
         {!!previousAmount && (
-          <Changes currentAmount={available! + current!} previousAmount={previousAmount} />
+          <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
         )}
       </div>
     );
