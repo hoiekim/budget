@@ -127,6 +127,7 @@ export abstract class Table<
     primaryKeyValue: ParamValue,
     data: QueryData,
     returning?: string[],
+    userId?: string,
     client?: QueryExecutor,
   ): Promise<Record<string, unknown> | null> {
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {

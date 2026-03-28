@@ -98,7 +98,7 @@ export const upsertItems = async (
       } else {
         delete row.item_id;
         delete row.user_id;
-        const updated = await itemsTable.update(item.item_id, row, undefined, client);
+        const updated = await itemsTable.update(item.item_id, row, undefined, undefined, client);
         results.push(updated ? successResult(item.item_id, 1) : noChangeResult(item.item_id));
       }
     } catch (error) {
