@@ -203,7 +203,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
       label,
     });
 
-    await call.post("/api/split-transaction", newSplitTransaction);
+    const addResponse = await call.post("/api/split-transaction", newSplitTransaction);
+
+    if (addResponse.status !== "success") {
+      console.error("Failed to save split transaction:", addResponse.message);
+      return;
+    }
 
     setData((oldData) => {
       const newData = new Data(oldData);

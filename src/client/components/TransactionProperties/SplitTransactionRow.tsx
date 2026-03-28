@@ -147,7 +147,13 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
     const abs = Math.abs(+e.target.value || 0);
 
     if (!abs) {
-      await call.delete(`/api/split-transaction?id=${split_transaction_id}`);
+      const deleteResponse = await call.delete(
+        `/api/split-transaction?id=${split_transaction_id}`,
+      );
+      if (deleteResponse.status !== "success") {
+        console.error("Failed to delete split transaction:", deleteResponse.message);
+        return;
+      }
       setData((oldData) => {
         const newData = new Data(oldData);
         indexedDb.remove(StoreName.splitTransactions, split_transaction_id).catch(console.error);
@@ -161,7 +167,14 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
 
     const newAmount = abs * (isIncome ? -1 : 1);
 
-    await call.post("/api/split-transaction", { split_transaction_id, amount: newAmount });
+    const updateResponse = await call.post("/api/split-transaction", {
+      split_transaction_id,
+      amount: newAmount,
+    });
+    if (updateResponse.status !== "success") {
+      console.error("Failed to update split transaction amount:", updateResponse.message);
+      return;
+    }
     setData((oldData) => {
       const newData = new Data(oldData);
       const newSplit = new SplitTransaction(splitTransaction);
