@@ -33,6 +33,54 @@ import {
 } from "./create-snapshots";
 import { Products } from "plaid";
 
+/** Build O(n) lookup maps for stored transactions to avoid O(n²) in modelize. */
+export const buildTransactionLookupMaps = (
+  storedTransactions: JSONTransaction[],
+): {
+  byTransactionId: Map<string, JSONTransaction>;
+  byPendingId: Map<string, JSONTransaction>;
+  byCompoundKey: Map<string, JSONTransaction>;
+} => {
+  const byTransactionId = new Map<string, JSONTransaction>();
+  const byPendingId = new Map<string, JSONTransaction>();
+  const byCompoundKey = new Map<string, JSONTransaction>();
+  for (const f of storedTransactions) {
+    byTransactionId.set(f.transaction_id, f);
+    if (f.pending_transaction_id) byPendingId.set(f.pending_transaction_id, f);
+    byCompoundKey.set(`${f.account_id}:${f.name}:${f.amount}`, f);
+  }
+  return { byTransactionId, byPendingId, byCompoundKey };
+};
+
+/** Find the stored transaction matching an incoming Plaid transaction using O(1) map lookups. */
+export const findStoredTransaction = (
+  incoming: Pick<JSONTransaction, "transaction_id" | "account_id" | "name" | "amount">,
+  maps: ReturnType<typeof buildTransactionLookupMaps>,
+): JSONTransaction | undefined => {
+  return (
+    maps.byTransactionId.get(incoming.transaction_id) ??
+    maps.byPendingId.get(incoming.transaction_id) ??
+    maps.byCompoundKey.get(`${incoming.account_id}:${incoming.name}:${incoming.amount}`)
+  );
+};
+
+/** Identify recently-stored investment transactions that are no longer in the incoming list. */
+export const getPlaidRemovedInvestmentTransactions = (
+  incomingTransactions: JSONInvestmentTransaction[],
+  storedTransactions: JSONInvestmentTransaction[],
+): RemovedInvestmentTransaction[] => {
+  const incomingIds = new Set(incomingTransactions.map((f) => f.investment_transaction_id));
+  const removed: RemovedInvestmentTransaction[] = [];
+  storedTransactions.forEach((e) => {
+    const age = new Date().getTime() - new LocalDate(e.date).getTime();
+    if (age > TWO_WEEKS) return;
+    if (!incomingIds.has(e.investment_transaction_id)) {
+      removed.push({ investment_transaction_id: e.investment_transaction_id });
+    }
+  });
+  return removed;
+};
+
 export const syncPlaidTransactions = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
   if (!userItem) return;
@@ -60,25 +108,14 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const { items, added, removed, modified } = r;
 
-      // Build lookup maps once (O(n)) to avoid O(n²) in modelize
-      const storedByTransactionId = new Map<string, JSONTransaction>();
-      const storedByPendingId = new Map<string, JSONTransaction>();
-      const storedByCompoundKey = new Map<string, JSONTransaction>();
-      for (const f of storedTransactions) {
-        storedByTransactionId.set(f.transaction_id, f);
-        if (f.pending_transaction_id) storedByPendingId.set(f.pending_transaction_id, f);
-        storedByCompoundKey.set(`${f.account_id}:${f.name}:${f.amount}`, f);
-      }
+      const lookupMaps = buildTransactionLookupMaps(storedTransactions);
 
       const modelize = (e: (typeof added)[0]) => {
         const result: JSONTransaction = { ...e, label: {} };
         const { authorized_date: auth_date, date } = e;
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
-        const existing =
-          storedByTransactionId.get(e.transaction_id) ??
-          storedByPendingId.get(e.transaction_id) ??
-          storedByCompoundKey.get(`${e.account_id}:${e.name}:${e.amount}`);
+        const existing = findStoredTransaction(e, lookupMaps);
         if (existing) result.label = existing.label;
         return result;
       };
@@ -127,22 +164,17 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const storedTransactionsResult = await storedTransactionsPromise;
       const storedInvestmentTransactions = storedTransactionsResult.investment_transactions || [];
 
-      const removed: RemovedInvestmentTransaction[] = [];
-
-      // Build lookup Set once (O(n)) to avoid O(n²) in forEach
-      const investmentTransactionIds = new Set(
-        investmentTransactions.map((f) => f.investment_transaction_id),
+      const removed = getPlaidRemovedInvestmentTransactions(
+        investmentTransactions,
+        storedInvestmentTransactions,
       );
+      const removedIdSet = new Set(removed.map((r) => r.investment_transaction_id));
 
+      // Adjust counters for recent stored transactions that are still present (modified).
       storedInvestmentTransactions.forEach((e) => {
         const age = new Date().getTime() - new LocalDate(e.date).getTime();
         if (age > TWO_WEEKS) return;
-
-        const { investment_transaction_id } = e;
-
-        if (!investmentTransactionIds.has(investment_transaction_id)) {
-          removed.push({ investment_transaction_id });
-        } else {
+        if (!removedIdSet.has(e.investment_transaction_id)) {
           modifiedCount += 1;
           addedCount -= 1;
         }
