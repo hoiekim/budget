@@ -27,6 +27,8 @@ import {
   LABEL_CATEGORY_ID,
   LABEL_MEMO,
   LABEL_CATEGORY_CONFIDENCE,
+  TRANSFER_PAIR_ID,
+  TRANSFER_STATUS,
   RAW,
   UPDATED,
   IS_DELETED,
@@ -54,6 +56,8 @@ const txSchema = {
   [LABEL_CATEGORY_ID]: "UUID",
   [LABEL_MEMO]: "TEXT",
   [LABEL_CATEGORY_CONFIDENCE]: "FLOAT",
+  [TRANSFER_PAIR_ID]: "UUID",
+  [TRANSFER_STATUS]: "VARCHAR(20)",
   [RAW]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
@@ -81,6 +85,8 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
   declare label_category_id: string | null;
   declare label_memo: string | null;
   declare label_category_confidence: number | null;
+  declare transfer_pair_id: string | null;
+  declare transfer_status: "suggested" | "confirmed" | null;
   declare raw: object | null;
   declare updated: string;
   declare is_deleted: boolean;
@@ -104,6 +110,8 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
     label_category_id: isNullableString,
     label_memo: isNullableString,
     label_category_confidence: isNullableNumber,
+    transfer_pair_id: isNullableString,
+    transfer_status: isNullableString,
     raw: isNullableObject,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
@@ -131,6 +139,8 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
         memo: this.label_memo,
         category_confidence: this.label_category_confidence,
       },
+      transfer_pair_id: this.transfer_pair_id,
+      transfer_status: this.transfer_status as "suggested" | "confirmed" | null,
       location: {
         address: null,
         city: this.location_city,
@@ -189,6 +199,8 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
       if (!isUndefined(tx.label.memo)) r.label_memo = tx.label.memo;
       if (!isUndefined(tx.label.category_confidence)) r.label_category_confidence = tx.label.category_confidence;
     }
+    if (!isUndefined(tx.transfer_pair_id)) r.transfer_pair_id = tx.transfer_pair_id;
+    if (!isUndefined(tx.transfer_status)) r.transfer_status = tx.transfer_status;
     const { label: _label, ...providerData } = tx;
     r.raw = providerData;
     return r;

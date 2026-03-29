@@ -123,3 +123,6 @@ export const CHART_ID = "chart_id";
 export const CONFIGURATION = "configuration";
 
 export const NULL = "NULL";
+
+export const TRANSFER_PAIR_ID = "transfer_pair_id";
+export const TRANSFER_STATUS = "transfer_status";

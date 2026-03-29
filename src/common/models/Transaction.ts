@@ -52,6 +52,18 @@ export interface JSONTransaction extends PlaidTransaction {
    * Represents relations by pair of budget_id and category_id
    */
   label: JSONTransactionLabel;
+  /**
+   * Transfer pairing: UUID shared between the two sides of a transfer.
+   * null = not a transfer.
+   */
+  transfer_pair_id?: string | null;
+  /**
+   * Transfer confirmation status.
+   * "suggested" = auto-detected, pending user review.
+   * "confirmed" = user confirmed, excluded from income/expense totals.
+   * null = not a transfer.
+   */
+  transfer_status?: "suggested" | "confirmed" | null;
 }
 
 export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
