@@ -41,8 +41,26 @@ const cleanupStaleRecords = () => {
   }
 };
 
-// Schedule periodic cleanup
-setInterval(cleanupStaleRecords, CLEANUP_INTERVAL_MS);
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the periodic cleanup interval. Call from start.ts so the timer
+ * can be cleared on graceful shutdown (prevents event loop from staying alive).
+ */
+export const startRateLimitCleanup = () => {
+  if (cleanupTimer) return; // already running
+  cleanupTimer = setInterval(cleanupStaleRecords, CLEANUP_INTERVAL_MS);
+};
+
+/**
+ * Stop the periodic cleanup interval. Call from the SIGTERM/SIGINT handler.
+ */
+export const stopRateLimitCleanup = () => {
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
+  }
+};
 
 /**
  * Rate limiter middleware for login endpoint.
