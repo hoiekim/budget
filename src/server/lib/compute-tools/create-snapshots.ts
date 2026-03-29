@@ -20,6 +20,78 @@ import {
   upsertSnapshots,
 } from "server";
 import { getSecurityForSymbol } from "../polygon";
+import { logger } from "../logger";
+
+/**
+ * Detects duplicate accounts from the same Plaid item (e.g. co-branded cards
+ * reported as two separate accounts with identical balances and type).
+ *
+ * Detection criteria: two or more accounts share the same item_id, type,
+ * balances.current, balances.available, and balances.limit.
+ *
+ * Resolution: keep the account with a custom_name (user-configured) as visible.
+ * If none have a custom_name, keep the first and hide the rest. Accounts the
+ * user has already explicitly hidden are left unchanged.
+ *
+ * Only applies to accounts that are NEW (not yet stored), to avoid overriding
+ * deliberate user hide/show choices on previously-seen accounts.
+ */
+export const detectAndHideDuplicateAccounts = (
+  incomingAccounts: JSONAccount[],
+  existingAccounts: JSONAccount[],
+): JSONAccount[] => {
+  const existingIds = new Set(existingAccounts.map((a) => a.account_id));
+
+  // Build a fingerprint key from the fields that identify a duplicate
+  const fingerprint = (a: JSONAccount): string => {
+    const cur = a.balances.current ?? "null";
+    const avail = a.balances.available ?? "null";
+    const limit = a.balances.limit ?? "null";
+    return `${a.item_id}|${a.type}|${cur}|${avail}|${limit}`;
+  };
+
+  // Group accounts by fingerprint
+  const groups = new Map<string, JSONAccount[]>();
+  for (const account of incomingAccounts) {
+    const key = fingerprint(account);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(account);
+  }
+
+  const result: JSONAccount[] = [];
+  for (const [, group] of groups) {
+    if (group.length < 2) {
+      result.push(...group);
+      continue;
+    }
+
+    // Multiple accounts with identical fingerprint — detect duplicates.
+    // Find the "preferred" account: one with a custom_name, or first in list.
+    const preferred =
+      group.find((a) => a.custom_name && a.custom_name.trim() !== "") ?? group[0];
+
+    for (const account of group) {
+      // Skip accounts that already exist in the DB — user may have set hide explicitly
+      if (existingIds.has(account.account_id)) {
+        result.push(account);
+        continue;
+      }
+      if (account.account_id === preferred!.account_id) {
+        result.push(account);
+      } else {
+        logger.info("Auto-hiding duplicate Plaid account", {
+          accountId: account.account_id,
+          name: account.name,
+          preferredId: preferred!.account_id,
+          itemId: account.item_id,
+        });
+        result.push({ ...account, hide: true });
+      }
+    }
+  }
+
+  return result;
+};
 
 export const upsertAccountsWithSnapshots = async (
   user: MaskedUser,
@@ -29,7 +101,11 @@ export const upsertAccountsWithSnapshots = async (
   const { user_id } = user;
   const existingMap = new Map(existingAccounts.map((a) => [a.account_id, a]));
 
-  const snapshots: JSONAccountSnapshot[] = incomingAccounts
+  // Auto-hide duplicate accounts from the same Plaid item before persisting.
+  // Only affects new accounts (not yet in the DB) to preserve user preferences.
+  const deduplicatedAccounts = detectAndHideDuplicateAccounts(incomingAccounts, existingAccounts);
+
+  const snapshots: JSONAccountSnapshot[] = deduplicatedAccounts
     .filter((a) => {
       const existing = existingMap.get(a.account_id);
       if (!existing) return true;
@@ -46,7 +122,7 @@ export const upsertAccountsWithSnapshots = async (
       };
     });
 
-  await upsertAccounts(user, incomingAccounts);
+  await upsertAccounts(user, deduplicatedAccounts);
   await upsertSnapshots(snapshots);
 
   return;
