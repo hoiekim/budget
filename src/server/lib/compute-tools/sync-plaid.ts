@@ -12,7 +12,7 @@ import {
   LocalDate,
   DEFAULT_GRAPH_OPTIONS,
 } from "common";
-import { AccountData } from "common";
+import { AccountBase } from "plaid";
 import {
   deleteInvestmentTransactions,
   deleteTransactions,
@@ -222,10 +222,12 @@ export const syncPlaidAccounts = async (item_id: string) => {
     item,
   );
   const storedAccountsMap = new Map(storedAccounts?.map((e) => [e.account_id, e]) || []);
-  const mergeWithExisting = (a: AccountData): JSONAccount => {
+  const mergeWithExisting = (a: AccountBase): JSONAccount => {
     const existing = storedAccountsMap.get(a.account_id);
     return {
       ...a,
+      institution_id: item.institution_id || "unknown",
+      item_id: item.item_id,
       hide: existing?.hide ?? false,
       custom_name: existing?.custom_name ?? "",
       label: existing?.label ?? { budget_id: null },

@@ -11,8 +11,8 @@ import {
   JSONTransaction,
   LocalDate,
   DEFAULT_GRAPH_OPTIONS,
-  AccountData,
 } from "common";
+import { AccountBase } from "plaid";
 import {
   deleteInvestmentTransactions,
   deleteSplitTransactionsByTransaction,
@@ -80,10 +80,12 @@ export const syncSimpleFinData = async (item_id: string) => {
   const investmentAccounts: JSONAccount[] = [];
   const otherAccounts: JSONAccount[] = [];
   const existingAccountsMap = new Map(storedAccounts.map((a) => [a.account_id, a]));
-  accounts.forEach((a: AccountData) => {
+  accounts.forEach((a: AccountBase) => {
     const existingAccount = existingAccountsMap.get(a.account_id);
     const incomingAccount: JSONAccount = {
       ...a,
+      institution_id: item.institution_id || "unknown",
+      item_id: item.item_id,
       hide: existingAccount?.hide ?? false,
       custom_name: existingAccount?.custom_name ?? "",
       label: existingAccount?.label ?? {},
