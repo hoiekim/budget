@@ -1,10 +1,7 @@
 import { PlaidError, PlaidErrorType } from "plaid";
 import { MaskedUser, updateItemStatus, logger } from "server";
-import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, JSONAccount } from "common";
+import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, JSONAccount, AccountData } from "common";
 import { getClient, ignorable_error_codes } from "./util";
-
-/** Account data as returned by the Plaid API, before app-specific fields are composed in. */
-export type PlaidRawAccount = Omit<JSONAccount, "graphOptions">;
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -13,7 +10,7 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
 
   type PlaidAccountsResponse = {
     items: JSONItem[];
-    accounts: PlaidRawAccount[];
+    accounts: AccountData[];
   };
 
   const data: PlaidAccountsResponse = {
@@ -21,14 +18,14 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
     accounts: [],
   };
 
-  const allAccounts: PlaidRawAccount[][] = [];
+  const allAccounts: AccountData[][] = [];
 
   const fetchJobs = items.map(async (item) => {
     const { item_id, access_token, institution_id } = item;
     try {
       const response = await client.accountsGet({ access_token });
       const { accounts } = response.data;
-      const filledAccounts: PlaidRawAccount[] = accounts.map((e) => {
+      const filledAccounts: AccountData[] = accounts.map((e) => {
         return {
           ...e,
           institution_id: institution_id || "unknown",
@@ -67,7 +64,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
 
   type PlaidHoldingsResponse = {
     items: JSONItem[];
-    accounts: PlaidRawAccount[];
+    accounts: AccountData[];
     holdings: JSONHolding[];
     securities: JSONSecurity[];
   };
@@ -79,7 +76,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
     securities: [],
   };
 
-  const allAccounts: PlaidRawAccount[][] = [];
+  const allAccounts: AccountData[][] = [];
   const allHoldings: JSONHolding[][] = [];
   const allSecurities: JSONSecurity[][] = [];
 
@@ -89,7 +86,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       const response = await client.investmentsHoldingsGet({ access_token });
       const { accounts, holdings, securities } = response.data;
 
-      const filledAccounts: PlaidRawAccount[] = accounts.map((e) => {
+      const filledAccounts: AccountData[] = accounts.map((e) => {
         return {
           ...e,
           institution_id: institution_id || "unknown",

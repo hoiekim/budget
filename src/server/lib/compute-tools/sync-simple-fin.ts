@@ -11,8 +11,8 @@ import {
   JSONTransaction,
   LocalDate,
   DEFAULT_GRAPH_OPTIONS,
+  AccountData,
 } from "common";
-import { SimpleFinRawAccount } from "../simple-fin/translators";
 import {
   deleteInvestmentTransactions,
   deleteSplitTransactionsByTransaction,
@@ -80,7 +80,7 @@ export const syncSimpleFinData = async (item_id: string) => {
   const investmentAccounts: JSONAccount[] = [];
   const otherAccounts: JSONAccount[] = [];
   const existingAccountsMap = new Map(storedAccounts.map((a) => [a.account_id, a]));
-  accounts.forEach((a: SimpleFinRawAccount) => {
+  accounts.forEach((a: AccountData) => {
     const existingAccount = existingAccountsMap.get(a.account_id);
     const incomingAccount: JSONAccount = {
       ...a,

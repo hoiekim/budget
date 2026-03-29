@@ -15,10 +15,8 @@ import {
   JSONItem,
   JSONSecurity,
   JSONTransaction,
+  AccountData,
 } from "common";
-
-/** Account data translated from SimpleFin, before app-specific fields are composed in. */
-export type SimpleFinRawAccount = Omit<JSONAccount, "graphOptions">;
 
 export interface SimpleFinAccount {
   id: string;
@@ -97,7 +95,7 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: JSONI
     name.toLowerCase().includes("investment") ||
     org.name.toLowerCase().includes("investment");
 
-  const account: SimpleFinRawAccount = {
+  const account: AccountData = {
     account_id: accountId,
     name,
     balances,

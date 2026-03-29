@@ -145,3 +145,11 @@ export interface PlaidAccount {
    */
   item_id: string;
 }
+
+/**
+ * Account data before the graphOptions field is composed in.
+ * Used as an intermediate type in Plaid and SimpleFin sync layers —
+ * both providers return account data that gets enriched with graphOptions
+ * from the existing stored account (or defaults) in a separate step.
+ */
+export type AccountData = Omit<JSONAccount, "graphOptions">;
