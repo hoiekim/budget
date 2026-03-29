@@ -5,12 +5,14 @@ overrideConsoleLog();
 
 import path from "path";
 import express, { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
 import { pool } from "server/lib/postgres/client";
 import { loginLimiter, startRateLimitCleanup, stopRateLimitCleanup } from "server/lib/rate-limit";
 import * as routes from "server/routes";
 import { logger } from "server/lib/logger";
+import { sendAlarm } from "server/lib/alarm";
 
 const app = express();
 
@@ -98,7 +100,7 @@ router.post("/login", loginLimiter);
 //   /plaid-hook — POST only. Plaid verifies authenticity via HMAC signature; no session needed.
 //   /health — GET only. Required by monitoring and load balancers without a session.
 // Exact match only — prefix matching would silently expose future sub-routes.
-const PUBLIC_PATHS = new Set(["/login", "/plaid-hook", "/health"]);
+const PUBLIC_PATHS = new Set(["/login", "/plaid-hook", "/health", "/client-error"]);
 router.use((req, res, next) => {
   if (PUBLIC_PATHS.has(req.path)) {
     return next();
@@ -111,6 +113,20 @@ router.use((req, res, next) => {
 });
 
 Object.values(routes).forEach(({ path, handler }) => router.use(path, handler));
+
+// Global 5xx error handler — catches unhandled errors thrown inside route handlers
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+router.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? (err.stack ?? "") : "";
+  logger.error("Unhandled route error", { message });
+  sendAlarm("Unhandled Route Error", `**Message:** ${message}\n\`\`\`\n${stack.slice(0, 1000)}\n\`\`\``).catch(
+    () => undefined,
+  );
+  if (!res.headersSent) {
+    res.status(500).json({ status: "error", message: "Internal server error" });
+  }
+});
 
 app.use("/api", router);
 
@@ -159,10 +175,20 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 
 process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled promise rejection", {}, reason);
+  const message = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? (reason.stack ?? "") : "";
+  sendAlarm(
+    "Unhandled Promise Rejection",
+    `**Message:** ${message}\n\`\`\`\n${stack.slice(0, 1000)}\n\`\`\``,
+  ).catch(() => undefined);
 });
 
 process.on("uncaughtException", async (error) => {
   logger.error("Uncaught exception", {}, error);
+  sendAlarm(
+    "Uncaught Exception",
+    `**Message:** ${error.message}\n\`\`\`\n${(error.stack ?? "").slice(0, 1000)}\n\`\`\``,
+  ).catch(() => undefined);
   try {
     await pool.end();
   } catch {

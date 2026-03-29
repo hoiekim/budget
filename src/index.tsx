@@ -24,3 +24,23 @@ call.get<LoginGetResponse>("/api/login").then((r) => {
     </React.StrictMode>
   );
 });
+
+// Report unhandled JS errors to server
+window.addEventListener("error", (event) => {
+  const body = JSON.stringify({
+    message: event.message,
+    stack: event.error?.stack ?? "",
+    url: window.location.href,
+  });
+  navigator.sendBeacon("/api/client-error", new Blob([body], { type: "application/json" }));
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason;
+  const body = JSON.stringify({
+    message: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? (reason.stack ?? "") : "",
+    url: window.location.href,
+  });
+  navigator.sendBeacon("/api/client-error", new Blob([body], { type: "application/json" }));
+});
