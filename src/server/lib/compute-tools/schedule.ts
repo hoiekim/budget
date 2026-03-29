@@ -1,5 +1,6 @@
 import { ItemProvider, ONE_HOUR } from "common";
 import { getAllItems, logger, updateItemSyncStatus } from "server";
+import { sendAlarm } from "server/lib/alarm";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 
@@ -29,6 +30,7 @@ export const scheduledSync = async () => {
           })
           .catch((error) => {
             logger.error("Sync Plaid accounts failed", { itemId: item_id }, error);
+            sendAlarm("Scheduled Sync Error: Plaid accounts failed", `**Item:** ${item_id}\n**Error:** ${error instanceof Error ? error.message : String(error)}`).catch(() => undefined);
             syncError = error instanceof Error ? error.message : String(error);
           });
 
@@ -41,6 +43,7 @@ export const scheduledSync = async () => {
             })
             .catch((error) => {
               logger.error("Sync Plaid transactions failed", { itemId: item_id }, error);
+              sendAlarm("Scheduled Sync Error: Plaid transactions failed", `**Item:** ${item_id}\n**Error:** ${error instanceof Error ? error.message : String(error)}`).catch(() => undefined);
               syncError = error instanceof Error ? error.message : String(error);
             });
         }
@@ -72,6 +75,7 @@ export const scheduledSync = async () => {
           })
           .catch((error) => {
             logger.error("Sync SimpleFin data failed", { itemId: item_id }, error);
+            sendAlarm("Scheduled Sync Error: SimpleFin data failed", `**Item:** ${item_id}\n**Error:** ${error instanceof Error ? error.message : String(error)}`).catch(() => undefined);
             syncError = error instanceof Error ? error.message : String(error);
           });
 
@@ -83,6 +87,7 @@ export const scheduledSync = async () => {
     }
   } catch (err) {
     logger.error("Error occurred during scheduled sync", {}, err);
+    sendAlarm("Scheduled Sync Failed", `**Error:** ${err instanceof Error ? err.message : String(err)}`).catch(() => undefined);
   } finally {
     isSyncing = false;
     logger.info("Scheduled sync completed");
