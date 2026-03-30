@@ -58,6 +58,14 @@ export const useMemoryState = <T>(key: string | undefined, initialValue: T) => {
     [key],
   );
 
+  // Remove the entry from stateMemory when the component unmounts so the Map
+  // doesn't grow unboundedly across the session lifetime.
+  useEffect(() => {
+    return () => {
+      if (key) stateMemory.delete(key);
+    };
+  }, [key]);
+
   return [state, setState] as const;
 };
 
