@@ -87,7 +87,11 @@ app.use((_req, res, next) => {
 const router = Router();
 
 router.use((req, _res, next) => {
-  logger.info("API request", { method: req.method, path: `/api${req.url}` });
+  // Suppress healthcheck logs — /api/health is polled every 30s by the
+  // Docker healthcheck and would otherwise flood logs with noise.
+  if (req.path !== "/health") {
+    logger.info("API request", { method: req.method, path: `/api${req.url}` });
+  }
   next();
 });
 
