@@ -7,7 +7,7 @@ import path from "path";
 import express, { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import session from "express-session";
-import { initializePostgres, PostgresSessionStore, scheduledSync } from "server";
+import { initializePostgres, PostgresSessionStore, scheduledSync, stopScheduledSync } from "server";
 import { pool } from "server/lib/postgres/client";
 import { loginLimiter, startRateLimitCleanup, stopRateLimitCleanup } from "server/lib/rate-limit";
 import * as routes from "server/routes";
@@ -165,6 +165,7 @@ const httpServer = app.listen(process.env.PORT || 3005, async () => {
 const shutdown = async (signal: string) => {
   logger.info(`${signal} received — shutting down gracefully`);
   stopRateLimitCleanup();
+  stopScheduledSync();
 
   // Stop accepting new connections; wait for in-flight requests to finish
   await new Promise<void>((resolve) => httpServer.close(() => resolve()));
