@@ -332,14 +332,16 @@ Data models are in `src/server/lib/postgres/models/` with base class providing c
 
 - TypeScript type checking (`bun run typecheck`)
 - ESLint linting (`bun run lint`)
-- Unit tests (`bun test`)
+- Unit tests (`bun run test`)
 
 ### Deployment
 
 Merges to `main` trigger:
-1. Docker image build
+1. Docker image build (Dockerfile builder stage runs `bun run typecheck`, `bun run test`, and `bun run build` — build fails if any of these fail)
 2. Push to Docker Hub
 3. Deployment webhook
+
+**Note on `NODE_ENV`:** Bun bakes `NODE_ENV` at build time into the output bundle. Setting `NODE_ENV` via `docker run -e` at runtime will have no effect on server behavior — configure environment-dependent behavior through other env vars (e.g., `APP_TIMEZONE`, `POSTGRES_HOST`).
 
 ## Security Patterns
 
