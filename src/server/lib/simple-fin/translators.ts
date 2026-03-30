@@ -15,6 +15,7 @@ import {
   JSONItem,
   JSONSecurity,
   JSONTransaction,
+  SimpleFinAccountBase,
 } from "common";
 
 export interface SimpleFinAccount {
@@ -94,20 +95,14 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: JSONI
     name.toLowerCase().includes("investment") ||
     org.name.toLowerCase().includes("investment");
 
-  const account: JSONAccount = {
+  const account: SimpleFinAccountBase = {
     account_id: accountId,
     name,
     balances,
-    institution_id: org.id,
-    item_id,
     type: isInvestment ? AccountType.Investment : AccountType.Other,
     mask: null,
     official_name: null,
     subtype: null,
-    custom_name: "",
-    hide: false,
-    label: {},
-    graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
   };
 
   return { institution, account };

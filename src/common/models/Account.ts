@@ -5,6 +5,28 @@ import {
   AccountBalance,
 } from "plaid";
 
+/**
+ * Represents the shape of an account returned by the SimpleFin data layer.
+ * This is distinct from `PlaidAccount` — SimpleFin doesn't have verification
+ * status or a mask, and balances follow a slightly different structure
+ * (no `limit` field from Plaid's perspective).
+ */
+export interface SimpleFinAccountBase {
+  account_id: string;
+  name: string;
+  balances: {
+    available: number;
+    current: number;
+    limit: null;
+    iso_currency_code: string;
+    unofficial_currency_code: string;
+  };
+  type: AccountType;
+  mask: null;
+  official_name: null;
+  subtype: null;
+}
+
 export interface AccountLabel {
   budget_id?: string | null;
 }
@@ -14,6 +36,17 @@ export interface AccountGraphOptions {
   useHoldingSnapshots: boolean;
   useTransactions: boolean;
 }
+
+/**
+ * Default graph display preferences applied to newly-created accounts.
+ * This constant should only be referenced in the composition/sync layer,
+ * never in external data-fetch layers (Plaid, SimpleFin, etc.).
+ */
+export const DEFAULT_GRAPH_OPTIONS: AccountGraphOptions = {
+  useSnapshots: true,
+  useHoldingSnapshots: true,
+  useTransactions: true,
+};
 
 export interface JSONAccount extends PlaidAccount {
   account_id: string;

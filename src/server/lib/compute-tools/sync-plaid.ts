@@ -10,6 +10,8 @@ import {
   JSONInvestmentTransaction,
   isDate,
   LocalDate,
+  DEFAULT_GRAPH_OPTIONS,
+  PlaidAccount,
 } from "common";
 import {
   deleteInvestmentTransactions,
@@ -220,16 +222,17 @@ export const syncPlaidAccounts = async (item_id: string) => {
     item,
   );
   const storedAccountsMap = new Map(storedAccounts?.map((e) => [e.account_id, e]) || []);
-  const mergeWithExisting = (a: JSONAccount) => {
-    const newAccount: JSONAccount = { ...a };
+  const mergeWithExisting = (a: PlaidAccount): JSONAccount => {
     const existing = storedAccountsMap.get(a.account_id);
-    if (existing) {
-      newAccount.hide = existing.hide;
-      newAccount.custom_name = existing.custom_name;
-      newAccount.label = existing.label;
-      newAccount.graphOptions = existing.graphOptions;
-    }
-    return newAccount;
+    return {
+      ...a,
+      institution_id: item.institution_id || "unknown",
+      item_id: item.item_id,
+      hide: existing?.hide ?? false,
+      custom_name: existing?.custom_name ?? "",
+      label: existing?.label ?? { budget_id: null },
+      graphOptions: existing?.graphOptions ?? DEFAULT_GRAPH_OPTIONS,
+    };
   };
 
   const syncAccounts = plaid
@@ -252,12 +255,8 @@ export const syncPlaidAccounts = async (item_id: string) => {
     })
     .then(async (r) => {
       if (!r) return;
-      r.accounts = r.accounts.map(mergeWithExisting);
-      return r;
-    })
-    .then(async (r) => {
-      if (!r) return;
-      const { accounts, holdings, securities } = r;
+      const accounts = r.accounts.map(mergeWithExisting);
+      const { holdings, securities } = r;
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       await upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings);
       await upsertSecuritiesWithSnapshots(securities);

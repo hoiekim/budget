@@ -95,8 +95,7 @@ describe("translateAccount", () => {
     expect(account.balances.available).toBe(1400.25);
     expect(account.balances.iso_currency_code).toBe("USD");
     expect(account.type).toBe(AccountType.Other);
-    expect(account.item_id).toBe("item-456");
-    expect(account.institution_id).toBe("org-123");
+    // institution_id and item_id are now assigned in sync-simple-fin.ts, not the translator
   });
 
   test("identifies investment account by holdings presence", () => {
@@ -144,10 +143,8 @@ describe("translateAccount", () => {
     expect(account.mask).toBeNull();
     expect(account.official_name).toBeNull();
     expect(account.subtype).toBeNull();
-    expect(account.custom_name).toBe("");
-    expect(account.hide).toBe(false);
-    expect(account.label).toEqual({});
-    expect(account.graphOptions).toEqual({ useSnapshots: true, useHoldingSnapshots: true, useTransactions: true });
+    // custom_name, hide, label, institution_id, item_id, graphOptions are all
+    // assigned in sync-simple-fin.ts (composition layer), not the translator.
   });
 });
 

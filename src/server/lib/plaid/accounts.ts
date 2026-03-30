@@ -1,6 +1,6 @@
 import { PlaidError, PlaidErrorType } from "plaid";
 import { MaskedUser, updateItemStatus, logger } from "server";
-import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, JSONAccount } from "common";
+import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
 export type ItemError = PlaidError & { item_id: string };
@@ -10,7 +10,7 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
 
   type PlaidAccountsResponse = {
     items: JSONItem[];
-    accounts: JSONAccount[];
+    accounts: PlaidAccount[];
   };
 
   const data: PlaidAccountsResponse = {
@@ -18,25 +18,13 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
     accounts: [],
   };
 
-  const allAccounts: JSONAccount[][] = [];
+  const allAccounts: PlaidAccount[][] = [];
 
   const fetchJobs = items.map(async (item) => {
-    const { item_id, access_token, institution_id } = item;
+    const { item_id, access_token } = item;
     try {
       const response = await client.accountsGet({ access_token });
-      const { accounts } = response.data;
-      const filledAccounts: JSONAccount[] = accounts.map((e) => {
-        return {
-          ...e,
-          institution_id: institution_id || "unknown",
-          item_id,
-          custom_name: "",
-          hide: false,
-          label: { budget_id: null },
-          graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
-        };
-      });
-      allAccounts.push(filledAccounts);
+      allAccounts.push(response.data.accounts as PlaidAccount[]);
       data.items.push({ ...item });
     } catch (error: unknown) {
       const errorWithResponse = error as { response?: { data?: PlaidError } };
@@ -65,7 +53,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
 
   type PlaidHoldingsResponse = {
     items: JSONItem[];
-    accounts: JSONAccount[];
+    accounts: PlaidAccount[];
     holdings: JSONHolding[];
     securities: JSONSecurity[];
   };
@@ -77,28 +65,17 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
     securities: [],
   };
 
-  const allAccounts: JSONAccount[][] = [];
+  const allAccounts: PlaidAccount[][] = [];
   const allHoldings: JSONHolding[][] = [];
   const allSecurities: JSONSecurity[][] = [];
 
   const fetchJobs = items.map(async (item) => {
-    const { item_id, access_token, institution_id } = item;
+    const { item_id, access_token } = item;
     try {
       const response = await client.investmentsHoldingsGet({ access_token });
       const { accounts, holdings, securities } = response.data;
 
-      const filledAccounts: JSONAccount[] = accounts.map((e) => {
-        return {
-          ...e,
-          institution_id: institution_id || "unknown",
-          item_id,
-          custom_name: "",
-          hide: false,
-          label: { budget_id: null },
-          graphOptions: { useSnapshots: true, useHoldingSnapshots: true, useTransactions: true },
-        };
-      });
-      allAccounts.push(filledAccounts);
+      allAccounts.push(accounts as PlaidAccount[]);
 
       const filledHoldings: JSONHolding[] = holdings.map((e) => {
         const holding_id = `${e.account_id}_${e.security_id}`;

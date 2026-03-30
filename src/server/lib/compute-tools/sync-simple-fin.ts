@@ -10,6 +10,8 @@ import {
   RemovedTransaction,
   JSONTransaction,
   LocalDate,
+  DEFAULT_GRAPH_OPTIONS,
+  SimpleFinAccountBase,
 } from "common";
 import {
   deleteInvestmentTransactions,
@@ -78,15 +80,17 @@ export const syncSimpleFinData = async (item_id: string) => {
   const investmentAccounts: JSONAccount[] = [];
   const otherAccounts: JSONAccount[] = [];
   const existingAccountsMap = new Map(storedAccounts.map((a) => [a.account_id, a]));
-  accounts.forEach((a) => {
+  accounts.forEach((a: SimpleFinAccountBase) => {
     const existingAccount = existingAccountsMap.get(a.account_id);
-    const incomingAccount: JSONAccount = { ...a };
-    if (existingAccount) {
-      incomingAccount.hide = existingAccount.hide;
-      incomingAccount.custom_name = existingAccount.custom_name;
-      incomingAccount.label = existingAccount.label;
-      incomingAccount.graphOptions = existingAccount.graphOptions;
-    }
+    const incomingAccount: JSONAccount = {
+      ...a,
+      institution_id: item.institution_id || "unknown",
+      item_id: item.item_id,
+      hide: existingAccount?.hide ?? false,
+      custom_name: existingAccount?.custom_name ?? "",
+      label: existingAccount?.label ?? {},
+      graphOptions: existingAccount?.graphOptions ?? DEFAULT_GRAPH_OPTIONS,
+    };
     if (a.type === AccountType.Investment) investmentAccounts.push(incomingAccount);
     else otherAccounts.push(incomingAccount);
   });
