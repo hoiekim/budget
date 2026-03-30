@@ -326,6 +326,10 @@ export async function migrateTable(
  * Returns true if successful, throws on fatal errors.
  * Uses a transaction to ensure atomicity - either all migrations succeed or none do.
  */
+// Arbitrary stable lock key for migration serialization across instances.
+// Using a hash of the string "budget-schema-migration" (decimal: 0x627564) = 6453604
+const MIGRATION_ADVISORY_LOCK_KEY = 6453604;
+
 export async function runMigrations(
   tables: Array<{ name: string; schema: Schema }>
 ): Promise<void> {
@@ -335,6 +339,11 @@ export async function runMigrations(
   const client = await pool.connect();
   
   try {
+    // Acquire a session-level advisory lock so concurrent startups (rolling
+    // deploys, pm2 cluster) don't race on ALTER TABLE ADD COLUMN statements.
+    await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_ADVISORY_LOCK_KEY]);
+    console.info("[Migration] Advisory lock acquired.");
+
     await client.query("BEGIN");
     
     const allResults: MigrationResult[] = [];
@@ -380,6 +389,14 @@ export async function runMigrations(
     await client.query("ROLLBACK");
     throw error;
   } finally {
+    // Release the advisory lock before returning the client to the pool.
+    // pg_advisory_unlock is a no-op if the lock isn't held, so this is safe
+    // even if the lock was never acquired.
+    try {
+      await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_ADVISORY_LOCK_KEY]);
+    } catch {
+      // Ignore unlock errors — connection may be broken
+    }
     client.release();
   }
 }
