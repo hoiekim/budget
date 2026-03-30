@@ -50,6 +50,7 @@ const TransactionRow = ({ transaction }: Props) => {
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
+      if (!e.name.trim()) return;
       const component = (
         <option key={`transaction_${id}_budget_option_${e.budget_id}`} value={e.budget_id}>
           {e.name}
