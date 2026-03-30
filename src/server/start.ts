@@ -95,15 +95,26 @@ router.use((req, _res, next) => {
 router.post("/login", loginLimiter);
 
 // Auth middleware: require authenticated session for all routes except public ones.
-// Public routes:
-//   /login  — GET (session check), POST (login), DELETE (logout). All methods needed.
-//   /plaid-hook — POST only. Plaid verifies authenticity via HMAC signature; no session needed.
-//   /health — GET only. Required by monitoring and load balancers without a session.
-// Exact match only — prefix matching would silently expose future sub-routes.
-const PUBLIC_PATHS = new Set(["/login", "/plaid-hook", "/health", "/client-error"]);
+// Entries are [path, allowedMethods] — use null to allow all methods.
+// Exact path match only — prefix matching would silently expose future sub-routes.
+//
+//   /login  — GET (session check), POST (login), DELETE (logout).
+//   /plaid-hook — POST only. Auth bypass is intentional: Plaid verifies via HMAC signature.
+//                 GET/DELETE/etc. hit this path unauthenticated but the route handler only
+//                 handles POST, so other methods fall through to 404.
+//   /health — GET only. Required by monitoring / load balancers without a session.
+const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
+  ["/login", null],
+  ["/plaid-hook", new Set(["POST"])],
+  ["/health", new Set(["GET"])],
+];
 router.use((req, res, next) => {
-  if (PUBLIC_PATHS.has(req.path)) {
-    return next();
+  const entry = PUBLIC_PATH_METHODS.find(([p]) => p === req.path);
+  if (entry) {
+    const [, allowedMethods] = entry;
+    if (!allowedMethods || allowedMethods.has(req.method)) {
+      return next();
+    }
   }
   if (!req.session.user) {
     res.status(401).json({ status: "failed", message: "Not authenticated." });
