@@ -12,6 +12,7 @@ import {
   DateLabel,
   DynamicCapacityInput,
   Graph,
+  HoldingsComposition,
   InstitutionSpan,
   MoneyLabel,
   ToggleInput,
@@ -212,6 +213,7 @@ export const AccountProperties = ({ account }: Props) => {
         </>
       )}
 
+      {type === AccountType.Investment && <HoldingsComposition account={account} />}
       <div className="propertyLabel">Navigate</div>
       <div className="property">
         <div className="row button">
