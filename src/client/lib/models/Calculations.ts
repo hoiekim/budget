@@ -497,7 +497,7 @@ export class HoldingsValueData {
 
   getAccountTotalValue = (accountId: string, date: Date): number => {
     let total = 0;
-    this.data.forEach((history, holdingId) => {
+    this.data.forEach((history, _holdingId) => {
       const summary = history.get(date);
       if (summary && summary.account_id === accountId) {
         total += summary.value;

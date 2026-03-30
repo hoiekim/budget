@@ -41,7 +41,7 @@ app.use(
       // req.url at this middleware level includes the /api prefix, so we match
       // against "/api/plaid-hook" (not just "/plaid-hook").
       if (req.url === "/api/plaid-hook") {
-        (req as any).rawBody = buf.toString();
+        (req as express.Request & { rawBody?: string }).rawBody = buf.toString();
       }
     },
   }),

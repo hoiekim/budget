@@ -10,6 +10,23 @@ import {
 
 const PLAID_LINK_STABLE_URL = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
 
+interface PlaidLinkHandler {
+  open: () => void;
+  exit: (force?: boolean) => void;
+  destroy: () => void;
+}
+
+interface PlaidInstance {
+  create: (config: {
+    token: string;
+    receivedRedirectUri?: string;
+    onSuccess: (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => void;
+    onExit: () => void;
+  }) => PlaidLinkHandler;
+}
+
+type PlaidWindow = Window & { Plaid?: PlaidInstance };
+
 interface PlaidConfig {
   token: string;
   receivedRedirectUri?: string;
@@ -61,7 +78,7 @@ export const PlaidLinkProvider = ({ children }: PlaidLinkProviderProps) => {
     );
     if (existingScript) {
       // Script already loaded, check if Plaid is available
-      if ((window as any).Plaid) {
+      if ((window as PlaidWindow).Plaid) {
         setScriptLoaded(true);
         return;
       }
@@ -101,7 +118,7 @@ export const PlaidLinkProvider = ({ children }: PlaidLinkProviderProps) => {
         return;
       }
 
-      const Plaid = (window as any).Plaid;
+      const Plaid = (window as PlaidWindow).Plaid;
       if (!Plaid) {
         console.error("Plaid is not available");
         return;

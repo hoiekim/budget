@@ -1,4 +1,4 @@
-import { getSquashedDateString, LocalDate, getRandomId } from "common";
+import { getSquashedDateString, LocalDate } from "common";
 import {
   Route,
   requireBodyObject,

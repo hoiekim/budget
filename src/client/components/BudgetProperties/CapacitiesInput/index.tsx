@@ -19,8 +19,7 @@ const CapacitiesInput = ({
   setCapacitiesInput,
   isSyncedInput,
 }: Props) => {
-  const { calculations, viewDate, calculate } = useAppContext();
-  const { capacityData } = calculations;
+  const { viewDate, calculate } = useAppContext();
   const interval = "month";
   const defaultCapacities = useRef(budgetLike.capacities.map((c) => c.toInputs().capacityInput));
 

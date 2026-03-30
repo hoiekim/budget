@@ -47,7 +47,7 @@ process.on("uncaughtException", async (error) => {
   logger.error("Uncaught exception", {}, error);
   try {
     await pool.end();
-  } catch (e) {
+  } catch {
     // ignore pool shutdown errors during crash
   }
   process.exit(1);
