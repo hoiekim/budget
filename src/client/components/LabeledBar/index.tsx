@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
-import { MAX_FLOAT, ViewDate, currencyCodeToSymbol, numberToCommaString } from "common";
+import { MAX_FLOAT, currencyCodeToSymbol, numberToCommaString } from "common";
 import { Budget, Category, Section, useReorder, useAppContext } from "client";
 import { Bar } from "client/components";
 import EditButton from "./EditButton";

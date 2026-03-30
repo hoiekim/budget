@@ -41,7 +41,7 @@ app.use(
       // req.url at this middleware level includes the /api prefix, so we match
       // against "/api/plaid-hook" (not just "/plaid-hook").
       if (req.url === "/api/plaid-hook") {
-        (req as any).rawBody = buf.toString();
+        (req as express.Request & { rawBody?: string }).rawBody = buf.toString();
       }
     },
   }),
@@ -130,7 +130,6 @@ router.use((req, res, next) => {
 Object.values(routes).forEach(({ path, handler }) => router.use(path, handler));
 
 // Global 5xx error handler — catches unhandled errors thrown inside route handlers
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 router.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   const stack = err instanceof Error ? (err.stack ?? "") : "";

@@ -8,7 +8,6 @@ import {
 import {
   getDateString,
   getDateTimeString,
-  JSONAccount,
   JSONHolding,
   JSONInstitution,
   JSONInvestmentTransaction,
@@ -60,8 +59,7 @@ export interface SimpleFinHolding {
   symbol: string;
 }
 
-export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: JSONItem) => {
-  const { item_id } = item;
+export const translateAccount = (simpleFinAccount: SimpleFinAccount, _item: JSONItem) => {
   const {
     id: accountId,
     org,
