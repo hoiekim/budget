@@ -426,6 +426,28 @@ This pattern was critical in PR #134 where budget sync zeroed out all amounts be
 
 **Rule:** When a function both transforms entities and looks up related data, capture all necessary references from the originals first.
 
+### Defensive Capacity Array Access
+
+**Always guard against empty `capacities` arrays before calling `getActiveCapacity()`.** Budget, Section, and Category entities store scheduled amounts in a `capacities` array. A newly-created or partially-migrated entity may have an empty array, which causes `getActiveCapacity()` to crash without a guard.
+
+```typescript
+// ❌ Bad — crashes if capacities is empty
+const capacity = budget.getActiveCapacity(date);
+const amount = capacity.month;
+
+// ✅ Good — getActiveCapacity() returns a default Capacity() when array is empty
+// This is guaranteed by the guard added in PR #139:
+getActiveCapacity = (date: Date) => {
+  if (!this.capacities.length) return new Capacity(); // guard
+  const sorted = this.sortCapacities("desc");
+  // ...
+};
+```
+
+The `getActiveCapacity()` method on `BudgetFamily` (`src/client/lib/models/BudgetFamily.ts`) returns a default `new Capacity()` (zero amount, no date) when the array is empty. Callers should expect this and handle a zero amount gracefully rather than treating it as an error.
+
+**Rule:** Never assume `capacities` is non-empty. The guard in `getActiveCapacity()` protects against crashes, but display logic should still handle zero-amount budgets visually (e.g., placeholder UI rather than blank cards).
+
 ### Authentication: Anti-Enumeration
 
 Login endpoints must not reveal whether a username exists:
