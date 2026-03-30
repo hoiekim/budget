@@ -15,8 +15,8 @@ import {
   JSONItem,
   JSONSecurity,
   JSONTransaction,
+  SimpleFinAccountBase,
 } from "common";
-import { AccountBase } from "plaid";
 
 export interface SimpleFinAccount {
   id: string;
@@ -95,7 +95,7 @@ export const translateAccount = (simpleFinAccount: SimpleFinAccount, item: JSONI
     name.toLowerCase().includes("investment") ||
     org.name.toLowerCase().includes("investment");
 
-  const account: AccountBase = {
+  const account: SimpleFinAccountBase = {
     account_id: accountId,
     name,
     balances,

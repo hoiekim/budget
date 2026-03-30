@@ -11,8 +11,8 @@ import {
   isDate,
   LocalDate,
   DEFAULT_GRAPH_OPTIONS,
+  PlaidAccount,
 } from "common";
-import { AccountBase } from "plaid";
 import {
   deleteInvestmentTransactions,
   deleteTransactions,
@@ -222,7 +222,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
     item,
   );
   const storedAccountsMap = new Map(storedAccounts?.map((e) => [e.account_id, e]) || []);
-  const mergeWithExisting = (a: AccountBase): JSONAccount => {
+  const mergeWithExisting = (a: PlaidAccount): JSONAccount => {
     const existing = storedAccountsMap.get(a.account_id);
     return {
       ...a,

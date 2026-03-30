@@ -1,6 +1,6 @@
-import { PlaidError, PlaidErrorType, AccountBase } from "plaid";
+import { PlaidError, PlaidErrorType } from "plaid";
 import { MaskedUser, updateItemStatus, logger } from "server";
-import { JSONItem, JSONHolding, JSONSecurity, ItemStatus } from "common";
+import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
 export type ItemError = PlaidError & { item_id: string };
@@ -10,7 +10,7 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
 
   type PlaidAccountsResponse = {
     items: JSONItem[];
-    accounts: AccountBase[];
+    accounts: PlaidAccount[];
   };
 
   const data: PlaidAccountsResponse = {
@@ -18,13 +18,13 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
     accounts: [],
   };
 
-  const allAccounts: AccountBase[][] = [];
+  const allAccounts: PlaidAccount[][] = [];
 
   const fetchJobs = items.map(async (item) => {
     const { item_id, access_token } = item;
     try {
       const response = await client.accountsGet({ access_token });
-      allAccounts.push(response.data.accounts);
+      allAccounts.push(response.data.accounts as PlaidAccount[]);
       data.items.push({ ...item });
     } catch (error: unknown) {
       const errorWithResponse = error as { response?: { data?: PlaidError } };
@@ -53,7 +53,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
 
   type PlaidHoldingsResponse = {
     items: JSONItem[];
-    accounts: AccountBase[];
+    accounts: PlaidAccount[];
     holdings: JSONHolding[];
     securities: JSONSecurity[];
   };
@@ -65,7 +65,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
     securities: [],
   };
 
-  const allAccounts: AccountBase[][] = [];
+  const allAccounts: PlaidAccount[][] = [];
   const allHoldings: JSONHolding[][] = [];
   const allSecurities: JSONSecurity[][] = [];
 
@@ -75,7 +75,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       const response = await client.investmentsHoldingsGet({ access_token });
       const { accounts, holdings, securities } = response.data;
 
-      allAccounts.push(accounts);
+      allAccounts.push(accounts as PlaidAccount[]);
 
       const filledHoldings: JSONHolding[] = holdings.map((e) => {
         const holding_id = `${e.account_id}_${e.security_id}`;
