@@ -10,6 +10,7 @@ import { PoolClient } from "pg";
 import { builtinsTypes } from "pg-types";
 import { pool } from "./client";
 import { Schema } from "./models/base";
+import { logger } from "../logger";
 
 /**
  * Normalized PostgreSQL type names used for comparison.
@@ -273,7 +274,7 @@ async function migrateTableWithClient(
         const sql = buildAddColumnSql(tableName, columnName, definition);
         await client.query(sql);
         result.added.push(columnName);
-        console.info(`[Migration] Added column ${tableName}.${columnName}`);
+        logger.info(`Added column ${tableName}.${columnName}`, { component: "migration" });
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         result.errors.push(`Failed to add ${columnName}: ${msg}`);
@@ -328,7 +329,7 @@ export async function migrateTable(
 export async function runMigrations(
   tables: Array<{ name: string; schema: Schema }>
 ): Promise<void> {
-  console.info("[Migration] Starting schema migration check...");
+  logger.info("Starting schema migration check", { component: "migration" });
   
   // Use a dedicated client for the transaction
   const client = await pool.connect();
@@ -354,13 +355,13 @@ export async function runMigrations(
     const totalWarnings = allResults.reduce((sum, r) => sum + r.warnings.length, 0);
 
     if (totalAdded > 0) {
-      console.info(`[Migration] Added ${totalAdded} column(s) across ${allResults.filter(r => r.added.length > 0).length} table(s)`);
+      logger.info(`Added ${totalAdded} column(s) across ${allResults.filter(r => r.added.length > 0).length} table(s)`, { component: "migration" });
     }
 
     if (totalWarnings > 0) {
       for (const result of allResults) {
         for (const warning of result.warnings) {
-          console.warn(`[Migration] ${result.table}: ${warning}`);
+          logger.warn(`${result.table}: ${warning}`, { component: "migration" });
         }
       }
     }
@@ -368,13 +369,13 @@ export async function runMigrations(
     // Fatal errors stop startup
     if (fatalErrors.length > 0) {
       const errorMsg = `Schema migration failed:\n${fatalErrors.join("\n")}`;
-      console.error(`[Migration] ${errorMsg}`);
+      logger.error(errorMsg, { component: "migration" });
       await client.query("ROLLBACK");
       throw new Error(errorMsg);
     }
 
     await client.query("COMMIT");
-    console.info("[Migration] Schema migration check complete.");
+    logger.info("Schema migration check complete", { component: "migration" });
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

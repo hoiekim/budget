@@ -1,5 +1,6 @@
 import * as jose from "jose";
 import { getProductionClient } from "./util";
+import { logger } from "../logger";
 
 // Cache for verification keys (keyed by key_id)
 const keyCache = new Map<string, { key: jose.JWK; fetchedAt: number }>();
@@ -28,7 +29,7 @@ export const verifyWebhook = async (
   signedJwt: string | undefined
 ): Promise<boolean> => {
   if (!signedJwt) {
-    console.warn("[Plaid Webhook] Missing Plaid-Verification header");
+    logger.warn("Missing Plaid-Verification header", { component: "plaid.webhook" });
     return false;
   }
 
@@ -38,14 +39,14 @@ export const verifyWebhook = async (
     const keyId = decodedHeader.kid;
 
     if (!keyId) {
-      console.warn("[Plaid Webhook] JWT missing key_id (kid)");
+      logger.warn("JWT missing key_id (kid)", { component: "plaid.webhook" });
       return false;
     }
 
     // Get the public key (from cache or fetch)
     const publicKey = await getVerificationKey(keyId);
     if (!publicKey) {
-      console.warn("[Plaid Webhook] Failed to get verification key");
+      logger.warn("Failed to get verification key", { component: "plaid.webhook" });
       return false;
     }
 
@@ -60,7 +61,7 @@ export const verifyWebhook = async (
     // Verify the request body hash matches
     const requestBodyHash = payload.request_body_sha256 as string | undefined;
     if (!requestBodyHash) {
-      console.warn("[Plaid Webhook] JWT missing request_body_sha256");
+      logger.warn("JWT missing request_body_sha256", { component: "plaid.webhook" });
       return false;
     }
 
@@ -70,13 +71,13 @@ export const verifyWebhook = async (
     const computedHash = hasher.digest("hex");
 
     if (computedHash !== requestBodyHash) {
-      console.warn("[Plaid Webhook] Request body hash mismatch");
+      logger.warn("Request body hash mismatch", { component: "plaid.webhook" });
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error("[Plaid Webhook] Verification failed:", error);
+    logger.error("Verification failed", { component: "plaid.webhook" }, error);
     return false;
   }
 };
@@ -103,7 +104,7 @@ const getVerificationKey = async (keyId: string): Promise<jose.JWK | null> => {
 
     return key;
   } catch (error) {
-    console.error("[Plaid Webhook] Failed to fetch verification key:", error);
+    logger.error("Failed to fetch verification key", { component: "plaid.webhook" }, error);
     return null;
   }
 };

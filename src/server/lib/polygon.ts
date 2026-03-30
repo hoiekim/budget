@@ -4,6 +4,7 @@
  */
 
 import { getDateString, getDateTimeString, getRandomId, JSONSecurity } from "common";
+import { logger } from "./logger";
 
 const POLYGON_HOST = "https://api.polygon.io";
 
@@ -12,7 +13,7 @@ const getApiKey = () => process.env.POLYGON_API_KEY;
 
 // Warn on startup if API key is missing
 if (!getApiKey()) {
-  console.warn("POLYGON_API_KEY not set - stock price fetching will be disabled");
+  logger.warn("POLYGON_API_KEY not set - stock price fetching will be disabled", { component: "polygon" });
 }
 
 /**
@@ -122,7 +123,7 @@ export const getClosePrice = async (
     return { success: true, data: price };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`Polygon API error for ${ticker_symbol}: ${message}`);
+    logger.error(`Polygon API error for ${ticker_symbol}: ${message}`, { component: "polygon" });
     return {
       success: false,
       error: "api_error",
@@ -162,7 +163,7 @@ export const getTickerDetail = async (
     return { success: true, data: { ticker_symbol, name, currency_name } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`Polygon API error for ticker detail ${ticker_symbol}: ${message}`);
+    logger.error(`Polygon API error for ticker detail ${ticker_symbol}: ${message}`, { component: "polygon" });
     return {
       success: false,
       error: "api_error",
@@ -182,11 +183,11 @@ export const getSecurityForSymbol = async (
 
   // Log errors but return undefined for backward compatibility
   if (!priceResult.success) {
-    console.warn(`getSecurityForSymbol: ${priceResult.message}`);
+    logger.warn(`getSecurityForSymbol: ${priceResult.message}`, { component: "polygon" });
     return undefined;
   }
   if (!detailResult.success) {
-    console.warn(`getSecurityForSymbol: ${detailResult.message}`);
+    logger.warn(`getSecurityForSymbol: ${detailResult.message}`, { component: "polygon" });
     return undefined;
   }
 

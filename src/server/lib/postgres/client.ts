@@ -1,4 +1,5 @@
 import { Pool, PoolClient, PoolConfig, types } from "pg";
+import { logger } from "../logger";
 
 const {
   POSTGRES_HOST: host = "localhost",
@@ -36,6 +37,22 @@ const config: PoolConfig = {
 };
 
 export const pool = new Pool(config);
+
+// Process-level error handlers (SIGTERM/SIGINT are handled in start.ts for ordered shutdown)
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection", {}, reason);
+});
+
+process.on("uncaughtException", async (error) => {
+  logger.error("Uncaught exception", {}, error);
+  try {
+    await pool.end();
+  } catch (e) {
+    // ignore pool shutdown errors during crash
+  }
+  process.exit(1);
+});
+
 
 /**
  * Execute a function within a database transaction.
