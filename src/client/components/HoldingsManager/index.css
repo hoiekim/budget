@@ -1,76 +1,7 @@
-.HoldingsManager .holdingsList {
-  padding: 0;
-}
-
-.HoldingsManager .holdingsHeader {
-  font-size: 12px;
-  color: #888;
-  border-bottom: 1px solid #333;
-  padding: 4px 10px;
-}
-
-.HoldingsManager .holdingRow {
-  padding: 6px 10px;
-  border-bottom: 1px solid #222;
+.HoldingsManager .holdingDetail {
+  display: flex;
   align-items: center;
-}
-
-.HoldingsManager .holdingRow:last-child {
-  border-bottom: none;
-}
-
-.HoldingsManager .col {
-  display: inline-block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.HoldingsManager .col.ticker {
-  width: 18%;
-  font-weight: 600;
-}
-
-.HoldingsManager .col.qty {
-  width: 20%;
-  text-align: right;
-}
-
-.HoldingsManager .col.cost {
-  width: 22%;
-  text-align: right;
-}
-
-.HoldingsManager .col.date {
-  width: 28%;
-  text-align: right;
-  font-size: 13px;
-  color: #aaa;
-}
-
-.HoldingsManager .col.action {
-  width: 12%;
-  text-align: right;
-}
-
-.HoldingsManager .removeBtn {
-  background: none;
-  border: none;
-  color: var(--red);
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  padding: 0 4px;
-}
-
-.HoldingsManager .emptyState {
-  color: #888;
-  font-style: italic;
-}
-
-/* Add holding form */
-.HoldingsManager .addHoldingForm {
-  padding: 8px 10px;
+  gap: 8px;
 }
 
 .HoldingsManager .tickerField {
@@ -108,11 +39,6 @@
   color: #888;
 }
 
-.HoldingsManager .snapshotDate {
-  color: #aaa;
-  font-size: 14px;
-}
-
 .HoldingsManager .formError {
   color: var(--red);
   font-size: 13px;
@@ -122,7 +48,6 @@
 .HoldingsManager .formActions {
   gap: 10px;
   justify-content: flex-end;
-  padding: 4px 0;
 }
 
 .HoldingsManager .submitBtn {
