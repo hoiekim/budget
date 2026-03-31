@@ -316,13 +316,6 @@ div.Router:not(.transitioning.backward) > div.currentPage {
   left: 0;
 }
 
-.colored {
-  filter: invert(100%);
-}
-.notification::after {
-  filter: invert(100%);
-}
-
 .notification {
   position: relative;
   display: inline-block;
