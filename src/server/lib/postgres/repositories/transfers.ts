@@ -2,7 +2,6 @@ import { JSONTransaction } from "common";
 import {
   MaskedUser,
   TransactionModel,
-  transactionsTable,
   TRANSACTION_ID,
   USER_ID,
   TRANSFER_PAIR_ID,
