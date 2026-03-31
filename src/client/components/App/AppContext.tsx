@@ -1,4 +1,4 @@
-import { useState, ReactNode } from "react";
+import { useState, useMemo, ReactNode } from "react";
 import { useLocalStorageState, ContextType, Context, useRouter, reduceStatuses } from "client";
 import { MaskedUser } from "server";
 import { Interval, ViewDate } from "common";
@@ -23,21 +23,24 @@ const AppContext = ({ initialUser, children }: Props) => {
 
   const status = reduceStatuses(data?.status, calculations?.status);
 
-  const contextValue: ContextType = {
-    data,
-    setData,
-    calculations,
-    calculate,
-    status,
-    user,
-    setUser,
-    router,
-    selectedInterval,
-    setSelectedInterval,
-    viewDate,
-    setViewDate,
-    screenType,
-  };
+  const contextValue: ContextType = useMemo(
+    () => ({
+      data,
+      setData,
+      calculations,
+      calculate,
+      status,
+      user,
+      setUser,
+      router,
+      selectedInterval,
+      setSelectedInterval,
+      viewDate,
+      setViewDate,
+      screenType,
+    }),
+    [data, setData, calculations, calculate, status, user, router, selectedInterval, setSelectedInterval, viewDate, screenType],
+  );
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;
 };
