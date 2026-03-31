@@ -38,9 +38,9 @@ export const HoldingsManager = ({ accountId }: Props) => {
 
   const fetchSnapshots = useCallback(async () => {
     setIsLoading(true);
-    const r = await call.get<GetHoldingSnapshotsResponse>(
-      `/api/snapshots/holding?account_id=${accountId}`,
-    ).catch(console.error);
+    const r = await call
+      .get<GetHoldingSnapshotsResponse>(`/api/snapshots/holding?account_id=${accountId}`)
+      .catch(console.error);
     if (r?.status === "success" && r.body) {
       setSnapshots(r.body.snapshots);
     }
@@ -93,8 +93,10 @@ export const HoldingsManager = ({ accountId }: Props) => {
     const costBasis = form.costBasis.trim() ? parseFloat(form.costBasis) : undefined;
 
     if (!ticker) return setSubmitError("Ticker symbol is required");
-    if (isNaN(quantity) || quantity <= 0) return setSubmitError("Quantity must be a positive number");
-    if (costBasis !== undefined && isNaN(costBasis)) return setSubmitError("Cost basis must be a number");
+    if (isNaN(quantity) || quantity <= 0)
+      return setSubmitError("Quantity must be a positive number");
+    if (costBasis !== undefined && isNaN(costBasis))
+      return setSubmitError("Cost basis must be a number");
 
     const body: Record<string, unknown> = {
       account_id: accountId,
@@ -148,45 +150,44 @@ export const HoldingsManager = ({ accountId }: Props) => {
       ) : snapshots.length === 0 ? (
         <div className="property">
           <div className="row">
-            <span className="propertyName emptyState">No holdings recorded</span>
+            <span className="propertyName disabled">No holdings recorded</span>
           </div>
         </div>
       ) : (
-        <div className="property holdingsList">
-          <div className="holdingsHeader row">
-            <span className="col ticker">Ticker</span>
-            <span className="col qty">Qty</span>
-            <span className="col cost">Cost/sh</span>
-            <span className="col date">Date</span>
-            <span className="col action" />
-          </div>
-          {snapshots.map((s) => (
-            <div key={s.snapshot_id} className="holdingRow row">
-              <span className="col ticker" title={s.security_name || undefined}>
-                {s.ticker_symbol || s.holding_security_id.slice(0, 8)}
-              </span>
-              <span className="col qty">{s.quantity ?? "—"}</span>
-              <span className="col cost">
-                {s.cost_basis != null ? `$${s.cost_basis.toFixed(2)}` : "—"}
-              </span>
-              <span className="col date">{s.snapshot_date?.slice(0, 10)}</span>
-              <span className="col action">
-                <button
-                  type="button"
-                  className="removeBtn"
-                  aria-label={`Remove ${s.ticker_symbol || "holding"}`}
-                  onClick={() => onDelete(s.snapshot_id)}
-                >
-                  ×
-                </button>
-              </span>
-            </div>
-          ))}
+        <div className="property">
+          {snapshots.map((s) => {
+            const label = s.ticker_symbol || s.holding_security_id.slice(0, 8);
+            const detail = [
+              s.quantity != null ? `${s.quantity} sh` : null,
+              s.cost_basis != null ? `$${s.cost_basis.toFixed(2)}/sh` : null,
+              s.snapshot_date?.slice(0, 10) ?? null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <div key={s.snapshot_id} className="row keyValue">
+                <span className="propertyName" title={s.security_name || undefined}>
+                  {label}
+                </span>
+                <span className="holdingDetail">
+                  <span className="small">{detail}</span>
+                  <button
+                    type="button"
+                    className="delete"
+                    aria-label={`Remove ${label}`}
+                    onClick={() => onDelete(s.snapshot_id)}
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {isAdding ? (
-        <form className="addHoldingForm property" onSubmit={onSubmit}>
+        <form className="property" onSubmit={onSubmit}>
           <div className="row keyValue">
             <label className="propertyName" htmlFor="holding-ticker">
               Ticker
@@ -238,10 +239,10 @@ export const HoldingsManager = ({ accountId }: Props) => {
           </div>
           <div className="row keyValue">
             <span className="propertyName">Snapshot&nbsp;date</span>
-            <span className="snapshotDate">{snapshotDate}</span>
+            <span className="small">{snapshotDate}</span>
           </div>
           {submitError && <div className="formError">{submitError}</div>}
-          <div className="formActions row">
+          <div className="row formActions">
             <button type="submit" className="submitBtn colored">
               Add
             </button>
