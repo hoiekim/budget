@@ -51,7 +51,9 @@ const Utility = () => {
    * to original position.
    */
   useEffect(() => {
-    window.document.ondragover = (e) => e.preventDefault();
+    const handler = (e: DragEvent) => e.preventDefault();
+    window.document.addEventListener("dragover", handler);
+    return () => window.document.removeEventListener("dragover", handler);
   }, []);
 
   return <></>;

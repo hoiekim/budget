@@ -4,12 +4,12 @@ import { sendAlarm } from "server/lib/alarm";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 
+let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
 
-export const scheduledSync = async () => {
+const runSync = async () => {
   if (isSyncing) {
     logger.warn("Skipping scheduled sync — previous sync still running");
-    setTimeout(scheduledSync, ONE_HOUR);
     return;
   }
   isSyncing = true;
@@ -91,6 +91,20 @@ export const scheduledSync = async () => {
   } finally {
     isSyncing = false;
     logger.info("Scheduled sync completed");
-    setTimeout(scheduledSync, ONE_HOUR);
+  }
+};
+
+/** Start the hourly sync interval. Runs once immediately, then every hour. */
+export const scheduledSync = () => {
+  runSync();
+  syncTimer = setInterval(runSync, ONE_HOUR);
+  syncTimer.unref();
+};
+
+/** Cancel the scheduled sync interval. Call during graceful shutdown. */
+export const stopScheduledSync = () => {
+  if (syncTimer !== null) {
+    clearInterval(syncTimer);
+    syncTimer = null;
   }
 };

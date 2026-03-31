@@ -82,7 +82,7 @@ export const PlaidLinkProvider = ({ children }: PlaidLinkProviderProps) => {
         setScriptLoaded(true);
         return;
       }
-      // Wait for existing script to load
+      // Wait for existing script to load — store references so we can clean up
       const onLoad = () => setScriptLoaded(true);
       const onError = () => setScriptError(new Error("Failed to load Plaid script"));
       existingScript.addEventListener("load", onLoad);
