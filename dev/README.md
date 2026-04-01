@@ -72,6 +72,7 @@ budget/
    - `PLAID_CLIENT_ID` and `PLAID_SECRET_*`: Credentials for Plaid API (optional)
    - `HOST_NAME`: Domain name for hosting (required for OAuth with Plaid)
    - `POLYGON_API_KEY`: API key for Polygon.io (optional, for investment metadata)
+   - `DISCORD_ALARM_WEBHOOK`: Discord webhook URL for server error alarms (unhandled exceptions, 5xx errors; optional, for prod monitoring)
 
 3. **Install dependencies**
 
@@ -128,13 +129,22 @@ The project uses a multi-step build process:
 Run tests with:
 
 ```bash
-bun test
+bun run test
+```
+
+> **Always use `bun run test`, not bare `bun test`.** Client tests require a preload file (`src/client/test-setup.ts`) to initialize browser globals. Bare `bun test` mixes client and server contexts and causes `Dictionary.set() is disabled in server` failures for holdings calculation tests.
+
+Run only client or server tests:
+
+```bash
+bun run test:client    # React components, hooks, common
+bun run test:server    # Routes, repositories, utilities
 ```
 
 Run tests with coverage reporting:
 
 ```bash
-bun test:coverage
+bun run test:coverage
 ```
 
 The project uses Bun's native test runner. Tests are co-located with source files (e.g., `src/server/lib/validation.test.ts`).
