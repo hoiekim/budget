@@ -33,17 +33,17 @@ cp .env.example .env.local
 
 (See more details about how to configure correct environment variables in the next section.)
 
-Make sure you have [npm](https://npmjs.com) installed in your machine and available in your terminal. Then use this command to install Budget.
+Make sure you have [Bun](https://bun.sh) installed in your machine and available in your terminal. Then use this command to install Budget.
 
 ```
 cd budget
-npm install
+bun install
 ```
 
 Then use this command to run Budget.
 
 ```
-npm start
+bun run start
 ```
 
 Now Budget app should be live [here](http://localhost:3005). Take a look!
