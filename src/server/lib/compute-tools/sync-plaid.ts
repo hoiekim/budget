@@ -126,10 +126,22 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const modeledModified = modified.map(modelize);
       const removedTransactionIds = removed.map((e) => e.transaction_id);
 
+      // When a pending transaction settles, Plaid sends the settled version with a
+      // pending_transaction_id but does NOT always include the pending transaction in
+      // the `removed` list. We must soft-delete the pending counterpart ourselves to
+      // prevent both from appearing in the UI (double-count bug).
+      const settledFromPendingIds = added
+        .filter((e) => e.pending_transaction_id)
+        .map((e) => lookupMaps.byTransactionId.get(e.pending_transaction_id!))
+        .filter((e): e is JSONTransaction => !!e && e.pending === true)
+        .map((e) => e.transaction_id);
+
+      const allRemovedIds = [...removedTransactionIds, ...settledFromPendingIds];
+
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),
-        deleteTransactions(user, removedTransactionIds),
-        ...removedTransactionIds.map((txId) => deleteSplitTransactionsByTransaction(user, txId)),
+        deleteTransactions(user, allRemovedIds),
+        ...allRemovedIds.map((txId) => deleteSplitTransactionsByTransaction(user, txId)),
       ];
 
       const updated = getDateString();
@@ -139,7 +151,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
         .then(() => {
           addedCount += added.length;
           modifiedCount += modified.length;
-          removedCount += removed.length;
+          removedCount += removed.length + settledFromPendingIds.length;
         })
         .then(() => upsertItems(user, partialItems))
         .catch((err) => {
