@@ -508,15 +508,15 @@ See `deleteAccounts` in `src/server/lib/postgres/repositories/accounts.ts` for a
 
 ### Scheduled Task Concurrency
 
-Long-running scheduled tasks (e.g., sync) must guard against overlapping execution:
+Long-running scheduled tasks (e.g., sync) must guard against overlapping execution. Use `setInterval + unref()` for the recurring timer — this is cleaner than recursive `setTimeout` and prevents the timer from blocking process exit:
 
 ```typescript
+let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
 
-export const scheduledSync = async () => {
+const runSync = async () => {
   if (isSyncing) {
     logger.warn('Skipping scheduled sync — previous still running');
-    setTimeout(scheduledSync, ONE_HOUR);
     return;
   }
   isSyncing = true;
@@ -524,12 +524,31 @@ export const scheduledSync = async () => {
     // ... sync logic ...
   } finally {
     isSyncing = false;
-    setTimeout(scheduledSync, ONE_HOUR);
+  }
+};
+
+/** Start the hourly sync interval. Runs once immediately, then every hour. */
+export const scheduledSync = () => {
+  runSync();
+  syncTimer = setInterval(runSync, ONE_HOUR);
+  syncTimer.unref(); // don't prevent clean process exit
+};
+
+/** Cancel the scheduled sync. Call during graceful shutdown. */
+export const stopScheduledSync = () => {
+  if (syncTimer !== null) {
+    clearInterval(syncTimer);
+    syncTimer = null;
   }
 };
 ```
 
-Without this guard, slow API responses or network timeouts can cause concurrent syncs that race on the same data.
+**Rules:**
+- Separate `runSync` (the logic) from `scheduledSync` (the timer setup) so tests can call `runSync` directly
+- Always call `.unref()` on module-level timers so they don't prevent clean process exit
+- Export a `stop*` function and call it in `start.ts` shutdown handler
+
+Without the concurrency guard, slow API responses or network timeouts can cause concurrent syncs that race on the same data.
 
 ### Process Lifecycle Handlers
 
