@@ -13,12 +13,12 @@
 
 .error-boundary-content h2 {
   margin: 0 0 0.5rem 0;
-  color: #333;
+  color: #d1d1d1;
 }
 
 .error-boundary-content p {
   margin: 0 0 1rem 0;
-  color: #666;
+  color: #a3a3a3;
 }
 
 .error-boundary-actions {
@@ -29,7 +29,7 @@
 
 .error-boundary-btn {
   padding: 0.5rem 1rem;
-  border: 1px solid #ccc;
+  border: 1px solid #474747;
   border-radius: 4px;
   background: white;
   cursor: pointer;
@@ -37,7 +37,7 @@
 }
 
 .error-boundary-btn:hover {
-  background: #f5f5f5;
+  background: #222;
 }
 
 .error-boundary-btn.primary {
@@ -53,14 +53,14 @@
 .error-boundary-details {
   margin-top: 1rem;
   text-align: left;
-  background: #f5f5f5;
+  background: #222;
   padding: 0.5rem;
   border-radius: 4px;
 }
 
 .error-boundary-details summary {
   cursor: pointer;
-  color: #666;
+  color: #a3a3a3;
 }
 
 .error-boundary-details pre {

@@ -20,15 +20,15 @@ body {
     "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #fff;
-  color: #333;
+  background-color: #191919;
+  color: #d1d1d1;
   overflow-y: scroll;
   overflow-x: hidden;
 }
 
 button {
-  background-color: #eee;
-  color: #333;
+  background-color: #292929;
+  color: #d1d1d1;
   border: none;
   border-radius: 3px;
   min-width: 20px;
@@ -37,9 +37,9 @@ button {
 }
 
 button:disabled {
-  background-color: #fff;
-  color: #ddd;
-  border: #ddd solid 0.5px;
+  background-color: #191919;
+  color: #383838;
+  border: #383838 solid 0.5px;
 }
 
 a {
@@ -64,13 +64,13 @@ input[type="checkbox"] {
 button:not(:disabled):hover,
 select:not(:disabled):hover,
 a:not(:disabled):hover {
-  background-color: #ddd;
+  background-color: #383838;
 }
 
 input:not([type="checkbox"]) {
   cursor: text;
-  background-color: #eee;
-  color: #333;
+  background-color: #292929;
+  color: #d1d1d1;
   border: none;
   height: 24px;
   padding: 0 5px;
@@ -78,8 +78,8 @@ input:not([type="checkbox"]) {
 }
 
 input:not([type="checkbox"]):disabled {
-  background-color: #eee;
-  color: #aaa;
+  background-color: #292929;
+  color: #666;
 }
 
 input.readonly {
@@ -88,8 +88,8 @@ input.readonly {
 }
 
 select {
-  background-color: #eee;
-  color: #333;
+  background-color: #292929;
+  color: #d1d1d1;
   border: none;
   height: 24px;
 }
@@ -105,7 +105,7 @@ table {
 div#root {
   min-height: 100vh;
   margin: auto;
-  background-color: #fff;
+  background-color: #191919;
 }
 
 div.LoginPage {
@@ -162,7 +162,7 @@ div.Router.wideScreen > aside {
 div.Router > div {
   width: min(100vw, 950px);
   min-height: 100vh;
-  background-color: #fff;
+  background-color: #191919;
   padding: calc(50px + env(safe-area-inset-top)) env(safe-area-inset-right)
     calc(110px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
 }
@@ -224,7 +224,7 @@ div.Spinner > div.dots > div {
 div.Spinner > div.dots > div::after {
   position: absolute;
   content: "";
-  background-color: #bbb;
+  background-color: #575757;
   border-radius: 50%;
   width: 5px;
   height: 5px;
@@ -353,7 +353,7 @@ div.Properties {
 
 div.Properties button:disabled {
   background-color: inherit;
-  color: #ccc;
+  color: #474747;
   border: none;
 }
 
@@ -363,7 +363,7 @@ div.Properties > .propertyLabel {
 }
 
 div.Properties > .property {
-  background-color: #eee;
+  background-color: #292929;
   border-radius: 5px;
   overflow: hidden;
 }
@@ -373,7 +373,7 @@ div.Properties > .property:not(:last-child) {
 }
 
 div.Properties > .property .disabled.lineThrough {
-  color: #888;
+  color: #858585;
   text-decoration: line-through;
 }
 
@@ -390,7 +390,7 @@ div.Properties .row button.delete {
 }
 
 div.Properties .row:not(:last-child) {
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid #474747;
 }
 
 div.Properties .row:first-child {
@@ -402,7 +402,7 @@ div.Properties .row:last-child {
 }
 
 div.Properties .row span.small {
-  color: #888;
+  color: #858585;
   font-size: 12px;
 }
 
@@ -417,7 +417,7 @@ div.Properties .row input {
 }
 
 div.Properties .row.keyValue span.propertyName {
-  color: #888;
+  color: #858585;
 }
 
 div.Properties .row > button {
@@ -429,7 +429,7 @@ div.Properties .row > button {
 }
 
 div.Properties .row.button:hover {
-  background-color: #ddd;
+  background-color: #383838;
 }
 
 .sidePadding {

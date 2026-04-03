@@ -53,10 +53,10 @@ div.TransactionsPage > .heading > div.select {
   position: absolute;
   top: 50px;
   width: calc(100% - 20px);
-  background-color: #eee;
+  background-color: #292929;
   display: block;
   border-radius: 10px;
-  border: 1px solid #aaa;
+  border: 1px solid #666;
   overflow: hidden;
 }
 
@@ -67,7 +67,7 @@ div.TransactionsPage > .heading > div.select * {
 
 div.TransactionsPage > .heading > div.select > div.selectLabel {
   padding: 10px;
-  border-bottom: 1px solid #aaa;
+  border-bottom: 1px solid #666;
   display: flex;
   justify-content: space-between;
   align-items: center;
