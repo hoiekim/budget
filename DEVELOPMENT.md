@@ -743,6 +743,33 @@ This matters in sync operations where transaction lists can grow to thousands of
 2. Add `index.tsx` and optional `index.css`
 3. Export from `src/client/components/index.ts`
 
+### Dark Mode CSS Convention
+
+The app is **dark-mode only** (PR #276). `ColorSchemeCover` and light-mode CSS have been removed.
+
+**When adding grey/neutral colors in CSS**, use the dark-mode transformation:
+
+```
+dark = 1 - 0.9 × light
+```
+
+Common mappings (light → dark):
+
+| Light | Dark |
+|---|---|
+| `#fff` (1.0) | `#0d0d0d` |
+| `#eee` (0.93) | `#116` (~`#111`) |
+| `#ddd` (0.87) | `#1f1f1f` |
+| `#ccc` (0.80) | `#2d2d2d` |
+| `#bbb` (0.73) | `#3b3b3b` |
+| `#aaa` (0.67) | `#494949` |
+| `#888` (0.53) | `#636363` |
+| `#666` (0.40) | `#7b7b7b` |
+| `#555` (0.33) | `#888` |
+| `#333` (0.20) | `#a3a3a3` |
+
+**Exception — `.colored` elements:** Elements with the `.colored` class (e.g. colored ActionButtons) use their original light-mode colors unchanged; these were reverse-transformed in the old system and should stay as-is.
+
 ### Adding Database Tables/Columns
 
 Schema migrations run automatically on server startup. The migration system compares TypeScript model definitions with the actual database schema and adds missing columns.
