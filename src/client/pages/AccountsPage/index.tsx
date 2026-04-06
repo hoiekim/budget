@@ -26,8 +26,8 @@ export const AccountsPage = () => {
     const filteredAccounts = accounts
       .toArray()
       .sort((a, b) => getAccountBalance(b) - getAccountBalance(a))
-      .filter(({ hide, type, balances }) => {
-        return !hide && type !== AccountType.Credit && (balances.current || balances.available);
+      .filter(({ hide, type }) => {
+        return !hide && type !== AccountType.Credit;
       });
 
     // For yearly view of the current (incomplete) year, viewDate.getEndDate()
