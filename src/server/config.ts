@@ -17,23 +17,3 @@ export const setModulePaths = () => {
     require("module").Module._initPaths();
   }
 };
-
-export const overrideConsoleLog = () => {
-  process.env.TZ = process.env.APP_TIMEZONE || "America/Los_Angeles";
-  const { log, info, error } = console;
-  console.log = (...args: unknown[]) => {
-    const now = new Date();
-    const timestamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
-    log(timestamp, ...args);
-  };
-  console.info = (...args: unknown[]) => {
-    const now = new Date();
-    const timestamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
-    info(timestamp, ...args);
-  };
-  console.error = (...args: unknown[]) => {
-    const now = new Date();
-    const timestamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
-    error(timestamp, ...args);
-  };
-};

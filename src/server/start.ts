@@ -1,18 +1,25 @@
-import { importConfig, setModulePaths, overrideConsoleLog } from "./config";
+import { importConfig, setModulePaths } from "./config";
 importConfig();
 setModulePaths();
-overrideConsoleLog();
 
 import path from "path";
-import express, { Router } from "express";
-import type { Request, Response, NextFunction } from "express";
+import express, { Router, Request, Response, NextFunction } from "express";
 import session from "express-session";
-import { initializePostgres, PostgresSessionStore, scheduledSync, stopScheduledSync } from "server";
-import { pool } from "server/lib/postgres/client";
-import { loginLimiter, startRateLimitCleanup, stopRateLimitCleanup } from "server/lib/rate-limit";
+
+import {
+  initializePostgres,
+  PostgresSessionStore,
+  scheduledSync,
+  stopScheduledSync,
+  logger,
+  sendAlarm,
+  loginLimiter,
+  startRateLimitCleanup,
+  stopRateLimitCleanup,
+  pool,
+} from "server";
+
 import * as routes from "server/routes";
-import { logger } from "server/lib/logger";
-import { sendAlarm } from "server/lib/alarm";
 
 const app = express();
 
@@ -134,9 +141,10 @@ router.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => 
   const message = err instanceof Error ? err.message : String(err);
   const stack = err instanceof Error ? (err.stack ?? "") : "";
   logger.error("Unhandled route error", { message });
-  sendAlarm("Unhandled Route Error", `**Message:** ${message}\n\`\`\`\n${stack.slice(0, 1000)}\n\`\`\``).catch(
-    () => undefined,
-  );
+  sendAlarm(
+    "Unhandled Route Error",
+    `**Message:** ${message}\n\`\`\`\n${stack.slice(0, 1000)}\n\`\`\``,
+  ).catch(() => undefined);
   if (!res.headersSent) {
     res.status(500).json({ status: "error", message: "Internal server error" });
   }

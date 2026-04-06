@@ -13,7 +13,9 @@ const getApiKey = () => process.env.POLYGON_API_KEY;
 
 // Warn on startup if API key is missing
 if (!getApiKey()) {
-  logger.warn("POLYGON_API_KEY not set - stock price fetching will be disabled", { component: "polygon" });
+  logger.warn("POLYGON_API_KEY not set - stock price fetching will be disabled", {
+    component: "polygon",
+  });
 }
 
 /**
@@ -41,11 +43,7 @@ setInterval(() => {
 /**
  * Fetch with retry logic for transient failures
  */
-const fetchWithRetry = async (
-  url: string,
-  maxRetries = 2,
-  delayMs = 1000
-): Promise<Response> => {
+const fetchWithRetry = async (url: string, maxRetries = 2, delayMs = 1000): Promise<Response> => {
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -78,7 +76,7 @@ const fetchWithRetry = async (
 
 export const getClosePrice = async (
   ticker_symbol: string,
-  date: Date
+  date: Date,
 ): Promise<PolygonResult<number>> => {
   if (!getApiKey()) {
     return {
@@ -133,7 +131,7 @@ export const getClosePrice = async (
 };
 
 export const getTickerDetail = async (
-  ticker_symbol: string
+  ticker_symbol: string,
 ): Promise<PolygonResult<{ ticker_symbol: string; name: string; currency_name: string }>> => {
   if (!getApiKey()) {
     return {
@@ -163,7 +161,9 @@ export const getTickerDetail = async (
     return { success: true, data: { ticker_symbol, name, currency_name } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error(`Polygon API error for ticker detail ${ticker_symbol}: ${message}`, { component: "polygon" });
+    logger.error(`Polygon API error for ticker detail ${ticker_symbol}: ${message}`, {
+      component: "polygon",
+    });
     return {
       success: false,
       error: "api_error",
@@ -174,7 +174,7 @@ export const getTickerDetail = async (
 
 export const getSecurityForSymbol = async (
   ticker_symbol: string,
-  date = new Date()
+  date = new Date(Date.now() - 24 * 60 * 60 * 1000),
 ): Promise<JSONSecurity | undefined> => {
   const [priceResult, detailResult] = await Promise.all([
     getClosePrice(ticker_symbol, date),
