@@ -1,5 +1,5 @@
 import { ItemStatus } from "common";
-import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError, plaid } from "server";
+import { Route, updateItemStatus, syncPlaidTransactions, getUserItem, upsertItems, requireBodyObject, validationError, plaid } from "server";
 import { logger } from "server/lib/logger";
 import { sendAlarm } from "server/lib/alarm";
 
@@ -51,6 +51,8 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
       if (error_code === "ITEM_LOGIN_REQUIRED") {
         return await markBadItem(item_id, "ITEM_LOGIN_REQUIRED");
       }
+    } else if (webhook_code === "USER_ACCOUNT_REVOKED" || webhook_code === "ITEM_UPDATED") {
+      return await refreshItemProducts(item_id);
     }
   } else if (webhook_type === "HOLDINGS") {
     if (webhook_code === "DEFAULT_UPDATE") {
@@ -70,6 +72,17 @@ const syncAndLog = async (item_id: string) => {
   if (!response) return { status: "failed" as const };
   const { added, modified, removed } = response;
   logger.info("Synced transactions via webhook", { itemId: item_id, added, modified, removed });
+  return { status: "success" as const };
+};
+
+const refreshItemProducts = async (item_id: string) => {
+  const userItem = await getUserItem(item_id);
+  if (!userItem) return { status: "failed" as const };
+  const { user, item } = userItem;
+  const { consented_products = [], products = [] } = await plaid.getItem(item.access_token);
+  const available_products = [...consented_products, ...products];
+  await upsertItems(user, [{ ...item, available_products }]);
+  logger.info("Refreshed available_products for item", { itemId: item_id, available_products });
   return { status: "success" as const };
 };
 

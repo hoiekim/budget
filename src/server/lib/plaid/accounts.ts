@@ -1,5 +1,5 @@
 import { PlaidError, PlaidErrorType, Products } from "plaid";
-import { MaskedUser, updateItemStatus, logger, sendAlarm } from "server";
+import { MaskedUser, updateItemStatus, upsertItems, logger, sendAlarm } from "server";
 import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
@@ -95,7 +95,11 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       const plaidError = errorWithResponse?.response?.data;
       const errorCode = plaidError?.error_code;
       if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
-        logger.info("Holdings not supported for item, skipping", { itemId: item_id });
+        logger.info("Holdings not supported for item, removing Investments from available_products", { itemId: item_id });
+        const updated_products = item.available_products.filter((p) => p !== Products.Investments);
+        upsertItems(user, [{ ...item, available_products: updated_products }]).catch((e) => {
+          logger.error("Failed to update available_products for item", { itemId: item_id }, e);
+        });
       } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
         logger.error("Failed to get holdings data", { itemId: item_id }, plaidError || error);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {

@@ -8,7 +8,7 @@ import {
   PlaidErrorType,
   Products,
 } from "plaid";
-import { MaskedUser, updateItemStatus, logger } from "server";
+import { MaskedUser, updateItemStatus, upsertItems, logger } from "server";
 import { sendAlarm } from "server/lib/alarm";
 import { JSONItem, ItemStatus, getDateString, LocalDate } from "common";
 import { getClient, ignorable_error_codes } from "./util";
@@ -161,7 +161,14 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
         const errorWithResponse = error as { response?: { data?: PlaidError } };
         const plaidError = errorWithResponse?.response?.data;
         const errorCode = plaidError?.error_code;
-        if (!errorCode || !ignorable_error_codes.has(errorCode)) {
+        if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
+          logger.info("Investment transactions not supported for item, removing Investments from available_products", { itemId: item_id });
+          const updated_products = item.available_products.filter((p) => p !== Products.Investments);
+          upsertItems(user, [{ ...item, available_products: updated_products }]).catch((e) => {
+            logger.error("Failed to update available_products for item", { itemId: item_id }, e);
+          });
+          break;
+        } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
           logger.error("Failed to get investment transaction data", { itemId: item_id }, plaidError || error);
           if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
             updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
