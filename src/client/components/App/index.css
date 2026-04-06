@@ -102,6 +102,10 @@ table {
   border-collapse: collapse;
 }
 
+hr {
+  border-color: #191919;
+}
+
 div#root {
   min-height: 100vh;
   margin: auto;

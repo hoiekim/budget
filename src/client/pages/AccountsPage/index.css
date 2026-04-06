@@ -7,7 +7,7 @@ div.AccountsPage > h2 {
   padding: 16px 10px 10px;
   position: sticky;
   top: 50px;
-  background-color: #fffe;
+  background-color: #191919ee;
   z-index: 110;
 }
 
@@ -16,7 +16,7 @@ div.wideScreen div.AccountsPage > h2 {
 }
 
 div.AccountsPage > div.AccountsDonut {
-  background-color: #fffe;
+  background-color: #191919ee;
   z-index: 100;
 }
 

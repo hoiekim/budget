@@ -3,7 +3,7 @@ div.TransactionsPage > h3,
 div.TransactionsPage > div.TransactionsHead,
 div.SearchBar.active {
   position: sticky;
-  background-color: #fffe;
+  background-color: #191919ee;
   margin: 0;
 }
 
