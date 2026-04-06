@@ -4,7 +4,7 @@ div.TransactionProperties .row > .splitItem > input {
   width: 30%;
   flex-grow: 1;
   text-align: center;
-  background-color: #fff;
+  background-color: #191919;
 }
 
 div.SplitTransactionRow {
@@ -29,7 +29,7 @@ div.SplitTransactionRow > .amount {
 
 div.SplitTransactionRow > .amount > input {
   font-size: 16px;
-  background-color: #fff;
+  background-color: #191919;
   width: calc(100% - 5px);
   text-align: left;
 }

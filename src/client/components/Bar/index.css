@@ -18,11 +18,11 @@ div.Bar > .contentWithoutPadding {
 }
 
 div.Bar.empty > .contentWithoutPadding {
-  background: repeating-linear-gradient(135deg, #eee, #eee 2px, #0000 2px, #0000 4px);
+  background: repeating-linear-gradient(135deg, #292929, #292929 2px, #0000 2px, #0000 4px);
 }
 
 div.Bar:not(.empty) > .contentWithoutPadding {
-  background-color: #eee;
+  background-color: #292929;
 }
 
 div.Bar > .contentWithoutPadding > div {

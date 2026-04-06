@@ -2,12 +2,12 @@ label.ToggleInput > div.switch {
   position: relative;
   width: 50px;
   height: 24px;
-  background-color: #eee;
+  background-color: #292929;
   border-radius: 16px;
   display: flex;
   align-items: center;
   overflow: hidden;
-  border: #ddd 2px solid;
+  border: #383838 2px solid;
   font-size: 12px;
 }
 
@@ -32,7 +32,7 @@ label.ToggleInput.checked > div.switch > div.background {
 }
 
 label.ToggleInput.disabled > div.switch > div.background {
-  background-color: #555;
+  background-color: #b2b2b2;
 }
 
 label.ToggleInput > div.switch > div.background:before {
@@ -43,16 +43,16 @@ label.ToggleInput > div.switch > div.background:before {
   width: 25px;
   left: 2px;
   bottom: 2px;
-  background-color: #888;
+  background-color: #858585;
   -webkit-transition: 300ms;
   transition: 300ms;
 }
 
 label.ToggleInput.checked > div.switch > div.background:before {
   left: 19px;
-  background-color: #fff;
+  background-color: #191919;
 }
 
 label.ToggleInput.disabled > div.switch > div.background:before {
-  background-color: #888;
+  background-color: #858585;
 }

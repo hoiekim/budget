@@ -40,7 +40,7 @@ div.BalanceChartRow > table td.type {
 }
 
 div.BalanceChartRow > table td.type > svg {
-  color: #666;
+  color: #a3a3a3;
 }
 
 div.BalanceChartRow > table tr.sum {

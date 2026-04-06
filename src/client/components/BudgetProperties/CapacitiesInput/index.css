@@ -1,6 +1,6 @@
 div.CapacitiesInput {
   font-size: 14px;
-  color: #333;
+  color: #d1d1d1;
   position: relative;
 }
 
@@ -22,7 +22,7 @@ div.CapacitiesInput input {
   height: 100%;
   width: 100px;
   text-align: center;
-  background-color: #fff;
+  background-color: #191919;
 }
 
 div.CapacitiesInput .capacityAnalysis button {
