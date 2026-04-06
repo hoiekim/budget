@@ -1,8 +1,7 @@
-import { PlaidError, PlaidErrorType } from "plaid";
-import { MaskedUser, updateItemStatus, logger } from "server";
+import { PlaidError, PlaidErrorType, Products } from "plaid";
+import { MaskedUser, updateItemStatus, logger, sendAlarm } from "server";
 import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
 import { getClient, ignorable_error_codes } from "./util";
-import { sendAlarm } from "server/lib/alarm";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -35,7 +34,10 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
         updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
           logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
         });
-        sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getAccounts`).catch(() => undefined);
+        sendAlarm(
+          "Item Bad Status",
+          `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getAccounts`,
+        ).catch(() => undefined);
       }
       data.items.push({ ...item, plaidError });
     }
@@ -73,6 +75,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
 
   const fetchJobs = items.map(async (item) => {
     const { item_id, access_token } = item;
+    if (!item.available_products.includes(Products.Investments)) return;
     try {
       const response = await client.investmentsHoldingsGet({ access_token });
       const { accounts, holdings, securities } = response.data;
@@ -97,7 +100,10 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
           updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
             logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
-          sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getHoldings`).catch(() => undefined);
+          sendAlarm(
+            "Item Bad Status",
+            `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getHoldings`,
+          ).catch(() => undefined);
         }
         data.items.push({ ...item, plaidError });
       }

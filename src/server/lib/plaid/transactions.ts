@@ -6,6 +6,7 @@ import {
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction,
   PlaidErrorType,
+  Products,
 } from "plaid";
 import { MaskedUser, updateItemStatus, logger } from "server";
 import { sendAlarm } from "server/lib/alarm";
@@ -112,6 +113,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
 
   const fetchJobs = items.map(async (item) => {
     const { item_id, access_token, updated } = item;
+    if (!item.available_products.includes(Products.Investments)) return;
 
     const now = new Date();
 
