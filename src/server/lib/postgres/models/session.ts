@@ -1,5 +1,5 @@
 import { isString, isNullableString, isNullableBoolean, isNullableNumber } from "common";
-import { SessionData as ExpressSessionData } from "express-session";
+import type { MaskedUser } from "./user";
 import {
   SESSION_ID,
   USER_USER_ID,
@@ -18,6 +18,23 @@ import {
   SESSIONS,
 } from "./common";
 import { Model, RowValueType, createTable } from "./base";
+
+export interface SessionCookie {
+  originalMaxAge?: number | null;
+  maxAge?: number;
+  signed?: boolean;
+  expires?: Date;
+  httpOnly?: boolean;
+  path?: string;
+  domain?: string;
+  secure?: boolean;
+  sameSite?: boolean | "lax" | "strict" | "none";
+}
+
+export interface SessionData {
+  user: MaskedUser;
+  cookie: SessionCookie;
+}
 
 const isValidSameSiteValue = (v: unknown): boolean => {
   if (typeof v === "boolean") return true;
@@ -48,7 +65,7 @@ const sessionSchema = {
 type SessionSchema = typeof sessionSchema;
 type SessionRow = { [k in keyof SessionSchema]: RowValueType };
 
-export class SessionModel extends Model<ExpressSessionData, SessionSchema> implements SessionRow {
+export class SessionModel extends Model<SessionData, SessionSchema> implements SessionRow {
   declare session_id: string;
   declare user_user_id: string;
   declare user_username: string;
@@ -85,7 +102,7 @@ export class SessionModel extends Model<ExpressSessionData, SessionSchema> imple
     super(data, SessionModel.typeChecker);
   }
 
-  toJSON(): ExpressSessionData {
+  toJSON(): SessionData {
     return {
       user: { user_id: this.user_user_id, username: this.user_username },
       cookie: {
@@ -102,7 +119,7 @@ export class SessionModel extends Model<ExpressSessionData, SessionSchema> imple
     };
   }
 
-  static fromSessionData(sid: string, data: ExpressSessionData): Partial<SessionRow> {
+  static fromSessionData(sid: string, data: SessionData): Partial<SessionRow> {
     return {
       session_id: sid,
       user_user_id: data.user.user_id,

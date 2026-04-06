@@ -1,20 +1,21 @@
-import { Request, Response, NextFunction } from "express";
-
 /**
- * Resolve the real client IP from the request.
+ * Resolve the real client IP from request headers.
  * Prefers X-Real-IP (set by nginx from $remote_addr, cannot be spoofed by the
- * client), then the leftmost X-Forwarded-For entry, then Express's req.ip.
+ * client), then the leftmost X-Forwarded-For entry, then the socket IP fallback.
  */
-export const getClientIp = (req: Request): string => {
-  const xRealIp = req.headers["x-real-ip"];
-  const xForwardedFor = req.headers["x-forwarded-for"];
+export const getClientIp = (
+  headers: Record<string, string | string[] | undefined>,
+  ipFallback?: string,
+): string => {
+  const xRealIp = headers["x-real-ip"];
+  const xForwardedFor = headers["x-forwarded-for"];
   const forwarded = Array.isArray(xForwardedFor)
     ? xForwardedFor[0]
     : xForwardedFor?.split(",")[0]?.trim();
   return (
     (typeof xRealIp === "string" ? xRealIp : undefined) ??
     forwarded ??
-    req.ip ??
+    ipFallback ??
     "unknown"
   );
 };
@@ -63,26 +64,22 @@ export const stopRateLimitCleanup = () => {
 };
 
 /**
- * Rate limiter middleware for login endpoint.
- * Allows MAX_ATTEMPTS attempts per WINDOW_MS per IP address.
+ * Check rate limit for the given IP address.
+ * Returns true if the request should be blocked (too many attempts).
+ * Increments the attempt counter when not blocked.
  */
-export const loginLimiter = (req: Request, res: Response, next: NextFunction): void => {
-  const ip = getClientIp(req);
+export const checkLoginRateLimit = (ip: string): boolean => {
   const now = Date.now();
   const record = attempts.get(ip);
 
   if (record && now < record.resetAt) {
     if (record.count >= MAX_ATTEMPTS) {
-      res.status(429).json({
-        status: "failed",
-        message: "Too many login attempts, try again later",
-      });
-      return;
+      return true; // rate limited
     }
     record.count++;
   } else {
     attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
   }
 
-  next();
+  return false;
 };

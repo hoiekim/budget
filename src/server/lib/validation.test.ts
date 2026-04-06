@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Request } from "express";
+import type { ServerRequest } from "./route";
 import {
   requireQueryString,
   optionalQueryString,
@@ -9,9 +9,9 @@ import {
   validationError,
 } from "./validation";
 
-// Helper to create a mock Request with query params
-const mockRequest = (query: Record<string, unknown>, body?: unknown): Request =>
-  ({ query, body } as unknown as Request);
+// Helper to create a mock ServerRequest with query params
+const mockRequest = (query: Record<string, unknown>, body?: unknown): ServerRequest =>
+  ({ query, body } as unknown as ServerRequest);
 
 describe("requireQueryString", () => {
   it("should return success for valid string", () => {

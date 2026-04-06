@@ -3,7 +3,7 @@
  * Uses type checking utilities from the common module.
  */
 
-import { Request } from "express";
+import type { ServerRequest } from "./route";
 import {
   isString,
   isNumber,
@@ -21,10 +21,10 @@ export interface ValidationResult<T> {
 
 /**
  * Extract and validate a required string parameter from request query.
- * Handles the case where Express might parse repeated params as arrays.
+ * Handles the case where query parsing might produce arrays for repeated params.
  */
 export function requireQueryString(
-  req: Request,
+  req: ServerRequest,
   param: string
 ): ValidationResult<string> {
   const value = req.query[param];
@@ -33,7 +33,7 @@ export function requireQueryString(
     return { success: false, error: `Missing required parameter: ${param}` };
   }
 
-  // Express can parse ?id=a&id=b as an array
+  // Repeated params (e.g. ?id=a&id=b) are parsed as arrays
   if (isArray(value)) {
     return {
       success: false,
@@ -60,7 +60,7 @@ export function requireQueryString(
  * Returns undefined if not present.
  */
 export function optionalQueryString(
-  req: Request,
+  req: ServerRequest,
   param: string
 ): ValidationResult<string | undefined> {
   const value = req.query[param];
@@ -69,7 +69,7 @@ export function optionalQueryString(
     return { success: true, data: undefined };
   }
 
-  // Express can parse ?id=a&id=b as an array
+  // Repeated params are parsed as arrays
   if (isArray(value)) {
     return {
       success: false,
@@ -90,7 +90,7 @@ export function optionalQueryString(
 /**
  * Validate that request body is a non-null object.
  */
-export function requireBodyObject(req: Request): ValidationResult<object> {
+export function requireBodyObject(req: ServerRequest): ValidationResult<object> {
   const body = req.body;
 
   if (isUndefined(body) || isNull(body)) {

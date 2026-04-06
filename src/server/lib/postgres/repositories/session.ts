@@ -1,5 +1,4 @@
-import { Store, SessionData as ExpressSessionData } from "express-session";
-import { sessionsTable, SessionModel, SESSION_ID, COOKIE_EXPIRES } from "../models";
+import { sessionsTable, SessionModel, SessionData, SESSION_ID, COOKIE_EXPIRES } from "../models";
 import { logger } from "../../logger";
 
 /**
@@ -10,11 +9,10 @@ export async function purgeSessions(): Promise<number> {
   return sessionsTable.deleteByCondition(COOKIE_EXPIRES, "<=", new Date());
 }
 
-export class PostgresSessionStore extends Store {
+export class PostgresSessionStore {
   private cleanupInterval: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    super();
     this.startCleanupScheduler();
   }
 
@@ -37,42 +35,25 @@ export class PostgresSessionStore extends Store {
     this.cleanupInterval = setTimeout(runCleanup, 1000 * 60);
   }
 
-  get(
-    sid: string,
-    callback: (err: Error | null, session?: ExpressSessionData | null) => void,
-  ): void {
-    sessionsTable
-      .queryOne({ [SESSION_ID]: sid })
-      .then((model) => {
-        if (!model) return callback(null, null);
-        callback(null, model.toJSON());
-      })
-      .catch(callback);
+  async get(sid: string): Promise<SessionData | null> {
+    const model = await sessionsTable.queryOne({ [SESSION_ID]: sid });
+    if (!model) return null;
+    return model.toJSON();
   }
 
-  set(sid: string, session: ExpressSessionData, callback?: (err?: Error) => void): void {
+  async set(sid: string, session: SessionData): Promise<void> {
     const row = SessionModel.fromSessionData(sid, session);
-    sessionsTable
-      .upsert(row, Object.keys(row).filter((k) => k !== SESSION_ID))
-      .then(() => callback && callback())
-      .catch((error: Error) => callback && callback(error));
+    await sessionsTable.upsert(row, Object.keys(row).filter((k) => k !== SESSION_ID));
   }
 
-  destroy(sid: string, callback?: (err?: Error) => void): void {
-    sessionsTable
-      .hardDelete(sid)
-      .then(() => callback && callback())
-      .catch((error: Error) => callback && callback(error));
+  async destroy(sid: string): Promise<void> {
+    await sessionsTable.hardDelete(sid);
   }
 
-  touch(sid: string, session: ExpressSessionData, callback?: (err?: Error) => void): void {
+  async touch(sid: string, session: SessionData): Promise<void> {
     const row = SessionModel.fromSessionData(sid, session);
     const updateData = { ...row };
     delete (updateData as Record<string, unknown>)[SESSION_ID];
-
-    sessionsTable
-      .update(sid, updateData)
-      .then(() => callback && callback())
-      .catch((error: Error) => callback && callback(error));
+    await sessionsTable.update(sid, updateData);
   }
 }
