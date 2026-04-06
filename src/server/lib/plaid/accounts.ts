@@ -94,7 +94,9 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       const errorWithResponse = error as { response?: { data?: PlaidError } };
       const plaidError = errorWithResponse?.response?.data;
       const errorCode = plaidError?.error_code;
-      if (!errorCode || !ignorable_error_codes.has(errorCode)) {
+      if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
+        logger.info("Holdings not supported for item, skipping", { itemId: item_id });
+      } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
         logger.error("Failed to get holdings data", { itemId: item_id }, plaidError || error);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
           updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
