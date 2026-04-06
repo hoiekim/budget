@@ -8,6 +8,7 @@ import {
   PlaidErrorType,
 } from "plaid";
 import { MaskedUser, updateItemStatus, logger } from "server";
+import { sendAlarm } from "server/lib/alarm";
 import { JSONItem, ItemStatus, getDateString, LocalDate } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
@@ -67,6 +68,7 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
           updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
             logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
+          sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getTransactions`).catch(() => undefined);
         }
         hasMore = false;
       }
@@ -163,6 +165,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
             updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
               logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
             });
+            sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getInvestmentTransactions`).catch(() => undefined);
           }
           data.items.push({ ...item, plaidError });
         }

@@ -1,6 +1,7 @@
 import { ItemStatus } from "common";
 import { Route, updateItemStatus, syncPlaidTransactions, requireBodyObject, validationError, plaid } from "server";
 import { logger } from "server/lib/logger";
+import { sendAlarm } from "server/lib/alarm";
 
 interface PlaidWebhookBody {
   webhook_type: "TRANSACTIONS" | "ITEM" | "HOLDINGS" | "INVESTMENTS_TRANSACTIONS";
@@ -44,11 +45,11 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
     if (webhook_code === "WEBHOOK_UPDATE_ACKNOWLEDGED") {
       return { status: "success" };
     } else if (webhook_code === "PENDING_EXPIRATION") {
-      return await markBadItem(item_id);
+      return await markBadItem(item_id, "PENDING_EXPIRATION");
     } else if (webhook_code === "ERROR") {
       const error_code = error?.error_code;
       if (error_code === "ITEM_LOGIN_REQUIRED") {
-        return await markBadItem(item_id);
+        return await markBadItem(item_id, "ITEM_LOGIN_REQUIRED");
       }
     }
   } else if (webhook_type === "HOLDINGS") {
@@ -72,8 +73,9 @@ const syncAndLog = async (item_id: string) => {
   return { status: "success" as const };
 };
 
-const markBadItem = async (item_id: string) => {
+const markBadItem = async (item_id: string, reason: string) => {
   const response = await updateItemStatus(item_id, ItemStatus.BAD);
   if (!response) return { status: "failed" as const };
+  sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${reason}`).catch(() => undefined);
   return { status: "success" as const };
 };

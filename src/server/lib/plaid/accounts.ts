@@ -2,6 +2,7 @@ import { PlaidError, PlaidErrorType } from "plaid";
 import { MaskedUser, updateItemStatus, logger } from "server";
 import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
 import { getClient, ignorable_error_codes } from "./util";
+import { sendAlarm } from "server/lib/alarm";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -34,6 +35,7 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
         updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
           logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
         });
+        sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getAccounts`).catch(() => undefined);
       }
       data.items.push({ ...item, plaidError });
     }
@@ -95,6 +97,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
           updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
             logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
+          sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getHoldings`).catch(() => undefined);
         }
         data.items.push({ ...item, plaidError });
       }
