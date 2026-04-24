@@ -25,6 +25,14 @@ call.get<LoginGetResponse>("/api/login").then((r) => {
   );
 });
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.error("Service worker registration failed:", error);
+    });
+  });
+}
+
 // Report unhandled JS errors to server
 window.addEventListener("error", (event) => {
   const body = JSON.stringify({
