@@ -52,6 +52,8 @@ export interface JSONTransaction extends PlaidTransaction {
    * Represents relations by pair of budget_id and category_id
    */
   label: JSONTransactionLabel;
+  transfer_pair_id?: string | null;
+  transfer_status?: "suggested" | "confirmed" | null;
 }
 
 export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
