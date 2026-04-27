@@ -50,7 +50,7 @@ label.ToggleInput > div.switch > div.background:before {
 
 label.ToggleInput.checked > div.switch > div.background:before {
   left: 19px;
-  background-color: #191919;
+  background-color: #d1d1d1;
 }
 
 label.ToggleInput.disabled > div.switch > div.background:before {
