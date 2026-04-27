@@ -28,7 +28,35 @@ self.addEventListener("fetch", (event) => {
 
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // Never intercept API calls
+  // Network-first for /api/login so the app knows the auth state offline.
+  if (url.pathname === "/api/login") {
+    const responsePromise = fetch(request);
+
+    event.waitUntil(
+      responsePromise
+        .then((response) => {
+          if (!response.ok) return;
+          // The Cache API silently refuses to store responses that have a
+          // Set-Cookie header. Strip it before caching so the write succeeds.
+          const headers = new Headers(response.headers);
+          headers.delete("set-cookie");
+          const cacheable = new Response(response.clone().body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+          return caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheable));
+        })
+        .catch(() => {})
+    );
+
+    event.respondWith(
+      responsePromise.catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Never intercept other API calls
   if (url.pathname.startsWith("/api")) return;
 
   // Cache-first for hashed assets (JS, CSS under /assets/)
