@@ -11,11 +11,20 @@ export default defineConfig({
       common: path.resolve(__dirname, "./src/common"),
     },
   },
-  root: ".",
-  publicDir: "public",
+  root: "src/client",
   build: {
-    outDir: "build/client",
+    outDir: "../../build/client",
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: "src/client/index.html",
+        sw: "src/client/sw.ts",
+      },
+      output: {
+        entryFileNames: (chunk) =>
+          chunk.name === "sw" ? "[name].js" : "assets/[name]-[hash].js",
+      },
+    },
   },
   server: {
     port: 3000,

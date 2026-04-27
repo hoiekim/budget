@@ -1,32 +1,35 @@
+/// <reference lib="webworker" />
+
+const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE_NAME = "budget-v1";
 
-self.addEventListener("install", (event) => {
+sw.addEventListener("install", (event) => {
   // Precache the app shell so it is available offline immediately,
   // even before the user has reloaded the page with an active SW.
   event.waitUntil(
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.add("/"))
-      .then(() => self.skipWaiting())
+      .then(() => sw.skipWaiting())
   );
 });
 
-self.addEventListener("activate", (event) => {
+sw.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((names) =>
         Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
       )
-      .then(() => self.clients.claim())
+      .then(() => sw.clients.claim())
   );
 });
 
-self.addEventListener("fetch", (event) => {
+sw.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (request.method !== "GET" || url.origin !== self.location.origin) return;
+  if (request.method !== "GET" || url.origin !== sw.location.origin) return;
 
   // Network-first for /api/login so the app knows the auth state offline.
   if (url.pathname === "/api/login") {
@@ -50,9 +53,7 @@ self.addEventListener("fetch", (event) => {
         .catch(() => {})
     );
 
-    event.respondWith(
-      responsePromise.catch(() => caches.match(request))
-    );
+    event.respondWith(responsePromise.catch(() => caches.match(request) as Promise<Response>));
     return;
   }
 
