@@ -148,15 +148,18 @@ const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> =
 interface FetchAccountsResult {
   accounts: AccountDictionary;
   items: ItemDictionary;
+  networkFailed: boolean;
 }
 
 const fetchAccounts = async (): Promise<FetchAccountsResult> => {
   const result = {
     accounts: new AccountDictionary(),
     items: new ItemDictionary(),
+    networkFailed: false,
   };
 
   const response = await call.get<AccountsGetResponse>("/api/accounts").catch(console.error);
+  if (response?.status === "error") return { ...result, networkFailed: true };
   if (!response?.body) return result;
 
   const { accounts, items } = response.body;
@@ -289,7 +292,33 @@ export const useSync = () => {
     });
 
     try {
-      const indexedDbPromise = indexedDb
+      const accountsPromise = fetchAccounts();
+
+      const { networkFailed } = await accountsPromise;
+
+      if (networkFailed) {
+        await indexedDb
+          .loadAllData()
+          .then((data) => {
+            data.status.isInit = true;
+            data.status.isLoading = false;
+            data.status.isError = false;
+            setData(data);
+          })
+          .catch((error) => {
+            console.error(error);
+            setData((oldData) => {
+              const newData = new Data(oldData);
+              newData.status.isInit = true;
+              newData.status.isLoading = false;
+              newData.status.isError = true;
+              return newData;
+            });
+          });
+        return;
+      }
+
+      indexedDb
         .loadAllData()
         .then((data) => {
           // do not update data because API data is already available
@@ -299,23 +328,8 @@ export const useSync = () => {
           data.status.isError = false;
           setData(data);
         })
-        .catch((error) => {
-          console.error(error);
-          setData((oldData) => {
-            const newData = new Data(oldData);
-            newData.status.isInit = true;
-            newData.status.isLoading = false;
-            newData.status.isError = true;
-            return newData;
-          });
-        });
+        .catch(console.error);
 
-      if (!navigator.onLine) {
-        await indexedDbPromise;
-        return;
-      }
-
-      const accountsPromise = fetchAccounts();
       const oldestDatePromise = getOldestTransactionDate();
       const transactionsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
         ([{ accounts }, oldestDate]) => fetchTransactions(accounts, oldestDate),

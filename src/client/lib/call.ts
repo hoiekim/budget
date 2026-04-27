@@ -69,7 +69,7 @@ export const read = async <T = unknown>(
 
   let streamBuilder = "";
 
-  const start = async (controller: ReadableStreamController<Uint8Array>) => {
+  const start = async (controller: ReadableStreamDefaultController<Uint8Array>) => {
     const push = async () => {
       try {
         const { done, value } = await reader.read();

@@ -6,8 +6,6 @@ COPY package.json bun.lockb* ./
 COPY tsconfig.json tsconfig.node.json ./
 COPY vite.config.ts ./
 COPY src src
-COPY public public
-COPY index.html ./
 
 RUN bun install
 RUN bun run typecheck
@@ -23,9 +21,6 @@ COPY --chown=bun:bun healthcheck.js ./healthcheck.js
 
 USER bun
 
-# Environment variables should be provided at runtime, not baked into the image.
-# Use: docker run --env-file .env ...
-# Or Docker Compose: env_file: - .env
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD bun ./healthcheck.js
 
