@@ -289,7 +289,7 @@ export const useSync = () => {
     });
 
     try {
-      indexedDb
+      const indexedDbPromise = indexedDb
         .loadAllData()
         .then((data) => {
           // do not update data because API data is already available
@@ -309,6 +309,11 @@ export const useSync = () => {
             return newData;
           });
         });
+
+      if (!navigator.onLine) {
+        await indexedDbPromise;
+        return;
+      }
 
       const accountsPromise = fetchAccounts();
       const oldestDatePromise = getOldestTransactionDate();
