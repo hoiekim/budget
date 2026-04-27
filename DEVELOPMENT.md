@@ -27,7 +27,7 @@ src/
 │   ├── components/   # React components
 │   ├── lib/          # Client utilities, hooks, models
 │   └── index.tsx     # Entry point
-├── server/           # Express backend
+├── server/           # Bun-native HTTP server (no Express)
 │   ├── routes/       # API route handlers
 │   ├── lib/          # Server utilities
 │   │   ├── postgres/ # Database repositories and models
@@ -43,15 +43,19 @@ src/
 
 ### Authentication
 
-All API routes require an authenticated session by default. Authentication is enforced by centralized middleware in `start.ts` — individual routes do **not** need to check `req.session.user`.
+All API routes require an authenticated session by default. Authentication is enforced inside the `Bun.serve` `fetch` handler in `start.ts` — individual routes do **not** need to check `req.session.user`.
 
-Public routes (login, webhooks, health) are explicitly allowlisted:
+Public routes (login, webhooks, health) are explicitly allowlisted with the HTTP methods that may bypass auth:
 
 ```typescript
-const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
+const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
+  ["/login", null],                  // null = any method
+  ["/plaid-hook", new Set(["POST"])],
+  ["/health", new Set(["GET"])],
+];
 ```
 
-When adding a new public endpoint, add its path to `PUBLIC_PATHS`. All other routes automatically return 401 if no session exists.
+When adding a new public endpoint, add an entry to `PUBLIC_PATH_METHODS` and scope it to the methods that should bypass auth. All other request paths/methods return 401 if no session exists. Method scoping was added in PR #283 to prevent unauthenticated DELETEs to webhook paths.
 
 ### Security Headers
 
@@ -186,15 +190,13 @@ import { GraphInput } from "../../../components/Graph/lib/graph";
 
 ### Error Handling
 
-Server routes catch errors and return 500:
+Routes do **not** wrap their logic in try/catch. The `Route.execute` wrapper in `src/server/lib/route.ts` catches any thrown error, logs it via `logger.error`, fires a Discord alarm via `sendAlarm`, and returns a 500 `{ status: "error", message: "Internal server error" }` response. Just throw — let the wrapper handle it.
 
 ```typescript
-try {
-  // route logic
-} catch (error: any) {
-  console.error(error);
-  res.status(500).json({ status: "error", info: error?.message });
-}
+export const myRoute = new Route<ResponseType>("POST", "/path", async (req, res, stream) => {
+  const user = await getUser(req.session.user!.id); // throws on db error
+  return { status: "success", body: user };
+});
 ```
 
 ### Authentication Security
@@ -350,27 +352,27 @@ Merges to `main` trigger:
 
 ## Security Patterns
 
-### Centralized Authentication Middleware
+### Centralized Authentication
 
-Authentication is enforced at the router level in `src/server/start.ts`, not per-route. All API endpoints require an authenticated session by default.
+Authentication is enforced inside the `Bun.serve` `fetch` handler in `src/server/start.ts`, not per-route. All API endpoints require an authenticated session by default.
 
 ```typescript
-const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
-router.use((req, res, next) => {
-  if (PUBLIC_PATHS.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
-    return next();
-  }
-  if (!req.session.user) {
-    res.status(401).json({ status: "failed", message: "Not authenticated." });
-    return;
-  }
-  next();
-});
+const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
+  ["/login", null],
+  ["/plaid-hook", new Set(["POST"])],
+  ["/health", new Set(["GET"])],
+];
+
+const entry = PUBLIC_PATH_METHODS.find(([p]) => p === apiPath);
+const isPublic = !!entry && (!entry[1] || entry[1].has(request.method));
+if (!isPublic && !session.user) {
+  return jsonResponse({ status: "failed", message: "Not authenticated." }, 401);
+}
 ```
 
 **Rules:**
 - **New routes are protected automatically** — no need to add auth checks per route
-- **To make a route public**, add its path to `PUBLIC_PATHS` with justification
+- **To make a route public**, add an entry to `PUBLIC_PATH_METHODS` with justification, scoped to the HTTP methods that should bypass auth (use `null` only when every method is intended)
 - **Per-route `req.session.user` checks** remain as defense-in-depth but are not the primary gate
 - **Public routes must have external verification** (e.g., `/plaid-hook` verifies Plaid signatures)
 

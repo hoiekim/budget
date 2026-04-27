@@ -9,7 +9,7 @@ Budget is a web application for tracking financial accounts and transactions. It
 ## Tech Stack
 
 - **Frontend**: React (TypeScript)
-- **Backend**: Node.js with Express (TypeScript)
+- **Backend**: Bun-native HTTP server (`Bun.serve`, TypeScript) — no Express
 - **Database**: PostgreSQL
 - **Containerization**: Docker
 - **External APIs**: Plaid, SimpleFin, Polygon
@@ -23,7 +23,7 @@ budget/
 │   │   ├── components/       # Reusable UI components
 │   │   ├── pages/            # Page components
 │   │   └── lib/              # Frontend utilities
-│   ├── server/               # Backend Express server
+│   ├── server/               # Backend Bun.serve HTTP server
 │   │   ├── lib/              # Server utilities and integrations
 │   │   │   ├── postgres/     # PostgreSQL client and operations
 │   │   │   ├── plaid/        # Plaid API integration
