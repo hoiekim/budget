@@ -23,14 +23,23 @@ import { useAppContext } from "../context";
 
 ## Error Handling
 
-Server routes catch errors and return 500:
+**Route handlers should not wrap their own logic in try/catch for the purpose of returning 500.** `Route.execute` (`src/server/lib/route.ts`) centralizes that — it logs the error, fires a Discord alarm, sets status 500, and returns `{ status: "error", message: "Internal server error" }`. Let exceptions propagate and only catch errors when you can recover or want to convert them into a `failed`/`success` response.
 
 ```typescript
+// Good — let Route.execute handle unexpected failures
+export const myRoute = new Route<MyResponse>("POST", "/my-path", async (req, res) => {
+  const result = await doWork(req.body);
+  return { status: "success", body: result };
+});
+
+// Good — catch when you want a non-500 outcome
 try {
-  // route logic
-} catch (error: any) {
-  console.error(error);
-  res.status(500).json({ status: "error", info: error?.message });
+  await doWork(req.body);
+} catch (error) {
+  if (error instanceof ValidationError) {
+    return { status: "failed", message: error.message };
+  }
+  throw error;
 }
 ```
 

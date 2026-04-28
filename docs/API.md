@@ -32,15 +32,19 @@ interface ApiResponse<T> {
 
 ## Authentication
 
-All API routes require an authenticated session by default. Authentication is enforced by centralized middleware in `start.ts` — individual routes do **not** need to check `req.session.user`.
+All API routes require an authenticated session by default. Authentication is enforced inside the `Bun.serve` fetch handler in `start.ts` — individual routes do **not** need to check `req.session.user`.
 
-Public routes are explicitly allowlisted:
+Public routes are explicitly allowlisted with optional method scoping:
 
 ```typescript
-const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
+const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
+  ["/login", null],
+  ["/plaid-hook", new Set(["POST"])],
+  ["/health", new Set(["GET"])],
+];
 ```
 
-When adding a new public endpoint, add its path to `PUBLIC_PATHS`. All other routes automatically return 401 if no session exists.
+When adding a new public endpoint, add an entry to `PUBLIC_PATH_METHODS`. Pass `null` to allow all HTTP methods, or a `Set` to scope the exemption to specific methods. All other routes automatically return 401 if no session exists.
 
 ## Security Headers
 

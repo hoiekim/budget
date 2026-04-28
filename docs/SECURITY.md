@@ -1,25 +1,26 @@
 # Security
 
-## Centralized Authentication Middleware
+## Centralized Authentication
 
-Authentication is enforced at the router level in `src/server/start.ts`, not per-route. All API endpoints require an authenticated session by default.
+Authentication is enforced inside the `Bun.serve` fetch handler in `src/server/start.ts`, not per-route. All API endpoints require an authenticated session by default.
 
 ```typescript
-const PUBLIC_PATHS = ["/login", "/plaid-hook", "/health"];
-router.use((req, res, next) => {
-  if (PUBLIC_PATHS.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
-    return next();
-  }
-  if (!req.session.user) {
-    res.status(401).json({ status: "failed", message: "Not authenticated." });
-    return;
-  }
-  next();
-});
+const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
+  ["/login", null],
+  ["/plaid-hook", new Set(["POST"])],
+  ["/health", new Set(["GET"])],
+];
+
+// inside Bun.serve fetch():
+const entry = PUBLIC_PATH_METHODS.find(([p]) => p === apiPath);
+const isPublic = !!entry && (!entry[1] || entry[1].has(request.method));
+if (!isPublic && !session.user) {
+  return jsonResponse({ status: "failed", message: "Not authenticated." }, 401);
+}
 ```
 
 - New routes are protected automatically — no per-route auth checks needed
-- To make a route public, add its path to `PUBLIC_PATHS` with justification
+- To make a route public, add an entry to `PUBLIC_PATH_METHODS`. The second tuple element scopes the exemption to specific HTTP methods (`null` means all methods)
 - Public routes must have external verification (e.g., `/plaid-hook` verifies Plaid signatures)
 
 ## Session Fixation Prevention

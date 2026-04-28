@@ -10,52 +10,52 @@ Configure via environment variables:
 | `POSTGRES_PORT` | 5432 | PostgreSQL port |
 | `POSTGRES_USER` | — | PostgreSQL user |
 | `POSTGRES_PASSWORD` | — | PostgreSQL password |
-| `POSTGRES_DB` | — | PostgreSQL database name |
+| `POSTGRES_DATABASE` | `budget` | PostgreSQL database name |
 
 ## Table Class Methods
 
 **Use `Table` class methods instead of direct SQL/pool operations.**
 
-The `Table` base class (`src/server/lib/postgres/models/base.ts`) provides type-safe methods for common operations:
+The `Table` base class (`src/server/lib/postgres/models/base.ts`) provides type-safe methods for common operations. Each table is exported as a `camelCase` singleton (e.g. `usersTable`, `accountsTable`):
 
 ```typescript
 // Good — use Table class methods
-const user = await UsersTable.findById(userId);
-const users = await UsersTable.findByCondition("email", email);
-await UsersTable.insert(userData);
-await UsersTable.update(userId, updates);
-await UsersTable.deleteById(userId);
+const users = await usersTable.query({ user_id: userId });
+const oneUser = await usersTable.queryOne({ username });
+const someByIds = await usersTable.queryByIds([id1, id2]);
+await usersTable.insert(row);
+await usersTable.update(userId, updates);
+await usersTable.upsert(row);
+await usersTable.softDelete(userId);
+await usersTable.hardDelete(userId);
 
 // Avoid — direct pool.query
-const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+const result = await pool.query("SELECT * FROM users WHERE user_id = $1", [userId]);
 ```
 
 Use direct SQL for: complex joins or aggregations, performance-critical bulk operations, one-off migrations.
 
 ## Repository Pattern
 
-Database operations live in `src/server/lib/postgres/repositories/`:
+Higher-level helpers live in `src/server/lib/postgres/repositories/` and wrap the table singletons (e.g. `searchUser`, `writeUser`, `updateUser`, `getUserById`, `deleteUser`). Import them from the `server` alias:
 
 ```typescript
-import { pgGetUsers, pgUpsertUser } from "server";
+import { searchUser, writeUser } from "server";
 ```
 
 ## Transaction Atomicity
 
-Multi-step database operations must be wrapped in transactions:
+Multi-step database operations must be wrapped in transactions. Prefer the `withTransaction` helper from `src/server/lib/postgres/client.ts` — it handles `BEGIN` / `COMMIT` / `ROLLBACK` / `release` automatically:
 
 ```typescript
-const client = await pool.connect();
-try {
-  await client.query("BEGIN");
-  // ... multiple operations ...
-  await client.query("COMMIT");
-} catch (error) {
-  await client.query("ROLLBACK");
-  throw error;
-} finally {
-  client.release();
-}
+import { withTransaction } from "server";
+
+await withTransaction(async (client) => {
+  await accountsTable.update(account_id, { balance }, undefined, user.user_id, client);
+  await snapshotsTable.insert({ account_id, balance }, undefined, client);
+});
 ```
 
-See `deleteAccounts` in `src/server/lib/postgres/repositories/accounts.ts` for an example.
+Most `Table` methods accept an optional `client?: QueryExecutor` so the same statement can run inside or outside a transaction.
+
+See `deleteAccounts` in `src/server/lib/postgres/repositories/accounts.ts` for a real example.

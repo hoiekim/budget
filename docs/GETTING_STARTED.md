@@ -56,7 +56,7 @@ Copy `.env.example` to `.env.local` and fill in values:
 | `POSTGRES_PORT` | No | PostgreSQL port (default: 5432) |
 | `POSTGRES_USER` | No | PostgreSQL user |
 | `POSTGRES_PASSWORD` | No | PostgreSQL password |
-| `POSTGRES_DB` | No | PostgreSQL database name |
+| `POSTGRES_DATABASE` | No | PostgreSQL database name (default: `budget`) |
 | `PLAID_CLIENT_ID` | No | Plaid API client ID (for Plaid bank connections) |
 | `PLAID_SECRET_PRODUCTION` | No | Plaid API secret (for Plaid bank connections) |
 | `HOST_NAME` | No | Domain name for hosting (required for Plaid OAuth) |
