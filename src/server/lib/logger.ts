@@ -66,6 +66,19 @@ function formatError(error: unknown): LogEntry["error"] | undefined {
       name: error.name,
     };
   }
+  if (typeof error === "object") {
+    try {
+      return { message: JSON.stringify(error) };
+    } catch {
+      const parts: string[] = [];
+      for (const [key, value] of Object.entries(error as Record<string, unknown>)) {
+        if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
+          parts.push(`${key}=${String(value)}`);
+        }
+      }
+      return { message: parts.length > 0 ? parts.join(" ") : Object.prototype.toString.call(error) };
+    }
+  }
   return { message: String(error) };
 }
 
