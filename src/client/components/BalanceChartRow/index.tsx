@@ -53,12 +53,17 @@ export const BalanceChartRow = ({
     const historicalBalance = balanceData.get(a.id, date) ?? fallback;
     const stack = { type: a.type, name: a.custom_name || a.name, amount: historicalBalance };
     if (!configuration.account_ids.includes(a.id)) return;
-    // Liabilities (Credit, Loan) reduce the total; everything else
-    // (Depository, Investment, Brokerage, Other) is treated as an asset.
-    if (a.type === AccountType.Credit || a.type === AccountType.Loan) {
-      column2.push(stack);
-    } else {
+    // Plaid AccountType: Depository, Investment, Brokerage are assets;
+    // Credit and Loan are liabilities. `Other` is "non-specified" per
+    // Plaid's docs — drop it rather than guessing a polarity.
+    if (
+      a.type === AccountType.Depository ||
+      a.type === AccountType.Investment ||
+      a.type === AccountType.Brokerage
+    ) {
       column1.push(stack);
+    } else if (a.type === AccountType.Credit || a.type === AccountType.Loan) {
+      column2.push(stack);
     }
   });
 
