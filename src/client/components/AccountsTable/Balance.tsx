@@ -75,7 +75,9 @@ export const Balance = ({ account }: BalanceProps) => {
           {symbol}
           {dynamicAmount ? numberToCommaString(dynamicAmount) : currentString}
         </div>
-        {!!previousAmount && <Changes currentAmount={current!} previousAmount={previousAmount} />}
+        {!!previousAmount && (
+          <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
+        )}
       </div>
     );
   }
