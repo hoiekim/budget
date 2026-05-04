@@ -33,6 +33,7 @@ import {
   getTransaction,
   searchTransactionsById,
   upsertTransactions,
+  updateTransactions,
   getOldestTransactionDate,
 } from "./transactions";
 import { TransactionPaymentChannelEnum } from "plaid";
@@ -239,6 +240,84 @@ describe("upsertTransactions", () => {
     const result = await upsertTransactions(testUser, [tx]);
     expect(result[0].status).toBe(500);
     expect(result[0].update._id).toBe("tx-bad");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateTransactions — user-confirmed confidence
+// ---------------------------------------------------------------------------
+
+describe("updateTransactions", () => {
+  test("sets label_category_confidence=1.0 when user assigns category without explicit confidence", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
+
+    const tx = {
+      transaction_id: "tx-1",
+      label: { category_id: "cat-1" },
+    } as Parameters<typeof updateTransactions>[1][0];
+
+    await updateTransactions(testUser, [tx]);
+
+    // The UPDATE call's parameters should include 1.0 for confidence
+    const updateCall = mockQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
+    );
+    expect(updateCall).toBeDefined();
+    const values = updateCall![1] as unknown[];
+    expect(values).toContain(1.0);
+    expect(values).toContain("cat-1");
+  });
+
+  test("preserves caller-supplied category_confidence (e.g. 0.0 = rejected)", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-2" }], rowCount: 1 });
+
+    const tx = {
+      transaction_id: "tx-2",
+      label: { category_id: "cat-2", category_confidence: 0.0 },
+    } as Parameters<typeof updateTransactions>[1][0];
+
+    await updateTransactions(testUser, [tx]);
+
+    const updateCall = mockQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
+    );
+    const values = updateCall![1] as unknown[];
+    expect(values).toContain(0.0);
+    expect(values).not.toContain(1.0);
+  });
+
+  test("does not inject confidence when category_id is null (clearing)", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-3" }], rowCount: 1 });
+
+    const tx = {
+      transaction_id: "tx-3",
+      label: { category_id: null },
+    } as Parameters<typeof updateTransactions>[1][0];
+
+    await updateTransactions(testUser, [tx]);
+
+    const updateCall = mockQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
+    );
+    const values = (updateCall?.[1] ?? []) as unknown[];
+    expect(values).not.toContain(1.0);
+  });
+
+  test("does not inject confidence when label is absent (e.g. memo-only update)", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-4" }], rowCount: 1 });
+
+    const tx = {
+      transaction_id: "tx-4",
+      name: "Renamed",
+    } as Parameters<typeof updateTransactions>[1][0];
+
+    await updateTransactions(testUser, [tx]);
+
+    const updateCall = mockQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
+    );
+    const values = (updateCall?.[1] ?? []) as unknown[];
+    expect(values).not.toContain(1.0);
   });
 });
 

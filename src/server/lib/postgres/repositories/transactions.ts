@@ -123,6 +123,19 @@ export const upsertTransactions = async (
   return results;
 };
 
+/**
+ * When a user explicitly assigns a category (no confidence supplied), treat the
+ * label as user-confirmed: confidence = 1.0. This is the upstream signal the
+ * auto-suggestion engine reads as "accepted" when computing per-merchant stats.
+ * Caller-supplied confidences (e.g. 0.0 = rejected) are preserved as-is.
+ */
+const applyUserConfirmedConfidence = (tx: PartialTransaction): PartialTransaction => {
+  if (!tx.label) return tx;
+  if (tx.label.category_id == null) return tx;
+  if (tx.label.category_confidence !== undefined) return tx;
+  return { ...tx, label: { ...tx.label, category_confidence: 1.0 } };
+};
+
 export const updateTransactions = async (
   user: MaskedUser,
   transactions: PartialTransaction[],
@@ -132,7 +145,8 @@ export const updateTransactions = async (
 
   for (const tx of transactions) {
     try {
-      const row = TransactionModel.fromJSON(tx, user.user_id);
+      const adjusted = applyUserConfirmedConfidence(tx);
+      const row = TransactionModel.fromJSON(adjusted, user.user_id);
       delete row.transaction_id;
       delete row.user_id;
 

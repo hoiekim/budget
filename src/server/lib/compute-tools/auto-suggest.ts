@@ -1,4 +1,4 @@
-import { pool, logger } from "server";
+import { pool, logger, usersTable } from "server";
 
 interface MerchantSignal {
   label_category_id: string;
@@ -16,6 +16,13 @@ type LogFn = {
   info: (message: string, context?: Record<string, unknown>) => void;
   error: (message: string, context?: Record<string, unknown>, error?: unknown) => void;
 };
+type FetchUsersFn = () => Promise<string[]>;
+
+// pg_trgm similarity threshold for grouping merchant_name variants
+// (e.g., "STARBUCKS #1234" ~ "STARBUCKS COFFEE 9876"). 0.5 is a balanced
+// default for short, dirty identifiers; tune per Plaid normalization quality.
+const MERCHANT_SIMILARITY_THRESHOLD = 0.5;
+const MERCHANT_SIGNAL_LIMIT = 30;
 
 /**
  * Runs auto-suggestion for transaction categories based on historical merchant patterns.
@@ -23,12 +30,17 @@ type LogFn = {
  * Logic:
  * - For each user, find transactions with no category confidence (never labeled)
  * - For each such transaction's merchant_name, look at recent labeled transactions
+ *   matching the merchant via pg_trgm fuzzy similarity
  * - If enough signal (>= 3 labeled, <= 10% reject rate, >= 95% confidence for best category),
  *   apply the suggestion with confidence = accepted / total_labeled (capped at 0.99)
  */
 export const runAutoSuggestions = async (
   queryFn: QueryFn = (sql, params) => pool.query(sql, params),
-  log: LogFn = logger
+  log: LogFn = logger,
+  fetchUsers: FetchUsersFn = async () => {
+    const users = await usersTable.query({});
+    return users.map((u) => u.user_id);
+  },
 ): Promise<void> => {
   log.info("Auto-suggestion job started");
 
@@ -36,12 +48,9 @@ export const runAutoSuggestions = async (
   let totalSuggested = 0;
 
   try {
-    const usersResult = await queryFn(
-      "SELECT user_id FROM users WHERE (is_deleted IS NULL OR is_deleted = FALSE)"
-    );
-    const users = usersResult.rows as { user_id: string }[];
+    const userIds = await fetchUsers();
 
-    for (const { user_id } of users) {
+    for (const user_id of userIds) {
       try {
         const suggested = await processUserSuggestions(user_id, queryFn, log);
         totalSuggested += suggested;
@@ -63,9 +72,10 @@ export const runAutoSuggestions = async (
 const processUserSuggestions = async (
   userId: string,
   queryFn: QueryFn,
-  log: LogFn
+  log: LogFn,
 ): Promise<number> => {
-  // Get all unlabeled transactions with a merchant_name
+  // Get all unlabeled transactions with a merchant_name.
+  // Stays raw SQL: Table.query() doesn't support IS NOT NULL filters.
   const unlabeledResult = await queryFn(
     `SELECT transaction_id, merchant_name
      FROM transactions
@@ -73,7 +83,7 @@ const processUserSuggestions = async (
        AND label_category_confidence IS NULL
        AND merchant_name IS NOT NULL
        AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [userId]
+    [userId],
   );
 
   const unlabeled = unlabeledResult.rows as unknown as UnlabeledTransaction[];
@@ -111,7 +121,7 @@ const processUserSuggestions = async (
       `UPDATE transactions
        SET label_category_id = $1, label_category_confidence = $2, updated = CURRENT_TIMESTAMP
        WHERE transaction_id = $3 AND user_id = $4`,
-      [label_category_id, cappedConfidence, transaction_id, userId]
+      [label_category_id, cappedConfidence, transaction_id, userId],
     );
 
     suggested++;
@@ -127,8 +137,12 @@ const processUserSuggestions = async (
 const getMerchantSignal = async (
   userId: string,
   merchantName: string,
-  queryFn: QueryFn
+  queryFn: QueryFn,
 ): Promise<MerchantSignal | null> => {
+  // Fuzzy-match merchant_name via pg_trgm similarity so that variants like
+  // "STARBUCKS #1234" and "STARBUCKS COFFEE 9876" feed the same signal.
+  // Inner SELECT picks the most-recent N transactions whose merchant_name is
+  // similar enough, then we group by category and take the most-accepted one.
   const result = await queryFn(
     `SELECT
        label_category_id,
@@ -138,16 +152,17 @@ const getMerchantSignal = async (
        SELECT label_category_id, label_category_confidence
        FROM transactions
        WHERE user_id = $1
-         AND merchant_name = $2
+         AND merchant_name IS NOT NULL
+         AND similarity(merchant_name, $2) >= $3
          AND label_category_confidence IS NOT NULL
          AND (is_deleted IS NULL OR is_deleted = FALSE)
-       ORDER BY date DESC
-       LIMIT 30
+       ORDER BY similarity(merchant_name, $2) DESC, date DESC
+       LIMIT $4
      ) recent
      GROUP BY label_category_id
      ORDER BY accepted DESC
      LIMIT 1`,
-    [userId, merchantName]
+    [userId, merchantName, MERCHANT_SIMILARITY_THRESHOLD, MERCHANT_SIGNAL_LIMIT],
   );
 
   if (result.rows.length === 0) return null;
