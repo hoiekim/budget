@@ -1,8 +1,8 @@
 import { describe, it, expect, mock } from "bun:test";
 import { runAutoSuggestions } from "./auto-suggest";
 
-// Dependency-injection style: pass mock queryFn + logger directly to runAutoSuggestions
-// This avoids module mocking which can break other test files.
+// Dependency-injection style: pass mock queryFn + logger + fetchUsers directly to
+// runAutoSuggestions. This avoids module mocking which can break other test files.
 
 const noopLogger = {
   info: () => {},
@@ -12,17 +12,16 @@ const noopLogger = {
 describe("runAutoSuggestions", () => {
   it("skips when no users found", async () => {
     const queryFn = mock(async () => ({ rows: [] }));
-    await runAutoSuggestions(queryFn, noopLogger);
-    // Only the users query should be called
-    expect(queryFn).toHaveBeenCalledTimes(1);
+    const fetchUsers = mock(async () => []);
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
+    expect(fetchUsers).toHaveBeenCalledTimes(1);
+    // No queries beyond fetchUsers should fire when there are no users
+    expect(queryFn).toHaveBeenCalledTimes(0);
   });
 
   it("skips transaction when total_labeled < 3", async () => {
     let updateCalled = false;
     const queryFn = mock(async (sql: string) => {
-      if (sql.includes("SELECT user_id FROM users")) {
-        return { rows: [{ user_id: "user-1" }] };
-      }
       if (sql.includes("label_category_confidence IS NULL")) {
         return { rows: [{ transaction_id: "txn-1", merchant_name: "Coffee Shop" }] };
       }
@@ -35,17 +34,15 @@ describe("runAutoSuggestions", () => {
       }
       return { rows: [] };
     });
+    const fetchUsers = async () => ["user-1"];
 
-    await runAutoSuggestions(queryFn, noopLogger);
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
     expect(updateCalled).toBe(false);
   });
 
   it("skips when reject_rate > 0.1", async () => {
     let updateCalled = false;
     const queryFn = mock(async (sql: string) => {
-      if (sql.includes("SELECT user_id FROM users")) {
-        return { rows: [{ user_id: "user-2" }] };
-      }
       if (sql.includes("label_category_confidence IS NULL")) {
         return { rows: [{ transaction_id: "txn-2", merchant_name: "Restaurant" }] };
       }
@@ -58,17 +55,15 @@ describe("runAutoSuggestions", () => {
       }
       return { rows: [] };
     });
+    const fetchUsers = async () => ["user-2"];
 
-    await runAutoSuggestions(queryFn, noopLogger);
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
     expect(updateCalled).toBe(false);
   });
 
   it("skips when confidence < 0.95", async () => {
     let updateCalled = false;
     const queryFn = mock(async (sql: string) => {
-      if (sql.includes("SELECT user_id FROM users")) {
-        return { rows: [{ user_id: "user-3" }] };
-      }
       if (sql.includes("label_category_confidence IS NULL")) {
         return { rows: [{ transaction_id: "txn-3", merchant_name: "Gas Station" }] };
       }
@@ -81,8 +76,9 @@ describe("runAutoSuggestions", () => {
       }
       return { rows: [] };
     });
+    const fetchUsers = async () => ["user-3"];
 
-    await runAutoSuggestions(queryFn, noopLogger);
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
     expect(updateCalled).toBe(false);
   });
 
@@ -91,9 +87,6 @@ describe("runAutoSuggestions", () => {
     let updatedCategoryId = "";
 
     const queryFn = mock(async (sql: string, params?: unknown[]) => {
-      if (sql.includes("SELECT user_id FROM users")) {
-        return { rows: [{ user_id: "user-4" }] };
-      }
       if (sql.includes("label_category_confidence IS NULL")) {
         return { rows: [{ transaction_id: "txn-4", merchant_name: "Grocery Store" }] };
       }
@@ -107,8 +100,9 @@ describe("runAutoSuggestions", () => {
       }
       return { rows: [] };
     });
+    const fetchUsers = async () => ["user-4"];
 
-    await runAutoSuggestions(queryFn, noopLogger);
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
     expect(updatedCategoryId).toBe("cat-groceries");
     expect(updatedConfidence).toBe(0.99);
   });
@@ -117,9 +111,6 @@ describe("runAutoSuggestions", () => {
     let updatedConfidence = 0;
 
     const queryFn = mock(async (sql: string, params?: unknown[]) => {
-      if (sql.includes("SELECT user_id FROM users")) {
-        return { rows: [{ user_id: "user-5" }] };
-      }
       if (sql.includes("label_category_confidence IS NULL")) {
         return { rows: [{ transaction_id: "txn-5", merchant_name: "Pharmacy" }] };
       }
@@ -132,8 +123,9 @@ describe("runAutoSuggestions", () => {
       }
       return { rows: [] };
     });
+    const fetchUsers = async () => ["user-5"];
 
-    await runAutoSuggestions(queryFn, noopLogger);
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
     expect(updatedConfidence).toBeCloseTo(0.95, 5);
   });
 
@@ -141,9 +133,6 @@ describe("runAutoSuggestions", () => {
     let signalQueryCount = 0;
 
     const queryFn = mock(async (sql: string) => {
-      if (sql.includes("SELECT user_id FROM users")) {
-        return { rows: [{ user_id: "user-6" }] };
-      }
       if (sql.includes("label_category_confidence IS NULL")) {
         // Two transactions from the same merchant
         return {
@@ -159,9 +148,36 @@ describe("runAutoSuggestions", () => {
       }
       return { rows: [] };
     });
+    const fetchUsers = async () => ["user-6"];
 
-    await runAutoSuggestions(queryFn, noopLogger);
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
     expect(signalQueryCount).toBe(1);
+  });
+
+  it("uses pg_trgm similarity to fuzzy-match merchant_name variants", async () => {
+    let signalSql = "";
+    let signalParams: unknown[] = [];
+
+    const queryFn = mock(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("label_category_confidence IS NULL")) {
+        return { rows: [{ transaction_id: "txn-7", merchant_name: "STARBUCKS #1234" }] };
+      }
+      if (sql.includes("SUM(CASE WHEN")) {
+        signalSql = sql;
+        signalParams = params ?? [];
+        return { rows: [{ label_category_id: "cat-coffee", accepted: "5", rejected: "0" }] };
+      }
+      return { rows: [] };
+    });
+    const fetchUsers = async () => ["user-7"];
+
+    await runAutoSuggestions(queryFn, noopLogger, fetchUsers);
+    expect(signalSql).toContain("similarity(merchant_name");
+    expect(signalSql).not.toContain("merchant_name = $2");
+    // Threshold and limit are passed as parameters, not interpolated
+    expect(signalParams).toContain("STARBUCKS #1234");
+    expect(signalParams).toContain(0.5);
+    expect(signalParams).toContain(30);
   });
 
   it("continues processing other users when one fails", async () => {
@@ -174,9 +190,6 @@ describe("runAutoSuggestions", () => {
     };
 
     const queryFn = mock(async (sql: string) => {
-      if (sql.includes("SELECT user_id FROM users")) {
-        return { rows: [{ user_id: "fail-user" }, { user_id: "ok-user" }] };
-      }
       if (sql.includes("label_category_confidence IS NULL")) {
         if (!firstUserSeen) {
           firstUserSeen = true;
@@ -187,12 +200,13 @@ describe("runAutoSuggestions", () => {
       }
       return { rows: [] };
     });
+    const fetchUsers = async () => ["fail-user", "ok-user"];
 
-    await expect(runAutoSuggestions(queryFn, errorLogger)).resolves.toBeUndefined();
+    await expect(runAutoSuggestions(queryFn, errorLogger, fetchUsers)).resolves.toBeUndefined();
     expect(errorLogger.error).toHaveBeenCalledWith(
       "Auto-suggestion failed for user",
       expect.objectContaining({ userId: "fail-user" }),
-      expect.any(Error)
+      expect.any(Error),
     );
     expect(user2UnlabeledCalled).toBe(true);
   });
