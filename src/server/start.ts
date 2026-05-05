@@ -13,6 +13,8 @@ import {
   stopRateLimitCleanup,
   pool,
   getClientIp,
+  verifyApiKey,
+  getMaskedUserById,
 } from "server";
 import type { MaskedUser } from "server/lib/postgres/models/user";
 import type { SessionData } from "server/lib/postgres/models/session";
@@ -56,6 +58,9 @@ interface Session {
   id: string;
   user?: MaskedUser;
   _destroyed: boolean;
+  // True when the request authenticated via Authorization: Bearer (API key).
+  // Bearer auth is stateless — we must not write a session cookie back.
+  _bearer?: boolean;
 }
 
 function makeSession(id: string, user: MaskedUser | undefined): Session & ServerRequest["session"] {
@@ -99,6 +104,9 @@ async function persistSession(session: Session, secure: boolean): Promise<string
     // Clear the cookie regardless of whether the session existed
     return buildSetCookieHeader("", 0, secure);
   }
+  // Bearer-authenticated requests are stateless: never bind a session cookie
+  // to the holder of an API key.
+  if (session._bearer) return null;
   if (!session.user) return null;
 
   const sessionData: SessionData = {
@@ -302,6 +310,31 @@ const server = Bun.serve({
       ip,
     };
 
+    // Look up the matching route up-front so we can consult its requiredScope
+    // before the auth gate.
+    const matchedRoute = allRoutes.find(
+      (r) => r.path === apiPath && r.method === request.method,
+    );
+
+    // Bearer auth: only attempted when the matched route declares a
+    // requiredScope, and only as a fallback when no cookie session is
+    // present. Cookie sessions remain authoritative for everything.
+    if (!session.user && matchedRoute?.requiredScope) {
+      const auth = headers["authorization"];
+      const authHeader = Array.isArray(auth) ? auth[0] : auth;
+      if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+        const plaintext = authHeader.slice(7).trim();
+        const resolved = await verifyApiKey(plaintext);
+        if (resolved && resolved.scopes.includes(matchedRoute.requiredScope)) {
+          const user = await getMaskedUserById(resolved.user_id);
+          if (user) {
+            session.user = user;
+            (session as Session)._bearer = true;
+          }
+        }
+      }
+    }
+
     // Auth check — reject unauthenticated requests except on public paths
     const entry = PUBLIC_PATH_METHODS.find(([p]) => p === apiPath);
     const isPublic = !!entry && (!entry[1] || entry[1].has(request.method));
@@ -314,12 +347,9 @@ const server = Bun.serve({
     let result: ApiResponse<unknown> | null = null;
     let routeHandled = false;
 
-    for (const route of allRoutes) {
-      if (route.path === apiPath && route.method === request.method) {
-        routeHandled = true;
-        result = await route.execute(req, mutableRes);
-        break;
-      }
+    if (matchedRoute) {
+      routeHandled = true;
+      result = await matchedRoute.execute(req, mutableRes);
     }
 
     if (!routeHandled) {

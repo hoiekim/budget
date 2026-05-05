@@ -17,3 +17,4 @@ export * from "./post-account";
 export * from "./post-snapshot";
 export * from "./post-holding-snapshot";
 export * from "./post-validate-ticker";
+export * from "./post-suggest-category";

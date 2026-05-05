@@ -14,6 +14,7 @@ import {
   indexedDb,
 } from "client";
 import { SimpleFinLinkButton } from "client/components";
+import { ApiKeysSection } from "./ApiKeysSection";
 import "./index.css";
 
 export const Configuration = () => {
@@ -129,6 +130,7 @@ export const Configuration = () => {
           <SimpleFinLinkButton>Connect&nbsp;via&nbsp;SimpleFin</SimpleFinLinkButton>
         </div>
       </div>
+      <ApiKeysSection />
       <div className="propertyLabel">&nbsp;</div>
       <div className="property">
         <div className="row button">
