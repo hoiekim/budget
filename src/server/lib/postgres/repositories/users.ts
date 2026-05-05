@@ -52,6 +52,13 @@ export const getUserById = async (user_id: string): Promise<User | undefined> =>
   return model?.toUser();
 };
 
+export const getMaskedUserById = async (
+  user_id: string,
+): Promise<MaskedUser | undefined> => {
+  const model = await usersTable.queryOne({ [USER_ID]: user_id });
+  return model?.toMaskedUser();
+};
+
 export const deleteUser = async (user_id: string): Promise<boolean> => {
   return await usersTable.softDelete(user_id);
 };
