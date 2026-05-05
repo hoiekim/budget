@@ -59,6 +59,7 @@ export class ApiKeyModel
   declare last_used_at: string | null;
   declare revoked_at: string | null;
   declare expires_at: string | null;
+  declare updated: string | null;
 
   static typeChecker = {
     key_id: isString,
@@ -71,6 +72,7 @@ export class ApiKeyModel
     last_used_at: isNullableString,
     revoked_at: isNullableString,
     expires_at: isNullableString,
+    updated: isNullableString,
   };
 
   constructor(data: unknown) {
