@@ -69,7 +69,7 @@ export const listApiKeys = async (user_id: string): Promise<ApiKeyJSON[]> => {
     // Cast: we deliberately omit key_hash from the SELECT, so the row
     // doesn't satisfy ApiKeyModel's full typeChecker. Validate the visible
     // fields only.
-    return new ApiKeyModel({ ...(row as object), key_hash: "" }).toJSON();
+    return new ApiKeyModel({ ...(row as object), key_hash: "", updated: null }).toJSON();
   });
 };
 
