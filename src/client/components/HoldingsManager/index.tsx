@@ -137,7 +137,7 @@ export const HoldingsManager = ({ accountId }: Props) => {
   };
 
   return (
-    <div className="HoldingsManager">
+    <>
       <div className="propertyLabel">Holdings</div>
 
       {isLoading ? (
@@ -259,6 +259,6 @@ export const HoldingsManager = ({ accountId }: Props) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
