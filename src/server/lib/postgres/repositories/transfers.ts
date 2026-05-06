@@ -1,4 +1,4 @@
-import { JSONTransaction, JSONTransferPair, TransferPairStatus } from "common";
+import { JSONTransaction, TransferPairStatus } from "common";
 import { pool } from "../client";
 import {
   MaskedUser,
