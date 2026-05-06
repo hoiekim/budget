@@ -8,6 +8,7 @@ export * from "./holding";
 export * from "./institution";
 export * from "./security";
 export * from "./transaction";
+export * from "./transaction_pair";
 export * from "./investment_transaction";
 export * from "./split_transaction";
 export * from "./budget";
