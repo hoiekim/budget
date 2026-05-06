@@ -51,9 +51,11 @@ export const Balance = ({ account }: BalanceProps) => {
       <div className="Balance">
         <div>
           {symbol}
-          {currentString}
+          {dynamicAmount ? numberToCommaString(dynamicAmount) : currentString}
         </div>
-        {!!previousAmount && <Changes currentAmount={current!} previousAmount={previousAmount} />}
+        {!!previousAmount && (
+          <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
+        )}
       </div>
     );
   } else if (type === AccountType.Investment) {
