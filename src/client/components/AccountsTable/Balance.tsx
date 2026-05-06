@@ -51,7 +51,7 @@ export const Balance = ({ account }: BalanceProps) => {
       <div className="Balance">
         <div>
           {symbol}
-          {dynamicAmount ? numberToCommaString(dynamicAmount) : currentString}
+          {numberToCommaString(dynamicAmount)}
         </div>
         {!!previousAmount && (
           <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
@@ -63,7 +63,7 @@ export const Balance = ({ account }: BalanceProps) => {
       <div className="Balance">
         <div>
           {symbol}
-          {dynamicAmount ? numberToCommaString(dynamicAmount) : currentString}
+          {numberToCommaString(dynamicAmount)}
         </div>
         {!!previousAmount && (
           <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
@@ -75,7 +75,7 @@ export const Balance = ({ account }: BalanceProps) => {
       <div className="Balance">
         <div>
           {symbol}
-          {dynamicAmount ? numberToCommaString(dynamicAmount) : currentString}
+          {numberToCommaString(dynamicAmount)}
         </div>
         {!!previousAmount && (
           <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
