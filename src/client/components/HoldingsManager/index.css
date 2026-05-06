@@ -1,0 +1,68 @@
+.holdingDetail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tickerField {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+}
+
+.tickerField input {
+  flex: 1;
+  text-transform: uppercase;
+}
+
+.validateBtn {
+  font-size: 13px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.tickerFeedback {
+  font-size: 13px;
+  padding: 2px 10px 4px;
+}
+
+.tickerFeedback.valid {
+  color: var(--green);
+}
+
+.tickerFeedback.invalid {
+  color: var(--red);
+}
+
+.tickerFeedback.validating {
+  color: #888;
+}
+
+.formError {
+  color: var(--red);
+  font-size: 13px;
+  padding: 4px 10px;
+}
+
+.formActions {
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.submitBtn {
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.cancelBtn {
+  background: none;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
