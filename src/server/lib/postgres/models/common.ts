@@ -99,8 +99,11 @@ export const LOCATION_CITY = "location_city";
 export const LABEL_CATEGORY_ID = "label_category_id";
 export const LABEL_MEMO = "label_memo";
 export const LABEL_CATEGORY_CONFIDENCE = "label_category_confidence";
-export const TRANSFER_PAIR_ID = "transfer_pair_id";
-export const TRANSFER_STATUS = "transfer_status";
+
+export const TRANSACTION_PAIRS = "transaction_pairs";
+export const PAIR_ID = "pair_id";
+export const TRANSACTION_ID_A = "transaction_id_a";
+export const TRANSACTION_ID_B = "transaction_id_b";
 
 
 export const INVESTMENT_TRANSACTION_ID = "investment_transaction_id";

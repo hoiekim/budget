@@ -1,99 +1,127 @@
-import { JSONTransaction } from "common";
+import { JSONTransaction, JSONTransferPair, TransferPairStatus } from "common";
 import { pool } from "../client";
-import { MaskedUser, TransactionModel, TRANSACTIONS, USER_ID, TRANSFER_PAIR_ID, TRANSFER_STATUS } from "../models";
+import {
+  MaskedUser,
+  TransactionModel,
+  TransactionPairModel,
+  TRANSACTIONS,
+  TRANSACTION_PAIRS,
+  USER_ID,
+  PAIR_ID,
+  TRANSACTION_ID_A,
+  TRANSACTION_ID_B,
+  STATUS,
+  IS_DELETED,
+  canonicalizePairIds,
+} from "../models";
 
 const TRANSACTION_ID = "transaction_id";
 
 export interface TransferPair {
-  transfer_pair_id: string;
-  status: "suggested" | "confirmed";
+  pair_id: string;
+  status: TransferPairStatus;
   transactions: JSONTransaction[];
 }
 
 /**
- * Get all transfer pairs for a user.
- * Returns pairs grouped by transfer_pair_id.
+ * Get all transfer pairs for a user. JOINs the pairs table to the two
+ * transactions referenced by each pair so the response shape stays the same
+ * as before (one entry per pair, with the two paired transactions inline).
  */
 export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]> => {
-  const result = await pool.query<Record<string, unknown>>(
-    `SELECT * FROM ${TRANSACTIONS}
+  const pairsResult = await pool.query<Record<string, unknown>>(
+    `SELECT * FROM ${TRANSACTION_PAIRS}
      WHERE ${USER_ID} = $1
-       AND ${TRANSFER_PAIR_ID} IS NOT NULL
-       AND (is_deleted IS NULL OR is_deleted = FALSE)
-     ORDER BY ${TRANSFER_PAIR_ID}, date DESC`,
-    [user.user_id]
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+     ORDER BY ${PAIR_ID}`,
+    [user.user_id],
   );
 
-  const pairMap = new Map<string, TransferPair>();
-  for (const row of result.rows) {
+  if (pairsResult.rows.length === 0) return [];
+
+  const pairs = pairsResult.rows.map((row) => new TransactionPairModel(row));
+  const txnIds = pairs.flatMap((p) => [p.transaction_id_a, p.transaction_id_b]);
+
+  const txnsResult = await pool.query<Record<string, unknown>>(
+    `SELECT * FROM ${TRANSACTIONS}
+     WHERE ${USER_ID} = $1
+       AND ${TRANSACTION_ID} = ANY($2::text[])
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+    [user.user_id, txnIds],
+  );
+
+  const txnById = new Map<string, JSONTransaction>();
+  for (const row of txnsResult.rows) {
     const tx = new TransactionModel(row).toJSON();
-    const pairId = tx.transfer_pair_id!;
-    if (!pairMap.has(pairId)) {
-      pairMap.set(pairId, {
-        transfer_pair_id: pairId,
-        status: (tx.transfer_status as "suggested" | "confirmed") ?? "suggested",
-        transactions: [],
-      });
-    }
-    pairMap.get(pairId)!.transactions.push(tx);
+    txnById.set(tx.transaction_id, tx);
   }
 
-  return Array.from(pairMap.values());
+  return pairs
+    .map((pair): TransferPair | null => {
+      const a = txnById.get(pair.transaction_id_a);
+      const b = txnById.get(pair.transaction_id_b);
+      if (!a || !b) return null;
+      return {
+        pair_id: pair.pair_id,
+        status: pair.status,
+        transactions: [a, b],
+      };
+    })
+    .filter((p): p is TransferPair => p !== null);
 };
 
 /**
- * Pair two transactions as a transfer.
- * Generates a shared UUID and sets status on both.
+ * Pair two transactions as a transfer. Single INSERT into transaction_pairs.
+ * Pair ids are canonicalized so (a, b) and (b, a) hash to the same row.
  */
 export const pairTransactions = async (
   user: MaskedUser,
   transaction_id_a: string,
   transaction_id_b: string,
-  status: "suggested" | "confirmed" = "suggested"
+  status: TransferPairStatus = "suggested",
 ): Promise<string> => {
   const pair_id = crypto.randomUUID();
+  const canonical = canonicalizePairIds(transaction_id_a, transaction_id_b);
 
   await pool.query(
-    `UPDATE ${TRANSACTIONS}
-     SET ${TRANSFER_PAIR_ID} = $1, ${TRANSFER_STATUS} = $2
-     WHERE ${TRANSACTION_ID} = ANY($3::text[])
-       AND ${USER_ID} = $4
-       AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [pair_id, status, [transaction_id_a, transaction_id_b], user.user_id]
+    `INSERT INTO ${TRANSACTION_PAIRS}
+       (${PAIR_ID}, ${USER_ID}, ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}, ${STATUS})
+     VALUES ($1, $2, $3, $4, $5)`,
+    [pair_id, user.user_id, canonical.transaction_id_a, canonical.transaction_id_b, status],
   );
 
   return pair_id;
 };
 
 /**
- * Confirm an existing suggested transfer pair.
+ * Confirm a suggested transfer pair. UPDATE one row by pair_id.
  */
 export const confirmTransferPair = async (
   user: MaskedUser,
-  transfer_pair_id: string
+  pair_id: string,
 ): Promise<void> => {
   await pool.query(
-    `UPDATE ${TRANSACTIONS}
-     SET ${TRANSFER_STATUS} = 'confirmed'
-     WHERE ${TRANSFER_PAIR_ID} = $1
+    `UPDATE ${TRANSACTION_PAIRS}
+     SET ${STATUS} = 'confirmed', updated = CURRENT_TIMESTAMP
+     WHERE ${PAIR_ID} = $1
        AND ${USER_ID} = $2
-       AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [transfer_pair_id, user.user_id]
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+    [pair_id, user.user_id],
   );
 };
 
 /**
- * Remove a transfer pairing — nulls out both sides.
+ * Remove a transfer pairing — soft-delete the pair row.
  */
 export const removeTransferPair = async (
   user: MaskedUser,
-  transfer_pair_id: string
+  pair_id: string,
 ): Promise<void> => {
   await pool.query(
-    `UPDATE ${TRANSACTIONS}
-     SET ${TRANSFER_PAIR_ID} = NULL, ${TRANSFER_STATUS} = NULL
-     WHERE ${TRANSFER_PAIR_ID} = $1
+    `UPDATE ${TRANSACTION_PAIRS}
+     SET ${IS_DELETED} = TRUE, updated = CURRENT_TIMESTAMP
+     WHERE ${PAIR_ID} = $1
        AND ${USER_ID} = $2`,
-    [transfer_pair_id, user.user_id]
+    [pair_id, user.user_id],
   );
 };
