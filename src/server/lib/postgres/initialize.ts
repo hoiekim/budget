@@ -59,6 +59,10 @@ export const initializePostgres = async (): Promise<void> => {
   }
 
   try {
+    // pg_trgm enables similarity()-based fuzzy matching on merchant_name
+    // (used by auto-categorization to group merchant_name variants).
+    await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+
     for (const table of tables) {
       const createTableSql = buildCreateTable(table.name, table.schema, table.constraints);
       await pool.query(createTableSql);
