@@ -18,6 +18,7 @@ export const SECTIONS = "sections";
 export const CATEGORIES = "categories";
 export const SNAPSHOTS = "snapshots";
 export const CHARTS = "charts";
+export const API_KEYS = "api_keys";
 
 export const USER_ID = "user_id";
 export const UPDATED = "updated";
@@ -121,5 +122,13 @@ export const HOLDING_SECURITY_ID = "holding_security_id";
 
 export const CHART_ID = "chart_id";
 export const CONFIGURATION = "configuration";
+
+export const KEY_ID = "key_id";
+export const KEY_HASH = "key_hash";
+export const KEY_PREFIX = "key_prefix";
+export const SCOPES = "scopes";
+export const LAST_USED_AT = "last_used_at";
+export const REVOKED_AT = "revoked_at";
+export const EXPIRES_AT = "expires_at";
 
 export const NULL = "NULL";

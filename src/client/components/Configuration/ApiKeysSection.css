@@ -1,0 +1,108 @@
+.ApiKeysSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ApiKeysSection .apiKeyError {
+  color: var(--color-warning, #d44);
+  font-size: 0.85em;
+}
+
+.ApiKeysSection .apiKeyHint {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+.ApiKeysSection .apiKeyCreateForm {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ApiKeysSection .apiKeyCreateForm input,
+.ApiKeysSection .apiKeyCreateForm select {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+}
+
+.ApiKeysSection .apiKeyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ApiKeysSection .apiKeyList li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+}
+
+.ApiKeysSection .apiKeyList li:last-child {
+  border-bottom: none;
+}
+
+.ApiKeysSection .apiKeyMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.ApiKeysSection .apiKeyName {
+  font-weight: 600;
+}
+
+.ApiKeysSection .apiKeyPrefix code,
+.ApiKeysSection .apiKeyCopyOnceValue code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+
+.ApiKeysSection .apiKeyScopes,
+.ApiKeysSection .apiKeyDate {
+  font-size: 0.8em;
+  opacity: 0.65;
+}
+
+.ApiKeysSection .apiKeyCopyOnce {
+  border: 1px dashed var(--color-warning, #d44);
+  padding: 0.75rem;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ApiKeysSection .apiKeyCopyOnceTitle {
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.ApiKeysSection .apiKeyCopyOnceValue {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.4rem 0.6rem;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+.ApiKeysSection .apiKeyCopyOnceValue code {
+  flex: 1;
+  user-select: all;
+}
+
+.ApiKeysSection .apiKeyCopyOnceDismiss {
+  align-self: flex-end;
+}
