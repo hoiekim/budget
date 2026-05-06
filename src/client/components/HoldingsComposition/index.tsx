@@ -10,7 +10,7 @@ interface Props {
 interface HoldingRow {
   holdingId: string;
   securityId: string;
-  name: string;
+  name: string | null;
   ticker: string | null;
   quantity: number;
   price: number;
@@ -20,6 +20,8 @@ interface HoldingRow {
   costBasisInferred: boolean;
   pct: number;
 }
+
+const truncateSecurityId = (id: string) => id.slice(0, 6);
 
 export const HoldingsComposition = ({ account }: Props) => {
   const { account_id, balances } = account;
@@ -45,14 +47,13 @@ export const HoldingsComposition = ({ account }: Props) => {
         const { security_id, quantity, price, value, costBasis, unrealizedGain, costBasisInferred } =
           summary;
 
-        // Find security name/ticker from securitySnapshots
-        let name = security_id;
+        let name: string | null = null;
         let ticker: string | null = null;
 
         securitySnapshots.forEach((snap) => {
           if (snap.security.security_id === security_id) {
-            name = snap.security.name || security_id;
-            ticker = snap.security.ticker_symbol;
+            name = snap.security.name?.trim() || null;
+            ticker = snap.security.ticker_symbol ?? null;
           }
         });
 
@@ -88,7 +89,7 @@ export const HoldingsComposition = ({ account }: Props) => {
   const isCurrentDate = viewEndDate >= latestViewDate.getEndDate();
 
   return (
-    <div className="HoldingsComposition">
+    <>
       <div className="propertyLabel">Holdings&nbsp;Composition</div>
       <div className="property holdingsTable">
         <div className="holdingsHeader">
@@ -104,15 +105,18 @@ export const HoldingsComposition = ({ account }: Props) => {
               : row.unrealizedGain >= 0
                 ? "positive"
                 : "negative";
+          const primaryLabel = row.ticker ?? row.name ?? truncateSecurityId(row.securityId);
+          const secondaryLabel = row.ticker ? row.name : null;
+          const titleLabel = row.name ?? row.securityId;
           return (
             <div key={row.holdingId} className="holdingsRow">
               <span className="col-name">
-                <span className="security-name" title={row.name}>
-                  {row.ticker || row.name}
+                <span className="security-name" title={titleLabel}>
+                  {primaryLabel}
                 </span>
-                {row.ticker && (
-                  <span className="security-fullname" title={row.name}>
-                    {row.name}
+                {secondaryLabel && (
+                  <span className="security-fullname" title={titleLabel}>
+                    {secondaryLabel}
                   </span>
                 )}
               </span>
@@ -160,6 +164,6 @@ export const HoldingsComposition = ({ account }: Props) => {
           <div className="holdingsFootnote">* Cost basis inferred from transaction history</div>
         )}
       </div>
-    </div>
+    </>
   );
 };
