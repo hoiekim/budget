@@ -20,6 +20,8 @@ interface NewHoldingForm {
 
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
 
+const toDateInputValue = (d: Date) => d.toISOString().split("T")[0];
+
 export const HoldingsManager = ({ accountId }: Props) => {
   const { viewDate } = useAppContext();
 
@@ -27,13 +29,18 @@ export const HoldingsManager = ({ accountId }: Props) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [form, setForm] = useState<NewHoldingForm>(EMPTY_FORM);
+  const [snapshotDateInput, setSnapshotDateInput] = useState(
+    toDateInputValue(viewDate.getEndDate()),
+  );
   const [tickerStatus, setTickerStatus] = useState<"idle" | "validating" | "valid" | "invalid">(
     "idle",
   );
   const [tickerMessage, setTickerMessage] = useState("");
   const [submitError, setSubmitError] = useState("");
 
-  const snapshotDate = viewDate.getEndDate().toISOString().split("T")[0];
+  useEffect(() => {
+    setSnapshotDateInput(toDateInputValue(viewDate.getEndDate()));
+  }, [viewDate]);
 
   const fetchSnapshots = useCallback(async () => {
     setIsLoading(true);
@@ -96,12 +103,13 @@ export const HoldingsManager = ({ accountId }: Props) => {
       return setSubmitError("Quantity must be a positive number");
     if (costBasis !== undefined && isNaN(costBasis))
       return setSubmitError("Cost basis must be a number");
+    if (!snapshotDateInput) return setSubmitError("Snapshot date is required");
 
     const body: Record<string, unknown> = {
       account_id: accountId,
       ticker_symbol: ticker,
       quantity,
-      snapshot_date: snapshotDate,
+      snapshot_date: snapshotDateInput,
     };
     if (costBasis !== undefined) body.cost_basis = costBasis;
 
@@ -136,57 +144,59 @@ export const HoldingsManager = ({ accountId }: Props) => {
     setSubmitError("");
   };
 
+  const renderHoldings = () => {
+    if (isLoading) {
+      return (
+        <div className="row">
+          <span className="propertyName">Loading…</span>
+        </div>
+      );
+    }
+    if (snapshots.length === 0) {
+      return (
+        <div className="row">
+          <span className="propertyName disabled">No holdings recorded</span>
+        </div>
+      );
+    }
+    return snapshots.map((s) => {
+      const ticker = s.ticker_symbol || s.holding_security_id.slice(0, 8);
+      const qty = s.quantity != null ? `${s.quantity} sh` : "—";
+      const detail = [
+        s.cost_basis != null ? `$${s.cost_basis.toFixed(2)}/sh` : null,
+        s.snapshot_date?.slice(0, 10) ?? null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return (
+        <div key={s.snapshot_id} className="row keyValue">
+          <span className="propertyName" title={s.security_name || undefined}>
+            {ticker}
+          </span>
+          <span className="holdingDetail">
+            <span>{qty}</span>
+            {detail && <span className="small">{detail}</span>}
+            <button
+              type="button"
+              className="holdingDelete"
+              aria-label={`Remove ${ticker}`}
+              onClick={() => onDelete(s.snapshot_id)}
+            >
+              ×
+            </button>
+          </span>
+        </div>
+      );
+    });
+  };
+
   return (
     <>
       <div className="propertyLabel">Holdings</div>
 
-      {isLoading ? (
-        <div className="property">
-          <div className="row">
-            <span className="propertyName">Loading…</span>
-          </div>
-        </div>
-      ) : snapshots.length === 0 ? (
-        <div className="property">
-          <div className="row">
-            <span className="propertyName disabled">No holdings recorded</span>
-          </div>
-        </div>
-      ) : (
-        <div className="property">
-          {snapshots.map((s) => {
-            const label = s.ticker_symbol || s.holding_security_id.slice(0, 8);
-            const detail = [
-              s.quantity != null ? `${s.quantity} sh` : null,
-              s.cost_basis != null ? `$${s.cost_basis.toFixed(2)}/sh` : null,
-              s.snapshot_date?.slice(0, 10) ?? null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <div key={s.snapshot_id} className="row keyValue">
-                <span className="propertyName" title={s.security_name || undefined}>
-                  {label}
-                </span>
-                <span className="holdingDetail">
-                  <span className="small">{detail}</span>
-                  <button
-                    type="button"
-                    className="delete"
-                    aria-label={`Remove ${label}`}
-                    onClick={() => onDelete(s.snapshot_id)}
-                  >
-                    ×
-                  </button>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {isAdding ? (
         <form className="property" onSubmit={onSubmit}>
+          {renderHoldings()}
           <div className="row keyValue">
             <label className="propertyName" htmlFor="holding-ticker">
               Ticker
@@ -206,7 +216,7 @@ export const HoldingsManager = ({ accountId }: Props) => {
             </div>
           </div>
           {tickerMessage && (
-            <div className={`tickerFeedback ${tickerStatus}`}>{tickerMessage}</div>
+            <div className={`row tickerFeedback ${tickerStatus}`}>{tickerMessage}</div>
           )}
           <div className="row keyValue">
             <label className="propertyName" htmlFor="holding-qty">
@@ -237,21 +247,31 @@ export const HoldingsManager = ({ accountId }: Props) => {
             />
           </div>
           <div className="row keyValue">
-            <span className="propertyName">Snapshot&nbsp;date</span>
-            <span className="small">{snapshotDate}</span>
+            <label className="propertyName" htmlFor="holding-date">
+              Snapshot&nbsp;date
+            </label>
+            <input
+              id="holding-date"
+              type="date"
+              value={snapshotDateInput}
+              onChange={(e) => setSnapshotDateInput(e.target.value)}
+            />
           </div>
-          {submitError && <div className="formError">{submitError}</div>}
-          <div className="row formActions">
-            <button type="submit" className="submitBtn colored">
+          {submitError && <div className="row formError">{submitError}</div>}
+          <div className="row button">
+            <button type="submit" className="colored">
               Add
             </button>
-            <button type="button" className="cancelBtn" onClick={onCancelAdd}>
+          </div>
+          <div className="row button">
+            <button type="button" onClick={onCancelAdd}>
               Cancel
             </button>
           </div>
         </form>
       ) : (
         <div className="property">
+          {renderHoldings()}
           <div className="row button">
             <button type="button" onClick={() => setIsAdding(true)}>
               Add&nbsp;Holding
