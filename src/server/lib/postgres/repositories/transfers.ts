@@ -71,8 +71,11 @@ export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]
 };
 
 /**
- * Pair two transactions as a transfer. Single INSERT into transaction_pairs.
- * Pair ids are canonicalized so (a, b) and (b, a) hash to the same row.
+ * Pair two transactions as a transfer. INSERT into transaction_pairs with
+ * ON CONFLICT handling so re-pairing a previously soft-deleted pair undeletes
+ * the existing row instead of failing the UNIQUE (a, b) constraint. An active
+ * (non-deleted) row's status is preserved — repeat suggestions don't downgrade
+ * a manually confirmed pair. Returns the effective pair_id (existing or new).
  */
 export const pairTransactions = async (
   user: MaskedUser,
@@ -83,14 +86,25 @@ export const pairTransactions = async (
   const pair_id = crypto.randomUUID();
   const canonical = canonicalizePairIds(transaction_id_a, transaction_id_b);
 
-  await pool.query(
+  const result = await pool.query<{ pair_id: string }>(
     `INSERT INTO ${TRANSACTION_PAIRS}
        (${PAIR_ID}, ${USER_ID}, ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}, ${STATUS})
-     VALUES ($1, $2, $3, $4, $5)`,
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}) DO UPDATE SET
+       ${STATUS} = CASE
+         WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE THEN EXCLUDED.${STATUS}
+         ELSE ${TRANSACTION_PAIRS}.${STATUS}
+       END,
+       ${IS_DELETED} = FALSE,
+       updated = CASE
+         WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE THEN CURRENT_TIMESTAMP
+         ELSE ${TRANSACTION_PAIRS}.updated
+       END
+     RETURNING ${PAIR_ID}`,
     [pair_id, user.user_id, canonical.transaction_id_a, canonical.transaction_id_b, status],
   );
 
-  return pair_id;
+  return result.rows[0].pair_id;
 };
 
 /**

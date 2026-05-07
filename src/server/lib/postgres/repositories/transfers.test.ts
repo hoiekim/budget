@@ -33,6 +33,7 @@ function makePairRow(overrides: Record<string, unknown> = {}) {
     transaction_id_a: "tx-1",
     transaction_id_b: "tx-2",
     status: "suggested",
+    created_at: "2026-04-01T00:00:00Z",
     updated: "2026-04-01T00:00:00Z",
     is_deleted: false,
     ...overrides,
@@ -127,11 +128,10 @@ describe("getTransferPairs", () => {
 describe("pairTransactions", () => {
   beforeEach(() => mockQuery.mockClear());
 
-  test("INSERTs into transaction_pairs and returns a pair_id", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+  test("INSERTs into transaction_pairs and returns the effective pair_id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-new" }], rowCount: 1 });
     const pair_id = await pairTransactions(mockUser as never, "tx-a", "tx-b");
-    expect(typeof pair_id).toBe("string");
-    expect(pair_id.length).toBeGreaterThan(0);
+    expect(pair_id).toBe("pair-new");
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("INSERT INTO transaction_pairs");
@@ -139,8 +139,19 @@ describe("pairTransactions", () => {
     expect(values).toContain("suggested");
   });
 
+  test("uses ON CONFLICT (a, b) so a duplicate pair undeletes the existing row", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-existing" }], rowCount: 1 });
+    const pair_id = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    const [sql] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("ON CONFLICT (transaction_id_a, transaction_id_b)");
+    expect(sql).toContain("is_deleted = FALSE");
+    // active row keeps its existing status; only re-activated rows take EXCLUDED.status
+    expect(sql).toMatch(/CASE\s+WHEN\s+transaction_pairs\.is_deleted\s*=\s*TRUE\s+THEN\s+EXCLUDED\.status/);
+    expect(pair_id).toBe("pair-existing");
+  });
+
   test("canonicalizes (a, b) so reversed inputs hit the same row shape", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-1" }], rowCount: 1 });
     await pairTransactions(mockUser as never, "tx-z", "tx-a");
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
     // canonical: tx-a < tx-z so transaction_id_a = "tx-a", transaction_id_b = "tx-z"
@@ -150,7 +161,7 @@ describe("pairTransactions", () => {
   });
 
   test("accepts confirmed status", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-1" }], rowCount: 1 });
     await pairTransactions(mockUser as never, "tx-a", "tx-b", "confirmed");
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(values).toContain("confirmed");

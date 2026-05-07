@@ -2,12 +2,15 @@ import { JSONTransferPair, TransferPairStatus, isString, isNullableString, isNul
 import {
   PAIR_ID,
   USER_ID,
+  TRANSACTION_ID,
   TRANSACTION_ID_A,
   TRANSACTION_ID_B,
   STATUS,
+  CREATED_AT,
   UPDATED,
   IS_DELETED,
   TRANSACTION_PAIRS,
+  TRANSACTIONS,
   USERS,
 } from "./common";
 import { Model, RowValueType, createTable } from "./base";
@@ -15,9 +18,10 @@ import { Model, RowValueType, createTable } from "./base";
 const transactionPairSchema = {
   [PAIR_ID]: "UUID PRIMARY KEY",
   [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-  [TRANSACTION_ID_A]: "VARCHAR(255) NOT NULL",
-  [TRANSACTION_ID_B]: "VARCHAR(255) NOT NULL",
+  [TRANSACTION_ID_A]: `VARCHAR(255) NOT NULL REFERENCES ${TRANSACTIONS}(${TRANSACTION_ID}) ON DELETE CASCADE`,
+  [TRANSACTION_ID_B]: `VARCHAR(255) NOT NULL REFERENCES ${TRANSACTIONS}(${TRANSACTION_ID}) ON DELETE CASCADE`,
   [STATUS]: "VARCHAR(20) NOT NULL",
+  [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
 };
@@ -34,6 +38,7 @@ export class TransactionPairModel
   declare transaction_id_a: string;
   declare transaction_id_b: string;
   declare status: TransferPairStatus;
+  declare created_at: string | null;
   declare updated: string | null;
   declare is_deleted: boolean;
 
@@ -43,6 +48,7 @@ export class TransactionPairModel
     transaction_id_a: isString,
     transaction_id_b: isString,
     status: isString,
+    created_at: isNullableString,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
@@ -66,6 +72,9 @@ export const transactionPairsTable = createTable({
   name: TRANSACTION_PAIRS,
   primaryKey: PAIR_ID,
   schema: transactionPairSchema,
+  constraints: [
+    `CONSTRAINT transaction_pairs_pair_unique UNIQUE (${TRANSACTION_ID_A}, ${TRANSACTION_ID_B})`,
+  ],
   indexes: [
     { column: USER_ID },
     { column: TRANSACTION_ID_A },
