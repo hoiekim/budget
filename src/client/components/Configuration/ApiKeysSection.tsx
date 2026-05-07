@@ -16,6 +16,9 @@ interface CreateResult {
   plaintext: string;
 }
 
+const formatDate = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString() : "Never";
+
 export const ApiKeysSection = () => {
   const [keys, setKeys] = useState<KeyView[]>([]);
   const [loading, setLoading] = useState(false);
@@ -76,39 +79,56 @@ export const ApiKeysSection = () => {
   return (
     <>
       <div className="propertyLabel">API&nbsp;Keys</div>
-      <div className="property ApiKeysSection">
-        {error && <div className="apiKeyError">{error}</div>}
 
-        {justCreated && (
-          <div className="apiKeyCopyOnce">
-            <div className="apiKeyCopyOnceTitle">
-              Copy this key — it will not be shown again:
+      {error && (
+        <div className="property">
+          <div className="row">
+            <span className="apiKeyError">{error}</span>
+          </div>
+        </div>
+      )}
+
+      {justCreated && (
+        <>
+          <div className="propertyLabel">New&nbsp;Key&nbsp;—&nbsp;Save&nbsp;Now</div>
+          <div className="property apiKeyCopyOnce">
+            <div className="row">
+              <span className="apiKeyCopyOnceTitle">
+                Copy this key — it will not be shown again.
+              </span>
             </div>
-            <div className="apiKeyCopyOnceValue">
-              <code>{justCreated.plaintext}</code>
+            <div className="row keyValue">
+              <span className="propertyName">Key</span>
+              <code className="apiKeyPlaintext">{justCreated.plaintext}</code>
+            </div>
+            <div className="row button">
               <button type="button" onClick={onCopy}>
-                Copy
+                Copy&nbsp;to&nbsp;clipboard
               </button>
             </div>
-            <button
-              type="button"
-              className="apiKeyCopyOnceDismiss"
-              onClick={() => setJustCreated(null)}
-            >
-              I&rsquo;ve&nbsp;saved&nbsp;it
-            </button>
+            <div className="row button">
+              <button type="button" onClick={() => setJustCreated(null)}>
+                I&rsquo;ve&nbsp;saved&nbsp;it
+              </button>
+            </div>
           </div>
-        )}
+        </>
+      )}
 
-        <div className="apiKeyCreateForm">
+      <div className="property">
+        <div className="row keyValue">
+          <span className="propertyName">Name</span>
           <input
             type="text"
-            placeholder="Name (e.g. claoie-suggester)"
+            placeholder="e.g. claoie-suggester"
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={creating}
             maxLength={255}
           />
+        </div>
+        <div className="row keyValue">
+          <span className="propertyName">Scope</span>
           <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={creating}>
             {SCOPE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -116,44 +136,63 @@ export const ApiKeysSection = () => {
               </option>
             ))}
           </select>
+        </div>
+        <div className="row button">
           <button type="button" onClick={onCreate} disabled={creating || !name.trim()}>
-            {creating ? "Creating…" : "Create&nbsp;Key"}
+            {creating ? "Creating…" : "Create Key"}
           </button>
         </div>
-
-        {loading && <div className="apiKeyHint">Loading&hellip;</div>}
-        {!loading && keys.length === 0 && (
-          <div className="apiKeyHint">No active API keys.</div>
-        )}
-        {keys.length > 0 && (
-          <ul className="apiKeyList">
-            {keys.map((k) => (
-              <li key={k.key_id}>
-                <div className="apiKeyMeta">
-                  <span className="apiKeyName">{k.name}</span>
-                  <span className="apiKeyPrefix">
-                    <code>{k.key_prefix}…</code>
-                  </span>
-                  <span className="apiKeyScopes">{k.scopes.join(", ")}</span>
-                  <span className="apiKeyDate">
-                    created {new Date(k.created_at).toLocaleDateString()}
-                    {k.last_used_at
-                      ? ` · last used ${new Date(k.last_used_at).toLocaleDateString()}`
-                      : " · never used"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="delete colored"
-                  onClick={() => onRevoke(k.key_id, k.name)}
-                >
-                  Revoke
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
+
+      {loading && (
+        <div className="property">
+          <div className="row">
+            <span className="propertyName disabled">Loading&hellip;</span>
+          </div>
+        </div>
+      )}
+
+      {!loading && keys.length === 0 && (
+        <div className="property">
+          <div className="row">
+            <span className="propertyName disabled">No active API keys</span>
+          </div>
+        </div>
+      )}
+
+      {keys.map((k) => (
+        <div className="property" key={k.key_id}>
+          <div className="row keyValue">
+            <span className="propertyName">Name</span>
+            <span>{k.name}</span>
+          </div>
+          <div className="row keyValue">
+            <span className="propertyName">Prefix</span>
+            <code className="apiKeyPrefix">{k.key_prefix}…</code>
+          </div>
+          <div className="row keyValue">
+            <span className="propertyName">Scopes</span>
+            <span>{k.scopes.join(", ")}</span>
+          </div>
+          <div className="row keyValue">
+            <span className="propertyName">Created</span>
+            <span>{formatDate(k.created_at)}</span>
+          </div>
+          <div className="row keyValue">
+            <span className="propertyName">Last&nbsp;Used</span>
+            <span>{formatDate(k.last_used_at)}</span>
+          </div>
+          <div className="row button">
+            <button
+              type="button"
+              className="delete colored"
+              onClick={() => onRevoke(k.key_id, k.name)}
+            >
+              Revoke
+            </button>
+          </div>
+        </div>
+      ))}
     </>
   );
 };
