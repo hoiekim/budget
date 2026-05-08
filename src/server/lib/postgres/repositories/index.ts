@@ -12,3 +12,4 @@ export * from "./split_transactions";
 export * from "./budgets";
 export * from "./snapshots";
 export * from "./charts";
+export * from "./transfers";
