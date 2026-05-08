@@ -31,6 +31,7 @@ budget/
 │   │       ├── accounts/     # Account management
 │   │       ├── budgets/      # Budget management
 │   │       ├── charts/       # Chart data
+│   │       ├── transfers/    # Transfer pair management
 │   │       ├── users/        # User management
 │   │       └── webhooks/     # Webhook handlers
 │   └── common/               # Shared code (client + server)
@@ -51,6 +52,7 @@ Core models are defined in `src/common/models/`:
 - **Item** — a connection to a financial institution
 - **Snapshot** — point-in-time record of account balances
 - **Chart** — visualization configuration
+- **TransferPair** — pairs two transactions across accounts as a single transfer (suggested or confirmed)
 
 ## External API Integrations
 
