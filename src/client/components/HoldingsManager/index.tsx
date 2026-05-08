@@ -24,12 +24,21 @@ export const HoldingsManager = ({ accountId }: Props) => {
     setIsLoading(false);
   }, [accountId]);
 
-  // Re-fetch when the router path changes back to ACCOUNT_DETAIL — a user
-  // returning from /holding-detail (where they edited fields via on-blur)
-  // should see the updated values, not the stale list from before the edit.
   useEffect(() => {
-    if (router.path === PATH.ACCOUNT_DETAIL) fetchSnapshots();
-  }, [router.path, fetchSnapshots]);
+    fetchSnapshots();
+  }, [fetchSnapshots]);
+
+  // HoldingDetailPage emits a `holdings-updated` event after every successful
+  // on-blur PATCH (and after delete). Listen for it scoped to this account so
+  // the list reflects edits without a manual reload.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { account_id?: string } | undefined;
+      if (!detail || detail.account_id === accountId) fetchSnapshots();
+    };
+    window.addEventListener("holdings-updated", handler);
+    return () => window.removeEventListener("holdings-updated", handler);
+  }, [accountId, fetchSnapshots]);
 
   const goToHolding = (snapshotId?: string) => {
     const params = new URLSearchParams();

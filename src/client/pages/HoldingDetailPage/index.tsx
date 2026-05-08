@@ -160,6 +160,9 @@ export const HoldingDetailPage = () => {
       .catch(console.error);
 
     if (r?.status === "success") {
+      window.dispatchEvent(
+        new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
+      );
       goBackToAccount();
     } else {
       setSubmitError(r?.message || "Failed to save holding");
@@ -179,11 +182,16 @@ export const HoldingDetailPage = () => {
         .catch(console.error);
       if (r?.status === "success") {
         await fetchSnapshot();
+        // Notify the holdings list (rendered by HoldingsManager on the
+        // AccountDetailPage) so it reflects the on-blur edit on next return.
+        window.dispatchEvent(
+          new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
+        );
       } else {
         setEditError(r?.message || "Failed to update holding");
       }
     },
-    [snapshot, fetchSnapshot],
+    [snapshot, fetchSnapshot, accountId],
   );
 
   const onBlurTicker = async () => {
@@ -233,6 +241,9 @@ export const HoldingDetailPage = () => {
       .delete(`/api/snapshots/holding?id=${snapshot.snapshot_id}`)
       .catch(console.error);
     if (r?.status === "success") {
+      window.dispatchEvent(
+        new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
+      );
       goBackToAccount();
     } else {
       setEditError(r?.message || "Failed to delete holding");
