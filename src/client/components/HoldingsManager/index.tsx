@@ -24,9 +24,12 @@ export const HoldingsManager = ({ accountId }: Props) => {
     setIsLoading(false);
   }, [accountId]);
 
+  // Re-fetch when the router path changes back to ACCOUNT_DETAIL — a user
+  // returning from /holding-detail (where they edited fields via on-blur)
+  // should see the updated values, not the stale list from before the edit.
   useEffect(() => {
-    fetchSnapshots();
-  }, [fetchSnapshots]);
+    if (router.path === PATH.ACCOUNT_DETAIL) fetchSnapshots();
+  }, [router.path, fetchSnapshots]);
 
   const goToHolding = (snapshotId?: string) => {
     const params = new URLSearchParams();
