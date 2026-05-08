@@ -242,11 +242,12 @@ export const HoldingDetailPage = () => {
   // ── Render ──────────────────────────────────────────────────────────────
   if (!accountId) {
     return (
-      <div className="HoldingDetailPage">
+      <div className="HoldingProperties Properties">
         <div className="propertyLabel">Holding</div>
         <div className="property">
-          <div className="row">
-            <span className="propertyName">Missing account context.</span>
+          <div className="row keyValue">
+            <span className="propertyName">Missing&nbsp;account&nbsp;context</span>
+            <span></span>
           </div>
         </div>
       </div>
@@ -255,16 +256,13 @@ export const HoldingDetailPage = () => {
 
   if (isNew) {
     return (
-      <div className="HoldingDetailPage">
+      <div className="HoldingProperties Properties">
         <div className="propertyLabel">New&nbsp;Holding</div>
         <form className="property" onSubmit={onSubmitNew}>
           <div className="row keyValue">
-            <label className="propertyName" htmlFor="holding-ticker">
-              Ticker
-            </label>
+            <span className="propertyName">Ticker</span>
             <div className="tickerField">
               <input
-                id="holding-ticker"
                 type="text"
                 placeholder="e.g. AAPL"
                 value={form.ticker}
@@ -280,11 +278,8 @@ export const HoldingDetailPage = () => {
             <div className={`row tickerFeedback ${tickerStatus}`}>{tickerMessage}</div>
           )}
           <div className="row keyValue">
-            <label className="propertyName" htmlFor="holding-qty">
-              Quantity
-            </label>
+            <span className="propertyName">Quantity</span>
             <input
-              id="holding-qty"
               type="number"
               placeholder="0"
               min="0"
@@ -294,11 +289,8 @@ export const HoldingDetailPage = () => {
             />
           </div>
           <div className="row keyValue">
-            <label className="propertyName" htmlFor="holding-cost">
-              Cost/sh&nbsp;(opt)
-            </label>
+            <span className="propertyName">Cost/sh&nbsp;(opt)</span>
             <input
-              id="holding-cost"
               type="number"
               placeholder="0.00"
               min="0"
@@ -308,11 +300,8 @@ export const HoldingDetailPage = () => {
             />
           </div>
           <div className="row keyValue">
-            <label className="propertyName" htmlFor="holding-date">
-              Snapshot&nbsp;date
-            </label>
+            <span className="propertyName">Snapshot&nbsp;date</span>
             <input
-              id="holding-date"
               type="date"
               value={snapshotDateInput}
               onChange={(e) => setSnapshotDateInput(e.target.value)}
@@ -336,11 +325,12 @@ export const HoldingDetailPage = () => {
 
   if (loading && !snapshot) {
     return (
-      <div className="HoldingDetailPage">
+      <div className="HoldingProperties Properties">
         <div className="propertyLabel">Holding</div>
         <div className="property">
-          <div className="row">
+          <div className="row keyValue">
             <span className="propertyName">Loading…</span>
+            <span></span>
           </div>
         </div>
       </div>
@@ -349,10 +339,13 @@ export const HoldingDetailPage = () => {
 
   if (loadError) {
     return (
-      <div className="HoldingDetailPage">
+      <div className="HoldingProperties Properties">
         <div className="propertyLabel">Holding</div>
         <div className="property">
           <div className="row formError">{loadError}</div>
+        </div>
+        <div className="propertyLabel">&nbsp;</div>
+        <div className="property">
           <div className="row button">
             <button type="button" onClick={goBackToAccount}>
               Back
@@ -364,15 +357,12 @@ export const HoldingDetailPage = () => {
   }
 
   return (
-    <div className="HoldingDetailPage">
+    <div className="HoldingProperties Properties">
       <div className="propertyLabel">Holding</div>
       <div className="property">
         <div className="row keyValue">
-          <label className="propertyName" htmlFor="edit-ticker">
-            Ticker
-          </label>
+          <span className="propertyName">Ticker</span>
           <input
-            id="edit-ticker"
             type="text"
             value={editTicker}
             onChange={(e) => setEditTicker(e.target.value)}
@@ -387,11 +377,8 @@ export const HoldingDetailPage = () => {
           </div>
         )}
         <div className="row keyValue">
-          <label className="propertyName" htmlFor="edit-qty">
-            Quantity
-          </label>
+          <span className="propertyName">Quantity</span>
           <input
-            id="edit-qty"
             type="number"
             min="0"
             step="any"
@@ -401,11 +388,8 @@ export const HoldingDetailPage = () => {
           />
         </div>
         <div className="row keyValue">
-          <label className="propertyName" htmlFor="edit-cost">
-            Cost/sh
-          </label>
+          <span className="propertyName">Cost/sh</span>
           <input
-            id="edit-cost"
             type="number"
             min="0"
             step="any"
@@ -415,11 +399,8 @@ export const HoldingDetailPage = () => {
           />
         </div>
         <div className="row keyValue">
-          <label className="propertyName" htmlFor="edit-date">
-            Snapshot&nbsp;date
-          </label>
+          <span className="propertyName">Snapshot&nbsp;date</span>
           <input
-            id="edit-date"
             type="date"
             value={editDate}
             onChange={(e) => setEditDate(e.target.value)}
@@ -428,6 +409,7 @@ export const HoldingDetailPage = () => {
         </div>
         {editError && <div className="row formError">{editError}</div>}
       </div>
+      <div className="propertyLabel">&nbsp;</div>
       <div className="property">
         <div className="row button">
           <button type="button" className="delete colored" onClick={onClickDelete}>
