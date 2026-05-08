@@ -24,7 +24,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
 
   const { data, setData, router } = useAppContext();
   const { accounts, budgets, sections, categories } = data;
-  const { path, go } = router;
+  const { go } = router;
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
@@ -144,7 +144,6 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
   };
 
   const onClickKebab = () => {
-    if (path === PATH.TRANSACTION_DETAIL) return;
     const params = new URLSearchParams(router.params);
     params.set("investment_transaction_id", id);
     go(PATH.TRANSACTION_DETAIL, { params });

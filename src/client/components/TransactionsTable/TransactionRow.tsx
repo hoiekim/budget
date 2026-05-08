@@ -30,7 +30,7 @@ const TransactionRow = ({ transaction }: Props) => {
   const amountAfterSplit = amount - transactionFamilies.getChildrenAmountTotal(id);
 
   const { accounts, budgets, sections, categories } = data;
-  const { path, go } = router;
+  const { go } = router;
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
@@ -185,7 +185,6 @@ const TransactionRow = ({ transaction }: Props) => {
   };
 
   const onClickKebab = () => {
-    if (path === PATH.TRANSACTION_DETAIL) return;
     const params = new URLSearchParams(router.params);
     params.set("transaction_id", parentTransaction.transaction_id);
     go(PATH.TRANSACTION_DETAIL, { params });
