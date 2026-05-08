@@ -1,0 +1,44 @@
+.HoldingDetailPage {
+  padding: 20px;
+}
+
+.HoldingDetailPage .pageTitle {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.HoldingDetailPage .tickerField {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.HoldingDetailPage .tickerField input {
+  flex: 1;
+  min-width: 0;
+}
+
+.HoldingDetailPage .validateBtn {
+  flex-shrink: 0;
+  font-size: 13px;
+  padding: 4px 10px;
+}
+
+.HoldingDetailPage .tickerFeedback {
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.HoldingDetailPage .tickerFeedback.valid {
+  color: var(--color-success, #2a8c3a);
+}
+
+.HoldingDetailPage .tickerFeedback.invalid {
+  color: var(--color-danger, #b03030);
+}
+
+.HoldingDetailPage .formError {
+  color: var(--color-danger, #b03030);
+  font-size: 12px;
+  padding: 4px 8px;
+}
