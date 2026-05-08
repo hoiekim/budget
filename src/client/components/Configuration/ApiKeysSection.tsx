@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiKeyJSON } from "server";
-import { call } from "client";
+import { call, PATH, useAppContext } from "client";
 
 import "./ApiKeysSection.css";
 
@@ -16,10 +16,8 @@ interface CreateResult {
   plaintext: string;
 }
 
-const formatDate = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString() : "Never";
-
 export const ApiKeysSection = () => {
+  const { router } = useAppContext();
   const [keys, setKeys] = useState<KeyView[]>([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
@@ -62,18 +60,15 @@ export const ApiKeysSection = () => {
     }
   };
 
-  const onRevoke = async (key_id: string, label: string) => {
-    if (!window.confirm(`Revoke API key "${label}"? This cannot be undone.`)) return;
-    const r = await call.delete<{ revoked: boolean }>(
-      `/api/api-keys?key_id=${encodeURIComponent(key_id)}`,
-    );
-    if (r.status === "success") load();
-    else setError(r.message ?? "Failed to revoke API key");
-  };
-
   const onCopy = () => {
     if (!justCreated) return;
     navigator.clipboard?.writeText(justCreated.plaintext).catch(() => undefined);
+  };
+
+  const goToKey = (keyId: string) => {
+    const params = new URLSearchParams();
+    params.set("key_id", keyId);
+    router.go(PATH.API_KEY_DETAIL, { params });
   };
 
   return (
@@ -115,6 +110,35 @@ export const ApiKeysSection = () => {
         </>
       )}
 
+      {(loading || keys.length > 0) && (
+        <div className="property">
+          {loading && (
+            <div className="row">
+              <span className="propertyName disabled">Loading&hellip;</span>
+            </div>
+          )}
+          {keys.map((k) => (
+            <div className="row button" key={k.key_id}>
+              <button className="connection" onClick={() => goToKey(k.key_id)}>
+                <div>
+                  <span>{k.name}</span>
+                  <span className="small">&nbsp;&nbsp;{k.key_prefix}…</span>
+                </div>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && keys.length === 0 && (
+        <div className="property">
+          <div className="row">
+            <span className="propertyName disabled">No active API keys</span>
+          </div>
+        </div>
+      )}
+
+      <div className="propertyLabel">Create&nbsp;API&nbsp;Key</div>
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Name</span>
@@ -139,60 +163,10 @@ export const ApiKeysSection = () => {
         </div>
         <div className="row button">
           <button type="button" onClick={onCreate} disabled={creating || !name.trim()}>
-            {creating ? "Creating…" : "Create Key"}
+            {creating ? "Creating…" : "Create Key"}
           </button>
         </div>
       </div>
-
-      {loading && (
-        <div className="property">
-          <div className="row">
-            <span className="propertyName disabled">Loading&hellip;</span>
-          </div>
-        </div>
-      )}
-
-      {!loading && keys.length === 0 && (
-        <div className="property">
-          <div className="row">
-            <span className="propertyName disabled">No active API keys</span>
-          </div>
-        </div>
-      )}
-
-      {keys.map((k) => (
-        <div className="property" key={k.key_id}>
-          <div className="row keyValue">
-            <span className="propertyName">Name</span>
-            <span>{k.name}</span>
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Prefix</span>
-            <code className="apiKeyPrefix">{k.key_prefix}…</code>
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Scopes</span>
-            <span>{k.scopes.join(", ")}</span>
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Created</span>
-            <span>{formatDate(k.created_at)}</span>
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Last&nbsp;Used</span>
-            <span>{formatDate(k.last_used_at)}</span>
-          </div>
-          <div className="row button">
-            <button
-              type="button"
-              className="delete colored"
-              onClick={() => onRevoke(k.key_id, k.name)}
-            >
-              Revoke
-            </button>
-          </div>
-        </div>
-      ))}
     </>
   );
 };

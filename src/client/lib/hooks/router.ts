@@ -15,6 +15,7 @@ export enum PATH {
   TRANSACTION_DETAIL = "transaction-detail",
   CONFIG = "config",
   CONNECTION_DETAIL = "connection-detail",
+  API_KEY_DETAIL = "api-key-detail",
   DASHBOARD = "dashboard",
   CHART_DETAIL = "chart-detail",
   CHART_ACCOUNTS = "chart-accounts",

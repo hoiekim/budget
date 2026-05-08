@@ -1,0 +1,8 @@
+div.ApiKeyDetailPage > div {
+  padding: 0 10px;
+}
+
+.ApiKeyDetailPage .apiKeyPrefix {
+  font-family: var(--monoFont, monospace);
+  font-size: 13px;
+}
