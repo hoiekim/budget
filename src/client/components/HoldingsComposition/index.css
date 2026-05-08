@@ -1,0 +1,89 @@
+.holdingsTable {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.holdingsTable .holdingsHeader,
+.holdingsTable .holdingsRow {
+  display: grid;
+  grid-template-columns: 1fr 6em 7em 4em;
+  gap: 0.25em;
+  padding: 0.35em 0.75em;
+  font-size: 0.85em;
+  align-items: center;
+}
+
+.holdingsTable .holdingsHeader {
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.holdingsTable .holdingsRow {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.holdingsTable .holdingsRow:last-of-type {
+  border-bottom: none;
+}
+
+.holdingsTable .holdingsRow.total {
+  font-weight: 600;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: none;
+  margin-top: 0.2em;
+}
+
+.holdingsTable .col-value,
+.holdingsTable .col-gain,
+.holdingsTable .col-pct {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.holdingsTable .col-name {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+}
+
+.holdingsTable .security-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsTable .security-fullname {
+  font-size: 0.8em;
+  color: rgba(255, 255, 255, 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsTable .col-gain.positive {
+  color: #4ade80;
+}
+
+.holdingsTable .col-gain.negative {
+  color: #f87171;
+}
+
+.holdingsTable .no-data {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.holdingsTable .inferred-flag {
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 0.2em;
+  font-size: 0.85em;
+}
+
+.holdingsTable .holdingsFootnote {
+  padding: 0.4em 0.75em 0.5em;
+  font-size: 0.75em;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}

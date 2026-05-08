@@ -6,6 +6,7 @@ export * from "./SimpleFinLinkButton";
 export * from "./TransactionsTable";
 export * from "./AccountsTable";
 export * from "./AccountProperties";
+export * from "./HoldingsComposition";
 export * from "./InstitutionSpan";
 export * from "./AccountsDonut";
 export * from "./Header";
