@@ -1,4 +1,4 @@
-import { getSquashedDateString, LocalDate, JSONHolding } from "common";
+import { getRandomId, getSquashedDateString, LocalDate, JSONHolding, JSONSecurity } from "common";
 import {
   Route,
   requireBodyObject,
@@ -50,23 +50,53 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const date: Date = snapshot_date ? new LocalDate(snapshot_date) : new Date();
     const dateString = getSquashedDateString(date);
 
-    // Look up or create security by ticker symbol
-    const securities = await searchSecurities({ ticker_symbol: ticker_symbol.toUpperCase() });
+    // Look up the security by ticker. If absent, validate via Polygon by
+    // ticker detail only — price is intentionally not required: missing close
+    // price for a future or non-trading snapshot_date must not block a valid
+    // ticker (matches the validate-ticker route's leniency).
+    const upperTicker = ticker_symbol.toUpperCase();
+    const securities = await searchSecurities({ ticker_symbol: upperTicker });
     let security_id: string;
 
     if (securities.length > 0) {
       security_id = securities[0].security_id;
     } else {
-      // Validate ticker and fetch security data from Polygon
-      const securityData = await polygon.getSecurityForSymbol(ticker_symbol.toUpperCase(), date);
-      if (!securityData) {
+      const detailResult = await polygon.getTickerDetail(upperTicker);
+      if (!detailResult.success) {
         return {
           status: "failed",
-          message: `Ticker symbol "${ticker_symbol}" could not be validated. Please check the symbol and try again.`,
+          message:
+            detailResult.error === "no_api_key"
+              ? "Market data API is not configured. Contact your administrator."
+              : `Ticker symbol "${ticker_symbol}" could not be validated. Please check the symbol and try again.`,
         };
       }
-      await upsertSecurities([securityData]);
-      security_id = securityData.security_id;
+      const { name, currency_name } = detailResult.data;
+      const newSecurity: JSONSecurity = {
+        security_id: getRandomId(),
+        ticker_symbol: upperTicker,
+        name,
+        iso_currency_code: currency_name.toUpperCase(),
+        close_price: null,
+        close_price_as_of: null,
+        isin: null,
+        cusip: null,
+        sedol: null,
+        institution_security_id: null,
+        institution_id: null,
+        proxy_security_id: null,
+        is_cash_equivalent: null,
+        type: null,
+        update_datetime: null,
+        unofficial_currency_code: null,
+        market_identifier_code: null,
+        sector: null,
+        industry: null,
+        option_contract: null,
+        fixed_income: null,
+      };
+      await upsertSecurities([newSecurity]);
+      security_id = newSecurity.security_id;
     }
 
     // Use deterministic snapshot ID so upsert on same account+security+date updates in place
