@@ -9,6 +9,14 @@ import { Schema, Constraints } from "./models/base";
 
 export const SOFT_DELETE_CONDITION = "(is_deleted IS NULL OR is_deleted = FALSE)";
 
+/**
+ * Filter sentinel — pass as a filter value to express `<column> IS NOT NULL`.
+ * Symmetrical to passing `null`, which expresses `<column> IS NULL`.
+ *
+ *   table.query({ merchant_name: IS_NOT_NULL });
+ */
+export const IS_NOT_NULL = Symbol("IS_NOT_NULL");
+
 export type ParamValue = string | number | boolean | Date | null | undefined | string[];
 
 export type QueryData = Record<string, ParamValue | unknown>;
@@ -78,7 +86,9 @@ export function prepareQuery(data: QueryData, options: WhereOptions = {}): Prepa
   for (const [key, value] of Object.entries(data)) {
     if (isUndefined(value)) continue;
 
-    if (isNull(value)) {
+    if (value === IS_NOT_NULL) {
+      conditions.push(`${key} IS NOT NULL`);
+    } else if (isNull(value)) {
       conditions.push(`${key} IS NULL`);
     } else {
       conditions.push(`${key} = $${paramIndex}`);
@@ -339,7 +349,9 @@ export function buildSelectWithFilters(
 
   for (const [key, value] of Object.entries(filters)) {
     if (isUndefined(value)) continue;
-    if (isNull(value)) {
+    if (value === IS_NOT_NULL) {
+      conditions.push(`${key} IS NOT NULL`);
+    } else if (isNull(value)) {
       conditions.push(`${key} IS NULL`);
     } else {
       conditions.push(`${key} = $${paramIndex++}`);

@@ -1,4 +1,4 @@
-import { pool, logger, usersTable } from "server";
+import { pool, logger, usersTable, transactionsTable, IS_NOT_NULL } from "server";
 
 interface MerchantSignal {
   label_category_id: string;
@@ -17,12 +17,47 @@ type LogFn = {
   error: (message: string, context?: Record<string, unknown>, error?: unknown) => void;
 };
 type FetchUsersFn = () => Promise<string[]>;
+type FetchUnlabeledFn = (userId: string) => Promise<UnlabeledTransaction[]>;
+type ApplyLabelFn = (
+  transactionId: string,
+  userId: string,
+  labelCategoryId: string,
+  labelCategoryConfidence: number,
+) => Promise<void>;
 
 // pg_trgm similarity threshold for grouping merchant_name variants
 // (e.g., "STARBUCKS #1234" ~ "STARBUCKS COFFEE 9876"). 0.5 is a balanced
 // default for short, dirty identifiers; tune per Plaid normalization quality.
 const MERCHANT_SIMILARITY_THRESHOLD = 0.5;
 const MERCHANT_SIGNAL_LIMIT = 30;
+
+const defaultFetchUnlabeled: FetchUnlabeledFn = async (userId) => {
+  const rows = await transactionsTable.query({
+    user_id: userId,
+    label_category_confidence: null,
+    merchant_name: IS_NOT_NULL,
+  });
+  return rows
+    .filter((r) => r.merchant_name != null)
+    .map((r) => ({
+      transaction_id: r.transaction_id as string,
+      merchant_name: r.merchant_name as string,
+    }));
+};
+
+const defaultApplyLabel: ApplyLabelFn = async (
+  transactionId,
+  userId,
+  labelCategoryId,
+  labelCategoryConfidence,
+) => {
+  await transactionsTable.update(
+    transactionId,
+    { label_category_id: labelCategoryId, label_category_confidence: labelCategoryConfidence },
+    undefined,
+    userId,
+  );
+};
 
 /**
  * Runs auto-suggestion for transaction categories based on historical merchant patterns.
@@ -33,6 +68,11 @@ const MERCHANT_SIGNAL_LIMIT = 30;
  *   matching the merchant via pg_trgm fuzzy similarity
  * - If enough signal (>= 3 labeled, <= 10% reject rate, >= 95% confidence for best category),
  *   apply the suggestion with confidence = accepted / total_labeled (capped at 0.99)
+ *
+ * Direct SQL is reserved for the merchant-signal query, which uses pg_trgm
+ * `similarity(...)` and a SUM(CASE WHEN ...) aggregation that the standard
+ * Table helpers cannot express. The unlabeled fetch and the label-apply
+ * use `transactionsTable.query` / `transactionsTable.update` (the standard pattern).
  */
 export const runAutoSuggestions = async (
   queryFn: QueryFn = (sql, params) => pool.query(sql, params),
@@ -41,6 +81,8 @@ export const runAutoSuggestions = async (
     const users = await usersTable.query({});
     return users.map((u) => u.user_id);
   },
+  fetchUnlabeled: FetchUnlabeledFn = defaultFetchUnlabeled,
+  applyLabel: ApplyLabelFn = defaultApplyLabel,
 ): Promise<void> => {
   log.info("Auto-suggestion job started");
 
@@ -52,7 +94,13 @@ export const runAutoSuggestions = async (
 
     for (const user_id of userIds) {
       try {
-        const suggested = await processUserSuggestions(user_id, queryFn, log);
+        const suggested = await processUserSuggestions(
+          user_id,
+          queryFn,
+          log,
+          fetchUnlabeled,
+          applyLabel,
+        );
         totalSuggested += suggested;
         totalUsersProcessed++;
       } catch (error) {
@@ -73,20 +121,10 @@ const processUserSuggestions = async (
   userId: string,
   queryFn: QueryFn,
   log: LogFn,
+  fetchUnlabeled: FetchUnlabeledFn,
+  applyLabel: ApplyLabelFn,
 ): Promise<number> => {
-  // Get all unlabeled transactions with a merchant_name.
-  // Stays raw SQL: Table.query() doesn't support IS NOT NULL filters.
-  const unlabeledResult = await queryFn(
-    `SELECT transaction_id, merchant_name
-     FROM transactions
-     WHERE user_id = $1
-       AND label_category_confidence IS NULL
-       AND merchant_name IS NOT NULL
-       AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    [userId],
-  );
-
-  const unlabeled = unlabeledResult.rows as unknown as UnlabeledTransaction[];
+  const unlabeled = await fetchUnlabeled(userId);
   if (unlabeled.length === 0) return 0;
 
   // Cache signal per merchant to avoid redundant queries
@@ -117,12 +155,7 @@ const processUserSuggestions = async (
     // Cap at 0.99 — 1.0 is reserved for user-confirmed labels
     const cappedConfidence = Math.min(confidence, 0.99);
 
-    await queryFn(
-      `UPDATE transactions
-       SET label_category_id = $1, label_category_confidence = $2, updated = CURRENT_TIMESTAMP
-       WHERE transaction_id = $3 AND user_id = $4`,
-      [label_category_id, cappedConfidence, transaction_id, userId],
-    );
+    await applyLabel(transaction_id, userId, label_category_id, cappedConfidence);
 
     suggested++;
   }
@@ -143,6 +176,8 @@ const getMerchantSignal = async (
   // "STARBUCKS #1234" and "STARBUCKS COFFEE 9876" feed the same signal.
   // Inner SELECT picks the most-recent N transactions whose merchant_name is
   // similar enough, then we group by category and take the most-accepted one.
+  // Stays raw SQL: similarity(...) + SUM(CASE WHEN ...) aggregation isn't
+  // expressible via the standard Table.query helpers.
   const result = await queryFn(
     `SELECT
        label_category_id,
