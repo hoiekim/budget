@@ -71,30 +71,43 @@ export const calculateProjection = (config: ProjectionConfig): ProjectionCalcula
     }
   }
 
-  // calculate monthly progress until retirement
-  while (savedAmount * (monthlyPercentageYield - monthOverMonthInflation) < inflatedLivingCost) {
+  // bail after 100 years so a config that can never reach the goal
+  // (e.g. apy ≤ inflation with contribution too small to close the gap) doesn't loop forever
+  const MAX_PROJECTION_MONTHS = 1200;
+  let monthsProjected = 0;
+  while (
+    savedAmount * (monthlyPercentageYield - monthOverMonthInflation) < inflatedLivingCost &&
+    monthsProjected < MAX_PROJECTION_MONTHS
+  ) {
     savedAmount = savedAmount * monthlyPercentageYield + contribution;
     inflatedLivingCost *= monthOverMonthInflation;
     line.sequence.push(savedAmount);
     viewDate.next();
+    monthsProjected++;
   }
 
-  const retireDate = viewDate.clone().getStartDate();
-  const retireAmount = savedAmount;
+  const reachedRetirement =
+    savedAmount * (monthlyPercentageYield - monthOverMonthInflation) >= inflatedLivingCost;
 
-  const point: PointInput = {
-    point: { value: savedAmount, index: line.sequence.length - 1 },
-    color: pointColor,
-    guideX: true,
-    guideY: false,
-  };
+  const retireDate = reachedRetirement ? viewDate.clone().getStartDate() : undefined;
+  const retireAmount = reachedRetirement ? savedAmount : undefined;
 
-  // adds 5% padding after the retire point
-  const padding = line.sequence.length / 20;
-  for (let i = 0; i < padding; i++) {
-    savedAmount = savedAmount * monthOverMonthInflation;
-    line.sequence.push(savedAmount);
-    viewDate.next();
+  const points: PointInput[] = [];
+  if (reachedRetirement) {
+    points.push({
+      point: { value: savedAmount, index: line.sequence.length - 1 },
+      color: pointColor,
+      guideX: true,
+      guideY: false,
+    });
+
+    // adds 5% padding after the retire point
+    const padding = line.sequence.length / 20;
+    for (let i = 0; i < padding; i++) {
+      savedAmount = savedAmount * monthOverMonthInflation;
+      line.sequence.push(savedAmount);
+      viewDate.next();
+    }
   }
 
   // makes sure specified endDate is covered
@@ -115,7 +128,7 @@ export const calculateProjection = (config: ProjectionConfig): ProjectionCalcula
 
   return {
     graphViewDate: viewDate,
-    graphData: { lines: [line], points: [point] },
+    graphData: { lines: [line], points },
     retireDate,
     retireAmount,
   };
