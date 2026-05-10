@@ -1,3 +1,4 @@
+import { AccountType } from "plaid";
 import { DonutData, useAppContext } from "client";
 import { Changes } from "client/components";
 
@@ -25,11 +26,10 @@ export const BalanceInfo = ({ balanceTotal, currencySymbol, donutData, isShrunk 
   let totalCredit = 0;
   let numberOfOthers = 0;
 
-  accounts.forEach(({ account_id, balances }) => {
-    if (!donutData.find(({ id }) => id === account_id)) {
-      totalCredit += balances.current || 0;
-      numberOfOthers++;
-    }
+  accounts.forEach(({ balances, hide, type }) => {
+    if (hide || type !== AccountType.Credit) return;
+    totalCredit += balances.current || 0;
+    numberOfOthers++;
   });
 
   return (
