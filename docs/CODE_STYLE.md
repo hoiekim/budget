@@ -90,6 +90,54 @@ Use named constants from `common/utils/date.ts`:
 import { ONE_HOUR, TWO_WEEKS, THIRTY_DAYS } from "common";
 ```
 
+## Component className Convention
+
+### Root className matches component name
+
+Every component renders a root `<div>` (or other element) whose class name matches the component identifier exactly:
+
+```tsx
+// AccountDetailPage/index.tsx
+const AccountDetailPage = () => (
+  <div className="AccountDetailPage">
+    <AccountProperties ... />
+  </div>
+);
+
+// AccountProperties/index.tsx
+const AccountProperties = () => (
+  <div className="AccountProperties Properties">
+    {/* ... */}
+  </div>
+);
+```
+
+CSS selectors target the same name (`div.AccountDetailPage > div { ... }`), making it easy to jump from a class in DevTools to the component file. Never reuse another component's class name on a different component (e.g. `<div className="ConfigPage">` inside `ConnectionDetailPage` is wrong).
+
+### Generic shared classes co-exist with the specific class
+
+When a component conforms to a shared visual contract, append the generic class after the specific one:
+
+```tsx
+<div className="AccountProperties Properties">      {/* shared layout from div.Properties */}
+<div className="TransactionProperties Properties">
+<div className="BudgetProperties Properties">
+```
+
+The generic class (`Properties`) carries shared rules (`div.Properties > .property { ... }` defined in `App/index.css`). The specific class (`AccountProperties`) carries component-specific overrides. Order: **specific first, then generic**.
+
+### `…Page` components have a standard padding rule
+
+Page components live under `src/client/pages/<Name>Page/` and render the routed view. Their CSS always defines:
+
+```css
+div.AccountDetailPage > div {
+  padding: 0 10px;
+}
+```
+
+This gives all direct children a consistent horizontal inset. Use the same `div.<PageName> > div { padding: 0 10px; }` block in every new `…Page`'s `index.css`.
+
 ## Accessibility
 
 ### Interactive Elements
