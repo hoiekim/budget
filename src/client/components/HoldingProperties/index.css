@@ -1,0 +1,35 @@
+.HoldingProperties .tickerField {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.HoldingProperties .tickerField input {
+  flex: 1;
+  min-width: 0;
+}
+
+.HoldingProperties .validateBtn {
+  flex-shrink: 0;
+  font-size: 13px;
+  padding: 4px 10px;
+}
+
+.HoldingProperties .tickerFeedback {
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.HoldingProperties .tickerFeedback.valid {
+  color: var(--color-success, #2a8c3a);
+}
+
+.HoldingProperties .tickerFeedback.invalid {
+  color: var(--color-danger, #b03030);
+}
+
+.HoldingProperties .formError {
+  color: var(--color-danger, #b03030);
+  font-size: 12px;
+  padding: 4px 8px;
+}

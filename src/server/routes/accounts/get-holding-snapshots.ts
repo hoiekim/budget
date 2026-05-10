@@ -1,8 +1,14 @@
-import { Route, requireQueryString, getHoldingSnapshots } from "server";
+import { JSONSecurity } from "common";
+import { Route, requireQueryString, getHoldingSnapshots, searchSecuritiesById } from "server";
 import { HoldingSnapshot } from "server/lib/postgres/repositories/snapshots";
 
+export interface HoldingSnapshotWithSecurity extends HoldingSnapshot {
+  ticker_symbol: string | null;
+  security_name: string | null;
+}
+
 export interface GetHoldingSnapshotsResponse {
-  snapshots: HoldingSnapshot[];
+  snapshots: HoldingSnapshotWithSecurity[];
 }
 
 export const getHoldingSnapshotsRoute = new Route<GetHoldingSnapshotsResponse>(
@@ -19,6 +25,23 @@ export const getHoldingSnapshotsRoute = new Route<GetHoldingSnapshotsResponse>(
     if (accountIdResult.success) options.account_id = accountIdResult.data!;
 
     const snapshots = await getHoldingSnapshots(user, options);
-    return { status: "success", body: { snapshots } };
+
+    // Batch-fetch security info to include ticker_symbol and name
+    const uniqueSecurityIds = [...new Set(snapshots.map((s) => s.holding_security_id))];
+    const securities = await searchSecuritiesById(uniqueSecurityIds);
+    const securityMap = new Map<string, JSONSecurity>(
+      securities.map((s) => [s.security_id, s]),
+    );
+
+    const snapshotsWithSecurity: HoldingSnapshotWithSecurity[] = snapshots.map((s) => {
+      const sec = securityMap.get(s.holding_security_id);
+      return {
+        ...s,
+        ticker_symbol: sec?.ticker_symbol ?? null,
+        security_name: sec?.name ?? null,
+      };
+    });
+
+    return { status: "success", body: { snapshots: snapshotsWithSecurity } };
   },
 );

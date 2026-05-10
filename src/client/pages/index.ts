@@ -4,6 +4,7 @@ export * from "./BudgetDetailPage";
 export * from "./BudgetConfigPage";
 export * from "./AccountsPage";
 export * from "./AccountDetailPage";
+export * from "./HoldingDetailPage";
 export * from "./TransactionsPage";
 export * from "./TransactionDetailPage";
 export * from "./ConfigPage";
