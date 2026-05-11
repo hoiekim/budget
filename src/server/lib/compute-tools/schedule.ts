@@ -4,6 +4,7 @@ import { sendAlarm } from "server/lib/alarm";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 import { runAutoSuggestions } from "./auto-suggest";
+import { runTransferDetection } from "./detect-transfers";
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
@@ -88,6 +89,9 @@ const runSync = async () => {
     }
     await runAutoSuggestions().catch((error) => {
       logger.error("Auto-suggestion job failed", {}, error);
+    });
+    await runTransferDetection().catch((error) => {
+      logger.error("Transfer-detection job failed", {}, error);
     });
   } catch (err) {
     logger.error("Error occurred during scheduled sync", {}, err);
