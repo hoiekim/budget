@@ -55,6 +55,12 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     setSelectedBudgetIdLabel(account?.label.budget_id || "");
   }, [label.budget_id, account?.label.budget_id]);
 
+  // See TransactionRow — sync confidence from parent-updated transaction
+  // so Accept-All reflects without a reload.
+  useEffect(() => {
+    setSelectedConfidence(label.category_confidence ?? null);
+  }, [label.category_confidence]);
+
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {

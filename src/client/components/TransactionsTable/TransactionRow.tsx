@@ -61,6 +61,14 @@ const TransactionRow = ({ transaction }: Props) => {
     setSelectedBudgetIdLabel(account?.label.budget_id || "");
   }, [label.budget_id, account?.label.budget_id]);
 
+  // Sync confidence back from the canonical Transaction whenever it
+  // changes — so Accept-All (and any other parent-level update path)
+  // updates this row's dot without needing a page reload. Without this,
+  // `selectedConfidence` only sees its mount-time value.
+  useEffect(() => {
+    setSelectedConfidence(label.category_confidence ?? null);
+  }, [label.category_confidence]);
+
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
