@@ -18,6 +18,7 @@ type ApplyCall = {
   transactionId: string;
   userId: string;
   labelCategoryId: string;
+  labelBudgetId: string;
   labelCategoryConfidence: number;
 };
 
@@ -38,7 +39,7 @@ describe("runAutoSuggestions", () => {
     const applyCalls: ApplyCall[] = [];
     const queryFn = mock(async () => {
       // Only 2 labeled — below threshold of 3
-      return { rows: [{ label_category_id: "cat-1", accepted: "2", rejected: "0" }] };
+      return { rows: [{ label_category_id: "cat-1", label_budget_id: "bud-1", accepted: "2", rejected: "0" }] };
     });
     const fetchUsers = async () => ["user-1"];
     const fetchUnlabeled = async () => [{ transaction_id: "txn-1", merchant_name: "Coffee Shop" }];
@@ -46,9 +47,10 @@ describe("runAutoSuggestions", () => {
       transactionId: string,
       userId: string,
       labelCategoryId: string,
+      labelBudgetId: string,
       labelCategoryConfidence: number,
     ) => {
-      applyCalls.push({ transactionId, userId, labelCategoryId, labelCategoryConfidence });
+      applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
     await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
@@ -59,7 +61,7 @@ describe("runAutoSuggestions", () => {
     const applyCalls: ApplyCall[] = [];
     const queryFn = mock(async () => {
       // 8 accepted, 2 rejected → reject_rate = 0.2 > 0.1 → skip
-      return { rows: [{ label_category_id: "cat-2", accepted: "8", rejected: "2" }] };
+      return { rows: [{ label_category_id: "cat-2", label_budget_id: "bud-2", accepted: "8", rejected: "2" }] };
     });
     const fetchUsers = async () => ["user-2"];
     const fetchUnlabeled = async () => [{ transaction_id: "txn-2", merchant_name: "Restaurant" }];
@@ -67,9 +69,10 @@ describe("runAutoSuggestions", () => {
       transactionId: string,
       userId: string,
       labelCategoryId: string,
+      labelBudgetId: string,
       labelCategoryConfidence: number,
     ) => {
-      applyCalls.push({ transactionId, userId, labelCategoryId, labelCategoryConfidence });
+      applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
     await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
@@ -80,7 +83,7 @@ describe("runAutoSuggestions", () => {
     const applyCalls: ApplyCall[] = [];
     const queryFn = mock(async () => {
       // 3 accepted, 1 rejected → confidence = 3/4 = 0.75 < 0.95 → skip
-      return { rows: [{ label_category_id: "cat-3", accepted: "3", rejected: "1" }] };
+      return { rows: [{ label_category_id: "cat-3", label_budget_id: "bud-3", accepted: "3", rejected: "1" }] };
     });
     const fetchUsers = async () => ["user-3"];
     const fetchUnlabeled = async () => [{ transaction_id: "txn-3", merchant_name: "Gas Station" }];
@@ -88,9 +91,10 @@ describe("runAutoSuggestions", () => {
       transactionId: string,
       userId: string,
       labelCategoryId: string,
+      labelBudgetId: string,
       labelCategoryConfidence: number,
     ) => {
-      applyCalls.push({ transactionId, userId, labelCategoryId, labelCategoryConfidence });
+      applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
     await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
@@ -101,7 +105,7 @@ describe("runAutoSuggestions", () => {
     const applyCalls: ApplyCall[] = [];
     const queryFn = mock(async () => {
       // 10 accepted, 0 rejected → confidence = 1.0 → should cap at 0.99
-      return { rows: [{ label_category_id: "cat-groceries", accepted: "10", rejected: "0" }] };
+      return { rows: [{ label_category_id: "cat-groceries", label_budget_id: "bud-household", accepted: "10", rejected: "0" }] };
     });
     const fetchUsers = async () => ["user-4"];
     const fetchUnlabeled = async () => [{ transaction_id: "txn-4", merchant_name: "Grocery Store" }];
@@ -109,9 +113,10 @@ describe("runAutoSuggestions", () => {
       transactionId: string,
       userId: string,
       labelCategoryId: string,
+      labelBudgetId: string,
       labelCategoryConfidence: number,
     ) => {
-      applyCalls.push({ transactionId, userId, labelCategoryId, labelCategoryConfidence });
+      applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
     await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
@@ -126,7 +131,7 @@ describe("runAutoSuggestions", () => {
     const applyCalls: ApplyCall[] = [];
     const queryFn = mock(async () => {
       // 19 accepted, 1 rejected → confidence = 19/20 = 0.95, reject_rate = 0.05
-      return { rows: [{ label_category_id: "cat-health", accepted: "19", rejected: "1" }] };
+      return { rows: [{ label_category_id: "cat-health", label_budget_id: "bud-medical", accepted: "19", rejected: "1" }] };
     });
     const fetchUsers = async () => ["user-5"];
     const fetchUnlabeled = async () => [{ transaction_id: "txn-5", merchant_name: "Pharmacy" }];
@@ -134,9 +139,10 @@ describe("runAutoSuggestions", () => {
       transactionId: string,
       userId: string,
       labelCategoryId: string,
+      labelBudgetId: string,
       labelCategoryConfidence: number,
     ) => {
-      applyCalls.push({ transactionId, userId, labelCategoryId, labelCategoryConfidence });
+      applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
     await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
@@ -148,7 +154,7 @@ describe("runAutoSuggestions", () => {
     let signalQueryCount = 0;
     const queryFn = mock(async () => {
       signalQueryCount++;
-      return { rows: [{ label_category_id: "cat-books", accepted: "5", rejected: "0" }] };
+      return { rows: [{ label_category_id: "cat-books", label_budget_id: "bud-leisure", accepted: "5", rejected: "0" }] };
     });
     const fetchUsers = async () => ["user-6"];
     const fetchUnlabeled = async () => [
@@ -168,7 +174,7 @@ describe("runAutoSuggestions", () => {
     const queryFn = mock(async (sql: string, params?: unknown[]) => {
       signalSql = sql;
       signalParams = params ?? [];
-      return { rows: [{ label_category_id: "cat-coffee", accepted: "5", rejected: "0" }] };
+      return { rows: [{ label_category_id: "cat-coffee", label_budget_id: "bud-discretionary", accepted: "5", rejected: "0" }] };
     });
     const fetchUsers = async () => ["user-7"];
     const fetchUnlabeled = async () => [{ transaction_id: "txn-7", merchant_name: "STARBUCKS #1234" }];
