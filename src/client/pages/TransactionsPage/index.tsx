@@ -24,6 +24,7 @@ import {
   TransactionsTable,
 } from "client/components";
 import { useTransactionHit } from "./hooks";
+import "./index.css";
 
 // A transaction (or split / investment-transaction) has an unreviewed
 // suggestion when its label has a category set and the confidence is in
