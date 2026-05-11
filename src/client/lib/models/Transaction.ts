@@ -23,6 +23,7 @@ export class TransactionLabel implements JSONTransactionLabel {
   budget_id?: string | null;
   category_id?: string | null;
   memo?: string | null;
+  category_confidence?: number | null;
 
   get section_id(): string | null | undefined {
     if (environment === "server") return undefined;

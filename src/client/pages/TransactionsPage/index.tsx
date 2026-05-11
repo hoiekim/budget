@@ -2,9 +2,15 @@ import { AccountType } from "plaid";
 import { useMemo, useState } from "react";
 import { DeepPartial, isSubset, LocalDate } from "common";
 import {
+  call,
+  Data,
   Transaction,
   SplitTransaction,
   InvestmentTransaction,
+  InvestmentTransactionDictionary,
+  SplitTransactionDictionary,
+  TransactionDictionary,
+  indexedDb,
   useAppContext,
   PATH,
   useSorter,
@@ -19,6 +25,15 @@ import {
 } from "client/components";
 import { useTransactionHit } from "./hooks";
 
+// A transaction (or split / investment-transaction) has an unreviewed
+// suggestion when its label has a category set and the confidence is in
+// the open interval (0, 1). 0=rejected, 1=confirmed, null=never labeled
+// — per the JSONTransactionLabel docstring.
+const isSuggestedLabel = (e: Transaction | SplitTransaction | InvestmentTransaction): boolean => {
+  const c = e.label.category_confidence;
+  return !!e.label.category_id && c !== null && c !== undefined && c > 0 && c < 1;
+};
+
 export type TransactionsPageParams = {
   transactions_type?: TransactionsPageType;
   budget_id?: string;
@@ -27,7 +42,7 @@ export type TransactionsPageParams = {
 };
 
 export const TransactionsPage = () => {
-  const { data, calculations, viewDate, router, screenType } = useAppContext();
+  const { data, calculations, viewDate, router, screenType, setData } = useAppContext();
   const {
     transactions,
     investmentTransactions,
@@ -228,6 +243,83 @@ export const TransactionsPage = () => {
     transactionFamilies,
   ]);
 
+  const suggestedInView = filteredAndSorted.filter(isSuggestedLabel);
+  const [isAccepting, setIsAccepting] = useState(false);
+
+  // Accept-All: bulk-confirm every suggested label in the current
+  // filtered/sorted view. Scoped to whatever's visible (router-state aware
+  // because `filteredAndSorted` is derived from `path` / `params`). Per
+  // issue #98 §3: "Scoped to current transaction list view".
+  const onClickAcceptAll = async () => {
+    if (!suggestedInView.length || isAccepting) return;
+    setIsAccepting(true);
+    const results = await Promise.allSettled(
+      suggestedInView.map((e) => {
+        if (e instanceof InvestmentTransaction) {
+          return call.post("/api/investment-transaction", {
+            investment_transaction_id: e.id,
+            label: { category_confidence: 1 },
+          });
+        } else if (e instanceof SplitTransaction) {
+          return call.post("/api/split-transaction", {
+            split_transaction_id: e.id,
+            label: { category_confidence: 1 },
+          });
+        } else {
+          return call.post("/api/transaction", {
+            transaction_id: e.id,
+            label: { category_confidence: 1 },
+          });
+        }
+      }),
+    );
+
+    const acceptedIds = new Set<string>();
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value.status === "success") {
+        acceptedIds.add(suggestedInView[i]!.id);
+      }
+    });
+
+    if (acceptedIds.size) {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const newTransactions = new TransactionDictionary(newData.transactions);
+        const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
+        const newInvest = new InvestmentTransactionDictionary(newData.investmentTransactions);
+        acceptedIds.forEach((id) => {
+          const existing =
+            newTransactions.get(id) || newSplits.get(id) || newInvest.get(id);
+          if (!existing) return;
+          if (existing instanceof InvestmentTransaction) {
+            const updated = new InvestmentTransaction(existing);
+            updated.label.category_confidence = 1;
+            indexedDb.save(updated).catch(console.error);
+            newInvest.set(id, updated);
+          } else if (existing instanceof SplitTransaction) {
+            const parent = newData.transactions.get(existing.transaction_id);
+            if (!parent) return;
+            const updated = new SplitTransaction(parent);
+            updated.label.category_confidence = 1;
+            indexedDb.save(updated).catch(console.error);
+            newSplits.set(id, updated);
+          } else {
+            const updated = new Transaction(existing);
+            updated.label.category_confidence = 1;
+            indexedDb.save(updated).catch(console.error);
+            newTransactions.set(id, updated);
+          }
+        });
+        newData.transactions = newTransactions;
+        newData.splitTransactions = newSplits;
+        newData.investmentTransactions = newInvest;
+        return newData;
+      });
+    }
+
+    setIsAccepting(false);
+  };
+
   return (
     <div className="TransactionsPage">
       <TransactionsPageTitle
@@ -235,6 +327,21 @@ export const TransactionsPage = () => {
         sorter={sorter}
         onChangeSearchValue={setSearchValue}
       />
+      {!!suggestedInView.length && (
+        <div className="acceptAllSuggestions">
+          <button
+            className="acceptAllSuggestionsButton"
+            onClick={onClickAcceptAll}
+            disabled={isAccepting}
+          >
+            {isAccepting
+              ? `Accepting ${suggestedInView.length}…`
+              : `Accept all ${suggestedInView.length} suggestion${
+                  suggestedInView.length === 1 ? "" : "s"
+                }`}
+          </button>
+        </div>
+      )}
       <TransactionsTable transactions={filteredAndSorted} />
     </div>
   );
