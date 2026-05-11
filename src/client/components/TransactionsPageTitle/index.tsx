@@ -18,7 +18,7 @@ import { TransactionsHead } from "./TransactionsHead";
 import "./index.css";
 import { SearchBar } from "./SearchBar";
 
-export type TransactionsPageType = "deposits" | "expenses" | "unsorted";
+export type TransactionsPageType = "deposits" | "expenses" | "unsorted" | "suggested";
 
 interface TransactionsPageFilters {
   type?: TransactionsPageType;
@@ -40,6 +40,7 @@ interface TransactionsPageTitleProps {
 enum TITLES {
   all = "All Transactions",
   unsorted = "Unsorted Transactions",
+  suggested = "Suggested Transactions",
   deposits = "Deposits",
   expenses = "Expenses",
 }
