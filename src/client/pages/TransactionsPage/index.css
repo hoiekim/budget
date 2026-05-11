@@ -1,0 +1,19 @@
+/* Accept-All-Suggestions affordance: rendered between the sticky
+   TransactionsPageTitle (heading + subtitle + SearchBar + TransactionsHead)
+   and the TransactionsTable. Sizing/margins mirror the header components
+   so the button reads as part of the page chrome rather than as a
+   floating control:
+
+   - Side margin: 10px each side, matching the `padding: 0 10px 10px` on
+     `div.TransactionsPage > h2 / h3 / TransactionsHead` and `div.SearchBar`.
+   - Top + bottom outer spacing: 10px, matching the gap between SearchBar
+     and TransactionsHead (SearchBar carries the trailing 10px).
+   - Button itself is full width within the padded container.
+*/
+div.TransactionsPage > div.acceptAllSuggestions {
+  padding: 10px;
+}
+
+div.TransactionsPage > div.acceptAllSuggestions > button.acceptAllSuggestionsButton {
+  width: 100%;
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEventHandler, useMemo } from "react";
+import { useState, useEffect, ChangeEventHandler, MouseEventHandler, useMemo } from "react";
 import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import {
   useAppContext,
@@ -41,11 +41,33 @@ const TransactionRow = ({ transaction }: Props) => {
   const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
     return label.category_id || "";
   });
+  const [selectedConfidence, setSelectedConfidence] = useState<number | null>(
+    () => label.category_confidence ?? null,
+  );
+
+  const isSuggested =
+    !!selectedCategoryIdLabel &&
+    selectedConfidence !== null &&
+    selectedConfidence > 0 &&
+    selectedConfidence < 1;
+  const categoryWrapperClass = !selectedCategoryIdLabel
+    ? "notification"
+    : isSuggested
+      ? "suggested clickable"
+      : "";
 
   useEffect(() => {
     if (label.budget_id) return;
     setSelectedBudgetIdLabel(account?.label.budget_id || "");
   }, [label.budget_id, account?.label.budget_id]);
+
+  // Sync confidence back from the canonical Transaction whenever it
+  // changes — so Accept-All (and any other parent-level update path)
+  // updates this row's dot without needing a page reload. Without this,
+  // `selectedConfidence` only sees its mount-time value.
+  useEffect(() => {
+    setSelectedConfidence(label.category_confidence ?? null);
+  }, [label.category_confidence]);
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -94,23 +116,25 @@ const TransactionRow = ({ transaction }: Props) => {
     if (isSplitTransaction) {
       response = await call.post("/api/split-transaction", {
         split_transaction_id: id,
-        label: { budget_id: value || null, category_id: null },
+        label: { budget_id: value || null, category_id: null, category_confidence: 0 },
       });
       return;
     } else {
       response = await call.post("/api/transaction", {
         transaction_id: id,
-        label: { budget_id: value || null, category_id: null },
+        label: { budget_id: value || null, category_id: null, category_confidence: 0 },
       });
     }
 
     if (response.status === "success") {
+      setSelectedConfidence(0);
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
           const newSplitTransaction = new SplitTransaction(parentTransaction);
           newSplitTransaction.label.budget_id = value || null;
           newSplitTransaction.label.category_id = null;
+          newSplitTransaction.label.category_confidence = 0;
           indexedDb.save(newSplitTransaction).catch(console.error);
           const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           newSplitTransactions.set(id, newSplitTransaction);
@@ -119,6 +143,7 @@ const TransactionRow = ({ transaction }: Props) => {
           const newTransaction = new Transaction(parentTransaction);
           newTransaction.label.budget_id = value || null;
           newTransaction.label.category_id = null;
+          newTransaction.label.category_confidence = 0;
           indexedDb.save(newTransaction).catch(console.error);
           const newTransactions = new TransactionDictionary(newData.transactions);
           newTransactions.set(id, newTransaction);
@@ -137,7 +162,14 @@ const TransactionRow = ({ transaction }: Props) => {
     if (value === selectedCategoryIdLabel) return;
 
     setSelectedCategoryIdLabel(value);
-    const labelQuery = new TransactionLabel({ category_id: value || null });
+    // Any user-driven category change resolves the suggestion: 1 = accept
+    // (picked a value), 0 = reject (cleared to "Select Category"). Per the
+    // JSONTransactionLabel docstring, 1.0 = confirmed and 0.0 = rejected.
+    const nextConfidence = value ? 1 : 0;
+    const labelQuery = new TransactionLabel({
+      category_id: value || null,
+      category_confidence: nextConfidence,
+    });
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
 
     let response: ApiResponse;
@@ -154,6 +186,7 @@ const TransactionRow = ({ transaction }: Props) => {
     }
 
     if (response.status === "success") {
+      setSelectedConfidence(nextConfidence);
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
@@ -162,6 +195,7 @@ const TransactionRow = ({ transaction }: Props) => {
             newSplitTransaction.label.budget_id = account?.label.budget_id;
           }
           newSplitTransaction.label.category_id = value || null;
+          newSplitTransaction.label.category_confidence = nextConfidence;
           indexedDb.save(newSplitTransaction).catch(console.error);
           const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
           newSplitTransactions.set(id, newSplitTransaction);
@@ -172,6 +206,7 @@ const TransactionRow = ({ transaction }: Props) => {
             newTransaction.label.budget_id = account?.label.budget_id;
           }
           newTransaction.label.category_id = value || null;
+          newTransaction.label.category_confidence = nextConfidence;
           indexedDb.save(newTransaction).catch(console.error);
           const newTransactions = new TransactionDictionary(newData.transactions);
           newTransactions.set(id, newTransaction);
@@ -182,6 +217,53 @@ const TransactionRow = ({ transaction }: Props) => {
     } else {
       setSelectedCategoryIdLabel(selectedCategoryIdLabel);
     }
+  };
+
+  // Accept-in-place: clicking the grey dot (without changing the select)
+  // confirms the suggested category as-is. Per issue #98 §2 "On transaction
+  // row label interaction" — the dot itself is the interaction surface.
+  const onAcceptSuggestion = async () => {
+    if (!isSuggested || !selectedCategoryIdLabel) return;
+    let response: ApiResponse;
+    if (isSplitTransaction) {
+      response = await call.post("/api/split-transaction", {
+        split_transaction_id: id,
+        label: { category_confidence: 1 },
+      });
+    } else {
+      response = await call.post("/api/transaction", {
+        transaction_id: id,
+        label: { category_confidence: 1 },
+      });
+    }
+    if (response.status !== "success") return;
+    setSelectedConfidence(1);
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      if (isSplitTransaction) {
+        const newSplitTransaction = new SplitTransaction(parentTransaction);
+        newSplitTransaction.label.category_confidence = 1;
+        indexedDb.save(newSplitTransaction).catch(console.error);
+        const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
+        newSplitTransactions.set(id, newSplitTransaction);
+        newData.splitTransactions = newSplitTransactions;
+      } else {
+        const newTransaction = new Transaction(parentTransaction);
+        newTransaction.label.category_confidence = 1;
+        indexedDb.save(newTransaction).catch(console.error);
+        const newTransactions = new TransactionDictionary(newData.transactions);
+        newTransactions.set(id, newTransaction);
+        newData.transactions = newTransactions;
+      }
+      return newData;
+    });
+  };
+
+  const onClickCategoryWrapper: MouseEventHandler<HTMLDivElement> = (e) => {
+    // Only handle clicks landing directly on the wrapper (the ::after dot)
+    // — not clicks bubbled from the inner <select>.
+    if (e.target !== e.currentTarget) return;
+    if (isSuggested) void onAcceptSuggestion();
   };
 
   const onClickKebab = () => {
@@ -223,7 +305,11 @@ const TransactionRow = ({ transaction }: Props) => {
           <option value="">Select Budget</option>
           {budgetOptions}
         </select>
-        <div className={selectedCategoryIdLabel ? "" : "notification"}>
+        <div
+          className={categoryWrapperClass}
+          onClick={onClickCategoryWrapper}
+          title={isSuggested ? "Click the grey dot to accept this suggestion" : undefined}
+        >
           <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
             <option value="">Select Category</option>
             {categoryOptions}

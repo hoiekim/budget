@@ -2,6 +2,15 @@ import { pool, logger, usersTable, transactionsTable, IS_NOT_NULL } from "server
 
 interface MerchantSignal {
   label_category_id: string;
+  // The category's parent section's parent budget. Carried alongside the
+  // category so the suggestion writes `transactions.label_budget_id` too.
+  // Without it the row's category select in the UI renders blank — the
+  // dropdown's options are filtered by the row's `label_budget_id` (or
+  // the account default), and a category whose actual parent budget is
+  // neither of those is missing from the option list. The native
+  // `<select>` then falls back to its empty placeholder, masking the
+  // suggestion even though the dot is grey.
+  label_budget_id: string;
   accepted: number;
   rejected: number;
 }
@@ -22,6 +31,7 @@ type ApplyLabelFn = (
   transactionId: string,
   userId: string,
   labelCategoryId: string,
+  labelBudgetId: string,
   labelCategoryConfidence: number,
 ) => Promise<void>;
 
@@ -49,11 +59,16 @@ const defaultApplyLabel: ApplyLabelFn = async (
   transactionId,
   userId,
   labelCategoryId,
+  labelBudgetId,
   labelCategoryConfidence,
 ) => {
   await transactionsTable.update(
     transactionId,
-    { label_category_id: labelCategoryId, label_category_confidence: labelCategoryConfidence },
+    {
+      label_category_id: labelCategoryId,
+      label_budget_id: labelBudgetId,
+      label_category_confidence: labelCategoryConfidence,
+    },
     undefined,
     userId,
   );
@@ -141,7 +156,7 @@ const processUserSuggestions = async (
 
     if (!signal) continue;
 
-    const { label_category_id, accepted, rejected } = signal;
+    const { label_category_id, label_budget_id, accepted, rejected } = signal;
     const totalLabeled = accepted + rejected;
 
     if (totalLabeled < 3) continue;
@@ -155,7 +170,13 @@ const processUserSuggestions = async (
     // Cap at 0.99 — 1.0 is reserved for user-confirmed labels
     const cappedConfidence = Math.min(confidence, 0.99);
 
-    await applyLabel(transaction_id, userId, label_category_id, cappedConfidence);
+    await applyLabel(
+      transaction_id,
+      userId,
+      label_category_id,
+      label_budget_id,
+      cappedConfidence,
+    );
 
     suggested++;
   }
@@ -178,11 +199,17 @@ const getMerchantSignal = async (
   // similar enough, then we group by category and take the most-accepted one.
   // Stays raw SQL: similarity(...) + SUM(CASE WHEN ...) aggregation isn't
   // expressible via the standard Table.query helpers.
+  // The outer query also joins categories → sections so the winning
+  // category's actual parent budget is carried out alongside it. We need
+  // that downstream when applying the label so the suggested row's
+  // `label_budget_id` matches its `label_category_id` (otherwise the UI
+  // select renders empty — see MerchantSignal docstring).
   const result = await queryFn(
     `SELECT
-       label_category_id,
-       SUM(CASE WHEN label_category_confidence = 1.0 THEN 1 ELSE 0 END) AS accepted,
-       SUM(CASE WHEN label_category_confidence = 0.0 THEN 1 ELSE 0 END) AS rejected
+       recent.label_category_id,
+       sections.budget_id AS label_budget_id,
+       SUM(CASE WHEN recent.label_category_confidence = 1.0 THEN 1 ELSE 0 END) AS accepted,
+       SUM(CASE WHEN recent.label_category_confidence = 0.0 THEN 1 ELSE 0 END) AS rejected
      FROM (
        SELECT label_category_id, label_category_confidence
        FROM transactions
@@ -194,7 +221,9 @@ const getMerchantSignal = async (
        ORDER BY similarity(merchant_name, $2) DESC, date DESC
        LIMIT $4
      ) recent
-     GROUP BY label_category_id
+     JOIN categories ON categories.category_id = recent.label_category_id
+     JOIN sections ON sections.section_id = categories.section_id
+     GROUP BY recent.label_category_id, sections.budget_id
      ORDER BY accepted DESC
      LIMIT 1`,
     [userId, merchantName, MERCHANT_SIMILARITY_THRESHOLD, MERCHANT_SIGNAL_LIMIT],
@@ -202,9 +231,15 @@ const getMerchantSignal = async (
 
   if (result.rows.length === 0) return null;
 
-  const row = result.rows[0] as { label_category_id: string; accepted: string; rejected: string };
+  const row = result.rows[0] as {
+    label_category_id: string;
+    label_budget_id: string;
+    accepted: string;
+    rejected: string;
+  };
   return {
     label_category_id: row.label_category_id,
+    label_budget_id: row.label_budget_id,
     accepted: Number(row.accepted),
     rejected: Number(row.rejected),
   };

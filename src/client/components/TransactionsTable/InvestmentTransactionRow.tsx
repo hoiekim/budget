@@ -11,7 +11,7 @@ import {
   indexedDb,
 } from "client";
 import { InstitutionSpan, KebabIcon } from "client/components";
-import { ChangeEventHandler, useEffect, useMemo, useState } from "react";
+import { ChangeEventHandler, MouseEventHandler, useEffect, useMemo, useState } from "react";
 import { ApiResponse } from "server";
 
 interface Props {
@@ -35,11 +35,31 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
   const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
     return label.category_id || "";
   });
+  const [selectedConfidence, setSelectedConfidence] = useState<number | null>(
+    () => label.category_confidence ?? null,
+  );
+
+  const isSuggested =
+    !!selectedCategoryIdLabel &&
+    selectedConfidence !== null &&
+    selectedConfidence > 0 &&
+    selectedConfidence < 1;
+  const categoryWrapperClass = !selectedCategoryIdLabel
+    ? "notification"
+    : isSuggested
+      ? "suggested clickable"
+      : "";
 
   useEffect(() => {
     if (label.budget_id) return;
     setSelectedBudgetIdLabel(account?.label.budget_id || "");
   }, [label.budget_id, account?.label.budget_id]);
+
+  // See TransactionRow — sync confidence from parent-updated transaction
+  // so Accept-All reflects without a reload.
+  useEffect(() => {
+    setSelectedConfidence(label.category_confidence ?? null);
+  }, [label.category_confidence]);
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -90,15 +110,17 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
 
     const response: ApiResponse = await call.post("/api/investment-transaction", {
       investment_transaction_id: id,
-      label: { budget_id: value || null, category_id: null },
+      label: { budget_id: value || null, category_id: null, category_confidence: 0 },
     });
 
     if (response.status === "success") {
+      setSelectedConfidence(0);
       setData((oldData) => {
         const newData = new Data(oldData);
         const newTransaction = new InvestmentTransaction(investmentTransaction);
         newTransaction.label.budget_id = value || null;
         newTransaction.label.category_id = null;
+        newTransaction.label.category_confidence = 0;
         indexedDb.save(newTransaction).catch(console.error);
         const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);
         newTransactions.set(id, newTransaction);
@@ -116,7 +138,11 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     if (value === selectedCategoryIdLabel) return;
 
     setSelectedCategoryIdLabel(value);
-    const labelQuery = new TransactionLabel({ category_id: value || null });
+    const nextConfidence = value ? 1 : 0;
+    const labelQuery = new TransactionLabel({
+      category_id: value || null,
+      category_confidence: nextConfidence,
+    });
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
 
     const response: ApiResponse = await call.post("/api/investment-transaction", {
@@ -125,6 +151,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     });
 
     if (response.status === "success") {
+      setSelectedConfidence(nextConfidence);
       setData((oldData) => {
         const newData = new Data(oldData);
         const newTransaction = new InvestmentTransaction(investmentTransaction);
@@ -132,6 +159,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
           newTransaction.label.budget_id = account?.label.budget_id;
         }
         newTransaction.label.category_id = value || null;
+        newTransaction.label.category_confidence = nextConfidence;
         indexedDb.save(newTransaction).catch(console.error);
         const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);
         newTransactions.set(id, newTransaction);
@@ -141,6 +169,31 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     } else {
       setSelectedCategoryIdLabel(selectedCategoryIdLabel);
     }
+  };
+
+  const onAcceptSuggestion = async () => {
+    if (!isSuggested || !selectedCategoryIdLabel) return;
+    const response: ApiResponse = await call.post("/api/investment-transaction", {
+      investment_transaction_id: id,
+      label: { category_confidence: 1 },
+    });
+    if (response.status !== "success") return;
+    setSelectedConfidence(1);
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const newTransaction = new InvestmentTransaction(investmentTransaction);
+      newTransaction.label.category_confidence = 1;
+      indexedDb.save(newTransaction).catch(console.error);
+      const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);
+      newTransactions.set(id, newTransaction);
+      newData.investmentTransactions = newTransactions;
+      return newData;
+    });
+  };
+
+  const onClickCategoryWrapper: MouseEventHandler<HTMLDivElement> = (e) => {
+    if (e.target !== e.currentTarget) return;
+    if (isSuggested) void onAcceptSuggestion();
   };
 
   const onClickKebab = () => {
@@ -177,7 +230,11 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
             <option value="">Select Budget</option>
             {budgetOptions}
           </select>
-          <div className={selectedCategoryIdLabel ? "" : "notification"}>
+          <div
+            className={categoryWrapperClass}
+            onClick={onClickCategoryWrapper}
+            title={isSuggested ? "Click the grey dot to accept this suggestion" : undefined}
+          >
             <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
               <option value="">Select Category</option>
               {categoryOptions}
