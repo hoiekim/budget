@@ -19,6 +19,20 @@ import {
 import { TransactionFamilies } from "client";
 import { globalData } from "./Data";
 
+// A label is "confirmed" when it has a category_id and is not a live
+// auto-suggestion. `confidence === 1` is the post-Phase-2 confirmed marker;
+// `confidence == null` covers (a) legacy transactions labeled before the
+// confidence column existed and never backfilled, and (b) every split —
+// split_transactions has no confidence column, so the field is undefined
+// after toJSON round-trip. Treating null as "not confirmed" would mis-bucket
+// both populations as unsorted in budget bars / counts / list filters.
+export const isLabelConfirmed = (
+  label: Pick<JSONTransactionLabel, "category_id" | "category_confidence">,
+): boolean => {
+  const { category_id, category_confidence } = label;
+  return !!category_id && (category_confidence === 1 || category_confidence == null);
+};
+
 export class TransactionLabel implements JSONTransactionLabel {
   budget_id?: string | null;
   category_id?: string | null;

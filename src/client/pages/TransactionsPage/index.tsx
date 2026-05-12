@@ -11,6 +11,7 @@ import {
   SplitTransactionDictionary,
   TransactionDictionary,
   indexedDb,
+  isLabelConfirmed,
   useAppContext,
   PATH,
   useSorter,
@@ -144,11 +145,11 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        // "unsorted" view now includes every transaction that is not
-         // user-confirmed (confidence === 1). That covers genuinely
-         // unlabeled rows AND auto-suggested ones — per Hoie's directive
-         // in #98: suggested + non-confirmed both belong here.
-         if (type === "unsorted" && e.label.category_confidence === 1) return false;
+        // "unsorted" view shows every row that needs review: unlabeled rows
+         // and unreviewed auto-suggestions. Confirmed rows (whether
+         // post-Phase-2 user-confirmed at confidence=1 or legacy/split rows
+         // at null confidence) are filtered out.
+         if (type === "unsorted" && isLabelConfirmed(e.label)) return false;
          // "suggested" view is the narrower slice: rows currently bearing
          // an unreviewed auto-suggestion (0 < confidence < 1).
          if (type === "suggested") {
