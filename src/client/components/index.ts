@@ -24,6 +24,7 @@ export * from "./BudgetProperties";
 export * from "./TransactionProperties";
 export * from "./Configuration";
 export * from "./ConnectionProperties";
+export * from "./ApiKeyProperties";
 export * from "./NameInput";
 export * from "./CapacityInput";
 export * from "./ToggleInput";

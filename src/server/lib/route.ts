@@ -50,11 +50,24 @@ export class Route<T> {
   path: string;
   method: Method;
   callback: GetResponse<T>;
+  /**
+   * If set, this route accepts API-key bearer auth for clients holding a key
+   * whose `scopes` array contains this string. Cookie-session auth is also
+   * accepted (as a more privileged credential). Routes with no `requiredScope`
+   * are cookie-only.
+   */
+  requiredScope?: string;
 
-  constructor(method: Method, path: string, callback: GetResponse<T>) {
+  constructor(
+    method: Method,
+    path: string,
+    callback: GetResponse<T>,
+    options: { requiredScope?: string } = {},
+  ) {
     this.path = path;
     this.method = method;
     this.callback = callback;
+    this.requiredScope = options.requiredScope;
   }
 
   async execute(req: ServerRequest, res: ServerResponse): Promise<ApiResponse<T> | null> {
