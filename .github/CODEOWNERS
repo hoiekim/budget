@@ -1,0 +1,8 @@
+# Default code owner. Used with the existing `protect_main` branch ruleset
+# (rules → pull_request → require_code_owner_review) so a Write-tier
+# collaborator's approval doesn't satisfy the 1-required-approval gate —
+# only @hoiekim's approval counts.
+#
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @hoiekim
