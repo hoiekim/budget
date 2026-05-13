@@ -93,9 +93,21 @@ describe("buildSecurityPriceIndex", () => {
 
     const index = buildSecurityPriceIndex(snapshots);
 
-    expect(index.get("sec1")?.get("2026-01")).toBe(100);
-    expect(index.get("sec1")?.get("2026-02")).toBe(110);
-    expect(index.get("sec2")?.get("2026-01")).toBe(50);
+    expect(index.get("sec1")?.get("2026-01")).toEqual({ price: 100, sourceDate: "2026-01-15" });
+    expect(index.get("sec1")?.get("2026-02")).toEqual({ price: 110, sourceDate: "2026-02-15" });
+    expect(index.get("sec2")?.get("2026-01")).toEqual({ price: 50, sourceDate: "2026-01-20" });
+  });
+
+  test("keeps the entry with the later sourceDate when the same month has multiple snapshots", () => {
+    const snapshots = new SecuritySnapshotDictionary();
+    snapshots.set("snap1", createSecuritySnapshot("sec1", 100, "2026-01-10"));
+    snapshots.set("snap2", createSecuritySnapshot("sec1", 105, "2026-01-25")); // later in same month
+    snapshots.set("snap3", createSecuritySnapshot("sec1", 95, "2026-01-15")); // earlier than snap2
+
+    const index = buildSecurityPriceIndex(snapshots);
+
+    // The Jan-25 entry wins regardless of iteration order over the dictionary.
+    expect(index.get("sec1")?.get("2026-01")).toEqual({ price: 105, sourceDate: "2026-01-25" });
   });
 
   test("should skip snapshots with null close_price", () => {
@@ -120,7 +132,8 @@ describe("buildSecurityPriceIndex", () => {
 describe("getPriceForHolding", () => {
   const emptyIndex: SecurityPriceIndex = new Map();
 
-  test("prefers security snapshot price over institution_price (Priority 1)", () => {
+  test("on equal source dates the security snapshot wins (tie-breaker)", () => {
+    // Both sources report on 2026-01-15. Per Hoie 2026-05-13: security wins on tie.
     const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-15");
     const snapshots = new SecuritySnapshotDictionary();
     snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-15"));
@@ -132,8 +145,41 @@ describe("getPriceForHolding", () => {
       date: new Date("2026-01-15"),
     });
 
-    // Even with institution_price=100, the security snapshot wins.
     expect(result).toEqual({ price: 95, source: "market" });
+  });
+
+  test("security wins when its sourceDate is more recent than the holding snapshot", () => {
+    // Holding snapshot dated 2026-01-10 (early in month); security snapshot dated 2026-01-25.
+    // The security is fresher → security wins regardless of priority order.
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-10");
+    const snapshots = new SecuritySnapshotDictionary();
+    snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-25"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2026-01-31"),
+    });
+
+    expect(result).toEqual({ price: 95, source: "market" });
+  });
+
+  test("institution_price wins when the holding snapshot is more recent than any security snapshot", () => {
+    // Holding snapshot 2026-01-28 — broker reported recently. Security snapshot 2026-01-10 — stale.
+    // Holding is fresher → institution_price wins.
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-28");
+    const snapshots = new SecuritySnapshotDictionary();
+    snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-10"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2026-01-31"),
+    });
+
+    expect(result).toEqual({ price: 100, source: "institution" });
   });
 
   test("walks back to the latest snapshot ≤ view date when current month has no snapshot", () => {

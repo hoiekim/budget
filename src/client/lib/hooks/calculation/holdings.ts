@@ -10,9 +10,20 @@ import { HoldingSnapshot } from "../../models/Snapshot";
 import { InvestmentTransaction } from "../../models/InvestmentTransaction";
 
 /**
- * Index structure: security_id -> yearMonth -> close_price
+ * One entry in the price index. `sourceDate` is the date the price was
+ * recorded (`close_price_as_of` if Plaid surfaced it, otherwise the snapshot
+ * date). It's needed downstream so we can compare security-snapshot freshness
+ * against the holding snapshot's own date and pick whichever's more recent.
  */
-export type SecurityPriceIndex = Map<string, Map<string, number>>;
+export interface PriceIndexEntry {
+  price: number;
+  sourceDate: string; // YYYY-MM-DD
+}
+
+/**
+ * Index structure: security_id -> yearMonth -> { price, sourceDate }
+ */
+export type SecurityPriceIndex = Map<string, Map<string, PriceIndexEntry>>;
 
 /**
  * Builds an index of security prices by security_id and yearMonth.
@@ -41,9 +52,12 @@ export const buildSecurityPriceIndex = (
 
     const securityIndex = index.get(security_id)!;
 
-    // Keep the most recent price for each month
-    // (later entries overwrite earlier ones, which works for snapshots in order)
-    securityIndex.set(yearMonth, close_price);
+    // Keep the most recent (by sourceDate) entry per month. Iteration order
+    // isn't guaranteed, so compare instead of last-write-wins.
+    const existing = securityIndex.get(yearMonth);
+    if (!existing || dateStr > existing.sourceDate) {
+      securityIndex.set(yearMonth, { price: close_price, sourceDate: dateStr });
+    }
   });
 
   return index;
@@ -61,71 +75,82 @@ interface PriceResult {
 }
 
 /**
- * Walks back through a security's price index to find the most recent
- * close_price whose `yearMonth` is on or before `targetYearMonth`. Returns
- * undefined when the security has no entry at or before that month.
+ * Walks back through a security's price index to find the most recent entry
+ * whose `yearMonth` is on or before `targetYearMonth`. Returns undefined when
+ * the security has no entry at or before that month.
  *
  * yearMonth keys are `YYYY-MM`, which sort correctly as plain strings.
  */
-const findLatestPriceLessThanOrEqual = (
-  securityIndex: Map<string, number>,
+const findLatestEntryLessThanOrEqual = (
+  securityIndex: Map<string, PriceIndexEntry>,
   targetYearMonth: string,
-): number | undefined => {
+): PriceIndexEntry | undefined => {
   let latestYm: string | undefined;
-  let latestPrice: number | undefined;
-  for (const [ym, price] of securityIndex) {
+  let latestEntry: PriceIndexEntry | undefined;
+  for (const [ym, entry] of securityIndex) {
     if (ym <= targetYearMonth && (latestYm === undefined || ym > latestYm)) {
       latestYm = ym;
-      latestPrice = price;
+      latestEntry = entry;
     }
   }
-  return latestPrice;
+  return latestEntry;
 };
 
 /**
- * Gets the price for a holding. As of #323 follow-up: security-snapshot
- * (market) price is preferred over institution_price because security
- * snapshots are more robust (filled by polygon, available across dates and
- * for manual accounts where institution_price simply doesn't exist).
+ * Gets the price for a holding. As of #323 follow-up: security and holding
+ * snapshots are compared by their source dates rather than ordered by a
+ * fixed-priority list. Whichever was recorded later wins; ties go to the
+ * security snapshot (Hoie 2026-05-13: "if both security and holding have
+ * the same timestamp, then security wins"). This matters because security
+ * snapshots can be filled by polygon between Plaid syncs, so the broker's
+ * `institution_price` can sometimes be the staler of the two even when both
+ * exist; and for manual accounts where institution_price doesn't exist at
+ * all, the security snapshot wins by default.
  *
- * Lookup walks back through `securityPriceIndex` to the latest entry whose
- * yearMonth is on or before the requested date — so a view date that lands
- * in a month with no fresh snapshot still resolves against the most recent
- * prior snapshot, instead of dropping through to institution_price.
+ * Walk-back semantics on the security side: we use the most recent security
+ * entry whose `yearMonth` is on or before the requested view date. We never
+ * consume a future security snapshot — viewing March 2026 will not pull a
+ * May 2026 snapshot, even if that's "more recent" in absolute terms.
  *
- * Priority:
- * 1. close_price from security snapshot (latest ≤ date) — market data
- * 2. institution_price from holding (brokerage-reported)
- * 3. Infer from institution_value / quantity
+ * Fallback to inferred (`institution_value / quantity`) only when neither
+ * source has a usable price.
  */
 export const getPriceForHolding = ({
   holding,
   securityPriceIndex,
   date,
 }: PriceForHoldingParams): PriceResult | null => {
-  const { holding: h } = holding;
+  const { holding: h, snapshot } = holding;
   const { security_id, institution_price, institution_value, quantity } = h;
+  const holdingDate = snapshot.date; // ISO string — same shape as PriceIndexEntry.sourceDate
 
-  // Priority 1: security snapshot price (walk back to latest ≤ targetYearMonth)
+  // Resolve a security entry, if any.
+  let securityEntry: PriceIndexEntry | undefined;
   if (security_id) {
     const securityIndex = securityPriceIndex.get(security_id);
     if (securityIndex) {
-      const targetYearMonth = getYearMonthString(date);
-      const marketPrice = findLatestPriceLessThanOrEqual(securityIndex, targetYearMonth);
-      if (marketPrice !== undefined && marketPrice > 0) {
-        return { price: marketPrice, source: "market" };
-      }
+      securityEntry = findLatestEntryLessThanOrEqual(
+        securityIndex,
+        getYearMonthString(date),
+      );
+      if (securityEntry && !(securityEntry.price > 0)) securityEntry = undefined;
     }
   }
 
-  // Priority 2: institution_price (brokerage-reported — used when no
-  // security snapshot exists, e.g. cash-type securities or manual accounts
-  // for which the snapshot pipeline hasn't run yet).
-  if (institution_price !== null && institution_price !== undefined && institution_price > 0) {
-    return { price: institution_price, source: "institution" };
-  }
+  const hasInstitution =
+    institution_price !== null && institution_price !== undefined && institution_price > 0;
 
-  // Priority 3: Infer from institution_value / quantity
+  if (securityEntry && hasInstitution) {
+    // Both available — most recent sourceDate wins, security wins on a tie.
+    if (securityEntry.sourceDate >= holdingDate) {
+      return { price: securityEntry.price, source: "market" };
+    }
+    return { price: institution_price as number, source: "institution" };
+  }
+  if (securityEntry) return { price: securityEntry.price, source: "market" };
+  if (hasInstitution) return { price: institution_price as number, source: "institution" };
+
+  // Fall back: infer from institution_value / quantity.
   if (
     quantity !== null &&
     quantity !== undefined &&
