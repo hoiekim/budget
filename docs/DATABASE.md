@@ -76,11 +76,13 @@ A labeled transaction stores its category across three correlated columns. Both 
 
 | Value | Meaning |
 |---|---|
-| `NULL` | Never evaluated by auto-suggest. Includes legacy pre-Phase-2 user labels written before the column existed |
+| `NULL` | Row is unlabeled (`label_category_id IS NULL`) |
 | `0` | User rejected an auto-suggestion |
 | `0 < c < 1` | Auto-suggested, not yet confirmed by user |
 | `1` | User confirmed |
 
-**Backfill consideration.** Rows with `label_category_id IS NOT NULL AND label_category_confidence IS NULL` exist in prod from pre-Phase-2 labeling. Application code treats `(category_id set, confidence = NULL)` as confirmed (see `isLabelConfirmed` in `src/client/lib/hooks/calculation/budgets.ts`), so a backfill migration is not strictly required for correctness — but it would let auto-suggest mine those rows as positive signal. Split transactions are always treated as confirmed when `label_category_id` is set (the column doesn't exist there).
+**Prod backfill.** A backfill on 2026-05-13 set `label_category_confidence = 1` for every row with `label_category_id IS NOT NULL`. The application code's confirmation predicate (`category_confidence === 1 && !!category_id` in `src/client/lib/hooks/calculation/budgets.ts`) does not tolerate `NULL`, so this backfill is load-bearing — any new INSERT that sets `label_category_id` without also setting `label_category_confidence` would reintroduce the "labeled but counted as unsorted" miscount.
+
+**Split transactions.** Because `split_transactions` has no `label_category_confidence` column, split rows with a category set still hit `category_confidence === undefined` after `SplitTransaction.toTransaction()` rebuilds the label, and currently fall into the unsorted bucket in budget-bar / unsorted-count math. Known limitation.
 
 See [ARCHITECTURE.md — Transaction Categorization](ARCHITECTURE.md#transaction-categorization-auto-suggest) for the full data-model view and [DESIGN_PATTERNS.md — Auto-Suggest Merchant Signal Scoring](DESIGN_PATTERNS.md#auto-suggest-merchant-signal-scoring) for the suggestion engine itself.

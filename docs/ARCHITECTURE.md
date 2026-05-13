@@ -63,25 +63,28 @@ A transaction carries three correlated fields that together describe its current
 |---|---|---|
 | `label_category_id` | UUID \| null | The category the transaction is labeled under |
 | `label_budget_id` | UUID \| null | The parent budget for `label_category_id` — written alongside it so the UI's category `<select>` (which filters options by budget) can render the value |
-| `label_category_confidence` | number \| null | Confidence in [0, 1], or `null` for "never evaluated" |
+| `label_category_confidence` | number \| null | Confidence in [0, 1]; `null` means unlabeled |
 
 The `label_category_confidence` field encodes four distinct states:
 
 | Confidence | Meaning | UI signal |
 |---|---|---|
-| `null` | Never evaluated, OR a legacy row written before auto-suggest existed | Treated as confirmed when `label_category_id` is set (see "Confirmation predicate" below) |
+| `null` | Unlabeled (`label_category_id IS NULL`) | Red dot in `TransactionRow` |
 | `0` | User rejected a prior suggestion | Counted as a rejection signal for that merchant |
 | `0 < c < 1` | Auto-suggest applied a label — user has not yet confirmed or rejected | Grey dot in `TransactionRow` |
 | `1` | User explicitly confirmed | No dot |
 
-**Confirmation predicate.** Anywhere that distinguishes "user-confirmed" from "still suggested" must treat `null` confidence as confirmed when a category is set, because pre-Phase-2 user labels were written before the column existed and split transactions don't store the column at all (see `src/server/lib/postgres/models/split_transaction.ts`):
+A prod backfill on 2026-05-13 set `label_category_confidence = 1` for every labeled row in `transactions`, so the `(category_id IS NOT NULL, confidence IS NULL)` combination is no longer expected in production data.
+
+**Confirmation predicate.** Anywhere that distinguishes "user-confirmed" from "still suggested" uses:
 
 ```typescript
-const isLabelConfirmed = (label) =>
-  !!label.category_id && (label.category_confidence === 1 || label.category_confidence == null);
+const isConfirmed = category_confidence === 1 && !!category_id;
 ```
 
-Used in budget-bar / unsorted-count math and in the TransactionsPage `unsorted` filter.
+Used in `src/client/lib/hooks/calculation/budgets.ts` (budget-bar / unsorted-count) and `src/client/pages/TransactionsPage/index.tsx` (the `unsorted` filter). The `&& !!category_id` guard exists so a malformed `confidence=1, category_id=null` row goes to the unsorted bucket rather than into a `categories.get(null)` lookup that would silently drop it.
+
+**Split transactions and confidence.** The `split_transactions` table does not carry `label_category_confidence` — it only has `label_category_id` and `label_budget_id`. When budget calc folds splits into the family via `SplitTransaction.toTransaction()`, the resulting label has `category_confidence === undefined`, which fails the `=== 1` check above. Splits with a category set therefore currently fall into the unsorted bucket in budget-bar / unsorted-count math. This is a known limitation tracked separately from the data-model backfill.
 
 **Auto-suggest pipeline.** Suggestions are written by the hourly background job in `src/server/lib/compute-tools/auto-suggest.ts` (`runAutoSuggestions`), scheduled from `schedule.ts`'s `scheduledSync`. Per-merchant signal scoring (`evaluateSignal`) is documented in [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md#auto-suggest-merchant-signal-scoring).
 
