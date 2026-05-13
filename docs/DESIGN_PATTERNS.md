@@ -143,6 +143,25 @@ All "settings page" sections (account details, transaction details, configuratio
 
 When in doubt, open `src/client/components/TransactionProperties/index.tsx` and copy the structure.
 
+## Auto-Suggest Merchant Signal Scoring
+
+Auto-categorization (`src/server/lib/compute-tools/auto-suggest.ts`) writes category suggestions onto unlabeled transactions based on a per-merchant signal mined from the user's already-labeled history. The signal-to-suggestion path uses a small set of gates, all in `evaluateSignal`:
+
+| Gate | Threshold | Reason |
+|---|---|---|
+| Min total labeled | `accepted + rejected >= 3` | Don't suggest from a single data point |
+| Max reject rate | `rejected / total <= 0.10` | Users actively disagree — back off |
+| Min confidence | `accepted / total >= 0.95` | Suggestion has to be near-unanimous in the history |
+| Confidence cap | `min(confidence, 0.99)` | `1.0` is reserved for user-confirmed labels |
+
+The signal itself comes from a pg_trgm fuzzy match on `merchant_name` (`MERCHANT_SIMILARITY_THRESHOLD = 0.5`), with a `LIMIT 30` over the user's recent labeled transactions for that merchant.
+
+**Per-merchant cache.** A run iterates over (top-level transactions) then (split transactions). Splits inherit `merchant_name` from their parent transaction via JOIN — see `defaultFetchUnlabeledSplits` — so the parent and its splits hit the same signal. `processUserSuggestions` keeps a `Map<merchant, signal>` per user so each unique merchant is queried at most once per run.
+
+**Apply-with-budget.** When the engine applies a suggestion it writes both `label_category_id` and `label_budget_id`. The UI's category `<select>` filters options by the row's budget, so a category whose parent budget isn't recorded would render as a blank placeholder even though the grey dot indicates a suggestion is present. See `defaultApplyLabel`.
+
+**What never receives a suggestion.** `defaultFetchUnlabeled` filters on `label_category_confidence: null`. This deliberately excludes rejected suggestions (`confidence === 0`) so the engine doesn't repeatedly resurface a label the user already rejected.
+
 ## Collection Lookup Performance
 
 When matching items across two collections, **pre-build lookup structures** instead of nested iteration:

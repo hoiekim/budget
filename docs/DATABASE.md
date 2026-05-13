@@ -59,3 +59,30 @@ await withTransaction(async (client) => {
 Most `Table` methods accept an optional `client?: QueryExecutor` so the same statement can run inside or outside a transaction.
 
 See `deleteAccounts` in `src/server/lib/postgres/repositories/accounts.ts` for a real example.
+
+## Transaction Categorization Columns
+
+A labeled transaction stores its category across three correlated columns. Both the `transactions` table and the `split_transactions` table carry `label_category_id` and `label_budget_id`; only `transactions` carries `label_category_confidence`.
+
+| Column | Type | On `transactions` | On `split_transactions` |
+|---|---|---|---|
+| `label_category_id` | UUID, nullable | ✓ | ✓ |
+| `label_budget_id` | UUID, nullable | ✓ | ✓ |
+| `label_category_confidence` | NUMERIC(3,2), nullable | ✓ | — (column does not exist) |
+
+**Write both `label_category_id` and `label_budget_id` together.** The UI category `<select>` filters options by the row's budget. Writing only `label_category_id` leaves the dropdown unable to render the value. See `defaultApplyLabel` in `src/server/lib/compute-tools/auto-suggest.ts` for the canonical pattern.
+
+**The four states of `label_category_confidence`:**
+
+| Value | Meaning |
+|---|---|
+| `NULL` | Row is unlabeled (`label_category_id IS NULL`) |
+| `0` | User rejected an auto-suggestion |
+| `0 < c < 1` | Auto-suggested, not yet confirmed by user |
+| `1` | User confirmed |
+
+**Prod backfill.** A backfill on 2026-05-13 set `label_category_confidence = 1` for every row with `label_category_id IS NOT NULL`. The application code's confirmation predicate (`category_confidence === 1 && !!category_id` in `src/client/lib/hooks/calculation/budgets.ts`) does not tolerate `NULL`, so this backfill is load-bearing — any new INSERT that sets `label_category_id` without also setting `label_category_confidence` would reintroduce the "labeled but counted as unsorted" miscount.
+
+**Split transactions.** Because `split_transactions` has no `label_category_confidence` column, split rows with a category set still hit `category_confidence === undefined` after `SplitTransaction.toTransaction()` rebuilds the label, and currently fall into the unsorted bucket in budget-bar / unsorted-count math. Known limitation.
+
+See [ARCHITECTURE.md — Transaction Categorization](ARCHITECTURE.md#transaction-categorization-auto-suggest) for the full data-model view and [DESIGN_PATTERNS.md — Auto-Suggest Merchant Signal Scoring](DESIGN_PATTERNS.md#auto-suggest-merchant-signal-scoring) for the suggestion engine itself.
