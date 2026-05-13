@@ -28,7 +28,15 @@ describe("runAutoSuggestions", () => {
     const fetchUsers = mock(async () => []);
     const fetchUnlabeled = mock(async () => []);
     const applyLabel = mock(async () => {});
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(fetchUsers).toHaveBeenCalledTimes(1);
     expect(fetchUnlabeled).toHaveBeenCalledTimes(0);
     expect(applyLabel).toHaveBeenCalledTimes(0);
@@ -53,7 +61,15 @@ describe("runAutoSuggestions", () => {
       applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(applyCalls).toHaveLength(0);
   });
 
@@ -75,7 +91,15 @@ describe("runAutoSuggestions", () => {
       applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(applyCalls).toHaveLength(0);
   });
 
@@ -97,7 +121,15 @@ describe("runAutoSuggestions", () => {
       applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(applyCalls).toHaveLength(0);
   });
 
@@ -119,7 +151,15 @@ describe("runAutoSuggestions", () => {
       applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(applyCalls).toHaveLength(1);
     expect(applyCalls[0].labelCategoryId).toBe("cat-groceries");
     expect(applyCalls[0].labelCategoryConfidence).toBe(0.99);
@@ -145,7 +185,15 @@ describe("runAutoSuggestions", () => {
       applyCalls.push({ transactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
     };
 
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(applyCalls).toHaveLength(1);
     expect(applyCalls[0].labelCategoryConfidence).toBeCloseTo(0.95, 5);
   });
@@ -163,7 +211,15 @@ describe("runAutoSuggestions", () => {
     ];
     const applyLabel = async () => {};
 
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(signalQueryCount).toBe(1);
   });
 
@@ -180,7 +236,15 @@ describe("runAutoSuggestions", () => {
     const fetchUnlabeled = async () => [{ transaction_id: "txn-7", merchant_name: "STARBUCKS #1234" }];
     const applyLabel = async () => {};
 
-    await runAutoSuggestions(queryFn, noopLogger, fetchUsers, fetchUnlabeled, applyLabel);
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      async () => [],
+      async () => {},
+    );
     expect(signalSql).toContain("similarity(merchant_name");
     expect(signalSql).not.toContain("merchant_name = $2");
     // Threshold and limit are passed as parameters, not interpolated
@@ -211,7 +275,15 @@ describe("runAutoSuggestions", () => {
     const applyLabel = async () => {};
 
     await expect(
-      runAutoSuggestions(queryFn, errorLogger, fetchUsers, fetchUnlabeled, applyLabel),
+      runAutoSuggestions(
+        queryFn,
+        errorLogger,
+        fetchUsers,
+        fetchUnlabeled,
+        applyLabel,
+        async () => [],
+        async () => {},
+      ),
     ).resolves.toBeUndefined();
     expect(errorLogger.error).toHaveBeenCalledWith(
       "Auto-suggestion failed for user",
@@ -219,5 +291,112 @@ describe("runAutoSuggestions", () => {
       expect.any(Error),
     );
     expect(user2UnlabeledCalled).toBe(true);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Split-transactions pass (#334)
+  // ──────────────────────────────────────────────────────────────────────
+
+  type SplitApplyCall = {
+    splitTransactionId: string;
+    userId: string;
+    labelCategoryId: string;
+    labelBudgetId: string;
+    labelCategoryConfidence: number;
+  };
+
+  it("applies suggestions to split transactions via the second pass", async () => {
+    const splitApplyCalls: SplitApplyCall[] = [];
+    const queryFn = mock(async () => ({
+      rows: [{ label_category_id: "cat-groceries", label_budget_id: "bud-household", accepted: "10", rejected: "0" }],
+    }));
+    const fetchUsers = async () => ["user-split-1"];
+    const fetchUnlabeled = async () => []; // no top-level transactions to score
+    const applyLabel = async () => {};
+    const fetchUnlabeledSplits = async () => [
+      { split_transaction_id: "split-1", merchant_name: "Grocery Store" },
+    ];
+    const applyLabelToSplit = async (
+      splitTransactionId: string,
+      userId: string,
+      labelCategoryId: string,
+      labelBudgetId: string,
+      labelCategoryConfidence: number,
+    ) => {
+      splitApplyCalls.push({ splitTransactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
+    };
+
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      fetchUnlabeledSplits,
+      applyLabelToSplit,
+    );
+
+    expect(splitApplyCalls).toHaveLength(1);
+    expect(splitApplyCalls[0].splitTransactionId).toBe("split-1");
+    expect(splitApplyCalls[0].labelCategoryId).toBe("cat-groceries");
+    expect(splitApplyCalls[0].labelBudgetId).toBe("bud-household");
+    expect(splitApplyCalls[0].labelCategoryConfidence).toBe(0.99);
+  });
+
+  it("reuses the merchant cache between transaction and split passes", async () => {
+    // A parent transaction and a split share the same merchant_name. The
+    // signal query should fire exactly once even though it's "needed" twice.
+    let signalQueryCount = 0;
+    const queryFn = mock(async () => {
+      signalQueryCount++;
+      return { rows: [{ label_category_id: "cat-x", label_budget_id: "bud-x", accepted: "5", rejected: "0" }] };
+    });
+    const fetchUsers = async () => ["user-cache"];
+    const fetchUnlabeled = async () => [{ transaction_id: "txn-1", merchant_name: "Same Merchant" }];
+    const applyLabel = async () => {};
+    const fetchUnlabeledSplits = async () => [
+      { split_transaction_id: "split-1", merchant_name: "Same Merchant" },
+    ];
+    const applyLabelToSplit = async () => {};
+
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      fetchUnlabeledSplits,
+      applyLabelToSplit,
+    );
+    expect(signalQueryCount).toBe(1);
+  });
+
+  it("respects the gates on splits the same way as on transactions", async () => {
+    // 8 accepted / 2 rejected → reject_rate = 0.2 > 0.1 → skip both passes.
+    const queryFn = mock(async () => ({
+      rows: [{ label_category_id: "cat-y", label_budget_id: "bud-y", accepted: "8", rejected: "2" }],
+    }));
+    const fetchUsers = async () => ["user-gates"];
+    const fetchUnlabeled = async () => [];
+    const applyLabel = async () => {};
+    const splitApplyCalls: SplitApplyCall[] = [];
+    const fetchUnlabeledSplits = async () => [
+      { split_transaction_id: "split-1", merchant_name: "Skip Me" },
+    ];
+    const applyLabelToSplit = async (...args: Parameters<typeof applyLabelToSplit>) => {
+      const [splitTransactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence] = args;
+      splitApplyCalls.push({ splitTransactionId, userId, labelCategoryId, labelBudgetId, labelCategoryConfidence });
+    };
+
+    await runAutoSuggestions(
+      queryFn,
+      noopLogger,
+      fetchUsers,
+      fetchUnlabeled,
+      applyLabel,
+      fetchUnlabeledSplits,
+      applyLabelToSplit,
+    );
+    expect(splitApplyCalls).toHaveLength(0);
   });
 });
