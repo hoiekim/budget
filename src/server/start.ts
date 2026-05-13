@@ -13,9 +13,8 @@ import {
   stopRateLimitCleanup,
   pool,
   getClientIp,
-  verifyApiKey,
-  getMaskedUserById,
 } from "server";
+import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
 import type { SessionData } from "server/lib/postgres/models/session";
 import * as routes from "server/routes";
@@ -319,20 +318,14 @@ const server = Bun.serve({
     // Bearer auth: only attempted when the matched route declares a
     // requiredScope, and only as a fallback when no cookie session is
     // present. Cookie sessions remain authoritative for everything.
-    if (!session.user && matchedRoute?.requiredScope) {
-      const auth = headers["authorization"];
-      const authHeader = Array.isArray(auth) ? auth[0] : auth;
-      if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
-        const plaintext = authHeader.slice(7).trim();
-        const resolved = await verifyApiKey(plaintext);
-        if (resolved && resolved.scopes.includes(matchedRoute.requiredScope)) {
-          const user = await getMaskedUserById(resolved.user_id);
-          if (user) {
-            session.user = user;
-            (session as Session)._bearer = true;
-          }
-        }
-      }
+    const bearerResult = await resolveBearerAuth({
+      authorizationHeader: headers["authorization"],
+      hasCookieSession: !!session.user,
+      requiredScope: matchedRoute?.requiredScope,
+    });
+    if (bearerResult) {
+      session.user = bearerResult.user;
+      (session as Session)._bearer = true;
     }
 
     // Auth check — reject unauthenticated requests except on public paths
