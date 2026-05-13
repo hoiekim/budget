@@ -12,6 +12,8 @@ export const myRoute = new Route<ResponseType>("POST", "/path", async (req, res,
 });
 ```
 
+A fourth `options` argument enables API-key bearer auth for that route — see [Authentication](#authentication).
+
 ## Response Format
 
 All API responses follow this structure:
@@ -45,6 +47,27 @@ const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
 ```
 
 When adding a new public endpoint, add an entry to `PUBLIC_PATH_METHODS`. Pass `null` to allow all HTTP methods, or a `Set` to scope the exemption to specific methods. All other routes automatically return 401 if no session exists.
+
+### Opting a route into API-key bearer auth
+
+For routes that need to accept calls from an external client (e.g. a daily-cron LLM agent labelling transactions), pass a `requiredScope` in the `Route` options:
+
+```typescript
+export const suggestCategoryRoute = new Route<SuggestCategoryResponse>(
+  "POST",
+  "/suggest-category",
+  async (req, res) => { /* ... */ },
+  { requiredScope: "transactions:suggest" },
+);
+```
+
+Behaviour:
+
+- Cookie-session auth is still accepted (and remains more privileged).
+- `Authorization: Bearer <api_key>` is consulted **only** as a fallback, and only on routes that declare a `requiredScope`. The presented key's `scopes` array must contain the declared scope.
+- Bearer-authenticated requests are stateless — no session cookie is written back.
+
+See `docs/SECURITY.md` for the full bearer-auth contract.
 
 ## Security Headers
 

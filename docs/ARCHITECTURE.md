@@ -29,6 +29,7 @@ budget/
 │   │   │   └── compute-tools/  # Data processing utilities
 │   │   └── routes/           # API endpoints
 │   │       ├── accounts/     # Account management
+│   │       ├── api-keys/     # Scoped API key management
 │   │       ├── budgets/      # Budget management
 │   │       ├── charts/       # Chart data
 │   │       ├── transfers/    # Transfer pair management

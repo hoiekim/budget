@@ -23,6 +23,27 @@ if (!isPublic && !session.user) {
 - To make a route public, add an entry to `PUBLIC_PATH_METHODS`. The second tuple element scopes the exemption to specific HTTP methods (`null` means all methods)
 - Public routes must have external verification (e.g., `/plaid-hook` verifies Plaid signatures)
 
+### API-Key Bearer Auth (opt-in)
+
+Cookie sessions are the privileged default. A route may additionally accept `Authorization: Bearer <api_key>` by declaring a `requiredScope` in its `Route` options:
+
+```typescript
+new Route<MyResponse>(
+  "POST",
+  "/my-path",
+  async (req, res) => { /* ... */ },
+  { requiredScope: "transactions:suggest" },
+);
+```
+
+Rules enforced in `start.ts`:
+
+- Bearer auth is only attempted when the matched route declares a `requiredScope`, and only as a fallback when no cookie session is present.
+- The presented key must verify (via `verifyApiKey`) **and** its `scopes` array must contain the route's `requiredScope`.
+- Bearer-authenticated requests are stateless — `_bearer` is flagged on the session so `persistSession` skips writing a session cookie back.
+
+Keys are minted in the UI ("API Keys" section on the Config page) and shown plaintext once at creation. Storage is SHA-256 hex with a `UNIQUE` index; verification uses indexed lookup + `timingSafeEqual`. Keys carry `name`, `key_prefix`, `scopes[]`, `created_at`, `last_used_at`, `revoked_at`, `expires_at`. Revocation is a one-way bit; revoked keys fail `verifyApiKey`.
+
 ## Session Fixation Prevention
 
 On successful login, the session ID is regenerated to prevent session fixation attacks:
