@@ -120,7 +120,58 @@ describe("buildSecurityPriceIndex", () => {
 describe("getPriceForHolding", () => {
   const emptyIndex: SecurityPriceIndex = new Map();
 
-  test("should use institution_price when available (Priority 1)", () => {
+  test("prefers security snapshot price over institution_price (Priority 1)", () => {
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-15");
+    const snapshots = new SecuritySnapshotDictionary();
+    snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-15"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2026-01-15"),
+    });
+
+    // Even with institution_price=100, the security snapshot wins.
+    expect(result).toEqual({ price: 95, source: "market" });
+  });
+
+  test("walks back to the latest snapshot ≤ view date when current month has no snapshot", () => {
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 0, 1000, null, "2026-04-15");
+    const snapshots = new SecuritySnapshotDictionary();
+    // Snapshots in Jan and Feb, no Mar/Apr.
+    snapshots.set("s1", createSecuritySnapshot("sec1", 90, "2026-01-15"));
+    snapshots.set("s2", createSecuritySnapshot("sec1", 105, "2026-02-15"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2026-04-15"),
+    });
+
+    // April lookup walks back to February's 105 — the latest ≤ Apr.
+    expect(result).toEqual({ price: 105, source: "market" });
+  });
+
+  test("does not use a future snapshot when the view date precedes all snapshots", () => {
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2025-12-15");
+    const snapshots = new SecuritySnapshotDictionary();
+    // Only a Jan 2026 snapshot — should NOT be used for Dec 2025.
+    snapshots.set("s1", createSecuritySnapshot("sec1", 95, "2026-01-15"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2025-12-15"),
+    });
+
+    // No snapshot ≤ Dec 2025 → falls back to institution_price.
+    expect(result).toEqual({ price: 100, source: "institution" });
+  });
+
+  test("falls back to institution_price when no security snapshot exists (Priority 2)", () => {
     const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-15");
 
     const result = getPriceForHolding({
@@ -132,24 +183,7 @@ describe("getPriceForHolding", () => {
     expect(result).toEqual({ price: 100, source: "institution" });
   });
 
-  test("should use market price when institution_price is zero (Priority 2)", () => {
-    const holding = createHoldingSnapshot("acc1", "sec1", 10, 0, 1000, null, "2026-01-15");
-    
-    // Build index manually since Dictionary.set is what we're testing around
-    const snapshots = new SecuritySnapshotDictionary();
-    snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-15"));
-    const index = buildSecurityPriceIndex(snapshots);
-
-    const result = getPriceForHolding({
-      holding,
-      securityPriceIndex: index,
-      date: new Date("2026-01-15"),
-    });
-
-    expect(result).toEqual({ price: 95, source: "market" });
-  });
-
-  test("should infer price from value/quantity when others unavailable (Priority 3)", () => {
+  test("infers price from value/quantity when neither market nor institution is available (Priority 3)", () => {
     const holding = createHoldingSnapshot("acc1", "sec1", 10, 0, 1000, null, "2026-01-15");
 
     const result = getPriceForHolding({
@@ -161,7 +195,7 @@ describe("getPriceForHolding", () => {
     expect(result).toEqual({ price: 100, source: "inferred" });
   });
 
-  test("should return null when no price can be determined", () => {
+  test("returns null when no price can be determined", () => {
     const holding = createHoldingSnapshot("acc1", "sec1", 0, 0, 0, null, "2026-01-15");
 
     const result = getPriceForHolding({

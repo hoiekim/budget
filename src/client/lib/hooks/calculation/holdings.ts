@@ -61,9 +61,41 @@ interface PriceResult {
 }
 
 /**
- * Gets the price for a holding using the 3-tier fallback strategy:
- * 1. institution_price from holding (brokerage-reported)
- * 2. close_price from security snapshot (market data)
+ * Walks back through a security's price index to find the most recent
+ * close_price whose `yearMonth` is on or before `targetYearMonth`. Returns
+ * undefined when the security has no entry at or before that month.
+ *
+ * yearMonth keys are `YYYY-MM`, which sort correctly as plain strings.
+ */
+const findLatestPriceLessThanOrEqual = (
+  securityIndex: Map<string, number>,
+  targetYearMonth: string,
+): number | undefined => {
+  let latestYm: string | undefined;
+  let latestPrice: number | undefined;
+  for (const [ym, price] of securityIndex) {
+    if (ym <= targetYearMonth && (latestYm === undefined || ym > latestYm)) {
+      latestYm = ym;
+      latestPrice = price;
+    }
+  }
+  return latestPrice;
+};
+
+/**
+ * Gets the price for a holding. As of #323 follow-up: security-snapshot
+ * (market) price is preferred over institution_price because security
+ * snapshots are more robust (filled by polygon, available across dates and
+ * for manual accounts where institution_price simply doesn't exist).
+ *
+ * Lookup walks back through `securityPriceIndex` to the latest entry whose
+ * yearMonth is on or before the requested date — so a view date that lands
+ * in a month with no fresh snapshot still resolves against the most recent
+ * prior snapshot, instead of dropping through to institution_price.
+ *
+ * Priority:
+ * 1. close_price from security snapshot (latest ≤ date) — market data
+ * 2. institution_price from holding (brokerage-reported)
  * 3. Infer from institution_value / quantity
  */
 export const getPriceForHolding = ({
@@ -74,21 +106,23 @@ export const getPriceForHolding = ({
   const { holding: h } = holding;
   const { security_id, institution_price, institution_value, quantity } = h;
 
-  // Priority 1: institution_price from holding (brokerage-reported)
-  if (institution_price !== null && institution_price !== undefined && institution_price > 0) {
-    return { price: institution_price, source: "institution" };
-  }
-
-  // Priority 2: close_price from security snapshot (market data)
+  // Priority 1: security snapshot price (walk back to latest ≤ targetYearMonth)
   if (security_id) {
     const securityIndex = securityPriceIndex.get(security_id);
     if (securityIndex) {
-      const yearMonth = getYearMonthString(date);
-      const marketPrice = securityIndex.get(yearMonth);
+      const targetYearMonth = getYearMonthString(date);
+      const marketPrice = findLatestPriceLessThanOrEqual(securityIndex, targetYearMonth);
       if (marketPrice !== undefined && marketPrice > 0) {
         return { price: marketPrice, source: "market" };
       }
     }
+  }
+
+  // Priority 2: institution_price (brokerage-reported — used when no
+  // security snapshot exists, e.g. cash-type securities or manual accounts
+  // for which the snapshot pipeline hasn't run yet).
+  if (institution_price !== null && institution_price !== undefined && institution_price > 0) {
+    return { price: institution_price, source: "institution" };
   }
 
   // Priority 3: Infer from institution_value / quantity
