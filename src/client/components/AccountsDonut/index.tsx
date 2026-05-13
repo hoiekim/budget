@@ -9,6 +9,8 @@ interface Props {
   balanceTotal: number;
   currencySymbol: string;
   donutData: DonutData[];
+  totalCredit: number;
+  numberOfCredits: number;
   radius: number;
   style?: CSSProperties;
 }
@@ -17,6 +19,8 @@ export const AccountsDonut = ({
   balanceTotal,
   currencySymbol,
   donutData,
+  totalCredit,
+  numberOfCredits,
   radius,
   style,
 }: Props) => {
@@ -36,6 +40,8 @@ export const AccountsDonut = ({
         balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
         donutData={donutData}
+        totalCredit={totalCredit}
+        numberOfCredits={numberOfCredits}
         isShrunk={isShrunk}
       />
     </div>

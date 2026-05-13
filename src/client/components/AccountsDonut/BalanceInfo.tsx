@@ -5,12 +5,20 @@ interface Props {
   balanceTotal: number;
   currencySymbol: string;
   donutData: DonutData[];
+  totalCredit: number;
+  numberOfCredits: number;
   isShrunk: boolean;
 }
 
-export const BalanceInfo = ({ balanceTotal, currencySymbol, donutData, isShrunk }: Props) => {
-  const { data, calculations, viewDate } = useAppContext();
-  const { accounts } = data;
+export const BalanceInfo = ({
+  balanceTotal,
+  currencySymbol,
+  donutData,
+  totalCredit,
+  numberOfCredits,
+  isShrunk,
+}: Props) => {
+  const { calculations, viewDate } = useAppContext();
   const { balanceData } = calculations;
 
   const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
@@ -21,16 +29,6 @@ export const BalanceInfo = ({ balanceTotal, currencySymbol, donutData, isShrunk 
     if (!balanceHistory) return a;
     return a + (balanceHistory.get(previousDate) || 0);
   }, 0);
-
-  let totalCredit = 0;
-  let numberOfOthers = 0;
-
-  accounts.forEach(({ account_id, balances }) => {
-    if (!donutData.find(({ id }) => id === account_id)) {
-      totalCredit += balances.current || 0;
-      numberOfOthers++;
-    }
-  });
 
   return (
     <div className="BalanceInfo">
@@ -50,7 +48,7 @@ export const BalanceInfo = ({ balanceTotal, currencySymbol, donutData, isShrunk 
             currencySymbol={currencySymbol}
           />
           <div className="credit label">outstanding</div>
-          <div className="credit label">in&nbsp;{numberOfOthers}&nbsp;Credits</div>
+          <div className="credit label">in&nbsp;{numberOfCredits}&nbsp;Credits</div>
         </>
       )}
     </div>
