@@ -30,12 +30,14 @@ import {
   upsertTransactions,
 } from "server";
 import { withTransaction } from "../postgres/client";
+import { logger } from "../logger";
 import {
   upsertSecuritiesWithSnapshots,
   upsertAccountsWithSnapshots,
   upsertAndDeleteHoldingsWithSnapshots,
 } from "./create-snapshots";
 import { inferCashHoldings } from "./cash-holding";
+import { backfillMonthlySecuritySnapshotsForward } from "./backfill-snapshots";
 
 export const syncSimpleFinData = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -116,6 +118,16 @@ export const syncSimpleFinData = async (item_id: string) => {
   await upsertAccounts(user, otherAccounts);
   await upsertAndDeleteHoldingsWithSnapshots(user, allMappedHoldings, storedHoldings);
   await upsertInstitutions(institutions);
+
+  // Fire-and-forget monthly snapshot backfill (same shape as sync-plaid).
+  // Rate-limited by the polygon token bucket — runs in the background and
+  // doesn't block the sync response.
+  const backfillRefs = allMappedHoldings
+    .filter((h) => h.security_id)
+    .map((h) => ({ security_id: h.security_id, fromDate: new Date().toISOString() }));
+  backfillMonthlySecuritySnapshotsForward(backfillRefs).catch((error) =>
+    logger.error("backfillMonthlySecuritySnapshotsForward failed (simple-fin)", {}, error),
+  );
 
   // Phase 2: transactional writes — transactions + cursor update must be atomic.
   // If the process crashes mid-way, the DB rolls back the entire block and the item cursor

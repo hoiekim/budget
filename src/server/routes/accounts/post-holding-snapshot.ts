@@ -9,6 +9,7 @@ import {
   upsertSecurities,
   getHoldingSnapshots,
   polygon,
+  backfillMonthlySecuritySnapshotsForward,
 } from "server";
 import { logger } from "server/lib/logger";
 import { HoldingSnapshot, snapshotsTable } from "server/lib/postgres/repositories";
@@ -213,6 +214,19 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         unofficial_currency_code: null,
       };
       await upsertHoldings(user, [holding]);
+
+      // Fire-and-forget monthly snapshot backfill from this snapshot's date
+      // forward. Manual posts can backdate `snapshot_date`, in which case
+      // this is the path that fills the months between then and now.
+      backfillMonthlySecuritySnapshotsForward([
+        { security_id, fromDate: date.toISOString() },
+      ]).catch((error) =>
+        logger.error(
+          "backfillMonthlySecuritySnapshotsForward failed (post-holding)",
+          { security_id, snapshot_id },
+          error,
+        ),
+      );
 
       return { status: "success", body: { snapshot_id, security_id } };
     } catch (error: unknown) {

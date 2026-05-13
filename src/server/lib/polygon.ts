@@ -18,6 +18,59 @@ if (!getApiKey()) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Rate-limit gate
+// ---------------------------------------------------------------------------
+// Polygon free tier caps at 5 calls/min. The monthly-backfill flow can fan
+// out to dozens of calls per security on first-seen accounts, so we route
+// every outbound polygon request through a token bucket to avoid 429s and
+// the noisy retry backoff that follows.
+//
+// `POLYGON_RATE_LIMIT_PER_MIN` (env, default 5) caps the bucket size and
+// refill rate. Setting it to 0 disables the gate entirely (useful for paid
+// tiers / tests). When the bucket is empty, callers `await` for the next
+// refill — no queueing, no dropping. The 1-min window slides per token.
+
+const DEFAULT_RATE_LIMIT_PER_MIN = 5;
+
+const getRateLimitPerMin = (): number => {
+  const raw = process.env.POLYGON_RATE_LIMIT_PER_MIN;
+  if (raw === undefined || raw === "") return DEFAULT_RATE_LIMIT_PER_MIN;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_RATE_LIMIT_PER_MIN;
+  return Math.floor(n);
+};
+
+// Timestamps (ms) of the in-flight tokens consumed in the last 60s.
+// At rate-limit acquire time we evict anything older than 60s and check
+// whether `tokensUsed.length < cap`. If yes — emit a token, push now.
+// If no — `await` until the oldest token would age out, then retry.
+const tokensUsed: number[] = [];
+
+const acquirePolygonToken = async (): Promise<void> => {
+  const cap = getRateLimitPerMin();
+  if (cap <= 0) return; // gate disabled
+
+  // Re-check in a loop to handle multiple concurrent waiters fairly.
+  while (true) {
+    const now = Date.now();
+    const cutoff = now - 60_000;
+    while (tokensUsed.length > 0 && tokensUsed[0]! <= cutoff) tokensUsed.shift();
+    if (tokensUsed.length < cap) {
+      tokensUsed.push(now);
+      return;
+    }
+    const oldest = tokensUsed[0]!;
+    const sleepMs = Math.max(10, oldest + 60_000 - now);
+    await new Promise<void>((resolve) => setTimeout(resolve, sleepMs));
+  }
+};
+
+/** Test-only: drain the in-memory token bucket so each test starts fresh. */
+export const __resetPolygonRateLimit = () => {
+  tokensUsed.length = 0;
+};
+
 /**
  * Result types for Polygon API calls
  */
@@ -95,6 +148,9 @@ export const getClosePrice = async (
     return { success: true, data: cached.price };
   }
 
+  // Rate-limit gate AFTER cache check so cache hits don't consume tokens.
+  await acquirePolygonToken();
+
   const from = dateString;
   const to = dateString;
   const tickerParameter = `ticker/${ticker_symbol}`;
@@ -140,6 +196,10 @@ export const getTickerDetail = async (
       message: "Polygon API key not configured",
     };
   }
+
+  // Rate-limit gate — same bucket as getClosePrice, so a single backfill
+  // pass that uses both endpoints stays under the per-minute cap.
+  await acquirePolygonToken();
 
   const path = `${POLYGON_HOST}/v3/reference/tickers/${ticker_symbol}?apiKey=${getApiKey()}`;
 
