@@ -4,6 +4,7 @@ import {
   MaskedUser,
   TransactionModel,
   TransactionPairModel,
+  transactionPairsTable,
   TRANSACTIONS,
   TRANSACTION_PAIRS,
   USER_ID,
@@ -131,11 +132,5 @@ export const removeTransferPair = async (
   user: MaskedUser,
   pair_id: string,
 ): Promise<void> => {
-  await pool.query(
-    `UPDATE ${TRANSACTION_PAIRS}
-     SET ${IS_DELETED} = TRUE, updated = CURRENT_TIMESTAMP
-     WHERE ${PAIR_ID} = $1
-       AND ${USER_ID} = $2`,
-    [pair_id, user.user_id],
-  );
+  await transactionPairsTable.softDelete(pair_id, user.user_id);
 };
