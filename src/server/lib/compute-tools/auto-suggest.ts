@@ -1,4 +1,11 @@
-import { pool, logger, usersTable, transactionsTable, IS_NOT_NULL } from "server";
+import {
+  pool,
+  logger,
+  usersTable,
+  transactionsTable,
+  splitTransactionsTable,
+  IS_NOT_NULL,
+} from "server";
 
 interface MerchantSignal {
   label_category_id: string;
@@ -20,6 +27,15 @@ interface UnlabeledTransaction {
   merchant_name: string;
 }
 
+// A split row doesn't store its own merchant_name — it inherits from its parent
+// transaction via `split_transactions.transaction_id`. We join to the parent in
+// `defaultFetchUnlabeledSplits` so the merchant-signal lookup uses the parent's
+// merchant, matching how a user mentally categorizes splits.
+interface UnlabeledSplit {
+  split_transaction_id: string;
+  merchant_name: string;
+}
+
 type QueryFn = (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 type LogFn = {
   info: (message: string, context?: Record<string, unknown>) => void;
@@ -27,8 +43,16 @@ type LogFn = {
 };
 type FetchUsersFn = () => Promise<string[]>;
 type FetchUnlabeledFn = (userId: string) => Promise<UnlabeledTransaction[]>;
+type FetchUnlabeledSplitsFn = (userId: string) => Promise<UnlabeledSplit[]>;
 type ApplyLabelFn = (
   transactionId: string,
+  userId: string,
+  labelCategoryId: string,
+  labelBudgetId: string,
+  labelCategoryConfidence: number,
+) => Promise<void>;
+type ApplyLabelToSplitFn = (
+  splitTransactionId: string,
   userId: string,
   labelCategoryId: string,
   labelBudgetId: string,
@@ -74,6 +98,50 @@ const defaultApplyLabel: ApplyLabelFn = async (
   );
 };
 
+// Splits have no merchant_name of their own — join to the parent transaction to
+// borrow it. Filters: user-scoped, never-labeled, parent has a merchant_name,
+// neither side soft-deleted. The custom JOIN can't be expressed via
+// `splitTransactionsTable.query`, so this is a raw pool query with the same
+// shape as `defaultFetchUnlabeled`. Closes #334.
+const defaultFetchUnlabeledSplits: FetchUnlabeledSplitsFn = async (userId) => {
+  const result = await pool.query(
+    `SELECT st.split_transaction_id, t.merchant_name
+       FROM split_transactions st
+       JOIN transactions t
+         ON t.transaction_id = st.transaction_id
+        AND t.user_id = st.user_id
+      WHERE st.user_id = $1
+        AND st.label_category_confidence IS NULL
+        AND (st.is_deleted IS NULL OR st.is_deleted = FALSE)
+        AND t.merchant_name IS NOT NULL
+        AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)`,
+    [userId],
+  );
+  return result.rows.map((r) => ({
+    split_transaction_id: r.split_transaction_id as string,
+    merchant_name: r.merchant_name as string,
+  }));
+};
+
+const defaultApplyLabelToSplit: ApplyLabelToSplitFn = async (
+  splitTransactionId,
+  userId,
+  labelCategoryId,
+  labelBudgetId,
+  labelCategoryConfidence,
+) => {
+  await splitTransactionsTable.update(
+    splitTransactionId,
+    {
+      label_category_id: labelCategoryId,
+      label_budget_id: labelBudgetId,
+      label_category_confidence: labelCategoryConfidence,
+    },
+    undefined,
+    userId,
+  );
+};
+
 /**
  * Runs auto-suggestion for transaction categories based on historical merchant patterns.
  *
@@ -98,6 +166,8 @@ export const runAutoSuggestions = async (
   },
   fetchUnlabeled: FetchUnlabeledFn = defaultFetchUnlabeled,
   applyLabel: ApplyLabelFn = defaultApplyLabel,
+  fetchUnlabeledSplits: FetchUnlabeledSplitsFn = defaultFetchUnlabeledSplits,
+  applyLabelToSplit: ApplyLabelToSplitFn = defaultApplyLabelToSplit,
 ): Promise<void> => {
   log.info("Auto-suggestion job started");
 
@@ -115,6 +185,8 @@ export const runAutoSuggestions = async (
           log,
           fetchUnlabeled,
           applyLabel,
+          fetchUnlabeledSplits,
+          applyLabelToSplit,
         );
         totalSuggested += suggested;
         totalUsersProcessed++;
@@ -132,52 +204,74 @@ export const runAutoSuggestions = async (
   });
 };
 
+// Score a per-merchant signal against the gates. Returns the capped
+// confidence to apply (in [0, 1)), or null if any gate fails.
+const evaluateSignal = (signal: MerchantSignal): number | null => {
+  const totalLabeled = signal.accepted + signal.rejected;
+  if (totalLabeled < 3) return null;
+  const rejectRate = signal.rejected / totalLabeled;
+  if (rejectRate > 0.1) return null;
+  const confidence = signal.accepted / totalLabeled;
+  if (confidence < 0.95) return null;
+  // Cap at 0.99 — 1.0 is reserved for user-confirmed labels.
+  return Math.min(confidence, 0.99);
+};
+
 const processUserSuggestions = async (
   userId: string,
   queryFn: QueryFn,
   log: LogFn,
   fetchUnlabeled: FetchUnlabeledFn,
   applyLabel: ApplyLabelFn,
+  fetchUnlabeledSplits: FetchUnlabeledSplitsFn,
+  applyLabelToSplit: ApplyLabelToSplitFn,
 ): Promise<number> => {
-  const unlabeled = await fetchUnlabeled(userId);
-  if (unlabeled.length === 0) return 0;
-
-  // Cache signal per merchant to avoid redundant queries
+  // Cache signal per merchant across both passes — splits share their parent's
+  // merchant_name, so a parent and its splits will hit the same cache entry.
   const merchantCache = new Map<string, MerchantSignal | null>();
   let suggested = 0;
 
-  for (const { transaction_id, merchant_name } of unlabeled) {
-    let signal: MerchantSignal | null | undefined = merchantCache.get(merchant_name);
-
+  const lookupSignal = async (merchantName: string): Promise<MerchantSignal | null> => {
+    let signal = merchantCache.get(merchantName);
     if (signal === undefined) {
-      signal = await getMerchantSignal(userId, merchant_name, queryFn);
-      merchantCache.set(merchant_name, signal);
+      signal = await getMerchantSignal(userId, merchantName, queryFn);
+      merchantCache.set(merchantName, signal);
     }
+    return signal;
+  };
 
+  // Pass 1: top-level transactions.
+  const unlabeled = await fetchUnlabeled(userId);
+  for (const { transaction_id, merchant_name } of unlabeled) {
+    const signal = await lookupSignal(merchant_name);
     if (!signal) continue;
-
-    const { label_category_id, label_budget_id, accepted, rejected } = signal;
-    const totalLabeled = accepted + rejected;
-
-    if (totalLabeled < 3) continue;
-
-    const rejectRate = rejected / totalLabeled;
-    if (rejectRate > 0.1) continue;
-
-    const confidence = accepted / totalLabeled;
-    if (confidence < 0.95) continue;
-
-    // Cap at 0.99 — 1.0 is reserved for user-confirmed labels
-    const cappedConfidence = Math.min(confidence, 0.99);
-
+    const cappedConfidence = evaluateSignal(signal);
+    if (cappedConfidence === null) continue;
     await applyLabel(
       transaction_id,
       userId,
-      label_category_id,
-      label_budget_id,
+      signal.label_category_id,
+      signal.label_budget_id,
       cappedConfidence,
     );
+    suggested++;
+  }
 
+  // Pass 2: split transactions. Shares `merchantCache` so a split whose parent
+  // was just scored above doesn't re-hit the DB. Closes #334.
+  const unlabeledSplits = await fetchUnlabeledSplits(userId);
+  for (const { split_transaction_id, merchant_name } of unlabeledSplits) {
+    const signal = await lookupSignal(merchant_name);
+    if (!signal) continue;
+    const cappedConfidence = evaluateSignal(signal);
+    if (cappedConfidence === null) continue;
+    await applyLabelToSplit(
+      split_transaction_id,
+      userId,
+      signal.label_category_id,
+      signal.label_budget_id,
+      cappedConfidence,
+    );
     suggested++;
   }
 

@@ -4,6 +4,7 @@ import {
   isNullableString,
   isNullableNumber,
   isNullableBoolean,
+  isUndefined,
 } from "common";
 import {
   SPLIT_TRANSACTION_ID,
@@ -16,6 +17,7 @@ import {
   LABEL_BUDGET_ID,
   LABEL_CATEGORY_ID,
   LABEL_MEMO,
+  LABEL_CATEGORY_CONFIDENCE,
   UPDATED,
   IS_DELETED,
   SPLIT_TRANSACTIONS,
@@ -34,6 +36,9 @@ const splitTxSchema = {
   [LABEL_BUDGET_ID]: "UUID",
   [LABEL_CATEGORY_ID]: "UUID",
   [LABEL_MEMO]: "TEXT",
+  // Mirrors the same column on `transactions`. Required for the two-pass
+  // auto-suggest engine to write per-split suggestions (closes #334).
+  [LABEL_CATEGORY_CONFIDENCE]: "FLOAT",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
 };
@@ -52,6 +57,7 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction, SplitTxSc
   declare label_budget_id: string | null;
   declare label_category_id: string | null;
   declare label_memo: string | null;
+  declare label_category_confidence: number | null;
   declare updated: string | null;
   declare is_deleted: boolean;
 
@@ -66,6 +72,7 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction, SplitTxSc
     label_budget_id: isNullableString,
     label_category_id: isNullableString,
     label_memo: isNullableString,
+    label_category_confidence: isNullableNumber,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
@@ -86,6 +93,7 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction, SplitTxSc
         budget_id: this.label_budget_id,
         category_id: this.label_category_id,
         memo: this.label_memo,
+        category_confidence: this.label_category_confidence,
       },
     };
   }
@@ -102,6 +110,8 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction, SplitTxSc
       if (tx.label.budget_id !== undefined) r.label_budget_id = tx.label.budget_id;
       if (tx.label.category_id !== undefined) r.label_category_id = tx.label.category_id;
       if (tx.label.memo !== undefined) r.label_memo = tx.label.memo;
+      if (!isUndefined(tx.label.category_confidence))
+        r.label_category_confidence = tx.label.category_confidence;
     }
     return r;
   }
