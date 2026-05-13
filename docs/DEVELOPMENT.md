@@ -95,3 +95,22 @@ Common mappings (light → dark):
 | `#333` | `#a3a3a3` |
 
 **Exception:** Elements with the `.colored` class use their original light-mode colors unchanged.
+
+## Scheduled Background Work
+
+The server's hourly background job lives in `src/server/lib/compute-tools/schedule.ts` (`scheduledSync`). It runs:
+
+1. Plaid / SimpleFin sync for every connected item
+2. `runTransferDetection` — pairs cross-account transfers
+3. `runAutoSuggestions` — applies per-merchant category suggestions (see [ARCHITECTURE.md — Transaction Categorization](ARCHITECTURE.md#transaction-categorization-auto-suggest))
+
+All three accept dependency-injection parameters with sensible defaults, so you can invoke them manually from a REPL or a one-off script when debugging:
+
+```typescript
+import { runAutoSuggestions } from "server/lib/compute-tools/auto-suggest";
+
+// Runs against the real DB with default dependencies — same shape the hourly job uses.
+await runAutoSuggestions();
+```
+
+Pass mocks to exercise edge cases without touching the DB — see `auto-suggest.test.ts` for the fixture shape.

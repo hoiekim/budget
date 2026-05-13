@@ -55,6 +55,36 @@ Core models are defined in `src/common/models/`:
 - **Chart** — visualization configuration
 - **TransferPair** — pairs two transactions across accounts as a single transfer (suggested or confirmed)
 
+### Transaction Categorization (Auto-Suggest)
+
+A transaction carries three correlated fields that together describe its current categorization state:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `label_category_id` | UUID \| null | The category the transaction is labeled under |
+| `label_budget_id` | UUID \| null | The parent budget for `label_category_id` — written alongside it so the UI's category `<select>` (which filters options by budget) can render the value |
+| `label_category_confidence` | number \| null | Confidence in [0, 1], or `null` for "never evaluated" |
+
+The `label_category_confidence` field encodes four distinct states:
+
+| Confidence | Meaning | UI signal |
+|---|---|---|
+| `null` | Never evaluated, OR a legacy row written before auto-suggest existed | Treated as confirmed when `label_category_id` is set (see "Confirmation predicate" below) |
+| `0` | User rejected a prior suggestion | Counted as a rejection signal for that merchant |
+| `0 < c < 1` | Auto-suggest applied a label — user has not yet confirmed or rejected | Grey dot in `TransactionRow` |
+| `1` | User explicitly confirmed | No dot |
+
+**Confirmation predicate.** Anywhere that distinguishes "user-confirmed" from "still suggested" must treat `null` confidence as confirmed when a category is set, because pre-Phase-2 user labels were written before the column existed and split transactions don't store the column at all (see `src/server/lib/postgres/models/split_transaction.ts`):
+
+```typescript
+const isLabelConfirmed = (label) =>
+  !!label.category_id && (label.category_confidence === 1 || label.category_confidence == null);
+```
+
+Used in budget-bar / unsorted-count math and in the TransactionsPage `unsorted` filter.
+
+**Auto-suggest pipeline.** Suggestions are written by the hourly background job in `src/server/lib/compute-tools/auto-suggest.ts` (`runAutoSuggestions`), scheduled from `schedule.ts`'s `scheduledSync`. Per-merchant signal scoring (`evaluateSignal`) is documented in [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md#auto-suggest-merchant-signal-scoring).
+
 ## External API Integrations
 
 ### Plaid
