@@ -19,16 +19,25 @@ export const AccountsPage = () => {
     return () => window.removeEventListener("scroll", listener);
   }, [debouncer]);
 
-  const { donutData, currencySymbol, balanceTotal } = useMemo(() => {
+  const { donutData, currencySymbol, balanceTotal, totalCredit, numberOfCredits } = useMemo(() => {
     let balanceTotal = 0;
+    let totalCredit = 0;
+    let numberOfCredits = 0;
     const donutData: DonutData[] = [];
 
-    const filteredAccounts = accounts
+    const sortedAccounts = accounts
       .toArray()
-      .sort((a, b) => getAccountBalance(b) - getAccountBalance(a))
-      .filter(({ hide, type }) => {
-        return !hide && type !== AccountType.Credit;
-      });
+      .sort((a, b) => getAccountBalance(b) - getAccountBalance(a));
+
+    const filteredAccounts = sortedAccounts.filter(({ hide, type }) => {
+      return !hide && type !== AccountType.Credit;
+    });
+
+    sortedAccounts.forEach(({ hide, type, balances }) => {
+      if (hide || type !== AccountType.Credit) return;
+      totalCredit += balances.current || 0;
+      numberOfCredits++;
+    });
 
     // For yearly view of the current (incomplete) year, viewDate.getEndDate()
     // returns Dec 31 which has no balance data yet. Cap the lookup to the
@@ -56,7 +65,7 @@ export const AccountsPage = () => {
     const currencyCode = currencyCodes.values().next().value || "USD";
     const currencySymbol = currencyCodeToSymbol(currencyCode);
 
-    return { donutData, currencySymbol, balanceTotal };
+    return { donutData, currencySymbol, balanceTotal, totalCredit, numberOfCredits };
   }, [accounts, balanceData, viewDate]);
 
   const isNarrow = screenType === ScreenType.Narrow;
@@ -77,6 +86,8 @@ export const AccountsPage = () => {
         balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
         donutData={donutData}
+        totalCredit={totalCredit}
+        numberOfCredits={numberOfCredits}
         radius={donutRadius}
         style={{ top: donutTop, position: donutPosition }}
       />
