@@ -16,6 +16,7 @@ import {
   USER_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
+import { searchSecuritiesById } from "./securities";
 import { logger } from "../../logger";
 
 export interface SearchSnapshotsOptions {
@@ -116,7 +117,31 @@ export const searchSnapshots = async (
     globalSecurity.values,
   );
 
-  return [...userResult.rows, ...securityResult.rows].map(rowToSnapshot);
+  // Enrich each security snapshot with ticker_symbol / name / type from the
+  // securities table. Without this the frontend's `securitySnapshots` dict
+  // would carry only `{ security_id, close_price }` and `HoldingsComposition`
+  // still couldn't resolve `security_id → ticker`. Same enrichment pattern
+  // as `getHoldingSnapshotsRoute`.
+  const uniqueSecurityIds = [
+    ...new Set(securityResult.rows.map((r) => r.security_id as string).filter(Boolean)),
+  ];
+  const securities = uniqueSecurityIds.length ? await searchSecuritiesById(uniqueSecurityIds) : [];
+  const securityMap = new Map(securities.map((s) => [s.security_id, s]));
+
+  const enrichedSecuritySnapshots = securityResult.rows.map((row) => {
+    const snap = rowToSnapshot(row);
+    if (!isSecuritySnapshot(snap)) return snap;
+    const sec = securityMap.get(snap.security.security_id);
+    if (sec) {
+      // Spread the full security record first, then keep the snapshot's
+      // historical `close_price` (per snapshot_date) — the securities table
+      // only holds the latest price.
+      snap.security = { ...sec, close_price: snap.security.close_price };
+    }
+    return snap;
+  });
+
+  return [...userResult.rows.map(rowToSnapshot), ...enrichedSecuritySnapshots];
 };
 
 export const getAccountSnapshots = async (

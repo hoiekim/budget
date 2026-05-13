@@ -16,6 +16,11 @@ mock.module("../client", () => ({
   pool: { query: mockQuery },
 }));
 
+const mockSearchSecuritiesById = mock(async (_ids: string[]) => [] as unknown[]);
+mock.module("./securities", () => ({
+  searchSecuritiesById: mockSearchSecuritiesById,
+}));
+
 import { searchSnapshots } from "./snapshots";
 
 const testUser = { user_id: "usr-1", username: "hoie" };
@@ -72,6 +77,8 @@ function makeSecurityRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockSearchSecuritiesById.mockReset();
+  mockSearchSecuritiesById.mockImplementation(async () => []);
 });
 
 describe("searchSnapshots", () => {
@@ -136,6 +143,86 @@ describe("searchSnapshots", () => {
     expect(mockQuery).toHaveBeenCalledTimes(2);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ security: { security_id: "sec-aapl" } });
+  });
+
+  test("enriches security snapshots with ticker_symbol and name from the securities table", async () => {
+    mockQuery
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
+      .mockImplementationOnce(async () => ({
+        rows: [makeSecurityRow({ security_id: "sec-aapl", close_price: 195.5 })],
+        rowCount: 1,
+      }));
+    mockSearchSecuritiesById.mockImplementationOnce(async () => [
+      {
+        security_id: "sec-aapl",
+        ticker_symbol: "AAPL",
+        name: "Apple Inc.",
+        type: "equity",
+        close_price: 200, // latest — should be OVERWRITTEN by the snapshot's historical price
+        close_price_as_of: "2026-05-13",
+      },
+    ]);
+
+    const result = await searchSnapshots(testUser, { startDate: "2026-01-01" });
+
+    expect(mockSearchSecuritiesById).toHaveBeenCalledTimes(1);
+    expect(mockSearchSecuritiesById.mock.calls[0][0]).toEqual(["sec-aapl"]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      security: {
+        security_id: "sec-aapl",
+        ticker_symbol: "AAPL",
+        name: "Apple Inc.",
+        type: "equity",
+        close_price: 195.5,
+      },
+    });
+  });
+
+  test("leaves security snapshot fields null when the securities table has no matching row", async () => {
+    mockQuery
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
+      .mockImplementationOnce(async () => ({
+        rows: [makeSecurityRow({ security_id: "sec-orphan" })],
+        rowCount: 1,
+      }));
+    // mockSearchSecuritiesById returns [] by default — simulates orphan security
+
+    const result = await searchSnapshots(testUser, { startDate: "2026-01-01" });
+
+    expect(result).toHaveLength(1);
+    const snap = result[0] as { security: { security_id: string; ticker_symbol?: string | null } };
+    expect(snap.security.security_id).toBe("sec-orphan");
+    expect(snap.security.ticker_symbol ?? null).toBeNull();
+  });
+
+  test("deduplicates security_ids before calling searchSecuritiesById", async () => {
+    mockQuery
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
+      .mockImplementationOnce(async () => ({
+        rows: [
+          makeSecurityRow({ snapshot_id: "snap-1", security_id: "sec-aapl", snapshot_date: "2026-05-10" }),
+          makeSecurityRow({ snapshot_id: "snap-2", security_id: "sec-aapl", snapshot_date: "2026-05-11" }),
+          makeSecurityRow({ snapshot_id: "snap-3", security_id: "sec-msft", snapshot_date: "2026-05-10" }),
+        ],
+        rowCount: 3,
+      }));
+
+    await searchSnapshots(testUser, { startDate: "2026-01-01" });
+
+    expect(mockSearchSecuritiesById).toHaveBeenCalledTimes(1);
+    const ids = mockSearchSecuritiesById.mock.calls[0][0] as string[];
+    expect(ids.sort()).toEqual(["sec-aapl", "sec-msft"]);
+  });
+
+  test("does not call searchSecuritiesById when there are no security snapshots", async () => {
+    mockQuery
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+
+    await searchSnapshots(testUser, { startDate: "2026-01-01" });
+
+    expect(mockSearchSecuritiesById).toHaveBeenCalledTimes(0);
   });
 
   test("propagates date range to both queries", async () => {
