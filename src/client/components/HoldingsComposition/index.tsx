@@ -1,6 +1,6 @@
-import { useMemo } from "react";
-import { currencyCodeToSymbol, numberToCommaString, ViewDate } from "common";
-import { Account, useAppContext } from "client";
+import { KeyboardEvent, useMemo } from "react";
+import { currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
+import { Account, PATH, useAppContext } from "client";
 import "./index.css";
 
 interface Props {
@@ -10,6 +10,10 @@ interface Props {
 interface HoldingRow {
   holdingId: string;
   securityId: string;
+  /** Latest holding-snapshot id for this (account, security). Used to
+   *  navigate to the inline-edit page on manual accounts. Null when no
+   *  snapshot has been recorded yet (shouldn't happen if the row rendered). */
+  latestSnapshotId: string | null;
   name: string | null;
   ticker: string | null;
   quantity: number;
@@ -25,13 +29,36 @@ interface HoldingRow {
 const truncateSecurityId = (id: string) => id.slice(0, 6);
 
 export const HoldingsComposition = ({ account }: Props) => {
-  const { account_id, balances } = account;
+  const { account_id, balances, item_id } = account;
   const { iso_currency_code } = balances;
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
-  const { calculations, viewDate, data } = useAppContext();
+  const { calculations, router, viewDate, data } = useAppContext();
   const { holdingsValueData, balanceData } = calculations;
-  const { securitySnapshots } = data;
+  const { holdingSnapshots, items, securitySnapshots } = data;
+
+  // Manual-account rows are editable: click → HOLDING_DETAIL with the latest
+  // snapshot_id for that (account, security). Synced rows stay read-only —
+  // the broker is source of truth for them.
+  const isManualAccount = items.get(item_id)?.provider === ItemProvider.MANUAL;
+
+  // Build `holdingId → latest snapshot_id` from the full holding-snapshot
+  // store so manual-row clicks resolve without an extra fetch. We pick the
+  // most recent snapshot per (account, security) by ISO date — string
+  // compare suffices for ISO-8601.
+  const latestSnapshotIdByHoldingId = useMemo(() => {
+    const result = new Map<string, { id: string; date: string }>();
+    holdingSnapshots.forEach((snap) => {
+      const { account_id: a, security_id: s } = snap.holding;
+      if (a !== account_id) return;
+      const key = `${a}_${s}`;
+      const existing = result.get(key);
+      if (!existing || snap.snapshot.date > existing.date) {
+        result.set(key, { id: snap.snapshot.snapshot_id, date: snap.snapshot.date });
+      }
+    });
+    return result;
+  }, [account_id, holdingSnapshots]);
 
   const viewEndDate = viewDate.getEndDate();
 
@@ -67,10 +94,12 @@ export const HoldingsComposition = ({ account }: Props) => {
         });
 
         const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
+        const latestSnapshotId = latestSnapshotIdByHoldingId.get(holdingId)?.id ?? null;
 
         return {
           holdingId,
           securityId: security_id,
+          latestSnapshotId,
           name,
           ticker,
           quantity,
@@ -85,7 +114,14 @@ export const HoldingsComposition = ({ account }: Props) => {
       })
       .filter((r): r is HoldingRow => r !== null)
       .sort((a, b) => b.value - a.value);
-  }, [account_id, holdingsValueData, viewEndDate, securitySnapshots]);
+  }, [account_id, holdingsValueData, viewEndDate, securitySnapshots, latestSnapshotIdByHoldingId]);
+
+  const goToHoldingDetail = (snapshotId?: string) => {
+    const params = new URLSearchParams();
+    params.set("account_id", account_id);
+    if (snapshotId) params.set("snapshot_id", snapshotId);
+    router.go(PATH.HOLDING_DETAIL, { params });
+  };
 
   // Account snapshot wins for the total (Hoie 2026-05-14: "for account
   // histogram and account total amount, priority is account snapshot if
@@ -110,7 +146,9 @@ export const HoldingsComposition = ({ account }: Props) => {
   const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
   const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
 
-  if (rows.length === 0 && !showUnknownRow) return null;
+  // For manual accounts we want the section visible even with no rows yet
+  // and no balance discrepancy — it hosts the "Add Holding" button.
+  if (rows.length === 0 && !showUnknownRow && !isManualAccount) return null;
 
   // Total = account balance when we have one (preserves Total = balance);
   // otherwise fall back to the holdings sum.
@@ -147,6 +185,11 @@ export const HoldingsComposition = ({ account }: Props) => {
           <span className="col-gain">Unrealized G/L</span>
           <span className="col-pct">%</span>
         </div>
+        {rows.length === 0 && isManualAccount && (
+          <div className="holdingsRow">
+            <span className="col-name disabled">No holdings recorded</span>
+          </div>
+        )}
         {adjustedRows.map((row) => {
           const gainClass =
             row.unrealizedGain === null
@@ -163,8 +206,30 @@ export const HoldingsComposition = ({ account }: Props) => {
             : (row.ticker ?? row.name ?? truncateSecurityId(row.securityId));
           const secondaryLabel = row.isCash ? null : row.ticker ? row.name : null;
           const titleLabel = row.isCash ? "Cash" : (row.name ?? row.securityId);
+          // Only manual-account rows are clickable. Synced rows are derived
+          // from broker-reported snapshots and editing them locally would
+          // diverge from the next Plaid sync.
+          const clickable = isManualAccount && row.latestSnapshotId !== null;
+          const onClickRow = clickable
+            ? () => goToHoldingDetail(row.latestSnapshotId!)
+            : undefined;
+          const onKeyDownRow = clickable
+            ? (e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  goToHoldingDetail(row.latestSnapshotId!);
+                }
+              }
+            : undefined;
           return (
-            <div key={row.holdingId} className="holdingsRow">
+            <div
+              key={row.holdingId}
+              className={`holdingsRow${clickable ? " clickable" : ""}`}
+              onClick={onClickRow}
+              onKeyDown={onKeyDownRow}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+            >
               <span className="col-name">
                 <span className="security-name" title={titleLabel}>
                   {primaryLabel}
@@ -213,23 +278,32 @@ export const HoldingsComposition = ({ account }: Props) => {
             <span className="col-pct">{unknownPct.toFixed(1)}%</span>
           </div>
         )}
-        <div className="holdingsRow total">
-          <span className="col-name">Total</span>
-          <span className="col-value">
-            {currencySymbol}&nbsp;{numberToCommaString(totalValue, 0)}
-          </span>
-          <span className={`col-gain ${totalGain === null ? "" : totalGain >= 0 ? "positive" : "negative"}`}>
-            {totalGain !== null ? (
-              <>
-                {totalGain >= 0 ? "+" : ""}
-                {currencySymbol}&nbsp;{numberToCommaString(totalGain, 0)}
-              </>
-            ) : (
-              <span className="no-data">—</span>
-            )}
-          </span>
-          <span className="col-pct">100%</span>
-        </div>
+        {(rows.length > 0 || showUnknownRow) && (
+          <div className="holdingsRow total">
+            <span className="col-name">Total</span>
+            <span className="col-value">
+              {currencySymbol}&nbsp;{numberToCommaString(totalValue, 0)}
+            </span>
+            <span className={`col-gain ${totalGain === null ? "" : totalGain >= 0 ? "positive" : "negative"}`}>
+              {totalGain !== null ? (
+                <>
+                  {totalGain >= 0 ? "+" : ""}
+                  {currencySymbol}&nbsp;{numberToCommaString(totalGain, 0)}
+                </>
+              ) : (
+                <span className="no-data">—</span>
+              )}
+            </span>
+            <span className="col-pct">100%</span>
+          </div>
+        )}
+        {isManualAccount && (
+          <div className="holdingsRow holdingsAddRow">
+            <button type="button" className="holdingsAddButton" onClick={() => goToHoldingDetail()}>
+              + Add Holding
+            </button>
+          </div>
+        )}
         {!isCurrentDate && (
           <div className="holdingsFootnote">
             Showing {viewDate.toString()} data

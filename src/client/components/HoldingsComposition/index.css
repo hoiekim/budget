@@ -96,3 +96,38 @@
   color: rgba(255, 255, 255, 0.4);
   font-style: italic;
 }
+
+.holdingsTable .holdingsRow.clickable {
+  cursor: pointer;
+}
+
+.holdingsTable .holdingsRow.clickable:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.holdingsTable .col-name.disabled {
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+
+.holdingsTable .holdingsRow.holdingsAddRow {
+  display: block;
+  padding: 0.5em 0.75em;
+  border-bottom: none;
+}
+
+.holdingsTable .holdingsAddButton {
+  width: 100%;
+  padding: 0.5em;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 0.4em;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.holdingsTable .holdingsAddButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
