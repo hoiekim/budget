@@ -1,20 +1,18 @@
 /**
- * Tests for inferCashHoldings — covers the "no Plaid cash → synthesise"
- * path and all the skip conditions (existing cash holding, non-investment
- * account, sub-threshold delta, full reconciliation).
+ * Tests for inferCashHoldings + ensureUSDCashSecurity.
+ *
+ * NOTE on mocking: we deliberately avoid `mock.module("server", ...)` here.
+ * That mock is process-wide in Bun and leaks into sibling test files (the
+ * snapshot repo tests, cron tests, etc.) that import their own barrel
+ * pieces. Both functions take dependency-injection seams as positional
+ * args, so we pass plain mock fns and the cross-file isolation problem
+ * disappears.
  */
 
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { AccountType } from "plaid";
 
-const mockSearchSecurities = mock(async (_opts: unknown) => [] as unknown[]);
-const mockUpsertSecurities = mock(async (_secs: unknown[]) => []);
-mock.module("server", () => ({
-  searchSecurities: mockSearchSecurities,
-  upsertSecurities: mockUpsertSecurities,
-}));
-
-import { inferCashHoldings } from "./cash-holding";
+import { inferCashHoldings, ensureUSDCashSecurity } from "./cash-holding";
 
 const makeAccount = (overrides: Record<string, unknown> = {}) => ({
   account_id: "acc-1",
@@ -69,20 +67,23 @@ const makeSecurity = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const makeCashSecurity = () =>
+  makeSecurity({
+    security_id: "sec-usd-cash",
+    ticker_symbol: "USD",
+    type: "cash",
+    name: "US Dollar Cash",
+    is_cash_equivalent: true,
+  });
+
+// Default DI stub: ensureCashSecurity returns the canonical USD cash row.
+// Each test overrides via mockImplementationOnce when it needs different
+// behaviour or asserts call count.
+const mockEnsureCash = mock(async () => makeCashSecurity());
+
 beforeEach(() => {
-  mockSearchSecurities.mockReset();
-  mockUpsertSecurities.mockReset();
-  // Default: USD cash security already exists, no need to create.
-  mockSearchSecurities.mockImplementation(async () => [
-    makeSecurity({
-      security_id: "sec-usd-cash",
-      ticker_symbol: "USD",
-      type: "cash",
-      name: "US Dollar Cash",
-      is_cash_equivalent: true,
-    }),
-  ]);
-  mockUpsertSecurities.mockImplementation(async () => []);
+  mockEnsureCash.mockReset();
+  mockEnsureCash.mockImplementation(async () => makeCashSecurity());
 });
 
 describe("inferCashHoldings", () => {
@@ -91,7 +92,7 @@ describe("inferCashHoldings", () => {
     const holdings = [makeHolding({ institution_value: 1000 })];
     const securities = [makeSecurity()];
 
-    const result = await inferCashHoldings([account], holdings, securities);
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -114,9 +115,10 @@ describe("inferCashHoldings", () => {
       makeSecurity({ security_id: "sec-cash-1", ticker_symbol: "QACDS", type: "cash" }),
     ];
 
-    const result = await inferCashHoldings([account], holdings, securities);
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
 
     expect(result).toHaveLength(0);
+    expect(mockEnsureCash).toHaveBeenCalledTimes(0);
   });
 
   test("skips when a holding's ticker matches Plaid's CUR:* pattern", async () => {
@@ -128,11 +130,11 @@ describe("inferCashHoldings", () => {
       makeSecurity({
         security_id: "sec-cur-usd",
         ticker_symbol: "CUR:USD",
-        type: null, // type may not be set, but the CUR: prefix marks it cash
+        type: null,
       }),
     ];
 
-    const result = await inferCashHoldings([account], holdings, securities);
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
 
     expect(result).toHaveLength(0);
   });
@@ -151,26 +153,24 @@ describe("inferCashHoldings", () => {
       }),
     ];
 
-    const result = await inferCashHoldings([account], holdings, securities);
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
 
     expect(result).toHaveLength(0);
   });
 
   test("skips non-investment accounts entirely", async () => {
     const account = makeAccount({ type: AccountType.Depository });
-    const result = await inferCashHoldings([account], [], []);
+    const result = await inferCashHoldings([account], [], [], mockEnsureCash);
     expect(result).toHaveLength(0);
-    // Should also not have probed the securities table.
-    expect(mockSearchSecurities).toHaveBeenCalledTimes(0);
+    expect(mockEnsureCash).toHaveBeenCalledTimes(0);
   });
 
   test("skips when the inferred amount is below the noise threshold", async () => {
-    // $1000 balance, $999.995 in holdings → ~$0.005 delta, below threshold.
     const account = makeAccount({ balances: { current: 1000 } });
     const holdings = [makeHolding({ institution_value: 999.995 })];
     const securities = [makeSecurity()];
 
-    const result = await inferCashHoldings([account], holdings, securities);
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
 
     expect(result).toHaveLength(0);
   });
@@ -180,7 +180,7 @@ describe("inferCashHoldings", () => {
     const holdings = [makeHolding({ institution_value: 1000 })];
     const securities = [makeSecurity()];
 
-    const result = await inferCashHoldings([account], holdings, securities);
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
 
     expect(result).toHaveLength(0);
   });
@@ -197,60 +197,85 @@ describe("inferCashHoldings", () => {
     const accountC = makeAccount({
       account_id: "acc-c",
       balances: { current: 1000, iso_currency_code: "USD" },
-    }); // fully reconciled
+    });
 
     const holdings = [
-      makeHolding({ account_id: "acc-a", institution_value: 1500 }), // delta 500 → infer
+      makeHolding({ account_id: "acc-a", institution_value: 1500 }),
       makeHolding({
         account_id: "acc-b",
         holding_id: "h-cash",
         security_id: "sec-cash",
         institution_value: 500,
-      }), // has cash already → skip
-      makeHolding({ account_id: "acc-c", institution_value: 1000 }), // reconciled → skip
+      }),
+      makeHolding({ account_id: "acc-c", institution_value: 1000 }),
     ];
     const securities = [
       makeSecurity(),
       makeSecurity({ security_id: "sec-cash", ticker_symbol: "QACDS", type: "cash" }),
     ];
 
-    const result = await inferCashHoldings([accountA, accountB, accountC], holdings, securities);
+    const result = await inferCashHoldings(
+      [accountA, accountB, accountC],
+      holdings,
+      securities,
+      mockEnsureCash,
+    );
 
     expect(result).toHaveLength(1);
     expect(result[0].account_id).toBe("acc-a");
     expect(result[0].quantity).toBe(500);
   });
 
-  test("returns no holdings (and skips the security lookup) when input is empty", async () => {
-    const result = await inferCashHoldings([], [], []);
+  test("returns no holdings (and skips ensureCashSecurity) when input is empty", async () => {
+    const result = await inferCashHoldings([], [], [], mockEnsureCash);
     expect(result).toHaveLength(0);
-    expect(mockSearchSecurities).toHaveBeenCalledTimes(0);
+    expect(mockEnsureCash).toHaveBeenCalledTimes(0);
   });
 
-  test("only performs the security lookup once even across multiple accounts that need cash", async () => {
+  test("calls ensureCashSecurity once even across multiple accounts that need cash", async () => {
     const accountA = makeAccount({ account_id: "acc-a", balances: { current: 1000 } });
     const accountB = makeAccount({ account_id: "acc-b", balances: { current: 2000 } });
 
-    const result = await inferCashHoldings([accountA, accountB], [], []);
+    const result = await inferCashHoldings([accountA, accountB], [], [], mockEnsureCash);
 
     expect(result).toHaveLength(2);
-    // The cash security is resolved lazily on first use and reused thereafter.
-    expect(mockSearchSecurities).toHaveBeenCalledTimes(1);
+    // Cash security resolved lazily on first use and reused thereafter.
+    expect(mockEnsureCash).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ensureUSDCashSecurity", () => {
+  test("returns the existing USD cash security when one is already in the table", async () => {
+    const existing = makeCashSecurity();
+    const mockSearch = mock(async (_opts: unknown) => [existing]);
+    const mockUpsert = mock(async (_secs: unknown[]) => []);
+
+    const result = await ensureUSDCashSecurity(
+      mockSearch as unknown as Parameters<typeof ensureUSDCashSecurity>[0],
+      mockUpsert as unknown as Parameters<typeof ensureUSDCashSecurity>[1],
+    );
+
+    expect(result).toBe(existing);
+    expect(mockUpsert).toHaveBeenCalledTimes(0);
   });
 
-  test("creates the USD cash security on first inference if it doesn't exist yet", async () => {
-    mockSearchSecurities.mockImplementationOnce(async () => []); // none in DB
-    const account = makeAccount({ balances: { current: 1000 } });
-    const result = await inferCashHoldings([account], [], []);
+  test("creates the USD cash security on first call when none exists", async () => {
+    const mockSearch = mock(async (_opts: unknown) => [] as unknown[]);
+    const mockUpsert = mock(async (_secs: unknown[]) => []);
 
-    expect(mockUpsertSecurities).toHaveBeenCalledTimes(1);
-    const created = mockUpsertSecurities.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const result = await ensureUSDCashSecurity(
+      mockSearch as unknown as Parameters<typeof ensureUSDCashSecurity>[0],
+      mockUpsert as unknown as Parameters<typeof ensureUSDCashSecurity>[1],
+    );
+
+    expect(mockUpsert).toHaveBeenCalledTimes(1);
+    const created = mockUpsert.mock.calls[0][0] as Array<Record<string, unknown>>;
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({
       ticker_symbol: "USD",
       type: "cash",
       is_cash_equivalent: true,
     });
-    expect(result).toHaveLength(1);
+    expect(result.ticker_symbol).toBe("USD");
   });
 });

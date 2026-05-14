@@ -6,7 +6,10 @@ import {
   JSONHolding,
   JSONSecurity,
 } from "common";
-import { searchSecurities, upsertSecurities } from "server";
+import {
+  searchSecurities as realSearchSecurities,
+  upsertSecurities as realUpsertSecurities,
+} from "server";
 
 /**
  * Single canonical ticker for the auto-inferred USD cash holding. Plaid
@@ -18,13 +21,23 @@ import { searchSecurities, upsertSecurities } from "server";
  */
 const USD_CASH_TICKER = "USD";
 
+// DI seams — production callers pass nothing and get the real DB-backed
+// implementations; tests pass mock fns directly without `mock.module`
+// (which is process-wide in Bun and leaks across sibling test files).
+// Same pattern as inbox PR #450's `createPush` factoring.
+type SearchSecuritiesFn = typeof realSearchSecurities;
+type UpsertSecuritiesFn = typeof realUpsertSecurities;
+
 /**
  * Returns the global "USD Cash" security, creating it on first use.
  * The securities table is keyed on `ticker_symbol`, so multiple users
  * end up sharing the same row — which is fine because the cash position
  * itself lives on the per-user holding, not the security.
  */
-export const ensureUSDCashSecurity = async (): Promise<JSONSecurity> => {
+export const ensureUSDCashSecurity = async (
+  searchSecurities: SearchSecuritiesFn = realSearchSecurities,
+  upsertSecurities: UpsertSecuritiesFn = realUpsertSecurities,
+): Promise<JSONSecurity> => {
   const existing = await searchSecurities({ ticker_symbol: USD_CASH_TICKER });
   if (existing.length > 0) return existing[0];
 
@@ -93,6 +106,7 @@ export const inferCashHoldings = async (
   accounts: JSONAccount[],
   incomingHoldings: JSONHolding[],
   securities: JSONSecurity[],
+  ensureCashSecurity: () => Promise<JSONSecurity> = () => ensureUSDCashSecurity(),
 ): Promise<JSONHolding[]> => {
   const securityById = new Map(securities.map((s) => [s.security_id, s]));
   const result: JSONHolding[] = [];
@@ -117,7 +131,7 @@ export const inferCashHoldings = async (
     if (inferredCash < CASH_INFERENCE_MIN) continue;
 
     // Lazy-resolve the cash security only once, only when needed.
-    if (!cashSecurity) cashSecurity = await ensureUSDCashSecurity();
+    if (!cashSecurity) cashSecurity = await ensureCashSecurity();
 
     result.push({
       holding_id: `${account.account_id}-${cashSecurity.security_id}`,
