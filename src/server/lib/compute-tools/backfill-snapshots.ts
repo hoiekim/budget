@@ -4,8 +4,12 @@ import {
   getYearMonthString,
   JSONSecuritySnapshot,
 } from "common";
-import { getSecuritySnapshots, searchSecuritiesById, upsertSnapshots } from "server";
-import { getClosePrice } from "../polygon";
+import {
+  getSecuritySnapshots as realGetSecuritySnapshots,
+  searchSecuritiesById as realSearchSecuritiesById,
+  upsertSnapshots as realUpsertSnapshots,
+} from "server";
+import { getClosePrice as realGetClosePrice } from "../polygon";
 import { logger } from "../logger";
 
 export interface BackfillSecurityRef {
@@ -13,6 +17,15 @@ export interface BackfillSecurityRef {
   /** ISO date the security was first observed in a holding snapshot for this caller. */
   fromDate: string;
 }
+
+// DI seams — production callers pass nothing and get the real DB/polygon
+// implementations. Tests pass mocks via positional args instead of
+// `mock.module`, which is process-wide in Bun and leaks across sibling
+// test files. Same factoring as `cash-holding.ts` (Hoie 2026-05-14).
+type GetSecuritySnapshotsFn = typeof realGetSecuritySnapshots;
+type SearchSecuritiesByIdFn = typeof realSearchSecuritiesById;
+type UpsertSnapshotsFn = typeof realUpsertSnapshots;
+type GetClosePriceFn = typeof realGetClosePrice;
 
 export interface BackfillResult {
   /** Number of months newly filled with a security snapshot. */
@@ -48,9 +61,21 @@ const MAX_MONTHS_PER_INVOCATION = 60;
  */
 export const backfillMonthlySecuritySnapshotsForward = async (
   refs: BackfillSecurityRef[],
-  options: { maxMonthsPerInvocation?: number } = {},
+  options: {
+    maxMonthsPerInvocation?: number;
+    searchSecuritiesById?: SearchSecuritiesByIdFn;
+    getSecuritySnapshots?: GetSecuritySnapshotsFn;
+    upsertSnapshots?: UpsertSnapshotsFn;
+    getClosePrice?: GetClosePriceFn;
+  } = {},
 ): Promise<BackfillResult> => {
   const cap = options.maxMonthsPerInvocation ?? MAX_MONTHS_PER_INVOCATION;
+  // Resolve DI seams to the real implementations by default.
+  const searchSecuritiesById = options.searchSecuritiesById ?? realSearchSecuritiesById;
+  const getSecuritySnapshots = options.getSecuritySnapshots ?? realGetSecuritySnapshots;
+  const upsertSnapshots = options.upsertSnapshots ?? realUpsertSnapshots;
+  const getClosePrice = options.getClosePrice ?? realGetClosePrice;
+
   const result: BackfillResult = { filled: 0, skipped: 0, empty: 0, errors: 0 };
 
   if (refs.length === 0) return result;

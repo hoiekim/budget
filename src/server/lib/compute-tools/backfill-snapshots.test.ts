@@ -2,9 +2,17 @@
  * Tests for backfillMonthlySecuritySnapshotsForward — covers the forward-only
  * monthly fill semantics, cash-equivalent skipping, polygon error handling,
  * and the maxMonthsPerInvocation cap.
+ *
+ * NOTE on mocking: we deliberately avoid `mock.module(…)` here. That mock
+ * is process-wide in Bun and leaks into sibling test files (`snapshots`
+ * repo, cron tests, etc.). `backfillMonthlySecuritySnapshotsForward`
+ * accepts DI seams as positional options, so we pass plain mock fns and
+ * the cross-file isolation problem disappears.
  */
 
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+
+import { backfillMonthlySecuritySnapshotsForward } from "./backfill-snapshots";
 
 const mockGetSecuritySnapshots = mock(async (_opts: { security_id?: string }) => [] as Array<{
   snapshot_id: string;
@@ -16,22 +24,25 @@ const mockUpsertSnapshots = mock(async (_snapshots: unknown[]) => [] as unknown[
 const mockSearchSecuritiesById = mock(
   async (_ids: string[]) => [] as Array<{ security_id: string; ticker_symbol: string | null; type: string | null }>,
 );
-
-mock.module("server", () => ({
-  getSecuritySnapshots: mockGetSecuritySnapshots,
-  upsertSnapshots: mockUpsertSnapshots,
-  searchSecuritiesById: mockSearchSecuritiesById,
-}));
-
 const mockGetClosePrice = mock(
   async (_ticker: string, _date: Date) =>
     ({ success: true, data: 100 } as { success: true; data: number } | { success: false; error: string; message: string }),
 );
-mock.module("../polygon", () => ({
-  getClosePrice: mockGetClosePrice,
-}));
 
-import { backfillMonthlySecuritySnapshotsForward } from "./backfill-snapshots";
+/**
+ * Bundle the DI seams into a single options object every test passes
+ * through. The `as never` casts dodge over-strict variance in the
+ * real-fn type signatures — the production callers don't constrain the
+ * return type any tighter than the mocks already provide.
+ */
+type BackfillOptions = NonNullable<Parameters<typeof backfillMonthlySecuritySnapshotsForward>[1]>;
+const di = (): BackfillOptions => ({
+  getSecuritySnapshots: mockGetSecuritySnapshots as unknown as BackfillOptions["getSecuritySnapshots"],
+  upsertSnapshots: mockUpsertSnapshots as unknown as BackfillOptions["upsertSnapshots"],
+  searchSecuritiesById:
+    mockSearchSecuritiesById as unknown as BackfillOptions["searchSecuritiesById"],
+  getClosePrice: mockGetClosePrice as unknown as BackfillOptions["getClosePrice"],
+});
 
 beforeEach(() => {
   mockGetSecuritySnapshots.mockReset();
@@ -47,7 +58,7 @@ beforeEach(() => {
 
 describe("backfillMonthlySecuritySnapshotsForward", () => {
   test("returns zero counts on empty refs", async () => {
-    const result = await backfillMonthlySecuritySnapshotsForward([]);
+    const result = await backfillMonthlySecuritySnapshotsForward([], di());
     expect(result).toEqual({ filled: 0, skipped: 0, empty: 0, errors: 0 });
     expect(mockSearchSecuritiesById).toHaveBeenCalledTimes(0);
   });
@@ -61,9 +72,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     const now = new Date();
     const fromDate = new Date(now.getFullYear(), now.getMonth() - 3, 15).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-aapl", fromDate },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-aapl", fromDate }],
+      di(),
+    );
 
     // 4 months in range (fromMonth, +1, +2, +3=current). All filled.
     expect(result.filled).toBe(4);
@@ -92,9 +104,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
 
     const fromDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-aapl", fromDate },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-aapl", fromDate }],
+      di(),
+    );
 
     // 2 months (last + current). Last is skipped, current is filled.
     expect(result.filled).toBe(1);
@@ -109,9 +122,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
 
     const fromDate = new Date(new Date().getFullYear() - 1, 0, 1).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-cash", fromDate },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-cash", fromDate }],
+      di(),
+    );
 
     expect(result.filled).toBe(0);
     expect(mockGetClosePrice).toHaveBeenCalledTimes(0);
@@ -125,9 +139,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     ]);
     const fromDate = new Date(new Date().getFullYear(), 0, 1).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-eur", fromDate },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-eur", fromDate }],
+      di(),
+    );
 
     expect(result.filled).toBe(0);
     expect(mockGetClosePrice).toHaveBeenCalledTimes(0);
@@ -142,9 +157,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     const now = new Date();
     const fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-aapl", fromDate },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-aapl", fromDate }],
+      di(),
+    );
 
     expect(result.filled).toBe(1);
     expect(mockGetClosePrice).toHaveBeenCalledTimes(1);
@@ -158,9 +174,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     const now = new Date();
     const future = new Date(now.getFullYear() + 1, 5, 15).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-aapl", fromDate: future },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-aapl", fromDate: future }],
+      di(),
+    );
 
     expect(result.filled).toBe(0);
     expect(mockGetClosePrice).toHaveBeenCalledTimes(0);
@@ -181,9 +198,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     const now = new Date();
     const fromDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-aapl", fromDate },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-aapl", fromDate }],
+      di(),
+    );
 
     expect(result.empty).toBe(1);
     expect(result.filled).toBe(1);
@@ -203,9 +221,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     const now = new Date();
     const fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-aapl", fromDate },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-aapl", fromDate }],
+      di(),
+    );
 
     expect(result.errors).toBeGreaterThanOrEqual(1);
     expect(result.filled).toBe(0);
@@ -222,7 +241,7 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
 
     const result = await backfillMonthlySecuritySnapshotsForward(
       [{ security_id: "sec-aapl", fromDate }],
-      { maxMonthsPerInvocation: 5 },
+      { maxMonthsPerInvocation: 5, ...di() },
     );
 
     expect(mockGetClosePrice).toHaveBeenCalledTimes(5);
@@ -232,9 +251,10 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
   test("skips securities with no row in the securities table", async () => {
     mockSearchSecuritiesById.mockImplementation(async () => []); // empty result
 
-    const result = await backfillMonthlySecuritySnapshotsForward([
-      { security_id: "sec-orphan", fromDate: new Date().toISOString() },
-    ]);
+    const result = await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-orphan", fromDate: new Date().toISOString() }],
+      di(),
+    );
 
     expect(result.filled).toBe(0);
     expect(mockGetClosePrice).toHaveBeenCalledTimes(0);
