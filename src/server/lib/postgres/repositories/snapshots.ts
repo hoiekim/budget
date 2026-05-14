@@ -16,6 +16,7 @@ import {
   USER_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
+import { searchSecuritiesById } from "./securities";
 import { logger } from "../../logger";
 
 export interface SearchSnapshotsOptions {
@@ -59,11 +60,25 @@ export interface HoldingSnapshot {
 const rowToSnapshot = (row: Record<string, unknown>): JSONSnapshotData =>
   new SnapshotModel(row).toJSON();
 
+// Security snapshots are price data — stored with `user_id = NULL` because
+// they're shared across all users. The user-scoped query below would
+// otherwise exclude them by the `user_id = $1` filter, leaving the frontend
+// unable to resolve `security_id → ticker_symbol` (Closes #323).
+//
+// Two queries instead of one: the user-scoped table-helper path doesn't
+// support an OR predicate, and a raw SQL rewrite of the whole search would
+// duplicate the date-range / inFilters logic that `buildSelectWithFilters`
+// already encodes. Two helper calls + concat is the smaller change.
 export const searchSnapshots = async (
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {},
 ): Promise<JSONSnapshotData[]> => {
-  const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
+  const dateRange =
+    options.startDate || options.endDate
+      ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+      : undefined;
+
+  const userScoped = buildSelectWithFilters(SNAPSHOTS, "*", {
     user_id: user?.user_id,
     filters: {
       [SNAPSHOT_TYPE]: options.snapshot_type,
@@ -71,15 +86,62 @@ export const searchSnapshots = async (
       [SECURITY_ID]: options.security_id,
     },
     inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
-    dateRange:
-      options.startDate || options.endDate
-        ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
-        : undefined,
+    dateRange,
     orderBy: `${SNAPSHOT_DATE} DESC`,
     limit: options.limit,
   });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
-  return result.rows.map(rowToSnapshot);
+  const userResult = await pool.query<Record<string, unknown>>(userScoped.sql, userScoped.values);
+
+  // Security snapshots only make sense when the caller isn't narrowing to a
+  // specific account or a non-security snapshot_type. Skip the second query
+  // in those cases to keep the response shape consistent with the request.
+  const wantsSecurity =
+    (!options.snapshot_type || options.snapshot_type === "security") &&
+    !options.account_id &&
+    !options.account_ids?.length;
+  if (!wantsSecurity) {
+    return userResult.rows.map(rowToSnapshot);
+  }
+
+  const globalSecurity = buildSelectWithFilters(SNAPSHOTS, "*", {
+    filters: {
+      [SNAPSHOT_TYPE]: "security",
+      [SECURITY_ID]: options.security_id,
+    },
+    dateRange,
+    orderBy: `${SNAPSHOT_DATE} DESC`,
+    limit: options.limit,
+  });
+  const securityResult = await pool.query<Record<string, unknown>>(
+    globalSecurity.sql,
+    globalSecurity.values,
+  );
+
+  // Enrich each security snapshot with ticker_symbol / name / type from the
+  // securities table. Without this the frontend's `securitySnapshots` dict
+  // would carry only `{ security_id, close_price }` and `HoldingsComposition`
+  // still couldn't resolve `security_id → ticker`. Same enrichment pattern
+  // as `getHoldingSnapshotsRoute`.
+  const uniqueSecurityIds = [
+    ...new Set(securityResult.rows.map((r) => r.security_id as string).filter(Boolean)),
+  ];
+  const securities = uniqueSecurityIds.length ? await searchSecuritiesById(uniqueSecurityIds) : [];
+  const securityMap = new Map(securities.map((s) => [s.security_id, s]));
+
+  const enrichedSecuritySnapshots = securityResult.rows.map((row) => {
+    const snap = rowToSnapshot(row);
+    if (!isSecuritySnapshot(snap)) return snap;
+    const sec = securityMap.get(snap.security.security_id);
+    if (sec) {
+      // Spread the full security record first, then keep the snapshot's
+      // historical `close_price` (per snapshot_date) — the securities table
+      // only holds the latest price.
+      snap.security = { ...sec, close_price: snap.security.close_price };
+    }
+    return snap;
+  });
+
+  return [...userResult.rows.map(rowToSnapshot), ...enrichedSecuritySnapshots];
 };
 
 export const getAccountSnapshots = async (
