@@ -34,6 +34,15 @@
   margin-top: 0.2em;
 }
 
+.holdingsTable .holdingsRow.unknown {
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.holdingsTable .holdingsRow.unknown .security-name {
+  cursor: help;
+}
+
 .holdingsTable .col-value,
 .holdingsTable .col-gain,
 .holdingsTable .col-pct {

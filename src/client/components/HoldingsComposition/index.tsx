@@ -77,18 +77,46 @@ export const HoldingsComposition = ({ account }: Props) => {
       .sort((a, b) => b.value - a.value);
   }, [account_id, holdingsValueData, viewEndDate, securitySnapshots]);
 
-  if (rows.length === 0) return null;
+  // Account snapshot wins for the total (Hoie 2026-05-14: "for account
+  // histogram and account total amount, priority is account snapshot if
+  // exists. Secondary is holdings total from holdings snapshot. If account
+  // snapshot exists and doesn't match with holdings snapshot, display the
+  // diff as 'Unknown' in holdings summary table.").
+  //
+  // The Unknown row is the UI safeguard for reconciliation gaps; the data
+  // fix is PR #353's auto-inferred USD cash holding on the server side. On
+  // a freshly-synced account #353 closes the gap and Unknown stays at $0
+  // (no row); on transient state (just after deploy / before next sync)
+  // the Unknown row carries the residual, positive OR negative, so the
+  // table's Total still equals `balances.current` either way.
+  const holdingsTotal = rows.reduce((s, r) => s + r.value, 0);
+  const accountBalance = balances.current ?? null;
+  const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
+  const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
 
-  // Cash is now a real holding (Plaid-provided or server-side inferred via
-  // `compute-tools/cash-holding.ts`), so it appears in `rows` like any
-  // other position. The previous in-UI synthetic "inferred cash" row would
-  // double-count cash that Plaid already returned as a holding — see Hoie
-  // 2026-05-14 thread.
-  const totalValue = rows.reduce((s, r) => s + r.value, 0);
-  const totalCostBasis = rows.every((r) => r.costBasis !== null)
-    ? rows.reduce((s, r) => s + (r.costBasis ?? 0), 0)
-    : null;
+  if (rows.length === 0 && !showUnknownRow) return null;
+
+  // Total = account balance when we have one (preserves Total = balance);
+  // otherwise fall back to the holdings sum.
+  const totalValue = accountBalance ?? holdingsTotal;
+
+  // Cost basis totals only valid when EVERY non-Unknown row has a cost
+  // basis. The Unknown row has unknown cost by construction, so it
+  // disqualifies the total gain.
+  const allRowsHaveCostBasis = rows.every((r) => r.costBasis !== null);
+  const totalCostBasis =
+    allRowsHaveCostBasis && !showUnknownRow
+      ? rows.reduce((s, r) => s + (r.costBasis ?? 0), 0)
+      : null;
   const totalGain = totalCostBasis !== null ? totalValue - totalCostBasis : null;
+
+  // Per-row pct recomputes against the new totalValue so the column
+  // (including the Unknown row, if present) still adds to ~100%.
+  const adjustedRows = rows.map((r) => ({
+    ...r,
+    pct: totalValue > 0 ? (r.value / totalValue) * 100 : 0,
+  }));
+  const unknownPct = showUnknownRow && totalValue > 0 ? (unknownDiff / totalValue) * 100 : 0;
 
   const latestViewDate = new ViewDate(viewDate.getInterval());
   const isCurrentDate = viewEndDate >= latestViewDate.getEndDate();
@@ -103,7 +131,7 @@ export const HoldingsComposition = ({ account }: Props) => {
           <span className="col-gain">Unrealized G/L</span>
           <span className="col-pct">%</span>
         </div>
-        {rows.map((row) => {
+        {adjustedRows.map((row) => {
           const gainClass =
             row.unrealizedGain === null
               ? ""
@@ -143,6 +171,26 @@ export const HoldingsComposition = ({ account }: Props) => {
             </div>
           );
         })}
+        {showUnknownRow && (
+          <div className="holdingsRow unknown">
+            <span className="col-name">
+              <span
+                className="security-name"
+                title="Account balance does not reconcile against the sum of holdings for this view date. The gap is unaccounted for in the holdings table."
+              >
+                Unknown
+              </span>
+            </span>
+            <span className="col-value">
+              {unknownDiff < 0 ? "−" : ""}
+              {currencySymbol}&nbsp;{numberToCommaString(Math.abs(unknownDiff), 0)}
+            </span>
+            <span className="col-gain">
+              <span className="no-data">—</span>
+            </span>
+            <span className="col-pct">{unknownPct.toFixed(1)}%</span>
+          </div>
+        )}
         <div className="holdingsRow total">
           <span className="col-name">Total</span>
           <span className="col-value">
