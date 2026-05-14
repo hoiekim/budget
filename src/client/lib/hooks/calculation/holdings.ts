@@ -350,6 +350,7 @@ export const getHoldingsValueData = ({
         security_id,
         account_id,
         costBasisInferred,
+        isCash,
       });
 
       holdingsValueData.set(holdingId, date, summary);

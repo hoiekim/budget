@@ -18,6 +18,7 @@ interface HoldingRow {
   costBasis: number | null;
   unrealizedGain: number | null;
   costBasisInferred: boolean;
+  isCash: boolean;
   pct: number;
 }
 
@@ -44,8 +45,16 @@ export const HoldingsComposition = ({ account }: Props) => {
         const summary = history.get(viewEndDate);
         if (!summary || summary.value === 0) return null;
 
-        const { security_id, quantity, price, value, costBasis, unrealizedGain, costBasisInferred } =
-          summary;
+        const {
+          security_id,
+          quantity,
+          price,
+          value,
+          costBasis,
+          unrealizedGain,
+          costBasisInferred,
+          isCash,
+        } = summary;
 
         let name: string | null = null;
         let ticker: string | null = null;
@@ -70,6 +79,7 @@ export const HoldingsComposition = ({ account }: Props) => {
           costBasis,
           unrealizedGain,
           costBasisInferred,
+          isCash,
           pct,
         };
       })
@@ -144,9 +154,15 @@ export const HoldingsComposition = ({ account }: Props) => {
               : row.unrealizedGain >= 0
                 ? "positive"
                 : "negative";
-          const primaryLabel = row.ticker ?? row.name ?? truncateSecurityId(row.securityId);
-          const secondaryLabel = row.ticker ? row.name : null;
-          const titleLabel = row.name ?? row.securityId;
+          // Cash holdings get a uniform "Cash" label regardless of how the
+          // broker named the underlying sweep ("QACDS", "Chase Deposit
+          // Sweep", a truncated security_id, etc.). Hoie 2026-05-14: "When
+          // the holding is cash, display 'Cash' instead of the security id."
+          const primaryLabel = row.isCash
+            ? "Cash"
+            : (row.ticker ?? row.name ?? truncateSecurityId(row.securityId));
+          const secondaryLabel = row.isCash ? null : row.ticker ? row.name : null;
+          const titleLabel = row.isCash ? "Cash" : (row.name ?? row.securityId);
           return (
             <div key={row.holdingId} className="holdingsRow">
               <span className="col-name">
