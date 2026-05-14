@@ -35,6 +35,7 @@ import {
   upsertAccountsWithSnapshots,
   upsertAndDeleteHoldingsWithSnapshots,
 } from "./create-snapshots";
+import { inferCashHoldings } from "./cash-holding";
 
 export const syncSimpleFinData = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -65,17 +66,19 @@ export const syncSimpleFinData = async (item_id: string) => {
     startDate,
   );
 
-  const processHoldingsPromise = upsertSecuritiesWithSnapshots(securities).then((idMap) => {
-    const mappedHoldings = holdings
-      .map((h) => {
-        const security_id = idMap[h.security_id];
-        if (!security_id) return undefined;
-        const newHolding: JSONHolding = { ...h, security_id };
-        return newHolding;
-      })
-      .filter((h): h is JSONHolding => !!h);
-    return upsertAndDeleteHoldingsWithSnapshots(user, mappedHoldings, storedHoldings);
-  });
+  // Map SimpleFin holdings onto local security_ids first; the cash
+  // inference + holding upsert run after the investment account list is
+  // built (further below), because the inference needs each account's
+  // balances.current to compute the cash delta.
+  const idMap = await upsertSecuritiesWithSnapshots(securities);
+  const mappedHoldings = holdings
+    .map((h) => {
+      const security_id = idMap[h.security_id];
+      if (!security_id) return undefined;
+      const newHolding: JSONHolding = { ...h, security_id };
+      return newHolding;
+    })
+    .filter((h): h is JSONHolding => !!h);
 
   const investmentAccounts: JSONAccount[] = [];
   const otherAccounts: JSONAccount[] = [];
@@ -95,6 +98,13 @@ export const syncSimpleFinData = async (item_id: string) => {
     else otherAccounts.push(incomingAccount);
   });
 
+  // Cash inference (same shape as sync-plaid) — every investment account
+  // ends up with a cash-type holding, whether SimpleFin surfaced one or not.
+  const inferredCash = await inferCashHoldings(investmentAccounts, mappedHoldings, securities);
+  const allMappedHoldings = inferredCash.length
+    ? [...mappedHoldings, ...inferredCash]
+    : mappedHoldings;
+
   const removedTransactionIds = removedTransactions.map((t) => t.transaction_id);
   const removedInvestmentTransactionIds = removedInvestmentTransaction.map(
     (t) => t.investment_transaction_id,
@@ -104,7 +114,7 @@ export const syncSimpleFinData = async (item_id: string) => {
   // transaction because they can be retried on the next sync without data loss.
   await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
   await upsertAccounts(user, otherAccounts);
-  await processHoldingsPromise;
+  await upsertAndDeleteHoldingsWithSnapshots(user, allMappedHoldings, storedHoldings);
   await upsertInstitutions(institutions);
 
   // Phase 2: transactional writes — transactions + cursor update must be atomic.
