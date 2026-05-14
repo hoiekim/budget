@@ -23,11 +23,6 @@ interface HoldingRow {
 
 const truncateSecurityId = (id: string) => id.slice(0, 6);
 
-// Synthetic holding_id for the inferred-cash row. Stable per account so
-// React's key prop doesn't churn between renders. Not stored anywhere —
-// purely a UI construct.
-const cashRowId = (accountId: string) => `__inferred_cash__${accountId}`;
-
 export const HoldingsComposition = ({ account }: Props) => {
   const { account_id, balances } = account;
   const { iso_currency_code } = balances;
@@ -39,7 +34,7 @@ export const HoldingsComposition = ({ account }: Props) => {
 
   const viewEndDate = viewDate.getEndDate();
 
-  const realRows = useMemo<HoldingRow[]>(() => {
+  const rows = useMemo<HoldingRow[]>(() => {
     const holdingIds = holdingsValueData.getHoldingsForAccount(account_id);
     const totalValue = holdingsValueData.getAccountTotalValue(account_id, viewEndDate);
 
@@ -82,48 +77,14 @@ export const HoldingsComposition = ({ account }: Props) => {
       .sort((a, b) => b.value - a.value);
   }, [account_id, holdingsValueData, viewEndDate, securitySnapshots]);
 
-  // Inferred cash: the broker reports `balances.current` for the whole
-  // account (positions + uninvested cash). After summing per-holding values
-  // (priced from security snapshots), anything left over is cash the broker
-  // didn't surface as a holding row. Clamp at zero — if holdings_total
-  // exceeds the broker's total (e.g. we have a fresher market price than
-  // Plaid synced), we prefer the holdings total and show no cash row.
-  const holdingsTotal = realRows.reduce((s, r) => s + r.value, 0);
-  const accountBalance = balances.current ?? 0;
-  const inferredCash = Math.max(0, accountBalance - holdingsTotal);
+  if (rows.length === 0) return null;
 
-  // Bail when there's nothing to render: no positions AND no leftover cash.
-  if (realRows.length === 0 && inferredCash === 0) return null;
-
-  const totalValue = holdingsTotal + inferredCash;
-
-  // Build the combined rows list (real positions + synthetic cash row, if any).
-  // Cash gets pct against the combined total, and the per-row pcts of the real
-  // rows recompute against the same denominator so the column adds up to 100%.
-  const rows: HoldingRow[] = realRows.map((r) => ({
-    ...r,
-    pct: totalValue > 0 ? (r.value / totalValue) * 100 : 0,
-  }));
-  if (inferredCash > 0) {
-    rows.push({
-      holdingId: cashRowId(account_id),
-      securityId: "__cash__",
-      name: "Cash",
-      ticker: "CASH",
-      quantity: inferredCash,
-      price: 1,
-      value: inferredCash,
-      // Cash has no cost basis / unrealized G/L by construction.
-      costBasis: inferredCash,
-      unrealizedGain: 0,
-      costBasisInferred: false,
-      pct: totalValue > 0 ? (inferredCash / totalValue) * 100 : 0,
-    });
-  }
-
-  // Cost basis totals only meaningful when every row contributed one. Cash
-  // contributes its own value as cost basis (no gain/loss), so it doesn't
-  // disqualify the totals row.
+  // Cash is now a real holding (Plaid-provided or server-side inferred via
+  // `compute-tools/cash-holding.ts`), so it appears in `rows` like any
+  // other position. The previous in-UI synthetic "inferred cash" row would
+  // double-count cash that Plaid already returned as a holding — see Hoie
+  // 2026-05-14 thread.
+  const totalValue = rows.reduce((s, r) => s + r.value, 0);
   const totalCostBasis = rows.every((r) => r.costBasis !== null)
     ? rows.reduce((s, r) => s + (r.costBasis ?? 0), 0)
     : null;
