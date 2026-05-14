@@ -304,12 +304,31 @@ export const getHoldingsValueData = ({
       const { price } = priceResult;
       const value = price * quantity;
 
-      // Determine cost basis
-      let finalCostBasis: number | null = cost_basis;
+      // Detect cash from data already on the holding snapshot itself.
+      // Plaid's cash sweeps + interest accounts always quote
+      // institution_price=1.0 and never carry a cost_basis (Plaid doesn't
+      // track basis on cash). Real equities essentially never satisfy
+      // both for any meaningful duration. This avoids needing server-side
+      // help to identify cash — Hoie 2026-05-14: "FE should skip G/L
+      // calculation for cash holdings."
+      //
+      // `cost_basis` on the wire is 0, not null — `SnapshotModel.toHoldingSnapshot`
+      // does `this.cost_basis ?? 0`, collapsing DB NULL to a numeric zero.
+      // So the cash detector accepts 0 as the missing-basis sentinel.
+      //
+      // The cost-basis path otherwise fires `inferCostBasis` over the
+      // Plaid investment_transactions feed, which encodes cash deposits
+      // and interest reinvestments as `type='buy'` with `price=1`. That
+      // accumulates a phantom cost basis with `gain ≈ 0`-but-not-quite,
+      // which is what surfaced as Unrealized G/L on the cash row.
+      const isCash =
+        holding.institution_price === 1 && (cost_basis === null || cost_basis === 0);
+
+      let finalCostBasis: number | null = isCash ? null : cost_basis;
       let costBasisInferred = false;
 
-      // Infer cost basis if missing or zero with quantity
-      if ((cost_basis === null || cost_basis === 0) && quantity !== 0) {
+      // Infer cost basis if missing or zero with quantity — skipped for cash.
+      if (!isCash && (cost_basis === null || cost_basis === 0) && quantity !== 0) {
         const inferred = inferCostBasis({
           accountId: account_id,
           securityId: security_id,
