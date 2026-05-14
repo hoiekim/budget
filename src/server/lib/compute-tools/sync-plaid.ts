@@ -33,6 +33,7 @@ import {
   upsertAndDeleteHoldingsWithSnapshots,
   upsertSecuritiesWithSnapshots,
 } from "./create-snapshots";
+import { inferCashHoldings } from "./cash-holding";
 import { Products } from "plaid";
 
 /** Build O(n) lookup maps for stored transactions to avoid O(n²) in modelize. */
@@ -257,8 +258,16 @@ export const syncPlaidAccounts = async (item_id: string) => {
       if (!r) return;
       const accounts = r.accounts.map(mergeWithExisting);
       const { holdings, securities } = r;
+
+      // Auto-infer a USD cash holding for any investment account where
+      // Plaid didn't surface cash as a holding. The inferred row is a
+      // real holding snapshot — same data path as Plaid-provided cash —
+      // so the UI is identical regardless of source (Hoie 2026-05-14).
+      const inferredCash = await inferCashHoldings(accounts, holdings, securities);
+      const allHoldings = inferredCash.length ? [...holdings, ...inferredCash] : holdings;
+
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
-      await upsertAndDeleteHoldingsWithSnapshots(user, holdings, storedHoldings);
+      await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
       await upsertSecuritiesWithSnapshots(securities);
       return accounts;
     })
