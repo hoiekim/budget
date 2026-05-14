@@ -29,7 +29,7 @@ export const HoldingsComposition = ({ account }: Props) => {
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
   const { calculations, viewDate, data } = useAppContext();
-  const { holdingsValueData } = calculations;
+  const { holdingsValueData, balanceData } = calculations;
   const { securitySnapshots } = data;
 
   const viewEndDate = viewDate.getEndDate();
@@ -88,9 +88,15 @@ export const HoldingsComposition = ({ account }: Props) => {
   // a freshly-synced account #353 closes the gap and Unknown stays at $0
   // (no row); on transient state (just after deploy / before next sync)
   // the Unknown row carries the residual, positive OR negative, so the
-  // table's Total still equals `balances.current` either way.
+  // table's Total still equals the per-view-date account balance either way.
   const holdingsTotal = rows.reduce((s, r) => s + r.value, 0);
-  const accountBalance = balances.current ?? null;
+  // Per-view-date balance comes from balanceData (the 3-tier-fallback
+  // model: account snapshot > holding snapshot > transactions). Falls
+  // back to the account's latest `balances.current` only when no data
+  // exists for this date at all — which is rare for sync'd accounts.
+  const balanceAtView = balanceData.get(account_id, viewEndDate);
+  const accountBalance =
+    balanceAtView !== undefined ? balanceAtView : (balances.current ?? null);
   const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
   const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
 
