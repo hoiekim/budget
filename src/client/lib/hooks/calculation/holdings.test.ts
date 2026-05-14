@@ -93,9 +93,21 @@ describe("buildSecurityPriceIndex", () => {
 
     const index = buildSecurityPriceIndex(snapshots);
 
-    expect(index.get("sec1")?.get("2026-01")).toBe(100);
-    expect(index.get("sec1")?.get("2026-02")).toBe(110);
-    expect(index.get("sec2")?.get("2026-01")).toBe(50);
+    expect(index.get("sec1")?.get("2026-01")).toEqual({ price: 100, sourceDate: "2026-01-15" });
+    expect(index.get("sec1")?.get("2026-02")).toEqual({ price: 110, sourceDate: "2026-02-15" });
+    expect(index.get("sec2")?.get("2026-01")).toEqual({ price: 50, sourceDate: "2026-01-20" });
+  });
+
+  test("keeps the entry with the later sourceDate when the same month has multiple snapshots", () => {
+    const snapshots = new SecuritySnapshotDictionary();
+    snapshots.set("snap1", createSecuritySnapshot("sec1", 100, "2026-01-10"));
+    snapshots.set("snap2", createSecuritySnapshot("sec1", 105, "2026-01-25")); // later in same month
+    snapshots.set("snap3", createSecuritySnapshot("sec1", 95, "2026-01-15")); // earlier than snap2
+
+    const index = buildSecurityPriceIndex(snapshots);
+
+    // The Jan-25 entry wins regardless of iteration order over the dictionary.
+    expect(index.get("sec1")?.get("2026-01")).toEqual({ price: 105, sourceDate: "2026-01-25" });
   });
 
   test("should skip snapshots with null close_price", () => {
@@ -120,22 +132,9 @@ describe("buildSecurityPriceIndex", () => {
 describe("getPriceForHolding", () => {
   const emptyIndex: SecurityPriceIndex = new Map();
 
-  test("should use institution_price when available (Priority 1)", () => {
+  test("on equal source dates the security snapshot wins (tie-breaker)", () => {
+    // Both sources report on 2026-01-15. Per Hoie 2026-05-13: security wins on tie.
     const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-15");
-
-    const result = getPriceForHolding({
-      holding,
-      securityPriceIndex: emptyIndex,
-      date: new Date("2026-01-15"),
-    });
-
-    expect(result).toEqual({ price: 100, source: "institution" });
-  });
-
-  test("should use market price when institution_price is zero (Priority 2)", () => {
-    const holding = createHoldingSnapshot("acc1", "sec1", 10, 0, 1000, null, "2026-01-15");
-    
-    // Build index manually since Dictionary.set is what we're testing around
     const snapshots = new SecuritySnapshotDictionary();
     snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-15"));
     const index = buildSecurityPriceIndex(snapshots);
@@ -149,7 +148,88 @@ describe("getPriceForHolding", () => {
     expect(result).toEqual({ price: 95, source: "market" });
   });
 
-  test("should infer price from value/quantity when others unavailable (Priority 3)", () => {
+  test("security wins when its sourceDate is more recent than the holding snapshot", () => {
+    // Holding snapshot dated 2026-01-10 (early in month); security snapshot dated 2026-01-25.
+    // The security is fresher → security wins regardless of priority order.
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-10");
+    const snapshots = new SecuritySnapshotDictionary();
+    snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-25"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2026-01-31"),
+    });
+
+    expect(result).toEqual({ price: 95, source: "market" });
+  });
+
+  test("institution_price wins when the holding snapshot is more recent than any security snapshot", () => {
+    // Holding snapshot 2026-01-28 — broker reported recently. Security snapshot 2026-01-10 — stale.
+    // Holding is fresher → institution_price wins.
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-28");
+    const snapshots = new SecuritySnapshotDictionary();
+    snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-10"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2026-01-31"),
+    });
+
+    expect(result).toEqual({ price: 100, source: "institution" });
+  });
+
+  test("walks back to the latest snapshot ≤ view date when current month has no snapshot", () => {
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 0, 1000, null, "2026-04-15");
+    const snapshots = new SecuritySnapshotDictionary();
+    // Snapshots in Jan and Feb, no Mar/Apr.
+    snapshots.set("s1", createSecuritySnapshot("sec1", 90, "2026-01-15"));
+    snapshots.set("s2", createSecuritySnapshot("sec1", 105, "2026-02-15"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2026-04-15"),
+    });
+
+    // April lookup walks back to February's 105 — the latest ≤ Apr.
+    expect(result).toEqual({ price: 105, source: "market" });
+  });
+
+  test("does not use a future snapshot when the view date precedes all snapshots", () => {
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2025-12-15");
+    const snapshots = new SecuritySnapshotDictionary();
+    // Only a Jan 2026 snapshot — should NOT be used for Dec 2025.
+    snapshots.set("s1", createSecuritySnapshot("sec1", 95, "2026-01-15"));
+    const index = buildSecurityPriceIndex(snapshots);
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: index,
+      date: new Date("2025-12-15"),
+    });
+
+    // No snapshot ≤ Dec 2025 → falls back to institution_price.
+    expect(result).toEqual({ price: 100, source: "institution" });
+  });
+
+  test("falls back to institution_price when no security snapshot exists (Priority 2)", () => {
+    const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-15");
+
+    const result = getPriceForHolding({
+      holding,
+      securityPriceIndex: emptyIndex,
+      date: new Date("2026-01-15"),
+    });
+
+    expect(result).toEqual({ price: 100, source: "institution" });
+  });
+
+  test("infers price from value/quantity when neither market nor institution is available (Priority 3)", () => {
     const holding = createHoldingSnapshot("acc1", "sec1", 10, 0, 1000, null, "2026-01-15");
 
     const result = getPriceForHolding({
@@ -161,7 +241,7 @@ describe("getPriceForHolding", () => {
     expect(result).toEqual({ price: 100, source: "inferred" });
   });
 
-  test("should return null when no price can be determined", () => {
+  test("returns null when no price can be determined", () => {
     const holding = createHoldingSnapshot("acc1", "sec1", 0, 0, 0, null, "2026-01-15");
 
     const result = getPriceForHolding({
@@ -355,6 +435,127 @@ describe("getHoldingsValueData", () => {
 
     const costBasis = result.getHoldingCostBasis("acc1_sec1", new Date("2026-01-20"));
     expect(costBasis).toBe(900); // 90 * 10
+  });
+
+  test("forces null cost basis (and null G/L) when a holding looks like cash", () => {
+    // Cash detection on the FE uses signals already on the holding
+    // snapshot: institution_price === 1 AND cost_basis === null. Plaid
+    // cash sweeps always satisfy both; real equities essentially never
+    // do for any meaningful duration. Server doesn't need to ship a
+    // `type='cash'` flag (Hoie 2026-05-14: "FE should skip G/L
+    // calculation for cash holdings").
+    const holdingSnapshots = new HoldingSnapshotDictionary();
+    holdingSnapshots.set(
+      "h-cash",
+      // institution_price = 1, cost_basis = null → looks like cash
+      createHoldingSnapshot("acc1", "sec-cash", 1000, 1, 1000, null, "2026-01-15"),
+    );
+
+    // Plaid records cash deposits as `type='buy'` investment_transactions
+    // with price=1. Without the cash skip these would feed inferCostBasis
+    // and produce a phantom basis (= deposit total) with a phantom G/L.
+    const investmentTransactions = new InvestmentTransactionDictionary();
+    investmentTransactions.set(
+      "tx-deposit",
+      createInvestmentTransaction(
+        "acc1",
+        "sec-cash",
+        InvestmentTransactionType.Buy,
+        1,
+        1000,
+        "2026-01-10",
+      ),
+    );
+
+    const result = getHoldingsValueData({
+      holdingSnapshots,
+      securitySnapshots: new SecuritySnapshotDictionary(),
+      investmentTransactions,
+    });
+
+    const summary = result.getHistory("acc1_sec-cash").get(new Date("2026-01-15"));
+    expect(summary).toBeDefined();
+    expect(summary!.value).toBe(1000); // price × quantity = $1 × 1000
+    expect(summary!.costBasis).toBeNull();
+    expect(summary!.unrealizedGain).toBeNull();
+  });
+
+  test("treats cost_basis === 0 same as null (server collapses NULL → 0 in JSON)", () => {
+    // SnapshotModel.toHoldingSnapshot wires `this.cost_basis ?? 0`, so a
+    // cash holding's DB-NULL cost_basis arrives at the client as 0. The
+    // detector must accept that zero as the missing-basis sentinel.
+    const holdingSnapshots = new HoldingSnapshotDictionary();
+    holdingSnapshots.set(
+      "h-cash-zero",
+      createHoldingSnapshot("acc1", "sec-cash-zero", 1000, 1, 1000, 0, "2026-01-15"),
+    );
+
+    const result = getHoldingsValueData({
+      holdingSnapshots,
+      securitySnapshots: new SecuritySnapshotDictionary(),
+      investmentTransactions: new InvestmentTransactionDictionary(),
+    });
+
+    const summary = result.getHistory("acc1_sec-cash-zero").get(new Date("2026-01-15"));
+    expect(summary!.costBasis).toBeNull();
+    expect(summary!.unrealizedGain).toBeNull();
+  });
+
+  test("does NOT treat a real $1 equity with a cost basis as cash", () => {
+    // Edge case: an equity that happens to trade at $1.00 right now BUT
+    // has a real cost_basis. Should fall through the cash detector
+    // (which requires cost_basis === null too) and still get its G/L.
+    const holdingSnapshots = new HoldingSnapshotDictionary();
+    holdingSnapshots.set(
+      "h-penny",
+      createHoldingSnapshot("acc1", "sec-penny", 100, 1, 100, 90, "2026-01-15"),
+    );
+
+    const result = getHoldingsValueData({
+      holdingSnapshots,
+      securitySnapshots: new SecuritySnapshotDictionary(),
+      investmentTransactions: new InvestmentTransactionDictionary(),
+    });
+
+    const summary = result.getHistory("acc1_sec-penny").get(new Date("2026-01-15"));
+    expect(summary!.costBasis).toBe(90);
+    expect(summary!.unrealizedGain).toBe(10); // 100 - 90
+  });
+
+  test("does NOT treat a non-cash holding (institution_price > 1) as cash even with null cost_basis", () => {
+    // Equities with no broker-provided cost_basis still get inferCostBasis,
+    // which is the existing "infer from transactions" path. The cash skip
+    // requires BOTH institution_price === 1 AND cost_basis === null.
+    const holdingSnapshots = new HoldingSnapshotDictionary();
+    holdingSnapshots.set(
+      "h-equity",
+      createHoldingSnapshot("acc1", "sec-equity", 10, 100, 1000, null, "2026-01-15"),
+    );
+
+    const investmentTransactions = new InvestmentTransactionDictionary();
+    investmentTransactions.set(
+      "tx-buy",
+      createInvestmentTransaction(
+        "acc1",
+        "sec-equity",
+        InvestmentTransactionType.Buy,
+        90,
+        10,
+        "2026-01-10",
+      ),
+    );
+
+    const result = getHoldingsValueData({
+      holdingSnapshots,
+      securitySnapshots: new SecuritySnapshotDictionary(),
+      investmentTransactions,
+    });
+
+    const summary = result.getHistory("acc1_sec-equity").get(new Date("2026-01-15"));
+    // institution_price=100 → not cash → inferCostBasis runs → basis = 90×10 = 900
+    expect(summary!.costBasis).toBe(900);
+    expect(summary!.costBasisInferred).toBe(true);
+    expect(summary!.unrealizedGain).toBe(100); // 1000 - 900
   });
 
   test("should preserve provided cost basis", () => {

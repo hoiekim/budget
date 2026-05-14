@@ -348,6 +348,14 @@ export class HoldingValueSummary {
   security_id: string = "";
   account_id: string = "";
   costBasisInferred: boolean = false;
+  /**
+   * Heuristic flag set by `getHoldingsValueData` when the source holding
+   * snapshot looks like cash (institution_price=1 + null/0 cost_basis).
+   * Used in `HoldingsComposition` to label the row "Cash" instead of a
+   * truncated security_id, and to suppress G/L. See holdings.ts for the
+   * full rationale (Hoie 2026-05-14).
+   */
+  isCash: boolean = false;
 
   constructor(init?: Partial<HoldingValueSummary>) {
     if (init) assign(this, init);

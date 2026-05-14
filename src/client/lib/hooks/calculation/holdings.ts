@@ -10,9 +10,20 @@ import { HoldingSnapshot } from "../../models/Snapshot";
 import { InvestmentTransaction } from "../../models/InvestmentTransaction";
 
 /**
- * Index structure: security_id -> yearMonth -> close_price
+ * One entry in the price index. `sourceDate` is the date the price was
+ * recorded (`close_price_as_of` if Plaid surfaced it, otherwise the snapshot
+ * date). It's needed downstream so we can compare security-snapshot freshness
+ * against the holding snapshot's own date and pick whichever's more recent.
  */
-export type SecurityPriceIndex = Map<string, Map<string, number>>;
+export interface PriceIndexEntry {
+  price: number;
+  sourceDate: string; // YYYY-MM-DD
+}
+
+/**
+ * Index structure: security_id -> yearMonth -> { price, sourceDate }
+ */
+export type SecurityPriceIndex = Map<string, Map<string, PriceIndexEntry>>;
 
 /**
  * Builds an index of security prices by security_id and yearMonth.
@@ -41,9 +52,12 @@ export const buildSecurityPriceIndex = (
 
     const securityIndex = index.get(security_id)!;
 
-    // Keep the most recent price for each month
-    // (later entries overwrite earlier ones, which works for snapshots in order)
-    securityIndex.set(yearMonth, close_price);
+    // Keep the most recent (by sourceDate) entry per month. Iteration order
+    // isn't guaranteed, so compare instead of last-write-wins.
+    const existing = securityIndex.get(yearMonth);
+    if (!existing || dateStr > existing.sourceDate) {
+      securityIndex.set(yearMonth, { price: close_price, sourceDate: dateStr });
+    }
   });
 
   return index;
@@ -61,37 +75,82 @@ interface PriceResult {
 }
 
 /**
- * Gets the price for a holding using the 3-tier fallback strategy:
- * 1. institution_price from holding (brokerage-reported)
- * 2. close_price from security snapshot (market data)
- * 3. Infer from institution_value / quantity
+ * Walks back through a security's price index to find the most recent entry
+ * whose `yearMonth` is on or before `targetYearMonth`. Returns undefined when
+ * the security has no entry at or before that month.
+ *
+ * yearMonth keys are `YYYY-MM`, which sort correctly as plain strings.
+ */
+const findLatestEntryLessThanOrEqual = (
+  securityIndex: Map<string, PriceIndexEntry>,
+  targetYearMonth: string,
+): PriceIndexEntry | undefined => {
+  let latestYm: string | undefined;
+  let latestEntry: PriceIndexEntry | undefined;
+  for (const [ym, entry] of securityIndex) {
+    if (ym <= targetYearMonth && (latestYm === undefined || ym > latestYm)) {
+      latestYm = ym;
+      latestEntry = entry;
+    }
+  }
+  return latestEntry;
+};
+
+/**
+ * Gets the price for a holding. As of #323 follow-up: security and holding
+ * snapshots are compared by their source dates rather than ordered by a
+ * fixed-priority list. Whichever was recorded later wins; ties go to the
+ * security snapshot (Hoie 2026-05-13: "if both security and holding have
+ * the same timestamp, then security wins"). This matters because security
+ * snapshots can be filled by polygon between Plaid syncs, so the broker's
+ * `institution_price` can sometimes be the staler of the two even when both
+ * exist; and for manual accounts where institution_price doesn't exist at
+ * all, the security snapshot wins by default.
+ *
+ * Walk-back semantics on the security side: we use the most recent security
+ * entry whose `yearMonth` is on or before the requested view date. We never
+ * consume a future security snapshot — viewing March 2026 will not pull a
+ * May 2026 snapshot, even if that's "more recent" in absolute terms.
+ *
+ * Fallback to inferred (`institution_value / quantity`) only when neither
+ * source has a usable price.
  */
 export const getPriceForHolding = ({
   holding,
   securityPriceIndex,
   date,
 }: PriceForHoldingParams): PriceResult | null => {
-  const { holding: h } = holding;
+  const { holding: h, snapshot } = holding;
   const { security_id, institution_price, institution_value, quantity } = h;
+  const holdingDate = snapshot.date; // ISO string — same shape as PriceIndexEntry.sourceDate
 
-  // Priority 1: institution_price from holding (brokerage-reported)
-  if (institution_price !== null && institution_price !== undefined && institution_price > 0) {
-    return { price: institution_price, source: "institution" };
-  }
-
-  // Priority 2: close_price from security snapshot (market data)
+  // Resolve a security entry, if any.
+  let securityEntry: PriceIndexEntry | undefined;
   if (security_id) {
     const securityIndex = securityPriceIndex.get(security_id);
     if (securityIndex) {
-      const yearMonth = getYearMonthString(date);
-      const marketPrice = securityIndex.get(yearMonth);
-      if (marketPrice !== undefined && marketPrice > 0) {
-        return { price: marketPrice, source: "market" };
-      }
+      securityEntry = findLatestEntryLessThanOrEqual(
+        securityIndex,
+        getYearMonthString(date),
+      );
+      if (securityEntry && !(securityEntry.price > 0)) securityEntry = undefined;
     }
   }
 
-  // Priority 3: Infer from institution_value / quantity
+  const hasInstitution =
+    institution_price !== null && institution_price !== undefined && institution_price > 0;
+
+  if (securityEntry && hasInstitution) {
+    // Both available — most recent sourceDate wins, security wins on a tie.
+    if (securityEntry.sourceDate >= holdingDate) {
+      return { price: securityEntry.price, source: "market" };
+    }
+    return { price: institution_price as number, source: "institution" };
+  }
+  if (securityEntry) return { price: securityEntry.price, source: "market" };
+  if (hasInstitution) return { price: institution_price as number, source: "institution" };
+
+  // Fall back: infer from institution_value / quantity.
   if (
     quantity !== null &&
     quantity !== undefined &&
@@ -245,12 +304,31 @@ export const getHoldingsValueData = ({
       const { price } = priceResult;
       const value = price * quantity;
 
-      // Determine cost basis
-      let finalCostBasis: number | null = cost_basis;
+      // Detect cash from data already on the holding snapshot itself.
+      // Plaid's cash sweeps + interest accounts always quote
+      // institution_price=1.0 and never carry a cost_basis (Plaid doesn't
+      // track basis on cash). Real equities essentially never satisfy
+      // both for any meaningful duration. This avoids needing server-side
+      // help to identify cash — Hoie 2026-05-14: "FE should skip G/L
+      // calculation for cash holdings."
+      //
+      // `cost_basis` on the wire is 0, not null — `SnapshotModel.toHoldingSnapshot`
+      // does `this.cost_basis ?? 0`, collapsing DB NULL to a numeric zero.
+      // So the cash detector accepts 0 as the missing-basis sentinel.
+      //
+      // The cost-basis path otherwise fires `inferCostBasis` over the
+      // Plaid investment_transactions feed, which encodes cash deposits
+      // and interest reinvestments as `type='buy'` with `price=1`. That
+      // accumulates a phantom cost basis with `gain ≈ 0`-but-not-quite,
+      // which is what surfaced as Unrealized G/L on the cash row.
+      const isCash =
+        holding.institution_price === 1 && (cost_basis === null || cost_basis === 0);
+
+      let finalCostBasis: number | null = isCash ? null : cost_basis;
       let costBasisInferred = false;
 
-      // Infer cost basis if missing or zero with quantity
-      if ((cost_basis === null || cost_basis === 0) && quantity !== 0) {
+      // Infer cost basis if missing or zero with quantity — skipped for cash.
+      if (!isCash && (cost_basis === null || cost_basis === 0) && quantity !== 0) {
         const inferred = inferCostBasis({
           accountId: account_id,
           securityId: security_id,
@@ -272,6 +350,7 @@ export const getHoldingsValueData = ({
         security_id,
         account_id,
         costBasisInferred,
+        isCash,
       });
 
       holdingsValueData.set(holdingId, date, summary);
