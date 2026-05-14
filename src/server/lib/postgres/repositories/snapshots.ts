@@ -141,7 +141,52 @@ export const searchSnapshots = async (
     return snap;
   });
 
-  return [...userResult.rows.map(rowToSnapshot), ...enrichedSecuritySnapshots];
+  // Holdings can reference securities that have no price snapshot — cash
+  // sweeps / money-market funds are the common case (polygon doesn't
+  // price them so no snapshot pipeline runs). The frontend needs the
+  // security's `type` (and `is_cash_equivalent`) to render those rows
+  // correctly (e.g. suppressing Unrealized G/L on cash). Emit a
+  // synthetic security_snapshot per orphan security so it appears in the
+  // frontend's `securitySnapshots` dict alongside the priced ones.
+  // Closes the cash-G/L-on-`kZrEbX` bug Hoie 2026-05-14.
+  const holdingSnapshotRows = userResult.rows.filter(
+    (r) => r.snapshot_type === "holding" && r.holding_security_id,
+  );
+  const orphanSecuritySnapshots = await buildOrphanSecuritySnapshots(
+    holdingSnapshotRows,
+    securityMap,
+  );
+
+  return [
+    ...userResult.rows.map(rowToSnapshot),
+    ...enrichedSecuritySnapshots,
+    ...orphanSecuritySnapshots,
+  ];
+};
+
+const buildOrphanSecuritySnapshots = async (
+  holdingRows: Record<string, unknown>[],
+  alreadyEnrichedSecurityMap: Map<string, { security_id: string }>,
+): Promise<JSONSnapshotData[]> => {
+  const referencedIds = new Set(
+    holdingRows.map((r) => r.holding_security_id as string).filter(Boolean),
+  );
+  // Strip the ones we already emitted via the security-snapshot pass.
+  for (const id of alreadyEnrichedSecurityMap.keys()) referencedIds.delete(id);
+  if (referencedIds.size === 0) return [];
+
+  const securities = await searchSecuritiesById([...referencedIds]);
+  return securities.map((sec) => {
+    // No real snapshot exists — use a deterministic synthetic snapshot_id
+    // so duplicate calls don't churn React keys, and a sentinel date.
+    return {
+      snapshot: {
+        snapshot_id: `__orphan-security__${sec.security_id}`,
+        date: new Date().toISOString(),
+      },
+      security: { ...sec, close_price: null },
+    } as JSONSnapshotData;
+  });
 };
 
 export const getAccountSnapshots = async (

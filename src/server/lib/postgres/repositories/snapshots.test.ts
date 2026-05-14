@@ -75,6 +75,20 @@ function makeSecurityRow(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function makeHoldingRow(overrides: Record<string, unknown> = {}) {
+  return makeBaseRow({
+    snapshot_id: "snap-hold-1",
+    user_id: "usr-1",
+    snapshot_type: "holding",
+    holding_account_id: "acc-1",
+    holding_security_id: "sec-qacds",
+    institution_price: 1,
+    institution_value: 234622,
+    quantity: 234622,
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockSearchSecuritiesById.mockReset();
@@ -251,5 +265,81 @@ describe("searchSnapshots", () => {
     const securitySql = mockQuery.mock.calls[1][0] as string;
     expect(securitySql).toContain("security_id = ");
     expect(mockQuery.mock.calls[1][1]).toContain("sec-aapl");
+  });
+
+  test("emits a synthetic security_snapshot for any holding's security that has no price snapshot", async () => {
+    // User-scoped query returns a holding for sec-qacds; security query
+    // returns nothing for that id. The orphan-fill pass should look up
+    // sec-qacds via searchSecuritiesById and emit a synthetic snapshot
+    // so the frontend can identify it as cash via the `type` field.
+    mockQuery
+      .mockImplementationOnce(async () => ({
+        rows: [makeHoldingRow({ holding_security_id: "sec-qacds" })],
+        rowCount: 1,
+      }))
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+
+    // No priced-security rows exist, so the priced-enrichment pass skips
+    // the lookup. The orphan-fill pass is the only call.
+    mockSearchSecuritiesById.mockImplementationOnce(async (ids: string[]) => {
+      expect(ids).toEqual(["sec-qacds"]);
+      return [
+        {
+          security_id: "sec-qacds",
+          ticker_symbol: "QACDS",
+          name: "Chase Deposit Sweep",
+          type: "cash",
+          close_price: 1,
+          close_price_as_of: "2026-05-14",
+        },
+      ];
+    });
+
+    const result = await searchSnapshots(testUser);
+
+    // Holding snapshot + synthetic security snapshot.
+    expect(result).toHaveLength(2);
+
+    const securityEntry = result.find(
+      (r): r is { snapshot: { snapshot_id: string }; security: { security_id: string; type?: string | null } } =>
+        typeof r === "object" && r !== null && "security" in r,
+    );
+    expect(securityEntry).toBeDefined();
+    expect(securityEntry!.security.security_id).toBe("sec-qacds");
+    expect(securityEntry!.security.type).toBe("cash");
+    expect(securityEntry!.snapshot.snapshot_id).toBe("__orphan-security__sec-qacds");
+  });
+
+  test("does not emit an orphan security_snapshot when the holding's security already has a price snapshot", async () => {
+    mockQuery
+      .mockImplementationOnce(async () => ({
+        rows: [makeHoldingRow({ holding_security_id: "sec-aapl" })],
+        rowCount: 1,
+      }))
+      .mockImplementationOnce(async () => ({
+        rows: [makeSecurityRow({ security_id: "sec-aapl" })],
+        rowCount: 1,
+      }));
+    mockSearchSecuritiesById.mockImplementationOnce(async () => [
+      {
+        security_id: "sec-aapl",
+        ticker_symbol: "AAPL",
+        name: "Apple Inc.",
+        type: "equity",
+        close_price: 195,
+      },
+    ]);
+
+    const result = await searchSnapshots(testUser);
+
+    // Holding + enriched security (1 each) — no orphan duplication.
+    expect(result).toHaveLength(2);
+    const securityEntries = result.filter(
+      (r) => typeof r === "object" && r !== null && "security" in r,
+    );
+    expect(securityEntries).toHaveLength(1);
+    // The single security entry should be the real (non-orphan) one.
+    const onlySec = securityEntries[0] as { snapshot: { snapshot_id: string } };
+    expect(onlySec.snapshot.snapshot_id).not.toContain("__orphan-security__");
   });
 });
