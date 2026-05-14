@@ -1,4 +1,11 @@
-import { Route, updateAccounts, requireBodyObject, requireStringField, validationError } from "server";
+import {
+  Route,
+  updateAccounts,
+  requireBodyObject,
+  requireStringField,
+  validationError,
+  getHoldingsByAccount,
+} from "server";
 import type { PartialAccount } from "server";
 import { logger } from "server/lib/logger";
 
@@ -22,6 +29,21 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
 
   const idResult = requireStringField(body, "account_id");
   if (!idResult.success) return validationError(idResult.error!);
+
+  // Block direct edits to `balances.current` when the account already has
+  // holdings — total should be derived from the holdings table (including a
+  // cash-type holding for uninvested cash). Per Hoie 2026-05-13: "when
+  // there are holdings, don't allow direct updates to the account total.
+  // Instead allow them to update the cash amount in the holdings summary."
+  const balancesIn = body.balances as Record<string, unknown> | undefined;
+  if (balancesIn && "current" in balancesIn) {
+    const holdings = await getHoldingsByAccount(user, idResult.data!);
+    if (holdings.length > 0) {
+      return validationError(
+        "Account total cannot be edited directly when holdings exist. Update the cash row in Holdings Composition instead.",
+      );
+    }
+  }
 
   try {
     const response = await updateAccounts(user, [body as PartialAccount]);

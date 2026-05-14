@@ -100,8 +100,21 @@ export const AccountProperties = ({ account }: Props) => {
   };
 
   const latestViewDate = new ViewDate(viewDate.getInterval());
+
+  // Block direct balance edits when holdings exist on this account — total
+  // should be derived from `Σ(holdings)` + cash, with the user editing cash
+  // as a holding rather than the account total. Server enforces the same
+  // rule in post-account.ts / post-snapshot.ts.
+  const accountHasHoldings = useMemo(() => {
+    for (const snap of data.holdingSnapshots.values()) {
+      if (snap.holding.account_id === account_id) return true;
+    }
+    return false;
+  }, [account_id, data.holdingSnapshots]);
+
   const isBalanceInputDisabled =
-    !isManualAccount && viewDate.getEndDate() >= latestViewDate.getEndDate();
+    accountHasHoldings ||
+    (!isManualAccount && viewDate.getEndDate() >= latestViewDate.getEndDate());
 
   return (
     <div className="AccountProperties Properties">

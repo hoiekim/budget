@@ -1,5 +1,11 @@
 import { JSONAccount, getSquashedDateString, JSONSnapshot, LocalDate } from "common";
-import { Route, upsertSnapshots, requireBodyObject, validationError } from "server";
+import {
+  Route,
+  upsertSnapshots,
+  requireBodyObject,
+  validationError,
+  getHoldingsByAccount,
+} from "server";
 import { logger } from "server/lib/logger";
 
 export interface SnapshotPostResponse {
@@ -28,6 +34,19 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
 
     // TODO: Snapshot can be holding or security snapshot as well
     const account: JSONAccount = body.account as JSONAccount;
+
+    // Block historical-balance edits when the account has holdings — the
+    // account total should reconcile against `Σ(holdings)` + cash, so a
+    // direct balances.current write would diverge from the holdings view
+    // for that date. Same rule as `post-account.ts`.
+    if (account?.account_id && account?.balances && "current" in account.balances) {
+      const holdings = await getHoldingsByAccount(user, account.account_id);
+      if (holdings.length > 0) {
+        return validationError(
+          "Account total snapshot cannot be edited directly when holdings exist. Update the cash row in Holdings Composition instead.",
+        );
+      }
+    }
     const snapshotData = body.snapshot as Record<string, unknown>;
     const date = snapshotData.date ? new LocalDate(snapshotData.date as string) : new Date();
     const snapshot: JSONSnapshot = {
