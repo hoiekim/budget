@@ -269,6 +269,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
       await upsertSecuritiesWithSnapshots(securities);
+
       return accounts;
     })
     .catch((error) => {

@@ -4,3 +4,4 @@ export * from "./schedule";
 export * from "./auto-suggest";
 export * from "./detect-transfers";
 export * from "./cash-holding";
+export * from "./backfill-snapshots";

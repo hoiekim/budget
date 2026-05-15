@@ -3,7 +3,7 @@
  * https://polygon.io/docs/stocks/getting-started
  */
 
-import { getDateString, getDateTimeString, getRandomId, JSONSecurity } from "common";
+import { getDateString, getDateTimeString, getRandomId, JSONSecurity, Queue } from "common";
 import { logger } from "./logger";
 
 const POLYGON_HOST = "https://api.polygon.io";
@@ -17,6 +17,32 @@ if (!getApiKey()) {
     component: "polygon",
   });
 }
+
+// ---------------------------------------------------------------------------
+// Rate-limit gate
+// ---------------------------------------------------------------------------
+// Polygon free tier caps at 5 calls/min. The monthly-backfill flow can fan
+// out to dozens of calls per security on first-seen accounts, so every
+// outbound polygon request goes through a shared `Queue` to avoid 429s and
+// the noisy retry backoff that follows. Cache hits must NOT route through
+// the queue (otherwise warm reads would consume a slot).
+//
+// `POLYGON_RATE_LIMIT_PER_MIN` (env, default 5) caps the queue. Setting it
+// to 0 disables the gate entirely (useful for paid tiers / tests). The
+// capacity is read on every `add()` so tests can flip it without rebooting
+// the module.
+
+const DEFAULT_RATE_LIMIT_PER_MIN = 5;
+
+const getRateLimitPerMin = (): number => {
+  const raw = process.env.POLYGON_RATE_LIMIT_PER_MIN;
+  if (raw === undefined || raw === "") return DEFAULT_RATE_LIMIT_PER_MIN;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_RATE_LIMIT_PER_MIN;
+  return Math.floor(n);
+};
+
+export const polygonQueue = new Queue({ capacity: getRateLimitPerMin });
 
 /**
  * Result types for Polygon API calls
@@ -102,7 +128,8 @@ export const getClosePrice = async (
   const path = `${POLYGON_HOST}/v2/aggs/${tickerParameter}/${rangeParameter}?apiKey=${getApiKey()}`;
 
   try {
-    const response = await fetchWithRetry(path);
+    // Queue gate sits AFTER cache check so warm reads don't consume a slot.
+    const response = await polygonQueue.add(() => fetchWithRetry(path));
     const json = await response.json();
 
     if (!json.results || json.results.length === 0) {
@@ -144,7 +171,9 @@ export const getTickerDetail = async (
   const path = `${POLYGON_HOST}/v3/reference/tickers/${ticker_symbol}?apiKey=${getApiKey()}`;
 
   try {
-    const response = await fetchWithRetry(path);
+    // Same queue as getClosePrice — a backfill pass that uses both endpoints
+    // stays under the per-minute cap across both methods.
+    const response = await polygonQueue.add(() => fetchWithRetry(path));
     const json = await response.json();
 
     if (!json.results) {

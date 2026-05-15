@@ -1,17 +1,33 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
-import { getClosePrice, getTickerDetail, clearPriceCache } from "./polygon";
+import {
+  getClosePrice,
+  getTickerDetail,
+  clearPriceCache,
+  polygonQueue,
+} from "./polygon";
 
 // Store original env and fetch
 const originalEnv = process.env.POLYGON_API_KEY;
+const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 const originalFetch = globalThis.fetch;
 
 describe("polygon", () => {
   beforeEach(() => {
     clearPriceCache();
+    polygonQueue.reset();
+    // Disable rate limiting in tests by default so the standard tests don't
+    // burn 12 seconds waiting for token refills. Individual rate-limit
+    // tests re-enable it explicitly.
+    process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
   });
 
   afterEach(() => {
     process.env.POLYGON_API_KEY = originalEnv;
+    if (originalRateLimit === undefined) {
+      delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
+    } else {
+      process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
+    }
     globalThis.fetch = originalFetch;
   });
 
@@ -142,6 +158,82 @@ describe("polygon", () => {
       if (!result.success) {
         expect(result.error).toBe("no_data");
       }
+    });
+  });
+
+  describe("rate limit", () => {
+    // The rate-limit gate sits between cache-miss and the actual fetch. With
+    // cap=2/min, the third call should block waiting for the oldest token to
+    // age out. We approximate "wait" by stubbing Date.now to march forward.
+    it("releases the third call once the first token ages out of the 60s window", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      process.env.POLYGON_RATE_LIMIT_PER_MIN = "2";
+      polygonQueue.reset();
+
+      // Stable time anchor and a synthetic clock the test can advance.
+      let now = 1_700_000_000_000;
+      const realDateNow = Date.now;
+      const realSetTimeout = globalThis.setTimeout;
+      Date.now = () => now;
+      // Make setTimeout immediate and advance `now` by the requested ms, so
+      // the gate's `sleepMs` doesn't actually wait wall-clock time.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).setTimeout = ((fn: () => void, ms: number) => {
+        now += ms;
+        return realSetTimeout(fn, 0);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any;
+
+      let fetchCalls = 0;
+      globalThis.fetch = mock(() => {
+        fetchCalls++;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ results: [{ c: 1 + fetchCalls }] }),
+        } as Response);
+      });
+
+      try {
+        // 3 distinct dates so the cache doesn't satisfy any of them.
+        await getClosePrice("AAPL", new Date("2024-01-15"));
+        await getClosePrice("AAPL", new Date("2024-02-15"));
+        await getClosePrice("AAPL", new Date("2024-03-15"));
+
+        expect(fetchCalls).toBe(3);
+        // The third call must have waited at least to the 60s mark from
+        // the first token's timestamp. Our synthetic clock advanced by
+        // sleepMs, so `now` should now be ≥ anchor + 60s.
+        expect(now).toBeGreaterThanOrEqual(1_700_000_000_000 + 60_000);
+      } finally {
+        Date.now = realDateNow;
+        globalThis.setTimeout = realSetTimeout;
+      }
+    });
+
+    it("does not consume a token on a cache hit", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      process.env.POLYGON_RATE_LIMIT_PER_MIN = "1";
+      polygonQueue.reset();
+
+      let fetchCalls = 0;
+      globalThis.fetch = mock(() => {
+        fetchCalls++;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ results: [{ c: 200 }] }),
+        } as Response);
+      });
+
+      const date = new Date("2024-01-15");
+      await getClosePrice("AAPL", date);
+      const before = Date.now();
+      await getClosePrice("AAPL", date); // identical → cache hit
+      const after = Date.now();
+
+      expect(fetchCalls).toBe(1);
+      // Cache hit shouldn't have routed through the gate (it's after the
+      // cache check), so no measurable wait was introduced.
+      expect(after - before).toBeLessThan(20);
     });
   });
 });
