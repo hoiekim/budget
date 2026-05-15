@@ -15,6 +15,7 @@ import {
   AccountsGetResponse,
   SplitTransactionsGetResponse,
   ChartsGetResponse,
+  SnapshotsGetResponse,
 } from "server";
 import {
   Account,
@@ -216,35 +217,88 @@ const fetchSnapshots = async (
     securitySnapshots: new SecuritySnapshotDictionary(),
   };
 
-  const params = new URLSearchParams();
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 2);
-  if (startDate) params.append("start-date", getDateString(startDate));
-  params.append("end-date", getDateString(endDate));
-  const path = "/api/snapshots?" + params.toString();
+  const ingestSnapshot = (snapshot: JSONSnapshotData) => {
+    if ("account" in snapshot) {
+      const account = accounts.get(snapshot.account.account_id) || {};
+      snapshot.account = { ...account, ...snapshot.account };
+      const newSnapshot = new AccountSnapshot(snapshot);
+      result.accountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+    } else if ("holding" in snapshot) {
+      const newSnapshot = new HoldingSnapshot(snapshot);
+      result.holdingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+    } else if ("security" in snapshot) {
+      const newSnapshot = new SecuritySnapshot(snapshot);
+      result.securitySnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+    }
+  };
 
-  await call
-    .get(path)
-    .then(({ body }) => {
-      if (!body) return;
-      const snapshots = body as JSONSnapshotData[];
+  // Mirror fetchTransactions (Closes #323): slice the full date window into
+  // month-sized chunks, fetched per-account for user-scoped snapshots and
+  // once-per-month for shared security snapshots. Older months go through
+  // `cachedCall` so they only hit the network on first load; the most
+  // recent month always re-fetches so today's data stays fresh.
+  const snapshotsApiPath = "/api/snapshots";
+  const viewDate = new ViewDate("month");
+  const twoMonthAgoViewDate = viewDate.clone().previous().previous();
+  let oldestDate = twoMonthAgoViewDate.previous().getStartDate();
+  oldestDate = startDate && startDate < oldestDate ? startDate : oldestDate;
 
-      snapshots.forEach((snapshot) => {
-        if ("account" in snapshot) {
-          const account = accounts.get(snapshot.account.account_id) || {};
-          snapshot.account = { ...account, ...snapshot.account };
-          const newSnapshot = new AccountSnapshot(snapshot);
-          result.accountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
-        } else if ("holding" in snapshot) {
-          const newSnapshot = new HoldingSnapshot(snapshot);
-          result.holdingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
-        } else if ("security" in snapshot) {
-          const newSnapshot = new SecuritySnapshot(snapshot);
-          result.securitySnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+  const promises: Promise<void>[] = [];
+
+  while (oldestDate < viewDate.getStartDate()) {
+    const monthStart = viewDate.getStartDate();
+    const monthEnd = viewDate.clone().next().getStartDate();
+    const startStr = getDateString(monthStart);
+    const endStr = getDateString(monthEnd);
+    const isRecent = new Date().getTime() - monthEnd.getTime() < THIRTY_DAYS;
+
+    accounts?.forEach((a) => {
+      const params = new URLSearchParams();
+      params.append("start-date", startStr);
+      params.append("end-date", endStr);
+      params.append("account-id", a.id);
+      const path = snapshotsApiPath + "?" + params.toString();
+
+      const fetchForAccount = async () => {
+        let response: ApiResponse<SnapshotsGetResponse> | void;
+        if (isRecent) {
+          response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
+        } else {
+          response = await cachedCall<SnapshotsGetResponse>(path).catch(console.error);
         }
-      });
-    })
-    .catch(console.error);
+        if (!response?.body) return;
+        response.body.forEach(ingestSnapshot);
+      };
+
+      promises.push(fetchForAccount());
+    });
+
+    // Security snapshots are user-id=NULL (shared) and aren't returned by
+    // the account-scoped queries above. One slice per month, cached for
+    // older months — keeps the per-account URL space cleanly cache-keyed
+    // and avoids re-pulling the full price history on every page load.
+    const securityParams = new URLSearchParams();
+    securityParams.append("start-date", startStr);
+    securityParams.append("end-date", endStr);
+    securityParams.append("snapshot-type", "security");
+    const securityPath = snapshotsApiPath + "?" + securityParams.toString();
+
+    const fetchSecurities = async () => {
+      let response: ApiResponse<SnapshotsGetResponse> | void;
+      if (isRecent) {
+        response = await call.get<SnapshotsGetResponse>(securityPath).catch(console.error);
+      } else {
+        response = await cachedCall<SnapshotsGetResponse>(securityPath).catch(console.error);
+      }
+      if (!response?.body) return;
+      response.body.forEach(ingestSnapshot);
+    };
+    promises.push(fetchSecurities());
+
+    viewDate.previous();
+  }
+
+  await Promise.all(promises);
 
   return result;
 };
