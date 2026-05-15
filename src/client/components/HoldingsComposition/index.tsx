@@ -38,17 +38,15 @@ export const HoldingsComposition = ({ account }: Props) => {
   const { holdingsValueData, balanceData } = calculations;
   const { holdingSnapshots, items, securitySnapshots } = data;
 
-  // Editability mirrors the AccountProperties balance input (Hoie 2026-05-15):
-  // manual accounts are always editable; synced accounts are only editable
-  // at past viewDates. The current viewDate of a synced account is locked
-  // because that state is broker-derived and would diverge from the next
-  // sync. "+ Add Holding" stays manual-only for the same reason.
+  // Every row is clickable and drills into HOLDING_DETAIL. Edit gating
+  // lives on the detail page — synced + current viewDate renders read-only
+  // there (Hoie 2026-05-15). "+ Add Holding" stays manual-only because
+  // synced brokers re-derive their own holding set on every sync.
   const isManualAccount = items.get(item_id)?.provider === ItemProvider.MANUAL;
 
   const viewEndDate = viewDate.getEndDate();
   const latestViewDate = new ViewDate(viewDate.getInterval());
   const isCurrentViewDate = viewEndDate >= latestViewDate.getEndDate();
-  const isClickableScope = isManualAccount || !isCurrentViewDate;
 
   // Two lookups per (account, security):
   //   • latest snapshot — fallback target when no per-viewDate snapshot exists.
@@ -225,15 +223,11 @@ export const HoldingsComposition = ({ account }: Props) => {
             : (row.ticker ?? row.name ?? truncateSecurityId(row.securityId));
           const secondaryLabel = row.isCash ? null : row.ticker ? row.name : null;
           const titleLabel = row.isCash ? "Cash" : (row.name ?? row.securityId);
-          // Editability mirrors the balance input (Hoie 2026-05-15):
-          //   • manual + any viewDate           → editable, row clickable.
-          //   • synced + past viewDate          → editable, row clickable.
-          //   • synced + current viewDate       → NOT editable, row inert.
-          // The click resolves to the snapshot for *this* viewDate when one
-          // exists, otherwise the latest snapshot (consistent target so the
-          // existing deterministic-snapshot-id POST flow updates both that
-          // snapshot and, for manual+current, the live holding row).
-          const clickable = isClickableScope && row.clickTargetSnapshotId !== null;
+          // Every row with a backing snapshot is clickable; the click goes
+          // to HOLDING_DETAIL with the snapshot for *this* viewDate when one
+          // exists, otherwise the latest snapshot. Edit-vs-read-only is
+          // resolved on the detail page (synced + current = read-only).
+          const clickable = row.clickTargetSnapshotId !== null;
           const onClickRow = clickable
             ? () => goToHoldingDetail(row.clickTargetSnapshotId!)
             : undefined;
