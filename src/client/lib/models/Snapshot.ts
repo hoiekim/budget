@@ -4,23 +4,12 @@ import {
   JSONAccountSnapshot,
   JSONHoldingSnapshot,
   JSONSecuritySnapshot,
-  JSONSnapshot,
+  Snapshot,
 } from "common";
 import { Account } from "./Account";
 import { Holding, Security } from "./miscellaneous";
 
-export class Snapshot implements JSONSnapshot {
-  get id() {
-    return this.snapshot_id;
-  }
-
-  snapshot_id: string = getRandomId();
-  date: string = new Date().toISOString();
-
-  constructor(init?: Partial<Snapshot>) {
-    assign(this, init);
-  }
-}
+export { Snapshot };
 
 export class AccountSnapshot implements JSONAccountSnapshot {
   get id() {

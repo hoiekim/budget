@@ -3,6 +3,7 @@ import {
   getSquashedDateString,
   getYearMonthString,
   JSONSecuritySnapshot,
+  Snapshot,
 } from "common";
 import {
   getSecuritySnapshots as realGetSecuritySnapshots,
@@ -162,11 +163,11 @@ export const backfillMonthlySecuritySnapshotsForward = async (
         continue;
       }
 
-      newSnapshots.push({
-        snapshot: {
+      const newSnapshot: JSONSecuritySnapshot = {
+        snapshot: new Snapshot({
           snapshot_id: `${security_id}-${getSquashedDateString(new Date(dayInMonth))}`,
           date: new Date(dayInMonth).toISOString(),
-        },
+        }),
         security: {
           security_id,
           ticker_symbol,
@@ -192,7 +193,8 @@ export const backfillMonthlySecuritySnapshotsForward = async (
           option_contract: null,
           fixed_income: null,
         },
-      });
+      };
+      newSnapshots.push(newSnapshot);
       result.filled++;
     }
 

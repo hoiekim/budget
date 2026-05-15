@@ -3,7 +3,7 @@ import {
   getClosePrice,
   getTickerDetail,
   clearPriceCache,
-  __resetPolygonRateLimit,
+  polygonQueue,
 } from "./polygon";
 
 // Store original env and fetch
@@ -14,7 +14,7 @@ const originalFetch = globalThis.fetch;
 describe("polygon", () => {
   beforeEach(() => {
     clearPriceCache();
-    __resetPolygonRateLimit();
+    polygonQueue.reset();
     // Disable rate limiting in tests by default so the standard tests don't
     // burn 12 seconds waiting for token refills. Individual rate-limit
     // tests re-enable it explicitly.
@@ -168,7 +168,7 @@ describe("polygon", () => {
     it("releases the third call once the first token ages out of the 60s window", async () => {
       process.env.POLYGON_API_KEY = "test-key";
       process.env.POLYGON_RATE_LIMIT_PER_MIN = "2";
-      __resetPolygonRateLimit();
+      polygonQueue.reset();
 
       // Stable time anchor and a synthetic clock the test can advance.
       let now = 1_700_000_000_000;
@@ -213,7 +213,7 @@ describe("polygon", () => {
     it("does not consume a token on a cache hit", async () => {
       process.env.POLYGON_API_KEY = "test-key";
       process.env.POLYGON_RATE_LIMIT_PER_MIN = "1";
-      __resetPolygonRateLimit();
+      polygonQueue.reset();
 
       let fetchCalls = 0;
       globalThis.fetch = mock(() => {

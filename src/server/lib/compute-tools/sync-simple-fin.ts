@@ -30,7 +30,6 @@ import {
   upsertTransactions,
 } from "server";
 import { withTransaction } from "../postgres/client";
-import { logger } from "../logger";
 import {
   upsertSecuritiesWithSnapshots,
   upsertAccountsWithSnapshots,
