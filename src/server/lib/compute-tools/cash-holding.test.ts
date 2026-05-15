@@ -158,6 +158,68 @@ describe("inferCashHoldings", () => {
     expect(result).toHaveLength(0);
   });
 
+  // #368: prevent duplicate cash rows when Plaid reports cash via a security
+  // shape that fails the metadata flags (money-market fund / proprietary
+  // sweep). The holding-level heuristic — `institution_price === 1` and a
+  // falsy `cost_basis` — mirrors the FE detector and absorbs these cases.
+  test("skips when a holding has institution_price=1 and falsy cost_basis (money-market / proprietary sweep)", async () => {
+    const account = makeAccount({ balances: { current: 1500, iso_currency_code: "USD" } });
+    const holdings = [
+      makeHolding({ institution_value: 1000 }),
+      makeHolding({
+        holding_id: "h-2",
+        security_id: "sec-vmfxx",
+        quantity: 200,
+        institution_price: 1,
+        institution_value: 200,
+        cost_basis: 0,
+      }),
+    ];
+    const securities = [
+      makeSecurity(),
+      // VMFXX-shape: NOT type=cash, NOT is_cash_equivalent, NOT CUR:* —
+      // the security flags don't say "cash" but the holding clearly is.
+      makeSecurity({
+        security_id: "sec-vmfxx",
+        ticker_symbol: "VMFXX",
+        name: "Vanguard Federal Money Market Fund",
+        type: "etf",
+        is_cash_equivalent: null,
+      }),
+    ];
+
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
+
+    expect(result).toHaveLength(0);
+    expect(mockEnsureCash).toHaveBeenCalledTimes(0);
+  });
+
+  test("skips when cost_basis is null (DB-NULL collapse) and institution_price=1", async () => {
+    const account = makeAccount({ balances: { current: 1500 } });
+    const holdings = [
+      makeHolding({
+        holding_id: "h-cash",
+        security_id: "sec-sweep",
+        quantity: 200,
+        institution_price: 1,
+        institution_value: 200,
+        cost_basis: null as unknown as number,
+      }),
+    ];
+    const securities = [
+      makeSecurity({
+        security_id: "sec-sweep",
+        ticker_symbol: "QACDS",
+        type: "etf",
+        is_cash_equivalent: false,
+      }),
+    ];
+
+    const result = await inferCashHoldings([account], holdings, securities, mockEnsureCash);
+
+    expect(result).toHaveLength(0);
+  });
+
   test("skips non-investment accounts entirely", async () => {
     const account = makeAccount({ type: AccountType.Depository });
     const result = await inferCashHoldings([account], [], [], mockEnsureCash);
