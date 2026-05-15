@@ -29,16 +29,6 @@ export interface SearchSnapshotsOptions {
   limit?: number;
 }
 
-export interface AccountSnapshot {
-  snapshot_id: string;
-  snapshot_date: string;
-  account_id: string;
-  balances_available?: number;
-  balances_current?: number;
-  balances_limit?: number;
-  balances_iso_currency_code?: string | null;
-}
-
 export interface SecuritySnapshot {
   snapshot_id: string;
   snapshot_date: string;
@@ -144,39 +134,6 @@ export const searchSnapshots = async (
   return [...userResult.rows.map(rowToSnapshot), ...enrichedSecuritySnapshots];
 };
 
-export const getAccountSnapshots = async (
-  user: MaskedUser,
-  options: { account_id?: string; startDate?: string; endDate?: string } = {},
-): Promise<AccountSnapshot[]> => {
-  const filters: Record<string, unknown> = {
-    [USER_ID]: user.user_id,
-    [SNAPSHOT_TYPE]: "account_balance",
-  };
-  if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
-
-  // Date range filtering requires raw query
-  const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
-    user_id: user.user_id,
-    filters: { [SNAPSHOT_TYPE]: "account_balance", [ACCOUNT_ID]: options.account_id },
-    dateRange:
-      options.startDate || options.endDate
-        ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
-        : undefined,
-    orderBy: SNAPSHOT_DATE,
-  });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
-
-  return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id as string,
-    snapshot_date: String(row.snapshot_date),
-    account_id: row.account_id as string,
-    balances_available: row.balances_available != null ? Number(row.balances_available) : undefined,
-    balances_current: row.balances_current != null ? Number(row.balances_current) : undefined,
-    balances_limit: row.balances_limit != null ? Number(row.balances_limit) : undefined,
-    balances_iso_currency_code: row.balances_iso_currency_code as string | undefined,
-  }));
-};
-
 export const getSecuritySnapshots = async (
   options: { security_id?: string; startDate?: string; endDate?: string } = {},
 ): Promise<SecuritySnapshot[]> => {
@@ -227,75 +184,6 @@ export const getHoldingSnapshots = async (
     cost_basis: row.cost_basis != null ? Number(row.cost_basis) : undefined,
     quantity: row.quantity != null ? Number(row.quantity) : undefined,
   }));
-};
-
-export const getLatestAccountSnapshots = async (user: MaskedUser): Promise<AccountSnapshot[]> => {
-  const result = await pool.query<Record<string, unknown>>(
-    `SELECT DISTINCT ON (${ACCOUNT_ID}) ${SNAPSHOT_ID}, ${SNAPSHOT_DATE}, ${ACCOUNT_ID}, balances_available, balances_current, balances_limit, balances_iso_currency_code FROM ${SNAPSHOTS} WHERE ${USER_ID} = $1 AND ${SNAPSHOT_TYPE} = 'account_balance' AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY ${ACCOUNT_ID}, ${SNAPSHOT_DATE} DESC`,
-    [user.user_id],
-  );
-  return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id as string,
-    snapshot_date: String(row.snapshot_date),
-    account_id: row.account_id as string,
-    balances_available: row.balances_available != null ? Number(row.balances_available) : undefined,
-    balances_current: row.balances_current != null ? Number(row.balances_current) : undefined,
-    balances_limit: row.balances_limit != null ? Number(row.balances_limit) : undefined,
-    balances_iso_currency_code: row.balances_iso_currency_code as string | undefined,
-  }));
-};
-
-export const upsertAccountSnapshots = async (
-  user: MaskedUser,
-  snapshots: AccountSnapshot[],
-): Promise<UpsertResult[]> => {
-  if (!snapshots.length) return [];
-  const results: UpsertResult[] = [];
-
-  for (const snapshot of snapshots) {
-    try {
-      await snapshotsTable.upsert({
-        [SNAPSHOT_ID]: snapshot.snapshot_id,
-        [USER_ID]: user.user_id,
-        [SNAPSHOT_DATE]: snapshot.snapshot_date,
-        [SNAPSHOT_TYPE]: "account_balance",
-        [ACCOUNT_ID]: snapshot.account_id,
-        balances_available: snapshot.balances_available,
-        balances_current: snapshot.balances_current,
-        balances_limit: snapshot.balances_limit,
-        balances_iso_currency_code: snapshot.balances_iso_currency_code,
-      });
-      results.push(successResult(snapshot.snapshot_id, 1));
-    } catch (error) {
-      logger.error("Failed to upsert account snapshot", { snapshotId: snapshot.snapshot_id }, error);
-      results.push(errorResult(snapshot.snapshot_id));
-    }
-  }
-  return results;
-};
-
-export const upsertSecuritySnapshots = async (
-  snapshots: SecuritySnapshot[],
-): Promise<UpsertResult[]> => {
-  if (!snapshots.length) return [];
-  const results: UpsertResult[] = [];
-
-  for (const snapshot of snapshots) {
-    try {
-      await snapshotsTable.upsert({
-        [SNAPSHOT_ID]: snapshot.snapshot_id,
-        [SNAPSHOT_DATE]: snapshot.snapshot_date,
-        [SNAPSHOT_TYPE]: "security",
-        [SECURITY_ID]: snapshot.security_id,
-        close_price: snapshot.close_price,
-      });
-      results.push(successResult(snapshot.snapshot_id, 1));
-    } catch (error) {
-      logger.error("Failed to upsert security snapshot", { snapshotId: snapshot.snapshot_id }, error);
-      results.push(errorResult(snapshot.snapshot_id));
-    }
-  }
-  return results;
 };
 
 export const upsertHoldingSnapshots = async (
@@ -403,53 +291,3 @@ export const deleteSnapshotById = async (
   return await snapshotsTable.softDelete(snapshot_id, user.user_id);
 };
 
-export const aggregateAccountSnapshots = async (
-  user: MaskedUser,
-  options: {
-    account_ids?: string[];
-    startDate?: string;
-    endDate?: string;
-    interval?: "day" | "week" | "month";
-  } = {},
-): Promise<{ date: string; total_current: number; total_available: number }[]> => {
-  const conditions: string[] = [
-    `${USER_ID} = $1`,
-    `${SNAPSHOT_TYPE} = 'account_balance'`,
-    "(is_deleted IS NULL OR is_deleted = FALSE)",
-  ];
-  const values: string[] = [user.user_id];
-  let paramIndex = 2;
-
-  if (options.account_ids && options.account_ids.length > 0) {
-    const placeholders = options.account_ids.map((_, i) => `$${paramIndex + i}`).join(", ");
-    conditions.push(`${ACCOUNT_ID} IN (${placeholders})`);
-    values.push(...options.account_ids);
-    paramIndex += options.account_ids.length;
-  }
-  if (options.startDate) {
-    conditions.push(`${SNAPSHOT_DATE} >= $${paramIndex++}`);
-    values.push(options.startDate);
-  }
-  if (options.endDate) {
-    conditions.push(`${SNAPSHOT_DATE} <= $${paramIndex++}`);
-    values.push(options.endDate);
-  }
-
-  const interval = options.interval || "day";
-  const dateGroup =
-    interval === "week"
-      ? `date_trunc('week', ${SNAPSHOT_DATE})`
-      : interval === "month"
-        ? `date_trunc('month', ${SNAPSHOT_DATE})`
-        : `date_trunc('day', ${SNAPSHOT_DATE})`;
-
-  const result = await pool.query<{ date: string; total_current: string; total_available: string }>(
-    `SELECT ${dateGroup} as date, SUM(COALESCE(balances_current, 0)) as total_current, SUM(COALESCE(balances_available, 0)) as total_available FROM ${SNAPSHOTS} WHERE ${conditions.join(" AND ")} GROUP BY ${dateGroup} ORDER BY date`,
-    values,
-  );
-  return result.rows.map((row) => ({
-    date: row.date,
-    total_current: parseFloat(row.total_current) || 0,
-    total_available: parseFloat(row.total_available) || 0,
-  }));
-};
