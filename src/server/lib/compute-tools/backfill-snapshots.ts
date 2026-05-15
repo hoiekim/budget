@@ -8,9 +8,11 @@ import {
   getSecuritySnapshots as realGetSecuritySnapshots,
   searchSecuritiesById as realSearchSecuritiesById,
   upsertSnapshots as realUpsertSnapshots,
+  polygon,
+  logger,
 } from "server";
-import { getClosePrice as realGetClosePrice } from "../polygon";
-import { logger } from "../logger";
+
+const realGetClosePrice = polygon.getClosePrice;
 
 export interface BackfillSecurityRef {
   security_id: string;
