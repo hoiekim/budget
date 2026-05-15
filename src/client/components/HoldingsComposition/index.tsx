@@ -10,10 +10,11 @@ interface Props {
 interface HoldingRow {
   holdingId: string;
   securityId: string;
-  /** Latest holding-snapshot id for this (account, security). Used to
-   *  navigate to the inline-edit page on manual accounts. Null when no
+  /** Snapshot to navigate to on row click. Prefers the snapshot whose date
+   *  matches the current `viewDate`; falls back to the latest snapshot for
+   *  this (account, security) when no exact-date match exists. Null when no
    *  snapshot has been recorded yet (shouldn't happen if the row rendered). */
-  latestSnapshotId: string | null;
+  clickTargetSnapshotId: string | null;
   name: string | null;
   ticker: string | null;
   quantity: number;
@@ -37,32 +38,40 @@ export const HoldingsComposition = ({ account }: Props) => {
   const { holdingsValueData, balanceData } = calculations;
   const { holdingSnapshots, items, securitySnapshots } = data;
 
-  // Any row backed by a snapshot is clickable → drills into HOLDING_DETAIL
-  // for the latest snapshot of that (account, security). Editability is
-  // handled on the detail page — the composition table itself never edits.
-  // The "+ Add Holding" affordance below stays manual-only because synced
-  // brokers re-derive their own holding set on every sync.
+  // Editability mirrors the AccountProperties balance input (Hoie 2026-05-15):
+  // manual accounts are always editable; synced accounts are only editable
+  // at past viewDates. The current viewDate of a synced account is locked
+  // because that state is broker-derived and would diverge from the next
+  // sync. "+ Add Holding" stays manual-only for the same reason.
   const isManualAccount = items.get(item_id)?.provider === ItemProvider.MANUAL;
 
-  // Build `holdingId → latest snapshot_id` from the full holding-snapshot
-  // store so manual-row clicks resolve without an extra fetch. We pick the
-  // most recent snapshot per (account, security) by ISO date — string
-  // compare suffices for ISO-8601.
-  const latestSnapshotIdByHoldingId = useMemo(() => {
-    const result = new Map<string, { id: string; date: string }>();
+  const viewEndDate = viewDate.getEndDate();
+  const latestViewDate = new ViewDate(viewDate.getInterval());
+  const isCurrentViewDate = viewEndDate >= latestViewDate.getEndDate();
+  const isClickableScope = isManualAccount || !isCurrentViewDate;
+
+  // Two lookups per (account, security):
+  //   • latest snapshot — fallback target when no per-viewDate snapshot exists.
+  //   • viewDate-day snapshot — preferred target so the click edits the
+  //     snapshot the user is *looking at*, matching the account-balance
+  //     input which writes to the viewDate's account snapshot.
+  const viewDayString = viewEndDate.toISOString().slice(0, 10);
+  const snapshotIdLookup = useMemo(() => {
+    const latest = new Map<string, { id: string; date: string }>();
+    const byDay = new Map<string, string>();
     holdingSnapshots.forEach((snap) => {
       const { account_id: a, security_id: s } = snap.holding;
       if (a !== account_id) return;
-      const key = `${a}_${s}`;
-      const existing = result.get(key);
+      const latestKey = `${a}_${s}`;
+      const existing = latest.get(latestKey);
       if (!existing || snap.snapshot.date > existing.date) {
-        result.set(key, { id: snap.snapshot.snapshot_id, date: snap.snapshot.date });
+        latest.set(latestKey, { id: snap.snapshot.snapshot_id, date: snap.snapshot.date });
       }
+      const day = snap.snapshot.date.slice(0, 10);
+      byDay.set(`${a}_${s}_${day}`, snap.snapshot.snapshot_id);
     });
-    return result;
+    return { latest, byDay };
   }, [account_id, holdingSnapshots]);
-
-  const viewEndDate = viewDate.getEndDate();
 
   const rows = useMemo<HoldingRow[]>(() => {
     const holdingIds = holdingsValueData.getHoldingsForAccount(account_id);
@@ -96,12 +105,16 @@ export const HoldingsComposition = ({ account }: Props) => {
         });
 
         const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
-        const latestSnapshotId = latestSnapshotIdByHoldingId.get(holdingId)?.id ?? null;
+        const sameDay = snapshotIdLookup.byDay.get(
+          `${account_id}_${security_id}_${viewDayString}`,
+        );
+        const latest = snapshotIdLookup.latest.get(`${account_id}_${security_id}`)?.id;
+        const clickTargetSnapshotId = sameDay ?? latest ?? null;
 
         return {
           holdingId,
           securityId: security_id,
-          latestSnapshotId,
+          clickTargetSnapshotId,
           name,
           ticker,
           quantity,
@@ -116,7 +129,14 @@ export const HoldingsComposition = ({ account }: Props) => {
       })
       .filter((r): r is HoldingRow => r !== null)
       .sort((a, b) => b.value - a.value);
-  }, [account_id, holdingsValueData, viewEndDate, securitySnapshots, latestSnapshotIdByHoldingId]);
+  }, [
+    account_id,
+    holdingsValueData,
+    viewEndDate,
+    securitySnapshots,
+    snapshotIdLookup,
+    viewDayString,
+  ]);
 
   const goToHoldingDetail = (snapshotId?: string) => {
     const params = new URLSearchParams();
@@ -174,9 +194,6 @@ export const HoldingsComposition = ({ account }: Props) => {
   }));
   const unknownPct = showUnknownRow && totalValue > 0 ? (unknownDiff / totalValue) * 100 : 0;
 
-  const latestViewDate = new ViewDate(viewDate.getInterval());
-  const isCurrentDate = viewEndDate >= latestViewDate.getEndDate();
-
   return (
     <>
       <div className="propertyLabel">Holdings&nbsp;Composition</div>
@@ -208,20 +225,23 @@ export const HoldingsComposition = ({ account }: Props) => {
             : (row.ticker ?? row.name ?? truncateSecurityId(row.securityId));
           const secondaryLabel = row.isCash ? null : row.ticker ? row.name : null;
           const titleLabel = row.isCash ? "Cash" : (row.name ?? row.securityId);
-          // Every row with a backing snapshot is clickable — the "current
-          // holdings" table itself is read-only, but it navigates to the
-          // snapshot detail where edits are allowed. Same parallel as
-          // account balances: `balances.current` isn't editable, but
-          // account snapshots are (Hoie 2026-05-15).
-          const clickable = row.latestSnapshotId !== null;
+          // Editability mirrors the balance input (Hoie 2026-05-15):
+          //   • manual + any viewDate           → editable, row clickable.
+          //   • synced + past viewDate          → editable, row clickable.
+          //   • synced + current viewDate       → NOT editable, row inert.
+          // The click resolves to the snapshot for *this* viewDate when one
+          // exists, otherwise the latest snapshot (consistent target so the
+          // existing deterministic-snapshot-id POST flow updates both that
+          // snapshot and, for manual+current, the live holding row).
+          const clickable = isClickableScope && row.clickTargetSnapshotId !== null;
           const onClickRow = clickable
-            ? () => goToHoldingDetail(row.latestSnapshotId!)
+            ? () => goToHoldingDetail(row.clickTargetSnapshotId!)
             : undefined;
           const onKeyDownRow = clickable
             ? (e: KeyboardEvent) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  goToHoldingDetail(row.latestSnapshotId!);
+                  goToHoldingDetail(row.clickTargetSnapshotId!);
                 }
               }
             : undefined;
@@ -308,7 +328,7 @@ export const HoldingsComposition = ({ account }: Props) => {
             </button>
           </div>
         )}
-        {!isCurrentDate && (
+        {!isCurrentViewDate && (
           <div className="holdingsFootnote">
             Showing {viewDate.toString()} data
           </div>
