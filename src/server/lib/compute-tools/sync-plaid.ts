@@ -1,5 +1,6 @@
 import {
   JSONAccount,
+  JSONHolding,
   JSONItem,
   ItemProvider,
   RemovedInvestmentTransaction,
@@ -263,12 +264,23 @@ export const syncPlaidAccounts = async (item_id: string) => {
       // Plaid didn't surface cash as a holding. The inferred row is a
       // real holding snapshot — same data path as Plaid-provided cash —
       // so the UI is identical regardless of source (Hoie 2026-05-14).
+      // Inference runs on the *raw* Plaid response so `isCashLikeSecurity`'s
+      // securityById lookup still resolves (Plaid IDs match both ends).
       const inferredCash = await inferCashHoldings(accounts, holdings, securities);
-      const allHoldings = inferredCash.length ? [...holdings, ...inferredCash] : holdings;
 
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
+
+      // Dedupe securities first, then remap Plaid holdings to the canonical
+      // security_ids before upserting them. Otherwise holdings get written
+      // with Plaid's pre-dedupe security_ids while `upsertSecuritiesWithSnapshots`
+      // collapses them to existing canonical rows — leaving orphan holdings
+      // pointing at security_ids that have no row in `securities` (#370).
+      // Same shape `sync-simple-fin.ts` already uses.
+      const idMap = await upsertSecuritiesWithSnapshots(securities);
+      const mappedHoldings = remapHoldingsToCanonicalSecurityIds(holdings, idMap);
+
+      const allHoldings = inferredCash.length ? [...mappedHoldings, ...inferredCash] : mappedHoldings;
       await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
-      await upsertSecuritiesWithSnapshots(securities);
 
       return accounts;
     })
@@ -301,3 +313,28 @@ const getOneMonthBefore = (date?: Date) => {
   newDate.setMonth(newDate.getMonth() - 1);
   return newDate;
 };
+
+/**
+ * Remap each holding's `security_id` to the canonical ID from the
+ * security dedupe step. Also rewrites `holding_id` (Plaid format
+ * `${account_id}_${security_id}`) so the holdings table key tracks the
+ * canonical security rather than Plaid's pre-dedupe ID. Holdings whose
+ * security_id is missing from `idMap` are dropped — that shape shouldn't
+ * happen in practice (Plaid always returns securities for the holdings
+ * it reports), but we'd rather skip than write an orphan.
+ *
+ * Lives at module scope so unit tests can exercise the mapping logic in
+ * isolation (#370).
+ */
+export const remapHoldingsToCanonicalSecurityIds = (
+  holdings: JSONHolding[],
+  idMap: Record<string, string>,
+): JSONHolding[] =>
+  holdings
+    .map((h) => {
+      const canonical = idMap[h.security_id];
+      if (!canonical) return undefined;
+      if (canonical === h.security_id) return h;
+      return { ...h, security_id: canonical, holding_id: `${h.account_id}_${canonical}` };
+    })
+    .filter((h): h is JSONHolding => !!h);

@@ -3,8 +3,9 @@ import {
   buildTransactionLookupMaps,
   findStoredTransaction,
   getPlaidRemovedInvestmentTransactions,
+  remapHoldingsToCanonicalSecurityIds,
 } from "./sync-plaid";
-import type { JSONTransaction, JSONInvestmentTransaction } from "common";
+import type { JSONHolding, JSONTransaction, JSONInvestmentTransaction } from "common";
 
 // Minimal factory helpers
 const makeTx = (overrides: Partial<JSONTransaction>): JSONTransaction =>
@@ -154,5 +155,76 @@ describe("getPlaidRemovedInvestmentTransactions", () => {
     ];
     const result = getPlaidRemovedInvestmentTransactions([], stored);
     expect(result).toHaveLength(2);
+  });
+});
+
+// ─── remapHoldingsToCanonicalSecurityIds ──────────────────────────────────────
+
+const makeHolding = (overrides: Partial<JSONHolding>): JSONHolding =>
+  ({
+    holding_id: "acc-1_plaid-sec",
+    account_id: "acc-1",
+    security_id: "plaid-sec",
+    institution_price: 100,
+    institution_value: 500,
+    cost_basis: 400,
+    quantity: 5,
+    iso_currency_code: "USD",
+    unofficial_currency_code: null,
+    institution_price_as_of: "2026-05-01",
+    ...overrides,
+  } as unknown as JSONHolding);
+
+describe("remapHoldingsToCanonicalSecurityIds", () => {
+  it("rewrites security_id + holding_id when the Plaid ID dedupes to a canonical one (#370)", () => {
+    const holdings = [makeHolding({ holding_id: "acc-1_plaid-sec", security_id: "plaid-sec" })];
+    const idMap = { "plaid-sec": "canonical-sec" };
+    const result = remapHoldingsToCanonicalSecurityIds(holdings, idMap);
+    expect(result).toHaveLength(1);
+    expect(result[0].security_id).toBe("canonical-sec");
+    expect(result[0].holding_id).toBe("acc-1_canonical-sec");
+  });
+
+  it("passes through unchanged when the security_id is already canonical", () => {
+    const original = makeHolding({ holding_id: "acc-1_already-canon", security_id: "already-canon" });
+    const idMap = { "already-canon": "already-canon" };
+    const result = remapHoldingsToCanonicalSecurityIds([original], idMap);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(original); // same reference — no new object allocated
+  });
+
+  it("drops holdings whose security_id is missing from idMap", () => {
+    const holdings = [
+      makeHolding({ holding_id: "acc-1_known", security_id: "known" }),
+      makeHolding({ holding_id: "acc-1_missing", security_id: "missing" }),
+    ];
+    const idMap = { known: "known" };
+    const result = remapHoldingsToCanonicalSecurityIds(holdings, idMap);
+    expect(result).toHaveLength(1);
+    expect(result[0].security_id).toBe("known");
+  });
+
+  it("preserves other holding fields (quantity, cost_basis, prices) across the remap", () => {
+    const holdings = [
+      makeHolding({
+        holding_id: "acc-1_plaid-sec",
+        security_id: "plaid-sec",
+        quantity: 12.5,
+        institution_price: 200,
+        institution_value: 2500,
+        cost_basis: 1800,
+      }),
+    ];
+    const idMap = { "plaid-sec": "canonical-sec" };
+    const [out] = remapHoldingsToCanonicalSecurityIds(holdings, idMap);
+    expect(out).toMatchObject({
+      account_id: "acc-1",
+      security_id: "canonical-sec",
+      holding_id: "acc-1_canonical-sec",
+      quantity: 12.5,
+      institution_price: 200,
+      institution_value: 2500,
+      cost_basis: 1800,
+    });
   });
 });
