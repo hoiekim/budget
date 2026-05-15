@@ -34,7 +34,6 @@ import {
   upsertSecuritiesWithSnapshots,
 } from "./create-snapshots";
 import { inferCashHoldings } from "./cash-holding";
-import { backfillMonthlySecuritySnapshotsForward } from "./backfill-snapshots";
 import { Products } from "plaid";
 
 /** Build O(n) lookup maps for stored transactions to avoid O(n²) in modelize. */
@@ -270,22 +269,6 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
       await upsertSecuritiesWithSnapshots(securities);
-
-      // Fire-and-forget monthly snapshot backfill. Rate-limited by the
-      // polygon token bucket — on a fresh account with N securities and M
-      // gap months this can take N*M / RATE_PER_MIN minutes, which is fine
-      // because we don't block the sync response on it. fromDate=today
-      // means the loop only fires for the current month (no-op when this
-      // very sync already wrote a snapshot); but for any caller that hands
-      // us a backdated fromDate (manual posts, recovery from a missed
-      // sync), the same path fills the gaps.
-      const today = new Date().toISOString();
-      const refs = holdings
-        .filter((h) => h.security_id)
-        .map((h) => ({ security_id: h.security_id, fromDate: today }));
-      backfillMonthlySecuritySnapshotsForward(refs).catch((error) =>
-        logger.error("backfillMonthlySecuritySnapshotsForward failed", { itemId: item_id }, error),
-      );
 
       return accounts;
     })

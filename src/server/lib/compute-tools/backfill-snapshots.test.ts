@@ -166,6 +166,28 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     expect(mockGetClosePrice).toHaveBeenCalledTimes(1);
   });
 
+  test("uses yesterday's date for current-month snapshot (today hasn't closed yet)", async () => {
+    mockSearchSecuritiesById.mockImplementation(async () => [
+      { security_id: "sec-aapl", ticker_symbol: "AAPL", type: "equity" },
+    ]);
+
+    const now = new Date();
+    const fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    await backfillMonthlySecuritySnapshotsForward(
+      [{ security_id: "sec-aapl", fromDate }],
+      di(),
+    );
+
+    // The single polygon call for the current month should target yesterday,
+    // not today — today's market hasn't closed.
+    expect(mockGetClosePrice).toHaveBeenCalledTimes(1);
+    const passedDate = mockGetClosePrice.mock.calls[0][1] as Date;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    expect(passedDate.toISOString().slice(0, 10)).toBe(yesterday.toISOString().slice(0, 10));
+  });
+
   test("does NOT call polygon when fromDate is in the future", async () => {
     mockSearchSecuritiesById.mockImplementation(async () => [
       { security_id: "sec-aapl", ticker_symbol: "AAPL", type: "equity" },

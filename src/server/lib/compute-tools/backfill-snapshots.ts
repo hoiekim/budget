@@ -145,11 +145,13 @@ export const backfillMonthlySecuritySnapshotsForward = async (
         continue;
       }
 
-      // Snapshot date = 15th of the cursor month, clamped to today if cursor
-      // is the current month. Polygon returns the bar for the closest trading
-      // day in the requested range — using day-15 avoids most weekend/holiday
-      // misses for past months.
-      const dayInMonth = cursor === nowYearMonth ? getDateString(new Date()) : `${cursor}-15`;
+      // Snapshot date = 15th for past months; previous day for the current
+      // month. Today's market hasn't closed yet (Hoie 2026-05-15), so polygon
+      // either returns no_data or the previous trading day's bar — either way
+      // we should anchor the snapshot to "yesterday's close" rather than
+      // labelling a future/in-progress price with today's date.
+      const dayInMonth =
+        cursor === nowYearMonth ? getDateString(getYesterday()) : `${cursor}-15`;
       const fetchResult = await getClosePrice(ticker_symbol, new Date(dayInMonth));
 
       if (!fetchResult.success) {
@@ -208,6 +210,12 @@ export const backfillMonthlySecuritySnapshotsForward = async (
   }
 
   return result;
+};
+
+const getYesterday = (): Date => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d;
 };
 
 /** Advance a YYYY-MM string by one month. */
