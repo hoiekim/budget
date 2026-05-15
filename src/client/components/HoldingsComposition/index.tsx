@@ -1,6 +1,6 @@
-import { useMemo } from "react";
-import { currencyCodeToSymbol, numberToCommaString, ViewDate } from "common";
-import { Account, useAppContext } from "client";
+import { KeyboardEvent, useMemo } from "react";
+import { currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
+import { Account, PATH, useAppContext } from "client";
 import "./index.css";
 
 interface Props {
@@ -10,6 +10,11 @@ interface Props {
 interface HoldingRow {
   holdingId: string;
   securityId: string;
+  /** Snapshot to navigate to on row click. Prefers the snapshot whose date
+   *  matches the current `viewDate`; falls back to the latest snapshot for
+   *  this (account, security) when no exact-date match exists. Null when no
+   *  snapshot has been recorded yet (shouldn't happen if the row rendered). */
+  clickTargetSnapshotId: string | null;
   name: string | null;
   ticker: string | null;
   quantity: number;
@@ -25,15 +30,46 @@ interface HoldingRow {
 const truncateSecurityId = (id: string) => id.slice(0, 6);
 
 export const HoldingsComposition = ({ account }: Props) => {
-  const { account_id, balances } = account;
+  const { account_id, balances, item_id } = account;
   const { iso_currency_code } = balances;
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
-  const { calculations, viewDate, data } = useAppContext();
+  const { calculations, router, viewDate, data } = useAppContext();
   const { holdingsValueData, balanceData } = calculations;
-  const { securitySnapshots } = data;
+  const { holdingSnapshots, items, securitySnapshots } = data;
+
+  // Every row is clickable and drills into HOLDING_DETAIL. Edit gating
+  // lives on the detail page — synced + current viewDate renders read-only
+  // there (Hoie 2026-05-15). "+ Add Holding" stays manual-only because
+  // synced brokers re-derive their own holding set on every sync.
+  const isManualAccount = items.get(item_id)?.provider === ItemProvider.MANUAL;
 
   const viewEndDate = viewDate.getEndDate();
+  const latestViewDate = new ViewDate(viewDate.getInterval());
+  const isCurrentViewDate = viewEndDate >= latestViewDate.getEndDate();
+
+  // Two lookups per (account, security):
+  //   • latest snapshot — fallback target when no per-viewDate snapshot exists.
+  //   • viewDate-day snapshot — preferred target so the click edits the
+  //     snapshot the user is *looking at*, matching the account-balance
+  //     input which writes to the viewDate's account snapshot.
+  const viewDayString = viewEndDate.toISOString().slice(0, 10);
+  const snapshotIdLookup = useMemo(() => {
+    const latest = new Map<string, { id: string; date: string }>();
+    const byDay = new Map<string, string>();
+    holdingSnapshots.forEach((snap) => {
+      const { account_id: a, security_id: s } = snap.holding;
+      if (a !== account_id) return;
+      const latestKey = `${a}_${s}`;
+      const existing = latest.get(latestKey);
+      if (!existing || snap.snapshot.date > existing.date) {
+        latest.set(latestKey, { id: snap.snapshot.snapshot_id, date: snap.snapshot.date });
+      }
+      const day = snap.snapshot.date.slice(0, 10);
+      byDay.set(`${a}_${s}_${day}`, snap.snapshot.snapshot_id);
+    });
+    return { latest, byDay };
+  }, [account_id, holdingSnapshots]);
 
   const rows = useMemo<HoldingRow[]>(() => {
     const holdingIds = holdingsValueData.getHoldingsForAccount(account_id);
@@ -67,10 +103,16 @@ export const HoldingsComposition = ({ account }: Props) => {
         });
 
         const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
+        const sameDay = snapshotIdLookup.byDay.get(
+          `${account_id}_${security_id}_${viewDayString}`,
+        );
+        const latest = snapshotIdLookup.latest.get(`${account_id}_${security_id}`)?.id;
+        const clickTargetSnapshotId = sameDay ?? latest ?? null;
 
         return {
           holdingId,
           securityId: security_id,
+          clickTargetSnapshotId,
           name,
           ticker,
           quantity,
@@ -85,7 +127,21 @@ export const HoldingsComposition = ({ account }: Props) => {
       })
       .filter((r): r is HoldingRow => r !== null)
       .sort((a, b) => b.value - a.value);
-  }, [account_id, holdingsValueData, viewEndDate, securitySnapshots]);
+  }, [
+    account_id,
+    holdingsValueData,
+    viewEndDate,
+    securitySnapshots,
+    snapshotIdLookup,
+    viewDayString,
+  ]);
+
+  const goToHoldingDetail = (snapshotId?: string) => {
+    const params = new URLSearchParams();
+    params.set("account_id", account_id);
+    if (snapshotId) params.set("snapshot_id", snapshotId);
+    router.go(PATH.HOLDING_DETAIL, { params });
+  };
 
   // Account snapshot wins for the total (Hoie 2026-05-14: "for account
   // histogram and account total amount, priority is account snapshot if
@@ -110,7 +166,9 @@ export const HoldingsComposition = ({ account }: Props) => {
   const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
   const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
 
-  if (rows.length === 0 && !showUnknownRow) return null;
+  // For manual accounts we want the section visible even with no rows yet
+  // and no balance discrepancy — it hosts the "Add Holding" button.
+  if (rows.length === 0 && !showUnknownRow && !isManualAccount) return null;
 
   // Total = account balance when we have one (preserves Total = balance);
   // otherwise fall back to the holdings sum.
@@ -134,9 +192,6 @@ export const HoldingsComposition = ({ account }: Props) => {
   }));
   const unknownPct = showUnknownRow && totalValue > 0 ? (unknownDiff / totalValue) * 100 : 0;
 
-  const latestViewDate = new ViewDate(viewDate.getInterval());
-  const isCurrentDate = viewEndDate >= latestViewDate.getEndDate();
-
   return (
     <>
       <div className="propertyLabel">Holdings&nbsp;Composition</div>
@@ -147,6 +202,11 @@ export const HoldingsComposition = ({ account }: Props) => {
           <span className="col-gain">Unrealized G/L</span>
           <span className="col-pct">%</span>
         </div>
+        {rows.length === 0 && isManualAccount && (
+          <div className="holdingsRow">
+            <span className="col-name disabled">No holdings recorded</span>
+          </div>
+        )}
         {adjustedRows.map((row) => {
           const gainClass =
             row.unrealizedGain === null
@@ -163,8 +223,31 @@ export const HoldingsComposition = ({ account }: Props) => {
             : (row.ticker ?? row.name ?? truncateSecurityId(row.securityId));
           const secondaryLabel = row.isCash ? null : row.ticker ? row.name : null;
           const titleLabel = row.isCash ? "Cash" : (row.name ?? row.securityId);
+          // Every row with a backing snapshot is clickable; the click goes
+          // to HOLDING_DETAIL with the snapshot for *this* viewDate when one
+          // exists, otherwise the latest snapshot. Edit-vs-read-only is
+          // resolved on the detail page (synced + current = read-only).
+          const clickable = row.clickTargetSnapshotId !== null;
+          const onClickRow = clickable
+            ? () => goToHoldingDetail(row.clickTargetSnapshotId!)
+            : undefined;
+          const onKeyDownRow = clickable
+            ? (e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  goToHoldingDetail(row.clickTargetSnapshotId!);
+                }
+              }
+            : undefined;
           return (
-            <div key={row.holdingId} className="holdingsRow">
+            <div
+              key={row.holdingId}
+              className={`holdingsRow${clickable ? " clickable" : ""}`}
+              onClick={onClickRow}
+              onKeyDown={onKeyDownRow}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+            >
               <span className="col-name">
                 <span className="security-name" title={titleLabel}>
                   {primaryLabel}
@@ -213,24 +296,33 @@ export const HoldingsComposition = ({ account }: Props) => {
             <span className="col-pct">{unknownPct.toFixed(1)}%</span>
           </div>
         )}
-        <div className="holdingsRow total">
-          <span className="col-name">Total</span>
-          <span className="col-value">
-            {currencySymbol}&nbsp;{numberToCommaString(totalValue, 0)}
-          </span>
-          <span className={`col-gain ${totalGain === null ? "" : totalGain >= 0 ? "positive" : "negative"}`}>
-            {totalGain !== null ? (
-              <>
-                {totalGain >= 0 ? "+" : ""}
-                {currencySymbol}&nbsp;{numberToCommaString(totalGain, 0)}
-              </>
-            ) : (
-              <span className="no-data">—</span>
-            )}
-          </span>
-          <span className="col-pct">100%</span>
-        </div>
-        {!isCurrentDate && (
+        {(rows.length > 0 || showUnknownRow) && (
+          <div className="holdingsRow total">
+            <span className="col-name">Total</span>
+            <span className="col-value">
+              {currencySymbol}&nbsp;{numberToCommaString(totalValue, 0)}
+            </span>
+            <span className={`col-gain ${totalGain === null ? "" : totalGain >= 0 ? "positive" : "negative"}`}>
+              {totalGain !== null ? (
+                <>
+                  {totalGain >= 0 ? "+" : ""}
+                  {currencySymbol}&nbsp;{numberToCommaString(totalGain, 0)}
+                </>
+              ) : (
+                <span className="no-data">—</span>
+              )}
+            </span>
+            <span className="col-pct">100%</span>
+          </div>
+        )}
+        {isManualAccount && (
+          <div className="holdingsRow holdingsAddRow">
+            <button type="button" className="holdingsAddButton" onClick={() => goToHoldingDetail()}>
+              + Add Holding
+            </button>
+          </div>
+        )}
+        {!isCurrentViewDate && (
           <div className="holdingsFootnote">
             Showing {viewDate.toString()} data
           </div>

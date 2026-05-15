@@ -1,4 +1,5 @@
 import { ChangeEventHandler, FormEventHandler, useCallback, useEffect, useState } from "react";
+import { ItemProvider, ViewDate } from "common";
 import { call, PATH, useAppContext } from "client";
 import {
   GetHoldingSnapshotsResponse,
@@ -26,13 +27,25 @@ interface NewHoldingForm {
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
 
 export const HoldingProperties = () => {
-  const { router, viewDate } = useAppContext();
+  const { router, viewDate, data } = useAppContext();
   const { path, params, transition } = router;
   const activeParams = path === PATH.HOLDING_DETAIL ? params : transition.incomingParams;
 
   const accountId = activeParams.get("account_id") || "";
   const snapshotId = activeParams.get("snapshot_id") || "";
   const isNew = !snapshotId;
+
+  // Edit gating mirrors AccountProperties' balance input (Hoie 2026-05-15):
+  // synced accounts are not editable at the current viewDate, because that
+  // state is broker-derived and would diverge from the next sync. Manual
+  // accounts are always editable. Past viewDates (manual or synced) edit
+  // the underlying snapshot, same model as account-snapshot balance edits.
+  const account = data.accounts.get(accountId);
+  const item = account ? data.items.get(account.item_id) : undefined;
+  const isManualAccount = item?.provider === ItemProvider.MANUAL;
+  const latestViewDate = new ViewDate(viewDate.getInterval());
+  const isCurrentViewDate = viewDate.getEndDate() >= latestViewDate.getEndDate();
+  const isReadOnly = !isManualAccount && isCurrentViewDate;
 
   const [snapshot, setSnapshot] = useState<HoldingSnapshotWithSecurity | null>(null);
   const [loading, setLoading] = useState(false);
@@ -366,13 +379,17 @@ export const HoldingProperties = () => {
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Ticker</span>
-          <input
-            type="text"
-            value={editTicker}
-            onChange={(e) => setEditTicker(e.target.value)}
-            onBlur={onBlurTicker}
-            autoCapitalize="characters"
-          />
+          {isReadOnly ? (
+            <span>{editTicker || "—"}</span>
+          ) : (
+            <input
+              type="text"
+              value={editTicker}
+              onChange={(e) => setEditTicker(e.target.value)}
+              onBlur={onBlurTicker}
+              autoCapitalize="characters"
+            />
+          )}
         </div>
         {snapshot?.security_name && (
           <div className="row keyValue">
@@ -382,44 +399,58 @@ export const HoldingProperties = () => {
         )}
         <div className="row keyValue">
           <span className="propertyName">Quantity</span>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            value={editQuantity}
-            onChange={(e) => setEditQuantity(e.target.value)}
-            onBlur={onBlurQuantity}
-          />
+          {isReadOnly ? (
+            <span>{editQuantity || "—"}</span>
+          ) : (
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={editQuantity}
+              onChange={(e) => setEditQuantity(e.target.value)}
+              onBlur={onBlurQuantity}
+            />
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Cost/sh</span>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            value={editCostBasis}
-            onChange={(e) => setEditCostBasis(e.target.value)}
-            onBlur={onBlurCostBasis}
-          />
+          {isReadOnly ? (
+            <span>{editCostBasis || "—"}</span>
+          ) : (
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={editCostBasis}
+              onChange={(e) => setEditCostBasis(e.target.value)}
+              onBlur={onBlurCostBasis}
+            />
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Snapshot&nbsp;date</span>
-          <input
-            type="date"
-            value={editDate}
-            onChange={(e) => setEditDate(e.target.value)}
-            onBlur={onBlurDate}
-          />
+          {isReadOnly ? (
+            <span>{editDate || "—"}</span>
+          ) : (
+            <input
+              type="date"
+              value={editDate}
+              onChange={(e) => setEditDate(e.target.value)}
+              onBlur={onBlurDate}
+            />
+          )}
         </div>
         {editError && <div className="row formError">{editError}</div>}
       </div>
       <div className="propertyLabel">&nbsp;</div>
       <div className="property">
-        <div className="row button">
-          <button type="button" className="delete colored" onClick={onClickDelete}>
-            Remove&nbsp;Holding
-          </button>
-        </div>
+        {!isReadOnly && (
+          <div className="row button">
+            <button type="button" className="delete colored" onClick={onClickDelete}>
+              Remove&nbsp;Holding
+            </button>
+          </div>
+        )}
         <div className="row button">
           <button type="button" onClick={goBackToAccount}>
             Back
