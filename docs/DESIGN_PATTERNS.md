@@ -26,15 +26,17 @@ Budget, Section, and Category entities store scheduled amounts in a `capacities`
 
 `getActiveCapacity()` on `BudgetFamily` returns a default `new Capacity()` (zero amount, no date) when the array is empty. Display logic should handle zero-amount budgets gracefully (e.g., placeholder UI rather than blank cards).
 
-## Balance Calculation: 3-Tier Price Fallback
+## Balance Calculation: Holding Price Resolution
 
-Investment account balances use a prioritized price resolution strategy:
+Investment account balances pick between two recorded prices and fall back to inference only when neither is usable:
 
-1. **Institution price** — brokerage-reported price (most authoritative)
-2. **Security snapshot** — market data from Polygon API
-3. **Inferred price** — calculated from `institution_value / quantity`
+1. **Institution price** — brokerage-reported price on the holding snapshot itself
+2. **Security snapshot** — market data from Polygon (or any source written to `security_snapshots`)
+3. **Inferred price** — `institution_value / quantity`, used only when neither source above has a usable price
 
-Always use `getAccountBalance(account)` instead of accessing `account.balances.current` directly — it handles investment accounts correctly using this fallback chain.
+When both an institution price and a security snapshot exist, whichever was **recorded later wins**, with the security snapshot winning on a tie (so a fresh Polygon refresh between Plaid syncs supersedes a stale `institution_price`, and manual accounts — which never carry `institution_price` — always use the security snapshot). The security side never consumes a future snapshot: at view-date `YYYY-MM`, the most recent entry whose `yearMonth` is on or before `YYYY-MM` is used.
+
+Always use `getAccountBalance(account)` instead of accessing `account.balances.current` directly — it handles investment accounts correctly using this resolution.
 
 See `src/client/lib/hooks/calculation/holdings.ts` for the `getPriceForHolding` implementation.
 

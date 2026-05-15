@@ -51,7 +51,7 @@ Core models are defined in `src/common/models/`:
 - **Transaction** — a financial transaction
 - **Budget / BudgetFamily** — budget plans and groupings
 - **Item** — a connection to a financial institution
-- **Snapshot** — point-in-time record of account balances
+- **Snapshot** — point-in-time record of account balances, holdings, or security prices (discriminated by `snapshot_type`)
 - **Chart** — visualization configuration
 - **TransferPair** — pairs two transactions across accounts as a single transfer (suggested or confirmed)
 
