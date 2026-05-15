@@ -79,6 +79,23 @@ const isCashLikeSecurity = (sec: JSONSecurity | undefined): boolean => {
 };
 
 /**
+ * Holding-shaped cash detector. Mirrors the FE's `isCash` heuristic
+ * (`HoldingsComposition`): cash holdings always quote `institution_price = 1`
+ * and never carry a real cost basis. This catches money-market funds and
+ * broker-proprietary cash sweeps that don't surface as `type='cash'` /
+ * `is_cash_equivalent` / `CUR:*` at the *security* layer (#368).
+ *
+ * Falsy `cost_basis` covers both DB-NULL and the `?? 0` collapse that
+ * happens on serialisation, so this matches whether the holding came
+ * straight from Plaid or round-tripped through the snapshot model.
+ */
+const isHoldingCashLike = (h: JSONHolding, sec: JSONSecurity | undefined): boolean => {
+  if (isCashLikeSecurity(sec)) return true;
+  if (h.institution_price === 1 && (h.cost_basis === null || h.cost_basis === 0)) return true;
+  return false;
+};
+
+/**
  * Threshold (USD) below which we treat the broker-reported delta as
  * accumulated noise (pending sweeps, rounding) and skip inferring a row.
  * Picked low enough to catch real cash positions, high enough to avoid
@@ -117,7 +134,7 @@ export const inferCashHoldings = async (
 
     const accountHoldings = incomingHoldings.filter((h) => h.account_id === account.account_id);
 
-    const hasCash = accountHoldings.some((h) => isCashLikeSecurity(securityById.get(h.security_id)));
+    const hasCash = accountHoldings.some((h) => isHoldingCashLike(h, securityById.get(h.security_id)));
     if (hasCash) continue;
 
     const nonCashTotal = accountHoldings.reduce((s, h) => {
