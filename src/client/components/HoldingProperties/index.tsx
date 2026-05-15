@@ -1,12 +1,18 @@
-import { ChangeEventHandler, FormEventHandler, useCallback, useEffect, useState } from "react";
+import { ChangeEventHandler, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
 import { ItemProvider, ViewDate } from "common";
-import { call, PATH, useAppContext } from "client";
 import {
-  GetHoldingSnapshotsResponse,
-  HoldingSnapshotPostResponse,
-  HoldingSnapshotWithSecurity,
-  ValidateTickerResponse,
-} from "server";
+  call,
+  PATH,
+  useAppContext,
+  Data,
+  Snapshot,
+  Holding,
+  HoldingSnapshot,
+  HoldingSnapshotDictionary,
+  indexedDb,
+  StoreName,
+} from "client";
+import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
 
 import "./index.css";
 
@@ -27,7 +33,7 @@ interface NewHoldingForm {
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
 
 export const HoldingProperties = () => {
-  const { router, viewDate, data } = useAppContext();
+  const { router, viewDate, data, setData } = useAppContext();
   const { path, params, transition } = router;
   const activeParams = path === PATH.HOLDING_DETAIL ? params : transition.incomingParams;
 
@@ -47,9 +53,19 @@ export const HoldingProperties = () => {
   const isCurrentViewDate = viewDate.getEndDate() >= latestViewDate.getEndDate();
   const isReadOnly = !isManualAccount && isCurrentViewDate;
 
-  const [snapshot, setSnapshot] = useState<HoldingSnapshotWithSecurity | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState("");
+  // Read the snapshot from the already-synced appContext.data instead of
+  // re-fetching `/api/snapshots/holding` on every page load (Closes #362).
+  // Holdings + their security metadata are loaded at sync time and live in
+  // `data.holdingSnapshots` / `data.securitySnapshots`.
+  const snapshot = !isNew ? data.holdingSnapshots.get(snapshotId) : undefined;
+  const security: { name: string | null; ticker_symbol: string | null } | null = useMemo(() => {
+    if (!snapshot) return null;
+    const sId = snapshot.holding.security_id;
+    const match = data.securitySnapshots.find((s) => s.security.security_id === sId);
+    if (!match) return null;
+    return { name: match.security.name, ticker_symbol: match.security.ticker_symbol };
+  }, [snapshot, data.securitySnapshots]);
+  const loadError = !isNew && !snapshot ? "Holding not found." : "";
 
   const [editTicker, setEditTicker] = useState("");
   const [editQuantity, setEditQuantity] = useState("");
@@ -57,33 +73,17 @@ export const HoldingProperties = () => {
   const [editDate, setEditDate] = useState("");
   const [editError, setEditError] = useState("");
 
-  const fetchSnapshot = useCallback(async () => {
-    if (!snapshotId || !accountId) return;
-    setLoading(true);
-    setLoadError("");
-    const r = await call
-      .get<GetHoldingSnapshotsResponse>(`/api/snapshots/holding?account_id=${accountId}`)
-      .catch(console.error);
-    if (r?.status === "success" && r.body) {
-      const found = r.body.snapshots.find((s) => s.snapshot_id === snapshotId);
-      if (found) {
-        setSnapshot(found);
-        setEditTicker(found.ticker_symbol || "");
-        setEditQuantity(found.quantity != null ? String(found.quantity) : "");
-        setEditCostBasis(found.cost_basis != null ? String(found.cost_basis) : "");
-        setEditDate(toIsoDateInput(found.snapshot_date));
-      } else {
-        setLoadError("Holding not found.");
-      }
-    } else {
-      setLoadError(r?.message || "Failed to load holding.");
-    }
-    setLoading(false);
-  }, [accountId, snapshotId]);
-
+  // Hydrate edit fields from the context-derived snapshot. Re-runs after a
+  // successful update once `sync()` has refreshed `data.holdingSnapshots`.
   useEffect(() => {
-    if (!isNew) fetchSnapshot();
-  }, [isNew, fetchSnapshot]);
+    if (!snapshot) return;
+    setEditTicker(security?.ticker_symbol || "");
+    setEditQuantity(snapshot.holding.quantity != null ? String(snapshot.holding.quantity) : "");
+    setEditCostBasis(
+      snapshot.holding.cost_basis != null ? String(snapshot.holding.cost_basis) : "",
+    );
+    setEditDate(toIsoDateInput(snapshot.snapshot.date));
+  }, [snapshot, security]);
 
   const [form, setForm] = useState<NewHoldingForm>(EMPTY_FORM);
   const [snapshotDateInput, setSnapshotDateInput] = useState(
@@ -169,14 +169,38 @@ export const HoldingProperties = () => {
       .post<HoldingSnapshotPostResponse>("/api/snapshots/holding", body)
       .catch(console.error);
 
-    if (r?.status === "success") {
-      window.dispatchEvent(
-        new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
-      );
-      goBackToAccount();
-    } else {
+    if (r?.status !== "success" || !r.body) {
       setSubmitError(r?.message || "Failed to save holding");
+      return;
     }
+    // Same client-side propagation as updateField — insert the newly created
+    // snapshot into appContext.data so the composition table updates without
+    // a round-trip through /api/snapshots.
+    const { snapshot_id: newSnapshotId, security_id: newSecurityId } = r.body;
+    const newSnapshot = new HoldingSnapshot({
+      snapshot: new Snapshot({
+        snapshot_id: newSnapshotId,
+        date: new Date(snapshotDateInput).toISOString(),
+      }),
+      holding: new Holding({
+        account_id: accountId,
+        security_id: newSecurityId,
+        quantity,
+        cost_basis: costBasis ?? null,
+        institution_price: 0,
+        institution_value: 0,
+        institution_price_as_of: snapshotDateInput,
+      }),
+    });
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      indexedDb.save(newSnapshot).catch(console.error);
+      const next = new HoldingSnapshotDictionary(newData.holdingSnapshots);
+      next.set(newSnapshotId, newSnapshot);
+      newData.holdingSnapshots = next;
+      return newData;
+    });
+    goBackToAccount();
   };
 
   const updateField = useCallback(
@@ -185,26 +209,59 @@ export const HoldingProperties = () => {
       setEditError("");
       const r = await call
         .post<HoldingSnapshotPostResponse>("/api/snapshots/holding", {
-          snapshot_id: snapshot.snapshot_id,
+          snapshot_id: snapshot.snapshot.snapshot_id,
           ...patch,
         })
         .catch(console.error);
-      if (r?.status === "success") {
-        await fetchSnapshot();
-        window.dispatchEvent(
-          new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
-        );
-      } else {
+      if (r?.status !== "success" || !r.body) {
         setEditError(r?.message || "Failed to update holding");
+        return;
       }
+      // Client-side propagation: merge the patch into the existing snapshot
+      // and write it back to appContext.data. The calculation hooks
+      // (`getHoldingsValueData` etc.) re-derive value / G/L / totals from
+      // there, so no full `/api/snapshots` re-sync is needed.
+      const { snapshot_id: returnedSnapshotId, security_id: returnedSecurityId } = r.body;
+      const nextHolding = new Holding({
+        ...snapshot.holding,
+        security_id: returnedSecurityId,
+        quantity: "quantity" in patch ? (patch.quantity as number) : snapshot.holding.quantity,
+        cost_basis:
+          "cost_basis" in patch ? (patch.cost_basis as number | null) : snapshot.holding.cost_basis,
+        institution_price:
+          "institution_price" in patch
+            ? (patch.institution_price as number)
+            : snapshot.holding.institution_price,
+        institution_value:
+          "institution_value" in patch
+            ? (patch.institution_value as number)
+            : snapshot.holding.institution_value,
+      });
+      const nextDate =
+        "snapshot_date" in patch && typeof patch.snapshot_date === "string"
+          ? new Date(patch.snapshot_date).toISOString()
+          : snapshot.snapshot.date;
+      const nextSnapshot = new HoldingSnapshot({
+        snapshot: new Snapshot({ snapshot_id: returnedSnapshotId, date: nextDate }),
+        user: snapshot.user,
+        holding: nextHolding,
+      });
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        indexedDb.save(nextSnapshot).catch(console.error);
+        const next = new HoldingSnapshotDictionary(newData.holdingSnapshots);
+        next.set(returnedSnapshotId, nextSnapshot);
+        newData.holdingSnapshots = next;
+        return newData;
+      });
     },
-    [snapshot, fetchSnapshot, accountId],
+    [snapshot, setData],
   );
 
   const onBlurTicker = async () => {
     const next = editTicker.trim().toUpperCase();
     if (!snapshot || !next) return;
-    if (next === (snapshot.ticker_symbol || "").toUpperCase()) return;
+    if (next === (security?.ticker_symbol || "").toUpperCase()) return;
     await updateField({ ticker_symbol: next });
   };
 
@@ -215,14 +272,14 @@ export const HoldingProperties = () => {
       setEditError("Quantity must be a number");
       return;
     }
-    if (parsed === snapshot.quantity) return;
+    if (parsed === snapshot.holding.quantity) return;
     await updateField({ quantity: parsed });
   };
 
   const onBlurCostBasis = async () => {
     if (!snapshot) return;
     if (editCostBasis.trim() === "") {
-      if (snapshot.cost_basis == null) return;
+      if (snapshot.holding.cost_basis == null) return;
       await updateField({ cost_basis: null });
       return;
     }
@@ -231,30 +288,38 @@ export const HoldingProperties = () => {
       setEditError("Cost basis must be a number");
       return;
     }
-    if (parsed === snapshot.cost_basis) return;
+    if (parsed === snapshot.holding.cost_basis) return;
     await updateField({ cost_basis: parsed });
   };
 
   const onBlurDate = async () => {
     if (!snapshot || !editDate) return;
-    if (editDate === toIsoDateInput(snapshot.snapshot_date)) return;
+    if (editDate === toIsoDateInput(snapshot.snapshot.date)) return;
     await updateField({ snapshot_date: editDate });
   };
 
   const onClickDelete = async () => {
     if (!snapshot) return;
     if (!window.confirm("Remove this holding snapshot?")) return;
+    const removedId = snapshot.snapshot.snapshot_id;
     const r = await call
-      .delete(`/api/snapshots/holding?id=${snapshot.snapshot_id}`)
+      .delete(`/api/snapshots/holding?id=${removedId}`)
       .catch(console.error);
-    if (r?.status === "success") {
-      window.dispatchEvent(
-        new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
-      );
-      goBackToAccount();
-    } else {
+    if (r?.status !== "success") {
       setEditError(r?.message || "Failed to delete holding");
+      return;
     }
+    // Drop the snapshot from appContext.data + IndexedDB; the composition
+    // table re-renders without this row on the next render pass.
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      indexedDb.remove(StoreName.holdingSnapshots, removedId).catch(console.error);
+      const next = new HoldingSnapshotDictionary(newData.holdingSnapshots);
+      next.delete(removedId);
+      newData.holdingSnapshots = next;
+      return newData;
+    });
+    goBackToAccount();
   };
 
   if (!accountId) {
@@ -340,20 +405,6 @@ export const HoldingProperties = () => {
     );
   }
 
-  if (loading && !snapshot) {
-    return (
-      <div className="HoldingProperties Properties">
-        <div className="propertyLabel">Holding</div>
-        <div className="property">
-          <div className="row keyValue">
-            <span className="propertyName">Loading…</span>
-            <span></span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (loadError) {
     return (
       <div className="HoldingProperties Properties">
@@ -391,10 +442,10 @@ export const HoldingProperties = () => {
             />
           )}
         </div>
-        {snapshot?.security_name && (
+        {security?.name && (
           <div className="row keyValue">
             <span className="propertyName">Name</span>
-            <span>{snapshot.security_name}</span>
+            <span>{security.name}</span>
           </div>
         )}
         <div className="row keyValue">
