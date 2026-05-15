@@ -37,9 +37,11 @@ export const HoldingsComposition = ({ account }: Props) => {
   const { holdingsValueData, balanceData } = calculations;
   const { holdingSnapshots, items, securitySnapshots } = data;
 
-  // Manual-account rows are editable: click → HOLDING_DETAIL with the latest
-  // snapshot_id for that (account, security). Synced rows stay read-only —
-  // the broker is source of truth for them.
+  // Any row backed by a snapshot is clickable → drills into HOLDING_DETAIL
+  // for the latest snapshot of that (account, security). Editability is
+  // handled on the detail page — the composition table itself never edits.
+  // The "+ Add Holding" affordance below stays manual-only because synced
+  // brokers re-derive their own holding set on every sync.
   const isManualAccount = items.get(item_id)?.provider === ItemProvider.MANUAL;
 
   // Build `holdingId → latest snapshot_id` from the full holding-snapshot
@@ -206,10 +208,12 @@ export const HoldingsComposition = ({ account }: Props) => {
             : (row.ticker ?? row.name ?? truncateSecurityId(row.securityId));
           const secondaryLabel = row.isCash ? null : row.ticker ? row.name : null;
           const titleLabel = row.isCash ? "Cash" : (row.name ?? row.securityId);
-          // Only manual-account rows are clickable. Synced rows are derived
-          // from broker-reported snapshots and editing them locally would
-          // diverge from the next Plaid sync.
-          const clickable = isManualAccount && row.latestSnapshotId !== null;
+          // Every row with a backing snapshot is clickable — the "current
+          // holdings" table itself is read-only, but it navigates to the
+          // snapshot detail where edits are allowed. Same parallel as
+          // account balances: `balances.current` isn't editable, but
+          // account snapshots are (Hoie 2026-05-15).
+          const clickable = row.latestSnapshotId !== null;
           const onClickRow = clickable
             ? () => goToHoldingDetail(row.latestSnapshotId!)
             : undefined;
