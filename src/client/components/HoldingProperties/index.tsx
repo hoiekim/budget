@@ -1,6 +1,17 @@
 import { ChangeEventHandler, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
 import { ItemProvider, ViewDate } from "common";
-import { call, PATH, useAppContext, useSync } from "client";
+import {
+  call,
+  PATH,
+  useAppContext,
+  Data,
+  Snapshot,
+  Holding,
+  HoldingSnapshot,
+  HoldingSnapshotDictionary,
+  indexedDb,
+  StoreName,
+} from "client";
 import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
 
 import "./index.css";
@@ -22,8 +33,7 @@ interface NewHoldingForm {
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
 
 export const HoldingProperties = () => {
-  const { router, viewDate, data } = useAppContext();
-  const { sync } = useSync();
+  const { router, viewDate, data, setData } = useAppContext();
   const { path, params, transition } = router;
   const activeParams = path === PATH.HOLDING_DETAIL ? params : transition.incomingParams;
 
@@ -159,14 +169,38 @@ export const HoldingProperties = () => {
       .post<HoldingSnapshotPostResponse>("/api/snapshots/holding", body)
       .catch(console.error);
 
-    if (r?.status === "success") {
-      window.dispatchEvent(
-        new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
-      );
-      goBackToAccount();
-    } else {
+    if (r?.status !== "success" || !r.body) {
       setSubmitError(r?.message || "Failed to save holding");
+      return;
     }
+    // Same client-side propagation as updateField — insert the newly created
+    // snapshot into appContext.data so the composition table updates without
+    // a round-trip through /api/snapshots.
+    const { snapshot_id: newSnapshotId, security_id: newSecurityId } = r.body;
+    const newSnapshot = new HoldingSnapshot({
+      snapshot: new Snapshot({
+        snapshot_id: newSnapshotId,
+        date: new Date(snapshotDateInput).toISOString(),
+      }),
+      holding: new Holding({
+        account_id: accountId,
+        security_id: newSecurityId,
+        quantity,
+        cost_basis: costBasis ?? null,
+        institution_price: 0,
+        institution_value: 0,
+        institution_price_as_of: snapshotDateInput,
+      }),
+    });
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      indexedDb.save(newSnapshot).catch(console.error);
+      const next = new HoldingSnapshotDictionary(newData.holdingSnapshots);
+      next.set(newSnapshotId, newSnapshot);
+      newData.holdingSnapshots = next;
+      return newData;
+    });
+    goBackToAccount();
   };
 
   const updateField = useCallback(
@@ -179,18 +213,49 @@ export const HoldingProperties = () => {
           ...patch,
         })
         .catch(console.error);
-      if (r?.status === "success") {
-        // Refresh appContext.data so the new snapshot fields (and any newly
-        // resolved security from a ticker change) flow back into the UI.
-        sync();
-        window.dispatchEvent(
-          new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
-        );
-      } else {
+      if (r?.status !== "success" || !r.body) {
         setEditError(r?.message || "Failed to update holding");
+        return;
       }
+      // Client-side propagation: merge the patch into the existing snapshot
+      // and write it back to appContext.data. The calculation hooks
+      // (`getHoldingsValueData` etc.) re-derive value / G/L / totals from
+      // there, so no full `/api/snapshots` re-sync is needed.
+      const { snapshot_id: returnedSnapshotId, security_id: returnedSecurityId } = r.body;
+      const nextHolding = new Holding({
+        ...snapshot.holding,
+        security_id: returnedSecurityId,
+        quantity: "quantity" in patch ? (patch.quantity as number) : snapshot.holding.quantity,
+        cost_basis:
+          "cost_basis" in patch ? (patch.cost_basis as number | null) : snapshot.holding.cost_basis,
+        institution_price:
+          "institution_price" in patch
+            ? (patch.institution_price as number)
+            : snapshot.holding.institution_price,
+        institution_value:
+          "institution_value" in patch
+            ? (patch.institution_value as number)
+            : snapshot.holding.institution_value,
+      });
+      const nextDate =
+        "snapshot_date" in patch && typeof patch.snapshot_date === "string"
+          ? new Date(patch.snapshot_date).toISOString()
+          : snapshot.snapshot.date;
+      const nextSnapshot = new HoldingSnapshot({
+        snapshot: new Snapshot({ snapshot_id: returnedSnapshotId, date: nextDate }),
+        user: snapshot.user,
+        holding: nextHolding,
+      });
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        indexedDb.save(nextSnapshot).catch(console.error);
+        const next = new HoldingSnapshotDictionary(newData.holdingSnapshots);
+        next.set(returnedSnapshotId, nextSnapshot);
+        newData.holdingSnapshots = next;
+        return newData;
+      });
     },
-    [snapshot, sync, accountId],
+    [snapshot, setData],
   );
 
   const onBlurTicker = async () => {
@@ -236,18 +301,25 @@ export const HoldingProperties = () => {
   const onClickDelete = async () => {
     if (!snapshot) return;
     if (!window.confirm("Remove this holding snapshot?")) return;
+    const removedId = snapshot.snapshot.snapshot_id;
     const r = await call
-      .delete(`/api/snapshots/holding?id=${snapshot.snapshot.snapshot_id}`)
+      .delete(`/api/snapshots/holding?id=${removedId}`)
       .catch(console.error);
-    if (r?.status === "success") {
-      sync();
-      window.dispatchEvent(
-        new CustomEvent("holdings-updated", { detail: { account_id: accountId } }),
-      );
-      goBackToAccount();
-    } else {
+    if (r?.status !== "success") {
       setEditError(r?.message || "Failed to delete holding");
+      return;
     }
+    // Drop the snapshot from appContext.data + IndexedDB; the composition
+    // table re-renders without this row on the next render pass.
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      indexedDb.remove(StoreName.holdingSnapshots, removedId).catch(console.error);
+      const next = new HoldingSnapshotDictionary(newData.holdingSnapshots);
+      next.delete(removedId);
+      newData.holdingSnapshots = next;
+      return newData;
+    });
+    goBackToAccount();
   };
 
   if (!accountId) {
