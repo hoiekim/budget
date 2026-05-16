@@ -325,6 +325,18 @@ export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
   });
   bySec.forEach((arr) => arr.sort((a, b) => (a.date < b.date ? -1 : 1)));
 
+  // Walks the price index for a security: prefer latest snapshot ≤ date,
+  // fall back to earliest snapshot when the query date predates all our
+  // price history. The fall-back lets valueAt produce a *non-zero* V_start
+  // for windows that extend back to a user's first transaction date, even
+  // when the security-snapshot history begins later — same trade-off Hoie
+  // accepted on the "exclude phantom holdings" change: an approximation
+  // that's strictly more useful than reporting `null` and zeroing V_start.
+  // The benchmark TWR is more sensitive to this (since it's literally
+  // priceEnd/priceStart); callers that want strict prices can check
+  // `priceAt(sid, date) === null` before the fall-back. We don't expose
+  // that here because both call sites (`valueAt`, the benchmark resolver)
+  // are fine with the fallback semantics.
   return (securityId: string, date: string): number | null => {
     const arr = bySec.get(securityId);
     if (!arr || arr.length === 0) return null;
@@ -333,6 +345,8 @@ export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
       if (entry.date <= date) best = entry.price;
       else break;
     }
+    // Pre-history fallback: earliest known price.
+    if (best === null) best = arr[0].price;
     return best;
   };
 };
