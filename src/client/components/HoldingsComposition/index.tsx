@@ -136,6 +136,44 @@ export const HoldingsComposition = ({ account }: Props) => {
     viewDayString,
   ]);
 
+  // Collapse all cash-shape rows into a single "Cash" row (Hoie 2026-05-15).
+  // Plaid sometimes reports the same logical cash position under multiple
+  // `security_id`s over time — each becomes a distinct `holding_id` in the
+  // snapshot store and would otherwise render as a separate "Cash" line.
+  // Aggregating at the FE makes the duplicate invisible to the user; the
+  // data-layer duplication stays untouched (no data loss).
+  const aggregatedRows = useMemo<HoldingRow[]>(() => {
+    const cashRows = rows.filter((r) => r.isCash);
+    const nonCashRows = rows.filter((r) => !r.isCash);
+    if (cashRows.length < 2) return rows;
+    const summed = cashRows.reduce(
+      (acc, r) => ({
+        quantity: acc.quantity + r.quantity,
+        value: acc.value + r.value,
+      }),
+      { quantity: 0, value: 0 },
+    );
+    // No edit target on the aggregate — picking one underlying snapshot
+    // would silently change which row a user is editing. Per-snapshot
+    // edits stay available through the Holding-snapshot list views.
+    const aggregated: HoldingRow = {
+      holdingId: `${account_id}__cash`,
+      securityId: "",
+      clickTargetSnapshotId: null,
+      name: null,
+      ticker: null,
+      quantity: summed.quantity,
+      price: 1,
+      value: summed.value,
+      costBasis: null,
+      unrealizedGain: null,
+      costBasisInferred: false,
+      isCash: true,
+      pct: 0,
+    };
+    return [...nonCashRows, aggregated].sort((a, b) => b.value - a.value);
+  }, [account_id, rows]);
+
   const goToHoldingDetail = (snapshotId?: string) => {
     const params = new URLSearchParams();
     params.set("account_id", account_id);
@@ -155,7 +193,7 @@ export const HoldingsComposition = ({ account }: Props) => {
   // (no row); on transient state (just after deploy / before next sync)
   // the Unknown row carries the residual, positive OR negative, so the
   // table's Total still equals the per-view-date account balance either way.
-  const holdingsTotal = rows.reduce((s, r) => s + r.value, 0);
+  const holdingsTotal = aggregatedRows.reduce((s, r) => s + r.value, 0);
   // Per-view-date balance comes from balanceData (the 3-tier-fallback
   // model: account snapshot > holding snapshot > transactions). Falls
   // back to the account's latest `balances.current` only when no data
@@ -168,7 +206,7 @@ export const HoldingsComposition = ({ account }: Props) => {
 
   // For manual accounts we want the section visible even with no rows yet
   // and no balance discrepancy — it hosts the "Add Holding" button.
-  if (rows.length === 0 && !showUnknownRow && !isManualAccount) return null;
+  if (aggregatedRows.length === 0 && !showUnknownRow && !isManualAccount) return null;
 
   // Total = account balance when we have one (preserves Total = balance);
   // otherwise fall back to the holdings sum.
@@ -176,17 +214,18 @@ export const HoldingsComposition = ({ account }: Props) => {
 
   // Cost basis totals only valid when EVERY non-Unknown row has a cost
   // basis. The Unknown row has unknown cost by construction, so it
-  // disqualifies the total gain.
-  const allRowsHaveCostBasis = rows.every((r) => r.costBasis !== null);
+  // disqualifies the total gain. Cash rows have `costBasis = null` by
+  // construction, so any account with cash short-circuits this clause.
+  const allRowsHaveCostBasis = aggregatedRows.every((r) => r.costBasis !== null);
   const totalCostBasis =
     allRowsHaveCostBasis && !showUnknownRow
-      ? rows.reduce((s, r) => s + (r.costBasis ?? 0), 0)
+      ? aggregatedRows.reduce((s, r) => s + (r.costBasis ?? 0), 0)
       : null;
   const totalGain = totalCostBasis !== null ? totalValue - totalCostBasis : null;
 
   // Per-row pct recomputes against the new totalValue so the column
   // (including the Unknown row, if present) still adds to ~100%.
-  const adjustedRows = rows.map((r) => ({
+  const displayRows = aggregatedRows.map((r) => ({
     ...r,
     pct: totalValue > 0 ? (r.value / totalValue) * 100 : 0,
   }));
@@ -202,12 +241,12 @@ export const HoldingsComposition = ({ account }: Props) => {
           <span className="col-gain">Unrealized G/L</span>
           <span className="col-pct">%</span>
         </div>
-        {rows.length === 0 && isManualAccount && (
+        {aggregatedRows.length === 0 && isManualAccount && (
           <div className="holdingsRow">
             <span className="col-name disabled">No holdings recorded</span>
           </div>
         )}
-        {adjustedRows.map((row) => {
+        {displayRows.map((row) => {
           const gainClass =
             row.unrealizedGain === null
               ? ""
@@ -296,7 +335,7 @@ export const HoldingsComposition = ({ account }: Props) => {
             <span className="col-pct">{unknownPct.toFixed(1)}%</span>
           </div>
         )}
-        {(rows.length > 0 || showUnknownRow) && (
+        {(aggregatedRows.length > 0 || showUnknownRow) && (
           <div className="holdingsRow total">
             <span className="col-name">Total</span>
             <span className="col-value">
@@ -327,7 +366,7 @@ export const HoldingsComposition = ({ account }: Props) => {
             Showing {viewDate.toString()} data
           </div>
         )}
-        {rows.some((r) => r.costBasisInferred) && (
+        {aggregatedRows.some((r) => r.costBasisInferred) && (
           <div className="holdingsFootnote">* Cost basis inferred from transaction history</div>
         )}
       </div>
