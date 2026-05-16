@@ -180,6 +180,7 @@ export const AccountProperties = ({ account }: Props) => {
           </div>
         </>
       )}
+      {type === AccountType.Investment && <HoldingsComposition account={account} />}
       {!isManualAccount && (
         <>
           <div className="propertyLabel">Balance&nbsp;Graph&nbsp;Options</div>
@@ -212,8 +213,6 @@ export const AccountProperties = ({ account }: Props) => {
           </div>
         </>
       )}
-
-      {type === AccountType.Investment && <HoldingsComposition account={account} />}
       <div className="propertyLabel">Navigate</div>
       <div className="property">
         <div className="row button">

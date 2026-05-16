@@ -103,9 +103,7 @@ export const HoldingsComposition = ({ account }: Props) => {
         });
 
         const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
-        const sameDay = snapshotIdLookup.byDay.get(
-          `${account_id}_${security_id}_${viewDayString}`,
-        );
+        const sameDay = snapshotIdLookup.byDay.get(`${account_id}_${security_id}_${viewDayString}`);
         const latest = snapshotIdLookup.latest.get(`${account_id}_${security_id}`)?.id;
         const clickTargetSnapshotId = sameDay ?? latest ?? null;
 
@@ -199,8 +197,7 @@ export const HoldingsComposition = ({ account }: Props) => {
   // back to the account's latest `balances.current` only when no data
   // exists for this date at all — which is rare for sync'd accounts.
   const balanceAtView = balanceData.get(account_id, viewEndDate);
-  const accountBalance =
-    balanceAtView !== undefined ? balanceAtView : (balances.current ?? null);
+  const accountBalance = balanceAtView !== undefined ? balanceAtView : (balances.current ?? null);
   const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
   const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
 
@@ -238,7 +235,7 @@ export const HoldingsComposition = ({ account }: Props) => {
         <div className="holdingsHeader">
           <span className="col-name">Security</span>
           <span className="col-value">Value</span>
-          <span className="col-gain">Unrealized G/L</span>
+          <span className="col-gain">Growth</span>
           <span className="col-pct">%</span>
         </div>
         {aggregatedRows.length === 0 && isManualAccount && (
@@ -248,11 +245,7 @@ export const HoldingsComposition = ({ account }: Props) => {
         )}
         {displayRows.map((row) => {
           const gainClass =
-            row.unrealizedGain === null
-              ? ""
-              : row.unrealizedGain >= 0
-                ? "positive"
-                : "negative";
+            row.unrealizedGain === null ? "" : row.unrealizedGain >= 0 ? "positive" : "negative";
           // Cash holdings get a uniform "Cash" label regardless of how the
           // broker named the underlying sweep ("QACDS", "Chase Deposit
           // Sweep", a truncated security_id, etc.). Hoie 2026-05-14: "When
@@ -305,7 +298,11 @@ export const HoldingsComposition = ({ account }: Props) => {
                   <>
                     {row.unrealizedGain >= 0 ? "+" : ""}
                     {currencySymbol}&nbsp;{numberToCommaString(row.unrealizedGain, 0)}
-                    {row.costBasisInferred && <span className="inferred-flag" title="Cost basis inferred from transactions">*</span>}
+                    {row.costBasisInferred && (
+                      <span className="inferred-flag" title="Cost basis inferred from transactions">
+                        *
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span className="no-data">—</span>
@@ -341,7 +338,9 @@ export const HoldingsComposition = ({ account }: Props) => {
             <span className="col-value">
               {currencySymbol}&nbsp;{numberToCommaString(totalValue, 0)}
             </span>
-            <span className={`col-gain ${totalGain === null ? "" : totalGain >= 0 ? "positive" : "negative"}`}>
+            <span
+              className={`col-gain ${totalGain === null ? "" : totalGain >= 0 ? "positive" : "negative"}`}
+            >
               {totalGain !== null ? (
                 <>
                   {totalGain >= 0 ? "+" : ""}
@@ -362,9 +361,7 @@ export const HoldingsComposition = ({ account }: Props) => {
           </div>
         )}
         {!isCurrentViewDate && (
-          <div className="holdingsFootnote">
-            Showing {viewDate.toString()} data
-          </div>
+          <div className="holdingsFootnote">Showing {viewDate.toString()} data</div>
         )}
         {aggregatedRows.some((r) => r.costBasisInferred) && (
           <div className="holdingsFootnote">* Cost basis inferred from transaction history</div>
