@@ -37,7 +37,6 @@ export const AccountsDonut = ({
         </div>
       </div>
       <BalanceInfo
-        balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
         donutData={donutData}
         totalCredit={totalCredit}

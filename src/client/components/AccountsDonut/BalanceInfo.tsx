@@ -2,7 +2,6 @@ import { DonutData, useAppContext } from "client";
 import { Changes } from "client/components";
 
 interface Props {
-  balanceTotal: number;
   currencySymbol: string;
   donutData: DonutData[];
   totalCredit: number;
@@ -11,7 +10,6 @@ interface Props {
 }
 
 export const BalanceInfo = ({
-  balanceTotal,
   currencySymbol,
   donutData,
   totalCredit,
@@ -24,17 +22,25 @@ export const BalanceInfo = ({
   const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
   const previousDate = viewDate.clone().previous().getEndDate();
 
-  const previousAmount = donutData.reduce((a, { id }) => {
+  // Mirror per-row gate (AccountsTable/Balance.tsx: `!!previousAmount`): skip accounts
+  // with no usable previous-period entry on BOTH sides — otherwise the donut counts
+  // those accounts' current balance while the per-row widgets don't, overstating change.
+  let comparableCurrent = 0;
+  let comparablePrevious = 0;
+  for (const { id, value } of donutData) {
     const balanceHistory = balanceData.get(id);
-    if (!balanceHistory) return a;
-    return a + (balanceHistory.get(previousDate) || 0);
-  }, 0);
+    if (!balanceHistory) continue;
+    const prev = balanceHistory.get(previousDate) || 0;
+    if (!prev) continue;
+    comparableCurrent += value;
+    comparablePrevious += prev;
+  }
 
   return (
     <div className="BalanceInfo">
       <Changes
-        currentAmount={balanceTotal}
-        previousAmount={previousAmount}
+        currentAmount={comparableCurrent}
+        previousAmount={comparablePrevious}
         currencySymbol={currencySymbol}
       />
       <div className="label">from&nbsp;last&nbsp;{viewDate.getInterval()}</div>
