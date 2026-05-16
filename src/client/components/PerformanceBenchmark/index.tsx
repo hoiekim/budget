@@ -75,8 +75,22 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     if (windowEnd <= windowStart) return null;
 
     const priceAt = buildPriceAt(securitySnapshots);
-    const vStart = valueAt({ date: windowStart, accountId: account_id, holdingSnapshots, priceAt });
-    const vEnd = valueAt({ date: windowEnd, accountId: account_id, holdingSnapshots, priceAt });
+    const vStart = valueAt({
+      date: windowStart,
+      windowStart,
+      accountId: account_id,
+      holdingSnapshots,
+      investmentTransactions,
+      priceAt,
+    });
+    const vEnd = valueAt({
+      date: windowEnd,
+      windowStart,
+      accountId: account_id,
+      holdingSnapshots,
+      investmentTransactions,
+      priceAt,
+    });
 
     const allFlows = extractCashFlows(investmentTransactions, holdingSnapshots, account_id);
     const flows = allFlows.filter((f) => f.date > windowStart && f.date <= windowEnd);

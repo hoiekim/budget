@@ -224,39 +224,132 @@ describe("computeBenchmarkTWR", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-describe("valueAt (asset-only)", () => {
-  test("sums non-cash holdings at latest snapshot ≤ date; ignores cash-shape", () => {
+describe("valueAt (asset-only, txn-derived qty)", () => {
+  test("V_start uses holding-snap qty as the anchor; cash-shape excluded", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-01-01"));
-    hs.set("h2", mkHoldingSnap(VOO, 15, 600, 9000, "2026-03-01"));
-    hs.set("h3", mkHoldingSnap(CASH, 200, 1, null, "2026-03-01"));
+    hs.set("h3", mkHoldingSnap(CASH, 200, 1, null, "2026-01-01"));
     const ss = new SecuritySnapshotDictionary();
     ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01"));
-    ss.set("s2", mkSecuritySnap(VOO, 700, "2026-03-15"));
+    const itxns = new InvestmentTransactionDictionary();
     const priceAt = buildPriceAt(ss);
 
-    // 2026-02-15: VOO snap from 2026-01-01 (qty=10), price walks back to 500.
-    expect(valueAt({ date: "2026-02-15", accountId: ACCT, holdingSnapshots: hs, priceAt })).toBe(5000);
+    expect(
+      valueAt({
+        date: "2026-01-01",
+        windowStart: "2026-01-01",
+        accountId: ACCT,
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceAt,
+      }),
+    ).toBe(5000); // 10 × 500, cash excluded
+  });
 
-    // 2026-04-01: VOO snap is now the 2026-03-01 (qty=15), price = 700.
-    // The CASH snap exists but is EXCLUDED. So 15 × 700 = 10500, *not* 10500 + 200.
-    expect(valueAt({ date: "2026-04-01", accountId: ACCT, holdingSnapshots: hs, priceAt })).toBe(10500);
+  test("V_end uses anchor + Σ(buy − sell) within window — phantom holding shares are invisible", () => {
+    // Anchor: 10 shares VOO at start. Within window: 5 buys of 1 share each.
+    // Holding snap at end shows 100 shares (Plaid sync glitch — txns lag).
+    // valueAt should ignore the phantom shares and report 10 + 5 = 15 × price.
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-01-01"));
+    hs.set("h2", mkHoldingSnap(VOO, 100, 600, 60000, "2026-06-01")); // phantom +90 shares
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01"));
+    ss.set("s2", mkSecuritySnap(VOO, 600, "2026-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    // 5 buys, all dated before the query date (2026-06-01).
+    const buyDates = ["2026-02-10", "2026-03-10", "2026-04-10", "2026-05-10", "2026-05-25"];
+    buyDates.forEach((date, i) => {
+      itxns.set(
+        `t${i}`,
+        mkTxn({
+          date,
+          type: InvestmentTransactionType.Buy,
+          security_id: VOO,
+          amount: 600,
+          quantity: 1,
+        }),
+      );
+    });
+    const priceAt = buildPriceAt(ss);
+
+    expect(
+      valueAt({
+        date: "2026-06-01",
+        windowStart: "2026-01-01",
+        accountId: ACCT,
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceAt,
+      }),
+    ).toBe(15 * 600); // 9000 (10 anchor + 5 buys), NOT 60000
   });
 
   test("returns 0 when only cash-shape holdings exist", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(CASH, 5000, 1, null, "2026-01-01"));
     const ss = new SecuritySnapshotDictionary();
+    const itxns = new InvestmentTransactionDictionary();
     const priceAt = buildPriceAt(ss);
-    expect(valueAt({ date: "2026-02-01", accountId: ACCT, holdingSnapshots: hs, priceAt })).toBe(0);
+    expect(
+      valueAt({
+        date: "2026-02-01",
+        windowStart: "2026-01-01",
+        accountId: ACCT,
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceAt,
+      }),
+    ).toBe(0);
   });
 
-  test("returns 0 when no holding snapshots ≤ date", () => {
+  test("returns 0 when no holding snapshots ≤ windowStart", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-06-01"));
     const ss = new SecuritySnapshotDictionary();
+    const itxns = new InvestmentTransactionDictionary();
     const priceAt = buildPriceAt(ss);
-    expect(valueAt({ date: "2026-01-01", accountId: ACCT, holdingSnapshots: hs, priceAt })).toBe(0);
+    expect(
+      valueAt({
+        date: "2026-01-15",
+        windowStart: "2026-01-01",
+        accountId: ACCT,
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceAt,
+      }),
+    ).toBe(0);
+  });
+
+  test("includes a security with zero anchor but new txns within window", () => {
+    // User had nothing at windowStart, bought 5 shares in window.
+    const hs = new HoldingSnapshotDictionary();
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01"));
+    ss.set("s2", mkSecuritySnap(VOO, 600, "2026-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2026-03-01",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 2500,
+        quantity: 5,
+      }),
+    );
+    const priceAt = buildPriceAt(ss);
+
+    expect(
+      valueAt({
+        date: "2026-06-01",
+        windowStart: "2026-01-01",
+        accountId: ACCT,
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceAt,
+      }),
+    ).toBe(5 * 600);
   });
 
   test("buildPriceAt returns null when no snapshot exists for the security", () => {

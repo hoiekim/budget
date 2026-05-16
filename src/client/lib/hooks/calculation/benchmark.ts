@@ -184,38 +184,79 @@ export const computeBenchmarkTWR = (params: {
  * Cash-shape holdings (per `isCashShapeHolding`) are excluded — the
  * widget's scope is the asset portfolio, not the total account.
  *
+ * **`qty(t)` is txn-derived** (Hoie 2026-05-16). For each non-cash security:
+ *   qty(t) = qty_from_holding_snapshot_at_windowStart
+ *          + Σ(buy.quantity − sell.quantity from txns in (windowStart, t])
+ *
+ * This guards against holdings that update faster than the txn stream — a
+ * Plaid sync gap where the FE sees +N shares in `holding_snapshots` but the
+ * corresponding `buy` txn hasn't landed yet would otherwise have IRR
+ * "explain" the unaccounted value as growth and inflate the MWR. With this
+ * txn-walk, the unaccounted shares are invisible to the widget until their
+ * matching txn arrives.
+ *
+ * `windowStart` anchors pre-window history we can't reconstruct from txns
+ * (the user may have years of holdings predating the snapshot history we
+ * have). For `t = windowStart`, this collapses to "holding snapshot qty"
+ * which is what we want for V_start.
+ *
  * Returns 0 when no non-cash holding snapshots have been recorded yet.
  */
 export const valueAt = (params: {
   date: string;
+  windowStart: string;
   accountId: string;
   holdingSnapshots: HoldingSnapshotDictionary;
+  investmentTransactions: InvestmentTransactionDictionary;
   priceAt: (securityId: string, date: string) => number | null;
 }): number => {
-  const { date, accountId, holdingSnapshots, priceAt } = params;
-  // Per-security latest snapshot ≤ date
-  const latestBySec = new Map<string, { date: string; qty: number; isCash: boolean }>();
+  const { date, windowStart, accountId, holdingSnapshots, investmentTransactions, priceAt } = params;
+
+  const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
+
+  // Anchor qty: latest holding snapshot ≤ windowStart for each (account, security).
+  const anchorQty = new Map<string, { qtyAtAnchor: number; latestSnapDate: string }>();
   holdingSnapshots.forEach((snap) => {
     if (snap.holding.account_id !== accountId) return;
     const snapDate = snap.snapshot.date.slice(0, 10);
-    if (snapDate > date) return;
-    const cur = latestBySec.get(snap.holding.security_id);
-    if (!cur || snapDate > cur.date) {
-      latestBySec.set(snap.holding.security_id, {
-        date: snapDate,
-        qty: snap.holding.quantity ?? 0,
-        isCash: isCashShapeHolding(snap.holding),
+    if (snapDate > windowStart) return;
+    const cur = anchorQty.get(snap.holding.security_id);
+    if (!cur || snapDate > cur.latestSnapDate) {
+      anchorQty.set(snap.holding.security_id, {
+        qtyAtAnchor: snap.holding.quantity ?? 0,
+        latestSnapDate: snapDate,
       });
     }
   });
 
+  // Walk txns in (windowStart, date] to derive qty delta per security.
+  const qtyDelta = new Map<string, number>();
+  investmentTransactions.forEach((t) => {
+    if (t.account_id !== accountId) return;
+    if (t.security_id == null) return;
+    if (cashSecs.has(t.security_id)) return;
+    if (t.quantity == null || t.quantity === 0) return;
+    if (t.type !== "buy" && t.type !== "sell") return;
+    const txnDate = t.date.slice(0, 10);
+    if (txnDate <= windowStart) return;
+    if (txnDate > date) return;
+    const signed = t.type === "buy" ? Math.abs(t.quantity) : -Math.abs(t.quantity);
+    qtyDelta.set(t.security_id, (qtyDelta.get(t.security_id) ?? 0) + signed);
+  });
+
+  // Union of security_ids seen in either anchor or txns
+  const allSecIds = new Set<string>([...anchorQty.keys(), ...qtyDelta.keys()]);
+
   let total = 0;
-  latestBySec.forEach((entry, secId) => {
-    if (entry.qty === 0) return;
-    if (entry.isCash) return; // cash-excluded
-    const price = priceAt(secId, date);
+  allSecIds.forEach((sid) => {
+    if (cashSecs.has(sid)) return; // cash-excluded
+    const anchor = anchorQty.get(sid)?.qtyAtAnchor ?? 0;
+    const delta = qtyDelta.get(sid) ?? 0;
+    const qty = anchor + delta;
+    if (qty <= 0) return;
+    const price = priceAt(sid, date);
     if (price === null) return;
-    total += entry.qty * price;
+    total += qty * price;
   });
   return total;
 };
