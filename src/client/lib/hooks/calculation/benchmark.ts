@@ -2,23 +2,31 @@ import { InvestmentTransactionType } from "plaid";
 import { InvestmentTransactionDictionary, HoldingSnapshotDictionary, SecuritySnapshotDictionary } from "../../models/Data";
 
 /**
- * Performance benchmarking math — money-weighted return (IRR) + index benchmark.
+ * Investment-performance benchmarking math — money-weighted return (IRR) of
+ * the user's non-cash positions plus an index TWR for the same window.
+ *
+ * **Scope (Hoie 2026-05-16): cash is excluded.** The "portfolio" tracked here
+ * is the user's non-cash holdings only (VOO etc.); cash positions (QACDS,
+ * pending-settlement orphans, USD sweep balances) are deliberately ignored.
+ * Every asset BUY counts as an external deposit into the asset portfolio and
+ * every asset SELL counts as a withdrawal. Cash/deposit/withdrawal rows and
+ * `fee/dividend` rows are skipped. This sidesteps the settlement-pending
+ * complexity that surfaced in the v1 spike against real prod data — at the
+ * cost of underreporting dividends/interest credited to cash. The
+ * cash-inclusive version is tracked separately (see follow-up issue).
  *
  * Pure functions only — no React, no appContext. Components pass in the
  * relevant dictionaries from `appContext.data` and the per-account scope.
- * Methodology reference (Hoie 2026-05-16): MWR for "what did my money do",
- * benchmark TWR for "what would lump-sum buy-and-hold have returned over the
- * same window". MWR < benchmark for steady-DCA accounts is expected because
- * dollars contributed mid-window have spent less time earning — that's the
- * dollar-weighting effect, not strategy underperformance.
- *
- * See `~/budget/issues/377` for the widget scope.
  */
 
 export interface CashFlow {
-  /** Date the flow hit the account, as YYYY-MM-DD. */
+  /** Date the flow hit the asset portfolio, as YYYY-MM-DD. */
   date: string;
-  /** Signed amount. Positive = external deposit IN, negative = withdrawal OUT. */
+  /**
+   * Signed amount in account currency. Positive = asset purchased
+   * (external IN, money entering the asset side from elsewhere).
+   * Negative = asset sold (external OUT, money leaving the asset side).
+   */
   amount: number;
 }
 
@@ -38,20 +46,15 @@ export interface BenchmarkResult {
 }
 
 /**
- * Detect cash-shape holdings from a snapshot record. Mirrors the FE
- * `isCash` heuristic used in `HoldingsComposition` — Plaid surfaces cash
- * positions with `institution_price === 1` and no real cost basis, and
- * the wire serializer collapses null cost_basis to 0, so we accept both.
+ * Cash-shape detector — mirrors the `isCash` heuristic in
+ * `HoldingsComposition`. Same security may be cash-shape across all its
+ * snapshots; we conservatively classify the *security_id* itself, so a
+ * holding that ever appeared as cash-shape stays excluded from the
+ * asset-portfolio view.
  */
 const isCashShapeHolding = (h: { institution_price?: number | null; cost_basis?: number | null }) =>
   h.institution_price === 1 && (h.cost_basis === null || h.cost_basis === undefined || h.cost_basis === 0);
 
-/**
- * Build the set of cash-shape security_ids for an account from the
- * latest holding snapshot of each (account, security). A security is
- * considered cash-shape if any of its snapshots looked cash-shape — we
- * conservatively classify the security itself, not per-snapshot.
- */
 const cashSecurityIdsForAccount = (
   holdingSnapshots: HoldingSnapshotDictionary,
   accountId: string,
@@ -64,116 +67,40 @@ const cashSecurityIdsForAccount = (
   return out;
 };
 
-const DEFAULT_MATCH_WINDOW_DAYS = 7;
-
-interface AssetLeg {
-  date: string;
-  amount: number;
-  type: "buy" | "sell";
-}
-
-const daysBetween = (a: string, b: string): number => {
-  const aT = new Date(a).getTime();
-  const bT = new Date(b).getTime();
-  return Math.abs(aT - bT) / (1000 * 60 * 60 * 24);
-};
-
 /**
- * Classify investment transactions for an account into the external
- * cash-flow stream needed for MWR computation. Internal reallocations
- * (buy-cash paired with a sell-asset, etc.) are dropped.
+ * Build the external-flow stream from a user's investment transactions.
  *
- * Rules:
- *   - type='cash' subtype='deposit' → +abs(amount), external IN. Plaid
- *     reports these with negative amounts ("money coming in") so we flip.
- *   - type='cash' subtype='withdrawal' → -abs(amount), external OUT.
- *   - type='buy' on a cash-shape security with amount > $1 → external IN
- *     **unless** matched by an opposite-sign asset leg within ±7 days
- *     (then it's an internal sale-proceeds-returning-to-cash event).
- *   - type='sell' on a cash-shape security → external OUT unless matched.
- *   - Asset buy/sell and fee/dividend → internal, skipped.
+ * **Cash-excluded model:** an "external flow" is any movement of money
+ * into or out of the *asset side* of the portfolio. That maps onto Plaid's
+ * `type` field cleanly:
  *
- * Dedupe: when both a `cash/deposit` and a `buy CASH` of the same
- * magnitude land on the same day (Plaid double-reports some deposits),
- * count only the explicit `cash/deposit` row.
+ *   - `type='buy'` on a non-cash security → external IN (+amount).
+ *   - `type='sell'` on a non-cash security → external OUT (−|amount|).
+ *   - Everything else (`cash/deposit`, `cash/withdrawal`, `fee/dividend`,
+ *     `buy`/`sell` on cash-shape securities) → skipped. Those are cash-side
+ *     events and we're not tracking cash.
+ *
+ * Same-day flows for the same account are summed.
  */
 export const extractCashFlows = (
   investmentTransactions: InvestmentTransactionDictionary,
   holdingSnapshots: HoldingSnapshotDictionary,
   accountId: string,
-  options: { matchWindowDays?: number } = {},
 ): CashFlow[] => {
-  const matchWindow = options.matchWindowDays ?? DEFAULT_MATCH_WINDOW_DAYS;
   const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
+  const flowsByDate = new Map<string, number>();
 
-  const allTxns: { date: string; type: string; subtype: string; security_id: string | null; amount: number; quantity: number }[] = [];
   investmentTransactions.forEach((t) => {
     if (t.account_id !== accountId) return;
-    allTxns.push({
-      date: t.date.slice(0, 10),
-      type: t.type,
-      subtype: t.subtype,
-      security_id: t.security_id,
-      amount: t.amount ?? 0,
-      quantity: t.quantity ?? 0,
-    });
+    if (t.security_id == null) return;
+    if (cashSecs.has(t.security_id)) return; // cash-side event, skip
+    if (t.quantity == null || t.quantity === 0) return; // qty=0 rows aren't real asset moves
+    if (t.type !== InvestmentTransactionType.Buy && t.type !== InvestmentTransactionType.Sell) return;
+
+    const date = t.date.slice(0, 10);
+    const signed = t.type === InvestmentTransactionType.Buy ? t.amount : -Math.abs(t.amount);
+    flowsByDate.set(date, (flowsByDate.get(date) ?? 0) + signed);
   });
-
-  // Asset legs = non-cash-shape buy/sell with non-zero quantity. The
-  // matching heuristic looks for these to identify internal sweep moves.
-  const assetLegs: AssetLeg[] = allTxns
-    .filter((t) => {
-      if (t.security_id == null) return false;
-      if (cashSecs.has(t.security_id)) return false;
-      if (t.type !== InvestmentTransactionType.Buy && t.type !== InvestmentTransactionType.Sell) return false;
-      return t.quantity !== 0;
-    })
-    .map((t) => ({ date: t.date, amount: t.amount, type: t.type as "buy" | "sell" }));
-
-  const isMatchedByAsset = (cashLeg: { date: string; type: string; amount: number }): boolean => {
-    const target = Math.abs(cashLeg.amount);
-    for (const a of assetLegs) {
-      if (daysBetween(a.date, cashLeg.date) > matchWindow) continue;
-      // Cash SELL (money out of sweep) matches an asset BUY funded from cash.
-      if (cashLeg.type === "sell" && a.type !== "buy") continue;
-      // Cash BUY (money into sweep) matches an asset SELL whose proceeds return.
-      if (cashLeg.type === "buy" && a.type !== "sell") continue;
-      if (Math.abs(Math.abs(a.amount) - target) < Math.max(0.5, target * 0.01)) return true;
-    }
-    return false;
-  };
-
-  // Dedupe set: (date, abs_amount) of explicit cash/deposit and cash/withdrawal rows.
-  const explicitCashEvents = new Set<string>();
-  for (const t of allTxns) {
-    if (t.type === InvestmentTransactionType.Cash && (t.subtype === "deposit" || t.subtype === "withdrawal")) {
-      explicitCashEvents.add(`${t.date}|${Math.abs(t.amount).toFixed(2)}`);
-    }
-  }
-
-  const flowsByDate = new Map<string, number>();
-  for (const t of allTxns) {
-    if (t.type === InvestmentTransactionType.Cash && t.subtype === "deposit") {
-      flowsByDate.set(t.date, (flowsByDate.get(t.date) ?? 0) + -t.amount);
-      continue;
-    }
-    if (t.type === InvestmentTransactionType.Cash && t.subtype === "withdrawal") {
-      flowsByDate.set(t.date, (flowsByDate.get(t.date) ?? 0) + -Math.abs(t.amount));
-      continue;
-    }
-    if (t.security_id == null || !cashSecs.has(t.security_id)) continue;
-    if (t.type === InvestmentTransactionType.Buy && t.amount > 1) {
-      const key = `${t.date}|${t.amount.toFixed(2)}`;
-      if (explicitCashEvents.has(key)) continue;
-      if (isMatchedByAsset(t)) continue;
-      flowsByDate.set(t.date, (flowsByDate.get(t.date) ?? 0) + t.amount);
-    } else if (t.type === InvestmentTransactionType.Sell && Math.abs(t.amount) > 1) {
-      const key = `${t.date}|${Math.abs(t.amount).toFixed(2)}`;
-      if (explicitCashEvents.has(key)) continue;
-      if (isMatchedByAsset(t)) continue;
-      flowsByDate.set(t.date, (flowsByDate.get(t.date) ?? 0) + t.amount);
-    }
-  }
 
   return Array.from(flowsByDate.entries())
     .map(([date, amount]) => ({ date, amount }))
@@ -187,12 +114,14 @@ const yearsBetween = (start: string, end: string): number => {
 };
 
 /**
- * Solve the IRR equation:
+ * Solve the IRR equation for the asset-side cash flows:
  *   −V_start + Σᵢ (−Cᵢ / (1+r)^tᵢ) + V_end / (1+r)^T = 0
  *
- * Bisection over `[-0.99, 10]`. Returns `no_solution` when the sign
- * of NPV doesn't change between the bounds (rare; typically only
- * happens when V_start = 0 and flows + V_end yield a degenerate stream).
+ * `V_start` and `V_end` are the non-cash asset values at the window
+ * boundaries (cash positions excluded — see `valueAt`).
+ *
+ * Bisection over `[-0.99, 10]`. Returns `no_solution` when the sign of NPV
+ * doesn't change between the bounds.
  */
 export const computeMWR = (params: {
   flows: CashFlow[];
@@ -235,11 +164,6 @@ export const computeMWR = (params: {
 /**
  * Benchmark return for a passive security held over the same window.
  * For an ETF like VOO with no contributions, TWR = simple price ratio.
- *
- * `priceAt` is the price lookup function — typically a closure over
- * `data.securitySnapshots` that returns the close_price for a security
- * on a given date, with optional walk-back to the latest available
- * date ≤ requested.
  */
 export const computeBenchmarkTWR = (params: {
   priceStart: number;
@@ -255,12 +179,12 @@ export const computeBenchmarkTWR = (params: {
 };
 
 /**
- * Portfolio value at a given date: Σ(security_id) qty_at(t) × price_at(t).
- *   - qty_at(t) = latest holding_snapshot for (account, security) with date ≤ t.
- *   - price_at(t) for cash-shape = 1.
- *   - price_at(t) for non-cash = priceAt(security_id, t) from securitySnapshots.
+ * Non-cash asset value at a given date: Σ(non_cash_security_id) qty(t) × price(t).
  *
- * Returns 0 when no holding snapshots have been recorded yet.
+ * Cash-shape holdings (per `isCashShapeHolding`) are excluded — the
+ * widget's scope is the asset portfolio, not the total account.
+ *
+ * Returns 0 when no non-cash holding snapshots have been recorded yet.
  */
 export const valueAt = (params: {
   date: string;
@@ -288,13 +212,10 @@ export const valueAt = (params: {
   let total = 0;
   latestBySec.forEach((entry, secId) => {
     if (entry.qty === 0) return;
-    if (entry.isCash) {
-      total += entry.qty * 1;
-    } else {
-      const price = priceAt(secId, date);
-      if (price === null) return;
-      total += entry.qty * price;
-    }
+    if (entry.isCash) return; // cash-excluded
+    const price = priceAt(secId, date);
+    if (price === null) return;
+    total += entry.qty * price;
   });
   return total;
 };
@@ -303,10 +224,9 @@ export const valueAt = (params: {
  * Build a price lookup function over `securitySnapshots`. For a given
  * (security_id, date) the function returns the close_price of the latest
  * snapshot whose date is ≤ the requested date. Returns null when no such
- * snapshot exists. Typical caller: VOO price lookup for the benchmark.
+ * snapshot exists.
  */
 export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
-  // Build a per-security sorted (date, price) array once for fast lookup.
   const bySec = new Map<string, Array<{ date: string; price: number }>>();
   securitySnapshots.forEach((snap) => {
     const close = snap.security.close_price;

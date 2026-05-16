@@ -131,7 +131,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
   return (
     <>
-      <div className="propertyLabel">Performance</div>
+      <div className="propertyLabel">Investment&nbsp;Performance</div>
       <div className="property performanceBenchmark">
         <div className="performanceWindowPicker">
           {WINDOW_OPTIONS.map((opt) => (
@@ -147,7 +147,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
         </div>
 
         <div className="performanceRow">
-          <span className="performanceLabel">Your return (MWR)</span>
+          <span className="performanceLabel">Your asset return (MWR)</span>
           <span className="performanceValues">
             {mwr.status === "ok" ? (
               <>
@@ -190,7 +190,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
         )}
 
         <div className="performanceFootnote">
-          Showing {windowStart} → {windowEnd}
+          Showing {windowStart} → {windowEnd} · asset positions only (cash excluded)
           {isClamped && " · clamped to earliest data"}
           {suppressAnnualized && " · annualized hidden (window <6mo)"}
         </div>
