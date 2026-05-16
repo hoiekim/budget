@@ -214,23 +214,30 @@ export const valueAt = (params: {
 
   const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
 
-  // Anchor qty: latest holding snapshot ≤ windowStart for each (account, security).
-  const anchorQty = new Map<string, { qtyAtAnchor: number; latestSnapDate: string }>();
+  // qty per security at `date` = Σ(buy.quantity − sell.quantity) over all
+  // txns at-or-before `date` (windowStart-inclusive). Anchor is implicit:
+  // for users with no pre-windowStart txns and no pre-windowStart holding
+  // snapshot, this collapses to "all positions came from observed buys."
+  // The phantom-holding guard from before is preserved: any holding qty in
+  // `holding_snapshots` that exceeds what txns can explain is invisible.
+  const qtyBySec = new Map<string, number>();
+
+  // 1) Pre-window holdings anchor: take the latest snapshot ≤ windowStart
+  //    as the starting qty. Skipped when no such snapshot exists (e.g.
+  //    accounts whose snapshot history begins later than `windowStart`).
+  const anchorSnapDate = new Map<string, string>();
   holdingSnapshots.forEach((snap) => {
     if (snap.holding.account_id !== accountId) return;
     const snapDate = snap.snapshot.date.slice(0, 10);
     if (snapDate > windowStart) return;
-    const cur = anchorQty.get(snap.holding.security_id);
-    if (!cur || snapDate > cur.latestSnapDate) {
-      anchorQty.set(snap.holding.security_id, {
-        qtyAtAnchor: snap.holding.quantity ?? 0,
-        latestSnapDate: snapDate,
-      });
+    const curDate = anchorSnapDate.get(snap.holding.security_id);
+    if (!curDate || snapDate > curDate) {
+      anchorSnapDate.set(snap.holding.security_id, snapDate);
+      qtyBySec.set(snap.holding.security_id, snap.holding.quantity ?? 0);
     }
   });
 
-  // Walk txns in (windowStart, date] to derive qty delta per security.
-  const qtyDelta = new Map<string, number>();
+  // 2) Walk txns in (windowStart, date] and adjust qty per security.
   investmentTransactions.forEach((t) => {
     if (t.account_id !== accountId) return;
     if (t.security_id == null) return;
@@ -241,24 +248,64 @@ export const valueAt = (params: {
     if (txnDate <= windowStart) return;
     if (txnDate > date) return;
     const signed = t.type === "buy" ? Math.abs(t.quantity) : -Math.abs(t.quantity);
-    qtyDelta.set(t.security_id, (qtyDelta.get(t.security_id) ?? 0) + signed);
+    qtyBySec.set(t.security_id, (qtyBySec.get(t.security_id) ?? 0) + signed);
   });
 
-  // Union of security_ids seen in either anchor or txns
-  const allSecIds = new Set<string>([...anchorQty.keys(), ...qtyDelta.keys()]);
+  // 3) For securities with no pre-window snapshot anchor but with
+  //    investment_transactions BEFORE windowStart (e.g. the user's first
+  //    txn was in 2022 but our holding-snapshot history only starts in
+  //    2025 — anchored-at-first-txn use case), build the anchor from
+  //    txn history at-or-before windowStart.
+  investmentTransactions.forEach((t) => {
+    if (t.account_id !== accountId) return;
+    if (t.security_id == null) return;
+    if (cashSecs.has(t.security_id)) return;
+    if (t.quantity == null || t.quantity === 0) return;
+    if (t.type !== "buy" && t.type !== "sell") return;
+    if (anchorSnapDate.has(t.security_id)) return; // anchor came from holding snap
+    const txnDate = t.date.slice(0, 10);
+    if (txnDate > windowStart) return; // already counted in step 2
+    const signed = t.type === "buy" ? Math.abs(t.quantity) : -Math.abs(t.quantity);
+    qtyBySec.set(t.security_id, (qtyBySec.get(t.security_id) ?? 0) + signed);
+  });
 
   let total = 0;
-  allSecIds.forEach((sid) => {
-    if (cashSecs.has(sid)) return; // cash-excluded
-    const anchor = anchorQty.get(sid)?.qtyAtAnchor ?? 0;
-    const delta = qtyDelta.get(sid) ?? 0;
-    const qty = anchor + delta;
+  qtyBySec.forEach((qty, sid) => {
+    if (cashSecs.has(sid)) return;
     if (qty <= 0) return;
     const price = priceAt(sid, date);
     if (price === null) return;
     total += qty * price;
   });
   return total;
+};
+
+/**
+ * The earliest date for which we have *any* data for the account —
+ * either a holding snapshot or an investment transaction. Used as the
+ * "All" window start, and as the clamp floor for shorter windows.
+ *
+ * If the account has txn history that predates the holding snapshot
+ * history (common — txns go back further), the earliest txn wins.
+ */
+export const earliestDataDate = (params: {
+  accountId: string;
+  holdingSnapshots: HoldingSnapshotDictionary;
+  investmentTransactions: InvestmentTransactionDictionary;
+}): string | null => {
+  const { accountId, holdingSnapshots, investmentTransactions } = params;
+  let earliest: string | null = null;
+  holdingSnapshots.forEach((snap) => {
+    if (snap.holding.account_id !== accountId) return;
+    const d = snap.snapshot.date.slice(0, 10);
+    if (!earliest || d < earliest) earliest = d;
+  });
+  investmentTransactions.forEach((t) => {
+    if (t.account_id !== accountId) return;
+    const d = t.date.slice(0, 10);
+    if (!earliest || d < earliest) earliest = d;
+  });
+  return earliest;
 };
 
 /**

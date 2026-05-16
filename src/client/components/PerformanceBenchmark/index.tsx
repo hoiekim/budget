@@ -7,6 +7,7 @@ import {
   valueAt,
   buildPriceAt,
   findBenchmarkSecurityId,
+  earliestDataDate,
 } from "client/lib/hooks/calculation/benchmark";
 import "./index.css";
 
@@ -33,15 +34,14 @@ export const PerformanceBenchmark = ({ account }: Props) => {
   const [windowKey, setWindowKey] = useState<WindowKey>("1Y");
 
   const computed = useMemo(() => {
-    // Find the earliest holding snapshot for this account — that's the
-    // best `window_start` candidate ("All" window) since values before
-    // then are zero from the FE's perspective. For 1Y/3Y windows, clamp
-    // to viewDate − N years, but never earlier than the earliest snapshot.
-    let earliest: string | null = null;
-    holdingSnapshots.forEach((s) => {
-      if (s.holding.account_id !== account_id) return;
-      const d = s.snapshot.date.slice(0, 10);
-      if (!earliest || d < earliest) earliest = d;
+    // "Earliest available data" is now `min(first_holding_snapshot, first_txn)`
+    // for the account. Accounts whose txn history predates the snapshot
+    // history can show a longer "All" window via the txn-derived qty walk
+    // in valueAt.
+    const earliest = earliestDataDate({
+      accountId: account_id,
+      holdingSnapshots,
+      investmentTransactions,
     });
     if (!earliest) return null;
 
