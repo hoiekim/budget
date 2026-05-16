@@ -27,7 +27,7 @@ const formatPct = (n: number | null): string => {
 
 export const PerformanceBenchmark = ({ account }: Props) => {
   const { account_id } = account;
-  const { data } = useAppContext();
+  const { data, viewDate } = useAppContext();
   const { investmentTransactions, holdingSnapshots, securitySnapshots } = data;
 
   const [windowKey, setWindowKey] = useState<WindowKey>("1Y");
@@ -36,7 +36,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     // Find the earliest holding snapshot for this account — that's the
     // best `window_start` candidate ("All" window) since values before
     // then are zero from the FE's perspective. For 1Y/3Y windows, clamp
-    // to today − N years, but never earlier than the earliest snapshot.
+    // to viewDate − N years, but never earlier than the earliest snapshot.
     let earliest: string | null = null;
     holdingSnapshots.forEach((s) => {
       if (s.holding.account_id !== account_id) return;
@@ -45,22 +45,34 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     });
     if (!earliest) return null;
 
+    // windowEnd follows viewDate (end of the period the user is looking at),
+    // capped at today since we have no future data. Same convention as
+    // HoldingsComposition's `viewEndDate`.
     const today = new Date();
-    const windowEnd = toDateString(today);
-    const clamp = (target: Date): string => {
+    const viewEnd = viewDate.getEndDate();
+    const effectiveEnd = viewEnd > today ? today : viewEnd;
+    const windowEnd = toDateString(effectiveEnd);
+    const clampStart = (target: Date): { value: string; clamped: boolean } => {
       const t = toDateString(target);
-      return t < earliest! ? earliest! : t;
+      return t < earliest! ? { value: earliest!, clamped: true } : { value: t, clamped: false };
     };
 
     let windowStart: string;
+    let isClamped = false;
     if (windowKey === "All") {
       windowStart = earliest;
     } else {
       const years = windowKey === "1Y" ? 1 : 3;
-      const target = new Date(today);
+      const target = new Date(effectiveEnd);
       target.setFullYear(target.getFullYear() - years);
-      windowStart = clamp(target);
+      const r = clampStart(target);
+      windowStart = r.value;
+      isClamped = r.clamped;
     }
+
+    // Guard: if windowEnd somehow ends up ≤ windowStart (e.g. viewDate
+    // is before the earliest snapshot), don't try to compute.
+    if (windowEnd <= windowStart) return null;
 
     const priceAt = buildPriceAt(securitySnapshots);
     const vStart = valueAt({ date: windowStart, accountId: account_id, holdingSnapshots, priceAt });
@@ -101,11 +113,21 @@ export const PerformanceBenchmark = ({ account }: Props) => {
       benchmarkAvailable: benchmarkSecId !== null,
       gap,
       suppressAnnualized,
+      isClamped,
     };
-  }, [account_id, investmentTransactions, holdingSnapshots, securitySnapshots, windowKey]);
+  }, [account_id, investmentTransactions, holdingSnapshots, securitySnapshots, windowKey, viewDate]);
 
   if (!computed) return null;
-  const { windowStart, windowEnd, mwr, benchmark, benchmarkAvailable, gap, suppressAnnualized } = computed;
+  const {
+    windowStart,
+    windowEnd,
+    mwr,
+    benchmark,
+    benchmarkAvailable,
+    gap,
+    suppressAnnualized,
+    isClamped,
+  } = computed;
 
   return (
     <>
@@ -169,6 +191,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
         <div className="performanceFootnote">
           Showing {windowStart} → {windowEnd}
+          {isClamped && " · clamped to earliest data"}
           {suppressAnnualized && " · annualized hidden (window <6mo)"}
         </div>
       </div>
