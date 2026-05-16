@@ -52,6 +52,27 @@ import {
   indexedDb,
 } from "client";
 
+// Bounded worker pool. Browsers cap concurrent fetches per origin (~6 on
+// HTTP/1.1) and queueing hundreds of `fetch`/`cache.add` calls at once
+// triggers ERR_INSUFFICIENT_RESOURCES — which silently aborts `cache.add`
+// and defeats the Cache API benefit for older months. Run a small N at a
+// time so every cache write actually completes.
+const SNAPSHOT_FETCH_CONCURRENCY = 6;
+
+const runWithConcurrency = async (
+  tasks: Array<() => Promise<void>>,
+  limit: number,
+): Promise<void> => {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const idx = next++;
+      await tasks[idx]();
+    }
+  });
+  await Promise.all(workers);
+};
+
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
   const response = await call
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
@@ -243,7 +264,7 @@ const fetchSnapshots = async (
   let oldestDate = twoMonthAgoViewDate.previous().getStartDate();
   oldestDate = startDate && startDate < oldestDate ? startDate : oldestDate;
 
-  const promises: Promise<void>[] = [];
+  const tasks: Array<() => Promise<void>> = [];
 
   while (oldestDate < viewDate.getStartDate()) {
     const monthStart = viewDate.getStartDate();
@@ -259,7 +280,7 @@ const fetchSnapshots = async (
       params.append("account-id", a.id);
       const path = snapshotsApiPath + "?" + params.toString();
 
-      const fetchForAccount = async () => {
+      tasks.push(async () => {
         let response: ApiResponse<SnapshotsGetResponse> | void;
         if (isRecent) {
           response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
@@ -268,9 +289,7 @@ const fetchSnapshots = async (
         }
         if (!response?.body) return;
         response.body.forEach(ingestSnapshot);
-      };
-
-      promises.push(fetchForAccount());
+      });
     });
 
     // Security snapshots are user-id=NULL (shared) and aren't returned by
@@ -283,7 +302,7 @@ const fetchSnapshots = async (
     securityParams.append("snapshot-type", "security");
     const securityPath = snapshotsApiPath + "?" + securityParams.toString();
 
-    const fetchSecurities = async () => {
+    tasks.push(async () => {
       let response: ApiResponse<SnapshotsGetResponse> | void;
       if (isRecent) {
         response = await call.get<SnapshotsGetResponse>(securityPath).catch(console.error);
@@ -292,13 +311,12 @@ const fetchSnapshots = async (
       }
       if (!response?.body) return;
       response.body.forEach(ingestSnapshot);
-    };
-    promises.push(fetchSecurities());
+    });
 
     viewDate.previous();
   }
 
-  await Promise.all(promises);
+  await runWithConcurrency(tasks, SNAPSHOT_FETCH_CONCURRENCY);
 
   return result;
 };
