@@ -97,13 +97,22 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
     const mwr = computeMWR({ flows, vStart, vEnd, windowStart, windowEnd });
 
+    // For the benchmark we want STRICT prices (no pre-history fallback) so
+    // we don't show a misleading comparison against a stale earliest-known
+    // price when the window extends before our VOO snapshot history.
     const benchmarkSecId = findBenchmarkSecurityId(securitySnapshots, BENCHMARK_TICKER);
     let benchmark: ReturnType<typeof computeBenchmarkTWR> | null = null;
+    let benchmarkWindowMismatch = false;
     if (benchmarkSecId) {
-      const priceStart = priceAt(benchmarkSecId, windowStart);
-      const priceEnd = priceAt(benchmarkSecId, windowEnd);
+      const priceStart = priceAt(benchmarkSecId, windowStart, { strict: true });
+      const priceEnd = priceAt(benchmarkSecId, windowEnd, { strict: true });
       if (priceStart && priceEnd) {
         benchmark = computeBenchmarkTWR({ priceStart, priceEnd, windowStart, windowEnd });
+      } else if (priceAt(benchmarkSecId, windowEnd) !== null) {
+        // We have end-price but not start-price → window predates our
+        // benchmark snapshot history. Display a "not available for this
+        // window" hint rather than silently dropping the row.
+        benchmarkWindowMismatch = true;
       }
     }
 
@@ -125,6 +134,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
       mwr,
       benchmark,
       benchmarkAvailable: benchmarkSecId !== null,
+      benchmarkWindowMismatch,
       gap,
       suppressAnnualized,
       isClamped,
@@ -138,6 +148,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     mwr,
     benchmark,
     benchmarkAvailable,
+    benchmarkWindowMismatch,
     gap,
     suppressAnnualized,
     isClamped,
@@ -188,7 +199,11 @@ export const PerformanceBenchmark = ({ account }: Props) => {
               </>
             ) : (
               <span className="no-data">
-                {benchmarkAvailable ? "no price data" : `no ${BENCHMARK_TICKER} in this account`}
+                {benchmarkWindowMismatch
+                  ? "unavailable for this window"
+                  : benchmarkAvailable
+                    ? "no price data"
+                    : `no ${BENCHMARK_TICKER} in this account`}
               </span>
             )}
           </span>

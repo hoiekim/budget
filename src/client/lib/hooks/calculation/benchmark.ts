@@ -332,12 +332,13 @@ export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
   // when the security-snapshot history begins later — same trade-off Hoie
   // accepted on the "exclude phantom holdings" change: an approximation
   // that's strictly more useful than reporting `null` and zeroing V_start.
-  // The benchmark TWR is more sensitive to this (since it's literally
-  // priceEnd/priceStart); callers that want strict prices can check
-  // `priceAt(sid, date) === null` before the fall-back. We don't expose
-  // that here because both call sites (`valueAt`, the benchmark resolver)
-  // are fine with the fallback semantics.
-  return (securityId: string, date: string): number | null => {
+  //
+  // The benchmark TWR is more sensitive to this (it's literally
+  // priceEnd/priceStart, and silently snapping windowStart to the earliest
+  // known price collapses the gauge to a constant). Pass `{ strict: true }`
+  // to disable the fallback — the benchmark resolver uses it so the
+  // benchmark row hides when the window predates VOO snapshot history.
+  return (securityId: string, date: string, opts?: { strict?: boolean }): number | null => {
     const arr = bySec.get(securityId);
     if (!arr || arr.length === 0) return null;
     let best: number | null = null;
@@ -345,8 +346,7 @@ export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
       if (entry.date <= date) best = entry.price;
       else break;
     }
-    // Pre-history fallback: earliest known price.
-    if (best === null) best = arr[0].price;
+    if (best === null && !opts?.strict) best = arr[0].price; // pre-history fallback
     return best;
   };
 };
