@@ -139,9 +139,31 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     // investment_transactions, so every security the user has ever
     // bought/sold contributes a real-market price point at that txn
     // date. That solves the "snapshot history starts later than txn
-    // history" pre-history-fallback artifact for all securities, not
-    // just VOO.
-    const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
+    // history" pre-history-fallback artifact for all securities.
+    //
+    // For VOO specifically we additionally overlay the static daily CSV:
+    // txn prices are only as fresh as the nearest txn (≤ ~30 days for a
+    // DCA user), so for VOO the CSV gives strictly more accurate prices
+    // at the window boundaries. Non-VOO securities still get the
+    // snapshot+txn merge.
+    let vooSecurityId: string | null = null;
+    securitySnapshots.forEach((snap) => {
+      if (vooSecurityId) return;
+      if (snap.security.ticker_symbol === BENCHMARK_TICKER) {
+        vooSecurityId = snap.security.security_id;
+      }
+    });
+    const innerPriceAt = buildPriceAt(securitySnapshots, investmentTransactions);
+    const priceAt =
+      vooHistory && vooHistory.length > 0 && vooSecurityId
+        ? (sid: string, date: string) => {
+            if (sid === vooSecurityId) {
+              const csvPrice = priceAtIn(vooHistory, date);
+              if (csvPrice != null) return csvPrice;
+            }
+            return innerPriceAt(sid, date);
+          }
+        : innerPriceAt;
     const vStart = valueAt({
       date: windowStart,
       windowStart,
