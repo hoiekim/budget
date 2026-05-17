@@ -55,4 +55,54 @@ describe("Queue", () => {
     // is what we're asserting — both runs returned without waiting.
     expect(true).toBe(true);
   });
+
+  it("caps concurrent in-flight tasks at maxInflight", async () => {
+    const q = new Queue({ maxInflight: 2 });
+    let inflight = 0;
+    let peak = 0;
+    const releasers: Array<() => void> = [];
+    const task = () =>
+      new Promise<void>((resolve) => {
+        inflight++;
+        peak = Math.max(peak, inflight);
+        releasers.push(() => {
+          inflight--;
+          resolve();
+        });
+      });
+
+    const runs = [q.add(task), q.add(task), q.add(task), q.add(task)];
+    // Yield so the queue can spin up its first 2 workers.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(inflight).toBe(2);
+    expect(peak).toBe(2);
+
+    // Release one slot — the next queued task should pick it up.
+    releasers.shift()!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(inflight).toBe(2);
+    expect(peak).toBe(2);
+
+    // Drain the rest. Yield between releases so newly-started tasks have
+    // a chance to push their own releaser before the next drain step.
+    while (releasers.length) {
+      releasers.shift()!();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    await Promise.all(runs);
+    expect(inflight).toBe(0);
+    expect(peak).toBe(2);
+  });
+
+  it("propagates task errors without leaking an in-flight slot", async () => {
+    const q = new Queue({ maxInflight: 1 });
+    await expect(
+      q.add(async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    // If the slot leaked, this second add() would hang forever.
+    const out = await q.add(async () => "ok");
+    expect(out).toBe("ok");
+  });
 });
