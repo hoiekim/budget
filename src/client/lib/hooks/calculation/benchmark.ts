@@ -329,16 +329,8 @@ export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
   // fall back to earliest snapshot when the query date predates all our
   // price history. The fall-back lets valueAt produce a *non-zero* V_start
   // for windows that extend back to a user's first transaction date, even
-  // when the security-snapshot history begins later — same trade-off Hoie
-  // accepted on the "exclude phantom holdings" change: an approximation
-  // that's strictly more useful than reporting `null` and zeroing V_start.
-  //
-  // The benchmark TWR is more sensitive to this (it's literally
-  // priceEnd/priceStart, and silently snapping windowStart to the earliest
-  // known price collapses the gauge to a constant). Pass `{ strict: true }`
-  // to disable the fallback — the benchmark resolver uses it so the
-  // benchmark row hides when the window predates VOO snapshot history.
-  return (securityId: string, date: string, opts?: { strict?: boolean }): number | null => {
+  // when the security-snapshot history begins later.
+  return (securityId: string, date: string): number | null => {
     const arr = bySec.get(securityId);
     if (!arr || arr.length === 0) return null;
     let best: number | null = null;
@@ -346,45 +338,7 @@ export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
       if (entry.date <= date) best = entry.price;
       else break;
     }
-    if (best === null && !opts?.strict) best = arr[0].price; // pre-history fallback
+    if (best === null) best = arr[0].price; // pre-history fallback
     return best;
   };
-};
-
-/**
- * Resolve the security_id for a benchmark ticker (default VOO) from
- * `securitySnapshots`. Returns null if the ticker has no security row.
- */
-export const findBenchmarkSecurityId = (
-  securitySnapshots: SecuritySnapshotDictionary,
-  ticker: string,
-): string | null => {
-  let found: string | null = null;
-  securitySnapshots.forEach((snap) => {
-    if (found) return;
-    if (snap.security.ticker_symbol === ticker) found = snap.security.security_id;
-  });
-  return found;
-};
-
-/**
- * Earliest snapshot date we have for a given security_id, formatted as
- * YYYY-MM-DD. Returns null when the security has no priced snapshots.
- *
- * Used by the benchmark resolver so it can narrow the comparison window
- * to the overlap of [user-chosen window] and [available benchmark data]
- * when the user-chosen window extends before our snapshot history.
- */
-export const firstPricedSnapshotDate = (
-  securitySnapshots: SecuritySnapshotDictionary,
-  securityId: string,
-): string | null => {
-  let earliest: string | null = null;
-  securitySnapshots.forEach((snap) => {
-    if (snap.security.security_id !== securityId) return;
-    if (snap.security.close_price == null) return;
-    const d = snap.snapshot.date.slice(0, 10);
-    if (earliest === null || d < earliest) earliest = d;
-  });
-  return earliest;
 };

@@ -8,8 +8,6 @@ import {
   computeBenchmarkTWR,
   valueAt,
   buildPriceAt,
-  findBenchmarkSecurityId,
-  firstPricedSnapshotDate,
 } from "./benchmark";
 import {
   HoldingSnapshotDictionary,
@@ -360,59 +358,3 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
-describe("findBenchmarkSecurityId", () => {
-  test("returns matching security_id for ticker", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01", "VOO"));
-    ss.set("s2", mkSecuritySnap("sec-spy", 480, "2026-01-01", "SPY"));
-    expect(findBenchmarkSecurityId(ss, "VOO")).toBe(VOO);
-    expect(findBenchmarkSecurityId(ss, "SPY")).toBe("sec-spy");
-  });
-
-  test("returns null when ticker not found", () => {
-    const ss = new SecuritySnapshotDictionary();
-    expect(findBenchmarkSecurityId(ss, "AAPL")).toBeNull();
-  });
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
-describe("firstPricedSnapshotDate", () => {
-  test("returns earliest snapshot date for a security_id", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2025-06-05", "VOO"));
-    ss.set("s2", mkSecuritySnap(VOO, 520, "2025-12-01", "VOO"));
-    ss.set("s3", mkSecuritySnap(VOO, 530, "2026-05-16", "VOO"));
-    expect(firstPricedSnapshotDate(ss, VOO)).toBe("2025-06-05");
-  });
-
-  test("ignores other securities", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2025-06-05", "VOO"));
-    ss.set("s2", mkSecuritySnap("sec-spy", 480, "2020-01-01", "SPY"));
-    expect(firstPricedSnapshotDate(ss, VOO)).toBe("2025-06-05");
-  });
-
-  test("skips snapshots with null close_price", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set(
-      "s1",
-      new SecuritySnapshot({
-        snapshot: { snapshot_id: "ss_null", date: "2024-01-01" },
-        security: {
-          security_id: VOO,
-          ticker_symbol: "VOO",
-          close_price: null,
-          close_price_as_of: "2024-01-01",
-        },
-      }),
-    );
-    ss.set("s2", mkSecuritySnap(VOO, 500, "2025-06-05", "VOO"));
-    expect(firstPricedSnapshotDate(ss, VOO)).toBe("2025-06-05");
-  });
-
-  test("returns null when no snapshots", () => {
-    const ss = new SecuritySnapshotDictionary();
-    expect(firstPricedSnapshotDate(ss, VOO)).toBeNull();
-  });
-});
