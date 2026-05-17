@@ -1,11 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import { Account, useAppContext } from "client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Account,
+  useAppContext,
+  call,
+  Data,
+  SecuritySnapshot,
+  SecuritySnapshotDictionary,
+  indexedDb,
+} from "client";
+import type { ResolveSecuritySnapshotResponse } from "server/routes/accounts/post-resolve-security-snapshot";
 import {
   extractCashFlows,
   computeMWR,
   computeBenchmarkTWR,
   valueAt,
   buildPriceAt,
+  buildSnapshotPriceAt,
+  findBenchmarkSecurityId,
   earliestDataDate,
 } from "client/lib/hooks/calculation/benchmark";
 import "./index.css";
@@ -80,11 +91,15 @@ const priceAtIn = (history: PriceRow[], date: string): number | null => {
 
 export const PerformanceBenchmark = ({ account }: Props) => {
   const { account_id } = account;
-  const { data, viewDate } = useAppContext();
+  const { data, setData, viewDate } = useAppContext();
   const { investmentTransactions, holdingSnapshots, securitySnapshots } = data;
 
   const [windowKey, setWindowKey] = useState<WindowKey>("1Y");
   const [vooHistory, setVooHistory] = useState<PriceRow[] | null>(null);
+  // Already-attempted (security_id, date) keys for Polygon resolve so
+  // retries don't loop on no_data/plan_limit and window-toggle re-renders
+  // don't refetch.
+  const attemptedResolveRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -135,35 +150,11 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
     if (windowEnd <= windowStart) return null;
 
-    // `buildPriceAt` merges security_snapshots with the user's own
-    // investment_transactions, so every security the user has ever
-    // bought/sold contributes a real-market price point at that txn
-    // date. That solves the "snapshot history starts later than txn
-    // history" pre-history-fallback artifact for all securities.
-    //
-    // For VOO specifically we additionally overlay the static daily CSV:
-    // txn prices are only as fresh as the nearest txn (≤ ~30 days for a
-    // DCA user), so for VOO the CSV gives strictly more accurate prices
-    // at the window boundaries. Non-VOO securities still get the
-    // snapshot+txn merge.
-    let vooSecurityId: string | null = null;
-    securitySnapshots.forEach((snap) => {
-      if (vooSecurityId) return;
-      if (snap.security.ticker_symbol === BENCHMARK_TICKER) {
-        vooSecurityId = snap.security.security_id;
-      }
-    });
-    const innerPriceAt = buildPriceAt(securitySnapshots, investmentTransactions);
-    const priceAt =
-      vooHistory && vooHistory.length > 0 && vooSecurityId
-        ? (sid: string, date: string) => {
-            if (sid === vooSecurityId) {
-              const csvPrice = priceAtIn(vooHistory, date);
-              if (csvPrice != null) return csvPrice;
-            }
-            return innerPriceAt(sid, date);
-          }
-        : innerPriceAt;
+    // User's MWR uses only the user's own investment_transactions for
+    // prices — each buy/sell carries the per-share execution price at
+    // the txn date. The MWR is supposed to reflect what the user
+    // actually paid / received; no external market-data is needed.
+    const priceAt = buildPriceAt(investmentTransactions);
     const vStart = valueAt({
       date: windowStart,
       windowStart,
@@ -186,16 +177,33 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
     const mwr = computeMWR({ flows, vStart, vEnd, windowStart, windowEnd });
 
-    // Benchmark TWR over the user's full chosen window. VOO close prices
-    // come from the static CSV (covers 2010-09 → today), so we never
-    // narrow the comparison window.
-    let benchmark: ReturnType<typeof computeBenchmarkTWR> | null = null;
-    if (vooHistory && vooHistory.length > 0) {
-      const priceStart = priceAtIn(vooHistory, windowStart);
-      const priceEnd = priceAtIn(vooHistory, windowEnd);
-      if (priceStart && priceEnd) {
-        benchmark = computeBenchmarkTWR({ priceStart, priceEnd, windowStart, windowEnd });
+    // Benchmark TWR fallback chain: security_snapshots → static CSV.
+    // (Polygon resolve fires async in a separate useEffect and merges
+    // results back into security_snapshots, where they'll feed the next
+    // render of this memo.)
+    const vooSecurityId = findBenchmarkSecurityId(securitySnapshots, BENCHMARK_TICKER);
+    const snapPriceAt = buildSnapshotPriceAt(securitySnapshots);
+    const benchmarkPriceAt = (date: string): number | null => {
+      if (vooSecurityId) {
+        const snap = snapPriceAt(vooSecurityId, date);
+        if (snap != null) return snap;
       }
+      if (vooHistory && vooHistory.length > 0) {
+        const csv = priceAtIn(vooHistory, date);
+        if (csv != null) return csv;
+      }
+      return null;
+    };
+    let benchmark: ReturnType<typeof computeBenchmarkTWR> | null = null;
+    const benchPriceStart = benchmarkPriceAt(windowStart);
+    const benchPriceEnd = benchmarkPriceAt(windowEnd);
+    if (benchPriceStart && benchPriceEnd) {
+      benchmark = computeBenchmarkTWR({
+        priceStart: benchPriceStart,
+        priceEnd: benchPriceEnd,
+        windowStart,
+        windowEnd,
+      });
     }
 
     const yearsInWindow =
@@ -226,6 +234,48 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     viewDate,
     vooHistory,
   ]);
+
+  // Async tier of the benchmark fallback chain: when security_snapshots
+  // are missing a price for windowStart or windowEnd, fire a Polygon
+  // resolve and merge the returned snapshot into AppContext. Subsequent
+  // renders pick it up via the memo's `securitySnapshots` dep. The static
+  // CSV already renders the sync fallback, so this just upgrades the
+  // snapshot store; it doesn't block first paint.
+  useEffect(() => {
+    if (!computed) return;
+    const vooSecurityId = findBenchmarkSecurityId(securitySnapshots, BENCHMARK_TICKER);
+    if (!vooSecurityId) return;
+    const snapPriceAt = buildSnapshotPriceAt(securitySnapshots);
+    const candidates = [computed.windowStart, computed.windowEnd];
+    for (const date of candidates) {
+      if (snapPriceAt(vooSecurityId, date) != null) continue;
+      const key = `${vooSecurityId}:${date}`;
+      if (attemptedResolveRef.current.has(key)) continue;
+      attemptedResolveRef.current.add(key);
+      call
+        .post<ResolveSecuritySnapshotResponse>("/api/resolve-security-snapshot", {
+          security_id: vooSecurityId,
+          date,
+        })
+        .then((response) => {
+          if (response.status !== "success" || !response.body) return;
+          const resolved = response.body.snapshot;
+          if (!resolved) return; // plan_limit / no_data — CSV already covered it
+          const snap = new SecuritySnapshot(resolved);
+          indexedDb.save(snap).catch(console.error);
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const newSS = new SecuritySnapshotDictionary(newData.securitySnapshots);
+            newSS.set(snap.snapshot.snapshot_id, snap);
+            newData.securitySnapshots = newSS;
+            return newData;
+          });
+        })
+        .catch((err) => {
+          console.warn("resolve-security-snapshot failed", err);
+        });
+    }
+  }, [computed, securitySnapshots, setData]);
 
   if (!computed) return null;
   const { windowStart, windowEnd, mwr, benchmark, gap, suppressAnnualized, isClamped } = computed;

@@ -309,42 +309,28 @@ export const earliestDataDate = (params: {
 };
 
 /**
- * Build a price lookup function over `securitySnapshots` AND
- * `investmentTransactions`. For each security we merge both sources into
- * a date-sorted (date, price) list and return the latest entry ≤ the
- * query date.
+ * Build a price lookup function over `investmentTransactions` — the
+ * **user's own transaction history is the only price source the MWR
+ * needs** (Hoie 2026-05-17). Each `buy`/`sell` carries a per-share
+ * execution price at the txn date; that's a near-market price point at
+ * every date the user actually transacted. For users who DCA regularly
+ * the series is dense (≤ 30-day gaps).
  *
- * **Why merge txn prices** (Hoie 2026-05-17): Plaid's `securitySnapshots`
- * history typically starts at the user's first holdings-sync, which may
- * be much later than their first transaction. For a user who DCA'd into
- * VOO for years before our snapshot history began, `priceAt(VOO, 2023-05)`
- * with snapshot-only data falls back to the earliest known snapshot
- * (e.g. $545 in 2025) instead of the actual ~$381 in 2023 — that inflates
- * vStart and depresses the IRR on 3Y / All windows. Each `buy`/`sell`
- * carries a per-share execution price as of the txn date, giving us a
- * near-market price point at every transaction the user has ever made.
- * For regular DCA users that's a dense series; the snapshot-fallback
- * artifact only ever fires for securities the user has never transacted
- * in (rare).
+ * Why not security_snapshots: Plaid's snapshot history typically starts
+ * only at the user's first holdings-sync, often years after their first
+ * txn, and the pre-history fallback ("earliest known snapshot price")
+ * silently inflates vStart on long windows. Why not an external CSV:
+ * the user's MWR is supposed to reflect what the user actually paid /
+ * received — txn prices are the ground truth for that.
+ *
+ * Returns the latest entry ≤ the query date; falls back to the earliest
+ * known entry when the query predates everything. For securities the
+ * user has never transacted in (gifts, ESPP grants, transfers-in),
+ * returns null.
  */
-export const buildPriceAt = (
-  securitySnapshots: SecuritySnapshotDictionary,
-  investmentTransactions: InvestmentTransactionDictionary,
-) => {
+export const buildPriceAt = (investmentTransactions: InvestmentTransactionDictionary) => {
   const bySec = new Map<string, Array<{ date: string; price: number }>>();
 
-  // Source 1: security_snapshots (Plaid's daily institutional close).
-  securitySnapshots.forEach((snap) => {
-    const close = snap.security.close_price;
-    if (close == null) return;
-    const arr = bySec.get(snap.security.security_id) ?? [];
-    arr.push({ date: snap.snapshot.date.slice(0, 10), price: close });
-    bySec.set(snap.security.security_id, arr);
-  });
-
-  // Source 2: investment_transactions buy/sell prices. Skip non-asset
-  // types (dividends, fees, cash sweeps) since their `price` field
-  // either isn't set or doesn't reflect market price.
   investmentTransactions.forEach((t) => {
     if (t.security_id == null) return;
     if (t.type !== InvestmentTransactionType.Buy && t.type !== InvestmentTransactionType.Sell) {
@@ -358,8 +344,6 @@ export const buildPriceAt = (
 
   bySec.forEach((arr) => arr.sort((a, b) => (a.date < b.date ? -1 : 1)));
 
-  // Walks the merged price index for a security: prefer latest entry ≤ date,
-  // fall back to earliest when the query date predates everything we know.
   return (securityId: string, date: string): number | null => {
     const arr = bySec.get(securityId);
     if (!arr || arr.length === 0) return null;
@@ -371,4 +355,51 @@ export const buildPriceAt = (
     if (best === null) best = arr[0].price; // pre-history fallback
     return best;
   };
+};
+
+/**
+ * Snapshot-only price lookup for the benchmark side. Returns null when
+ * no snapshot ≤ date exists — caller is expected to chain to a Polygon
+ * resolve and/or a static CSV fallback. (Distinct from `buildPriceAt`,
+ * which is txn-only and serves the user's MWR.)
+ */
+export const buildSnapshotPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
+  const bySec = new Map<string, Array<{ date: string; price: number }>>();
+  securitySnapshots.forEach((snap) => {
+    const close = snap.security.close_price;
+    if (close == null) return;
+    const arr = bySec.get(snap.security.security_id) ?? [];
+    arr.push({ date: snap.snapshot.date.slice(0, 10), price: close });
+    bySec.set(snap.security.security_id, arr);
+  });
+  bySec.forEach((arr) => arr.sort((a, b) => (a.date < b.date ? -1 : 1)));
+
+  return (securityId: string, date: string): number | null => {
+    const arr = bySec.get(securityId);
+    if (!arr || arr.length === 0) return null;
+    let best: number | null = null;
+    for (const entry of arr) {
+      if (entry.date <= date) best = entry.price;
+      else break;
+    }
+    return best;
+  };
+};
+
+/**
+ * Find the security_id for a benchmark ticker (e.g. VOO) from the user's
+ * security_snapshots. Returns null if the ticker has no security row.
+ * Used to route resolve-snapshot calls and snapshot lookups to the
+ * correct security_id.
+ */
+export const findBenchmarkSecurityId = (
+  securitySnapshots: SecuritySnapshotDictionary,
+  ticker: string,
+): string | null => {
+  let found: string | null = null;
+  securitySnapshots.forEach((snap) => {
+    if (found) return;
+    if (snap.security.ticker_symbol === ticker) found = snap.security.security_id;
+  });
+  return found;
 };
