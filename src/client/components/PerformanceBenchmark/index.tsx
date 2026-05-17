@@ -150,11 +150,12 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
     if (windowEnd <= windowStart) return null;
 
-    // User's MWR uses only the user's own investment_transactions for
-    // prices — each buy/sell carries the per-share execution price at
-    // the txn date. The MWR is supposed to reflect what the user
-    // actually paid / received; no external market-data is needed.
-    const priceAt = buildPriceAt(investmentTransactions);
+    // User-MWR priceAt merges security_snapshots (daily institutional
+    // close from Plaid) with the user's own investment_transactions.
+    // Snapshot wins for boundary dates that have one — including
+    // anything Polygon has backfilled via resolve-security-snapshot.
+    // Txn fills the long historical tail predating Plaid's sync.
+    const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
     const vStart = valueAt({
       date: windowStart,
       windowStart,

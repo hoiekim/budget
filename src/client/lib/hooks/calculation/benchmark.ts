@@ -309,27 +309,41 @@ export const earliestDataDate = (params: {
 };
 
 /**
- * Build a price lookup function over `investmentTransactions` — the
- * **user's own transaction history is the only price source the MWR
- * needs** (Hoie 2026-05-17). Each `buy`/`sell` carries a per-share
- * execution price at the txn date; that's a near-market price point at
- * every date the user actually transacted. For users who DCA regularly
- * the series is dense (≤ 30-day gaps).
+ * Build a price lookup function for the user's MWR — merges
+ * `security_snapshots` (Plaid's daily institutional close) with the
+ * user's own `investment_transactions` buy/sell prices into a single
+ * date-sorted (date, price) list per security. Returns the latest entry
+ * ≤ the query date; falls back to the earliest known entry when the
+ * query predates everything.
  *
- * Why not security_snapshots: Plaid's snapshot history typically starts
- * only at the user's first holdings-sync, often years after their first
- * txn, and the pre-history fallback ("earliest known snapshot price")
- * silently inflates vStart on long windows. Why not an external CSV:
- * the user's MWR is supposed to reflect what the user actually paid /
- * received — txn prices are the ground truth for that.
+ * **Why both sources** (Hoie 2026-05-17):
+ *   - `price_at_windowEnd` needs the **exact date** market price.
+ *     security_snapshots give that for any date Plaid has synced (≈
+ *     last year), and the resolve-security-snapshot endpoint backfills
+ *     anything older via Polygon (results land in snapshots → fed
+ *     here on the next render).
+ *   - `investment_transactions` cover historical dates Plaid's
+ *     snapshot history doesn't reach (the user transacted before they
+ *     hooked up the integration). Each buy/sell's per-share execution
+ *     price is a near-market data point at that date.
  *
- * Returns the latest entry ≤ the query date; falls back to the earliest
- * known entry when the query predates everything. For securities the
- * user has never transacted in (gifts, ESPP grants, transfers-in),
- * returns null.
+ * Together, snapshot wins at boundary dates that have one; txn fills
+ * the long tail. For securities the user has never transacted in and
+ * has no snapshot for, returns null.
  */
-export const buildPriceAt = (investmentTransactions: InvestmentTransactionDictionary) => {
+export const buildPriceAt = (
+  securitySnapshots: SecuritySnapshotDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+) => {
   const bySec = new Map<string, Array<{ date: string; price: number }>>();
+
+  securitySnapshots.forEach((snap) => {
+    const close = snap.security.close_price;
+    if (close == null) return;
+    const arr = bySec.get(snap.security.security_id) ?? [];
+    arr.push({ date: snap.snapshot.date.slice(0, 10), price: close });
+    bySec.set(snap.security.security_id, arr);
+  });
 
   investmentTransactions.forEach((t) => {
     if (t.security_id == null) return;

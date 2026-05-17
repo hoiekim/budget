@@ -11,9 +11,10 @@ import {
 } from "./benchmark";
 import {
   HoldingSnapshotDictionary,
+  SecuritySnapshotDictionary,
   InvestmentTransactionDictionary,
 } from "../../models/Data";
-import { HoldingSnapshot } from "../../models/Snapshot";
+import { HoldingSnapshot, SecuritySnapshot } from "../../models/Snapshot";
 import { InvestmentTransaction } from "../../models/InvestmentTransaction";
 
 const ACCT = "acc-1";
@@ -33,6 +34,17 @@ const mkHoldingSnap = (sid: string, qty: number, instPrice: number, costBasis: n
       institution_price_as_of: date,
       iso_currency_code: "USD",
       unofficial_currency_code: null,
+    },
+  });
+
+const mkSecuritySnap = (sid: string, closePrice: number, date: string, ticker = "TICK") =>
+  new SecuritySnapshot({
+    snapshot: { snapshot_id: `ss_${sid}_${date}`, date },
+    security: {
+      security_id: sid,
+      ticker_symbol: ticker,
+      close_price: closePrice,
+      close_price_as_of: date,
     },
   });
 
@@ -229,7 +241,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
         price: 500,
       } as Parameters<typeof mkTxn>[0]),
     );
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
 
     expect(
       valueAt({
@@ -265,7 +278,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
         }),
       );
     });
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
 
     expect(
       valueAt({
@@ -283,7 +297,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(CASH, 5000, 1, null, "2026-01-01"));
     const itxns = new InvestmentTransactionDictionary();
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
     expect(
       valueAt({
         date: "2026-02-01",
@@ -300,7 +315,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-06-01"));
     const itxns = new InvestmentTransactionDictionary();
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
     expect(
       valueAt({
         date: "2026-01-15",
@@ -330,7 +346,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
         price: 500,
       } as Parameters<typeof mkTxn>[0]),
     );
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
 
     expect(
       valueAt({
@@ -346,7 +363,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
 
   test("buildPriceAt returns null when no txn exists for the security", () => {
     const itxns = new InvestmentTransactionDictionary();
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
     expect(priceAt(VOO, "2026-01-01")).toBeNull();
   });
 
@@ -375,7 +393,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
       } as Parameters<typeof mkTxn>[0]),
     );
 
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
     expect(priceAt(VOO, "2023-05-17")).toBe(390); // walk-back to t1
     expect(priceAt(VOO, "2025-12-01")).toBe(519); // walk-back to t2
     // Pre-history fallback: query predates everything → earliest known.
@@ -397,7 +416,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
         price: 999, // bogus marker — must not propagate into priceAt
       } as Parameters<typeof mkTxn>[0]),
     );
-    const priceAt = buildPriceAt(itxns);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
     expect(priceAt(VOO, "2024-06-01")).toBeNull();
   });
 });
