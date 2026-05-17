@@ -201,6 +201,54 @@ export const getTickerDetail = async (
   }
 };
 
+/**
+ * Resolve the closest trading-day close price at or before `date`. Walks
+ * Polygon's daily aggregates over a 7-day window ending at `date` and
+ * returns the latest entry — that's the actual trading-day price for
+ * non-trading-day inputs (weekends, holidays). Used by the benchmark
+ * snapshot resolver so a window-start like "2023-05-13 (Saturday)"
+ * resolves to Friday's close instead of returning `no_data`.
+ */
+export const getLatestClosePriceOnOrBefore = async (
+  ticker_symbol: string,
+  date: Date,
+  lookbackDays = 7,
+): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
+  if (!getApiKey()) {
+    return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
+  }
+
+  const to = getDateString(date);
+  const fromD = new Date(date);
+  fromD.setDate(fromD.getDate() - lookbackDays);
+  const from = getDateString(fromD);
+
+  const path = `${POLYGON_HOST}/v2/aggs/ticker/${ticker_symbol}/range/1/day/${from}/${to}?apiKey=${getApiKey()}`;
+
+  try {
+    const response = await polygonQueue.add(() => fetchWithRetry(path));
+    const json = await response.json();
+    const results = json.results as Array<{ c: number; t: number }> | undefined;
+    if (!results || results.length === 0) {
+      return {
+        success: false,
+        error: "no_data",
+        message: `No price data for ${ticker_symbol} in [${from}, ${to}]`,
+      };
+    }
+    // Polygon orders ascending by default; the last entry is closest to `date`.
+    const last = results[results.length - 1];
+    const tradingDate = getDateString(new Date(last.t));
+    return { success: true, data: { price: last.c, tradingDate } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(`Polygon range fetch error for ${ticker_symbol}: ${message}`, {
+      component: "polygon",
+    });
+    return { success: false, error: "api_error", message };
+  }
+};
+
 export const getSecurityForSymbol = async (
   ticker_symbol: string,
   date = new Date(Date.now() - 24 * 60 * 60 * 1000),

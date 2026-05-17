@@ -1,5 +1,14 @@
-import { useMemo, useState } from "react";
-import { Account, useAppContext } from "client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Account,
+  useAppContext,
+  call,
+  Data,
+  SecuritySnapshot,
+  SecuritySnapshotDictionary,
+  indexedDb,
+} from "client";
+import type { ResolveSecuritySnapshotResponse } from "server/routes/accounts/post-resolve-security-snapshot";
 import {
   extractCashFlows,
   computeMWR,
@@ -29,10 +38,15 @@ const formatPct = (n: number | null): string => {
 
 export const PerformanceBenchmark = ({ account }: Props) => {
   const { account_id } = account;
-  const { data, viewDate } = useAppContext();
+  const { data, setData, viewDate } = useAppContext();
   const { investmentTransactions, holdingSnapshots, securitySnapshots } = data;
 
   const [windowKey, setWindowKey] = useState<WindowKey>("1Y");
+  // In-flight + already-attempted benchmark dates, keyed by
+  // `${security_id}:${date}`. Prevents duplicate fetches when the user
+  // toggles window options and re-runs the memo, and stops retry loops
+  // when Polygon returns `no_data` for a particular date.
+  const attemptedRef = useRef<Set<string>>(new Set());
 
   const computed = useMemo(() => {
     // "Earliest available data" is now `min(first_holding_snapshot, first_txn)`
@@ -153,6 +167,53 @@ export const PerformanceBenchmark = ({ account }: Props) => {
       isClamped,
     };
   }, [account_id, investmentTransactions, holdingSnapshots, securitySnapshots, windowKey, viewDate]);
+
+  // On-demand benchmark snapshot resolution. When the user-chosen window
+  // predates our VOO snapshot history, fire one request per missing date
+  // to the server, which fetches from Polygon and persists. The new
+  // snapshot is merged into AppContext so the memo re-runs with accurate
+  // full-window benchmark numbers.
+  //
+  // Hoie 2026-05-17: "FE checks availability and resolves over API if not
+  // available." We only resolve windowStart here — windowEnd is by
+  // definition recent (≤ today) and gets covered by the existing nightly
+  // snapshot pipeline, so it's already in `securitySnapshots`.
+  useEffect(() => {
+    if (!computed) return;
+    if (!computed.benchmarkNarrowed) return; // already have enough data
+    const benchmarkSecId = findBenchmarkSecurityId(securitySnapshots, BENCHMARK_TICKER);
+    if (!benchmarkSecId) return;
+
+    const date = computed.windowStart;
+    const key = `${benchmarkSecId}:${date}`;
+    if (attemptedRef.current.has(key)) return;
+    attemptedRef.current.add(key);
+
+    call
+      .post<ResolveSecuritySnapshotResponse>("/api/resolve-security-snapshot", {
+        security_id: benchmarkSecId,
+        date,
+      })
+      .then((response) => {
+        if (response.status !== "success") return;
+        const resolved = response.body?.snapshot;
+        if (!resolved) return;
+        const snap = new SecuritySnapshot(resolved);
+        indexedDb.save(snap).catch(console.error);
+        setData((oldData) => {
+          const newData = new Data(oldData);
+          const newSS = new SecuritySnapshotDictionary(newData.securitySnapshots);
+          newSS.set(snap.snapshot.snapshot_id, snap);
+          newData.securitySnapshots = newSS;
+          return newData;
+        });
+      })
+      .catch((err) => {
+        // Network/parse error — keep the key in `attempted` so we don't
+        // hammer the endpoint on every re-render. User can refresh to retry.
+        console.error("resolve-security-snapshot failed", err);
+      });
+  }, [computed, securitySnapshots, setData]);
 
   if (!computed) return null;
   const {

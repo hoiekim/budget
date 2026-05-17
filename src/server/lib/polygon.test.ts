@@ -1,6 +1,7 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
 import {
   getClosePrice,
+  getLatestClosePriceOnOrBefore,
   getTickerDetail,
   clearPriceCache,
   polygonQueue,
@@ -158,6 +159,76 @@ describe("polygon", () => {
       if (!result.success) {
         expect(result.error).toBe("no_data");
       }
+    });
+  });
+
+  describe("getLatestClosePriceOnOrBefore", () => {
+    it("returns no_api_key error when key is not set", async () => {
+      process.env.POLYGON_API_KEY = "";
+      const result = await getLatestClosePriceOnOrBefore("AAPL", new Date("2024-01-15"));
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe("no_api_key");
+    });
+
+    it("returns the latest entry in the response range with its trading date", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      // Saturday 2024-01-13 → Polygon returns Friday 2024-01-12 ($185) and
+      // Thursday 2024-01-11 ($184). Helper should pick the latest ($185)
+      // and report its tradingDate.
+      const tFri = new Date("2024-01-12").getTime();
+      const tThu = new Date("2024-01-11").getTime();
+      globalThis.fetch = mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              results: [
+                { c: 184, t: tThu },
+                { c: 185, t: tFri },
+              ],
+            }),
+        } as Response),
+      );
+
+      const result = await getLatestClosePriceOnOrBefore("AAPL", new Date("2024-01-13"));
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.price).toBe(185);
+        expect(result.data.tradingDate).toBe("2024-01-12");
+      }
+    });
+
+    it("returns no_data when response has no results", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      globalThis.fetch = mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ results: [] }),
+        } as Response),
+      );
+      const result = await getLatestClosePriceOnOrBefore("AAPL", new Date("2024-01-15"));
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe("no_data");
+    });
+
+    it("requests a date range ending at the given date with configurable lookback", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const seen: string[] = [];
+      globalThis.fetch = mock((url: string) => {
+        seen.push(url);
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              results: [{ c: 100, t: new Date("2024-01-15").getTime() }],
+            }),
+        } as Response);
+      });
+
+      await getLatestClosePriceOnOrBefore("AAPL", new Date("2024-01-15"), 3);
+      expect(seen.length).toBe(1);
+      // from = date - 3d = 2024-01-12, to = date = 2024-01-15
+      expect(seen[0]).toContain("/range/1/day/2024-01-12/2024-01-15");
     });
   });
 
