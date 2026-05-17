@@ -309,13 +309,31 @@ export const earliestDataDate = (params: {
 };
 
 /**
- * Build a price lookup function over `securitySnapshots`. For a given
- * (security_id, date) the function returns the close_price of the latest
- * snapshot whose date is ≤ the requested date. Returns null when no such
- * snapshot exists.
+ * Build a price lookup function over `securitySnapshots` AND
+ * `investmentTransactions`. For each security we merge both sources into
+ * a date-sorted (date, price) list and return the latest entry ≤ the
+ * query date.
+ *
+ * **Why merge txn prices** (Hoie 2026-05-17): Plaid's `securitySnapshots`
+ * history typically starts at the user's first holdings-sync, which may
+ * be much later than their first transaction. For a user who DCA'd into
+ * VOO for years before our snapshot history began, `priceAt(VOO, 2023-05)`
+ * with snapshot-only data falls back to the earliest known snapshot
+ * (e.g. $545 in 2025) instead of the actual ~$381 in 2023 — that inflates
+ * vStart and depresses the IRR on 3Y / All windows. Each `buy`/`sell`
+ * carries a per-share execution price as of the txn date, giving us a
+ * near-market price point at every transaction the user has ever made.
+ * For regular DCA users that's a dense series; the snapshot-fallback
+ * artifact only ever fires for securities the user has never transacted
+ * in (rare).
  */
-export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
+export const buildPriceAt = (
+  securitySnapshots: SecuritySnapshotDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+) => {
   const bySec = new Map<string, Array<{ date: string; price: number }>>();
+
+  // Source 1: security_snapshots (Plaid's daily institutional close).
   securitySnapshots.forEach((snap) => {
     const close = snap.security.close_price;
     if (close == null) return;
@@ -323,13 +341,25 @@ export const buildPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
     arr.push({ date: snap.snapshot.date.slice(0, 10), price: close });
     bySec.set(snap.security.security_id, arr);
   });
+
+  // Source 2: investment_transactions buy/sell prices. Skip non-asset
+  // types (dividends, fees, cash sweeps) since their `price` field
+  // either isn't set or doesn't reflect market price.
+  investmentTransactions.forEach((t) => {
+    if (t.security_id == null) return;
+    if (t.type !== InvestmentTransactionType.Buy && t.type !== InvestmentTransactionType.Sell) {
+      return;
+    }
+    if (t.price == null || t.price <= 0) return;
+    const arr = bySec.get(t.security_id) ?? [];
+    arr.push({ date: t.date.slice(0, 10), price: t.price });
+    bySec.set(t.security_id, arr);
+  });
+
   bySec.forEach((arr) => arr.sort((a, b) => (a.date < b.date ? -1 : 1)));
 
-  // Walks the price index for a security: prefer latest snapshot ≤ date,
-  // fall back to earliest snapshot when the query date predates all our
-  // price history. The fall-back lets valueAt produce a *non-zero* V_start
-  // for windows that extend back to a user's first transaction date, even
-  // when the security-snapshot history begins later.
+  // Walks the merged price index for a security: prefer latest entry ≤ date,
+  // fall back to earliest when the query date predates everything we know.
   return (securityId: string, date: string): number | null => {
     const arr = bySec.get(securityId);
     if (!arr || arr.length === 0) return null;

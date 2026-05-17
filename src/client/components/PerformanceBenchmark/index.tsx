@@ -135,34 +135,13 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
     if (windowEnd <= windowStart) return null;
 
-    // Find the user's VOO security_id (if any) so we can route VOO price
-    // lookups through the static CSV. Without this, `valueAt` falls back
-    // to the earliest-known Plaid snapshot price for dates predating the
-    // snapshot history — e.g. for an account whose VOO snapshots start
-    // 2025-06-05, asking for the 2023-05-17 price returns $545.09 (the
-    // 2025-06-05 close) instead of the real ~$381. That inflates vStart
-    // and depresses MWR on the 3Y window. The CSV covers 2010-09 → today,
-    // so this gives `valueAt` a real historical price for VOO at any
-    // date in any window.
-    let vooSecurityId: string | null = null;
-    securitySnapshots.forEach((snap) => {
-      if (vooSecurityId) return;
-      if (snap.security.ticker_symbol === BENCHMARK_TICKER) {
-        vooSecurityId = snap.security.security_id;
-      }
-    });
-
-    const plaidPriceAt = buildPriceAt(securitySnapshots);
-    const priceAt =
-      vooHistory && vooHistory.length > 0 && vooSecurityId
-        ? (sid: string, date: string) => {
-            if (sid === vooSecurityId) {
-              const csvPrice = priceAtIn(vooHistory, date);
-              if (csvPrice != null) return csvPrice;
-            }
-            return plaidPriceAt(sid, date);
-          }
-        : plaidPriceAt;
+    // `buildPriceAt` merges security_snapshots with the user's own
+    // investment_transactions, so every security the user has ever
+    // bought/sold contributes a real-market price point at that txn
+    // date. That solves the "snapshot history starts later than txn
+    // history" pre-history-fallback artifact for all securities, not
+    // just VOO.
+    const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
     const vStart = valueAt({
       date: windowStart,
       windowStart,
