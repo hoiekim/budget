@@ -8,6 +8,7 @@ export * from "./TransactionsTable";
 export * from "./AccountsTable";
 export * from "./AccountProperties";
 export * from "./HoldingsComposition";
+export * from "./PerformanceBenchmark";
 export * from "./InstitutionSpan";
 export * from "./AccountsDonut";
 export * from "./Header";

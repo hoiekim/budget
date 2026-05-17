@@ -13,6 +13,7 @@ import {
   DynamicCapacityInput,
   Graph,
   HoldingsComposition,
+  PerformanceBenchmark,
   InstitutionSpan,
   MoneyLabel,
   ToggleInput,
@@ -181,6 +182,7 @@ export const AccountProperties = ({ account }: Props) => {
         </>
       )}
       {type === AccountType.Investment && <HoldingsComposition account={account} />}
+      {type === AccountType.Investment && <PerformanceBenchmark account={account} />}
       {!isManualAccount && (
         <>
           <div className="propertyLabel">Balance&nbsp;Graph&nbsp;Options</div>
