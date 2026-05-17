@@ -366,3 +366,25 @@ export const findBenchmarkSecurityId = (
   });
   return found;
 };
+
+/**
+ * Earliest snapshot date we have for a given security_id, formatted as
+ * YYYY-MM-DD. Returns null when the security has no priced snapshots.
+ *
+ * Used by the benchmark resolver so it can narrow the comparison window
+ * to the overlap of [user-chosen window] and [available benchmark data]
+ * when the user-chosen window extends before our snapshot history.
+ */
+export const firstPricedSnapshotDate = (
+  securitySnapshots: SecuritySnapshotDictionary,
+  securityId: string,
+): string | null => {
+  let earliest: string | null = null;
+  securitySnapshots.forEach((snap) => {
+    if (snap.security.security_id !== securityId) return;
+    if (snap.security.close_price == null) return;
+    const d = snap.snapshot.date.slice(0, 10);
+    if (earliest === null || d < earliest) earliest = d;
+  });
+  return earliest;
+};

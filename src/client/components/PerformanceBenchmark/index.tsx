@@ -7,6 +7,7 @@ import {
   valueAt,
   buildPriceAt,
   findBenchmarkSecurityId,
+  firstPricedSnapshotDate,
   earliestDataDate,
 } from "client/lib/hooks/calculation/benchmark";
 import "./index.css";
@@ -97,22 +98,31 @@ export const PerformanceBenchmark = ({ account }: Props) => {
 
     const mwr = computeMWR({ flows, vStart, vEnd, windowStart, windowEnd });
 
-    // For the benchmark we want STRICT prices (no pre-history fallback) so
-    // we don't show a misleading comparison against a stale earliest-known
-    // price when the window extends before our VOO snapshot history.
+    // Benchmark: prefer strict prices over the user's full window, but if
+    // the user-chosen window predates our VOO snapshot history, narrow the
+    // benchmark window to [first_VOO_snap, windowEnd] so the user still
+    // sees a real comparison number — clearly labeled with the actual
+    // benchmark start date. Hide the gap row when the windows differ since
+    // MWR-over-3Y vs. TWR-over-11mo isn't apples-to-apples.
     const benchmarkSecId = findBenchmarkSecurityId(securitySnapshots, BENCHMARK_TICKER);
     let benchmark: ReturnType<typeof computeBenchmarkTWR> | null = null;
-    let benchmarkWindowMismatch = false;
+    let benchmarkStart: string | null = null;
+    let benchmarkNarrowed = false;
     if (benchmarkSecId) {
-      const priceStart = priceAt(benchmarkSecId, windowStart, { strict: true });
+      const firstSnap = firstPricedSnapshotDate(securitySnapshots, benchmarkSecId);
+      const effectiveStart =
+        firstSnap && firstSnap > windowStart ? firstSnap : windowStart;
+      benchmarkNarrowed = effectiveStart !== windowStart;
+      const priceStart = priceAt(benchmarkSecId, effectiveStart, { strict: true });
       const priceEnd = priceAt(benchmarkSecId, windowEnd, { strict: true });
-      if (priceStart && priceEnd) {
-        benchmark = computeBenchmarkTWR({ priceStart, priceEnd, windowStart, windowEnd });
-      } else if (priceAt(benchmarkSecId, windowEnd) !== null) {
-        // We have end-price but not start-price → window predates our
-        // benchmark snapshot history. Display a "not available for this
-        // window" hint rather than silently dropping the row.
-        benchmarkWindowMismatch = true;
+      if (priceStart && priceEnd && effectiveStart < windowEnd) {
+        benchmark = computeBenchmarkTWR({
+          priceStart,
+          priceEnd,
+          windowStart: effectiveStart,
+          windowEnd,
+        });
+        benchmarkStart = effectiveStart;
       }
     }
 
@@ -120,8 +130,10 @@ export const PerformanceBenchmark = ({ account }: Props) => {
       (new Date(windowEnd).getTime() - new Date(windowStart).getTime()) / (1000 * 60 * 60 * 24 * 365);
     const suppressAnnualized = yearsInWindow < 0.5;
 
+    // Only compare annualized rates when both legs cover the same window.
+    // Otherwise gap is mixing a long-window MWR with a short-window TWR.
     const gap =
-      mwr.annualized !== null && benchmark
+      mwr.annualized !== null && benchmark && !benchmarkNarrowed
         ? mwr.annualized - benchmark.annualized
         : null;
 
@@ -134,7 +146,8 @@ export const PerformanceBenchmark = ({ account }: Props) => {
       mwr,
       benchmark,
       benchmarkAvailable: benchmarkSecId !== null,
-      benchmarkWindowMismatch,
+      benchmarkStart,
+      benchmarkNarrowed,
       gap,
       suppressAnnualized,
       isClamped,
@@ -148,7 +161,8 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     mwr,
     benchmark,
     benchmarkAvailable,
-    benchmarkWindowMismatch,
+    benchmarkStart,
+    benchmarkNarrowed,
     gap,
     suppressAnnualized,
     isClamped,
@@ -188,7 +202,12 @@ export const PerformanceBenchmark = ({ account }: Props) => {
         </div>
 
         <div className="performanceRow">
-          <span className="performanceLabel">{BENCHMARK_TICKER} benchmark</span>
+          <span className="performanceLabel">
+            {BENCHMARK_TICKER} benchmark
+            {benchmarkNarrowed && benchmarkStart && (
+              <span className="performanceLabelHint"> (since {benchmarkStart})</span>
+            )}
+          </span>
           <span className="performanceValues">
             {benchmark ? (
               <>
@@ -199,11 +218,9 @@ export const PerformanceBenchmark = ({ account }: Props) => {
               </>
             ) : (
               <span className="no-data">
-                {benchmarkWindowMismatch
-                  ? "unavailable for this window"
-                  : benchmarkAvailable
-                    ? "no price data"
-                    : `no ${BENCHMARK_TICKER} in this account`}
+                {benchmarkAvailable
+                  ? "no price data"
+                  : `no ${BENCHMARK_TICKER} in this account`}
               </span>
             )}
           </span>
