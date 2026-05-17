@@ -172,16 +172,6 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     };
   }, [account_id, investmentTransactions, holdingSnapshots, securitySnapshots, windowKey, viewDate]);
 
-  // On-demand benchmark snapshot resolution. When the user-chosen window
-  // predates our VOO snapshot history, fire one request per missing date
-  // to the server, which fetches from Polygon and persists. The new
-  // snapshot is merged into AppContext so the memo re-runs with accurate
-  // full-window benchmark numbers.
-  //
-  // Hoie 2026-05-17: "FE checks availability and resolves over API if not
-  // available." We only resolve windowStart here — windowEnd is by
-  // definition recent (≤ today) and gets covered by the existing nightly
-  // snapshot pipeline, so it's already in `securitySnapshots`.
   useEffect(() => {
     if (!computed) return;
     if (!computed.benchmarkNarrowed) return; // already have enough data
