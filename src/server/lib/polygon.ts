@@ -49,7 +49,11 @@ export const polygonQueue = new Queue({ capacity: getRateLimitPerMin });
  */
 export type PolygonResult<T> =
   | { success: true; data: T }
-  | { success: false; error: "no_api_key" | "api_error" | "no_data"; message: string };
+  | {
+      success: false;
+      error: "no_api_key" | "api_error" | "no_data" | "plan_limit";
+      message: string;
+    };
 
 /**
  * Simple in-memory cache for price data
@@ -211,23 +215,39 @@ export const getTickerDetail = async (
  */
 export const getLatestClosePriceOnOrBefore = async (
   ticker_symbol: string,
-  date: Date,
+  dateOrString: Date | string,
   lookbackDays = 7,
 ): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
   if (!getApiKey()) {
     return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
   }
 
-  const to = getDateString(date);
-  const fromD = new Date(date);
-  fromD.setDate(fromD.getDate() - lookbackDays);
-  const from = getDateString(fromD);
+  // Compute `to` and `from` as YYYY-MM-DD purely from the string, avoiding
+  // local-timezone shifts. (PST's `getDate()` on a UTC-midnight Date is one
+  // day behind, which silently turns a 2025-05-17 lookup into 2025-05-16.)
+  const to =
+    typeof dateOrString === "string"
+      ? dateOrString.slice(0, 10)
+      : getDateString(dateOrString);
+  const toAnchor = new Date(`${to}T12:00:00Z`);
+  toAnchor.setUTCDate(toAnchor.getUTCDate() - lookbackDays);
+  const from = toAnchor.toISOString().slice(0, 10);
 
   const path = `${POLYGON_HOST}/v2/aggs/ticker/${ticker_symbol}/range/1/day/${from}/${to}?apiKey=${getApiKey()}`;
 
   try {
     const response = await polygonQueue.add(() => fetchWithRetry(path));
     const json = await response.json();
+    if (json.status === "NOT_AUTHORIZED") {
+      return {
+        success: false,
+        error: "plan_limit",
+        message:
+          typeof json.message === "string"
+            ? json.message
+            : `Polygon plan does not include data for ${ticker_symbol} in [${from}, ${to}]`,
+      };
+    }
     const results = json.results as Array<{ c: number; t: number }> | undefined;
     if (!results || results.length === 0) {
       return {
@@ -238,7 +258,11 @@ export const getLatestClosePriceOnOrBefore = async (
     }
     // Polygon orders ascending by default; the last entry is closest to `date`.
     const last = results[results.length - 1];
-    const tradingDate = getDateString(new Date(last.t));
+    // `t` is a millisecond timestamp at UTC start-of-day for daily aggregates.
+    // Read it back via UTC components to keep the trading date stable
+    // regardless of the server's local timezone.
+    const td = new Date(last.t);
+    const tradingDate = `${td.getUTCFullYear()}-${String(td.getUTCMonth() + 1).padStart(2, "0")}-${String(td.getUTCDate()).padStart(2, "0")}`;
     return { success: true, data: { price: last.c, tradingDate } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

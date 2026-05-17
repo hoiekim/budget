@@ -47,6 +47,10 @@ export const PerformanceBenchmark = ({ account }: Props) => {
   // toggles window options and re-runs the memo, and stops retry loops
   // when Polygon returns `no_data` for a particular date.
   const attemptedRef = useRef<Set<string>>(new Set());
+  // When the most recent resolve failed because of Polygon plan limits,
+  // surface that as a footnote so the user knows the narrowing isn't a
+  // bug — they'd need to upgrade Polygon to extend benchmark history.
+  const [planLimitedAt, setPlanLimitedAt] = useState<string | null>(null);
 
   const computed = useMemo(() => {
     // "Earliest available data" is now `min(first_holding_snapshot, first_txn)`
@@ -195,18 +199,23 @@ export const PerformanceBenchmark = ({ account }: Props) => {
         date,
       })
       .then((response) => {
-        if (response.status !== "success") return;
-        const resolved = response.body?.snapshot;
-        if (!resolved) return;
-        const snap = new SecuritySnapshot(resolved);
-        indexedDb.save(snap).catch(console.error);
-        setData((oldData) => {
-          const newData = new Data(oldData);
-          const newSS = new SecuritySnapshotDictionary(newData.securitySnapshots);
-          newSS.set(snap.snapshot.snapshot_id, snap);
-          newData.securitySnapshots = newSS;
-          return newData;
-        });
+        if (response.status !== "success" || !response.body) return;
+        const { snapshot, reason } = response.body;
+        if (snapshot) {
+          const snap = new SecuritySnapshot(snapshot);
+          indexedDb.save(snap).catch(console.error);
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const newSS = new SecuritySnapshotDictionary(newData.securitySnapshots);
+            newSS.set(snap.snapshot.snapshot_id, snap);
+            newData.securitySnapshots = newSS;
+            return newData;
+          });
+          // Clear any prior plan-limit footnote: we have data again.
+          setPlanLimitedAt(null);
+        } else if (reason === "plan_limit") {
+          setPlanLimitedAt(date);
+        }
       })
       .catch((err) => {
         // Network/parse error — keep the key in `attempted` so we don't
@@ -300,6 +309,9 @@ export const PerformanceBenchmark = ({ account }: Props) => {
           Showing {windowStart} → {windowEnd} · asset positions only (cash excluded)
           {isClamped && " · clamped to earliest data"}
           {suppressAnnualized && " · annualized hidden (window <6mo)"}
+          {planLimitedAt && benchmarkNarrowed && (
+            <> · benchmark history limited by Polygon plan</>
+          )}
         </div>
       </div>
     </>

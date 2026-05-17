@@ -220,15 +220,55 @@ describe("polygon", () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              results: [{ c: 100, t: new Date("2024-01-15").getTime() }],
+              results: [{ c: 100, t: Date.UTC(2024, 0, 15) }],
             }),
         } as Response);
       });
 
-      await getLatestClosePriceOnOrBefore("AAPL", new Date("2024-01-15"), 3);
+      await getLatestClosePriceOnOrBefore("AAPL", "2024-01-15", 3);
       expect(seen.length).toBe(1);
       // from = date - 3d = 2024-01-12, to = date = 2024-01-15
       expect(seen[0]).toContain("/range/1/day/2024-01-12/2024-01-15");
+    });
+
+    it("returns plan_limit when Polygon responds with NOT_AUTHORIZED", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      globalThis.fetch = mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              status: "NOT_AUTHORIZED",
+              message: "Your plan doesn't include this data timeframe.",
+            }),
+        } as Response),
+      );
+
+      const result = await getLatestClosePriceOnOrBefore("VOO", "2020-01-15");
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe("plan_limit");
+        expect(result.message).toContain("plan");
+      }
+    });
+
+    it("preserves the trading date across timezones (UTC components, not local getDate())", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      globalThis.fetch = mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              // Polygon's `t` for daily bars is UTC start-of-day. Reading
+              // local getDate() in PST would shift this back to 2024-01-14.
+              results: [{ c: 472.5, t: Date.UTC(2024, 0, 15) }],
+            }),
+        } as Response),
+      );
+
+      const result = await getLatestClosePriceOnOrBefore("VOO", "2024-01-15");
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.tradingDate).toBe("2024-01-15");
     });
   });
 

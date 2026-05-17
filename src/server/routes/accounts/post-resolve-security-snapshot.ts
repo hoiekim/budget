@@ -1,5 +1,4 @@
 import {
-  getDateString,
   getSquashedDateString,
   JSONSecuritySnapshot,
 } from "common";
@@ -18,6 +17,8 @@ export interface ResolveSecuritySnapshotResponse {
   resolved: boolean;
   snapshot?: JSONSecuritySnapshot;
   source?: "existing" | "polygon";
+  /** When resolved=false, the underlying polygon error category. */
+  reason?: "no_api_key" | "api_error" | "no_data" | "plan_limit";
   message?: string;
 }
 
@@ -65,16 +66,19 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
       return validationError("date is required (YYYY-MM-DD)");
     }
 
-    const requestedDate = new Date(date);
-    if (Number.isNaN(requestedDate.getTime())) {
+    // Validate by checking the leading 10 chars match YYYY-MM-DD exactly,
+    // then keep the input as a string for the rest of the route — we want
+    // the date to round-trip through Polygon without local-timezone shifts.
+    const datePrefix = date.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePrefix)) {
       return validationError(`invalid date: ${date}`);
     }
 
     // Don't burn a Polygon call on future dates — the market hasn't
-    // closed there yet. Cap the lookup at today.
-    const today = new Date();
-    const effectiveDate = requestedDate > today ? today : requestedDate;
-    const effectiveDateStr = getDateString(effectiveDate);
+    // closed there yet. Cap the lookup at today (string compare is safe
+    // for ISO YYYY-MM-DD).
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const effectiveDateStr = datePrefix > todayStr ? todayStr : datePrefix;
 
     const security = await getSecurity(security_id);
     if (!security) {
@@ -95,7 +99,7 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
     const existing = await getSecuritySnapshots({ security_id, endDate: effectiveDateStr });
     if (existing.length > 0) {
       const nearest = existing[existing.length - 1]; // sorted ASC by snapshot_date
-      const nearestDate = getDateString(new Date(nearest.snapshot_date));
+      const nearestDate = nearest.snapshot_date.slice(0, 10);
       if (
         nearest.close_price != null &&
         daysBetween(nearestDate, effectiveDateStr) <= MAX_PROXIMITY_DAYS
@@ -112,27 +116,30 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
     }
 
     // Polygon fetch
-    const priceResult = await polygon.getLatestClosePriceOnOrBefore(ticker, effectiveDate);
+    const priceResult = await polygon.getLatestClosePriceOnOrBefore(ticker, effectiveDateStr);
     if (!priceResult.success) {
+      const message =
+        priceResult.error === "no_api_key"
+          ? "Market data API is not configured"
+          : priceResult.error === "plan_limit"
+            ? `Polygon plan doesn't include this date range`
+            : priceResult.error === "no_data"
+              ? `No price data for ${ticker} on or before ${effectiveDateStr}`
+              : `Polygon error: ${priceResult.message}`;
       return {
         status: "success",
-        body: {
-          resolved: false,
-          message:
-            priceResult.error === "no_api_key"
-              ? "Market data API is not configured"
-              : priceResult.error === "no_data"
-                ? `No price data for ${ticker} on or before ${effectiveDateStr}`
-                : `Polygon error: ${priceResult.message}`,
-        },
+        body: { resolved: false, reason: priceResult.error, message },
       };
     }
 
     const { price, tradingDate } = priceResult.data;
+    // tradingDate is already a YYYY-MM-DD string from the polygon helper.
+    // Use noon UTC for the snapshot.date timestamp so the date doesn't
+    // shift back a day when read with local-tz getDate() somewhere.
     const snapshot: JSONSecuritySnapshot = {
       snapshot: {
-        snapshot_id: `${security_id}-${getSquashedDateString(new Date(tradingDate))}`,
-        date: new Date(tradingDate).toISOString(),
+        snapshot_id: `${security_id}-${getSquashedDateString(new Date(`${tradingDate}T12:00:00Z`))}`,
+        date: `${tradingDate}T12:00:00.000Z`,
       },
       security: {
         ...security,
