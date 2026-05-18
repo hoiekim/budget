@@ -262,7 +262,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
       // Auto-infer a USD cash holding for any investment account where
       // Plaid didn't surface cash as a holding. The inferred row is a
       // real holding snapshot — same data path as Plaid-provided cash —
-      // so the UI is identical regardless of source (Hoie 2026-05-14).
+      // so the UI is identical regardless of source.
       const inferredCash = await inferCashHoldings(accounts, holdings, securities);
       const allHoldings = inferredCash.length ? [...holdings, ...inferredCash] : holdings;
 
