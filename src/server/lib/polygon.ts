@@ -49,7 +49,11 @@ export const polygonQueue = new Queue({ capacity: getRateLimitPerMin });
  */
 export type PolygonResult<T> =
   | { success: true; data: T }
-  | { success: false; error: "no_api_key" | "api_error" | "no_data"; message: string };
+  | {
+      success: false;
+      error: "no_api_key" | "api_error" | "no_data" | "plan_limit";
+      message: string;
+    };
 
 /**
  * Simple in-memory cache for price data
@@ -198,6 +202,70 @@ export const getTickerDetail = async (
       error: "api_error",
       message: `Failed to fetch ticker details for ${ticker_symbol}: ${message}`,
     };
+  }
+};
+
+/**
+ * Resolve the closest trading-day close price at or before `date`. Walks
+ * Polygon's daily aggregates over a 7-day window ending at `date` and
+ * returns the latest entry — that's the actual trading-day price for
+ * non-trading-day inputs (weekends, holidays). Used by the benchmark
+ * snapshot resolver so a window-start like "2023-05-13 (Saturday)"
+ * resolves to Friday's close instead of returning `no_data`.
+ */
+export const getLatestClosePriceOnOrBefore = async (
+  ticker_symbol: string,
+  dateOrString: Date | string,
+  lookbackDays = 7,
+): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
+  if (!getApiKey()) {
+    return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
+  }
+
+  // Compute `to` and `from` as YYYY-MM-DD purely from the string, avoiding
+  // local-timezone shifts. (PST's `getDate()` on a UTC-midnight Date is one
+  // day behind, which silently turns a 2025-05-17 lookup into 2025-05-16.)
+  const to =
+    typeof dateOrString === "string"
+      ? dateOrString.slice(0, 10)
+      : getDateString(dateOrString);
+  const toAnchor = new Date(`${to}T12:00:00Z`);
+  toAnchor.setUTCDate(toAnchor.getUTCDate() - lookbackDays);
+  const from = toAnchor.toISOString().slice(0, 10);
+
+  const path = `${POLYGON_HOST}/v2/aggs/ticker/${ticker_symbol}/range/1/day/${from}/${to}?apiKey=${getApiKey()}`;
+
+  try {
+    const response = await polygonQueue.add(() => fetchWithRetry(path));
+    const json = await response.json();
+    if (json.status === "NOT_AUTHORIZED") {
+      return {
+        success: false,
+        error: "plan_limit",
+        message:
+          typeof json.message === "string"
+            ? json.message
+            : `Polygon plan does not include data for ${ticker_symbol} in [${from}, ${to}]`,
+      };
+    }
+    const results = json.results as Array<{ c: number; t: number }> | undefined;
+    if (!results || results.length === 0) {
+      return {
+        success: false,
+        error: "no_data",
+        message: `No price data for ${ticker_symbol} in [${from}, ${to}]`,
+      };
+    }
+    const last = results[results.length - 1];
+    const td = new Date(last.t);
+    const tradingDate = `${td.getUTCFullYear()}-${String(td.getUTCMonth() + 1).padStart(2, "0")}-${String(td.getUTCDate()).padStart(2, "0")}`;
+    return { success: true, data: { price: last.c, tradingDate } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(`Polygon range fetch error for ${ticker_symbol}: ${message}`, {
+      component: "polygon",
+    });
+    return { success: false, error: "api_error", message };
   }
 };
 

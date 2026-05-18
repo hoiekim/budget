@@ -8,8 +8,6 @@ import {
   computeBenchmarkTWR,
   valueAt,
   buildPriceAt,
-  findBenchmarkSecurityId,
-  firstPricedSnapshotDate,
 } from "./benchmark";
 import {
   HoldingSnapshotDictionary,
@@ -230,10 +228,21 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-01-01"));
     hs.set("h3", mkHoldingSnap(CASH, 200, 1, null, "2026-01-01"));
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01"));
     const itxns = new InvestmentTransactionDictionary();
-    const priceAt = buildPriceAt(ss);
+    // A pre-window buy gives priceAt(VOO, 2026-01-01) a $500 data point.
+    itxns.set(
+      "t0",
+      mkTxn({
+        date: "2025-12-01",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 500,
+        quantity: 1,
+        price: 500,
+      } as Parameters<typeof mkTxn>[0]),
+    );
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
 
     expect(
       valueAt({
@@ -254,9 +263,6 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-01-01"));
     hs.set("h2", mkHoldingSnap(VOO, 100, 600, 60000, "2026-06-01")); // phantom +90 shares
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01"));
-    ss.set("s2", mkSecuritySnap(VOO, 600, "2026-06-01"));
     const itxns = new InvestmentTransactionDictionary();
     // 5 buys, all dated before the query date (2026-06-01).
     const buyDates = ["2026-02-10", "2026-03-10", "2026-04-10", "2026-05-10", "2026-05-25"];
@@ -272,7 +278,8 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
         }),
       );
     });
-    const priceAt = buildPriceAt(ss);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
 
     expect(
       valueAt({
@@ -289,9 +296,9 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
   test("returns 0 when only cash-shape holdings exist", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(CASH, 5000, 1, null, "2026-01-01"));
-    const ss = new SecuritySnapshotDictionary();
     const itxns = new InvestmentTransactionDictionary();
-    const priceAt = buildPriceAt(ss);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
     expect(
       valueAt({
         date: "2026-02-01",
@@ -307,9 +314,9 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
   test("returns 0 when no holding snapshots ≤ windowStart", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-06-01"));
-    const ss = new SecuritySnapshotDictionary();
     const itxns = new InvestmentTransactionDictionary();
-    const priceAt = buildPriceAt(ss);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
     expect(
       valueAt({
         date: "2026-01-15",
@@ -323,11 +330,10 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
   });
 
   test("includes a security with zero anchor but new txns within window", () => {
-    // User had nothing at windowStart, bought 5 shares in window.
+    // User had nothing at windowStart, bought 5 shares in window at $500
+    // (March) and the price reference at query time (2026-06-01) walks
+    // back through txn prices to that buy → 5 × $500 = $2500.
     const hs = new HoldingSnapshotDictionary();
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01"));
-    ss.set("s2", mkSecuritySnap(VOO, 600, "2026-06-01"));
     const itxns = new InvestmentTransactionDictionary();
     itxns.set(
       "t1",
@@ -337,9 +343,11 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
         security_id: VOO,
         amount: 2500,
         quantity: 5,
-      }),
+        price: 500,
+      } as Parameters<typeof mkTxn>[0]),
     );
-    const priceAt = buildPriceAt(ss);
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
 
     expect(
       valueAt({
@@ -350,69 +358,91 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
         investmentTransactions: itxns,
         priceAt,
       }),
-    ).toBe(5 * 600);
+    ).toBe(5 * 500);
   });
 
-  test("buildPriceAt returns null when no snapshot exists for the security", () => {
+  test("buildPriceAt returns null when no txn exists for the security", () => {
+    const itxns = new InvestmentTransactionDictionary();
     const ss = new SecuritySnapshotDictionary();
-    const priceAt = buildPriceAt(ss);
+    const priceAt = buildPriceAt(ss, itxns);
     expect(priceAt(VOO, "2026-01-01")).toBeNull();
   });
-});
 
-// ──────────────────────────────────────────────────────────────────────────────
-describe("findBenchmarkSecurityId", () => {
-  test("returns matching security_id for ticker", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2026-01-01", "VOO"));
-    ss.set("s2", mkSecuritySnap("sec-spy", 480, "2026-01-01", "SPY"));
-    expect(findBenchmarkSecurityId(ss, "VOO")).toBe(VOO);
-    expect(findBenchmarkSecurityId(ss, "SPY")).toBe("sec-spy");
-  });
-
-  test("returns null when ticker not found", () => {
-    const ss = new SecuritySnapshotDictionary();
-    expect(findBenchmarkSecurityId(ss, "AAPL")).toBeNull();
-  });
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
-describe("firstPricedSnapshotDate", () => {
-  test("returns earliest snapshot date for a security_id", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2025-06-05", "VOO"));
-    ss.set("s2", mkSecuritySnap(VOO, 520, "2025-12-01", "VOO"));
-    ss.set("s3", mkSecuritySnap(VOO, 530, "2026-05-16", "VOO"));
-    expect(firstPricedSnapshotDate(ss, VOO)).toBe("2025-06-05");
-  });
-
-  test("ignores other securities", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 500, "2025-06-05", "VOO"));
-    ss.set("s2", mkSecuritySnap("sec-spy", 480, "2020-01-01", "SPY"));
-    expect(firstPricedSnapshotDate(ss, VOO)).toBe("2025-06-05");
-  });
-
-  test("skips snapshots with null close_price", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set(
-      "s1",
-      new SecuritySnapshot({
-        snapshot: { snapshot_id: "ss_null", date: "2024-01-01" },
-        security: {
-          security_id: VOO,
-          ticker_symbol: "VOO",
-          close_price: null,
-          close_price_as_of: "2024-01-01",
-        },
-      }),
+  test("buildPriceAt walks back to the latest txn ≤ query date", () => {
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2023-05-03",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 390,
+        quantity: 1,
+        price: 390,
+      } as Parameters<typeof mkTxn>[0]),
     );
-    ss.set("s2", mkSecuritySnap(VOO, 500, "2025-06-05", "VOO"));
-    expect(firstPricedSnapshotDate(ss, VOO)).toBe("2025-06-05");
+    itxns.set(
+      "t2",
+      mkTxn({
+        date: "2025-05-05",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 519,
+        quantity: 1,
+        price: 519,
+      } as Parameters<typeof mkTxn>[0]),
+    );
+
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
+    expect(priceAt(VOO, "2023-05-17")).toBe(390); // walk-back to t1
+    expect(priceAt(VOO, "2025-12-01")).toBe(519); // walk-back to t2
+    // Pre-history fallback: query predates everything → earliest known.
+    expect(priceAt(VOO, "2020-01-01")).toBe(390);
   });
 
-  test("returns null when no snapshots", () => {
+  test("buildPriceAt merges snapshot + txn sources, latest-date wins", () => {
+    // Snapshot at 2025-06-05 ($545), txn at 2025-05-05 ($519). Both
+    // exist for the same security; walk-back to a date past both should
+    // pick the later (snapshot). Walk-back to a date past only the
+    // earlier should pick the earlier (txn).
     const ss = new SecuritySnapshotDictionary();
-    expect(firstPricedSnapshotDate(ss, VOO)).toBeNull();
+    ss.set("s1", mkSecuritySnap(VOO, 545, "2025-06-05"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2025-05-05",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 519,
+        quantity: 1,
+        price: 519,
+      } as Parameters<typeof mkTxn>[0]),
+    );
+    const priceAt = buildPriceAt(ss, itxns);
+    expect(priceAt(VOO, "2025-07-01")).toBe(545); // snapshot wins
+    expect(priceAt(VOO, "2025-05-15")).toBe(519); // only txn ≤ this date
+  });
+
+  test("buildPriceAt ignores non-asset txn types (dividend, cash, fee)", () => {
+    const itxns = new InvestmentTransactionDictionary();
+    // Dividend txn with a non-zero price field — must be ignored.
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2024-01-01",
+        type: InvestmentTransactionType.Fee,
+        subtype: InvestmentTransactionSubtype.Dividend,
+        security_id: VOO,
+        amount: 50,
+        quantity: 0.1,
+        price: 999, // bogus marker — must not propagate into priceAt
+      } as Parameters<typeof mkTxn>[0]),
+    );
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
+    expect(priceAt(VOO, "2024-06-01")).toBeNull();
   });
 });
+
