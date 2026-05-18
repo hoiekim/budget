@@ -401,6 +401,30 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     expect(priceAt(VOO, "2020-01-01")).toBe(390);
   });
 
+  test("buildPriceAt merges snapshot + txn sources, latest-date wins", () => {
+    // Snapshot at 2025-06-05 ($545), txn at 2025-05-05 ($519). Both
+    // exist for the same security; walk-back to a date past both should
+    // pick the later (snapshot). Walk-back to a date past only the
+    // earlier should pick the earlier (txn).
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 545, "2025-06-05"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2025-05-05",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 519,
+        quantity: 1,
+        price: 519,
+      } as Parameters<typeof mkTxn>[0]),
+    );
+    const priceAt = buildPriceAt(ss, itxns);
+    expect(priceAt(VOO, "2025-07-01")).toBe(545); // snapshot wins
+    expect(priceAt(VOO, "2025-05-15")).toBe(519); // only txn ≤ this date
+  });
+
   test("buildPriceAt ignores non-asset txn types (dividend, cash, fee)", () => {
     const itxns = new InvestmentTransactionDictionary();
     // Dividend txn with a non-zero price field — must be ignored.
