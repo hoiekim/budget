@@ -22,7 +22,7 @@ import {
 import "./index.css";
 
 interface Props {
-  account: Account;
+  accounts: Account[];
 }
 
 type WindowKey = "1Y" | "3Y" | "All";
@@ -89,8 +89,10 @@ const priceAtIn = (history: PriceRow[], date: string): number | null => {
   return best;
 };
 
-export const PerformanceBenchmark = ({ account }: Props) => {
-  const { account_id } = account;
+export const PerformanceBenchmark = ({ accounts }: Props) => {
+  const accountIds = accounts.map((a) => a.account_id);
+  // Stable string key for memo deps so array identity doesn't matter.
+  const accountIdsKey = accountIds.slice().sort().join(",");
   const { data, setData, viewDate } = useAppContext();
   const { investmentTransactions, holdingSnapshots, securitySnapshots } = data;
 
@@ -112,15 +114,13 @@ export const PerformanceBenchmark = ({ account }: Props) => {
   }, []);
 
   const computed = useMemo(() => {
-    // "Earliest available data" is `min(first_holding_snapshot, first_txn)`
-    // for the account. Accounts whose txn history predates the snapshot
-    // history can show a longer "All" window via the txn-derived qty walk
-    // in valueAt.
-    const earliest = earliestDataDate({
-      accountId: account_id,
-      holdingSnapshots,
-      investmentTransactions,
-    });
+    const ids = accountIdsKey.split(",").filter(Boolean);
+    // "Earliest available data" is min across all accounts.
+    let earliest: string | null = null;
+    for (const id of ids) {
+      const e = earliestDataDate({ accountId: id, holdingSnapshots, investmentTransactions });
+      if (e && (!earliest || e < earliest)) earliest = e;
+    }
     if (!earliest) return null;
 
     // windowEnd follows viewDate (end of the period the user is looking at),
@@ -156,24 +156,28 @@ export const PerformanceBenchmark = ({ account }: Props) => {
     // anything Polygon has backfilled via resolve-security-snapshot.
     // Txn fills the long historical tail predating Plaid's sync.
     const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
-    const vStart = valueAt({
-      date: windowStart,
-      windowStart,
-      accountId: account_id,
-      holdingSnapshots,
-      investmentTransactions,
-      priceAt,
-    });
-    const vEnd = valueAt({
-      date: windowEnd,
-      windowStart,
-      accountId: account_id,
-      holdingSnapshots,
-      investmentTransactions,
-      priceAt,
-    });
+    const vStart = ids.reduce(
+      (sum, id) =>
+        sum +
+        valueAt({ date: windowStart, windowStart, accountId: id, holdingSnapshots, investmentTransactions, priceAt }),
+      0,
+    );
+    const vEnd = ids.reduce(
+      (sum, id) =>
+        sum +
+        valueAt({ date: windowEnd, windowStart, accountId: id, holdingSnapshots, investmentTransactions, priceAt }),
+      0,
+    );
 
-    const allFlows = extractCashFlows(investmentTransactions, holdingSnapshots, account_id);
+    const flowsByDate = new Map<string, number>();
+    for (const id of ids) {
+      for (const f of extractCashFlows(investmentTransactions, holdingSnapshots, id)) {
+        flowsByDate.set(f.date, (flowsByDate.get(f.date) ?? 0) + f.amount);
+      }
+    }
+    const allFlows = Array.from(flowsByDate.entries())
+      .map(([date, amount]) => ({ date, amount }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
     const flows = allFlows.filter((f) => f.date > windowStart && f.date <= windowEnd);
 
     const mwr = computeMWR({ flows, vStart, vEnd, windowStart, windowEnd });
@@ -227,7 +231,7 @@ export const PerformanceBenchmark = ({ account }: Props) => {
       isClamped,
     };
   }, [
-    account_id,
+    accountIdsKey,
     investmentTransactions,
     holdingSnapshots,
     securitySnapshots,
