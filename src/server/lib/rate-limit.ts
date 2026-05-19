@@ -64,22 +64,38 @@ export const stopRateLimitCleanup = () => {
 };
 
 /**
- * Check rate limit for the given IP address.
- * Returns true if the request should be blocked (too many attempts).
- * Increments the attempt counter when not blocked.
+ * Read-only check: returns true if the IP has hit the failure cap within
+ * the active window. Does NOT mutate state.
+ *
+ * Successful logins must not consume a slot — that's what failure-only
+ * counting prevents. See #389: counting successes locked out anyone who
+ * legitimately signed in from 5+ devices within 15 minutes.
  */
-export const checkLoginRateLimit = (ip: string): boolean => {
+export const isLoginRateLimited = (ip: string): boolean => {
+  const now = Date.now();
+  const record = attempts.get(ip);
+  return !!record && now < record.resetAt && record.count >= MAX_ATTEMPTS;
+};
+
+/**
+ * Record a failed login attempt for the given IP. Call only after auth
+ * has actually failed.
+ */
+export const recordLoginFailure = (ip: string): void => {
   const now = Date.now();
   const record = attempts.get(ip);
 
   if (record && now < record.resetAt) {
-    if (record.count >= MAX_ATTEMPTS) {
-      return true; // rate limited
-    }
     record.count++;
   } else {
     attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
   }
+};
 
-  return false;
+/**
+ * Clear the bucket for an IP on a successful login so a user's prior
+ * failures don't accumulate against them indefinitely within the window.
+ */
+export const resetLoginAttempts = (ip: string): void => {
+  attempts.delete(ip);
 };
