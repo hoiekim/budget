@@ -359,43 +359,131 @@ export const useSync = () => {
     });
 
     try {
+      // Read IndexedDB synchronously up front. On a warm load (any cached
+      // accounts) we paint from cache immediately and only refresh the
+      // current month — full Stage 1/2/3 slicing is reserved for cold
+      // load (no IndexedDB). The previous fire-and-forget then-callback
+      // raced with Stage 1's setData(new Data({...})) which carries no
+      // transactions/snapshots, blowing away the cached history one
+      // frame after it painted (#399).
+      const cached = await indexedDb.loadAllData().catch((err) => {
+        console.error(err);
+        return null;
+      });
+      const isWarm = !!cached && cached.accounts.size > 0;
+
+      if (isWarm && cached) {
+        const accountsPromise = fetchAccounts();
+        const { networkFailed } = await accountsPromise;
+
+        if (networkFailed) {
+          // Offline / server down — use cache as-is, no refresh.
+          cached.status.isInit = true;
+          cached.status.isLoading = false;
+          cached.status.isError = false;
+          setData(cached);
+          return;
+        }
+
+        // Paint from cache immediately; flag still-loading so the UI
+        // can show a refresh indicator while the current-month fetch
+        // settles.
+        cached.status.isInit = true;
+        cached.status.isLoading = true;
+        cached.status.isError = false;
+        setData(cached);
+
+        const { accounts, items } = await accountsPromise;
+        // Update accounts/items in case any were added/removed since the
+        // last visit — these are small payloads, cheap to refresh on
+        // every sync.
+        accounts.forEach((a) => cached.accounts.set(a.id, a));
+        items.forEach((it) => cached.items.set(it.id, it));
+
+        // Refresh only the current month (transactions + snapshots).
+        // Older history doesn't retroactively change, so the cache is
+        // authoritative for everything pre-current-month.
+        const now = new ViewDate("month");
+        const currentMonthRange: FetchRange = {
+          from: now.getStartDate(),
+          until: now.clone().next().getStartDate(),
+        };
+
+        // Refresh in parallel: budgets/sections/categories, charts,
+        // split-transactions, current-month transactions, current-month
+        // snapshots, institutions for any new accounts.
+        const [
+          { budgets, sections, categories },
+          { charts },
+          { splitTransactions },
+          { transactions: newTransactions, investmentTransactions: newInvestmentTransactions },
+          {
+            accountSnapshots: newAccountSnapshots,
+            holdingSnapshots: newHoldingSnapshots,
+            securitySnapshots: newSecuritySnapshots,
+          },
+          { institutions },
+        ] = await Promise.all([
+          fetchBudgets(),
+          fetchCharts(),
+          fetchSplitTransactions(),
+          fetchTransactions(accounts, currentMonthRange),
+          fetchSnapshots(accounts, currentMonthRange),
+          fetchInstitutions(accounts),
+        ]);
+
+        // Merge fresh small payloads (entire dictionaries replaced).
+        const refreshed = new Data(cached);
+        refreshed.accounts = accounts;
+        refreshed.items = items;
+        refreshed.budgets = budgets;
+        refreshed.sections = sections;
+        refreshed.categories = categories;
+        refreshed.charts = charts;
+        refreshed.splitTransactions = splitTransactions;
+        refreshed.institutions = institutions;
+
+        // Merge current-month transactions/snapshots into cached history.
+        // Same-id updates overwrite (Plaid may revise a recent txn);
+        // older months in the cache are preserved.
+        newTransactions.forEach((t, id) => refreshed.transactions.set(id, t));
+        newInvestmentTransactions.forEach((t, id) =>
+          refreshed.investmentTransactions.set(id, t),
+        );
+        newAccountSnapshots.forEach((s, id) => refreshed.accountSnapshots.set(id, s));
+        newHoldingSnapshots.forEach((s, id) => refreshed.holdingSnapshots.set(id, s));
+        newSecuritySnapshots.forEach((s, id) => refreshed.securitySnapshots.set(id, s));
+
+        refreshed.status.isInit = true;
+        refreshed.status.isLoading = false;
+        refreshed.status.isError = false;
+        setData(refreshed);
+
+        indexedDb
+          .clearAllData()
+          .then(() => indexedDb.saveAllData(refreshed))
+          .catch(console.error);
+        return;
+      }
+
+      // ----- Cold start (no IndexedDB) — existing Stage 1/2/3 slicing -----
+
       const accountsPromise = fetchAccounts();
 
       const { networkFailed } = await accountsPromise;
 
       if (networkFailed) {
-        await indexedDb
-          .loadAllData()
-          .then((data) => {
-            data.status.isInit = true;
-            data.status.isLoading = false;
-            data.status.isError = false;
-            setData(data);
-          })
-          .catch((error) => {
-            console.error(error);
-            setData((oldData) => {
-              const newData = new Data(oldData);
-              newData.status.isInit = true;
-              newData.status.isLoading = false;
-              newData.status.isError = true;
-              return newData;
-            });
-          });
+        // Even cold-start can hit a network failure; fall back to whatever
+        // partial IndexedDB read returned (likely empty Data).
+        setData((oldData) => {
+          const newData = new Data(oldData);
+          newData.status.isInit = true;
+          newData.status.isLoading = false;
+          newData.status.isError = true;
+          return newData;
+        });
         return;
       }
-
-      indexedDb
-        .loadAllData()
-        .then((data) => {
-          // do not update data because API data is already available
-          if (data.status.isInit) return;
-          data.status.isInit = true;
-          data.status.isLoading = false;
-          data.status.isError = false;
-          setData(data);
-        })
-        .catch(console.error);
 
       // --- Stage 1: non-historical data (paint as soon as it lands).
       // Accounts/items, budgets/sections/categories, charts, institutions —
