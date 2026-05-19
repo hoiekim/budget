@@ -6,6 +6,7 @@ import {
   JSONInstitution,
   JSONSnapshotData,
   LocalDate,
+  Queue,
 } from "common";
 import {
   BudgetsGetResponse,
@@ -15,6 +16,7 @@ import {
   AccountsGetResponse,
   SplitTransactionsGetResponse,
   ChartsGetResponse,
+  SnapshotsGetResponse,
 } from "server";
 import {
   Account,
@@ -51,6 +53,13 @@ import {
   indexedDb,
 } from "client";
 
+// Browsers cap concurrent fetches per origin (~6 on HTTP/1.1) and queueing
+// hundreds of `fetch`/`cache.add` calls at once triggers
+// ERR_INSUFFICIENT_RESOURCES — which silently aborts `cache.add` and defeats
+// the Cache API benefit for older months. Gate snapshot fetches through a
+// shared Queue so at most 6 are in flight at any time.
+const snapshotFetchQueue = new Queue({ maxInflight: 6 });
+
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
   const response = await call
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
@@ -64,9 +73,16 @@ interface FetchTransactionsResult {
   investmentTransactions: InvestmentTransactionDictionary;
 }
 
+interface FetchRange {
+  /** Inclusive lower bound on the month start date — loop stops when viewDate < this. */
+  from: Date;
+  /** Exclusive upper bound on the month start date — loop starts at this month-1. */
+  until: Date;
+}
+
 const fetchTransactions = async (
   accounts: AccountDictionary,
-  startDate?: Date,
+  range: FetchRange,
 ): Promise<FetchTransactionsResult> => {
   const result = {
     transactions: new TransactionDictionary(),
@@ -75,13 +91,12 @@ const fetchTransactions = async (
 
   const transactionsApiPath = "/api/transactions";
   const viewDate = new ViewDate("month");
-  const twoMonthAgoViewDate = viewDate.clone().previous().previous();
-  let oldestDate = twoMonthAgoViewDate.previous().getStartDate();
-  oldestDate = startDate && startDate < oldestDate ? startDate : oldestDate;
+  // Walk back to the first month whose start < range.until.
+  while (viewDate.getStartDate() >= range.until) viewDate.previous();
 
   const promises: Promise<void>[] = [];
 
-  while (oldestDate < viewDate.getStartDate()) {
+  while (range.from < viewDate.getStartDate()) {
     accounts?.forEach((a) => {
       const params = new URLSearchParams();
       const startDate = viewDate.getStartDate();
@@ -208,7 +223,7 @@ interface FetchSnapshotsResult {
 
 const fetchSnapshots = async (
   accounts: AccountDictionary,
-  startDate?: Date,
+  range: FetchRange,
 ): Promise<FetchSnapshotsResult> => {
   const result = {
     accountSnapshots: new AccountSnapshotDictionary(),
@@ -216,35 +231,87 @@ const fetchSnapshots = async (
     securitySnapshots: new SecuritySnapshotDictionary(),
   };
 
-  const params = new URLSearchParams();
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 2);
-  if (startDate) params.append("start-date", getDateString(startDate));
-  params.append("end-date", getDateString(endDate));
-  const path = "/api/snapshots?" + params.toString();
+  const ingestSnapshot = (snapshot: JSONSnapshotData) => {
+    if ("account" in snapshot) {
+      const account = accounts.get(snapshot.account.account_id) || {};
+      snapshot.account = { ...account, ...snapshot.account };
+      const newSnapshot = new AccountSnapshot(snapshot);
+      result.accountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+    } else if ("holding" in snapshot) {
+      const newSnapshot = new HoldingSnapshot(snapshot);
+      result.holdingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+    } else if ("security" in snapshot) {
+      const newSnapshot = new SecuritySnapshot(snapshot);
+      result.securitySnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+    }
+  };
 
-  await call
-    .get(path)
-    .then(({ body }) => {
-      if (!body) return;
-      const snapshots = body as JSONSnapshotData[];
+  // Mirror fetchTransactions (Closes #323): slice the full date window into
+  // month-sized chunks, fetched per-account for user-scoped snapshots and
+  // once-per-month for shared security snapshots. Older months go through
+  // `cachedCall` so they only hit the network on first load; the most
+  // recent month always re-fetches so today's data stays fresh.
+  const snapshotsApiPath = "/api/snapshots";
+  const viewDate = new ViewDate("month");
+  while (viewDate.getStartDate() >= range.until) viewDate.previous();
 
-      snapshots.forEach((snapshot) => {
-        if ("account" in snapshot) {
-          const account = accounts.get(snapshot.account.account_id) || {};
-          snapshot.account = { ...account, ...snapshot.account };
-          const newSnapshot = new AccountSnapshot(snapshot);
-          result.accountSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
-        } else if ("holding" in snapshot) {
-          const newSnapshot = new HoldingSnapshot(snapshot);
-          result.holdingSnapshots.set(newSnapshot.snapshot.id, newSnapshot);
-        } else if ("security" in snapshot) {
-          const newSnapshot = new SecuritySnapshot(snapshot);
-          result.securitySnapshots.set(newSnapshot.snapshot.id, newSnapshot);
+  const promises: Promise<void>[] = [];
+
+  while (range.from < viewDate.getStartDate()) {
+    const monthStart = viewDate.getStartDate();
+    const monthEnd = viewDate.clone().next().getStartDate();
+    const startStr = getDateString(monthStart);
+    const endStr = getDateString(monthEnd);
+    const isRecent = new Date().getTime() - monthEnd.getTime() < THIRTY_DAYS;
+
+    accounts?.forEach((a) => {
+      const params = new URLSearchParams();
+      params.append("start-date", startStr);
+      params.append("end-date", endStr);
+      params.append("account-id", a.id);
+      const path = snapshotsApiPath + "?" + params.toString();
+
+      promises.push(
+        snapshotFetchQueue.add(async () => {
+          let response: ApiResponse<SnapshotsGetResponse> | void;
+          if (isRecent) {
+            response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
+          } else {
+            response = await cachedCall<SnapshotsGetResponse>(path).catch(console.error);
+          }
+          if (!response?.body) return;
+          response.body.forEach(ingestSnapshot);
+        }),
+      );
+    });
+
+    // Security snapshots are user-id=NULL (shared) and aren't returned by
+    // the account-scoped queries above. One slice per month, cached for
+    // older months — keeps the per-account URL space cleanly cache-keyed
+    // and avoids re-pulling the full price history on every page load.
+    const securityParams = new URLSearchParams();
+    securityParams.append("start-date", startStr);
+    securityParams.append("end-date", endStr);
+    securityParams.append("snapshot-type", "security");
+    const securityPath = snapshotsApiPath + "?" + securityParams.toString();
+
+    promises.push(
+      snapshotFetchQueue.add(async () => {
+        let response: ApiResponse<SnapshotsGetResponse> | void;
+        if (isRecent) {
+          response = await call.get<SnapshotsGetResponse>(securityPath).catch(console.error);
+        } else {
+          response = await cachedCall<SnapshotsGetResponse>(securityPath).catch(console.error);
         }
-      });
-    })
-    .catch(console.error);
+        if (!response?.body) return;
+        response.body.forEach(ingestSnapshot);
+      }),
+    );
+
+    viewDate.previous();
+  }
+
+  await Promise.all(promises);
 
   return result;
 };
@@ -330,61 +397,149 @@ export const useSync = () => {
         })
         .catch(console.error);
 
+      // --- Stage 1: non-historical data (paint as soon as it lands).
+      // Accounts/items, budgets/sections/categories, charts, institutions —
+      // none of these are time-partitioned, so they finish quickly and let
+      // the UI render the navigation + summary widgets before the heavy
+      // snapshot/transaction fetches complete.
       const oldestDatePromise = getOldestTransactionDate();
-      const transactionsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
-        ([{ accounts }, oldestDate]) => fetchTransactions(accounts, oldestDate),
-      );
-      const splitTransactionsPromise = fetchSplitTransactions();
-      const snapshotsPromise = Promise.all([accountsPromise, oldestDatePromise]).then(
-        ([{ accounts }, oldestDate]) => fetchSnapshots(accounts, oldestDate),
-      );
       const budgetsPromise = fetchBudgets();
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
 
       const [
         { accounts, items },
-        { transactions, investmentTransactions },
-        { splitTransactions },
-        { accountSnapshots, holdingSnapshots, securitySnapshots },
         { budgets, sections, categories },
         { charts },
         { institutions },
       ] = await Promise.all([
         accountsPromise,
-        transactionsPromise,
-        splitTransactionsPromise,
-        snapshotsPromise,
         budgetsPromise,
         chartsPromise,
         institutionsPromise,
       ]);
 
-      const newData = new Data({
+      const stage1 = new Data({
         accounts,
         items,
-        transactions,
-        splitTransactions,
-        investmentTransactions,
-        accountSnapshots,
-        holdingSnapshots,
-        securitySnapshots,
         budgets,
         sections,
         categories,
         charts,
         institutions,
       });
+      stage1.status.isInit = true;
+      stage1.status.isLoading = true;
+      stage1.status.isError = false;
+      setData(stage1);
 
-      newData.status.isInit = true;
-      newData.status.isLoading = false;
-      newData.status.isError = false;
+      // --- Stage 2: the most recent 2 months of historical data.
+      // The current month + previous month covers what the active
+      // dashboard / transactions table renders by default, so paint that
+      // as soon as it's available rather than blocking on the full
+      // history. Bounds are exclusive on both ends, matching the original
+      // single-pass loop's `while (oldestDate < viewDate.getStartDate())`
+      // semantics — months M with recentFrom < M.start < recentUntil are
+      // fetched (i.e. current + previous).
+      const currentViewDate = new ViewDate("month");
+      const recentFrom = currentViewDate.clone().previous().previous().getStartDate();
+      const recentUntil = currentViewDate.clone().next().getStartDate();
+      const recentRange: FetchRange = { from: recentFrom, until: recentUntil };
 
-      setData(newData);
+      const [
+        { transactions: recentTransactions, investmentTransactions: recentInvestmentTransactions },
+        { splitTransactions },
+        {
+          accountSnapshots: recentAccountSnapshots,
+          holdingSnapshots: recentHoldingSnapshots,
+          securitySnapshots: recentSecuritySnapshots,
+        },
+      ] = await Promise.all([
+        fetchTransactions(accounts, recentRange),
+        fetchSplitTransactions(),
+        fetchSnapshots(accounts, recentRange),
+      ]);
+
+      const stage2 = new Data({
+        accounts,
+        items,
+        budgets,
+        sections,
+        categories,
+        charts,
+        institutions,
+        transactions: recentTransactions,
+        investmentTransactions: recentInvestmentTransactions,
+        splitTransactions,
+        accountSnapshots: recentAccountSnapshots,
+        holdingSnapshots: recentHoldingSnapshots,
+        securitySnapshots: recentSecuritySnapshots,
+      });
+      stage2.status.isInit = true;
+      stage2.status.isLoading = true;
+      stage2.status.isError = false;
+      setData(stage2);
+
+      // --- Stage 3: everything older. Fetch the rest of the historical
+      // window (oldestTransactionDate → the month right before stage 2's
+      // window) and merge it into the dictionaries from stage 2.
+      // `olderUntil = 1-month-ago start` is exclusive — the older fetch
+      // covers months M with olderFrom < M.start < olderUntil, which
+      // begins one month earlier than stage 2's window so the two stages
+      // tile cleanly with no overlap and no gap.
+      const oldestDate = await oldestDatePromise;
+      const defaultFrom = currentViewDate.clone().previous().previous().previous().getStartDate();
+      const olderFrom = oldestDate && oldestDate < defaultFrom ? oldestDate : defaultFrom;
+      const olderUntil = currentViewDate.clone().previous().getStartDate();
+
+      const olderRange: FetchRange = { from: olderFrom, until: olderUntil };
+
+      const finalData = new Data({
+        accounts,
+        items,
+        budgets,
+        sections,
+        categories,
+        charts,
+        institutions,
+        transactions: recentTransactions,
+        investmentTransactions: recentInvestmentTransactions,
+        splitTransactions,
+        accountSnapshots: recentAccountSnapshots,
+        holdingSnapshots: recentHoldingSnapshots,
+        securitySnapshots: recentSecuritySnapshots,
+      });
+
+      if (olderFrom < olderUntil) {
+        const [
+          { transactions: olderTransactions, investmentTransactions: olderInvestmentTransactions },
+          {
+            accountSnapshots: olderAccountSnapshots,
+            holdingSnapshots: olderHoldingSnapshots,
+            securitySnapshots: olderSecuritySnapshots,
+          },
+        ] = await Promise.all([
+          fetchTransactions(accounts, olderRange),
+          fetchSnapshots(accounts, olderRange),
+        ]);
+
+        olderTransactions.forEach((t, id) => finalData.transactions.set(id, t));
+        olderInvestmentTransactions.forEach((t, id) =>
+          finalData.investmentTransactions.set(id, t),
+        );
+        olderAccountSnapshots.forEach((s, id) => finalData.accountSnapshots.set(id, s));
+        olderHoldingSnapshots.forEach((s, id) => finalData.holdingSnapshots.set(id, s));
+        olderSecuritySnapshots.forEach((s, id) => finalData.securitySnapshots.set(id, s));
+      }
+
+      finalData.status.isInit = true;
+      finalData.status.isLoading = false;
+      finalData.status.isError = false;
+      setData(finalData);
 
       indexedDb
         .clearAllData()
-        .then(() => indexedDb.saveAllData(newData))
+        .then(() => indexedDb.saveAllData(finalData))
         .catch(console.error);
     } catch (err) {
       console.error(err);
