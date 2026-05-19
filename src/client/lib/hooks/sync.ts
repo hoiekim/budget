@@ -60,6 +60,44 @@ import {
 // shared Queue so at most 6 are in flight at any time.
 const snapshotFetchQueue = new Queue({ maxInflight: 6 });
 
+// Persisted timestamp of the last successful sync. Drives the warm-load
+// refresh range: `[lastSyncedAt − RESTATEMENT_BUFFER_MS, now]`. Held in
+// localStorage rather than IndexedDB so a single sync-state read is sync
+// (no schema bump needed), and the absence of the key forces a cold path
+// — avoids the failure mode where IndexedDB has stale data without a
+// known cutoff.
+const LAST_SYNCED_AT_KEY = "budget:lastSyncedAt";
+// Plaid can restate posted transactions for several days (pending →
+// posted, amount adjustments). 14 days is the conventional upper bound.
+// Subtract from lastSyncedAt so the warm-load refresh re-pulls the
+// window that's still in flux.
+const RESTATEMENT_BUFFER_MS = 14 * 24 * 60 * 60 * 1000;
+
+const readLastSyncedAt = (): Date | null => {
+  try {
+    const raw = window.localStorage.getItem(LAST_SYNCED_AT_KEY);
+    if (!raw) return null;
+    const t = Date.parse(raw);
+    if (!Number.isFinite(t)) return null;
+    // Reject future timestamps (clock skew between sessions / device wake) —
+    // treat them as missing so we err on the side of a wider refresh.
+    if (t > Date.now()) return null;
+    return new Date(t);
+  } catch {
+    return null;
+  }
+};
+
+const writeLastSyncedAt = (date: Date) => {
+  try {
+    window.localStorage.setItem(LAST_SYNCED_AT_KEY, date.toISOString());
+  } catch {
+    // localStorage can throw in private-mode iOS / over quota. Best
+    // effort; next warm load will fall back to cold path, which is
+    // correct but slower.
+  }
+};
+
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
   const response = await call
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
@@ -370,9 +408,14 @@ export const useSync = () => {
         console.error(err);
         return null;
       });
-      const isWarm = !!cached && cached.accounts.size > 0;
+      const lastSyncedAt = readLastSyncedAt();
+      // Warm-load preconditions: cached data with at least one account,
+      // AND a known last-sync timestamp so we can compute a defensible
+      // refresh window. If the timestamp is missing the cache is opaque
+      // — we don't know what's still valid — so fall through to cold.
+      const isWarm = !!cached && cached.accounts.size > 0 && lastSyncedAt !== null;
 
-      if (isWarm && cached) {
+      if (isWarm && cached && lastSyncedAt) {
         const accountsPromise = fetchAccounts();
         const { networkFailed } = await accountsPromise;
 
@@ -400,13 +443,21 @@ export const useSync = () => {
         accounts.forEach((a) => cached.accounts.set(a.id, a));
         items.forEach((it) => cached.items.set(it.id, it));
 
-        // Refresh only the current month (transactions + snapshots).
-        // Older history doesn't retroactively change, so the cache is
-        // authoritative for everything pre-current-month.
-        const now = new ViewDate("month");
+        // Refresh window: `[lastSyncedAt − 14d, now)`. The lower bound
+        // subtracts Plaid's restatement window so we re-pull pending→
+        // posted transitions / amount adjustments on the recent rows.
+        // The full per-month slicing in fetchTransactions/fetchSnapshots
+        // walks this window in month chunks, so a user away for N weeks
+        // costs N/4 month-slices — bounded by time-away, not by total
+        // history.
+        const refreshFromMs = Math.min(
+          lastSyncedAt.getTime() - RESTATEMENT_BUFFER_MS,
+          Date.now(),
+        );
+        const refreshUntil = new ViewDate("month").clone().next().getStartDate();
         const currentMonthRange: FetchRange = {
-          from: now.getStartDate(),
-          until: now.clone().next().getStartDate(),
+          from: new Date(refreshFromMs),
+          until: refreshUntil,
         };
 
         // Refresh in parallel: budgets/sections/categories, charts,
@@ -463,6 +514,7 @@ export const useSync = () => {
           .clearAllData()
           .then(() => indexedDb.saveAllData(refreshed))
           .catch(console.error);
+        writeLastSyncedAt(new Date());
         return;
       }
 
@@ -629,6 +681,7 @@ export const useSync = () => {
         .clearAllData()
         .then(() => indexedDb.saveAllData(finalData))
         .catch(console.error);
+      writeLastSyncedAt(new Date());
     } catch (err) {
       console.error(err);
       setData((oldData) => {
