@@ -8,7 +8,7 @@ import {
   stopScheduledSync,
   logger,
   sendAlarm,
-  checkLoginRateLimit,
+  isLoginRateLimited,
   startRateLimitCleanup,
   stopRateLimitCleanup,
   pool,
@@ -284,9 +284,11 @@ const server = Bun.serve({
       }
     });
 
-    // Rate-limit POST /login before session loading to fail fast
+    // Rate-limit POST /login before session loading to fail fast.
+    // Read-only check — the counter is bumped only on auth failure inside
+    // post-login.ts (#389).
     if (request.method === "POST" && apiPath === "/login") {
-      if (checkLoginRateLimit(ip)) {
+      if (isLoginRateLimited(ip)) {
         return jsonResponse(
           { status: "failed", message: "Too many login attempts, try again later" },
           429,

@@ -1,5 +1,15 @@
 import bcrypt from "bcrypt";
-import { Route, searchUser, MaskedUser, maskUser, requireBodyObject, requireStringField, validationError } from "server";
+import {
+  Route,
+  searchUser,
+  MaskedUser,
+  maskUser,
+  requireBodyObject,
+  requireStringField,
+  validationError,
+  recordLoginFailure,
+  resetLoginAttempts,
+} from "server";
 
 export type LoginPostResponse = MaskedUser;
 
@@ -25,6 +35,9 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
     : await bcrypt.compare(passwordResult.data!, DUMMY_HASH).then(() => false);
 
   if (pwMatches && user) {
+    // Successful auth: clear any prior failures so they don't accumulate
+    // against the user within the window.
+    resetLoginAttempts(req.ip);
     const maskedUser = maskUser(user);
     await new Promise<void>((resolve, reject) => {
       req.session.regenerate((err) => {
@@ -35,6 +48,9 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
     req.session.user = maskedUser;
     return { status: "success", body: maskedUser };
   }
+
+  // Only auth failures count toward the rate limit (#389).
+  recordLoginFailure(req.ip);
 
   // Return the same generic message regardless of whether the username exists
   // to prevent username enumeration attacks.
