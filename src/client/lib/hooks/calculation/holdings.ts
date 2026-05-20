@@ -97,15 +97,14 @@ const findLatestEntryLessThanOrEqual = (
 };
 
 /**
- * Gets the price for a holding. As of #323 follow-up: security and holding
- * snapshots are compared by their source dates rather than ordered by a
- * fixed-priority list. Whichever was recorded later wins; ties go to the
- * security snapshot (Hoie 2026-05-13: "if both security and holding have
- * the same timestamp, then security wins"). This matters because security
- * snapshots can be filled by polygon between Plaid syncs, so the broker's
- * `institution_price` can sometimes be the staler of the two even when both
- * exist; and for manual accounts where institution_price doesn't exist at
- * all, the security snapshot wins by default.
+ * Gets the price for a holding. Security and holding snapshots are
+ * compared by their source dates rather than ordered by a fixed-priority
+ * list. Whichever was recorded later wins; ties go to the security
+ * snapshot. This matters because security snapshots can be filled by
+ * polygon between Plaid syncs, so the broker's `institution_price` can
+ * sometimes be the staler of the two even when both exist; and for manual
+ * accounts where institution_price doesn't exist at all, the security
+ * snapshot wins by default.
  *
  * Walk-back semantics on the security side: we use the most recent security
  * entry whose `yearMonth` is on or before the requested view date. We never
@@ -309,8 +308,7 @@ export const getHoldingsValueData = ({
       // institution_price=1.0 and never carry a cost_basis (Plaid doesn't
       // track basis on cash). Real equities essentially never satisfy
       // both for any meaningful duration. This avoids needing server-side
-      // help to identify cash — Hoie 2026-05-14: "FE should skip G/L
-      // calculation for cash holdings."
+      // help to identify cash. G/L is suppressed for cash holdings.
       //
       // `cost_basis` on the wire is 0, not null — `SnapshotModel.toHoldingSnapshot`
       // does `this.cost_basis ?? 0`, collapsing DB NULL to a numeric zero.

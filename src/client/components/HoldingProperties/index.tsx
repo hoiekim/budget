@@ -41,11 +41,11 @@ export const HoldingProperties = () => {
   const snapshotId = activeParams.get("snapshot_id") || "";
   const isNew = !snapshotId;
 
-  // Edit gating mirrors AccountProperties' balance input (Hoie 2026-05-15):
-  // synced accounts are not editable at the current viewDate, because that
-  // state is broker-derived and would diverge from the next sync. Manual
-  // accounts are always editable. Past viewDates (manual or synced) edit
-  // the underlying snapshot, same model as account-snapshot balance edits.
+  // Edit gating mirrors AccountProperties' balance input: synced accounts
+  // are not editable at the current viewDate, because that state is
+  // broker-derived and would diverge from the next sync. Manual accounts
+  // are always editable. Past viewDates (manual or synced) edit the
+  // underlying snapshot, same model as account-snapshot balance edits.
   const account = data.accounts.get(accountId);
   const item = account ? data.items.get(account.item_id) : undefined;
   const isManualAccount = item?.provider === ItemProvider.MANUAL;

@@ -544,11 +544,10 @@ export const useSync = () => {
         // If ANY of the warm-path fetches reported a network failure,
         // don't persist the partial result to IndexedDB — the existing
         // cache is still good; replacing it with a partial would
-        // permanently lose the dictionaries that fell through to empty
-        // (Hoie 2026-05-20: "Clear indexed DB only if network fetch
-        // succeeds"). Same reason for skipping `writeLastSyncedAt` — the
-        // next warm load needs the OLD timestamp so its refresh window
-        // still spans the gap that just failed.
+        // permanently lose the dictionaries that fell through to empty.
+        // Same reason for skipping `writeLastSyncedAt` — the next warm
+        // load needs the OLD timestamp so its refresh window still spans
+        // the gap that just failed.
         const warmFetchFailed =
           budgetsResult.networkFailed ||
           chartsResult.networkFailed ||
@@ -738,10 +737,9 @@ export const useSync = () => {
       setData(finalData);
 
       // Only persist when every cold-path fetch succeeded — same
-      // semantics as the warm path (Hoie 2026-05-20). If anything
-      // failed, leave whatever was in IndexedDB before this run alone
-      // and skip the timestamp write so the next sync still treats
-      // this gap as un-pulled.
+      // semantics as the warm path. If anything failed, leave whatever
+      // was in IndexedDB before this run alone and skip the timestamp
+      // write so the next sync still treats this gap as un-pulled.
       const coldFetchFailed =
         stage1Budgets.networkFailed ||
         stage1Charts.networkFailed ||
