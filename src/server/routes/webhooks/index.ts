@@ -1,1 +1,1 @@
-export * from "./post-plaid-hook";
+export { postPlaidHookRoute } from "./post-plaid-hook";
