@@ -109,6 +109,7 @@ const getOldestTransactionDate = async (): Promise<Date | undefined> => {
 interface FetchTransactionsResult {
   transactions: TransactionDictionary;
   investmentTransactions: InvestmentTransactionDictionary;
+  networkFailed: boolean;
 }
 
 interface FetchRange {
@@ -122,9 +123,10 @@ const fetchTransactions = async (
   accounts: AccountDictionary,
   range: FetchRange,
 ): Promise<FetchTransactionsResult> => {
-  const result = {
+  const result: FetchTransactionsResult = {
     transactions: new TransactionDictionary(),
     investmentTransactions: new InvestmentTransactionDictionary(),
+    networkFailed: false,
   };
 
   const transactionsApiPath = "/api/transactions";
@@ -152,7 +154,11 @@ const fetchTransactions = async (
         } else {
           response = await cachedCall<TransactionsGetResponse>(path).catch(console.error);
         }
-        if (!response?.body) return;
+        if (!response || response.status === "error") {
+          result.networkFailed = true;
+          return;
+        }
+        if (!response.body) return;
 
         const { transactions, investmentTransactions } = response.body;
         transactions.forEach((t) => {
@@ -180,20 +186,25 @@ const fetchTransactions = async (
 
 interface FetchSplitTransactionsResult {
   splitTransactions: SplitTransactionDictionary;
+  networkFailed: boolean;
 }
 
 const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> => {
-  const result = { splitTransactions: new SplitTransactionDictionary() };
+  const result: FetchSplitTransactionsResult = {
+    splitTransactions: new SplitTransactionDictionary(),
+    networkFailed: false,
+  };
 
-  await call
+  const response = await call
     .get<SplitTransactionsGetResponse>("/api/split-transactions")
-    .then(({ body: splitTransactions }) => {
-      if (!splitTransactions) return;
-      splitTransactions.forEach((t) => {
-        result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
-      });
-    })
     .catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  response.body?.forEach((t) => {
+    result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
+  });
 
   return result;
 };
@@ -227,25 +238,25 @@ interface FetchBudgetsResult {
   budgets: BudgetDictionary;
   sections: SectionDictionary;
   categories: CategoryDictionary;
+  networkFailed: boolean;
 }
 
 const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
-  const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
-  if (!response?.body)
-    return {
-      budgets: new BudgetDictionary(),
-      sections: new SectionDictionary(),
-      categories: new CategoryDictionary(),
-    };
-
-  const { budgets, sections, categories } = response.body;
-
-  const result = {
+  const result: FetchBudgetsResult = {
     budgets: new BudgetDictionary(),
     sections: new SectionDictionary(),
     categories: new CategoryDictionary(),
+    networkFailed: false,
   };
 
+  const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
+
+  const { budgets, sections, categories } = response.body;
   budgets.forEach((e) => result.budgets.set(e.budget_id, new Budget(e)));
   sections.forEach((e) => result.sections.set(e.section_id, new Section(e)));
   categories.forEach((e) => result.categories.set(e.category_id, new Category(e)));
@@ -257,16 +268,18 @@ interface FetchSnapshotsResult {
   accountSnapshots: AccountSnapshotDictionary;
   holdingSnapshots: HoldingSnapshotDictionary;
   securitySnapshots: SecuritySnapshotDictionary;
+  networkFailed: boolean;
 }
 
 const fetchSnapshots = async (
   accounts: AccountDictionary,
   range: FetchRange,
 ): Promise<FetchSnapshotsResult> => {
-  const result = {
+  const result: FetchSnapshotsResult = {
     accountSnapshots: new AccountSnapshotDictionary(),
     holdingSnapshots: new HoldingSnapshotDictionary(),
     securitySnapshots: new SecuritySnapshotDictionary(),
+    networkFailed: false,
   };
 
   const ingestSnapshot = (snapshot: JSONSnapshotData) => {
@@ -317,8 +330,11 @@ const fetchSnapshots = async (
           } else {
             response = await cachedCall<SnapshotsGetResponse>(path).catch(console.error);
           }
-          if (!response?.body) return;
-          response.body.forEach(ingestSnapshot);
+          if (!response || response.status === "error") {
+            result.networkFailed = true;
+            return;
+          }
+          response.body?.forEach(ingestSnapshot);
         }),
       );
     });
@@ -341,8 +357,11 @@ const fetchSnapshots = async (
         } else {
           response = await cachedCall<SnapshotsGetResponse>(securityPath).catch(console.error);
         }
-        if (!response?.body) return;
-        response.body.forEach(ingestSnapshot);
+        if (!response || response.status === "error") {
+          result.networkFailed = true;
+          return;
+        }
+        response.body?.forEach(ingestSnapshot);
       }),
     );
 
@@ -356,28 +375,43 @@ const fetchSnapshots = async (
 
 interface FetchChartsResult {
   charts: ChartDictionary;
+  networkFailed: boolean;
 }
 
 const fetchCharts = async (): Promise<FetchChartsResult> => {
-  const result = { charts: new ChartDictionary() };
+  const result: FetchChartsResult = {
+    charts: new ChartDictionary(),
+    networkFailed: false,
+  };
   const response = await call.get<ChartsGetResponse>("/api/charts").catch(console.error);
-  if (!response?.body) return result;
-  response.body.forEach((e) => result.charts.set(e.chart_id, new Chart(e)));
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  response.body?.forEach((e) => result.charts.set(e.chart_id, new Chart(e)));
   return result;
 };
 
 interface FetchInstitutionResult {
   institutions: InstitutionDictionary;
+  networkFailed: boolean;
 }
 
 const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInstitutionResult> => {
-  const result = { institutions: new InstitutionDictionary() };
+  const result: FetchInstitutionResult = {
+    institutions: new InstitutionDictionary(),
+    networkFailed: false,
+  };
   const promises = accounts.toArray().map(async ({ institution_id }) => {
     if (institution_id === "Unknown") return;
     const response = await cachedCall<JSONInstitution>(
       `/api/institution?id=${institution_id}`,
     ).catch(console.error);
-    if (response) result.institutions.set(institution_id, new Institution(response.body));
+    if (!response || response.status === "error") {
+      result.networkFailed = true;
+      return;
+    }
+    result.institutions.set(institution_id, new Institution(response.body));
   });
 
   await Promise.all(promises);
@@ -464,16 +498,12 @@ export const useSync = () => {
         // split-transactions, current-month transactions, current-month
         // snapshots, institutions for any new accounts.
         const [
-          { budgets, sections, categories },
-          { charts },
-          { splitTransactions },
-          { transactions: newTransactions, investmentTransactions: newInvestmentTransactions },
-          {
-            accountSnapshots: newAccountSnapshots,
-            holdingSnapshots: newHoldingSnapshots,
-            securitySnapshots: newSecuritySnapshots,
-          },
-          { institutions },
+          budgetsResult,
+          chartsResult,
+          splitTransactionsResult,
+          transactionsResult,
+          snapshotsResult,
+          institutionsResult,
         ] = await Promise.all([
           fetchBudgets(),
           fetchCharts(),
@@ -487,34 +517,58 @@ export const useSync = () => {
         const refreshed = new Data(cached);
         refreshed.accounts = accounts;
         refreshed.items = items;
-        refreshed.budgets = budgets;
-        refreshed.sections = sections;
-        refreshed.categories = categories;
-        refreshed.charts = charts;
-        refreshed.splitTransactions = splitTransactions;
-        refreshed.institutions = institutions;
+        refreshed.budgets = budgetsResult.budgets;
+        refreshed.sections = budgetsResult.sections;
+        refreshed.categories = budgetsResult.categories;
+        refreshed.charts = chartsResult.charts;
+        refreshed.splitTransactions = splitTransactionsResult.splitTransactions;
+        refreshed.institutions = institutionsResult.institutions;
 
         // Merge current-month transactions/snapshots into cached history.
         // Same-id updates overwrite (Plaid may revise a recent txn);
         // older months in the cache are preserved.
-        newTransactions.forEach((t, id) => refreshed.transactions.set(id, t));
-        newInvestmentTransactions.forEach((t, id) =>
+        transactionsResult.transactions.forEach((t, id) => refreshed.transactions.set(id, t));
+        transactionsResult.investmentTransactions.forEach((t, id) =>
           refreshed.investmentTransactions.set(id, t),
         );
-        newAccountSnapshots.forEach((s, id) => refreshed.accountSnapshots.set(id, s));
-        newHoldingSnapshots.forEach((s, id) => refreshed.holdingSnapshots.set(id, s));
-        newSecuritySnapshots.forEach((s, id) => refreshed.securitySnapshots.set(id, s));
+        snapshotsResult.accountSnapshots.forEach((s, id) =>
+          refreshed.accountSnapshots.set(id, s),
+        );
+        snapshotsResult.holdingSnapshots.forEach((s, id) =>
+          refreshed.holdingSnapshots.set(id, s),
+        );
+        snapshotsResult.securitySnapshots.forEach((s, id) =>
+          refreshed.securitySnapshots.set(id, s),
+        );
+
+        // If ANY of the warm-path fetches reported a network failure,
+        // don't persist the partial result to IndexedDB — the existing
+        // cache is still good; replacing it with a partial would
+        // permanently lose the dictionaries that fell through to empty
+        // (Hoie 2026-05-20: "Clear indexed DB only if network fetch
+        // succeeds"). Same reason for skipping `writeLastSyncedAt` — the
+        // next warm load needs the OLD timestamp so its refresh window
+        // still spans the gap that just failed.
+        const warmFetchFailed =
+          budgetsResult.networkFailed ||
+          chartsResult.networkFailed ||
+          splitTransactionsResult.networkFailed ||
+          transactionsResult.networkFailed ||
+          snapshotsResult.networkFailed ||
+          institutionsResult.networkFailed;
 
         refreshed.status.isInit = true;
         refreshed.status.isLoading = false;
         refreshed.status.isError = false;
         setData(refreshed);
 
-        indexedDb
-          .clearAllData()
-          .then(() => indexedDb.saveAllData(refreshed))
-          .catch(console.error);
-        writeLastSyncedAt(new Date());
+        if (!warmFetchFailed) {
+          indexedDb
+            .clearAllData()
+            .then(() => indexedDb.saveAllData(refreshed))
+            .catch(console.error);
+          writeLastSyncedAt(new Date());
+        }
         return;
       }
 
@@ -549,15 +603,18 @@ export const useSync = () => {
 
       const [
         { accounts, items },
-        { budgets, sections, categories },
-        { charts },
-        { institutions },
+        stage1Budgets,
+        stage1Charts,
+        stage1Institutions,
       ] = await Promise.all([
         accountsPromise,
         budgetsPromise,
         chartsPromise,
         institutionsPromise,
       ]);
+      const { budgets, sections, categories } = stage1Budgets;
+      const { charts } = stage1Charts;
+      const { institutions } = stage1Institutions;
 
       const stage1 = new Data({
         accounts,
@@ -586,19 +643,21 @@ export const useSync = () => {
       const recentUntil = currentViewDate.clone().next().getStartDate();
       const recentRange: FetchRange = { from: recentFrom, until: recentUntil };
 
-      const [
-        { transactions: recentTransactions, investmentTransactions: recentInvestmentTransactions },
-        { splitTransactions },
-        {
-          accountSnapshots: recentAccountSnapshots,
-          holdingSnapshots: recentHoldingSnapshots,
-          securitySnapshots: recentSecuritySnapshots,
-        },
-      ] = await Promise.all([
+      const [stage2Transactions, stage2SplitTxns, stage2Snapshots] = await Promise.all([
         fetchTransactions(accounts, recentRange),
         fetchSplitTransactions(),
         fetchSnapshots(accounts, recentRange),
       ]);
+      const {
+        transactions: recentTransactions,
+        investmentTransactions: recentInvestmentTransactions,
+      } = stage2Transactions;
+      const { splitTransactions } = stage2SplitTxns;
+      const {
+        accountSnapshots: recentAccountSnapshots,
+        holdingSnapshots: recentHoldingSnapshots,
+        securitySnapshots: recentSecuritySnapshots,
+      } = stage2Snapshots;
 
       const stage2 = new Data({
         accounts,
@@ -650,26 +709,27 @@ export const useSync = () => {
         securitySnapshots: recentSecuritySnapshots,
       });
 
+      let stage3Transactions: FetchTransactionsResult | null = null;
+      let stage3Snapshots: FetchSnapshotsResult | null = null;
       if (olderFrom < olderUntil) {
-        const [
-          { transactions: olderTransactions, investmentTransactions: olderInvestmentTransactions },
-          {
-            accountSnapshots: olderAccountSnapshots,
-            holdingSnapshots: olderHoldingSnapshots,
-            securitySnapshots: olderSecuritySnapshots,
-          },
-        ] = await Promise.all([
+        [stage3Transactions, stage3Snapshots] = await Promise.all([
           fetchTransactions(accounts, olderRange),
           fetchSnapshots(accounts, olderRange),
         ]);
 
-        olderTransactions.forEach((t, id) => finalData.transactions.set(id, t));
-        olderInvestmentTransactions.forEach((t, id) =>
+        stage3Transactions.transactions.forEach((t, id) => finalData.transactions.set(id, t));
+        stage3Transactions.investmentTransactions.forEach((t, id) =>
           finalData.investmentTransactions.set(id, t),
         );
-        olderAccountSnapshots.forEach((s, id) => finalData.accountSnapshots.set(id, s));
-        olderHoldingSnapshots.forEach((s, id) => finalData.holdingSnapshots.set(id, s));
-        olderSecuritySnapshots.forEach((s, id) => finalData.securitySnapshots.set(id, s));
+        stage3Snapshots.accountSnapshots.forEach((s, id) =>
+          finalData.accountSnapshots.set(id, s),
+        );
+        stage3Snapshots.holdingSnapshots.forEach((s, id) =>
+          finalData.holdingSnapshots.set(id, s),
+        );
+        stage3Snapshots.securitySnapshots.forEach((s, id) =>
+          finalData.securitySnapshots.set(id, s),
+        );
       }
 
       finalData.status.isInit = true;
@@ -677,11 +737,28 @@ export const useSync = () => {
       finalData.status.isError = false;
       setData(finalData);
 
-      indexedDb
-        .clearAllData()
-        .then(() => indexedDb.saveAllData(finalData))
-        .catch(console.error);
-      writeLastSyncedAt(new Date());
+      // Only persist when every cold-path fetch succeeded — same
+      // semantics as the warm path (Hoie 2026-05-20). If anything
+      // failed, leave whatever was in IndexedDB before this run alone
+      // and skip the timestamp write so the next sync still treats
+      // this gap as un-pulled.
+      const coldFetchFailed =
+        stage1Budgets.networkFailed ||
+        stage1Charts.networkFailed ||
+        stage1Institutions.networkFailed ||
+        stage2Transactions.networkFailed ||
+        stage2SplitTxns.networkFailed ||
+        stage2Snapshots.networkFailed ||
+        (stage3Transactions?.networkFailed ?? false) ||
+        (stage3Snapshots?.networkFailed ?? false);
+
+      if (!coldFetchFailed) {
+        indexedDb
+          .clearAllData()
+          .then(() => indexedDb.saveAllData(finalData))
+          .catch(console.error);
+        writeLastSyncedAt(new Date());
+      }
     } catch (err) {
       console.error(err);
       setData((oldData) => {
