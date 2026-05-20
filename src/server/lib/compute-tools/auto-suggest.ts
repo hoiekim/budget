@@ -5,7 +5,21 @@ import {
   transactionsTable,
   splitTransactionsTable,
   IS_NOT_NULL,
+  AdditionalWhere,
 } from "server";
+
+// Compare-and-swap guard for both `defaultApplyLabel` and
+// `defaultApplyLabelToSplit`. The engine must only overwrite a row that is
+// STILL unlabeled (`label_category_confidence IS NULL`) — never a row a user
+// just confirmed (confidence = 1) between `fetchUnlabeled` and the per-row
+// apply. Lifted to a named exported constant so:
+//   1. it's grep-able when reviewing changes to the suggestion path;
+//   2. tests can assert both default impls thread this exact reference, not
+//      a silently-altered inline literal.
+export const CAS_NULL_CONFIDENCE: AdditionalWhere = {
+  column: "label_category_confidence",
+  value: null,
+};
 
 interface MerchantSignal {
   label_category_id: string;
@@ -79,6 +93,12 @@ const defaultFetchUnlabeled: FetchUnlabeledFn = async (userId) => {
     }));
 };
 
+// Compare-and-swap: the UPDATE only matches rows that are STILL unlabeled
+// (`label_category_confidence IS NULL`). Between `fetchUnlabeled` and this
+// per-row call, a user may have confirmed the row in the UI (writing
+// `confidence = 1`). Without the IS-NULL guard, the engine would overwrite
+// that confirmation with its own 0.95-0.99 suggestion and replace the
+// user's chosen `category_id` / `budget_id` with the engine's pick.
 const defaultApplyLabel: ApplyLabelFn = async (
   transactionId,
   userId,
@@ -95,6 +115,8 @@ const defaultApplyLabel: ApplyLabelFn = async (
     },
     undefined,
     userId,
+    undefined,
+    [CAS_NULL_CONFIDENCE],
   );
 };
 
@@ -123,6 +145,9 @@ const defaultFetchUnlabeledSplits: FetchUnlabeledSplitsFn = async (userId) => {
   }));
 };
 
+// Same CAS guard as `defaultApplyLabel` — the IS-NULL clause prevents the
+// engine from clobbering a user-confirmed split that flipped from null →
+// 1.0 between the fetch and the per-row apply.
 const defaultApplyLabelToSplit: ApplyLabelToSplitFn = async (
   splitTransactionId,
   userId,
@@ -139,6 +164,8 @@ const defaultApplyLabelToSplit: ApplyLabelToSplitFn = async (
     },
     undefined,
     userId,
+    undefined,
+    [CAS_NULL_CONFIDENCE],
   );
 };
 

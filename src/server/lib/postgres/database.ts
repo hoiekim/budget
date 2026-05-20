@@ -32,8 +32,19 @@ export interface WhereOptions {
   excludeDeleted?: boolean;
 }
 
+/**
+ * Extra equality (or null) condition to AND into an UPDATE's WHERE.
+ *
+ * Value semantics mirror `prepareQuery` so callers can express IS NULL /
+ * IS NOT NULL without dropping to raw SQL:
+ *   - `value: null` → `<column> IS NULL`
+ *   - `value: IS_NOT_NULL` → `<column> IS NOT NULL`
+ *   - anything else → `<column> = $N`
+ */
+export type AdditionalWhere = { column: string; value: ParamValue | typeof IS_NOT_NULL };
+
 export interface UpdateOptions {
-  additionalWhere?: { column: string; value: ParamValue };
+  additionalWhere?: AdditionalWhere | AdditionalWhere[];
   returning?: string[];
 }
 
@@ -162,9 +173,20 @@ export function buildUpdate(
   let sql = `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE ${primaryKey} = $${pkParam}`;
 
   if (options.additionalWhere) {
-    values.push(options.additionalWhere.value);
-    sql += ` AND ${options.additionalWhere.column} = $${paramIndex}`;
-    paramIndex++;
+    const extras = Array.isArray(options.additionalWhere)
+      ? options.additionalWhere
+      : [options.additionalWhere];
+    for (const { column, value } of extras) {
+      if (value === IS_NOT_NULL) {
+        sql += ` AND ${column} IS NOT NULL`;
+      } else if (isNull(value)) {
+        sql += ` AND ${column} IS NULL`;
+      } else {
+        values.push(value);
+        sql += ` AND ${column} = $${paramIndex}`;
+        paramIndex++;
+      }
+    }
   }
 
   if (options.returning && options.returning.length > 0) {

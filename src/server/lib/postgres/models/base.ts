@@ -6,6 +6,7 @@ import {
   buildUpdate,
   buildUpsert,
   buildSoftDelete,
+  AdditionalWhere,
   ParamValue,
   QueryData,
 } from "../database";
@@ -123,16 +124,29 @@ export abstract class Table<
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 
+  /**
+   * Update one row by primary key.
+   *
+   * `extraWhere` ANDs additional equality/null guards onto the WHERE — used
+   * for compare-and-swap writes (e.g. auto-suggest's "only overwrite rows
+   * whose label_category_confidence is still NULL"). Values follow
+   * `prepareQuery` semantics: `null` → IS NULL, `IS_NOT_NULL` → IS NOT NULL,
+   * anything else → `column = $N`.
+   */
   async update(
     primaryKeyValue: ParamValue,
     data: QueryData,
     returning?: string[],
     userId?: string,
     client?: QueryExecutor,
+    extraWhere?: AdditionalWhere[],
   ): Promise<Record<string, unknown> | null> {
+    const additionalWhere: AdditionalWhere[] = [];
+    if (userId !== undefined) additionalWhere.push({ column: "user_id", value: userId });
+    if (extraWhere) additionalWhere.push(...extraWhere);
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {
       returning: returning ?? [this.primaryKey],
-      additionalWhere: userId !== undefined ? { column: "user_id", value: userId } : undefined,
+      additionalWhere: additionalWhere.length > 0 ? additionalWhere : undefined,
     });
     if (!query) return null;
     const executor = client ?? pool;

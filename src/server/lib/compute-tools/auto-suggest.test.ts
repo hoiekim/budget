@@ -1,5 +1,9 @@
 import { describe, it, expect, mock } from "bun:test";
-import { runAutoSuggestions } from "./auto-suggest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { runAutoSuggestions, CAS_NULL_CONFIDENCE } from "./auto-suggest";
+import { buildUpdate } from "../postgres/database";
+import { pool } from "../postgres/client";
 
 // Dependency-injection style: pass mock queryFn + logger + fetchUsers + fetchUnlabeled + applyLabel
 // directly to runAutoSuggestions. This avoids module mocking which can break other test files.
@@ -398,5 +402,185 @@ describe("runAutoSuggestions", () => {
       applyLabelToSplit,
     );
     expect(splitApplyCalls).toHaveLength(0);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // CAS guard against clobbering user-confirmed labels
+  //
+  // Verified against a non-scrambled prod-data sandbox on 2026-05-20:
+  // a real `label_category_confidence = 1` row was successfully overwritten
+  // to `0.99` by the exact SQL `transactionsTable.update` generated under
+  // the pre-fix path (no IS-NULL guard). The default applyLabel impls now
+  // pass `extraWhere: [{column: "label_category_confidence", value: null}]`
+  // through `Table.update`, which `buildUpdate` translates to an explicit
+  // `AND label_category_confidence IS NULL`. A confirmed row that flipped
+  // null → 1.0 between `fetchUnlabeled` and the per-row apply is matched
+  // by zero rows and the engine quietly skips it.
+  //
+  // The default applyLabel functions aren't exported, so the test here
+  // exercises `buildUpdate` directly with the same arguments the defaults
+  // pass — same code path, same SQL, faster than spinning up a real pool.
+  // ──────────────────────────────────────────────────────────────────────
+
+  describe("CAS guard: applyLabel UPDATE", () => {
+    it("buildUpdate renders IS NULL when value is null in additionalWhere", () => {
+      const query = buildUpdate(
+        "transactions",
+        "transaction_id",
+        "txn-99",
+        {
+          label_category_id: "cat-99",
+          label_budget_id: "bud-99",
+          label_category_confidence: 0.97,
+        },
+        {
+          additionalWhere: [
+            { column: "user_id", value: "user-99" },
+            { column: "label_category_confidence", value: null },
+          ],
+        },
+      );
+      expect(query).not.toBeNull();
+      expect(query!.sql).toContain("WHERE transaction_id = $4");
+      expect(query!.sql).toContain("AND user_id = $5");
+      expect(query!.sql).toContain("AND label_category_confidence IS NULL");
+      // The null guard must NOT consume a parameter slot — only userId does.
+      expect(query!.values).toHaveLength(5);
+      expect(query!.values[4]).toBe("user-99");
+    });
+
+    it("buildUpdate accepts a single object for additionalWhere (existing behavior preserved)", () => {
+      const query = buildUpdate(
+        "transactions",
+        "transaction_id",
+        "txn-99",
+        { label_category_id: "cat-99" },
+        { additionalWhere: { column: "user_id", value: "user-99" } },
+      );
+      expect(query).not.toBeNull();
+      expect(query!.sql).toContain("WHERE transaction_id = $2");
+      expect(query!.sql).toContain("AND user_id = $3");
+      expect(query!.sql).not.toContain("IS NULL");
+    });
+
+    it("CAS_NULL_CONFIDENCE pins the column + null value the engine must always pass", () => {
+      // Pin the literal shape. Anyone editing this constant has to also edit
+      // this test, which forces a deliberate decision instead of a silent
+      // refactor that drops the guard.
+      expect(CAS_NULL_CONFIDENCE).toEqual({
+        column: "label_category_confidence",
+        value: null,
+      });
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // End-to-end SQL guardrail
+    //
+    // The two `buildUpdate` tests above prove the helper *can* emit `IS
+    // NULL`, but they don't prove `defaultApplyLabel` / `defaultApplyLabelToSplit`
+    // actually pass `[CAS_NULL_CONFIDENCE]` through to it. A regression
+    // where someone drops the `extraWhere` arg in either default would slip
+    // past every other test in this file (they all override `applyLabel` /
+    // `applyLabelToSplit` via DI).
+    //
+    // Monkey-patch `pool.query` directly so the real default-apply code
+    // path executes. The injected `queryFn` still handles the
+    // merchant-signal SELECT — only the `Table.update` → `pool.query`
+    // path is intercepted here. Restore on the way out.
+    // ────────────────────────────────────────────────────────────────────
+
+    it("default applyLabel sends an UPDATE with the IS NULL CAS guard (end-to-end)", async () => {
+      const captured: { sql: string; params: unknown[] }[] = [];
+      const originalQuery = pool.query.bind(pool);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (pool as { query: any }).query = async (sql: string, params?: unknown[]) => {
+        captured.push({ sql, params: params ?? [] });
+        return { rows: [], rowCount: 0 };
+      };
+      try {
+        const signalQueryFn = mock(async () => ({
+          rows: [
+            {
+              label_category_id: "cat-cas",
+              label_budget_id: "bud-cas",
+              accepted: "10",
+              rejected: "0",
+            },
+          ],
+        }));
+
+        await runAutoSuggestions(
+          signalQueryFn,
+          noopLogger,
+          async () => ["user-cas"],
+          async () => [{ transaction_id: "txn-cas", merchant_name: "Some Merchant" }],
+          undefined, // default applyLabel — the path under test
+          async () => [],
+          undefined, // default applyLabelToSplit — also under test
+        );
+      } finally {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (pool as { query: any }).query = originalQuery;
+      }
+
+      const updates = captured.filter((c) => c.sql.includes("UPDATE transactions"));
+      expect(updates).toHaveLength(1);
+      expect(updates[0].sql).toContain("AND label_category_confidence IS NULL");
+      // The guard must NOT consume a parameter slot. Engine arg count is 5
+      // (cat, budget, confidence, txId, userId) — a 6th would mean buildUpdate
+      // bound `null` as a placeholder param instead of rendering `IS NULL`.
+      expect(updates[0].params).toHaveLength(5);
+    });
+
+    it("default applyLabelToSplit sends an UPDATE with the IS NULL CAS guard (end-to-end)", async () => {
+      const captured: { sql: string; params: unknown[] }[] = [];
+      const originalQuery = pool.query.bind(pool);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (pool as { query: any }).query = async (sql: string, params?: unknown[]) => {
+        captured.push({ sql, params: params ?? [] });
+        return { rows: [], rowCount: 0 };
+      };
+      try {
+        const signalQueryFn = mock(async () => ({
+          rows: [
+            {
+              label_category_id: "cat-cas",
+              label_budget_id: "bud-cas",
+              accepted: "10",
+              rejected: "0",
+            },
+          ],
+        }));
+
+        await runAutoSuggestions(
+          signalQueryFn,
+          noopLogger,
+          async () => ["user-cas"],
+          async () => [], // no top-level work
+          undefined,
+          async () => [{ split_transaction_id: "split-cas", merchant_name: "Some Merchant" }],
+          undefined, // default applyLabelToSplit — the path under test
+        );
+      } finally {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (pool as { query: any }).query = originalQuery;
+      }
+
+      const updates = captured.filter((c) => c.sql.includes("UPDATE split_transactions"));
+      expect(updates).toHaveLength(1);
+      expect(updates[0].sql).toContain("AND label_category_confidence IS NULL");
+      expect(updates[0].params).toHaveLength(5);
+    });
+
+    // Source-level tripwire — catches the case where someone refactors the
+    // defaults to no longer reference `CAS_NULL_CONFIDENCE`. The end-to-end
+    // tests above already cover the runtime semantics; this one catches the
+    // earlier symptom of "removed the constant reference but happened to
+    // keep behavior" so the next person reads the deliberate trail.
+    it("auto-suggest.ts threads CAS_NULL_CONFIDENCE into both default apply impls", () => {
+      const src = readFileSync(join(import.meta.dir, "auto-suggest.ts"), "utf-8");
+      const matches = src.match(/\[CAS_NULL_CONFIDENCE\]/g) ?? [];
+      expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
   });
 });
