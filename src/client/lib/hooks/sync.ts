@@ -98,6 +98,14 @@ const writeLastSyncedAt = (date: Date) => {
   }
 };
 
+const removeLastSyncedAt = () => {
+  try {
+    window.localStorage.removeItem(LAST_SYNCED_AT_KEY);
+  } catch {
+    // no-op
+  }
+};
+
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
   const response = await call
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
@@ -741,7 +749,11 @@ export const useSync = () => {
 
   const sync = useCallback(() => debouncer(_sync), [_sync, debouncer]);
 
-  const clean = useCallback(() => setData(new Data()), [setData]);
+  const clean = useCallback(() => {
+    indexedDb.clearAllData();
+    removeLastSyncedAt();
+    setData(new Data());
+  }, [setData]);
 
   return { sync, clean };
 };
