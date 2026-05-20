@@ -371,10 +371,10 @@ export const HoldingProperties = () => {
             />
           </div>
           <div className="row keyValue">
-            <span className="propertyName">Cost/sh&nbsp;(opt)</span>
+            <span className="propertyName">Cost&nbsp;basis&nbsp;(opt)</span>
             <input
               type="number"
-              placeholder="0.00"
+              placeholder="Total $ paid (all shares)"
               min="0"
               step="any"
               value={form.costBasis}
@@ -464,7 +464,7 @@ export const HoldingProperties = () => {
           )}
         </div>
         <div className="row keyValue">
-          <span className="propertyName">Cost/sh</span>
+          <span className="propertyName">Cost&nbsp;basis</span>
           {isReadOnly ? (
             <span>{editCostBasis || "—"}</span>
           ) : (
