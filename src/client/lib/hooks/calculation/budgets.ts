@@ -54,9 +54,9 @@ export const getBudgetData = (
     //   - genuinely unlabeled (category_id null, confidence null)
     //   - explicitly rejected (category_id null, confidence 0)
     //   - auto-suggested but unreviewed (category_id set, 0 < confidence < 1)
-    // Per Hoie's directive on PR #332: the unsorted-count and the
-    // unsorted-amount-bar must reflect "needs my review" not just
-    // "literally lacking a category", so the gate is `confidence !== 1`.
+    // The unsorted-count and the unsorted-amount-bar reflect "needs my
+    // review", not just "literally lacking a category", so the gate is
+    // `confidence !== 1`.
     // A row only counts toward the sorted/category bucket if it's
     // confirmed AND has a category_id; the latter guards against a
     // malformed `confidence=1 AND category_id=null` row falling into the

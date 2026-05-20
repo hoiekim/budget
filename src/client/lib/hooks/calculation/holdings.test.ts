@@ -133,7 +133,7 @@ describe("getPriceForHolding", () => {
   const emptyIndex: SecurityPriceIndex = new Map();
 
   test("on equal source dates the security snapshot wins (tie-breaker)", () => {
-    // Both sources report on 2026-01-15. Per Hoie 2026-05-13: security wins on tie.
+    // Both sources report on 2026-01-15; the security snapshot wins on tie.
     const holding = createHoldingSnapshot("acc1", "sec1", 10, 100, 1000, null, "2026-01-15");
     const snapshots = new SecuritySnapshotDictionary();
     snapshots.set("snap1", createSecuritySnapshot("sec1", 95, "2026-01-15"));
@@ -442,8 +442,7 @@ describe("getHoldingsValueData", () => {
     // snapshot: institution_price === 1 AND cost_basis === null. Plaid
     // cash sweeps always satisfy both; real equities essentially never
     // do for any meaningful duration. Server doesn't need to ship a
-    // `type='cash'` flag (Hoie 2026-05-14: "FE should skip G/L
-    // calculation for cash holdings").
+    // `type='cash'` flag; the FE skips G/L for cash holdings entirely.
     const holdingSnapshots = new HoldingSnapshotDictionary();
     holdingSnapshots.set(
       "h-cash",

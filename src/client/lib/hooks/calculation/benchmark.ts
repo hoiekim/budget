@@ -5,7 +5,7 @@ import { InvestmentTransactionDictionary, HoldingSnapshotDictionary, SecuritySna
  * Investment-performance benchmarking math — money-weighted return (IRR) of
  * the user's non-cash positions plus an index TWR for the same window.
  *
- * **Scope (Hoie 2026-05-16): cash is excluded.** The "portfolio" tracked here
+ * **Scope: cash is excluded.** The "portfolio" tracked here
  * is the user's non-cash holdings only (VOO etc.); cash positions (QACDS,
  * pending-settlement orphans, USD sweep balances) are deliberately ignored.
  * Every asset BUY counts as an external deposit into the asset portfolio and
@@ -184,7 +184,7 @@ export const computeBenchmarkTWR = (params: {
  * Cash-shape holdings (per `isCashShapeHolding`) are excluded — the
  * widget's scope is the asset portfolio, not the total account.
  *
- * **`qty(t)` is txn-derived** (Hoie 2026-05-16). For each non-cash security:
+ * **`qty(t)` is txn-derived.** For each non-cash security:
  *   qty(t) = qty_from_holding_snapshot_at_windowStart
  *          + Σ(buy.quantity − sell.quantity from txns in (windowStart, t])
  *
@@ -316,7 +316,7 @@ export const earliestDataDate = (params: {
  * ≤ the query date; falls back to the earliest known entry when the
  * query predates everything.
  *
- * **Why both sources** (Hoie 2026-05-17):
+ * **Why both sources:**
  *   - `price_at_windowEnd` needs the **exact date** market price.
  *     security_snapshots give that for any date Plaid has synced (≈
  *     last year), and the resolve-security-snapshot endpoint backfills
