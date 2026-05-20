@@ -16,8 +16,8 @@ import {
  * itself uses tickers like `CUR:USD` for cash-equivalent securities; we
  * deliberately pick a different label so the inferred-cash row is
  * distinguishable from a broker-reported one at the data layer, but the
- * UI treats them identically (Hoie 2026-05-14: "Plaid-provided and
- * inferred cash account displays identically").
+ * UI treats them identically: Plaid-provided and inferred cash render
+ * the same in every holdings view.
  */
 const USD_CASH_TICKER = "USD";
 
@@ -112,7 +112,7 @@ const CASH_INFERENCE_MIN = 0.01;
  * Returns the array of new holdings to merge into the sync's
  * `incomingHoldings` list. The downstream `upsertAndDeleteHoldingsWithSnapshots`
  * then writes each as a normal holding snapshot — the UI sees no difference
- * between Plaid-reported and inferred cash (per Hoie 2026-05-14).
+ * between Plaid-reported and inferred cash.
  *
  * Forward-only: we don't try to infer historical cash positions. The
  * inferred row gets a fresh snapshot dated now, and future syncs either

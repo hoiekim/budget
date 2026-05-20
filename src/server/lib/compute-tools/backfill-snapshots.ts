@@ -23,7 +23,7 @@ export interface BackfillSecurityRef {
 // DI seams — production callers pass nothing and get the real DB/polygon
 // implementations. Tests pass mocks via positional args instead of
 // `mock.module`, which is process-wide in Bun and leaks across sibling
-// test files. Same factoring as `cash-holding.ts` (Hoie 2026-05-14).
+// test files. Same factoring as `cash-holding.ts`.
 type GetSecuritySnapshotsFn = typeof realGetSecuritySnapshots;
 type SearchSecuritiesByIdFn = typeof realSearchSecuritiesById;
 type UpsertSnapshotsFn = typeof realUpsertSnapshots;
@@ -48,7 +48,7 @@ const MAX_MONTHS_PER_INVOCATION = 60;
  * the 15th of that month (or nearest prior trading day — polygon returns
  * the bar for the closest trading day in the range).
  *
- * Forward-only by design (Hoie 2026-05-13): we never reach into months
+ * Forward-only by design: we never reach into months
  * before the caller's `fromDate`, even if the security has been around
  * longer in the user's portfolio. The 60-month per-invocation cap is a
  * sanity ceiling for accidental "5-year-old manual holding" inputs.
@@ -148,10 +148,10 @@ export const backfillMonthlySecuritySnapshotsForward = async (
       }
 
       // Snapshot date = 15th for past months; previous day for the current
-      // month. Today's market hasn't closed yet (Hoie 2026-05-15), so polygon
-      // either returns no_data or the previous trading day's bar — either way
-      // we should anchor the snapshot to "yesterday's close" rather than
-      // labelling a future/in-progress price with today's date.
+      // month. Today's market hasn't closed yet, so polygon either returns
+      // no_data or the previous trading day's bar — either way we anchor
+      // the snapshot to "yesterday's close" rather than labelling a
+      // future/in-progress price with today's date.
       const dayInMonth =
         cursor === nowYearMonth ? getDateString(getYesterday()) : `${cursor}-15`;
       const fetchResult = await getClosePrice(ticker_symbol, new Date(dayInMonth));

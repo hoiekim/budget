@@ -40,8 +40,8 @@ export const HoldingsComposition = ({ account }: Props) => {
 
   // Every row is clickable and drills into HOLDING_DETAIL. Edit gating
   // lives on the detail page — synced + current viewDate renders read-only
-  // there (Hoie 2026-05-15). "+ Add Holding" stays manual-only because
-  // synced brokers re-derive their own holding set on every sync.
+  // there. "+ Add Holding" stays manual-only because synced brokers
+  // re-derive their own holding set on every sync.
   const isManualAccount = items.get(item_id)?.provider === ItemProvider.MANUAL;
 
   const viewEndDate = viewDate.getEndDate();
@@ -134,7 +134,7 @@ export const HoldingsComposition = ({ account }: Props) => {
     viewDayString,
   ]);
 
-  // Collapse all cash-shape rows into a single "Cash" row (Hoie 2026-05-15).
+  // Collapse all cash-shape rows into a single "Cash" row at the UI layer.
   // Plaid sometimes reports the same logical cash position under multiple
   // `security_id`s over time — each becomes a distinct `holding_id` in the
   // snapshot store and would otherwise render as a separate "Cash" line.
@@ -179,11 +179,10 @@ export const HoldingsComposition = ({ account }: Props) => {
     router.go(PATH.HOLDING_DETAIL, { params });
   };
 
-  // Account snapshot wins for the total (Hoie 2026-05-14: "for account
-  // histogram and account total amount, priority is account snapshot if
-  // exists. Secondary is holdings total from holdings snapshot. If account
-  // snapshot exists and doesn't match with holdings snapshot, display the
-  // diff as 'Unknown' in holdings summary table.").
+  // Priority for the account-level total: account snapshot when it exists,
+  // otherwise the holdings total derived from holding snapshots. When both
+  // exist and disagree, the diff renders as an "Unknown" row in the
+  // holdings summary table.
   //
   // The Unknown row is the UI safeguard for reconciliation gaps; the data
   // fix is PR #353's auto-inferred USD cash holding on the server side. On
@@ -248,8 +247,8 @@ export const HoldingsComposition = ({ account }: Props) => {
             row.unrealizedGain === null ? "" : row.unrealizedGain >= 0 ? "positive" : "negative";
           // Cash holdings get a uniform "Cash" label regardless of how the
           // broker named the underlying sweep ("QACDS", "Chase Deposit
-          // Sweep", a truncated security_id, etc.). Hoie 2026-05-14: "When
-          // the holding is cash, display 'Cash' instead of the security id."
+          // Sweep", a truncated security_id, etc.) — `securityId` is never
+          // exposed for cash rows.
           const primaryLabel = row.isCash
             ? "Cash"
             : (row.ticker ?? row.name ?? truncateSecurityId(row.securityId));
