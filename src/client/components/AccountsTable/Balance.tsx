@@ -46,43 +46,43 @@ export const Balance = ({ account }: BalanceProps) => {
         </div>
       </div>
     );
-  } else if (subtype === AccountSubtype.CryptoExchange) {
+  }
+
+  // Show the per-row Changes widget whenever either side of the
+  // comparison has value — covers regular accounts (prev>0 AND
+  // current>0), new accounts (prev=0, current>0 → "+$current"), and
+  // closed accounts (prev>0, current=0 → "-$prev"). Closes #357: the
+  // donut's `BalanceInfo` headline change already counts new-account
+  // currents on the current side; gating the row widget on
+  // `!!previousAmount` was hiding the matching per-row entry, which is
+  // what made the donut headline appear to disagree with the table.
+  // Now the table sums to the same number the donut shows.
+  const shouldShowChanges = !!previousAmount || !!dynamicAmount;
+  const changesProps = {
+    currentAmount: dynamicAmount || current!,
+    previousAmount,
+  };
+
+  if (subtype === AccountSubtype.CryptoExchange || type === AccountType.Investment) {
     return (
       <div className="Balance">
         <div>
           {symbol}
           {numberToCommaString(dynamicAmount)}
         </div>
-        {!!previousAmount && (
-          <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
-        )}
-      </div>
-    );
-  } else if (type === AccountType.Investment) {
-    return (
-      <div className="Balance">
-        <div>
-          {symbol}
-          {numberToCommaString(dynamicAmount)}
-        </div>
-        {!!previousAmount && (
-          <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
-        )}
-      </div>
-    );
-  } else {
-    return (
-      <div className="Balance">
-        <div>
-          {symbol}
-          {numberToCommaString(dynamicAmount)}
-        </div>
-        {!!previousAmount && (
-          <Changes currentAmount={dynamicAmount || current!} previousAmount={previousAmount} />
-        )}
+        {shouldShowChanges && <Changes {...changesProps} />}
       </div>
     );
   }
+  return (
+    <div className="Balance">
+      <div>
+        {symbol}
+        {numberToCommaString(dynamicAmount)}
+      </div>
+      {shouldShowChanges && <Changes {...changesProps} />}
+    </div>
+  );
 };
 
 interface ChangesProps {
