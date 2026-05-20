@@ -98,13 +98,13 @@ Common mappings (light → dark):
 
 ## Scheduled Background Work
 
-The server's hourly background job lives in `src/server/lib/compute-tools/schedule.ts` (`scheduledSync`). It runs:
+The server's hourly background job lives in `src/server/lib/compute-tools/schedule.ts` (`scheduledSync`). It runs, in order:
 
 1. Plaid / SimpleFin sync for every connected item
-2. `runTransferDetection` — pairs cross-account transfers
-3. `runAutoSuggestions` — applies per-merchant category suggestions (see [ARCHITECTURE.md — Transaction Categorization](ARCHITECTURE.md#transaction-categorization-auto-suggest))
+2. `runAutoSuggestions` — applies per-merchant category suggestions (see [ARCHITECTURE.md — Transaction Categorization](ARCHITECTURE.md#transaction-categorization-auto-suggest))
+3. `runTransferDetection` — pairs cross-account transfers
 
-All three accept dependency-injection parameters with sensible defaults, so you can invoke them manually from a REPL or a one-off script when debugging:
+`runAutoSuggestions` and `runTransferDetection` both accept dependency-injection parameters with sensible defaults, so you can invoke them manually from a REPL or a one-off script when debugging:
 
 ```typescript
 import { runAutoSuggestions } from "server/lib/compute-tools/auto-suggest";
