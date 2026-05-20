@@ -98,12 +98,23 @@ const writeLastSyncedAt = (date: Date) => {
   }
 };
 
-const getOldestTransactionDate = async (): Promise<Date | undefined> => {
+interface OldestTransactionDateResult {
+  /** First transaction date the server knows about for this user, if any. */
+  date?: Date;
+  /** True when the call itself errored — distinguishes "no transactions" (date undefined, no failure) from "API unreachable" (date undefined, network failure). */
+  networkFailed: boolean;
+}
+
+const getOldestTransactionDate = async (): Promise<OldestTransactionDateResult> => {
   const response = await call
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
     .catch(console.error);
-  if (!response?.body) return undefined;
-  return response.body ? new LocalDate(response.body) : undefined;
+  // `response.status === "error"` from `call` means the fetch itself blew up
+  // (network down, parse error). An undefined body with status==="success"
+  // means the user genuinely has no transactions — that's not a failure.
+  if (!response || response.status === "error") return { networkFailed: true };
+  if (!response.body) return { networkFailed: false };
+  return { date: new LocalDate(response.body), networkFailed: false };
 };
 
 interface FetchTransactionsResult {
@@ -685,7 +696,9 @@ export const useSync = () => {
       // covers months M with olderFrom < M.start < olderUntil, which
       // begins one month earlier than stage 2's window so the two stages
       // tile cleanly with no overlap and no gap.
-      const oldestDate = await oldestDatePromise;
+      const oldestResult = await oldestDatePromise;
+      const oldestDate = oldestResult.date;
+      const oldestNetworkFailed = oldestResult.networkFailed;
       const defaultFrom = currentViewDate.clone().previous().previous().previous().getStartDate();
       const olderFrom = oldestDate && oldestDate < defaultFrom ? oldestDate : defaultFrom;
       const olderUntil = currentViewDate.clone().previous().getStartDate();
@@ -740,7 +753,18 @@ export const useSync = () => {
       // semantics as the warm path. If anything failed, leave whatever
       // was in IndexedDB before this run alone and skip the timestamp
       // write so the next sync still treats this gap as un-pulled.
+      //
+      // Also gate on `oldestNetworkFailed`: when /api/oldest-transaction-date
+      // errors transiently, oldestDate is undefined → Stage 3's olderFrom
+      // falls back to `defaultFrom` (3 months ago) instead of the user's
+      // actual oldest data → Stage 3 fetches only ~1-2 months instead of
+      // the full history. Persisting that partial result would wipe the
+      // older months from IndexedDB and (because writeLastSyncedAt is
+      // also called) force every subsequent sync to the warm path, which
+      // only refreshes the last 14 days. Older-than-2-months data would
+      // stay missing indefinitely. Reported by Hoie 2026-05-20.
       const coldFetchFailed =
+        oldestNetworkFailed ||
         stage1Budgets.networkFailed ||
         stage1Charts.networkFailed ||
         stage1Institutions.networkFailed ||
