@@ -60,6 +60,44 @@ import {
 // shared Queue so at most 6 are in flight at any time.
 const snapshotFetchQueue = new Queue({ maxInflight: 6 });
 
+// Persisted timestamp of the last successful sync. Drives the warm-load
+// refresh range: `[lastSyncedAt − RESTATEMENT_BUFFER_MS, now]`. Held in
+// localStorage rather than IndexedDB so a single sync-state read is sync
+// (no schema bump needed), and the absence of the key forces a cold path
+// — avoids the failure mode where IndexedDB has stale data without a
+// known cutoff.
+const LAST_SYNCED_AT_KEY = "budget:lastSyncedAt";
+// Plaid can restate posted transactions for several days (pending →
+// posted, amount adjustments). 14 days is the conventional upper bound.
+// Subtract from lastSyncedAt so the warm-load refresh re-pulls the
+// window that's still in flux.
+const RESTATEMENT_BUFFER_MS = 14 * 24 * 60 * 60 * 1000;
+
+const readLastSyncedAt = (): Date | null => {
+  try {
+    const raw = window.localStorage.getItem(LAST_SYNCED_AT_KEY);
+    if (!raw) return null;
+    const t = Date.parse(raw);
+    if (!Number.isFinite(t)) return null;
+    // Reject future timestamps (clock skew between sessions / device wake) —
+    // treat them as missing so we err on the side of a wider refresh.
+    if (t > Date.now()) return null;
+    return new Date(t);
+  } catch {
+    return null;
+  }
+};
+
+const writeLastSyncedAt = (date: Date) => {
+  try {
+    window.localStorage.setItem(LAST_SYNCED_AT_KEY, date.toISOString());
+  } catch {
+    // localStorage can throw in private-mode iOS / over quota. Best
+    // effort; next warm load will fall back to cold path, which is
+    // correct but slower.
+  }
+};
+
 const getOldestTransactionDate = async (): Promise<Date | undefined> => {
   const response = await call
     .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
@@ -71,6 +109,7 @@ const getOldestTransactionDate = async (): Promise<Date | undefined> => {
 interface FetchTransactionsResult {
   transactions: TransactionDictionary;
   investmentTransactions: InvestmentTransactionDictionary;
+  networkFailed: boolean;
 }
 
 interface FetchRange {
@@ -84,9 +123,10 @@ const fetchTransactions = async (
   accounts: AccountDictionary,
   range: FetchRange,
 ): Promise<FetchTransactionsResult> => {
-  const result = {
+  const result: FetchTransactionsResult = {
     transactions: new TransactionDictionary(),
     investmentTransactions: new InvestmentTransactionDictionary(),
+    networkFailed: false,
   };
 
   const transactionsApiPath = "/api/transactions";
@@ -114,7 +154,11 @@ const fetchTransactions = async (
         } else {
           response = await cachedCall<TransactionsGetResponse>(path).catch(console.error);
         }
-        if (!response?.body) return;
+        if (!response || response.status === "error") {
+          result.networkFailed = true;
+          return;
+        }
+        if (!response.body) return;
 
         const { transactions, investmentTransactions } = response.body;
         transactions.forEach((t) => {
@@ -142,20 +186,25 @@ const fetchTransactions = async (
 
 interface FetchSplitTransactionsResult {
   splitTransactions: SplitTransactionDictionary;
+  networkFailed: boolean;
 }
 
 const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> => {
-  const result = { splitTransactions: new SplitTransactionDictionary() };
+  const result: FetchSplitTransactionsResult = {
+    splitTransactions: new SplitTransactionDictionary(),
+    networkFailed: false,
+  };
 
-  await call
+  const response = await call
     .get<SplitTransactionsGetResponse>("/api/split-transactions")
-    .then(({ body: splitTransactions }) => {
-      if (!splitTransactions) return;
-      splitTransactions.forEach((t) => {
-        result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
-      });
-    })
     .catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  response.body?.forEach((t) => {
+    result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
+  });
 
   return result;
 };
@@ -189,25 +238,25 @@ interface FetchBudgetsResult {
   budgets: BudgetDictionary;
   sections: SectionDictionary;
   categories: CategoryDictionary;
+  networkFailed: boolean;
 }
 
 const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
-  const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
-  if (!response?.body)
-    return {
-      budgets: new BudgetDictionary(),
-      sections: new SectionDictionary(),
-      categories: new CategoryDictionary(),
-    };
-
-  const { budgets, sections, categories } = response.body;
-
-  const result = {
+  const result: FetchBudgetsResult = {
     budgets: new BudgetDictionary(),
     sections: new SectionDictionary(),
     categories: new CategoryDictionary(),
+    networkFailed: false,
   };
 
+  const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
+
+  const { budgets, sections, categories } = response.body;
   budgets.forEach((e) => result.budgets.set(e.budget_id, new Budget(e)));
   sections.forEach((e) => result.sections.set(e.section_id, new Section(e)));
   categories.forEach((e) => result.categories.set(e.category_id, new Category(e)));
@@ -219,16 +268,18 @@ interface FetchSnapshotsResult {
   accountSnapshots: AccountSnapshotDictionary;
   holdingSnapshots: HoldingSnapshotDictionary;
   securitySnapshots: SecuritySnapshotDictionary;
+  networkFailed: boolean;
 }
 
 const fetchSnapshots = async (
   accounts: AccountDictionary,
   range: FetchRange,
 ): Promise<FetchSnapshotsResult> => {
-  const result = {
+  const result: FetchSnapshotsResult = {
     accountSnapshots: new AccountSnapshotDictionary(),
     holdingSnapshots: new HoldingSnapshotDictionary(),
     securitySnapshots: new SecuritySnapshotDictionary(),
+    networkFailed: false,
   };
 
   const ingestSnapshot = (snapshot: JSONSnapshotData) => {
@@ -279,8 +330,11 @@ const fetchSnapshots = async (
           } else {
             response = await cachedCall<SnapshotsGetResponse>(path).catch(console.error);
           }
-          if (!response?.body) return;
-          response.body.forEach(ingestSnapshot);
+          if (!response || response.status === "error") {
+            result.networkFailed = true;
+            return;
+          }
+          response.body?.forEach(ingestSnapshot);
         }),
       );
     });
@@ -303,8 +357,11 @@ const fetchSnapshots = async (
         } else {
           response = await cachedCall<SnapshotsGetResponse>(securityPath).catch(console.error);
         }
-        if (!response?.body) return;
-        response.body.forEach(ingestSnapshot);
+        if (!response || response.status === "error") {
+          result.networkFailed = true;
+          return;
+        }
+        response.body?.forEach(ingestSnapshot);
       }),
     );
 
@@ -318,28 +375,43 @@ const fetchSnapshots = async (
 
 interface FetchChartsResult {
   charts: ChartDictionary;
+  networkFailed: boolean;
 }
 
 const fetchCharts = async (): Promise<FetchChartsResult> => {
-  const result = { charts: new ChartDictionary() };
+  const result: FetchChartsResult = {
+    charts: new ChartDictionary(),
+    networkFailed: false,
+  };
   const response = await call.get<ChartsGetResponse>("/api/charts").catch(console.error);
-  if (!response?.body) return result;
-  response.body.forEach((e) => result.charts.set(e.chart_id, new Chart(e)));
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  response.body?.forEach((e) => result.charts.set(e.chart_id, new Chart(e)));
   return result;
 };
 
 interface FetchInstitutionResult {
   institutions: InstitutionDictionary;
+  networkFailed: boolean;
 }
 
 const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInstitutionResult> => {
-  const result = { institutions: new InstitutionDictionary() };
+  const result: FetchInstitutionResult = {
+    institutions: new InstitutionDictionary(),
+    networkFailed: false,
+  };
   const promises = accounts.toArray().map(async ({ institution_id }) => {
     if (institution_id === "Unknown") return;
     const response = await cachedCall<JSONInstitution>(
       `/api/institution?id=${institution_id}`,
     ).catch(console.error);
-    if (response) result.institutions.set(institution_id, new Institution(response.body));
+    if (!response || response.status === "error") {
+      result.networkFailed = true;
+      return;
+    }
+    result.institutions.set(institution_id, new Institution(response.body));
   });
 
   await Promise.all(promises);
@@ -359,43 +431,165 @@ export const useSync = () => {
     });
 
     try {
+      // Read IndexedDB synchronously up front. On a warm load (any cached
+      // accounts) we paint from cache immediately and only refresh the
+      // current month — full Stage 1/2/3 slicing is reserved for cold
+      // load (no IndexedDB). The previous fire-and-forget then-callback
+      // raced with Stage 1's setData(new Data({...})) which carries no
+      // transactions/snapshots, blowing away the cached history one
+      // frame after it painted (#399).
+      const cached = await indexedDb.loadAllData().catch((err) => {
+        console.error(err);
+        return null;
+      });
+      const lastSyncedAt = readLastSyncedAt();
+      // Warm-load preconditions: cached data with at least one account,
+      // AND a known last-sync timestamp so we can compute a defensible
+      // refresh window. If the timestamp is missing the cache is opaque
+      // — we don't know what's still valid — so fall through to cold.
+      const isWarm = !!cached && cached.accounts.size > 0 && lastSyncedAt !== null;
+
+      if (isWarm && cached && lastSyncedAt) {
+        const accountsPromise = fetchAccounts();
+        const { networkFailed } = await accountsPromise;
+
+        if (networkFailed) {
+          // Offline / server down — use cache as-is, no refresh.
+          cached.status.isInit = true;
+          cached.status.isLoading = false;
+          cached.status.isError = false;
+          setData(cached);
+          return;
+        }
+
+        // Paint from cache immediately; flag still-loading so the UI
+        // can show a refresh indicator while the current-month fetch
+        // settles.
+        cached.status.isInit = true;
+        cached.status.isLoading = true;
+        cached.status.isError = false;
+        setData(cached);
+
+        const { accounts, items } = await accountsPromise;
+        // Update accounts/items in case any were added/removed since the
+        // last visit — these are small payloads, cheap to refresh on
+        // every sync.
+        accounts.forEach((a) => cached.accounts.set(a.id, a));
+        items.forEach((it) => cached.items.set(it.id, it));
+
+        // Refresh window: `[lastSyncedAt − 14d, now)`. The lower bound
+        // subtracts Plaid's restatement window so we re-pull pending→
+        // posted transitions / amount adjustments on the recent rows.
+        // The full per-month slicing in fetchTransactions/fetchSnapshots
+        // walks this window in month chunks, so a user away for N weeks
+        // costs N/4 month-slices — bounded by time-away, not by total
+        // history.
+        const refreshFromMs = Math.min(
+          lastSyncedAt.getTime() - RESTATEMENT_BUFFER_MS,
+          Date.now(),
+        );
+        const refreshUntil = new ViewDate("month").clone().next().getStartDate();
+        const currentMonthRange: FetchRange = {
+          from: new Date(refreshFromMs),
+          until: refreshUntil,
+        };
+
+        // Refresh in parallel: budgets/sections/categories, charts,
+        // split-transactions, current-month transactions, current-month
+        // snapshots, institutions for any new accounts.
+        const [
+          budgetsResult,
+          chartsResult,
+          splitTransactionsResult,
+          transactionsResult,
+          snapshotsResult,
+          institutionsResult,
+        ] = await Promise.all([
+          fetchBudgets(),
+          fetchCharts(),
+          fetchSplitTransactions(),
+          fetchTransactions(accounts, currentMonthRange),
+          fetchSnapshots(accounts, currentMonthRange),
+          fetchInstitutions(accounts),
+        ]);
+
+        // Merge fresh small payloads (entire dictionaries replaced).
+        const refreshed = new Data(cached);
+        refreshed.accounts = accounts;
+        refreshed.items = items;
+        refreshed.budgets = budgetsResult.budgets;
+        refreshed.sections = budgetsResult.sections;
+        refreshed.categories = budgetsResult.categories;
+        refreshed.charts = chartsResult.charts;
+        refreshed.splitTransactions = splitTransactionsResult.splitTransactions;
+        refreshed.institutions = institutionsResult.institutions;
+
+        // Merge current-month transactions/snapshots into cached history.
+        // Same-id updates overwrite (Plaid may revise a recent txn);
+        // older months in the cache are preserved.
+        transactionsResult.transactions.forEach((t, id) => refreshed.transactions.set(id, t));
+        transactionsResult.investmentTransactions.forEach((t, id) =>
+          refreshed.investmentTransactions.set(id, t),
+        );
+        snapshotsResult.accountSnapshots.forEach((s, id) =>
+          refreshed.accountSnapshots.set(id, s),
+        );
+        snapshotsResult.holdingSnapshots.forEach((s, id) =>
+          refreshed.holdingSnapshots.set(id, s),
+        );
+        snapshotsResult.securitySnapshots.forEach((s, id) =>
+          refreshed.securitySnapshots.set(id, s),
+        );
+
+        // If ANY of the warm-path fetches reported a network failure,
+        // don't persist the partial result to IndexedDB — the existing
+        // cache is still good; replacing it with a partial would
+        // permanently lose the dictionaries that fell through to empty
+        // (Hoie 2026-05-20: "Clear indexed DB only if network fetch
+        // succeeds"). Same reason for skipping `writeLastSyncedAt` — the
+        // next warm load needs the OLD timestamp so its refresh window
+        // still spans the gap that just failed.
+        const warmFetchFailed =
+          budgetsResult.networkFailed ||
+          chartsResult.networkFailed ||
+          splitTransactionsResult.networkFailed ||
+          transactionsResult.networkFailed ||
+          snapshotsResult.networkFailed ||
+          institutionsResult.networkFailed;
+
+        refreshed.status.isInit = true;
+        refreshed.status.isLoading = false;
+        refreshed.status.isError = false;
+        setData(refreshed);
+
+        if (!warmFetchFailed) {
+          indexedDb
+            .clearAllData()
+            .then(() => indexedDb.saveAllData(refreshed))
+            .catch(console.error);
+          writeLastSyncedAt(new Date());
+        }
+        return;
+      }
+
+      // ----- Cold start (no IndexedDB) — existing Stage 1/2/3 slicing -----
+
       const accountsPromise = fetchAccounts();
 
       const { networkFailed } = await accountsPromise;
 
       if (networkFailed) {
-        await indexedDb
-          .loadAllData()
-          .then((data) => {
-            data.status.isInit = true;
-            data.status.isLoading = false;
-            data.status.isError = false;
-            setData(data);
-          })
-          .catch((error) => {
-            console.error(error);
-            setData((oldData) => {
-              const newData = new Data(oldData);
-              newData.status.isInit = true;
-              newData.status.isLoading = false;
-              newData.status.isError = true;
-              return newData;
-            });
-          });
+        // Even cold-start can hit a network failure; fall back to whatever
+        // partial IndexedDB read returned (likely empty Data).
+        setData((oldData) => {
+          const newData = new Data(oldData);
+          newData.status.isInit = true;
+          newData.status.isLoading = false;
+          newData.status.isError = true;
+          return newData;
+        });
         return;
       }
-
-      indexedDb
-        .loadAllData()
-        .then((data) => {
-          // do not update data because API data is already available
-          if (data.status.isInit) return;
-          data.status.isInit = true;
-          data.status.isLoading = false;
-          data.status.isError = false;
-          setData(data);
-        })
-        .catch(console.error);
 
       // --- Stage 1: non-historical data (paint as soon as it lands).
       // Accounts/items, budgets/sections/categories, charts, institutions —
@@ -409,15 +603,18 @@ export const useSync = () => {
 
       const [
         { accounts, items },
-        { budgets, sections, categories },
-        { charts },
-        { institutions },
+        stage1Budgets,
+        stage1Charts,
+        stage1Institutions,
       ] = await Promise.all([
         accountsPromise,
         budgetsPromise,
         chartsPromise,
         institutionsPromise,
       ]);
+      const { budgets, sections, categories } = stage1Budgets;
+      const { charts } = stage1Charts;
+      const { institutions } = stage1Institutions;
 
       const stage1 = new Data({
         accounts,
@@ -446,19 +643,21 @@ export const useSync = () => {
       const recentUntil = currentViewDate.clone().next().getStartDate();
       const recentRange: FetchRange = { from: recentFrom, until: recentUntil };
 
-      const [
-        { transactions: recentTransactions, investmentTransactions: recentInvestmentTransactions },
-        { splitTransactions },
-        {
-          accountSnapshots: recentAccountSnapshots,
-          holdingSnapshots: recentHoldingSnapshots,
-          securitySnapshots: recentSecuritySnapshots,
-        },
-      ] = await Promise.all([
+      const [stage2Transactions, stage2SplitTxns, stage2Snapshots] = await Promise.all([
         fetchTransactions(accounts, recentRange),
         fetchSplitTransactions(),
         fetchSnapshots(accounts, recentRange),
       ]);
+      const {
+        transactions: recentTransactions,
+        investmentTransactions: recentInvestmentTransactions,
+      } = stage2Transactions;
+      const { splitTransactions } = stage2SplitTxns;
+      const {
+        accountSnapshots: recentAccountSnapshots,
+        holdingSnapshots: recentHoldingSnapshots,
+        securitySnapshots: recentSecuritySnapshots,
+      } = stage2Snapshots;
 
       const stage2 = new Data({
         accounts,
@@ -510,26 +709,27 @@ export const useSync = () => {
         securitySnapshots: recentSecuritySnapshots,
       });
 
+      let stage3Transactions: FetchTransactionsResult | null = null;
+      let stage3Snapshots: FetchSnapshotsResult | null = null;
       if (olderFrom < olderUntil) {
-        const [
-          { transactions: olderTransactions, investmentTransactions: olderInvestmentTransactions },
-          {
-            accountSnapshots: olderAccountSnapshots,
-            holdingSnapshots: olderHoldingSnapshots,
-            securitySnapshots: olderSecuritySnapshots,
-          },
-        ] = await Promise.all([
+        [stage3Transactions, stage3Snapshots] = await Promise.all([
           fetchTransactions(accounts, olderRange),
           fetchSnapshots(accounts, olderRange),
         ]);
 
-        olderTransactions.forEach((t, id) => finalData.transactions.set(id, t));
-        olderInvestmentTransactions.forEach((t, id) =>
+        stage3Transactions.transactions.forEach((t, id) => finalData.transactions.set(id, t));
+        stage3Transactions.investmentTransactions.forEach((t, id) =>
           finalData.investmentTransactions.set(id, t),
         );
-        olderAccountSnapshots.forEach((s, id) => finalData.accountSnapshots.set(id, s));
-        olderHoldingSnapshots.forEach((s, id) => finalData.holdingSnapshots.set(id, s));
-        olderSecuritySnapshots.forEach((s, id) => finalData.securitySnapshots.set(id, s));
+        stage3Snapshots.accountSnapshots.forEach((s, id) =>
+          finalData.accountSnapshots.set(id, s),
+        );
+        stage3Snapshots.holdingSnapshots.forEach((s, id) =>
+          finalData.holdingSnapshots.set(id, s),
+        );
+        stage3Snapshots.securitySnapshots.forEach((s, id) =>
+          finalData.securitySnapshots.set(id, s),
+        );
       }
 
       finalData.status.isInit = true;
@@ -537,10 +737,28 @@ export const useSync = () => {
       finalData.status.isError = false;
       setData(finalData);
 
-      indexedDb
-        .clearAllData()
-        .then(() => indexedDb.saveAllData(finalData))
-        .catch(console.error);
+      // Only persist when every cold-path fetch succeeded — same
+      // semantics as the warm path (Hoie 2026-05-20). If anything
+      // failed, leave whatever was in IndexedDB before this run alone
+      // and skip the timestamp write so the next sync still treats
+      // this gap as un-pulled.
+      const coldFetchFailed =
+        stage1Budgets.networkFailed ||
+        stage1Charts.networkFailed ||
+        stage1Institutions.networkFailed ||
+        stage2Transactions.networkFailed ||
+        stage2SplitTxns.networkFailed ||
+        stage2Snapshots.networkFailed ||
+        (stage3Transactions?.networkFailed ?? false) ||
+        (stage3Snapshots?.networkFailed ?? false);
+
+      if (!coldFetchFailed) {
+        indexedDb
+          .clearAllData()
+          .then(() => indexedDb.saveAllData(finalData))
+          .catch(console.error);
+        writeLastSyncedAt(new Date());
+      }
     } catch (err) {
       console.error(err);
       setData((oldData) => {
