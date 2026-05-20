@@ -484,10 +484,7 @@ export const useSync = () => {
         // walks this window in month chunks, so a user away for N weeks
         // costs N/4 month-slices — bounded by time-away, not by total
         // history.
-        const refreshFromMs = Math.min(
-          lastSyncedAt.getTime() - RESTATEMENT_BUFFER_MS,
-          Date.now(),
-        );
+        const refreshFromMs = Math.min(lastSyncedAt.getTime() - RESTATEMENT_BUFFER_MS, Date.now());
         const refreshUntil = new ViewDate("month").clone().next().getStartDate();
         const currentMonthRange: FetchRange = {
           from: new Date(refreshFromMs),
@@ -513,8 +510,7 @@ export const useSync = () => {
           fetchInstitutions(accounts),
         ]);
 
-        // Merge fresh small payloads (entire dictionaries replaced).
-        const refreshed = new Data(cached);
+        const refreshed = new Data();
         refreshed.accounts = accounts;
         refreshed.items = items;
         refreshed.budgets = budgetsResult.budgets;
@@ -523,23 +519,15 @@ export const useSync = () => {
         refreshed.charts = chartsResult.charts;
         refreshed.splitTransactions = splitTransactionsResult.splitTransactions;
         refreshed.institutions = institutionsResult.institutions;
-
-        // Merge current-month transactions/snapshots into cached history.
-        // Same-id updates overwrite (Plaid may revise a recent txn);
-        // older months in the cache are preserved.
-        transactionsResult.transactions.forEach((t, id) => refreshed.transactions.set(id, t));
-        transactionsResult.investmentTransactions.forEach((t, id) =>
-          refreshed.investmentTransactions.set(id, t),
-        );
-        snapshotsResult.accountSnapshots.forEach((s, id) =>
-          refreshed.accountSnapshots.set(id, s),
-        );
-        snapshotsResult.holdingSnapshots.forEach((s, id) =>
-          refreshed.holdingSnapshots.set(id, s),
-        );
-        snapshotsResult.securitySnapshots.forEach((s, id) =>
-          refreshed.securitySnapshots.set(id, s),
-        );
+        refreshed.transactions = transactionsResult.transactions;
+        refreshed.investmentTransactions = transactionsResult.investmentTransactions;
+        refreshed.accountSnapshots = snapshotsResult.accountSnapshots;
+        refreshed.holdingSnapshots = snapshotsResult.holdingSnapshots;
+        refreshed.securitySnapshots = snapshotsResult.securitySnapshots;
+        refreshed.status.isInit = true;
+        refreshed.status.isLoading = false;
+        refreshed.status.isError = false;
+        setData(refreshed);
 
         // If ANY of the warm-path fetches reported a network failure,
         // don't persist the partial result to IndexedDB — the existing
@@ -555,11 +543,6 @@ export const useSync = () => {
           transactionsResult.networkFailed ||
           snapshotsResult.networkFailed ||
           institutionsResult.networkFailed;
-
-        refreshed.status.isInit = true;
-        refreshed.status.isLoading = false;
-        refreshed.status.isError = false;
-        setData(refreshed);
 
         if (!warmFetchFailed) {
           indexedDb
@@ -600,17 +583,8 @@ export const useSync = () => {
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
 
-      const [
-        { accounts, items },
-        stage1Budgets,
-        stage1Charts,
-        stage1Institutions,
-      ] = await Promise.all([
-        accountsPromise,
-        budgetsPromise,
-        chartsPromise,
-        institutionsPromise,
-      ]);
+      const [{ accounts, items }, stage1Budgets, stage1Charts, stage1Institutions] =
+        await Promise.all([accountsPromise, budgetsPromise, chartsPromise, institutionsPromise]);
       const { budgets, sections, categories } = stage1Budgets;
       const { charts } = stage1Charts;
       const { institutions } = stage1Institutions;
@@ -720,12 +694,8 @@ export const useSync = () => {
         stage3Transactions.investmentTransactions.forEach((t, id) =>
           finalData.investmentTransactions.set(id, t),
         );
-        stage3Snapshots.accountSnapshots.forEach((s, id) =>
-          finalData.accountSnapshots.set(id, s),
-        );
-        stage3Snapshots.holdingSnapshots.forEach((s, id) =>
-          finalData.holdingSnapshots.set(id, s),
-        );
+        stage3Snapshots.accountSnapshots.forEach((s, id) => finalData.accountSnapshots.set(id, s));
+        stage3Snapshots.holdingSnapshots.forEach((s, id) => finalData.holdingSnapshots.set(id, s));
         stage3Snapshots.securitySnapshots.forEach((s, id) =>
           finalData.securitySnapshots.set(id, s),
         );

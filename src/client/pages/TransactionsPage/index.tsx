@@ -145,16 +145,21 @@ export const TransactionsPage = () => {
         const within = viewDate.has(transactionDate);
         if (!within) return false;
         // "unsorted" view now includes every transaction that is not
-         // user-confirmed (confidence === 1). That covers genuinely
-         // unlabeled rows AND auto-suggested ones — per Hoie's directive
-         // in #98: suggested + non-confirmed both belong here.
-         if (type === "unsorted" && e.label.category_confidence === 1) return false;
-         // "suggested" view is the narrower slice: rows currently bearing
-         // an unreviewed auto-suggestion (0 < confidence < 1).
-         if (type === "suggested") {
-           const c = e.label.category_confidence;
-           if (c === null || c === undefined || c <= 0 || c >= 1) return false;
-         }
+        // user-confirmed (confidence === 1). That covers genuinely
+        // unlabeled rows AND auto-suggested ones — per Hoie's directive
+        // in #98: suggested + non-confirmed both belong here.
+        if (type === "unsorted") {
+          const c_id = e.label.category_id;
+          const c_conf = e.label.category_confidence;
+          if (c_id && c_conf === 1) return false;
+        }
+        // "suggested" view is the narrower slice: rows currently bearing
+        // an unreviewed auto-suggestion (0 < confidence < 1).
+        if (type === "suggested") {
+          const c_id = e.label.category_id;
+          const c_conf = e.label.category_confidence;
+          if (!c_id || c_conf === 1) return false;
+        }
         if (type === "deposits" && e.amount > 0) return false;
         if (type === "expenses" && e.amount < 0) return false;
 
@@ -299,8 +304,7 @@ export const TransactionsPage = () => {
         const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         const newInvest = new InvestmentTransactionDictionary(newData.investmentTransactions);
         acceptedIds.forEach((id) => {
-          const existing =
-            newTransactions.get(id) || newSplits.get(id) || newInvest.get(id);
+          const existing = newTransactions.get(id) || newSplits.get(id) || newInvest.get(id);
           if (!existing) return;
           if (existing instanceof InvestmentTransaction) {
             const updated = new InvestmentTransaction(existing);
