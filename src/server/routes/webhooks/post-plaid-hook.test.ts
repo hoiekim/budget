@@ -7,7 +7,7 @@
  * leaks across sibling test files in the same run.
  */
 
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect, mock } from "bun:test";
 
 import {
   createPostPlaidHookRoute,
