@@ -41,15 +41,13 @@ const TransactionRow = ({ transaction }: Props) => {
   const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
     return label.category_id || "";
   });
-  const [selectedConfidence, setSelectedConfidence] = useState<number | null>(
-    () => label.category_confidence ?? null,
-  );
+  const categoryConfidence = label.category_confidence ?? null;
 
   const isSuggested =
     !!selectedCategoryIdLabel &&
-    selectedConfidence !== null &&
-    selectedConfidence > 0 &&
-    selectedConfidence < 1;
+    categoryConfidence !== null &&
+    categoryConfidence > 0 &&
+    categoryConfidence < 1;
   const categoryWrapperClass = !selectedCategoryIdLabel
     ? "notification"
     : isSuggested
@@ -60,14 +58,6 @@ const TransactionRow = ({ transaction }: Props) => {
     if (label.budget_id) return;
     setSelectedBudgetIdLabel(account?.label.budget_id || "");
   }, [label.budget_id, account?.label.budget_id]);
-
-  // Sync confidence back from the canonical Transaction whenever it
-  // changes — so Accept-All (and any other parent-level update path)
-  // updates this row's dot without needing a page reload. Without this,
-  // `selectedConfidence` only sees its mount-time value.
-  useEffect(() => {
-    setSelectedConfidence(label.category_confidence ?? null);
-  }, [label.category_confidence]);
 
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
@@ -127,7 +117,6 @@ const TransactionRow = ({ transaction }: Props) => {
     }
 
     if (response.status === "success") {
-      setSelectedConfidence(0);
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
@@ -186,7 +175,6 @@ const TransactionRow = ({ transaction }: Props) => {
     }
 
     if (response.status === "success") {
-      setSelectedConfidence(nextConfidence);
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
@@ -219,7 +207,7 @@ const TransactionRow = ({ transaction }: Props) => {
     }
   };
 
-  // Accept-in-place: clicking the grey dot (without changing the select)
+  // Accept-in-place: clicking the yellow dot (without changing the select)
   // confirms the suggested category as-is. Per issue #98 §2 "On transaction
   // row label interaction" — the dot itself is the interaction surface.
   const onAcceptSuggestion = async () => {
@@ -237,7 +225,6 @@ const TransactionRow = ({ transaction }: Props) => {
       });
     }
     if (response.status !== "success") return;
-    setSelectedConfidence(1);
     setData((oldData) => {
       const newData = new Data(oldData);
       if (isSplitTransaction) {
@@ -308,7 +295,7 @@ const TransactionRow = ({ transaction }: Props) => {
         <div
           className={categoryWrapperClass}
           onClick={onClickCategoryWrapper}
-          title={isSuggested ? "Click the grey dot to accept this suggestion" : undefined}
+          title={isSuggested ? "Click the yellow dot to accept this suggestion" : undefined}
         >
           <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
             <option value="">Select Category</option>

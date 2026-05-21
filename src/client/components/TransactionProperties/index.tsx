@@ -106,6 +106,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
         const newTransaction = new Transaction(transaction);
         newTransaction.label.budget_id = value || null;
         newTransaction.label.category_id = null;
+        newTransaction.label.category_confidence = 0;
         indexedDb.save(newTransaction).catch(console.error);
         const newTransactions = new TransactionDictionary(newData.transactions);
         newTransactions.set(transaction_id, newTransaction);
@@ -136,6 +137,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
           newTransaction.label.budget_id = account?.label.budget_id;
         }
         newTransaction.label.category_id = value || null;
+        newTransaction.label.category_confidence = +!!value;
         indexedDb.save(newTransaction).catch(console.error);
         const newTransactions = new TransactionDictionary(newData.transactions);
         newTransactions.set(transaction_id, newTransaction);

@@ -336,8 +336,8 @@ div.Router:not(.transitioning.backward) > div.currentPage {
   border-radius: 50%;
 }
 
-/* Suggested-category indicator. Same size/placement as the red unsorted
-   dot but grey. When also `.clickable`, the dot acts as the per-row
+/* Suggested-category indicator. Same size/placement as the yellow unsorted
+   dot. When also `.clickable`, the dot acts as the per-row
    "Accept suggestion" affordance (issue #98 §2). */
 .suggested {
   position: relative;
@@ -351,7 +351,7 @@ div.Router:not(.transitioning.backward) > div.currentPage {
   right: -2px;
   width: 8px;
   height: 8px;
-  background-color: #888;
+  background-color: #ffd500;
   border-radius: 50%;
 }
 

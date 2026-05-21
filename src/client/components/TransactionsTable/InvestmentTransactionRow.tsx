@@ -233,7 +233,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
           <div
             className={categoryWrapperClass}
             onClick={onClickCategoryWrapper}
-            title={isSuggested ? "Click the grey dot to accept this suggestion" : undefined}
+            title={isSuggested ? "Click the yellow dot to accept this suggestion" : undefined}
           >
             <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
               <option value="">Select Category</option>

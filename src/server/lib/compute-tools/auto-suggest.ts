@@ -30,7 +30,7 @@ interface MerchantSignal {
   // the account default), and a category whose actual parent budget is
   // neither of those is missing from the option list. The native
   // `<select>` then falls back to its empty placeholder, masking the
-  // suggestion even though the dot is grey.
+  // suggestion even though the dot is yellow.
   label_budget_id: string;
   accepted: number;
   rejected: number;
