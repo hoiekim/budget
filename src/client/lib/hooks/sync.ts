@@ -60,18 +60,20 @@ import {
 // shared Queue so at most 6 are in flight at any time.
 const snapshotFetchQueue = new Queue({ maxInflight: 6 });
 
-// Persisted timestamp of the last successful sync. Drives the warm-load
-// refresh range: `[lastSyncedAt − RESTATEMENT_BUFFER_MS, now]`. Held in
-// localStorage rather than IndexedDB so a single sync-state read is sync
-// (no schema bump needed), and the absence of the key forces a cold path
-// — avoids the failure mode where IndexedDB has stale data without a
-// known cutoff.
+// Presence of the key gates warm-vs-cold: a known previous sync means
+// the IndexedDB cache is trustworthy enough to paint upfront. The value
+// drives the warm path's freshness window (`recentSinceMs =
+// lastSyncedAt − FRESHNESS_WINDOW_MS`), passed to
+// fetchTransactions/fetchSnapshots so months in that window go to
+// network and older months use the browser Cache API. Absent → cold
+// (avoids the failure mode where IndexedDB has stale data without a
+// known cutoff).
 const LAST_SYNCED_AT_KEY = "budget:lastSyncedAt";
-// Plaid can restate posted transactions for several days (pending →
-// posted, amount adjustments). 14 days is the conventional upper bound.
-// Subtract from lastSyncedAt so the warm-load refresh re-pulls the
-// window that's still in flux.
-const RESTATEMENT_BUFFER_MS = 14 * 24 * 60 * 60 * 1000;
+// How far back from `lastSyncedAt` we consider "potentially stale" on
+// the client. Wider than Plaid's pending→posted restatement window
+// (commonly cited as ~14d) to also catch user labels / category
+// edits that happened on another device since the last sync.
+const FRESHNESS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 const readLastSyncedAt = (): Date | null => {
   try {
@@ -130,6 +132,13 @@ interface FetchRange {
 const fetchTransactions = async (
   accounts: AccountDictionary,
   range: FetchRange,
+  // Months whose end falls at or after `recentSinceMs` bypass the browser
+  // Cache API (call) and go to network; older months use cachedCall.
+  // Default mirrors the original "last 30 days from now" semantic so the
+  // cold path keeps current behavior. The warm path overrides it with
+  // `lastSyncedAt − 30d` so the freshness threshold tracks the user's
+  // own gap between visits, not wall clock.
+  recentSinceMs: number = Date.now() - THIRTY_DAYS,
 ): Promise<FetchTransactionsResult> => {
   const result: FetchTransactionsResult = {
     transactions: new TransactionDictionary(),
@@ -153,7 +162,7 @@ const fetchTransactions = async (
       params.append("end-date", getDateString(endDate));
       params.append("account-id", a.id);
       const path = transactionsApiPath + "?" + params.toString();
-      const isRecent = new Date().getTime() - endDate.getTime() < THIRTY_DAYS;
+      const isRecent = endDate.getTime() >= recentSinceMs;
 
       const fetchTransactionsForAccount = async () => {
         let response: ApiResponse<TransactionsGetResponse> | void;
@@ -282,6 +291,9 @@ interface FetchSnapshotsResult {
 const fetchSnapshots = async (
   accounts: AccountDictionary,
   range: FetchRange,
+  // Same semantic as `fetchTransactions`: months whose end is at or after
+  // `recentSinceMs` go to network; older months use cachedCall.
+  recentSinceMs: number = Date.now() - THIRTY_DAYS,
 ): Promise<FetchSnapshotsResult> => {
   const result: FetchSnapshotsResult = {
     accountSnapshots: new AccountSnapshotDictionary(),
@@ -307,9 +319,9 @@ const fetchSnapshots = async (
 
   // Mirror fetchTransactions (Closes #323): slice the full date window into
   // month-sized chunks, fetched per-account for user-scoped snapshots and
-  // once-per-month for shared security snapshots. Older months go through
-  // `cachedCall` so they only hit the network on first load; the most
-  // recent month always re-fetches so today's data stays fresh.
+  // once-per-month for shared security snapshots. Months whose end falls
+  // at or after `recentSinceMs` bypass the browser Cache API and go to
+  // network; older months use cachedCall.
   const snapshotsApiPath = "/api/snapshots";
   const viewDate = new ViewDate("month");
   while (viewDate.getStartDate() >= range.until) viewDate.previous();
@@ -321,7 +333,7 @@ const fetchSnapshots = async (
     const monthEnd = viewDate.clone().next().getStartDate();
     const startStr = getDateString(monthStart);
     const endStr = getDateString(monthEnd);
-    const isRecent = new Date().getTime() - monthEnd.getTime() < THIRTY_DAYS;
+    const isRecent = monthEnd.getTime() >= recentSinceMs;
 
     accounts?.forEach((a) => {
       const params = new URLSearchParams();
@@ -452,9 +464,11 @@ export const useSync = () => {
       });
       const lastSyncedAt = readLastSyncedAt();
       // Warm-load preconditions: cached data with at least one account,
-      // AND a known last-sync timestamp so we can compute a defensible
-      // refresh window. If the timestamp is missing the cache is opaque
-      // — we don't know what's still valid — so fall through to cold.
+      // AND a previously persisted sync timestamp. The timestamp drives
+      // the warm path's freshness window (`recentSinceMs =
+      // lastSyncedAt − 30d`) which decides per-month whether to go to
+      // network or use the browser Cache API. Absent timestamp →
+      // cache is opaque, fall through to cold.
       const isWarm = !!cached && cached.accounts.size > 0 && lastSyncedAt !== null;
 
       if (isWarm && cached && lastSyncedAt) {
@@ -471,37 +485,36 @@ export const useSync = () => {
         }
 
         // Paint from cache immediately; flag still-loading so the UI
-        // can show a refresh indicator while the current-month fetch
-        // settles.
+        // can show a refresh indicator while the full fetch settles.
         cached.status.isInit = true;
         cached.status.isLoading = true;
         cached.status.isError = false;
         setData(cached);
 
         const { accounts, items } = await accountsPromise;
-        // Update accounts/items in case any were added/removed since the
-        // last visit — these are small payloads, cheap to refresh on
-        // every sync.
-        accounts.forEach((a) => cached.accounts.set(a.id, a));
-        items.forEach((it) => cached.items.set(it.id, it));
 
-        // Refresh window: `[lastSyncedAt − 14d, now)`. The lower bound
-        // subtracts Plaid's restatement window so we re-pull pending→
-        // posted transitions / amount adjustments on the recent rows.
-        // The full per-month slicing in fetchTransactions/fetchSnapshots
-        // walks this window in month chunks, so a user away for N weeks
-        // costs N/4 month-slices — bounded by time-away, not by total
-        // history.
-        const refreshFromMs = Math.min(lastSyncedAt.getTime() - RESTATEMENT_BUFFER_MS, Date.now());
-        const refreshUntil = new ViewDate("month").clone().next().getStartDate();
-        const currentMonthRange: FetchRange = {
-          from: new Date(refreshFromMs),
-          until: refreshUntil,
-        };
+        // Full-history fetch (`[oldestDate or 3-months-ago, currentMonth + 1)`)
+        // — same range the cold path covers via Stage 2 + Stage 3. The
+        // narrow freshness window from the prior warm-path design
+        // (`[lastSyncedAt − 30d, now]`) is now passed as `recentSinceMs`
+        // to drive the per-month `isRecent` decision inside
+        // fetchTransactions / fetchSnapshots: months whose end falls
+        // in that freshness window go to network (call), older months
+        // use cachedCall and come from the browser Cache API. Net effect:
+        // state always reflects the full server view, only the recent
+        // months pay network cost, the rest are essentially free.
+        const currentViewDate = new ViewDate("month");
+        const oldestDatePromise = getOldestTransactionDate();
+        const oldestDate = await oldestDatePromise;
+        const defaultFrom = currentViewDate.clone().previous().previous().previous().getStartDate();
+        const fullFrom = oldestDate && oldestDate < defaultFrom ? oldestDate : defaultFrom;
+        const fullUntil = currentViewDate.clone().next().getStartDate();
+        const fullRange: FetchRange = { from: fullFrom, until: fullUntil };
+        // Freshness window: 30 days back from the last sync. Anything
+        // newer than this is potentially-stale on the client and needs a
+        // re-fetch; anything older we trust the HTTP cache for.
+        const recentSinceMs = lastSyncedAt.getTime() - FRESHNESS_WINDOW_MS;
 
-        // Refresh in parallel: budgets/sections/categories, charts,
-        // split-transactions, current-month transactions, current-month
-        // snapshots, institutions for any new accounts.
         const [
           budgetsResult,
           chartsResult,
@@ -513,8 +526,8 @@ export const useSync = () => {
           fetchBudgets(),
           fetchCharts(),
           fetchSplitTransactions(),
-          fetchTransactions(accounts, currentMonthRange),
-          fetchSnapshots(accounts, currentMonthRange),
+          fetchTransactions(accounts, fullRange, recentSinceMs),
+          fetchSnapshots(accounts, fullRange, recentSinceMs),
           fetchInstitutions(accounts),
         ]);
 
