@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { isApiPath } from "common/utils";
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE_NAME = "budget-v1";
@@ -57,8 +58,9 @@ sw.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Never intercept other API calls
-  if (url.pathname.startsWith("/api")) return;
+  // Never intercept other API calls. `isApiPath` rejects /api-anything
+  // (e.g. the /api-key-detail SPA route, #391).
+  if (isApiPath(url.pathname)) return;
 
   // Cache-first for hashed assets (JS, CSS under /assets/)
   // Vite embeds a content hash in every filename, so the URL itself
