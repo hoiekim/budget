@@ -17,14 +17,7 @@ export const TransactionDetailPage = () => {
   if (path === PATH.TRANSACTION_DETAIL) id = params.get("transaction_id") || "";
   else id = transition.incomingParams.get("transaction_id") || "";
 
-  const defaultTransaction = transactions.get(id);
-  const [transaction, setTransaction] = useState<Transaction | undefined>(defaultTransaction);
-
-  useEffect(() => {
-    const newTransaction = transactions.get(id);
-    if (!newTransaction) return;
-    setTransaction(new Transaction(newTransaction));
-  }, [id, transactions]);
+  const transaction = transactions.get(id);
 
   if (!transaction) return <></>;
 

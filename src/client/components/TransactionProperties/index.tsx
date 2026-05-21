@@ -48,6 +48,11 @@ export const TransactionProperties = ({ transaction }: Props) => {
     return label.category_id || "";
   });
 
+  useEffect(() => {
+    setSelectedBudgetIdLabel(label.budget_id || account?.label.budget_id || "");
+    setSelectedCategoryIdLabel(label.category_id || "");
+  }, [label, account]);
+
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
