@@ -129,15 +129,3 @@ export const deleteInvestmentTransactions = async (
   );
   return { deleted };
 };
-
-export const deleteInvestmentTransactionsByAccount = async (
-  user: MaskedUser,
-  account_id: string,
-): Promise<{ deleted: number }> => {
-  const txs = await searchInvestmentTransactions(user, { account_id });
-  if (!txs.length) return { deleted: 0 };
-  return deleteInvestmentTransactions(
-    user,
-    txs.map((t) => t.investment_transaction_id),
-  );
-};

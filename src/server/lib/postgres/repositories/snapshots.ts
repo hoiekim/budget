@@ -320,19 +320,6 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
   return results;
 };
 
-export const deleteOldSnapshots = async (beforeDate: string): Promise<{ deleted: number }> => {
-  const result = await pool.query(
-    `UPDATE ${SNAPSHOTS} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${SNAPSHOT_DATE} < $1 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING ${SNAPSHOT_ID}`,
-    [beforeDate],
-  );
-  return { deleted: result.rowCount || 0 };
-};
-
-export const deleteSnapshotsByUser = async (user: MaskedUser): Promise<{ deleted: number }> => {
-  const deleted = await snapshotsTable.bulkSoftDeleteByColumn(USER_ID, user.user_id);
-  return { deleted };
-};
-
 export const deleteSnapshotById = async (
   user: MaskedUser,
   snapshot_id: string,

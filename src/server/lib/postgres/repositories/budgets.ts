@@ -92,18 +92,6 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string): Promise
   });
 };
 
-export const deleteBudgets = async (
-  user: MaskedUser,
-  budget_ids: string[],
-): Promise<{ deleted: number }> => {
-  if (!budget_ids.length) return { deleted: 0 };
-  let deleted = 0;
-  for (const id of budget_ids) {
-    if (await deleteBudget(user, id)) deleted++;
-  }
-  return { deleted };
-};
-
 export const getSections = async (user: MaskedUser, budget_id?: string): Promise<JSONSection[]> => {
   const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
   if (budget_id) filters[BUDGET_ID] = budget_id;
@@ -156,18 +144,6 @@ export const deleteSection = async (user: MaskedUser, section_id: string): Promi
   });
 };
 
-export const deleteSections = async (
-  user: MaskedUser,
-  section_ids: string[],
-): Promise<{ deleted: number }> => {
-  if (!section_ids.length) return { deleted: 0 };
-  let deleted = 0;
-  for (const id of section_ids) {
-    if (await deleteSection(user, id)) deleted++;
-  }
-  return { deleted };
-};
-
 export const getCategories = async (
   user: MaskedUser,
   section_id?: string,
@@ -217,13 +193,4 @@ export const updateCategory = async (
 
 export const deleteCategory = async (user: MaskedUser, category_id: string): Promise<boolean> => {
   return await categoriesTable.softDelete(category_id, user.user_id);
-};
-
-export const deleteCategories = async (
-  user: MaskedUser,
-  category_ids: string[],
-): Promise<{ deleted: number }> => {
-  if (!category_ids.length) return { deleted: 0 };
-  const deleted = await categoriesTable.bulkSoftDelete(category_ids, { user_id: user.user_id });
-  return { deleted };
 };
