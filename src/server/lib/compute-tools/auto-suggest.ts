@@ -85,8 +85,12 @@ const defaultFetchUnlabeled: FetchUnlabeledFn = async (userId) => {
     label_category_confidence: null,
     merchant_name: IS_NOT_NULL,
   });
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
   return rows
-    .filter((r) => r.merchant_name != null)
+    .filter((r) => {
+      return r.merchant_name != null && new Date(r.date) > oneWeekAgo;
+    })
     .map((r) => ({
       transaction_id: r.transaction_id as string,
       merchant_name: r.merchant_name as string,
@@ -136,7 +140,8 @@ const defaultFetchUnlabeledSplits: FetchUnlabeledSplitsFn = async (userId) => {
         AND st.label_category_confidence IS NULL
         AND (st.is_deleted IS NULL OR st.is_deleted = FALSE)
         AND t.merchant_name IS NOT NULL
-        AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)`,
+        AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
+        AND t.date > NOW() - INTERVAL '1 week'`,
     [userId],
   );
   return result.rows.map((r) => ({
