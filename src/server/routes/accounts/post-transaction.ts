@@ -1,4 +1,11 @@
-import { Route, updateTransactions, requireBodyObject, requireStringField, validationError } from "server";
+import {
+  Route,
+  updateTransactions,
+  requireBodyObject,
+  requireStringField,
+  validationError,
+  inferLabelConfidence,
+} from "server";
 import type { PartialTransaction } from "server";
 import { logger } from "server/lib/logger";
 
@@ -31,7 +38,7 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
 
     try {
       // Cast is safe after validation above
-      const transaction = bodyResult.data! as PartialTransaction;
+      const transaction = inferLabelConfidence(bodyResult.data! as PartialTransaction);
       const response = await updateTransactions(user, [transaction]);
       const result = response[0];
       if (!result || result.status >= 400) {
