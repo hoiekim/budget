@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { Transaction, useAppContext, PATH } from "client";
+import { useAppContext, PATH } from "client";
 import { TransactionProperties } from "client/components";
 
 import "./index.css";
