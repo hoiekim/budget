@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getDateTimeString, LocalDate } from "common";
 import { Capacity, useAppContext, PATH } from "client";
 import { NameInput, Bar, ActionButtons, BudgetProperties } from "client/components";
@@ -55,8 +55,23 @@ export const BudgetConfigPage = () => {
     setBudgetLike((oldBudgetLike) => newBudgetLike?.clone() || oldBudgetLike);
   }, [id, categories, sections, budgets]);
 
+  // Track which budget identity (id) we've already hydrated form state from.
+  // Without this, the effect below re-runs on every `capacityData` change
+  // (e.g. when the user clicks "Add New Period", which calls
+  // `calculate.cache.capacityData(...)` to update the donut) — resetting
+  // `capacitiesInput` back to the persisted defaults a frame after the
+  // user's edit landed. Net effect for the user: the new row paints once
+  // then disappears.
+  const hydratedIdRef = useRef<string>("");
+
   useEffect(() => {
     if (!budgetLike) return;
+    // Cross-budget navigation (id changes) is the only path that should
+    // reset user-edited form state. Same-budget renders (clone refresh
+    // after data sync, capacityData updates from in-page edits, viewDate
+    // changes) must NOT clobber pending edits.
+    if (hydratedIdRef.current === id) return;
+    hydratedIdRef.current = id;
 
     const { name, roll_over, roll_over_start_date: roll_date } = budgetLike;
 
@@ -82,7 +97,7 @@ export const BudgetConfigPage = () => {
     setIsRollOverInput(roll_over);
     setRollDateInput(roll_date || new Date());
     setIsSyncedInput(defaultIsSyncInput);
-  }, [budgetLike, capacityData, viewDate]);
+  }, [id, budgetLike, capacityData, viewDate]);
 
   const { sorted_amount, unsorted_amount } = budgetData.get(id, date);
   const { name, roll_over, roll_over_start_date: roll_date } = budgetLike || {};
