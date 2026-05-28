@@ -244,31 +244,16 @@ describe("upsertTransactions", () => {
 });
 
 // ---------------------------------------------------------------------------
-// updateTransactions — user-confirmed confidence
+// updateTransactions — pass-through.
+//
+// Confidence inference moved to the route layer
+// (`src/server/routes/accounts/infer-label-confidence.ts` + its test file).
+// The repo just persists whatever the caller hands it now, so the prior
+// "sets confidence=1 by default" tests don't apply here. Covered there.
 // ---------------------------------------------------------------------------
 
 describe("updateTransactions", () => {
-  test("sets label_category_confidence=1.0 when user assigns category without explicit confidence", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
-
-    const tx = {
-      transaction_id: "tx-1",
-      label: { category_id: "cat-1" },
-    } as Parameters<typeof updateTransactions>[1][0];
-
-    await updateTransactions(testUser, [tx]);
-
-    // The UPDATE call's parameters should include 1.0 for confidence
-    const updateCall = mockQuery.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
-    );
-    expect(updateCall).toBeDefined();
-    const values = updateCall![1] as unknown[];
-    expect(values).toContain(1.0);
-    expect(values).toContain("cat-1");
-  });
-
-  test("preserves caller-supplied category_confidence (e.g. 0.0 = rejected)", async () => {
+  test("preserves caller-supplied category_confidence as-is (repo is pass-through)", async () => {
     mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-2" }], rowCount: 1 });
 
     const tx = {
@@ -286,12 +271,16 @@ describe("updateTransactions", () => {
     expect(values).not.toContain(1.0);
   });
 
-  test("does not inject confidence when category_id is null (clearing)", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-3" }], rowCount: 1 });
+  test("does not inject confidence when caller omits it (repo no longer infers)", async () => {
+    // The route layer now handles inference. The repo should not silently
+    // upgrade `{ category_id: 'X' }` to `confidence = 1` anymore —
+    // otherwise callers that bypass the route (tests, internal helpers)
+    // get unintended writes.
+    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
 
     const tx = {
-      transaction_id: "tx-3",
-      label: { category_id: null },
+      transaction_id: "tx-1",
+      label: { category_id: "cat-1" },
     } as Parameters<typeof updateTransactions>[1][0];
 
     await updateTransactions(testUser, [tx]);
@@ -299,25 +288,9 @@ describe("updateTransactions", () => {
     const updateCall = mockQuery.mock.calls.find(
       (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
     );
-    const values = (updateCall?.[1] ?? []) as unknown[];
+    const values = updateCall![1] as unknown[];
     expect(values).not.toContain(1.0);
-  });
-
-  test("does not inject confidence when label is absent (e.g. memo-only update)", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-4" }], rowCount: 1 });
-
-    const tx = {
-      transaction_id: "tx-4",
-      name: "Renamed",
-    } as Parameters<typeof updateTransactions>[1][0];
-
-    await updateTransactions(testUser, [tx]);
-
-    const updateCall = mockQuery.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
-    );
-    const values = (updateCall?.[1] ?? []) as unknown[];
-    expect(values).not.toContain(1.0);
+    expect(values).toContain("cat-1");
   });
 });
 
