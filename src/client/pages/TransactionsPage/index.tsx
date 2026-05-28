@@ -31,8 +31,9 @@ import "./index.css";
 // the open interval (0, 1). 0=rejected, 1=confirmed, null=never labeled
 // — per the JSONTransactionLabel docstring.
 const isSuggestedLabel = (e: Transaction | SplitTransaction | InvestmentTransaction): boolean => {
-  const c = e.label.category_confidence;
-  return !!e.label.category_id && c !== null && c !== undefined && c > 0 && c < 1;
+  const c_id = e.label.category_id;
+  const c_conf = e.label.category_confidence;
+  return !!(c_id && c_conf && c_conf < 1);
 };
 
 export type TransactionsPageParams = {
@@ -156,9 +157,7 @@ export const TransactionsPage = () => {
         // "suggested" view is the narrower slice: rows currently bearing
         // an unreviewed auto-suggestion (0 < confidence < 1).
         if (type === "suggested") {
-          const c_id = e.label.category_id;
-          const c_conf = e.label.category_confidence;
-          if (!c_id || c_conf === 1) return false;
+          if (!isSuggestedLabel(e)) return false;
         }
         if (type === "deposits" && e.amount > 0) return false;
         if (type === "expenses" && e.amount < 0) return false;
