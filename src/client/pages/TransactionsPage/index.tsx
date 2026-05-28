@@ -152,7 +152,7 @@ export const TransactionsPage = () => {
         if (type === "unsorted") {
           const c_id = e.label.category_id;
           const c_conf = e.label.category_confidence;
-          if (c_id && c_conf === 1) return false;
+          if (c_id && (c_conf === 1 || c_conf === 0)) return false;
         }
         // "suggested" view is the narrower slice: rows currently bearing
         // an unreviewed auto-suggestion (0 < confidence < 1).
