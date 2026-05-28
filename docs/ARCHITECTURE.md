@@ -71,7 +71,7 @@ The `label_category_confidence` field encodes four distinct states:
 |---|---|---|
 | `null` | Unlabeled (`label_category_id IS NULL`) | Red dot in `TransactionRow` |
 | `0` | User rejected a prior suggestion | Counted as a rejection signal for that merchant |
-| `0 < c < 1` | Auto-suggest applied a label — user has not yet confirmed or rejected | Grey dot in `TransactionRow` |
+| `0 < c < 1` | Auto-suggest applied a label — user has not yet confirmed or rejected | Yellow dot in `TransactionRow` |
 | `1` | User explicitly confirmed | No dot |
 
 A prod backfill on 2026-05-13 set `label_category_confidence = 1` for every labeled row in `transactions`, so the `(category_id IS NOT NULL, confidence IS NULL)` combination is no longer expected in production data.
@@ -84,7 +84,7 @@ const isConfirmed = category_confidence === 1 && !!category_id;
 
 Used in `src/client/lib/hooks/calculation/budgets.ts` (budget-bar / unsorted-count) and `src/client/pages/TransactionsPage/index.tsx` (the `unsorted` filter). The `&& !!category_id` guard exists so a malformed `confidence=1, category_id=null` row goes to the unsorted bucket rather than into a `categories.get(null)` lookup that would silently drop it.
 
-**Split transactions and confidence.** The `split_transactions` table does not carry `label_category_confidence` — it only has `label_category_id` and `label_budget_id`. When budget calc folds splits into the family via `SplitTransaction.toTransaction()`, the resulting label has `category_confidence === undefined`, which fails the `=== 1` check above. Splits with a category set therefore currently fall into the unsorted bucket in budget-bar / unsorted-count math. This is a known limitation tracked separately from the data-model backfill.
+**Split transactions and confidence.** `split_transactions` carries `label_category_confidence` alongside `label_category_id` and `label_budget_id`, mirroring `transactions`. When budget calc folds splits into the family via `SplitTransaction.toTransaction()`, the split's own label flows through the `isConfirmed` check, so a user-confirmed split (`confidence === 1`) lands in the sorted bucket and an auto-suggested split (`0 < confidence < 1`) lands in unsorted. The route layer applies `inferLabelConfidence` (see `src/server/lib/infer-label-confidence.ts`) on `POST /split-transaction` to write `1` when the user explicitly sets a category and `0` when they clear it.
 
 **Auto-suggest pipeline.** Suggestions are written by the hourly background job in `src/server/lib/compute-tools/auto-suggest.ts` (`runAutoSuggestions`), scheduled from `schedule.ts`'s `scheduledSync`. Per-merchant signal scoring (`evaluateSignal`) is documented in [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md#auto-suggest-merchant-signal-scoring).
 
