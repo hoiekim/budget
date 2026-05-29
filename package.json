@@ -23,9 +23,11 @@
     "test:client": "bun test --preload ./src/client/test-setup.ts src/client src/common",
     "test:server": "bun test src/server src/common",
     "test:coverage": "bun test --preload ./src/client/test-setup.ts --coverage --coverage-reporter=lcov && bun scripts/check-coverage.ts",
+    "test:next": "bun scripts/test-runner/index.ts",
+    "test:next:coverage": "bun scripts/test-runner/index.ts --coverage && bun scripts/check-coverage.ts",
     "lint": "bun --bun eslint src",
     "lint:fix": "bun --bun eslint src --fix",
-    "typecheck": "bun run --bun tsc --noEmit",
+    "typecheck": "bun run --bun tsc --noEmit && bun run --bun tsc --noEmit -p tsconfig.scripts.json",
     "preview": "vite preview"
   },
   "devDependencies": {
