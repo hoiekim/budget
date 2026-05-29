@@ -162,7 +162,7 @@ The signal itself comes from a pg_trgm fuzzy match on `merchant_name` (`MERCHANT
 
 **Apply-with-budget.** When the engine applies a suggestion it writes both `label_category_id` and `label_budget_id`. The UI's category `<select>` filters options by the row's budget, so a category whose parent budget isn't recorded would render as a blank placeholder even though the yellow dot indicates a suggestion is present. See `defaultApplyLabel`.
 
-**What never receives a suggestion.** `defaultFetchUnlabeled` filters on `label_category_confidence: null`. This deliberately excludes rejected suggestions (`confidence === 0`) so the engine doesn't repeatedly resurface a label the user already rejected.
+**What never receives a suggestion.** Both unlabeled fetches filter on `label_category_confidence IS NULL` AND `date > NOW() - INTERVAL '1 week'`. The confidence gate deliberately excludes rejected suggestions (`confidence === 0`) so the engine doesn't repeatedly resurface a label the user already rejected. The recency gate keeps the engine focused on transactions the user is actually looking at — older never-labeled rows are assumed abandoned and would otherwise pull a multi-month backfill through the merchant-signal lookup on every run.
 
 ## Collection Lookup Performance
 

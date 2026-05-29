@@ -4,7 +4,6 @@ import {
   usersTable,
   transactionsTable,
   splitTransactionsTable,
-  IS_NOT_NULL,
   AdditionalWhere,
 } from "server";
 
@@ -79,22 +78,26 @@ type ApplyLabelToSplitFn = (
 const MERCHANT_SIMILARITY_THRESHOLD = 0.5;
 const MERCHANT_SIGNAL_LIMIT = 30;
 
+// Mirror of `defaultFetchUnlabeledSplits` below — same predicate set, same
+// recency window. `transactionsTable.query` has no range comparator, so the
+// `date > NOW() - INTERVAL '1 week'` clause forces a raw query here just as
+// it does on the splits side. Keeping both impls in raw SQL with the same
+// shape is intentional: one canonical predicate, expressed once per query.
 const defaultFetchUnlabeled: FetchUnlabeledFn = async (userId) => {
-  const rows = await transactionsTable.query({
-    user_id: userId,
-    label_category_confidence: null,
-    merchant_name: IS_NOT_NULL,
-  });
-  const oneWeekAgo = new Date();
-  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-  return rows
-    .filter((r) => {
-      return r.merchant_name != null && new Date(r.date) > oneWeekAgo;
-    })
-    .map((r) => ({
-      transaction_id: r.transaction_id as string,
-      merchant_name: r.merchant_name as string,
-    }));
+  const result = await pool.query(
+    `SELECT transaction_id, merchant_name
+       FROM transactions
+      WHERE user_id = $1
+        AND label_category_confidence IS NULL
+        AND merchant_name IS NOT NULL
+        AND (is_deleted IS NULL OR is_deleted = FALSE)
+        AND date > NOW() - INTERVAL '1 week'`,
+    [userId],
+  );
+  return result.rows.map((r) => ({
+    transaction_id: r.transaction_id as string,
+    merchant_name: r.merchant_name as string,
+  }));
 };
 
 // Compare-and-swap: the UPDATE only matches rows that are STILL unlabeled
@@ -184,10 +187,12 @@ const defaultApplyLabelToSplit: ApplyLabelToSplitFn = async (
  * - If enough signal (>= 3 labeled, <= 10% reject rate, >= 95% confidence for best category),
  *   apply the suggestion with confidence = accepted / total_labeled (capped at 0.99)
  *
- * Direct SQL is reserved for the merchant-signal query, which uses pg_trgm
- * `similarity(...)` and a SUM(CASE WHEN ...) aggregation that the standard
- * Table helpers cannot express. The unlabeled fetch and the label-apply
- * use `transactionsTable.query` / `transactionsTable.update` (the standard pattern).
+ * Direct SQL is reserved for predicates the standard Table helpers cannot
+ * express: the merchant-signal query (pg_trgm `similarity(...)` + a
+ * SUM(CASE WHEN ...) aggregation) and the two unlabeled fetches (date range
+ * comparator on `date > NOW() - INTERVAL '1 week'`). The label-apply uses
+ * `transactionsTable.update` / `splitTransactionsTable.update` (the
+ * standard pattern with the CAS guard threaded through).
  */
 export const runAutoSuggestions = async (
   queryFn: QueryFn = (sql, params) => pool.query(sql, params),
