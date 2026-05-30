@@ -36,6 +36,17 @@ import { buildBundle, cleanBundleDir, bundlePathFor, getBundleDir, getRepoRoot }
 
 const REPO_ROOT = getRepoRoot();
 
+/**
+ * Barrels whose REAL exports the preload pre-captures into
+ * `globalThis.__realBarrels` so `mockBarrel(name, …)` can spread them
+ * without picking up another test's mock. Kept narrow on purpose:
+ * `server` and `client` have eager side-effect imports (postgres pool,
+ * route registration, etc.) that we don't want triggered at preload.
+ * Tests that need to mock a single export from those barrels should
+ * use `@external <deep-path>` + a fresh mock instead.
+ */
+const REAL_BARRELS = ["common"];
+
 interface Annotation {
   bundles?: string;
   external: string[];
@@ -107,25 +118,30 @@ const main = async (): Promise<void> => {
   await cleanBundleDir();
   const t1 = performance.now();
   await Promise.all(
-    manifest.map((m) => buildBundle({ source: m.source, externalRelatives: m.external })),
+    manifest.map((m) => buildBundle({ source: m.source, externalSpecs: m.external })),
   );
   const buildMs = performance.now() - t1;
 
-  // 3. Generate the preload. Each entry registers a synthetic module at
-  // the SOURCE's absolute path; the factory uses `require()` so the
-  // bundle's exports come back SYNCHRONOUSLY (mock.module factories
-  // must return an object, not a Promise). The factory only runs when
-  // the source is actually imported by a test — by which point that
-  // test's own `mock.module("pg", …)` has been hoisted and is active,
-  // so the bundle's leaf-dep imports see the test's mocks.
+  // 3. Generate the preload. Two parts:
+  //    a. Pre-capture the REAL exports of each barrel in REAL_BARRELS,
+  //       BEFORE any source→bundle redirect is registered, and stash on
+  //       globalThis.__realBarrels for `mockBarrel(name, …)` to spread.
+  //       This closes the cross-test contamination gap where testB's
+  //       `import * as commonReal from "common"` would otherwise pick up
+  //       testA's mock.
+  //    b. Register a synthetic mock at every SOURCE abs path that
+  //       redirects to its bundle via require() (sync, returns the
+  //       bundle's exports). The factory runs lazily on first import,
+  //       so the test's own `mock.module("pg", …)` etc. are already
+  //       active by then and the bundle's leaf-dep imports see them.
   const preloadPath = resolve(getBundleDir(), "preload.ts");
-  // bun's `require()` goes through the runtime module registry, so the
-  // bundle's own `import { Pool } from "pg"` (which the bundle preserves
-  // as external) hits whatever `mock.module("pg", …)` the test has
-  // already registered. node:module's `createRequire` does NOT thread
-  // through bun's mock layer, so we use the global `require` directly.
   const preloadBody =
-    `import { mock } from "bun:test";\n\n` +
+    `import { mock } from "bun:test";\n` +
+    REAL_BARRELS.map((b) => `import * as __${b} from ${JSON.stringify(b)};`).join("\n") +
+    `\n\n` +
+    `(globalThis as any).__realBarrels = {\n` +
+    REAL_BARRELS.map((b) => `  ${JSON.stringify(b)}: __${b},`).join("\n") +
+    `\n};\n\n` +
     manifest
       .map(
         (m) =>

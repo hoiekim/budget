@@ -32,12 +32,15 @@ export interface BuildOptions {
   /** Absolute path to the source `*.ts` file being bundled. */
   source: string;
   /**
-   * Relative-path imports (relative to `source`) that should stay
-   * external so the test can mock them. The plugin rewrites each to the
-   * resolved absolute path so the bundle's runtime import + the test's
-   * `mock.module()` use the same key.
+   * Specifiers that should stay external in the bundle so the test can
+   * mock them. Each entry is either a relative path (`./foo`, `../bar`)
+   * resolved against `source`, or a tsconfig-aliased specifier
+   * (`common`, `server/lib/postgres/models`, …) resolved through the
+   * paths table. The plugin rewrites each emitted import to the
+   * resolved absolute path so the bundle's runtime import and the
+   * test's `mock.module()` use the same key.
    */
-  externalRelatives?: string[];
+  externalSpecs?: string[];
 }
 
 export interface BuildResult {
@@ -49,53 +52,121 @@ export interface BuildResult {
 }
 
 /**
- * Resolve a relative import specifier against an importer file. Tries
- * `.ts`, `.tsx`, then `/index.ts` so the result matches what bun's loader
- * would pick. Returns null if nothing resolves.
+ * Try to resolve a base path with the standard extensions tsconfig uses.
+ * Returns the first existing `.ts(x)` (or `/index.ts(x)`) candidate, or
+ * null if nothing resolves. Used by both relative and aliased lookups.
  */
-const resolveRelativeSource = (importer: string, spec: string): string | null => {
-  const baseDir = dirname(importer);
-  const baseNoExt = resolve(baseDir, spec);
+const tryExts = (base: string): string | null => {
   const candidates = [
-    baseNoExt,
-    `${baseNoExt}.ts`,
-    `${baseNoExt}.tsx`,
-    resolve(baseNoExt, "index.ts"),
-    resolve(baseNoExt, "index.tsx"),
+    `${base}.ts`,
+    `${base}.tsx`,
+    resolve(base, "index.ts"),
+    resolve(base, "index.tsx"),
   ];
   for (const c of candidates) {
-    if (existsSync(c) && !c.endsWith("/")) {
-      // existsSync returns true for dirs too; prefer file matches.
-      const stat = Bun.file(c);
-      if (stat && c.match(/\.tsx?$/)) return c;
+    if (existsSync(c) && c.match(/\.tsx?$/)) return c;
+  }
+  return null;
+};
+
+/** Parsed prefix → target list from tsconfig "compilerOptions.paths". */
+type PathAliasTable = Array<{ prefix: string; isWildcard: boolean; targets: string[] }>;
+
+let _aliasTable: PathAliasTable | null = null;
+let _baseUrl: string | null = null;
+
+const loadTsConfigPaths = (): { table: PathAliasTable; baseUrl: string } => {
+  if (_aliasTable && _baseUrl) return { table: _aliasTable, baseUrl: _baseUrl };
+  const tsconfigPath = resolve(REPO_ROOT, "tsconfig.json");
+  // Strip JSON comments (tsconfig allows them; node's JSON.parse doesn't).
+  const raw = require("node:fs").readFileSync(tsconfigPath, "utf8").replace(/^\s*\/\/.*$/gm, "");
+  const cfg = JSON.parse(raw);
+  const co = cfg.compilerOptions ?? {};
+  const baseUrl = resolve(REPO_ROOT, co.baseUrl ?? ".");
+  const paths = (co.paths ?? {}) as Record<string, string[]>;
+  const table: PathAliasTable = [];
+  for (const [prefix, targets] of Object.entries(paths)) {
+    if (prefix.endsWith("/*")) {
+      table.push({ prefix: prefix.slice(0, -1), isWildcard: true, targets });
+    } else {
+      table.push({ prefix, isWildcard: false, targets });
+    }
+  }
+  // Sort so longer/more-specific prefixes win when overlapping.
+  table.sort((a, b) => b.prefix.length - a.prefix.length);
+  _aliasTable = table;
+  _baseUrl = baseUrl;
+  return { table, baseUrl };
+};
+
+const resolveAliasedSource = (spec: string): string | null => {
+  const { table, baseUrl } = loadTsConfigPaths();
+  for (const entry of table) {
+    if (entry.isWildcard) {
+      if (!spec.startsWith(entry.prefix)) continue;
+      const tail = spec.slice(entry.prefix.length);
+      for (const target of entry.targets) {
+        const targetTail = target.endsWith("/*") ? target.slice(0, -2) : target;
+        const base = resolve(baseUrl, targetTail, tail);
+        const hit = tryExts(base);
+        if (hit) return hit;
+      }
+    } else {
+      if (spec !== entry.prefix) continue;
+      for (const target of entry.targets) {
+        const base = resolve(baseUrl, target);
+        const hit = tryExts(base);
+        if (hit) return hit;
+      }
     }
   }
   return null;
 };
 
 /**
- * Bun plugin: for each `externalRelatives` entry, intercept the
- * resolver, return the absolute source path with `external: true`.
- * The bundle then emits `import … from "/abs/path/to/sibling.ts"` and
- * the test's `mock.module("/abs/path/to/sibling.ts", …)` matches it.
+ * Resolve a relative import specifier against an importer file. Tries
+ * `.ts`, `.tsx`, then `/index.ts` so the result matches what bun's loader
+ * would pick. Returns null if nothing resolves.
  */
-const externalRelativesPlugin = (
+const resolveRelativeSource = (importer: string, spec: string): string | null => {
+  const base = resolve(dirname(importer), spec);
+  return tryExts(base);
+};
+
+/**
+ * Resolve any `@external` specifier — relative (`./foo`, `../bar`) or
+ * tsconfig-aliased (`common`, `server/lib/postgres/models`, …) — to its
+ * absolute source-file path. Returns null if neither path resolves.
+ */
+const resolveExternalSpec = (importer: string, spec: string): string | null => {
+  if (spec.startsWith(".")) return resolveRelativeSource(importer, spec);
+  return resolveAliasedSource(spec);
+};
+
+/**
+ * Bun plugin: for each `@external` entry — whether relative or
+ * tsconfig-aliased — intercept the resolver, return the absolute source
+ * path with `external: true`. The bundle then emits `import … from
+ * "/abs/path/to/source.ts"` and the test's `mock.module(<spec>, …)`
+ * matches it (bun resolves the test's spec to the same abs path).
+ */
+const externalSpecsPlugin = (
   source: string,
-  externalRelatives: string[],
+  externalSpecs: string[],
   resolutions: Record<string, string>,
 ): BunPlugin => ({
-  name: "external-relative-paths",
+  name: "external-specs",
   setup(build) {
-    for (const spec of externalRelatives) {
-      const abs = resolveRelativeSource(source, spec);
+    for (const spec of externalSpecs) {
+      const abs = resolveExternalSpec(source, spec);
       if (!abs) {
         throw new Error(`@external "${spec}" did not resolve from ${source}`);
       }
       resolutions[spec] = abs;
       build.onResolve({ filter: new RegExp(`^${escapeRegex(spec)}$`) }, (args) => {
-        // Only externalize when the importer is THIS bundle's tree —
-        // bun also asks us to resolve `node_modules` imports through
-        // here; filter by checking that the importer is under repo.
+        // Skip if the importer is OUTSIDE the repo (e.g. node_modules
+        // packages doing their own imports). The bundle's importers
+        // are always under REPO_ROOT.
         if (!args.importer.startsWith(REPO_ROOT)) return undefined;
         return { path: abs, external: true };
       });
@@ -118,13 +189,16 @@ export const bundlePathFor = (source: string): string => {
 };
 
 /**
- * Rewrite the externalized relative-path imports in the bundle output
- * to ABSOLUTE source paths. Bun.build's `external: true` keeps the
- * original specifier in the emitted bundle, so a relative spec like
+ * Rewrite the externalized specifiers in the bundle output to ABSOLUTE
+ * source paths. Bun.build's `external: true` keeps the original
+ * specifier in the emitted bundle, so a relative spec like
  * `./securities` would otherwise resolve relative to the bundle's
- * location (`.test-bundles/`) at runtime — where the sibling doesn't
- * exist. Rewriting to the absolute source path also gives the test a
- * stable, predictable key to pass to `mock.module(...)`.
+ * location (`.test-bundles/`) at runtime, and an aliased spec like
+ * `common` would resolve via the runtime's path-mapping (or fail if
+ * Bun isn't given the tsconfig context). Rewriting to the absolute
+ * source path makes both cases deterministic and gives the test a
+ * stable key — bun resolves the test's `mock.module(spec, …)` to the
+ * same abs path, so the bundle's import and the test's mock match.
  */
 const rewriteExternalImports = async (
   bundlePath: string,
@@ -149,8 +223,8 @@ export const buildBundle = async (options: BuildOptions): Promise<BuildResult> =
   const externalResolutions: Record<string, string> = {};
 
   const plugins =
-    options.externalRelatives && options.externalRelatives.length > 0
-      ? [externalRelativesPlugin(options.source, options.externalRelatives, externalResolutions)]
+    options.externalSpecs && options.externalSpecs.length > 0
+      ? [externalSpecsPlugin(options.source, options.externalSpecs, externalResolutions)]
       : [];
 
   const t0 = performance.now();
