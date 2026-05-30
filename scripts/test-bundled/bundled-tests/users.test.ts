@@ -1,0 +1,180 @@
+// Per-test-bundle variant of users.test.ts. Source under test (users.ts)
+// is built into .test-bundles/ with `pg` external; this test mocks `pg`
+// at the leaf level and dynamic-imports the bundle. mocks are captured
+// per-bundle at first-load time, so multiple bundled tests in the same
+// `bun test` process can each have their own mocks without colliding.
+// @bundles src/server/lib/postgres/repositories/users.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
+
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
+
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
+
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
+
+mock.module("bcrypt", () => ({
+  default: { hash: async (s: string) => `hashed:${s}` },
+}));
+
+const { writeUser, searchUser, updateUser, getUserById, deleteUser } = await import(
+  "../../../.test-bundles/src__server__lib__postgres__repositories__users.bundle.js"
+);
+
+function makeUserRow(overrides: Record<string, unknown> = {}) {
+  return {
+    user_id: "usr-123",
+    username: "hoie",
+    password: "$2b$10$hashedpassword",
+    email: null,
+    expiry: null,
+    token: null,
+    updated: null,
+    is_deleted: false,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  mockQuery.mockReset();
+});
+
+describe("writeUser", () => {
+  test("returns _id on successful upsert", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "usr-abc" }], rowCount: 1 });
+    const result = await writeUser({ username: "hoie", password: "secret123" });
+    expect(result).toEqual({ _id: "usr-abc" });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns undefined when upsert returns no rows", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await writeUser({ username: "hoie", password: "secret123" });
+    expect(result).toBeUndefined();
+  });
+
+  test("includes user_id in upsert row when provided", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "usr-explicit" }], rowCount: 1 });
+    const result = await writeUser({
+      user_id: "usr-explicit",
+      username: "hoie",
+      password: "secret123",
+    });
+    expect(result).toEqual({ _id: "usr-explicit" });
+  });
+
+  test("hashes password before storing", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "u1" }], rowCount: 1 });
+    await writeUser({ username: "hoie", password: "plaintext" });
+
+    const call = mockQuery.mock.calls[0];
+    const sql = call[0] as string;
+    const values = call[1] as string[];
+    expect(values).not.toContain("plaintext");
+    expect(sql).toContain("users");
+  });
+
+  test("does not hash when password is undefined", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "u2" }], rowCount: 1 });
+    const result = await writeUser({ username: "hoie" } as Parameters<typeof writeUser>[0]);
+    expect(result).toEqual({ _id: "u2" });
+  });
+});
+
+describe("searchUser", () => {
+  test("returns User when found by user_id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeUserRow()], rowCount: 1 });
+    const result = await searchUser({ user_id: "usr-123" });
+    expect(result?.user_id).toBe("usr-123");
+    expect(result?.username).toBe("hoie");
+  });
+
+  test("returns User when found by username", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeUserRow({ username: "hoie" })], rowCount: 1 });
+    const result = await searchUser({ username: "hoie" });
+    expect(result?.username).toBe("hoie");
+  });
+
+  test("returns undefined when no rows returned", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await searchUser({ user_id: "nonexistent" });
+    expect(result).toBeUndefined();
+  });
+
+  test("returns undefined and skips query when no filters provided", async () => {
+    const result = await searchUser({});
+    expect(result).toBeUndefined();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateUser", () => {
+  test("returns true when update succeeds", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "usr-123" }], rowCount: 1 });
+    const result = await updateUser({ user_id: "usr-123", username: "newname" });
+    expect(result).toBe(true);
+  });
+
+  test("returns false when no rows updated", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await updateUser({ user_id: "usr-123", username: "newname" });
+    expect(result).toBe(false);
+  });
+
+  test("returns false when no updates provided (empty object)", async () => {
+    const result = await updateUser({ user_id: "usr-123" });
+    expect(result).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test("hashes password when included in update", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "usr-123" }], rowCount: 1 });
+    await updateUser({ user_id: "usr-123", password: "newpassword" });
+    const values = mockQuery.mock.calls[0][1] as string[];
+    expect(values).not.toContain("newpassword");
+  });
+});
+
+describe("getUserById", () => {
+  test("returns User when found", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeUserRow({ user_id: "usr-456" })], rowCount: 1 });
+    const result = await getUserById("usr-456");
+    expect(result?.user_id).toBe("usr-456");
+  });
+
+  test("returns undefined when not found", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await getUserById("nonexistent");
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("deleteUser", () => {
+  test("returns true when deletion succeeds (rowCount > 0)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "usr-123" }], rowCount: 1 });
+    const result = await deleteUser("usr-123");
+    expect(result).toBe(true);
+  });
+
+  test("returns false when no row deleted (rowCount = 0)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await deleteUser("nonexistent");
+    expect(result).toBe(false);
+  });
+
+  test("returns false when rowCount is null", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: null });
+    const result = await deleteUser("usr-123");
+    expect(result).toBe(false);
+  });
+});
