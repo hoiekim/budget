@@ -1,4 +1,4 @@
-// Per-test-bundle variant of transactions.test.ts.
+// Per-test-bundle isolation — see scripts/test-bundled/.
 // @bundles src/server/lib/postgres/repositories/transactions.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { TransactionPaymentChannelEnum } from "plaid";
@@ -27,9 +27,7 @@ const {
   upsertTransactions,
   updateTransactions,
   getOldestTransactionDate,
-} = await import(
-  "../../../.test-bundles/src__server__lib__postgres__repositories__transactions.bundle.js"
-);
+} = await import("./transactions");
 
 function makeTxRow(overrides: Record<string, unknown> = {}) {
   return {

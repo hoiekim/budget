@@ -1,26 +1,40 @@
 /**
- * Per-test-bundle runner.
+ * Per-test-bundle runner — preload-driven source-import redirect.
  *
- * For each converted test under `scripts/test-bundled/bundled-tests/`:
- *   1. Parse its `// @bundles <relPath>` and any `// @external <spec>`
- *      header annotations.
- *   2. Build the source into a unique bundle under `.test-bundles/`,
- *      keeping leaf node_modules deps (and any `@external` relative
- *      paths) as runtime imports so the test can mock them.
- *   3. Run all converted tests in ONE `bun test` invocation. Isolation
- *      comes from each test dynamic-importing its own unique bundle
- *      path — each bundle captures the leaf-dep mocks active at its
- *      first load, then never re-resolves them.
+ * Discovery: scan `src/**` for `*.test.{ts,tsx}` files containing a
+ *   `// @bundles <relPath>` annotation (and optional `// @external …`).
+ *
+ * For each annotated test:
+ *   1. Build the annotated source into a unique bundle under
+ *      `.test-bundles/`, with leaf node_modules deps + any `@external`
+ *      relative paths kept as runtime imports (the bundle's `import …
+ *      from "pg"` and `import … from "/abs/path/to/sibling.ts"` stay).
+ *   2. Record (source-abs-path → bundle-abs-path) in a manifest.
+ *
+ * Then write a preload script that registers
+ *   `mock.module(<source-abs-path>, () => import(<bundle-abs-path>))`
+ * for every entry. When the test's natural `import { foo } from
+ * "./source"` is resolved by bun, it lands on the same abs path, hits
+ * the synthetic mock, and returns the bundle's exports instead of
+ * loading the real source.
+ *
+ * Mock isolation across tests in one `bun test` process: each bundle
+ * lives at a unique path, so two tests covering the same source
+ * import the same bundle module — but the bundle's body still runs
+ * exactly once. For DIFFERENT sources, each bundle is its own ESM
+ * module record and captures its own leaf-dep mocks at first load via
+ * static binding. The test's `mock.module("pg", …)` is hoisted by
+ * bun:test to before its own imports, so by the time the source
+ * import (redirected to the bundle) loads, the leaf-dep mock is live.
  *
  * Wired into package.json as `bun run test:bundled`.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Glob } from "bun";
-import { buildBundle, cleanBundleDir, getRepoRoot } from "./build.ts";
+import { buildBundle, cleanBundleDir, bundlePathFor, getBundleDir, getRepoRoot } from "./build.ts";
 
 const REPO_ROOT = getRepoRoot();
-const BUNDLED_TESTS_DIR = resolve(import.meta.dirname, "bundled-tests");
 
 interface Annotation {
   bundles?: string;
@@ -44,9 +58,7 @@ const parseAnnotations = async (testAbs: string): Promise<Annotation> => {
       continue;
     }
     const externalM = /^\/\/\s*@external\s+(.+?)\s*$/.exec(line);
-    if (externalM) {
-      out.external.push(externalM[1]);
-    }
+    if (externalM) out.external.push(externalM[1]);
   }
   return out;
 };
@@ -57,51 +69,94 @@ const COLOR_RESET = "\x1b[0m";
 
 const main = async (): Promise<void> => {
   const t0 = performance.now();
+  const preloadOnly = process.argv.slice(2).includes("--preload-only");
+
+  // 1. Discover bundled tests under src/. The `.test.bundle.ts` suffix
+  // keeps them OUT of the default `*.test.ts` glob that
+  // `bun run test:non-bundled` uses — so each test file runs under
+  // exactly the runner that supplies the preload it expects.
   const testFiles: string[] = [];
-  const glob = new Glob("**/*.test.ts");
-  for await (const rel of glob.scan({ cwd: BUNDLED_TESTS_DIR, absolute: false })) {
-    testFiles.push(resolve(BUNDLED_TESTS_DIR, rel));
-  }
-  if (testFiles.length === 0) {
-    process.stdout.write("no bundled tests discovered\n");
-    return;
+  const glob = new Glob("**/*.test.bundle.{ts,tsx}");
+  for await (const rel of glob.scan({ cwd: resolve(REPO_ROOT, "src"), absolute: false })) {
+    testFiles.push(resolve(REPO_ROOT, "src", rel));
   }
 
-  // Resolve annotations
-  const manifest: Array<{ test: string; source: string; external: string[] }> = [];
+  const manifest: Array<{ test: string; source: string; external: string[]; bundle: string }> = [];
   for (const testAbs of testFiles) {
     const ann = await parseAnnotations(testAbs);
-    if (!ann.bundles) {
-      process.stderr.write(`skip (no @bundles annotation): ${testAbs}\n`);
-      continue;
-    }
+    if (!ann.bundles) continue;
     const sourceAbs = resolve(REPO_ROOT, ann.bundles);
-    manifest.push({ test: testAbs, source: sourceAbs, external: ann.external });
+    manifest.push({
+      test: testAbs,
+      source: sourceAbs,
+      external: ann.external,
+      bundle: bundlePathFor(sourceAbs),
+    });
+  }
+
+  if (manifest.length === 0) {
+    process.stdout.write("no bundled tests discovered (looking for `// @bundles <relPath>`)\n");
+    return;
   }
 
   process.stdout.write(
     `${COLOR_BOLD}building${COLOR_RESET} ${manifest.length} bundle(s)…\n`,
   );
 
+  // 2. Clean + build bundles in parallel
   await cleanBundleDir();
   const t1 = performance.now();
   await Promise.all(
-    manifest.map((m) =>
-      buildBundle({ source: m.source, externalRelatives: m.external }),
-    ),
+    manifest.map((m) => buildBundle({ source: m.source, externalRelatives: m.external })),
   );
   const buildMs = performance.now() - t1;
+
+  // 3. Generate the preload. Each entry registers a synthetic module at
+  // the SOURCE's absolute path; the factory uses `require()` so the
+  // bundle's exports come back SYNCHRONOUSLY (mock.module factories
+  // must return an object, not a Promise). The factory only runs when
+  // the source is actually imported by a test — by which point that
+  // test's own `mock.module("pg", …)` has been hoisted and is active,
+  // so the bundle's leaf-dep imports see the test's mocks.
+  const preloadPath = resolve(getBundleDir(), "preload.ts");
+  // bun's `require()` goes through the runtime module registry, so the
+  // bundle's own `import { Pool } from "pg"` (which the bundle preserves
+  // as external) hits whatever `mock.module("pg", …)` the test has
+  // already registered. node:module's `createRequire` does NOT thread
+  // through bun's mock layer, so we use the global `require` directly.
+  const preloadBody =
+    `import { mock } from "bun:test";\n\n` +
+    manifest
+      .map(
+        (m) =>
+          `mock.module(${JSON.stringify(m.source)}, () => require(${JSON.stringify(m.bundle)}));`,
+      )
+      .join("\n") +
+    "\n";
+  await mkdir(getBundleDir(), { recursive: true });
+  await writeFile(preloadPath, preloadBody);
+
   process.stdout.write(
     `${COLOR_DIM}built ${manifest.length} bundles in ${buildMs.toFixed(0)}ms${COLOR_RESET}\n`,
   );
 
-  // Run all converted tests in ONE bun test process
+  if (preloadOnly) {
+    // The package.json `test` / `test:coverage` scripts chain this mode
+    // as a prebuild step and then invoke `bun test --preload <preload>`
+    // themselves, so the preload's source→bundle redirect applies to
+    // every test in one unified `bun test` invocation.
+    process.stdout.write(
+      `${COLOR_DIM}preload-only: wrote ${preloadPath}${COLOR_RESET}\n`,
+    );
+    return;
+  }
+
+  // 4. Run only the bundled tests in ONE bun test process with the preload.
   const t2 = performance.now();
-  const proc = Bun.spawn(["bun", "test", ...testFiles], {
-    cwd: REPO_ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+  const proc = Bun.spawn(
+    ["bun", "test", "--preload", preloadPath, ...manifest.map((m) => m.test)],
+    { cwd: REPO_ROOT, stdout: "inherit", stderr: "inherit" },
+  );
   const exitCode = await proc.exited;
   const runMs = performance.now() - t2;
   const totalMs = performance.now() - t0;

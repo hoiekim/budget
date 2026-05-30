@@ -1,22 +1,35 @@
+// Per-test-bundle isolation: the orchestrator (`scripts/test-bundled/`)
+// builds api_keys.ts into a unique bundle with `pg` kept external, and
+// registers a `mock.module` redirect in the preload so this file's
+// natural `import { … } from "./api_keys"` lands on the bundle. The
+// bundle captures THIS test's `pg` mock at its first load, so other
+// bundled tests in the same `bun test` process can mock `pg`
+// differently without colliding.
+// @bundles src/server/lib/postgres/repositories/api_keys.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-mock.module("../client", () => ({
-  pool: { query: mockQuery },
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
 }));
 
-import {
-  generateApiKey,
-  hashApiKey,
-  createApiKey,
-  listApiKeys,
-  revokeApiKey,
-  verifyApiKey,
-} from "./api_keys";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
+
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
+
+// Dynamic-import so the leaf-dep mocks above are registered BEFORE the
+// bundle (which the preload redirects this path to) loads. The path is
+// still the natural sibling source — only the import shape changes.
+const { generateApiKey, hashApiKey, createApiKey, listApiKeys, revokeApiKey, verifyApiKey } =
+  await import("./api_keys");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -26,12 +39,10 @@ describe("generateApiKey", () => {
   test("returns plaintext, hash, and prefix with the bk_ scheme", () => {
     const k = generateApiKey();
     expect(k.plaintext.startsWith("bk_")).toBe(true);
-    // 32 random bytes → 43 chars base64url, plus "bk_" = 46 chars
     expect(k.plaintext.length).toBe(46);
     expect(k.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(k.prefix.length).toBe(11);
     expect(k.prefix).toBe(k.plaintext.slice(0, 11));
-    // Hash must match SHA-256 of the plaintext
     expect(hashApiKey(k.plaintext)).toBe(k.hash);
   });
 
@@ -56,9 +67,7 @@ describe("createApiKey", () => {
     expect(created.prefix).toBe(created.plaintext.slice(0, 11));
 
     const [, values] = mockQuery.mock.calls[0];
-    // Plaintext must NOT be persisted to the DB
     expect((values as unknown[]).some((v) => v === created.plaintext)).toBe(false);
-    // Hash must be persisted
     expect(values).toContain(hashApiKey(created.plaintext));
   });
 
@@ -91,7 +100,6 @@ describe("listApiKeys", () => {
     const out = await listApiKeys("u-1");
     expect(out).toHaveLength(1);
     expect(out[0].key_id).toBe("k-1");
-    // Note: ApiKeyJSON deliberately excludes key_hash, so we shouldn't see it
     expect("key_hash" in out[0]).toBe(false);
 
     const [sql, values] = mockQuery.mock.calls[0];
@@ -121,7 +129,7 @@ describe("verifyApiKey", () => {
   const validRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
     key_id: "k-1",
     user_id: "u-1",
-    key_hash: "", // filled in per-test
+    key_hash: "",
     scopes: ["transactions:suggest"],
     revoked_at: null,
     expires_at: null,
@@ -144,7 +152,6 @@ describe("verifyApiKey", () => {
       rows: [validRow({ key_hash: k.hash })],
       rowCount: 1,
     });
-    // Second query is the best-effort UPDATE last_used_at
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await verifyApiKey(k.plaintext);
@@ -154,7 +161,6 @@ describe("verifyApiKey", () => {
       scopes: ["transactions:suggest"],
     });
 
-    // Wait a tick for the best-effort touch to fire
     await new Promise((r) => setTimeout(r, 5));
     const lastCall = mockQuery.mock.calls.at(-1);
     expect(lastCall?.[0]).toContain("last_used_at");

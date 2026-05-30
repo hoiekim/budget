@@ -1,14 +1,10 @@
-// Per-test-bundle variant of snapshots.test.ts.
+// Per-test-bundle isolation — see scripts/test-bundled/.
 //
-// snapshots.ts imports `searchSecuritiesById` from `./securities` — its
-// sibling module. The bundle keeps that relative path EXTERNAL (rewritten
-// to the absolute source path by the orchestrator's plugin) so the test
-// can mock it with `mock.module(<abs-path>, …)`. The `externalPath`
-// helper recomputes the same absolute path the plugin used.
+// The bundle keeps `./securities` external (declared via @external below)
+// so this test can mock the sibling at its natural relative path.
 // @bundles src/server/lib/postgres/repositories/snapshots.ts
 // @external ./securities
 import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { externalPath } from "../helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -28,15 +24,11 @@ mock.module("pg", () => ({
 }));
 
 const mockSearchSecuritiesById = mock(async (_ids: string[]) => [] as unknown[]);
+mock.module("./securities", () => ({
+  searchSecuritiesById: mockSearchSecuritiesById,
+}));
 
-mock.module(
-  externalPath("src/server/lib/postgres/repositories/snapshots.ts", "./securities"),
-  () => ({ searchSecuritiesById: mockSearchSecuritiesById }),
-);
-
-const { searchSnapshots } = await import(
-  "../../../.test-bundles/src__server__lib__postgres__repositories__snapshots.bundle.js"
-);
+const { searchSnapshots } = await import("./snapshots");
 
 const testUser = { user_id: "usr-1", username: "hoie" };
 
