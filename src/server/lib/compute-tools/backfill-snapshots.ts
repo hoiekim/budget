@@ -5,29 +5,18 @@ import {
   JSONSecuritySnapshot,
 } from "common";
 import {
-  getSecuritySnapshots as realGetSecuritySnapshots,
-  searchSecuritiesById as realSearchSecuritiesById,
-  upsertSnapshots as realUpsertSnapshots,
+  getSecuritySnapshots,
+  searchSecuritiesById,
+  upsertSnapshots,
   polygon,
   logger,
 } from "server";
-
-const realGetClosePrice = polygon.getClosePrice;
 
 export interface BackfillSecurityRef {
   security_id: string;
   /** ISO date the security was first observed in a holding snapshot for this caller. */
   fromDate: string;
 }
-
-// DI seams — production callers pass nothing and get the real DB/polygon
-// implementations. Tests pass mocks via positional args instead of
-// `mock.module`, which is process-wide in Bun and leaks across sibling
-// test files. Same factoring as `cash-holding.ts`.
-type GetSecuritySnapshotsFn = typeof realGetSecuritySnapshots;
-type SearchSecuritiesByIdFn = typeof realSearchSecuritiesById;
-type UpsertSnapshotsFn = typeof realUpsertSnapshots;
-type GetClosePriceFn = typeof realGetClosePrice;
 
 export interface BackfillResult {
   /** Number of months newly filled with a security snapshot. */
@@ -63,20 +52,9 @@ const MAX_MONTHS_PER_INVOCATION = 60;
  */
 export const backfillMonthlySecuritySnapshotsForward = async (
   refs: BackfillSecurityRef[],
-  options: {
-    maxMonthsPerInvocation?: number;
-    searchSecuritiesById?: SearchSecuritiesByIdFn;
-    getSecuritySnapshots?: GetSecuritySnapshotsFn;
-    upsertSnapshots?: UpsertSnapshotsFn;
-    getClosePrice?: GetClosePriceFn;
-  } = {},
+  options: { maxMonthsPerInvocation?: number } = {},
 ): Promise<BackfillResult> => {
   const cap = options.maxMonthsPerInvocation ?? MAX_MONTHS_PER_INVOCATION;
-  // Resolve DI seams to the real implementations by default.
-  const searchSecuritiesById = options.searchSecuritiesById ?? realSearchSecuritiesById;
-  const getSecuritySnapshots = options.getSecuritySnapshots ?? realGetSecuritySnapshots;
-  const upsertSnapshots = options.upsertSnapshots ?? realUpsertSnapshots;
-  const getClosePrice = options.getClosePrice ?? realGetClosePrice;
 
   const result: BackfillResult = { filled: 0, skipped: 0, empty: 0, errors: 0 };
 
@@ -154,7 +132,7 @@ export const backfillMonthlySecuritySnapshotsForward = async (
       // future/in-progress price with today's date.
       const dayInMonth =
         cursor === nowYearMonth ? getDateString(getYesterday()) : `${cursor}-15`;
-      const fetchResult = await getClosePrice(ticker_symbol, new Date(dayInMonth));
+      const fetchResult = await polygon.getClosePrice(ticker_symbol, new Date(dayInMonth));
 
       if (!fetchResult.success) {
         if (fetchResult.error === "no_data") result.empty++;
