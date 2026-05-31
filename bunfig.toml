@@ -1,2 +1,3 @@
-# Test preload is configured via npm scripts in package.json
-# Use `bun run test:client` or `bun run test:server` for isolated test runs
+# Test preload is configured via npm scripts in package.json.
+# Use `bun run test` (runs test:bundled then test:non-bundled). For a single
+# non-bundled file, pass the preload: `bun test --preload ./src/client/test-setup.ts <file>`.
