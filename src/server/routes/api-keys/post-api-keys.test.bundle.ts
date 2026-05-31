@@ -1,41 +1,32 @@
-/**
- * Tests for POST /api/api-keys (Closes #358 — POST coverage).
- *
- * Mocking pattern: monkey-patch `apiKeysTable.insert` (the lowest-level
- * write the route's `createApiKey` helper performs), following the same
- * approach as `accounts/post-suggest-category.test.ts`. Avoids
- * `mock.module("server", ...)` because Bun's module mock is process-wide
- * and leaks into sibling test files in the same run.
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/api-keys/post-api-keys.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { apiKeysTable } from "server/lib/postgres/models";
-import { postApiKeysRoute } from "./post-api-keys";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalInsert = apiKeysTable.insert.bind(apiKeysTable);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockInsert = mock(
-  async (
-    _row: unknown,
-    _returning?: string[],
-  ): Promise<Record<string, unknown> | null> => ({ key_id: "k-1" }),
-);
-
-(apiKeysTable as unknown as { insert: typeof mockInsert }).insert = mockInsert;
-
-afterAll(() => {
-  (apiKeysTable as unknown as { insert: typeof originalInsert }).insert = originalInsert;
-});
+const { postApiKeysRoute } = await import("./post-api-keys");
 
 beforeEach(() => {
-  mockInsert.mockReset();
-  mockInsert.mockResolvedValue({ key_id: "k-1" });
+  mockQuery.mockReset();
 });
 
 function makeReq(body: unknown, opts: { user?: { user_id: string; username: string } | null } = {}) {
-  const user =
-    opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
+  const user = opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
   return {
     method: "POST",
     path: "/api-keys",
@@ -66,12 +57,21 @@ const fakeRes = () =>
     end() {},
   }) as unknown as Parameters<typeof postApiKeysRoute.execute>[1];
 
+/** Find the INSERT INTO api_keys SQL call and return its parameters. */
+const findInsertCall = (): { sql: string; values: unknown[] } | null => {
+  for (const call of mockQuery.mock.calls) {
+    const sql = call[0] as string;
+    if (/INSERT\s+INTO\s+api_keys/i.test(sql)) return { sql, values: call[1] as unknown[] };
+  }
+  return null;
+};
+
 describe("post-api-keys", () => {
   test("rejects unauthenticated requests", async () => {
     const result = await postApiKeysRoute.execute(makeReq({}, { user: null }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   test("rejects missing body", async () => {
@@ -181,7 +181,7 @@ describe("post-api-keys", () => {
   });
 
   test("happy path returns key_id + prefix + plaintext, trimmed name", async () => {
-    mockInsert.mockResolvedValueOnce({ key_id: "k-42" });
+    mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-42" }], rowCount: 1 });
 
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "  laptop  ", scopes: ["transactions:suggest"] }),
@@ -190,20 +190,22 @@ describe("post-api-keys", () => {
 
     expect(result?.status).toBe("success");
     expect(result?.body?.key_id).toBe("k-42");
-    // Plaintext is generated client-side here; verify the bk_ scheme is preserved.
+    // Plaintext is generated server-side; verify the bk_ scheme is preserved.
     expect(result?.body?.plaintext.startsWith("bk_")).toBe(true);
     expect(result?.body?.prefix).toBe(result!.body!.plaintext.slice(0, 11));
 
-    expect(mockInsert).toHaveBeenCalledTimes(1);
-    const [row] = mockInsert.mock.calls[0] as [Record<string, unknown>, string[]];
-    expect(row.user_id).toBe("u-1");
-    expect(row.name).toBe("laptop");
-    expect(row.scopes).toEqual(["transactions:suggest"]);
-    expect(row.expires_at).toBeNull();
+    const ins = findInsertCall();
+    expect(ins).not.toBeNull();
+    // INSERT carries the row fields: user_id, trimmed name, scopes array,
+    // null expires_at, plus the derived key_hash + key_prefix.
+    expect(ins!.values).toContain("u-1");
+    expect(ins!.values).toContain("laptop");
+    expect(ins!.values.find((v) => Array.isArray(v))).toEqual(["transactions:suggest"]);
+    expect(ins!.values).toContain(null);
   });
 
   test("plaintext is generated each request and never persisted", async () => {
-    mockInsert.mockResolvedValueOnce({ key_id: "k-1" });
+    mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "k", scopes: ["transactions:suggest"] }),
       fakeRes(),
@@ -211,29 +213,31 @@ describe("post-api-keys", () => {
     const plaintext = result?.body?.plaintext;
     expect(plaintext).toBeDefined();
 
-    const [row] = mockInsert.mock.calls[0] as [Record<string, unknown>, string[]];
-    // The DB row stores a hash + prefix; the raw plaintext must never be persisted.
-    expect(Object.values(row).some((v) => v === plaintext)).toBe(false);
-    expect(row.key_hash).toBeDefined();
-    expect(row.key_prefix).toBe(plaintext!.slice(0, 11));
+    const ins = findInsertCall();
+    expect(ins).not.toBeNull();
+    // The raw plaintext must NEVER appear in the persisted row.
+    expect(ins!.values).not.toContain(plaintext);
+    // The derived prefix (11-char public identifier) MUST appear.
+    expect(ins!.values).toContain(plaintext!.slice(0, 11));
   });
 
   test("happy path normalizes a valid future expires_at to ISO", async () => {
     const future = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+    mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "k", scopes: ["transactions:suggest"], expires_at: future }),
       fakeRes(),
     );
     expect(result?.status).toBe("success");
-    const [row] = mockInsert.mock.calls[0] as [Record<string, unknown>, string[]];
-    expect(row.expires_at).toBe(future);
+    const ins = findInsertCall();
+    expect(ins).not.toBeNull();
+    expect(ins!.values).toContain(future);
   });
 
   test("insert returning null surfaces as a Route-layer failure", async () => {
-    // `createApiKey` throws when `apiKeysTable.insert` resolves to null.
-    // The Route layer catches the throw and returns an error envelope —
-    // pin that the failure is surfaced (not silently turned into success).
-    mockInsert.mockResolvedValueOnce(null);
+    // INSERT … RETURNING * with no row → `createApiKey` throws → Route
+    // surfaces an error envelope rather than success.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "k", scopes: ["transactions:suggest"] }),
       fakeRes(),

@@ -1,39 +1,28 @@
-/**
- * Tests for POST /api/public-token (#393 — partial: post-public-token.ts
- * validation and dispatch coverage).
- *
- * Scope: auth gate, provider-routing validation, and the wrong-type
- * branches. The success branches for SIMPLE_FIN / PLAID / MANUAL all
- * call into `plaid.*` / `simpleFin.*` (namespace re-exports) and
- * `upsertItems` / `searchItems` / `sync*` (top-level consts in
- * server/lib). Mocking either layer cleanly requires either DI on the
- * route or a process-wide `mock.module`, which the test-pattern note
- * explicitly avoids (cross-file leak). The MANUAL "already exists"
- * branch is covered because it only requires `itemsTable.query` to
- * return a matching row, which is monkey-patchable in-place.
- *
- * Remaining branches (SIMPLE_FIN success, PLAID success, MANUAL fresh)
- * are tracked as a follow-up to #393.
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/users/post-public-token.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { itemsTable } from "server/lib/postgres/models";
-import { postPublicTokenRoute } from "./post-public-token";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalQuery = itemsTable.query.bind(itemsTable);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockQuery = mock(async (_filters: Record<string, unknown>): Promise<unknown[]> => []);
-
-(itemsTable as unknown as { query: typeof mockQuery }).query = mockQuery;
-
-afterAll(() => {
-  (itemsTable as unknown as { query: typeof originalQuery }).query = originalQuery;
-});
+const { postPublicTokenRoute } = await import("./post-public-token");
 
 beforeEach(() => {
   mockQuery.mockReset();
-  mockQuery.mockResolvedValue([]);
 });
 
 function makeReq(
@@ -41,8 +30,7 @@ function makeReq(
   body: unknown,
   opts: { user?: { user_id: string; username: string } | null } = {},
 ): Parameters<typeof postPublicTokenRoute.execute>[0] {
-  const user =
-    opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
+  const user = opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
   return {
     method: "POST",
     path: "/public-token",
@@ -72,6 +60,25 @@ const fakeRes = () =>
     },
     end() {},
   }) as unknown as Parameters<typeof postPublicTokenRoute.execute>[1];
+
+/** Raw items-table row matching ItemModel's full schema. */
+const itemRow = (overrides: Record<string, unknown> = {}) => ({
+  item_id: "i-existing",
+  user_id: "u-1",
+  access_token: "no_access_token",
+  institution_id: null,
+  available_products: null,
+  cursor: null,
+  status: null,
+  provider: "manual",
+  last_sync_status: null,
+  last_sync_at: null,
+  last_sync_error: null,
+  raw: null,
+  updated: null,
+  is_deleted: false,
+  ...overrides,
+});
 
 describe("post-public-token", () => {
   test("rejects unauthenticated requests", async () => {
@@ -121,17 +128,13 @@ describe("post-public-token", () => {
   });
 
   test("provider=manual with existing MANUAL item → 'Manual item already exists' failure", async () => {
-    // `searchItems` is the only call before the existing-item check; it walks
-    // `itemsTable.query` and filters by user. Returning a MANUAL row makes the
-    // .find() succeed → route hits the failure branch without touching plaid.
-    const manualRow = {
-      toJSON: () => ({
-        item_id: "i-existing",
-        provider: "manual", // ItemProvider.MANUAL = "manual"
-        access_token: "no_access_token",
-      }),
-    };
-    mockQuery.mockResolvedValueOnce([manualRow]);
+    // searchItems calls pool.query (via itemsTable.query). Returning a row
+    // shaped like a MANUAL item makes the route's .find() succeed and
+    // surface the "already exists" failure without ever touching plaid.
+    mockQuery.mockResolvedValueOnce({
+      rows: [itemRow({ item_id: "i-existing", provider: "manual" })],
+      rowCount: 1,
+    });
 
     const result = await postPublicTokenRoute.execute(
       makeReq({ provider: "manual" }, {}),
