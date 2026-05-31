@@ -12,11 +12,20 @@
 //   2. The polygon rate-limit queue is disabled (capacity=0).
 // Each test uses a unique ticker so polygon's 1-hour priceCache
 // (also inlined in the bundle) never collides across tests.
+//
+// All bundled tests share ONE bun process (see scripts/test-bundled/
+// index.ts) so this file's `globalThis.fetch` override and env-var
+// writes would otherwise leak to every subsequent test file. `afterAll`
+// below snapshots and restores the originals.
 // @bundles src/server/lib/compute-tools/backfill-snapshots.ts
+const originalFetch = globalThis.fetch;
+const originalApiKey = process.env.POLYGON_API_KEY;
+const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
+
 process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -42,6 +51,14 @@ const mockFetch = mock(
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
 const { backfillMonthlySecuritySnapshotsForward } = await import("./backfill-snapshots");
+
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+  if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
+  else process.env.POLYGON_API_KEY = originalApiKey;
+  if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
+  else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
+});
 
 /**
  * Per-test routing for SQL. The repositories layer fires:
