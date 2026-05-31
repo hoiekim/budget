@@ -1,33 +1,34 @@
 /**
- * Per-test-bundle runner — preload-driven source-import redirect.
+ * Unified test runner — every `*.test.{ts,tsx}` under `src/` runs through
+ * here.
  *
- * Discovery: scan `src/**` for `*.test.{ts,tsx}` files containing a
- *   `// @bundles <relPath>` annotation (and optional `// @external …`).
+ * Discovery: scan `src/**` for `*.test.{ts,tsx}`. Each file is classified
+ * by whether it carries a `// @bundles <relPath>` annotation (and any
+ * `// @external …` lines).
  *
- * For each annotated test:
- *   1. Build the annotated source into a unique bundle under
- *      `.test-bundles/`, with leaf node_modules deps + any `@external`
- *      relative paths kept as runtime imports (the bundle's `import …
- *      from "pg"` and `import … from "/abs/path/to/sibling.ts"` stay).
- *   2. Record (source-abs-path → bundle-abs-path) in a manifest.
+ *   - **Annotated (bundled)** tests get per-test-bundle isolation:
+ *       1. Build the annotated source into a unique bundle under
+ *          `.test-bundles/`, with leaf node_modules deps + any
+ *          `@external` paths kept as runtime imports.
+ *       2. Register a `mock.module(<source-abs>, () => require(<bundle>))`
+ *          in the preload so the test's natural `import { foo } from
+ *          "./source"` lands on the bundle's exports.
+ *   - **Non-annotated** tests run as plain `bun:test` files with only a
+ *     `globalThis.window = {}` stub for client-side env detection.
  *
- * Then write a preload script that registers
- *   `mock.module(<source-abs-path>, () => import(<bundle-abs-path>))`
- * for every entry. When the test's natural `import { foo } from
- * "./source"` is resolved by bun, it lands on the same abs path, hits
- * the synthetic mock, and returns the bundle's exports instead of
- * loading the real source.
+ * The two groups run in SEPARATE `bun test` processes — the bundled
+ * group's `mock.module("pg", …)` etc. would otherwise contaminate the
+ * non-bundled group's real-pg imports (pg-pool init reads
+ * `types.builtins.NUMERIC` which a FakePool mock doesn't supply).
  *
- * Mock isolation across tests in one `bun test` process: each bundle
- * lives at a unique path, so two tests covering the same source
- * import the same bundle module — but the bundle's body still runs
- * exactly once. For DIFFERENT sources, each bundle is its own ESM
- * module record and captures its own leaf-dep mocks at first load via
- * static binding. The test's `mock.module("pg", …)` is hoisted by
- * bun:test to before its own imports, so by the time the source
- * import (redirected to the bundle) loads, the leaf-dep mock is live.
+ * Each bundle's body runs exactly once even if multiple tests cover the
+ * same source. For DIFFERENT sources, each bundle is its own ESM module
+ * record and captures its own leaf-dep mocks at first load via static
+ * binding. The test's `mock.module("pg", …)` is hoisted by bun:test to
+ * before its own imports, so by the time the source import (redirected
+ * to the bundle) loads, the leaf-dep mock is live.
  *
- * Wired into package.json as `bun run test:bundled`.
+ * Wired into package.json as `bun run test`.
  */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -81,36 +82,39 @@ const COLOR_RESET = "\x1b[0m";
 const main = async (): Promise<void> => {
   const t0 = performance.now();
 
-  // 1. Discover bundled tests under src/. The `.test.bundle.ts` suffix
-  // keeps them OUT of the default `*.test.ts` glob that
-  // `bun run test:non-bundled` uses — so each test file runs under
-  // exactly the runner that supplies the preload it expects.
-  const testFiles: string[] = [];
-  const glob = new Glob("**/*.test.bundle.{ts,tsx}");
+  // 1. Discover every `*.test.{ts,tsx}` under src/. Partition into
+  // bundled (have `@bundles` annotation) and plain.
+  const allTestFiles: string[] = [];
+  const glob = new Glob("**/*.test.{ts,tsx}");
   for await (const rel of glob.scan({ cwd: resolve(REPO_ROOT, "src"), absolute: false })) {
-    testFiles.push(resolve(REPO_ROOT, "src", rel));
+    allTestFiles.push(resolve(REPO_ROOT, "src", rel));
   }
 
   const manifest: Array<{ test: string; source: string; external: string[]; bundle: string }> = [];
-  for (const testAbs of testFiles) {
+  const plainTests: string[] = [];
+  for (const testAbs of allTestFiles) {
     const ann = await parseAnnotations(testAbs);
-    if (!ann.bundles) continue;
-    const sourceAbs = resolve(REPO_ROOT, ann.bundles);
-    manifest.push({
-      test: testAbs,
-      source: sourceAbs,
-      external: ann.external,
-      bundle: bundlePathFor(sourceAbs),
-    });
+    if (ann.bundles) {
+      const sourceAbs = resolve(REPO_ROOT, ann.bundles);
+      manifest.push({
+        test: testAbs,
+        source: sourceAbs,
+        external: ann.external,
+        bundle: bundlePathFor(sourceAbs),
+      });
+    } else {
+      plainTests.push(testAbs);
+    }
   }
 
-  if (manifest.length === 0) {
-    process.stdout.write("no bundled tests discovered (looking for `// @bundles <relPath>`)\n");
+  if (allTestFiles.length === 0) {
+    process.stdout.write("no test files discovered under src/\n");
     return;
   }
 
   process.stdout.write(
-    `${COLOR_BOLD}building${COLOR_RESET} ${manifest.length} bundle(s)…\n`,
+    `${COLOR_BOLD}discovered${COLOR_RESET} ${allTestFiles.length} test files ` +
+      `(${manifest.length} bundled, ${plainTests.length} plain)\n`,
   );
 
   // 2. Clean + build bundles in parallel. Each build also emits the
@@ -149,9 +153,21 @@ const main = async (): Promise<void> => {
   //       so the test's own `mock.module("pg", …)` etc. are already
   //       active by then and the bundle's leaf-dep imports see them.
   const preloadPath = resolve(getBundleDir(), "preload.ts");
+  // ES-imports hoist above any top-level statement, so we can't `import`
+  // the barrels and then run `Object.assign(globalThis, { window: {} })`
+  // — the barrel would be evaluated BEFORE the window stub runs and
+  // `common/utils:environment` would resolve to "server" instead of
+  // "unknown", flipping client-side Dictionary writes into no-ops.
+  // `require()` runs at statement order, so the window stub goes first
+  // and the barrel snapshot fires after.
   const preloadBody =
     `import { mock } from "bun:test";\n` +
-    REAL_BARRELS.map((b) => `import * as __${b} from ${JSON.stringify(b)};`).join("\n") +
+    // Stub `globalThis.window` for client-side env detection (was a
+    // separate `src/client/test-setup.ts` preload before unification).
+    `Object.assign(globalThis, { window: {} });\n\n` +
+    REAL_BARRELS.map(
+      (b) => `const __${b} = require(${JSON.stringify(b)});`,
+    ).join("\n") +
     `\n\n` +
     `(globalThis as any).__realBarrels = {\n` +
     REAL_BARRELS.map((b) => `  ${JSON.stringify(b)}: __${b},`).join("\n") +
@@ -167,17 +183,37 @@ const main = async (): Promise<void> => {
   await mkdir(getBundleDir(), { recursive: true });
   await writeFile(preloadPath, preloadBody);
 
+  // 3b. Plain-tests preload — just the window stub. Lives alongside the
+  // bundled preload but stays minimal so non-bundled tests don't inherit
+  // any source→bundle redirects that would only be valid in the bundled
+  // process.
+  const plainPreloadPath = resolve(getBundleDir(), "preload-plain.ts");
+  const plainPreloadBody = `Object.assign(globalThis, { window: {} });\n`;
+  await writeFile(plainPreloadPath, plainPreloadBody);
+
   process.stdout.write(
     `${COLOR_DIM}built ${manifest.length} bundles in ${buildMs.toFixed(0)}ms${COLOR_RESET}\n`,
   );
 
-  // 4. Run the bundled tests in ONE bun test process with the preload.
+  // 4. Run the two groups in SEPARATE bun test processes. Bundled-side
+  // `mock.module("pg", …)` would otherwise contaminate the plain side's
+  // real pg imports (pg-pool reads `types.builtins.NUMERIC` which a
+  // FakePool mock doesn't supply).
   const t2 = performance.now();
-  const proc = Bun.spawn(
-    ["bun", "test", "--preload", preloadPath, ...manifest.map((m) => m.test)],
-    { cwd: REPO_ROOT, stdout: "inherit", stderr: "inherit" },
-  );
-  const exitCode = await proc.exited;
+  const coverageArgs = process.env.COVERAGE
+    ? ["--coverage", "--coverage-reporter=lcov"]
+    : [];
+  const runGroup = async (preload: string, files: string[]): Promise<number> => {
+    if (files.length === 0) return 0;
+    const proc = Bun.spawn(
+      ["bun", "test", "--preload", preload, ...coverageArgs, ...files],
+      { cwd: REPO_ROOT, stdout: "inherit", stderr: "inherit" },
+    );
+    return proc.exited;
+  };
+  const bundledExit = await runGroup(preloadPath, manifest.map((m) => m.test));
+  const plainExit = await runGroup(plainPreloadPath, plainTests);
+  const exitCode = bundledExit || plainExit;
   const runMs = performance.now() - t2;
   const totalMs = performance.now() - t0;
   process.stdout.write(
