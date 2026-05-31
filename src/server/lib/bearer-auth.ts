@@ -1,6 +1,5 @@
-import { verifyApiKey as defaultVerifyApiKey } from "./postgres/repositories/api_keys";
-import { getMaskedUserById as defaultGetMaskedUserById } from "./postgres/repositories/users";
-import type { ResolvedApiKey } from "./postgres/repositories/api_keys";
+import { verifyApiKey } from "./postgres/repositories/api_keys";
+import { getMaskedUserById } from "./postgres/repositories/users";
 import type { MaskedUser } from "./postgres/models/user";
 
 export interface BearerAuthInput {
@@ -11,14 +10,6 @@ export interface BearerAuthInput {
 
 export interface BearerAuthResult {
   user: MaskedUser;
-}
-
-export type VerifyApiKeyFn = (plaintext: string) => Promise<ResolvedApiKey | null>;
-export type GetMaskedUserByIdFn = (user_id: string) => Promise<MaskedUser | undefined>;
-
-export interface BearerAuthDeps {
-  verifyApiKey?: VerifyApiKeyFn;
-  getMaskedUserById?: GetMaskedUserByIdFn;
 }
 
 const BEARER_PREFIX = "Bearer ";
@@ -39,7 +30,6 @@ const BEARER_PREFIX = "Bearer ";
  */
 export const resolveBearerAuth = async (
   input: BearerAuthInput,
-  deps: BearerAuthDeps = {},
 ): Promise<BearerAuthResult | null> => {
   if (input.hasCookieSession) return null;
   if (!input.requiredScope) return null;
@@ -52,14 +42,11 @@ export const resolveBearerAuth = async (
   const plaintext = raw.slice(BEARER_PREFIX.length).trim();
   if (!plaintext) return null;
 
-  const verify = deps.verifyApiKey ?? defaultVerifyApiKey;
-  const getUser = deps.getMaskedUserById ?? defaultGetMaskedUserById;
-
-  const resolved = await verify(plaintext);
+  const resolved = await verifyApiKey(plaintext);
   if (!resolved) return null;
   if (!resolved.scopes.includes(input.requiredScope)) return null;
 
-  const user = await getUser(resolved.user_id);
+  const user = await getMaskedUserById(resolved.user_id);
   if (!user) return null;
 
   return { user };

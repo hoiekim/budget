@@ -31,14 +31,18 @@ const DEFAULT_NODE_EXTERNALS = [
 export interface BuildOptions {
   /** Absolute path to the source `*.ts` file being bundled. */
   source: string;
+  /** Absolute path to the test file driving this build. Used to namespace
+   *  per-test shim files so two tests externalizing the same source land
+   *  on different module identities. */
+  test: string;
   /**
    * Specifiers that should stay external in the bundle so the test can
    * mock them. Each entry is either a relative path (`./foo`, `../bar`)
    * resolved against `source`, or a tsconfig-aliased specifier
    * (`common`, `server/lib/postgres/models`, …) resolved through the
-   * paths table. The plugin rewrites each emitted import to the
-   * resolved absolute path so the bundle's runtime import and the
-   * test's `mock.module()` use the same key.
+   * paths table. The plugin rewrites each emitted import to a
+   * per-test SHIM path so the bundle's import, the test's mock, and
+   * any other bundle externalizing the same source DON'T collide.
    */
   externalSpecs?: string[];
 }
@@ -46,7 +50,13 @@ export interface BuildOptions {
 export interface BuildResult {
   source: string;
   bundlePath: string;
-  /** map of relative-spec → resolved-absolute-path for tests to mock. */
+  /**
+   * map of declared spec → SHIM abs path. Tests mock that shim path
+   * (via `mockExternal(import.meta.url, spec, factory)`) and the
+   * bundle's rewritten import lands on it. The shim's default body
+   * is `export * from "<real-abs-path>"`, so a non-mocked external
+   * still flows through to the real module.
+   */
   externalResolutions: Record<string, string>;
   buildMs: number;
 }
@@ -150,16 +160,23 @@ const resolveExternalSpec = (importer: string, spec: string): string | null => {
 };
 
 /**
- * Bun plugin: for each `@external` entry — whether relative or
- * tsconfig-aliased — intercept the resolver, return the absolute source
- * path with `external: true`. The bundle then emits `import … from
- * "/abs/path/to/source.ts"` and the test's `mock.module(<spec>, …)`
- * matches it (bun resolves the test's spec to the same abs path).
+ * Bun plugin: for each `@external` entry, resolve to its absolute source
+ * path and return a UNIQUE per-test SHIM path (also computed here) with
+ * `external: true`. The bundle then emits `import … from
+ * "/abs/.test-bundles/__shims__/<test>__<spec>.ts"`. The shim's default
+ * body is `export * from "<real-abs-path>"`, so an external the test
+ * doesn't mock still resolves to the real module. The shim path is
+ * unique per (test, spec) so two tests externalizing the same source —
+ * one of which may also be another bundle's `@bundles` target — never
+ * share a module identity. Tests override via
+ * `mockExternal(import.meta.url, spec, factory)`.
  */
 const externalSpecsPlugin = (
   source: string,
+  test: string,
   externalSpecs: string[],
   resolutions: Record<string, string>,
+  shimAbsBySpec: Record<string, string>,
 ): BunPlugin => ({
   name: "external-specs",
   setup(build) {
@@ -168,13 +185,15 @@ const externalSpecsPlugin = (
       if (!abs) {
         throw new Error(`@external "${spec}" did not resolve from ${source}`);
       }
-      resolutions[spec] = abs;
+      const shimAbs = shimPathFor(test, spec);
+      resolutions[spec] = shimAbs;
+      shimAbsBySpec[spec] = shimAbs;
       build.onResolve({ filter: new RegExp(`^${escapeRegex(spec)}$`) }, (args) => {
         // Skip if the importer is OUTSIDE the repo (e.g. node_modules
         // packages doing their own imports). The bundle's importers
         // are always under REPO_ROOT.
         if (!args.importer.startsWith(REPO_ROOT)) return undefined;
-        return { path: abs, external: true };
+        return { path: shimAbs, external: true };
       });
     }
   },
@@ -192,6 +211,21 @@ export const bundlePathFor = (source: string): string => {
     : source;
   const flat = rel.replace(/\.(ts|tsx)$/, "").replace(/[\/\\]/g, "__");
   return resolve(BUNDLE_DIR, `${flat}.bundle.js`);
+};
+
+/**
+ * Compute the per-test shim path for one `@external` spec. The shim lives
+ * under `.test-bundles/__shims__/` and its content is `export * from
+ * "<real-abs-source>"`. Two tests externalizing the same source land on
+ * DIFFERENT shim paths so a `mock.module(shim, …)` from test A doesn't
+ * shadow another test's redirect or another test's mock of the same
+ * source.
+ */
+export const shimPathFor = (test: string, spec: string): string => {
+  const testRel = test.startsWith(REPO_ROOT) ? test.slice(REPO_ROOT.length + 1) : test;
+  const testFlat = testRel.replace(/\.(ts|tsx)$/, "").replace(/[\/\\]/g, "__");
+  const specFlat = spec.replace(/[\/\\.]/g, "_").replace(/[^a-zA-Z0-9_]/g, "_");
+  return resolve(BUNDLE_DIR, "__shims__", `${testFlat}__${specFlat}.ts`);
 };
 
 /**
@@ -227,22 +261,43 @@ export const buildBundle = async (options: BuildOptions): Promise<BuildResult> =
   await mkdir(BUNDLE_DIR, { recursive: true });
   const bundlePath = bundlePathFor(options.source);
   const externalResolutions: Record<string, string> = {};
+  const shimAbsBySpec: Record<string, string> = {};
+  const realAbsBySpec: Record<string, string> = {};
 
   const plugins =
     options.externalSpecs && options.externalSpecs.length > 0
-      ? [externalSpecsPlugin(options.source, options.externalSpecs, externalResolutions)]
+      ? [
+          externalSpecsPlugin(
+            options.source,
+            options.test,
+            options.externalSpecs,
+            externalResolutions,
+            shimAbsBySpec,
+          ),
+        ]
       : [];
 
+  // Resolve real abs paths up front so we can emit each shim file in
+  // parallel with the bundle build.
+  for (const spec of options.externalSpecs ?? []) {
+    const abs = resolveExternalSpec(options.source, spec);
+    if (!abs) throw new Error(`@external "${spec}" did not resolve from ${options.source}`);
+    realAbsBySpec[spec] = abs;
+  }
+
   const t0 = performance.now();
-  const result = await Bun.build({
-    entrypoints: [options.source],
-    outdir: BUNDLE_DIR,
-    naming: bundlePath.split("/").pop()!,
-    target: "bun",
-    external: DEFAULT_NODE_EXTERNALS,
-    format: "esm",
-    plugins,
-  });
+  const [result] = await Promise.all([
+    Bun.build({
+      entrypoints: [options.source],
+      outdir: BUNDLE_DIR,
+      naming: bundlePath.split("/").pop()!,
+      target: "bun",
+      external: DEFAULT_NODE_EXTERNALS,
+      format: "esm",
+      plugins,
+    }),
+    writeShimFiles(options.test, realAbsBySpec),
+  ]);
   const buildMs = performance.now() - t0;
 
   if (!result.success) {
@@ -253,6 +308,26 @@ export const buildBundle = async (options: BuildOptions): Promise<BuildResult> =
   await rewriteExternalImports(bundlePath, externalResolutions);
 
   return { source: options.source, bundlePath, externalResolutions, buildMs };
+};
+
+/**
+ * Write the per-test shim file for each external. Default content is
+ * `export * from "<real-abs-source>"` so a non-mocked external still
+ * resolves to the real module's exports. Mocked externals never touch
+ * disk content — `mock.module(shimPath, …)` replaces the module
+ * record before the shim file is evaluated.
+ */
+const writeShimFiles = async (
+  test: string,
+  realBySpec: Record<string, string>,
+): Promise<void> => {
+  if (Object.keys(realBySpec).length === 0) return;
+  await mkdir(resolve(BUNDLE_DIR, "__shims__"), { recursive: true });
+  await Promise.all(
+    Object.entries(realBySpec).map(([spec, real]) =>
+      writeFile(shimPathFor(test, spec), `export * from ${JSON.stringify(real)};\n`),
+    ),
+  );
 };
 
 export const cleanBundleDir = async (): Promise<void> => {

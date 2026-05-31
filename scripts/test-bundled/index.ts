@@ -113,13 +113,28 @@ const main = async (): Promise<void> => {
     `${COLOR_BOLD}building${COLOR_RESET} ${manifest.length} bundle(s)…\n`,
   );
 
-  // 2. Clean + build bundles in parallel
+  // 2. Clean + build bundles in parallel. Each build also emits the
+  // per-test shim files for its `@external` specs and rewrites the
+  // bundle's imports to those shim paths (see build.ts).
   await cleanBundleDir();
   const t1 = performance.now();
-  await Promise.all(
-    manifest.map((m) => buildBundle({ source: m.source, externalSpecs: m.external })),
+  const buildResults = await Promise.all(
+    manifest.map((m) =>
+      buildBundle({ source: m.source, test: m.test, externalSpecs: m.external }),
+    ),
   );
   const buildMs = performance.now() - t1;
+  // Per-test map { test-abs-path → { spec → shim-abs-path } }. Tests use
+  // `mockExternal(import.meta.url, spec, factory)` to look up the shim
+  // path and register a mock at that identity.
+  const externalsByTest: Record<string, Record<string, string>> = {};
+  for (let i = 0; i < manifest.length; i++) {
+    const m = manifest[i];
+    const r = buildResults[i];
+    if (Object.keys(r.externalResolutions).length > 0) {
+      externalsByTest[m.test] = r.externalResolutions;
+    }
+  }
 
   // 3. Generate the preload. Two parts:
   //    a. Pre-capture the REAL exports of each barrel in REAL_BARRELS,
@@ -141,6 +156,7 @@ const main = async (): Promise<void> => {
     `(globalThis as any).__realBarrels = {\n` +
     REAL_BARRELS.map((b) => `  ${JSON.stringify(b)}: __${b},`).join("\n") +
     `\n};\n\n` +
+    `(globalThis as any).__externalsByTest = ${JSON.stringify(externalsByTest, null, 2)};\n\n` +
     manifest
       .map(
         (m) =>
