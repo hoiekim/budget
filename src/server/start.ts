@@ -18,6 +18,7 @@ import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
 import type { SessionData } from "server/lib/postgres/models/session";
 import * as routes from "server/routes";
+import { isApiPath } from "common/utils";
 
 // ---------------------------------------------------------------------------
 // Session management
@@ -234,8 +235,9 @@ const server = Bun.serve({
     const url = new URL(request.url);
     const fullPath = url.pathname;
 
-    // Serve static files for non-API paths
-    if (!fullPath.startsWith("/api")) {
+    // Serve static files for non-API paths. `isApiPath` rejects /api-anything
+    // (e.g. /api-key-detail SPA route, #391) so those fall through to the SPA.
+    if (!isApiPath(fullPath)) {
       const filePath = path.join(clientPath, fullPath === "/" ? "index.html" : fullPath);
       const file = Bun.file(filePath);
       if (await file.exists()) return new Response(file);

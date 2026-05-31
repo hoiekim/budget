@@ -162,6 +162,14 @@ export const excludeEnumeration = (obj: object, propertyNames: string[]) => {
   });
 };
 
+/**
+ * True when the path is the literal /api or a child of /api (/api/...).
+ * Returns false for /api-anything (e.g. /api-key-detail SPA route, #391).
+ * Shared by server start.ts and client sw.ts so both layers agree.
+ */
+export const isApiPath = (path: string): boolean =>
+  path === "/api" || path.startsWith("/api/");
+
 export * from "./search";
 export * from "./date";
 export * from "./math";

@@ -32,6 +32,15 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:3005",
         changeOrigin: true,
+        // Skip the proxy for /api-anything (e.g. the /api-key-detail SPA
+        // route, #391) — let Vite serve the SPA shell instead. Only true
+        // /api or /api/... requests should reach the backend.
+        bypass: (req) => {
+          const url = req.url ?? "";
+          if (url === "/api" || url.startsWith("/api/") || url.startsWith("/api?"))
+            return undefined; // proxy as usual
+          return req.url; // fall through to Vite's static / SPA handling
+        },
       },
     },
   },
