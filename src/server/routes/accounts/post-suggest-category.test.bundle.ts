@@ -1,48 +1,28 @@
-/**
- * Tests for the POST /api/suggest-category route.
- *
- * NOTE on mocking: we deliberately avoid `mock.module("server", ...)` here.
- * That mock is process-wide in Bun and leaks into sibling test files (e.g.
- * the transactions repo tests) which import their own barrel pieces. Instead
- * we monkey-patch the small surface we actually exercise on the real
- * imports, and restore originals in afterAll.
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/accounts/post-suggest-category.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { pool, transactionsTable } from "server";
-import { postSuggestCategoryRoute } from "./post-suggest-category";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalPoolQuery = pool.query.bind(pool);
-const originalTxUpdate = transactionsTable.update.bind(transactionsTable);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockPoolQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-const mockTxUpdate = mock(
-  async (
-    _id: unknown,
-    _data: unknown,
-    _returning?: string[],
-    _userId?: string,
-  ): Promise<Record<string, unknown> | null> => null,
-);
-
-(pool as unknown as { query: typeof mockPoolQuery }).query = mockPoolQuery;
-(transactionsTable as unknown as { update: typeof mockTxUpdate }).update = mockTxUpdate;
-
-afterAll(() => {
-  // Restore real bindings so other test files (run later in the same
-  // process) see un-mocked behavior.
-  (pool as unknown as { query: typeof originalPoolQuery }).query = originalPoolQuery;
-  (transactionsTable as unknown as { update: typeof originalTxUpdate }).update =
-    originalTxUpdate;
-});
+const { postSuggestCategoryRoute } = await import("./post-suggest-category");
 
 beforeEach(() => {
-  mockPoolQuery.mockReset();
-  mockTxUpdate.mockReset();
+  mockQuery.mockReset();
 });
 
 function makeReq(body: unknown, userId = "u-1") {
@@ -75,6 +55,20 @@ const fakeRes = () =>
     },
     end() {},
   }) as unknown as Parameters<typeof postSuggestCategoryRoute.execute>[1];
+
+/**
+ * Find the parameterized UPDATE call in mockQuery's call log. The route
+ * issues several SELECTs first (ownership check, category check); the
+ * UPDATE on `transactions` is the call that actually applies the
+ * suggestion. Returns `null` if no UPDATE was issued.
+ */
+const findUpdateCall = (): { sql: string; values: unknown[] } | null => {
+  for (const call of mockQuery.mock.calls) {
+    const sql = call[0] as string;
+    if (/UPDATE\s+transactions/i.test(sql)) return { sql, values: call[1] as unknown[] };
+  }
+  return null;
+};
 
 describe("post-suggest-category", () => {
   test("declares requiredScope = transactions:suggest", () => {
@@ -134,14 +128,12 @@ describe("post-suggest-category", () => {
   });
 
   test("skips transactions not owned by the user", async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    mockPoolQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
-        suggestions: [
-          { transaction_id: "t-1", confidence: 0.99, label_category_id: "c-1" },
-        ],
+        suggestions: [{ transaction_id: "t-1", confidence: 0.99, label_category_id: "c-1" }],
       }),
       fakeRes(),
     );
@@ -150,17 +142,15 @@ describe("post-suggest-category", () => {
   });
 
   test("refuses to overwrite a confidence=1.0 row", async () => {
-    mockPoolQuery.mockResolvedValueOnce({
+    mockQuery.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: 1 }],
       rowCount: 1,
     });
-    mockPoolQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
-        suggestions: [
-          { transaction_id: "t-1", confidence: 0.99, label_category_id: "c-1" },
-        ],
+        suggestions: [{ transaction_id: "t-1", confidence: 0.99, label_category_id: "c-1" }],
       }),
       fakeRes(),
     );
@@ -171,17 +161,15 @@ describe("post-suggest-category", () => {
   });
 
   test("rejects unknown category for the user", async () => {
-    mockPoolQuery.mockResolvedValueOnce({
+    mockQuery.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: null }],
       rowCount: 1,
     });
-    mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
-        suggestions: [
-          { transaction_id: "t-1", confidence: 0.99, label_category_id: "c-x" },
-        ],
+        suggestions: [{ transaction_id: "t-1", confidence: 0.99, label_category_id: "c-x" }],
       }),
       fakeRes(),
     );
@@ -189,36 +177,38 @@ describe("post-suggest-category", () => {
   });
 
   test("updates a valid suggestion and writes the confidence", async () => {
-    mockPoolQuery.mockResolvedValueOnce({
+    mockQuery.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: 0.5 }],
       rowCount: 1,
     });
-    mockPoolQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
-    mockTxUpdate.mockResolvedValueOnce({ transaction_id: "t-1" });
+    mockQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
+    // The UPDATE call returns the updated row; the post-update SELECT (if
+    // any) returns whatever the route reads back.
+    mockQuery.mockResolvedValueOnce({ rows: [{ transaction_id: "t-1" }], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
         suggestions: [
-          {
-            transaction_id: "t-1",
-            confidence: 0.99,
-            label_category_id: "c-1",
-          },
+          { transaction_id: "t-1", confidence: 0.99, label_category_id: "c-1" },
         ],
       }),
       fakeRes(),
     );
     expect(result?.body?.updated).toBe(1);
 
-    const [id, updates, , userId] = mockTxUpdate.mock.calls[0];
-    expect(id).toBe("t-1");
-    expect((updates as Record<string, unknown>).label_category_confidence).toBe(0.99);
-    expect((updates as Record<string, unknown>).label_category_id).toBe("c-1");
-    expect(userId).toBe("u-1");
+    // Verify the UPDATE statement carries the new confidence + category_id
+    // + the caller's user_id. Pinning at the SQL-param layer instead of the
+    // model-method args.
+    const upd = findUpdateCall();
+    expect(upd).not.toBeNull();
+    expect(upd!.values).toContain(0.99);
+    expect(upd!.values).toContain("c-1");
+    expect(upd!.values).toContain("t-1");
+    expect(upd!.values).toContain("u-1");
   });
 
   test("requires at least one of category_id / budget_id", async () => {
-    mockPoolQuery.mockResolvedValueOnce({
+    mockQuery.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: null }],
       rowCount: 1,
     });
