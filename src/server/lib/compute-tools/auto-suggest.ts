@@ -8,13 +8,13 @@ import {
   AdditionalWhere,
 } from "server";
 
-// Compare-and-swap guard for both `defaultApplyLabel` and
-// `defaultApplyLabelToSplit`. The engine must only overwrite a row that is
-// STILL unlabeled (`label_category_confidence IS NULL`) — never a row a user
-// just confirmed (confidence = 1) between `fetchUnlabeled` and the per-row
-// apply. Lifted to a named exported constant so:
+// Compare-and-swap guard for both the transactions and split-transactions
+// UPDATEs. The engine must only overwrite a row that is STILL unlabeled
+// (`label_category_confidence IS NULL`) — never a row a user just confirmed
+// (confidence = 1) between the fetch and the per-row apply. Lifted to a named
+// exported constant so:
 //   1. it's grep-able when reviewing changes to the suggestion path;
-//   2. tests can assert both default impls thread this exact reference, not
+//   2. tests can assert both apply sites thread this exact reference, not
 //      a silently-altered inline literal.
 export const CAS_NULL_CONFIDENCE: AdditionalWhere = {
   column: "label_category_confidence",
@@ -42,36 +42,13 @@ interface UnlabeledTransaction {
 }
 
 // A split row doesn't store its own merchant_name — it inherits from its parent
-// transaction via `split_transactions.transaction_id`. We join to the parent in
-// `defaultFetchUnlabeledSplits` so the merchant-signal lookup uses the parent's
-// merchant, matching how a user mentally categorizes splits.
+// transaction via `split_transactions.transaction_id`. The split fetch joins to
+// the parent so the merchant-signal lookup uses the parent's merchant, matching
+// how a user mentally categorizes splits.
 interface UnlabeledSplit {
   split_transaction_id: string;
   merchant_name: string;
 }
-
-type QueryFn = (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
-type LogFn = {
-  info: (message: string, context?: Record<string, unknown>) => void;
-  error: (message: string, context?: Record<string, unknown>, error?: unknown) => void;
-};
-type FetchUsersFn = () => Promise<string[]>;
-type FetchUnlabeledFn = (userId: string) => Promise<UnlabeledTransaction[]>;
-type FetchUnlabeledSplitsFn = (userId: string) => Promise<UnlabeledSplit[]>;
-type ApplyLabelFn = (
-  transactionId: string,
-  userId: string,
-  labelCategoryId: string,
-  labelBudgetId: string,
-  labelCategoryConfidence: number,
-) => Promise<void>;
-type ApplyLabelToSplitFn = (
-  splitTransactionId: string,
-  userId: string,
-  labelCategoryId: string,
-  labelBudgetId: string,
-  labelCategoryConfidence: number,
-) => Promise<void>;
 
 // pg_trgm similarity threshold for grouping merchant_name variants
 // (e.g., "STARBUCKS #1234" ~ "STARBUCKS COFFEE 9876"). 0.5 is a balanced
@@ -79,7 +56,7 @@ type ApplyLabelToSplitFn = (
 const MERCHANT_SIMILARITY_THRESHOLD = 0.5;
 const MERCHANT_SIGNAL_LIMIT = 30;
 
-const defaultFetchUnlabeled: FetchUnlabeledFn = async (userId) => {
+const fetchUnlabeled = async (userId: string): Promise<UnlabeledTransaction[]> => {
   const rows = await transactionsTable.query({
     user_id: userId,
     label_category_confidence: null,
@@ -98,18 +75,18 @@ const defaultFetchUnlabeled: FetchUnlabeledFn = async (userId) => {
 };
 
 // Compare-and-swap: the UPDATE only matches rows that are STILL unlabeled
-// (`label_category_confidence IS NULL`). Between `fetchUnlabeled` and this
-// per-row call, a user may have confirmed the row in the UI (writing
+// (`label_category_confidence IS NULL`). Between the unlabeled fetch and
+// this per-row call, a user may have confirmed the row in the UI (writing
 // `confidence = 1`). Without the IS-NULL guard, the engine would overwrite
 // that confirmation with its own 0.95-0.99 suggestion and replace the
 // user's chosen `category_id` / `budget_id` with the engine's pick.
-const defaultApplyLabel: ApplyLabelFn = async (
-  transactionId,
-  userId,
-  labelCategoryId,
-  labelBudgetId,
-  labelCategoryConfidence,
-) => {
+const applyLabel = async (
+  transactionId: string,
+  userId: string,
+  labelCategoryId: string,
+  labelBudgetId: string,
+  labelCategoryConfidence: number,
+): Promise<void> => {
   await transactionsTable.update(
     transactionId,
     {
@@ -128,8 +105,8 @@ const defaultApplyLabel: ApplyLabelFn = async (
 // borrow it. Filters: user-scoped, never-labeled, parent has a merchant_name,
 // neither side soft-deleted. The custom JOIN can't be expressed via
 // `splitTransactionsTable.query`, so this is a raw pool query with the same
-// shape as `defaultFetchUnlabeled`. Closes #334.
-const defaultFetchUnlabeledSplits: FetchUnlabeledSplitsFn = async (userId) => {
+// shape as `fetchUnlabeled`. Closes #334.
+const fetchUnlabeledSplits = async (userId: string): Promise<UnlabeledSplit[]> => {
   const result = await pool.query(
     `SELECT st.split_transaction_id, t.merchant_name
        FROM split_transactions st
@@ -150,16 +127,16 @@ const defaultFetchUnlabeledSplits: FetchUnlabeledSplitsFn = async (userId) => {
   }));
 };
 
-// Same CAS guard as `defaultApplyLabel` — the IS-NULL clause prevents the
-// engine from clobbering a user-confirmed split that flipped from null →
-// 1.0 between the fetch and the per-row apply.
-const defaultApplyLabelToSplit: ApplyLabelToSplitFn = async (
-  splitTransactionId,
-  userId,
-  labelCategoryId,
-  labelBudgetId,
-  labelCategoryConfidence,
-) => {
+// Same CAS guard as `applyLabel` — the IS-NULL clause prevents the engine
+// from clobbering a user-confirmed split that flipped from null → 1.0
+// between the fetch and the per-row apply.
+const applyLabelToSplit = async (
+  splitTransactionId: string,
+  userId: string,
+  labelCategoryId: string,
+  labelBudgetId: string,
+  labelCategoryConfidence: number,
+): Promise<void> => {
   await splitTransactionsTable.update(
     splitTransactionId,
     {
@@ -189,48 +166,30 @@ const defaultApplyLabelToSplit: ApplyLabelToSplitFn = async (
  * Table helpers cannot express. The unlabeled fetch and the label-apply
  * use `transactionsTable.query` / `transactionsTable.update` (the standard pattern).
  */
-export const runAutoSuggestions = async (
-  queryFn: QueryFn = (sql, params) => pool.query(sql, params),
-  log: LogFn = logger,
-  fetchUsers: FetchUsersFn = async () => {
-    const users = await usersTable.query({});
-    return users.map((u) => u.user_id);
-  },
-  fetchUnlabeled: FetchUnlabeledFn = defaultFetchUnlabeled,
-  applyLabel: ApplyLabelFn = defaultApplyLabel,
-  fetchUnlabeledSplits: FetchUnlabeledSplitsFn = defaultFetchUnlabeledSplits,
-  applyLabelToSplit: ApplyLabelToSplitFn = defaultApplyLabelToSplit,
-): Promise<void> => {
-  log.info("Auto-suggestion job started");
+export const runAutoSuggestions = async (): Promise<void> => {
+  logger.info("Auto-suggestion job started");
 
   let totalUsersProcessed = 0;
   let totalSuggested = 0;
 
   try {
-    const userIds = await fetchUsers();
+    const users = await usersTable.query({});
+    const userIds = users.map((u) => u.user_id);
 
     for (const user_id of userIds) {
       try {
-        const suggested = await processUserSuggestions(
-          user_id,
-          queryFn,
-          log,
-          fetchUnlabeled,
-          applyLabel,
-          fetchUnlabeledSplits,
-          applyLabelToSplit,
-        );
+        const suggested = await processUserSuggestions(user_id);
         totalSuggested += suggested;
         totalUsersProcessed++;
       } catch (error) {
-        log.error("Auto-suggestion failed for user", { userId: user_id }, error);
+        logger.error("Auto-suggestion failed for user", { userId: user_id }, error);
       }
     }
   } catch (error) {
-    log.error("Auto-suggestion job failed to fetch users", {}, error);
+    logger.error("Auto-suggestion job failed to fetch users", {}, error);
   }
 
-  log.info("Auto-suggestion job completed", {
+  logger.info("Auto-suggestion job completed", {
     usersProcessed: totalUsersProcessed,
     transactionsSuggested: totalSuggested,
   });
@@ -249,15 +208,7 @@ const evaluateSignal = (signal: MerchantSignal): number | null => {
   return Math.min(confidence, 0.99);
 };
 
-const processUserSuggestions = async (
-  userId: string,
-  queryFn: QueryFn,
-  log: LogFn,
-  fetchUnlabeled: FetchUnlabeledFn,
-  applyLabel: ApplyLabelFn,
-  fetchUnlabeledSplits: FetchUnlabeledSplitsFn,
-  applyLabelToSplit: ApplyLabelToSplitFn,
-): Promise<number> => {
+const processUserSuggestions = async (userId: string): Promise<number> => {
   // Cache signal per merchant across both passes — splits share their parent's
   // merchant_name, so a parent and its splits will hit the same cache entry.
   const merchantCache = new Map<string, MerchantSignal | null>();
@@ -266,7 +217,7 @@ const processUserSuggestions = async (
   const lookupSignal = async (merchantName: string): Promise<MerchantSignal | null> => {
     let signal = merchantCache.get(merchantName);
     if (signal === undefined) {
-      signal = await getMerchantSignal(userId, merchantName, queryFn);
+      signal = await getMerchantSignal(userId, merchantName);
       merchantCache.set(merchantName, signal);
     }
     return signal;
@@ -308,7 +259,7 @@ const processUserSuggestions = async (
   }
 
   if (suggested > 0) {
-    log.info("Auto-suggested categories for user", { userId, suggested });
+    logger.info("Auto-suggested categories for user", { userId, suggested });
   }
 
   return suggested;
@@ -317,7 +268,6 @@ const processUserSuggestions = async (
 const getMerchantSignal = async (
   userId: string,
   merchantName: string,
-  queryFn: QueryFn,
 ): Promise<MerchantSignal | null> => {
   // Fuzzy-match merchant_name via pg_trgm similarity so that variants like
   // "STARBUCKS #1234" and "STARBUCKS COFFEE 9876" feed the same signal.
@@ -330,7 +280,7 @@ const getMerchantSignal = async (
   // that downstream when applying the label so the suggested row's
   // `label_budget_id` matches its `label_category_id` (otherwise the UI
   // select renders empty — see MerchantSignal docstring).
-  const result = await queryFn(
+  const result = await pool.query(
     `SELECT
        recent.label_category_id,
        sections.budget_id AS label_budget_id,
