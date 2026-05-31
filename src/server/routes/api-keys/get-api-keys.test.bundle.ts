@@ -1,36 +1,32 @@
-/**
- * Tests for GET /api/api-keys (Closes #358 — GET coverage).
- *
- * Mocks `pool.query` because that's what `listApiKeys` calls directly.
- * Pattern: same monkey-patch-then-restore approach used in
- * `accounts/post-suggest-category.test.ts`.
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/api-keys/get-api-keys.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { pool } from "server/lib/postgres/client";
-import { getApiKeysRoute } from "./get-api-keys";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalQuery = pool.query.bind(pool);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-(pool as unknown as { query: typeof mockQuery }).query = mockQuery;
-
-afterAll(() => {
-  (pool as unknown as { query: typeof originalQuery }).query = originalQuery;
-});
+const { getApiKeysRoute } = await import("./get-api-keys");
 
 beforeEach(() => {
   mockQuery.mockReset();
 });
 
 function makeReq(opts: { user?: { user_id: string; username: string } | null } = {}) {
-  const user =
-    opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
+  const user = opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
   return {
     method: "GET",
     path: "/api-keys",
@@ -99,9 +95,6 @@ describe("get-api-keys", () => {
   });
 
   test("response surface omits key_hash and revoked_at (contract enforced by SELECT projection)", async () => {
-    // The repo's SELECT deliberately omits key_hash, and the listApiKeys
-    // helper sets `key_hash: ""` on the model before .toJSON() so the
-    // hash never enters the response. Pin that contract here.
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -122,7 +115,6 @@ describe("get-api-keys", () => {
     const result = await getApiKeysRoute.execute(makeReq(), fakeRes());
     const row = result?.body?.api_keys[0] as Record<string, unknown> | undefined;
     expect(row).toBeDefined();
-    // key_hash never leaves the server with real content.
     expect(row?.key_hash === undefined || row?.key_hash === "" || row?.key_hash === null).toBe(
       true,
     );

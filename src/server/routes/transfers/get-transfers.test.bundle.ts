@@ -1,37 +1,32 @@
-/**
- * Tests for GET /transfers (Closes #378 — GET coverage).
- *
- * Mocks `pool.query` because `getTransferPairs` calls that directly.
- * Pattern follows api-keys/get-api-keys.test.ts — monkey-patch + restore,
- * avoiding `mock.module("server", ...)` since Bun's module mock is
- * process-wide and leaks into sibling test files.
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/transfers/get-transfers.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { pool } from "server/lib/postgres/client";
-import { getTransfersRoute } from "./get-transfers";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalQuery = pool.query.bind(pool);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-(pool as unknown as { query: typeof mockQuery }).query = mockQuery;
-
-afterAll(() => {
-  (pool as unknown as { query: typeof originalQuery }).query = originalQuery;
-});
+const { getTransfersRoute } = await import("./get-transfers");
 
 beforeEach(() => {
   mockQuery.mockReset();
 });
 
 function makeReq(opts: { user?: { user_id: string; username: string } | null } = {}) {
-  const user =
-    opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
+  const user = opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
   return {
     method: "GET",
     path: "/transfers",
@@ -75,7 +70,6 @@ describe("get-transfers", () => {
     const result = await getTransfersRoute.execute(makeReq(), fakeRes());
     expect(result?.status).toBe("success");
     expect(result?.body).toEqual([]);
-    // Second query (transactions fetch) is skipped when there are no pairs.
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
@@ -132,15 +126,12 @@ describe("get-transfers", () => {
     expect(pairsSql).toMatch(/WHERE user_id = \$1/);
     expect(pairsValues).toEqual(["u-1"]);
 
-    // Second query: transactions fetched ALSO scoped by user_id.
     const [txnsSql, txnsValues] = mockQuery.mock.calls[1];
     expect(txnsSql).toMatch(/WHERE user_id = \$1/);
     expect(txnsValues?.[0]).toBe("u-1");
   });
 
   test("cross-user isolation: another user's pairs are never returned", async () => {
-    // User B is logged in but the underlying pairs table has only user A's rows.
-    // The WHERE user_id = $1 clause must filter them out at the SQL layer.
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getTransfersRoute.execute(
       makeReq({ user: { user_id: "u-B", username: "b" } }),

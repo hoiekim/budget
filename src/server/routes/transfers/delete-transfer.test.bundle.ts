@@ -1,29 +1,25 @@
-/**
- * Tests for DELETE /transfers (Closes #378 — DELETE coverage).
- *
- * `removeTransferPair` calls `transactionPairsTable.softDelete`, which
- * underneath issues a single `pool.query`. Mock at the pool layer to
- * pin the route contract: the session user_id is forwarded into the
- * WHERE clause as `user_id` — never a client-supplied value.
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/transfers/delete-transfer.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { pool } from "server/lib/postgres/client";
-import { deleteTransferRoute } from "./delete-transfer";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalQuery = pool.query.bind(pool);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-(pool as unknown as { query: typeof mockQuery }).query = mockQuery;
-
-afterAll(() => {
-  (pool as unknown as { query: typeof originalQuery }).query = originalQuery;
-});
+const { deleteTransferRoute } = await import("./delete-transfer");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -33,8 +29,7 @@ function makeReq(
   query: Record<string, unknown>,
   opts: { user?: { user_id: string; username: string } | null } = {},
 ) {
-  const user =
-    opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
+  const user = opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
   return {
     method: "DELETE",
     path: "/transfers",
@@ -89,10 +84,7 @@ describe("delete-transfer", () => {
   });
 
   test("rejects array id query param (?id=a&id=b)", async () => {
-    const result = await deleteTransferRoute.execute(
-      makeReq({ id: ["a", "b"] }),
-      fakeRes(),
-    );
+    const result = await deleteTransferRoute.execute(makeReq({ id: ["a", "b"] }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(mockQuery).not.toHaveBeenCalled();
   });
@@ -103,7 +95,6 @@ describe("delete-transfer", () => {
     expect(result?.status).toBe("success");
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, values] = mockQuery.mock.calls[0];
-    // softDelete issues an UPDATE with both the primary key and user_id in the WHERE.
     expect(sql).toMatch(/UPDATE transaction_pairs/i);
     expect(sql).toMatch(/user_id/);
     expect(values).toContain("p-1");
@@ -111,10 +102,6 @@ describe("delete-transfer", () => {
   });
 
   test("cross-user delete: the route forwards the session user_id, never a client value", async () => {
-    // User A is logged in and asks to delete a pair_id that belongs to user B.
-    // The WHERE clause includes user_id = session.user.user_id, so the
-    // soft-delete won't affect user B's row. We pin that the value supplied
-    // to the query is the *session* user_id (u-A), not anything from the request.
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await deleteTransferRoute.execute(
       makeReq({ id: "p-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),

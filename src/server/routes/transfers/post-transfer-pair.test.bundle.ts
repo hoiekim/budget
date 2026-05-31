@@ -1,34 +1,25 @@
-/**
- * Tests for POST /transfers/pair (Closes #378 — POST coverage).
- *
- * Two distinct request modes plus validation/auth paths are covered:
- *   • pair_id branch     → confirmTransferPair (UPDATE one row)
- *   • new-pair branch    → pairTransactions (INSERT ON CONFLICT)
- *
- * Both helpers issue a single pool.query, so mocking at the pool layer
- * is sufficient and follows the same pattern as the api-keys tests.
- * The cross-user ownership guarantees are enforced at the SQL layer by
- * the `WHERE user_id = $N` clauses; these tests pin that the route always
- * forwards the *session* user_id into the parameter list.
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/transfers/post-transfer-pair.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { pool } from "server/lib/postgres/client";
-import { postTransferPairRoute } from "./post-transfer-pair";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalQuery = pool.query.bind(pool);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-(pool as unknown as { query: typeof mockQuery }).query = mockQuery;
-
-afterAll(() => {
-  (pool as unknown as { query: typeof originalQuery }).query = originalQuery;
-});
+const { postTransferPairRoute } = await import("./post-transfer-pair");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -38,8 +29,7 @@ function makeReq(
   body: unknown,
   opts: { user?: { user_id: string; username: string } | null } = {},
 ) {
-  const user =
-    opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
+  const user = opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
   return {
     method: "POST",
     path: "/transfers/pair",
@@ -113,10 +103,6 @@ describe("post-transfer-pair", () => {
     });
 
     test("cross-user confirm: the route uses the session user_id, never a client value", async () => {
-      // User A tries to confirm a pair_id that belongs to user B. The UPDATE
-      // is no-op at the SQL layer (rowCount = 0). Surface contract: the
-      // route still resolves "success" and echoes the pair_id, but the
-      // user_id parameter pinned into the query is the *session* one.
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await postTransferPairRoute.execute(
@@ -175,10 +161,8 @@ describe("post-transfer-pair", () => {
       expect(mockQuery).toHaveBeenCalledTimes(1);
       const [sql, values] = mockQuery.mock.calls[0];
       expect(sql).toMatch(/INSERT INTO transaction_pairs/i);
-      // (pair_id, user_id, transaction_id_a, transaction_id_b, status)
       expect(values?.[1]).toBe("u-1");
       expect(values?.[4]).toBe("confirmed");
-      // Both transaction IDs are forwarded (canonicalized order may differ).
       const txnIds = [values?.[2], values?.[3]].sort();
       expect(txnIds).toEqual(["t-a", "t-b"]);
     });
@@ -220,7 +204,6 @@ describe("post-transfer-pair", () => {
         fakeRes(),
       );
       const [, values] = mockQuery.mock.calls[0];
-      // The pair row's user_id (param $2) must be the session user, full stop.
       expect(values?.[1]).toBe("u-A");
     });
   });
