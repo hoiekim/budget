@@ -55,8 +55,14 @@ export interface BuildResult {
  * Try to resolve a base path with the standard extensions tsconfig uses.
  * Returns the first existing `.ts(x)` (or `/index.ts(x)`) candidate, or
  * null if nothing resolves. Used by both relative and aliased lookups.
+ *
+ * If `base` already carries a `.ts`/`.tsx` extension and exists as-is
+ * (which a tsconfig path alias targeting a specific file like
+ * `"test-bundled": ["../scripts/test-bundled/runtime.ts"]` produces),
+ * return it directly instead of appending another extension.
  */
 const tryExts = (base: string): string | null => {
+  if (base.match(/\.tsx?$/) && existsSync(base)) return base;
   const candidates = [
     `${base}.ts`,
     `${base}.tsx`,

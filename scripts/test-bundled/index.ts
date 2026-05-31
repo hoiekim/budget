@@ -80,7 +80,6 @@ const COLOR_RESET = "\x1b[0m";
 
 const main = async (): Promise<void> => {
   const t0 = performance.now();
-  const preloadOnly = process.argv.slice(2).includes("--preload-only");
 
   // 1. Discover bundled tests under src/. The `.test.bundle.ts` suffix
   // keeps them OUT of the default `*.test.ts` glob that
@@ -156,18 +155,7 @@ const main = async (): Promise<void> => {
     `${COLOR_DIM}built ${manifest.length} bundles in ${buildMs.toFixed(0)}ms${COLOR_RESET}\n`,
   );
 
-  if (preloadOnly) {
-    // The package.json `test` / `test:coverage` scripts chain this mode
-    // as a prebuild step and then invoke `bun test --preload <preload>`
-    // themselves, so the preload's source→bundle redirect applies to
-    // every test in one unified `bun test` invocation.
-    process.stdout.write(
-      `${COLOR_DIM}preload-only: wrote ${preloadPath}${COLOR_RESET}\n`,
-    );
-    return;
-  }
-
-  // 4. Run only the bundled tests in ONE bun test process with the preload.
+  // 4. Run the bundled tests in ONE bun test process with the preload.
   const t2 = performance.now();
   const proc = Bun.spawn(
     ["bun", "test", "--preload", preloadPath, ...manifest.map((m) => m.test)],
