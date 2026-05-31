@@ -1,46 +1,33 @@
-/**
- * Unit tests for transactions repository
- * Tests getTransactions, getTransaction, searchTransactionsById,
- * upsertTransactions, updateTransactions, getOldestTransactionDate
- * using pool.query mocks.
- */
-
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/lib/postgres/repositories/transactions.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { TransactionPaymentChannelEnum } from "plaid";
 
-// ---------------------------------------------------------------------------
-// Mock pool and withTransaction BEFORE imports
-// ---------------------------------------------------------------------------
-
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-mock.module("../client", () => ({
-  pool: { query: mockQuery },
-  withTransaction: async (fn: (client: unknown) => Promise<unknown>) => {
-    const fakeClient = { query: mockQuery };
-    return fn(fakeClient);
-  },
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
 }));
 
-// ---------------------------------------------------------------------------
-// Import after mocks
-// ---------------------------------------------------------------------------
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-import {
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
+
+const {
   getTransactions,
   getTransaction,
   searchTransactionsById,
   upsertTransactions,
   updateTransactions,
   getOldestTransactionDate,
-} from "./transactions";
-import { TransactionPaymentChannelEnum } from "plaid";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+} = await import("./transactions");
 
 function makeTxRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -75,10 +62,6 @@ beforeEach(() => {
   mockQuery.mockReset();
 });
 
-// ---------------------------------------------------------------------------
-// getTransactions
-// ---------------------------------------------------------------------------
-
 describe("getTransactions", () => {
   test("returns empty array when no transactions", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -87,9 +70,7 @@ describe("getTransactions", () => {
   });
 
   test("returns mapped JSON transactions", async () => {
-    const row = makeTxRow();
-    mockQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
-
+    mockQuery.mockResolvedValueOnce({ rows: [makeTxRow()], rowCount: 1 });
     const result = await getTransactions(testUser);
     expect(result).toHaveLength(1);
     expect(result[0].transaction_id).toBe("tx-1");
@@ -99,14 +80,17 @@ describe("getTransactions", () => {
   });
 
   test("label fields are nested correctly", async () => {
-    const row = makeTxRow({
-      label_budget_id: "bud-1",
-      label_category_id: "cat-1",
-      label_memo: "work lunch",
-      label_category_confidence: 0.95,
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        makeTxRow({
+          label_budget_id: "bud-1",
+          label_category_id: "cat-1",
+          label_memo: "work lunch",
+          label_category_confidence: 0.95,
+        }),
+      ],
+      rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
-
     const result = await getTransactions(testUser);
     expect(result[0].label.budget_id).toBe("bud-1");
     expect(result[0].label.category_id).toBe("cat-1");
@@ -117,7 +101,6 @@ describe("getTransactions", () => {
   test("passes user_id filter to query", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransactions({ user_id: "usr-99", username: "test" });
-
     const sql = mockQuery.mock.calls[0][0] as string;
     const values = mockQuery.mock.calls[0][1] as string[];
     expect(sql).toContain("transactions");
@@ -127,30 +110,30 @@ describe("getTransactions", () => {
   test("passes account_id filter when provided", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransactions(testUser, { account_id: "acc-specific" });
-
     const values = mockQuery.mock.calls[0][1] as string[];
     expect(values).toContain("acc-specific");
   });
 
   test("returns multiple transactions", async () => {
-    const rows = [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })];
-    mockQuery.mockResolvedValueOnce({ rows, rowCount: 2 });
-
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })],
+      rowCount: 2,
+    });
     const result = await getTransactions(testUser);
     expect(result).toHaveLength(2);
-    expect(result.map((t) => t.transaction_id)).toEqual(["tx-1", "tx-2"]);
+    expect(result.map((t: { transaction_id: string }) => t.transaction_id)).toEqual([
+      "tx-1",
+      "tx-2",
+    ]);
   });
 });
 
-// ---------------------------------------------------------------------------
-// getTransaction
-// ---------------------------------------------------------------------------
-
 describe("getTransaction", () => {
   test("returns transaction when found", async () => {
-    const row = makeTxRow({ transaction_id: "tx-abc" });
-    mockQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
-
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeTxRow({ transaction_id: "tx-abc" })],
+      rowCount: 1,
+    });
     const result = await getTransaction(testUser, "tx-abc");
     expect(result).not.toBeNull();
     expect(result?.transaction_id).toBe("tx-abc");
@@ -163,10 +146,6 @@ describe("getTransaction", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// searchTransactionsById
-// ---------------------------------------------------------------------------
-
 describe("searchTransactionsById", () => {
   test("returns empty array for empty input", async () => {
     const result = await searchTransactionsById(testUser, []);
@@ -175,9 +154,10 @@ describe("searchTransactionsById", () => {
   });
 
   test("returns transactions for given ids", async () => {
-    const rows = [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })];
-    mockQuery.mockResolvedValueOnce({ rows, rowCount: 2 });
-
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })],
+      rowCount: 2,
+    });
     const result = await searchTransactionsById(testUser, ["tx-1", "tx-2"]);
     expect(result).toHaveLength(2);
   });
@@ -185,17 +165,12 @@ describe("searchTransactionsById", () => {
   test("includes all ids in query values", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchTransactionsById(testUser, ["tx-x", "tx-y", "tx-z"]);
-
     const values = mockQuery.mock.calls[0][1] as string[];
     expect(values).toContain("tx-x");
     expect(values).toContain("tx-y");
     expect(values).toContain("tx-z");
   });
 });
-
-// ---------------------------------------------------------------------------
-// upsertTransactions
-// ---------------------------------------------------------------------------
 
 describe("upsertTransactions", () => {
   test("returns empty array for empty input", async () => {
@@ -205,9 +180,7 @@ describe("upsertTransactions", () => {
   });
 
   test("returns UpsertResult for each transaction", async () => {
-    // upsert calls pool.query once per transaction
     mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
-
     const tx = {
       transaction_id: "tx-1",
       account_id: "acc-1",
@@ -218,7 +191,6 @@ describe("upsertTransactions", () => {
       merchant_name: null,
       iso_currency_code: "USD",
     } as Parameters<typeof upsertTransactions>[1][0];
-
     const result = await upsertTransactions(testUser, [tx]);
     expect(result).toHaveLength(1);
     expect(result[0].update._id).toBe("tx-1");
@@ -227,7 +199,6 @@ describe("upsertTransactions", () => {
 
   test("returns error result on query failure", async () => {
     mockQuery.mockRejectedValueOnce(new Error("DB error"));
-
     const tx = {
       transaction_id: "tx-bad",
       account_id: "acc-1",
@@ -236,33 +207,20 @@ describe("upsertTransactions", () => {
       date: "2026-03-01",
       pending: false,
     } as Parameters<typeof upsertTransactions>[1][0];
-
     const result = await upsertTransactions(testUser, [tx]);
     expect(result[0].status).toBe(500);
     expect(result[0].update._id).toBe("tx-bad");
   });
 });
 
-// ---------------------------------------------------------------------------
-// updateTransactions — pass-through.
-//
-// Confidence inference moved to the route layer
-// (`src/server/routes/accounts/infer-label-confidence.ts` + its test file).
-// The repo just persists whatever the caller hands it now, so the prior
-// "sets confidence=1 by default" tests don't apply here. Covered there.
-// ---------------------------------------------------------------------------
-
 describe("updateTransactions", () => {
   test("preserves caller-supplied category_confidence as-is (repo is pass-through)", async () => {
     mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-2" }], rowCount: 1 });
-
     const tx = {
       transaction_id: "tx-2",
       label: { category_id: "cat-2", category_confidence: 0.0 },
     } as Parameters<typeof updateTransactions>[1][0];
-
     await updateTransactions(testUser, [tx]);
-
     const updateCall = mockQuery.mock.calls.find(
       (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
     );
@@ -272,19 +230,12 @@ describe("updateTransactions", () => {
   });
 
   test("does not inject confidence when caller omits it (repo no longer infers)", async () => {
-    // The route layer now handles inference. The repo should not silently
-    // upgrade `{ category_id: 'X' }` to `confidence = 1` anymore —
-    // otherwise callers that bypass the route (tests, internal helpers)
-    // get unintended writes.
     mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
-
     const tx = {
       transaction_id: "tx-1",
       label: { category_id: "cat-1" },
     } as Parameters<typeof updateTransactions>[1][0];
-
     await updateTransactions(testUser, [tx]);
-
     const updateCall = mockQuery.mock.calls.find(
       (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
     );
@@ -294,17 +245,12 @@ describe("updateTransactions", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getOldestTransactionDate
-// ---------------------------------------------------------------------------
-
 describe("getOldestTransactionDate", () => {
   test("returns date string when transactions exist", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ oldest_date: "2025-01-15" }],
       rowCount: 1,
     });
-
     const result = await getOldestTransactionDate(testUser);
     expect(result).toBe("2025-01-15");
   });

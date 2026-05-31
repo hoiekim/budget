@@ -1,28 +1,28 @@
-/**
- * Unit tests for transfers repository (transaction_pairs table model).
- * Covers getTransferPairs, pairTransactions, confirmTransferPair, removeTransferPair
- * with pool.query mocked.
- */
-
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/lib/postgres/repositories/transfers.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
-
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-mock.module("../client", () => ({
-  pool: { query: mockQuery },
-}));
-
-import {
-  getTransferPairs,
-  pairTransactions,
-  confirmTransferPair,
-  removeTransferPair,
-} from "./transfers";
 import { canonicalizePairIds } from "../models/transaction_pair";
 import { TransactionPaymentChannelEnum } from "plaid";
+
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
+
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
+
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
+
+const { getTransferPairs, pairTransactions, confirmTransferPair, removeTransferPair } =
+  await import("./transfers");
 
 const mockUser = { user_id: "usr-1", username: "tester" } as { user_id: string; username: string };
 
@@ -74,19 +74,25 @@ describe("getTransferPairs", () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getTransferPairs(mockUser as never);
     expect(result).toEqual([]);
-    expect(mockQuery).toHaveBeenCalledTimes(1); // only the pairs query, no follow-up
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   test("loads paired transactions and returns one entry per pair", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [makePairRow({ pair_id: "pair-1", transaction_id_a: "tx-1", transaction_id_b: "tx-2", status: "confirmed" })],
+      rows: [
+        makePairRow({
+          pair_id: "pair-1",
+          transaction_id_a: "tx-1",
+          transaction_id_b: "tx-2",
+          status: "confirmed",
+        }),
+      ],
       rowCount: 1,
     });
     mockQuery.mockResolvedValueOnce({
       rows: [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })],
       rowCount: 2,
     });
-
     const result = await getTransferPairs(mockUser as never);
     expect(result).toHaveLength(1);
     expect(result[0].pair_id).toBe("pair-1");
@@ -96,23 +102,25 @@ describe("getTransferPairs", () => {
 
   test("drops a pair whose transactions are not retrievable (e.g. soft-deleted)", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [makePairRow({ pair_id: "pair-1", transaction_id_a: "tx-1", transaction_id_b: "tx-MISSING" })],
+      rows: [
+        makePairRow({
+          pair_id: "pair-1",
+          transaction_id_a: "tx-1",
+          transaction_id_b: "tx-MISSING",
+        }),
+      ],
       rowCount: 1,
     });
     mockQuery.mockResolvedValueOnce({
-      rows: [makeTxRow({ transaction_id: "tx-1" })], // tx-MISSING absent
+      rows: [makeTxRow({ transaction_id: "tx-1" })],
       rowCount: 1,
     });
-
     const result = await getTransferPairs(mockUser as never);
     expect(result).toEqual([]);
   });
 
   test("scopes both queries by user_id", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [makePairRow()],
-      rowCount: 1,
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [makePairRow()], rowCount: 1 });
     mockQuery.mockResolvedValueOnce({
       rows: [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })],
       rowCount: 2,
@@ -145,8 +153,9 @@ describe("pairTransactions", () => {
     const [sql] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("ON CONFLICT (transaction_id_a, transaction_id_b)");
     expect(sql).toContain("is_deleted = FALSE");
-    // active row keeps its existing status; only re-activated rows take EXCLUDED.status
-    expect(sql).toMatch(/CASE\s+WHEN\s+transaction_pairs\.is_deleted\s*=\s*TRUE\s+THEN\s+EXCLUDED\.status/);
+    expect(sql).toMatch(
+      /CASE\s+WHEN\s+transaction_pairs\.is_deleted\s*=\s*TRUE\s+THEN\s+EXCLUDED\.status/,
+    );
     expect(pair_id).toBe("pair-existing");
   });
 
@@ -154,7 +163,6 @@ describe("pairTransactions", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-1" }], rowCount: 1 });
     await pairTransactions(mockUser as never, "tx-z", "tx-a");
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
-    // canonical: tx-a < tx-z so transaction_id_a = "tx-a", transaction_id_b = "tx-z"
     const idxA = values.indexOf("tx-a");
     const idxB = values.indexOf("tx-z");
     expect(idxA).toBeLessThan(idxB);
@@ -188,7 +196,7 @@ describe("removeTransferPair", () => {
   test("soft-deletes the pair row (does not touch transactions)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
     await removeTransferPair(mockUser as never, "pair-1");
-    expect(mockQuery).toHaveBeenCalledTimes(1); // single UPDATE, no fan-out to transactions
+    expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("UPDATE transaction_pairs");
     expect(sql).toContain("is_deleted = TRUE");

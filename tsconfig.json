@@ -25,11 +25,12 @@
       "server": ["./server"],
       "server/*": ["./server/*"],
       "common": ["./common"],
-      "common/*": ["./common/*"]
+      "common/*": ["./common/*"],
+      "test-bundled": ["../scripts/test-bundled/runtime.ts"]
     },
     "types": ["bun-types"]
   },
   "include": ["src"],
-  "exclude": ["**/*.test.ts", "**/*.test.tsx"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.test.bundle.ts", "**/*.test.bundle.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

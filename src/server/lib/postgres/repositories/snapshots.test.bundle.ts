@@ -1,19 +1,26 @@
-/**
- * Tests for the searchSnapshots two-pass logic (#323):
- * user-scoped snapshots (account_balance / holding) + global security
- * snapshots (user_id NULL), with the second pass skipped when the caller
- * narrows the request to a specific account or non-security snapshot_type.
- */
-
+// Per-test-bundle isolation — see scripts/test-bundled/.
+//
+// The bundle keeps `./securities` external (declared via @external below)
+// so this test can mock the sibling at its natural relative path.
+// @bundles src/server/lib/postgres/repositories/snapshots.ts
+// @external ./securities
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-mock.module("../client", () => ({
-  pool: { query: mockQuery },
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
+
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
 const mockSearchSecuritiesById = mock(async (_ids: string[]) => [] as unknown[]);
@@ -21,12 +28,10 @@ mock.module("./securities", () => ({
   searchSecuritiesById: mockSearchSecuritiesById,
 }));
 
-import { searchSnapshots } from "./snapshots";
+const { searchSnapshots } = await import("./snapshots");
 
 const testUser = { user_id: "usr-1", username: "hoie" };
 
-// SnapshotModel's typeChecker requires every column to be present (null is
-// fine, undefined is not). These helpers return the full row shape.
 function makeBaseRow(overrides: Record<string, unknown> = {}) {
   return {
     snapshot_id: "snap-0",
@@ -158,7 +163,7 @@ describe("searchSnapshots", () => {
         ticker_symbol: "AAPL",
         name: "Apple Inc.",
         type: "equity",
-        close_price: 200, // latest — should be OVERWRITTEN by the snapshot's historical price
+        close_price: 200,
         close_price_as_of: "2026-05-13",
       },
     ]);
@@ -186,7 +191,6 @@ describe("searchSnapshots", () => {
         rows: [makeSecurityRow({ security_id: "sec-orphan" })],
         rowCount: 1,
       }));
-    // mockSearchSecuritiesById returns [] by default — simulates orphan security
 
     const result = await searchSnapshots(testUser, { startDate: "2026-01-01" });
 
@@ -201,9 +205,21 @@ describe("searchSnapshots", () => {
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({
         rows: [
-          makeSecurityRow({ snapshot_id: "snap-1", security_id: "sec-aapl", snapshot_date: "2026-05-10" }),
-          makeSecurityRow({ snapshot_id: "snap-2", security_id: "sec-aapl", snapshot_date: "2026-05-11" }),
-          makeSecurityRow({ snapshot_id: "snap-3", security_id: "sec-msft", snapshot_date: "2026-05-10" }),
+          makeSecurityRow({
+            snapshot_id: "snap-1",
+            security_id: "sec-aapl",
+            snapshot_date: "2026-05-10",
+          }),
+          makeSecurityRow({
+            snapshot_id: "snap-2",
+            security_id: "sec-aapl",
+            snapshot_date: "2026-05-11",
+          }),
+          makeSecurityRow({
+            snapshot_id: "snap-3",
+            security_id: "sec-msft",
+            snapshot_date: "2026-05-10",
+          }),
         ],
         rowCount: 3,
       }));
