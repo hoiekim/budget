@@ -15,22 +15,6 @@ export interface DetectionCandidate {
   is_plaid_transfer: boolean;
 }
 
-type QueryFn = (
-  sql: string,
-  params?: unknown[],
-) => Promise<{ rows: Record<string, unknown>[] }>;
-type LogFn = {
-  info: (message: string, context?: Record<string, unknown>) => void;
-  error: (message: string, context?: Record<string, unknown>, error?: unknown) => void;
-};
-type FetchUsersFn = () => Promise<string[]>;
-type FetchCandidatesFn = (userId: string) => Promise<DetectionCandidate[]>;
-type CreatePairFn = (
-  userId: string,
-  transactionIdA: string,
-  transactionIdB: string,
-) => Promise<void>;
-
 export const scoreConfidence = (
   isPlaidTransfer: boolean,
   dateDelta: number,
@@ -41,89 +25,89 @@ export const scoreConfidence = (
   return Math.min(confidence, 0.99);
 };
 
-const defaultFetchUsers: FetchUsersFn = async () => {
+const fetchUsers = async (): Promise<string[]> => {
   const users = await usersTable.query({});
   return users.map((u) => u.user_id);
 };
 
-const defaultFetchCandidates =
-  (queryFn: QueryFn): FetchCandidatesFn =>
-  async (userId) => {
-    const result = await queryFn(
-      `SELECT
-         t1.transaction_id AS transaction_id_a,
-         t2.transaction_id AS transaction_id_b,
-         ABS(t1.date - t2.date) AS date_delta,
-         (
-           (t1.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
-           OR (t2.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
-         ) AS is_plaid_transfer
-       FROM transactions t1
-       JOIN transactions t2
-         ON t1.user_id = t2.user_id
-        AND t1.user_id = $1
-        AND ABS(t1.amount) = ABS(t2.amount)
-        AND t1.amount * t2.amount < 0
-        AND t1.account_id <> t2.account_id
-        AND ABS(t1.date - t2.date) <= $2
-        AND t1.transaction_id < t2.transaction_id
-       WHERE (t1.is_deleted IS NULL OR t1.is_deleted = FALSE)
-         AND (t2.is_deleted IS NULL OR t2.is_deleted = FALSE)
-         AND NOT EXISTS (
-           SELECT 1 FROM transaction_pairs tp
-           WHERE tp.user_id = t1.user_id
-             AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
-             AND (
-               tp.transaction_id_a IN (t1.transaction_id, t2.transaction_id)
-               OR tp.transaction_id_b IN (t1.transaction_id, t2.transaction_id)
-             )
-         )
-       ORDER BY ABS(t1.date - t2.date) ASC, t1.transaction_id ASC
-       LIMIT $3`,
-      [userId, DATE_WINDOW_DAYS, PER_USER_CANDIDATE_LIMIT],
-    );
-
-    return result.rows.map((row) => ({
-      transaction_id_a: row.transaction_id_a as string,
-      transaction_id_b: row.transaction_id_b as string,
-      date_delta: Number(row.date_delta),
-      is_plaid_transfer: row.is_plaid_transfer === true,
-    }));
-  };
-
-const defaultCreatePair =
-  (queryFn: QueryFn): CreatePairFn =>
-  async (userId, transactionIdA, transactionIdB) => {
-    const pair_id = crypto.randomUUID();
-    const canonical = canonicalizePairIds(transactionIdA, transactionIdB);
-    // INSERT...SELECT WHERE NOT EXISTS instead of ON CONFLICT to avoid
-    // requiring a UNIQUE (transaction_id_a, transaction_id_b) constraint
-    // that isn't enforced by the auto-migration. Also stronger: this rejects
-    // any insert that would re-use a transaction already in a non-deleted
-    // pair, even with a different counterpart (the candidates query already
-    // filters these out, but the IN clause closes the SELECT-then-INSERT
-    // race window).
-    await queryFn(
-      `INSERT INTO transaction_pairs
-         (pair_id, user_id, transaction_id_a, transaction_id_b, status)
-       SELECT $1, $2, $3, $4, 'suggested'
-       WHERE NOT EXISTS (
+const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> => {
+  const result = await pool.query(
+    `SELECT
+       t1.transaction_id AS transaction_id_a,
+       t2.transaction_id AS transaction_id_b,
+       ABS(t1.date - t2.date) AS date_delta,
+       (
+         (t1.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
+         OR (t2.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
+       ) AS is_plaid_transfer
+     FROM transactions t1
+     JOIN transactions t2
+       ON t1.user_id = t2.user_id
+      AND t1.user_id = $1
+      AND ABS(t1.amount) = ABS(t2.amount)
+      AND t1.amount * t2.amount < 0
+      AND t1.account_id <> t2.account_id
+      AND ABS(t1.date - t2.date) <= $2
+      AND t1.transaction_id < t2.transaction_id
+     WHERE (t1.is_deleted IS NULL OR t1.is_deleted = FALSE)
+       AND (t2.is_deleted IS NULL OR t2.is_deleted = FALSE)
+       AND NOT EXISTS (
          SELECT 1 FROM transaction_pairs tp
-         WHERE tp.user_id = $2
+         WHERE tp.user_id = t1.user_id
            AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
            AND (
-             tp.transaction_id_a IN ($3, $4)
-             OR tp.transaction_id_b IN ($3, $4)
+             tp.transaction_id_a IN (t1.transaction_id, t2.transaction_id)
+             OR tp.transaction_id_b IN (t1.transaction_id, t2.transaction_id)
            )
-       )`,
-      [
-        pair_id,
-        userId,
-        canonical.transaction_id_a,
-        canonical.transaction_id_b,
-      ],
-    );
-  };
+       )
+     ORDER BY ABS(t1.date - t2.date) ASC, t1.transaction_id ASC
+     LIMIT $3`,
+    [userId, DATE_WINDOW_DAYS, PER_USER_CANDIDATE_LIMIT],
+  );
+
+  return result.rows.map((row) => ({
+    transaction_id_a: row.transaction_id_a as string,
+    transaction_id_b: row.transaction_id_b as string,
+    date_delta: Number(row.date_delta),
+    is_plaid_transfer: row.is_plaid_transfer === true,
+  }));
+};
+
+const createPair = async (
+  userId: string,
+  transactionIdA: string,
+  transactionIdB: string,
+): Promise<void> => {
+  const pair_id = crypto.randomUUID();
+  const canonical = canonicalizePairIds(transactionIdA, transactionIdB);
+  // INSERT...SELECT WHERE NOT EXISTS instead of ON CONFLICT to avoid
+  // requiring a UNIQUE (transaction_id_a, transaction_id_b) constraint
+  // that isn't enforced by the auto-migration. Also stronger: this rejects
+  // any insert that would re-use a transaction already in a non-deleted
+  // pair, even with a different counterpart (the candidates query already
+  // filters these out, but the IN clause closes the SELECT-then-INSERT
+  // race window).
+  await pool.query(
+    `INSERT INTO transaction_pairs
+       (pair_id, user_id, transaction_id_a, transaction_id_b, status)
+     SELECT $1, $2, $3, $4, 'suggested'
+     WHERE NOT EXISTS (
+       SELECT 1 FROM transaction_pairs tp
+       WHERE tp.user_id = $2
+         AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
+         AND (
+           tp.transaction_id_a IN ($3, $4)
+           OR tp.transaction_id_b IN ($3, $4)
+         )
+     )`,
+    [
+      pair_id,
+      userId,
+      canonical.transaction_id_a,
+      canonical.transaction_id_b,
+    ],
+  );
+};
 
 /**
  * Background job that scans unpaired transactions and suggests transfer pairs.
@@ -152,16 +136,8 @@ const defaultCreatePair =
  * and emits pairs for it; subsequent hourly runs are cheap because the SQL
  * filters out anything already in `transaction_pairs`.
  */
-export const runTransferDetection = async (
-  queryFn: QueryFn = (sql, params) => pool.query(sql, params),
-  log: LogFn = logger,
-  fetchUsers: FetchUsersFn = defaultFetchUsers,
-  fetchCandidates: FetchCandidatesFn = defaultFetchCandidates((sql, params) =>
-    queryFn(sql, params),
-  ),
-  createPair: CreatePairFn = defaultCreatePair((sql, params) => queryFn(sql, params)),
-): Promise<void> => {
-  log.info("Transfer-detection job started");
+export const runTransferDetection = async (): Promise<void> => {
+  logger.info("Transfer-detection job started");
 
   let totalUsers = 0;
   let totalSuggested = 0;
@@ -198,7 +174,7 @@ export const runTransferDetection = async (
             usedTxnIds.add(candidate.transaction_id_b);
             userSuggested++;
           } catch (err) {
-            log.error(
+            logger.error(
               "Failed to insert transfer pair",
               {
                 userId,
@@ -213,21 +189,21 @@ export const runTransferDetection = async (
         totalSuggested += userSuggested;
         totalUsers++;
         if (userSuggested > 0) {
-          log.info("Suggested transfer pairs for user", {
+          logger.info("Suggested transfer pairs for user", {
             userId,
             suggested: userSuggested,
             candidatesConsidered: candidates.length,
           });
         }
       } catch (err) {
-        log.error("Transfer detection failed for user", { userId }, err);
+        logger.error("Transfer detection failed for user", { userId }, err);
       }
     }
   } catch (err) {
-    log.error("Transfer-detection job failed to fetch users", {}, err);
+    logger.error("Transfer-detection job failed to fetch users", {}, err);
   }
 
-  log.info("Transfer-detection job completed", {
+  logger.info("Transfer-detection job completed", {
     usersProcessed: totalUsers,
     pairsSuggested: totalSuggested,
   });
