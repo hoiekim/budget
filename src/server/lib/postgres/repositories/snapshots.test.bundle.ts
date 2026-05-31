@@ -1,10 +1,12 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
 //
-// The bundle keeps `./securities` external (declared via @external below)
-// so this test can mock the sibling at its natural relative path.
+// The bundle keeps `./securities` external (declared via @external
+// below). `mockExternal` resolves to a per-test SHIM path so two tests
+// externalizing the same source don't collide on `mock.module(spec, …)`.
 // @bundles src/server/lib/postgres/repositories/snapshots.ts
 // @external ./securities
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { mockExternal } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -24,7 +26,7 @@ mock.module("pg", () => ({
 }));
 
 const mockSearchSecuritiesById = mock(async (_ids: string[]) => [] as unknown[]);
-mock.module("./securities", () => ({
+mockExternal(import.meta.url, "./securities", () => ({
   searchSecuritiesById: mockSearchSecuritiesById,
 }));
 
