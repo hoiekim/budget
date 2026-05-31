@@ -1,30 +1,25 @@
-/**
- * Tests for DELETE /api/api-keys (Closes #358 — DELETE coverage).
- *
- * Mocks `pool.query` because `revokeApiKey` issues a single UPDATE there.
- * The cross-user ownership check is enforced at the SQL level by the
- * `WHERE user_id = $2` clause; these tests pin the route contract and
- * verify the session user_id reaches the query unchanged (never a
- * client-supplied value).
- */
+// Per-test-bundle isolation — see scripts/test-bundled/.
+// @bundles src/server/routes/api-keys/delete-api-key.ts
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
+  rows: [] as unknown[],
+  rowCount: 0 as number | null,
+}));
 
-import { pool } from "server/lib/postgres/client";
-import { deleteApiKeyRoute } from "./delete-api-key";
+class FakePool {
+  query = mockQuery;
+  end = async () => {};
+  connect = async () => ({ query: mockQuery, release: () => {} });
+}
 
-const originalQuery = pool.query.bind(pool);
+mock.module("pg", () => ({
+  Pool: FakePool,
+  types: { setTypeParser: () => {} },
+  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
+}));
 
-const mockQuery = mock(
-  (_sql: string, _values?: unknown[]): Promise<{ rows: unknown[]; rowCount: number | null }> =>
-    Promise.resolve({ rows: [], rowCount: 0 }),
-);
-
-(pool as unknown as { query: typeof mockQuery }).query = mockQuery;
-
-afterAll(() => {
-  (pool as unknown as { query: typeof originalQuery }).query = originalQuery;
-});
+const { deleteApiKeyRoute } = await import("./delete-api-key");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -34,8 +29,7 @@ function makeReq(
   query: Record<string, unknown>,
   opts: { user?: { user_id: string; username: string } | null } = {},
 ) {
-  const user =
-    opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
+  const user = opts.user === undefined ? { user_id: "u-1", username: "test" } : opts.user;
   return {
     method: "DELETE",
     path: "/api-keys",
@@ -85,10 +79,7 @@ describe("delete-api-key", () => {
 
   test("returns failed when no rows are updated (not found / wrong owner / already revoked)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const result = await deleteApiKeyRoute.execute(
-      makeReq({ key_id: "k-missing" }),
-      fakeRes(),
-    );
+    const result = await deleteApiKeyRoute.execute(makeReq({ key_id: "k-missing" }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not found or already revoked/);
   });
@@ -105,9 +96,6 @@ describe("delete-api-key", () => {
   });
 
   test("cross-user revoke: the route always uses the *session* user_id, never a client-supplied value", async () => {
-    // User A attempts to revoke a key that belongs to User B. The session
-    // user (u-A) is the only value the route will accept for user_id, even
-    // if a future request body somehow tried to override it.
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await deleteApiKeyRoute.execute(
       makeReq({ key_id: "k-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
