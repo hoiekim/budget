@@ -6,6 +6,7 @@ COPY package.json bun.lockb* ./
 COPY tsconfig.json tsconfig.node.json ./
 COPY vite.config.ts ./
 COPY src src
+COPY scripts scripts
 
 RUN bun install
 RUN bun run typecheck
