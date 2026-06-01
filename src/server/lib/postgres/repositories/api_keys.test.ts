@@ -7,6 +7,7 @@
 // differently without colliding.
 // @bundles src/server/lib/postgres/repositories/api_keys.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -29,7 +30,7 @@ mock.module("pg", () => ({
 // bundle (which the preload redirects this path to) loads. The path is
 // still the natural sibling source — only the import shape changes.
 const { generateApiKey, hashApiKey, createApiKey, listApiKeys, revokeApiKey, verifyApiKey } =
-  await import("./api_keys");
+  await bundleOf<typeof import("./api_keys")>(import.meta.url);
 
 beforeEach(() => {
   mockQuery.mockReset();

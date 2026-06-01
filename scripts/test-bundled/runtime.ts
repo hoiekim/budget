@@ -119,3 +119,48 @@ export const mockExternal = (
 ): void => {
   mock.module(externalPath(callerUrl, spec), factory);
 };
+
+interface BundlesByTest {
+  [testAbsPath: string]: string;
+}
+
+/**
+ * Dynamic-import THIS test's bundle by its absolute path. The
+ * orchestrator builds a unique bundle per (test, source) and exposes
+ * the path via `globalThis.__bundlesByTest`. Using the bundle path
+ * directly (instead of a `mock.module(source → bundle)` redirect)
+ * avoids the cascade where bun's eager-fire-on-cached behaviour would
+ * load this test's bundle PREMATURELY — at a point where another
+ * test's transitive load had cached the source but the intended
+ * test's `mock.module("pg", …)` hadn't fired yet.
+ *
+ *   // @bundles src/server/lib/foo.ts
+ *   import { mock } from "bun:test";
+ *   import { bundleOf } from "test-bundled";
+ *   mock.module("pg", () => ({ Pool: FakePool, … }));
+ *   const { foo } = await bundleOf<typeof import("./foo")>(import.meta.url);
+ *
+ * Pass `import.meta.url` so the runtime can look up the bundle path
+ * for the calling test. The generic type parameter is optional but
+ * keeps `await bundleOf(...)` strongly typed against the source's
+ * shape.
+ */
+export const bundleOf = async <T = Record<string, unknown>>(
+  callerUrl: string,
+): Promise<T> => {
+  const caller = callerAbsPath(callerUrl);
+  const slot = (globalThis as { __bundlesByTest?: BundlesByTest }).__bundlesByTest;
+  if (!slot) {
+    throw new Error(
+      "test-bundled: __bundlesByTest is missing on globalThis. " +
+        "Are you running via `bun run test`?",
+    );
+  }
+  const bundle = slot[caller];
+  if (!bundle) {
+    throw new Error(
+      `bundleOf: no bundle for ${caller}. Did the test file declare \`// @bundles <relPath>\`?`,
+    );
+  }
+  return (await import(bundle)) as T;
+};

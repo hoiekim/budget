@@ -100,7 +100,7 @@ const main = async (): Promise<void> => {
         test: testAbs,
         source: sourceAbs,
         external: ann.external,
-        bundle: bundlePathFor(sourceAbs),
+        bundle: bundlePathFor(testAbs, sourceAbs),
       });
     } else {
       plainTests.push(testAbs);
@@ -152,18 +152,29 @@ const main = async (): Promise<void> => {
   //       bundle's exports). The factory runs lazily on first import,
   //       so the test's own `mock.module("pg", …)` etc. are already
   //       active by then and the bundle's leaf-dep imports see them.
+  // Per-test BUNDLE PATHS map. Tests load their own bundle directly via
+  // `bundleOf(import.meta.url)` from `test-bundled` runtime — no
+  // source→bundle `mock.module` redirect anywhere.
+  //
+  // Why no redirects: bun's `mock.module(path, factory)` is EAGER for
+  // already-cached `path`s. When a previous test's transitive imports
+  // loaded the source (e.g. via the `server` barrel), a later test's
+  // wrapper-level `mock.module(source, () => require(bundle))` fires
+  // the factory IMMEDIATELY — and the bundle loads BEFORE that test's
+  // `mock.module("pg", FakePool)` runs, so the bundle binds REAL pg.
+  // The intended FakePool never takes effect.
+  //
+  // Per-test bundle paths sidestep this entirely: each test gets a
+  // UNIQUE bundle file (keyed on (test, source)). The test imports its
+  // bundle by absolute path. Sibling tests can lazily load REAL
+  // sources via transitive imports without touching this test's
+  // bundle module record.
+  const bundlesByTest: Record<string, string> = {};
+  for (const m of manifest) bundlesByTest[m.test] = m.bundle;
+
   const preloadPath = resolve(getBundleDir(), "preload.ts");
-  // ES-imports hoist above any top-level statement, so we can't `import`
-  // the barrels and then run `Object.assign(globalThis, { window: {} })`
-  // — the barrel would be evaluated BEFORE the window stub runs and
-  // `common/utils:environment` would resolve to "server" instead of
-  // "unknown", flipping client-side Dictionary writes into no-ops.
-  // `require()` runs at statement order, so the window stub goes first
-  // and the barrel snapshot fires after.
   const preloadBody =
-    `import { mock } from "bun:test";\n` +
-    // Stub `globalThis.window` for client-side env detection (was a
-    // separate `src/client/test-setup.ts` preload before unification).
+    `import { mock as _ } from "bun:test";\n` + // ensure bun:test is initialized
     `Object.assign(globalThis, { window: {} });\n\n` +
     REAL_BARRELS.map(
       (b) => `const __${b} = require(${JSON.stringify(b)});`,
@@ -172,48 +183,31 @@ const main = async (): Promise<void> => {
     `(globalThis as any).__realBarrels = {\n` +
     REAL_BARRELS.map((b) => `  ${JSON.stringify(b)}: __${b},`).join("\n") +
     `\n};\n\n` +
-    `(globalThis as any).__externalsByTest = ${JSON.stringify(externalsByTest, null, 2)};\n\n` +
-    manifest
-      .map(
-        (m) =>
-          `mock.module(${JSON.stringify(m.source)}, () => require(${JSON.stringify(m.bundle)}));`,
-      )
-      .join("\n") +
-    "\n";
+    `(globalThis as any).__externalsByTest = ${JSON.stringify(externalsByTest, null, 2)};\n` +
+    `(globalThis as any).__bundlesByTest = ${JSON.stringify(bundlesByTest, null, 2)};\n`;
   await mkdir(getBundleDir(), { recursive: true });
   await writeFile(preloadPath, preloadBody);
-
-  // 3b. Plain-tests preload — just the window stub. Lives alongside the
-  // bundled preload but stays minimal so non-bundled tests don't inherit
-  // any source→bundle redirects that would only be valid in the bundled
-  // process.
-  const plainPreloadPath = resolve(getBundleDir(), "preload-plain.ts");
-  const plainPreloadBody = `Object.assign(globalThis, { window: {} });\n`;
-  await writeFile(plainPreloadPath, plainPreloadBody);
 
   process.stdout.write(
     `${COLOR_DIM}built ${manifest.length} bundles in ${buildMs.toFixed(0)}ms${COLOR_RESET}\n`,
   );
 
-  // 4. Run the two groups in SEPARATE bun test processes. Bundled-side
-  // `mock.module("pg", …)` would otherwise contaminate the plain side's
-  // real pg imports (pg-pool reads `types.builtins.NUMERIC` which a
-  // FakePool mock doesn't supply).
+  // Single `bun test` process for ALL tests. Bundled tests load their
+  // own unique bundle via `bundleOf(import.meta.url)`; plain tests
+  // import sources directly. Per-test bundle paths mean no cascade —
+  // a plain test's transitive load of a source never repoints a
+  // bundled test's view of that source (bundles use unique abs paths
+  // that the plain side never touches). Each test's `mock.module("pg",
+  // …)` is per-file-scoped in bun:test, so siblings don't interfere.
   const t2 = performance.now();
   const coverageArgs = process.env.COVERAGE
     ? ["--coverage", "--coverage-reporter=lcov"]
     : [];
-  const runGroup = async (preload: string, files: string[]): Promise<number> => {
-    if (files.length === 0) return 0;
-    const proc = Bun.spawn(
-      ["bun", "test", "--preload", preload, ...coverageArgs, ...files],
-      { cwd: REPO_ROOT, stdout: "inherit", stderr: "inherit" },
-    );
-    return proc.exited;
-  };
-  const bundledExit = await runGroup(preloadPath, manifest.map((m) => m.test));
-  const plainExit = await runGroup(plainPreloadPath, plainTests);
-  const exitCode = bundledExit || plainExit;
+  const proc = Bun.spawn(
+    ["bun", "test", "--preload", preloadPath, ...coverageArgs, ...allTestFiles],
+    { cwd: REPO_ROOT, stdout: "inherit", stderr: "inherit" },
+  );
+  const exitCode = await proc.exited;
   const runMs = performance.now() - t2;
   const totalMs = performance.now() - t0;
   process.stdout.write(

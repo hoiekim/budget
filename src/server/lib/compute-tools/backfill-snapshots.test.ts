@@ -26,6 +26,7 @@ process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -50,7 +51,7 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
-const { backfillMonthlySecuritySnapshotsForward } = await import("./backfill-snapshots");
+const { backfillMonthlySecuritySnapshotsForward } = await bundleOf<typeof import("./backfill\-snapshots")>(import.meta.url);
 
 afterAll(() => {
   globalThis.fetch = originalFetch;

@@ -6,6 +6,7 @@
 // `get-holding-snapshots.test.bundle.ts`.
 // @bundles src/server/routes/accounts/delete-holding-snapshot.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -24,7 +25,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { deleteHoldingSnapshotRoute } = await import("./delete-holding-snapshot");
+const { deleteHoldingSnapshotRoute } = await bundleOf<typeof import("./delete-holding-snapshot")>(import.meta.url);
 
 beforeEach(() => {
   mockQuery.mockReset();

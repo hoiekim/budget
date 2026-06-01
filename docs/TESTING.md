@@ -7,18 +7,17 @@ bun run test           # All tests — always use this, not bare bun test
 bun run test:coverage  # Same, with lcov coverage + check-coverage gate
 ```
 
-`bun run test` invokes `scripts/test-bundled/index.ts`, which discovers every
-`*.test.{ts,tsx}` under `src/`, partitions them by whether they carry a
-`// @bundles` annotation, and runs each group in its own `bun test` process.
-Bundled tests get the per-bundle isolation preload (source→bundle redirects,
-real-barrel snapshots, `__externalsByTest` map); plain tests just get a
-`globalThis.window = {}` stub for client-side env detection.
+`bun run test` invokes `scripts/test-bundled/index.ts`, which discovers
+every `*.test.{ts,tsx}` under `src/`, builds a unique per-test bundle for
+each one carrying a `// @bundles` annotation, and runs every test file
+in a single `bun test` process. Bundled tests load their bundle via
+`bundleOf(import.meta.url)`; plain tests import sources directly.
 
-> **Always use `bun run test`, not bare `bun test`.** Bare `bun test` skips
-> the orchestrator entirely — it never builds the bundles, so bundled tests
-> hit raw `mock.module(<source>, …)` collisions, and it never sets the
-> `window` stub, so client tests fail with
-> `Dictionary.set() is disabled in server`.
+> **Always use `bun run test`, not bare `bun test`.** Bare `bun test`
+> skips the orchestrator entirely — it never builds the bundles, never
+> sets up `globalThis.__bundlesByTest`, and never stubs `window`. Bundled
+> tests fail at `bundleOf` and client tests fail with `Dictionary.set()
+> is disabled in server`.
 
 To run a single test file directly:
 
@@ -26,10 +25,8 @@ To run a single test file directly:
 # Plain test (no @bundles annotation):
 bun test src/path/to/file.test.ts
 
-# Bundled test: must go through the orchestrator (it builds the bundle):
+# Bundled test must go through the orchestrator (it builds the bundle):
 bun scripts/test-bundled/index.ts
-# (then either pass the file via env arg in a future enhancement, or run
-#  the whole suite — bundle build is ~400ms so this is cheap.)
 ```
 
 ## Writing Tests
@@ -44,23 +41,25 @@ describe("featureName", () => {
 });
 ```
 
-### Bundled tests (`// @bundles` annotation)
+### Bundled tests (`// @bundles` annotation + `bundleOf`)
 
 `bun test` shares one module registry per process, so a raw
 `mock.module("pg", …)` would leak across every test file in the run. The
-per-test-bundle runner (`scripts/test-bundled/`) avoids this: it bundles
-each source-under-test into a unique file with leaf deps (`pg`, `bcrypt`,
-…) kept external, so each bundle captures **its own** mocks at first
-load and never collides with sibling tests. This replaces the old
+per-test-bundle runner (`scripts/test-bundled/`) avoids this: it builds
+a UNIQUE bundle per `(test, source)` pair, with leaf deps (`pg`, `bcrypt`,
+…) kept external. Each bundle captures **its own** leaf-dep mocks at
+first load and never collides with sibling tests. This replaces the old
 practice of plumbing dependency-injection seams through server functions
 purely for mockability.
 
-Add the `// @bundles` annotation to the top of the test file (any
-`*.test.ts` under `src/` is auto-discovered):
+Add `// @bundles <path>` to the top of the test file, then load the
+source via `bundleOf(import.meta.url)` (NOT `await import("./source")`
+— see "why bundleOf" below):
 
 ```typescript
 // @bundles src/server/lib/postgres/repositories/users.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async () => ({ rows: [], rowCount: 0 }));
 class FakePool {
@@ -74,12 +73,24 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-// Natural sibling import — the runner's preload redirects it to the bundle.
-const { writeUser } = await import("./users");
+const { writeUser } = await bundleOf<typeof import("./users")>(import.meta.url);
 ```
 
-The runner registers a redirect from the annotated source's abs path to
-the built bundle, so the leaf-dep mocks above are captured at first load.
+#### Why `bundleOf`, not `await import("./source")`
+
+An earlier framework version registered process-wide
+`mock.module(<source-abs>, () => require(<bundle>))` redirects in the
+preload so the natural sibling import `await import("./users")` would
+land on the bundle. That broke at scale: bun's `mock.module(path,
+factory)` is **EAGER** for already-cached paths — when another test had
+transitively loaded the source (e.g. via a `server` barrel), the redirect
+factory fired IMMEDIATELY, loading the bundle BEFORE the intended test's
+`mock.module("pg", FakePool)` ran. The bundle bound real pg, and the
+test's mock never took effect.
+
+`bundleOf` sidesteps this by reading the per-test bundle's absolute path
+from `globalThis.__bundlesByTest` (populated by the preload) and dynamic-
+importing the bundle directly. No `mock.module` redirect, no cascade.
 
 ### Mocking sibling source modules (`@external` + `mockExternal`)
 
@@ -105,9 +116,10 @@ mockExternal(import.meta.url, "./postgres/repositories/users", () => ({
 `.test-bundles/__shims__/`. The shim's default content is `export * from
 "<real-abs-source>"`, so a non-mocked external falls through to the real
 module. Two tests `@external`-ing the same source land on DIFFERENT
-shim identities — mocking via the shim doesn't shadow another bundle's
-redirect or another test's mock. This is what unblocks mocking siblings
-that are themselves other tests' `@bundles` targets (see #451, #456).
+shim identities — mocking via the shim doesn't shadow another bundle
+or another test's mock of the same source. This is what unblocks mocking
+siblings that are themselves other tests' `@bundles` targets (see #451,
+#456).
 
 ## Test Requirements
 

@@ -1,6 +1,7 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
 // @bundles src/server/lib/postgres/repositories/accounts.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 import { AccountType, AccountSubtype } from "plaid";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
@@ -21,7 +22,7 @@ mock.module("pg", () => ({
 }));
 
 const { getAccounts, getAccount, searchAccounts, searchAccountsById, upsertAccounts } =
-  await import("./accounts");
+  await bundleOf<typeof import("./accounts")>(import.meta.url);
 
 function makeAccountRow(overrides: Record<string, unknown> = {}) {
   return {

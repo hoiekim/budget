@@ -1,6 +1,7 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
 // @bundles src/server/routes/transfers/get-transfers.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -19,7 +20,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { getTransfersRoute } = await import("./get-transfers");
+const { getTransfersRoute } = await bundleOf<typeof import("./get\-transfers")>(import.meta.url);
 
 beforeEach(() => {
   mockQuery.mockReset();

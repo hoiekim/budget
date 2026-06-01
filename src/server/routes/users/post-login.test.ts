@@ -6,6 +6,7 @@
 // run unmocked.
 // @bundles src/server/routes/users/post-login.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 import bcrypt from "bcrypt";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
@@ -25,7 +26,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { postLoginRoute } = await import("./post-login");
+const { postLoginRoute } = await bundleOf<typeof import("./post-login")>(import.meta.url);
 
 const REAL_PASSWORD = "correct-horse-battery-staple";
 const REAL_HASH = await bcrypt.hash(REAL_PASSWORD, 10);
