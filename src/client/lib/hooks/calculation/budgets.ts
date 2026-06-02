@@ -148,15 +148,18 @@ export const getBudgetData = (
     const budgetLike =
       budgets.get(budgetLikeId) || sections.get(budgetLikeId) || categories.get(budgetLikeId);
     if (!budgetLike) return;
-    const { roll_over, roll_over_start_date, getActiveCapacity } = budgetLike;
+    const { roll_over, roll_over_start_date } = budgetLike;
     if (!roll_over || !roll_over_start_date) return;
     const startDate = new ViewDate("month", roll_over_start_date).next();
     while (startDate.getEndDate() <= endDate.getEndDate()) {
       const previousDate = startDate.clone().previous();
       const previousSummary = history.get(previousDate.getEndDate());
-      const previousCapacity = getActiveCapacity(previousDate.getEndDate());
+      // Use the children-aware derived amount: for is_synced rows the
+      // stored capacity.month is just advisory cache, so subtracting it
+      // would silently drift the rollover carry each month.
+      const previousAmount = budgetLike.getActiveAmount(previousDate.getEndDate(), "month");
       history.add(startDate.getEndDate(), {
-        rolled_over_amount: previousSummary.rolled_over_amount - previousCapacity.month,
+        rolled_over_amount: previousSummary.rolled_over_amount - previousAmount,
       });
       startDate.next();
     }
@@ -179,9 +182,16 @@ export const getCapacityData = (
     if (!budget) return;
     section.capacities.forEach((capacity) => {
       const { active_from } = capacity;
-      const capacityAmount = capacity.month;
+      // For is_synced sections the stored `capacity.month` is just the
+      // advisory cache — sum the section's derived amount at this period
+      // so downstream consumers (BudgetDonut, isChildrenSynced legacy
+      // fallthrough) see the live total, not the stale cache.
+      const periodDate = active_from || oldestDate;
+      const capacityAmount = capacity.is_synced
+        ? capacity.getActiveAmount(periodDate, "month", section.getChildren())
+        : capacity.month;
       const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
-      const budgetCapacity = budget.getActiveCapacity(active_from || oldestDate);
+      const budgetCapacity = budget.getActiveCapacity(periodDate);
       if (isInfinite) {
         const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
         capacityData.get(budgetCapacity.id).children_total = override;

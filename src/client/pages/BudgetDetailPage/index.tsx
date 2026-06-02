@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { MAX_FLOAT } from "common";
 import { NewSectionGetResponse } from "server";
 import {
   useAppContext,
@@ -102,8 +103,12 @@ export const BudgetDetailPage = () => {
   const date = viewDate.getEndDate();
   const { number_of_unsorted_items } = budgetData.get(budget_id, date) || {};
 
-  const capacity = budget?.getActiveCapacity(date);
-  const isInfinite = !!capacity?.isInfinite;
+  // Don't read `capacity.isInfinite` directly — that checks the stored
+  // `month` cache which is stale for synced budgets. Check the derived
+  // amount instead so a synced budget whose children are all infinite
+  // correctly reports as infinite.
+  const derivedAmount = budget?.getActiveAmount(date, "month") ?? 0;
+  const isInfinite = Math.abs(derivedAmount) === MAX_FLOAT;
 
   return (
     <div className="BudgetDetailPage">

@@ -39,8 +39,10 @@ export const LabeledBar = ({
       ? budgetData.get(barData.id).aggregateYear(date.getFullYear())
       : budgetData.get(barData.id, date);
 
-  const capacity = barData.getActiveCapacity(date);
-  const capacityValue = capacity[interval];
+  // For synced capacities the stored `capacity[interval]` is just the
+  // advisory cache, not the live sum — go through getActiveAmount so the
+  // bar reflects the children-derived value when this row is synced.
+  const capacityValue = barData.getActiveAmount(date, interval);
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
   const isIncome = capacityValue < 0;
 
@@ -64,8 +66,12 @@ export const LabeledBar = ({
   const total = sorted_amount + unsorted_amount;
   const leftover = capacityValue - total;
 
-  const labeledRatio = isInfinite ? undefined : sorted_amount / capacityValue;
-  const unlabledRatio = isInfinite ? undefined : unsorted_amount / capacityValue;
+  // Guard against `/0` — a synced row with zero/no children sets
+  // capacityValue=0, which would produce Infinity ratios that collapse
+  // the bar geometry. Treat zero-capacity like infinite (no fill ratio).
+  const hasFiniteCapacity = !isInfinite && capacityValue !== 0;
+  const labeledRatio = hasFiniteCapacity ? sorted_amount / capacityValue : undefined;
+  const unlabledRatio = hasFiniteCapacity ? unsorted_amount / capacityValue : undefined;
 
   const classes = ["LabeledBar"];
   if (isDragging) classes.push("dragging");

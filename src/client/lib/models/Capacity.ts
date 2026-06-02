@@ -8,6 +8,18 @@ import {
 } from "common";
 
 export type Interval = "year" | "month";
+
+/**
+ * Minimal shape `Capacity.getActiveAmount` needs from a child entity to
+ * resolve a synced capacity by summing children. Kept as a structural
+ * interface (not the full `BudgetFamily` class) so the model stays
+ * import-free of higher-level types and so tests can pass arbitrary
+ * stubs.
+ */
+export interface CapacityChildLike {
+  getActiveCapacity: (date: Date) => Capacity | undefined;
+  getChildren: () => CapacityChildLike[];
+}
 export const intervals: Interval[] = ["year", "month"];
 
 const generateUUID = (): string => {
@@ -43,6 +55,14 @@ export class Capacity {
 
   active_from?: Date;
 
+  /**
+   * When true, the displayed amount for this capacity is the sum of the
+   * parent entity's children at the same period — not `this.month`. The
+   * stored `month` is treated as an advisory cache and is ignored by
+   * `getActiveAmount`. See JSONCapacity docstring for rationale.
+   */
+  is_synced = false;
+
   constructor(init?: Partial<Capacity | JSONCapacity>) {
     assign(this, init);
     // Only generate UUID if not provided
@@ -52,12 +72,61 @@ export class Capacity {
     if (typeof this.active_from === "string") {
       this.active_from = new LocalDate(this.active_from);
     }
-    excludeEnumeration(this, ["toJSON", "fromInputs", "toInputs"]);
+    excludeEnumeration(this, ["toJSON", "fromInputs", "toInputs", "getActiveAmount"]);
   }
+
+  /**
+   * Resolve the displayed amount for this capacity in the requested
+   * interval, deriving from children when `is_synced` is set.
+   *
+   *  - `is_synced = false` (default): returns the stored `this[interval]`
+   *    — current behavior, no change for existing rows.
+   *  - `is_synced = true`: returns the sum of each child's `getActiveAmount`
+   *    at the caller-supplied `date`. Walks recursively so a synced budget
+   *    summing synced sections summing concrete categories resolves
+   *    correctly. Without `children`, returns 0 (caller didn't provide
+   *    context — surface as "empty" rather than silently use the stale
+   *    stored `month`).
+   *
+   * **The `date` parameter is the view date**, not the parent capacity's
+   * `active_from`. A budget with a single capacity active_from=2024-01
+   * viewed at 2025-06 must query children at 2025-06 to find their
+   * currently-applicable capacities — otherwise a child whose capacity
+   * changed mid-period gets resolved at the parent's outdated boundary.
+   *
+   * Infinity (`MAX_FLOAT`) is the sentinel for "no limit". Sum semantics:
+   *  - any infinite *positive* child poisons to `+MAX_FLOAT`.
+   *  - any infinite *negative* child poisons to `-MAX_FLOAT`.
+   *  - mixed signs collapse to whichever appears first in the children
+   *    order; this matches the existing "Limited budget" model where
+   *    income/expense don't mix at the same level.
+   *  - NaN children are skipped (defensive — prevents one corrupted row
+   *    from blackholing the entire derived total to NaN).
+   */
+  getActiveAmount = (
+    date: Date,
+    interval: Interval,
+    children?: CapacityChildLike[],
+  ): number => {
+    if (!this.is_synced) return this[interval];
+    if (!children || children.length === 0) return 0;
+    let total = 0;
+    for (const child of children) {
+      const childCapacity = child.getActiveCapacity(date);
+      if (!childCapacity) continue;
+      const childAmount = childCapacity.getActiveAmount(date, interval, child.getChildren());
+      if (Number.isNaN(childAmount)) continue;
+      if (Math.abs(childAmount) === MAX_FLOAT) {
+        return childAmount > 0 ? MAX_FLOAT : -MAX_FLOAT;
+      }
+      total += childAmount;
+    }
+    return total;
+  };
 
   toJSON = (): JSONCapacity => {
     const active_from = this.active_from && getDateTimeString(this.active_from);
-    return { ...this, active_from };
+    return { ...this, active_from, is_synced: this.is_synced };
   };
 
   static fromInputs = (

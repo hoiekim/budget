@@ -83,6 +83,7 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
   const toUpdateList = new Set<BudgetFamily>();
 
   const overrideCpacity = Capacity.fromInputs(new Capacity(), isIncome, true);
+  if (original.type !== "category") overrideCpacity.is_synced = true;
   const updatedOriginal = original.clone({ ...updated, capacities: [overrideCpacity] });
   toUpdateList.add(updatedOriginal);
   if (original.type !== "category") {
@@ -90,9 +91,31 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
       original,
       updated,
     );
-    [...children, ...grandChildren].forEach((c) => {
-      const isSynced = c.capacities.every((c) => c.isInfinite === true && c.isIncome === isIncome);
-      if (!isSynced) {
+    // The previous skip-check `every(c => c.isInfinite && c.isIncome === isIncome)`
+    // read the `isInfinite`/`isIncome` getters which look at the stored
+    // `.month` — that's the stale advisory cache for is_synced rows.
+    // Replaced with an `is_synced`-aware skip: a section that's already
+    // flagged synced AND has every capacity stored as `±MAX_FLOAT` with
+    // the right sign is considered up-to-date. Categories (leaves) still
+    // use the simpler stored-month check since they never carry the flag.
+    children.forEach((c) => {
+      const isAlreadyInfiniteSynced = c.capacities.every(
+        (cap) => cap.is_synced && cap.isInfinite && cap.isIncome === isIncome,
+      );
+      if (!isAlreadyInfiniteSynced) {
+        const newCap = Capacity.fromInputs(new Capacity(), isIncome, true);
+        newCap.is_synced = true;
+        c.capacities = [newCap];
+        toUpdateList.add(c);
+      }
+    });
+    grandChildren.forEach((c) => {
+      // Categories are leaves — is_synced never applies. The skip check
+      // is the pre-flag semantic verbatim.
+      const isAlreadyInfinite = c.capacities.every(
+        (cap) => cap.isInfinite && cap.isIncome === isIncome,
+      );
+      if (!isAlreadyInfinite) {
         c.capacities = [Capacity.fromInputs(new Capacity(), isIncome, true)];
         toUpdateList.add(c);
       }
@@ -105,43 +128,32 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
 const getLimitedBudgetsToSync = <T extends BudgetFamily>(
   original: T,
   updated: UpdatedBudgetFamily,
-  capacityData: CapacityData,
+  _capacityData: CapacityData,
 ) => {
   const toUpdateList = new Set<BudgetFamily>();
-
-  // Capture references to original objects BEFORE cloning so we can look up
-  // their original capacity IDs in capacityData. getBudgetsToUpdatePeriod
-  // deletes capacity_id and generates new UUIDs, which would result in
-  // capacityData.get() returning zero defaults for all totals.
-  const originalBudget: Budget =
-    original.type === "budget"
-      ? (original as unknown as Budget)
-      : original.type === "section"
-        ? (original.getParent()! as Budget)
-        : (original.getParent()?.getParent()! as Budget);
 
   const { budget, sections, categories } = getBudgetsToUpdatePeriod(original, updated);
   toUpdateList.add(budget);
   sections.forEach((c) => toUpdateList.add(c));
   categories.forEach((c) => toUpdateList.add(c));
 
+  // Mark budget + section capacities as "synced with children". The stored
+  // `month` is left as-is (advisory cache); readers must derive the
+  // displayed amount via Capacity.getActiveAmount, which sums the same
+  // period's amounts from the entity's children. This replaces the
+  // previous design where the FE summed children via `capacityData` and
+  // persisted the result into `month` — a frontend math bug could then
+  // corrupt the saved sum. Mark-only-and-derive eliminates that class.
   if (original.type === "budget") {
     for (const capacity of budget.capacities) {
-      const date = capacity.active_from ? new LocalDate(capacity.active_from) : new LocalDate(0);
-      const originalCapacity = originalBudget.getActiveCapacity(date);
-      capacity.month = capacityData.get(originalCapacity.id).grand_children_total;
+      capacity.is_synced = true;
     }
   }
 
   if (original.type === "budget" || original.type === "section") {
-    const originalSections = originalBudget.getChildren() as Section[];
     for (const section of sections) {
-      const originalSection = originalSections.find((s) => s.id === section.id);
-      if (!originalSection) continue;
       for (const capacity of section.capacities) {
-        const date = capacity.active_from ? new LocalDate(capacity.active_from) : new LocalDate(0);
-        const originalCapacity = originalSection.getActiveCapacity(date);
-        capacity.month = capacityData.get(originalCapacity.id).children_total;
+        capacity.is_synced = true;
       }
     }
   }
@@ -157,7 +169,12 @@ const getNonSyncedBudgetsToUpdate = <T extends BudgetFamily>(
 ) => {
   const purgedCapacities = isInfinite ? [new Capacity()] : updated.capacities;
   const updatedCapacities = purgedCapacities.map((c) => {
-    return Capacity.fromInputs(c, isIncome, isInfinite);
+    const capacity = Capacity.fromInputs(c, isIncome, isInfinite);
+    // User is committing concrete amounts on this entity; no derivation
+    // from children. Clear is_synced explicitly so a previously-synced
+    // capacity row flips back to authoritative-amount mode.
+    capacity.is_synced = false;
+    return capacity;
   });
   const updatedUpdated = { ...updated, capacities: updatedCapacities };
   const { budget, sections, categories } = getBudgetsToUpdatePeriod(original, updatedUpdated);

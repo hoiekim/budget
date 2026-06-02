@@ -1,5 +1,5 @@
 import { ChangeEventHandler } from "react";
-import { ChartType, numberToCommaString } from "common";
+import { ChartType, MAX_FLOAT, numberToCommaString } from "common";
 import {
   useAppContext,
   call,
@@ -125,11 +125,16 @@ export const ChartAccountsPage = () => {
             }
           };
 
-          const capacity = b.getActiveCapacity(viewDate.getEndDate());
+          const date = viewDate.getEndDate();
           const interval = viewDate.getInterval();
-          const { isInfinite, isIncome } = capacity;
-
-          const capacityAmount = Math.abs(capacity[interval]);
+          // Use the derived amount (sums children for synced budgets) for
+          // both the display total and the infinite/income classification —
+          // stored `month` / `isInfinite` / `isIncome` are stale for synced
+          // rows.
+          const derivedAmount = b.getActiveAmount(date, interval);
+          const isInfinite = Math.abs(derivedAmount) === MAX_FLOAT;
+          const isIncome = derivedAmount < 0;
+          const capacityAmount = Math.abs(derivedAmount);
           const sign = isIncome ? "+" : "";
           const capacityString = [sign, "$", numberToCommaString(capacityAmount, 0)].join(" ");
 
