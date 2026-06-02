@@ -5,7 +5,6 @@
 // bundle captures THIS test's `pg` mock at its first load, so other
 // bundled tests in the same `bun test` process can mock `pg`
 // differently without colliding.
-// @bundles src/server/lib/postgres/repositories/api_keys.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 

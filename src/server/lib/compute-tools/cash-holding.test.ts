@@ -6,7 +6,6 @@
 // SELECT or UPSERT issued by the route surfaces as a `mockQuery.mock.calls`
 // entry. Tests that exercise the cash-security lookup pre-queue the
 // SELECT response (and INSERT response when needed) on `mockQuery`.
-// @bundles src/server/lib/compute-tools/cash-holding.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 import { AccountType } from "plaid";

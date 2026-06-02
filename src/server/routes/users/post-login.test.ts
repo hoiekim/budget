@@ -4,7 +4,6 @@
 // bundle's `import bcrypt from "bcrypt"` resolves at runtime through
 // the real package — same as the original test. Password hash + compare
 // run unmocked.
-// @bundles src/server/routes/users/post-login.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 import bcrypt from "bcrypt";

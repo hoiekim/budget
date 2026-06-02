@@ -8,7 +8,6 @@
 // scenario. The real logger emits its info/error lines to stderr —
 // no behaviour change from the original `noopLogger` since the test's
 // assertions never read those calls.
-// @bundles src/server/lib/compute-tools/detect-transfers.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 

@@ -17,7 +17,6 @@
 // index.ts) so this file's `globalThis.fetch` override and env-var
 // writes would otherwise leak to every subsequent test file. `afterAll`
 // below snapshots and restores the originals.
-// @bundles src/server/lib/compute-tools/backfill-snapshots.ts
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.POLYGON_API_KEY;
 const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;

@@ -31,7 +31,8 @@
  * Wired into package.json as `bun run test`.
  */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { existsSync } from "node:fs";
 import { Glob } from "bun";
 import { buildBundle, cleanBundleDir, bundlePathFor, getBundleDir, getRepoRoot } from "./build.ts";
 
@@ -49,30 +50,74 @@ const REPO_ROOT = getRepoRoot();
 const REAL_BARRELS = ["common"];
 
 interface Annotation {
-  bundles?: string;
   external: string[];
+  /** True iff the test file calls `bundleOf(` anywhere — the marker we
+   *  use to decide whether to build a bundle for this test. Replaces
+   *  the old `// @bundles` annotation: a test is bundled iff it
+   *  actually uses the framework's bundle. */
+  usesBundleOf: boolean;
 }
 
-const parseAnnotations = async (testAbs: string): Promise<Annotation> => {
+const parseAnnotations = async (testAbs: string): Promise<{ text: string; ann: Annotation }> => {
   const text = await readFile(testAbs, "utf8");
-  const lines = text.split("\n", 30);
-  const out: Annotation = { external: [] };
-  for (const line of lines) {
+  // Match `bundleOf(` or `bundleOf<…>(` (generic-typed call). The
+  // import line `import { bundleOf } from "test-bundled"` is excluded by
+  // requiring a `(` or `<` after the identifier — `bundleOf }` doesn't
+  // qualify.
+  const ann: Annotation = {
+    external: [],
+    usesBundleOf: /\bbundleOf\s*[<(]/.test(text),
+  };
+  // `@external` is still a comment-driven hint — the build plugin needs
+  // the list of specifiers to keep external before the bundle is built.
+  for (const line of text.split("\n", 30)) {
     const trimmed = line.trim();
     if (trimmed === "") continue;
     if (!trimmed.startsWith("//")) {
       if (trimmed.startsWith("import ") || trimmed.startsWith("export ")) break;
       continue;
     }
-    const bundlesM = /^\/\/\s*@bundles\s+(.+?)\s*$/.exec(line);
-    if (bundlesM) {
-      out.bundles = bundlesM[1];
-      continue;
-    }
     const externalM = /^\/\/\s*@external\s+(.+?)\s*$/.exec(line);
-    if (externalM) out.external.push(externalM[1]);
+    if (externalM) ann.external.push(externalM[1]);
   }
-  return out;
+  return { text, ann };
+};
+
+/**
+ * Derive the source-under-test from the test file's path, by convention:
+ *
+ *   1. `foo.test.ts`               → `foo.ts` in the same dir.
+ *   2. `Calculations.holdings.test.ts` → drop dotted suffixes from the
+ *      right until a sibling resolves: `Calculations.holdings.ts` →
+ *      `Calculations.ts`. Catches the "multiple test files per source"
+ *      pattern.
+ *
+ * Returns `null` if no candidate exists — the test stays plain (the
+ * framework offers `bundleOf` only when there's a source to bundle).
+ * Symbol-named tests (`isApiPath.test.ts` against `index.ts`) are
+ * deliberately NOT auto-resolved; the codebase's convention is one
+ * source-per-file, so a symbol-only test should be a real file
+ * extraction instead of relying on framework "magic".
+ */
+const inferSourceFromTestPath = (testAbs: string): string | null => {
+  const dir = dirname(testAbs);
+  // Strip `.test.ts` / `.test.tsx` to get the base, then peel one
+  // dotted suffix per iteration.
+  let base = testAbs.replace(/\.test\.(ts|tsx)$/, "");
+  if (base === testAbs) return null;
+  while (true) {
+    const baseName = base.slice(dir.length + 1);
+    if (baseName === "") return null;
+    for (const ext of [".ts", ".tsx"] as const) {
+      const candidate = `${base}${ext}`;
+      if (existsSync(candidate)) return candidate;
+    }
+    // Drop the rightmost dotted suffix, e.g.
+    // `Calculations.holdings` → `Calculations`.
+    const trimmed = base.replace(/\.[^./\\]+$/, "");
+    if (trimmed === base) return null;
+    base = trimmed;
+  }
 };
 
 const COLOR_DIM = "\x1b[90m";
@@ -90,21 +135,32 @@ const main = async (): Promise<void> => {
     allTestFiles.push(resolve(REPO_ROOT, "src", rel));
   }
 
+  // A test is bundled iff it calls `bundleOf(`. The source-under-test
+  // is inferred from the test path (see `inferSourceFromTestPath`); no
+  // explicit `// @bundles` annotation needed. A test that calls
+  // `bundleOf` without a resolvable source is a configuration error.
   const manifest: Array<{ test: string; source: string; external: string[]; bundle: string }> = [];
   const plainTests: string[] = [];
   for (const testAbs of allTestFiles) {
-    const ann = await parseAnnotations(testAbs);
-    if (ann.bundles) {
-      const sourceAbs = resolve(REPO_ROOT, ann.bundles);
-      manifest.push({
-        test: testAbs,
-        source: sourceAbs,
-        external: ann.external,
-        bundle: bundlePathFor(testAbs, sourceAbs),
-      });
-    } else {
+    const { ann } = await parseAnnotations(testAbs);
+    if (!ann.usesBundleOf) {
       plainTests.push(testAbs);
+      continue;
     }
+    const sourceAbs = inferSourceFromTestPath(testAbs);
+    if (!sourceAbs) {
+      throw new Error(
+        `${testAbs} calls bundleOf(...) but no sibling source resolved. ` +
+          `Rename the test so its basename matches a sibling \`*.ts\` file ` +
+          `(e.g. \`foo.test.ts\` → \`foo.ts\`).`,
+      );
+    }
+    manifest.push({
+      test: testAbs,
+      source: sourceAbs,
+      external: ann.external,
+      bundle: bundlePathFor(testAbs, sourceAbs),
+    });
   }
 
   if (allTestFiles.length === 0) {

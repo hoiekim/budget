@@ -8,7 +8,6 @@
 // breaks api_keys.test.bundle.ts with N failures). `mockExternal`
 // resolves to a per-test SHIM path so each test owns a distinct module
 // identity for the same source — see scripts/test-bundled/build.ts.
-// @bundles src/server/lib/bearer-auth.ts
 // @external ./postgres/repositories/api_keys
 // @external ./postgres/repositories/users
 import { describe, test, expect, mock, beforeEach } from "bun:test";

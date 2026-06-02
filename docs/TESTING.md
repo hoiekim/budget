@@ -41,7 +41,7 @@ describe("featureName", () => {
 });
 ```
 
-### Bundled tests (`// @bundles` annotation + `bundleOf`)
+### Bundled tests (call `bundleOf` — source inferred from path)
 
 `bun test` shares one module registry per process, so a raw
 `mock.module("pg", …)` would leak across every test file in the run. The
@@ -52,12 +52,18 @@ first load and never collides with sibling tests. This replaces the old
 practice of plumbing dependency-injection seams through server functions
 purely for mockability.
 
-Add `// @bundles <path>` to the top of the test file, then load the
-source via `bundleOf(import.meta.url)` (NOT `await import("./source")`
-— see "why bundleOf" below):
+To opt into a bundle, just call `bundleOf<typeof import("./source")>(
+import.meta.url)`. The orchestrator detects the call and infers the
+source from the test file's path:
+
+- `foo.test.ts` → `foo.ts` in the same dir.
+- `Calculations.holdings.test.ts` → drop dotted suffixes until a
+  sibling resolves (`Calculations.holdings.ts` → `Calculations.ts`),
+  so two test files can target one source.
+
+No annotation needed — calling `bundleOf` IS the declaration.
 
 ```typescript
-// @bundles src/server/lib/postgres/repositories/users.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 
@@ -99,7 +105,6 @@ with `// @external <relPath>` and mock it via `mockExternal` from the
 `test-bundled` runtime helper:
 
 ```typescript
-// @bundles src/server/lib/bearer-auth.ts
 // @external ./postgres/repositories/api_keys
 // @external ./postgres/repositories/users
 import { mockExternal } from "test-bundled";

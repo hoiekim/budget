@@ -1,5 +1,4 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
-// @bundles src/server/lib/postgres/repositories/users.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 

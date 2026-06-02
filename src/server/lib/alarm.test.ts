@@ -1,5 +1,4 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
-// @bundles src/server/lib/alarm.ts
 import { describe, it, expect, beforeEach, mock, afterEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 

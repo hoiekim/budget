@@ -4,7 +4,6 @@
 // with the GET-route tests. The per-test-bundle pattern is one
 // `@bundles` source per file, so the GET tests split into
 // `get-holding-snapshots.test.bundle.ts`.
-// @bundles src/server/routes/accounts/delete-holding-snapshot.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { bundleOf } from "test-bundled";
 
