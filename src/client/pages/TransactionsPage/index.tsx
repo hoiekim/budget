@@ -145,10 +145,10 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        // "unsorted" view now includes every transaction that is not
+        // "unsorted" view includes every transaction that is not
         // user-confirmed (confidence === 1). That covers genuinely
-        // unlabeled rows AND auto-suggested ones — per Hoie's directive
-        // in #98: suggested + non-confirmed both belong here.
+        // unlabeled rows AND auto-suggested ones: both buckets stay
+        // visible until the user explicitly confirms a label.
         if (type === "unsorted") {
           const c_id = e.label.category_id;
           const c_conf = e.label.category_confidence;
