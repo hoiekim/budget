@@ -13,8 +13,8 @@
 //   - `similarity(merchant_name`              → signalRow (merchant signal)
 //   - `FROM split_transactions`               → splitRows (per userId)
 //   - `UPDATE transactions`/`split_transactions` → captured + return ok
-// @bundles src/server/lib/compute-tools/auto-suggest.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -35,7 +35,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { runAutoSuggestions, CAS_NULL_CONFIDENCE } = await import("./auto-suggest");
+const { runAutoSuggestions, CAS_NULL_CONFIDENCE } = await bundleOf<typeof import("./auto\-suggest")>(import.meta.url);
 const { buildUpdate } = await import("../postgres/database");
 
 /** Full TransactionModel-valid row. The Model constructor validates every

@@ -202,15 +202,20 @@ const externalSpecsPlugin = (
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * Compute the bundle path for a given source. Path is flattened so
- * different sources never collide and tests can predict the path.
+ * Compute the bundle path for a given (test, source) pair. The path is
+ * keyed on BOTH the test file and the source so two tests bundling the
+ * same source land on DIFFERENT bundle files. Each test owns its own
+ * bundle module — a sibling test's transitive imports that lazily hit
+ * the source can't repoint THIS test's bundle.
  */
-export const bundlePathFor = (source: string): string => {
-  const rel = source.startsWith(REPO_ROOT)
+export const bundlePathFor = (test: string, source: string): string => {
+  const testRel = test.startsWith(REPO_ROOT) ? test.slice(REPO_ROOT.length + 1) : test;
+  const testFlat = testRel.replace(/\.(ts|tsx)$/, "").replace(/[\/\\]/g, "__");
+  const sourceRel = source.startsWith(REPO_ROOT)
     ? source.slice(REPO_ROOT.length + 1)
     : source;
-  const flat = rel.replace(/\.(ts|tsx)$/, "").replace(/[\/\\]/g, "__");
-  return resolve(BUNDLE_DIR, `${flat}.bundle.js`);
+  const sourceFlat = sourceRel.replace(/\.(ts|tsx)$/, "").replace(/[\/\\]/g, "__");
+  return resolve(BUNDLE_DIR, `${testFlat}__${sourceFlat}.bundle.js`);
 };
 
 /**
@@ -259,7 +264,7 @@ const rewriteExternalImports = async (
 
 export const buildBundle = async (options: BuildOptions): Promise<BuildResult> => {
   await mkdir(BUNDLE_DIR, { recursive: true });
-  const bundlePath = bundlePathFor(options.source);
+  const bundlePath = bundlePathFor(options.test, options.source);
   const externalResolutions: Record<string, string> = {};
   const shimAbsBySpec: Record<string, string> = {};
   const realAbsBySpec: Record<string, string> = {};
@@ -294,6 +299,10 @@ export const buildBundle = async (options: BuildOptions): Promise<BuildResult> =
       target: "bun",
       external: DEFAULT_NODE_EXTERNALS,
       format: "esm",
+      // CSS imported transitively (e.g. via `client` barrel → BudgetsPage)
+      // would otherwise emit a sibling .css asset whose default naming
+      // collides on the entry's path. Loading as text avoids the asset.
+      loader: { ".css": "text" },
       plugins,
     }),
     writeShimFiles(options.test, realAbsBySpec),

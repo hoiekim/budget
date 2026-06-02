@@ -8,10 +8,10 @@
 // breaks api_keys.test.bundle.ts with N failures). `mockExternal`
 // resolves to a per-test SHIM path so each test owns a distinct module
 // identity for the same source — see scripts/test-bundled/build.ts.
-// @bundles src/server/lib/bearer-auth.ts
 // @external ./postgres/repositories/api_keys
 // @external ./postgres/repositories/users
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 import { mockExternal } from "test-bundled";
 import type { ResolvedApiKey } from "./postgres/repositories/api_keys";
 import type { MaskedUser } from "./postgres/models/user";
@@ -35,7 +35,7 @@ mockExternal(import.meta.url, "./postgres/repositories/users", () => ({
   getMaskedUserById: mockGetMaskedUserById,
 }));
 
-const { resolveBearerAuth } = await import("./bearer-auth");
+const { resolveBearerAuth } = await bundleOf<typeof import("./bearer-auth")>(import.meta.url);
 
 beforeEach(() => {
   mockVerifyApiKey.mockReset();

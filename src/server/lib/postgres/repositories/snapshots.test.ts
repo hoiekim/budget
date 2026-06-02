@@ -3,9 +3,9 @@
 // The bundle keeps `./securities` external (declared via @external
 // below). `mockExternal` resolves to a per-test SHIM path so two tests
 // externalizing the same source don't collide on `mock.module(spec, …)`.
-// @bundles src/server/lib/postgres/repositories/snapshots.ts
 // @external ./securities
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 import { mockExternal } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
@@ -30,7 +30,7 @@ mockExternal(import.meta.url, "./securities", () => ({
   searchSecuritiesById: mockSearchSecuritiesById,
 }));
 
-const { searchSnapshots } = await import("./snapshots");
+const { searchSnapshots } = await bundleOf<typeof import("./snapshots")>(import.meta.url);
 
 const testUser = { user_id: "usr-1", username: "hoie" };
 

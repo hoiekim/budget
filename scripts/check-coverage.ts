@@ -18,11 +18,35 @@ const THRESHOLDS = {
 
 const LCOV_PATH = "coverage/lcov.info";
 
+/**
+ * Source-file globs to EXCLUDE from coverage. The per-test-bundle
+ * framework emits inlined bundles under `.test-bundles/`; bun's
+ * coverage walks those files and inflates the denominator with all
+ * the inlined code that's never exercised against the bundle itself
+ * (it's measured against the originating `src/` files instead). Skip
+ * anything under `.test-bundles/` plus the orchestrator's own
+ * test-helper scaffolding so we measure coverage on `src/` only.
+ */
+const EXCLUDED_SF_PREFIXES = [".test-bundles/", "scripts/test-bundled/"];
+
 async function parseLcov(path: string): Promise<{ linesFound: number; linesHit: number; functionsFound: number; functionsHit: number }> {
   const text = await Bun.file(path).text();
   let linesFound = 0, linesHit = 0, functionsFound = 0, functionsHit = 0;
 
+  // lcov is record-per-file: each record opens with `SF:<path>` and
+  // ends at `end_of_record`. Skip excluded records wholesale.
+  let skipRecord = false;
   for (const line of text.split("\n")) {
+    if (line.startsWith("SF:")) {
+      const sf = line.slice(3);
+      skipRecord = EXCLUDED_SF_PREFIXES.some((p) => sf.startsWith(p));
+      continue;
+    }
+    if (line === "end_of_record") {
+      skipRecord = false;
+      continue;
+    }
+    if (skipRecord) continue;
     if (line.startsWith("LF:")) linesFound += parseInt(line.slice(3), 10);
     else if (line.startsWith("LH:")) linesHit += parseInt(line.slice(3), 10);
     else if (line.startsWith("FNF:")) functionsFound += parseInt(line.slice(4), 10);

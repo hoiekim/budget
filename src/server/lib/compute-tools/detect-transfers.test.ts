@@ -8,8 +8,8 @@
 // scenario. The real logger emits its info/error lines to stderr —
 // no behaviour change from the original `noopLogger` since the test's
 // assertions never read those calls.
-// @bundles src/server/lib/compute-tools/detect-transfers.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -28,7 +28,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { runTransferDetection, scoreConfidence } = await import("./detect-transfers");
+const { runTransferDetection, scoreConfidence } = await bundleOf<typeof import("./detect\-transfers")>(import.meta.url);
 
 beforeEach(() => {
   mockQuery.mockReset();

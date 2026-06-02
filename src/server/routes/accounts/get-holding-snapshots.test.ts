@@ -5,8 +5,8 @@
 // 1:1 to a `@bundles` source via the per-test-bundle pattern; the two
 // routes (delete + get) live in two source files, so they migrate to
 // two bundled tests.
-// @bundles src/server/routes/accounts/get-holding-snapshots.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -25,7 +25,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { getHoldingSnapshotsRoute } = await import("./get-holding-snapshots");
+const { getHoldingSnapshotsRoute } = await bundleOf<typeof import("./get-holding-snapshots")>(import.meta.url);
 
 beforeEach(() => {
   mockQuery.mockReset();

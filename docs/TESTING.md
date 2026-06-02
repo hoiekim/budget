@@ -3,28 +3,31 @@
 ## Running Tests
 
 ```bash
-bun run test               # All tests — always use this, not bare bun test
-bun run test:bundled       # Per-test-bundle suite only (isolated module mocks)
-bun run test:non-bundled   # Everything else (client + server, shared registry)
-bun run test:coverage      # Bundled suite + non-bundled coverage report
+bun run test           # All tests — always use this, not bare bun test
+bun run test:coverage  # Same, with lcov coverage + check-coverage gate
 ```
 
-`bun run test` runs `test:bundled` followed by `test:non-bundled`.
+`bun run test` invokes `scripts/test-bundled/index.ts`, which discovers
+every `*.test.{ts,tsx}` under `src/`, builds a unique per-test bundle for
+each one carrying a `// @bundles` annotation, and runs every test file
+in a single `bun test` process. Bundled tests load their bundle via
+`bundleOf(import.meta.url)`; plain tests import sources directly.
 
-> **Always use `bun run test`, not bare `bun test`.** Bare `bun test` skips the
-> bundled suite entirely and runs without the `src/client/test-setup.ts`
-> preload, so client tests fail with `Dictionary.set() is disabled in server`
-> for holdings-calculation tests. `test:non-bundled` supplies that preload.
+> **Always use `bun run test`, not bare `bun test`.** Bare `bun test`
+> skips the orchestrator entirely — it never builds the bundles, never
+> sets up `globalThis.__bundlesByTest`, and never stubs `window`. Bundled
+> tests fail at `bundleOf` and client tests fail with `Dictionary.set()
+> is disabled in server`.
 
-To run a single non-bundled test file, pass the same preload:
+To run a single test file directly:
 
 ```bash
-bun test --preload ./src/client/test-setup.ts src/path/file.test.ts
-```
+# Plain test (no @bundles annotation):
+bun test src/path/to/file.test.ts
 
-Bundled tests can't be run with bare `bun test` — they are discovered, built,
-and run by the orchestrator. Run the whole bundled suite with `bun run
-test:bundled` (it builds in parallel, ~1.5s).
+# Bundled test must go through the orchestrator (it builds the bundle):
+bun scripts/test-bundled/index.ts
+```
 
 ## Writing Tests
 
@@ -38,22 +41,31 @@ describe("featureName", () => {
 });
 ```
 
-### Bundled tests (`*.test.bundle.ts`)
+### Bundled tests (call `bundleOf` — source inferred from path)
 
-`bun test` shares one module registry per process, so `mock.module()` calls leak
-across files. The per-test-bundle runner (`scripts/test-bundled/`) works around
-this: it bundles each source-under-test into a unique file with leaf deps (`pg`,
-`bcrypt`, …) kept external, so each test captures **its own** mocks at first load
-and never collides with sibling tests in the same `bun test` process. This
-replaces the old practice of plumbing dependency-injection seams through server
-functions purely for mockability.
+`bun test` shares one module registry per process, so a raw
+`mock.module("pg", …)` would leak across every test file in the run. The
+per-test-bundle runner (`scripts/test-bundled/`) avoids this: it builds
+a UNIQUE bundle per `(test, source)` pair, with leaf deps (`pg`, `bcrypt`,
+…) kept external. Each bundle captures **its own** leaf-dep mocks at
+first load and never collides with sibling tests. This replaces the old
+practice of plumbing dependency-injection seams through server functions
+purely for mockability.
 
-Use a bundled test when the unit mocks a leaf dependency (typically `pg`). Name
-it `*.test.bundle.ts`, co-located with the source, and annotate it:
+To opt into a bundle, just call `bundleOf<typeof import("./source")>(
+import.meta.url)`. The orchestrator detects the call and infers the
+source from the test file's path:
+
+- `foo.test.ts` → `foo.ts` in the same dir.
+- `Calculations.holdings.test.ts` → drop dotted suffixes until a
+  sibling resolves (`Calculations.holdings.ts` → `Calculations.ts`),
+  so two test files can target one source.
+
+No annotation needed — calling `bundleOf` IS the declaration.
 
 ```typescript
-// @bundles src/server/lib/postgres/repositories/users.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async () => ({ rows: [], rowCount: 0 }));
 class FakePool {
@@ -67,34 +79,57 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-// Natural sibling import — the runner's preload redirects it to the bundle.
-const { writeUser } = await import("./users");
+const { writeUser } = await bundleOf<typeof import("./users")>(import.meta.url);
 ```
 
-The `// @bundles` source is imported by its **natural sibling path**
-(`await import("./users")`); the runner's preload registers a redirect from that
-source path to the built bundle, so the leaf-dep mocks above are captured at
-first load.
+#### Why `bundleOf`, not `await import("./source")`
 
-To also mock a **sibling source module** (not a leaf dep), keep it external with
-`// @external <relPath>` and mock it at the same relative path:
+An earlier framework version registered process-wide
+`mock.module(<source-abs>, () => require(<bundle>))` redirects in the
+preload so the natural sibling import `await import("./users")` would
+land on the bundle. That broke at scale: bun's `mock.module(path,
+factory)` is **EAGER** for already-cached paths — when another test had
+transitively loaded the source (e.g. via a `server` barrel), the redirect
+factory fired IMMEDIATELY, loading the bundle BEFORE the intended test's
+`mock.module("pg", FakePool)` ran. The bundle bound real pg, and the
+test's mock never took effect.
+
+`bundleOf` sidesteps this by reading the per-test bundle's absolute path
+from `globalThis.__bundlesByTest` (populated by the preload) and dynamic-
+importing the bundle directly. No `mock.module` redirect, no cascade.
+
+### Mocking sibling source modules (`@external` + `mockExternal`)
+
+To mock a **sibling source module** (not a leaf dep), keep it external
+with `// @external <relPath>` and mock it via `mockExternal` from the
+`test-bundled` runtime helper:
 
 ```typescript
-// @bundles src/server/lib/postgres/repositories/snapshots.ts
-// @external ./securities
-mock.module("./securities", () => ({ searchSecuritiesById: mockSearchSecuritiesById }));
+// @external ./postgres/repositories/api_keys
+// @external ./postgres/repositories/users
+import { mockExternal } from "test-bundled";
+
+mockExternal(import.meta.url, "./postgres/repositories/api_keys", () => ({
+  verifyApiKey: mockVerifyApiKey,
+}));
+mockExternal(import.meta.url, "./postgres/repositories/users", () => ({
+  getMaskedUserById: mockGetMaskedUserById,
+}));
 ```
 
-> `// @external` works for a sibling that isn't itself another test's
-> `// @bundles` target. The runner reserves each `@bundles` source path for that
-> one bundle's redirect, so two bundled tests can't both mock the same source
-> module (see issue #451).
-
-See the existing `*.test.bundle.ts` files for full examples.
+`mockExternal` resolves to a per-test SHIM path under
+`.test-bundles/__shims__/`. The shim's default content is `export * from
+"<real-abs-source>"`, so a non-mocked external falls through to the real
+module. Two tests `@external`-ing the same source land on DIFFERENT
+shim identities — mocking via the shim doesn't shadow another bundle
+or another test's mock of the same source. This is what unblocks mocking
+siblings that are themselves other tests' `@bundles` targets (see #451,
+#456).
 
 ## Test Requirements
 
-**Always write unit tests for new code files and lines.** This is a project rule, not a suggestion.
+**Always write unit tests for new code files and lines.** This is a
+project rule, not a suggestion.
 
 - New files: create a corresponding `*.test.ts` file
 - New functions: add test cases covering expected behavior and edge cases
@@ -108,6 +143,10 @@ Tests are co-located with source files:
 
 ```
 src/server/lib/validation.ts
-src/server/lib/validation.test.ts          # standard, shared-registry test
-src/server/lib/postgres/repositories/users.test.bundle.ts   # isolated bundle test
+src/server/lib/validation.test.ts                            # plain
+src/server/lib/postgres/repositories/users.ts
+src/server/lib/postgres/repositories/users.test.ts           # bundled (has @bundles)
 ```
+
+The same `.test.ts` suffix is used for both — the `@bundles` annotation
+at the top of the file is the only marker the runner needs.

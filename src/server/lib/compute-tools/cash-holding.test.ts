@@ -6,8 +6,8 @@
 // SELECT or UPSERT issued by the route surfaces as a `mockQuery.mock.calls`
 // entry. Tests that exercise the cash-security lookup pre-queue the
 // SELECT response (and INSERT response when needed) on `mockQuery`.
-// @bundles src/server/lib/compute-tools/cash-holding.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 import { AccountType } from "plaid";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
@@ -27,7 +27,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { inferCashHoldings, ensureUSDCashSecurity } = await import("./cash-holding");
+const { inferCashHoldings, ensureUSDCashSecurity } = await bundleOf<typeof import("./cash\-holding")>(import.meta.url);
 
 const makeAccount = (overrides: Record<string, unknown> = {}) => ({
   account_id: "acc-1",

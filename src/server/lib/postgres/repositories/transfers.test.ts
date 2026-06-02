@@ -1,6 +1,6 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
-// @bundles src/server/lib/postgres/repositories/transfers.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 import { canonicalizePairIds } from "../models/transaction_pair";
 import { TransactionPaymentChannelEnum } from "plaid";
 
@@ -22,7 +22,7 @@ mock.module("pg", () => ({
 }));
 
 const { getTransferPairs, pairTransactions, confirmTransferPair, removeTransferPair } =
-  await import("./transfers");
+  await bundleOf<typeof import("./transfers")>(import.meta.url);
 
 const mockUser = { user_id: "usr-1", username: "tester" } as { user_id: string; username: string };
 

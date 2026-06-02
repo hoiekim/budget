@@ -1,6 +1,6 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
-// @bundles src/server/routes/api-keys/delete-api-key.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -19,7 +19,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { deleteApiKeyRoute } = await import("./delete-api-key");
+const { deleteApiKeyRoute } = await bundleOf<typeof import("./delete\-api\-key")>(import.meta.url);
 
 beforeEach(() => {
   mockQuery.mockReset();

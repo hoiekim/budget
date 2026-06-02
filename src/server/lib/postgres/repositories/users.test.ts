@@ -1,6 +1,6 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
-// @bundles src/server/lib/postgres/repositories/users.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -25,7 +25,7 @@ mock.module("bcrypt", () => ({
 
 // Dynamic-import so the leaf-dep mocks above are registered BEFORE the
 // bundle (which the test-bundled preload redirects this path to) loads.
-const { writeUser, searchUser, updateUser, getUserById, deleteUser } = await import("./users");
+const { writeUser, searchUser, updateUser, getUserById, deleteUser } = await bundleOf<typeof import("./users")>(import.meta.url);
 
 function makeUserRow(overrides: Record<string, unknown> = {}) {
   return {

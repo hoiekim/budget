@@ -1,6 +1,6 @@
 // Per-test-bundle isolation — see scripts/test-bundled/.
-// @bundles src/server/routes/transfers/post-transfer-pair.ts
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { bundleOf } from "test-bundled";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -19,7 +19,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { postTransferPairRoute } = await import("./post-transfer-pair");
+const { postTransferPairRoute } = await bundleOf<typeof import("./post\-transfer\-pair")>(import.meta.url);
 
 beforeEach(() => {
   mockQuery.mockReset();

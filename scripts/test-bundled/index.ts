@@ -1,36 +1,38 @@
 /**
- * Per-test-bundle runner — preload-driven source-import redirect.
+ * Unified test runner — every `*.test.{ts,tsx}` under `src/` runs through
+ * here.
  *
- * Discovery: scan `src/**` for `*.test.{ts,tsx}` files containing a
- *   `// @bundles <relPath>` annotation (and optional `// @external …`).
+ * Discovery: scan `src/**` for `*.test.{ts,tsx}`. Each file is classified
+ * by whether it carries a `// @bundles <relPath>` annotation (and any
+ * `// @external …` lines).
  *
- * For each annotated test:
- *   1. Build the annotated source into a unique bundle under
- *      `.test-bundles/`, with leaf node_modules deps + any `@external`
- *      relative paths kept as runtime imports (the bundle's `import …
- *      from "pg"` and `import … from "/abs/path/to/sibling.ts"` stay).
- *   2. Record (source-abs-path → bundle-abs-path) in a manifest.
+ *   - **Annotated (bundled)** tests get per-test-bundle isolation:
+ *       1. Build the annotated source into a unique bundle under
+ *          `.test-bundles/`, with leaf node_modules deps + any
+ *          `@external` paths kept as runtime imports.
+ *       2. Register a `mock.module(<source-abs>, () => require(<bundle>))`
+ *          in the preload so the test's natural `import { foo } from
+ *          "./source"` lands on the bundle's exports.
+ *   - **Non-annotated** tests run as plain `bun:test` files with only a
+ *     `globalThis.window = {}` stub for client-side env detection.
  *
- * Then write a preload script that registers
- *   `mock.module(<source-abs-path>, () => import(<bundle-abs-path>))`
- * for every entry. When the test's natural `import { foo } from
- * "./source"` is resolved by bun, it lands on the same abs path, hits
- * the synthetic mock, and returns the bundle's exports instead of
- * loading the real source.
+ * The two groups run in SEPARATE `bun test` processes — the bundled
+ * group's `mock.module("pg", …)` etc. would otherwise contaminate the
+ * non-bundled group's real-pg imports (pg-pool init reads
+ * `types.builtins.NUMERIC` which a FakePool mock doesn't supply).
  *
- * Mock isolation across tests in one `bun test` process: each bundle
- * lives at a unique path, so two tests covering the same source
- * import the same bundle module — but the bundle's body still runs
- * exactly once. For DIFFERENT sources, each bundle is its own ESM
- * module record and captures its own leaf-dep mocks at first load via
- * static binding. The test's `mock.module("pg", …)` is hoisted by
- * bun:test to before its own imports, so by the time the source
- * import (redirected to the bundle) loads, the leaf-dep mock is live.
+ * Each bundle's body runs exactly once even if multiple tests cover the
+ * same source. For DIFFERENT sources, each bundle is its own ESM module
+ * record and captures its own leaf-dep mocks at first load via static
+ * binding. The test's `mock.module("pg", …)` is hoisted by bun:test to
+ * before its own imports, so by the time the source import (redirected
+ * to the bundle) loads, the leaf-dep mock is live.
  *
- * Wired into package.json as `bun run test:bundled`.
+ * Wired into package.json as `bun run test`.
  */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { existsSync } from "node:fs";
 import { Glob } from "bun";
 import { buildBundle, cleanBundleDir, bundlePathFor, getBundleDir, getRepoRoot } from "./build.ts";
 
@@ -48,30 +50,74 @@ const REPO_ROOT = getRepoRoot();
 const REAL_BARRELS = ["common"];
 
 interface Annotation {
-  bundles?: string;
   external: string[];
+  /** True iff the test file calls `bundleOf(` anywhere — the marker we
+   *  use to decide whether to build a bundle for this test. Replaces
+   *  the old `// @bundles` annotation: a test is bundled iff it
+   *  actually uses the framework's bundle. */
+  usesBundleOf: boolean;
 }
 
-const parseAnnotations = async (testAbs: string): Promise<Annotation> => {
+const parseAnnotations = async (testAbs: string): Promise<{ text: string; ann: Annotation }> => {
   const text = await readFile(testAbs, "utf8");
-  const lines = text.split("\n", 30);
-  const out: Annotation = { external: [] };
-  for (const line of lines) {
+  // Match `bundleOf(` or `bundleOf<…>(` (generic-typed call). The
+  // import line `import { bundleOf } from "test-bundled"` is excluded by
+  // requiring a `(` or `<` after the identifier — `bundleOf }` doesn't
+  // qualify.
+  const ann: Annotation = {
+    external: [],
+    usesBundleOf: /\bbundleOf\s*[<(]/.test(text),
+  };
+  // `@external` is still a comment-driven hint — the build plugin needs
+  // the list of specifiers to keep external before the bundle is built.
+  for (const line of text.split("\n", 30)) {
     const trimmed = line.trim();
     if (trimmed === "") continue;
     if (!trimmed.startsWith("//")) {
       if (trimmed.startsWith("import ") || trimmed.startsWith("export ")) break;
       continue;
     }
-    const bundlesM = /^\/\/\s*@bundles\s+(.+?)\s*$/.exec(line);
-    if (bundlesM) {
-      out.bundles = bundlesM[1];
-      continue;
-    }
     const externalM = /^\/\/\s*@external\s+(.+?)\s*$/.exec(line);
-    if (externalM) out.external.push(externalM[1]);
+    if (externalM) ann.external.push(externalM[1]);
   }
-  return out;
+  return { text, ann };
+};
+
+/**
+ * Derive the source-under-test from the test file's path, by convention:
+ *
+ *   1. `foo.test.ts`               → `foo.ts` in the same dir.
+ *   2. `Calculations.holdings.test.ts` → drop dotted suffixes from the
+ *      right until a sibling resolves: `Calculations.holdings.ts` →
+ *      `Calculations.ts`. Catches the "multiple test files per source"
+ *      pattern.
+ *
+ * Returns `null` if no candidate exists — the test stays plain (the
+ * framework offers `bundleOf` only when there's a source to bundle).
+ * Symbol-named tests (`isApiPath.test.ts` against `index.ts`) are
+ * deliberately NOT auto-resolved; the codebase's convention is one
+ * source-per-file, so a symbol-only test should be a real file
+ * extraction instead of relying on framework "magic".
+ */
+const inferSourceFromTestPath = (testAbs: string): string | null => {
+  const dir = dirname(testAbs);
+  // Strip `.test.ts` / `.test.tsx` to get the base, then peel one
+  // dotted suffix per iteration.
+  let base = testAbs.replace(/\.test\.(ts|tsx)$/, "");
+  if (base === testAbs) return null;
+  while (true) {
+    const baseName = base.slice(dir.length + 1);
+    if (baseName === "") return null;
+    for (const ext of [".ts", ".tsx"] as const) {
+      const candidate = `${base}${ext}`;
+      if (existsSync(candidate)) return candidate;
+    }
+    // Drop the rightmost dotted suffix, e.g.
+    // `Calculations.holdings` → `Calculations`.
+    const trimmed = base.replace(/\.[^./\\]+$/, "");
+    if (trimmed === base) return null;
+    base = trimmed;
+  }
 };
 
 const COLOR_DIM = "\x1b[90m";
@@ -81,36 +127,50 @@ const COLOR_RESET = "\x1b[0m";
 const main = async (): Promise<void> => {
   const t0 = performance.now();
 
-  // 1. Discover bundled tests under src/. The `.test.bundle.ts` suffix
-  // keeps them OUT of the default `*.test.ts` glob that
-  // `bun run test:non-bundled` uses — so each test file runs under
-  // exactly the runner that supplies the preload it expects.
-  const testFiles: string[] = [];
-  const glob = new Glob("**/*.test.bundle.{ts,tsx}");
+  // 1. Discover every `*.test.{ts,tsx}` under src/. Partition into
+  // bundled (have `@bundles` annotation) and plain.
+  const allTestFiles: string[] = [];
+  const glob = new Glob("**/*.test.{ts,tsx}");
   for await (const rel of glob.scan({ cwd: resolve(REPO_ROOT, "src"), absolute: false })) {
-    testFiles.push(resolve(REPO_ROOT, "src", rel));
+    allTestFiles.push(resolve(REPO_ROOT, "src", rel));
   }
 
+  // A test is bundled iff it calls `bundleOf(`. The source-under-test
+  // is inferred from the test path (see `inferSourceFromTestPath`); no
+  // explicit `// @bundles` annotation needed. A test that calls
+  // `bundleOf` without a resolvable source is a configuration error.
   const manifest: Array<{ test: string; source: string; external: string[]; bundle: string }> = [];
-  for (const testAbs of testFiles) {
-    const ann = await parseAnnotations(testAbs);
-    if (!ann.bundles) continue;
-    const sourceAbs = resolve(REPO_ROOT, ann.bundles);
+  const plainTests: string[] = [];
+  for (const testAbs of allTestFiles) {
+    const { ann } = await parseAnnotations(testAbs);
+    if (!ann.usesBundleOf) {
+      plainTests.push(testAbs);
+      continue;
+    }
+    const sourceAbs = inferSourceFromTestPath(testAbs);
+    if (!sourceAbs) {
+      throw new Error(
+        `${testAbs} calls bundleOf(...) but no sibling source resolved. ` +
+          `Rename the test so its basename matches a sibling \`*.ts\` file ` +
+          `(e.g. \`foo.test.ts\` → \`foo.ts\`).`,
+      );
+    }
     manifest.push({
       test: testAbs,
       source: sourceAbs,
       external: ann.external,
-      bundle: bundlePathFor(sourceAbs),
+      bundle: bundlePathFor(testAbs, sourceAbs),
     });
   }
 
-  if (manifest.length === 0) {
-    process.stdout.write("no bundled tests discovered (looking for `// @bundles <relPath>`)\n");
+  if (allTestFiles.length === 0) {
+    process.stdout.write("no test files discovered under src/\n");
     return;
   }
 
   process.stdout.write(
-    `${COLOR_BOLD}building${COLOR_RESET} ${manifest.length} bundle(s)…\n`,
+    `${COLOR_BOLD}discovered${COLOR_RESET} ${allTestFiles.length} test files ` +
+      `(${manifest.length} bundled, ${plainTests.length} plain)\n`,
   );
 
   // 2. Clean + build bundles in parallel. Each build also emits the
@@ -148,22 +208,39 @@ const main = async (): Promise<void> => {
   //       bundle's exports). The factory runs lazily on first import,
   //       so the test's own `mock.module("pg", …)` etc. are already
   //       active by then and the bundle's leaf-dep imports see them.
+  // Per-test BUNDLE PATHS map. Tests load their own bundle directly via
+  // `bundleOf(import.meta.url)` from `test-bundled` runtime — no
+  // source→bundle `mock.module` redirect anywhere.
+  //
+  // Why no redirects: bun's `mock.module(path, factory)` is EAGER for
+  // already-cached `path`s. When a previous test's transitive imports
+  // loaded the source (e.g. via the `server` barrel), a later test's
+  // wrapper-level `mock.module(source, () => require(bundle))` fires
+  // the factory IMMEDIATELY — and the bundle loads BEFORE that test's
+  // `mock.module("pg", FakePool)` runs, so the bundle binds REAL pg.
+  // The intended FakePool never takes effect.
+  //
+  // Per-test bundle paths sidestep this entirely: each test gets a
+  // UNIQUE bundle file (keyed on (test, source)). The test imports its
+  // bundle by absolute path. Sibling tests can lazily load REAL
+  // sources via transitive imports without touching this test's
+  // bundle module record.
+  const bundlesByTest: Record<string, string> = {};
+  for (const m of manifest) bundlesByTest[m.test] = m.bundle;
+
   const preloadPath = resolve(getBundleDir(), "preload.ts");
   const preloadBody =
-    `import { mock } from "bun:test";\n` +
-    REAL_BARRELS.map((b) => `import * as __${b} from ${JSON.stringify(b)};`).join("\n") +
+    `import { mock as _ } from "bun:test";\n` + // ensure bun:test is initialized
+    `Object.assign(globalThis, { window: {} });\n\n` +
+    REAL_BARRELS.map(
+      (b) => `const __${b} = require(${JSON.stringify(b)});`,
+    ).join("\n") +
     `\n\n` +
     `(globalThis as any).__realBarrels = {\n` +
     REAL_BARRELS.map((b) => `  ${JSON.stringify(b)}: __${b},`).join("\n") +
     `\n};\n\n` +
-    `(globalThis as any).__externalsByTest = ${JSON.stringify(externalsByTest, null, 2)};\n\n` +
-    manifest
-      .map(
-        (m) =>
-          `mock.module(${JSON.stringify(m.source)}, () => require(${JSON.stringify(m.bundle)}));`,
-      )
-      .join("\n") +
-    "\n";
+    `(globalThis as any).__externalsByTest = ${JSON.stringify(externalsByTest, null, 2)};\n` +
+    `(globalThis as any).__bundlesByTest = ${JSON.stringify(bundlesByTest, null, 2)};\n`;
   await mkdir(getBundleDir(), { recursive: true });
   await writeFile(preloadPath, preloadBody);
 
@@ -171,10 +248,19 @@ const main = async (): Promise<void> => {
     `${COLOR_DIM}built ${manifest.length} bundles in ${buildMs.toFixed(0)}ms${COLOR_RESET}\n`,
   );
 
-  // 4. Run the bundled tests in ONE bun test process with the preload.
+  // Single `bun test` process for ALL tests. Bundled tests load their
+  // own unique bundle via `bundleOf(import.meta.url)`; plain tests
+  // import sources directly. Per-test bundle paths mean no cascade —
+  // a plain test's transitive load of a source never repoints a
+  // bundled test's view of that source (bundles use unique abs paths
+  // that the plain side never touches). Each test's `mock.module("pg",
+  // …)` is per-file-scoped in bun:test, so siblings don't interfere.
   const t2 = performance.now();
+  const coverageArgs = process.env.COVERAGE
+    ? ["--coverage", "--coverage-reporter=lcov"]
+    : [];
   const proc = Bun.spawn(
-    ["bun", "test", "--preload", preloadPath, ...manifest.map((m) => m.test)],
+    ["bun", "test", "--preload", preloadPath, ...coverageArgs, ...allTestFiles],
     { cwd: REPO_ROOT, stdout: "inherit", stderr: "inherit" },
   );
   const exitCode = await proc.exited;
