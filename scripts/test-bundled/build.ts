@@ -303,6 +303,11 @@ export const buildBundle = async (options: BuildOptions): Promise<BuildResult> =
       // would otherwise emit a sibling .css asset whose default naming
       // collides on the entry's path. Loading as text avoids the asset.
       loader: { ".css": "text" },
+      // Emit `<bundle>.bundle.js.map` so the post-test coverage remapper
+      // can attribute lcov line hits back to the originating `src/*.ts`
+      // file. Without this, bun's coverage records the bundle path and
+      // every bundled-test source shows 0% covered.
+      sourcemap: "external",
       plugins,
     }),
     writeShimFiles(options.test, realAbsBySpec),

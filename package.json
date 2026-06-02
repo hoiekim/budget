@@ -20,7 +20,7 @@
     "dev-client": "vite",
     "dev-server": "bun --watch ./src/server/start.ts",
     "test": "bun scripts/test-bundled/index.ts",
-    "test:coverage": "COVERAGE=1 bun scripts/test-bundled/index.ts && bun scripts/check-coverage.ts",
+    "test:coverage": "COVERAGE=1 bun scripts/test-bundled/index.ts && bun scripts/test-bundled/remap-coverage.ts && bun scripts/check-coverage.ts",
     "lint": "bun --bun eslint src",
     "lint:fix": "bun --bun eslint src --fix",
     "typecheck": "bun run --bun tsc --noEmit",
