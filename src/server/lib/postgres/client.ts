@@ -48,14 +48,40 @@ const config: PoolConfig = {
 // (`scripts/test-helpers.ts`) so file B's run doesn't inherit file
 // A's FakePool. Production never calls `resetPool()` — the cached
 // real Pool stays for the process lifetime.
+//
+// The traps below all forward to `_pool`. `set`/`deleteProperty`/`has`
+// are required (not just `get`) because pg's own Pool methods do
+// `this.ending = true`, `this._clients = filtered`, etc. — the default
+// Proxy `set` would write to the empty target, leaving `_pool` stale.
 let _pool: Pool | null = null;
+const getPool = (): Pool => {
+  if (!_pool) _pool = new Pool(config);
+  return _pool;
+};
 export const resetPool = (): void => {
   _pool = null;
 };
 export const pool: Pool = new Proxy({} as Pool, {
   get(_target, prop) {
-    if (!_pool) _pool = new Pool(config);
-    return Reflect.get(_pool, prop, _pool);
+    return Reflect.get(getPool(), prop, getPool());
+  },
+  set(_target, prop, value) {
+    return Reflect.set(getPool(), prop, value, getPool());
+  },
+  has(_target, prop) {
+    return Reflect.has(getPool(), prop);
+  },
+  deleteProperty(_target, prop) {
+    return Reflect.deleteProperty(getPool(), prop);
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getPool());
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return Reflect.getOwnPropertyDescriptor(getPool(), prop);
+  },
+  getPrototypeOf() {
+    return Reflect.getPrototypeOf(getPool());
   },
 });
 
