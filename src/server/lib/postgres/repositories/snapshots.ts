@@ -14,6 +14,7 @@ import {
   ACCOUNT_ID,
   HOLDING_ACCOUNT_ID,
   SECURITY_ID,
+  HOLDING_SECURITY_ID,
   USER_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
@@ -106,7 +107,11 @@ export const searchSnapshots = async (
       filters: {
         [SNAPSHOT_TYPE]: "holding",
         [HOLDING_ACCOUNT_ID]: options.account_id,
-        [SECURITY_ID]: options.security_id,
+        // Holding rows store the security in `holding_security_id`; the
+        // `security_id` column is NULL for them. Filtering by `SECURITY_ID`
+        // here would match zero rows (latent for any future caller that
+        // passes both `account_id` and `security_id`).
+        [HOLDING_SECURITY_ID]: options.security_id,
       },
       inFilters: options.account_ids?.length
         ? { [HOLDING_ACCOUNT_ID]: options.account_ids }

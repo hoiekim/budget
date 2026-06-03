@@ -412,4 +412,26 @@ describe("searchSnapshots — #445 holding_account_id regression", () => {
     expect(holdingValues).toContain("2026-01-01");
     expect(holdingValues).toContain("2026-06-30");
   });
+
+  test("`security_id` filter targets `holding_security_id`, not `security_id`, in the holding branch", async () => {
+    // Holding rows store the security in `holding_security_id`; the
+    // `security_id` column is NULL for them. Filtering the holding query
+    // by `security_id =` would always match zero rows.
+    mockQuery
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+
+    await searchSnapshots(testUser, { account_id: "acc-x", security_id: "sec-voo" });
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const holdingSql = mockQuery.mock.calls[1][0] as string;
+    const holdingValues = mockQuery.mock.calls[1][1] as unknown[];
+    expect(holdingSql).toContain("holding_security_id = ");
+    // Defensive: make sure the holding query does NOT filter on the
+    // wrong column (the bug this test guards against).
+    const segments = holdingSql.split(" AND ");
+    const securitySegment = segments.find((s) => s.includes("security_id ="));
+    expect(securitySegment).toContain("holding_security_id");
+    expect(holdingValues).toContain("sec-voo");
+  });
 });
