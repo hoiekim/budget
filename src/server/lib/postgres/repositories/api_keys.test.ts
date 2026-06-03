@@ -1,12 +1,11 @@
-// Per-test-bundle isolation: the orchestrator (`scripts/test-bundled/`)
 // builds api_keys.ts into a unique bundle with `pg` kept external, and
 // registers a `mock.module` redirect in the preload so this file's
 // natural `import { … } from "./api_keys"` lands on the bundle. The
 // bundle captures THIS test's `pg` mock at its first load, so other
 // bundled tests in the same `bun test` process can mock `pg`
 // differently without colliding.
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -29,7 +28,9 @@ mock.module("pg", () => ({
 // bundle (which the preload redirects this path to) loads. The path is
 // still the natural sibling source — only the import shape changes.
 const { generateApiKey, hashApiKey, createApiKey, listApiKeys, revokeApiKey, verifyApiKey } =
-  await bundleOf<typeof import("./api_keys")>(import.meta.url);
+  await import("./api_keys");
+
+afterAll(restoreLeaves);
 
 beforeEach(() => {
   mockQuery.mockReset();

@@ -1,6 +1,5 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 import { TransactionPaymentChannelEnum } from "plaid";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
@@ -27,7 +26,9 @@ const {
   upsertTransactions,
   updateTransactions,
   getOldestTransactionDate,
-} = await bundleOf<typeof import("./transactions")>(import.meta.url);
+} = await import("./transactions");
+
+afterAll(restoreLeaves);
 
 function makeTxRow(overrides: Record<string, unknown> = {}) {
   return {

@@ -1,4 +1,3 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
 //
 // `inferCashHoldings` and `ensureUSDCashSecurity` lost their DI seams in
 // this PR — both call into `searchSecurities` / `upsertSecurities` /
@@ -6,8 +5,8 @@
 // SELECT or UPSERT issued by the route surfaces as a `mockQuery.mock.calls`
 // entry. Tests that exercise the cash-security lookup pre-queue the
 // SELECT response (and INSERT response when needed) on `mockQuery`.
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 import { AccountType } from "plaid";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
@@ -27,7 +26,9 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { inferCashHoldings, ensureUSDCashSecurity } = await bundleOf<typeof import("./cash\-holding")>(import.meta.url);
+const { inferCashHoldings, ensureUSDCashSecurity } = await import("./cash\-holding");
+
+afterAll(restoreLeaves);
 
 const makeAccount = (overrides: Record<string, unknown> = {}) => ({
   account_id: "acc-1",

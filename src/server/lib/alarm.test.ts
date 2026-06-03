@@ -1,6 +1,5 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
-import { describe, it, expect, beforeEach, mock, afterEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, it, expect, beforeEach, mock, afterEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 
 // We need to mock fetch before importing alarm
 const mockFetch = mock(() => Promise.resolve({ ok: true } as Response));
@@ -12,7 +11,9 @@ let alarm: typeof import("./alarm");
 beforeEach(async () => {
   mockFetch.mockClear();
   // Re-import to reset module-level state
-  alarm = await bundleOf<typeof import("./alarm")>(import.meta.url);
+  alarm = await import("./alarm");
+
+afterAll(restoreLeaves);
   alarm.resetAlarmState();
 });
 

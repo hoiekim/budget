@@ -1,6 +1,5 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -23,9 +22,11 @@ mock.module("bcrypt", () => ({
   default: { hash: async (s: string) => `hashed:${s}` },
 }));
 
-// Dynamic-import so the leaf-dep mocks above are registered BEFORE the
-// bundle (which the test-bundled preload redirects this path to) loads.
-const { writeUser, searchUser, updateUser, getUserById, deleteUser } = await bundleOf<typeof import("./users")>(import.meta.url);
+// Dynamic-import after the leaf-dep mocks register, so the source
+// resolves pg/bcrypt to their FakePool / fake bcrypt.
+const { writeUser, searchUser, updateUser, getUserById, deleteUser } = await import("./users");
+
+afterAll(restoreLeaves);
 
 function makeUserRow(overrides: Record<string, unknown> = {}) {
   return {

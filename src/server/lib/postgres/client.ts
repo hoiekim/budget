@@ -36,7 +36,28 @@ const config: PoolConfig = {
   },
 };
 
-export const pool = new Pool(config);
+// Lazy pool: the Proxy defers `new Pool(config)` to first property
+// access. `Pool` here is a LIVE ESM binding to `pg.Pool` — bun's
+// `mock.module("pg", () => ({ Pool: FakePool, … }))` from a test file
+// re-points it, so the first method call during that file's tests
+// instantiates the test's FakePool.
+//
+// `resetPool()` clears the cached instance so the NEXT first-access
+// rebuilds against whatever `Pool` resolves to at that moment. Tests
+// call this from `afterAll(restoreLeaves)`
+// (`scripts/test-helpers.ts`) so file B's run doesn't inherit file
+// A's FakePool. Production never calls `resetPool()` — the cached
+// real Pool stays for the process lifetime.
+let _pool: Pool | null = null;
+export const resetPool = (): void => {
+  _pool = null;
+};
+export const pool: Pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    if (!_pool) _pool = new Pool(config);
+    return Reflect.get(_pool, prop, _pool);
+  },
+});
 
 // Process-level error handlers (SIGTERM/SIGINT are handled in start.ts for ordered shutdown)
 process.on("unhandledRejection", (reason) => {

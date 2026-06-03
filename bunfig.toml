@@ -1,3 +1,6 @@
-# Test preload is configured via npm scripts in package.json.
-# Use `bun run test` (runs test:bundled then test:non-bundled). For a single
-# non-bundled file, pass the preload: `bun test --preload ./src/client/test-setup.ts <file>`.
+# Preload runs once before any test file. Sets `globalThis.window = {}` for
+# client tests and captures real `pg` / `bcrypt` into globals so
+# `scripts/test-helpers.ts#restoreLeaves` can re-mock leaves back to their
+# real exports between test files.
+[test]
+preload = ["./scripts/test-preload.ts"]

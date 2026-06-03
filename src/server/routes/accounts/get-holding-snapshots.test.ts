@@ -1,12 +1,10 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
 //
 // This file holds the GET-route half of what used to live in
 // holding-snapshot-sibling-routes.test.ts. Each bundled test file maps
-// 1:1 to a `@bundles` source via the per-test-bundle pattern; the two
 // routes (delete + get) live in two source files, so they migrate to
 // two bundled tests.
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -25,7 +23,9 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { getHoldingSnapshotsRoute } = await bundleOf<typeof import("./get-holding-snapshots")>(import.meta.url);
+const { getHoldingSnapshotsRoute } = await import("./get-holding-snapshots");
+
+afterAll(restoreLeaves);
 
 beforeEach(() => {
   mockQuery.mockReset();

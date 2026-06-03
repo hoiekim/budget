@@ -1,4 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 import { ItemProvider } from "common";
 
 // `mock.module` is process-global in Bun: a relative-path mock here would also
@@ -6,6 +7,8 @@ import { ItemProvider } from "common";
 // detect-transfers.test.ts / auto-suggest.test.ts test the *real* exports).
 // Capture the real modules up front so we can (a) spread their other exports
 // into the mock factories and (b) restore them in afterAll.
+const realServer = { ...(await import("server")) };
+const realAlarm = { ...(await import("server/lib/alarm")) };
 const realSyncPlaid = { ...(await import("./sync-plaid")) };
 const realSyncSimpleFin = { ...(await import("./sync-simple-fin")) };
 const realAutoSuggest = { ...(await import("./auto-suggest")) };
@@ -34,12 +37,14 @@ const mockRunAutoSuggestions = mock(async () => {});
 const mockRunTransferDetection = mock(async () => {});
 
 mock.module("server", () => ({
+  ...realServer,
   getAllItems: mockGetAllItems,
   updateItemSyncStatus: mockUpdateItemSyncStatus,
   logger: mockLogger,
 }));
 
 mock.module("server/lib/alarm", () => ({
+  ...realAlarm,
   sendAlarm: mockSendAlarm,
 }));
 
@@ -100,10 +105,13 @@ afterEach(() => {
 // Restore the real sibling modules so the process-global mock.module registry
 // doesn't leak our stubs into other test files run in the same process.
 afterAll(() => {
+  mock.module("server", () => realServer);
+  mock.module("server/lib/alarm", () => realAlarm);
   mock.module("./sync-plaid", () => realSyncPlaid);
   mock.module("./sync-simple-fin", () => realSyncSimpleFin);
   mock.module("./auto-suggest", () => realAutoSuggest);
   mock.module("./detect-transfers", () => realDetectTransfers);
+  restoreLeaves();
 });
 
 describe("scheduledSync / runSync", () => {

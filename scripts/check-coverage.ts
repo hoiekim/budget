@@ -12,22 +12,17 @@
  */
 
 const THRESHOLDS = {
-  lines: 19,     // % — ratchet up as coverage improves (currently ~19.8%)
-  functions: 23, // % — ratchet up as coverage improves (currently ~23.2%)
+  lines: 28,     // % — ratchet up as coverage improves (currently ~28.7%)
+  functions: 48, // % — ratchet up as coverage improves (currently ~48.9%)
 };
 
 const LCOV_PATH = "coverage/lcov.info";
 
 /**
- * Source-file globs to EXCLUDE from coverage. The per-test-bundle
- * framework emits inlined bundles under `.test-bundles/`; bun's
- * coverage walks those files and inflates the denominator with all
- * the inlined code that's never exercised against the bundle itself
- * (it's measured against the originating `src/` files instead). Skip
- * anything under `.test-bundles/` plus the orchestrator's own
- * test-helper scaffolding so we measure coverage on `src/` only.
+ * Source-file prefixes to EXCLUDE from coverage. Limits the measure to
+ * `src/` only so test-side scaffolding doesn't drag the percentage.
  */
-const EXCLUDED_SF_PREFIXES = [".test-bundles/", "scripts/test-bundled/"];
+const EXCLUDED_SF_PREFIXES = ["scripts/"];
 
 async function parseLcov(path: string): Promise<{ linesFound: number; linesHit: number; functionsFound: number; functionsHit: number }> {
   const text = await Bun.file(path).text();

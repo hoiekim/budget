@@ -24,6 +24,3 @@ bun.lock
 
 .items
 es_data.json
-
-# Per-test-bundle output (rebuilt by `bun run test:bundled`)
-.test-bundles
