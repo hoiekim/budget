@@ -38,6 +38,8 @@ import {
   CapacitySummary,
   Data,
   Calculations,
+  HoldingDictionary,
+  Holding,
 } from "client";
 import { StoreName, indexedDbAccessor } from "./accessor";
 
@@ -135,6 +137,14 @@ export const loadAccounts = () => {
   return loadDictionary<AccountDictionary, Account>(StoreName.accounts, Account);
 };
 
+export const saveHoldings = async (data: HoldingDictionary) => {
+  await saveDictionary(StoreName.holdings, data);
+};
+
+export const loadHoldings = () => {
+  return loadDictionary<HoldingDictionary, Holding>(StoreName.holdings, Holding);
+};
+
 export const saveTransactions = async (data: TransactionDictionary) => {
   await saveDictionary(StoreName.transactions, data);
 };
@@ -148,7 +158,10 @@ export const saveSplitTransactions = async (data: SplitTransactionDictionary) =>
 };
 
 export const loadSplitTransactions = () => {
-  return loadDictionary<SplitTransactionDictionary, SplitTransaction>(StoreName.splitTransactions, SplitTransaction);
+  return loadDictionary<SplitTransactionDictionary, SplitTransaction>(
+    StoreName.splitTransactions,
+    SplitTransaction,
+  );
 };
 
 export const saveInvestmentTransactions = async (data: InvestmentTransactionDictionary) => {
@@ -207,7 +220,10 @@ export const saveAccountSnapshots = async (data: AccountSnapshotDictionary) => {
 };
 
 export const loadAccountSnapshots = () => {
-  return loadDictionary<AccountSnapshotDictionary, AccountSnapshot>(StoreName.accountSnapshots, AccountSnapshot);
+  return loadDictionary<AccountSnapshotDictionary, AccountSnapshot>(
+    StoreName.accountSnapshots,
+    AccountSnapshot,
+  );
 };
 
 export const saveHoldingSnapshots = async (data: HoldingSnapshotDictionary) => {
@@ -215,7 +231,10 @@ export const saveHoldingSnapshots = async (data: HoldingSnapshotDictionary) => {
 };
 
 export const loadHoldingSnapshots = () => {
-  return loadDictionary<HoldingSnapshotDictionary, HoldingSnapshot>(StoreName.holdingSnapshots, HoldingSnapshot);
+  return loadDictionary<HoldingSnapshotDictionary, HoldingSnapshot>(
+    StoreName.holdingSnapshots,
+    HoldingSnapshot,
+  );
 };
 
 export const saveSecuritySnapshots = async (data: SecuritySnapshotDictionary) => {
@@ -223,7 +242,10 @@ export const saveSecuritySnapshots = async (data: SecuritySnapshotDictionary) =>
 };
 
 export const loadSecuritySnapshots = () => {
-  return loadDictionary<SecuritySnapshotDictionary, SecuritySnapshot>(StoreName.securitySnapshots, SecuritySnapshot);
+  return loadDictionary<SecuritySnapshotDictionary, SecuritySnapshot>(
+    StoreName.securitySnapshots,
+    SecuritySnapshot,
+  );
 };
 
 export const clearAllData = async () => {
@@ -236,6 +258,7 @@ export const saveAllData = async (data: Data) => {
   const {
     institutions,
     accounts,
+    holdings,
     transactions,
     investmentTransactions,
     splitTransactions,
@@ -252,6 +275,7 @@ export const saveAllData = async (data: Data) => {
   await Promise.all([
     saveInstitutions(institutions),
     saveAccounts(accounts),
+    saveHoldings(holdings),
     saveTransactions(transactions),
     saveInvestmentTransactions(investmentTransactions),
     saveSplitTransactions(splitTransactions),
@@ -270,6 +294,7 @@ export const loadAllData = async () => {
   const [
     institutions,
     accounts,
+    holdings,
     transactions,
     investmentTransactions,
     splitTransactions,
@@ -284,6 +309,7 @@ export const loadAllData = async () => {
   ] = await Promise.all([
     loadInstitutions(),
     loadAccounts(),
+    loadHoldings(),
     loadTransactions(),
     loadInvestmentTransactions(),
     loadSplitTransactions(),
@@ -300,6 +326,7 @@ export const loadAllData = async () => {
   return new Data({
     institutions,
     accounts,
+    holdings,
     transactions,
     investmentTransactions,
     splitTransactions,
@@ -326,6 +353,7 @@ export const saveAllCalculations = async (data: Calculations) => {
 
 type StoredModel =
   | Account
+  | Holding
   | Institution
   | Transaction
   | InvestmentTransaction
@@ -344,6 +372,9 @@ export const save = (data: StoredModel) => {
   switch (data.constructor) {
     case Account:
       storeName = StoreName.accounts;
+      break;
+    case Holding:
+      storeName = StoreName.holdings;
       break;
     case Institution:
       storeName = StoreName.institutions;

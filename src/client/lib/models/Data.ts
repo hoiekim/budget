@@ -1,6 +1,6 @@
 import { assign, ValueOf, environment } from "common";
 import { Account } from "./Account";
-import { Institution, Status } from "./miscellaneous";
+import { Holding, Institution, Status } from "./miscellaneous";
 import { BudgetFamily, BudgetFamilyType } from "./BudgetFamily";
 import { Transaction } from "./Transaction";
 import { InvestmentTransaction } from "./InvestmentTransaction";
@@ -78,6 +78,7 @@ export class Dictionary<T = any, S extends Dictionary<T> = any> extends Map<stri
 
 export class AccountDictionary extends Dictionary<Account, AccountDictionary> {}
 export class InstitutionDictionary extends Dictionary<Institution, InstitutionDictionary> {}
+export class HoldingDictionary extends Dictionary<Holding, HoldingDictionary> {}
 
 export class InvestmentTransactionDictionary extends Dictionary<
   InvestmentTransaction,
@@ -116,7 +117,9 @@ export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
   return type === "budget" ? Budget : type === "section" ? Section : Category;
 };
 
-export const getBudgetDictionaryClass = (type: BudgetFamilyType): typeof BudgetDictionary | typeof SectionDictionary | typeof CategoryDictionary => {
+export const getBudgetDictionaryClass = (
+  type: BudgetFamilyType,
+): typeof BudgetDictionary | typeof SectionDictionary | typeof CategoryDictionary => {
   return type === "budget"
     ? BudgetDictionary
     : type === "section"
@@ -129,6 +132,7 @@ export class Data {
 
   institutions = new InstitutionDictionary();
   accounts = new AccountDictionary();
+  holdings = new HoldingDictionary();
   transactions = new TransactionDictionary();
   investmentTransactions = new InvestmentTransactionDictionary();
   splitTransactions = new SplitTransactionDictionary();

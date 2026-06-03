@@ -51,6 +51,8 @@ import {
   Institution,
   useDebounce,
   indexedDb,
+  HoldingDictionary,
+  Holding,
 } from "client";
 
 // Browsers cap concurrent fetches per origin (~6 on HTTP/1.1) and queueing
@@ -229,6 +231,7 @@ const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> =
 interface FetchAccountsResult {
   accounts: AccountDictionary;
   items: ItemDictionary;
+  holdings: HoldingDictionary;
   networkFailed: boolean;
 }
 
@@ -236,6 +239,7 @@ const fetchAccounts = async (): Promise<FetchAccountsResult> => {
   const result = {
     accounts: new AccountDictionary(),
     items: new ItemDictionary(),
+    holdings: new HoldingDictionary(),
     networkFailed: false,
   };
 
@@ -243,10 +247,11 @@ const fetchAccounts = async (): Promise<FetchAccountsResult> => {
   if (response?.status === "error") return { ...result, networkFailed: true };
   if (!response?.body) return result;
 
-  const { accounts, items } = response.body;
+  const { accounts, items, holdings } = response.body;
 
   accounts.forEach((e) => result.accounts.set(e.account_id, new Account(e)));
   items.forEach((item) => result.items.set(item.item_id, new Item(item)));
+  holdings.forEach((h) => result.holdings.set(h.holding_id, new Holding(h)));
 
   return result;
 };
@@ -491,7 +496,7 @@ export const useSync = () => {
         cached.status.isError = false;
         setData(cached);
 
-        const { accounts, items } = await accountsPromise;
+        const { accounts, items, holdings } = await accountsPromise;
 
         // Full-history fetch (`[oldestDate or 3-months-ago, currentMonth + 1)`)
         // — same range the cold path covers via Stage 2 + Stage 3. The
@@ -533,6 +538,7 @@ export const useSync = () => {
 
         const refreshed = new Data();
         refreshed.accounts = accounts;
+        refreshed.holdings = holdings;
         refreshed.items = items;
         refreshed.budgets = budgetsResult.budgets;
         refreshed.sections = budgetsResult.sections;
