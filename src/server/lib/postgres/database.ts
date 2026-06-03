@@ -3,8 +3,7 @@
  */
 
 import { Pool, QueryResult, QueryResultRow } from "pg";
-import { isNull, isUndefined, isDate, isNumber, isString } from "common";
-import { NULL } from "./models/common";
+import { isNull, isUndefined, isDate } from "common";
 import { Schema, Constraints } from "./models/base";
 
 export const SOFT_DELETE_CONDITION = "(is_deleted IS NULL OR is_deleted = FALSE)";
@@ -72,14 +71,6 @@ export function buildCreateTable(
 export function buildCreateIndex(tableName: string, column: string, indexName?: string): string {
   const name = indexName || `idx_${tableName}_${column}`;
   return `CREATE INDEX IF NOT EXISTS ${name} ON ${tableName}(${column})`;
-}
-
-export function prepareValue(value: unknown): string | number | undefined {
-  if (isString(value)) return `'${value.replace(/'/g, "''")}'`;
-  if (isNumber(value)) return value;
-  if (isDate(value)) return `'${value.toISOString()}'`;
-  if (isNull(value)) return NULL;
-  return undefined;
 }
 
 export function prepareParamValue(value: ParamValue): ParamValue {
