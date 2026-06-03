@@ -1,20 +1,19 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
-//
-// `resolveBearerAuth` lost its `BearerAuthDeps` DI seam — it now calls
-// `verifyApiKey` and `getMaskedUserById` directly. Both come from
-// sibling files that are THEIR OWN `@bundles` targets, so a plain
-// `mock.module(absPath, …)` would shadow those tests' source→bundle
-// redirects (verified collision: bearer-auth's mock of api_keys.ts
-// breaks api_keys.test.bundle.ts with N failures). `mockExternal`
-// resolves to a per-test SHIM path so each test owns a distinct module
-// identity for the same source — see scripts/test-bundled/build.ts.
-// @external ./postgres/repositories/api_keys
-// @external ./postgres/repositories/users
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
-import { mockExternal } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
+import * as realApiKeys from "./postgres/repositories/api_keys";
+import * as realUsers from "./postgres/repositories/users";
 import type { ResolvedApiKey } from "./postgres/repositories/api_keys";
 import type { MaskedUser } from "./postgres/models/user";
+
+// Snapshot real sibling-module exports before replacing them with
+// per-test mocks. The mock factories spread the snap so non-mocked
+// exports still resolve to real implementations — otherwise sibling
+// tests that go through `repositories/index.ts` (barrel re-export)
+// see partial modules and crash with "Export named 'writeUser' not
+// found". The `afterAll` block re-mocks each module back to its real
+// snapshot so the override doesn't leak to other test files.
+const realApiKeysSnap = { ...realApiKeys };
+const realUsersSnap = { ...realUsers };
 
 const aliceUser: MaskedUser = { user_id: "u-1", username: "alice" };
 const aliceKey: ResolvedApiKey = {
@@ -28,14 +27,22 @@ const mockGetMaskedUserById = mock(
   async (_id: string): Promise<MaskedUser | undefined> => undefined,
 );
 
-mockExternal(import.meta.url, "./postgres/repositories/api_keys", () => ({
+mock.module("./postgres/repositories/api_keys", () => ({
+  ...realApiKeysSnap,
   verifyApiKey: mockVerifyApiKey,
 }));
-mockExternal(import.meta.url, "./postgres/repositories/users", () => ({
+mock.module("./postgres/repositories/users", () => ({
+  ...realUsersSnap,
   getMaskedUserById: mockGetMaskedUserById,
 }));
 
-const { resolveBearerAuth } = await bundleOf<typeof import("./bearer-auth")>(import.meta.url);
+const { resolveBearerAuth } = await import("./bearer-auth");
+
+afterAll(() => {
+  mock.module("./postgres/repositories/api_keys", () => realApiKeysSnap);
+  mock.module("./postgres/repositories/users", () => realUsersSnap);
+  restoreLeaves();
+});
 
 beforeEach(() => {
   mockVerifyApiKey.mockReset();

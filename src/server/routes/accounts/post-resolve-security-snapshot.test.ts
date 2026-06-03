@@ -1,4 +1,3 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
 //
 // `POST /api/resolve-security-snapshot` powers the PerformanceBenchmark
 // widget's on-demand benchmark price fetch (#386, #414). Uses the
@@ -17,7 +16,7 @@ process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { restoreLeaves } from "test-helpers";
 import type { JSONSecurity } from "common";
 
 const originalFetch = globalThis.fetch;
@@ -48,9 +47,7 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
-const { postResolveSecuritySnapshotRoute } = await bundleOf<
-  typeof import("./post-resolve-security-snapshot")
->(import.meta.url);
+const { postResolveSecuritySnapshotRoute } = await import("./post-resolve-security-snapshot");
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
@@ -58,6 +55,7 @@ afterAll(() => {
   else process.env.POLYGON_API_KEY = originalApiKey;
   if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
   else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
+  restoreLeaves();
 });
 
 // SQL router: SELECT FROM securities returns staged security rows; SELECT

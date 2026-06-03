@@ -1,12 +1,12 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
-//
-// The bundle keeps `./securities` external (declared via @external
-// below). `mockExternal` resolves to a per-test SHIM path so two tests
-// externalizing the same source don't collide on `mock.module(spec, …)`.
-// @external ./securities
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
-import { mockExternal } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
+import * as realSecurities from "./securities";
+
+// Snapshot real `./securities` exports before partially overriding the
+// module — the `repositories/index.ts` barrel re-exports * from this
+// path, so sibling tests would see a partial module without the
+// real-export spread.
+const realSecuritiesSnap = { ...realSecurities };
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -26,11 +26,17 @@ mock.module("pg", () => ({
 }));
 
 const mockSearchSecuritiesById = mock(async (_ids: string[]) => [] as unknown[]);
-mockExternal(import.meta.url, "./securities", () => ({
+mock.module("./securities", () => ({
+  ...realSecuritiesSnap,
   searchSecuritiesById: mockSearchSecuritiesById,
 }));
 
-const { searchSnapshots } = await bundleOf<typeof import("./snapshots")>(import.meta.url);
+const { searchSnapshots } = await import("./snapshots");
+
+afterAll(() => {
+  mock.module("./securities", () => realSecuritiesSnap);
+  restoreLeaves();
+});
 
 const testUser = { user_id: "usr-1", username: "hoie" };
 

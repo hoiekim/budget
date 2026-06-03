@@ -1,4 +1,3 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
 //
 // `runTransferDetection` lost its DI seams (queryFn / logger /
 // fetchUsers / fetchCandidates / createPair). The function now calls
@@ -8,8 +7,8 @@
 // scenario. The real logger emits its info/error lines to stderr —
 // no behaviour change from the original `noopLogger` since the test's
 // assertions never read those calls.
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -28,7 +27,9 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { runTransferDetection, scoreConfidence } = await bundleOf<typeof import("./detect\-transfers")>(import.meta.url);
+const { runTransferDetection, scoreConfidence } = await import("./detect\-transfers");
+
+afterAll(restoreLeaves);
 
 beforeEach(() => {
   mockQuery.mockReset();

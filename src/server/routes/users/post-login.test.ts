@@ -1,11 +1,10 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
 //
 // bcrypt is in the framework's DEFAULT_NODE_EXTERNALS list, so the
 // bundle's `import bcrypt from "bcrypt"` resolves at runtime through
 // the real package — same as the original test. Password hash + compare
 // run unmocked.
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 import bcrypt from "bcrypt";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
@@ -25,7 +24,9 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { postLoginRoute } = await bundleOf<typeof import("./post-login")>(import.meta.url);
+const { postLoginRoute } = await import("./post-login");
+
+afterAll(restoreLeaves);
 
 const REAL_PASSWORD = "correct-horse-battery-staple";
 const REAL_HASH = await bcrypt.hash(REAL_PASSWORD, 10);

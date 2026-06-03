@@ -1,4 +1,3 @@
-// Per-test-bundle isolation — see scripts/test-bundled/.
 //
 // `backfillMonthlySecuritySnapshotsForward` lost its four DI seams
 // (searchSecuritiesById / getSecuritySnapshots / upsertSnapshots /
@@ -13,7 +12,6 @@
 // Each test uses a unique ticker so polygon's 1-hour priceCache
 // (also inlined in the bundle) never collides across tests.
 //
-// All bundled tests share ONE bun process (see scripts/test-bundled/
 // index.ts) so this file's `globalThis.fetch` override and env-var
 // writes would otherwise leak to every subsequent test file. `afterAll`
 // below snapshots and restores the originals.
@@ -25,7 +23,7 @@ process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { restoreLeaves } from "test-helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -50,7 +48,9 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
-const { backfillMonthlySecuritySnapshotsForward } = await bundleOf<typeof import("./backfill\-snapshots")>(import.meta.url);
+const { backfillMonthlySecuritySnapshotsForward } = await import("./backfill\-snapshots");
+
+afterAll(restoreLeaves);
 
 afterAll(() => {
   globalThis.fetch = originalFetch;

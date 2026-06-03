@@ -3,31 +3,20 @@
 ## Running Tests
 
 ```bash
-bun run test           # All tests — always use this, not bare bun test
+bun run test           # All tests
 bun run test:coverage  # Same, with lcov coverage + check-coverage gate
+bun test src/path/to/file.test.ts   # Single file (preload is wired via bunfig.toml)
 ```
 
-`bun run test` invokes `scripts/test-bundled/index.ts`, which discovers
-every `*.test.{ts,tsx}` under `src/`, builds a unique per-test bundle for
-each one carrying a `// @bundles` annotation, and runs every test file
-in a single `bun test` process. Bundled tests load their bundle via
-`bundleOf(import.meta.url)`; plain tests import sources directly.
+Native `bun:test`. `bunfig.toml` registers `scripts/test-preload.ts`, which
+runs once before any test file and:
 
-> **Always use `bun run test`, not bare `bun test`.** Bare `bun test`
-> skips the orchestrator entirely — it never builds the bundles, never
-> sets up `globalThis.__bundlesByTest`, and never stubs `window`. Bundled
-> tests fail at `bundleOf` and client tests fail with `Dictionary.set()
-> is disabled in server`.
-
-To run a single test file directly:
-
-```bash
-# Plain test (no @bundles annotation):
-bun test src/path/to/file.test.ts
-
-# Bundled test must go through the orchestrator (it builds the bundle):
-bun scripts/test-bundled/index.ts
-```
+1. Stubs `globalThis.window = {}` so client-side env detection resolves to
+   "unknown" instead of "server" — without it, `Dictionary.set()` no-ops and
+   client-side calc tests fail.
+2. Captures the REAL exports of `pg` and `bcrypt` on `globalThis.__REAL_*`
+   so `restoreLeaves()` can re-mock leaf deps back to a known baseline
+   between test files.
 
 ## Writing Tests
 
@@ -35,37 +24,30 @@ bun scripts/test-bundled/index.ts
 import { describe, it, expect } from "bun:test";
 
 describe("featureName", () => {
-  it("should do something", () => {
+  it("does something", () => {
     expect(actual).toBe(expected);
   });
 });
 ```
 
-### Bundled tests (call `bundleOf` — source inferred from path)
+### Mocking `pg` / `bcrypt` (the per-file isolation pattern)
 
-`bun test` shares one module registry per process, so a raw
-`mock.module("pg", …)` would leak across every test file in the run. The
-per-test-bundle runner (`scripts/test-bundled/`) avoids this: it builds
-a UNIQUE bundle per `(test, source)` pair, with leaf deps (`pg`, `bcrypt`,
-…) kept external. Each bundle captures **its own** leaf-dep mocks at
-first load and never collides with sibling tests. This replaces the old
-practice of plumbing dependency-injection seams through server functions
-purely for mockability.
+`bun:test`'s `mock.module(...)` is **process-global** — once any test file
+mocks `"pg"` with a FakePool, every subsequent file in the run sees that
+mock. To keep the pool per-file, two things conspire:
 
-To opt into a bundle, just call `bundleOf<typeof import("./source")>(
-import.meta.url)`. The orchestrator detects the call and infers the
-source from the test file's path:
-
-- `foo.test.ts` → `foo.ts` in the same dir.
-- `Calculations.holdings.test.ts` → drop dotted suffixes until a
-  sibling resolves (`Calculations.holdings.ts` → `Calculations.ts`),
-  so two test files can target one source.
-
-No annotation needed — calling `bundleOf` IS the declaration.
+1. `src/server/lib/postgres/client.ts` exports a **lazy Proxy** Pool. The
+   actual `new Pool(config)` is deferred to first property access, and the
+   `Pool` reference is a live ESM binding to `pg.Pool` — so when a test
+   mocks `pg`, the proxy's first-access instantiates the test's FakePool.
+2. `scripts/test-helpers.ts#restoreLeaves` re-mocks `pg` and `bcrypt` back
+   to the preload snapshots and calls `resetPool()` to drop the cached
+   instance, so the NEXT file's first pool use rebuilds against its own
+   mock.
 
 ```typescript
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { bundleOf } from "test-bundled";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { restoreLeaves } from "test-helpers";
 
 const mockQuery = mock(async () => ({ rows: [], rowCount: 0 }));
 class FakePool {
@@ -79,52 +61,47 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { writeUser } = await bundleOf<typeof import("./users")>(import.meta.url);
+// Dynamic-import AFTER the mock so the source resolves pg → FakePool.
+const { writeUser } = await import("./users");
+
+afterAll(restoreLeaves);
 ```
 
-#### Why `bundleOf`, not `await import("./source")`
+### Mocking sibling source modules (the snapshot-and-restore pattern)
 
-An earlier framework version registered process-wide
-`mock.module(<source-abs>, () => require(<bundle>))` redirects in the
-preload so the natural sibling import `await import("./users")` would
-land on the bundle. That broke at scale: bun's `mock.module(path,
-factory)` is **EAGER** for already-cached paths — when another test had
-transitively loaded the source (e.g. via a `server` barrel), the redirect
-factory fired IMMEDIATELY, loading the bundle BEFORE the intended test's
-`mock.module("pg", FakePool)` ran. The bundle bound real pg, and the
-test's mock never took effect.
+Two pitfalls when mocking a sibling source module:
 
-`bundleOf` sidesteps this by reading the per-test bundle's absolute path
-from `globalThis.__bundlesByTest` (populated by the preload) and dynamic-
-importing the bundle directly. No `mock.module` redirect, no cascade.
+1. **Process-global leak.** The mock outlives the file unless explicitly
+   restored.
+2. **Barrel re-export partial-module crash.** When a test mocks a leaf
+   module with only the function under test, any barrel that re-exports
+   `*` from it now resolves to a partial namespace. Sibling tests that
+   transitively import through the barrel crash with
+   `Export named '<other-fn>' not found in module`.
 
-### Mocking sibling source modules (`@external` + `mockExternal`)
-
-To mock a **sibling source module** (not a leaf dep), keep it external
-with `// @external <relPath>` and mock it via `mockExternal` from the
-`test-bundled` runtime helper:
+Fix both by snapshotting the real namespace first, spreading it into the
+mock factory, and re-mocking back to the snapshot in `afterAll`:
 
 ```typescript
-// @external ./postgres/repositories/api_keys
-// @external ./postgres/repositories/users
-import { mockExternal } from "test-bundled";
+import * as realApiKeys from "./postgres/repositories/api_keys";
+const realApiKeysSnap = { ...realApiKeys };
 
-mockExternal(import.meta.url, "./postgres/repositories/api_keys", () => ({
+mock.module("./postgres/repositories/api_keys", () => ({
+  ...realApiKeysSnap,
   verifyApiKey: mockVerifyApiKey,
 }));
-mockExternal(import.meta.url, "./postgres/repositories/users", () => ({
-  getMaskedUserById: mockGetMaskedUserById,
-}));
+
+const { resolveBearerAuth } = await import("./bearer-auth");
+
+afterAll(() => {
+  mock.module("./postgres/repositories/api_keys", () => realApiKeysSnap);
+  restoreLeaves();
+});
 ```
 
-`mockExternal` resolves to a per-test SHIM path under
-`.test-bundles/__shims__/`. The shim's default content is `export * from
-"<real-abs-source>"`, so a non-mocked external falls through to the real
-module. Two tests `@external`-ing the same source land on DIFFERENT
-shim identities — mocking via the shim doesn't shadow another bundle
-or another test's mock of the same source. This is what unblocks mocking
-siblings that are themselves other tests' `@bundles` targets (see #451,
-#456).
+The `import *` is a real ESM static import — when the file's `mock.module`
+runs at module-eval time, the static import has already resolved, so the
+namespace snapshot is real.
 
 ## Test Requirements
 
@@ -132,8 +109,8 @@ siblings that are themselves other tests' `@bundles` targets (see #451,
 project rule, not a suggestion.
 
 - New files: create a corresponding `*.test.ts` file
-- New functions: add test cases covering expected behavior and edge cases
-- Bug fixes: add regression tests that would have caught the bug
+- New functions: add cases covering expected behavior and edge cases
+- Bug fixes: add a regression test that would have caught the bug
 
 Write additional tests for existing uncovered lines when feasible.
 
@@ -143,10 +120,7 @@ Tests are co-located with source files:
 
 ```
 src/server/lib/validation.ts
-src/server/lib/validation.test.ts                            # plain
+src/server/lib/validation.test.ts
 src/server/lib/postgres/repositories/users.ts
-src/server/lib/postgres/repositories/users.test.ts           # bundled (has @bundles)
+src/server/lib/postgres/repositories/users.test.ts
 ```
-
-The same `.test.ts` suffix is used for both — the `@bundles` annotation
-at the top of the file is the only marker the runner needs.
