@@ -1,5 +1,5 @@
 import { ChangeEventHandler, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
-import { ItemProvider, ViewDate } from "common";
+import { ItemProvider, numberToCommaString, ViewDate } from "common";
 import {
   call,
   PATH,
@@ -12,6 +12,7 @@ import {
   indexedDb,
   StoreName,
 } from "client";
+import { CASH_TICKER } from "../HoldingsComposition";
 import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
 
 import "./index.css";
@@ -32,14 +33,20 @@ interface NewHoldingForm {
 
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
 
+interface SecurityInfo {
+  security_id: string | null;
+  ticker_symbol: string | null;
+  name: string | null;
+}
+
 export const HoldingProperties = () => {
-  const { router, viewDate, data, setData } = useAppContext();
+  const { router, viewDate, data, setData, calculations } = useAppContext();
   const { path, params, transition } = router;
   const activeParams = path === PATH.HOLDING_DETAIL ? params : transition.incomingParams;
 
   const accountId = activeParams.get("account_id") || "";
-  const snapshotId = activeParams.get("snapshot_id") || "";
-  const isNew = !snapshotId;
+  const ticker = activeParams.get("ticker") || "";
+  const isNew = !ticker;
 
   // Edit gating mirrors AccountProperties' balance input: synced accounts
   // are not editable at the current viewDate, because that state is
@@ -53,37 +60,161 @@ export const HoldingProperties = () => {
   const isCurrentViewDate = viewDate.getEndDate() >= latestViewDate.getEndDate();
   const isReadOnly = !isManualAccount && isCurrentViewDate;
 
-  // Read the snapshot from the already-synced appContext.data instead of
-  // re-fetching `/api/snapshots/holding` on every page load (Closes #362).
-  // Holdings + their security metadata are loaded at sync time and live in
-  // `data.holdingSnapshots` / `data.securitySnapshots`.
-  const snapshot = !isNew ? data.holdingSnapshots.get(snapshotId) : undefined;
-  const security: { name: string | null; ticker_symbol: string | null } | null = useMemo(() => {
-    if (!snapshot) return null;
-    const sId = snapshot.holding.security_id;
-    const match = data.securitySnapshots.find((s) => s.security.security_id === sId);
-    if (!match) return null;
-    return { name: match.security.name, ticker_symbol: match.security.ticker_symbol };
-  }, [snapshot, data.securitySnapshots]);
-  const loadError = !isNew && !snapshot ? "Holding not found." : "";
+  // Resolve which (account, security_id) entries belong to this ticker
+  // bucket — single source of truth = `holdingsValueData.getHoldingsForAccount`,
+  // the same hook HoldingsComposition uses. Then look up the LATEST holding
+  // snapshot per security_id (≤ viewDate) so each per-security row in the
+  // bucket gets an editable underlying snapshot. Using `holdingsValueData`
+  // here keeps the detail page's contributing set strictly equal to the
+  // table's bucket members — without it, the detail page could pull in
+  // snapshots the table excluded (or miss snapshots the table included).
+  // The `?ticker=` URL param holds the canonical bucket key as produced by
+  // HoldingsComposition: an uppercased real ticker, `__CASH__`, or a raw
+  // (case-preserved) security_id for no-ticker fallback. Don't uppercase
+  // here — that would corrupt the security_id case in the fallback path.
+  const tickerKey = ticker;
+  const viewEndDate = viewDate.getEndDate();
+  const { holdingsValueData } = calculations;
 
-  const [editTicker, setEditTicker] = useState("");
-  const [editQuantity, setEditQuantity] = useState("");
-  const [editCostBasis, setEditCostBasis] = useState("");
-  const [editDate, setEditDate] = useState("");
-  const [editError, setEditError] = useState("");
+  const bucketSnapshots = useMemo<HoldingSnapshot[]>(() => {
+    if (isNew) return [];
 
-  // Hydrate edit fields from the context-derived snapshot. Re-runs after a
-  // successful update once `sync()` has refreshed `data.holdingSnapshots`.
-  useEffect(() => {
-    if (!snapshot) return;
-    setEditTicker(security?.ticker_symbol || "");
-    setEditQuantity(snapshot.holding.quantity != null ? String(snapshot.holding.quantity) : "");
-    setEditCostBasis(
-      snapshot.holding.cost_basis != null ? String(snapshot.holding.cost_basis) : "",
+    // Step 1: identify which (account, security_id) pairs the calculation
+    // hook would aggregate into this ticker bucket. Same rule as
+    // HoldingsComposition: real ticker wins, `__CASH__` reserved for cash,
+    // non-cash row with ticker `__CASH__` falls back to full security_id.
+    const bucketSecurityIds = new Set<string>();
+    const holdingIds = holdingsValueData.getHoldingsForAccount(accountId);
+    holdingIds.forEach((holdingId) => {
+      const summary = holdingsValueData.getHistory(holdingId).get(viewEndDate);
+      if (!summary || summary.value === 0) return;
+      const securityMatch = data.securitySnapshots.find(
+        (s) => s.security.security_id === summary.security_id,
+      );
+      const snapTicker = securityMatch?.security.ticker_symbol?.toUpperCase() ?? null;
+      const isCash = summary.isCash;
+      const snapBucket = isCash
+        ? CASH_TICKER
+        : snapTicker && snapTicker !== CASH_TICKER
+          ? snapTicker
+          : summary.security_id;
+      if (snapBucket === tickerKey) bucketSecurityIds.add(summary.security_id);
+    });
+
+    // Step 2: for each contributing security_id, find the latest snapshot
+    // (date ≤ viewEndDate) so the per-snapshot section can render an
+    // editable form. One section per security_id; the freshest snapshot
+    // wins when multiple exist on the same date.
+    const latestPerSecurity = new Map<string, HoldingSnapshot>();
+    data.holdingSnapshots.forEach((snap) => {
+      if (snap.holding.account_id !== accountId) return;
+      if (!bucketSecurityIds.has(snap.holding.security_id)) return;
+      const snapDate = new Date(snap.snapshot.date);
+      if (snapDate > viewEndDate) return;
+      const existing = latestPerSecurity.get(snap.holding.security_id);
+      if (!existing || new Date(existing.snapshot.date) < snapDate) {
+        latestPerSecurity.set(snap.holding.security_id, snap);
+      }
+    });
+
+    return Array.from(latestPerSecurity.values()).sort(
+      (a, b) => new Date(b.snapshot.date).getTime() - new Date(a.snapshot.date).getTime(),
     );
-    setEditDate(toIsoDateInput(snapshot.snapshot.date));
-  }, [snapshot, security]);
+  }, [
+    accountId,
+    data.holdingSnapshots,
+    data.securitySnapshots,
+    holdingsValueData,
+    isNew,
+    tickerKey,
+    viewEndDate,
+  ]);
+
+  // Bucket-level display info — primary label, name (first non-null), and
+  // a representative security record (used by the per-snapshot sections).
+  const bucketInfo = useMemo<{
+    primaryLabel: string;
+    name: string | null;
+    securities: Map<string, SecurityInfo>;
+  }>(() => {
+    const securities = new Map<string, SecurityInfo>();
+    let name: string | null = null;
+    bucketSnapshots.forEach((snap) => {
+      const sid = snap.holding.security_id;
+      if (!securities.has(sid)) {
+        const match = data.securitySnapshots.find((s) => s.security.security_id === sid);
+        securities.set(sid, {
+          security_id: sid,
+          ticker_symbol: match?.security.ticker_symbol ?? null,
+          name: match?.security.name?.trim() || null,
+        });
+      }
+      if (!name) name = securities.get(sid)?.name ?? null;
+    });
+    const primaryLabel = tickerKey === CASH_TICKER ? "Cash" : tickerKey;
+    return { primaryLabel, name, securities };
+  }, [bucketSnapshots, data.securitySnapshots, tickerKey]);
+
+  // Aggregate quantity / cost basis across all underlying snapshots.
+  // Avg cost basis = sum(cost_basis) / sum(quantity); null whenever any
+  // contributor lacks cost basis OR total quantity is zero.
+  const aggregate = useMemo(() => {
+    const totals = bucketSnapshots.reduce(
+      (acc, s) => {
+        acc.quantity += s.holding.quantity ?? 0;
+        if (acc.allHaveCostBasis && s.holding.cost_basis != null) {
+          acc.costBasisTotal += s.holding.cost_basis;
+        } else {
+          acc.allHaveCostBasis = false;
+        }
+        return acc;
+      },
+      { quantity: 0, costBasisTotal: 0, allHaveCostBasis: true },
+    );
+    const avgCostBasis =
+      totals.allHaveCostBasis && totals.quantity !== 0
+        ? totals.costBasisTotal / totals.quantity
+        : null;
+    return {
+      totalQuantity: totals.quantity,
+      avgCostBasis,
+    };
+  }, [bucketSnapshots]);
+
+  const loadError =
+    !isNew && bucketSnapshots.length === 0 ? "No holdings recorded for this ticker." : "";
+
+  // Per-snapshot edit state — keyed by snapshot_id. We track input values
+  // separately from the snapshot data so edits stay isolated per row.
+  const [snapEdits, setSnapEdits] = useState<
+    Record<string, { quantity: string; costBasis: string; date: string; error: string }>
+  >({});
+
+  useEffect(() => {
+    setSnapEdits((prev) => {
+      const next: typeof prev = {};
+      bucketSnapshots.forEach((snap) => {
+        const id = snap.snapshot.snapshot_id;
+        const existing = prev[id];
+        // Hydrate from snapshot on first mount; preserve in-progress edits
+        // across re-renders triggered by sync (data updates) so the user
+        // doesn't lose typed input.
+        if (existing) {
+          next[id] = existing;
+        } else {
+          next[id] = {
+            quantity:
+              snap.holding.quantity != null ? String(snap.holding.quantity) : "",
+            costBasis:
+              snap.holding.cost_basis != null ? String(snap.holding.cost_basis) : "",
+            date: toIsoDateInput(snap.snapshot.date),
+            error: "",
+          };
+        }
+      });
+      return next;
+    });
+  }, [bucketSnapshots]);
 
   const [form, setForm] = useState<NewHoldingForm>(EMPTY_FORM);
   const [snapshotDateInput, setSnapshotDateInput] = useState(
@@ -203,47 +334,53 @@ export const HoldingProperties = () => {
     goBackToAccount();
   };
 
-  const updateField = useCallback(
-    async (patch: Record<string, unknown>) => {
-      if (!snapshot) return;
-      setEditError("");
+  /** Patch a single underlying snapshot (per-snapshot two-row section). */
+  const updateSnapshot = useCallback(
+    async (snap: HoldingSnapshot, patch: Record<string, unknown>) => {
       const r = await call
         .post<HoldingSnapshotPostResponse>("/api/snapshots/holding", {
-          snapshot_id: snapshot.snapshot.snapshot_id,
+          snapshot_id: snap.snapshot.snapshot_id,
           ...patch,
         })
         .catch(console.error);
       if (r?.status !== "success" || !r.body) {
-        setEditError(r?.message || "Failed to update holding");
+        setSnapEdits((prev) => ({
+          ...prev,
+          [snap.snapshot.snapshot_id]: {
+            ...(prev[snap.snapshot.snapshot_id] ?? {
+              quantity: "",
+              costBasis: "",
+              date: "",
+              error: "",
+            }),
+            error: r?.message || "Failed to update holding",
+          },
+        }));
         return;
       }
-      // Client-side propagation: merge the patch into the existing snapshot
-      // and write it back to appContext.data. The calculation hooks
-      // (`getHoldingsValueData` etc.) re-derive value / G/L / totals from
-      // there, so no full `/api/snapshots` re-sync is needed.
       const { snapshot_id: returnedSnapshotId, security_id: returnedSecurityId } = r.body;
       const nextHolding = new Holding({
-        ...snapshot.holding,
+        ...snap.holding,
         security_id: returnedSecurityId,
-        quantity: "quantity" in patch ? (patch.quantity as number) : snapshot.holding.quantity,
+        quantity: "quantity" in patch ? (patch.quantity as number) : snap.holding.quantity,
         cost_basis:
-          "cost_basis" in patch ? (patch.cost_basis as number | null) : snapshot.holding.cost_basis,
+          "cost_basis" in patch ? (patch.cost_basis as number | null) : snap.holding.cost_basis,
         institution_price:
           "institution_price" in patch
             ? (patch.institution_price as number)
-            : snapshot.holding.institution_price,
+            : snap.holding.institution_price,
         institution_value:
           "institution_value" in patch
             ? (patch.institution_value as number)
-            : snapshot.holding.institution_value,
+            : snap.holding.institution_value,
       });
       const nextDate =
         "snapshot_date" in patch && typeof patch.snapshot_date === "string"
           ? new Date(patch.snapshot_date).toISOString()
-          : snapshot.snapshot.date;
+          : snap.snapshot.date;
       const nextSnapshot = new HoldingSnapshot({
         snapshot: new Snapshot({ snapshot_id: returnedSnapshotId, date: nextDate }),
-        user: snapshot.user,
+        user: snap.user,
         holding: nextHolding,
       });
       setData((oldData) => {
@@ -255,62 +392,66 @@ export const HoldingProperties = () => {
         return newData;
       });
     },
-    [snapshot, setData],
+    [setData],
   );
 
-  const onBlurTicker = async () => {
-    const next = editTicker.trim().toUpperCase();
-    if (!snapshot || !next) return;
-    if (next === (security?.ticker_symbol || "").toUpperCase()) return;
-    await updateField({ ticker_symbol: next });
-  };
-
-  const onBlurQuantity = async () => {
-    if (!snapshot) return;
-    const parsed = parseFloat(editQuantity);
+  const onBlurQuantity = (snap: HoldingSnapshot, raw: string) => async () => {
+    const parsed = parseFloat(raw);
     if (Number.isNaN(parsed)) {
-      setEditError("Quantity must be a number");
+      setSnapEdits((prev) => ({
+        ...prev,
+        [snap.snapshot.snapshot_id]: {
+          ...prev[snap.snapshot.snapshot_id],
+          error: "Quantity must be a number",
+        },
+      }));
       return;
     }
-    if (parsed === snapshot.holding.quantity) return;
-    await updateField({ quantity: parsed });
+    if (parsed === snap.holding.quantity) return;
+    await updateSnapshot(snap, { quantity: parsed });
   };
 
-  const onBlurCostBasis = async () => {
-    if (!snapshot) return;
-    if (editCostBasis.trim() === "") {
-      if (snapshot.holding.cost_basis == null) return;
-      await updateField({ cost_basis: null });
+  const onBlurCostBasis = (snap: HoldingSnapshot, raw: string) => async () => {
+    if (raw.trim() === "") {
+      if (snap.holding.cost_basis == null) return;
+      await updateSnapshot(snap, { cost_basis: null });
       return;
     }
-    const parsed = parseFloat(editCostBasis);
+    const parsed = parseFloat(raw);
     if (Number.isNaN(parsed)) {
-      setEditError("Cost basis must be a number");
+      setSnapEdits((prev) => ({
+        ...prev,
+        [snap.snapshot.snapshot_id]: {
+          ...prev[snap.snapshot.snapshot_id],
+          error: "Cost basis must be a number",
+        },
+      }));
       return;
     }
-    if (parsed === snapshot.holding.cost_basis) return;
-    await updateField({ cost_basis: parsed });
+    if (parsed === snap.holding.cost_basis) return;
+    await updateSnapshot(snap, { cost_basis: parsed });
   };
 
-  const onBlurDate = async () => {
-    if (!snapshot || !editDate) return;
-    if (editDate === toIsoDateInput(snapshot.snapshot.date)) return;
-    await updateField({ snapshot_date: editDate });
+  const onBlurDate = (snap: HoldingSnapshot, raw: string) => async () => {
+    if (!raw) return;
+    if (raw === toIsoDateInput(snap.snapshot.date)) return;
+    await updateSnapshot(snap, { snapshot_date: raw });
   };
 
-  const onClickDelete = async () => {
-    if (!snapshot) return;
+  const onClickDeleteSnap = (snap: HoldingSnapshot) => async () => {
     if (!window.confirm("Remove this holding snapshot?")) return;
-    const removedId = snapshot.snapshot.snapshot_id;
-    const r = await call
-      .delete(`/api/snapshots/holding?id=${removedId}`)
-      .catch(console.error);
+    const removedId = snap.snapshot.snapshot_id;
+    const r = await call.delete(`/api/snapshots/holding?id=${removedId}`).catch(console.error);
     if (r?.status !== "success") {
-      setEditError(r?.message || "Failed to delete holding");
+      setSnapEdits((prev) => ({
+        ...prev,
+        [removedId]: {
+          ...prev[removedId],
+          error: r?.message || "Failed to delete holding",
+        },
+      }));
       return;
     }
-    // Drop the snapshot from appContext.data + IndexedDB; the composition
-    // table re-renders without this row on the next render pass.
     setData((oldData) => {
       const newData = new Data(oldData);
       indexedDb.remove(StoreName.holdingSnapshots, removedId).catch(console.error);
@@ -319,7 +460,9 @@ export const HoldingProperties = () => {
       newData.holdingSnapshots = next;
       return newData;
     });
-    goBackToAccount();
+    // If we just deleted the last underlying snapshot, the bucket is empty
+    // and there's nothing more to render — go back.
+    if (bucketSnapshots.length <= 1) goBackToAccount();
   };
 
   if (!accountId) {
@@ -430,78 +573,103 @@ export const HoldingProperties = () => {
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Ticker</span>
-          {isReadOnly ? (
-            <span>{editTicker || "—"}</span>
-          ) : (
-            <input
-              type="text"
-              value={editTicker}
-              onChange={(e) => setEditTicker(e.target.value)}
-              onBlur={onBlurTicker}
-              autoCapitalize="characters"
-            />
-          )}
+          <span>{bucketInfo.primaryLabel}</span>
         </div>
-        {security?.name && (
+        {bucketInfo.name && (
           <div className="row keyValue">
             <span className="propertyName">Name</span>
-            <span>{security.name}</span>
+            <span>{bucketInfo.name}</span>
           </div>
         )}
         <div className="row keyValue">
           <span className="propertyName">Quantity</span>
-          {isReadOnly ? (
-            <span>{editQuantity || "—"}</span>
-          ) : (
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={editQuantity}
-              onChange={(e) => setEditQuantity(e.target.value)}
-              onBlur={onBlurQuantity}
-            />
-          )}
+          <span>{numberToCommaString(aggregate.totalQuantity, 4)}</span>
         </div>
         <div className="row keyValue">
-          <span className="propertyName">Cost&nbsp;basis</span>
-          {isReadOnly ? (
-            <span>{editCostBasis || "—"}</span>
-          ) : (
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={editCostBasis}
-              onChange={(e) => setEditCostBasis(e.target.value)}
-              onBlur={onBlurCostBasis}
-            />
-          )}
+          <span className="propertyName">Cost&nbsp;basis&nbsp;(avg)</span>
+          <span>
+            {aggregate.avgCostBasis !== null
+              ? numberToCommaString(aggregate.avgCostBasis, 4)
+              : "—"}
+          </span>
         </div>
-        <div className="row keyValue">
-          <span className="propertyName">Snapshot&nbsp;date</span>
-          {isReadOnly ? (
-            <span>{editDate || "—"}</span>
-          ) : (
-            <input
-              type="date"
-              value={editDate}
-              onChange={(e) => setEditDate(e.target.value)}
-              onBlur={onBlurDate}
-            />
-          )}
-        </div>
-        {editError && <div className="row formError">{editError}</div>}
       </div>
+
+      {bucketSnapshots.map((snap, idx) => {
+        const id = snap.snapshot.snapshot_id;
+        const edit = snapEdits[id] ?? {
+          quantity: "",
+          costBasis: "",
+          date: "",
+          error: "",
+        };
+        const setEdit = (patch: Partial<typeof edit>) =>
+          setSnapEdits((prev) => ({ ...prev, [id]: { ...edit, ...patch } }));
+        return (
+          <div key={id} className="snapshotSection">
+            <div className="propertyLabel">
+              Snapshot&nbsp;{idx + 1}
+              <span className="snapshotMeta">&nbsp;·&nbsp;{toIsoDateInput(snap.snapshot.date)}</span>
+            </div>
+            <div className="property">
+              <div className="row keyValue">
+                <span className="propertyName">Quantity</span>
+                {isReadOnly ? (
+                  <span>{edit.quantity || "—"}</span>
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={edit.quantity}
+                    onChange={(e) => setEdit({ quantity: e.target.value, error: "" })}
+                    onBlur={onBlurQuantity(snap, edit.quantity)}
+                  />
+                )}
+              </div>
+              <div className="row keyValue">
+                <span className="propertyName">Cost&nbsp;basis</span>
+                {isReadOnly ? (
+                  <span>{edit.costBasis || "—"}</span>
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={edit.costBasis}
+                    onChange={(e) => setEdit({ costBasis: e.target.value, error: "" })}
+                    onBlur={onBlurCostBasis(snap, edit.costBasis)}
+                  />
+                )}
+              </div>
+              <div className="row keyValue">
+                <span className="propertyName">Snapshot&nbsp;date</span>
+                {isReadOnly ? (
+                  <span>{edit.date || "—"}</span>
+                ) : (
+                  <input
+                    type="date"
+                    value={edit.date}
+                    onChange={(e) => setEdit({ date: e.target.value, error: "" })}
+                    onBlur={onBlurDate(snap, edit.date)}
+                  />
+                )}
+              </div>
+              {edit.error && <div className="row formError">{edit.error}</div>}
+              {!isReadOnly && (
+                <div className="row button">
+                  <button type="button" className="delete colored" onClick={onClickDeleteSnap(snap)}>
+                    Remove&nbsp;this&nbsp;snapshot
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
       <div className="propertyLabel">&nbsp;</div>
       <div className="property">
-        {!isReadOnly && (
-          <div className="row button">
-            <button type="button" className="delete colored" onClick={onClickDelete}>
-              Remove&nbsp;Holding
-            </button>
-          </div>
-        )}
         <div className="row button">
           <button type="button" onClick={goBackToAccount}>
             Back
