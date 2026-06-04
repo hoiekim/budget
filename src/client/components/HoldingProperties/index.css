@@ -33,3 +33,17 @@
   font-size: 12px;
   padding: 4px 8px;
 }
+
+/* Per-snapshot two-row section under the Holding header in the detail
+ * page. One section per underlying snapshot the ticker bucket contains
+ * (one VOO snapshot from each contributing date, one CASH snapshot per
+ * detected cash position, etc.). */
+.HoldingProperties .snapshotSection {
+  margin-top: 16px;
+}
+
+.HoldingProperties .snapshotSection .snapshotMeta {
+  font-weight: normal;
+  font-size: 12px;
+  opacity: 0.7;
+}
