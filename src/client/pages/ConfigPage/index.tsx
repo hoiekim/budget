@@ -1,13 +1,11 @@
-import { Configuration, PlaidLinkProvider } from "client/components";
-
-import "./index.css";
+import { Configuration, Page, PlaidLinkProvider } from "client/components";
 
 export const ConfigPage = () => {
   return (
     <PlaidLinkProvider>
-      <div className="ConfigPage">
+      <Page className="ConfigPage">
         <Configuration />
-      </div>
+      </Page>
     </PlaidLinkProvider>
   );
 };

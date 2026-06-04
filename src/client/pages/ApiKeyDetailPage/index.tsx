@@ -1,11 +1,9 @@
-import { ApiKeyProperties } from "client/components";
-
-import "./index.css";
+import { ApiKeyProperties, Page } from "client/components";
 
 export const ApiKeyDetailPage = () => {
   return (
-    <div className="ApiKeyDetailPage">
+    <Page className="ApiKeyDetailPage">
       <ApiKeyProperties />
-    </div>
+    </Page>
   );
 };
