@@ -1,11 +1,9 @@
-import { HoldingProperties } from "client/components";
-
-import "./index.css";
+import { HoldingProperties, Page } from "client/components";
 
 export const HoldingDetailPage = () => {
   return (
-    <div className="HoldingDetailPage">
+    <Page className="HoldingDetailPage">
       <HoldingProperties />
-    </div>
+    </Page>
   );
 };
