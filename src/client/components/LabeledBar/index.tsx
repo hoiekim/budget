@@ -66,10 +66,14 @@ export const LabeledBar = ({
   const total = sorted_amount + unsorted_amount;
   const leftover = capacityValue - total;
 
-  // Guard against `/0` — a synced row with zero/no children sets
-  // capacityValue=0, which would produce Infinity ratios that collapse
-  // the bar geometry. Treat zero-capacity like infinite (no fill ratio).
-  const hasFiniteCapacity = !isInfinite && capacityValue !== 0;
+  // Guard against `/0` only for synced rows: a synced row with zero/no
+  // children derives capacityValue=0, and dividing would collapse the bar
+  // geometry, so treat it like infinite (no fill ratio). A NON-synced row
+  // with a literal $0 capacity keeps its pre-existing behavior — `sorted /
+  // 0 → Infinity` renders a full "over" bar with the alert styling — so
+  // this refactor stays exactly numerically neutral for existing rows.
+  const isSyncedRow = barData.getActiveCapacity(date)?.is_synced === true;
+  const hasFiniteCapacity = !isInfinite && !(isSyncedRow && capacityValue === 0);
   const labeledRatio = hasFiniteCapacity ? sorted_amount / capacityValue : undefined;
   const unlabledRatio = hasFiniteCapacity ? unsorted_amount / capacityValue : undefined;
 
