@@ -1,0 +1,93 @@
+/* Canonical Properties shell. Moved from App/index.css 2026-06-04 to
+ * co-locate with the <Properties> / <PropertyLabel> / <Property> / <Row>
+ * components in this directory.
+ *
+ * 🔴 The `> .propertyLabel` / `> .property` selectors are DIRECT-CHILD —
+ * any wrapper between <Properties> and its label/property children strips
+ * the section frame. That's the failure mode #326 / #472 / PR #478 surfaced
+ * and the reason every Properties use must go through the typed component. */
+
+div.Properties {
+  margin-top: 20px;
+}
+
+div.Properties button:disabled {
+  background-color: inherit;
+  color: #474747;
+  border: none;
+}
+
+div.Properties > .propertyLabel {
+  font-size: 14px;
+  padding: 5px;
+}
+
+div.Properties > .property {
+  background-color: #292929;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+div.Properties > .property:not(:last-child) {
+  margin-bottom: 20px;
+}
+
+div.Properties > .property .disabled.lineThrough {
+  color: #858585;
+  text-decoration: line-through;
+}
+
+div.Properties .row {
+  padding: 14px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.Properties .row button.delete {
+  font-weight: 500;
+  color: var(--darkRed);
+}
+
+div.Properties .row:not(:last-child) {
+  border-bottom: 1px solid #474747;
+}
+
+div.Properties .row:first-child {
+  padding-top: 16px;
+}
+
+div.Properties .row:last-child {
+  padding-bottom: 18px;
+}
+
+div.Properties .row span.small {
+  color: #858585;
+  font-size: 12px;
+}
+
+div.Properties .row select {
+  font-size: 14px;
+}
+
+div.Properties .row input {
+  font-size: 16px;
+  height: 18px;
+  text-align: right;
+}
+
+div.Properties .row.keyValue span.propertyName {
+  color: #858585;
+}
+
+div.Properties .row > button {
+  width: 100%;
+  text-align: left;
+  font-size: 16px;
+  margin-left: -4px;
+  background-color: transparent;
+}
+
+div.Properties .row.button:hover {
+  background-color: #383838;
+}

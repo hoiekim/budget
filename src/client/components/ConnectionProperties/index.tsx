@@ -11,6 +11,10 @@ import {
   call,
   InstitutionSpan,
   PlaidLinkButton,
+  Properties,
+  PropertyLabel,
+  Property,
+  Row,
   useAppContext,
   indexedDb,
   StoreName,
@@ -35,9 +39,7 @@ export const ConnectionProperties = ({ item }: Props) => {
       let propertyLabel = isManualItem ? "Manual Account" : "Connected Account";
       if (length > 1) propertyLabel += ` ${i + 1}`;
       return [
-        <div className="propertyLabel" key={`${id}_label`}>
-          {propertyLabel}
-        </div>,
+        <PropertyLabel key={`${id}_label`}>{propertyLabel}</PropertyLabel>,
         <ConnectedAccountRow key={id} item={item} account={account} />,
       ];
     });
@@ -126,48 +128,48 @@ export const ConnectionProperties = ({ item }: Props) => {
   };
 
   return (
-    <div className="ConnectionProperties Properties">
-      <div className="propertyLabel">Connection&nbsp;Detail</div>
-      <div className="property">
+    <Properties className="ConnectionProperties">
+      <PropertyLabel>Connection&nbsp;Detail</PropertyLabel>
+      <Property>
         {!!institution_id && (
-          <div className="row keyValue">
+          <Row className="keyValue">
             <span className="propertyName">Institution</span>
             <InstitutionSpan institution_id={institution_id} />
-          </div>
+          </Row>
         )}
-        <div className="row keyValue">
+        <Row className="keyValue">
           <span className="propertyName">Last&nbsp;Updated</span>
           <span>{updated || "Unknown"}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Status</span>
           <span>{status ? toTitleCase(status) : "Unknown"}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Connection&nbsp;Provider</span>
           <span>{toUpperCamelCase(provider)}</span>
-        </div>
-      </div>
+        </Row>
+      </Property>
       {accountRows}
-      <div className="propertyLabel">&nbsp;</div>
-      <div className="property">
+      <PropertyLabel>&nbsp;</PropertyLabel>
+      <Property>
         {provider === ItemProvider.PLAID && (
-          <div className="row button">
+          <Row className="button">
             <PlaidLinkButton item={item}>Update</PlaidLinkButton>
-          </div>
+          </Row>
         )}
         {provider === ItemProvider.MANUAL ? (
-          <div className="row button">
+          <Row className="button">
             <button onClick={onClickAddManualAccount}>Add&nbsp;Account</button>
-          </div>
+          </Row>
         ) : (
-          <div className="row button">
+          <Row className="button">
             <button className="delete colored" onClick={onClickRemove}>
               Delete
             </button>
-          </div>
+          </Row>
         )}
-      </div>
-    </div>
+      </Property>
+    </Properties>
   );
 };

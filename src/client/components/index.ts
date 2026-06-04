@@ -1,5 +1,6 @@
 export * from "./App";
 export * from "./Page";
+export * from "./Properties";
 export * from "./HoldingProperties";
 export * from "./ErrorBoundary";
 export * from "./PlaidLinkContext";
