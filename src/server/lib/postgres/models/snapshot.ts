@@ -206,6 +206,12 @@ export const snapshotsTable = createTable({
     { column: SNAPSHOT_DATE },
     { column: ACCOUNT_ID },
     { column: SECURITY_ID },
+    // Covers per-account holding-snapshot fetches in both `searchSnapshots`
+    // (when caller narrows by account) and `getHoldingSnapshots`. Without
+    // this, the WHERE-on-holding_account_id falls back to a user_id-index
+    // scan + row filter — fine for low-cardinality users but slows down
+    // as snapshot history grows. See PR #470 / #445.
+    { column: HOLDING_ACCOUNT_ID },
   ],
   ModelClass: SnapshotModel,
 });

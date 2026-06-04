@@ -12,7 +12,9 @@ import {
   SNAPSHOT_TYPE,
   SNAPSHOT_DATE,
   ACCOUNT_ID,
+  HOLDING_ACCOUNT_ID,
   SECURITY_ID,
+  HOLDING_SECURITY_ID,
   USER_ID,
 } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
@@ -82,6 +84,49 @@ export const searchSnapshots = async (
   });
   const userResult = await pool.query<Record<string, unknown>>(userScoped.sql, userScoped.values);
 
+  // Holding snapshots store the account in `holding_account_id` and leave
+  // `account_id` NULL — so the `account_id`-filtered query above never
+  // returns them. When the caller narrows by account (single or list) AND
+  // the requested type is `holding` or unspecified, run a second query
+  // keyed on `holding_account_id` and union the results. Mirrors how the
+  // security-snapshot branch below works around the same single-table-
+  // multiple-row-shapes problem.
+  //
+  // Without this branch, `data.holdingSnapshots` is empty for every
+  // user (sync.ts calls /api/snapshots per-account, month-sliced —
+  // post-PR #364), which silently breaks Holdings Composition,
+  // Investment Performance MWR's snapshot anchor, and the holding-snap
+  // balance fallback. See #445.
+  const wantsHoldingByAccount =
+    (!options.snapshot_type || options.snapshot_type === "holding") &&
+    (options.account_id || options.account_ids?.length);
+  const holdingByAccountRows: Record<string, unknown>[] = [];
+  if (wantsHoldingByAccount) {
+    const holdingScoped = buildSelectWithFilters(SNAPSHOTS, "*", {
+      user_id: user?.user_id,
+      filters: {
+        [SNAPSHOT_TYPE]: "holding",
+        [HOLDING_ACCOUNT_ID]: options.account_id,
+        // Holding rows store the security in `holding_security_id`; the
+        // `security_id` column is NULL for them. Filtering by `SECURITY_ID`
+        // here would match zero rows (latent for any future caller that
+        // passes both `account_id` and `security_id`).
+        [HOLDING_SECURITY_ID]: options.security_id,
+      },
+      inFilters: options.account_ids?.length
+        ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
+        : undefined,
+      dateRange,
+      orderBy: `${SNAPSHOT_DATE} DESC`,
+      limit: options.limit,
+    });
+    const holdingResult = await pool.query<Record<string, unknown>>(
+      holdingScoped.sql,
+      holdingScoped.values,
+    );
+    holdingByAccountRows.push(...holdingResult.rows);
+  }
+
   // Security snapshots only make sense when the caller isn't narrowing to a
   // specific account or a non-security snapshot_type. Skip the second query
   // in those cases to keep the response shape consistent with the request.
@@ -90,7 +135,7 @@ export const searchSnapshots = async (
     !options.account_id &&
     !options.account_ids?.length;
   if (!wantsSecurity) {
-    return userResult.rows.map(rowToSnapshot);
+    return [...userResult.rows, ...holdingByAccountRows].map(rowToSnapshot);
   }
 
   const globalSecurity = buildSelectWithFilters(SNAPSHOTS, "*", {
@@ -131,7 +176,11 @@ export const searchSnapshots = async (
     return snap;
   });
 
-  return [...userResult.rows.map(rowToSnapshot), ...enrichedSecuritySnapshots];
+  return [
+    ...userResult.rows.map(rowToSnapshot),
+    ...holdingByAccountRows.map(rowToSnapshot),
+    ...enrichedSecuritySnapshots,
+  ];
 };
 
 export const getSecuritySnapshots = async (
