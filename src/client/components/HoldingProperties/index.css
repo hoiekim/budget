@@ -34,15 +34,11 @@
   padding: 4px 8px;
 }
 
-/* Per-snapshot two-row section under the Holding header in the detail
- * page. One section per underlying snapshot the ticker bucket contains
- * (one VOO snapshot from each contributing date, one CASH snapshot per
- * detected cash position, etc.). */
-.HoldingProperties .snapshotSection {
-  margin-top: 16px;
-}
-
-.HoldingProperties .snapshotSection .snapshotMeta {
+/* Date suffix inside a per-snapshot `.propertyLabel`. The label itself
+ * picks up the canonical `div.Properties > .propertyLabel` styling because
+ * the snapshot's label + property are rendered as direct children of the
+ * `.HoldingProperties Properties` root (no wrapper). */
+.HoldingProperties .propertyLabel .snapshotMeta {
   font-weight: normal;
   font-size: 12px;
   opacity: 0.7;
