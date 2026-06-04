@@ -217,13 +217,16 @@ export const inferCostBasis = ({
       totalCost += cost;
       totalQuantity += quantity;
     } else if (type === InvestmentTransactionType.Sell) {
-      // SELL: reduce quantity using average cost
-      // Average cost per share = totalCost / totalQuantity
+      // SELL: reduce quantity using average cost.
+      // Plaid encodes sell quantities as NEGATIVE, so take the magnitude —
+      // otherwise `-= quantity` would ADD shares and basis back instead of
+      // removing them (cf. benchmark.ts, which already uses -Math.abs for sells).
       if (totalQuantity > 0) {
+        const soldQuantity = Math.abs(quantity);
         const avgCost = totalCost / totalQuantity;
-        const soldCost = avgCost * quantity;
+        const soldCost = avgCost * soldQuantity;
         totalCost -= soldCost;
-        totalQuantity -= quantity;
+        totalQuantity -= soldQuantity;
 
         // Prevent negative from rounding errors
         if (totalQuantity < 0) totalQuantity = 0;
