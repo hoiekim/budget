@@ -1,5 +1,5 @@
 import { ChangeEventHandler, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
-import { ItemProvider, ViewDate } from "common";
+import { ItemProvider, numberToCommaString, ViewDate } from "common";
 import {
   call,
   PATH,
@@ -33,24 +33,14 @@ interface NewHoldingForm {
 
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
 
-const truncateSecurityId = (id: string) => id.slice(0, 6);
-
 interface SecurityInfo {
   security_id: string | null;
   ticker_symbol: string | null;
   name: string | null;
 }
 
-/** FE cash-detection — mirrors the heuristic in
- *  `src/client/lib/hooks/calculation/holdings.ts:322`. Keeps the ticker
- *  detail page's bucketing consistent with the table's. */
-const isCashSnapshot = (snap: HoldingSnapshot): boolean => {
-  const { institution_price, cost_basis } = snap.holding;
-  return institution_price === 1 && (cost_basis === null || cost_basis === 0);
-};
-
 export const HoldingProperties = () => {
-  const { router, viewDate, data, setData } = useAppContext();
+  const { router, viewDate, data, setData, calculations } = useAppContext();
   const { path, params, transition } = router;
   const activeParams = path === PATH.HOLDING_DETAIL ? params : transition.incomingParams;
 
@@ -70,51 +60,63 @@ export const HoldingProperties = () => {
   const isCurrentViewDate = viewDate.getEndDate() >= latestViewDate.getEndDate();
   const isReadOnly = !isManualAccount && isCurrentViewDate;
 
-  // Resolve every active holding snapshot for (this account, this ticker)
-  // whose snapshot_date is at-or-before the current viewDate. Take the
-  // latest snapshot per security_id — the per-snapshot two-row sections
-  // render one entry per distinct (account, security_id) the bucket
-  // contains. This mirrors HoldingsComposition's bucketing.
-  const tickerKey = ticker.toUpperCase();
+  // Resolve which (account, security_id) entries belong to this ticker
+  // bucket — single source of truth = `holdingsValueData.getHoldingsForAccount`,
+  // the same hook HoldingsComposition uses. Then look up the LATEST holding
+  // snapshot per security_id (≤ viewDate) so each per-security row in the
+  // bucket gets an editable underlying snapshot. Using `holdingsValueData`
+  // here keeps the detail page's contributing set strictly equal to the
+  // table's bucket members — without it, the detail page could pull in
+  // snapshots the table excluded (or miss snapshots the table included).
+  // The `?ticker=` URL param holds the canonical bucket key as produced by
+  // HoldingsComposition: an uppercased real ticker, `__CASH__`, or a raw
+  // (case-preserved) security_id for no-ticker fallback. Don't uppercase
+  // here — that would corrupt the security_id case in the fallback path.
+  const tickerKey = ticker;
   const viewEndDate = viewDate.getEndDate();
+  const { holdingsValueData } = calculations;
+
   const bucketSnapshots = useMemo<HoldingSnapshot[]>(() => {
     if (isNew) return [];
-    // Latest snapshot per security_id within this account that matches the
-    // ticker bucket. We walk holdingSnapshots and keep the one with the
-    // newest snapshot.date for each security_id.
-    const latestPerSecurity = new Map<string, HoldingSnapshot>();
-    data.holdingSnapshots.forEach((snap) => {
-      if (snap.holding.account_id !== accountId) return;
-      // Snapshot date must be on or before viewDate (history view).
-      const snapDate = new Date(snap.snapshot.date);
-      if (snapDate > viewEndDate) return;
 
-      // Resolve the snapshot's security metadata to decide bucket fit.
-      const securityId = snap.holding.security_id;
+    // Step 1: identify which (account, security_id) pairs the calculation
+    // hook would aggregate into this ticker bucket. Same rule as
+    // HoldingsComposition: real ticker wins, `__CASH__` reserved for cash,
+    // non-cash row with ticker `__CASH__` falls back to full security_id.
+    const bucketSecurityIds = new Set<string>();
+    const holdingIds = holdingsValueData.getHoldingsForAccount(accountId);
+    holdingIds.forEach((holdingId) => {
+      const summary = holdingsValueData.getHistory(holdingId).get(viewEndDate);
+      if (!summary || summary.value === 0) return;
       const securityMatch = data.securitySnapshots.find(
-        (s) => s.security.security_id === securityId,
+        (s) => s.security.security_id === summary.security_id,
       );
       const snapTicker = securityMatch?.security.ticker_symbol?.toUpperCase() ?? null;
-      const isCash = isCashSnapshot(snap);
-
-      // Bucket-match rule mirrors HoldingsComposition: `__CASH__` is
-      // reserved for `isCash` regardless of ticker; for non-cash, a real
-      // ticker that happens to be "__CASH__" falls back to truncated
-      // security_id rather than colliding with the cash bucket.
+      const isCash = summary.isCash;
       const snapBucket = isCash
         ? CASH_TICKER
         : snapTicker && snapTicker !== CASH_TICKER
           ? snapTicker
-          : truncateSecurityId(securityId);
-      if (snapBucket !== tickerKey) return;
+          : summary.security_id;
+      if (snapBucket === tickerKey) bucketSecurityIds.add(summary.security_id);
+    });
 
-      const existing = latestPerSecurity.get(securityId);
+    // Step 2: for each contributing security_id, find the latest snapshot
+    // (date ≤ viewEndDate) so the per-snapshot section can render an
+    // editable form. One section per security_id; the freshest snapshot
+    // wins when multiple exist on the same date.
+    const latestPerSecurity = new Map<string, HoldingSnapshot>();
+    data.holdingSnapshots.forEach((snap) => {
+      if (snap.holding.account_id !== accountId) return;
+      if (!bucketSecurityIds.has(snap.holding.security_id)) return;
+      const snapDate = new Date(snap.snapshot.date);
+      if (snapDate > viewEndDate) return;
+      const existing = latestPerSecurity.get(snap.holding.security_id);
       if (!existing || new Date(existing.snapshot.date) < snapDate) {
-        latestPerSecurity.set(securityId, snap);
+        latestPerSecurity.set(snap.holding.security_id, snap);
       }
     });
-    // Return in stable order — latest snapshot date first so the user sees
-    // the freshest position at the top.
+
     return Array.from(latestPerSecurity.values()).sort(
       (a, b) => new Date(b.snapshot.date).getTime() - new Date(a.snapshot.date).getTime(),
     );
@@ -122,6 +124,7 @@ export const HoldingProperties = () => {
     accountId,
     data.holdingSnapshots,
     data.securitySnapshots,
+    holdingsValueData,
     isNew,
     tickerKey,
     viewEndDate,
@@ -174,7 +177,6 @@ export const HoldingProperties = () => {
         : null;
     return {
       totalQuantity: totals.quantity,
-      totalCostBasis: totals.allHaveCostBasis ? totals.costBasisTotal : null,
       avgCostBasis,
     };
   }, [bucketSnapshots]);
@@ -581,13 +583,13 @@ export const HoldingProperties = () => {
         )}
         <div className="row keyValue">
           <span className="propertyName">Quantity</span>
-          <span>{aggregate.totalQuantity}</span>
+          <span>{numberToCommaString(aggregate.totalQuantity, 4)}</span>
         </div>
         <div className="row keyValue">
           <span className="propertyName">Cost&nbsp;basis&nbsp;(avg)</span>
           <span>
             {aggregate.avgCostBasis !== null
-              ? aggregate.avgCostBasis.toFixed(4)
+              ? numberToCommaString(aggregate.avgCostBasis, 4)
               : "—"}
           </span>
         </div>

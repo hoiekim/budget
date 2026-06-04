@@ -146,14 +146,15 @@ export const HoldingsComposition = ({ account }: Props) => {
     perSecurityRows.forEach((row) => {
       // Cash always wins the bucket; the `__CASH__` pseudo is reserved.
       // For a (very unlikely) real security whose `ticker_symbol === "__CASH__"`,
-      // the non-cash path falls back to the truncated security_id rather
-      // than colliding with the cash bucket.
+      // the non-cash path falls back to the FULL security_id (not truncated
+      // — two distinct security_ids whose first 6 chars happen to match
+      // would otherwise silently merge into one bucket).
       const tickerUpper = row.ticker?.toUpperCase() ?? null;
       const bucketKey = row.isCash
         ? CASH_TICKER
         : tickerUpper && tickerUpper !== CASH_TICKER
           ? tickerUpper
-          : truncateSecurityId(row.securityId);
+          : row.securityId;
       const existing = buckets.get(bucketKey);
       if (!existing) {
         buckets.set(bucketKey, {
