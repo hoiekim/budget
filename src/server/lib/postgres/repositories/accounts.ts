@@ -9,6 +9,7 @@ import {
   snapshotsTable,
   holdingsTable,
   ACCOUNT_ID,
+  HOLDING_ACCOUNT_ID,
   USER_ID,
   ITEM_ID,
   INSTITUTION_ID,
@@ -131,7 +132,11 @@ export const deleteAccounts = async (
         client,
       );
       await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      // Account-balance snapshots store the account in `account_id`; holding
+      // snapshots store it in `holding_account_id` (their `account_id` is NULL).
+      // Soft-delete both so deleting an account leaves no orphaned holding history.
       await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, account_id, user_id, client);
       await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
     }
 

@@ -19,8 +19,14 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { getAccounts, getAccount, searchAccounts, searchAccountsById, upsertAccounts } =
-  await import("./accounts");
+const {
+  getAccounts,
+  getAccount,
+  searchAccounts,
+  searchAccountsById,
+  upsertAccounts,
+  deleteAccounts,
+} = await import("./accounts");
 
 afterAll(restoreLeaves);
 
@@ -237,5 +243,31 @@ describe("upsertAccounts", () => {
     const result = await upsertAccounts(testUser, accounts);
     expect(result).toHaveLength(3);
     expect(result.every((r: { status: number }) => r.status === 200)).toBe(true);
+  });
+});
+
+describe("deleteAccounts", () => {
+  test("returns deleted: 0 without querying for empty input", async () => {
+    const result = await deleteAccounts(testUser, []);
+    expect(result).toEqual({ deleted: 0 });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test("soft-deletes snapshots by BOTH account_id and holding_account_id (#474)", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    await deleteAccounts(testUser, ["acc-del"]);
+
+    // Account-balance snapshots live under `account_id`; holding snapshots
+    // live under `holding_account_id` (their `account_id` is NULL). Both
+    // passes must fire or the holding-snapshot history is orphaned.
+    const snapshotDeletes = mockQuery.mock.calls
+      .map(([sql]) => sql)
+      .filter(
+        (sql): sql is string =>
+          typeof sql === "string" && /UPDATE\s+snapshots\b/i.test(sql) && /is_deleted/i.test(sql),
+      );
+
+    expect(snapshotDeletes.some((sql) => /WHERE\s+account_id\s*=/i.test(sql))).toBe(true);
+    expect(snapshotDeletes.some((sql) => /WHERE\s+holding_account_id\s*=/i.test(sql))).toBe(true);
   });
 });
