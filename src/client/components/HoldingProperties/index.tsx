@@ -1,4 +1,4 @@
-import { ChangeEventHandler, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEventHandler, Fragment, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
 import { ItemProvider, numberToCommaString, ViewDate } from "common";
 import {
   call,
@@ -605,8 +605,16 @@ export const HoldingProperties = () => {
         };
         const setEdit = (patch: Partial<typeof edit>) =>
           setSnapEdits((prev) => ({ ...prev, [id]: { ...edit, ...patch } }));
+        // Render the propertyLabel + property as DIRECT children of the
+        // `.HoldingProperties Properties` root — the canonical Properties
+        // shell rules use `div.Properties > .propertyLabel` and
+        // `div.Properties > .property` (direct-child selectors), so wrapping
+        // them in another <div> strips the background, border-radius,
+        // bottom-margin, label font-sizing, and first/last row padding.
+        // Use `<Fragment>` to give the map element a key without adding
+        // a DOM wrapper.
         return (
-          <div key={id} className="snapshotSection">
+          <Fragment key={id}>
             <div className="propertyLabel">
               Snapshot&nbsp;{idx + 1}
               <span className="snapshotMeta">&nbsp;·&nbsp;{toIsoDateInput(snap.snapshot.date)}</span>
@@ -664,7 +672,7 @@ export const HoldingProperties = () => {
                 </div>
               )}
             </div>
-          </div>
+          </Fragment>
         );
       })}
 
