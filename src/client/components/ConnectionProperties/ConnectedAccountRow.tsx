@@ -1,6 +1,6 @@
 import { MouseEventHandler } from "react";
 import { ItemProvider, toTitleCase } from "common";
-import { Account, Item, PATH, useAppContext } from "client";
+import { Account, Item, PATH, Property, Row, useAppContext } from "client";
 
 interface Props {
   item: Item;
@@ -20,24 +20,24 @@ export const ConnectedAccountRow = ({ item, account }: Props) => {
   };
 
   return (
-    <div className="property">
-      <div className="row keyValue">
+    <Property>
+      <Row className="keyValue">
         <span className="propertyName">Name</span>
         <span>{custom_name || name}</span>
-      </div>
-      <div className="row keyValue">
+      </Row>
+      <Row className="keyValue">
         <span className="propertyName">Type</span>
         <span>{toTitleCase(type)}</span>
-      </div>
+      </Row>
       {!isManualItem && !!subtype && (
-        <div className="row keyValue">
+        <Row className="keyValue">
           <span className="propertyName">Subtype</span>
           <span>{toTitleCase(subtype)}</span>
-        </div>
+        </Row>
       )}
-      <div className="row button">
+      <Row className="button">
         <button onClick={onClickDetails}>See&nbsp;Details</button>
-      </div>
-    </div>
+      </Row>
+    </Property>
   );
 };

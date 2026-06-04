@@ -9,6 +9,10 @@ import {
   Holding,
   HoldingSnapshot,
   HoldingSnapshotDictionary,
+  Properties,
+  PropertyLabel,
+  Property,
+  Row,
   indexedDb,
   StoreName,
 } from "client";
@@ -467,133 +471,139 @@ export const HoldingProperties = () => {
 
   if (!accountId) {
     return (
-      <div className="HoldingProperties Properties">
-        <div className="propertyLabel">Holding</div>
-        <div className="property">
-          <div className="row keyValue">
+      <Properties className="HoldingProperties">
+        <PropertyLabel>Holding</PropertyLabel>
+        <Property>
+          <Row className="keyValue">
             <span className="propertyName">Missing&nbsp;account&nbsp;context</span>
             <span></span>
-          </div>
-        </div>
-      </div>
+          </Row>
+        </Property>
+      </Properties>
     );
   }
 
   if (isNew) {
     return (
-      <div className="HoldingProperties Properties">
-        <div className="propertyLabel">New&nbsp;Holding</div>
-        <form className="property" onSubmit={onSubmitNew}>
-          <div className="row keyValue">
-            <span className="propertyName">Ticker</span>
-            <div className="tickerField">
+      <Properties className="HoldingProperties">
+        <PropertyLabel>New&nbsp;Holding</PropertyLabel>
+        {/* The `<Property>` wrapper keeps the `.property` styling on a
+            direct child of `<Properties>`. The inner `<form>` carries the
+            submit handler but doesn't need any class — `<Row>` rules
+            cascade via descendant selectors. */}
+        <Property>
+          <form onSubmit={onSubmitNew}>
+            <Row className="keyValue">
+              <span className="propertyName">Ticker</span>
+              <div className="tickerField">
+                <input
+                  type="text"
+                  placeholder="e.g. AAPL"
+                  value={form.ticker}
+                  onChange={onChangeField("ticker")}
+                  autoCapitalize="characters"
+                />
+                <button type="button" className="validateBtn" onClick={onValidateTicker}>
+                  {tickerStatus === "validating" ? "…" : "Check"}
+                </button>
+              </div>
+            </Row>
+            {tickerMessage && (
+              <Row className={`tickerFeedback ${tickerStatus}`}>{tickerMessage}</Row>
+            )}
+            <Row className="keyValue">
+              <span className="propertyName">Quantity</span>
               <input
-                type="text"
-                placeholder="e.g. AAPL"
-                value={form.ticker}
-                onChange={onChangeField("ticker")}
-                autoCapitalize="characters"
+                type="number"
+                placeholder="0"
+                min="0"
+                step="any"
+                value={form.quantity}
+                onChange={onChangeField("quantity")}
               />
-              <button type="button" className="validateBtn" onClick={onValidateTicker}>
-                {tickerStatus === "validating" ? "…" : "Check"}
+            </Row>
+            <Row className="keyValue">
+              <span className="propertyName">Cost&nbsp;basis&nbsp;(opt)</span>
+              <input
+                type="number"
+                placeholder="Total $ paid (all shares)"
+                min="0"
+                step="any"
+                value={form.costBasis}
+                onChange={onChangeField("costBasis")}
+              />
+            </Row>
+            <Row className="keyValue">
+              <span className="propertyName">Snapshot&nbsp;date</span>
+              <input
+                type="date"
+                value={snapshotDateInput}
+                onChange={(e) => setSnapshotDateInput(e.target.value)}
+              />
+            </Row>
+            {submitError && <Row className="formError">{submitError}</Row>}
+            <Row className="button">
+              <button type="submit" className="colored">
+                Add
               </button>
-            </div>
-          </div>
-          {tickerMessage && (
-            <div className={`row tickerFeedback ${tickerStatus}`}>{tickerMessage}</div>
-          )}
-          <div className="row keyValue">
-            <span className="propertyName">Quantity</span>
-            <input
-              type="number"
-              placeholder="0"
-              min="0"
-              step="any"
-              value={form.quantity}
-              onChange={onChangeField("quantity")}
-            />
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Cost&nbsp;basis&nbsp;(opt)</span>
-            <input
-              type="number"
-              placeholder="Total $ paid (all shares)"
-              min="0"
-              step="any"
-              value={form.costBasis}
-              onChange={onChangeField("costBasis")}
-            />
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Snapshot&nbsp;date</span>
-            <input
-              type="date"
-              value={snapshotDateInput}
-              onChange={(e) => setSnapshotDateInput(e.target.value)}
-            />
-          </div>
-          {submitError && <div className="row formError">{submitError}</div>}
-          <div className="row button">
-            <button type="submit" className="colored">
-              Add
-            </button>
-          </div>
-          <div className="row button">
-            <button type="button" onClick={goBackToAccount}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
+            </Row>
+            <Row className="button">
+              <button type="button" onClick={goBackToAccount}>
+                Cancel
+              </button>
+            </Row>
+          </form>
+        </Property>
+      </Properties>
     );
   }
 
   if (loadError) {
     return (
-      <div className="HoldingProperties Properties">
-        <div className="propertyLabel">Holding</div>
-        <div className="property">
-          <div className="row formError">{loadError}</div>
-        </div>
-        <div className="propertyLabel">&nbsp;</div>
-        <div className="property">
-          <div className="row button">
+      <Properties className="HoldingProperties">
+        <PropertyLabel>Holding</PropertyLabel>
+        <Property>
+          <Row className="formError">{loadError}</Row>
+        </Property>
+        <PropertyLabel>&nbsp;</PropertyLabel>
+        <Property>
+          <Row className="button">
             <button type="button" onClick={goBackToAccount}>
               Back
             </button>
-          </div>
-        </div>
-      </div>
+          </Row>
+        </Property>
+      </Properties>
     );
   }
 
   return (
-    <div className="HoldingProperties Properties">
-      <div className="propertyLabel">Holding</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties className="HoldingProperties">
+      <PropertyLabel>Holding</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Ticker</span>
           <span>{bucketInfo.primaryLabel}</span>
-        </div>
+        </Row>
         {bucketInfo.name && (
-          <div className="row keyValue">
+          <Row className="keyValue">
             <span className="propertyName">Name</span>
             <span>{bucketInfo.name}</span>
-          </div>
+          </Row>
         )}
-        <div className="row keyValue">
+        <Row className="keyValue">
           <span className="propertyName">Quantity</span>
           <span>{numberToCommaString(aggregate.totalQuantity, 4)}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Cost&nbsp;basis&nbsp;(avg)</span>
           <span>
             {aggregate.avgCostBasis !== null
               ? numberToCommaString(aggregate.avgCostBasis, 4)
               : "—"}
           </span>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
       {bucketSnapshots.map((snap, idx) => {
         const id = snap.snapshot.snapshot_id;
@@ -605,22 +615,17 @@ export const HoldingProperties = () => {
         };
         const setEdit = (patch: Partial<typeof edit>) =>
           setSnapEdits((prev) => ({ ...prev, [id]: { ...edit, ...patch } }));
-        // Render the propertyLabel + property as DIRECT children of the
-        // `.HoldingProperties Properties` root — the canonical Properties
-        // shell rules use `div.Properties > .propertyLabel` and
-        // `div.Properties > .property` (direct-child selectors), so wrapping
-        // them in another <div> strips the background, border-radius,
-        // bottom-margin, label font-sizing, and first/last row padding.
-        // Use `<Fragment>` to give the map element a key without adding
-        // a DOM wrapper.
+        // <Fragment> keeps the per-snapshot <PropertyLabel> + <Property>
+        // pair as DIRECT children of <Properties> — no wrapper div. See
+        // PR #478 for the regression this guards against.
         return (
           <Fragment key={id}>
-            <div className="propertyLabel">
+            <PropertyLabel>
               Snapshot&nbsp;{idx + 1}
               <span className="snapshotMeta">&nbsp;·&nbsp;{toIsoDateInput(snap.snapshot.date)}</span>
-            </div>
-            <div className="property">
-              <div className="row keyValue">
+            </PropertyLabel>
+            <Property>
+              <Row className="keyValue">
                 <span className="propertyName">Quantity</span>
                 {isReadOnly ? (
                   <span>{edit.quantity || "—"}</span>
@@ -634,8 +639,8 @@ export const HoldingProperties = () => {
                     onBlur={onBlurQuantity(snap, edit.quantity)}
                   />
                 )}
-              </div>
-              <div className="row keyValue">
+              </Row>
+              <Row className="keyValue">
                 <span className="propertyName">Cost&nbsp;basis</span>
                 {isReadOnly ? (
                   <span>{edit.costBasis || "—"}</span>
@@ -649,8 +654,8 @@ export const HoldingProperties = () => {
                     onBlur={onBlurCostBasis(snap, edit.costBasis)}
                   />
                 )}
-              </div>
-              <div className="row keyValue">
+              </Row>
+              <Row className="keyValue">
                 <span className="propertyName">Snapshot&nbsp;date</span>
                 {isReadOnly ? (
                   <span>{edit.date || "—"}</span>
@@ -662,28 +667,28 @@ export const HoldingProperties = () => {
                     onBlur={onBlurDate(snap, edit.date)}
                   />
                 )}
-              </div>
-              {edit.error && <div className="row formError">{edit.error}</div>}
+              </Row>
+              {edit.error && <Row className="formError">{edit.error}</Row>}
               {!isReadOnly && (
-                <div className="row button">
+                <Row className="button">
                   <button type="button" className="delete colored" onClick={onClickDeleteSnap(snap)}>
                     Remove&nbsp;this&nbsp;snapshot
                   </button>
-                </div>
+                </Row>
               )}
-            </div>
+            </Property>
           </Fragment>
         );
       })}
 
-      <div className="propertyLabel">&nbsp;</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>&nbsp;</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button type="button" onClick={goBackToAccount}>
             Back
           </button>
-        </div>
-      </div>
-    </div>
+        </Row>
+      </Property>
+    </Properties>
   );
 };
