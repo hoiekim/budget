@@ -52,6 +52,7 @@ import {
   Institution,
   useDebounce,
   indexedDb,
+  StoreName,
   HoldingDictionary,
   Holding,
   SecurityDictionary,
@@ -311,6 +312,23 @@ const fetchSnapshots = async (
   };
 
   const ingestSnapshot = (snapshot: JSONSnapshotData) => {
+    // Tombstone — the server marked this row `is_deleted=true`. Skip
+    // the dict insert AND evict the id from IDB so the persistent store
+    // converges with the server. Without this, additive `saveAllData`
+    // can leave a stale row behind whenever the deletion was made on a
+    // different device (or the local delete handler's `indexedDb.remove`
+    // call lost the race against an in-flight sync).
+    if (snapshot.snapshot.is_deleted) {
+      const id = snapshot.snapshot.snapshot_id;
+      const store =
+        "account" in snapshot
+          ? StoreName.accountSnapshots
+          : "holding" in snapshot
+            ? StoreName.holdingSnapshots
+            : StoreName.securitySnapshots;
+      indexedDb.remove(store, id).catch(console.error);
+      return;
+    }
     if ("account" in snapshot) {
       const account = accounts.get(snapshot.account.account_id) || {};
       snapshot.account = { ...account, ...snapshot.account };

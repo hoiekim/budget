@@ -11,6 +11,7 @@ import {
   SNAPSHOT_ID,
   SNAPSHOT_TYPE,
   SNAPSHOT_DATE,
+  UPDATED,
   ACCOUNT_ID,
   HOLDING_ACCOUNT_ID,
   SECURITY_ID,
@@ -29,6 +30,12 @@ export interface SearchSnapshotsOptions {
   startDate?: string;
   endDate?: string;
   limit?: number;
+  /** When true, soft-deleted (`is_deleted = TRUE`) rows are INCLUDED in
+   *  the response so the client can treat them as tombstones and
+   *  evict them from its local cache (IDB + in-memory dict). Defaults
+   *  to `false` for backward compatibility with consumers that expect
+   *  active-only rows. */
+  includeDeleted?: boolean;
 }
 
 export interface SecuritySnapshot {
@@ -65,9 +72,17 @@ export const searchSnapshots = async (
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {},
 ): Promise<JSONSnapshotData[]> => {
+  // Filter by `updated`, not `snapshot_date` — matches the transactions
+  // repository (`{ column: UPDATED, ... }`). Soft-deletes and edits bump
+  // the row's `updated` timestamp, so any change surfaces in the latest
+  // month's live query (the FE always live-fetches the current month).
+  // Without this, a snapshot deleted today but originally dated months
+  // ago stays bound to its old month — which is the cachedCall layer's
+  // frozen response — so the deletion never propagates to clients that
+  // already populated IDB from the cold sync.
   const dateRange =
     options.startDate || options.endDate
-      ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+      ? { column: UPDATED, start: options.startDate, end: options.endDate }
       : undefined;
 
   const userScoped = buildSelectWithFilters(SNAPSHOTS, "*", {
@@ -81,6 +96,7 @@ export const searchSnapshots = async (
     dateRange,
     orderBy: `${SNAPSHOT_DATE} DESC`,
     limit: options.limit,
+    excludeDeleted: !options.includeDeleted,
   });
   const userResult = await pool.query<Record<string, unknown>>(userScoped.sql, userScoped.values);
 
@@ -119,6 +135,7 @@ export const searchSnapshots = async (
       dateRange,
       orderBy: `${SNAPSHOT_DATE} DESC`,
       limit: options.limit,
+      excludeDeleted: !options.includeDeleted,
     });
     const holdingResult = await pool.query<Record<string, unknown>>(
       holdingScoped.sql,
@@ -146,6 +163,7 @@ export const searchSnapshots = async (
     dateRange,
     orderBy: `${SNAPSHOT_DATE} DESC`,
     limit: options.limit,
+    excludeDeleted: !options.includeDeleted,
   });
   const securityResult = await pool.query<Record<string, unknown>>(
     globalSecurity.sql,

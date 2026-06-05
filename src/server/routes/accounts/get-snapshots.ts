@@ -38,7 +38,14 @@ export const getSnapshotsRoute = new Route<SnapshotsGetResponse>(
       );
     }
 
-    const options: SearchSnapshotsOptions = {};
+    const options: SearchSnapshotsOptions = {
+      // Include soft-deleted rows as tombstones so the client can evict
+      // them from its local cache (in-memory dict + IDB). Without this
+      // the FE has no signal that a snapshot was deleted on the server,
+      // since the existing IDB persistence layer (`saveAllData`) is
+      // additive — it never DROPS rows not present in a fetch result.
+      includeDeleted: true,
+    };
     if (startResult.data) options.startDate = startResult.data;
     if (endResult.data) options.endDate = endResult.data;
     if (accountResult.data) options.account_id = accountResult.data;
