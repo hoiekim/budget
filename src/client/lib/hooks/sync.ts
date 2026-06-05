@@ -311,22 +311,22 @@ const fetchSnapshots = async (
     networkFailed: false,
   };
 
+  // Tombstones collected from any month's response. Applied at the end
+  // so the eviction wins regardless of which parallel response arrived
+  // last — without this, a tombstone from June's live query loses to a
+  // cached older-month response that still has the row as active.
+  const tombstones = {
+    account: new Set<string>(),
+    holding: new Set<string>(),
+    security: new Set<string>(),
+  };
+
   const ingestSnapshot = (snapshot: JSONSnapshotData) => {
-    // Tombstone — the server marked this row `is_deleted=true`. Skip
-    // the dict insert AND evict the id from IDB so the persistent store
-    // converges with the server. Without this, additive `saveAllData`
-    // can leave a stale row behind whenever the deletion was made on a
-    // different device (or the local delete handler's `indexedDb.remove`
-    // call lost the race against an in-flight sync).
     if (snapshot.snapshot.is_deleted) {
       const id = snapshot.snapshot.snapshot_id;
-      const store =
-        "account" in snapshot
-          ? StoreName.accountSnapshots
-          : "holding" in snapshot
-            ? StoreName.holdingSnapshots
-            : StoreName.securitySnapshots;
-      indexedDb.remove(store, id).catch(console.error);
+      if ("account" in snapshot) tombstones.account.add(id);
+      else if ("holding" in snapshot) tombstones.holding.add(id);
+      else if ("security" in snapshot) tombstones.security.add(id);
       return;
     }
     if ("account" in snapshot) {
@@ -415,6 +415,24 @@ const fetchSnapshots = async (
   }
 
   await Promise.all(promises);
+
+  // Apply tombstones after every parallel ingest has landed: drop the
+  // id from the dict (in case a stale cachedCall response re-added it)
+  // AND evict from IDB. Order matters — the dict-delete must happen
+  // before the consumer hands the dict to `saveAllData`, which would
+  // otherwise persist the stale row right back.
+  tombstones.account.forEach((id) => {
+    result.accountSnapshots.delete(id);
+    indexedDb.remove(StoreName.accountSnapshots, id).catch(console.error);
+  });
+  tombstones.holding.forEach((id) => {
+    result.holdingSnapshots.delete(id);
+    indexedDb.remove(StoreName.holdingSnapshots, id).catch(console.error);
+  });
+  tombstones.security.forEach((id) => {
+    result.securitySnapshots.delete(id);
+    indexedDb.remove(StoreName.securitySnapshots, id).catch(console.error);
+  });
 
   return result;
 };
