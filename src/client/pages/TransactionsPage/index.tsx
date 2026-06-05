@@ -311,9 +311,7 @@ export const TransactionsPage = () => {
             indexedDb.save(updated).catch(console.error);
             newInvest.set(id, updated);
           } else if (existing instanceof SplitTransaction) {
-            const parent = newData.transactions.get(existing.transaction_id);
-            if (!parent) return;
-            const updated = new SplitTransaction(parent);
+            const updated = new SplitTransaction(existing);
             updated.label.category_confidence = 1;
             indexedDb.save(updated).catch(console.error);
             newSplits.set(id, updated);
