@@ -33,6 +33,9 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     return label.budget_id || account?.label.budget_id || "";
   });
   const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
+    // A rejected row keeps its category_id so the merchant signal can learn
+    // the negative (#333), but it must render as uncategorized.
+    if (label.category_confidence === 0) return "";
     return label.category_id || "";
   });
   const [selectedConfidence, setSelectedConfidence] = useState<number | null>(
@@ -138,9 +141,15 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
     if (value === selectedCategoryIdLabel) return;
 
     setSelectedCategoryIdLabel(value);
+    // On reject (cleared to "Select Category") PERSIST the category being
+    // rejected with confidence=0 instead of nulling it, so getMerchantSignal
+    // can count the negative — otherwise the rejected row falls into the
+    // NULL-category bucket and the engine never learns it (#333). The row
+    // still renders uncategorized.
     const nextConfidence = value ? 1 : 0;
+    const nextCategoryId = value || selectedCategoryIdLabel || label.category_id || null;
     const labelQuery = new TransactionLabel({
-      category_id: value || null,
+      category_id: nextCategoryId,
       category_confidence: nextConfidence,
     });
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
@@ -158,7 +167,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
         if (!newTransaction.label.budget_id) {
           newTransaction.label.budget_id = account?.label.budget_id;
         }
-        newTransaction.label.category_id = value || null;
+        newTransaction.label.category_id = nextCategoryId;
         newTransaction.label.category_confidence = nextConfidence;
         indexedDb.save(newTransaction).catch(console.error);
         const newTransactions = new InvestmentTransactionDictionary(newData.investmentTransactions);

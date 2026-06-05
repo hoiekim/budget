@@ -39,6 +39,9 @@ const TransactionRow = ({ transaction }: Props) => {
     return label.budget_id || account?.label.budget_id || "";
   });
   const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
+    // A rejected row keeps its category_id so the merchant signal can learn
+    // the negative (#333), but it must render as uncategorized.
+    if (label.category_confidence === 0) return "";
     return label.category_id || "";
   });
   const categoryConfidence = label.category_confidence ?? null;
@@ -153,9 +156,14 @@ const TransactionRow = ({ transaction }: Props) => {
     // Any user-driven category change resolves the suggestion: 1 = accept
     // (picked a value), 0 = reject (cleared to "Select Category"). Per the
     // JSONTransactionLabel docstring, 1.0 = confirmed and 0.0 = rejected.
+    // On reject we PERSIST the category being rejected (confidence=0) instead
+    // of nulling it, so getMerchantSignal can count the negative — otherwise
+    // the rejected row falls into the NULL-category bucket and the engine
+    // never learns it (#333). The row still renders uncategorized.
     const nextConfidence = value ? 1 : 0;
+    const nextCategoryId = value || selectedCategoryIdLabel || label.category_id || null;
     const labelQuery = new TransactionLabel({
-      category_id: value || null,
+      category_id: nextCategoryId,
       category_confidence: nextConfidence,
     });
     if (!label.budget_id) labelQuery.budget_id = account?.label.budget_id;
@@ -181,7 +189,7 @@ const TransactionRow = ({ transaction }: Props) => {
           if (!newSplitTransaction.label.budget_id) {
             newSplitTransaction.label.budget_id = account?.label.budget_id;
           }
-          newSplitTransaction.label.category_id = value || null;
+          newSplitTransaction.label.category_id = nextCategoryId;
           newSplitTransaction.label.category_confidence = nextConfidence;
           indexedDb.save(newSplitTransaction).catch(console.error);
           const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
@@ -192,7 +200,7 @@ const TransactionRow = ({ transaction }: Props) => {
           if (!newTransaction.label.budget_id) {
             newTransaction.label.budget_id = account?.label.budget_id;
           }
-          newTransaction.label.category_id = value || null;
+          newTransaction.label.category_id = nextCategoryId;
           newTransaction.label.category_confidence = nextConfidence;
           indexedDb.save(newTransaction).catch(console.error);
           const newTransactions = new TransactionDictionary(newData.transactions);

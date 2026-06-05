@@ -52,7 +52,8 @@ export const getBudgetData = (
     // "Unsorted" for the purposes of budget bar graphs / counts is any
     // transaction the user hasn't confirmed. That bundles three states:
     //   - genuinely unlabeled (category_id null, confidence null)
-    //   - explicitly rejected (category_id null, confidence 0)
+    //   - explicitly rejected (category_id set to the rejected category so the
+    //     merchant signal can learn the negative — #333 — with confidence 0)
     //   - auto-suggested but unreviewed (category_id set, 0 < confidence < 1)
     // The unsorted-count and the unsorted-amount-bar reflect "needs my
     // review", not just "literally lacking a category", so the gate is
