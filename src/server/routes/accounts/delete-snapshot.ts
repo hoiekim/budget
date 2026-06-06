@@ -1,4 +1,4 @@
-import { Route, deleteSnapshotById, requireUuidQueryString, validationError } from "server";
+import { Route, deleteSnapshotById, requireQueryString, validationError } from "server";
 
 export const deleteSnapshotRoute = new Route("DELETE", "/snapshot", async (req) => {
   const { user } = req.session;
@@ -9,7 +9,7 @@ export const deleteSnapshotRoute = new Route("DELETE", "/snapshot", async (req) 
     };
   }
 
-  const idResult = requireUuidQueryString(req, "id");
+  const idResult = requireQueryString(req, "id");
   if (!idResult.success) {
     return validationError(idResult.error!);
   }

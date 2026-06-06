@@ -65,8 +65,11 @@ const fakeRes = () =>
     end() {},
   }) as unknown as Parameters<typeof deleteHoldingSnapshotRoute.execute>[1];
 
-const SNAP_ID = "cccccccc-0000-0000-0000-000000000001";
-const SNAP_OTHER = "cccccccc-0000-0000-0000-000000000002";
+// Holding snapshot IDs are deterministic, NOT UUIDs:
+// `holding-${account_id}-${security_id}-${dateString}` (see post-holding-snapshot.ts).
+// The route must accept this real format, so the test pins it.
+const SNAP_ID = "holding-acc-1-sec-1-20260514";
+const SNAP_OTHER = "holding-acc-1-sec-1-20260515";
 
 /**
  * A canned holding-snapshot row matching the projection the route's
