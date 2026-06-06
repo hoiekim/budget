@@ -117,18 +117,6 @@ export const deleteHoldings = async (
   return { deleted };
 };
 
-export const deleteHoldingsByAccount = async (
-  user: MaskedUser,
-  account_id: string,
-): Promise<{ deleted: number }> => {
-  const holdings = await getHoldingsByAccount(user, account_id);
-  if (!holdings.length) return { deleted: 0 };
-  return deleteHoldings(
-    user,
-    holdings.map((h) => h.holding_id),
-  );
-};
-
 export const searchHoldingsByAccountId = async (
   user: MaskedUser,
   account_ids: string[],

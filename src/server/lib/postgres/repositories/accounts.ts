@@ -139,15 +139,3 @@ export const deleteAccounts = async (
     return { deleted };
   });
 };
-
-export const deleteAccountsByItem = async (
-  user: MaskedUser,
-  item_id: string,
-): Promise<{ deleted: number }> => {
-  const accounts = await getAccountsByItem(user, item_id);
-  if (!accounts.length) return { deleted: 0 };
-  return deleteAccounts(
-    user,
-    accounts.map((a) => a.account_id),
-  );
-};

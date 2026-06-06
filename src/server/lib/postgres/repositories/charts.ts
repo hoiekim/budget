@@ -70,15 +70,3 @@ export const updateChart = async (
 export const deleteChart = async (user: MaskedUser, chart_id: string): Promise<boolean> => {
   return await chartsTable.softDelete(chart_id, user.user_id);
 };
-
-export const deleteCharts = async (
-  user: MaskedUser,
-  chart_ids: string[],
-): Promise<{ deleted: number }> => {
-  if (!chart_ids.length) return { deleted: 0 };
-  let deleted = 0;
-  for (const id of chart_ids) {
-    if (await chartsTable.softDelete(id, user.user_id)) deleted++;
-  }
-  return { deleted };
-};
