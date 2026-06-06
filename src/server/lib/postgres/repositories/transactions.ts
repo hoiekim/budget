@@ -167,18 +167,6 @@ export const deleteTransactions = async (
   return { deleted };
 };
 
-export const deleteTransactionsByAccount = async (
-  user: MaskedUser,
-  account_id: string,
-): Promise<{ deleted: number }> => {
-  const { transactions } = await searchTransactions(user, { account_id });
-  if (!transactions.length) return { deleted: 0 };
-  return deleteTransactions(
-    user,
-    transactions.map((t) => t.transaction_id),
-  );
-};
-
 export const searchTransactionsByAccountId = async (
   user: MaskedUser,
   account_ids: string[],
