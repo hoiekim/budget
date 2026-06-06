@@ -3,7 +3,6 @@ import {
   MaskedUser,
   HoldingModel,
   holdingsTable,
-  snapshotsTable,
   HOLDING_ID,
   USER_ID,
   ACCOUNT_ID,
@@ -104,18 +103,17 @@ export const deleteHoldings = async (
   holding_ids: string[],
 ): Promise<{ deleted: number }> => {
   if (!holding_ids.length) return { deleted: 0 };
-  const { user_id } = user;
-
-  // Soft-delete related snapshots for these holdings
-  for (const holding_id of holding_ids) {
-    await snapshotsTable.bulkSoftDeleteByColumn(
-      "holding_account_id",
-      holding_id.split("-")[0],
-      user_id,
-    );
-  }
-
-  const deleted = await holdingsTable.bulkSoftDelete(holding_ids, { [USER_ID]: user_id });
+  // Snapshots are intentionally NOT soft-deleted. The sync path
+  // (`upsertHoldingsWithSnapshots` in compute-tools/create-snapshots.ts)
+  // writes a fresh `quantity = 0` terminator snapshot for every removed
+  // holding BEFORE calling this — that terminator is the deletion
+  // signal historical readers (charts, performance calcs) consume.
+  // Earlier this function wiped the entire account's snapshot history
+  // (filtering by `holding_account_id` only — see #471) which silently
+  // erased every holding's history when a single position was removed.
+  // The fix is not a tighter filter on the soft-delete; it's removing
+  // the soft-delete entirely.
+  const deleted = await holdingsTable.bulkSoftDelete(holding_ids, { [USER_ID]: user.user_id });
   return { deleted };
 };
 
