@@ -65,13 +65,14 @@ A transaction carries three correlated fields that together describe its current
 | `label_budget_id` | UUID \| null | The parent budget for `label_category_id` — written alongside it so the UI's category `<select>` (which filters options by budget) can render the value |
 | `label_category_confidence` | number \| null | Confidence in [0, 1]; `null` means unlabeled |
 
-The `label_category_confidence` field encodes four distinct states:
+The `label_category_confidence` field encodes these states. The `0 < c < 1` band is further partitioned so a suggested row's provenance stays recoverable:
 
 | Confidence | Meaning | UI signal |
 |---|---|---|
 | `null` | Unlabeled (`label_category_id IS NULL`) | Red dot in `TransactionRow` |
 | `0` | User rejected a prior suggestion | Counted as a rejection signal for that merchant |
-| `0 < c < 1` | Auto-suggest applied a label — user has not yet confirmed or rejected | Yellow dot in `TransactionRow` |
+| `c < 0.99` (engine cap `0.98`) | Auto-suggest engine applied a label — user has not yet confirmed or rejected | Yellow dot in `TransactionRow` |
+| `0.99` | `/api/suggest-category` write (external Claude instance) | Yellow dot in `TransactionRow` |
 | `1` | User explicitly confirmed | No dot |
 
 A prod backfill on 2026-05-13 set `label_category_confidence = 1` for every labeled row in `transactions`, so the `(category_id IS NOT NULL, confidence IS NULL)` combination is no longer expected in production data.
