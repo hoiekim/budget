@@ -118,11 +118,7 @@ const TransactionRow = ({ transaction }: Props) => {
     if (response.status === "success") {
       setData((oldData) => {
         const newData = new Data(oldData);
-        // `transaction instanceof SplitTransaction` so TS narrows
-        // `transaction` to `SplitTransaction` inside the block — the
-        // constructor now requires `split_transaction_id` and would
-        // reject the `Transaction` half of the union otherwise.
-        if (transaction instanceof SplitTransaction) {
+        if (isSplitTransaction) {
           const newSplitTransaction = new SplitTransaction(transaction);
           newSplitTransaction.label.budget_id = value || null;
           newSplitTransaction.label.category_id = null;
@@ -180,7 +176,7 @@ const TransactionRow = ({ transaction }: Props) => {
     if (response.status === "success") {
       setData((oldData) => {
         const newData = new Data(oldData);
-        if (transaction instanceof SplitTransaction) {
+        if (isSplitTransaction) {
           const newSplitTransaction = new SplitTransaction(transaction);
           if (!newSplitTransaction.label.budget_id) {
             newSplitTransaction.label.budget_id = account?.label.budget_id;
@@ -230,7 +226,7 @@ const TransactionRow = ({ transaction }: Props) => {
     if (response.status !== "success") return;
     setData((oldData) => {
       const newData = new Data(oldData);
-      if (transaction instanceof SplitTransaction) {
+      if (isSplitTransaction) {
         const newSplitTransaction = new SplitTransaction(transaction);
         newSplitTransaction.label.category_confidence = 1;
         indexedDb.save(newSplitTransaction).catch(console.error);

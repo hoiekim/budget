@@ -311,12 +311,6 @@ export const TransactionsPage = () => {
             indexedDb.save(updated).catch(console.error);
             newInvest.set(id, updated);
           } else if (existing instanceof SplitTransaction) {
-            // Copy from `existing` (the split being accepted), NOT from the
-            // parent Transaction — a Transaction has no `split_transaction_id`
-            // and the SplitTransaction constructor would (silently, before
-            // PR #487) backfill it with a 5-hex-char `getRandomId()` value,
-            // producing a corrupt row that subsequent POSTs would echo back
-            // and PG would reject as not-a-UUID.
             const updated = new SplitTransaction(existing);
             updated.label.category_confidence = 1;
             indexedDb.save(updated).catch(console.error);
