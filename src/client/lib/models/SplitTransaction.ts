@@ -1,4 +1,5 @@
 import {
+  getRandomId,
   assign,
   getDateTimeString,
   JSONSplitTransaction,
@@ -13,7 +14,7 @@ export class SplitTransaction implements JSONSplitTransaction {
   }
   set id(_: string) {}
 
-  split_transaction_id: string = "";
+  split_transaction_id: string = getRandomId();
   transaction_id: string = "";
   account_id: string = "";
   amount: number = 0;
