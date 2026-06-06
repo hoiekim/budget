@@ -279,40 +279,6 @@ export function buildSoftDelete(
   return { sql, values };
 }
 
-export function buildBulkSoftDelete(
-  tableName: string,
-  primaryKey: string,
-  primaryKeyValues: ParamValue[],
-  additionalWhere?: { column: string; value: ParamValue },
-): PreparedQuery {
-  if (primaryKeyValues.length === 0) {
-    return { sql: "", values: [] };
-  }
-
-  const values: ParamValue[] = [];
-  let paramIndex = 1;
-
-  if (additionalWhere) {
-    values.push(additionalWhere.value);
-    paramIndex++;
-  }
-
-  const placeholders = primaryKeyValues.map((val) => {
-    values.push(val);
-    return `$${paramIndex++}`;
-  });
-
-  let sql = `UPDATE ${tableName} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${primaryKey} IN (${placeholders.join(", ")})`;
-
-  if (additionalWhere) {
-    sql += ` AND ${additionalWhere.column} = $1`;
-  }
-
-  sql += ` RETURNING ${primaryKey}`;
-
-  return { sql, values };
-}
-
 export interface SearchFilters {
   user_id?: string;
   primaryKey?: { column: string; value: ParamValue };
@@ -438,17 +404,6 @@ export async function queryOne<T extends QueryResultRow>(
 ): Promise<T | null> {
   const result = await pool.query<T>(sql, values);
   return result.rows[0] || null;
-}
-
-export async function selectWithFilters<T extends QueryResultRow>(
-  pool: Pool,
-  tableName: string,
-  columns: string[] | "*",
-  options: SearchFilters = {},
-): Promise<T[]> {
-  const { sql, values } = buildSelectWithFilters(tableName, columns, options);
-  const result = await pool.query<T>(sql, values);
-  return result.rows;
 }
 
 export interface UpsertResult {
