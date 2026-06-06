@@ -349,11 +349,12 @@ export class HoldingValueSummary {
   account_id: string = "";
   costBasisInferred: boolean = false;
   /**
-   * Heuristic flag set by `getHoldingsValueData` when the source holding
-   * snapshot looks like cash (institution_price=1 + null/0 cost_basis).
+   * Flag set by `getHoldingsValueData` when the holding's
+   * `institution_price === 1` — Plaid (and every other broker) quotes
+   * 1.0 for cash positions because cash doesn't trade against itself.
    * Used in `HoldingsComposition` to label the row "Cash" instead of a
-   * truncated security_id, and to suppress G/L. See holdings.ts for the
-   * full rationale.
+   * truncated security_id; cost basis is normalized to `value` so the
+   * readout is naturally `0% gain`.
    */
   isCash: boolean = false;
 

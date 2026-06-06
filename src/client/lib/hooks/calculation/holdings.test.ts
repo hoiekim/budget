@@ -437,22 +437,21 @@ describe("getHoldingsValueData", () => {
     expect(costBasis).toBe(900); // 90 * 10
   });
 
-  test("forces null cost basis (and null G/L) when a holding looks like cash", () => {
-    // Cash detection on the FE uses signals already on the holding
-    // snapshot: institution_price === 1 AND cost_basis === null. Plaid
-    // cash sweeps always satisfy both; real equities essentially never
-    // do for any meaningful duration. Server doesn't need to ship a
-    // `type='cash'` flag; the FE skips G/L for cash holdings entirely.
+  test("classifies a holding with institution_price=1 as cash (yields 0% gain)", () => {
+    // FE cash detector is per-holding: institution_price === 1 is the
+    // canonical signal because brokers always quote 1.0 for cash. Cash
+    // rows report `cost_basis === value` so unrealizedGain === 0 and
+    // returnPercent === 0 — the logically-correct readout for a position
+    // that doesn't appreciate against itself. The `inferCostBasis`
+    // transaction-replay path is skipped — Plaid encodes sweep deposits
+    // as `type='buy'` with `price=1`, which would otherwise pile up a
+    // phantom basis (= deposit total) with a phantom G/L.
     const holdingSnapshots = new HoldingSnapshotDictionary();
     holdingSnapshots.set(
       "h-cash",
-      // institution_price = 1, cost_basis = null → looks like cash
       createHoldingSnapshot("acc1", "sec-cash", 1000, 1, 1000, null, "2026-01-15"),
     );
 
-    // Plaid records cash deposits as `type='buy'` investment_transactions
-    // with price=1. Without the cash skip these would feed inferCostBasis
-    // and produce a phantom basis (= deposit total) with a phantom G/L.
     const investmentTransactions = new InvestmentTransactionDictionary();
     investmentTransactions.set(
       "tx-deposit",
@@ -474,20 +473,24 @@ describe("getHoldingsValueData", () => {
 
     const summary = result.getHistory("acc1_sec-cash").get(new Date("2026-01-15"));
     expect(summary).toBeDefined();
-    expect(summary!.value).toBe(1000); // price × quantity = $1 × 1000
-    expect(summary!.costBasis).toBeNull();
-    expect(summary!.unrealizedGain).toBeNull();
+    expect(summary!.isCash).toBe(true);
+    expect(summary!.value).toBe(1000);
+    expect(summary!.costBasis).toBe(1000);
+    expect(summary!.unrealizedGain).toBe(0);
+    expect(summary!.returnPercent).toBe(0);
   });
 
-  test("treats cost_basis === 0 same as null (server collapses NULL → 0 in JSON)", () => {
-    // SnapshotModel.toHoldingSnapshot wires `this.cost_basis ?? 0`, so a
-    // cash holding's DB-NULL cost_basis arrives at the client as 0. The
-    // detector must accept that zero as the missing-basis sentinel.
+  test("classifies cash uniformly regardless of cost_basis (null / 0 / value)", () => {
+    // The detector keys off `institution_price === 1` only — `cost_basis`
+    // does not participate. A cash row whose `cost_basis` lands on the
+    // wire as null (BE-inferred row), 0 (DB-NULL collapsed via `?? 0` in
+    // `SnapshotModel.toHoldingSnapshot`), or the full balance (Plaid
+    // reporting the same dollar amount) all normalize to
+    // `cost_basis === value` and 0% gain.
     const holdingSnapshots = new HoldingSnapshotDictionary();
-    holdingSnapshots.set(
-      "h-cash-zero",
-      createHoldingSnapshot("acc1", "sec-cash-zero", 1000, 1, 1000, 0, "2026-01-15"),
-    );
+    holdingSnapshots.set("c-null", createHoldingSnapshot("acc1", "sec-a", 1000, 1, 1000, null, "2026-01-15"));
+    holdingSnapshots.set("c-zero", createHoldingSnapshot("acc1", "sec-b", 1000, 1, 1000, 0, "2026-01-15"));
+    holdingSnapshots.set("c-full", createHoldingSnapshot("acc1", "sec-c", 1000, 1, 1000, 1000, "2026-01-15"));
 
     const result = getHoldingsValueData({
       holdingSnapshots,
@@ -495,15 +498,24 @@ describe("getHoldingsValueData", () => {
       investmentTransactions: new InvestmentTransactionDictionary(),
     });
 
-    const summary = result.getHistory("acc1_sec-cash-zero").get(new Date("2026-01-15"));
-    expect(summary!.costBasis).toBeNull();
-    expect(summary!.unrealizedGain).toBeNull();
+    for (const sec of ["sec-a", "sec-b", "sec-c"]) {
+      const summary = result.getHistory(`acc1_${sec}`).get(new Date("2026-01-15"));
+      expect(summary!.isCash).toBe(true);
+      expect(summary!.costBasis).toBe(1000);
+      expect(summary!.unrealizedGain).toBe(0);
+      expect(summary!.returnPercent).toBe(0);
+    }
   });
 
-  test("does NOT treat a real $1 equity with a cost basis as cash", () => {
-    // Edge case: an equity that happens to trade at $1.00 right now BUT
-    // has a real cost_basis. Should fall through the cash detector
-    // (which requires cost_basis === null too) and still get its G/L.
+  test("a real $1 equity with a cost_basis is treated as cash by the holding-side detector", () => {
+    // Trade-off pinned: `institution_price === 1` matches real $1 equities
+    // too. Those holdings (vanishingly rare in practice) render under the
+    // cash branch as `cost_basis === value` (here, value=$100, normalized
+    // basis=$100, 0% gain). Hoie's 2026-06-06 call: this readout is
+    // acceptable for the rare $1-equity case because the alternative
+    // (cost_basis-shape heuristic) lies about cash on the much more
+    // common deposit-sweep path. The BE's `inferCashHoldings` is the
+    // safety net for accounts where this matters at the dollar level.
     const holdingSnapshots = new HoldingSnapshotDictionary();
     holdingSnapshots.set(
       "h-penny",
@@ -517,8 +529,10 @@ describe("getHoldingsValueData", () => {
     });
 
     const summary = result.getHistory("acc1_sec-penny").get(new Date("2026-01-15"));
-    expect(summary!.costBasis).toBe(90);
-    expect(summary!.unrealizedGain).toBe(10); // 100 - 90
+    expect(summary!.isCash).toBe(true);
+    expect(summary!.costBasis).toBe(100);
+    expect(summary!.unrealizedGain).toBe(0);
+    expect(summary!.returnPercent).toBe(0);
   });
 
   test("does NOT treat a non-cash holding (institution_price > 1) as cash even with null cost_basis", () => {

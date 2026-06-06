@@ -303,29 +303,24 @@ export const getHoldingsValueData = ({
       const { price } = priceResult;
       const value = price * quantity;
 
-      // Detect cash from data already on the holding snapshot itself.
-      // Plaid's cash sweeps + interest accounts always quote
-      // institution_price=1.0 and never carry a cost_basis (Plaid doesn't
-      // track basis on cash). Real equities essentially never satisfy
-      // both for any meaningful duration. This avoids needing server-side
-      // help to identify cash. G/L is suppressed for cash holdings.
+      // Cash is detected per-holding: Plaid (and every other broker) quotes
+      // `institution_price = 1` for cash positions because cash doesn't
+      // trade against itself. Real equities holding at exactly 1.0 across
+      // multiple snapshots are vanishingly rare, and any that exist still
+      // render correctly under the cash branch (cost_basis === value →
+      // 0% gain — what cash should show).
       //
-      // `cost_basis` on the wire is 0, not null — `SnapshotModel.toHoldingSnapshot`
-      // does `this.cost_basis ?? 0`, collapsing DB NULL to a numeric zero.
-      // So the cash detector accepts 0 as the missing-basis sentinel.
-      //
-      // The cost-basis path otherwise fires `inferCostBasis` over the
-      // Plaid investment_transactions feed, which encodes cash deposits
-      // and interest reinvestments as `type='buy'` with `price=1`. That
-      // accumulates a phantom cost basis with `gain ≈ 0`-but-not-quite,
-      // which is what surfaced as Unrealized G/L on the cash row.
-      const isCash =
-        holding.institution_price === 1 && (cost_basis === null || cost_basis === 0);
+      // For cash, `cost_basis === value` so `unrealizedGain === 0` and
+      // `returnPercent === 0%` — the logically-correct readout for a
+      // position that doesn't appreciate against itself. The
+      // `inferCostBasis` transaction-replay path is skipped — Plaid
+      // encodes sweep deposits as `type='buy'` with `price=1`, which
+      // would otherwise pile up a phantom basis.
+      const isCash = holding.institution_price === 1;
 
-      let finalCostBasis: number | null = isCash ? null : cost_basis;
+      let finalCostBasis: number | null = isCash ? value : cost_basis;
       let costBasisInferred = false;
 
-      // Infer cost basis if missing or zero with quantity — skipped for cash.
       if (!isCash && (cost_basis === null || cost_basis === 0) && quantity !== 0) {
         const inferred = inferCostBasis({
           accountId: account_id,
