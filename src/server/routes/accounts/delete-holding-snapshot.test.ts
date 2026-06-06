@@ -65,13 +65,16 @@ const fakeRes = () =>
     end() {},
   }) as unknown as Parameters<typeof deleteHoldingSnapshotRoute.execute>[1];
 
+const SNAP_ID = "cccccccc-0000-0000-0000-000000000001";
+const SNAP_OTHER = "cccccccc-0000-0000-0000-000000000002";
+
 /**
  * A canned holding-snapshot row matching the projection the route's
  * `getHoldingSnapshots` does on the snapshots SELECT. Only the columns
  * the ownership-check actually consumes need to be present.
  */
 const snapshotRow = (overrides: Record<string, unknown> = {}) => ({
-  snapshot_id: "snap-1",
+  snapshot_id: SNAP_ID,
   snapshot_date: "2026-05-14",
   holding_account_id: "acc-1",
   holding_security_id: "sec-1",
@@ -110,12 +113,12 @@ describe("DELETE /api/snapshots/holding", () => {
   });
 
   test("refuses to delete a snapshot owned by another user", async () => {
-    // getHoldingSnapshots SELECT returns user u-1's snap-1 only — snap-other
+    // getHoldingSnapshots SELECT returns user u-1's SNAP_ID only — SNAP_OTHER
     // is not among them, so ownership check fails before softDelete.
     mockQuery.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
 
     const result = await deleteHoldingSnapshotRoute.execute(
-      makeReq({ id: "snap-other" }),
+      makeReq({ id: SNAP_OTHER }),
       fakeRes(),
     );
 
@@ -129,16 +132,16 @@ describe("DELETE /api/snapshots/holding", () => {
     // 1: ownership SELECT returns the snapshot
     mockQuery.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
     // 2: softDelete's UPDATE
-    mockQuery.mockResolvedValueOnce({ rows: [{ snapshot_id: "snap-1" }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ snapshot_id: SNAP_ID }], rowCount: 1 });
 
-    const result = await deleteHoldingSnapshotRoute.execute(makeReq({ id: "snap-1" }), fakeRes());
+    const result = await deleteHoldingSnapshotRoute.execute(makeReq({ id: SNAP_ID }), fakeRes());
 
     expect(result?.status).toBe("success");
     const upd = findUpdateCall(/UPDATE\s+snapshots/i);
     expect(upd).not.toBeNull();
     // The softDelete's UPDATE pins both the snapshot_id and the caller's
     // user_id into the WHERE clause.
-    expect(upd!.values).toContain("snap-1");
+    expect(upd!.values).toContain(SNAP_ID);
     expect(upd!.values).toContain("u-1");
   });
 
@@ -147,7 +150,7 @@ describe("DELETE /api/snapshots/holding", () => {
     mockQuery.mockRejectedValueOnce(new Error("connection lost"));
 
     const result = await deleteHoldingSnapshotRoute.execute(
-      makeReq({ id: "snap-1" }),
+      makeReq({ id: SNAP_ID }),
       fakeRes(),
     );
     expect(result?.status).toBe("error");

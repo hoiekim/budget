@@ -107,7 +107,7 @@ describe("delete-item", () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await deleteItemRoute.execute(
-      makeReq({ id: "i-belongs-to-other" }),
+      makeReq({ id: "aaaaaaaa-0000-0000-0000-000000000099" }),
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
@@ -121,13 +121,16 @@ describe("delete-item", () => {
   });
 
   test("item exists but for a different item_id → 'not owned' failure", async () => {
-    // Caller owns i-A, but requests deletion of i-B.
+    // Caller owns item-A, but requests deletion of item-B.
     mockQuery.mockResolvedValueOnce({
-      rows: [makeItemRow({ item_id: "i-A" })],
+      rows: [makeItemRow({ item_id: "aaaaaaaa-0000-0000-0000-000000000001" })],
       rowCount: 1,
     });
 
-    const result = await deleteItemRoute.execute(makeReq({ id: "i-B" }), fakeRes());
+    const result = await deleteItemRoute.execute(
+      makeReq({ id: "aaaaaaaa-0000-0000-0000-000000000002" }),
+      fakeRes(),
+    );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not owned by the request user/);
   });

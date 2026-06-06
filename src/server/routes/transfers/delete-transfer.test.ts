@@ -92,25 +92,28 @@ describe("delete-transfer", () => {
 
   test("happy path returns success and pins user_id into the WHERE clause", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-    const result = await deleteTransferRoute.execute(makeReq({ id: "p-1" }), fakeRes());
+    const result = await deleteTransferRoute.execute(
+      makeReq({ id: "bbbbbbbb-0000-0000-0000-000000000001" }),
+      fakeRes(),
+    );
     expect(result?.status).toBe("success");
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, values] = mockQuery.mock.calls[0];
     expect(sql).toMatch(/UPDATE transaction_pairs/i);
     expect(sql).toMatch(/user_id/);
-    expect(values).toContain("p-1");
+    expect(values).toContain("bbbbbbbb-0000-0000-0000-000000000001");
     expect(values).toContain("u-1");
   });
 
   test("cross-user delete: the route forwards the session user_id, never a client value", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await deleteTransferRoute.execute(
-      makeReq({ id: "p-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
+      makeReq({ id: "bbbbbbbb-0000-0000-0000-000000000002" }, { user: { user_id: "u-A", username: "a" } }),
       fakeRes(),
     );
     expect(result?.status).toBe("success");
     const [, values] = mockQuery.mock.calls[0];
-    expect(values).toContain("p-belongs-to-B");
+    expect(values).toContain("bbbbbbbb-0000-0000-0000-000000000002");
     expect(values).toContain("u-A");
     expect(values).not.toContain("u-B");
   });
