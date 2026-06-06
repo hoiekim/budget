@@ -1,5 +1,4 @@
 import {
-  getRandomId,
   assign,
   getDateTimeString,
   JSONSplitTransaction,
@@ -14,7 +13,15 @@ export class SplitTransaction implements JSONSplitTransaction {
   }
   set id(_: string) {}
 
-  split_transaction_id: string = getRandomId();
+  // No initializer — the constructor requires `split_transaction_id` so
+  // every instance is built from a real server-issued UUID. The previous
+  // `= getRandomId()` default silently produced 5-hex-char ids whenever
+  // a caller passed an `init` object missing `split_transaction_id`
+  // (e.g. `new SplitTransaction(parentTransaction)` in TransactionRow),
+  // and those ids then got POSTed back to the server as
+  // `split_transaction_id`, which PG rejected with
+  // `invalid input syntax for type uuid: "d8fa6"`.
+  declare split_transaction_id: string;
   transaction_id: string = "";
   account_id: string = "";
   amount: number = 0;
@@ -27,6 +34,7 @@ export class SplitTransaction implements JSONSplitTransaction {
 
   constructor(
     init: Partial<SplitTransaction | JSONSplitTransaction> & {
+      split_transaction_id: string;
       transaction_id: string;
       account_id: string;
     },
