@@ -108,7 +108,6 @@ const TransactionRow = ({ transaction }: Props) => {
         split_transaction_id: id,
         label: { budget_id: value || null, category_id: null, category_confidence: 0 },
       });
-      return;
     } else {
       response = await call.post("/api/transaction", {
         transaction_id: id,
@@ -120,7 +119,12 @@ const TransactionRow = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
-          const newSplitTransaction = new SplitTransaction(parentTransaction);
+          // Copy from the split being edited — NOT from `parentTransaction`
+          // (which is the parent Transaction and has no `split_transaction_id`,
+          // so the SplitTransaction constructor's `getRandomId()` default
+          // would kick in and produce a 5-char hex id that PG rejects as
+          // not-a-UUID on the next POST). See log incident 2026-06-06.
+          const newSplitTransaction = new SplitTransaction(transaction);
           newSplitTransaction.label.budget_id = value || null;
           newSplitTransaction.label.category_id = null;
           newSplitTransaction.label.category_confidence = 0;
@@ -178,7 +182,8 @@ const TransactionRow = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
-          const newSplitTransaction = new SplitTransaction(parentTransaction);
+          // See onChangeBudgetSelect for the `transaction` vs `parentTransaction` choice.
+          const newSplitTransaction = new SplitTransaction(transaction);
           if (!newSplitTransaction.label.budget_id) {
             newSplitTransaction.label.budget_id = account?.label.budget_id;
           }
@@ -228,7 +233,8 @@ const TransactionRow = ({ transaction }: Props) => {
     setData((oldData) => {
       const newData = new Data(oldData);
       if (isSplitTransaction) {
-        const newSplitTransaction = new SplitTransaction(parentTransaction);
+        // See onChangeBudgetSelect for the `transaction` vs `parentTransaction` choice.
+        const newSplitTransaction = new SplitTransaction(transaction);
         newSplitTransaction.label.category_confidence = 1;
         indexedDb.save(newSplitTransaction).catch(console.error);
         const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
