@@ -184,6 +184,23 @@ describe("computeMWR", () => {
     expect(r.status).toBe("no_solution");
   });
 
+  test("returns no_solution when portfolio is empty at both boundaries (regression for #390)", () => {
+    // Manual investment account with no investment_transactions and no
+    // priced security_snapshots: valueAt returns 0 at both ends, flows is
+    // empty. Pre-fix this returned annualized=-0.99 (a fake −99% return)
+    // because the bisection converged on its lower bound.
+    const r = computeMWR({
+      flows: [],
+      vStart: 0,
+      vEnd: 0,
+      windowStart: "2025-05-18",
+      windowEnd: "2026-05-18",
+    });
+    expect(r.status).toBe("no_solution");
+    expect(r.annualized).toBeNull();
+    expect(r.cumulative).toBeNull();
+  });
+
   test("cumulative = (1 + annualized)^years − 1", () => {
     const r = computeMWR({
       flows: [{ date: "2026-04-01", amount: 500 }],

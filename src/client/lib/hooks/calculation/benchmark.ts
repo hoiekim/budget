@@ -131,6 +131,14 @@ export const computeMWR = (params: {
   windowEnd: string;
 }): MwrResult => {
   const { flows, vStart, vEnd, windowStart, windowEnd } = params;
+
+  // Degenerate input: no asset value at either boundary and no flows in
+  // between. npv ≡ 0 for all rates, and the bisection below would happily
+  // converge on the lower bound (−0.99) and report a fake −99% return.
+  if (vStart === 0 && vEnd === 0 && flows.length === 0) {
+    return { status: "no_solution", annualized: null, cumulative: null };
+  }
+
   const years = yearsBetween(windowStart, windowEnd);
   const tEnd = years;
 
@@ -146,7 +154,9 @@ export const computeMWR = (params: {
 
   const lo0 = -0.99;
   const hi0 = 10.0;
-  if (npv(lo0) * npv(hi0) > 0) {
+  // Defense-in-depth: if either endpoint NPV is exactly 0 (or signs already
+  // agree), there is no sign change to bisect on, so don't bisect.
+  if (npv(lo0) * npv(hi0) >= 0) {
     return { status: "no_solution", annualized: null, cumulative: null };
   }
   let lo = lo0;
