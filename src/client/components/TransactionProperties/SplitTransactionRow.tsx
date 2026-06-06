@@ -100,6 +100,12 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
         const newSplit = new SplitTransaction(splitTransaction);
         newSplit.label.budget_id = value || null;
         newSplit.label.category_id = null;
+        // Local IndexedDB write must mirror the server's confidence
+        // inference (`inferLabelConfidence`, `lib/infer-label-confidence.ts`)
+        // — otherwise the UI flashes the stale prior `c_conf` value until
+        // the next reload (#415). Budget-only edit always clears the
+        // category, so confidence resets to 0.
+        newSplit.label.category_confidence = 0;
         indexedDb.save(newSplit).catch(console.error);
         const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         newSplits.set(split_transaction_id, newSplit);
@@ -133,6 +139,10 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
           newSplit.label.budget_id = account?.label.budget_id;
         }
         newSplit.label.category_id = value || null;
+        // Mirror server-side `inferLabelConfidence`: 1 = picked a category,
+        // 0 = cleared. Without this, IndexedDB carries the stale prior
+        // confidence on the local row until next reload (#415).
+        newSplit.label.category_confidence = +!!value;
         indexedDb.save(newSplit).catch(console.error);
         const newSplits = new SplitTransactionDictionary(newData.splitTransactions);
         newSplits.set(split_transaction_id, newSplit);
