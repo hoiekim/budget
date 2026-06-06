@@ -27,6 +27,7 @@ export class SplitTransaction implements JSONSplitTransaction {
 
   constructor(
     init: Partial<SplitTransaction | JSONSplitTransaction> & {
+      split_transaction_id: string;
       transaction_id: string;
       account_id: string;
     },

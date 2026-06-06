@@ -108,7 +108,6 @@ const TransactionRow = ({ transaction }: Props) => {
         split_transaction_id: id,
         label: { budget_id: value || null, category_id: null, category_confidence: 0 },
       });
-      return;
     } else {
       response = await call.post("/api/transaction", {
         transaction_id: id,
@@ -120,7 +119,7 @@ const TransactionRow = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
-          const newSplitTransaction = new SplitTransaction(parentTransaction);
+          const newSplitTransaction = new SplitTransaction(transaction);
           newSplitTransaction.label.budget_id = value || null;
           newSplitTransaction.label.category_id = null;
           newSplitTransaction.label.category_confidence = 0;
@@ -178,7 +177,7 @@ const TransactionRow = ({ transaction }: Props) => {
       setData((oldData) => {
         const newData = new Data(oldData);
         if (isSplitTransaction) {
-          const newSplitTransaction = new SplitTransaction(parentTransaction);
+          const newSplitTransaction = new SplitTransaction(transaction);
           if (!newSplitTransaction.label.budget_id) {
             newSplitTransaction.label.budget_id = account?.label.budget_id;
           }
@@ -228,7 +227,7 @@ const TransactionRow = ({ transaction }: Props) => {
     setData((oldData) => {
       const newData = new Data(oldData);
       if (isSplitTransaction) {
-        const newSplitTransaction = new SplitTransaction(parentTransaction);
+        const newSplitTransaction = new SplitTransaction(transaction);
         newSplitTransaction.label.category_confidence = 1;
         indexedDb.save(newSplitTransaction).catch(console.error);
         const newSplitTransactions = new SplitTransactionDictionary(newData.splitTransactions);
