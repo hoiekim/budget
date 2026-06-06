@@ -62,13 +62,13 @@ See `deleteAccounts` in `src/server/lib/postgres/repositories/accounts.ts` for a
 
 ## Transaction Categorization Columns
 
-A labeled transaction stores its category across three correlated columns. Both the `transactions` table and the `split_transactions` table carry `label_category_id` and `label_budget_id`; only `transactions` carries `label_category_confidence`.
+A labeled transaction stores its category across three correlated columns. Both the `transactions` table and the `split_transactions` table carry all three (`label_category_id`, `label_budget_id`, `label_category_confidence`).
 
 | Column | Type | On `transactions` | On `split_transactions` |
 |---|---|---|---|
 | `label_category_id` | UUID, nullable | ✓ | ✓ |
 | `label_budget_id` | UUID, nullable | ✓ | ✓ |
-| `label_category_confidence` | NUMERIC(3,2), nullable | ✓ | — (column does not exist) |
+| `label_category_confidence` | FLOAT, nullable | ✓ | ✓ (added by #344) |
 
 **Write both `label_category_id` and `label_budget_id` together.** The UI category `<select>` filters options by the row's budget. Writing only `label_category_id` leaves the dropdown unable to render the value. See `defaultApplyLabel` in `src/server/lib/compute-tools/auto-suggest.ts` for the canonical pattern.
 
@@ -83,6 +83,6 @@ A labeled transaction stores its category across three correlated columns. Both 
 
 **Prod backfill.** A backfill on 2026-05-13 set `label_category_confidence = 1` for every row with `label_category_id IS NOT NULL`. The application code's confirmation predicate (`category_confidence === 1 && !!category_id` in `src/client/lib/hooks/calculation/budgets.ts`) does not tolerate `NULL`, so this backfill is load-bearing — any new INSERT that sets `label_category_id` without also setting `label_category_confidence` would reintroduce the "labeled but counted as unsorted" miscount.
 
-**Split transactions.** Because `split_transactions` has no `label_category_confidence` column, split rows with a category set still hit `category_confidence === undefined` after `SplitTransaction.toTransaction()` rebuilds the label, and currently fall into the unsorted bucket in budget-bar / unsorted-count math. Known limitation.
+**Split transactions.** Splits inherit the same four-state encoding as transactions. `SplitTransaction.toTransaction()` rebuilds the label using the split's own `category_confidence`, so a user-confirmed split (`1`) lands in the sorted bucket and an auto-suggested split (`0 < c < 1`) lands in unsorted. The two-pass auto-suggest engine (#344) writes per-split suggestions; the `POST /split-transaction` route applies `inferLabelConfidence` so FE-driven updates write `1` on user-set categories and `0` on user-cleared categories.
 
 See [ARCHITECTURE.md — Transaction Categorization](ARCHITECTURE.md#transaction-categorization-auto-suggest) for the full data-model view and [DESIGN_PATTERNS.md — Auto-Suggest Merchant Signal Scoring](DESIGN_PATTERNS.md#auto-suggest-merchant-signal-scoring) for the suggestion engine itself.
