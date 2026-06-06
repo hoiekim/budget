@@ -22,7 +22,8 @@ import { InvestmentTransaction } from "../../models/InvestmentTransaction";
 const createSecuritySnapshot = (
   securityId: string,
   closePrice: number,
-  date: string
+  date: string,
+  extra: Partial<{ type: string; is_cash_equivalent: boolean; ticker_symbol: string }> = {},
 ): SecuritySnapshot => {
   return new SecuritySnapshot({
     snapshot: { snapshot_id: `snap_${securityId}_${date}`, date },
@@ -30,6 +31,7 @@ const createSecuritySnapshot = (
       security_id: securityId,
       close_price: closePrice,
       close_price_as_of: date,
+      ...extra,
     },
   });
 };
@@ -508,14 +510,10 @@ describe("getHoldingsValueData", () => {
   });
 
   test("a real $1 equity with a cost_basis is treated as cash by the holding-side detector", () => {
-    // Trade-off pinned: `institution_price === 1` matches real $1 equities
-    // too. Those holdings (vanishingly rare in practice) render under the
-    // cash branch as `cost_basis === value` (here, value=$100, normalized
-    // basis=$100, 0% gain). Hoie's 2026-06-06 call: this readout is
-    // acceptable for the rare $1-equity case because the alternative
-    // (cost_basis-shape heuristic) lies about cash on the much more
-    // common deposit-sweep path. The BE's `inferCashHoldings` is the
-    // safety net for accounts where this matters at the dollar level.
+    // `institution_price === 1` matches real $1 equities too. Those
+    // holdings render under the cash branch as `cost_basis === value`
+    // (here, value=$100 → basis=$100 → 0% gain). Trade-off pinned so
+    // a future tightening of the detector flips this loudly.
     const holdingSnapshots = new HoldingSnapshotDictionary();
     holdingSnapshots.set(
       "h-penny",
@@ -533,6 +531,70 @@ describe("getHoldingsValueData", () => {
     expect(summary!.costBasis).toBe(100);
     expect(summary!.unrealizedGain).toBe(0);
     expect(summary!.returnPercent).toBe(0);
+  });
+
+  test("classifies cash via the security-side branch even when institution_price drifts off 1.0", () => {
+    // Two-channel detection — security-side OR holding-side. This test
+    // exercises the security-side branch: a money-market fund whose broker
+    // quote landed at 0.9999 (FX precision / stale quote) still gets
+    // classified as cash because its security record says `type: "cash"`.
+    const holdingSnapshots = new HoldingSnapshotDictionary();
+    holdingSnapshots.set(
+      "h-mmkt",
+      // institution_price=0.9999 (not 1.0) — holding-side branch would miss
+      createHoldingSnapshot("acc1", "sec-mmkt", 1000, 0.9999, 999.9, 999.9, "2026-01-15"),
+    );
+    const securitySnapshots = new SecuritySnapshotDictionary();
+    securitySnapshots.set(
+      "snap-mmkt",
+      createSecuritySnapshot("sec-mmkt", 1, "2026-01-15", { type: "cash" }),
+    );
+
+    const result = getHoldingsValueData({
+      holdingSnapshots,
+      securitySnapshots,
+      investmentTransactions: new InvestmentTransactionDictionary(),
+    });
+
+    const summary = result.getHistory("acc1_sec-mmkt").get(new Date("2026-01-15"));
+    expect(summary!.isCash).toBe(true);
+    expect(summary!.returnPercent).toBe(0);
+  });
+
+  test("classifies cash via the security-side branch on is_cash_equivalent or CUR:* ticker", () => {
+    const holdingSnapshots = new HoldingSnapshotDictionary();
+    holdingSnapshots.set(
+      "h-equiv",
+      createHoldingSnapshot("acc1", "sec-equiv", 500, 0.98, 490, 490, "2026-01-15"),
+    );
+    holdingSnapshots.set(
+      "h-eur",
+      createHoldingSnapshot("acc1", "sec-eur", 300, 0.92, 276, 276, "2026-01-15"),
+    );
+
+    const securitySnapshots = new SecuritySnapshotDictionary();
+    securitySnapshots.set(
+      "snap-equiv",
+      createSecuritySnapshot("sec-equiv", 1, "2026-01-15", { is_cash_equivalent: true }),
+    );
+    securitySnapshots.set(
+      "snap-eur",
+      createSecuritySnapshot("sec-eur", 1, "2026-01-15", { ticker_symbol: "CUR:EUR" }),
+    );
+
+    const result = getHoldingsValueData({
+      holdingSnapshots,
+      securitySnapshots,
+      investmentTransactions: new InvestmentTransactionDictionary(),
+    });
+
+    const equiv = result.getHistory("acc1_sec-equiv").get(new Date("2026-01-15"));
+    expect(equiv!.isCash).toBe(true);
+    expect(equiv!.returnPercent).toBe(0);
+
+    const eur = result.getHistory("acc1_sec-eur").get(new Date("2026-01-15"));
+    expect(eur!.isCash).toBe(true);
+    expect(eur!.returnPercent).toBe(0);
   });
 
   test("does NOT treat a non-cash holding (institution_price > 1) as cash even with null cost_basis", () => {
