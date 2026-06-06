@@ -1,5 +1,5 @@
 import { ItemProvider, ItemStatus, toUpperCamelCase } from "common";
-import { PbulicTokenPostResponse } from "server";
+import { PublicTokenPostResponse } from "server";
 import {
   Data,
   Item,
@@ -86,7 +86,7 @@ export const Configuration = () => {
       go(PATH.CONNECTION_DETAIL, { params: clientPathParams });
     } else {
       const params = new URLSearchParams({ provider: ItemProvider.MANUAL });
-      const { body } = await call.post<PbulicTokenPostResponse>(
+      const { body } = await call.post<PublicTokenPostResponse>(
         `/api/public-token?${params.toString()}`,
         {},
       );

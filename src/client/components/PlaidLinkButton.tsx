@@ -1,6 +1,6 @@
 import { MouseEventHandler, ReactNode, useEffect, useState } from "react";
 import { ItemProvider, ItemStatus } from "common";
-import { PbulicTokenPostResponse, LinkTokenGetResponse } from "server";
+import { PublicTokenPostResponse, LinkTokenGetResponse } from "server";
 import {
   Data,
   Item,
@@ -43,7 +43,7 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
     const institution_id = institution && institution.institution_id;
     const params = new URLSearchParams({ provider: ItemProvider.PLAID });
     call
-      .post<PbulicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
+      .post<PublicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
         public_token,
         institution_id,
       })

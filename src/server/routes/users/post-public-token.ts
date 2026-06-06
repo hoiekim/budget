@@ -14,11 +14,11 @@ import {
 } from "server";
 import { getDateString, JSONItem, ItemProvider, ItemStatus, getRandomId } from "common";
 
-export interface PbulicTokenPostResponse {
+export interface PublicTokenPostResponse {
   item: JSONItem;
 }
 
-export const postPublicTokenRoute = new Route<PbulicTokenPostResponse>(
+export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
   "POST",
   "/public-token",
   async (req) => {

@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { ItemProvider, ItemStatus } from "common";
-import { PbulicTokenPostResponse } from "server";
+import { PublicTokenPostResponse } from "server";
 import { Data, Item, ItemDictionary, useAppContext, call, useSync, indexedDb } from "client";
 
 interface Props {
@@ -16,7 +16,7 @@ export const SimpleFinLinkButton = ({ children }: Props) => {
     if (!public_token) return;
     const params = new URLSearchParams({ provider: ItemProvider.SIMPLE_FIN });
     call
-      .post<PbulicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
+      .post<PublicTokenPostResponse>(`/api/public-token?${params.toString()}`, {
         public_token,
       })
       .then((r) => {
