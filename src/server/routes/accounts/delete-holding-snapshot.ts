@@ -1,4 +1,4 @@
-import { Route, requireQueryString, validationError, getHoldingSnapshots, deleteSnapshotById } from "server";
+import { Route, requireUuidQueryString, validationError, getHoldingSnapshots, deleteSnapshotById } from "server";
 import { logger } from "server/lib/logger";
 
 export const deleteHoldingSnapshotRoute = new Route(
@@ -10,7 +10,7 @@ export const deleteHoldingSnapshotRoute = new Route(
       return { status: "failed", message: "Request user is not authenticated." };
     }
 
-    const idResult = requireQueryString(req, "id");
+    const idResult = requireUuidQueryString(req, "id");
     if (!idResult.success) return validationError(idResult.error!);
     const snapshot_id = idResult.data!;
 

@@ -1,4 +1,4 @@
-import { Route, deleteBudget, requireQueryString, validationError } from "server";
+import { Route, deleteBudget, requireUuidQueryString, validationError } from "server";
 
 export const deleteBudgetRoute = new Route("DELETE", "/budget", async (req) => {
   const { user } = req.session;
@@ -9,7 +9,7 @@ export const deleteBudgetRoute = new Route("DELETE", "/budget", async (req) => {
     };
   }
 
-  const idResult = requireQueryString(req, "id");
+  const idResult = requireUuidQueryString(req, "id");
   if (!idResult.success) return validationError(idResult.error!);
 
   await deleteBudget(user, idResult.data!);

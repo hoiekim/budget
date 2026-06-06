@@ -1,4 +1,4 @@
-import { Route, deleteSection, requireQueryString, validationError } from "server";
+import { Route, deleteSection, requireUuidQueryString, validationError } from "server";
 
 export const deleteSectionRoute = new Route("DELETE", "/section", async (req) => {
   const { user } = req.session;
@@ -9,7 +9,7 @@ export const deleteSectionRoute = new Route("DELETE", "/section", async (req) =>
     };
   }
 
-  const idResult = requireQueryString(req, "id");
+  const idResult = requireUuidQueryString(req, "id");
   if (!idResult.success) return validationError(idResult.error!);
 
   await deleteSection(user, idResult.data!);

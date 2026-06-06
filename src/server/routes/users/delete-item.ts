@@ -1,5 +1,5 @@
 import { ItemProvider } from "common";
-import { Route, deleteItem, plaid, searchItems, requireQueryString, validationError } from "server";
+import { Route, deleteItem, plaid, searchItems, requireUuidQueryString, validationError } from "server";
 
 export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
   const { user } = req.session;
@@ -10,7 +10,7 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
     };
   }
 
-  const idResult = requireQueryString(req, "id");
+  const idResult = requireUuidQueryString(req, "id");
   if (!idResult.success) return validationError(idResult.error!);
 
   const items = await searchItems(user);

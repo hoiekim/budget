@@ -55,6 +55,20 @@ export function requireQueryString(
   return { success: true, data: value };
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function requireUuidQueryString(
+  req: ServerRequest,
+  param: string
+): ValidationResult<string> {
+  const result = requireQueryString(req, param);
+  if (!result.success) return result;
+  if (!UUID_REGEX.test(result.data!)) {
+    return { success: false, error: `Parameter ${param} must be a valid UUID` };
+  }
+  return result;
+}
+
 /**
  * Extract an optional string parameter from request query.
  * Returns undefined if not present.

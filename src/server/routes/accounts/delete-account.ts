@@ -4,7 +4,7 @@ import {
   deleteAccounts,
   searchAccountsById,
   getItem,
-  requireQueryString,
+  requireUuidQueryString,
   validationError,
 } from "server";
 
@@ -17,7 +17,7 @@ export const deleteAccountRoute = new Route("DELETE", "/account", async (req) =>
     };
   }
 
-  const idResult = requireQueryString(req, "id");
+  const idResult = requireUuidQueryString(req, "id");
   if (!idResult.success) {
     return validationError(idResult.error!);
   }

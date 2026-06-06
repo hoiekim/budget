@@ -1,4 +1,4 @@
-import { Route, deleteCategory, requireQueryString, validationError } from "server";
+import { Route, deleteCategory, requireUuidQueryString, validationError } from "server";
 
 export const deleteCategoryRoute = new Route("DELETE", "/category", async (req) => {
   const { user } = req.session;
@@ -9,7 +9,7 @@ export const deleteCategoryRoute = new Route("DELETE", "/category", async (req) 
     };
   }
 
-  const idResult = requireQueryString(req, "id");
+  const idResult = requireUuidQueryString(req, "id");
   if (!idResult.success) return validationError(idResult.error!);
 
   await deleteCategory(user, idResult.data!);

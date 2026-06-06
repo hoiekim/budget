@@ -1,4 +1,4 @@
-import { Route, deleteSplitTransactions, requireQueryString, validationError } from "server";
+import { Route, deleteSplitTransactions, requireUuidQueryString, validationError } from "server";
 
 export const deleteSplitTransactionRoute = new Route(
   "DELETE",
@@ -12,7 +12,7 @@ export const deleteSplitTransactionRoute = new Route(
       };
     }
 
-    const idResult = requireQueryString(req, "id");
+    const idResult = requireUuidQueryString(req, "id");
     if (!idResult.success) return validationError(idResult.error!);
 
     await deleteSplitTransactions(user, [idResult.data!]);

@@ -1,4 +1,4 @@
-import { Route, deleteChart, requireQueryString, validationError } from "server";
+import { Route, deleteChart, requireUuidQueryString, validationError } from "server";
 
 export const deleteChartRoute = new Route("DELETE", "/chart", async (req) => {
   const { user } = req.session;
@@ -9,7 +9,7 @@ export const deleteChartRoute = new Route("DELETE", "/chart", async (req) => {
     };
   }
 
-  const idResult = requireQueryString(req, "id");
+  const idResult = requireUuidQueryString(req, "id");
   if (!idResult.success) {
     return validationError(idResult.error!);
   }
