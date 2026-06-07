@@ -630,9 +630,14 @@ export const HoldingProperties = () => {
         // PR #478 for the regression this guards against.
         return (
           <Fragment key={id}>
+            {/* Suffix is `security_id` — sections are grouped by security
+                so this is the distinguishing identity. NOT the snapshot
+                date (misread as "same holding, different dates" and made
+                summing look wrong) and NOT the holding_id (a composite
+                that repeats the account_id across every section). */}
             <PropertyLabel>
               Snapshot&nbsp;{idx + 1}
-              <span className="snapshotMeta">&nbsp;·&nbsp;{toIsoDateInput(snap.snapshot.date)}</span>
+              <span className="snapshotMeta">&nbsp;·&nbsp;{snap.holding.security_id}</span>
             </PropertyLabel>
             <Property>
               <Row className="keyValue">

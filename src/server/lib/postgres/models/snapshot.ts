@@ -119,7 +119,7 @@ export class SnapshotModel extends Model<JSONSnapshotData, SnapshotSchema> imple
 
   toAccountSnapshot(): JSONAccountSnapshot {
     return {
-      snapshot: { snapshot_id: this.snapshot_id, date: this.snapshot_date },
+      snapshot: { snapshot_id: this.snapshot_id, date: this.snapshot_date, is_deleted: this.is_deleted ?? false },
       user: { user_id: this.user_id ?? "" },
       account: {
         account_id: this.account_id ?? "",
@@ -136,14 +136,14 @@ export class SnapshotModel extends Model<JSONSnapshotData, SnapshotSchema> imple
 
   toSecuritySnapshot(): JSONSecuritySnapshot {
     return {
-      snapshot: { snapshot_id: this.snapshot_id, date: this.snapshot_date },
+      snapshot: { snapshot_id: this.snapshot_id, date: this.snapshot_date, is_deleted: this.is_deleted ?? false },
       security: { security_id: this.security_id ?? "", close_price: this.close_price },
     } as JSONSecuritySnapshot;
   }
 
   toHoldingSnapshot(): JSONHoldingSnapshot {
     return {
-      snapshot: { snapshot_id: this.snapshot_id, date: this.snapshot_date },
+      snapshot: { snapshot_id: this.snapshot_id, date: this.snapshot_date, is_deleted: this.is_deleted ?? false },
       user: { user_id: this.user_id ?? "" },
       holding: {
         account_id: this.holding_account_id ?? "",
