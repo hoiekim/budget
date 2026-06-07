@@ -64,33 +64,6 @@ export const buildSecurityPriceIndex = (
   return index;
 };
 
-/**
- * Set of security_ids whose security record self-identifies as cash. Mirrors
- * the BE detector `isCashLikeSecurity` (`server/lib/compute-tools/cash-holding.ts`):
- *   - `security.type === "cash"`
- *   - `security.is_cash_equivalent === true`
- *   - `security.ticker_symbol` starts with `CUR:` (Plaid currency tickers)
- *
- * Reads from the `Security` dictionary — those flags are static security
- * properties, not snapshot-time ones, so the source of truth is the
- * securities table (`/api/securities`), not the per-snapshot enrichment
- * that `searchSnapshots` happens to also write into `snapshot.security`.
- */
-export const buildCashSecurityIds = (securities: SecurityDictionary): Set<string> => {
-  const cashIds = new Set<string>();
-  securities.forEach((sec) => {
-    if (!sec?.security_id) return;
-    if (
-      sec.type === "cash" ||
-      sec.is_cash_equivalent ||
-      (sec.ticker_symbol && sec.ticker_symbol.startsWith("CUR:"))
-    ) {
-      cashIds.add(sec.security_id);
-    }
-  });
-  return cashIds;
-};
-
 interface PriceForHoldingParams {
   holding: HoldingSnapshot;
   securityPriceIndex: SecurityPriceIndex;
@@ -288,7 +261,6 @@ export const getHoldingsValueData = ({
 }: GetHoldingsValueDataParams): HoldingsValueData => {
   const holdingsValueData = new HoldingsValueData();
   const securityPriceIndex = buildSecurityPriceIndex(securitySnapshots);
-  const cashSecurityIds = buildCashSecurityIds(securities);
 
   // Group holding snapshots by holdingId (account_id + security_id) and yearMonth
   const holdingsByIdAndMonth = new Map<string, Map<string, HoldingSnapshot>>();
@@ -341,16 +313,16 @@ export const getHoldingsValueData = ({
       //    itself. Catches deposit sweeps whose security row never gets a
       //    `securitySnapshot` written (no `close_price_as_of` → skipped by
       //    `upsertSecuritiesWithSnapshots`).
-      // 2. Security-side: `security.type === "cash"` / `is_cash_equivalent` /
-      //    `CUR:*` ticker (`buildCashSecurityIds`). Catches cash whose
-      //    broker quote drifts off 1.0 (FX precision, stale quote).
+      // 2. Security-side: `Security.isCash` (type === "cash" /
+      //    is_cash_equivalent / `CUR:*` ticker). Catches cash whose broker
+      //    quote drifts off 1.0 (FX precision, stale quote).
       //
       // Cash rows report `cost_basis === value` → `unrealizedGain === 0`
       // and `returnPercent === 0%`. The `inferCostBasis` transaction-replay
       // path is skipped — Plaid encodes sweep deposits as `type='buy'`
       // with `price=1`, which would otherwise pile up a phantom basis.
       const isCash =
-        holding.institution_price === 1 || cashSecurityIds.has(security_id);
+        holding.institution_price === 1 || securities.get(security_id)?.isCash === true;
 
       let finalCostBasis: number | null = isCash ? value : cost_basis;
       let costBasisInferred = false;

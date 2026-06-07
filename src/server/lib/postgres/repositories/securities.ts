@@ -1,11 +1,42 @@
 import { JSONSecurity } from "common";
-import { SecurityModel, securitiesTable, snapshotsTable, SECURITY_ID } from "../models";
+import {
+  MaskedUser,
+  SecurityModel,
+  securitiesTable,
+  snapshotsTable,
+  SECURITY_ID,
+  SECURITIES,
+  HOLDINGS,
+  USER_ID,
+} from "../models";
+import { pool } from "../client";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
 export const getSecurities = async (): Promise<JSONSecurity[]> => {
   const models = await securitiesTable.query({});
   return models.map((m) => m.toJSON());
+};
+
+/**
+ * Securities the given user has any holding for (active or soft-deleted).
+ * Used by `GET /api/securities` so the response is scoped to the caller's
+ * portfolio rather than leaking every ticker the DB has ever seen.
+ *
+ * INNER JOIN against `holdings` for the user_id filter; `DISTINCT` because
+ * a single security can back multiple holdings (different accounts /
+ * historical rows). Soft-deleted holdings are intentionally included so a
+ * recent unlink doesn't drop the security from the FE dict mid-session.
+ */
+export const getSecuritiesForUser = async (user: MaskedUser): Promise<JSONSecurity[]> => {
+  const sql = `
+    SELECT DISTINCT s.*
+    FROM ${SECURITIES} s
+    INNER JOIN ${HOLDINGS} h ON h.${SECURITY_ID} = s.${SECURITY_ID}
+    WHERE h.${USER_ID} = $1
+  `;
+  const result = await pool.query<Record<string, unknown>>(sql, [user.user_id]);
+  return result.rows.map((row) => new SecurityModel(row).toJSON());
 };
 
 export const getSecurity = async (security_id: string): Promise<JSONSecurity | null> => {

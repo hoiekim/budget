@@ -104,12 +104,14 @@ describe("GET /api/securities", () => {
     expect(result?.body?.map((s) => s.type)).toEqual(["etf", "cash", null]);
   });
 
-  test("issues exactly one SELECT against the securities table (no per-row enrichment)", async () => {
+  test("scopes the SELECT to the caller's user_id via a JOIN against holdings", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getSecuritiesRoute.execute(makeReq(), fakeRes());
     expect(mockQuery).toHaveBeenCalledTimes(1);
-    const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toMatch(/SELECT/i);
-    expect(sql).toMatch(/securities/i);
+    const [sql, values] = mockQuery.mock.calls[0];
+    expect(String(sql)).toMatch(/SELECT/i);
+    expect(String(sql)).toMatch(/holdings/);
+    expect(String(sql)).toMatch(/user_id/);
+    expect(values).toContain("u-1");
   });
 });

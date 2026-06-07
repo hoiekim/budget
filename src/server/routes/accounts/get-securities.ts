@@ -1,4 +1,4 @@
-import { Route, getSecurities } from "server";
+import { Route, getSecuritiesForUser } from "server";
 import { JSONSecurity } from "common";
 
 export type SecuritiesGetResponse = JSONSecurity[];
@@ -12,7 +12,7 @@ export const getSecuritiesRoute = new Route<SecuritiesGetResponse>(
       return { status: "failed", message: "Request user is not authenticated." };
     }
 
-    const securities = await getSecurities();
+    const securities = await getSecuritiesForUser(user);
     return { status: "success", body: securities };
   },
 );
