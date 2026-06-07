@@ -59,7 +59,12 @@ export const Balance = ({ account }: BalanceProps) => {
   // Now the table sums to the same number the donut shows.
   const shouldShowChanges = !!previousAmount || !!dynamicAmount;
   const changesProps = {
-    currentAmount: dynamicAmount || current!,
+    // Use dynamicAmount directly — it is always a number (line 26's `?? fallback`
+    // already resolved it). The old `|| current!` substituted the live balance
+    // whenever dynamicAmount was 0, which is wrong: $0 is the correct balance for
+    // a zero-balance month (closed account, liquidated position), and the row
+    // itself renders $0, so the Changes delta must compare against 0, not current.
+    currentAmount: dynamicAmount,
     previousAmount,
   };
 
