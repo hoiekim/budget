@@ -19,7 +19,7 @@ export const CATEGORIES = "categories";
 export const SNAPSHOTS = "snapshots";
 export const CHARTS = "charts";
 export const API_KEYS = "api_keys";
-export const LABELS = "labels";
+export const SUGGESTIONS = "suggestions";
 
 export const USER_ID = "user_id";
 export const UPDATED = "updated";
@@ -129,11 +129,8 @@ export const HOLDING_SECURITY_ID = "holding_security_id";
 export const CHART_ID = "chart_id";
 export const CONFIGURATION = "configuration";
 
-export const LABEL_ID = "label_id";
-export const PARENT_TYPE = "parent_type";
-export const PARENT_ID = "parent_id";
+export const SUGGESTION_ID = "suggestion_id";
 export const CONFIDENCE = "confidence";
-export const MEMO = "memo";
 
 export const KEY_ID = "key_id";
 export const KEY_HASH = "key_hash";
