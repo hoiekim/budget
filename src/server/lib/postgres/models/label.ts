@@ -31,7 +31,11 @@ import { Model, RowValueType, createTable } from "./base";
 const labelSchema = {
   [LABEL_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
   [PARENT_TYPE]: "VARCHAR(16) NOT NULL",
-  [PARENT_ID]: "UUID NOT NULL",
+  // parent_id is `transactions.transaction_id` (VARCHAR(255)) OR
+  // `accounts.account_id` (VARCHAR(255)) depending on parent_type — both
+  // tables' PKs are VARCHAR, not UUID, so this column matches the wider type
+  // to keep the polymorphic INSERT … SELECT (and any future FK lookup) clean.
+  [PARENT_ID]: "VARCHAR(255) NOT NULL",
   [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE CASCADE NOT NULL`,
   [BUDGET_ID]: `UUID REFERENCES ${BUDGETS}(${BUDGET_ID}) ON DELETE SET NULL`,
   [CATEGORY_ID]: `UUID REFERENCES ${CATEGORIES}(${CATEGORY_ID}) ON DELETE SET NULL`,
