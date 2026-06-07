@@ -115,27 +115,32 @@ describe("upsertUserConfirmedSuggestion", () => {
     expect(sql).toMatch(/INSERT INTO suggestions/);
     expect(sql).toMatch(/ON CONFLICT \(transaction_id,\s*category_id\)/);
     expect(sql).toMatch(/DO UPDATE SET confidence = 1/);
+    // user_id WHERE guard — defense-in-depth so an upsert can't ever clobber
+    // a different user's row even if transaction_id collides.
+    expect(sql).toMatch(/suggestions\.user_id\s*=\s*\$2/);
     expect(values).toEqual(["tx-1", "u-1", "cat-A"]);
     expect(result?.confidence).toBe(1);
   });
 });
 
 describe("upsertEngineSuggestion", () => {
-  test("rejects non-strict-fractional confidence", () => {
-    expect(
+  test("rejects non-strict-fractional confidence", async () => {
+    await expect(
       upsertEngineSuggestion(fakeUser(), "tx-1", "cat-A", 1),
     ).rejects.toThrow(/strict-fractional/);
-    expect(
+    await expect(
       upsertEngineSuggestion(fakeUser(), "tx-1", "cat-A", 0),
     ).rejects.toThrow(/strict-fractional/);
   });
 
-  test("WHERE clause keeps engine from clobbering user-confirmed (=1) or user-rejected (=0) rows", async () => {
+  test("WHERE clause keeps engine from clobbering user-confirmed (=1) or user-rejected (=0) rows + scopes by user_id", async () => {
     mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
     await upsertEngineSuggestion(fakeUser(), "tx-1", "cat-A", 0.85);
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toMatch(/ON CONFLICT \(transaction_id,\s*category_id\)/);
-    expect(sql).toMatch(/WHERE suggestions\.confidence\s*<\s*1\s*AND\s*suggestions\.confidence\s*>\s*0/);
+    expect(sql).toMatch(/suggestions\.user_id\s*=\s*\$2/);
+    expect(sql).toMatch(/suggestions\.confidence\s*<\s*1/);
+    expect(sql).toMatch(/suggestions\.confidence\s*>\s*0/);
   });
 });
 

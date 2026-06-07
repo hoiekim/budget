@@ -65,12 +65,18 @@ export const upsertUserConfirmedSuggestion = async (
   transaction_id: string,
   category_id: string,
 ): Promise<JSONSuggestion | null> => {
+  // ON CONFLICT WHERE clause guards user_id — defense-in-depth in case a
+  // future bug ever lets two users share a transaction_id (Plaid PK
+  // collision in sandbox, manual fixture, etc.). transaction_id is the
+  // Plaid PK and globally unique today, but pinning user_id on the upsert
+  // keeps an upsert from ever clobbering a different user's row.
   const sql = `
     INSERT INTO ${SUGGESTIONS}
       (${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID}, ${CONFIDENCE})
     VALUES ($1, $2, $3, 1)
     ON CONFLICT (${TRANSACTION_ID}, ${CATEGORY_ID})
     DO UPDATE SET ${CONFIDENCE} = 1, ${UPDATED} = CURRENT_TIMESTAMP
+      WHERE ${SUGGESTIONS}.${USER_ID} = $2
     RETURNING *
   `;
   const result = await pool.query<Record<string, unknown>>(sql, [
@@ -105,7 +111,9 @@ export const upsertEngineSuggestion = async (
     VALUES ($1, $2, $3, $4)
     ON CONFLICT (${TRANSACTION_ID}, ${CATEGORY_ID})
     DO UPDATE SET ${CONFIDENCE} = EXCLUDED.${CONFIDENCE}, ${UPDATED} = CURRENT_TIMESTAMP
-      WHERE ${SUGGESTIONS}.${CONFIDENCE} < 1 AND ${SUGGESTIONS}.${CONFIDENCE} > 0
+      WHERE ${SUGGESTIONS}.${USER_ID} = $2
+        AND ${SUGGESTIONS}.${CONFIDENCE} < 1
+        AND ${SUGGESTIONS}.${CONFIDENCE} > 0
     RETURNING *
   `;
   const result = await pool.query<Record<string, unknown>>(sql, [
@@ -119,9 +127,17 @@ export const upsertEngineSuggestion = async (
 
 /**
  * Demote any engine-suggestion rows for this transaction (confidence in
- * the open interval (0, 1)) to `confidence = 0` — the "user took an
- * action" step. Confidence-1 rows (prior user confirmations) and
- * confidence-0 rows (prior user rejections) are unaffected.
+ * the open interval (0, 1)) to `confidence = 0`.
+ *
+ * **Important — `confidence = 0` is the rejection sentinel.** Calling this
+ * function on a transaction marks every formerly-engine-suggested category
+ * for that transaction as user-rejected, because the user just took an
+ * action and the engine's prior guesses are no longer current. That is the
+ * intended semantic — if the user picks B over A, A's row collapses to a
+ * rejection signal the merchant signal can read.
+ *
+ * Confidence-1 rows (prior user confirmations) and confidence-0 rows
+ * (prior user rejections) are unaffected.
  */
 export const demoteEngineSuggestionsForTransaction = async (
   user: MaskedUser,

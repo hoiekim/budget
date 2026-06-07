@@ -1,5 +1,16 @@
 import { pool } from "./client";
 import { logger } from "../logger";
+import {
+  SUGGESTIONS,
+  TRANSACTIONS,
+  TRANSACTION_ID,
+  USER_ID,
+  CATEGORY_ID,
+  CONFIDENCE,
+  LABEL_CATEGORY_ID,
+  LABEL_CATEGORY_CONFIDENCE,
+  IS_DELETED,
+} from "./models";
 
 /**
  * One-time backfill from the legacy `transactions.label_*` denorm columns
@@ -33,7 +44,7 @@ export const backfillSuggestionsFromLegacyColumns = async (): Promise<void> => {
     `
     SELECT EXISTS (
       SELECT 1 FROM information_schema.columns
-      WHERE table_name = 'transactions' AND column_name = 'label_category_id'
+      WHERE table_name = '${TRANSACTIONS}' AND column_name = '${LABEL_CATEGORY_ID}'
     ) AS has_transactions
     `,
   );
@@ -44,16 +55,16 @@ export const backfillSuggestionsFromLegacyColumns = async (): Promise<void> => {
 
   const result = await pool.query(
     `
-    INSERT INTO suggestions (transaction_id, user_id, category_id, confidence)
+    INSERT INTO ${SUGGESTIONS} (${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID}, ${CONFIDENCE})
     SELECT
-      transaction_id,
-      user_id,
-      label_category_id,
-      COALESCE(label_category_confidence, 1.0)
-    FROM transactions
-    WHERE (is_deleted IS NULL OR is_deleted = FALSE)
-      AND label_category_id IS NOT NULL
-    ON CONFLICT (transaction_id, category_id) DO NOTHING
+      ${TRANSACTION_ID},
+      ${USER_ID},
+      ${LABEL_CATEGORY_ID},
+      COALESCE(${LABEL_CATEGORY_CONFIDENCE}, 1.0)
+    FROM ${TRANSACTIONS}
+    WHERE (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+      AND ${LABEL_CATEGORY_ID} IS NOT NULL
+    ON CONFLICT (${TRANSACTION_ID}, ${CATEGORY_ID}) DO NOTHING
     `,
   );
 
