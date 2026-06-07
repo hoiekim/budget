@@ -1,6 +1,6 @@
 import { assign, ValueOf, environment } from "common";
 import { Account } from "./Account";
-import { Holding, Institution, Status } from "./miscellaneous";
+import { Holding, Institution, Security, Status } from "./miscellaneous";
 import { BudgetFamily, BudgetFamilyType } from "./BudgetFamily";
 import { Transaction } from "./Transaction";
 import { InvestmentTransaction } from "./InvestmentTransaction";
@@ -79,6 +79,7 @@ export class Dictionary<T = any, S extends Dictionary<T> = any> extends Map<stri
 export class AccountDictionary extends Dictionary<Account, AccountDictionary> {}
 export class InstitutionDictionary extends Dictionary<Institution, InstitutionDictionary> {}
 export class HoldingDictionary extends Dictionary<Holding, HoldingDictionary> {}
+export class SecurityDictionary extends Dictionary<Security, SecurityDictionary> {}
 
 export class InvestmentTransactionDictionary extends Dictionary<
   InvestmentTransaction,
@@ -133,6 +134,7 @@ export class Data {
   institutions = new InstitutionDictionary();
   accounts = new AccountDictionary();
   holdings = new HoldingDictionary();
+  securities = new SecurityDictionary();
   transactions = new TransactionDictionary();
   investmentTransactions = new InvestmentTransactionDictionary();
   splitTransactions = new SplitTransactionDictionary();

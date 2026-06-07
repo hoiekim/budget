@@ -14,16 +14,17 @@ import { HoldingsValueData, HoldingValueSummary, HoldingValueHistory } from "../
 import {
   HoldingSnapshotDictionary,
   SecuritySnapshotDictionary,
+  SecurityDictionary,
   InvestmentTransactionDictionary,
 } from "../../models/Data";
 import { HoldingSnapshot, SecuritySnapshot } from "../../models/Snapshot";
+import { Security } from "../../models/miscellaneous";
 import { InvestmentTransaction } from "../../models/InvestmentTransaction";
 
 const createSecuritySnapshot = (
   securityId: string,
   closePrice: number,
   date: string,
-  extra: Partial<{ type: string; is_cash_equivalent: boolean; ticker_symbol: string }> = {},
 ): SecuritySnapshot => {
   return new SecuritySnapshot({
     snapshot: { snapshot_id: `snap_${securityId}_${date}`, date },
@@ -31,9 +32,21 @@ const createSecuritySnapshot = (
       security_id: securityId,
       close_price: closePrice,
       close_price_as_of: date,
-      ...extra,
     },
   });
+};
+
+const createSecurity = (
+  securityId: string,
+  extra: Partial<{ type: string; is_cash_equivalent: boolean; ticker_symbol: string }> = {},
+): Security => {
+  return new Security({ security_id: securityId, ...extra });
+};
+
+const securityDict = (...securities: Security[]): SecurityDictionary => {
+  const dict = new SecurityDictionary();
+  for (const sec of securities) dict.set(sec.security_id, sec);
+  return dict;
 };
 
 const createHoldingSnapshot = (
@@ -407,6 +420,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots,
+      securities: new SecurityDictionary(),
       investmentTransactions,
     });
 
@@ -432,6 +446,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots,
+      securities: new SecurityDictionary(),
       investmentTransactions,
     });
 
@@ -470,6 +485,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots: new SecuritySnapshotDictionary(),
+      securities: new SecurityDictionary(),
       investmentTransactions,
     });
 
@@ -497,6 +513,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots: new SecuritySnapshotDictionary(),
+      securities: new SecurityDictionary(),
       investmentTransactions: new InvestmentTransactionDictionary(),
     });
 
@@ -523,6 +540,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots: new SecuritySnapshotDictionary(),
+      securities: new SecurityDictionary(),
       investmentTransactions: new InvestmentTransactionDictionary(),
     });
 
@@ -538,6 +556,7 @@ describe("getHoldingsValueData", () => {
     // exercises the security-side branch: a money-market fund whose broker
     // quote landed at 0.9999 (FX precision / stale quote) still gets
     // classified as cash because its security record says `type: "cash"`.
+    // Source of truth = the `securities` dict, not the snapshot blob.
     const holdingSnapshots = new HoldingSnapshotDictionary();
     holdingSnapshots.set(
       "h-mmkt",
@@ -545,14 +564,12 @@ describe("getHoldingsValueData", () => {
       createHoldingSnapshot("acc1", "sec-mmkt", 1000, 0.9999, 999.9, 999.9, "2026-01-15"),
     );
     const securitySnapshots = new SecuritySnapshotDictionary();
-    securitySnapshots.set(
-      "snap-mmkt",
-      createSecuritySnapshot("sec-mmkt", 1, "2026-01-15", { type: "cash" }),
-    );
+    securitySnapshots.set("snap-mmkt", createSecuritySnapshot("sec-mmkt", 1, "2026-01-15"));
 
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots,
+      securities: securityDict(createSecurity("sec-mmkt", { type: "cash" })),
       investmentTransactions: new InvestmentTransactionDictionary(),
     });
 
@@ -573,18 +590,16 @@ describe("getHoldingsValueData", () => {
     );
 
     const securitySnapshots = new SecuritySnapshotDictionary();
-    securitySnapshots.set(
-      "snap-equiv",
-      createSecuritySnapshot("sec-equiv", 1, "2026-01-15", { is_cash_equivalent: true }),
-    );
-    securitySnapshots.set(
-      "snap-eur",
-      createSecuritySnapshot("sec-eur", 1, "2026-01-15", { ticker_symbol: "CUR:EUR" }),
-    );
+    securitySnapshots.set("snap-equiv", createSecuritySnapshot("sec-equiv", 1, "2026-01-15"));
+    securitySnapshots.set("snap-eur", createSecuritySnapshot("sec-eur", 1, "2026-01-15"));
 
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots,
+      securities: securityDict(
+        createSecurity("sec-equiv", { is_cash_equivalent: true }),
+        createSecurity("sec-eur", { ticker_symbol: "CUR:EUR" }),
+      ),
       investmentTransactions: new InvestmentTransactionDictionary(),
     });
 
@@ -623,6 +638,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots: new SecuritySnapshotDictionary(),
+      securities: new SecurityDictionary(),
       investmentTransactions,
     });
 
@@ -646,6 +662,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots,
+      securities: new SecurityDictionary(),
       investmentTransactions,
     });
 
@@ -674,6 +691,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots,
+      securities: new SecurityDictionary(),
       investmentTransactions,
     });
 
@@ -699,6 +717,7 @@ describe("getHoldingsValueData", () => {
     const result = getHoldingsValueData({
       holdingSnapshots,
       securitySnapshots,
+      securities: new SecurityDictionary(),
       investmentTransactions,
     });
 

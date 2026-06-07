@@ -40,6 +40,7 @@ export const useData = () => {
         accountSnapshots,
         holdingSnapshots,
         securitySnapshots,
+        securities,
         transactions,
         splitTransactions,
         investmentTransactions,
@@ -73,6 +74,7 @@ export const useData = () => {
         const holdingsValueData = getHoldingsValueData({
           holdingSnapshots,
           securitySnapshots,
+          securities,
           investmentTransactions,
         });
 

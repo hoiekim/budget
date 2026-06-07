@@ -4,6 +4,7 @@ import { HoldingValueSummary, HoldingsValueData } from "../../models/Calculation
 import {
   HoldingSnapshotDictionary,
   InvestmentTransactionDictionary,
+  SecurityDictionary,
   SecuritySnapshotDictionary,
 } from "../../models/Data";
 import { HoldingSnapshot } from "../../models/Snapshot";
@@ -70,20 +71,14 @@ export const buildSecurityPriceIndex = (
  *   - `security.is_cash_equivalent === true`
  *   - `security.ticker_symbol` starts with `CUR:` (Plaid currency tickers)
  *
- * Used in `getHoldingsValueData` as an OR-companion to the
- * `institution_price === 1` holding-side signal. A holding is cash if EITHER
- * predicate fires — the security-side branch catches cases where the broker
- * didn't quote exactly 1 (FX precision, stale quote), and the holding-side
- * branch catches Plaid cash sweeps whose security row never gets a
- * `securitySnapshot` written (no `close_price_as_of`, so
- * `upsertSecuritiesWithSnapshots` skips them).
+ * Reads from the `Security` dictionary — those flags are static security
+ * properties, not snapshot-time ones, so the source of truth is the
+ * securities table (`/api/securities`), not the per-snapshot enrichment
+ * that `searchSnapshots` happens to also write into `snapshot.security`.
  */
-export const buildCashSecurityIds = (
-  securitySnapshots: SecuritySnapshotDictionary,
-): Set<string> => {
+export const buildCashSecurityIds = (securities: SecurityDictionary): Set<string> => {
   const cashIds = new Set<string>();
-  securitySnapshots.forEach((snapshot) => {
-    const sec = snapshot.security;
+  securities.forEach((sec) => {
     if (!sec?.security_id) return;
     if (
       sec.type === "cash" ||
@@ -277,6 +272,7 @@ export const inferCostBasis = ({
 interface GetHoldingsValueDataParams {
   holdingSnapshots: HoldingSnapshotDictionary;
   securitySnapshots: SecuritySnapshotDictionary;
+  securities: SecurityDictionary;
   investmentTransactions: InvestmentTransactionDictionary;
 }
 
@@ -287,11 +283,12 @@ interface GetHoldingsValueDataParams {
 export const getHoldingsValueData = ({
   holdingSnapshots,
   securitySnapshots,
+  securities,
   investmentTransactions,
 }: GetHoldingsValueDataParams): HoldingsValueData => {
   const holdingsValueData = new HoldingsValueData();
   const securityPriceIndex = buildSecurityPriceIndex(securitySnapshots);
-  const cashSecurityIds = buildCashSecurityIds(securitySnapshots);
+  const cashSecurityIds = buildCashSecurityIds(securities);
 
   // Group holding snapshots by holdingId (account_id + security_id) and yearMonth
   const holdingsByIdAndMonth = new Map<string, Map<string, HoldingSnapshot>>();
