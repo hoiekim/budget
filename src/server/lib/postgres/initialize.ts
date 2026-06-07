@@ -23,7 +23,9 @@ import {
   snapshotsTable,
   chartsTable,
   apiKeysTable,
+  labelsTable,
 } from "./models";
+import { backfillLabelsFromLegacyColumns } from "./backfill-labels";
 
 export const version = "6";
 export const index = "budget" + (version ? `-${version}` : "");
@@ -46,6 +48,7 @@ const tables: Table<unknown, Schema>[] = [
   snapshotsTable,
   chartsTable,
   apiKeysTable,
+  labelsTable,
 ];
 
 export const initializePostgres = async (): Promise<void> => {
@@ -80,6 +83,12 @@ export const initializePostgres = async (): Promise<void> => {
 
     // Run automatic schema migrations to add any missing columns
     await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
+
+    // One-time data backfill from the legacy `transactions.label_*` and
+    // `accounts.label_*` columns into the new `labels` table. Idempotent
+    // (ON CONFLICT DO NOTHING) — runs every startup until Stage 3 drops the
+    // legacy columns, then this becomes a no-op and can be removed.
+    await backfillLabelsFromLegacyColumns();
   } catch (error: unknown) {
     logger.error("Failed to create tables", {}, error);
     throw new Error("Failed to setup PostgreSQL tables.");
