@@ -31,6 +31,19 @@ export class Security implements JSONSecurity {
   }
   set id(_: string) {}
 
+  /**
+   * True when the security self-identifies as cash. Mirrors the BE detector
+   * `isCashLikeSecurity` (`server/lib/compute-tools/cash-holding.ts`).
+   * Consumed by the FE cash branch in `getHoldingsValueData` so callers can
+   * do `securities.get(id)?.isCash` instead of a precomputed O(N) Set.
+   */
+  get isCash(): boolean {
+    if (this.type === "cash") return true;
+    if (this.is_cash_equivalent) return true;
+    if (this.ticker_symbol && this.ticker_symbol.startsWith("CUR:")) return true;
+    return false;
+  }
+
   security_id: string = getRandomId();
   isin: string | null = null;
   cusip: string | null = null;

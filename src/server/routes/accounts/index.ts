@@ -8,6 +8,7 @@ export * from "./get-new-split-transaction";
 export * from "./get-split-transactions";
 export * from "./get-accounts";
 export * from "./get-institution";
+export * from "./get-securities";
 export * from "./get-snapshots";
 export * from "./get-holding-snapshots";
 export * from "./post-transaction";

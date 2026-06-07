@@ -4,6 +4,7 @@ import { HoldingValueSummary, HoldingsValueData } from "../../models/Calculation
 import {
   HoldingSnapshotDictionary,
   InvestmentTransactionDictionary,
+  SecurityDictionary,
   SecuritySnapshotDictionary,
 } from "../../models/Data";
 import { HoldingSnapshot } from "../../models/Snapshot";
@@ -244,6 +245,7 @@ export const inferCostBasis = ({
 interface GetHoldingsValueDataParams {
   holdingSnapshots: HoldingSnapshotDictionary;
   securitySnapshots: SecuritySnapshotDictionary;
+  securities: SecurityDictionary;
   investmentTransactions: InvestmentTransactionDictionary;
 }
 
@@ -254,6 +256,7 @@ interface GetHoldingsValueDataParams {
 export const getHoldingsValueData = ({
   holdingSnapshots,
   securitySnapshots,
+  securities,
   investmentTransactions,
 }: GetHoldingsValueDataParams): HoldingsValueData => {
   const holdingsValueData = new HoldingsValueData();
@@ -303,29 +306,27 @@ export const getHoldingsValueData = ({
       const { price } = priceResult;
       const value = price * quantity;
 
-      // Detect cash from data already on the holding snapshot itself.
-      // Plaid's cash sweeps + interest accounts always quote
-      // institution_price=1.0 and never carry a cost_basis (Plaid doesn't
-      // track basis on cash). Real equities essentially never satisfy
-      // both for any meaningful duration. This avoids needing server-side
-      // help to identify cash. G/L is suppressed for cash holdings.
+      // Two-channel cash detection. EITHER predicate fires → row is cash:
       //
-      // `cost_basis` on the wire is 0, not null — `SnapshotModel.toHoldingSnapshot`
-      // does `this.cost_basis ?? 0`, collapsing DB NULL to a numeric zero.
-      // So the cash detector accepts 0 as the missing-basis sentinel.
+      // 1. Holding-side: `institution_price === 1`. Plaid (and every other
+      //    broker) quotes 1 for cash because cash doesn't trade against
+      //    itself. Catches deposit sweeps whose security row never gets a
+      //    `securitySnapshot` written (no `close_price_as_of` → skipped by
+      //    `upsertSecuritiesWithSnapshots`).
+      // 2. Security-side: `Security.isCash` (type === "cash" /
+      //    is_cash_equivalent / `CUR:*` ticker). Catches cash whose broker
+      //    quote drifts off 1.0 (FX precision, stale quote).
       //
-      // The cost-basis path otherwise fires `inferCostBasis` over the
-      // Plaid investment_transactions feed, which encodes cash deposits
-      // and interest reinvestments as `type='buy'` with `price=1`. That
-      // accumulates a phantom cost basis with `gain ≈ 0`-but-not-quite,
-      // which is what surfaced as Unrealized G/L on the cash row.
+      // Cash rows report `cost_basis === value` → `unrealizedGain === 0`
+      // and `returnPercent === 0%`. The `inferCostBasis` transaction-replay
+      // path is skipped — Plaid encodes sweep deposits as `type='buy'`
+      // with `price=1`, which would otherwise pile up a phantom basis.
       const isCash =
-        holding.institution_price === 1 && (cost_basis === null || cost_basis === 0);
+        holding.institution_price === 1 || securities.get(security_id)?.isCash === true;
 
-      let finalCostBasis: number | null = isCash ? null : cost_basis;
+      let finalCostBasis: number | null = isCash ? value : cost_basis;
       let costBasisInferred = false;
 
-      // Infer cost basis if missing or zero with quantity — skipped for cash.
       if (!isCash && (cost_basis === null || cost_basis === 0) && quantity !== 0) {
         const inferred = inferCostBasis({
           accountId: account_id,

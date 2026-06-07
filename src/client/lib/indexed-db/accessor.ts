@@ -1,11 +1,12 @@
 const DB_NAME = "BudgetApp";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export enum StoreName {
   // primary data
   institutions = "institutions",
   accounts = "accounts",
   holdings = "holdings",
+  securities = "securities",
   transactions = "transactions",
   investmentTransactions = "investmentTransactions",
   splitTransactions = "splitTransactions",

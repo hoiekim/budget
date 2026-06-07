@@ -17,6 +17,7 @@ import {
   SplitTransactionsGetResponse,
   ChartsGetResponse,
   SnapshotsGetResponse,
+  SecuritiesGetResponse,
 } from "server";
 import {
   Account,
@@ -53,6 +54,8 @@ import {
   indexedDb,
   HoldingDictionary,
   Holding,
+  SecurityDictionary,
+  Security,
 } from "client";
 
 // Browsers cap concurrent fetches per origin (~6 on HTTP/1.1) and queueing
@@ -444,6 +447,27 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   return result;
 };
 
+interface FetchSecuritiesResult {
+  securities: SecurityDictionary;
+  networkFailed: boolean;
+}
+
+const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
+  const result: FetchSecuritiesResult = {
+    securities: new SecurityDictionary(),
+    networkFailed: false,
+  };
+  const response = await call.get<SecuritiesGetResponse>("/api/securities").catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  response.body?.forEach((s) => {
+    if (s.security_id) result.securities.set(s.security_id, new Security(s));
+  });
+  return result;
+};
+
 export const useSync = () => {
   const { user, setData } = useAppContext();
   const debouncer = useDebounce();
@@ -527,6 +551,7 @@ export const useSync = () => {
           transactionsResult,
           snapshotsResult,
           institutionsResult,
+          securitiesResult,
         ] = await Promise.all([
           fetchBudgets(),
           fetchCharts(),
@@ -534,11 +559,13 @@ export const useSync = () => {
           fetchTransactions(accounts, fullRange, recentSinceMs),
           fetchSnapshots(accounts, fullRange, recentSinceMs),
           fetchInstitutions(accounts),
+          fetchSecurities(),
         ]);
 
         const refreshed = new Data();
         refreshed.accounts = accounts;
         refreshed.holdings = holdings;
+        refreshed.securities = securitiesResult.securities;
         refreshed.items = items;
         refreshed.budgets = budgetsResult.budgets;
         refreshed.sections = budgetsResult.sections;
@@ -569,7 +596,8 @@ export const useSync = () => {
           splitTransactionsResult.networkFailed ||
           transactionsResult.networkFailed ||
           snapshotsResult.networkFailed ||
-          institutionsResult.networkFailed;
+          institutionsResult.networkFailed ||
+          securitiesResult.networkFailed;
 
         if (!warmFetchFailed) {
           indexedDb
@@ -609,12 +637,25 @@ export const useSync = () => {
       const budgetsPromise = fetchBudgets();
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
+      const securitiesPromise = fetchSecurities();
 
-      const [{ accounts, items }, stage1Budgets, stage1Charts, stage1Institutions] =
-        await Promise.all([accountsPromise, budgetsPromise, chartsPromise, institutionsPromise]);
+      const [
+        { accounts, items },
+        stage1Budgets,
+        stage1Charts,
+        stage1Institutions,
+        stage1Securities,
+      ] = await Promise.all([
+        accountsPromise,
+        budgetsPromise,
+        chartsPromise,
+        institutionsPromise,
+        securitiesPromise,
+      ]);
       const { budgets, sections, categories } = stage1Budgets;
       const { charts } = stage1Charts;
       const { institutions } = stage1Institutions;
+      const { securities } = stage1Securities;
 
       const stage1 = new Data({
         accounts,
@@ -624,6 +665,7 @@ export const useSync = () => {
         categories,
         charts,
         institutions,
+        securities,
       });
       stage1.status.isInit = true;
       stage1.status.isLoading = true;
@@ -667,6 +709,7 @@ export const useSync = () => {
         categories,
         charts,
         institutions,
+        securities,
         transactions: recentTransactions,
         investmentTransactions: recentInvestmentTransactions,
         splitTransactions,
@@ -701,6 +744,7 @@ export const useSync = () => {
         categories,
         charts,
         institutions,
+        securities,
         transactions: recentTransactions,
         investmentTransactions: recentInvestmentTransactions,
         splitTransactions,
@@ -741,6 +785,7 @@ export const useSync = () => {
         stage1Budgets.networkFailed ||
         stage1Charts.networkFailed ||
         stage1Institutions.networkFailed ||
+        stage1Securities.networkFailed ||
         stage2Transactions.networkFailed ||
         stage2SplitTxns.networkFailed ||
         stage2Snapshots.networkFailed ||

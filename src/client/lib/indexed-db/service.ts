@@ -40,6 +40,8 @@ import {
   Calculations,
   HoldingDictionary,
   Holding,
+  SecurityDictionary,
+  Security,
 } from "client";
 import { StoreName, indexedDbAccessor } from "./accessor";
 
@@ -135,6 +137,14 @@ export const saveAccounts = async (data: AccountDictionary) => {
 
 export const loadAccounts = () => {
   return loadDictionary<AccountDictionary, Account>(StoreName.accounts, Account);
+};
+
+export const saveSecurities = async (data: SecurityDictionary) => {
+  await saveDictionary(StoreName.securities, data);
+};
+
+export const loadSecurities = () => {
+  return loadDictionary<SecurityDictionary, Security>(StoreName.securities, Security);
 };
 
 export const saveHoldings = async (data: HoldingDictionary) => {
@@ -259,6 +269,7 @@ export const saveAllData = async (data: Data) => {
     institutions,
     accounts,
     holdings,
+    securities,
     transactions,
     investmentTransactions,
     splitTransactions,
@@ -276,6 +287,7 @@ export const saveAllData = async (data: Data) => {
     saveInstitutions(institutions),
     saveAccounts(accounts),
     saveHoldings(holdings),
+    saveSecurities(securities),
     saveTransactions(transactions),
     saveInvestmentTransactions(investmentTransactions),
     saveSplitTransactions(splitTransactions),
@@ -295,6 +307,7 @@ export const loadAllData = async () => {
     institutions,
     accounts,
     holdings,
+    securities,
     transactions,
     investmentTransactions,
     splitTransactions,
@@ -310,6 +323,7 @@ export const loadAllData = async () => {
     loadInstitutions(),
     loadAccounts(),
     loadHoldings(),
+    loadSecurities(),
     loadTransactions(),
     loadInvestmentTransactions(),
     loadSplitTransactions(),
@@ -327,6 +341,7 @@ export const loadAllData = async () => {
     institutions,
     accounts,
     holdings,
+    securities,
     transactions,
     investmentTransactions,
     splitTransactions,
@@ -354,6 +369,7 @@ export const saveAllCalculations = async (data: Calculations) => {
 type StoredModel =
   | Account
   | Holding
+  | Security
   | Institution
   | Transaction
   | InvestmentTransaction
@@ -375,6 +391,9 @@ export const save = (data: StoredModel) => {
       break;
     case Holding:
       storeName = StoreName.holdings;
+      break;
+    case Security:
+      storeName = StoreName.securities;
       break;
     case Institution:
       storeName = StoreName.institutions;
