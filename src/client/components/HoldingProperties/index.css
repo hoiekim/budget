@@ -43,3 +43,14 @@
   font-size: 12px;
   opacity: 0.7;
 }
+
+.HoldingProperties .currencyMeta {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.HoldingProperties .inputWithSuffix {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

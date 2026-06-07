@@ -279,7 +279,11 @@ export const HoldingsComposition = ({ account }: Props) => {
         )}
         {displayRows.map((row) => {
           const gainClass =
-            row.unrealizedGain === null ? "" : row.unrealizedGain >= 0 ? "positive" : "negative";
+            row.isCash || row.unrealizedGain === null
+              ? ""
+              : row.unrealizedGain >= 0
+                ? "positive"
+                : "negative";
           const onClickRow = row.clickable ? () => goToHoldingDetail(row.bucketKey) : undefined;
           const onKeyDownRow = row.clickable
             ? (e: KeyboardEvent) => {
@@ -312,7 +316,9 @@ export const HoldingsComposition = ({ account }: Props) => {
                 {currencySymbol}&nbsp;{numberToCommaString(row.value, 0)}
               </span>
               <span className={`col-gain ${gainClass}`}>
-                {row.unrealizedGain !== null ? (
+                {row.isCash || row.unrealizedGain === null ? (
+                  <span className="no-data">—</span>
+                ) : (
                   <>
                     {row.unrealizedGain >= 0 ? "+" : ""}
                     {currencySymbol}&nbsp;{numberToCommaString(row.unrealizedGain, 0)}
@@ -322,8 +328,6 @@ export const HoldingsComposition = ({ account }: Props) => {
                       </span>
                     )}
                   </>
-                ) : (
-                  <span className="no-data">—</span>
                 )}
               </span>
               <span className="col-pct">{row.pct.toFixed(1)}%</span>

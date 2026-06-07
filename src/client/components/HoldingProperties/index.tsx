@@ -1,5 +1,5 @@
 import { ChangeEventHandler, Fragment, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
-import { ItemProvider, numberToCommaString, ViewDate } from "common";
+import { ItemProvider, numberToCommaString, ViewDate, currencyCodeToSymbol } from "common";
 import {
   call,
   PATH,
@@ -158,6 +158,11 @@ export const HoldingProperties = () => {
     const primaryLabel = tickerKey === CASH_TICKER ? "Cash" : tickerKey;
     return { primaryLabel, name, securities };
   }, [bucketSnapshots, data.securitySnapshots, tickerKey]);
+
+  const isCash = tickerKey === CASH_TICKER;
+  const currencySymbol = currencyCodeToSymbol(
+    bucketSnapshots[0]?.holding.iso_currency_code || "USD",
+  );
 
   // Aggregate quantity / cost basis across all underlying snapshots.
   // Avg cost basis = sum(cost_basis) / sum(quantity); null whenever any
@@ -592,17 +597,22 @@ export const HoldingProperties = () => {
           </Row>
         )}
         <Row className="keyValue">
-          <span className="propertyName">Quantity</span>
-          <span>{numberToCommaString(aggregate.totalQuantity, 4)}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Cost&nbsp;basis&nbsp;(avg)</span>
+          <span className="propertyName">{isCash ? "Amount" : "Quantity"}</span>
           <span>
-            {aggregate.avgCostBasis !== null
-              ? numberToCommaString(aggregate.avgCostBasis, 4)
-              : "—"}
+            {numberToCommaString(aggregate.totalQuantity, isCash ? 2 : 4)}
+            {isCash && <span className="currencyMeta">&nbsp;{currencySymbol}</span>}
           </span>
         </Row>
+        {!isCash && (
+          <Row className="keyValue">
+            <span className="propertyName">Cost&nbsp;basis&nbsp;(avg)</span>
+            <span>
+              {aggregate.avgCostBasis !== null
+                ? numberToCommaString(aggregate.avgCostBasis, 4)
+                : "—"}
+            </span>
+          </Row>
+        )}
       </Property>
 
       {bucketSnapshots.map((snap, idx) => {
@@ -626,35 +636,45 @@ export const HoldingProperties = () => {
             </PropertyLabel>
             <Property>
               <Row className="keyValue">
-                <span className="propertyName">Quantity</span>
+                <span className="propertyName">{isCash ? "Amount" : "Quantity"}</span>
                 {isReadOnly ? (
-                  <span>{edit.quantity || "—"}</span>
+                  <span>
+                    {edit.quantity || "—"}
+                    {isCash && edit.quantity && (
+                      <span className="currencyMeta">&nbsp;{currencySymbol}</span>
+                    )}
+                  </span>
                 ) : (
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={edit.quantity}
-                    onChange={(e) => setEdit({ quantity: e.target.value, error: "" })}
-                    onBlur={onBlurQuantity(snap, edit.quantity)}
-                  />
+                  <span className="inputWithSuffix">
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={edit.quantity}
+                      onChange={(e) => setEdit({ quantity: e.target.value, error: "" })}
+                      onBlur={onBlurQuantity(snap, edit.quantity)}
+                    />
+                    {isCash && <span className="currencyMeta">{currencySymbol}</span>}
+                  </span>
                 )}
               </Row>
-              <Row className="keyValue">
-                <span className="propertyName">Cost&nbsp;basis</span>
-                {isReadOnly ? (
-                  <span>{edit.costBasis || "—"}</span>
-                ) : (
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={edit.costBasis}
-                    onChange={(e) => setEdit({ costBasis: e.target.value, error: "" })}
-                    onBlur={onBlurCostBasis(snap, edit.costBasis)}
-                  />
-                )}
-              </Row>
+              {!isCash && (
+                <Row className="keyValue">
+                  <span className="propertyName">Cost&nbsp;basis</span>
+                  {isReadOnly ? (
+                    <span>{edit.costBasis || "—"}</span>
+                  ) : (
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={edit.costBasis}
+                      onChange={(e) => setEdit({ costBasis: e.target.value, error: "" })}
+                      onBlur={onBlurCostBasis(snap, edit.costBasis)}
+                    />
+                  )}
+                </Row>
+              )}
               <Row className="keyValue">
                 <span className="propertyName">Snapshot&nbsp;date</span>
                 {isReadOnly ? (
