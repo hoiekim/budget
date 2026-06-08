@@ -271,4 +271,35 @@ describe("Capacity.getActiveAmount", () => {
     const leaf = new Capacity({ is_synced: true, month: 9999 });
     expect(leaf.getActiveAmount(EPOCH, "month", [])).toBe(0);
   });
+
+  test("toJSON emits ONLY whitelisted fields — no `year`/`isInfinite`/`isIncome` getter leakage", () => {
+    const c = new Capacity({ capacity_id: "x", month: 100 });
+    const json = c.toJSON();
+    expect(Object.keys(json).sort()).toEqual(
+      ["active_from", "capacity_id", "is_synced", "month"].sort(),
+    );
+    expect((json as Record<string, unknown>).year).toBeUndefined();
+    expect((json as Record<string, unknown>).isInfinite).toBeUndefined();
+    expect((json as Record<string, unknown>).isIncome).toBeUndefined();
+  });
+
+  test("constructor tolerates JSON polluted with computed-getter fields — legacy data must not throw", () => {
+    // Pre-fix `toJSON()` spread `{ ...this, ... }` which baked the
+    // `year`/`isInfinite`/`isIncome` getter values into the persisted JSON.
+    // After the JSON-shape fix, an old reload path can still hand us such
+    // polluted payloads. `new Capacity(poisoned)` must not throw — the
+    // getter-only `year` is read-only on the class.
+    const poisoned = {
+      capacity_id: "x",
+      month: 100,
+      year: 1200,
+      isInfinite: false,
+      isIncome: false,
+      is_synced: false,
+    };
+    expect(() => new Capacity(poisoned as never)).not.toThrow();
+    const restored = new Capacity(poisoned as never);
+    expect(restored.month).toBe(100);
+    expect(restored.year).toBe(1200); // derives from month, not the polluted value
+  });
 });

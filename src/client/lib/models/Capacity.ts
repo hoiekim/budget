@@ -2,7 +2,6 @@ import {
   JSONCapacity,
   LocalDate,
   MAX_FLOAT,
-  assign,
   excludeEnumeration,
   getDateTimeString,
 } from "common";
@@ -64,7 +63,19 @@ export class Capacity {
   is_synced = false;
 
   constructor(init?: Partial<Capacity | JSONCapacity>) {
-    assign(this, init);
+    // Copy only known data fields. `assign(this, init)` would iterate every
+    // own/enumerable property in `init`, including computed-getter values
+    // (`year`, `isInfinite`, `isIncome`) that may have been baked into JSON
+    // by a prior `toJSON()` spread — and crash on `this.year = …` because
+    // `year` is a getter-only property on the class.
+    if (init) {
+      if (init.capacity_id !== undefined) this.capacity_id = init.capacity_id;
+      if (init.month !== undefined) this.month = init.month;
+      if (init.active_from !== undefined) {
+        this.active_from = init.active_from as Date | undefined;
+      }
+      if (init.is_synced !== undefined) this.is_synced = init.is_synced;
+    }
     // Only generate UUID if not provided
     if (!this.capacity_id) {
       this.capacity_id = generateUUID();
@@ -125,8 +136,17 @@ export class Capacity {
   };
 
   toJSON = (): JSONCapacity => {
-    const active_from = this.active_from && getDateTimeString(this.active_from);
-    return { ...this, active_from, is_synced: this.is_synced };
+    // Explicit field list. Previously this was `{ ...this, active_from, is_synced }`,
+    // which spread the class's computed getters (`year`, `isInfinite`,
+    // `isIncome`) into the serialized payload. Stored JSON then carried a
+    // `year` field that, on the next reload, crashed `new Capacity(json)`
+    // because `year` is a getter-only property and `assign` tries to set it.
+    return {
+      capacity_id: this.capacity_id,
+      month: this.month,
+      active_from: this.active_from ? getDateTimeString(this.active_from) : undefined,
+      is_synced: this.is_synced,
+    };
   };
 
   static fromInputs = (
