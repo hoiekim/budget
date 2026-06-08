@@ -29,7 +29,7 @@ export const LabeledBar = ({
   hideEditButton,
 }: Props) => {
   const { calculations, viewDate } = useAppContext();
-  const { budgetData, capacityData } = calculations;
+  const { budgetData } = calculations;
   const date = viewDate.getEndDate();
   const interval = viewDate.getInterval();
 
@@ -39,8 +39,10 @@ export const LabeledBar = ({
       ? budgetData.get(barData.id).aggregateYear(date.getFullYear())
       : budgetData.get(barData.id, date);
 
-  const capacity = barData.getActiveCapacity(date);
-  const capacityValue = capacity[interval];
+  // For synced capacities the stored `capacity[interval]` is just the
+  // advisory cache, not the live sum — go through getActiveAmount so the
+  // bar reflects the children-derived value when this row is synced.
+  const capacityValue = barData.getActiveAmount(date, interval);
   const isInfinite = capacityValue === MAX_FLOAT || capacityValue === -MAX_FLOAT;
   const isIncome = capacityValue < 0;
 
@@ -64,8 +66,16 @@ export const LabeledBar = ({
   const total = sorted_amount + unsorted_amount;
   const leftover = capacityValue - total;
 
-  const labeledRatio = isInfinite ? undefined : sorted_amount / capacityValue;
-  const unlabledRatio = isInfinite ? undefined : unsorted_amount / capacityValue;
+  // Guard against `/0` only for synced rows: a synced row with zero/no
+  // children derives capacityValue=0, and dividing would collapse the bar
+  // geometry, so treat it like infinite (no fill ratio). A NON-synced row
+  // with a literal $0 capacity keeps its pre-existing behavior — `sorted /
+  // 0 → Infinity` renders a full "over" bar with the alert styling — so
+  // this refactor stays exactly numerically neutral for existing rows.
+  const isSyncedRow = barData.getActiveCapacity(date)?.is_synced === true;
+  const hasFiniteCapacity = !isInfinite && !(isSyncedRow && capacityValue === 0);
+  const labeledRatio = hasFiniteCapacity ? sorted_amount / capacityValue : undefined;
+  const unlabledRatio = hasFiniteCapacity ? unsorted_amount / capacityValue : undefined;
 
   const classes = ["LabeledBar"];
   if (isDragging) classes.push("dragging");
@@ -77,9 +87,6 @@ export const LabeledBar = ({
     rolled_over_amount !== undefined &&
     roll_over_start_date &&
     roll_over_start_date < viewDate.getEndDate();
-
-  const editButtonClassName =
-    barData.isChildrenSynced(capacityData) || hideEditButton ? undefined : "notification";
 
   return (
     <div
@@ -94,7 +101,6 @@ export const LabeledBar = ({
       <div className="title">
         <span>{name}</span>
         <EditButton
-          className={editButtonClassName}
           isCompact={!!hideEditButton}
           onEdit={startEditing}
           onTouchStart={onTouchHandleStart}

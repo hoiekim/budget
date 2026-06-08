@@ -17,8 +17,11 @@ export const useBudgetGraph = (budget: Budget) => {
   const graphData: GraphInput = useMemo(() => {
     if (!budget) return {};
 
-    const currentCapacity = budget.getActiveCapacity(graphViewDate.getEndDate());
-    const isIncome = currentCapacity[interval] < 0;
+    // Use the children-aware derived amount: for is_synced budgets the
+    // stored capacity[interval] is the advisory cache and gives the wrong
+    // sign / wrong magnitude on the graph.
+    const currentAmount = budget.getActiveAmount(graphViewDate.getEndDate(), interval);
+    const isIncome = currentAmount < 0;
     const sign = isIncome ? -1 : 1;
 
     const spendingHistory: number[] = budgetHistory
@@ -43,9 +46,9 @@ export const useBudgetGraph = (budget: Budget) => {
 
     const clonedViewDate = graphViewDate.clone();
     const capacityHistory = new Array(length).fill(undefined).map(() => {
-      const capacity = budget.getActiveCapacity(clonedViewDate.getEndDate());
+      const periodEnd = clonedViewDate.getEndDate();
       clonedViewDate.previous();
-      return sign * capacity[interval];
+      return sign * budget.getActiveAmount(periodEnd, interval);
     });
 
     capacityHistory.push(...new Array(lengthFixer).fill(capacityHistory[length - 1]));

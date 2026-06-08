@@ -1,5 +1,6 @@
-import { test, expect, afterEach } from "bun:test";
-import { Capacity } from "./Capacity";
+import { test, expect, afterEach, describe } from "bun:test";
+import { MAX_FLOAT } from "common";
+import { Capacity, type CapacityChildLike } from "./Capacity";
 
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -58,4 +59,302 @@ test("Capacity falls back to Math.random when both randomUUID and getRandomValue
   });
   const c = new Capacity();
   expect(c.capacity_id).toMatch(UUID_V4_RE);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Capacity.getActiveAmount
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Contract:
+//  - is_synced = false (default) → return stored this[interval]
+//  - is_synced = true →  sum children's getActiveAmount at the same period
+//    - no children → 0
+//    - any infinite child poisons the sum to ±MAX_FLOAT (sign follows the
+//      offending child)
+//    - children's period resolution uses each child.getActiveCapacity at
+//      this capacity's active_from (or new Date(0) when undefined)
+//    - synced children themselves recurse — grandchildren reach through
+//  - tests build a minimal stub of CapacityChildLike rather than depending
+//    on BudgetFamily so the unit is genuinely a unit.
+
+// Helper: build a child whose active capacities are fixed by date-range.
+// `capacities` is the child's own capacities (sorted desc by active_from).
+// `children` is the child's children (recursive).
+const buildChild = (
+  capacities: Capacity[],
+  children: CapacityChildLike[] = [],
+): CapacityChildLike => ({
+  getActiveCapacity: (date: Date) => {
+    const sorted = [...capacities].sort((a, b) => {
+      const A = a.active_from?.getTime() ?? -Infinity;
+      const B = b.active_from?.getTime() ?? -Infinity;
+      return B - A;
+    });
+    return sorted.find((c) => (c.active_from?.getTime() ?? 0) <= date.getTime());
+  },
+  getChildren: () => children,
+});
+
+describe("Capacity.getActiveAmount", () => {
+  // For tests that don't care about the period, use epoch as a stable date.
+  const EPOCH = new Date(0);
+
+  test("is_synced=false returns stored month/year directly", () => {
+    const c = new Capacity({ month: 123 });
+    expect(c.getActiveAmount(EPOCH, "month")).toBe(123);
+    expect(c.getActiveAmount(EPOCH, "year")).toBe(123 * 12);
+  });
+
+  test("is_synced=false ignores children even when provided", () => {
+    const c = new Capacity({ month: 50 });
+    const noisyChild = buildChild([new Capacity({ month: 9999 })]);
+    expect(c.getActiveAmount(EPOCH, "month", [noisyChild])).toBe(50);
+  });
+
+  test("is_synced=true with no children returns 0 (empty sum)", () => {
+    const c = new Capacity({ is_synced: true, month: 99 });
+    expect(c.getActiveAmount(EPOCH, "month")).toBe(0);
+    expect(c.getActiveAmount(EPOCH, "month", [])).toBe(0);
+  });
+
+  test("is_synced=true ignores the stored month cache, uses derived sum", () => {
+    // Stored month = 9999 (stale cache); children sum to 30 → derived = 30.
+    const c = new Capacity({ is_synced: true, month: 9999 });
+    const child = buildChild([new Capacity({ month: 30 })]);
+    expect(c.getActiveAmount(EPOCH, "month", [child])).toBe(30);
+  });
+
+  test("is_synced=true sums multiple non-synced children", () => {
+    const c = new Capacity({ is_synced: true });
+    const children = [10, 20, 30].map((m) => buildChild([new Capacity({ month: m })]));
+    expect(c.getActiveAmount(EPOCH, "month", children)).toBe(60);
+  });
+
+  test("is_synced=true recurses through a synced child to its grandchildren", () => {
+    const c = new Capacity({ is_synced: true });
+    const grandChildren = [11, 22, 33].map((m) => buildChild([new Capacity({ month: m })]));
+    const syncedChild = buildChild([new Capacity({ is_synced: true })], grandChildren);
+    expect(c.getActiveAmount(EPOCH, "month", [syncedChild])).toBe(66);
+  });
+
+  test("is_synced=true with a synced child that has no grandchildren contributes 0", () => {
+    const c = new Capacity({ is_synced: true });
+    const emptySyncedChild = buildChild([new Capacity({ is_synced: true })], []);
+    const concreteChild = buildChild([new Capacity({ month: 50 })]);
+    expect(c.getActiveAmount(EPOCH, "month", [emptySyncedChild, concreteChild])).toBe(50);
+  });
+
+  test("is_synced=true poisons to +MAX_FLOAT when a child is positive-infinite", () => {
+    const c = new Capacity({ is_synced: true });
+    const finite = buildChild([new Capacity({ month: 100 })]);
+    const infinite = buildChild([new Capacity({ month: MAX_FLOAT })]);
+    expect(c.getActiveAmount(EPOCH, "month", [finite, infinite])).toBe(MAX_FLOAT);
+  });
+
+  test("is_synced=true poisons to -MAX_FLOAT when a child is negative-infinite", () => {
+    const c = new Capacity({ is_synced: true });
+    const finite = buildChild([new Capacity({ month: 100 })]);
+    const infinite = buildChild([new Capacity({ month: -MAX_FLOAT })]);
+    expect(c.getActiveAmount(EPOCH, "month", [finite, infinite])).toBe(-MAX_FLOAT);
+  });
+
+  test("is_synced=true with all-zero children returns 0", () => {
+    const c = new Capacity({ is_synced: true });
+    const children = [new Capacity({ month: 0 }), new Capacity({ month: 0 })].map((cap) =>
+      buildChild([cap]),
+    );
+    expect(c.getActiveAmount(EPOCH, "month", children)).toBe(0);
+  });
+
+  test("is_synced=true mixes positive + negative finite children with arithmetic sum", () => {
+    const c = new Capacity({ is_synced: true });
+    const children = [50, -20, 7].map((m) => buildChild([new Capacity({ month: m })]));
+    expect(c.getActiveAmount(EPOCH, "month", children)).toBe(37);
+  });
+
+  test("queries children at the caller-supplied date (not the parent's active_from)", () => {
+    // Parent capacity active_from=2024-01 (lives "from" then onward) but
+    // the user is viewing 2025-06. Child has two capacities: one at
+    // 2024-01 ($100) and one at 2025-01 ($500). The view-date is what
+    // selects which child capacity is active — at 2025-06 the child's
+    // 2025-01 capacity applies, so the derived sum is $500.
+    const parent = new Capacity({
+      is_synced: true,
+      active_from: new Date("2024-01-01T00:00:00Z"),
+    });
+    const child = buildChild([
+      new Capacity({ month: 100, active_from: new Date("2024-01-01T00:00:00Z") }),
+      new Capacity({ month: 500, active_from: new Date("2025-01-01T00:00:00Z") }),
+    ]);
+    expect(parent.getActiveAmount(new Date("2025-06-01T00:00:00Z"), "month", [child])).toBe(500);
+    // Sanity: same parent at 2024-06 returns the earlier child capacity.
+    expect(parent.getActiveAmount(new Date("2024-06-01T00:00:00Z"), "month", [child])).toBe(100);
+  });
+
+  test("does NOT use this.active_from for child resolution (regression for the view-date bug)", () => {
+    // The pre-fix bug: getActiveAmount silently used this.active_from to
+    // query children. Here the parent's active_from is in 2024 but the
+    // caller asks for 2025. The 2024 child capacity must NOT win.
+    const parent = new Capacity({
+      is_synced: true,
+      active_from: new Date("2024-01-01T00:00:00Z"),
+    });
+    const child = buildChild([
+      new Capacity({ month: 1, active_from: new Date("2024-01-01T00:00:00Z") }),
+      new Capacity({ month: 99, active_from: new Date("2025-01-01T00:00:00Z") }),
+    ]);
+    const got = parent.getActiveAmount(new Date("2025-06-01T00:00:00Z"), "month", [child]);
+    // If the bug regresses, `got` would be 1 (child capacity selected at
+    // parent.active_from=2024-01). With the fix, it's 99.
+    expect(got).toBe(99);
+  });
+
+  test("child has no capacity for the requested date → contributes 0", () => {
+    // Child has only a 2025 capacity; viewing 2020 — no capacity applies,
+    // child contributes nothing.
+    const childWith2025Only = buildChild([
+      new Capacity({ month: 500, active_from: new Date("2025-01-01T00:00:00Z") }),
+    ]);
+    const childAlwaysActive = buildChild([new Capacity({ month: 10 })]);
+    const parent = new Capacity({ is_synced: true });
+    expect(
+      parent.getActiveAmount(new Date("2020-01-01T00:00:00Z"), "month", [
+        childWith2025Only,
+        childAlwaysActive,
+      ]),
+    ).toBe(10);
+  });
+
+  test("year interval scales children correctly via Capacity.year getter", () => {
+    const parent = new Capacity({ is_synced: true });
+    const children = [10, 20].map((m) => buildChild([new Capacity({ month: m })]));
+    expect(parent.getActiveAmount(EPOCH, "year", children)).toBe(360); // (10 + 20) * 12
+  });
+
+  test("NaN children are skipped (defensive — one corrupted row doesn't blackhole the sum)", () => {
+    const parent = new Capacity({ is_synced: true });
+    const sane = buildChild([new Capacity({ month: 50 })]);
+    const corrupted = buildChild([new Capacity({ month: NaN })]);
+    expect(parent.getActiveAmount(EPOCH, "month", [sane, corrupted])).toBe(50);
+  });
+
+  test("does not mutate the parent or children during resolution", () => {
+    const parent = new Capacity({ is_synced: true, month: 42 });
+    const childCap = new Capacity({ month: 10 });
+    const child = buildChild([childCap]);
+    const parentBefore = JSON.stringify(parent.toJSON());
+    const childBefore = JSON.stringify(childCap.toJSON());
+    parent.getActiveAmount(EPOCH, "month", [child]);
+    expect(JSON.stringify(parent.toJSON())).toBe(parentBefore);
+    expect(JSON.stringify(childCap.toJSON())).toBe(childBefore);
+  });
+
+  test("is_synced=true round-trips through toJSON/new Capacity()", () => {
+    const original = new Capacity({ is_synced: true, month: 0 });
+    const json = original.toJSON();
+    expect(json.is_synced).toBe(true);
+    const restored = new Capacity(json);
+    expect(restored.is_synced).toBe(true);
+    expect(restored.getActiveAmount(EPOCH, "month", [])).toBe(0);
+  });
+
+  test("is_synced defaults to false when not provided in JSON", () => {
+    const fromBareJSON = new Capacity({ capacity_id: "x", month: 12 });
+    expect(fromBareJSON.is_synced).toBe(false);
+    expect(fromBareJSON.getActiveAmount(EPOCH, "month")).toBe(12);
+  });
+
+  test("is_synced=true at the leaf returns 0 even if the leaf has a stored month — never reads cache when synced", () => {
+    // Defensive: a leaf shouldn't normally be is_synced, but if a buggy
+    // caller flips a category to is_synced, the displayed amount becomes 0
+    // rather than silently emitting the stored (possibly stale) value.
+    const leaf = new Capacity({ is_synced: true, month: 9999 });
+    expect(leaf.getActiveAmount(EPOCH, "month", [])).toBe(0);
+  });
+
+  test("toJSON emits ONLY whitelisted fields — no `year`/`isInfinite`/`isIncome` getter leakage", () => {
+    const c = new Capacity({ capacity_id: "x", month: 100 });
+    const json = c.toJSON();
+    expect(Object.keys(json).sort()).toEqual(
+      ["active_from", "capacity_id", "is_synced", "month"].sort(),
+    );
+    expect((json as Record<string, unknown>).year).toBeUndefined();
+    expect((json as Record<string, unknown>).isInfinite).toBeUndefined();
+    expect((json as Record<string, unknown>).isIncome).toBeUndefined();
+  });
+
+  test("constructor tolerates JSON polluted with computed-getter fields — legacy data must not throw", () => {
+    // Pre-fix `toJSON()` spread `{ ...this, ... }` which baked the
+    // `year`/`isInfinite`/`isIncome` getter values into the persisted JSON.
+    // After the JSON-shape fix, an old reload path can still hand us such
+    // polluted payloads. `new Capacity(poisoned)` must not throw — the
+    // getter-only `year` is read-only on the class.
+    const poisoned = {
+      capacity_id: "x",
+      month: 100,
+      year: 1200,
+      isInfinite: false,
+      isIncome: false,
+      is_synced: false,
+    };
+    expect(() => new Capacity(poisoned as never)).not.toThrow();
+    const restored = new Capacity(poisoned as never);
+    expect(restored.month).toBe(100);
+    expect(restored.year).toBe(1200); // derives from month, not the polluted value
+  });
+
+  test("full 4-field round-trip — capacity_id / month / active_from / is_synced all preserved (JSONB write safety)", () => {
+    // Belt-and-suspenders against accidental field loss on JSONB write. The
+    // server `JSON.stringify(data.capacities)` overwrites the entire array,
+    // so toJSON's explicit field list IS the contract for what survives a
+    // save+reload cycle. Pin every field independently to catch a future
+    // accidental drop.
+    const original = new Capacity({
+      capacity_id: "cap-abc-123",
+      month: 1234.56,
+      active_from: new Date("2025-04-01T00:00:00.000Z"),
+      is_synced: true,
+    });
+    const json = original.toJSON();
+    expect(json.capacity_id).toBe("cap-abc-123");
+    expect(json.month).toBe(1234.56);
+    expect(json.active_from).toBe("2025-04-01T00:00:00"); // getDateTimeString format (no Z, no ms)
+    expect(json.is_synced).toBe(true);
+
+    // Now restore via constructor; every field must match.
+    const restored = new Capacity(json);
+    expect(restored.capacity_id).toBe("cap-abc-123");
+    expect(restored.month).toBe(1234.56);
+    expect(restored.is_synced).toBe(true);
+    // active_from is normalized to LocalDate; the underlying ISO string round-trips
+    expect(restored.toJSON().active_from).toBe("2025-04-01T00:00:00");
+  });
+
+  test("toJSON over JSON.stringify+parse — no precision drift on month (JSONB persistence safety)", () => {
+    // Simulate the server-side `JSON.stringify(data.capacities)` + DB JSONB
+    // store + read-back. Numeric precision should round-trip exactly.
+    const values = [0, 0.01, 100, 1234.56, -500, MAX_FLOAT, -MAX_FLOAT];
+    for (const month of values) {
+      const c = new Capacity({ capacity_id: "x", month });
+      const stringified = JSON.stringify(c.toJSON());
+      const parsed = JSON.parse(stringified);
+      const restored = new Capacity(parsed);
+      expect(restored.month).toBe(month);
+    }
+  });
+
+  test("toJSON does NOT carry over any fields beyond the 4-field contract — JSONB write does not leak runtime cruft", () => {
+    // If a future refactor stashes some non-Capacity field on the instance
+    // (e.g., `_dirty` tracking, a UI temp flag), it MUST NOT end up serialized
+    // into the JSONB column.
+    const c = new Capacity({ capacity_id: "x", month: 100, is_synced: false });
+    (c as unknown as Record<string, unknown>)._dirty = true;
+    (c as unknown as Record<string, unknown>)._uiState = { dragging: true };
+    const json = c.toJSON();
+    expect(Object.keys(json).sort()).toEqual(
+      ["active_from", "capacity_id", "is_synced", "month"].sort(),
+    );
+    expect((json as Record<string, unknown>)._dirty).toBeUndefined();
+    expect((json as Record<string, unknown>)._uiState).toBeUndefined();
+  });
 });

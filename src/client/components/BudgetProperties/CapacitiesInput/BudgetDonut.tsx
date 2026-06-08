@@ -51,7 +51,10 @@ const BudgetDonut = ({
 
   children.forEach((child, i) => {
     const childCapacity = child.getActiveCapacity(date);
-    const childValue = childCapacity[interval];
+    // For is_synced children the stored `[interval]` is the advisory
+    // cache — switch to the children-aware derived amount so synced
+    // sections slice to their live sum, not the stale cache.
+    const childValue = child.getActiveAmount(date, interval);
     const childColor = colors[i % colors.length];
     const childLabel = child.name || LABEL_UNNAMED;
     childrenDonutData.push({
@@ -66,7 +69,7 @@ const BudgetDonut = ({
       childToGrandChildrenMap.set(child.id, grandChildrenDonutData);
       const grandChildren = child.getChildren() as Category[];
       grandChildren.forEach((grandChild, j) => {
-        const grandChildValue = grandChild.getActiveCapacity(date)[interval];
+        const grandChildValue = grandChild.getActiveAmount(date, interval);
         const brightness = ((j % 2) + 1) * 0.3 + 1;
         const grandChildColor = adjustBrightness(childColor, brightness);
         const grandChildLabel = child.name || LABEL_UNNAMED;
