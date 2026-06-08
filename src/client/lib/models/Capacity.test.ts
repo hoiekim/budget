@@ -302,4 +302,59 @@ describe("Capacity.getActiveAmount", () => {
     expect(restored.month).toBe(100);
     expect(restored.year).toBe(1200); // derives from month, not the polluted value
   });
+
+  test("full 4-field round-trip — capacity_id / month / active_from / is_synced all preserved (JSONB write safety)", () => {
+    // Belt-and-suspenders against accidental field loss on JSONB write. The
+    // server `JSON.stringify(data.capacities)` overwrites the entire array,
+    // so toJSON's explicit field list IS the contract for what survives a
+    // save+reload cycle. Pin every field independently to catch a future
+    // accidental drop.
+    const original = new Capacity({
+      capacity_id: "cap-abc-123",
+      month: 1234.56,
+      active_from: new Date("2025-04-01T00:00:00.000Z"),
+      is_synced: true,
+    });
+    const json = original.toJSON();
+    expect(json.capacity_id).toBe("cap-abc-123");
+    expect(json.month).toBe(1234.56);
+    expect(json.active_from).toBe("2025-04-01T00:00:00"); // getDateTimeString format (no Z, no ms)
+    expect(json.is_synced).toBe(true);
+
+    // Now restore via constructor; every field must match.
+    const restored = new Capacity(json);
+    expect(restored.capacity_id).toBe("cap-abc-123");
+    expect(restored.month).toBe(1234.56);
+    expect(restored.is_synced).toBe(true);
+    // active_from is normalized to LocalDate; the underlying ISO string round-trips
+    expect(restored.toJSON().active_from).toBe("2025-04-01T00:00:00");
+  });
+
+  test("toJSON over JSON.stringify+parse — no precision drift on month (JSONB persistence safety)", () => {
+    // Simulate the server-side `JSON.stringify(data.capacities)` + DB JSONB
+    // store + read-back. Numeric precision should round-trip exactly.
+    const values = [0, 0.01, 100, 1234.56, -500, MAX_FLOAT, -MAX_FLOAT];
+    for (const month of values) {
+      const c = new Capacity({ capacity_id: "x", month });
+      const stringified = JSON.stringify(c.toJSON());
+      const parsed = JSON.parse(stringified);
+      const restored = new Capacity(parsed);
+      expect(restored.month).toBe(month);
+    }
+  });
+
+  test("toJSON does NOT carry over any fields beyond the 4-field contract — JSONB write does not leak runtime cruft", () => {
+    // If a future refactor stashes some non-Capacity field on the instance
+    // (e.g., `_dirty` tracking, a UI temp flag), it MUST NOT end up serialized
+    // into the JSONB column.
+    const c = new Capacity({ capacity_id: "x", month: 100, is_synced: false });
+    (c as unknown as Record<string, unknown>)._dirty = true;
+    (c as unknown as Record<string, unknown>)._uiState = { dragging: true };
+    const json = c.toJSON();
+    expect(Object.keys(json).sort()).toEqual(
+      ["active_from", "capacity_id", "is_synced", "month"].sort(),
+    );
+    expect((json as Record<string, unknown>)._dirty).toBeUndefined();
+    expect((json as Record<string, unknown>)._uiState).toBeUndefined();
+  });
 });
