@@ -24,8 +24,12 @@ import { logger } from "../logger";
  * empty and the UPDATE is a no-op.
  */
 export const cleanupDuplicateCapacityRows = async (): Promise<void> => {
-  const tables = ["budgets", "sections", "categories"] as const;
-  for (const table of tables) {
+  const targets: Array<{ table: string; idCol: string }> = [
+    { table: "budgets", idCol: "budget_id" },
+    { table: "sections", idCol: "section_id" },
+    { table: "categories", idCol: "category_id" },
+  ];
+  for (const { table, idCol } of targets) {
     const result = await pool.query(
       `
       UPDATE ${table} SET capacities = (
@@ -36,9 +40,9 @@ export const cleanupDuplicateCapacityRows = async (): Promise<void> => {
           ORDER BY COALESCE(e.value->>'active_from', '__NULL__'), e.ord ASC
         ) sub
       )
-      WHERE ${table}_id IN (
-        SELECT t.${table}_id FROM ${table} t, jsonb_array_elements(t.capacities) e
-        GROUP BY t.${table}_id, e.value->>'active_from'
+      WHERE ${idCol} IN (
+        SELECT t.${idCol} FROM ${table} t, jsonb_array_elements(t.capacities) e
+        GROUP BY t.${idCol}, e.value->>'active_from'
         HAVING COUNT(*) > 1
       )
       `,
