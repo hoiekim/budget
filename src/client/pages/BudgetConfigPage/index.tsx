@@ -87,8 +87,15 @@ export const BudgetConfigPage = () => {
       }
       return cloned;
     });
+    // Sync toggle reflects the persisted `is_synced` flag directly — NOT
+    // the natural-math heuristic. Otherwise a budget whose parent.month
+    // happens to equal Σ children (no explicit user intent) would show
+    // the toggle ON, and a single child edit that breaks the natural
+    // sync would silently flip it OFF. Per Hoie: toggle = persisted
+    // intent, period.
     const defaultIsSyncInput =
-      budgetLike.type !== "category" && !!budgetLike?.isChildrenSynced(capacityData);
+      budgetLike.type !== "category" &&
+      budgetLike.capacities.some((c) => c.is_synced === true);
 
     setNameInput(name);
     setCapacitiesInput(defaultCapInput);
@@ -108,7 +115,8 @@ export const BudgetConfigPage = () => {
   const defaultCapInput =
     budgetLike && allDates?.map((d) => budgetLike.getActiveCapacity(d || new Date(0)));
   const defaultIsSyncInput =
-    budgetLike?.type !== "category" && !!budgetLike?.isChildrenSynced(capacityData);
+    budgetLike?.type !== "category" &&
+    !!budgetLike?.capacities.some((c) => c.is_synced === true);
 
   const [nameInput, setNameInput] = useState(name);
   const [capacitiesInput, setCapacitiesInput] = useState<Capacity[]>(defaultCapInput || []);
