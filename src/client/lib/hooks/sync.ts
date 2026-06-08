@@ -776,7 +776,7 @@ export const useSync = () => {
       const transfersPromise = fetchTransfers();
 
       const [
-        { accounts, items },
+        { accounts, items, holdings },
         stage1Budgets,
         stage1Charts,
         stage1Institutions,
@@ -799,6 +799,7 @@ export const useSync = () => {
       const stage1 = new Data({
         accounts,
         items,
+        holdings,
         budgets,
         sections,
         categories,
@@ -844,6 +845,7 @@ export const useSync = () => {
       const stage2 = new Data({
         accounts,
         items,
+        holdings,
         budgets,
         sections,
         categories,
@@ -880,6 +882,7 @@ export const useSync = () => {
       const finalData = new Data({
         accounts,
         items,
+        holdings,
         budgets,
         sections,
         categories,
