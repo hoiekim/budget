@@ -2,6 +2,7 @@ import { pool } from "./client";
 import { searchUser, writeUser } from "./repositories";
 import { buildCreateTable, buildCreateIndex } from "./database";
 import { runMigrations } from "./migration";
+import { cleanupDuplicateCapacityRows } from "./cleanup-capacity-duplicates";
 import { logger } from "server";
 import {
   Table,
@@ -80,6 +81,12 @@ export const initializePostgres = async (): Promise<void> => {
 
     // Run automatic schema migrations to add any missing columns
     await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
+
+    // One-time idempotent cleanup of duplicate `active_from` rows in
+    // budgets/sections/categories capacities arrays. The FE display dedupes
+    // but the data on disk doesn't — historical inserts left zombie rows
+    // that pollute every server-side traversal of `capacities`.
+    await cleanupDuplicateCapacityRows();
   } catch (error: unknown) {
     logger.error("Failed to create tables", {}, error);
     throw new Error("Failed to setup PostgreSQL tables.");

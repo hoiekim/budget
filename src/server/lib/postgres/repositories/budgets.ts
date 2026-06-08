@@ -1,4 +1,4 @@
-import { JSONBudget, JSONSection, JSONCategory } from "common";
+import { JSONBudget, JSONSection, JSONCategory, dedupeCapacities } from "common";
 import {
   MaskedUser,
   BudgetModel,
@@ -46,7 +46,7 @@ export const createBudget = async (
       iso_currency_code: data.iso_currency_code || "USD",
       roll_over: data.roll_over || false,
       roll_over_start_date: data.roll_over_start_date,
-      capacities: data.capacities || [],
+      capacities: dedupeCapacities(data.capacities || []),
     },
     user.user_id,
   );
@@ -67,7 +67,8 @@ export const updateBudget = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined)
+    updates.capacities = JSON.stringify(dedupeCapacities(data.capacities));
 
   if (Object.keys(updates).length === 0) return false;
   const model = await budgetsTable.update(budget_id, updates, undefined, user.user_id);
@@ -109,7 +110,7 @@ export const createSection = async (
       name: data.name || "New Section",
       roll_over: data.roll_over || false,
       roll_over_start_date: data.roll_over_start_date,
-      capacities: data.capacities || [],
+      capacities: dedupeCapacities(data.capacities || []),
     },
     user.user_id,
   );
@@ -129,7 +130,8 @@ export const updateSection = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined)
+    updates.capacities = JSON.stringify(dedupeCapacities(data.capacities));
 
   if (Object.keys(updates).length === 0) return false;
   const model = await sectionsTable.update(section_id, updates, undefined, user.user_id);
@@ -164,7 +166,7 @@ export const createCategory = async (
       name: data.name || "New Category",
       roll_over: data.roll_over || false,
       roll_over_start_date: data.roll_over_start_date,
-      capacities: data.capacities || [],
+      capacities: dedupeCapacities(data.capacities || []),
     },
     user.user_id,
   );
@@ -184,7 +186,8 @@ export const updateCategory = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined)
+    updates.capacities = JSON.stringify(dedupeCapacities(data.capacities));
 
   if (Object.keys(updates).length === 0) return false;
   const model = await categoriesTable.update(category_id, updates, undefined, user.user_id);
