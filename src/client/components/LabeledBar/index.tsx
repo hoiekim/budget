@@ -29,7 +29,7 @@ export const LabeledBar = ({
   hideEditButton,
 }: Props) => {
   const { calculations, viewDate } = useAppContext();
-  const { budgetData, capacityData } = calculations;
+  const { budgetData } = calculations;
   const date = viewDate.getEndDate();
   const interval = viewDate.getInterval();
 
@@ -88,9 +88,6 @@ export const LabeledBar = ({
     roll_over_start_date &&
     roll_over_start_date < viewDate.getEndDate();
 
-  const editButtonClassName =
-    barData.isChildrenSynced(capacityData) || hideEditButton ? undefined : "notification";
-
   return (
     <div
       className={classes.join(" ")}
@@ -104,7 +101,6 @@ export const LabeledBar = ({
       <div className="title">
         <span>{name}</span>
         <EditButton
-          className={editButtonClassName}
           isCompact={!!hideEditButton}
           onEdit={startEditing}
           onTouchStart={onTouchHandleStart}
