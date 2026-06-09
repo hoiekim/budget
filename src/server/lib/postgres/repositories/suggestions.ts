@@ -12,8 +12,8 @@ import {
   CONFIRMED_AT,
   ENGINE_SCORED_AT,
   UPDATED,
-  pool,
-} from "server";
+} from "../models";
+import { pool } from "../client";
 
 /**
  * Read all suggestion rows for a single transaction. Used in tests + by
