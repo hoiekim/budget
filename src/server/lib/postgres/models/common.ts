@@ -19,6 +19,7 @@ export const CATEGORIES = "categories";
 export const SNAPSHOTS = "snapshots";
 export const CHARTS = "charts";
 export const API_KEYS = "api_keys";
+export const SUGGESTIONS = "suggestions";
 
 export const USER_ID = "user_id";
 export const UPDATED = "updated";
@@ -127,6 +128,12 @@ export const HOLDING_SECURITY_ID = "holding_security_id";
 
 export const CHART_ID = "chart_id";
 export const CONFIGURATION = "configuration";
+
+export const CONFIDENCE = "confidence";
+export const IS_CONFIRMED = "is_confirmed";
+export const IS_REJECTED = "is_rejected";
+export const CONFIRMED_AT = "confirmed_at";
+export const ENGINE_SCORED_AT = "engine_scored_at";
 
 export const KEY_ID = "key_id";
 export const KEY_HASH = "key_hash";

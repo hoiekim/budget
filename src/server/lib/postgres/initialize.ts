@@ -23,6 +23,7 @@ import {
   snapshotsTable,
   chartsTable,
   apiKeysTable,
+  suggestionsTable,
 } from "./models";
 
 export const version = "6";
@@ -46,6 +47,7 @@ const tables: Table<unknown, Schema>[] = [
   snapshotsTable,
   chartsTable,
   apiKeysTable,
+  suggestionsTable,
 ];
 
 export const initializePostgres = async (): Promise<void> => {
