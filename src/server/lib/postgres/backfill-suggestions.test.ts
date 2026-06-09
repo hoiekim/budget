@@ -91,8 +91,11 @@ describe("backfillSuggestionsFromLegacyColumns", () => {
     const insertSql = mockQuery.mock.calls[1][0];
     // Column list: transaction_id, user_id, category_id, confidence,
     // is_confirmed, confirmed_at. No parent_type, no budget_id, no memo.
+    // Tight column-list match: catches flag-swap typos (is_confirmed ↔
+    // is_rejected) and accidental column insertion. Only whitespace and
+    // line-breaks are allowed between column names within the paren.
     expect(insertSql).toMatch(
-      /INSERT INTO suggestions[\s\S]*\(transaction_id, user_id, category_id, confidence,[\s\S]*is_confirmed, confirmed_at\)/,
+      /INSERT INTO suggestions\s*\(\s*transaction_id,\s+user_id,\s+category_id,\s+confidence,\s+is_confirmed,\s+confirmed_at\s*\)/,
     );
     // SELECT projects TRUE for is_confirmed and transactions.updated for confirmed_at.
     expect(insertSql).toMatch(/TRUE,\s*updated/);

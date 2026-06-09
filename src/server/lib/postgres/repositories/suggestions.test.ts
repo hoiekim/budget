@@ -53,7 +53,15 @@ const fakeRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe("getSuggestionsForTransaction", () => {
+// NOTE — All assertions in this file are SQL-string shape checks against the
+// mocked pg pool. They document the contracts the helpers are designed to
+// produce, but do NOT execute the ON CONFLICT / WHERE guards in a real
+// Postgres. Behavioral coverage of the engine-doesn't-clobber-user-row
+// invariant is provided by the live sandbox spin in PR #496's verification
+// step (6112 backfilled rows, schema confirmed via `\d suggestions`).
+// Stage 2 will replace these with integration tests once the table is wired.
+
+describe("getSuggestionsForTransaction [SQL-shape]", () => {
   test("user-scoped + ordered by is_confirmed DESC then confidence DESC", async () => {
     mockQuery.mockImplementationOnce(async () => ({
       rows: [fakeRow({ category_id: "cat-A", confidence: 1, is_confirmed: true })],
@@ -68,7 +76,7 @@ describe("getSuggestionsForTransaction", () => {
   });
 });
 
-describe("getSuggestionsForTransactions", () => {
+describe("getSuggestionsForTransactions [SQL-shape]", () => {
   test("short-circuits when transaction_ids is empty (no DB call)", async () => {
     const result = await getSuggestionsForTransactions(fakeUser(), []);
     expect(result).toEqual([]);
@@ -83,7 +91,7 @@ describe("getSuggestionsForTransactions", () => {
   });
 });
 
-describe("upsertUserConfirmedSuggestion", () => {
+describe("upsertUserConfirmedSuggestion [SQL-shape]", () => {
   test("sets is_confirmed=TRUE, is_rejected=FALSE, confirmed_at=NOW(), confidence=1 on insert", async () => {
     mockQuery.mockImplementationOnce(async () => ({
       rows: [fakeRow({ is_confirmed: true, confidence: 1, confirmed_at: "now" })],
@@ -103,7 +111,7 @@ describe("upsertUserConfirmedSuggestion", () => {
   });
 });
 
-describe("upsertUserRejectedSuggestion", () => {
+describe("upsertUserRejectedSuggestion [SQL-shape]", () => {
   test("sets is_rejected=TRUE, is_confirmed=FALSE", async () => {
     mockQuery.mockImplementationOnce(async () => ({
       rows: [fakeRow({ is_rejected: true, confidence: 0 })],
@@ -120,7 +128,7 @@ describe("upsertUserRejectedSuggestion", () => {
   });
 });
 
-describe("upsertEngineSuggestion", () => {
+describe("upsertEngineSuggestion [SQL-shape]", () => {
   test("rejects non-strict-fractional confidence", async () => {
     await expect(
       upsertEngineSuggestion(fakeUser(), "tx-1", "cat-A", 1),
@@ -143,7 +151,7 @@ describe("upsertEngineSuggestion", () => {
   });
 });
 
-describe("deleteAllSuggestionsForTransaction", () => {
+describe("deleteAllSuggestionsForTransaction [SQL-shape]", () => {
   test("hard-deletes every row keyed on (user_id, transaction_id)", async () => {
     mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 3 }));
     const n = await deleteAllSuggestionsForTransaction("u-1", "tx-1");

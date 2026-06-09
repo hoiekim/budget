@@ -54,7 +54,9 @@ export const backfillSuggestionsFromLegacyColumns = async (): Promise<void> => {
     `
     SELECT EXISTS (
       SELECT 1 FROM information_schema.columns
-      WHERE table_name = '${TRANSACTIONS}' AND column_name = '${LABEL_CATEGORY_ID}'
+      WHERE table_schema = 'public'
+        AND table_name = '${TRANSACTIONS}'
+        AND column_name = '${LABEL_CATEGORY_ID}'
     ) AS has_transactions
     `,
   );

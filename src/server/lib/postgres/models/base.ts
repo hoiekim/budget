@@ -95,6 +95,29 @@ export abstract class Table<
   abstract readonly ModelClass: ModelClass<TJSON, TModel>;
   abstract readonly supportsSoftDelete: boolean;
 
+  /**
+   * Composite-PK tables (declared via `constraints: ["PRIMARY KEY (a, b)"]`)
+   * cannot use the single-column built-in helpers — every method below
+   * treats `this.primaryKey` as the row key. Calling `upsert`, `update`,
+   * `softDelete`, `queryByIds`, `hardDelete`, etc. would silently corrupt
+   * rows by matching on the wrong constraint. This guard throws at runtime
+   * so a Stage-2 contributor can't make that mistake.
+   *
+   * Composite-PK tables must use raw `pool.query` writes in their
+   * repository layer (mirroring what `repositories/suggestions.ts` already
+   * does for #496).
+   */
+  private _assertSimplePrimaryKey(methodName: string): void {
+    const hasComposite = this.constraints.some((c) =>
+      /^\s*PRIMARY\s+KEY\s*\(/i.test(c),
+    );
+    if (hasComposite) {
+      throw new Error(
+        `Table.${methodName}() is not supported on '${this.name}' — composite PRIMARY KEY tables must use raw pool.query writes in their repository layer.`,
+      );
+    }
+  }
+
   async query(filters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
     const { sql, values } = buildSelectWithFilters(this.name, "*", {
       filters,
@@ -115,6 +138,7 @@ export abstract class Table<
   }
 
   async insert(data: QueryData, returning?: string[]): Promise<Record<string, unknown> | null> {
+    this._assertSimplePrimaryKey("insert");
     const { sql, values } = buildInsert(
       this.name,
       data as Record<string, ParamValue>,
@@ -141,6 +165,7 @@ export abstract class Table<
     client?: QueryExecutor,
     extraWhere?: AdditionalWhere[],
   ): Promise<Record<string, unknown> | null> {
+    this._assertSimplePrimaryKey("update");
     const additionalWhere: AdditionalWhere[] = [];
     if (userId !== undefined) additionalWhere.push({ column: "user_id", value: userId });
     if (extraWhere) additionalWhere.push(...extraWhere);
@@ -159,6 +184,7 @@ export abstract class Table<
     updateColumns?: string[],
     client?: QueryExecutor,
   ): Promise<Record<string, unknown> | null> {
+    this._assertSimplePrimaryKey("upsert");
     const { sql, values } = buildUpsert(this.name, this.primaryKey, data, {
       updateColumns: updateColumns ?? Object.keys(data).filter((k) => k !== this.primaryKey),
       returning: ["*"],
@@ -169,6 +195,7 @@ export abstract class Table<
   }
 
   async softDelete(primaryKeyValue: ParamValue, userId?: ParamValue): Promise<boolean> {
+    this._assertSimplePrimaryKey("softDelete");
     const { sql, values } = buildSoftDelete(
       this.name,
       this.primaryKey,
@@ -183,6 +210,7 @@ export abstract class Table<
     ids: ParamValue[],
     additionalFilters: Record<string, ParamValue | unknown> = {},
   ): Promise<TModel[]> {
+    this._assertSimplePrimaryKey("queryByIds");
     if (ids.length === 0) return [];
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     let sql = `SELECT * FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders})`;
@@ -208,6 +236,7 @@ export abstract class Table<
     additionalFilters: Record<string, ParamValue | unknown> = {},
     client?: QueryExecutor,
   ): Promise<number> {
+    this._assertSimplePrimaryKey("bulkSoftDelete");
     if (ids.length === 0) return 0;
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${this.primaryKey} IN (${placeholders})`;
@@ -233,6 +262,7 @@ export abstract class Table<
     userIdValue?: ParamValue,
     client?: QueryExecutor,
   ): Promise<number> {
+    this._assertSimplePrimaryKey("bulkSoftDeleteByColumn");
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${column} = $1`;
     const values: ParamValue[] = [columnValue];
 
@@ -248,12 +278,14 @@ export abstract class Table<
   }
 
   async hardDelete(primaryKeyValue: ParamValue): Promise<boolean> {
+    this._assertSimplePrimaryKey("hardDelete");
     const sql = `DELETE FROM ${this.name} WHERE ${this.primaryKey} = $1 RETURNING ${this.primaryKey}`;
     const result = await pool.query(sql, [primaryKeyValue]);
     return result.rowCount !== null && result.rowCount > 0;
   }
 
   async bulkHardDelete(ids: ParamValue[]): Promise<number> {
+    this._assertSimplePrimaryKey("bulkHardDelete");
     if (ids.length === 0) return 0;
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     const sql = `DELETE FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders}) RETURNING ${this.primaryKey}`;
@@ -262,6 +294,7 @@ export abstract class Table<
   }
 
   async hardDeleteByColumn(column: string, columnValue: ParamValue): Promise<number> {
+    this._assertSimplePrimaryKey("hardDeleteByColumn");
     const sql = `DELETE FROM ${this.name} WHERE ${column} = $1 RETURNING ${this.primaryKey}`;
     const result = await pool.query(sql, [columnValue]);
     return result.rowCount ?? 0;

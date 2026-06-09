@@ -24,7 +24,9 @@ export const getSuggestionsForTransaction = async (
   transaction_id: string,
 ): Promise<JSONSuggestion[]> => {
   const sql = `
-    SELECT * FROM ${SUGGESTIONS}
+    SELECT ${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID}, ${CONFIDENCE},
+           ${IS_CONFIRMED}, ${IS_REJECTED}, ${CONFIRMED_AT}, ${ENGINE_SCORED_AT}, ${UPDATED}
+    FROM ${SUGGESTIONS}
     WHERE ${USER_ID} = $1 AND ${TRANSACTION_ID} = $2
     ORDER BY ${IS_CONFIRMED} DESC, ${CONFIDENCE} DESC
   `;
@@ -47,7 +49,9 @@ export const getSuggestionsForTransactions = async (
   if (transaction_ids.length === 0) return [];
   const placeholders = transaction_ids.map((_, i) => `$${i + 2}`).join(", ");
   const sql = `
-    SELECT * FROM ${SUGGESTIONS}
+    SELECT ${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID}, ${CONFIDENCE},
+           ${IS_CONFIRMED}, ${IS_REJECTED}, ${CONFIRMED_AT}, ${ENGINE_SCORED_AT}, ${UPDATED}
+    FROM ${SUGGESTIONS}
     WHERE ${USER_ID} = $1 AND ${TRANSACTION_ID} IN (${placeholders})
     ORDER BY ${TRANSACTION_ID}, ${IS_CONFIRMED} DESC, ${CONFIDENCE} DESC
   `;

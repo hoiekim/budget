@@ -103,7 +103,13 @@ export const suggestionsTable = createTable({
   // abstract field without claiming any single column is the row key.
   primaryKey: TRANSACTION_ID,
   schema: suggestionSchema,
-  constraints: [`PRIMARY KEY (${TRANSACTION_ID}, ${CATEGORY_ID})`],
+  constraints: [
+    `PRIMARY KEY (${TRANSACTION_ID}, ${CATEGORY_ID})`,
+    // Mutual exclusion of the two user-action flags. Enforced at the schema
+    // level so a future batch UPDATE that sets one flag without clearing
+    // the other can't produce contradictory rows.
+    `CHECK (NOT (${IS_CONFIRMED} AND ${IS_REJECTED}))`,
+  ],
   indexes: [{ column: TRANSACTION_ID }, { column: USER_ID }],
   ModelClass: SuggestionModel,
   supportsSoftDelete: false,
