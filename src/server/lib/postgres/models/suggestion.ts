@@ -110,7 +110,10 @@ export const suggestionsTable = createTable({
     // the other can't produce contradictory rows.
     `CHECK (NOT (${IS_CONFIRMED} AND ${IS_REJECTED}))`,
   ],
-  indexes: [{ column: TRANSACTION_ID }, { column: USER_ID }],
+  // No standalone `transaction_id` index — the composite PK
+  // (transaction_id, category_id) is a B-tree whose left-prefix
+  // satisfies single-column transaction_id lookups for free.
+  indexes: [{ column: USER_ID }],
   ModelClass: SuggestionModel,
   supportsSoftDelete: false,
 });

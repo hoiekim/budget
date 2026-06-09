@@ -108,8 +108,11 @@ export abstract class Table<
    * does for #496).
    */
   private _assertSimplePrimaryKey(methodName: string): void {
+    // Matches both `PRIMARY KEY (a, b)` and `CONSTRAINT pk_name PRIMARY KEY
+    // (a, b)` — the named form is the canonical Postgres pattern used
+    // elsewhere in this repo (e.g. UNIQUE constraints on transaction_pairs).
     const hasComposite = this.constraints.some((c) =>
-      /^\s*PRIMARY\s+KEY\s*\(/i.test(c),
+      /(?:^|\s)PRIMARY\s+KEY\s*\(/i.test(c),
     );
     if (hasComposite) {
       throw new Error(
@@ -312,6 +315,7 @@ export abstract class Table<
     operator: "=" | "<=" | ">=" | "<" | ">" | "!=",
     value: ParamValue,
   ): Promise<number> {
+    this._assertSimplePrimaryKey("deleteByCondition");
     const sql = `DELETE FROM ${this.name} WHERE ${column} ${operator} $1 RETURNING ${this.primaryKey}`;
     const result = await pool.query(sql, [value]);
     return result.rowCount ?? 0;

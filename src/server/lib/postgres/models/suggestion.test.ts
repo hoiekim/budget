@@ -69,6 +69,36 @@ describe("suggestionsTable — composite-PK Table guards", () => {
     );
   });
 
+  test("bulkSoftDelete() throws", async () => {
+    await expect(suggestionsTable.bulkSoftDelete(["tx-1"])).rejects.toThrow(
+      /Table\.bulkSoftDelete\(\) is not supported on 'suggestions'/,
+    );
+  });
+
+  test("bulkSoftDeleteByColumn() throws", async () => {
+    await expect(
+      suggestionsTable.bulkSoftDeleteByColumn("user_id", "u-1"),
+    ).rejects.toThrow(
+      /Table\.bulkSoftDeleteByColumn\(\) is not supported on 'suggestions'/,
+    );
+  });
+
+  test("hardDeleteByColumn() throws", async () => {
+    await expect(
+      suggestionsTable.hardDeleteByColumn("transaction_id", "tx-1"),
+    ).rejects.toThrow(
+      /Table\.hardDeleteByColumn\(\) is not supported on 'suggestions'/,
+    );
+  });
+
+  test("deleteByCondition() throws — the 11th guarded method that the v2 review surfaced", async () => {
+    await expect(
+      suggestionsTable.deleteByCondition("confidence", "<", 0.1),
+    ).rejects.toThrow(
+      /Table\.deleteByCondition\(\) is not supported on 'suggestions'/,
+    );
+  });
+
   test("queryByIds() throws", async () => {
     await expect(suggestionsTable.queryByIds(["tx-1"])).rejects.toThrow(
       /Table\.queryByIds\(\) is not supported on 'suggestions'/,
@@ -91,8 +121,11 @@ describe("suggestionsTable — schema invariants", () => {
   test("constraint list includes both the composite PK and the mutex CHECK", () => {
     const constraints = suggestionsTable.constraints.join("\n");
     expect(constraints).toMatch(/PRIMARY KEY\s*\(transaction_id,\s*category_id\)/);
+    // Allow either operand order — `NOT (a AND b)` is commutative, so a
+    // future cleanup that reorders to `is_rejected AND is_confirmed` is
+    // semantically identical and shouldn't trigger a noisy false-positive.
     expect(constraints).toMatch(
-      /CHECK\s*\(\s*NOT\s*\(\s*is_confirmed\s+AND\s+is_rejected\s*\)\s*\)/,
+      /CHECK\s*\(\s*NOT\s*\(\s*(?:is_confirmed\s+AND\s+is_rejected|is_rejected\s+AND\s+is_confirmed)\s*\)\s*\)/,
     );
   });
 
