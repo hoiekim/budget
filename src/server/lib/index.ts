@@ -11,3 +11,4 @@ export * from "./validation";
 export * from "./alarm";
 export * from "./rate-limit";
 export * from "./infer-label-confidence";
+export * from "./record-suggestion-feedback";

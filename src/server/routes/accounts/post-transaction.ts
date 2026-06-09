@@ -5,6 +5,8 @@ import {
   requireStringField,
   validationError,
   inferLabelConfidence,
+  getTransaction,
+  recordSuggestionFeedback,
 } from "server";
 import type { PartialTransaction } from "server";
 import { logger } from "server/lib/logger";
@@ -39,12 +41,20 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
     try {
       // Cast is safe after validation above
       const transaction = inferLabelConfidence(bodyResult.data! as PartialTransaction);
+      // Capture the label that's on the row BEFORE the update — a reject
+      // clears `label_category_id` to null, so the rejected category can only
+      // be read from the pre-update state.
+      const existing = await getTransaction(user, txIdResult.data!);
       const response = await updateTransactions(user, [transaction]);
       const result = response[0];
       if (!result || result.status >= 400) {
         throw new Error("Database responded with an error.");
       }
       const transaction_id = result.update._id || "";
+      await recordSuggestionFeedback(user, txIdResult.data!, transaction.label, {
+        category_id: existing?.label.category_id ?? null,
+        budget_id: existing?.label.budget_id ?? null,
+      });
       return { status: "success", body: { transaction_id } };
     } catch (error: unknown) {
       logger.error("Failed to update transaction", { transactionId: txIdResult.data }, error);
