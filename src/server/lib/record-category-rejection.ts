@@ -46,8 +46,6 @@ const wasConfirmed = (prev: PrevLabel) => prev.category_confidence === 1;
  *    a category):
  *      - If the new category differs from a previously-*suggested*
  *        category → record rejection of the old suggested category.
- *        Hoie 2026-06-09: "If the new category is different from the
- *        suggested category, that's a rejection too."
  *      - Always: clear any prior rejection of the NEW category for
  *        this transaction (changed-my-mind path).
  *
@@ -72,9 +70,7 @@ export const recordCategoryRejection = async (
 
     // Budget switch on a CONFIRMED label is a FE side effect, not a
     // rejection. Budget switch on a SUGGESTED label IS a rejection —
-    // the user is replacing the suggestion outright. Per Hoie's review:
-    // "When the user switches budget while there was a suggested budget
-    // & category already, the user is definitely rejecting the suggestion."
+    // the user is replacing the suggestion outright.
     if (budgetChanged && wasConfirmed(prevLabel)) return;
 
     if (prevCategoryId) {

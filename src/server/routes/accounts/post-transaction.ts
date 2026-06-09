@@ -8,7 +8,7 @@ import {
   recordCategoryRejection,
   getPrevLabel,
 } from "server";
-import type { PartialTransaction } from "server";
+import type { PartialTransaction, PrevLabel } from "server";
 import { logger } from "server/lib/logger";
 
 export interface TransactionPostResponse {
@@ -42,14 +42,16 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
       // Cast is safe after validation above
       const transaction = inferLabelConfidence(bodyResult.data! as PartialTransaction);
 
-      // Kick off the previous-label read in parallel with the update.
-      // Both run on separate pool connections; the rejection mirror
-      // doesn't add to the API latency path.
+      // Read the previous label BEFORE the update. The update would
+      // overwrite the columns we need to see (category_id, budget_id,
+      // category_confidence) so running this read in parallel races
+      // against the write — the mirror could see post-update state and
+      // mis-classify the rejection.
       const reqLabel = transaction.label;
       const willTouchCategory = !!reqLabel && "category_id" in reqLabel;
-      const prevLabelPromise =
+      const prevLabel: PrevLabel | null =
         willTouchCategory && transaction.transaction_id
-          ? getPrevLabel(user, transaction.transaction_id)
+          ? await getPrevLabel(user, transaction.transaction_id)
           : null;
 
       const response = await updateTransactions(user, [transaction]);
@@ -60,21 +62,18 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
       const transaction_id = result.update._id || "";
 
       // Fire-and-forget the rejected_categories mirror. The API response
-      // is agnostic to the mirror's success/failure — per Hoie 2026-06-09,
-      // keep the mirror off the latency path. Any error logs to warn.
-      if (willTouchCategory && prevLabelPromise && transaction_id) {
+      // shape doesn't depend on the mirror's success/failure, so keep
+      // it off the latency path.
+      if (willTouchCategory && prevLabel && transaction_id) {
         const txIdForMirror = transaction_id;
-        prevLabelPromise
-          .then((prevLabel) =>
-            recordCategoryRejection(user, txIdForMirror, reqLabel, prevLabel),
-          )
-          .catch((mirrorErr) =>
+        recordCategoryRejection(user, txIdForMirror, reqLabel, prevLabel).catch(
+          (mirrorErr) =>
             logger.warn(
               "Failed to mirror category change into rejected_categories",
               { transactionId: txIdForMirror },
               mirrorErr,
             ),
-          );
+        );
       }
 
       return { status: "success", body: { transaction_id } };
