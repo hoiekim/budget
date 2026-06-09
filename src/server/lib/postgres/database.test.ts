@@ -8,6 +8,7 @@ import {
   buildUpdate,
   buildUpsert,
   buildSoftDelete,
+  buildSelect,
   buildSelectWithFilters,
   buildCreateTable,
   buildCreateIndex,
@@ -262,6 +263,30 @@ describe("buildSoftDelete", () => {
       "UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 RETURNING id",
     );
     expect(values).toEqual(["t1", "u1"]);
+  });
+});
+
+describe("buildSelect", () => {
+  it("selects * and threads a where clause's values", () => {
+    const where = prepareQuery({ a: 1 }, { excludeDeleted: false });
+    const { sql, values } = buildSelect("widgets", "*", where);
+    expect(sql).toBe("SELECT * FROM widgets WHERE a = $1");
+    expect(values).toEqual([1]);
+  });
+
+  it("continues placeholder numbering for LIMIT and OFFSET after where values", () => {
+    const where = prepareQuery({ a: 1 }, { excludeDeleted: false });
+    const { sql, values } = buildSelect("widgets", ["id", "name"], where, "name ASC", 10, 20);
+    expect(sql).toBe(
+      "SELECT id, name FROM widgets WHERE a = $1 ORDER BY name ASC LIMIT $2 OFFSET $3",
+    );
+    expect(values).toEqual([1, 10, 20]);
+  });
+
+  it("works with no where clause", () => {
+    const { sql, values } = buildSelect("widgets", "*");
+    expect(sql).toBe("SELECT * FROM widgets");
+    expect(values).toEqual([]);
   });
 });
 
