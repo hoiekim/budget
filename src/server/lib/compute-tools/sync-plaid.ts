@@ -26,6 +26,7 @@ import {
   searchHoldingsByAccountId,
   MaskedUser,
   deleteSplitTransactionsByTransaction,
+  migrateRejectedCategoriesOnPendingPosted,
   logger,
 } from "server";
 import {
@@ -113,13 +114,33 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const lookupMaps = buildTransactionLookupMaps(storedTransactions);
 
+      // Pending → posted transitions surfaced by modelize. Each entry is
+      // `{ pending: <old stored tx_id>, posted: <new incoming tx_id> }`.
+      // Used to migrate `rejected_categories` rows from the old pending
+      // id to the new posted id after the posted row is upserted. (The
+      // wider orphan-pending-row issue is out of scope for this PR — only
+      // the rejection-side migration is addressed here.)
+      const pendingPostedTransitions: Array<{ pending: string; posted: string }> = [];
+
       const modelize = (e: (typeof added)[0]) => {
         const result: JSONTransaction = { ...e, label: {} };
         const { authorized_date: auth_date, date } = e;
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
         const existing = findStoredTransaction(e, lookupMaps);
-        if (existing) result.label = existing.label;
+        if (existing) {
+          result.label = existing.label;
+          // Detect pending → posted: the incoming `e.transaction_id` (the
+          // posted id) differs from the stored `existing.transaction_id`
+          // (the pending id). Equality means a direct update under the
+          // same id, which needs no migration.
+          if (existing.transaction_id !== e.transaction_id) {
+            pendingPostedTransitions.push({
+              pending: existing.transaction_id,
+              posted: e.transaction_id,
+            });
+          }
+        }
         return result;
       };
 
@@ -137,7 +158,22 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor, updated }));
       return Promise.all(updateJobs)
-        .then(() => {
+        .then(async () => {
+          // Migrate rejected_categories rows from each pending → posted
+          // pair. Runs AFTER upsertTransactions so the posted FK target
+          // exists, and BEFORE counting so a failure is loud. Idempotent
+          // via ON CONFLICT DO NOTHING inside the helper.
+          for (const t of pendingPostedTransitions) {
+            try {
+              await migrateRejectedCategoriesOnPendingPosted(t.pending, t.posted);
+            } catch (err) {
+              logger.warn(
+                "Failed to migrate rejected_categories on pending→posted",
+                { pending: t.pending, posted: t.posted },
+                err,
+              );
+            }
+          }
           addedCount += added.length;
           modifiedCount += modified.length;
           removedCount += removed.length;

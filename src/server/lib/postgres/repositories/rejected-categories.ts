@@ -63,6 +63,57 @@ export const removeRejectedCategory = async (
 };
 
 /**
+ * Migrate rejection rows from a pending Plaid transaction_id onto the
+ * posted transaction_id that supersedes it.
+ *
+ * When Plaid transitions a transaction from pending → posted, the
+ * stored row keeps its OLD `transaction_id` (the pending id) and a NEW
+ * row is created with the POSTED id. Any rejection rows the user
+ * recorded while the transaction was pending stay attached to the OLD
+ * id and become orphaned signal from the engine's point of view (it
+ * scans by transaction_id matching the current merchant join).
+ *
+ * This migrates them in-place: copy rows from `pending` → `posted` with
+ * `ON CONFLICT DO NOTHING` (in case the posted id already has its own
+ * rejection rows), then delete the original pending-side rows. Runs in
+ * a single transaction so a partial failure can't leave both copies
+ * present.
+ *
+ * Returns the number of rows migrated.
+ */
+export const migrateRejectedCategoriesOnPendingPosted = async (
+  pending_transaction_id: string,
+  posted_transaction_id: string,
+): Promise<number> => {
+  if (pending_transaction_id === posted_transaction_id) return 0;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const copyResult = await client.query(
+      `
+      INSERT INTO ${REJECTED_CATEGORIES}
+        (${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID}, ${REJECTED_AT})
+      SELECT $1, ${USER_ID}, ${CATEGORY_ID}, ${REJECTED_AT}
+      FROM ${REJECTED_CATEGORIES}
+      WHERE ${TRANSACTION_ID} = $2
+      ON CONFLICT (${TRANSACTION_ID}, ${CATEGORY_ID}) DO NOTHING
+      `,
+      [posted_transaction_id, pending_transaction_id],
+    );
+    await client.query(`DELETE FROM ${REJECTED_CATEGORIES} WHERE ${TRANSACTION_ID} = $1`, [
+      pending_transaction_id,
+    ]);
+    await client.query("COMMIT");
+    return copyResult.rowCount ?? 0;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+/**
  * Bulk read rejection rows across a set of transactions — used by
  * `getMerchantSignal` (Stage 2b) to count rejections per (merchant,
  * category).
