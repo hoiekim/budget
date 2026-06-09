@@ -9,6 +9,7 @@ import {
   CONFIDENCE,
   IS_CONFIRMED,
   CONFIRMED_AT,
+  ENGINE_SCORED_AT,
   LABEL_CATEGORY_ID,
   LABEL_CATEGORY_CONFIDENCE,
   IS_DELETED,
@@ -20,8 +21,9 @@ import {
  * into the new `suggestions` table.
  *
  * Idempotent via `ON CONFLICT (transaction_id, category_id) DO NOTHING`.
- * Runs on every startup as part of `initializePostgres`; once every prod
- * transaction is mirrored, this becomes a cheap no-op.
+ * Run manually on demand via `scripts/backfill-suggestions.ts` — it is NOT
+ * wired into `initializePostgres`. Once every prod transaction is mirrored,
+ * re-running it is a cheap no-op.
  *
  * Scope notes:
  *
@@ -34,14 +36,22 @@ import {
  *   stay reflected solely in `transactions.label_budget_id` /
  *   `label_memo`.
  *
- * - **Treated as user-confirmed.** Every legacy `transactions.label_*` row
- *   is a user-set label by definition — historically the engine wrote
- *   into the same column at fractional confidence, but those are
- *   transient suggestions, not durable engine state. We treat every
- *   migrated row as `is_confirmed = TRUE` with `confirmed_at =
- *   transactions.updated` so the merchant signal sees them as positive
- *   evidence with a real timestamp (recency filters can downweight stale
- *   confirmations).
+ * - **Confirmation mirrors the live `confidence === 1` invariant.** The app
+ *   treats a legacy label as user-confirmed only when
+ *   `label_category_confidence = 1` (explicit accept) or `IS NULL`
+ *   (hand-set before the engine existed) — see
+ *   `client/lib/hooks/calculation/budgets.ts` (`isConfirmed =
+ *   category_confidence === 1 && !!category_id`), which classifies
+ *   `category_id` set with `0 < confidence < 1` as "auto-suggested but
+ *   unreviewed". So this backfill maps:
+ *     - confidence `1` / `NULL` → user-confirmed: `is_confirmed = TRUE`,
+ *       `confirmed_at = transactions.updated`, `engine_scored_at = NULL`.
+ *     - `0 < confidence < 1` → unreviewed engine suggestion:
+ *       `is_confirmed = FALSE`, `confirmed_at = NULL`,
+ *       `engine_scored_at = transactions.updated`.
+ *   This keeps `is_confirmed` a pure record of *user intent* (the schema's
+ *   stated purpose) instead of stamping pending engine guesses as
+ *   confirmations and inflating the merchant signal's confirm rate.
  *
  * - **Confidence**: carried verbatim from `label_category_confidence` if
  *   present (so any explicit engine score in the legacy column survives),
@@ -69,14 +79,17 @@ export const backfillSuggestionsFromLegacyColumns = async (): Promise<void> => {
     `
     INSERT INTO ${SUGGESTIONS}
       (${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID}, ${CONFIDENCE},
-       ${IS_CONFIRMED}, ${CONFIRMED_AT})
+       ${IS_CONFIRMED}, ${CONFIRMED_AT}, ${ENGINE_SCORED_AT})
     SELECT
       ${TRANSACTION_ID},
       ${USER_ID},
       ${LABEL_CATEGORY_ID},
       COALESCE(${LABEL_CATEGORY_CONFIDENCE}, 1.0),
-      TRUE,
-      ${UPDATED}
+      (${LABEL_CATEGORY_CONFIDENCE} IS NULL OR ${LABEL_CATEGORY_CONFIDENCE} = 1.0),
+      CASE WHEN ${LABEL_CATEGORY_CONFIDENCE} IS NULL OR ${LABEL_CATEGORY_CONFIDENCE} = 1.0
+           THEN ${UPDATED} END,
+      CASE WHEN ${LABEL_CATEGORY_CONFIDENCE} IS NULL OR ${LABEL_CATEGORY_CONFIDENCE} = 1.0
+           THEN NULL ELSE ${UPDATED} END
     FROM ${TRANSACTIONS}
     WHERE (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
       AND ${LABEL_CATEGORY_ID} IS NOT NULL

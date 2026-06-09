@@ -83,25 +83,47 @@ describe("backfillSuggestionsFromLegacyColumns", () => {
     expect(insertSql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
   });
 
-  test("inserts the explicit-flag columns — is_confirmed=TRUE, confirmed_at=transactions.updated", async () => {
+  test("inserts the explicit-flag columns — is_confirmed/confirmed_at/engine_scored_at", async () => {
     respondWithLegacyColumn(true);
     mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
     await backfillSuggestionsFromLegacyColumns();
 
     const insertSql = mockQuery.mock.calls[1][0];
     // Column list: transaction_id, user_id, category_id, confidence,
-    // is_confirmed, confirmed_at. No parent_type, no budget_id, no memo.
-    // Tight column-list match: catches flag-swap typos (is_confirmed ↔
-    // is_rejected) and accidental column insertion. Only whitespace and
-    // line-breaks are allowed between column names within the paren.
+    // is_confirmed, confirmed_at, engine_scored_at. No parent_type, no
+    // budget_id, no memo. Tight column-list match: catches flag-swap typos
+    // (is_confirmed ↔ is_rejected) and accidental column insertion. Only
+    // whitespace and line-breaks are allowed between column names.
     expect(insertSql).toMatch(
-      /INSERT INTO suggestions\s*\(\s*transaction_id,\s+user_id,\s+category_id,\s+confidence,\s+is_confirmed,\s+confirmed_at\s*\)/,
+      /INSERT INTO suggestions\s*\(\s*transaction_id,\s+user_id,\s+category_id,\s+confidence,\s+is_confirmed,\s+confirmed_at,\s+engine_scored_at\s*\)/,
     );
-    // SELECT projects TRUE for is_confirmed and transactions.updated for confirmed_at.
-    expect(insertSql).toMatch(/TRUE,\s*updated/);
     expect(insertSql).not.toMatch(/parent_type/);
     expect(insertSql).not.toMatch(/parent_id/);
     expect(insertSql).not.toMatch(/\bmemo\b/);
     expect(insertSql).not.toMatch(/label_budget_id/);
+  });
+
+  test("is_confirmed mirrors the confidence===1 invariant — fractional engine rows are NOT confirmed", async () => {
+    respondWithLegacyColumn(true);
+    mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+    await backfillSuggestionsFromLegacyColumns();
+
+    const insertSql = mockQuery.mock.calls[1][0];
+    // is_confirmed is the predicate `confidence IS NULL OR confidence = 1.0`,
+    // NOT a blanket TRUE — a 0 < confidence < 1 row (unreviewed engine
+    // suggestion) must migrate as is_confirmed=FALSE, matching budgets.ts
+    // `isConfirmed = category_confidence === 1`.
+    expect(insertSql).not.toMatch(/TRUE,\s*updated/);
+    expect(insertSql).toMatch(
+      /\(label_category_confidence IS NULL OR label_category_confidence = 1\.0\)/,
+    );
+    // confirmed_at is set only for confirmed rows; engine_scored_at only for
+    // the unreviewed (ELSE) branch.
+    expect(insertSql).toMatch(
+      /CASE WHEN label_category_confidence IS NULL OR label_category_confidence = 1\.0\s*THEN updated END/,
+    );
+    expect(insertSql).toMatch(
+      /CASE WHEN label_category_confidence IS NULL OR label_category_confidence = 1\.0\s*THEN NULL ELSE updated END/,
+    );
   });
 });
