@@ -63,28 +63,20 @@ export const buildTransactionLookupMaps = (
  * `rejected_categories` rows; future work may extend).
  *
  * Mechanism: Plaid's posted transaction carries
- * `pending_transaction_id` pointing back at the prior pending id. If
- * the stored set contains a row at that id, this incoming posted tx
- * supersedes it. Looking up `e.pending_transaction_id` in
- * `byTransactionId` catches the canonical shape exactly — no
- * compound-key false positives (recurring same-amount transactions),
- * no byPendingId backwards-direction confusion (re-emitted pending
- * data).
+ * `pending_transaction_id` pointing back at the prior pending id. The
+ * pair `(pending = e.pending_transaction_id, posted = e.transaction_id)`
+ * is the canonical supersession event — no need to cross-check against
+ * the stored set, since the back-pointer itself is the authoritative
+ * signal from Plaid. The migrate helper is idempotent + no-ops when
+ * the pending side has no rows, so an orphan back-pointer is harmless.
  */
 export const detectPendingPostedTransitions = (
   incoming: Pick<JSONTransaction, "transaction_id" | "pending_transaction_id">[],
-  lookupMaps: Pick<ReturnType<typeof buildTransactionLookupMaps>, "byTransactionId">,
 ): Array<{ pending: string; posted: string }> => {
   const transitions: Array<{ pending: string; posted: string }> = [];
   for (const e of incoming) {
-    if (!e.pending_transaction_id) continue;
-    const oldPending = lookupMaps.byTransactionId.get(e.pending_transaction_id);
-    if (oldPending && oldPending.transaction_id !== e.transaction_id) {
-      transitions.push({
-        pending: oldPending.transaction_id,
-        posted: e.transaction_id,
-      });
-    }
+    const { pending_transaction_id: pending, transaction_id: posted } = e;
+    if (pending && pending !== posted) transitions.push({ pending, posted });
   }
   return transitions;
 };
@@ -147,14 +139,6 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const lookupMaps = buildTransactionLookupMaps(storedTransactions);
 
-      // Pending → posted transitions surfaced by modelize. Each entry is
-      // `{ pending: <old stored tx_id>, posted: <new incoming tx_id> }`.
-      // Used to migrate `rejected_categories` rows from the old pending
-      // id to the new posted id after the posted row is upserted. (The
-      // wider orphan-pending-row issue is out of scope for this PR — only
-      // the rejection-side migration is addressed here.)
-      const pendingPostedTransitions: Array<{ pending: string; posted: string }> = [];
-
       const modelize = (e: (typeof added)[0]) => {
         const result: JSONTransaction = { ...e, label: {} };
         const { authorized_date: auth_date, date } = e;
@@ -172,14 +156,10 @@ export const syncPlaidTransactions = async (item_id: string) => {
       // Pending → posted transitions across both added and modified
       // batches. Used to migrate `rejected_categories` rows from the old
       // pending id to the new posted id after the posted row is upserted.
-      // See `detectPendingPostedTransitions` for the canonical detection
-      // mechanism (back-pointer via `e.pending_transaction_id`, not
-      // findStoredTransaction id-inequality which has compound-key and
-      // byPendingId-direction false positives — issue surfaced in PR #502
-      // review pass).
-      pendingPostedTransitions.push(
-        ...detectPendingPostedTransitions([...added, ...modified], lookupMaps),
-      );
+      const pendingPostedTransitions = detectPendingPostedTransitions([
+        ...added,
+        ...modified,
+      ]);
 
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),

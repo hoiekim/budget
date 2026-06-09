@@ -9,42 +9,50 @@ import {
 export interface PrevLabel {
   category_id: string | null;
   budget_id: string | null;
+  /** `transactions.label_category_confidence`. Drives the suggested-vs-confirmed
+   *  distinction the disambiguation logic needs to tell a genuine rejection
+   *  from a FE side effect. `1` = user-confirmed; `(0, 1)` = engine-suggested;
+   *  `null`/`0`/undefined = no label / cleared. */
+  category_confidence: number | null;
 }
+
+const wasSuggested = (prev: PrevLabel) =>
+  prev.category_confidence !== null &&
+  prev.category_confidence > 0 &&
+  prev.category_confidence < 1;
+
+const wasConfirmed = (prev: PrevLabel) => prev.category_confidence === 1;
 
 /**
  * Mirror a `transactions.label` update into the `rejected_categories`
  * event log. Called from the `post-transaction` route layer AFTER the
  * legacy `transactions.label_*` columns have been updated.
  *
- * The rule set, derived from how the FE expresses user intent (see
- * `client/components/TransactionsTable/TransactionRow.tsx`):
+ * Decision matrix driven by the request body shape + the prev label's
+ * suggested/confirmed state (`category_confidence`):
  *
  *  - **Body does not include `label.category_id`** → no category change;
- *    nothing to record. (A budget-only update, memo-only update, etc.)
+ *    nothing to record. (Budget-only, memo-only, etc.)
  *
- *  - **Body sets `label.budget_id`** to a value *different from the
- *    previous* AND **`label.category_id: null`** → budget switch. The
- *    category nullification is a side effect of switching budget
- *    (categories belong to budgets), not an explicit rejection.
- *    **Skip the rejection write.** Disambiguation called out explicitly
- *    because the legacy confidence-only signal couldn't tell these
- *    apart (Hoie pushed back on the false-rejection case for the
- *    earlier #500 attempt). Note the "different from previous"
- *    requirement — a body that includes the unchanged budget_id is
- *    NOT a switch and the category clear remains a genuine rejection.
+ *  - **Body clears category (`category_id: null`)**:
+ *      - Budget changes simultaneously AND prev was *confirmed* (conf=1)
+ *        → FE side effect of switching budget on a confirmed label.
+ *        Skip the rejection write.
+ *      - Otherwise (no budget change, OR prev was a *suggestion* the
+ *        user just dropped) → genuine rejection of the previous
+ *        category. UPSERT into `rejected_categories`.
  *
- *  - **Body sets `label.category_id: null`** (without changing budget)
- *    AND the *previous* `label.category_id` was non-null → genuine
- *    rejection. UPSERT into `rejected_categories` with the previous
- *    category.
- *
- *  - **Body sets `label.category_id: <string>`** → user picked / kept a
- *    category. Clear any prior rejection of that category for this
- *    transaction ("changed my mind").
+ *  - **Body sets `label.category_id: <string>`** (user picked or kept
+ *    a category):
+ *      - If the new category differs from a previously-*suggested*
+ *        category → record rejection of the old suggested category.
+ *        Hoie 2026-06-09: "If the new category is different from the
+ *        suggested category, that's a rejection too."
+ *      - Always: clear any prior rejection of the NEW category for
+ *        this transaction (changed-my-mind path).
  *
  * Errors do NOT bubble — the legacy label update already succeeded; a
- * failure to mirror is a downgraded signal, not a route failure. Logged
- * for observability.
+ * failure to mirror is a downgraded signal, not a route failure.
  */
 export const recordCategoryRejection = async (
   user: MaskedUser,
@@ -55,46 +63,51 @@ export const recordCategoryRejection = async (
   if (!reqLabel || !("category_id" in reqLabel)) return;
 
   const newCategoryId = reqLabel.category_id;
+  const prevCategoryId = prevLabel.category_id;
 
-  // Budget switch disambiguation: a body with `budget_id` set to a value
-  // DIFFERENT from the previous budget AND `category_id: null` is a
-  // budget change, not a category rejection. A body that includes the
-  // unchanged budget_id falls through and the category clear is treated
-  // as a genuine rejection.
-  const isBudgetSwitch =
-    "budget_id" in reqLabel &&
-    newCategoryId === null &&
-    reqLabel.budget_id !== prevLabel.budget_id;
-
-  if (isBudgetSwitch) return;
-
+  // === Clearing the category ===
   if (newCategoryId === null) {
-    // Genuine rejection. Record the *previous* category id (the one
-    // being rejected). If the previous category was already null, there's
-    // nothing concrete to reject.
-    if (prevLabel.category_id) {
-      await addRejectedCategory(user, transaction_id, prevLabel.category_id);
+    const budgetChanged =
+      "budget_id" in reqLabel && reqLabel.budget_id !== prevLabel.budget_id;
+
+    // Budget switch on a CONFIRMED label is a FE side effect, not a
+    // rejection. Budget switch on a SUGGESTED label IS a rejection —
+    // the user is replacing the suggestion outright. Per Hoie's review:
+    // "When the user switches budget while there was a suggested budget
+    // & category already, the user is definitely rejecting the suggestion."
+    if (budgetChanged && wasConfirmed(prevLabel)) return;
+
+    if (prevCategoryId) {
+      await addRejectedCategory(user, transaction_id, prevCategoryId);
     }
     return;
   }
 
+  // === Picking or keeping a category ===
   if (typeof newCategoryId === "string") {
-    // User picked or kept a category — clear any prior rejection of THIS
-    // category for THIS transaction. Cheap; no-op if no row matched.
+    // User picked a DIFFERENT category than the one that was previously
+    // suggested → record a rejection of the suggestion.
+    if (
+      prevCategoryId &&
+      newCategoryId !== prevCategoryId &&
+      wasSuggested(prevLabel)
+    ) {
+      await addRejectedCategory(user, transaction_id, prevCategoryId);
+    }
+
+    // Clear any prior rejection of THIS category (changed-my-mind cycle).
     await removeRejectedCategory(user, transaction_id, newCategoryId);
   }
 };
 
 /**
- * Read the current `label.{category_id,budget_id}` for a transaction.
- * Used by the route layer to capture the previous label *before* the
- * update so `recordCategoryRejection` can:
- *  - name the category being rejected (when the request clears it), and
- *  - tell a real budget switch from a body that re-states the current
- *    budget_id alongside a category clear (false-positive guard).
+ * Read the current `label.{category_id, budget_id, category_confidence}`
+ * for a transaction. The route layer kicks this off in parallel with
+ * the update so the rejection mirror can name the category being
+ * cleared and tell a suggested label from a confirmed one.
  *
- * Returns `{category_id: null, budget_id: null}` if the transaction
- * doesn't exist or both columns are null/undefined.
+ * Returns null fields if the transaction doesn't exist or any column
+ * is unset.
  */
 export const getPrevLabel = async (
   user: MaskedUser,
@@ -104,5 +117,6 @@ export const getPrevLabel = async (
   return {
     category_id: tx?.label?.category_id ?? null,
     budget_id: tx?.label?.budget_id ?? null,
+    category_confidence: tx?.label?.category_confidence ?? null,
   };
 };

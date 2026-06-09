@@ -119,101 +119,49 @@ describe("findStoredTransaction", () => {
 
 describe("detectPendingPostedTransitions", () => {
   it("emits a transition for the canonical pending→posted shape (incoming carries pending_transaction_id back-pointer)", () => {
-    const stored = makeTx({ transaction_id: "PENDING-1", pending_transaction_id: null });
     const incoming = makeTx({
       transaction_id: "POSTED-1",
       pending_transaction_id: "PENDING-1",
     });
-    const maps = buildTransactionLookupMaps([stored]);
-    const result = detectPendingPostedTransitions([incoming], maps);
+    const result = detectPendingPostedTransitions([incoming]);
     expect(result).toEqual([{ pending: "PENDING-1", posted: "POSTED-1" }]);
   });
 
-  it("does NOT emit on byCompoundKey collisions (recurring same-amount transactions are NOT supersession events)", () => {
-    // PR #502 review HIGH #1: recurring same-amount transactions (e.g.
-    // monthly Netflix $14.99 on the same account) collide on
-    // (account_id, name, amount). The original id-inequality heuristic
-    // would have marked the new month's row as the supersession of last
-    // month's. Detection via pending_transaction_id back-pointer must
-    // NOT fire here — only the back-pointer is authoritative.
-    const lastMonth = makeTx({
-      transaction_id: "tx-coffee-jan",
-      account_id: "acc-1",
-      name: "STARBUCKS",
-      amount: 5,
-      pending_transaction_id: null,
-    });
-    const thisMonth = makeTx({
-      transaction_id: "tx-coffee-feb",
-      account_id: "acc-1",
-      name: "STARBUCKS",
-      amount: 5,
-      pending_transaction_id: null,
-    });
-    const maps = buildTransactionLookupMaps([lastMonth]);
-    const result = detectPendingPostedTransitions([thisMonth], maps);
-    expect(result).toEqual([]);
-  });
-
-  it("does NOT emit when Plaid re-emits an OLD pending tx for which a posted row already exists", () => {
-    // PR #502 review HIGH #2: stored has the current posted row
-    // pointing back at the old pending (pending_transaction_id="ptx-1").
-    // Plaid re-emits the old pending (incoming.transaction_id="ptx-1"
-    // with no back-pointer). The id-inequality heuristic would have
-    // emitted (pending="tx-settled", posted="ptx-1") — backwards. The
-    // back-pointer detection skips because incoming.pending_transaction_id
-    // is null.
-    const settledPosted = makeTx({
-      transaction_id: "tx-settled",
-      pending_transaction_id: "ptx-1",
-    });
-    const reEmittedPending = makeTx({
-      transaction_id: "ptx-1",
-      pending_transaction_id: null,
-    });
-    const maps = buildTransactionLookupMaps([settledPosted]);
-    const result = detectPendingPostedTransitions([reEmittedPending], maps);
-    expect(result).toEqual([]);
-  });
-
-  it("does NOT emit when the back-pointer references a transaction not present in the stored set", () => {
-    // Defensive: incoming carries a back-pointer to an id we've never
-    // seen (the pending row was deleted, never synced, or the user
-    // started with this account on a posted-only window). Skip silently.
-    const incoming = makeTx({
-      transaction_id: "POSTED-orphan",
-      pending_transaction_id: "PENDING-not-stored",
-    });
-    const maps = buildTransactionLookupMaps([]);
-    const result = detectPendingPostedTransitions([incoming], maps);
-    expect(result).toEqual([]);
-  });
-
-  it("does NOT emit when incoming.transaction_id and back-pointer target are the same id (defensive no-op)", () => {
-    const stored = makeTx({ transaction_id: "tx-A", pending_transaction_id: null });
-    const incoming = makeTx({
-      transaction_id: "tx-A",
-      pending_transaction_id: "tx-A",
-    });
-    const maps = buildTransactionLookupMaps([stored]);
-    const result = detectPendingPostedTransitions([incoming], maps);
-    expect(result).toEqual([]);
-  });
-
-  it("handles a batch with mixed shapes — emits only the genuine supersession", () => {
-    const oldPending = makeTx({
-      transaction_id: "PENDING-1",
-      pending_transaction_id: null,
-    });
-    const recurringJan = makeTx({
-      transaction_id: "tx-recurring-jan",
+  it("does NOT emit when no back-pointer is set — covers recurring same-amount transactions and brand-new posted-only txs", () => {
+    // Recurring monthly charges (Netflix $14.99, etc.) appear as brand-new
+    // transactions every month with a fresh transaction_id and no
+    // pending_transaction_id. The back-pointer being null is the only
+    // signal we need — no need to cross-check stored set.
+    const recurring = makeTx({
+      transaction_id: "tx-recurring-feb",
       account_id: "acc-1",
       name: "NETFLIX",
       amount: 14.99,
       pending_transaction_id: null,
     });
-    const maps = buildTransactionLookupMaps([oldPending, recurringJan]);
+    expect(detectPendingPostedTransitions([recurring])).toEqual([]);
+  });
 
+  it("does NOT emit when Plaid re-emits an OLD pending tx (incoming.pending_transaction_id is null)", () => {
+    // A re-emitted pending row has no back-pointer (Plaid hasn't yet
+    // posted it from THIS sync's perspective). The detection short-
+    // circuits cleanly.
+    const reEmittedPending = makeTx({
+      transaction_id: "ptx-1",
+      pending_transaction_id: null,
+    });
+    expect(detectPendingPostedTransitions([reEmittedPending])).toEqual([]);
+  });
+
+  it("does NOT emit when incoming.transaction_id and back-pointer target are the same id (defensive no-op)", () => {
+    const incoming = makeTx({
+      transaction_id: "tx-A",
+      pending_transaction_id: "tx-A",
+    });
+    expect(detectPendingPostedTransitions([incoming])).toEqual([]);
+  });
+
+  it("handles a batch with mixed shapes — emits only the genuine supersession", () => {
     const incoming = [
       // (1) canonical pending→posted — should emit
       makeTx({ transaction_id: "POSTED-1", pending_transaction_id: "PENDING-1" }),
@@ -228,7 +176,7 @@ describe("detectPendingPostedTransitions", () => {
       // (3) brand-new tx with no back-pointer — should NOT emit
       makeTx({ transaction_id: "tx-fresh", pending_transaction_id: null }),
     ];
-    const result = detectPendingPostedTransitions(incoming, maps);
+    const result = detectPendingPostedTransitions(incoming);
     expect(result).toEqual([{ pending: "PENDING-1", posted: "POSTED-1" }]);
   });
 });
