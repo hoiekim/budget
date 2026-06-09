@@ -22,9 +22,8 @@ const {
   getSuggestionsForTransaction,
   getSuggestionsForTransactions,
   upsertUserConfirmedSuggestion,
+  upsertUserRejectedSuggestion,
   upsertEngineSuggestion,
-  demoteEngineSuggestionsForTransaction,
-  deleteUserConfirmedSuggestionForTransaction,
   deleteAllSuggestionsForTransaction,
 } = await import("./suggestions");
 
@@ -41,40 +40,31 @@ beforeEach(() => {
   mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
 });
 
+const fakeRow = (overrides: Record<string, unknown> = {}) => ({
+  transaction_id: "tx-1",
+  user_id: "u-1",
+  category_id: "cat-A",
+  confidence: 1,
+  is_confirmed: false,
+  is_rejected: false,
+  confirmed_at: null,
+  engine_scored_at: null,
+  updated: "2026-06-09T00:00:00Z",
+  ...overrides,
+});
+
 describe("getSuggestionsForTransaction", () => {
-  test("user-scoped + ordered by confidence DESC", async () => {
+  test("user-scoped + ordered by is_confirmed DESC then confidence DESC", async () => {
     mockQuery.mockImplementationOnce(async () => ({
-      rows: [
-        {
-          suggestion_id: "s-1",
-          transaction_id: "tx-1",
-          user_id: "u-1",
-          category_id: "cat-A",
-          confidence: 1.0,
-          updated: "2026-06-07T00:00:00Z",
-        },
-        {
-          suggestion_id: "s-2",
-          transaction_id: "tx-1",
-          user_id: "u-1",
-          category_id: "cat-B",
-          confidence: 0,
-          updated: "2026-06-07T00:00:00Z",
-        },
-      ],
-      rowCount: 2,
+      rows: [fakeRow({ category_id: "cat-A", confidence: 1, is_confirmed: true })],
+      rowCount: 1,
     }));
-
-    const result = await getSuggestionsForTransaction(fakeUser(), "tx-1");
-
+    await getSuggestionsForTransaction(fakeUser(), "tx-1");
     const [sql, values] = mockQuery.mock.calls[0];
     expect(sql).toMatch(/user_id\s*=\s*\$1/);
     expect(sql).toMatch(/transaction_id\s*=\s*\$2/);
-    expect(sql).toMatch(/ORDER BY\s+confidence\s+DESC/);
+    expect(sql).toMatch(/ORDER BY\s+is_confirmed\s+DESC,\s+confidence\s+DESC/);
     expect(values).toEqual(["u-1", "tx-1"]);
-    expect(result).toHaveLength(2);
-    expect(result[0].confidence).toBe(1.0);
-    expect(result[1].confidence).toBe(0);
   });
 });
 
@@ -94,32 +84,39 @@ describe("getSuggestionsForTransactions", () => {
 });
 
 describe("upsertUserConfirmedSuggestion", () => {
-  test("forces confidence = 1 regardless of prior state — ON CONFLICT DO UPDATE on (transaction_id, category_id)", async () => {
+  test("sets is_confirmed=TRUE, is_rejected=FALSE, confirmed_at=NOW(), confidence=1 on insert", async () => {
     mockQuery.mockImplementationOnce(async () => ({
-      rows: [
-        {
-          suggestion_id: "s-new",
-          transaction_id: "tx-1",
-          user_id: "u-1",
-          category_id: "cat-A",
-          confidence: 1,
-          updated: "2026-06-07T00:00:00Z",
-        },
-      ],
+      rows: [fakeRow({ is_confirmed: true, confidence: 1, confirmed_at: "now" })],
       rowCount: 1,
     }));
-
     const result = await upsertUserConfirmedSuggestion(fakeUser(), "tx-1", "cat-A");
-
     const [sql, values] = mockQuery.mock.calls[0];
     expect(sql).toMatch(/INSERT INTO suggestions/);
+    expect(sql).toMatch(/VALUES\s*\(\$1,\s*\$2,\s*\$3,\s*1,\s*TRUE,\s*FALSE,\s*CURRENT_TIMESTAMP\)/);
     expect(sql).toMatch(/ON CONFLICT \(transaction_id,\s*category_id\)/);
-    expect(sql).toMatch(/DO UPDATE SET confidence = 1/);
-    // user_id WHERE guard — defense-in-depth so an upsert can't ever clobber
-    // a different user's row even if transaction_id collides.
+    expect(sql).toMatch(/is_confirmed\s*=\s*TRUE/);
+    expect(sql).toMatch(/is_rejected\s*=\s*FALSE/);
+    expect(sql).toMatch(/confirmed_at\s*=\s*CURRENT_TIMESTAMP/);
     expect(sql).toMatch(/suggestions\.user_id\s*=\s*\$2/);
     expect(values).toEqual(["tx-1", "u-1", "cat-A"]);
-    expect(result?.confidence).toBe(1);
+    expect(result?.is_confirmed).toBe(true);
+  });
+});
+
+describe("upsertUserRejectedSuggestion", () => {
+  test("sets is_rejected=TRUE, is_confirmed=FALSE", async () => {
+    mockQuery.mockImplementationOnce(async () => ({
+      rows: [fakeRow({ is_rejected: true, confidence: 0 })],
+      rowCount: 1,
+    }));
+    const result = await upsertUserRejectedSuggestion(fakeUser(), "tx-1", "cat-A");
+    const [sql, values] = mockQuery.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO suggestions/);
+    expect(sql).toMatch(/VALUES\s*\(\$1,\s*\$2,\s*\$3,\s*0,\s*FALSE,\s*TRUE\)/);
+    expect(sql).toMatch(/is_rejected\s*=\s*TRUE/);
+    expect(sql).toMatch(/is_confirmed\s*=\s*FALSE/);
+    expect(values).toEqual(["tx-1", "u-1", "cat-A"]);
+    expect(result?.is_rejected).toBe(true);
   });
 });
 
@@ -133,40 +130,16 @@ describe("upsertEngineSuggestion", () => {
     ).rejects.toThrow(/strict-fractional/);
   });
 
-  test("WHERE clause keeps engine from clobbering user-confirmed (=1) or user-rejected (=0) rows + scopes by user_id", async () => {
+  test("ON CONFLICT WHERE clause guards user_id AND skips user-actioned rows (is_confirmed OR is_rejected)", async () => {
     mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
     await upsertEngineSuggestion(fakeUser(), "tx-1", "cat-A", 0.85);
     const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO suggestions/);
+    expect(sql).toMatch(/engine_scored_at.*CURRENT_TIMESTAMP/);
     expect(sql).toMatch(/ON CONFLICT \(transaction_id,\s*category_id\)/);
     expect(sql).toMatch(/suggestions\.user_id\s*=\s*\$2/);
-    expect(sql).toMatch(/suggestions\.confidence\s*<\s*1/);
-    expect(sql).toMatch(/suggestions\.confidence\s*>\s*0/);
-  });
-});
-
-describe("demoteEngineSuggestionsForTransaction", () => {
-  test("strict-fractional WHERE — confidence > 0 AND < 1 (preserves user rows at 0 and 1)", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 2 }));
-    const n = await demoteEngineSuggestionsForTransaction(fakeUser(), "tx-1");
-    const [sql, values] = mockQuery.mock.calls[0];
-    expect(sql).toMatch(/UPDATE suggestions/);
-    expect(sql).toMatch(/SET confidence = 0/);
-    expect(sql).toMatch(/confidence\s*<\s*1/);
-    expect(sql).toMatch(/confidence\s*>\s*0/);
-    expect(values).toEqual(["u-1", "tx-1"]);
-    expect(n).toBe(2);
-  });
-});
-
-describe("deleteUserConfirmedSuggestionForTransaction", () => {
-  test("keys on (user_id, transaction_id, confidence = 1)", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 }));
-    const n = await deleteUserConfirmedSuggestionForTransaction(fakeUser(), "tx-1");
-    const [sql, values] = mockQuery.mock.calls[0];
-    expect(sql).toMatch(/DELETE FROM suggestions/);
-    expect(sql).toMatch(/confidence\s*=\s*1/);
-    expect(values).toEqual(["u-1", "tx-1"]);
-    expect(n).toBe(1);
+    expect(sql).toMatch(/NOT suggestions\.is_confirmed/);
+    expect(sql).toMatch(/NOT suggestions\.is_rejected/);
   });
 });
 

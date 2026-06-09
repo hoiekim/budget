@@ -83,17 +83,19 @@ describe("backfillSuggestionsFromLegacyColumns", () => {
     expect(insertSql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
   });
 
-  test("backfills only `transaction_id, user_id, category_id, confidence` — no parent_type, no budget_id, no memo", async () => {
+  test("inserts the explicit-flag columns — is_confirmed=TRUE, confirmed_at=transactions.updated", async () => {
     respondWithLegacyColumn(true);
     mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
     await backfillSuggestionsFromLegacyColumns();
 
     const insertSql = mockQuery.mock.calls[1][0];
-    // The projected column list shouldn't carry budget / parent_type / memo
-    // — they're gone from the suggestion schema entirely.
+    // Column list: transaction_id, user_id, category_id, confidence,
+    // is_confirmed, confirmed_at. No parent_type, no budget_id, no memo.
     expect(insertSql).toMatch(
-      /INSERT INTO suggestions \(transaction_id, user_id, category_id, confidence\)/,
+      /INSERT INTO suggestions[\s\S]*\(transaction_id, user_id, category_id, confidence,[\s\S]*is_confirmed, confirmed_at\)/,
     );
+    // SELECT projects TRUE for is_confirmed and transactions.updated for confirmed_at.
+    expect(insertSql).toMatch(/TRUE,\s*updated/);
     expect(insertSql).not.toMatch(/parent_type/);
     expect(insertSql).not.toMatch(/parent_id/);
     expect(insertSql).not.toMatch(/\bmemo\b/);

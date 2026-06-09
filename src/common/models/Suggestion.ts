@@ -1,27 +1,33 @@
 /**
- * A row in the `suggestions` table — records the most recent action for a
- * (transaction, category) pair, used as the engine's learning history.
+ * A row in the `suggestions` table — records the engine's per-(transaction,
+ * category) learning history.
  *
  * Loosely coupled with the transaction: the transaction row holds the
  * denormalized "current label" (`transactions.label_*`) for hot-path reads,
  * and `suggestions` records the per-category history the engine learns
  * from. Reads of the transaction list never JOIN this table.
  *
- * UNIQUE on `(transaction_id, category_id)` — at most one row per
- * (transaction, category) pair, whose `confidence` reflects the latest
- * state of that pair:
+ * Primary key is the **composite `(transaction_id, category_id)`** — at most
+ * one row per pair. Lifecycle is captured by two explicit user-action flags
+ * so the merchant signal never has to infer intent from numbers:
  *
- * - `confidence = 1`: user-confirmed
- * - `0 < confidence < 1`: engine-suggested
- * - `confidence = 0`: user-rejected
+ * - `is_confirmed = true` (with `confirmed_at` stamped): user accepted this
+ *   category for this transaction.
+ * - `is_rejected = true`: user explicitly rejected this category for this
+ *   transaction.
+ * - Both `false`: engine-owned row. `confidence` carries the engine's most
+ *   recent score, and `engine_scored_at` stamps when the engine wrote it.
  *
- * The engine UPSERTs at strict-fractional confidence and only overwrites
- * rows where the existing confidence is itself strict-fractional — it
- * never clobbers a user confirmation (1) or a user rejection (0).
+ * `confidence` is the engine's score. User actions are tracked via flags so
+ * we avoid the "phantom rejection" problem where `confidence = 0` could
+ * mean either "engine retracted" or "user rejected".
  */
 export interface JSONSuggestion {
-  suggestion_id: string;
   transaction_id: string;
   category_id: string;
   confidence: number;
+  is_confirmed: boolean;
+  is_rejected: boolean;
+  confirmed_at: string | null;
+  engine_scored_at: string | null;
 }
