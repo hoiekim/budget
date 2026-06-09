@@ -1,5 +1,4 @@
 import { JSONSuggestion } from "common";
-import { pool } from "../client";
 import {
   MaskedUser,
   SuggestionModel,
@@ -13,7 +12,8 @@ import {
   CONFIRMED_AT,
   ENGINE_SCORED_AT,
   UPDATED,
-} from "../models";
+  pool,
+} from "server";
 
 /**
  * Read all suggestion rows for a single transaction. Used in tests + by

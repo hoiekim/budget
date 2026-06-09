@@ -25,7 +25,6 @@ import {
   apiKeysTable,
   suggestionsTable,
 } from "./models";
-import { backfillSuggestionsFromLegacyColumns } from "./backfill-suggestions";
 
 export const version = "6";
 export const index = "budget" + (version ? `-${version}` : "");
@@ -83,11 +82,6 @@ export const initializePostgres = async (): Promise<void> => {
 
     // Run automatic schema migrations to add any missing columns
     await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
-
-    // Idempotent backfill from `transactions.label_*` into the `suggestions`
-    // table. Runs every startup; ON CONFLICT (transaction_id, category_id)
-    // DO NOTHING makes it cheap after the first pass.
-    await backfillSuggestionsFromLegacyColumns();
   } catch (error: unknown) {
     logger.error("Failed to create tables", {}, error);
     throw new Error("Failed to setup PostgreSQL tables.");
