@@ -6,6 +6,11 @@ import {
   searchTransactionsById,
 } from "server";
 
+export interface PrevLabel {
+  category_id: string | null;
+  budget_id: string | null;
+}
+
 /**
  * Mirror a `transactions.label` update into the `rejected_categories`
  * event log. Called from the `post-transaction` route layer AFTER the
@@ -17,13 +22,16 @@ import {
  *  - **Body does not include `label.category_id`** → no category change;
  *    nothing to record. (A budget-only update, memo-only update, etc.)
  *
- *  - **Body sets `label.budget_id`** AND **`label.category_id: null`** →
- *    budget switch. The category nullification is a side effect of
- *    switching budget (categories belong to budgets), not an explicit
- *    rejection. **Skip the rejection write.** Disambiguation called out
- *    explicitly because the legacy confidence-only signal couldn't tell
- *    these apart (Hoie pushed back on the false-rejection case for the
- *    earlier #500 attempt).
+ *  - **Body sets `label.budget_id`** to a value *different from the
+ *    previous* AND **`label.category_id: null`** → budget switch. The
+ *    category nullification is a side effect of switching budget
+ *    (categories belong to budgets), not an explicit rejection.
+ *    **Skip the rejection write.** Disambiguation called out explicitly
+ *    because the legacy confidence-only signal couldn't tell these
+ *    apart (Hoie pushed back on the false-rejection case for the
+ *    earlier #500 attempt). Note the "different from previous"
+ *    requirement — a body that includes the unchanged budget_id is
+ *    NOT a switch and the category clear remains a genuine rejection.
  *
  *  - **Body sets `label.category_id: null`** (without changing budget)
  *    AND the *previous* `label.category_id` was non-null → genuine
@@ -42,25 +50,30 @@ export const recordCategoryRejection = async (
   user: MaskedUser,
   transaction_id: string,
   reqLabel: Partial<JSONTransactionLabel> | undefined,
-  prevLabelCategoryId: string | null,
+  prevLabel: PrevLabel,
 ): Promise<void> => {
   if (!reqLabel || !("category_id" in reqLabel)) return;
 
   const newCategoryId = reqLabel.category_id;
-  const isBudgetSwitch = "budget_id" in reqLabel && newCategoryId === null;
 
-  if (isBudgetSwitch) {
-    // Category nullification was a side effect of switching budget. Not
-    // an explicit rejection — skip both the add and the remove.
-    return;
-  }
+  // Budget switch disambiguation: a body with `budget_id` set to a value
+  // DIFFERENT from the previous budget AND `category_id: null` is a
+  // budget change, not a category rejection. A body that includes the
+  // unchanged budget_id falls through and the category clear is treated
+  // as a genuine rejection.
+  const isBudgetSwitch =
+    "budget_id" in reqLabel &&
+    newCategoryId === null &&
+    reqLabel.budget_id !== prevLabel.budget_id;
+
+  if (isBudgetSwitch) return;
 
   if (newCategoryId === null) {
     // Genuine rejection. Record the *previous* category id (the one
     // being rejected). If the previous category was already null, there's
     // nothing concrete to reject.
-    if (prevLabelCategoryId) {
-      await addRejectedCategory(user, transaction_id, prevLabelCategoryId);
+    if (prevLabel.category_id) {
+      await addRejectedCategory(user, transaction_id, prevLabel.category_id);
     }
     return;
   }
@@ -73,17 +86,23 @@ export const recordCategoryRejection = async (
 };
 
 /**
- * Read the current `label.category_id` for a transaction. Used by the
- * route layer to capture the previous label *before* the update so
- * `recordCategoryRejection` can name the category being rejected.
+ * Read the current `label.{category_id,budget_id}` for a transaction.
+ * Used by the route layer to capture the previous label *before* the
+ * update so `recordCategoryRejection` can:
+ *  - name the category being rejected (when the request clears it), and
+ *  - tell a real budget switch from a body that re-states the current
+ *    budget_id alongside a category clear (false-positive guard).
  *
- * Returns `null` if the transaction doesn't exist or the column is
- * null/undefined.
+ * Returns `{category_id: null, budget_id: null}` if the transaction
+ * doesn't exist or both columns are null/undefined.
  */
-export const getPrevLabelCategoryId = async (
+export const getPrevLabel = async (
   user: MaskedUser,
   transaction_id: string,
-): Promise<string | null> => {
+): Promise<PrevLabel> => {
   const [tx] = await searchTransactionsById(user, [transaction_id]);
-  return tx?.label?.category_id ?? null;
+  return {
+    category_id: tx?.label?.category_id ?? null,
+    budget_id: tx?.label?.budget_id ?? null,
+  };
 };

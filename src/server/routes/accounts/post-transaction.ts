@@ -6,9 +6,9 @@ import {
   validationError,
   inferLabelConfidence,
   recordCategoryRejection,
-  getPrevLabelCategoryId,
+  getPrevLabel,
 } from "server";
-import type { PartialTransaction } from "server";
+import type { PartialTransaction, PrevLabel } from "server";
 import { logger } from "server/lib/logger";
 
 export interface TransactionPostResponse {
@@ -42,16 +42,31 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
       // Cast is safe after validation above
       const transaction = inferLabelConfidence(bodyResult.data! as PartialTransaction);
 
-      // Capture the previous label.category_id BEFORE the update so a
-      // subsequent rejection write knows which category was cleared.
+      // Capture the previous label BEFORE the update so the rejection
+      // mirror can name the category being cleared AND tell a real
+      // budget switch from a body that re-states the current budget_id.
       // Skipped when the request body doesn't touch label.category_id —
       // a budget-only or memo-only update needs no rejection mirror.
+      //
+      // Read failure does NOT bubble out — the legacy update has not yet
+      // run, but the mirror is best-effort and a transient pool blip
+      // shouldn't fail the user's label change. Default to a null prev
+      // label and let the helper's normal "prev was null → nothing to
+      // reject" branch handle it.
       const reqLabel = transaction.label;
       const willTouchCategory = !!reqLabel && "category_id" in reqLabel;
-      const prevCategoryId =
-        willTouchCategory && transaction.transaction_id
-          ? await getPrevLabelCategoryId(user, transaction.transaction_id)
-          : null;
+      let prevLabel: PrevLabel = { category_id: null, budget_id: null };
+      if (willTouchCategory && transaction.transaction_id) {
+        try {
+          prevLabel = await getPrevLabel(user, transaction.transaction_id);
+        } catch (readErr) {
+          logger.warn(
+            "Failed to read previous label for rejection mirror — proceeding with null prev",
+            { transactionId: transaction.transaction_id },
+            readErr,
+          );
+        }
+      }
 
       const response = await updateTransactions(user, [transaction]);
       const result = response[0];
@@ -66,7 +81,7 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
       // route failure.
       if (willTouchCategory) {
         try {
-          await recordCategoryRejection(user, transaction_id, reqLabel, prevCategoryId);
+          await recordCategoryRejection(user, transaction_id, reqLabel, prevLabel);
         } catch (mirrorErr) {
           logger.warn(
             "Failed to mirror category change into rejected_categories",

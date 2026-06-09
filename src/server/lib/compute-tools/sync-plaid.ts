@@ -56,6 +56,39 @@ export const buildTransactionLookupMaps = (
   return { byTransactionId, byPendingId, byCompoundKey };
 };
 
+/**
+ * Detect pending→posted transitions across a batch of incoming Plaid
+ * transactions. Returns `{pending, posted}` pairs for downstream
+ * migrations that need to follow the id rename (currently:
+ * `rejected_categories` rows; future work may extend).
+ *
+ * Mechanism: Plaid's posted transaction carries
+ * `pending_transaction_id` pointing back at the prior pending id. If
+ * the stored set contains a row at that id, this incoming posted tx
+ * supersedes it. Looking up `e.pending_transaction_id` in
+ * `byTransactionId` catches the canonical shape exactly — no
+ * compound-key false positives (recurring same-amount transactions),
+ * no byPendingId backwards-direction confusion (re-emitted pending
+ * data).
+ */
+export const detectPendingPostedTransitions = (
+  incoming: Pick<JSONTransaction, "transaction_id" | "pending_transaction_id">[],
+  lookupMaps: Pick<ReturnType<typeof buildTransactionLookupMaps>, "byTransactionId">,
+): Array<{ pending: string; posted: string }> => {
+  const transitions: Array<{ pending: string; posted: string }> = [];
+  for (const e of incoming) {
+    if (!e.pending_transaction_id) continue;
+    const oldPending = lookupMaps.byTransactionId.get(e.pending_transaction_id);
+    if (oldPending && oldPending.transaction_id !== e.transaction_id) {
+      transitions.push({
+        pending: oldPending.transaction_id,
+        posted: e.transaction_id,
+      });
+    }
+  }
+  return transitions;
+};
+
 /** Find the stored transaction matching an incoming Plaid transaction using O(1) map lookups. */
 export const findStoredTransaction = (
   incoming: Pick<JSONTransaction, "transaction_id" | "account_id" | "name" | "amount">,
@@ -128,25 +161,25 @@ export const syncPlaidTransactions = async (item_id: string) => {
         if (auth_date) result.authorized_date = getDateTimeString(auth_date);
         if (date) result.date = getDateTimeString(date);
         const existing = findStoredTransaction(e, lookupMaps);
-        if (existing) {
-          result.label = existing.label;
-          // Detect pending → posted: the incoming `e.transaction_id` (the
-          // posted id) differs from the stored `existing.transaction_id`
-          // (the pending id). Equality means a direct update under the
-          // same id, which needs no migration.
-          if (existing.transaction_id !== e.transaction_id) {
-            pendingPostedTransitions.push({
-              pending: existing.transaction_id,
-              posted: e.transaction_id,
-            });
-          }
-        }
+        if (existing) result.label = existing.label;
         return result;
       };
 
       const modeledAdded = added.map(modelize);
       const modeledModified = modified.map(modelize);
       const removedTransactionIds = removed.map((e) => e.transaction_id);
+
+      // Pending → posted transitions across both added and modified
+      // batches. Used to migrate `rejected_categories` rows from the old
+      // pending id to the new posted id after the posted row is upserted.
+      // See `detectPendingPostedTransitions` for the canonical detection
+      // mechanism (back-pointer via `e.pending_transaction_id`, not
+      // findStoredTransaction id-inequality which has compound-key and
+      // byPendingId-direction false positives — issue surfaced in PR #502
+      // review pass).
+      pendingPostedTransitions.push(
+        ...detectPendingPostedTransitions([...added, ...modified], lookupMaps),
+      );
 
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),
