@@ -17,33 +17,21 @@ const wasSuggested = (prev: PrevLabel) =>
   prev.category_confidence > 0 &&
   prev.category_confidence < 1;
 
-const wasConfirmed = (prev: PrevLabel) => prev.category_confidence === 1;
-
 /**
  * Mirror a `transactions.label` update into the `rejected_categories`
  * event log. Called from the `post-transaction` route layer AFTER the
  * legacy `transactions.label_*` columns have been updated.
  *
- * Decision matrix driven by the request body shape + the prev label's
- * suggested/confirmed state (`category_confidence`):
- *
+ * Rules:
  *  - **Body does not include `label.category_id`** → no category change;
  *    nothing to record. (Budget-only, memo-only, etc.)
- *
- *  - **Body clears category (`category_id: null`)**:
- *      - Budget changes simultaneously AND prev was *confirmed* (conf=1)
- *        → FE side effect of switching budget on a confirmed label.
- *        Skip the rejection write.
- *      - Otherwise (no budget change, OR prev was a *suggestion* the
- *        user just dropped) → genuine rejection of the previous
- *        category. UPSERT into `rejected_categories`.
- *
- *  - **Body sets `label.category_id: <string>`** (user picked or kept
- *    a category):
- *      - If the new category differs from a previously-*suggested*
- *        category → record rejection of the old suggested category.
- *      - Always: clear any prior rejection of the NEW category for
- *        this transaction (changed-my-mind path).
+ *  - **Prev was a SUGGESTION** (`0 < category_confidence < 1`) AND the
+ *    new category differs from prev → record rejection of the previous
+ *    category. Clearing or replacing a *confirmed* label is not a
+ *    rejection — the user is re-categorizing, not signaling the prior
+ *    choice was wrong.
+ *  - **New category is a string** (not null) → clear any prior rejection
+ *    of THAT category (changed-my-mind cycle).
  *
  * Errors do NOT bubble — the legacy label update already succeeded; a
  * failure to mirror is a downgraded signal, not a route failure.
@@ -59,35 +47,15 @@ export const recordCategoryRejection = async (
   const newCategoryId = reqLabel.category_id;
   const prevCategoryId = prevLabel.category_id;
 
-  // === Clearing the category ===
-  if (newCategoryId === null) {
-    const budgetChanged =
-      "budget_id" in reqLabel && reqLabel.budget_id !== prevLabel.budget_id;
-
-    // Budget switch on a CONFIRMED label is a FE side effect, not a
-    // rejection. Budget switch on a SUGGESTED label IS a rejection —
-    // the user is replacing the suggestion outright.
-    if (budgetChanged && wasConfirmed(prevLabel)) return;
-
-    if (prevCategoryId) {
-      await addRejectedCategory(user, transaction_id, prevCategoryId);
-    }
-    return;
+  if (
+    prevCategoryId &&
+    newCategoryId !== prevCategoryId &&
+    wasSuggested(prevLabel)
+  ) {
+    await addRejectedCategory(user, transaction_id, prevCategoryId);
   }
 
-  // === Picking or keeping a category ===
   if (typeof newCategoryId === "string") {
-    // User picked a DIFFERENT category than the one that was previously
-    // suggested → record a rejection of the suggestion.
-    if (
-      prevCategoryId &&
-      newCategoryId !== prevCategoryId &&
-      wasSuggested(prevLabel)
-    ) {
-      await addRejectedCategory(user, transaction_id, prevCategoryId);
-    }
-
-    // Clear any prior rejection of THIS category (changed-my-mind cycle).
     await removeRejectedCategory(user, transaction_id, newCategoryId);
   }
 };

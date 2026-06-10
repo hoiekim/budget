@@ -73,80 +73,33 @@ describe("recordCategoryRejection — body shape gating", () => {
   });
 });
 
-describe("recordCategoryRejection — clearing the category", () => {
-  test("budget switch on a CONFIRMED label is a FE side-effect — NOT a rejection", async () => {
+describe("recordCategoryRejection — rejection happens ONLY when prev was a SUGGESTION", () => {
+  test("clear over a SUGGESTED category → rejection of prev", async () => {
     await recordCategoryRejection(
       fakeUser(),
       "tx-1",
-      { budget_id: "budget-B", category_id: null },
-      prev({ category_id: "cat-A", budget_id: "budget-A", category_confidence: 1 }),
+      { category_id: null },
+      prev({ category_id: "cat-A", category_confidence: 0.7 }),
+    );
+    const insert = findInsertRejection();
+    expect(insert).toBeDefined();
+    expect(insert![1]).toEqual(["tx-1", "u-1", "cat-A"]);
+    // No removeRejectedCategory because new is null
+    expect(findDeleteRejection()).toBeUndefined();
+  });
+
+  test("clear over a CONFIRMED category → NOT a rejection (user re-categorizing, not rejecting)", async () => {
+    await recordCategoryRejection(
+      fakeUser(),
+      "tx-1",
+      { category_id: null },
+      prev({ category_id: "cat-A", category_confidence: 1 }),
     );
     expect(findInsertRejection()).toBeUndefined();
     expect(findDeleteRejection()).toBeUndefined();
   });
 
-  test("budget switch on a SUGGESTED label IS a rejection", async () => {
-    await recordCategoryRejection(
-      fakeUser(),
-      "tx-1",
-      { budget_id: "budget-B", category_id: null },
-      prev({ category_id: "cat-A", budget_id: "budget-A", category_confidence: 0.7 }),
-    );
-    const insert = findInsertRejection();
-    expect(insert).toBeDefined();
-    expect(insert![1]).toEqual(["tx-1", "u-1", "cat-A"]);
-  });
-
-  test("clear without budget change AND prev was confirmed → rejection", async () => {
-    await recordCategoryRejection(
-      fakeUser(),
-      "tx-1",
-      { category_id: null },
-      prev({ category_id: "cat-A", budget_id: "budget-A", category_confidence: 1 }),
-    );
-    const insert = findInsertRejection();
-    expect(insert).toBeDefined();
-    expect(insert![1]).toEqual(["tx-1", "u-1", "cat-A"]);
-  });
-
-  test("clear with body re-stating UNCHANGED budget_id → still a rejection (budget didn't actually change)", async () => {
-    await recordCategoryRejection(
-      fakeUser(),
-      "tx-1",
-      { budget_id: "budget-A", category_id: null },
-      prev({ category_id: "cat-A", budget_id: "budget-A", category_confidence: 1 }),
-    );
-    const insert = findInsertRejection();
-    expect(insert).toBeDefined();
-    expect(insert![1]).toEqual(["tx-1", "u-1", "cat-A"]);
-  });
-
-  test("no rejection if prev category was null — nothing concrete to record", async () => {
-    await recordCategoryRejection(
-      fakeUser(),
-      "tx-1",
-      { category_id: null },
-      prev({ category_id: null }),
-    );
-    expect(findInsertRejection()).toBeUndefined();
-  });
-});
-
-describe("recordCategoryRejection — picking a category", () => {
-  test("picking the SAME category as prev → only DELETE any prior rejection of that category", async () => {
-    await recordCategoryRejection(
-      fakeUser(),
-      "tx-1",
-      { category_id: "cat-A" },
-      prev({ category_id: "cat-A", category_confidence: 1 }),
-    );
-    expect(findInsertRejection()).toBeUndefined();
-    const del = findDeleteRejection();
-    expect(del).toBeDefined();
-    expect(del![1]).toEqual(["u-1", "tx-1", "cat-A"]);
-  });
-
-  test("picking DIFFERENT category over a SUGGESTED one → rejection of the suggested + cleanup of new", async () => {
+  test("pick DIFFERENT over a SUGGESTED category → rejection of prev + cleanup of new", async () => {
     await recordCategoryRejection(
       fakeUser(),
       "tx-1",
@@ -161,10 +114,7 @@ describe("recordCategoryRejection — picking a category", () => {
     expect(del![1]).toEqual(["u-1", "tx-1", "cat-B"]);
   });
 
-  test("picking DIFFERENT category over a CONFIRMED one → NO rejection of the old confirmed (user is re-categorizing, not rejecting)", async () => {
-    // A user replacing a previously-confirmed label with a different
-    // category is choosing a different correct answer — not rejecting
-    // their prior choice as wrong. Confirmation history isn't rewritten.
+  test("pick DIFFERENT over a CONFIRMED category → NO rejection (re-categorize); still removes new", async () => {
     await recordCategoryRejection(
       fakeUser(),
       "tx-1",
@@ -177,7 +127,55 @@ describe("recordCategoryRejection — picking a category", () => {
     expect(del![1]).toEqual(["u-1", "tx-1", "cat-B"]);
   });
 
-  test("picking a previously-rejected category back → DELETE the prior rejection (changed-my-mind)", async () => {
+  test("budget switch (any) does not affect the suggested-only rule", async () => {
+    // Budget switch is no longer a special case — same suggested-only
+    // rule applies. Switching budget over a CONFIRMED clear is not a
+    // rejection (re-categorize); switching budget over a SUGGESTED clear
+    // IS a rejection (suggestion dropped).
+    await recordCategoryRejection(
+      fakeUser(),
+      "tx-1",
+      { budget_id: "budget-B", category_id: null },
+      prev({ category_id: "cat-A", budget_id: "budget-A", category_confidence: 1 }),
+    );
+    expect(findInsertRejection()).toBeUndefined();
+
+    mockQuery.mockClear();
+    await recordCategoryRejection(
+      fakeUser(),
+      "tx-2",
+      { budget_id: "budget-B", category_id: null },
+      prev({ category_id: "cat-X", budget_id: "budget-A", category_confidence: 0.7 }),
+    );
+    const insert = findInsertRejection();
+    expect(insert).toBeDefined();
+    expect(insert![1]).toEqual(["tx-2", "u-1", "cat-X"]);
+  });
+
+  test("pick the SAME category as prev → no rejection added; removeRejectedCategory still fires", async () => {
+    await recordCategoryRejection(
+      fakeUser(),
+      "tx-1",
+      { category_id: "cat-A" },
+      prev({ category_id: "cat-A", category_confidence: 0.7 }),
+    );
+    expect(findInsertRejection()).toBeUndefined();
+    const del = findDeleteRejection();
+    expect(del).toBeDefined();
+    expect(del![1]).toEqual(["u-1", "tx-1", "cat-A"]);
+  });
+
+  test("no rejection if prev category was null — nothing to reject", async () => {
+    await recordCategoryRejection(
+      fakeUser(),
+      "tx-1",
+      { category_id: null },
+      prev({ category_id: null }),
+    );
+    expect(findInsertRejection()).toBeUndefined();
+  });
+
+  test("pick a previously-rejected category back → DELETE the prior rejection (changed-my-mind)", async () => {
     await recordCategoryRejection(
       fakeUser(),
       "tx-1",
@@ -196,7 +194,7 @@ describe("recordCategoryRejection — multi-user safety", () => {
       fakeUser(),
       "tx-1",
       { category_id: null },
-      prev({ category_id: "cat-A", category_confidence: 1 }),
+      prev({ category_id: "cat-A", category_confidence: 0.7 }),
     );
     const insert = findInsertRejection();
     expect(insert).toBeDefined();
