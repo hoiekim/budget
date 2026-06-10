@@ -174,19 +174,27 @@ export const syncPlaidTransactions = async (item_id: string) => {
         .then(async () => {
           // Migrate rejected_categories rows from each pending → posted
           // pair. Runs AFTER upsertTransactions so the posted FK target
-          // exists, and BEFORE counting so a failure is loud. Idempotent
-          // via ON CONFLICT DO NOTHING inside the helper.
-          for (const t of pendingPostedTransitions) {
-            try {
-              await migrateRejectedCategoriesOnPendingPosted(t.pending, t.posted);
-            } catch (err) {
+          // exists. Each migration touches a distinct pending_transaction_id
+          // with no shared rows across iterations, so parallelize with
+          // allSettled — serial would chain 4 round-trips per migration
+          // for first-sync / backfill batches. Failures are logged at warn
+          // and do not interrupt counting; idempotent via ON CONFLICT DO
+          // NOTHING inside the helper.
+          const migrations = await Promise.allSettled(
+            pendingPostedTransitions.map((t) =>
+              migrateRejectedCategoriesOnPendingPosted(t.pending, t.posted),
+            ),
+          );
+          migrations.forEach((m, i) => {
+            if (m.status === "rejected") {
+              const t = pendingPostedTransitions[i];
               logger.warn(
                 "Failed to migrate rejected_categories on pending→posted",
                 { pending: t.pending, posted: t.posted },
-                err,
+                m.reason,
               );
             }
-          }
+          });
           addedCount += added.length;
           modifiedCount += modified.length;
           removedCount += removed.length;

@@ -85,7 +85,7 @@ describe("recordCategoryRejection — clearing the category", () => {
     expect(findDeleteRejection()).toBeUndefined();
   });
 
-  test("budget switch on a SUGGESTED label IS a rejection (Hoie 2026-06-09)", async () => {
+  test("budget switch on a SUGGESTED label IS a rejection", async () => {
     await recordCategoryRejection(
       fakeUser(),
       "tx-1",
@@ -146,7 +146,7 @@ describe("recordCategoryRejection — picking a category", () => {
     expect(del![1]).toEqual(["u-1", "tx-1", "cat-A"]);
   });
 
-  test("picking DIFFERENT category over a SUGGESTED one → rejection of the suggested + cleanup of new (Hoie 2026-06-09)", async () => {
+  test("picking DIFFERENT category over a SUGGESTED one → rejection of the suggested + cleanup of new", async () => {
     await recordCategoryRejection(
       fakeUser(),
       "tx-1",

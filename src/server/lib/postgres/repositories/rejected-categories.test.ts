@@ -141,6 +141,39 @@ describe("migrateRejectedCategoriesOnPendingPosted [SQL-shape]", () => {
     expect(sqls[0]).toMatch(/^BEGIN$/);
     expect(sqls[2]).toMatch(/^ROLLBACK$/);
   });
+
+  test("rolls back if the DELETE throws AFTER a successful INSERT — multi-step guarantee", async () => {
+    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
+    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 2 })); // INSERT ok
+    mockQuery.mockImplementationOnce(async () => {
+      throw new Error("simulated DELETE failure");
+    });
+    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
+    await expect(
+      migrateRejectedCategoriesOnPendingPosted("PENDING-1", "POSTED-1"),
+    ).rejects.toThrow(/simulated DELETE failure/);
+    const sqls = mockQuery.mock.calls.map((c) => c[0]);
+    expect(sqls[0]).toMatch(/^BEGIN$/);
+    expect(sqls[1]).toMatch(/INSERT INTO rejected_categories/);
+    expect(sqls[3]).toMatch(/^ROLLBACK$/);
+  });
+
+  test("rolls back if the COMMIT itself throws — last-step failure can't leave an open txn", async () => {
+    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
+    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 })); // INSERT
+    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 })); // DELETE
+    mockQuery.mockImplementationOnce(async () => {
+      throw new Error("simulated COMMIT failure");
+    });
+    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
+    await expect(
+      migrateRejectedCategoriesOnPendingPosted("PENDING-1", "POSTED-1"),
+    ).rejects.toThrow(/simulated COMMIT failure/);
+    const sqls = mockQuery.mock.calls.map((c) => c[0]);
+    expect(sqls[0]).toMatch(/^BEGIN$/);
+    expect(sqls[3]).toMatch(/^COMMIT$/);
+    expect(sqls[4]).toMatch(/^ROLLBACK$/);
+  });
 });
 
 describe("getRejectedCategoriesForTransactions [SQL-shape]", () => {

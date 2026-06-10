@@ -1,10 +1,6 @@
 import type { JSONTransactionLabel } from "common";
 import type { MaskedUser } from "server";
-import {
-  addRejectedCategory,
-  removeRejectedCategory,
-  searchTransactionsById,
-} from "server";
+import { addRejectedCategory, removeRejectedCategory, pool } from "server";
 
 export interface PrevLabel {
   category_id: string | null;
@@ -98,9 +94,11 @@ export const recordCategoryRejection = async (
 
 /**
  * Read the current `label.{category_id, budget_id, category_confidence}`
- * for a transaction. The route layer kicks this off in parallel with
- * the update so the rejection mirror can name the category being
- * cleared and tell a suggested label from a confirmed one.
+ * for a transaction. The route layer awaits this serially *before* the
+ * primary update — running the read in parallel races against the
+ * overwrite and the mirror could see post-update state. The mirror's
+ * downstream UPSERT is the part that runs off the latency path; the
+ * "before" read isn't.
  *
  * Returns null fields if the transaction doesn't exist or any column
  * is unset.
@@ -109,10 +107,28 @@ export const getPrevLabel = async (
   user: MaskedUser,
   transaction_id: string,
 ): Promise<PrevLabel> => {
-  const [tx] = await searchTransactionsById(user, [transaction_id]);
+  // Targeted SELECT instead of routing through `searchTransactionsById`
+  // (which does SELECT *). This runs on the hot POST /transaction path —
+  // pulling every column just to read three values is wasteful even on a
+  // table with no heavy fields. user_id scopes the row so a request
+  // referencing another user's transaction_id reads as "no row found"
+  // (returning null fields) instead of leaking the prev label.
+  const result = await pool.query<{
+    label_category_id: string | null;
+    label_budget_id: string | null;
+    label_category_confidence: number | null;
+  }>(
+    `SELECT label_category_id, label_budget_id, label_category_confidence
+     FROM transactions
+     WHERE transaction_id = $1 AND user_id = $2
+       AND (is_deleted IS NULL OR is_deleted = FALSE)
+     LIMIT 1`,
+    [transaction_id, user.user_id],
+  );
+  const row = result.rows[0];
   return {
-    category_id: tx?.label?.category_id ?? null,
-    budget_id: tx?.label?.budget_id ?? null,
-    category_confidence: tx?.label?.category_confidence ?? null,
+    category_id: row?.label_category_id ?? null,
+    budget_id: row?.label_budget_id ?? null,
+    category_confidence: row?.label_category_confidence ?? null,
   };
 };
