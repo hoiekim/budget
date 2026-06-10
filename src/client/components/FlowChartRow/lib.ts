@@ -17,6 +17,22 @@ export interface SankeyData {
   tableData: { income: number; expense: number };
 }
 
+/**
+ * Internal accumulator: signed sum per (section_id / budget_id) before
+ * partitioning into income vs expense. Sign convention follows Plaid /
+ * `transactions.amount` — positive = debit (money out, expense),
+ * negative = credit (money in, income). After all transactions are
+ * processed we partition by net sign so a section whose debits and
+ * credits cancel (Transfers) doesn't double-count on both sides of
+ * the chart.
+ */
+interface SignedRow {
+  id: string;
+  name: string;
+  signedAmount: number;
+  next?: string;
+}
+
 export const getSankeyData = (
   accounts: Account[],
   transactions: TransactionDictionary,
@@ -26,13 +42,8 @@ export const getSankeyData = (
   categories: CategoryDictionary,
   viewDate: ViewDate,
 ): SankeyData => {
-  const incomeBudgets = new Map<string, SankeyRow>();
-  const incomeSections = new Map<string, SankeyRow>();
-  const expenseBudgets = new Map<string, SankeyRow>();
-  const expenseSections = new Map<string, SankeyRow>();
-
-  let income = 0;
-  let expense = 0;
+  const sectionTotals = new Map<string, SignedRow>();
+  const budgetTotals = new Map<string, SignedRow>();
 
   const processTransaction = (t: Transaction | InvestmentTransaction) => {
     const isInvestment = t instanceof InvestmentTransaction;
@@ -49,39 +60,70 @@ export const getSankeyData = (
     const section_id = (category && category.section_id) || `${budget_id}_Unknown`;
     const section = sections.get(section_id);
     const amount = isInvestment ? -(t.price * t.quantity) : t.amount;
-    if (amount < 0) {
-      income -= amount;
-      incomeSections.set(section_id, {
-        id: section_id,
-        name: section?.name || "Unsorted",
-        amount: (incomeSections.get(section_id)?.amount || 0) - amount,
-        next: budget_id,
-      });
-      incomeBudgets.set(budget_id, {
-        id: budget_id,
-        name: budgetName,
-        amount: (incomeBudgets.get(budget_id)?.amount || 0) - amount,
-        next: "Total",
-      });
-    } else if (amount > 0) {
-      expense += amount;
-      expenseSections.set(section_id, {
-        id: section_id,
-        name: section?.name || "Unsorted",
-        amount: (expenseSections.get(section_id)?.amount || 0) + amount,
-        next: budget_id,
-      });
-      expenseBudgets.set(budget_id, {
-        id: budget_id,
-        name: budgetName,
-        amount: (expenseBudgets.get(budget_id)?.amount || 0) + amount,
-        next: "Total",
-      });
-    }
+    if (amount === 0) return;
+
+    const prevSection = sectionTotals.get(section_id);
+    sectionTotals.set(section_id, {
+      id: section_id,
+      name: section?.name || "Unsorted",
+      signedAmount: (prevSection?.signedAmount || 0) + amount,
+      next: budget_id,
+    });
+
+    const prevBudget = budgetTotals.get(budget_id);
+    budgetTotals.set(budget_id, {
+      id: budget_id,
+      name: budgetName,
+      signedAmount: (prevBudget?.signedAmount || 0) + amount,
+    });
   };
 
   transactions.forEach(processTransaction);
   investmentTransactions.forEach(processTransaction);
+
+  // Partition by net sign. A section/budget whose debits and credits
+  // perfectly cancel (e.g. self-transfers labeled to the Transfers
+  // section) nets to 0 and drops out entirely — matching the Budget
+  // page's `sorted_amount` aggregation. Magnitude on the chart is the
+  // absolute net, so partial offsets (a refund inside a Shopping
+  // section) reduce the bar to the remaining net spending.
+  const incomeBudgets = new Map<string, SankeyRow>();
+  const incomeSections = new Map<string, SankeyRow>();
+  const expenseBudgets = new Map<string, SankeyRow>();
+  const expenseSections = new Map<string, SankeyRow>();
+
+  let income = 0;
+  let expense = 0;
+
+  sectionTotals.forEach((row) => {
+    if (row.signedAmount < 0) {
+      const abs = -row.signedAmount;
+      incomeSections.set(row.id, { id: row.id, name: row.name, amount: abs, next: row.next });
+    } else if (row.signedAmount > 0) {
+      expenseSections.set(row.id, {
+        id: row.id,
+        name: row.name,
+        amount: row.signedAmount,
+        next: row.next,
+      });
+    }
+  });
+
+  budgetTotals.forEach((row) => {
+    if (row.signedAmount < 0) {
+      const abs = -row.signedAmount;
+      income += abs;
+      incomeBudgets.set(row.id, { id: row.id, name: row.name, amount: abs, next: "Total" });
+    } else if (row.signedAmount > 0) {
+      expense += row.signedAmount;
+      expenseBudgets.set(row.id, {
+        id: row.id,
+        name: row.name,
+        amount: row.signedAmount,
+        next: "Total",
+      });
+    }
+  });
 
   const total = Math.max(income, expense);
 
