@@ -667,7 +667,21 @@ export const useSync = () => {
         const oldestDatePromise = getOldestTransactionDate();
         const oldestDate = await oldestDatePromise;
         const defaultFrom = currentViewDate.clone().previous().previous().previous().getStartDate();
-        const fullFrom = oldestDate && oldestDate < defaultFrom ? oldestDate : defaultFrom;
+        // The slice loop fetches a month M only when `from < M.getStartDate()`
+        // (strict). A raw mid-month `oldestDate` (e.g. 2021-07-28) is NOT < its
+        // own month start (2021-07-01), so that month is never requested and
+        // every row whose `updated` falls in it is silently dropped. Anchor to
+        // the start of the month *before* oldestDate's month so the loop's last
+        // iteration covers oldestDate's month, then compare the *anchored* value
+        // against defaultFrom — comparing the raw oldestDate would still drop the
+        // month when oldestDate sits in defaultFrom's own month past the 1st. (#434)
+        const oldestMonthStart = oldestDate
+          ? new ViewDate("month", oldestDate).previous().getStartDate()
+          : null;
+        const fullFrom =
+          oldestMonthStart && oldestMonthStart < defaultFrom
+            ? oldestMonthStart
+            : defaultFrom;
         const fullUntil = currentViewDate.clone().next().getStartDate();
         const fullRange: FetchRange = { from: fullFrom, until: fullUntil };
         // Freshness window: 30 days back from the last sync. Anything
@@ -872,7 +886,18 @@ export const useSync = () => {
       // tile cleanly with no overlap and no gap.
       const oldestDate = await oldestDatePromise;
       const defaultFrom = currentViewDate.clone().previous().previous().previous().getStartDate();
-      const olderFrom = oldestDate && oldestDate < defaultFrom ? oldestDate : defaultFrom;
+      // Anchor to the month before oldestDate's month — see the warm-path note
+      // above: the slice loop's strict `from < M.getStartDate()` drops the
+      // month containing a mid-month oldestDate otherwise. Compare the anchored
+      // value (not raw oldestDate) against defaultFrom so the same-calendar-month
+      // boundary is covered too. (#434)
+      const oldestMonthStart = oldestDate
+        ? new ViewDate("month", oldestDate).previous().getStartDate()
+        : null;
+      const olderFrom =
+        oldestMonthStart && oldestMonthStart < defaultFrom
+          ? oldestMonthStart
+          : defaultFrom;
       const olderUntil = currentViewDate.clone().previous().getStartDate();
 
       const olderRange: FetchRange = { from: olderFrom, until: olderUntil };
