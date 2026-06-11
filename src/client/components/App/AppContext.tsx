@@ -1,5 +1,12 @@
 import { useState, useMemo, ReactNode } from "react";
-import { useLocalStorageState, ContextType, Context, useRouter, reduceStatuses } from "client";
+import {
+  useLocalStorageState,
+  ContextType,
+  Context,
+  useRouter,
+  reduceStatuses,
+  useTransfers,
+} from "client";
 import { MaskedUser } from "server";
 import { Interval, ViewDate } from "common";
 import { useData, useScreenType } from "./lib";
@@ -20,6 +27,7 @@ const AppContext = ({ initialUser, children }: Props) => {
 
   const [viewDate, setViewDate] = useState(new ViewDate(selectedInterval));
   const router = useRouter();
+  const transfers = useTransfers(user);
 
   const status = reduceStatuses(data?.status, calculations?.status);
 
@@ -38,8 +46,9 @@ const AppContext = ({ initialUser, children }: Props) => {
       viewDate,
       setViewDate,
       screenType,
+      transfers,
     }),
-    [data, setData, calculations, calculate, status, user, router, selectedInterval, setSelectedInterval, viewDate, screenType],
+    [data, setData, calculations, calculate, status, user, router, selectedInterval, setSelectedInterval, viewDate, screenType, transfers],
   );
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;
