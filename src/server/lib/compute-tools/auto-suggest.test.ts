@@ -183,12 +183,14 @@ describe("runAutoSuggestions", () => {
     expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
   });
 
-  test("applies suggestion and caps confidence at 0.99", async () => {
+  test("applies suggestion and caps confidence at 0.98 (never 0.99)", async () => {
     userRows = [userRow({ user_id: "user-4" })];
     unlabeledByUser.set("user-4", [
       txRow({ transaction_id: "txn-4", user_id: "user-4", merchant_name: "Grocery Store" }),
     ]);
-    // 10 accepted, 0 rejected → confidence = 1.0 → caps at 0.99.
+    // 10 accepted, 0 rejected → confidence = 1.0 → caps at 0.98. The engine
+    // must NOT write 0.99: that value is reserved for /api/suggest-category,
+    // and 1.0 for user-confirmed labels (#422).
     signalRow = {
       label_category_id: "cat-groceries",
       label_budget_id: "bud-household",
@@ -205,7 +207,8 @@ describe("runAutoSuggestions", () => {
     // Confidence is the 3rd param.
     expect(updates[0].values[0]).toBe("cat-groceries");
     expect(updates[0].values[1]).toBe("bud-household");
-    expect(updates[0].values[2]).toBe(0.99);
+    expect(updates[0].values[2]).toBe(0.98);
+    expect(updates[0].values[2]).not.toBe(0.99);
     expect(updates[0].values[3]).toBe("txn-4");
     expect(updates[0].values[4]).toBe("user-4");
   });
@@ -316,7 +319,8 @@ describe("runAutoSuggestions", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0].values[0]).toBe("cat-groceries");
     expect(updates[0].values[1]).toBe("bud-household");
-    expect(updates[0].values[2]).toBe(0.99);
+    expect(updates[0].values[2]).toBe(0.98);
+    expect(updates[0].values[2]).not.toBe(0.99);
     expect(updates[0].values[3]).toBe("split-1");
     expect(updates[0].values[4]).toBe("user-split-1");
   });

@@ -154,7 +154,7 @@ Auto-categorization (`src/server/lib/compute-tools/auto-suggest.ts`) writes cate
 | Min total labeled | `accepted + rejected >= 3` | Don't suggest from a single data point             |
 | Max reject rate   | `rejected / total <= 0.10` | Users actively disagree — back off                 |
 | Min confidence    | `accepted / total >= 0.95` | Suggestion has to be near-unanimous in the history |
-| Confidence cap    | `min(confidence, 0.99)`    | `1.0` is reserved for user-confirmed labels        |
+| Confidence cap    | `min(confidence, AUTO_SUGGEST_MAX_CONFIDENCE)` (`0.98`) | Strictly `< 0.99`: `0.99` is reserved for `/api/suggest-category`, `1.0` for user-confirmed labels |
 
 The signal itself comes from a pg_trgm fuzzy match on `merchant_name` (`MERCHANT_SIMILARITY_THRESHOLD = 0.5`), with a `LIMIT 30` over the user's recent labeled transactions for that merchant.
 

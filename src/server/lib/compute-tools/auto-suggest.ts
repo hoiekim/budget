@@ -21,6 +21,19 @@ export const CAS_NULL_CONFIDENCE: AdditionalWhere = {
   value: null,
 };
 
+// Highest confidence the auto-suggest engine may write. The confidence column
+// has three reserved buckets, kept distinct so a row's suggestion provenance
+// stays recoverable:
+//   - `< 0.99`  → auto-suggest engine (this file)
+//   - `= 0.99`  → /api/suggest-category (external Claude-instance writes)
+//   - `= 1.0`   → user-confirmed labels (UI writes)
+// The engine must cap strictly below 0.99: a merchant with 100% acceptance
+// computes confidence = 1.0, and capping that at 0.99 would collide with the
+// API bucket, making engine and API writes indistinguishable. Lifted to a
+// named exported constant so the reservation map is grep-able and tests can
+// assert the engine never emits 0.99. Closes #422.
+export const AUTO_SUGGEST_MAX_CONFIDENCE = 0.98;
+
 interface MerchantSignal {
   label_category_id: string;
   // The category's parent section's parent budget. Carried alongside the
@@ -206,8 +219,9 @@ const evaluateSignal = (signal: MerchantSignal): number | null => {
   if (rejectRate > 0.1) return null;
   const confidence = signal.accepted / totalLabeled;
   if (confidence < 0.95) return null;
-  // Cap at 0.99 — 1.0 is reserved for user-confirmed labels.
-  return Math.min(confidence, 0.99);
+  // Cap strictly below 0.99: 0.99 is reserved for /api/suggest-category and
+  // 1.0 for user-confirmed labels. See AUTO_SUGGEST_MAX_CONFIDENCE.
+  return Math.min(confidence, AUTO_SUGGEST_MAX_CONFIDENCE);
 };
 
 const processUserSuggestions = async (userId: string): Promise<number> => {
