@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import {
   buildTransactionLookupMaps,
+  detectPendingPostedTransitions,
   findStoredTransaction,
   getPlaidRemovedInvestmentTransactions,
 } from "./sync-plaid";
@@ -111,6 +112,72 @@ describe("findStoredTransaction", () => {
     const maps = buildTransactionLookupMaps([stored]);
     const result = findStoredTransaction({ transaction_id: "tx-1", account_id: "", name: "", amount: 0 }, maps);
     expect(result?.label).toEqual({ budget_id: "b-1" });
+  });
+});
+
+// ─── detectPendingPostedTransitions ───────────────────────────────────────────
+
+describe("detectPendingPostedTransitions", () => {
+  it("emits a transition for the canonical pending→posted shape (incoming carries pending_transaction_id back-pointer)", () => {
+    const incoming = makeTx({
+      transaction_id: "POSTED-1",
+      pending_transaction_id: "PENDING-1",
+    });
+    const result = detectPendingPostedTransitions([incoming]);
+    expect(result).toEqual([{ pending: "PENDING-1", posted: "POSTED-1" }]);
+  });
+
+  it("does NOT emit when no back-pointer is set — covers recurring same-amount transactions and brand-new posted-only txs", () => {
+    // Recurring monthly charges (Netflix $14.99, etc.) appear as brand-new
+    // transactions every month with a fresh transaction_id and no
+    // pending_transaction_id. The back-pointer being null is the only
+    // signal we need — no need to cross-check stored set.
+    const recurring = makeTx({
+      transaction_id: "tx-recurring-feb",
+      account_id: "acc-1",
+      name: "NETFLIX",
+      amount: 14.99,
+      pending_transaction_id: null,
+    });
+    expect(detectPendingPostedTransitions([recurring])).toEqual([]);
+  });
+
+  it("does NOT emit when Plaid re-emits an OLD pending tx (incoming.pending_transaction_id is null)", () => {
+    // A re-emitted pending row has no back-pointer (Plaid hasn't yet
+    // posted it from THIS sync's perspective). The detection short-
+    // circuits cleanly.
+    const reEmittedPending = makeTx({
+      transaction_id: "ptx-1",
+      pending_transaction_id: null,
+    });
+    expect(detectPendingPostedTransitions([reEmittedPending])).toEqual([]);
+  });
+
+  it("does NOT emit when incoming.transaction_id and back-pointer target are the same id (defensive no-op)", () => {
+    const incoming = makeTx({
+      transaction_id: "tx-A",
+      pending_transaction_id: "tx-A",
+    });
+    expect(detectPendingPostedTransitions([incoming])).toEqual([]);
+  });
+
+  it("handles a batch with mixed shapes — emits only the genuine supersession", () => {
+    const incoming = [
+      // (1) canonical pending→posted — should emit
+      makeTx({ transaction_id: "POSTED-1", pending_transaction_id: "PENDING-1" }),
+      // (2) recurring same-amount charge — should NOT emit
+      makeTx({
+        transaction_id: "tx-recurring-feb",
+        account_id: "acc-1",
+        name: "NETFLIX",
+        amount: 14.99,
+        pending_transaction_id: null,
+      }),
+      // (3) brand-new tx with no back-pointer — should NOT emit
+      makeTx({ transaction_id: "tx-fresh", pending_transaction_id: null }),
+    ];
+    const result = detectPendingPostedTransitions(incoming);
+    expect(result).toEqual([{ pending: "PENDING-1", posted: "POSTED-1" }]);
   });
 });
 

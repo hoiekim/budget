@@ -26,6 +26,7 @@ import {
   searchHoldingsByAccountId,
   MaskedUser,
   deleteSplitTransactionsByTransaction,
+  migrateRejectedCategoriesOnPendingPosted,
   logger,
 } from "server";
 import {
@@ -53,6 +54,31 @@ export const buildTransactionLookupMaps = (
     byCompoundKey.set(`${f.account_id}:${f.name}:${f.amount}`, f);
   }
   return { byTransactionId, byPendingId, byCompoundKey };
+};
+
+/**
+ * Detect pending→posted transitions across a batch of incoming Plaid
+ * transactions. Returns `{pending, posted}` pairs for downstream
+ * migrations that need to follow the id rename (currently:
+ * `rejected_categories` rows; future work may extend).
+ *
+ * Mechanism: Plaid's posted transaction carries
+ * `pending_transaction_id` pointing back at the prior pending id. The
+ * pair `(pending = e.pending_transaction_id, posted = e.transaction_id)`
+ * is the canonical supersession event — no need to cross-check against
+ * the stored set, since the back-pointer itself is the authoritative
+ * signal from Plaid. The migrate helper is idempotent + no-ops when
+ * the pending side has no rows, so an orphan back-pointer is harmless.
+ */
+export const detectPendingPostedTransitions = (
+  incoming: Pick<JSONTransaction, "transaction_id" | "pending_transaction_id">[],
+): Array<{ pending: string; posted: string }> => {
+  const transitions: Array<{ pending: string; posted: string }> = [];
+  for (const e of incoming) {
+    const { pending_transaction_id: pending, transaction_id: posted } = e;
+    if (pending && pending !== posted) transitions.push({ pending, posted });
+  }
+  return transitions;
 };
 
 /** Find the stored transaction matching an incoming Plaid transaction using O(1) map lookups. */
@@ -127,6 +153,14 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const modeledModified = modified.map(modelize);
       const removedTransactionIds = removed.map((e) => e.transaction_id);
 
+      // Pending → posted transitions across both added and modified
+      // batches. Used to migrate `rejected_categories` rows from the old
+      // pending id to the new posted id after the posted row is upserted.
+      const pendingPostedTransitions = detectPendingPostedTransitions([
+        ...added,
+        ...modified,
+      ]);
+
       const updateJobs = [
         upsertTransactions(user, [...modeledAdded, ...modeledModified]),
         deleteTransactions(user, removedTransactionIds),
@@ -137,7 +171,30 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor, updated }));
       return Promise.all(updateJobs)
-        .then(() => {
+        .then(async () => {
+          // Migrate rejected_categories rows from each pending → posted
+          // pair. Runs AFTER upsertTransactions so the posted FK target
+          // exists. Each migration touches a distinct pending_transaction_id
+          // with no shared rows across iterations, so parallelize with
+          // allSettled — serial would chain 4 round-trips per migration
+          // for first-sync / backfill batches. Failures are logged at warn
+          // and do not interrupt counting; idempotent via ON CONFLICT DO
+          // NOTHING inside the helper.
+          const migrations = await Promise.allSettled(
+            pendingPostedTransitions.map((t) =>
+              migrateRejectedCategoriesOnPendingPosted(t.pending, t.posted),
+            ),
+          );
+          migrations.forEach((m, i) => {
+            if (m.status === "rejected") {
+              const t = pendingPostedTransitions[i];
+              logger.warn(
+                "Failed to migrate rejected_categories on pending→posted",
+                { pending: t.pending, posted: t.posted },
+                m.reason,
+              );
+            }
+          });
           addedCount += added.length;
           modifiedCount += modified.length;
           removedCount += removed.length;
