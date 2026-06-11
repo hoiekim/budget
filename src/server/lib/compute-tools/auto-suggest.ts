@@ -156,15 +156,17 @@ const applyLabelToSplit = async (
  *
  * Logic:
  * - For each user, find transactions with no category confidence (never labeled)
- * - For each such transaction's merchant_name, look at recent labeled transactions
- *   matching the merchant via pg_trgm fuzzy similarity
+ * - For each such transaction's merchant_name, look at recent confirmed
+ *   transactions matching the merchant via pg_trgm fuzzy similarity, AND
+ *   count rejections of the winning category from `rejected_categories`
  * - If enough signal (>= 3 labeled, <= 10% reject rate, >= 95% confidence for best category),
  *   apply the suggestion with confidence = accepted / total_labeled (capped at 0.99)
  *
  * Direct SQL is reserved for the merchant-signal query, which uses pg_trgm
- * `similarity(...)` and a SUM(CASE WHEN ...) aggregation that the standard
- * Table helpers cannot express. The unlabeled fetch and the label-apply
- * use `transactionsTable.query` / `transactionsTable.update` (the standard pattern).
+ * `similarity(...)` and a cross-table count (transactions + rejected_categories)
+ * that the standard Table helpers cannot express. The unlabeled fetch and the
+ * label-apply use `transactionsTable.query` / `transactionsTable.update` (the
+ * standard pattern).
  */
 export const runAutoSuggestions = async (): Promise<void> => {
   logger.info("Auto-suggestion job started");
@@ -269,38 +271,60 @@ const getMerchantSignal = async (
   userId: string,
   merchantName: string,
 ): Promise<MerchantSignal | null> => {
-  // Fuzzy-match merchant_name via pg_trgm similarity so that variants like
-  // "STARBUCKS #1234" and "STARBUCKS COFFEE 9876" feed the same signal.
-  // Inner SELECT picks the most-recent N transactions whose merchant_name is
-  // similar enough, then we group by category and take the most-accepted one.
-  // Stays raw SQL: similarity(...) + SUM(CASE WHEN ...) aggregation isn't
-  // expressible via the standard Table.query helpers.
-  // The outer query also joins categories → sections so the winning
-  // category's actual parent budget is carried out alongside it. We need
-  // that downstream when applying the label so the suggested row's
-  // `label_budget_id` matches its `label_category_id` (otherwise the UI
-  // select renders empty — see MerchantSignal docstring).
+  // Two-source signal:
+  //  - ACCEPTED: `transactions.label_category_confidence = 1.0` rows. The
+  //    inner SELECT picks the top-N most-recent similar-merchant confirms,
+  //    grouped by category, winner = max accepted.
+  //  - REJECTED: `rejected_categories` rows joined to transactions for the
+  //    merchant filter. Counts ALL rejections of the winning category for
+  //    this user against this merchant — unbounded by the recency LIMIT
+  //    above. Rationale: a rejection is an explicit user signal; it should
+  //    stick until the user re-picks that category (which triggers
+  //    `removeRejectedCategory`).
+  //
+  // Raw SQL stays because pg_trgm `similarity(...)` and the cross-table
+  // count aren't expressible via standard Table.query helpers.
+  //
+  // The outer JOIN to categories → sections carries the winning category's
+  // parent budget along — applied label needs both so the UI category
+  // select renders against the right budget (see MerchantSignal docstring).
   const result = await pool.query(
-    `SELECT
-       recent.label_category_id,
+    `WITH winning AS (
+       SELECT label_category_id, COUNT(*) AS accepted
+       FROM (
+         SELECT label_category_id
+         FROM transactions
+         WHERE user_id = $1
+           AND merchant_name IS NOT NULL
+           AND similarity(merchant_name, $2) >= $3
+           AND label_category_confidence = 1.0
+           AND (is_deleted IS NULL OR is_deleted = FALSE)
+         ORDER BY similarity(merchant_name, $2) DESC, date DESC
+         LIMIT $4
+       ) recent_confirms
+       GROUP BY label_category_id
+       ORDER BY COUNT(*) DESC
+       LIMIT 1
+     )
+     SELECT
+       w.label_category_id,
        sections.budget_id AS label_budget_id,
-       SUM(CASE WHEN recent.label_category_confidence = 1.0 THEN 1 ELSE 0 END) AS accepted,
-       SUM(CASE WHEN recent.label_category_confidence = 0.0 THEN 1 ELSE 0 END) AS rejected
-     FROM (
-       SELECT label_category_id, label_category_confidence
-       FROM transactions
-       WHERE user_id = $1
-         AND merchant_name IS NOT NULL
-         AND similarity(merchant_name, $2) >= $3
-         AND label_category_confidence IS NOT NULL
-         AND (is_deleted IS NULL OR is_deleted = FALSE)
-       ORDER BY similarity(merchant_name, $2) DESC, date DESC
-       LIMIT $4
-     ) recent
-     JOIN categories ON categories.category_id = recent.label_category_id
+       w.accepted,
+       (
+         SELECT COUNT(*)
+         FROM rejected_categories rc
+         JOIN transactions t
+           ON t.transaction_id = rc.transaction_id
+           AND t.user_id = rc.user_id
+         WHERE rc.user_id = $1
+           AND rc.category_id = w.label_category_id
+           AND t.merchant_name IS NOT NULL
+           AND similarity(t.merchant_name, $2) >= $3
+           AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
+       ) AS rejected
+     FROM winning w
+     JOIN categories ON categories.category_id = w.label_category_id
      JOIN sections ON sections.section_id = categories.section_id
-     GROUP BY recent.label_category_id, sections.budget_id
-     ORDER BY accepted DESC
      LIMIT 1`,
     [userId, merchantName, MERCHANT_SIMILARITY_THRESHOLD, MERCHANT_SIGNAL_LIMIT],
   );
