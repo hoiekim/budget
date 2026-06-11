@@ -134,6 +134,10 @@ afterAll(() => {
   mock.module("./sync-simple-fin", () => realSyncSimpleFin);
   mock.module("./auto-suggest", () => realAutoSuggest);
   mock.module("./detect-transfers", () => realDetectTransfers);
+  mock.module(
+    "./refresh-security-snapshots",
+    () => realRefreshSecuritySnapshots
+  );
   restoreLeaves();
 });
 
@@ -234,7 +238,7 @@ describe("scheduledSync / runSync", () => {
     });
   });
 
-  it("runs auto-suggestions and transfer detection after provider sync", async () => {
+  it("runs auto-suggestions, transfer detection, and security-snapshot refresh after provider sync", async () => {
     mockGetAllItems.mockResolvedValueOnce([]);
 
     scheduledSync();
@@ -242,6 +246,7 @@ describe("scheduledSync / runSync", () => {
 
     expect(mockRunAutoSuggestions).toHaveBeenCalledTimes(1);
     expect(mockRunTransferDetection).toHaveBeenCalledTimes(1);
+    expect(mockRefreshActiveSecuritySnapshots).toHaveBeenCalledTimes(1);
   });
 
   it("swallows auto-suggestion errors without blocking transfer detection", async () => {
