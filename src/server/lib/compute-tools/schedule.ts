@@ -5,6 +5,7 @@ import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 import { runAutoSuggestions } from "./auto-suggest";
 import { runTransferDetection } from "./detect-transfers";
+import { refreshActiveSecuritySnapshots } from "./refresh-security-snapshots";
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
@@ -93,6 +94,19 @@ const runSync = async () => {
     await runTransferDetection().catch((error) => {
       logger.error("Transfer-detection job failed", {}, error);
     });
+    await refreshActiveSecuritySnapshots()
+      .then((r) =>
+        logger.info("Refreshed active security snapshots", {
+          refreshed: r.refreshed,
+          fresh: r.fresh,
+          cash: r.cash,
+          empty: r.empty,
+          errors: r.errors,
+        }),
+      )
+      .catch((error) => {
+        logger.error("Refresh active security snapshots failed", {}, error);
+      });
   } catch (err) {
     logger.error("Error occurred during scheduled sync", {}, err);
     sendAlarm("Scheduled Sync Failed", `**Error:** ${err instanceof Error ? err.message : String(err)}`).catch(() => undefined);
