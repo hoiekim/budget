@@ -24,6 +24,10 @@ export const getBudgetData = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
+  // When the loaded transaction history is still partial (cold-load stages),
+  // rollover accrual is clamped to the loaded window so the capacity and
+  // spending axes span the same months — see the loop below and #484.
+  isTransactionHistoryPartial = false,
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 
@@ -144,13 +148,36 @@ export const getBudgetData = (
   });
 
   const endDate = new ViewDate("month");
+
+  // The earliest month whose transactions are actually loaded. When the cold
+  // load is still streaming history (isTransactionHistoryPartial), months older
+  // than this have no spending in memory yet — accruing their capacity would
+  // overstate the rollover (#484), so we clamp the accrual to start here.
+  let earliestLoadedMonth: ViewDate | undefined;
+  if (isTransactionHistoryPartial) {
+    let earliest: LocalDate | undefined;
+    transactions.forEach((t) => {
+      const d = new LocalDate(t.authorized_date || t.date);
+      if (!earliest || d < earliest) earliest = d;
+    });
+    earliestLoadedMonth = earliest ? new ViewDate("month", earliest) : endDate;
+  }
+
   budgetData.forEach((history, budgetLikeId) => {
     const budgetLike =
       budgets.get(budgetLikeId) || sections.get(budgetLikeId) || categories.get(budgetLikeId);
     if (!budgetLike) return;
     const { roll_over, roll_over_start_date } = budgetLike;
     if (!roll_over || !roll_over_start_date) return;
-    const startDate = new ViewDate("month", roll_over_start_date).next();
+    // Clamp the accrual window to the loaded history so capacity (this loop)
+    // and spending (processTransaction) span the same months. When the history
+    // is complete, earliestLoadedMonth is undefined and the start is unchanged.
+    const rollStart = new ViewDate("month", roll_over_start_date);
+    const effectiveStart =
+      earliestLoadedMonth && earliestLoadedMonth.getEndDate() > rollStart.getEndDate()
+        ? earliestLoadedMonth
+        : rollStart;
+    const startDate = effectiveStart.next();
     while (startDate.getEndDate() <= endDate.getEndDate()) {
       const previousDate = startDate.clone().previous();
       const previousSummary = history.get(previousDate.getEndDate());

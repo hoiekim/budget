@@ -706,6 +706,7 @@ export const useSync = () => {
       stage1.status.isInit = true;
       stage1.status.isLoading = true;
       stage1.status.isError = false;
+      stage1.status.isTransactionHistoryPartial = true;
       setData(stage1);
 
       // --- Stage 2: the most recent 2 months of historical data.
@@ -756,6 +757,7 @@ export const useSync = () => {
       stage2.status.isInit = true;
       stage2.status.isLoading = true;
       stage2.status.isError = false;
+      stage2.status.isTransactionHistoryPartial = true;
       setData(stage2);
 
       // --- Stage 3: everything older. Fetch the rest of the historical
