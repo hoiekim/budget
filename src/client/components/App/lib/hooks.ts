@@ -67,6 +67,7 @@ export const useData = () => {
           budgets,
           sections,
           categories,
+          data.status.isTransactionHistoryPartial,
         );
 
         const capacityData = getCapacityData(budgets, sections, categories);

@@ -96,4 +96,10 @@ export class Status {
   isInit = false;
   isLoading = false;
   isError = false;
+  // True only on cold-load intermediate stages whose transaction history is
+  // still being streamed in (recent months loaded, older months not yet).
+  // Rollover accrual must not span months whose spending hasn't arrived, or it
+  // overstates the carried figure (#484). Defaults false: every warm/complete
+  // Data path is treated as complete, so steady-state values are unchanged.
+  isTransactionHistoryPartial = false;
 }
