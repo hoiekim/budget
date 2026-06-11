@@ -69,13 +69,6 @@ export const initializePostgres = async (): Promise<void> => {
     // (used by auto-categorization to group merchant_name variants).
     await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
 
-    // Drop the dormant `suggestions` table introduced by #496 (replaced by
-    // `rejected_categories` here — same goal, ~half the storage, no
-    // duplication of the confirmed labels already in `transactions`).
-    // Idempotent; no rows depended on it because the table never gained
-    // any callers.
-    await pool.query("DROP TABLE IF EXISTS suggestions CASCADE");
-
     for (const table of tables) {
       const createTableSql = buildCreateTable(table.name, table.schema, table.constraints);
       await pool.query(createTableSql);
