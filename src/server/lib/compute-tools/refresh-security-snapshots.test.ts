@@ -46,12 +46,7 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
-const { refreshActiveSecuritySnapshots, clearPriceCache } = await import(
-  "./refresh-security-snapshots"
-).then(async (m) => {
-  const polygon = await import("../polygon");
-  return { ...m, clearPriceCache: polygon.clearPriceCache };
-});
+const { refreshActiveSecuritySnapshots } = await import("./refresh-security-snapshots");
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
@@ -63,12 +58,13 @@ afterAll(() => {
 });
 
 // SQL router. Each test stages:
-//   - holdingsRows   → DISTINCT security_id query result
+//   - holdingsRows  → DISTINCT security_id query result
 //   - securitiesRows → per-id securities row (one queryOne per id in searchSecuritiesById)
-//   - existingByPair → existence probe set, key = `${security_id}|${tradingDate}`
+//   - recentBySecurity → cadence-gate set; security_ids in the set are
+//     treated as having a snapshot whose `updated` is within the window.
 let holdingsRows: Array<{ security_id: string }> = [];
 let securitiesRows: Array<Record<string, unknown>> = [];
-let existingByPair = new Set<string>();
+let recentBySecurity = new Set<string>();
 const upsertCalls: Array<{ sql: string; values: unknown[] }> = [];
 
 const queryRouter = async (sql: string, values?: unknown[]) => {
@@ -84,14 +80,11 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
     return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
   }
 
-  if (
-    /FROM\s+snapshots\s+WHERE\s+security_id\s*=\s*\$1\s+AND\s+snapshot_type\s*=\s*'security'/is.test(
-      sql,
-    )
-  ) {
-    const key = `${params[0]}|${params[1]}`;
-    const found = existingByPair.has(key);
-    return { rows: found ? [{ snapshot_id: "exists" }] : [], rowCount: found ? 1 : 0 };
+  // Cadence-gate probe — `… updated > NOW() - INTERVAL 'N hours' …`.
+  if (/updated\s*>\s*NOW\(\)\s*-\s*INTERVAL/i.test(sql)) {
+    const wantId = params[0] as string;
+    const found = recentBySecurity.has(wantId);
+    return { rows: found ? [{ snapshot_id: "recent" }] : [], rowCount: found ? 1 : 0 };
   }
 
   if (/INSERT\s+INTO\s+snapshots/i.test(sql)) {
@@ -119,10 +112,9 @@ beforeEach(() => {
         status: 200,
       }),
   );
-  clearPriceCache();
   holdingsRows = [];
   securitiesRows = [];
-  existingByPair = new Set();
+  recentBySecurity = new Set();
   upsertCalls.length = 0;
 });
 
@@ -198,16 +190,35 @@ describe("refreshActiveSecuritySnapshots", () => {
     expect(r.cash).toBe(1);
   });
 
-  test("snapshot already exists for tradingDate → no upsert, increments `fresh`", async () => {
+  test("cadence gate skips polygon when a recent snapshot exists for this security", async () => {
+    // Steady-state hourly cycle: the previous run wrote a snapshot
+    // less than the skip window ago. Polygon must NOT be called.
+    // Without this gate, the cron would burn N polygon calls every
+    // hour even when nothing needs refreshing.
     holdingsRows = [{ security_id: "sec-1" }];
     securitiesRows = [securityRow({ security_id: "sec-1", ticker_symbol: "VOO" })];
-    existingByPair.add("sec-1|2026-06-10");
+    recentBySecurity.add("sec-1");
 
     const r = await refreshActiveSecuritySnapshots();
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).not.toHaveBeenCalled();
     expect(upsertCalls).toHaveLength(0);
     expect(r.fresh).toBe(1);
     expect(r.refreshed).toBe(0);
+  });
+
+  test("cadence-gate query uses `updated > NOW() - INTERVAL` (not snapshot_date) — survives weekends without re-fetching", async () => {
+    // Pin the SQL shape so the gate semantics can't silently regress
+    // to a snapshot_date check (which would erroneously force a
+    // polygon call every Saturday/Sunday/holiday when no new trading
+    // day has landed but the previous run's snapshot looks "old").
+    holdingsRows = [{ security_id: "sec-1" }];
+    securitiesRows = [securityRow({ security_id: "sec-1", ticker_symbol: "VOO" })];
+    await refreshActiveSecuritySnapshots();
+    const gateCall = mockQuery.mock.calls.find((c) =>
+      /updated\s*>\s*NOW\(\)\s*-\s*INTERVAL/i.test(c[0] as string),
+    );
+    expect(gateCall).toBeDefined();
+    expect(gateCall![0]).toMatch(/snapshot_type\s*=\s*'security'/i);
   });
 
   test("polygon `no_data` → counted as empty, no upsert", async () => {
@@ -263,13 +274,15 @@ describe("refreshActiveSecuritySnapshots", () => {
       securityRow({ security_id: "sec-fresh", ticker_symbol: "VOO" }),
       securityRow({ security_id: "sec-new", ticker_symbol: "NVDA" }),
     ];
-    existingByPair.add("sec-fresh|2026-06-10");
+    recentBySecurity.add("sec-fresh");
 
     const r = await refreshActiveSecuritySnapshots();
     expect(r.cash).toBe(1);
     expect(r.fresh).toBe(1);
     expect(r.refreshed).toBe(1);
     expect(upsertCalls).toHaveLength(1);
+    // sec-fresh hit the cadence gate; only sec-new should have called polygon.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   test("tickerless securities skipped (no polygon call, no error)", async () => {
@@ -280,13 +293,13 @@ describe("refreshActiveSecuritySnapshots", () => {
     expect(r).toEqual({ refreshed: 0, fresh: 0, cash: 0, empty: 0, errors: 0 });
   });
 
-  test("existence probe scopes by (security_id, tradingDate)", async () => {
+  test("cadence gate is per-security: skipping sec-a does not skip sec-b", async () => {
     holdingsRows = [{ security_id: "sec-a" }, { security_id: "sec-b" }];
     securitiesRows = [
       securityRow({ security_id: "sec-a", ticker_symbol: "AAPL" }),
       securityRow({ security_id: "sec-b", ticker_symbol: "MSFT" }),
     ];
-    existingByPair.add("sec-a|2026-06-10");
+    recentBySecurity.add("sec-a");
 
     const r = await refreshActiveSecuritySnapshots();
     expect(r.fresh).toBe(1);
