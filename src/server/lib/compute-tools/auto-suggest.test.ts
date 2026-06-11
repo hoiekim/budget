@@ -483,4 +483,93 @@ describe("runAutoSuggestions", () => {
       expect(matches.length).toBeGreaterThanOrEqual(2);
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Merchant signal SQL shape (Stage 2b: rejected reads from
+  // rejected_categories instead of transactions.label_category_confidence)
+  // ──────────────────────────────────────────────────────────────────────
+
+  describe("merchant signal SQL shape", () => {
+    const captureSignalSql = async () => {
+      userRows = [userRow({ user_id: "u-shape" })];
+      unlabeledByUser.set("u-shape", [
+        txRow({ transaction_id: "txn-shape", user_id: "u-shape", merchant_name: "Probe Co" }),
+      ]);
+      signalRow = {
+        label_category_id: "cat-shape",
+        label_budget_id: "bud-shape",
+        accepted: "5",
+        rejected: "0",
+      };
+      await runAutoSuggestions();
+      const signalQuery = mockQuery.mock.calls.find((c) =>
+        /similarity\(merchant_name/i.test(c[0] as string),
+      );
+      expect(signalQuery).toBeDefined();
+      return signalQuery![0] as string;
+    };
+
+    test("ACCEPTED is read from transactions WHERE label_category_confidence = 1.0 only", async () => {
+      const sql = await captureSignalSql();
+      // Inner pool of confirmed transactions narrows on conf=1.0 — not
+      // `IS NOT NULL` (the pre-Stage-2b shape) and not `= 0.0` (the old
+      // rejected-as-conf-zero pattern, now retired).
+      expect(sql).toMatch(/label_category_confidence\s*=\s*1\.0/);
+      expect(sql).not.toMatch(/label_category_confidence\s+IS NOT NULL/);
+      expect(sql).not.toMatch(/label_category_confidence\s*=\s*0\.0/);
+    });
+
+    test("REJECTED is read from rejected_categories joined to transactions for merchant match", async () => {
+      const sql = await captureSignalSql();
+      // The subquery for `rejected` references the new table directly,
+      // joins to `transactions` for the merchant filter, and scopes by
+      // user_id on BOTH sides (defense-in-depth against future schema
+      // changes that could let a transaction_id appear under another user).
+      expect(sql).toMatch(/FROM\s+rejected_categories\s+rc/);
+      expect(sql).toMatch(
+        /JOIN\s+transactions\s+t\s+ON\s+t\.transaction_id\s*=\s*rc\.transaction_id/,
+      );
+      expect(sql).toMatch(/rc\.user_id\s*=\s*\$1/);
+      expect(sql).toMatch(/rc\.category_id\s*=\s*w\.label_category_id/);
+    });
+
+    test("merchant similarity filter applies to BOTH accepted and rejected", async () => {
+      const sql = await captureSignalSql();
+      // similarity(...) must appear at least three times: the inner
+      // ORDER BY for ranking confirms, the inner WHERE for confirms, and
+      // the rejection subquery's t.merchant_name filter. Two-or-fewer
+      // would mean a side dropped the merchant filter — that would
+      // double-count rejections from unrelated merchants.
+      const matches = sql.match(/similarity\(/g) ?? [];
+      expect(matches.length).toBeGreaterThanOrEqual(3);
+    });
+
+    test("soft-deleted transactions are excluded from BOTH accepted and rejected counts", async () => {
+      const sql = await captureSignalSql();
+      // Both the accepted-side and the rejected-side joins must filter
+      // out soft-deleted rows so a stale `is_deleted = true` row can't
+      // inflate either side's signal.
+      const matches =
+        sql.match(/is_deleted\s+IS\s+NULL\s+OR\s+(?:\w+\.)?is_deleted\s*=\s*FALSE/gi) ?? [];
+      expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    test("recent-confirms pool is bounded by LIMIT $4 (MERCHANT_SIGNAL_LIMIT)", async () => {
+      const sql = await captureSignalSql();
+      // The recency cap on the accepted pool is what keeps an ancient
+      // merchant-confirm pattern from out-voting a recent one. Rejected
+      // count is INTENTIONALLY uncapped (explicit user feedback should
+      // stick), so the LIMIT only governs the confirms pool.
+      expect(sql).toMatch(/LIMIT\s+\$4/);
+    });
+
+    test("winning category is picked by accepted COUNT DESC (recent confirms only)", async () => {
+      const sql = await captureSignalSql();
+      // ORDER BY COUNT(*) DESC LIMIT 1 in the winning CTE — rejections
+      // do not influence WHICH category wins, only the gate that filters
+      // the suggestion downstream.
+      expect(sql).toMatch(/ORDER\s+BY\s+COUNT\(\*\)\s+DESC/i);
+      expect(sql).toMatch(/WITH\s+winning\s+AS/i);
+    });
+  });
 });
