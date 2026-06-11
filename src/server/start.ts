@@ -228,6 +228,167 @@ scheduledSync();
 
 const isProduction = process.env.NODE_ENV === "production";
 
+// ---------------------------------------------------------------------------
+// Request logging
+//
+// One structured access-log line per API request (#316). The bare
+// {method, path} the server used to emit was useless — 25 identical
+// `GET /api/transactions` lines told you nothing about who called, with what,
+// or how it went. We now attach caller context (user, ip), a payload hint, and
+// the outcome (status, durationMs) so each line is debuggable on its own.
+// ---------------------------------------------------------------------------
+
+type RequestLogContext = Record<string, unknown>;
+
+// Returns the body's field NAMES only — never values, which can carry
+// credentials/tokens (e.g. POST /login's password). Enough of a payload hint
+// to tell two same-path calls apart without logging anything sensitive.
+function payloadHint(body: unknown): string[] | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+  const keys = Object.keys(body as Record<string, unknown>);
+  return keys.length > 0 ? keys : undefined;
+}
+
+// Runs the request and fills `log` with caller/payload context as it resolves.
+// Returns the Response for every exit path (rate-limit, auth, not-found, ok) so
+// the caller can stamp status + duration onto a single log line afterward.
+async function handleApiRequest(
+  request: Request,
+  url: URL,
+  apiPath: string,
+  log: RequestLogContext,
+): Promise<Response> {
+  // Parse request headers as a plain record
+  const headers: Record<string, string | string[] | undefined> = {};
+  request.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+
+  const ip = getClientIp(headers, undefined);
+  log.ip = ip;
+
+  // Parse body for JSON requests
+  let body: unknown = undefined;
+  let rawBody: string | undefined = undefined;
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    rawBody = await request.text();
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      // leave body undefined on parse failure
+    }
+  }
+  const bodyFields = payloadHint(body);
+  if (bodyFields) log.bodyFields = bodyFields;
+
+  // Parse query string params
+  const query: Record<string, string | string[] | undefined> = {};
+  url.searchParams.forEach((value, key) => {
+    const existing = query[key];
+    if (Array.isArray(existing)) {
+      existing.push(value);
+    } else if (existing !== undefined) {
+      query[key] = [existing, value];
+    } else {
+      query[key] = value;
+    }
+  });
+  if (Object.keys(query).length > 0) log.query = query;
+
+  // Rate-limit POST /login before session loading to fail fast.
+  // Read-only check — the counter is bumped only on auth failure inside
+  // post-login.ts (#389).
+  if (request.method === "POST" && apiPath === "/login") {
+    if (isLoginRateLimited(ip)) {
+      return jsonResponse(
+        { status: "failed", message: "Too many login attempts, try again later" },
+        429,
+      );
+    }
+  }
+
+  // Load or create session
+  const session = await loadSession(request);
+  log.user = session.user?.username ?? "anonymous";
+
+  const req: ServerRequest = {
+    method: request.method,
+    path: apiPath,
+    url: request.url,
+    headers,
+    query,
+    body,
+    rawBody,
+    session,
+    ip,
+  };
+
+  // Look up the matching route up-front so we can consult its requiredScope
+  // before the auth gate.
+  const matchedRoute = allRoutes.find(
+    (r) => r.path === apiPath && r.method === request.method,
+  );
+
+  // Bearer auth: only attempted when the matched route declares a
+  // requiredScope, and only as a fallback when no cookie session is
+  // present. Cookie sessions remain authoritative for everything.
+  const bearerResult = await resolveBearerAuth({
+    authorizationHeader: headers["authorization"],
+    hasCookieSession: !!session.user,
+    requiredScope: matchedRoute?.requiredScope,
+  });
+  if (bearerResult) {
+    session.user = bearerResult.user;
+    (session as Session)._bearer = true;
+    log.user = session.user?.username ?? "anonymous";
+    log.auth = "bearer";
+  }
+
+  // Auth check — reject unauthenticated requests except on public paths
+  const entry = PUBLIC_PATH_METHODS.find(([p]) => p === apiPath);
+  const isPublic = !!entry && (!entry[1] || entry[1].has(request.method));
+  if (!isPublic && !session.user) {
+    return jsonResponse({ status: "failed", message: "Not authenticated." }, 401);
+  }
+
+  // Route dispatch
+  const mutableRes = new MutableResponse();
+  let result: ApiResponse<unknown> | null = null;
+  let routeHandled = false;
+
+  if (matchedRoute) {
+    routeHandled = true;
+    result = await matchedRoute.execute(req, mutableRes);
+  }
+
+  if (!routeHandled) {
+    return jsonResponse({ status: "error", message: "Not Found" }, 404);
+  }
+
+  // Apply JSON result if the handler returned one and didn't stream
+  if (result && !mutableRes.isStreamed()) {
+    mutableRes.json(result);
+  }
+
+  // Persist session and get Set-Cookie header
+  const setCookieValue = await persistSession(session, isProduction);
+
+  // Assemble final response headers
+  const responseHeaders: Record<string, string> = { ...SECURITY_HEADERS };
+  if (isProduction) {
+    responseHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+  }
+  if (setCookieValue) responseHeaders["Set-Cookie"] = setCookieValue;
+  const ct = mutableRes.getContentType();
+  if (ct) responseHeaders["Content-Type"] = ct;
+
+  return new Response(mutableRes.getBody(), {
+    status: mutableRes.statusCode,
+    headers: responseHeaders,
+  });
+}
+
 const server = Bun.serve({
   port: process.env.PORT || 3005,
 
@@ -248,132 +409,19 @@ const server = Bun.serve({
     // Strip /api prefix to get the route path
     const apiPath = fullPath.slice(4) || "/";
 
+    const startTime = performance.now();
+    const log: RequestLogContext = { method: request.method, path: fullPath };
+    const response = await handleApiRequest(request, url, apiPath, log);
+
+    // /health is polled constantly by uptime checks and carries no debugging
+    // value — keep it out of the log as before.
     if (apiPath !== "/health") {
-      logger.info("API request", { method: request.method, path: fullPath });
+      log.status = response.status;
+      log.durationMs = Math.round(performance.now() - startTime);
+      logger.info("API request", log);
     }
 
-    // Parse request headers as a plain record
-    const headers: Record<string, string | string[] | undefined> = {};
-    request.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
-
-    const ip = getClientIp(headers, undefined);
-
-    // Parse body for JSON requests
-    let body: unknown = undefined;
-    let rawBody: string | undefined = undefined;
-    const contentType = request.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      rawBody = await request.text();
-      try {
-        body = JSON.parse(rawBody);
-      } catch {
-        // leave body undefined on parse failure
-      }
-    }
-
-    // Parse query string params
-    const query: Record<string, string | string[] | undefined> = {};
-    url.searchParams.forEach((value, key) => {
-      const existing = query[key];
-      if (Array.isArray(existing)) {
-        existing.push(value);
-      } else if (existing !== undefined) {
-        query[key] = [existing, value];
-      } else {
-        query[key] = value;
-      }
-    });
-
-    // Rate-limit POST /login before session loading to fail fast.
-    // Read-only check — the counter is bumped only on auth failure inside
-    // post-login.ts (#389).
-    if (request.method === "POST" && apiPath === "/login") {
-      if (isLoginRateLimited(ip)) {
-        return jsonResponse(
-          { status: "failed", message: "Too many login attempts, try again later" },
-          429,
-        );
-      }
-    }
-
-    // Load or create session
-    const session = await loadSession(request);
-
-    const req: ServerRequest = {
-      method: request.method,
-      path: apiPath,
-      url: request.url,
-      headers,
-      query,
-      body,
-      rawBody,
-      session,
-      ip,
-    };
-
-    // Look up the matching route up-front so we can consult its requiredScope
-    // before the auth gate.
-    const matchedRoute = allRoutes.find(
-      (r) => r.path === apiPath && r.method === request.method,
-    );
-
-    // Bearer auth: only attempted when the matched route declares a
-    // requiredScope, and only as a fallback when no cookie session is
-    // present. Cookie sessions remain authoritative for everything.
-    const bearerResult = await resolveBearerAuth({
-      authorizationHeader: headers["authorization"],
-      hasCookieSession: !!session.user,
-      requiredScope: matchedRoute?.requiredScope,
-    });
-    if (bearerResult) {
-      session.user = bearerResult.user;
-      (session as Session)._bearer = true;
-    }
-
-    // Auth check — reject unauthenticated requests except on public paths
-    const entry = PUBLIC_PATH_METHODS.find(([p]) => p === apiPath);
-    const isPublic = !!entry && (!entry[1] || entry[1].has(request.method));
-    if (!isPublic && !session.user) {
-      return jsonResponse({ status: "failed", message: "Not authenticated." }, 401);
-    }
-
-    // Route dispatch
-    const mutableRes = new MutableResponse();
-    let result: ApiResponse<unknown> | null = null;
-    let routeHandled = false;
-
-    if (matchedRoute) {
-      routeHandled = true;
-      result = await matchedRoute.execute(req, mutableRes);
-    }
-
-    if (!routeHandled) {
-      return jsonResponse({ status: "error", message: "Not Found" }, 404);
-    }
-
-    // Apply JSON result if the handler returned one and didn't stream
-    if (result && !mutableRes.isStreamed()) {
-      mutableRes.json(result);
-    }
-
-    // Persist session and get Set-Cookie header
-    const setCookieValue = await persistSession(session, isProduction);
-
-    // Assemble final response headers
-    const responseHeaders: Record<string, string> = { ...SECURITY_HEADERS };
-    if (isProduction) {
-      responseHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
-    }
-    if (setCookieValue) responseHeaders["Set-Cookie"] = setCookieValue;
-    const ct = mutableRes.getContentType();
-    if (ct) responseHeaders["Content-Type"] = ct;
-
-    return new Response(mutableRes.getBody(), {
-      status: mutableRes.statusCode,
-      headers: responseHeaders,
-    });
+    return response;
   },
 });
 
