@@ -8,14 +8,14 @@ import {
   HOLDINGS,
   SNAPSHOTS,
   SECURITY_ID,
-  SNAPSHOT_DATE,
   SNAPSHOT_TYPE,
+  UPDATED,
 } from "server";
 
 export interface RefreshSecuritySnapshotsResult {
   /** Securities for which a fresh snapshot was written this run. */
   refreshed: number;
-  /** Securities where a snapshot for the latest trading day already existed. */
+  /** Securities skipped because a non-stale snapshot already exists. */
   fresh: number;
   /** Securities skipped because they are cash-equivalents. */
   cash: number;
@@ -26,17 +26,32 @@ export interface RefreshSecuritySnapshotsResult {
 }
 
 /**
+ * Skip-window for the per-security cadence gate. If any security_snapshot
+ * for a given security has been written or updated within this window,
+ * the polygon refresh is skipped this cycle. The window is wider than
+ * the hourly cron cadence so most cycles skip without burning an API
+ * call, but narrow enough that a missed mid-day update only delays a
+ * fresh price by ~one day.
+ */
+const REFRESH_SKIP_WINDOW_HOURS = 22;
+
+/**
  * For every security currently referenced by a non-deleted holding row,
  * ensure a `security_snapshot` exists for the latest trading day that
  * polygon can serve. Designed to ride the existing hourly `scheduledSync`
- * loop — per-security cadence is enforced by the existence check on the
- * latest trading day's snapshot, so subsequent hourly runs early-out
- * with one cheap SELECT per security.
+ * loop.
+ *
+ * Per-security cadence is enforced by a cheap pre-flight SELECT against
+ * `snapshots.updated` — if any security_snapshot for this security was
+ * touched within the last `REFRESH_SKIP_WINDOW_HOURS`, the polygon call
+ * is skipped. This keeps steady-state runs at one cheap SELECT per
+ * security (no polygon calls) and bounds the polygon load to roughly
+ * one call per security per day in the limit.
  *
  * Plaid-tracked securities go through `upsertSecuritiesWithSnapshots`
- * during sync, which already writes a `getSquashedDateString()`-keyed
- * snapshot — those rows surface here too but are early-outed by the
- * per-trading-day check.
+ * during sync, which writes a `getSquashedDateString()`-keyed snapshot
+ * with `updated = CURRENT_TIMESTAMP` — those rows are early-outed here
+ * by the same cadence gate.
  *
  * Cash-equivalents (`type='cash'` or `ticker_symbol` starting with
  * `CUR:`) are skipped — polygon does not price them.
@@ -70,12 +85,29 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
       continue;
     }
 
-    // Ask polygon for the latest trading day's close at or before today.
-    // The returned `tradingDate` is the actual market day the price is
-    // anchored to — naturally falls back to Friday on weekends, the day
-    // before a holiday, etc. Writing the snapshot under `tradingDate`
-    // means subsequent same-day runs early-out via the existence check
-    // below; once a new trading day closes, the next run picks it up.
+    // Pre-flight cadence gate. If any security_snapshot for this
+    // security was touched in the last `REFRESH_SKIP_WINDOW_HOURS`,
+    // skip the polygon call. Cheap SELECT, no API spend. The gate
+    // also rate-limits the "soft-deleted snapshot" loop — a
+    // soft-delete sets `updated` to NOW(), so the gate skips it until
+    // the window expires.
+    const recent = await pool.query<{ snapshot_id: string }>(
+      `SELECT snapshot_id FROM ${SNAPSHOTS}
+       WHERE ${SECURITY_ID} = $1
+         AND ${SNAPSHOT_TYPE} = 'security'
+         AND ${UPDATED} > NOW() - INTERVAL '${REFRESH_SKIP_WINDOW_HOURS} hours'
+       LIMIT 1`,
+      [security_id],
+    );
+    if (recent.rows.length > 0) {
+      result.fresh++;
+      continue;
+    }
+
+    // Cache miss → ask polygon for the latest trading day's close at
+    // or before today. The returned `tradingDate` is the actual market
+    // day the price is anchored to — naturally falls back to Friday on
+    // weekends, the day before a holiday, etc.
     const fetchResult = await polygon.getLatestClosePriceOnOrBefore(ticker_symbol, today);
     if (!fetchResult.success) {
       if (fetchResult.error === "no_data") result.empty++;
@@ -83,22 +115,6 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
       continue;
     }
     const { price, tradingDate } = fetchResult.data;
-
-    // Existence check on the polygon-returned tradingDate, not today's
-    // date — see comment above for why.
-    const existing = await pool.query<{ snapshot_id: string }>(
-      `SELECT snapshot_id FROM ${SNAPSHOTS}
-       WHERE ${SECURITY_ID} = $1
-         AND ${SNAPSHOT_TYPE} = 'security'
-         AND ${SNAPSHOT_DATE} = $2::date
-         AND (is_deleted IS NULL OR is_deleted = FALSE)
-       LIMIT 1`,
-      [security_id, tradingDate],
-    );
-    if (existing.rows.length > 0) {
-      result.fresh++;
-      continue;
-    }
 
     const tradingDateObj = new Date(`${tradingDate}T12:00:00Z`);
     const snapshot: JSONSecuritySnapshot = {
