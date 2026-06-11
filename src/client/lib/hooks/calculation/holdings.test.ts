@@ -125,6 +125,36 @@ describe("buildSecurityPriceIndex", () => {
     expect(index.get("sec1")?.get("2026-01")).toEqual({ price: 105, sourceDate: "2026-01-25" });
   });
 
+  test("keeps one bucket per snapshot month when every snapshot shares one close_price_as_of", () => {
+    // Real-world shape: the `securities` table holds a single `close_price_as_of`
+    // (the latest price's as-of date), and the server join stamps it onto every
+    // historical snapshot while preserving each snapshot's own `close_price`. The
+    // index must bucket by the per-snapshot recording date, not that shared field,
+    // or the whole price history collapses into one month.
+    const sharedAsOf = "2026-03-30";
+    const months = [
+      { date: "2026-01-15", price: 515.8 },
+      { date: "2026-02-15", price: 631.04 },
+      { date: "2026-03-15", price: 580.93 },
+      { date: "2026-06-10", price: 667.05 },
+    ];
+    const snapshots = new SecuritySnapshotDictionary();
+    months.forEach(({ date, price }, i) => {
+      const snap = createSecuritySnapshot("sec1", price, date);
+      snap.security.close_price_as_of = sharedAsOf; // every snapshot carries the same as-of
+      snapshots.set(`snap${i}`, snap);
+    });
+
+    const index = buildSecurityPriceIndex(snapshots);
+
+    // Four distinct monthly buckets, each priced at its own snapshot's close.
+    expect(index.get("sec1")?.size).toBe(4);
+    expect(index.get("sec1")?.get("2026-01")).toEqual({ price: 515.8, sourceDate: "2026-01-15" });
+    expect(index.get("sec1")?.get("2026-02")).toEqual({ price: 631.04, sourceDate: "2026-02-15" });
+    expect(index.get("sec1")?.get("2026-03")).toEqual({ price: 580.93, sourceDate: "2026-03-15" });
+    expect(index.get("sec1")?.get("2026-06")).toEqual({ price: 667.05, sourceDate: "2026-06-10" });
+  });
+
   test("should skip snapshots with null close_price", () => {
     const snapshots = new SecuritySnapshotDictionary();
     const snapshot = createSecuritySnapshot("sec1", 100, "2026-01-15");
