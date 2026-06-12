@@ -48,7 +48,11 @@ export const getSankeyData = (
     const category = category_id && categories.get(category_id);
     const section_id = (category && category.section_id) || `${budget_id}_Unknown`;
     const section = sections.get(section_id);
-    const amount = isInvestment ? -(t.price * t.quantity) : t.amount;
+    // Plaid investment signs: a buy has quantity > 0, a sell has quantity < 0.
+    // So price * quantity is positive on a buy (cash out → expense) and negative
+    // on a sell (cash in → income) — the same polarity the income/expense branches
+    // below expect from a regular transaction's amount (positive = out).
+    const amount = isInvestment ? t.price * t.quantity : t.amount;
     if (amount < 0) {
       income -= amount;
       incomeSections.set(section_id, {
