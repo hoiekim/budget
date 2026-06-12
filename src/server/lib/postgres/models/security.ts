@@ -70,6 +70,11 @@ export class SecurityModel extends Model<JSONSecurity, SecuritySchema> implement
   }
 
   toJSON(): JSONSecurity {
+    // Fields without a dedicated column are round-tripped through `raw` (the
+    // JSONSecurity stored by fromJSON). Reading them back instead of hardcoding
+    // null preserves Plaid signals the FE/BE rely on — notably is_cash_equivalent,
+    // which feeds the cash-holding detectors. See #492.
+    const raw = (this.raw ?? {}) as Partial<JSONSecurity>;
     return {
       security_id: this.security_id,
       name: this.name,
@@ -80,17 +85,17 @@ export class SecurityModel extends Model<JSONSecurity, SecuritySchema> implement
       iso_currency_code: this.iso_currency_code,
       isin: this.isin,
       cusip: this.cusip,
-      sedol: null,
-      institution_security_id: null,
-      institution_id: null,
-      proxy_security_id: null,
-      is_cash_equivalent: null,
-      unofficial_currency_code: null,
-      market_identifier_code: null,
-      sector: null,
-      industry: null,
-      option_contract: null,
-      fixed_income: null,
+      sedol: raw.sedol ?? null,
+      institution_security_id: raw.institution_security_id ?? null,
+      institution_id: raw.institution_id ?? null,
+      proxy_security_id: raw.proxy_security_id ?? null,
+      is_cash_equivalent: raw.is_cash_equivalent ?? null,
+      unofficial_currency_code: raw.unofficial_currency_code ?? null,
+      market_identifier_code: raw.market_identifier_code ?? null,
+      sector: raw.sector ?? null,
+      industry: raw.industry ?? null,
+      option_contract: raw.option_contract ?? null,
+      fixed_income: raw.fixed_income ?? null,
     };
   }
 
