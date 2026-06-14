@@ -21,7 +21,6 @@ export const BalanceInfo = ({
   const { calculations, viewDate } = useAppContext();
   const { balanceData } = calculations;
 
-  const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
   const previousDate = viewDate.clone().previous().getEndDate();
 
   const previousAmount = donutData.reduce((a, { id }) => {
@@ -44,7 +43,7 @@ export const BalanceInfo = ({
           <br />
           <Changes
             currentAmount={0}
-            previousAmount={!viewDateSpan ? totalCredit : 0}
+            previousAmount={totalCredit}
             currencySymbol={currencySymbol}
           />
           <div className="credit label">outstanding</div>

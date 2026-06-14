@@ -33,12 +33,6 @@ export const AccountsPage = () => {
       return !hide && type !== AccountType.Credit;
     });
 
-    sortedAccounts.forEach(({ hide, type, balances }) => {
-      if (hide || type !== AccountType.Credit) return;
-      totalCredit += balances.current || 0;
-      numberOfCredits++;
-    });
-
     // For yearly view of the current (incomplete) year, viewDate.getEndDate()
     // returns Dec 31 which has no balance data yet. Cap the lookup to the
     // current month so the donut reflects actual accumulated balances.
@@ -48,6 +42,18 @@ export const AccountsPage = () => {
       viewDate.getInterval() === "year" && endDate > today
         ? new ViewDate("month").getEndDate()
         : endDate;
+
+    sortedAccounts.forEach((a) => {
+      if (a.hide || a.type !== AccountType.Credit) return;
+      // Honor the viewDate like the account rows do: historical outstanding for
+      // past months, live balance for current/future. Summing the live
+      // `balances.current` here made the donut's outstanding-credit headline
+      // disagree with the viewDate-aware credit rows on every past month.
+      const balanceHistory = balanceData.get(a.id);
+      const fallback = viewDateDate > today ? getAccountBalance(a) : 0;
+      totalCredit += balanceHistory.get(viewDateDate) ?? fallback;
+      numberOfCredits++;
+    });
 
     filteredAccounts.forEach((a, i) => {
       const balanceHistory = balanceData.get(a.id);
