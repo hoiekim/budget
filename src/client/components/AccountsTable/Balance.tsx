@@ -14,7 +14,6 @@ export const Balance = ({ account }: BalanceProps) => {
   const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
   const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
-  const currentString = numberToCommaString(current!);
 
   const today = new Date();
   const viewDateDate = viewDate.getEndDate();
@@ -27,13 +26,27 @@ export const Balance = ({ account }: BalanceProps) => {
   const previousAmount = balanceHistory.get(previousDate) || 0;
 
   if (type === AccountType.Credit) {
-    const availableString = numberToCommaString(available!);
+    // "spent" is the outstanding balance (balances.current). Honor the viewDate
+    // the same way every other account type does via `dynamicAmount`: render the
+    // month's historical snapshot for past dates and the live balance for
+    // current/future ones. This branch used to ignore the viewDate entirely and
+    // always show the live balance, which also made the row contradict the
+    // donut's outstanding-credit headline for past months.
+    const spentString = numberToCommaString(dynamicAmount);
+    // `available` isn't snapshotted historically. For past months derive it from
+    // the (roughly constant) credit limit minus the outstanding balance so the
+    // two figures stay coherent; keep the live value for current/future months
+    // and for SimpleFin accounts, which report no limit.
+    const { limit } = balances;
+    const availableAmount =
+      viewDateDate > today || limit == null ? available! : limit - dynamicAmount;
+    const availableString = numberToCommaString(availableAmount);
     return (
       <div className="Balance credit">
         <div>
           <span>
             {symbol}
-            {currentString}
+            {spentString}
           </span>
           <span>spent</span>
         </div>
