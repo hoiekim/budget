@@ -34,6 +34,17 @@ const AMOUNT_BAND_TOLERANCE = 0.2;
  *  every match when the date falls on a weekend / holiday. */
 const DAY_BAND_TOLERANCE = 3;
 
+/** Nearest-neighbor pool size for the feature signal. Picking the top-K
+ *  historical rows by feature-agreement score (instead of every row that
+ *  matches at least one feature) prevents category volume from
+ *  drowning out feature-quality. A user with 700 rows in their default
+ *  category and 100 rows in groceries would otherwise out-vote the
+ *  groceries category for a grocery target — because each broad-feature
+ *  match adds 1 to the sum regardless of strength. The K cap forces
+ *  scoring to compare apples to apples: only the most-similar K rows
+ *  count, scored by their feature agreement. */
+const FEATURE_SIGNAL_TOP_K = 20;
+
 /** A target transaction's features, pre-extracted for the per-row
  *  scoring SQL. Optional fields fall back to NULL — the SQL treats NULL
  *  as "this feature doesn't contribute" so a target with no
@@ -323,8 +334,8 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
  * Build the per-row scoring expression for either ACCEPTED (against
  * `transactions`) or REJECTED (against `transactions` joined to
  * `rejected_categories`). Each feature contributes 1 to the row's score
- * if it matches the target; the SQL `SUM(score)` then aggregates per
- * category — multi-feature agreement amplifies naturally.
+ * if it matches the target; downstream the engine picks the top-K rows
+ * by score and SUMs to amplify multi-feature agreement.
  *
  * The `t` alias must point at the row whose features are being scored
  * (the historical `transactions` row in both code paths). Parameter
@@ -347,12 +358,17 @@ const getFeatureSignal = async (
   userId: string,
   f: TargetFeatures,
 ): Promise<FeatureSignal | null> => {
-  // Single SELECT per call — winner CTE picks the category whose summed
-  // per-row feature score is highest across the user's confirmed
-  // history. A historical row only counts if it matches at least one
-  // feature (the WHERE row-filter `score > 0`). The rejected subquery
-  // applies the identical score expression to `rejected_categories ⋈
-  // transactions` so the gate compares apples-to-apples.
+  // Top-K nearest-neighbor scoring. Each historical confirmed row gets
+  // a per-row score (sum of 7 features matching the target); we keep
+  // the K most-similar rows, then SUM(score) per category to pick the
+  // winner. The K cap is essential — without it, a category with N
+  // broad-feature matches (account_id, day-of-month) drowns out a
+  // category with fewer but stronger merchant/name matches just on
+  // volume. K=20 was tuned against the prod-clone E2E set.
+  //
+  // The rejected subquery applies the identical top-K shape on the
+  // (rejected_categories ⋈ transactions) join so the gate compares
+  // apples-to-apples.
   const params = [
     userId, //                       $1
     f.merchant_name, //              $2 (or null)
@@ -365,6 +381,7 @@ const getFeatureSignal = async (
     f.plaid_pfc_primary, //          $9 (or null)
     f.day_lo, //                     $10
     f.day_hi, //                     $11
+    FEATURE_SIGNAL_TOP_K, //         $12
   ];
 
   const result = await pool.query(
@@ -376,10 +393,16 @@ const getFeatureSignal = async (
          AND t.label_category_confidence = 1.0
          AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
      ),
-     winning AS (
-       SELECT label_category_id, SUM(score)::int AS accepted
+     top_k AS (
+       SELECT label_category_id, score
        FROM scored
        WHERE score > 0
+       ORDER BY score DESC
+       LIMIT $12
+     ),
+     winning AS (
+       SELECT label_category_id, SUM(score)::int AS accepted
+       FROM top_k
        GROUP BY label_category_id
        ORDER BY accepted DESC
        LIMIT 1
@@ -389,15 +412,20 @@ const getFeatureSignal = async (
        sections.budget_id AS label_budget_id,
        w.accepted,
        (
-         SELECT COALESCE(SUM(${SCORE_EXPR("t")})::int, 0)
-         FROM rejected_categories rc
-         JOIN transactions t
-           ON t.transaction_id = rc.transaction_id
-           AND t.user_id = rc.user_id
-         WHERE rc.user_id = $1
-           AND rc.category_id = w.label_category_id
-           AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
-           AND ${SCORE_EXPR("t")} > 0
+         SELECT COALESCE(SUM(score)::int, 0)
+         FROM (
+           SELECT ${SCORE_EXPR("t")} AS score
+           FROM rejected_categories rc
+           JOIN transactions t
+             ON t.transaction_id = rc.transaction_id
+             AND t.user_id = rc.user_id
+           WHERE rc.user_id = $1
+             AND rc.category_id = w.label_category_id
+             AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
+         ) scored_rejected
+         WHERE score > 0
+         ORDER BY score DESC
+         LIMIT $12
        ) AS rejected
      FROM winning w
      JOIN categories ON categories.category_id = w.label_category_id

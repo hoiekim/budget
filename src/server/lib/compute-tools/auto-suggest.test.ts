@@ -523,19 +523,23 @@ describe("runAutoSuggestions", () => {
     test("score expression appears in BOTH accepted and rejected subqueries (symmetric scoring)", async () => {
       const sql = await captureSignalSql();
       // The exact SCORE expression is rendered into both the `scored`
-      // CTE and the rejected subquery — so the gate compares two
-      // numbers computed by the same formula.
+      // CTE (for accepted scoring) and the rejected subquery — so the
+      // gate compares two numbers computed by the same formula.
       const scoreFragments = sql.match(/similarity\(t\.merchant_name/g) ?? [];
-      // Three occurrences: once in `scored`, and twice in the rejected
-      // subquery's `SUM(...)` and its `WHERE ... > 0` guard.
-      expect(scoreFragments.length).toBeGreaterThanOrEqual(3);
+      expect(scoreFragments.length).toBeGreaterThanOrEqual(2);
     });
 
-    test("winning category is picked by SUM(score) DESC", async () => {
+    test("winning category is picked by SUM(score) over top-K nearest neighbors", async () => {
       const sql = await captureSignalSql();
+      // The top-K cap (`LIMIT $12`) is what prevents category volume
+      // from drowning out feature quality — without it, a high-volume
+      // category beats a low-volume but high-feature-agreement
+      // category just on row count.
       expect(sql).toMatch(/SUM\(score\)::int\s+AS\s+accepted/i);
       expect(sql).toMatch(/ORDER\s+BY\s+accepted\s+DESC/i);
       expect(sql).toMatch(/WITH\s+scored\s+AS/i);
+      expect(sql).toMatch(/top_k\s+AS/i);
+      expect(sql).toMatch(/ORDER\s+BY\s+score\s+DESC\s+LIMIT\s+\$12/i);
     });
 
     test("soft-deleted transactions are excluded from BOTH accepted and rejected counts", async () => {
@@ -599,6 +603,9 @@ describe("runAutoSuggestions", () => {
       const day = new Date().getUTCDate();
       expect(values[9]).toBe(day - 3);
       expect(values[10]).toBe(day + 3);
+      // $12 is the top-K cap.
+      expect(typeof values[11]).toBe("number");
+      expect(values[11] as number).toBeGreaterThan(0);
     });
   });
 });
