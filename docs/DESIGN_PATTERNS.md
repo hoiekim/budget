@@ -147,22 +147,49 @@ When in doubt, open `src/client/components/TransactionProperties/index.tsx` and 
 
 ## Auto-Suggest Merchant Signal Scoring
 
-Auto-categorization (`src/server/lib/compute-tools/auto-suggest.ts`) writes category suggestions onto unlabeled transactions based on a per-merchant signal mined from the user's already-labeled history. The signal-to-suggestion path uses a small set of gates, all in `evaluateSignal`:
+Auto-categorization (`src/server/lib/compute-tools/auto-suggest.ts`) writes category suggestions onto unlabeled transactions by scoring each target against the user's already-labeled history across **seven weighted features**, not a single merchant match. For every unlabeled target the engine runs one feature-signal query, picks the winning category, and applies a suggestion only if three gates pass.
 
-| Gate              | Threshold                  | Reason                                             |
-| ----------------- | -------------------------- | -------------------------------------------------- |
-| Min total labeled | `accepted + rejected >= 3` | Don't suggest from a single data point             |
-| Max reject rate   | `rejected / total <= 0.10` | Users actively disagree — back off                 |
-| Min confidence    | `accepted / total >= 0.95` | Suggestion has to be near-unanimous in the history |
-| Confidence cap    | `min(confidence, 0.99)`    | `1.0` is reserved for user-confirmed labels        |
+**Per-row feature score.** A historical confirmed row scores against the target as the weighted sum of the features it matches:
 
-The signal itself comes from a pg_trgm fuzzy match on `merchant_name` (`MERCHANT_SIMILARITY_THRESHOLD = 0.5`), with a `LIMIT 30` over the user's recent labeled transactions for that merchant.
+| Feature                              | Weight | Match rule                                              |
+| ------------------------------------ | ------ | ------------------------------------------------------- |
+| `merchant_name`                      | 100    | pg_trgm `similarity >= TEXT_SIMILARITY_THRESHOLD` (0.5) |
+| `name`                               | 50     | pg_trgm `similarity >= 0.5`                             |
+| `plaid_pfc_primary`                  | 10     | Plaid `personal_finance_category.primary` equal         |
+| amount band                          | 5      | target amount within ±`AMOUNT_BAND_TOLERANCE` (20%), sign-preserving |
+| `payment_channel`                    | 1      | equal                                                   |
+| `account_id`                         | 1      | equal                                                   |
+| day-of-month band                    | 1      | within ±`DAY_BAND_TOLERANCE` (3 days)                   |
 
-**Per-merchant cache.** A run iterates over (top-level transactions) then (split transactions). Splits inherit `merchant_name` from their parent transaction via JOIN — see `defaultFetchUnlabeledSplits` — so the parent and its splits hit the same signal. `processUserSuggestions` keeps a `Map<merchant, signal>` per user so each unique merchant is queried at most once per run.
+The large merchant/name weights mean one identity-feature match (merchant alone = 100) outweighs the entire weak-feature trio (amount + channel + day = 7) by design, so category volume never drowns out feature quality. Only rows whose per-row score clears `ROW_SCORE_THRESHOLD` (15) contribute — that floor filters out coincidental weak-only matches. `SUM(score)` per category picks the winner.
 
-**Apply-with-budget.** When the engine applies a suggestion it writes both `label_category_id` and `label_budget_id`. The UI's category `<select>` filters options by the row's budget, so a category whose parent budget isn't recorded would render as a blank placeholder even though the yellow dot indicates a suggestion is present. See `defaultApplyLabel`.
+**Three gates** (all in `evaluateSignal`, applied to the winning category):
 
-**What never receives a suggestion.** `defaultFetchUnlabeled` filters on `label_category_confidence: null`. This deliberately excludes rejected suggestions (`confidence === 0`) so the engine doesn't repeatedly resurface a label the user already rejected.
+| Gate         | Threshold                                              | Reason                                                       |
+| ------------ | ------------------------------------------------------ | ------------------------------------------------------------ |
+| Sample size  | `count_matched >= 3`                                   | At least 3 historical rows cleared the per-row threshold     |
+| Reject rate  | `rejected / (accepted + rejected) <= 0.10`             | `rejected` is the symmetric weighted sum over `rejected_categories ⋈ transactions`; users actively disagree → back off |
+| Quality      | `accepted / (count_matched × max_per_row) >= MIN_QUALITY` (0.30) | Average per-row match strength, independent of how many rows matched |
+
+`max_per_row` is the sum of the weights for the features the target actually has populated (a null `merchant_name` excludes its 100-weight from the denominator), keeping the quality metric in `[0, 1]`.
+
+**Stored confidence is the quality value itself**, clamped to `[ENGINE_CONFIDENCE_FLOOR, ENGINE_CONFIDENCE_CEIL] = [0.5, 0.98]` — variable, so downstream UX can render "weakly confident" vs "strongly confident" without re-deriving. The ceiling is deliberately strict about the confidence-bucket reservations:
+
+| `label_category_confidence` | Source                                  |
+| --------------------------- | --------------------------------------- |
+| `[0.5, 0.98]`               | auto-suggest engine                     |
+| `0.99`                      | `/api/suggest-category` (external API)  |
+| `1.0`                       | user-confirmed label                    |
+
+Keeping engine writes `<= 0.98` is what makes a row's provenance recoverable from its confidence alone — never collapsing the engine bucket onto the `0.99` API reservation or the `1.0` user bucket.
+
+**One query per target, not per merchant.** A run iterates over top-level transactions then split transactions (splits inherit all features from their parent via JOIN — see `fetchUnlabeledSplits`, closes #334). There is **no** per-merchant signal cache: the signal depends on the target's full feature set, so two unlabeled transactions sharing a merchant but differing in amount / channel get different signals, and a per-merchant cache would produce wrong predictions. The unlabeled pool is bounded by a 7-day window in `fetchUnlabeled`.
+
+**Apply-with-budget.** When the engine applies a suggestion it writes both `label_category_id` and `label_budget_id`. The UI's category `<select>` filters options by the row's budget, so a category whose parent budget isn't recorded would render as a blank placeholder even though the yellow dot indicates a suggestion is present. See `applyLabel`.
+
+**Compare-and-swap on apply.** Both apply sites thread `CAS_NULL_CONFIDENCE` (`label_category_confidence IS NULL`) into the UPDATE so the engine only overwrites a row that is *still* unlabeled. Between the unlabeled fetch and the per-row apply a user may have confirmed the row in the UI (writing `confidence = 1`); the guard prevents the engine from clobbering that confirmation.
+
+**What never receives a suggestion.** `fetchUnlabeled` filters on `label_category_confidence: null`, so any row that already carries a confidence — user-confirmed (`1.0`), API (`0.99`), or a prior engine suggestion — is skipped.
 
 ## Collection Lookup Performance
 
