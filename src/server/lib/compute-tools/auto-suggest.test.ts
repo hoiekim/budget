@@ -219,13 +219,13 @@ describe("runAutoSuggestions", () => {
     expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
   });
 
-  test("applies suggestion at fixed ENGINE_CONFIDENCE (0.98) when all gates pass", async () => {
+  test("applies suggestion with confidence = quality clamped to [0.5, 0.98]", async () => {
     userRows = [userRow({ user_id: "user-4" })];
     unlabeledByUser.set("user-4", [
       txRow({ transaction_id: "txn-4", user_id: "user-4", merchant_name: "Grocery Store" }),
     ]);
-    // 10 rows averaging score 100 each (merchant-match) → quality = 1000/(10×107) ≈ 0.93
-    // > 0.30 floor → apply. Engine writes a fixed 0.98 confidence.
+    // 10 rows averaging score 100 each (merchant-match) → quality = 1000/(10×107) ≈ 0.935
+    // > 0.30 floor → apply. Stored confidence = quality (in band).
     signalRow = {
       label_category_id: "cat-groceries",
       label_budget_id: "bud-household",
@@ -240,16 +240,17 @@ describe("runAutoSuggestions", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0].values[0]).toBe("cat-groceries");
     expect(updates[0].values[1]).toBe("bud-household");
-    // Stored confidence is the fixed ENGINE_CONFIDENCE — quality drives
-    // the gate, not the stored value.
-    expect(updates[0].values[2]).toBe(0.98);
+    const confidence = updates[0].values[2] as number;
+    expect(confidence).toBeGreaterThan(0.5);
+    expect(confidence).toBeLessThan(0.98);
+    expect(confidence).toBeCloseTo(0.935, 2);
   });
 
-  test("stored confidence is exactly 0.98 regardless of quality magnitude", async () => {
-    // Tests the fixed-confidence invariant explicitly. Even an
-    // extremely strong signal (every row at max) writes 0.98 —
-    // distinguishes engine writes from API writes (0.99 reserved) and
-    // from user-confirmed writes (1.0 reserved).
+  test("a perfect-match signal clamps stored confidence to the 0.98 ceiling", async () => {
+    // Even at quality 1.0 (every row at max), the stored confidence
+    // tops out at the ENGINE_CONFIDENCE_CEIL. The ceiling protects the
+    // 0.99 reservation for `/api/suggest-category` and 1.0 for
+    // user-confirmed labels.
     userRows = [userRow({ user_id: "user-5" })];
     unlabeledByUser.set("user-5", [
       txRow({ transaction_id: "txn-5", user_id: "user-5", merchant_name: "Bookstore" }),
@@ -257,7 +258,7 @@ describe("runAutoSuggestions", () => {
     signalRow = {
       label_category_id: "cat-books",
       label_budget_id: "bud-leisure",
-      accepted: "10700", // 100 rows × 107 = perfect score
+      accepted: "10700", // 100 rows × 107 = perfect score → quality = 1.0
       count_matched: "100",
       rejected: "0",
     };
@@ -267,6 +268,31 @@ describe("runAutoSuggestions", () => {
     const updates = updateCalls(/UPDATE\s+transactions\b/i);
     expect(updates).toHaveLength(1);
     expect(updates[0].values[2]).toBe(0.98);
+  });
+
+  test("a borderline-quality signal clamps stored confidence to the 0.5 floor", async () => {
+    // A signal that just barely passes the 0.30 quality gate would
+    // produce a sub-0.5 stored confidence; the floor keeps the engine's
+    // output inside the documented contract band.
+    userRows = [userRow({ user_id: "user-6" })];
+    unlabeledByUser.set("user-6", [
+      txRow({ transaction_id: "txn-6", user_id: "user-6", merchant_name: "Borderline Inc" }),
+    ]);
+    // 4 rows averaging score ~32 each → quality = 128/(4×107) ≈ 0.299
+    // ↑ would actually fail the gate; bump slightly above. 130/(4×107) ≈ 0.304
+    signalRow = {
+      label_category_id: "cat-borderline",
+      label_budget_id: "bud-misc",
+      accepted: "130",
+      count_matched: "4",
+      rejected: "0",
+    };
+
+    await runAutoSuggestions();
+
+    const updates = updateCalls(/UPDATE\s+transactions\b/i);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].values[2]).toBe(0.5);
   });
 
   test("each unlabeled transaction triggers its own signal query (no per-merchant cache)", async () => {
@@ -345,7 +371,11 @@ describe("runAutoSuggestions", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0].values[0]).toBe("cat-groceries");
     expect(updates[0].values[1]).toBe("bud-household");
-    expect(updates[0].values[2]).toBe(0.98);
+    // Split fixture has merchant_name="Grocery Store" + name="Whole Foods" so
+    // max_per_row = W_AMOUNT(5) + W_ACCOUNT(1) + W_DAY(1) + W_MERCHANT(100) +
+    // W_NAME(50) + W_CHANNEL(1) = 157. Note channel is set "in store".
+    // Quality = 1000 / (10×157) ≈ 0.637. In-band → stored as-is.
+    expect(updates[0].values[2]).toBeCloseTo(0.637, 2);
     expect(updates[0].values[3]).toBe("split-1");
     expect(updates[0].values[4]).toBe("user-split-1");
   });

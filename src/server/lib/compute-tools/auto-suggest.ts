@@ -81,13 +81,16 @@ const ROW_SCORE_THRESHOLD = 15;
  *  and above the "weak-coincidence" ceiling — sweep optimum. */
 const MIN_QUALITY = 0.30;
 
-/** Engine-applied confidence value. Below the 0.99 reservation for the
- *  API `/api/suggest-category` endpoint and well below the 1.0 reserved
- *  for user-confirmed labels. Engine writes exactly this fixed value
- *  whenever the gate passes — the underlying quality metric is used to
- *  GATE, not to set the stored confidence. Mixing quality into the
- *  stored value would conflate provenance with strength of evidence. */
-const ENGINE_CONFIDENCE = 0.98;
+/** Lower bound of the engine-written confidence. Matches `MIN_QUALITY`'s
+ *  floor — a suggestion that just barely passes the gate ships at 0.5,
+ *  giving downstream UX a "weakly confident" signal. */
+const ENGINE_CONFIDENCE_FLOOR = 0.5;
+
+/** Upper bound of the engine-written confidence. Stays below the 0.99
+ *  reservation for the API `/api/suggest-category` endpoint and well
+ *  below the 1.0 reserved for user-confirmed labels. A perfect-match
+ *  signal ships at 0.98. */
+const ENGINE_CONFIDENCE_CEIL = 0.98;
 
 /** A target transaction's features, pre-extracted for the per-row
  *  scoring SQL. Optional fields fall back to NULL — the SQL treats NULL
@@ -207,8 +210,8 @@ const fetchUnlabeled = async (userId: string): Promise<UnlabeledTransaction[]> =
 // (`label_category_confidence IS NULL`). Between the unlabeled fetch and
 // this per-row call, a user may have confirmed the row in the UI (writing
 // `confidence = 1`). Without the IS-NULL guard, the engine would overwrite
-// that confirmation with its own ENGINE_CONFIDENCE write and replace the
-// user's chosen `category_id` / `budget_id` with the engine's pick.
+// that confirmation with its own sub-1.0 suggestion and replace the user's
+// chosen `category_id` / `budget_id` with the engine's pick.
 const applyLabel = async (
   transactionId: string,
   userId: string,
@@ -300,8 +303,10 @@ const applyLabelToSplit = async (
  * - Apply the suggestion if all three gates pass: `count_matched >= 3`
  *   (sample size), `rejected / (accepted + rejected) <= 0.1` (reject
  *   rate), `accepted / (count_matched × max_per_row) >= MIN_QUALITY`
- *   (per-row match strength). Stored confidence is the fixed
- *   `ENGINE_CONFIDENCE` (0.98).
+ *   (per-row match strength). Stored confidence is the quality value
+ *   itself, clamped to [ENGINE_CONFIDENCE_FLOOR, ENGINE_CONFIDENCE_CEIL]
+ *   = [0.5, 0.98] — variable so downstream UX can render "weakly
+ *   confident" vs "strongly confident" without re-deriving.
  *
  * Direct SQL is reserved for the feature-signal query, which uses pg_trgm
  * `similarity(...)` and a cross-table count (transactions +
@@ -351,16 +356,18 @@ export const runAutoSuggestions = async (): Promise<void> => {
 //      possible. Below the floor means the signal is dominated by
 //      weak-feature coincidences rather than identity-feature matches.
 //
-// All three must pass. When they do, write the engine's fixed
-// `ENGINE_CONFIDENCE` value (0.98) — the quality metric controls the
-// GATE, not the stored confidence.
+// When all three pass, the stored confidence is the quality value
+// itself, clamped to [ENGINE_CONFIDENCE_FLOOR, ENGINE_CONFIDENCE_CEIL].
+// This preserves "strength of evidence" through to downstream UX
+// while keeping engine writes inside the contract band (below 0.99
+// API reservation, below 1.0 user-confirmed).
 const evaluateSignal = (signal: FeatureSignal): number | null => {
   if (signal.count_matched < 3) return null;
   const totalLabeled = signal.accepted + signal.rejected;
   if (totalLabeled > 0 && signal.rejected / totalLabeled > 0.1) return null;
   const quality = signal.accepted / (signal.count_matched * signal.max_per_row);
   if (quality < MIN_QUALITY) return null;
-  return ENGINE_CONFIDENCE;
+  return Math.max(ENGINE_CONFIDENCE_FLOOR, Math.min(ENGINE_CONFIDENCE_CEIL, quality));
 };
 
 const processUserSuggestions = async (userId: string): Promise<number> => {
