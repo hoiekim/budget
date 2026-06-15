@@ -506,18 +506,39 @@ describe("runAutoSuggestions", () => {
       expect(sql).toMatch(/rc\.category_id\s*=\s*w\.label_category_id/);
     });
 
-    test("score expression sums all seven feature CASE branches", async () => {
+    test("score expression sums all seven feature CASE branches with per-feature weights", async () => {
       const sql = await captureSignalSql();
-      // Seven features, each contributing 1 to the row's score when
-      // matched. Asserting the structural shape catches a refactor
-      // that silently drops a feature.
-      expect(sql).toMatch(/similarity\(t\.merchant_name,\s*\$2\)/);
-      expect(sql).toMatch(/similarity\(t\.name,\s*\$4\)/);
-      expect(sql).toMatch(/t\.amount\s+BETWEEN\s+\$5\s+AND\s+\$6/);
-      expect(sql).toMatch(/t\.payment_channel\s*=\s*\$7/);
-      expect(sql).toMatch(/t\.account_id\s*=\s*\$8/);
-      expect(sql).toMatch(/personal_finance_category.+primary.+=\s*\$9/);
-      expect(sql).toMatch(/EXTRACT\(DAY\s+FROM\s+t\.date::date\)\s+BETWEEN\s+\$10\s+AND\s+\$11/i);
+      // Seven features, each contributing its weight when matched.
+      // Asserting the structural shape catches a refactor that
+      // silently drops a feature OR flattens all weights to 1 (which
+      // was the v1 design and got drowned by category volume).
+      expect(sql).toMatch(/similarity\(t\.merchant_name,\s*\$2\)\s*>=\s*\$3\s+THEN\s+100\s+ELSE\s+0/);
+      expect(sql).toMatch(/similarity\(t\.name,\s*\$4\)\s*>=\s*\$3\s+THEN\s+50\s+ELSE\s+0/);
+      expect(sql).toMatch(/t\.amount\s+BETWEEN\s+\$5\s+AND\s+\$6\s+THEN\s+5\s+ELSE\s+0/);
+      expect(sql).toMatch(/t\.payment_channel\s*=\s*\$7\s+THEN\s+1\s+ELSE\s+0/);
+      expect(sql).toMatch(/t\.account_id\s*=\s*\$8\s+THEN\s+1\s+ELSE\s+0/);
+      expect(sql).toMatch(
+        /personal_finance_category.+primary.+=\s*\$9\s+THEN\s+10\s+ELSE\s+0/,
+      );
+      expect(sql).toMatch(
+        /EXTRACT\(DAY\s+FROM\s+t\.date::date\)\s+BETWEEN\s+\$10\s+AND\s+\$11\s+THEN\s+1\s+ELSE\s+0/i,
+      );
+    });
+
+    test("merchant weight >> any single weak-feature weight (100 vs 1) so quality beats volume", async () => {
+      const sql = await captureSignalSql();
+      // Pin the relative weight ratio that makes the engine
+      // discriminative. If someone "rebalances" the weights to be
+      // closer (e.g. 5/3/2/1/1/2/1), broad-feature matches on
+      // popular categories drown out narrow-feature matches on the
+      // correct category. The 100x ratio between merchant and the
+      // weak features (channel/account/day) is what guarantees this.
+      const merchant = sql.match(/THEN\s+(\d+)\s+ELSE\s+0\s*END\)\s*$\s*\+\s*\(CASE WHEN \$4/m);
+      const channel = sql.match(/payment_channel\s*=\s*\$7\s+THEN\s+(\d+)/);
+      expect(merchant).toBeDefined();
+      expect(channel).toBeDefined();
+      const ratio = Number(merchant![1]) / Number(channel![1]);
+      expect(ratio).toBeGreaterThanOrEqual(50);
     });
 
     test("score expression appears in BOTH accepted and rejected subqueries (symmetric scoring)", async () => {
@@ -529,17 +550,14 @@ describe("runAutoSuggestions", () => {
       expect(scoreFragments.length).toBeGreaterThanOrEqual(2);
     });
 
-    test("winning category is picked by SUM(score) over top-K nearest neighbors", async () => {
+    test("winning category is picked by SUM(score) DESC", async () => {
       const sql = await captureSignalSql();
-      // The top-K cap (`LIMIT $12`) is what prevents category volume
-      // from drowning out feature quality — without it, a high-volume
-      // category beats a low-volume but high-feature-agreement
-      // category just on row count.
+      // No top-K cap — pure weighted SUM. The weights themselves
+      // make the engine quality-sensitive without a magic K.
       expect(sql).toMatch(/SUM\(score\)::int\s+AS\s+accepted/i);
       expect(sql).toMatch(/ORDER\s+BY\s+accepted\s+DESC/i);
       expect(sql).toMatch(/WITH\s+scored\s+AS/i);
-      expect(sql).toMatch(/top_k\s+AS/i);
-      expect(sql).toMatch(/ORDER\s+BY\s+score\s+DESC\s+LIMIT\s+\$12/i);
+      expect(sql).not.toMatch(/top_k\s+AS/i);
     });
 
     test("soft-deleted transactions are excluded from BOTH accepted and rejected counts", async () => {
@@ -603,9 +621,8 @@ describe("runAutoSuggestions", () => {
       const day = new Date().getUTCDate();
       expect(values[9]).toBe(day - 3);
       expect(values[10]).toBe(day + 3);
-      // $12 is the top-K cap.
-      expect(typeof values[11]).toBe("number");
-      expect(values[11] as number).toBeGreaterThan(0);
+      // 11 params total — no top-K cap.
+      expect(values).toHaveLength(11);
     });
   });
 });

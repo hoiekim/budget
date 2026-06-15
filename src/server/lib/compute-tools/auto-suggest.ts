@@ -34,16 +34,34 @@ const AMOUNT_BAND_TOLERANCE = 0.2;
  *  every match when the date falls on a weekend / holiday. */
 const DAY_BAND_TOLERANCE = 3;
 
-/** Nearest-neighbor pool size for the feature signal. Picking the top-K
- *  historical rows by feature-agreement score (instead of every row that
- *  matches at least one feature) prevents category volume from
- *  drowning out feature-quality. A user with 700 rows in their default
- *  category and 100 rows in groceries would otherwise out-vote the
- *  groceries category for a grocery target — because each broad-feature
- *  match adds 1 to the sum regardless of strength. The K cap forces
- *  scoring to compare apples to apples: only the most-similar K rows
- *  count, scored by their feature agreement. */
-const FEATURE_SIGNAL_TOP_K = 20;
+/** Per-feature weights for the per-row scoring expression. Weights
+ *  reflect each feature's discriminative power and were tuned against
+ *  the prod-clone E2E evaluation set:
+ *
+ *    - merchant_name: 100  → uniquely identifies a merchant; the
+ *      single strongest signal. Most user labels are merchant-driven.
+ *    - name: 50            → near-duplicate of merchant_name in most
+ *      cases, but informative when they diverge.
+ *    - plaid_pfc_primary: 10 → coarse but Plaid-curated category;
+ *      strong fallback when the merchant is unseen.
+ *    - amount band: 5      → recurring-amount patterns (rent, subs)
+ *      and amount-class patterns ($5 vs $500 vs $5000).
+ *    - payment_channel: 1, account_id: 1, day_band: 1 → low
+ *      discriminative power (only 3 channels, ~3 accounts, ±3 days
+ *      covers 20% of the month) — keep at 1 so they break ties
+ *      between high-merchant categories.
+ *
+ *  Weights are large enough that a row matching merchant alone (100)
+ *  beats a row matching all three weak features (3) by 33×. This is
+ *  what prevents category volume from drowning out feature quality.
+ *  See the live E2E results in the PR body for evaluation. */
+const W_MERCHANT_NAME = 100;
+const W_NAME = 50;
+const W_PFC = 10;
+const W_AMOUNT = 5;
+const W_PAYMENT_CHANNEL = 1;
+const W_ACCOUNT = 1;
+const W_DAY = 1;
 
 /** A target transaction's features, pre-extracted for the per-row
  *  scoring SQL. Optional fields fall back to NULL — the SQL treats NULL
@@ -333,9 +351,12 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
 /**
  * Build the per-row scoring expression for either ACCEPTED (against
  * `transactions`) or REJECTED (against `transactions` joined to
- * `rejected_categories`). Each feature contributes 1 to the row's score
- * if it matches the target; downstream the engine picks the top-K rows
- * by score and SUMs to amplify multi-feature agreement.
+ * `rejected_categories`). Each feature contributes its weight to the
+ * row's score if it matches the target; the SQL `SUM(score)` then
+ * aggregates per category. Weighted multi-feature agreement amplifies
+ * naturally — a row matching merchant + name + amount contributes
+ * 100+50+5 = 155, vs a row matching only weak features (channel +
+ * account + day) at 1+1+1 = 3.
  *
  * The `t` alias must point at the row whose features are being scored
  * (the historical `transactions` row in both code paths). Parameter
@@ -343,32 +364,31 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
  */
 const SCORE_EXPR = (t: string) => `(
   (CASE WHEN $2::text IS NOT NULL AND ${t}.merchant_name IS NOT NULL
-        AND similarity(${t}.merchant_name, $2) >= $3 THEN 1 ELSE 0 END)
+        AND similarity(${t}.merchant_name, $2) >= $3 THEN ${W_MERCHANT_NAME} ELSE 0 END)
 + (CASE WHEN $4::text IS NOT NULL AND ${t}.name IS NOT NULL
-        AND similarity(${t}.name, $4) >= $3 THEN 1 ELSE 0 END)
-+ (CASE WHEN ${t}.amount BETWEEN $5 AND $6 THEN 1 ELSE 0 END)
-+ (CASE WHEN $7::text IS NOT NULL AND ${t}.payment_channel = $7 THEN 1 ELSE 0 END)
-+ (CASE WHEN ${t}.account_id = $8 THEN 1 ELSE 0 END)
+        AND similarity(${t}.name, $4) >= $3 THEN ${W_NAME} ELSE 0 END)
++ (CASE WHEN ${t}.amount BETWEEN $5 AND $6 THEN ${W_AMOUNT} ELSE 0 END)
++ (CASE WHEN $7::text IS NOT NULL AND ${t}.payment_channel = $7 THEN ${W_PAYMENT_CHANNEL} ELSE 0 END)
++ (CASE WHEN ${t}.account_id = $8 THEN ${W_ACCOUNT} ELSE 0 END)
 + (CASE WHEN $9::text IS NOT NULL
-        AND (${t}.raw->'personal_finance_category'->>'primary') = $9 THEN 1 ELSE 0 END)
-+ (CASE WHEN EXTRACT(DAY FROM ${t}.date::date) BETWEEN $10 AND $11 THEN 1 ELSE 0 END)
+        AND (${t}.raw->'personal_finance_category'->>'primary') = $9 THEN ${W_PFC} ELSE 0 END)
++ (CASE WHEN EXTRACT(DAY FROM ${t}.date::date) BETWEEN $10 AND $11 THEN ${W_DAY} ELSE 0 END)
 )`;
 
 const getFeatureSignal = async (
   userId: string,
   f: TargetFeatures,
 ): Promise<FeatureSignal | null> => {
-  // Top-K nearest-neighbor scoring. Each historical confirmed row gets
-  // a per-row score (sum of 7 features matching the target); we keep
-  // the K most-similar rows, then SUM(score) per category to pick the
-  // winner. The K cap is essential — without it, a category with N
-  // broad-feature matches (account_id, day-of-month) drowns out a
-  // category with fewer but stronger merchant/name matches just on
-  // volume. K=20 was tuned against the prod-clone E2E set.
+  // Per-row score = weighted sum of feature matches (see
+  // W_MERCHANT_NAME, W_NAME, etc.). SUM(score) per category, winner =
+  // highest total. The weights are large enough that high-quality
+  // matches dominate category volume — a single merchant+name match
+  // (150) beats 50 weak-feature-only matches (50 × 3 = 150) on a tie,
+  // and decisively beats it after one more strong feature.
   //
-  // The rejected subquery applies the identical top-K shape on the
-  // (rejected_categories ⋈ transactions) join so the gate compares
-  // apples-to-apples.
+  // Symmetric on the rejected side: same SCORE_EXPR is applied to
+  // (rejected_categories ⋈ transactions) so the accept/reject gate
+  // compares two numbers from the same formula.
   const params = [
     userId, //                       $1
     f.merchant_name, //              $2 (or null)
@@ -381,7 +401,6 @@ const getFeatureSignal = async (
     f.plaid_pfc_primary, //          $9 (or null)
     f.day_lo, //                     $10
     f.day_hi, //                     $11
-    FEATURE_SIGNAL_TOP_K, //         $12
   ];
 
   const result = await pool.query(
@@ -393,16 +412,10 @@ const getFeatureSignal = async (
          AND t.label_category_confidence = 1.0
          AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
      ),
-     top_k AS (
-       SELECT label_category_id, score
-       FROM scored
-       WHERE score > 0
-       ORDER BY score DESC
-       LIMIT $12
-     ),
      winning AS (
        SELECT label_category_id, SUM(score)::int AS accepted
-       FROM top_k
+       FROM scored
+       WHERE score > 0
        GROUP BY label_category_id
        ORDER BY accepted DESC
        LIMIT 1
@@ -412,20 +425,15 @@ const getFeatureSignal = async (
        sections.budget_id AS label_budget_id,
        w.accepted,
        (
-         SELECT COALESCE(SUM(score)::int, 0)
-         FROM (
-           SELECT ${SCORE_EXPR("t")} AS score
-           FROM rejected_categories rc
-           JOIN transactions t
-             ON t.transaction_id = rc.transaction_id
-             AND t.user_id = rc.user_id
-           WHERE rc.user_id = $1
-             AND rc.category_id = w.label_category_id
-             AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
-         ) scored_rejected
-         WHERE score > 0
-         ORDER BY score DESC
-         LIMIT $12
+         SELECT COALESCE(SUM(${SCORE_EXPR("t")})::int, 0)
+         FROM rejected_categories rc
+         JOIN transactions t
+           ON t.transaction_id = rc.transaction_id
+           AND t.user_id = rc.user_id
+         WHERE rc.user_id = $1
+           AND rc.category_id = w.label_category_id
+           AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
+           AND ${SCORE_EXPR("t")} > 0
        ) AS rejected
      FROM winning w
      JOIN categories ON categories.category_id = w.label_category_id
