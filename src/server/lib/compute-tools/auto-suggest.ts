@@ -53,8 +53,7 @@ const DAY_BAND_TOLERANCE = 3;
  *
  *  Weights are large enough that a row matching merchant alone (100)
  *  beats a row matching all three weak features (3) by 33×. This is
- *  what prevents category volume from drowning out feature quality.
- *  See the live E2E results in the PR body for evaluation. */
+ *  what prevents category volume from drowning out feature quality. */
 const W_MERCHANT_NAME = 100;
 const W_NAME = 50;
 const W_PFC = 10;
@@ -208,7 +207,7 @@ const fetchUnlabeled = async (userId: string): Promise<UnlabeledTransaction[]> =
 // (`label_category_confidence IS NULL`). Between the unlabeled fetch and
 // this per-row call, a user may have confirmed the row in the UI (writing
 // `confidence = 1`). Without the IS-NULL guard, the engine would overwrite
-// that confirmation with its own 0.95-0.99 suggestion and replace the
+// that confirmation with its own ENGINE_CONFIDENCE write and replace the
 // user's chosen `category_id` / `budget_id` with the engine's pick.
 const applyLabel = async (
   transactionId: string,
@@ -292,12 +291,17 @@ const applyLabelToSplit = async (
  * - For each unlabeled transaction, query the user's confirmed history
  *   across seven features (merchant_name fuzzy, name fuzzy, amount band,
  *   payment_channel, account_id, plaid `personal_finance_category`
- *   primary, day-of-month band). A historical row qualifies if it matches
- *   on AT LEAST ONE feature; its score is the count of features it
- *   matched (1..7). SUM(score) per category — the natural amplification.
- * - If enough signal (>= 3 labeled, <= 10% reject rate, >= 95% confidence
- *   for best category), apply the suggestion with confidence = accepted /
- *   total (capped at 0.99).
+ *   primary, day-of-month band). Per-row score is the weighted sum of
+ *   matching features (W_MERCHANT_NAME=100, W_NAME=50, W_PFC=10,
+ *   W_AMOUNT=5, the rest at 1).
+ * - Only rows whose score clears `ROW_SCORE_THRESHOLD` contribute —
+ *   filters out coincidental weak-only matches. SUM(score) per category
+ *   picks the winner.
+ * - Apply the suggestion if all three gates pass: `count_matched >= 3`
+ *   (sample size), `rejected / (accepted + rejected) <= 0.1` (reject
+ *   rate), `accepted / (count_matched × max_per_row) >= MIN_QUALITY`
+ *   (per-row match strength). Stored confidence is the fixed
+ *   `ENGINE_CONFIDENCE` (0.98).
  *
  * Direct SQL is reserved for the feature-signal query, which uses pg_trgm
  * `similarity(...)` and a cross-table count (transactions +
@@ -362,13 +366,11 @@ const evaluateSignal = (signal: FeatureSignal): number | null => {
 const processUserSuggestions = async (userId: string): Promise<number> => {
   let suggested = 0;
 
-  // No per-merchant cache anymore — the signal depends on the full
-  // feature set of EACH target, so two unlabeled transactions with the
-  // same merchant but different amounts / channels would (correctly)
-  // get different signals. Cache hit rate would be near-zero and a
-  // stale cache would produce wrong predictions. Per-target queries
-  // are cheap (one round-trip each) and bounded by the 7-day unlabeled
-  // window.
+  // One signal query per unlabeled target. The signal depends on the
+  // full target feature set — two unlabeled transactions with the same
+  // merchant but different amounts / channels get different signals —
+  // so a per-merchant cache would produce wrong predictions. The
+  // unlabeled pool is bounded by the 7-day window in `fetchUnlabeled`.
 
   // Pass 1: top-level transactions.
   const unlabeled = await fetchUnlabeled(userId);
