@@ -153,16 +153,25 @@ describe("runAutoSuggestions", () => {
     expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
   });
 
-  test("skips transaction when total_labeled < 3", async () => {
+  // The default txRow fixture has merchant_name="Coffee Shop", amount=5,
+  // account_id="acc-1", payment_channel=null, raw=null. So max_per_row
+  // for these targets = W_AMOUNT(5) + W_ACCOUNT(1) + W_DAY(1) +
+  // W_MERCHANT_NAME(100) = 107. (name=null skips W_NAME; raw=null
+  // skips W_PFC; payment_channel=null skips W_PAYMENT_CHANNEL.)
+  // Tests below use signal rows whose accepted/count_matched values
+  // produce known quality = accepted / (count_matched × 107).
+
+  test("skips when count_matched < 3 (sample-size floor)", async () => {
     userRows = [userRow({ user_id: "user-1" })];
     unlabeledByUser.set("user-1", [
       txRow({ transaction_id: "txn-1", user_id: "user-1", merchant_name: "Coffee Shop" }),
     ]);
-    // Only 2 labeled — below threshold of 3.
+    // count_matched = 2 — below the floor of 3.
     signalRow = {
       label_category_id: "cat-1",
       label_budget_id: "bud-1",
-      accepted: "2",
+      accepted: "200", // strong (avg 100/row) but count too low
+      count_matched: "2",
       rejected: "0",
     };
 
@@ -171,42 +180,57 @@ describe("runAutoSuggestions", () => {
     expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
   });
 
-  test("skips when reject_rate > 0.1", async () => {
+  test("skips when reject rate > 0.1", async () => {
     userRows = [userRow({ user_id: "user-2" })];
     unlabeledByUser.set("user-2", [
       txRow({ transaction_id: "txn-2", user_id: "user-2", merchant_name: "Restaurant" }),
     ]);
-    // 8 accepted, 2 rejected → reject_rate = 0.2 > 0.1 → skip.
-    signalRow = { label_category_id: "cat-2", label_budget_id: "bud-2", accepted: "8", rejected: "2" };
+    // 800 accepted vs 200 rejected → reject rate = 0.20 > 0.10 → skip.
+    signalRow = {
+      label_category_id: "cat-2",
+      label_budget_id: "bud-2",
+      accepted: "800",
+      count_matched: "10",
+      rejected: "200",
+    };
 
     await runAutoSuggestions();
 
     expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
   });
 
-  test("skips when confidence < 0.95", async () => {
+  test("skips when quality < MIN_QUALITY (0.30)", async () => {
     userRows = [userRow({ user_id: "user-3" })];
     unlabeledByUser.set("user-3", [
       txRow({ transaction_id: "txn-3", user_id: "user-3", merchant_name: "Gas Station" }),
     ]);
-    // 3 accepted, 1 rejected → confidence = 3/4 = 0.75 < 0.95 → skip.
-    signalRow = { label_category_id: "cat-3", label_budget_id: "bud-3", accepted: "3", rejected: "1" };
+    // 50 rows averaging score 30 each → quality = (50×30) / (50×107) ≈ 0.28
+    // — below the 0.30 floor — skip.
+    signalRow = {
+      label_category_id: "cat-3",
+      label_budget_id: "bud-3",
+      accepted: "1500",
+      count_matched: "50",
+      rejected: "0",
+    };
 
     await runAutoSuggestions();
 
     expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
   });
 
-  test("applies suggestion and caps confidence at 0.99", async () => {
+  test("applies suggestion at fixed ENGINE_CONFIDENCE (0.98) when all gates pass", async () => {
     userRows = [userRow({ user_id: "user-4" })];
     unlabeledByUser.set("user-4", [
       txRow({ transaction_id: "txn-4", user_id: "user-4", merchant_name: "Grocery Store" }),
     ]);
-    // 10 accepted, 0 rejected → confidence = 1.0 → caps at 0.99.
+    // 10 rows averaging score 100 each (merchant-match) → quality = 1000/(10×107) ≈ 0.93
+    // > 0.30 floor → apply. Engine writes a fixed 0.98 confidence.
     signalRow = {
       label_category_id: "cat-groceries",
       label_budget_id: "bud-household",
-      accepted: "10",
+      accepted: "1000",
+      count_matched: "10",
       rejected: "0",
     };
 
@@ -214,34 +238,35 @@ describe("runAutoSuggestions", () => {
 
     const updates = updateCalls(/UPDATE\s+transactions\b/i);
     expect(updates).toHaveLength(1);
-    // buildUpdate emits "SET label_category_id = $1, label_budget_id = $2,
-    // label_category_confidence = $3 WHERE transaction_id = $4 AND user_id = $5".
-    // Confidence is the 3rd param.
     expect(updates[0].values[0]).toBe("cat-groceries");
     expect(updates[0].values[1]).toBe("bud-household");
-    expect(updates[0].values[2]).toBe(0.99);
+    // Stored confidence is the fixed ENGINE_CONFIDENCE — quality drives
+    // the gate, not the stored value.
+    expect(updates[0].values[2]).toBe(0.98);
   });
 
-  test("computes exact confidence when ratio is between 0.95 and 0.99", async () => {
+  test("stored confidence is exactly 0.98 regardless of quality magnitude", async () => {
+    // Tests the fixed-confidence invariant explicitly. Even an
+    // extremely strong signal (every row at max) writes 0.98 —
+    // distinguishes engine writes from API writes (0.99 reserved) and
+    // from user-confirmed writes (1.0 reserved).
     userRows = [userRow({ user_id: "user-5" })];
     unlabeledByUser.set("user-5", [
       txRow({ transaction_id: "txn-5", user_id: "user-5", merchant_name: "Bookstore" }),
     ]);
-    // 95 accepted, 1 rejected → confidence = 95/96 ≈ 0.98958… → applied as-is.
     signalRow = {
       label_category_id: "cat-books",
       label_budget_id: "bud-leisure",
-      accepted: "95",
-      rejected: "1",
+      accepted: "10700", // 100 rows × 107 = perfect score
+      count_matched: "100",
+      rejected: "0",
     };
 
     await runAutoSuggestions();
 
     const updates = updateCalls(/UPDATE\s+transactions\b/i);
     expect(updates).toHaveLength(1);
-    const conf = updates[0].values[2] as number;
-    expect(conf).toBeGreaterThan(0.95);
-    expect(conf).toBeLessThan(0.99);
+    expect(updates[0].values[2]).toBe(0.98);
   });
 
   test("each unlabeled transaction triggers its own signal query (no per-merchant cache)", async () => {
@@ -257,7 +282,8 @@ describe("runAutoSuggestions", () => {
     signalRow = {
       label_category_id: "cat-x",
       label_budget_id: "bud-x",
-      accepted: "5",
+      accepted: "500",
+      count_matched: "5",
       rejected: "0",
     };
 
@@ -308,7 +334,8 @@ describe("runAutoSuggestions", () => {
     signalRow = {
       label_category_id: "cat-groceries",
       label_budget_id: "bud-household",
-      accepted: "10",
+      accepted: "1000",
+      count_matched: "10",
       rejected: "0",
     };
 
@@ -318,7 +345,7 @@ describe("runAutoSuggestions", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0].values[0]).toBe("cat-groceries");
     expect(updates[0].values[1]).toBe("bud-household");
-    expect(updates[0].values[2]).toBe(0.99);
+    expect(updates[0].values[2]).toBe(0.98);
     expect(updates[0].values[3]).toBe("split-1");
     expect(updates[0].values[4]).toBe("user-split-1");
   });
@@ -339,7 +366,14 @@ describe("runAutoSuggestions", () => {
         date: new Date().toISOString().slice(0, 10),
       },
     ]);
-    signalRow = { label_category_id: "cat-y", label_budget_id: "bud-y", accepted: "8", rejected: "2" };
+    // 800 accepted / 200 rejected → reject rate 20% > 10% → skip both passes.
+    signalRow = {
+      label_category_id: "cat-y",
+      label_budget_id: "bud-y",
+      accepted: "800",
+      count_matched: "10",
+      rejected: "200",
+    };
 
     await runAutoSuggestions();
 
@@ -406,7 +440,8 @@ describe("runAutoSuggestions", () => {
       signalRow = {
         label_category_id: "cat-cas",
         label_budget_id: "bud-cas",
-        accepted: "10",
+        accepted: "1000",
+        count_matched: "10",
         rejected: "0",
       };
 
@@ -436,7 +471,8 @@ describe("runAutoSuggestions", () => {
       signalRow = {
         label_category_id: "cat-cas",
         label_budget_id: "bud-cas",
-        accepted: "10",
+        accepted: "1000",
+        count_matched: "10",
         rejected: "0",
       };
 
@@ -476,7 +512,8 @@ describe("runAutoSuggestions", () => {
       signalRow = {
         label_category_id: "cat-shape",
         label_budget_id: "bud-shape",
-        accepted: "5",
+        accepted: "500",
+        count_matched: "5",
         rejected: "0",
       };
       await runAutoSuggestions();
@@ -550,13 +587,16 @@ describe("runAutoSuggestions", () => {
       expect(scoreFragments.length).toBeGreaterThanOrEqual(2);
     });
 
-    test("winning category is picked by SUM(score) DESC", async () => {
+    test("winning category is picked by SUM(score) DESC + COUNT(*) AS count_matched", async () => {
       const sql = await captureSignalSql();
-      // No top-K cap — pure weighted SUM. The weights themselves
-      // make the engine quality-sensitive without a magic K.
+      // Weighted SUM with a per-row threshold (score > $12) filters
+      // out coincidental weak-only matches. COUNT(*) carries the
+      // matched-row count out for the quality metric on the gate side.
       expect(sql).toMatch(/SUM\(score\)::int\s+AS\s+accepted/i);
+      expect(sql).toMatch(/COUNT\(\*\)::int\s+AS\s+count_matched/i);
       expect(sql).toMatch(/ORDER\s+BY\s+accepted\s+DESC/i);
       expect(sql).toMatch(/WITH\s+scored\s+AS/i);
+      expect(sql).toMatch(/WHERE\s+score\s*>\s*\$12/i);
       expect(sql).not.toMatch(/top_k\s+AS/i);
     });
 
@@ -621,8 +661,12 @@ describe("runAutoSuggestions", () => {
       const day = new Date().getUTCDate();
       expect(values[9]).toBe(day - 3);
       expect(values[10]).toBe(day + 3);
-      // 11 params total — no top-K cap.
-      expect(values).toHaveLength(11);
+      // $12 is the per-row score threshold (ROW_SCORE_THRESHOLD) —
+      // a row only contributes to the SUM if its score exceeds this.
+      expect(typeof values[11]).toBe("number");
+      expect(values[11] as number).toBeGreaterThan(0);
+      // 12 params total.
+      expect(values).toHaveLength(12);
     });
   });
 });

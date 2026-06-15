@@ -63,6 +63,33 @@ const W_PAYMENT_CHANNEL = 1;
 const W_ACCOUNT = 1;
 const W_DAY = 1;
 
+/** Minimum per-row score for a historical confirmed row to count as a
+ *  meaningful match. A score of 15 means the row matched at least one
+ *  identity-like signal — e.g., merchant alone (100), name alone (50),
+ *  or pfc + amount + a weak feature (16). Rows that ONLY matched the
+ *  weak feature trio (amount + channel + day = 7, account-only = 1)
+ *  are coincidences, not signal, and would otherwise drown out real
+ *  matches by volume. Tuned against the prod-clone evaluation sweep:
+ *  raising from 8 → 15 nearly doubled recall without losing precision. */
+const ROW_SCORE_THRESHOLD = 15;
+
+/** Minimum quality (avg per-row score / max-possible-per-row) before
+ *  the engine writes a suggestion. Quality measures HOW STRONG the
+ *  average match is, not how many matches exist. A null-merchant
+ *  target whose entire matching pool is "name match + amount" averages
+ *  ~50% of max possible; a target with extensive merchant history
+ *  averages 80%+. 0.30 sits below the typical "true signal" floor
+ *  and above the "weak-coincidence" ceiling — sweep optimum. */
+const MIN_QUALITY = 0.30;
+
+/** Engine-applied confidence value. Below the 0.99 reservation for the
+ *  API `/api/suggest-category` endpoint and well below the 1.0 reserved
+ *  for user-confirmed labels. Engine writes exactly this fixed value
+ *  whenever the gate passes — the underlying quality metric is used to
+ *  GATE, not to set the stored confidence. Mixing quality into the
+ *  stored value would conflate provenance with strength of evidence. */
+const ENGINE_CONFIDENCE = 0.98;
+
 /** A target transaction's features, pre-extracted for the per-row
  *  scoring SQL. Optional fields fall back to NULL — the SQL treats NULL
  *  as "this feature doesn't contribute" so a target with no
@@ -97,16 +124,26 @@ interface FeatureSignal {
   // the account default), and a category whose actual parent budget is
   // neither of those is missing from the option list.
   label_budget_id: string;
-  /** Sum of per-row feature counts across the user's confirmed history
-   *  matching at least one feature of the target. A row that hit 4
-   *  features contributes 4×; a row that hit 1 feature contributes 1×.
-   *  Naturally amplifies multi-feature agreement without a separate
-   *  scoring pass. */
+  /** Sum of per-row weighted feature scores across the user's confirmed
+   *  history, restricted to rows whose per-row score cleared
+   *  `ROW_SCORE_THRESHOLD`. Multi-feature agreement amplifies naturally
+   *  via the weights. */
   accepted: number;
-  /** Same shape on `rejected_categories`. A rejection that's tied to a
-   *  transaction matching 3 features of the target contributes 3 to the
-   *  rejected score — preserves the symmetry with accepted. */
+  /** Symmetric weighted sum on `rejected_categories` ⋈ `transactions`
+   *  (also threshold-gated). The accept/reject gate compares two
+   *  numbers from the same formula. */
   rejected: number;
+  /** Number of historical confirmed rows that cleared the per-row
+   *  threshold AND ended up in the winning category. Used to compute
+   *  the quality metric: `accepted / (count_matched × max_per_row)`. */
+  count_matched: number;
+  /** Maximum per-row score the target could possibly receive — sum of
+   *  the weights for features the target has populated. A null-merchant
+   *  target's max excludes the W_MERCHANT_NAME = 100 weight; a target
+   *  with no Plaid PFC excludes W_PFC = 10. The quality metric divides
+   *  `accepted` by `count_matched × max_per_row` to measure average
+   *  per-row match quality — independent of category volume. */
+  max_per_row: number;
 }
 
 interface UnlabeledTransaction {
@@ -138,6 +175,18 @@ const featuresFromRow = (row: Record<string, unknown>): TargetFeatures => {
     day_lo: day - DAY_BAND_TOLERANCE,
     day_hi: day + DAY_BAND_TOLERANCE,
   };
+};
+
+/** Sum the weights of features the target has populated. A null
+ *  feature can never match, so its weight can never contribute — the
+ *  quality denominator must exclude it to keep the metric in [0, 1]. */
+const maxPerRowFor = (f: TargetFeatures): number => {
+  let max = W_AMOUNT + W_ACCOUNT + W_DAY; // always-present features
+  if (f.merchant_name) max += W_MERCHANT_NAME;
+  if (f.name) max += W_NAME;
+  if (f.payment_channel) max += W_PAYMENT_CHANNEL;
+  if (f.plaid_pfc_primary) max += W_PFC;
+  return max;
 };
 
 const fetchUnlabeled = async (userId: string): Promise<UnlabeledTransaction[]> => {
@@ -283,17 +332,31 @@ export const runAutoSuggestions = async (): Promise<void> => {
   });
 };
 
-// Score a per-target signal against the gates. Returns the capped
-// confidence to apply (in [0, 1)), or null if any gate fails.
+// Score a per-target signal against the three gates:
+//
+//   1. Count gate — at least 3 historical confirmed rows must have
+//      cleared the per-row threshold and ended up in the winning
+//      category. Sample-size floor.
+//
+//   2. Reject rate — weighted rejection score must be < 10% of the
+//      accept/reject total. The user explicitly rejected this category
+//      for similar transactions; back off.
+//
+//   3. Quality — average per-row score across the winning category's
+//      matched rows must be at least `MIN_QUALITY` of the maximum
+//      possible. Below the floor means the signal is dominated by
+//      weak-feature coincidences rather than identity-feature matches.
+//
+// All three must pass. When they do, write the engine's fixed
+// `ENGINE_CONFIDENCE` value (0.98) — the quality metric controls the
+// GATE, not the stored confidence.
 const evaluateSignal = (signal: FeatureSignal): number | null => {
+  if (signal.count_matched < 3) return null;
   const totalLabeled = signal.accepted + signal.rejected;
-  if (totalLabeled < 3) return null;
-  const rejectRate = signal.rejected / totalLabeled;
-  if (rejectRate > 0.1) return null;
-  const confidence = signal.accepted / totalLabeled;
-  if (confidence < 0.95) return null;
-  // Cap at 0.99 — 1.0 is reserved for user-confirmed labels.
-  return Math.min(confidence, 0.99);
+  if (totalLabeled > 0 && signal.rejected / totalLabeled > 0.1) return null;
+  const quality = signal.accepted / (signal.count_matched * signal.max_per_row);
+  if (quality < MIN_QUALITY) return null;
+  return ENGINE_CONFIDENCE;
 };
 
 const processUserSuggestions = async (userId: string): Promise<number> => {
@@ -401,6 +464,7 @@ const getFeatureSignal = async (
     f.plaid_pfc_primary, //          $9 (or null)
     f.day_lo, //                     $10
     f.day_hi, //                     $11
+    ROW_SCORE_THRESHOLD, //          $12
   ];
 
   const result = await pool.query(
@@ -413,9 +477,11 @@ const getFeatureSignal = async (
          AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
      ),
      winning AS (
-       SELECT label_category_id, SUM(score)::int AS accepted
+       SELECT label_category_id,
+              SUM(score)::int AS accepted,
+              COUNT(*)::int AS count_matched
        FROM scored
-       WHERE score > 0
+       WHERE score > $12
        GROUP BY label_category_id
        ORDER BY accepted DESC
        LIMIT 1
@@ -424,6 +490,7 @@ const getFeatureSignal = async (
        w.label_category_id,
        sections.budget_id AS label_budget_id,
        w.accepted,
+       w.count_matched,
        (
          SELECT COALESCE(SUM(${SCORE_EXPR("t")})::int, 0)
          FROM rejected_categories rc
@@ -433,7 +500,7 @@ const getFeatureSignal = async (
          WHERE rc.user_id = $1
            AND rc.category_id = w.label_category_id
            AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
-           AND ${SCORE_EXPR("t")} > 0
+           AND ${SCORE_EXPR("t")} > $12
        ) AS rejected
      FROM winning w
      JOIN categories ON categories.category_id = w.label_category_id
@@ -448,6 +515,7 @@ const getFeatureSignal = async (
     label_category_id: string;
     label_budget_id: string;
     accepted: string;
+    count_matched: string;
     rejected: string;
   };
   return {
@@ -455,5 +523,7 @@ const getFeatureSignal = async (
     label_budget_id: row.label_budget_id,
     accepted: Number(row.accepted),
     rejected: Number(row.rejected),
+    count_matched: Number(row.count_matched),
+    max_per_row: maxPerRowFor(f),
   };
 };
