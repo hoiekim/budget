@@ -120,6 +120,7 @@ export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRo
         category_id: this.label_category_id,
         memo: this.label_memo,
       },
+      is_deleted: this.is_deleted ?? false,
     };
   }
 

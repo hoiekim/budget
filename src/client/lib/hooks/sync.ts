@@ -152,6 +152,16 @@ const fetchTransactions = async (
     networkFailed: false,
   };
 
+  // Tombstones collected from any month's response. Applied at the end
+  // so eviction wins regardless of which parallel response arrived
+  // last — mirrors the snapshot-side handling and avoids a stale
+  // `cachedCall` response re-adding a row the live query already
+  // marked deleted.
+  const tombstones = {
+    transaction: new Set<string>(),
+    investmentTransaction: new Set<string>(),
+  };
+
   const transactionsApiPath = "/api/transactions";
   const viewDate = new ViewDate("month");
   // Walk back to the first month whose start < range.until.
@@ -167,6 +177,9 @@ const fetchTransactions = async (
       params.append("start-date", getDateString(startDate));
       params.append("end-date", getDateString(endDate));
       params.append("account-id", a.id);
+      // Route hardcodes `includeDeleted: true` (matches snapshots) — the
+      // soft-deleted rows arrive as tombstones in the response and are
+      // dropped from `result.transactions` / IDB below.
       const path = transactionsApiPath + "?" + params.toString();
       const isRecent = endDate.getTime() >= recentSinceMs;
 
@@ -185,9 +198,17 @@ const fetchTransactions = async (
 
         const { transactions, investmentTransactions } = response.body;
         transactions.forEach((t) => {
+          if (t.is_deleted) {
+            tombstones.transaction.add(t.transaction_id);
+            return;
+          }
           result.transactions.set(t.transaction_id, new Transaction(t));
         });
         investmentTransactions.forEach((t) => {
+          if (t.is_deleted) {
+            tombstones.investmentTransaction.add(t.investment_transaction_id);
+            return;
+          }
           result.investmentTransactions.set(
             t.investment_transaction_id,
             new InvestmentTransaction(t),
@@ -203,6 +224,22 @@ const fetchTransactions = async (
   }
 
   await Promise.all(promises);
+
+  // Apply tombstones after every parallel ingest has landed — same
+  // semantics as the snapshot path. The eager `indexedDb.remove` is
+  // load-bearing for the partial-failure branch in `useSync` (line
+  // ~671): when any fetch fails, `clearAllData → saveAllData` is
+  // skipped, so the only thing that drops the tombstoned row from IDB
+  // is this explicit remove. (The happy-path branches still
+  // clear-then-save from `result`, which would also drop it.)
+  tombstones.transaction.forEach((id) => {
+    result.transactions.delete(id);
+    indexedDb.remove(StoreName.transactions, id).catch(console.error);
+  });
+  tombstones.investmentTransaction.forEach((id) => {
+    result.investmentTransactions.delete(id);
+    indexedDb.remove(StoreName.investmentTransactions, id).catch(console.error);
+  });
 
   return result;
 };

@@ -159,6 +159,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
       authorized_datetime: null,
       datetime: null,
       transaction_code: null,
+      is_deleted: this.is_deleted ?? false,
     };
   }
 
