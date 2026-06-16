@@ -152,6 +152,16 @@ const fetchTransactions = async (
     networkFailed: false,
   };
 
+  // Tombstones collected from any month's response. Applied at the end
+  // so eviction wins regardless of which parallel response arrived
+  // last — mirrors the snapshot-side handling and avoids a stale
+  // `cachedCall` response re-adding a row the live query already
+  // marked deleted.
+  const tombstones = {
+    transaction: new Set<string>(),
+    investmentTransaction: new Set<string>(),
+  };
+
   const transactionsApiPath = "/api/transactions";
   const viewDate = new ViewDate("month");
   // Walk back to the first month whose start < range.until.
@@ -167,6 +177,12 @@ const fetchTransactions = async (
       params.append("start-date", getDateString(startDate));
       params.append("end-date", getDateString(endDate));
       params.append("account-id", a.id);
+      // Receive soft-deleted rows as tombstones so the FE can evict them
+      // from IDB + dict. The server's `is_deleted` filter is otherwise
+      // unconditional; without this param a server-side
+      // `softDelete`/Plaid-`removed` propagation is invisible to the
+      // client until the per-month Cache API key rolls over.
+      params.append("include-deleted", "true");
       const path = transactionsApiPath + "?" + params.toString();
       const isRecent = endDate.getTime() >= recentSinceMs;
 
@@ -185,9 +201,17 @@ const fetchTransactions = async (
 
         const { transactions, investmentTransactions } = response.body;
         transactions.forEach((t) => {
+          if (t.is_deleted) {
+            tombstones.transaction.add(t.transaction_id);
+            return;
+          }
           result.transactions.set(t.transaction_id, new Transaction(t));
         });
         investmentTransactions.forEach((t) => {
+          if (t.is_deleted) {
+            tombstones.investmentTransaction.add(t.investment_transaction_id);
+            return;
+          }
           result.investmentTransactions.set(
             t.investment_transaction_id,
             new InvestmentTransaction(t),
@@ -203,6 +227,21 @@ const fetchTransactions = async (
   }
 
   await Promise.all(promises);
+
+  // Apply tombstones after every parallel ingest has landed — same
+  // semantics as the snapshot path: drop from the dict (in case a
+  // stale `cachedCall` response re-added the row) AND evict from IDB
+  // directly (the downstream `saveAllData` is additive — it never
+  // DROPS rows absent from a result dict, so without the explicit
+  // IDB.remove the row stays cached forever).
+  tombstones.transaction.forEach((id) => {
+    result.transactions.delete(id);
+    indexedDb.remove(StoreName.transactions, id).catch(console.error);
+  });
+  tombstones.investmentTransaction.forEach((id) => {
+    result.investmentTransactions.delete(id);
+    indexedDb.remove(StoreName.investmentTransactions, id).catch(console.error);
+  });
 
   return result;
 };

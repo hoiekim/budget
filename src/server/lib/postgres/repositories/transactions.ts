@@ -32,6 +32,12 @@ export interface SearchTransactionsOptions {
   pending?: boolean;
   limit?: number;
   offset?: number;
+  /** When true, soft-deleted (`is_deleted = TRUE`) rows are INCLUDED in
+   *  the response so the client can treat them as tombstones and evict
+   *  them from its local cache (IDB + in-memory dict). Defaults to
+   *  `false` — consumers that filter to active-only rows (the engine,
+   *  the sync-plaid delta computation) keep their previous behavior. */
+  includeDeleted?: boolean;
 }
 
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
@@ -50,6 +56,7 @@ export const getTransactions = async (
     orderBy: `${DATE} DESC`,
     limit: options.limit,
     offset: options.offset,
+    excludeDeleted: !options.includeDeleted,
   });
   const result = await pool.query<Record<string, unknown>>(sql, values);
   return result.rows.map((row) => new TransactionModel(row).toJSON());
@@ -86,6 +93,7 @@ export const searchTransactions = async (
     orderBy: `${DATE} DESC`,
     limit: options.limit,
     offset: options.offset,
+    excludeDeleted: !options.includeDeleted,
   });
   const result = await pool.query<Record<string, unknown>>(sql, values);
   const investment_transactions = result.rows.map((row) => new InvTxModel(row).toJSON());
