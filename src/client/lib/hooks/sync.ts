@@ -873,16 +873,21 @@ export const useSync = () => {
       });
 
       let stage3Transactions: FetchTransactionsResult | null = null;
+      let stage3SplitTxns: FetchSplitTransactionsResult | null = null;
       let stage3Snapshots: FetchSnapshotsResult | null = null;
       if (olderFrom < olderUntil) {
-        [stage3Transactions, stage3Snapshots] = await Promise.all([
+        [stage3Transactions, stage3SplitTxns, stage3Snapshots] = await Promise.all([
           fetchTransactions(accounts, olderRange),
+          fetchSplitTransactions(accounts, olderRange),
           fetchSnapshots(accounts, olderRange),
         ]);
 
         stage3Transactions.transactions.forEach((t, id) => finalData.transactions.set(id, t));
         stage3Transactions.investmentTransactions.forEach((t, id) =>
           finalData.investmentTransactions.set(id, t),
+        );
+        stage3SplitTxns.splitTransactions.forEach((s, id) =>
+          finalData.splitTransactions.set(id, s),
         );
         stage3Snapshots.accountSnapshots.forEach((s, id) => finalData.accountSnapshots.set(id, s));
         stage3Snapshots.holdingSnapshots.forEach((s, id) => finalData.holdingSnapshots.set(id, s));
@@ -909,6 +914,7 @@ export const useSync = () => {
         stage2SplitTxns.networkFailed ||
         stage2Snapshots.networkFailed ||
         (stage3Transactions?.networkFailed ?? false) ||
+        (stage3SplitTxns?.networkFailed ?? false) ||
         (stage3Snapshots?.networkFailed ?? false);
 
       if (!coldFetchFailed) {
