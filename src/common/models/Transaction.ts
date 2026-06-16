@@ -99,6 +99,11 @@ export interface JSONSplitTransaction {
    * Represents relations by pair of budget_id and category_id
    */
   label: JSONTransactionLabel;
+  /** Soft-delete marker — same tombstone semantics as
+   *  `JSONTransaction.is_deleted`. Always present on rows from
+   *  `/api/split-transactions` (the route hardcodes
+   *  `includeDeleted: true`, matching transactions + snapshots). */
+  is_deleted?: boolean;
 }
 
 export interface RemovedSplitTransaction {

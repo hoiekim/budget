@@ -7,14 +7,23 @@ import {
   TRANSACTION_ID,
   ACCOUNT_ID,
   USER_ID,
+  UPDATED,
+  DATE,
   QueryExecutor,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { pool } from "../client";
+import { buildSelectWithFilters, UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { logger } from "../../logger";
 
 export interface SearchSplitTransactionsOptions {
   transaction_id?: string;
   account_id?: string;
+  startDate?: string;
+  endDate?: string;
+  /** When true, soft-deleted (`is_deleted = TRUE`) rows are INCLUDED in
+   *  the response so the client can treat them as tombstones and evict
+   *  them from its local cache. Defaults to `false`. */
+  includeDeleted?: boolean;
 }
 
 export type PartialSplitTransaction = {
@@ -52,12 +61,22 @@ export const searchSplitTransactions = async (
   user: MaskedUser,
   options: SearchSplitTransactionsOptions = {},
 ): Promise<JSONSplitTransaction[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = {};
   if (options.transaction_id) filters[TRANSACTION_ID] = options.transaction_id;
   if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
 
-  const models = await splitTransactionsTable.query(filters);
-  return models.map((m) => m.toJSON());
+  const { sql, values } = buildSelectWithFilters("split_transactions", "*", {
+    user_id: user.user_id,
+    filters,
+    dateRange:
+      options.startDate || options.endDate
+        ? { column: UPDATED, start: options.startDate, end: options.endDate }
+        : undefined,
+    orderBy: `${DATE} DESC`,
+    excludeDeleted: !options.includeDeleted,
+  });
+  const result = await pool.query<Record<string, unknown>>(sql, values);
+  return result.rows.map((row) => new SplitTransactionModel(row).toJSON());
 };
 
 export const upsertSplitTransactions = async (

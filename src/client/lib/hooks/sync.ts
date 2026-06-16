@@ -249,21 +249,67 @@ interface FetchSplitTransactionsResult {
   networkFailed: boolean;
 }
 
-const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> => {
+const fetchSplitTransactions = async (
+  accounts: AccountDictionary,
+  range: FetchRange,
+  recentSinceMs: number = Date.now() - THIRTY_DAYS,
+): Promise<FetchSplitTransactionsResult> => {
   const result: FetchSplitTransactionsResult = {
     splitTransactions: new SplitTransactionDictionary(),
     networkFailed: false,
   };
 
-  const response = await call
-    .get<SplitTransactionsGetResponse>("/api/split-transactions")
-    .catch(console.error);
-  if (!response || response.status === "error") {
-    result.networkFailed = true;
-    return result;
+  const tombstones = new Set<string>();
+
+  const splitsApiPath = "/api/split-transactions";
+  const viewDate = new ViewDate("month");
+  while (viewDate.getStartDate() >= range.until) viewDate.previous();
+
+  const promises: Promise<void>[] = [];
+
+  while (range.from < viewDate.getStartDate()) {
+    accounts?.forEach((a) => {
+      const params = new URLSearchParams();
+      const startDate = viewDate.getStartDate();
+      const endDate = viewDate.clone().next().getStartDate();
+      params.append("start-date", getDateString(startDate));
+      params.append("end-date", getDateString(endDate));
+      params.append("account-id", a.id);
+      const path = splitsApiPath + "?" + params.toString();
+      const isRecent = endDate.getTime() >= recentSinceMs;
+
+      const fetchSplitsForAccount = async () => {
+        let response: ApiResponse<SplitTransactionsGetResponse> | void;
+        if (isRecent) {
+          response = await call.get<SplitTransactionsGetResponse>(path).catch(console.error);
+        } else {
+          response = await cachedCall<SplitTransactionsGetResponse>(path).catch(console.error);
+        }
+        if (!response || response.status === "error") {
+          result.networkFailed = true;
+          return;
+        }
+        if (!response.body) return;
+
+        response.body.forEach((t) => {
+          if (t.is_deleted) {
+            tombstones.add(t.split_transaction_id);
+            return;
+          }
+          result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
+        });
+      };
+      promises.push(fetchSplitsForAccount());
+    });
+
+    viewDate.previous();
   }
-  response.body?.forEach((t) => {
-    result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
+
+  await Promise.all(promises);
+
+  tombstones.forEach((id) => {
+    result.splitTransactions.delete(id);
+    indexedDb.remove(StoreName.splitTransactions, id).catch(console.error);
   });
 
   return result;
@@ -628,7 +674,7 @@ export const useSync = () => {
         ] = await Promise.all([
           fetchBudgets(),
           fetchCharts(),
-          fetchSplitTransactions(),
+          fetchSplitTransactions(accounts, fullRange, recentSinceMs),
           fetchTransactions(accounts, fullRange, recentSinceMs),
           fetchSnapshots(accounts, fullRange, recentSinceMs),
           fetchInstitutions(accounts),
@@ -760,7 +806,7 @@ export const useSync = () => {
 
       const [stage2Transactions, stage2SplitTxns, stage2Snapshots] = await Promise.all([
         fetchTransactions(accounts, recentRange),
-        fetchSplitTransactions(),
+        fetchSplitTransactions(accounts, recentRange),
         fetchSnapshots(accounts, recentRange),
       ]);
       const {
