@@ -52,9 +52,10 @@ export interface JSONTransaction extends PlaidTransaction {
    * Represents relations by pair of budget_id and category_id
    */
   label: JSONTransactionLabel;
-  /** Soft-delete marker. Present when the GET endpoint is called with
-   *  `?include-deleted=true` (the FE sync path); the client treats rows
-   *  with this flag as tombstones for IDB/dict eviction. */
+  /** Soft-delete marker. Always present on rows from `/api/transactions`
+   *  (the route hardcodes `includeDeleted: true`, matching the snapshots
+   *  route); the FE treats rows with this flag as tombstones for IDB +
+   *  dict eviction. */
   is_deleted?: boolean;
 }
 
@@ -74,7 +75,8 @@ export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
    */
   label: JSONTransactionLabel;
   /** Soft-delete marker — same tombstone semantics as
-   *  `JSONTransaction.is_deleted`. */
+   *  `JSONTransaction.is_deleted`; always present on rows from
+   *  `/api/transactions`. */
   is_deleted?: boolean;
 }
 
