@@ -27,18 +27,17 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
     const accountResult = optionalQueryString(req, "account-id");
     if (!accountResult.success) return validationError(accountResult.error!);
 
-    const includeDeletedResult = optionalQueryString(req, "include-deleted");
-    if (!includeDeletedResult.success) return validationError(includeDeletedResult.error!);
-
-    const options: SearchTransactionsOptions = {};
+    const options: SearchTransactionsOptions = {
+      // Always return soft-deleted rows so the FE can treat them as
+      // tombstones and evict from local cache — matches the snapshot
+      // route's hardcoded contract (`get-snapshots.ts`). Direct repo
+      // callers (engine, sync-plaid delta) still default to active-only
+      // because they don't pass `includeDeleted`.
+      includeDeleted: true,
+    };
     if (startResult.data) options.startDate = startResult.data;
     if (endResult.data) options.endDate = endResult.data;
     if (accountResult.data) options.account_id = accountResult.data;
-    // Pass-through tombstone delivery — repo will return soft-deleted
-    // rows (`is_deleted = TRUE`) alongside active ones so the FE can
-    // evict them from local cache. Defaults to false; the historic
-    // contract (active-only) is preserved when the param is absent.
-    if (includeDeletedResult.data === "true") options.includeDeleted = true;
 
     const response = await searchTransactions(user, options);
 

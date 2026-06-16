@@ -177,12 +177,9 @@ const fetchTransactions = async (
       params.append("start-date", getDateString(startDate));
       params.append("end-date", getDateString(endDate));
       params.append("account-id", a.id);
-      // Receive soft-deleted rows as tombstones so the FE can evict them
-      // from IDB + dict. The server's `is_deleted` filter is otherwise
-      // unconditional; without this param a server-side
-      // `softDelete`/Plaid-`removed` propagation is invisible to the
-      // client until the per-month Cache API key rolls over.
-      params.append("include-deleted", "true");
+      // Route hardcodes `includeDeleted: true` (matches snapshots) — the
+      // soft-deleted rows arrive as tombstones in the response and are
+      // dropped from `result.transactions` / IDB below.
       const path = transactionsApiPath + "?" + params.toString();
       const isRecent = endDate.getTime() >= recentSinceMs;
 
@@ -229,11 +226,12 @@ const fetchTransactions = async (
   await Promise.all(promises);
 
   // Apply tombstones after every parallel ingest has landed — same
-  // semantics as the snapshot path: drop from the dict (in case a
-  // stale `cachedCall` response re-added the row) AND evict from IDB
-  // directly (the downstream `saveAllData` is additive — it never
-  // DROPS rows absent from a result dict, so without the explicit
-  // IDB.remove the row stays cached forever).
+  // semantics as the snapshot path. The eager `indexedDb.remove` is
+  // load-bearing for the partial-failure branch in `useSync` (line
+  // ~671): when any fetch fails, `clearAllData → saveAllData` is
+  // skipped, so the only thing that drops the tombstoned row from IDB
+  // is this explicit remove. (The happy-path branches still
+  // clear-then-save from `result`, which would also drop it.)
   tombstones.transaction.forEach((id) => {
     result.transactions.delete(id);
     indexedDb.remove(StoreName.transactions, id).catch(console.error);
