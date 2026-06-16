@@ -177,11 +177,11 @@ The large merchant/name weights mean one identity-feature match (merchant alone 
 
 | `label_category_confidence` | Source                                  |
 | --------------------------- | --------------------------------------- |
-| `[0.5, 0.98]`               | auto-suggest engine                     |
-| `0.99`                      | `/api/suggest-category` (external API)  |
+| `[0.5, 0.98]`               | auto-suggest engine (hard clamp)        |
+| `(0, 1)` exclusive          | `/api/suggest-category` (external API)  |
 | `1.0`                       | user-confirmed label                    |
 
-Keeping engine writes `<= 0.98` is what makes a row's provenance recoverable from its confidence alone — never collapsing the engine bucket onto the `0.99` API reservation or the `1.0` user bucket.
+Two of these three boundaries are enforced: the engine hard-clamps to `[0.5, 0.98]`, and `1.0` is rejected by the API validator (`o.confidence > 0 && o.confidence < 1`, `post-suggest-category.ts`) and reserved for the cookie-session UI write path. The `0.99` band the engine ceiling stays below (`auto-suggest.ts` `ENGINE_CONFIDENCE_CEIL`, "below the `0.99` contract band") is a *convention* the engine observes for external callers — the API route itself accepts any value in `(0, 1)`, which overlaps the engine band. So a row's provenance is recoverable from confidence alone only for the two enforced buckets; an external `(0, 1)` write is not distinguishable from an engine write by value.
 
 **One query per target, not per merchant.** A run iterates over top-level transactions then split transactions (splits inherit all features from their parent via JOIN — see `fetchUnlabeledSplits`, closes #334). There is **no** per-merchant signal cache: the signal depends on the target's full feature set, so two unlabeled transactions sharing a merchant but differing in amount / channel get different signals, and a per-merchant cache would produce wrong predictions. The unlabeled pool is bounded by a 7-day window in `fetchUnlabeled`.
 
@@ -189,7 +189,7 @@ Keeping engine writes `<= 0.98` is what makes a row's provenance recoverable fro
 
 **Compare-and-swap on apply.** Both apply sites thread `CAS_NULL_CONFIDENCE` (`label_category_confidence IS NULL`) into the UPDATE so the engine only overwrites a row that is *still* unlabeled. Between the unlabeled fetch and the per-row apply a user may have confirmed the row in the UI (writing `confidence = 1`); the guard prevents the engine from clobbering that confirmation.
 
-**What never receives a suggestion.** `fetchUnlabeled` filters on `label_category_confidence: null`, so any row that already carries a confidence — user-confirmed (`1.0`), API (`0.99`), or a prior engine suggestion — is skipped.
+**What never receives a suggestion.** `fetchUnlabeled` filters on `label_category_confidence: null`, so any row that already carries a confidence — user-confirmed (`1.0`), an external API write (any value in `(0, 1)`), or a prior engine suggestion — is skipped regardless of the value.
 
 ## Collection Lookup Performance
 
