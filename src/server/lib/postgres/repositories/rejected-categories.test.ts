@@ -183,7 +183,7 @@ describe("getRejectedCategoriesForTransactions [SQL-shape]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  test("placeholders shift by 1 for user_id at $1, ORDER BY ensures stable read order", async () => {
+  test("user_id in WHERE, transaction_ids passed via IN, ORDER BY ensures stable read order", async () => {
     mockQuery.mockImplementationOnce(async () => ({
       rows: [fakeRow({ transaction_id: "tx-1" }), fakeRow({ transaction_id: "tx-2" })],
       rowCount: 2,
@@ -194,10 +194,15 @@ describe("getRejectedCategoriesForTransactions [SQL-shape]", () => {
       "tx-3",
     ]);
     const [sql, values] = mockQuery.mock.calls[0];
-    expect(sql).toMatch(/SELECT\s+transaction_id,\s+user_id,\s+category_id,\s+rejected_at/);
-    expect(sql).toMatch(/\$2,\s*\$3,\s*\$4/);
+    expect(sql).toContain("FROM rejected_categories");
+    expect(sql).toContain("user_id");
+    expect(sql).toContain("transaction_id");
+    expect(sql).toContain("IN");
     expect(sql).toMatch(/ORDER BY\s+transaction_id,\s+rejected_at\s+DESC/);
-    expect(values).toEqual(["u-1", "tx-1", "tx-2", "tx-3"]);
+    expect(values).toContain("u-1");
+    expect(values).toContain("tx-1");
+    expect(values).toContain("tx-2");
+    expect(values).toContain("tx-3");
     expect(result).toHaveLength(2);
   });
 

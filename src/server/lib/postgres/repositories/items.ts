@@ -68,6 +68,7 @@ export const getItemsByInstitution = async (
 export const getUserItem = async (
   item_id: string,
 ): Promise<{ user: MaskedUser; item: JSONItem } | null> => {
+  // JOIN with users to attach `username` — outside Table.query's surface.
   const result = await pool.query<Record<string, unknown> & { username: string }>(
     `SELECT i.*, u.username FROM items i JOIN users u ON i.${USER_ID} = u.${USER_ID} WHERE i.${ITEM_ID} = $1 AND (i.is_deleted IS NULL OR i.is_deleted = FALSE)`,
     [item_id],

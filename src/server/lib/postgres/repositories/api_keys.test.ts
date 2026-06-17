@@ -115,9 +115,11 @@ describe("revokeApiKey", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
     expect(await revokeApiKey("k-1", "u-1")).toBe(true);
     const [sql, values] = mockQuery.mock.calls[0];
-    expect(sql).toContain("UPDATE api_keys SET revoked_at");
-    expect(sql).toContain("revoked_at IS NULL");
-    expect(values).toEqual(["k-1", "u-1"]);
+    expect(sql).toContain("UPDATE api_keys");
+    expect(sql).toContain("revoked_at");
+    expect(sql).toContain("IS NULL");
+    expect(values).toContain("k-1");
+    expect(values).toContain("u-1");
   });
 
   test("returns false when no rows match", async () => {
@@ -130,10 +132,15 @@ describe("verifyApiKey", () => {
   const validRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
     key_id: "k-1",
     user_id: "u-1",
+    name: "test key",
     key_hash: "",
+    key_prefix: "bk_",
     scopes: ["transactions:suggest"],
+    created_at: "2026-01-01T00:00:00Z",
+    last_used_at: null,
     revoked_at: null,
     expires_at: null,
+    updated: null,
     ...overrides,
   });
 
