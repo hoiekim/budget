@@ -302,7 +302,7 @@ const TransactionRow = ({ transaction }: Props) => {
             onReject={() => transfers.reject(suggestedPairId)}
           />
         ) : (
-          <>
+          <div className="labelControls">
             <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
               <option value="">Select Budget</option>
               {budgetOptions}
@@ -317,7 +317,7 @@ const TransactionRow = ({ transaction }: Props) => {
                 {categoryOptions}
               </select>
             </div>
-          </>
+          </div>
         )}
         <div>
           <button className="kebabButton" onClick={onClickKebab}>
