@@ -249,11 +249,17 @@ interface FetchSplitTransactionsResult {
   networkFailed: boolean;
 }
 
-const fetchSplitTransactions = async (
-  accounts: AccountDictionary,
-  range: FetchRange,
-  recentSinceMs: number = Date.now() - THIRTY_DAYS,
-): Promise<FetchSplitTransactionsResult> => {
+const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> => {
+  // Single unbounded GET — splits are small (well under any pagination
+  // threshold for current users) and the per-month-per-account paged
+  // shape from the initial draft of this PR introduced an FE coverage
+  // regression under high concurrency (1100+ in-flight fetches dropped
+  // rows across the response stream — see PR #522 thread). The
+  // `is_deleted` flag still rides on every row so the FE can branch into
+  // active vs tombstone here, matching the snapshot path's eviction
+  // semantics. The server still supports the paged shape (route + repo
+  // accept startDate/endDate/account-id) so a future delta-cursor design
+  // can adopt pagination uniformly across all three stores at once.
   const result: FetchSplitTransactionsResult = {
     splitTransactions: new SplitTransactionDictionary(),
     networkFailed: false,
@@ -261,54 +267,23 @@ const fetchSplitTransactions = async (
 
   const tombstones = new Set<string>();
 
-  const splitsApiPath = "/api/split-transactions";
-  const viewDate = new ViewDate("month");
-  while (viewDate.getStartDate() >= range.until) viewDate.previous();
-
-  const promises: Promise<void>[] = [];
-
-  while (range.from < viewDate.getStartDate()) {
-    accounts?.forEach((a) => {
-      const params = new URLSearchParams();
-      const startDate = viewDate.getStartDate();
-      const endDate = viewDate.clone().next().getStartDate();
-      params.append("start-date", getDateString(startDate));
-      params.append("end-date", getDateString(endDate));
-      params.append("account-id", a.id);
-      const path = splitsApiPath + "?" + params.toString();
-      const isRecent = endDate.getTime() >= recentSinceMs;
-
-      const fetchSplitsForAccount = async () => {
-        let response: ApiResponse<SplitTransactionsGetResponse> | void;
-        if (isRecent) {
-          response = await call.get<SplitTransactionsGetResponse>(path).catch(console.error);
-        } else {
-          response = await cachedCall<SplitTransactionsGetResponse>(path).catch(console.error);
-        }
-        if (!response || response.status === "error") {
-          result.networkFailed = true;
-          return;
-        }
-        if (!response.body) return;
-
-        response.body.forEach((t) => {
-          if (t.is_deleted) {
-            tombstones.add(t.split_transaction_id);
-            return;
-          }
-          result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
-        });
-      };
-      promises.push(fetchSplitsForAccount());
-    });
-
-    viewDate.previous();
+  const response = await call
+    .get<SplitTransactionsGetResponse>("/api/split-transactions")
+    .catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
   }
 
-  await Promise.all(promises);
+  response.body?.forEach((t) => {
+    if (t.is_deleted) {
+      tombstones.add(t.split_transaction_id);
+      return;
+    }
+    result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
+  });
 
   tombstones.forEach((id) => {
-    result.splitTransactions.delete(id);
     indexedDb.remove(StoreName.splitTransactions, id).catch(console.error);
   });
 
@@ -674,7 +649,7 @@ export const useSync = () => {
         ] = await Promise.all([
           fetchBudgets(),
           fetchCharts(),
-          fetchSplitTransactions(accounts, fullRange, recentSinceMs),
+          fetchSplitTransactions(),
           fetchTransactions(accounts, fullRange, recentSinceMs),
           fetchSnapshots(accounts, fullRange, recentSinceMs),
           fetchInstitutions(accounts),
@@ -806,7 +781,7 @@ export const useSync = () => {
 
       const [stage2Transactions, stage2SplitTxns, stage2Snapshots] = await Promise.all([
         fetchTransactions(accounts, recentRange),
-        fetchSplitTransactions(accounts, recentRange),
+        fetchSplitTransactions(),
         fetchSnapshots(accounts, recentRange),
       ]);
       const {
@@ -873,21 +848,18 @@ export const useSync = () => {
       });
 
       let stage3Transactions: FetchTransactionsResult | null = null;
-      let stage3SplitTxns: FetchSplitTransactionsResult | null = null;
       let stage3Snapshots: FetchSnapshotsResult | null = null;
       if (olderFrom < olderUntil) {
-        [stage3Transactions, stage3SplitTxns, stage3Snapshots] = await Promise.all([
+        // Splits aren't paged (stage 2 already fetched the full active set
+        // in one shot), so stage 3 only covers transactions + snapshots.
+        [stage3Transactions, stage3Snapshots] = await Promise.all([
           fetchTransactions(accounts, olderRange),
-          fetchSplitTransactions(accounts, olderRange),
           fetchSnapshots(accounts, olderRange),
         ]);
 
         stage3Transactions.transactions.forEach((t, id) => finalData.transactions.set(id, t));
         stage3Transactions.investmentTransactions.forEach((t, id) =>
           finalData.investmentTransactions.set(id, t),
-        );
-        stage3SplitTxns.splitTransactions.forEach((s, id) =>
-          finalData.splitTransactions.set(id, s),
         );
         stage3Snapshots.accountSnapshots.forEach((s, id) => finalData.accountSnapshots.set(id, s));
         stage3Snapshots.holdingSnapshots.forEach((s, id) => finalData.holdingSnapshots.set(id, s));
@@ -914,7 +886,6 @@ export const useSync = () => {
         stage2SplitTxns.networkFailed ||
         stage2Snapshots.networkFailed ||
         (stage3Transactions?.networkFailed ?? false) ||
-        (stage3SplitTxns?.networkFailed ?? false) ||
         (stage3Snapshots?.networkFailed ?? false);
 
       if (!coldFetchFailed) {
