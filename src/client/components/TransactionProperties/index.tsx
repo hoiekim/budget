@@ -428,7 +428,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
         )}
         {showPartnerPicker && (
           <>
-            <div className="row keyValue">
+            <div className="row keyValue partnerPickerHeader">
               <span className="propertyName">Pair&nbsp;with</span>
               <button
                 className="markAsTransferCancel"
@@ -438,8 +438,8 @@ export const TransactionProperties = ({ transaction }: Props) => {
               </button>
             </div>
             {partnerCandidates.length === 0 && (
-              <div className="row keyValue">
-                <span>
+              <div className="row partnerPickerEmpty">
+                <span className="partnerPickerEmptyText">
                   No matching transactions within ±{PARTNER_DATE_WINDOW_DAYS} days
                   (opposite sign, same absolute amount, not already paired).
                 </span>
@@ -447,38 +447,46 @@ export const TransactionProperties = ({ transaction }: Props) => {
             )}
             {partnerCandidates.map((candidate) => {
               const candidateAccount = accounts.get(candidate.account_id);
+              const candidateInstitutionId = candidateAccount?.institution_id;
               const isPending = pendingPartnerId === candidate.transaction_id;
               return (
-                <div
-                  key={candidate.transaction_id}
-                  className="row partnerCandidate"
-                >
+                <div key={candidate.transaction_id} className="row partnerCandidate">
                   <button
                     className="partnerCandidateButton"
                     disabled={!!pendingPartnerId}
                     onClick={() => onClickPartnerCandidate(candidate.transaction_id)}
                   >
-                    <span className="partnerCandidateMeta">
-                      <span className="partnerCandidateDate">
+                    <div className="partnerCandidateInfo">
+                      <div className="authorized_date bigText">
                         {new LocalDate(
                           candidate.authorized_date || candidate.date,
                         ).toLocaleString("en-US", {
                           month: "numeric",
                           day: "numeric",
                         })}
-                      </span>
-                      <span className="partnerCandidateAccount">
-                        {candidateAccount?.custom_name || candidateAccount?.name || candidate.account_id}
-                      </span>
-                      <span className="partnerCandidateName">
-                        {candidate.merchant_name || candidate.name}
-                      </span>
-                    </span>
-                    <span className="partnerCandidateAmount">
-                      {currencyCodeToSymbol(candidate.iso_currency_code || "")}&nbsp;
-                      {numberToCommaString(Math.abs(candidate.amount))}
-                      {isPending && <>&nbsp;…</>}
-                    </span>
+                      </div>
+                      <div className="merchant_name">
+                        {candidate.merchant_name && (
+                          <div className="bigText">{candidate.merchant_name}</div>
+                        )}
+                        {candidate.name && (
+                          <div className="smallText">{candidate.name}</div>
+                        )}
+                        <div className="bigText">
+                          {candidateAccount?.custom_name || candidateAccount?.name}
+                        </div>
+                        {candidateInstitutionId && (
+                          <div className="smallText">
+                            <InstitutionSpan institution_id={candidateInstitutionId} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="amount">
+                        {currencyCodeToSymbol(candidate.iso_currency_code || "")}&nbsp;
+                        {numberToCommaString(Math.abs(candidate.amount))}
+                        {isPending && <>&nbsp;…</>}
+                      </div>
+                    </div>
                   </button>
                 </div>
               );
