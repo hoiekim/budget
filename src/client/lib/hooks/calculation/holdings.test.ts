@@ -142,6 +142,35 @@ describe("buildSecurityPriceIndex", () => {
 
     expect(index.size).toBe(0);
   });
+
+  test("buckets by each snapshot's own date even when all share one close_price_as_of", () => {
+    // The server stamps the security's single live `close_price_as_of` onto
+    // every historical snapshot. The price series must still spread across
+    // distinct month buckets keyed by each snapshot's own recording date —
+    // not collapse into the one month named by close_price_as_of.
+    const sharedAsOf = "2026-03-30";
+    const snapshots = new SecuritySnapshotDictionary();
+    const months: [string, number][] = [
+      ["2026-01-15", 100],
+      ["2026-02-15", 110],
+      ["2026-03-15", 120],
+    ];
+    months.forEach(([date, price], i) => {
+      const snap = createSecuritySnapshot("sec1", price, date);
+      snap.security.close_price_as_of = sharedAsOf;
+      snapshots.set(`snap${i}`, snap);
+    });
+
+    const index = buildSecurityPriceIndex(snapshots);
+
+    // Three distinct monthly buckets, each holding its own date's price —
+    // not a single "2026-03" bucket with one arbitrary winner.
+    const sec1 = index.get("sec1");
+    expect(sec1?.size).toBe(3);
+    expect(sec1?.get("2026-01")).toEqual({ price: 100, sourceDate: "2026-01-15" });
+    expect(sec1?.get("2026-02")).toEqual({ price: 110, sourceDate: "2026-02-15" });
+    expect(sec1?.get("2026-03")).toEqual({ price: 120, sourceDate: "2026-03-15" });
+  });
 });
 
 describe("getPriceForHolding", () => {
