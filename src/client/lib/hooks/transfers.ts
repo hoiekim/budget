@@ -34,6 +34,13 @@ export interface Transfers {
   /** Unpair a confirmed pair (same delete path as reject, just
    *  semantically named for the "mark as non-transfer" affordance). */
   unpair: (pair_id: string) => Promise<void>;
+  /** Manually pair two transactions as a confirmed transfer. Used by the
+   *  "Mark as Transfer" affordance on a transaction's detail page for
+   *  cases where (a) the user accidentally unpaired and wants to undo
+   *  later, or (b) the detect-transfers heuristic missed the pair. Lands
+   *  directly as `status="confirmed"` — manual pairing is user intent,
+   *  not a suggestion. */
+  pair: (transaction_id_a: string, transaction_id_b: string) => Promise<void>;
 }
 
 /**
@@ -102,11 +109,24 @@ export const useTransfers = (user: MaskedUser | undefined): Transfers => {
     [refresh],
   );
 
+  const pair = useCallback(
+    async (transaction_id_a: string, transaction_id_b: string) => {
+      const response = await call.post("/api/transfers/pair", {
+        transaction_id_a,
+        transaction_id_b,
+        status: "confirmed",
+      });
+      if (response.status === "success") await refresh();
+    },
+    [refresh],
+  );
+
   return {
     suggestedPairByTransactionId,
     confirmedTransferByTransactionId,
     confirm,
     reject,
     unpair: reject,
+    pair,
   };
 };
