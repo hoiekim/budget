@@ -1,5 +1,5 @@
 import { useAppContext, PATH } from "client";
-import { TransactionProperties } from "client/components";
+import { TransactionProperties, TransferProperties } from "client/components";
 
 import "./index.css";
 
@@ -8,7 +8,7 @@ export type TransactionDetailPageParams = {
 };
 
 export const TransactionDetailPage = () => {
-  const { data, router } = useAppContext();
+  const { data, router, transfers } = useAppContext();
   const { transactions } = data;
 
   const { path, params, transition } = router;
@@ -20,9 +20,20 @@ export const TransactionDetailPage = () => {
 
   if (!transaction) return <></>;
 
+  // Confirmed-transfer rows surface the same kebab → detail route as a
+  // regular transaction, but the page should treat the pair as the
+  // entity, not one side of it (Hoie 2026-06-17). Branch on whether the
+  // clicked transaction is part of a confirmed pair and render the
+  // dedicated `TransferProperties` view if so.
+  const confirmedTransfer = transfers.confirmedTransferByTransactionId.get(transaction.transaction_id);
+
   return (
     <div className="TransactionDetailPage">
-      <TransactionProperties transaction={transaction} />
+      {confirmedTransfer ? (
+        <TransferProperties transfer={confirmedTransfer} />
+      ) : (
+        <TransactionProperties transaction={transaction} />
+      )}
     </div>
   );
 };

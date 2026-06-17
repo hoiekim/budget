@@ -13,7 +13,7 @@ import {
   call,
   indexedDb,
 } from "client";
-import { InstitutionSpan, TransferArrowIcon } from "client/components";
+import { InstitutionSpan } from "client/components";
 import SplitTransactionRow from "./SplitTransactionRow";
 import "./index.css";
 
@@ -22,7 +22,7 @@ interface Props {
 }
 
 export const TransactionProperties = ({ transaction }: Props) => {
-  const { data, setData, calculations, transfers } = useAppContext();
+  const { data, setData, calculations } = useAppContext();
   const { transactionFamilies } = calculations;
   const { accounts, budgets, sections, categories } = data;
 
@@ -251,23 +251,6 @@ export const TransactionProperties = ({ transaction }: Props) => {
 
   const isIncome = transaction.amount < 0;
 
-  // Confirmed-transfer treatment: hide the label/split editors and show
-  // a "Transfer" chip + the partner account + a "Mark as Non-Transfer"
-  // button that unpairs the row. The page still reads the same data;
-  // we just swap the budgets/category/splits sections for the
-  // transfer summary so the user can't accidentally label-edit a
-  // transfer or split it.
-  const confirmedTransfer = transfers.confirmedTransferByTransactionId.get(transaction_id);
-  const partnerTransaction = confirmedTransfer?.transactions.find(
-    (t) => t.transaction_id !== transaction_id,
-  );
-  const partnerAccount = partnerTransaction ? accounts.get(partnerTransaction.account_id) : undefined;
-
-  const onClickUnpair = async () => {
-    if (!confirmedTransfer) return;
-    await transfers.unpair(confirmedTransfer.pair_id);
-  };
-
   return (
     <div className="TransactionProperties Properties">
       <div className="propertyLabel">Transaction&nbsp;Details</div>
@@ -321,32 +304,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
           />
         </div>
       </div>
-      {confirmedTransfer && (
-        <>
-          <div className="propertyLabel">Transfer</div>
-          <div className="property">
-            <div className="row keyValue">
-              <span className="propertyName">Type</span>
-              <span className="transferChip transferChipConfirmed">
-                <TransferArrowIcon size={12} />
-                &nbsp;Transfer
-              </span>
-            </div>
-            {partnerAccount && (
-              <div className="row keyValue">
-                <span className="propertyName">Paired&nbsp;with</span>
-                <span>{partnerAccount.custom_name || partnerAccount.name}</span>
-              </div>
-            )}
-            <div className="row button">
-              <button className="unpairButton" onClick={onClickUnpair}>
-                Mark&nbsp;as&nbsp;Non-Transfer
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-      {!confirmedTransfer && !splitTransactionInputRows?.length && (
+      {!splitTransactionInputRows?.length && (
         <>
           <div className="propertyLabel">Budgets</div>
           <div className="property">
@@ -375,8 +333,6 @@ export const TransactionProperties = ({ transaction }: Props) => {
           </div>
         </>
       )}
-      {!confirmedTransfer && (
-        <>
       <div className="propertyLabel">Split&nbsp;Transactions</div>
       <div className="property">
         {splitTransactionInputRows}
@@ -407,8 +363,6 @@ export const TransactionProperties = ({ transaction }: Props) => {
           <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</button>
         </div>
       </div>
-        </>
-      )}
     </div>
   );
 };
