@@ -11,8 +11,7 @@ import {
   DATE,
   QueryExecutor,
 } from "../models";
-import { pool } from "../client";
-import { buildSelectWithFilters, UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { logger } from "../../logger";
 
 export interface SearchSplitTransactionsOptions {
@@ -61,13 +60,11 @@ export const searchSplitTransactions = async (
   user: MaskedUser,
   options: SearchSplitTransactionsOptions = {},
 ): Promise<JSONSplitTransaction[]> => {
-  const filters: Record<string, unknown> = {};
+  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
   if (options.transaction_id) filters[TRANSACTION_ID] = options.transaction_id;
   if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
 
-  const { sql, values } = buildSelectWithFilters("split_transactions", "*", {
-    user_id: user.user_id,
-    filters,
+  const models = await splitTransactionsTable.query(filters, {
     dateRange:
       options.startDate || options.endDate
         ? { column: UPDATED, start: options.startDate, end: options.endDate }
@@ -75,8 +72,7 @@ export const searchSplitTransactions = async (
     orderBy: `${DATE} DESC`,
     excludeDeleted: !options.includeDeleted,
   });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
-  return result.rows.map((row) => new SplitTransactionModel(row).toJSON());
+  return models.map((m) => m.toJSON());
 };
 
 export const upsertSplitTransactions = async (
