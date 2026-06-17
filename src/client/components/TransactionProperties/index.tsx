@@ -449,45 +449,56 @@ export const TransactionProperties = ({ transaction }: Props) => {
               const candidateAccount = accounts.get(candidate.account_id);
               const candidateInstitutionId = candidateAccount?.institution_id;
               const isPending = pendingPartnerId === candidate.transaction_id;
+              const disabled = !!pendingPartnerId;
+              const onClick = disabled
+                ? undefined
+                : () => onClickPartnerCandidate(candidate.transaction_id);
               return (
-                <div key={candidate.transaction_id} className="row partnerCandidate">
-                  <button
-                    className="partnerCandidateButton"
-                    disabled={!!pendingPartnerId}
-                    onClick={() => onClickPartnerCandidate(candidate.transaction_id)}
-                  >
-                    <div className="partnerCandidateInfo">
-                      <div className="authorized_date bigText">
-                        {new LocalDate(
-                          candidate.authorized_date || candidate.date,
-                        ).toLocaleString("en-US", {
-                          month: "numeric",
-                          day: "numeric",
-                        })}
-                      </div>
-                      <div className="merchant_name">
-                        {candidate.merchant_name && (
-                          <div className="bigText">{candidate.merchant_name}</div>
-                        )}
-                        {candidate.name && (
-                          <div className="smallText">{candidate.name}</div>
-                        )}
-                        <div className="bigText">
-                          {candidateAccount?.custom_name || candidateAccount?.name}
-                        </div>
-                        {candidateInstitutionId && (
-                          <div className="smallText">
-                            <InstitutionSpan institution_id={candidateInstitutionId} />
-                          </div>
-                        )}
-                      </div>
-                      <div className="amount">
-                        {currencyCodeToSymbol(candidate.iso_currency_code || "")}&nbsp;
-                        {numberToCommaString(Math.abs(candidate.amount))}
-                        {isPending && <>&nbsp;…</>}
-                      </div>
+                <div
+                  key={candidate.transaction_id}
+                  className={`row partnerCandidate${disabled ? " disabled" : ""}`}
+                  role="button"
+                  tabIndex={disabled ? -1 : 0}
+                  aria-disabled={disabled}
+                  onClick={onClick}
+                  onKeyDown={(e) => {
+                    if (!disabled && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onClick?.();
+                    }
+                  }}
+                >
+                  <div className="partnerCandidateInfo">
+                    <div className="authorized_date bigText">
+                      {new LocalDate(
+                        candidate.authorized_date || candidate.date,
+                      ).toLocaleString("en-US", {
+                        month: "numeric",
+                        day: "numeric",
+                      })}
                     </div>
-                  </button>
+                    <div className="merchant_name">
+                      {candidate.merchant_name && (
+                        <div className="bigText">{candidate.merchant_name}</div>
+                      )}
+                      {candidate.name && (
+                        <div className="smallText">{candidate.name}</div>
+                      )}
+                      <div className="bigText">
+                        {candidateAccount?.custom_name || candidateAccount?.name}
+                      </div>
+                      {candidateInstitutionId && (
+                        <div className="smallText">
+                          <InstitutionSpan institution_id={candidateInstitutionId} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="amount">
+                      {currencyCodeToSymbol(candidate.iso_currency_code || "")}&nbsp;
+                      {numberToCommaString(Math.abs(candidate.amount))}
+                      {isPending && <>&nbsp;…</>}
+                    </div>
+                  </div>
                 </div>
               );
             })}
