@@ -9,6 +9,7 @@ import {
   AdditionalWhere,
   ParamValue,
   QueryData,
+  SearchFilters,
 } from "../database";
 
 /** Query executor - either pool or a transaction client */
@@ -121,10 +122,22 @@ export abstract class Table<
     }
   }
 
-  async query(filters: Record<string, ParamValue | unknown> = {}): Promise<TModel[]> {
+  async query(
+    filters: Record<string, ParamValue | unknown> = {},
+    options: Omit<SearchFilters, "filters"> = {},
+  ): Promise<TModel[]> {
     const { sql, values } = buildSelectWithFilters(this.name, "*", {
       filters,
-      excludeDeleted: this.supportsSoftDelete,
+      // `supportsSoftDelete` stays the default; callers can override
+      // (e.g. tombstone-delivery routes set `excludeDeleted: false`).
+      excludeDeleted: options.excludeDeleted ?? this.supportsSoftDelete,
+      user_id: options.user_id,
+      primaryKey: options.primaryKey,
+      inFilters: options.inFilters,
+      dateRange: options.dateRange,
+      orderBy: options.orderBy,
+      limit: options.limit,
+      offset: options.offset,
     });
     const result = await pool.query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));

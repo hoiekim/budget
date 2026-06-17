@@ -250,10 +250,22 @@ interface FetchSplitTransactionsResult {
 }
 
 const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> => {
+  // Single unbounded GET — splits are small (well under any pagination
+  // threshold for current users) and the per-month-per-account paged
+  // shape from the initial draft of this PR introduced an FE coverage
+  // regression under high concurrency (1100+ in-flight fetches dropped
+  // rows across the response stream — see PR #522 thread). The
+  // `is_deleted` flag still rides on every row so the FE can branch into
+  // active vs tombstone here, matching the snapshot path's eviction
+  // semantics. The server still supports the paged shape (route + repo
+  // accept startDate/endDate/account-id) so a future delta-cursor design
+  // can adopt pagination uniformly across all three stores at once.
   const result: FetchSplitTransactionsResult = {
     splitTransactions: new SplitTransactionDictionary(),
     networkFailed: false,
   };
+
+  const tombstones = new Set<string>();
 
   const response = await call
     .get<SplitTransactionsGetResponse>("/api/split-transactions")
@@ -262,8 +274,17 @@ const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> =
     result.networkFailed = true;
     return result;
   }
+
   response.body?.forEach((t) => {
+    if (t.is_deleted) {
+      tombstones.add(t.split_transaction_id);
+      return;
+    }
     result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
+  });
+
+  tombstones.forEach((id) => {
+    indexedDb.remove(StoreName.splitTransactions, id).catch(console.error);
   });
 
   return result;
@@ -829,6 +850,8 @@ export const useSync = () => {
       let stage3Transactions: FetchTransactionsResult | null = null;
       let stage3Snapshots: FetchSnapshotsResult | null = null;
       if (olderFrom < olderUntil) {
+        // Splits aren't paged (stage 2 already fetched the full active set
+        // in one shot), so stage 3 only covers transactions + snapshots.
         [stage3Transactions, stage3Snapshots] = await Promise.all([
           fetchTransactions(accounts, olderRange),
           fetchSnapshots(accounts, olderRange),

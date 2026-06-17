@@ -95,6 +95,7 @@ export class SplitTransactionModel extends Model<JSONSplitTransaction, SplitTxSc
         memo: this.label_memo,
         category_confidence: this.label_category_confidence,
       },
+      is_deleted: this.is_deleted ?? false,
     };
   }
 
