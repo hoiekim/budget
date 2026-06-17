@@ -113,6 +113,41 @@ div.TransactionRow .smallText {
   color: #858585;
 }
 
+/* Confirmed transfer pairs render as a single bundled row — no
+   budget/category selects, a static "Transfer" chip in their place,
+   and the +/- amount sign is replaced with the arrow-swap icon. */
+div.TransactionRow .transferChip.transferChipConfirmed {
+  width: 100%;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  text-align: center;
+  border: 1px solid #444;
+  color: #b8b8b8;
+}
+
+div.TransactionRow .transferAmount {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+div.TransactionRow .transferAmountIcon {
+  display: inline-flex;
+  align-items: center;
+  color: #b8b8b8;
+}
+
+div.TransactionRow .transferPairArrow {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 6px;
+  color: #b8b8b8;
+}
+
 div.TransactionsHead {
   display: flex;
   flex-wrap: wrap;
