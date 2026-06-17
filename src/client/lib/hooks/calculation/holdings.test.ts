@@ -326,10 +326,11 @@ describe("inferCostBasis", () => {
       "tx1",
       createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 100, 10, "2026-01-10")
     );
-    // Sell 4 @ avg cost $100 = $400 removed
+    // Sell 4 @ avg cost $100 = $400 removed.
+    // Plaid encodes sell quantities as NEGATIVE — use the real shape (-4).
     transactions.set(
       "tx2",
-      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Sell, 120, 4, "2026-01-15")
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Sell, 120, -4, "2026-01-15")
     );
 
     const result = inferCostBasis({
@@ -341,6 +342,32 @@ describe("inferCostBasis", () => {
 
     expect(result!.totalQuantity).toBe(6);
     expect(result!.costBasis).toBe(600); // $1000 - $400 = $600
+  });
+
+  test("should reduce (not inflate) basis when a sell uses Plaid's negative quantity", () => {
+    // Regression for #459: a negative sell quantity must remove shares + basis,
+    // not add them. Pre-fix this returned { totalQuantity: 14, costBasis: 1400 }.
+    const transactions = new InvestmentTransactionDictionary();
+    // Buy 10 @ $100 = $1000
+    transactions.set(
+      "tx1",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 100, 10, "2026-01-10")
+    );
+    // Sell 4 shares — Plaid encodes quantity = -4
+    transactions.set(
+      "tx2",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Sell, 130, -4, "2026-01-15")
+    );
+
+    const result = inferCostBasis({
+      accountId: "acc1",
+      securityId: "sec1",
+      investmentTransactions: transactions,
+      asOfDate: new Date("2026-01-20"),
+    });
+
+    expect(result!.totalQuantity).toBe(6);
+    expect(result!.costBasis).toBe(600);
   });
 
   test("should filter by date", () => {
