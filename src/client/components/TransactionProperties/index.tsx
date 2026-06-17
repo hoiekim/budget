@@ -428,14 +428,8 @@ export const TransactionProperties = ({ transaction }: Props) => {
         )}
         {showPartnerPicker && (
           <>
-            <div className="row keyValue partnerPickerHeader">
+            <div className="row keyValue">
               <span className="propertyName">Pair&nbsp;with</span>
-              <button
-                className="markAsTransferCancel"
-                onClick={() => setShowPartnerPicker(false)}
-              >
-                Cancel
-              </button>
             </div>
             {partnerCandidates.length === 0 && (
               <div className="row partnerPickerEmpty">
@@ -502,6 +496,15 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 </div>
               );
             })}
+            <div className="row button">
+              <button
+                className="markAsTransferCancel"
+                disabled={!!pendingPartnerId}
+                onClick={() => setShowPartnerPicker(false)}
+              >
+                Cancel
+              </button>
+            </div>
           </>
         )}
       </div>

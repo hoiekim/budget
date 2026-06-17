@@ -47,17 +47,6 @@ div.SplitTransactionRow > .amount > input {
    days from the current transaction — matches detect-transfers'
    DATE_WINDOW_DAYS so the user sees the same set the heuristic would. */
 
-/* Cancel link on the picker header — small inline button on the right,
-   NOT the full-width `.Properties .row > button` shape. */
-div.TransactionProperties .row.keyValue.partnerPickerHeader > button.markAsTransferCancel {
-  width: auto;
-  margin-left: 0;
-  padding: 2px 10px;
-  font-size: 13px;
-  text-align: right;
-  color: #b8b8b8;
-}
-
 /* Empty-state row when no candidates match. */
 div.TransactionProperties .row.partnerPickerEmpty > .partnerPickerEmptyText {
   width: 100%;
