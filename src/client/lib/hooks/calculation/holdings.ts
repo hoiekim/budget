@@ -11,10 +11,16 @@ import { HoldingSnapshot } from "../../models/Snapshot";
 import { InvestmentTransaction } from "../../models/InvestmentTransaction";
 
 /**
- * One entry in the price index. `sourceDate` is the date the price was
- * recorded (`close_price_as_of` if Plaid surfaced it, otherwise the snapshot
- * date). It's needed downstream so we can compare security-snapshot freshness
- * against the holding snapshot's own date and pick whichever's more recent.
+ * One entry in the price index. `sourceDate` is the snapshot's own recording
+ * date — i.e. when that month's `close_price` was captured. It's needed
+ * downstream so we can compare security-snapshot freshness against the holding
+ * snapshot's own date and pick whichever's more recent.
+ *
+ * We deliberately do NOT use the security's `close_price_as_of`: that field is
+ * a single per-security constant (the as-of date of the security's *latest*
+ * price) that the server attaches to every historical snapshot in the join.
+ * Keying off it collapses a security's entire price history into one month
+ * bucket and breaks the per-month tie-break (every sourceDate is identical).
  */
 export interface PriceIndexEntry {
   price: number;
@@ -37,11 +43,13 @@ export const buildSecurityPriceIndex = (
 
   securitySnapshots.forEach((snapshot) => {
     const { security } = snapshot;
-    const { security_id, close_price, close_price_as_of } = security;
+    const { security_id, close_price } = security;
 
     if (!security_id || close_price === null || close_price === undefined) return;
 
-    const dateStr = close_price_as_of || snapshot.snapshot.date;
+    // Bucket by the snapshot's own date: that's when this `close_price` was
+    // recorded. (Not `close_price_as_of` — see PriceIndexEntry doc above.)
+    const dateStr = snapshot.snapshot.date;
     if (!dateStr) return;
 
     const date = new LocalDate(dateStr);
