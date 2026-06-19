@@ -301,3 +301,104 @@ describe("getCapacityData — hierarchy aggregation", () => {
     expect(cap.get(budgetCapId).children_total).toBe(-MAX_FLOAT);
   });
 });
+
+describe("getBudgetData — confirmed-transfer exclusion", () => {
+  test("transactions in confirmedTransferTxIds are skipped from all budget rollups", () => {
+    const w = makeWorld();
+
+    // Two confirmed-spending transactions, one of which is a transfer half.
+    const { transactions: t1 } = makeTx(w, 250, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    }, { transaction_id: "tx-spend" });
+    const { transactions: t2 } = makeTx(w, 5100, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    }, { transaction_id: "tx-transfer-half" });
+
+    const transactions = new TransactionDictionary();
+    t1.forEach((v, k) => transactions.set(k, v));
+    t2.forEach((v, k) => transactions.set(k, v));
+
+    // Without the set: both transactions count → category total = 5350.
+    const baseline = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+    );
+    expect(baseline.budgetData.get(w.category.id, readDate).sorted_amount).toBe(5350);
+
+    // With tx-transfer-half flagged: only the $250 spend lands.
+    const withTransfer = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      new Set(["tx-transfer-half"]),
+    );
+    expect(withTransfer.budgetData.get(w.category.id, readDate).sorted_amount).toBe(250);
+    expect(withTransfer.budgetData.get(w.section.id, readDate).sorted_amount).toBe(250);
+    expect(withTransfer.budgetData.get(w.budget.id, readDate).sorted_amount).toBe(250);
+  });
+
+  test("an unsorted transaction in confirmedTransferTxIds is also skipped (unsorted bucket)", () => {
+    const w = makeWorld();
+    // Unsorted transaction — no category_id / confidence — would normally
+    // land in the unsorted bucket. As a transfer half it should not.
+    const { transactions } = makeTx(w, 5100, {
+      budget_id: w.budget.id,
+      category_id: null,
+      category_confidence: null,
+    }, { transaction_id: "tx-transfer-unsorted" });
+
+    const withTransfer = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      new Set(["tx-transfer-unsorted"]),
+    );
+    // Budget bucket exists only if any transaction landed in it. With the
+    // sole transaction filtered out, the budget id should not be tracked.
+    expect(withTransfer.budgetData.size).toBe(0);
+  });
+
+  test("an empty set behaves exactly like the no-arg call (backward compat)", () => {
+    const w = makeWorld();
+    const { transactions } = makeTx(w, 100, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    });
+
+    const noArg = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+    );
+    const emptySet = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      new Set(),
+    );
+    expect(emptySet.budgetData.get(w.category.id, readDate).sorted_amount).toBe(
+      noArg.budgetData.get(w.category.id, readDate).sorted_amount,
+    );
+  });
+});
