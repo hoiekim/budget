@@ -10,11 +10,13 @@ export enum ScreenType {
 }
 
 export interface CalculateOptions {
-  /** Confirmed-transfer transaction ids — threaded into `getBudgetData`
-   *  so spent/income aggregation skips internal-movement transactions.
-   *  Balance calc intentionally ignores this (per-account historical
-   *  balance must still include transfers — Hoie 2026-06-18). */
-  confirmedTransferTxIds?: ReadonlySet<string>;
+  /** Membership-test for confirmed-transfer transaction ids — threaded
+   *  into `getBudgetData` so spent/income aggregation skips
+   *  internal-movement transactions. Typed structurally on `has` so a
+   *  Set<id> OR a Map keyed by id both satisfy it. Balance calc
+   *  intentionally ignores this (per-account historical balance must
+   *  still include transfers — Hoie 2026-06-18). */
+  confirmedTransferIds?: { has(transaction_id: string): boolean };
 }
 
 type CalculateFn = ((data: Data, opts?: CalculateOptions) => void) & {

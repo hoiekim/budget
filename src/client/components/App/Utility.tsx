@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useAppContext, useSync, PATH, useDebounce } from "client";
 
 /**
@@ -32,25 +32,21 @@ const Utility = () => {
     else clean();
   }, [userLoggedIn, sync, clean]);
 
-  // Confirmed-transfer transaction id set, derived once per
-  // `transfers.confirmedTransferByTransactionId` ref change. Threaded
-  // into `calculate(...)` so `getBudgetData` (and any future calc
-  // wanting to skip transfers) sees the latest pair set. Per-account
-  // balance calc intentionally does not consume this — see
-  // `useData`'s `calculateAll` comment.
-  const confirmedTransferTxIds = useMemo(() => {
-    const set = new Set<string>();
-    transfers.confirmedTransferByTransactionId.forEach((_pair, txId) => set.add(txId));
-    return set;
-  }, [transfers.confirmedTransferByTransactionId]);
+  // `transfers.confirmedTransferByTransactionId` is already a
+  // Map<transaction_id, ConfirmedTransfer>; its `.has(id)` answers the
+  // exact question the calcs ask. Feeding the Map straight through
+  // avoids a redundant Set materialization (Hoie review 2026-06-19).
+  // Per-account balance calc intentionally does not consume this —
+  // see `useData`'s `calculateAll` comment.
+  const confirmedTransferIds = transfers.confirmedTransferByTransactionId;
 
   /**
    * Calculate balance history when data is updated
    */
   useEffect(() => {
     if (!data.status.isInit) return;
-    debouncer(() => calculate(data, { confirmedTransferTxIds }));
-  }, [data, calculate, debouncer, confirmedTransferTxIds]);
+    debouncer(() => calculate(data, { confirmedTransferIds }));
+  }, [data, calculate, debouncer, confirmedTransferIds]);
 
   /**
    * Update viewDate when user selects different interval

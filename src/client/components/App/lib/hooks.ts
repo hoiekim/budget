@@ -13,13 +13,15 @@ import {
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 
 export interface CalculateOptions {
-  /** Confirmed-transfer transaction ids — threaded into `getBudgetData`
-   *  so the spent/income aggregation skips internal-movement
-   *  transactions. Not threaded into balance calcs (per Hoie
-   *  2026-06-18: per-account historical balance MUST still include
-   *  transfer effects, since the account's balance really did change).
-   *  Empty / omitted = pre-PR behavior. */
-  confirmedTransferTxIds?: ReadonlySet<string>;
+  /** Membership-test for confirmed-transfer transaction ids — threaded
+   *  into `getBudgetData` so spent/income aggregation skips
+   *  internal-movement transactions. Typed structurally on `has` so
+   *  the standard call site can pass
+   *  `transfers.confirmedTransferByTransactionId` (a Map) directly
+   *  without materializing a parallel Set. Not threaded into balance
+   *  calcs (per Hoie 2026-06-18: per-account historical balance MUST
+   *  still include transfer effects). Omitted = pre-PR behavior. */
+  confirmedTransferIds?: { has(transaction_id: string): boolean };
 }
 
 type CalculateFn = ((data: Data, opts?: CalculateOptions) => void) & {
@@ -59,12 +61,12 @@ export const useData = () => {
         categories,
       } = data;
 
-      const confirmedTransferTxIds = opts?.confirmedTransferTxIds;
+      const confirmedTransferIds = opts?.confirmedTransferIds;
 
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
 
-        // Balance data intentionally does NOT receive confirmedTransferTxIds:
+        // Balance data intentionally does NOT receive confirmedTransferIds:
         // per-account historical balance is supposed to reflect the actual
         // value held in each account at each point in time. A transfer
         // moves real dollars between accounts, so dropping it would
@@ -84,7 +86,7 @@ export const useData = () => {
           budgets,
           sections,
           categories,
-          confirmedTransferTxIds,
+          confirmedTransferIds,
         );
 
         const capacityData = getCapacityData(budgets, sections, categories);

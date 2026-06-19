@@ -32,7 +32,7 @@ export const getBudgetData = (
   // Defaults to an empty set so existing callers (and tests) keep the
   // pre-PR behavior. See PR #490's TransferRow / TransferProperties
   // for the pair-detection side.
-  confirmedTransferTxIds: ReadonlySet<string> = new Set(),
+  confirmedTransferIds: { has(transaction_id: string): boolean } = new Set<string>(),
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 
@@ -42,13 +42,13 @@ export const getBudgetData = (
     const { transaction_id } = splitTransaction;
     const transaction = transactions.get(transaction_id);
     if (!transaction) return;
-    if (confirmedTransferTxIds.has(transaction_id)) return;
+    if (confirmedTransferIds.has(transaction_id)) return;
     transactionFamilies.add(transaction_id, splitTransaction);
   });
 
   const processTransaction = (transaction: Transaction) => {
     const { transaction_id, authorized_date, date, account_id, label, amount } = transaction;
-    if (confirmedTransferTxIds.has(transaction_id)) return;
+    if (confirmedTransferIds.has(transaction_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     const account = accounts.get(account_id);
     if (!account || account.hide) return;
@@ -155,7 +155,7 @@ export const getBudgetData = (
     // split's own id per `SplitTransaction.toTransaction()` — so the
     // in-`processTransaction` guard on line ~51 would never fire for
     // splits even when their parent is a confirmed transfer).
-    if (confirmedTransferTxIds.has(st.transaction_id)) return;
+    if (confirmedTransferIds.has(st.transaction_id)) return;
     const transaction = st.toTransaction();
     processTransaction(transaction);
   });

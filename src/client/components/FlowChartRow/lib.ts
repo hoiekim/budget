@@ -31,7 +31,7 @@ export const getSankeyData = (
   // both the income column (destination-side credit) and the expense
   // column (source-side debit) by the same amount. Defaults to empty
   // so other callers / tests keep the pre-PR behavior.
-  confirmedTransferTxIds: ReadonlySet<string> = new Set(),
+  confirmedTransferIds: { has(transaction_id: string): boolean } = new Set<string>(),
 ): SankeyData => {
   const incomeBudgets = new Map<string, SankeyRow>();
   const incomeSections = new Map<string, SankeyRow>();
@@ -43,7 +43,7 @@ export const getSankeyData = (
 
   const processTransaction = (t: Transaction | InvestmentTransaction) => {
     const isInvestment = t instanceof InvestmentTransaction;
-    if (!isInvestment && confirmedTransferTxIds.has(t.transaction_id)) return;
+    if (!isInvestment && confirmedTransferIds.has(t.transaction_id)) return;
     const authorized_date = !isInvestment ? t.authorized_date : undefined;
     const transactionDate = new LocalDate(authorized_date || t.date);
     if (!viewDate.has(transactionDate)) return;

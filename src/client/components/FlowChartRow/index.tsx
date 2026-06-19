@@ -28,15 +28,11 @@ export const FlowChartRow = ({
   const { configuration } = chart;
   const { account_ids } = configuration;
 
-  // Confirmed-transfer txn ids — same shape as the set Utility threads
-  // into `calculate()`. Skipping these here prevents both halves of a
-  // pair from inflating income (destination credit) AND expense
-  // (source debit) by the same dollars on the Sankey.
-  const confirmedTransferTxIds = useMemo(() => {
-    const set = new Set<string>();
-    transfers.confirmedTransferByTransactionId.forEach((_pair, txId) => set.add(txId));
-    return set;
-  }, [transfers.confirmedTransferByTransactionId]);
+  // `transfers.confirmedTransferByTransactionId` is already a
+  // Map<transaction_id, ConfirmedTransfer> — its `.has(id)` is exactly
+  // what `getSankeyData` checks. Pass the Map straight through; no
+  // need to materialize a parallel Set (Hoie review 2026-06-19).
+  const confirmedTransferIds = transfers.confirmedTransferByTransactionId;
 
   const {
     onDragStart,
@@ -65,7 +61,7 @@ export const FlowChartRow = ({
         sections,
         categories,
         viewDate,
-        confirmedTransferTxIds,
+        confirmedTransferIds,
       ),
     [
       selectedAccounts,
@@ -75,7 +71,7 @@ export const FlowChartRow = ({
       sections,
       categories,
       viewDate,
-      confirmedTransferTxIds,
+      confirmedTransferIds,
     ],
   );
 
