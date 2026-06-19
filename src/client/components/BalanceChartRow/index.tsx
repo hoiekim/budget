@@ -1,7 +1,7 @@
 import { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction } from "react";
 import { AccountType } from "plaid";
 import { numberToCommaString, toTitleCase } from "common";
-import { BalanceChart, getAccountBalance, useAppContext, useReorder } from "client";
+import { BalanceChart, getDisplayBalance, useAppContext, useReorder } from "client";
 import { ChevronDownIcon, ChevronUpIcon, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
 import "./index.css";
@@ -48,9 +48,9 @@ export const BalanceChartRow = ({
     if (a.hide) return;
     // Use historical balance for the selected view date so that switching
     // to a past month reflects the balance at that time rather than today's
-    // live Plaid balance.
-    const fallback = date > today ? getAccountBalance(a) : 0;
-    const historicalBalance = balanceData.get(a.id, date) ?? fallback;
+    // live Plaid balance. While the cold-load history is still streaming,
+    // fall back to the live balance instead of flashing $0 (#510).
+    const historicalBalance = getDisplayBalance(balanceData, a, date, today, data.status.isLoading);
     const stack = { type: a.type, name: a.custom_name || a.name, amount: historicalBalance };
     if (!configuration.account_ids.includes(a.id)) return;
     // Plaid AccountType: Depository, Investment, Brokerage are assets;

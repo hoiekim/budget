@@ -1,4 +1,4 @@
-import { DonutData, useAppContext } from "client";
+import { DonutData, getDisplayBalance, useAppContext } from "client";
 import { Changes } from "client/components";
 
 interface Props {
@@ -18,16 +18,21 @@ export const BalanceInfo = ({
   numberOfCredits,
   isShrunk,
 }: Props) => {
-  const { calculations, viewDate } = useAppContext();
+  const { calculations, viewDate, data } = useAppContext();
   const { balanceData } = calculations;
+  const { accounts } = data;
 
-  const viewDateSpan = Math.max(-viewDate.getSpanFrom(new Date()), 0);
+  const today = new Date();
+  const viewDateSpan = Math.max(-viewDate.getSpanFrom(today), 0);
   const previousDate = viewDate.clone().previous().getEndDate();
 
+  // Match the headline total's loading-aware fallback (#510): while history is
+  // still streaming, missing previous-period balances fall back to the live
+  // balance rather than 0, so the "from last <period>" delta doesn't spike.
   const previousAmount = donutData.reduce((a, { id }) => {
-    const balanceHistory = balanceData.get(id);
-    if (!balanceHistory) return a;
-    return a + (balanceHistory.get(previousDate) || 0);
+    const account = accounts.get(id);
+    if (!account) return a;
+    return a + getDisplayBalance(balanceData, account, previousDate, today, data.status.isLoading);
   }, 0);
 
   return (

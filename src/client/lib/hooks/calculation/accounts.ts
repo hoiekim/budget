@@ -23,6 +23,32 @@ export const getAccountBalance = (account: Account) => {
   return account.balances.current || 0;
 };
 
+/**
+ * Resolve the balance to display for an account at a given view date.
+ *
+ * When `balanceData` has a recorded entry for the date, use it. Otherwise pick
+ * a fallback:
+ *  - Future dates fall back to the live balance (year-end of the current year
+ *    has no recorded snapshot yet, so 0 would be meaningless).
+ *  - While the cold-load backfill is still streaming history in
+ *    (`isHistoryLoading`), a missing past-date entry means "not loaded yet" —
+ *    fall back to the live balance rather than flashing a misleading $0 that
+ *    momentarily reports a near-total net-worth collapse (#510).
+ *  - Once the load is complete, a missing past-date entry genuinely means "no
+ *    record for this month" → 0 (preserves #428's zero-balance behavior).
+ */
+export const getDisplayBalance = (
+  balanceData: BalanceData,
+  account: Account,
+  date: Date,
+  today: Date,
+  isHistoryLoading: boolean,
+): number => {
+  const recorded = balanceData.get(account.id, date);
+  if (recorded !== undefined) return recorded;
+  return date > today || isHistoryLoading ? getAccountBalance(account) : 0;
+};
+
 const getBalanceDataFromTransactions = (
   accounts: AccountDictionary,
   transactions: TransactionDictionary,
