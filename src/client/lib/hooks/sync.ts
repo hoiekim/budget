@@ -382,6 +382,7 @@ const fetchTransfers = async (): Promise<FetchTransfersResult> => {
     result.transfers.set(pair.pair_id, pair);
   }
 
+  console.log("[debug fetchTransfers] populated transfers, size=", result.transfers.size);
   return result;
 };
 

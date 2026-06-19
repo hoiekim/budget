@@ -170,7 +170,9 @@ export const saveSplitTransactions = async (data: SplitTransactionDictionary) =>
 };
 
 export const saveTransfers = async (data: TransferDictionary) => {
+  console.log("[debug saveTransfers] entry, size=", data?.size, "entries=", Array.from(data?.entries() ?? []).length);
   await saveDictionary(StoreName.transfers, data);
+  console.log("[debug saveTransfers] saveDictionary returned");
 };
 
 export const loadTransfers = async (): Promise<TransferDictionary> => {
