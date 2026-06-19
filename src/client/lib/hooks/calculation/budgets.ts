@@ -150,6 +150,12 @@ export const getBudgetData = (
 
   transactions.forEach(processTransaction);
   splitTransactions.forEach((st) => {
+    // Guard at the SPLIT pass on the PARENT's transaction_id, not on
+    // the synthetic Transaction's `transaction_id` (which is the
+    // split's own id per `SplitTransaction.toTransaction()` — so the
+    // in-`processTransaction` guard on line ~51 would never fire for
+    // splits even when their parent is a confirmed transfer).
+    if (confirmedTransferTxIds.has(st.transaction_id)) return;
     const transaction = st.toTransaction();
     processTransaction(transaction);
   });

@@ -372,6 +372,55 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
     expect(withTransfer.budgetData.size).toBe(0);
   });
 
+  test("splits of a confirmed-transfer parent are also skipped (reviewoie #528 round 1)", () => {
+    const w = makeWorld();
+
+    // Parent transaction is a transfer half (in the set).
+    const { transactions } = makeTx(w, 100, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    }, { transaction_id: "tx-transfer-parent" });
+
+    // Two splits of that parent — they inherit the parent's
+    // transaction_id reference but their own split_transaction_id. If
+    // the guard only checks the synthetic Transaction's id (which is
+    // overridden to split.id by `SplitTransaction.toTransaction()`),
+    // these will leak into Coffee's sorted_amount. The correct shape
+    // is to gate on parent's transaction_id at the split pass.
+    const splitA = new SplitTransaction({
+      split_transaction_id: "split-A",
+      transaction_id: "tx-transfer-parent",
+      account_id: w.account.id,
+      amount: 30,
+      date: DATE,
+      label: { budget_id: w.budget.id, category_id: w.category.id, category_confidence: 1 },
+    });
+    const splitB = new SplitTransaction({
+      split_transaction_id: "split-B",
+      transaction_id: "tx-transfer-parent",
+      account_id: w.account.id,
+      amount: 20,
+      date: DATE,
+      label: { budget_id: w.budget.id, category_id: w.category.id, category_confidence: 1 },
+    });
+    const splits = new SplitTransactionDictionary();
+    splits.set(splitA.id, splitA);
+    splits.set(splitB.id, splitB);
+
+    const withTransfer = getBudgetData(
+      transactions,
+      splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      new Set(["tx-transfer-parent"]),
+    );
+    // No data should land — parent skipped, both splits skipped.
+    expect(withTransfer.budgetData.size).toBe(0);
+  });
+
   test("an empty set behaves exactly like the no-arg call (backward compat)", () => {
     const w = makeWorld();
     const { transactions } = makeTx(w, 100, {
