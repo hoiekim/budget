@@ -24,6 +24,15 @@ export const getBudgetData = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
+  // Confirmed-transfer transaction ids — skipped entirely from budget
+  // aggregation because a transfer is internal movement between the
+  // user's own accounts, not real spending or income. The two halves
+  // of the pair would otherwise inflate both the spent column on the
+  // source-account budget and the income column on the destination's.
+  // Defaults to an empty set so existing callers (and tests) keep the
+  // pre-PR behavior. See PR #490's TransferRow / TransferProperties
+  // for the pair-detection side.
+  confirmedTransferTxIds: ReadonlySet<string> = new Set(),
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 
@@ -33,11 +42,13 @@ export const getBudgetData = (
     const { transaction_id } = splitTransaction;
     const transaction = transactions.get(transaction_id);
     if (!transaction) return;
+    if (confirmedTransferTxIds.has(transaction_id)) return;
     transactionFamilies.add(transaction_id, splitTransaction);
   });
 
   const processTransaction = (transaction: Transaction) => {
     const { transaction_id, authorized_date, date, account_id, label, amount } = transaction;
+    if (confirmedTransferTxIds.has(transaction_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     const account = accounts.get(account_id);
     if (!account || account.hide) return;

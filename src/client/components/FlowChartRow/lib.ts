@@ -25,6 +25,13 @@ export const getSankeyData = (
   sections: SectionDictionary,
   categories: CategoryDictionary,
   viewDate: ViewDate,
+  // Confirmed-transfer transaction ids — skipped because a transfer is
+  // internal movement between the user's own accounts, not flow in or
+  // out of total wealth. Without this skip the Sankey would inflate
+  // both the income column (destination-side credit) and the expense
+  // column (source-side debit) by the same amount. Defaults to empty
+  // so other callers / tests keep the pre-PR behavior.
+  confirmedTransferTxIds: ReadonlySet<string> = new Set(),
 ): SankeyData => {
   const incomeBudgets = new Map<string, SankeyRow>();
   const incomeSections = new Map<string, SankeyRow>();
@@ -36,6 +43,7 @@ export const getSankeyData = (
 
   const processTransaction = (t: Transaction | InvestmentTransaction) => {
     const isInvestment = t instanceof InvestmentTransaction;
+    if (!isInvestment && confirmedTransferTxIds.has(t.transaction_id)) return;
     const authorized_date = !isInvestment ? t.authorized_date : undefined;
     const transactionDate = new LocalDate(authorized_date || t.date);
     if (!viewDate.has(transactionDate)) return;

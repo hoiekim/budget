@@ -12,7 +12,17 @@ import {
 } from "client";
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 
-type CalculateFn = ((data: Data) => void) & {
+export interface CalculateOptions {
+  /** Confirmed-transfer transaction ids — threaded into `getBudgetData`
+   *  so the spent/income aggregation skips internal-movement
+   *  transactions. Not threaded into balance calcs (per Hoie
+   *  2026-06-18: per-account historical balance MUST still include
+   *  transfer effects, since the account's balance really did change).
+   *  Empty / omitted = pre-PR behavior. */
+  confirmedTransferTxIds?: ReadonlySet<string>;
+}
+
+type CalculateFn = ((data: Data, opts?: CalculateOptions) => void) & {
   cache: {
     capacityData: (updater: (current: CapacityData) => CapacityData) => void;
   };
@@ -34,7 +44,7 @@ export const useData = () => {
   const [calculations, setCalculations] = useState(new Calculations());
 
   const calculateAll = useCallback(
-    (data: Data) => {
+    (data: Data, opts?: CalculateOptions) => {
       const {
         accounts,
         accountSnapshots,
@@ -49,9 +59,16 @@ export const useData = () => {
         categories,
       } = data;
 
+      const confirmedTransferTxIds = opts?.confirmedTransferTxIds;
+
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
 
+        // Balance data intentionally does NOT receive confirmedTransferTxIds:
+        // per-account historical balance is supposed to reflect the actual
+        // value held in each account at each point in time. A transfer
+        // moves real dollars between accounts, so dropping it would
+        // de-sync the chart from the snapshot baseline (Hoie 2026-06-18).
         const balanceData = getBalanceData(
           accounts,
           accountSnapshots,
@@ -67,6 +84,7 @@ export const useData = () => {
           budgets,
           sections,
           categories,
+          confirmedTransferTxIds,
         );
 
         const capacityData = getCapacityData(budgets, sections, categories);

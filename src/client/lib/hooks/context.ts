@@ -9,7 +9,15 @@ export enum ScreenType {
   Wide,
 }
 
-type CalculateFn = ((data: Data) => void) & {
+export interface CalculateOptions {
+  /** Confirmed-transfer transaction ids — threaded into `getBudgetData`
+   *  so spent/income aggregation skips internal-movement transactions.
+   *  Balance calc intentionally ignores this (per-account historical
+   *  balance must still include transfers — Hoie 2026-06-18). */
+  confirmedTransferTxIds?: ReadonlySet<string>;
+}
+
+type CalculateFn = ((data: Data, opts?: CalculateOptions) => void) & {
   cache: {
     capacityData: (updater: (current: CapacityData) => CapacityData) => void;
   };

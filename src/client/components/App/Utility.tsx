@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useAppContext, useSync, PATH, useDebounce } from "client";
 
 /**
@@ -7,7 +7,8 @@ import { useAppContext, useSync, PATH, useDebounce } from "client";
  * dev engineers to find them easily.
  */
 const Utility = () => {
-  const { user, router, setSelectedInterval, data, calculate, viewDate } = useAppContext();
+  const { user, router, setSelectedInterval, data, calculate, viewDate, transfers } =
+    useAppContext();
 
   const userLoggedIn = !!user;
   const { path, go } = router;
@@ -31,13 +32,25 @@ const Utility = () => {
     else clean();
   }, [userLoggedIn, sync, clean]);
 
+  // Confirmed-transfer transaction id set, derived once per
+  // `transfers.confirmedTransferByTransactionId` ref change. Threaded
+  // into `calculate(...)` so `getBudgetData` (and any future calc
+  // wanting to skip transfers) sees the latest pair set. Per-account
+  // balance calc intentionally does not consume this — see
+  // `useData`'s `calculateAll` comment.
+  const confirmedTransferTxIds = useMemo(() => {
+    const set = new Set<string>();
+    transfers.confirmedTransferByTransactionId.forEach((_pair, txId) => set.add(txId));
+    return set;
+  }, [transfers.confirmedTransferByTransactionId]);
+
   /**
    * Calculate balance history when data is updated
    */
   useEffect(() => {
     if (!data.status.isInit) return;
-    debouncer(() => calculate(data));
-  }, [data, calculate, debouncer]);
+    debouncer(() => calculate(data, { confirmedTransferTxIds }));
+  }, [data, calculate, debouncer, confirmedTransferTxIds]);
 
   /**
    * Update viewDate when user selects different interval
