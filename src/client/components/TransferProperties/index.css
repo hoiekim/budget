@@ -1,0 +1,27 @@
+/* Confirmed-transfer detail page. "Type" chip + inline amount mirror the
+   bundled-row chip in `TransactionsTable/index.css`; styled here so they
+   inherit the detail-panel typography automatically. The
+   "Mark as Non-Transfer" button is intentionally NOT red — per Hoie
+   2026-06-17 the red border read as a destructive-action warning, but
+   un-pairing just reverts to two regular transactions, no data loss. */
+div.TransferProperties .transferAmountInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+div.TransferProperties .transferChip.transferChipConfirmed {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  border: 1px solid #444;
+  color: #b8b8b8;
+}
+
+div.TransferProperties button.unpairButton {
+  font-size: 14px;
+  padding: 6px 12px;
+}

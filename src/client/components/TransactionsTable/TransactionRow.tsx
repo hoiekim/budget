@@ -15,13 +15,14 @@ import {
 } from "client";
 import { InstitutionSpan, KebabIcon } from "client/components";
 import { ApiResponse } from "server";
+import TransferControls from "./TransferControls";
 
 interface Props {
   transaction: Transaction | SplitTransaction;
 }
 
 const TransactionRow = ({ transaction }: Props) => {
-  const { data, calculations, setData, router } = useAppContext();
+  const { data, calculations, setData, router, transfers } = useAppContext();
   const { transactionFamilies } = calculations;
   const { id, transaction_id, amount, label } = transaction;
   const parentTransaction = data.transactions.get(transaction_id)!;
@@ -94,6 +95,14 @@ const TransactionRow = ({ transaction }: Props) => {
   }, [id, label.budget_id, account?.label.budget_id, sections, categories]);
 
   const isSplitTransaction = transaction instanceof SplitTransaction;
+
+  // A row whose parent transaction belongs to a still-suggested transfer pair
+  // shows Confirm/Reject instead of the budget/category controls (#354). Split
+  // rows never carry the affordance — the detection engine pairs whole
+  // transactions, and a split inherits its parent's transaction_id.
+  const suggestedPairId = isSplitTransaction
+    ? undefined
+    : transfers.suggestedPairByTransactionId.get(transaction_id);
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -287,20 +296,29 @@ const TransactionRow = ({ transaction }: Props) => {
         </div>
       </div>
       <div className="budgetCategoryActions">
-        <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-          <option value="">Select Budget</option>
-          {budgetOptions}
-        </select>
-        <div
-          className={categoryWrapperClass}
-          onClick={onClickCategoryWrapper}
-          title={isSuggested ? "Click the yellow dot to accept this suggestion" : undefined}
-        >
-          <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-            <option value="">Select Category</option>
-            {categoryOptions}
-          </select>
-        </div>
+        {suggestedPairId ? (
+          <TransferControls
+            onConfirm={() => transfers.confirm(suggestedPairId)}
+            onReject={() => transfers.reject(suggestedPairId)}
+          />
+        ) : (
+          <div className="labelControls">
+            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+              <option value="">Select Budget</option>
+              {budgetOptions}
+            </select>
+            <div
+              className={categoryWrapperClass}
+              onClick={onClickCategoryWrapper}
+              title={isSuggested ? "Click the yellow dot to accept this suggestion" : undefined}
+            >
+              <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+                <option value="">Select Category</option>
+                {categoryOptions}
+              </select>
+            </div>
+          </div>
+        )}
         <div>
           <button className="kebabButton" onClick={onClickKebab}>
             <KebabIcon size={15} />

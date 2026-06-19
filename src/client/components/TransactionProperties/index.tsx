@@ -13,16 +13,23 @@ import {
   call,
   indexedDb,
 } from "client";
-import { InstitutionSpan } from "client/components";
+import { InstitutionSpan, TransferArrowIcon } from "client/components";
 import SplitTransactionRow from "./SplitTransactionRow";
 import "./index.css";
+
+// Window for the partner-candidate filter — matches the detect-transfers
+// cron's `DATE_WINDOW_DAYS` (see `compute-tools/detect-transfers.ts:8`).
+// Keeping these aligned means a user-driven "Mark as Transfer" surfaces
+// the same set of candidates the algorithm would have considered.
+const PARTNER_DATE_WINDOW_DAYS = 3;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 interface Props {
   transaction: Transaction;
 }
 
 export const TransactionProperties = ({ transaction }: Props) => {
-  const { data, setData, calculations } = useAppContext();
+  const { data, setData, calculations, transfers } = useAppContext();
   const { transactionFamilies } = calculations;
   const { accounts, budgets, sections, categories } = data;
 
@@ -251,6 +258,49 @@ export const TransactionProperties = ({ transaction }: Props) => {
 
   const isIncome = transaction.amount < 0;
 
+  // Manual "Mark as Transfer" picker — surfaces transactions that COULD be
+  // this transaction's transfer partner: opposite sign on the amount, same
+  // absolute value, within ±3 days (matches detect-transfers' algorithm).
+  // Anything already in a confirmed or suggested pair is filtered out so
+  // the user can't double-bind a transaction.
+  const [showPartnerPicker, setShowPartnerPicker] = useState(false);
+  const [pendingPartnerId, setPendingPartnerId] = useState<string | null>(null);
+
+  const txAmount = transaction.amount;
+  const txDateMs = new LocalDate(authorized_date || date).getTime();
+  const partnerCandidates = useMemo(() => {
+    const candidates: Transaction[] = [];
+    data.transactions.forEach((t) => {
+      if (t.transaction_id === transaction_id) return;
+      // Opposite sign + same absolute amount.
+      if (Math.sign(t.amount) === Math.sign(txAmount)) return;
+      if (Math.abs(t.amount) !== Math.abs(txAmount)) return;
+      // Within ±PARTNER_DATE_WINDOW_DAYS.
+      const tDateMs = new LocalDate(t.authorized_date || t.date).getTime();
+      if (Math.abs(tDateMs - txDateMs) > PARTNER_DATE_WINDOW_DAYS * ONE_DAY_MS) return;
+      // Skip transactions already in a pair (confirmed or suggested).
+      if (transfers.confirmedTransferByTransactionId.has(t.transaction_id)) return;
+      if (transfers.suggestedPairByTransactionId.has(t.transaction_id)) return;
+      candidates.push(t);
+    });
+    candidates.sort((a, b) => {
+      const aDateMs = new LocalDate(a.authorized_date || a.date).getTime();
+      const bDateMs = new LocalDate(b.authorized_date || b.date).getTime();
+      return Math.abs(aDateMs - txDateMs) - Math.abs(bDateMs - txDateMs);
+    });
+    return candidates;
+  }, [data.transactions, transaction_id, txAmount, txDateMs, transfers]);
+
+  const onClickPartnerCandidate = async (partnerId: string) => {
+    setPendingPartnerId(partnerId);
+    try {
+      await transfers.pair(transaction_id, partnerId);
+      setShowPartnerPicker(false);
+    } finally {
+      setPendingPartnerId(null);
+    }
+  };
+
   return (
     <div className="TransactionProperties Properties">
       <div className="propertyLabel">Transaction&nbsp;Details</div>
@@ -362,6 +412,101 @@ export const TransactionProperties = ({ transaction }: Props) => {
         <div className="row button">
           <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</button>
         </div>
+      </div>
+      <div className="propertyLabel">Transfer</div>
+      <div className="property">
+        {!showPartnerPicker && (
+          <div className="row button">
+            <button
+              className="markAsTransferButton"
+              onClick={() => setShowPartnerPicker(true)}
+            >
+              <TransferArrowIcon size={12} />
+              &nbsp;Mark&nbsp;as&nbsp;Transfer
+            </button>
+          </div>
+        )}
+        {showPartnerPicker && (
+          <>
+            <div className="row keyValue">
+              <span className="propertyName">Pair&nbsp;with</span>
+            </div>
+            {partnerCandidates.length === 0 && (
+              <div className="row partnerPickerEmpty">
+                <span className="partnerPickerEmptyText">
+                  No matching transactions within ±{PARTNER_DATE_WINDOW_DAYS} days
+                  (opposite sign, same absolute amount, not already paired).
+                </span>
+              </div>
+            )}
+            {partnerCandidates.map((candidate) => {
+              const candidateAccount = accounts.get(candidate.account_id);
+              const candidateInstitutionId = candidateAccount?.institution_id;
+              const isPending = pendingPartnerId === candidate.transaction_id;
+              const disabled = !!pendingPartnerId;
+              const onClick = disabled
+                ? undefined
+                : () => onClickPartnerCandidate(candidate.transaction_id);
+              return (
+                <div
+                  key={candidate.transaction_id}
+                  className={`row partnerCandidate${disabled ? " disabled" : ""}`}
+                  role="button"
+                  tabIndex={disabled ? -1 : 0}
+                  aria-disabled={disabled}
+                  onClick={onClick}
+                  onKeyDown={(e) => {
+                    if (!disabled && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onClick?.();
+                    }
+                  }}
+                >
+                  <div className="partnerCandidateInfo">
+                    <div className="authorized_date bigText">
+                      {new LocalDate(
+                        candidate.authorized_date || candidate.date,
+                      ).toLocaleString("en-US", {
+                        month: "numeric",
+                        day: "numeric",
+                      })}
+                    </div>
+                    <div className="merchant_name">
+                      {candidate.merchant_name && (
+                        <div className="bigText">{candidate.merchant_name}</div>
+                      )}
+                      {candidate.name && (
+                        <div className="smallText">{candidate.name}</div>
+                      )}
+                      <div className="bigText">
+                        {candidateAccount?.custom_name || candidateAccount?.name}
+                      </div>
+                      {candidateInstitutionId && (
+                        <div className="smallText">
+                          <InstitutionSpan institution_id={candidateInstitutionId} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="amount">
+                      {currencyCodeToSymbol(candidate.iso_currency_code || "")}&nbsp;
+                      {numberToCommaString(Math.abs(candidate.amount))}
+                      {isPending && <>&nbsp;…</>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="row button">
+              <button
+                className="markAsTransferCancel"
+                disabled={!!pendingPartnerId}
+                onClick={() => setShowPartnerPicker(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
