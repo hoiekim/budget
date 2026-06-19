@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAppContext, useSync, useTransfers, PATH, useDebounce } from "client";
+import { useAppContext, useSync, PATH, useDebounce } from "client";
 
 /**
  * This component is used to run useEffect hooks dependant on context variables.
@@ -13,7 +13,6 @@ const Utility = () => {
   const { path, go } = router;
 
   const { sync, clean } = useSync();
-  const { refresh: refreshTransfers } = useTransfers();
   const debouncer = useDebounce();
 
   /**
@@ -31,17 +30,6 @@ const Utility = () => {
     if (userLoggedIn) sync();
     else clean();
   }, [userLoggedIn, sync, clean]);
-
-  /**
-   * Refresh transfer pairs on login so `data.suggestedPairByTransactionId`
-   * / `data.confirmedTransferByTransactionId` are populated for the
-   * first calculator run + the transactions-table render. Each
-   * mutation method on `useTransfers()` re-runs refresh internally;
-   * this effect handles the initial cold load only.
-   */
-  useEffect(() => {
-    if (userLoggedIn) refreshTransfers();
-  }, [userLoggedIn, refreshTransfers]);
 
   /**
    * Calculate balance history when data is updated

@@ -18,6 +18,7 @@ import {
   ChartsGetResponse,
   SnapshotsGetResponse,
   SecuritiesGetResponse,
+  TransfersGetResponse,
 } from "server";
 import {
   Account,
@@ -57,6 +58,7 @@ import {
   Holding,
   SecurityDictionary,
   Security,
+  ConfirmedTransfer,
 } from "client";
 
 // Browsers cap concurrent fetches per origin (~6 on HTTP/1.1) and queueing
@@ -344,6 +346,52 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   budgets.forEach((e) => result.budgets.set(e.budget_id, new Budget(e)));
   sections.forEach((e) => result.sections.set(e.section_id, new Section(e)));
   categories.forEach((e) => result.categories.set(e.category_id, new Category(e)));
+
+  return result;
+};
+
+interface FetchTransfersResult {
+  suggestedPairByTransactionId: Map<string, string>;
+  confirmedTransferByTransactionId: Map<string, ConfirmedTransfer>;
+  networkFailed: boolean;
+}
+
+/**
+ * Lightweight fetch of all transfer pairs for the user. Lives in
+ * useSync alongside the other model fetches so a cold/warm load
+ * paints with pair state already in place — consumers read the maps
+ * from `data.*`, the calc layer reads them positionally, and mutation
+ * methods (in `useTransfers`) update `data` in-place via `setData`
+ * rather than re-fetching. No IndexedDB caching: pair lists are small
+ * and the maps are pure-derived from the response, so a cold-load
+ * refetch is cheap.
+ */
+const fetchTransfers = async (): Promise<FetchTransfersResult> => {
+  const result: FetchTransfersResult = {
+    suggestedPairByTransactionId: new Map(),
+    confirmedTransferByTransactionId: new Map(),
+    networkFailed: false,
+  };
+
+  const response = await call.get<TransfersGetResponse>("/api/transfers").catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
+
+  for (const pair of response.body) {
+    if (pair.status === "suggested") {
+      for (const tx of pair.transactions) {
+        result.suggestedPairByTransactionId.set(tx.transaction_id, pair.pair_id);
+      }
+    } else if (pair.status === "confirmed") {
+      const entry: ConfirmedTransfer = { pair_id: pair.pair_id, transactions: pair.transactions };
+      for (const tx of pair.transactions) {
+        result.confirmedTransferByTransactionId.set(tx.transaction_id, entry);
+      }
+    }
+  }
 
   return result;
 };
@@ -646,6 +694,7 @@ export const useSync = () => {
           snapshotsResult,
           institutionsResult,
           securitiesResult,
+          transfersResult,
         ] = await Promise.all([
           fetchBudgets(),
           fetchCharts(),
@@ -654,6 +703,7 @@ export const useSync = () => {
           fetchSnapshots(accounts, fullRange, recentSinceMs),
           fetchInstitutions(accounts),
           fetchSecurities(),
+          fetchTransfers(),
         ]);
 
         const refreshed = new Data();
@@ -672,6 +722,8 @@ export const useSync = () => {
         refreshed.accountSnapshots = snapshotsResult.accountSnapshots;
         refreshed.holdingSnapshots = snapshotsResult.holdingSnapshots;
         refreshed.securitySnapshots = snapshotsResult.securitySnapshots;
+        refreshed.suggestedPairByTransactionId = transfersResult.suggestedPairByTransactionId;
+        refreshed.confirmedTransferByTransactionId = transfersResult.confirmedTransferByTransactionId;
         refreshed.status.isInit = true;
         refreshed.status.isLoading = false;
         refreshed.status.isError = false;
@@ -691,7 +743,8 @@ export const useSync = () => {
           transactionsResult.networkFailed ||
           snapshotsResult.networkFailed ||
           institutionsResult.networkFailed ||
-          securitiesResult.networkFailed;
+          securitiesResult.networkFailed ||
+          transfersResult.networkFailed;
 
         if (!warmFetchFailed) {
           indexedDb
@@ -732,6 +785,7 @@ export const useSync = () => {
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
       const securitiesPromise = fetchSecurities();
+      const transfersPromise = fetchTransfers();
 
       const [
         { accounts, items },
@@ -739,17 +793,23 @@ export const useSync = () => {
         stage1Charts,
         stage1Institutions,
         stage1Securities,
+        stage1Transfers,
       ] = await Promise.all([
         accountsPromise,
         budgetsPromise,
         chartsPromise,
         institutionsPromise,
         securitiesPromise,
+        transfersPromise,
       ]);
       const { budgets, sections, categories } = stage1Budgets;
       const { charts } = stage1Charts;
       const { institutions } = stage1Institutions;
       const { securities } = stage1Securities;
+      const {
+        suggestedPairByTransactionId,
+        confirmedTransferByTransactionId,
+      } = stage1Transfers;
 
       const stage1 = new Data({
         accounts,
@@ -760,6 +820,8 @@ export const useSync = () => {
         charts,
         institutions,
         securities,
+        suggestedPairByTransactionId,
+        confirmedTransferByTransactionId,
       });
       stage1.status.isInit = true;
       stage1.status.isLoading = true;
@@ -804,6 +866,8 @@ export const useSync = () => {
         charts,
         institutions,
         securities,
+        suggestedPairByTransactionId,
+        confirmedTransferByTransactionId,
         transactions: recentTransactions,
         investmentTransactions: recentInvestmentTransactions,
         splitTransactions,
@@ -839,6 +903,8 @@ export const useSync = () => {
         charts,
         institutions,
         securities,
+        suggestedPairByTransactionId,
+        confirmedTransferByTransactionId,
         transactions: recentTransactions,
         investmentTransactions: recentInvestmentTransactions,
         splitTransactions,
@@ -882,6 +948,7 @@ export const useSync = () => {
         stage1Charts.networkFailed ||
         stage1Institutions.networkFailed ||
         stage1Securities.networkFailed ||
+        stage1Transfers.networkFailed ||
         stage2Transactions.networkFailed ||
         stage2SplitTxns.networkFailed ||
         stage2Snapshots.networkFailed ||

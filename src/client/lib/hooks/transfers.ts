@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { JSONTransaction } from "common";
-import { TransferPair, TransfersGetResponse } from "server";
 import { call, Data, useAppContext } from "client";
 
 export interface ConfirmedTransfer {
@@ -12,11 +11,6 @@ export interface ConfirmedTransfer {
 }
 
 export interface TransferActions {
-  /** Re-fetch /api/transfers and write the derived maps into
-   *  `data.suggestedPairByTransactionId` /
-   *  `data.confirmedTransferByTransactionId`. Called on login (from
-   *  `Utility`) and after every successful mutation below. */
-  refresh: () => Promise<void>;
   /** Confirm a suggested pair: status becomes "confirmed". */
   confirm: (pair_id: string) => Promise<void>;
   /** Reject a suggested pair: soft-deletes it so the row reverts. */
@@ -33,86 +27,120 @@ export interface TransferActions {
   pair: (transaction_id_a: string, transaction_id_b: string) => Promise<void>;
 }
 
-const buildMaps = (
-  pairs: TransferPair[],
-): {
-  suggested: Map<string, string>;
-  confirmed: Map<string, ConfirmedTransfer>;
-} => {
-  const suggested = new Map<string, string>();
-  const confirmed = new Map<string, ConfirmedTransfer>();
-  for (const pair of pairs) {
-    if (pair.status === "suggested") {
-      for (const transaction of pair.transactions) {
-        suggested.set(transaction.transaction_id, pair.pair_id);
-      }
-    } else if (pair.status === "confirmed") {
-      const entry: ConfirmedTransfer = {
-        pair_id: pair.pair_id,
-        transactions: pair.transactions,
-      };
-      for (const transaction of pair.transactions) {
-        confirmed.set(transaction.transaction_id, entry);
-      }
-    }
-  }
-  return { suggested, confirmed };
+/**
+ * Find both transaction_ids that map to a given pair_id in one of the
+ * pair maps. Used by mutation methods to update FE state in-place
+ * without re-fetching.
+ */
+const findPairTxIds = (
+  map: Map<string, unknown>,
+  pair_id: string,
+  matches: (entry: unknown) => boolean,
+): string[] => {
+  const txIds: string[] = [];
+  map.forEach((entry, txId) => {
+    if (matches(entry)) txIds.push(txId);
+    // Stop walking once both halves found — every pair has exactly 2 sides.
+  });
+  return txIds;
 };
 
 /**
- * Transfer-pair actions hook (#354, Phase 3a). Stateless: the maps
- * themselves live on `data.suggestedPairByTransactionId` and
- * `data.confirmedTransferByTransactionId` — this hook just provides
- * memoized callbacks that fetch `/api/transfers` and write the
- * derived maps back via `setData`. Safe to call from any component;
- * each call returns fresh memoized callbacks but no internal state.
- *
- * Kept separate from the heavyweight cold/warm IndexedDB sync because
- * pairs are a small, cheap list refetched on demand after each
- * mutation rather than cached per-month like transactions.
+ * Transfer-pair actions hook (#354, Phase 3a). Stateless: the pair
+ * maps themselves live on `data.suggestedPairByTransactionId` and
+ * `data.confirmedTransferByTransactionId`, fetched once by `useSync`
+ * alongside transactions / budgets / etc. Mutation methods POST to
+ * the server then update `data` in-place via `setData` — no
+ * re-fetch, matching the rest of the app's mutation pattern.
  */
 export const useTransfers = (): TransferActions => {
   const { setData } = useAppContext();
 
-  const refresh = useCallback(async () => {
-    const response = await call.get<TransfersGetResponse>("/api/transfers");
-    if (response.status !== "success" || !response.body) return;
-    const { suggested, confirmed } = buildMaps(response.body);
-    setData((oldData) => {
-      const newData = new Data(oldData);
-      newData.suggestedPairByTransactionId = suggested;
-      newData.confirmedTransferByTransactionId = confirmed;
-      return newData;
-    });
-  }, [setData]);
-
   const confirm = useCallback(
     async (pair_id: string) => {
       const response = await call.post("/api/transfers/pair", { pair_id });
-      if (response.status === "success") await refresh();
+      if (response.status !== "success") return;
+      setData((oldData) => {
+        const txIds = findPairTxIds(
+          oldData.suggestedPairByTransactionId,
+          pair_id,
+          (entry) => entry === pair_id,
+        );
+        // Both halves of the pair are needed to build the ConfirmedTransfer
+        // entry. If only one is in `data.transactions` (rare — partial
+        // sync), the second half goes in as a stub so the maps stay
+        // consistent; the bundled-row renderer will skip the stub side.
+        const transactions: JSONTransaction[] = txIds
+          .map((id) => oldData.transactions.get(id))
+          .filter((t): t is NonNullable<typeof t> => !!t);
+        if (transactions.length < 2) return oldData;
+
+        const entry: ConfirmedTransfer = { pair_id, transactions };
+        const newData = new Data(oldData);
+        newData.suggestedPairByTransactionId = new Map(oldData.suggestedPairByTransactionId);
+        newData.confirmedTransferByTransactionId = new Map(oldData.confirmedTransferByTransactionId);
+        for (const id of txIds) {
+          newData.suggestedPairByTransactionId.delete(id);
+          newData.confirmedTransferByTransactionId.set(id, entry);
+        }
+        return newData;
+      });
     },
-    [refresh],
+    [setData],
   );
 
   const reject = useCallback(
     async (pair_id: string) => {
       const response = await call.delete(`/api/transfers?id=${encodeURIComponent(pair_id)}`);
-      if (response.status === "success") await refresh();
+      if (response.status !== "success") return;
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        newData.suggestedPairByTransactionId = new Map(oldData.suggestedPairByTransactionId);
+        newData.confirmedTransferByTransactionId = new Map(oldData.confirmedTransferByTransactionId);
+        // Strip both halves from whichever map they're in. Reject is
+        // semantically used on suggested pairs; unpair (same delete
+        // route) is used on confirmed pairs — both paths land here.
+        const suggestedTxIds = findPairTxIds(
+          newData.suggestedPairByTransactionId,
+          pair_id,
+          (entry) => entry === pair_id,
+        );
+        suggestedTxIds.forEach((id) => newData.suggestedPairByTransactionId.delete(id));
+        const confirmedTxIds = findPairTxIds(
+          newData.confirmedTransferByTransactionId,
+          pair_id,
+          (entry) => (entry as ConfirmedTransfer).pair_id === pair_id,
+        );
+        confirmedTxIds.forEach((id) => newData.confirmedTransferByTransactionId.delete(id));
+        return newData;
+      });
     },
-    [refresh],
+    [setData],
   );
 
   const pair = useCallback(
     async (transaction_id_a: string, transaction_id_b: string) => {
-      const response = await call.post("/api/transfers/pair", {
+      const response = await call.post<{ pair_id: string }>("/api/transfers/pair", {
         transaction_id_a,
         transaction_id_b,
         status: "confirmed",
       });
-      if (response.status === "success") await refresh();
+      if (response.status !== "success" || !response.body) return;
+      const { pair_id } = response.body;
+      setData((oldData) => {
+        const a = oldData.transactions.get(transaction_id_a);
+        const b = oldData.transactions.get(transaction_id_b);
+        if (!a || !b) return oldData;
+        const entry: ConfirmedTransfer = { pair_id, transactions: [a, b] };
+        const newData = new Data(oldData);
+        newData.confirmedTransferByTransactionId = new Map(oldData.confirmedTransferByTransactionId);
+        newData.confirmedTransferByTransactionId.set(transaction_id_a, entry);
+        newData.confirmedTransferByTransactionId.set(transaction_id_b, entry);
+        return newData;
+      });
     },
-    [refresh],
+    [setData],
   );
 
-  return { refresh, confirm, reject, unpair: reject, pair };
+  return { confirm, reject, unpair: reject, pair };
 };
