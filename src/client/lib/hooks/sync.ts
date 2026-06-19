@@ -382,7 +382,6 @@ const fetchTransfers = async (): Promise<FetchTransfersResult> => {
     result.transfers.set(pair.pair_id, pair);
   }
 
-  console.log("[debug fetchTransfers] populated transfers, size=", result.transfers.size);
   return result;
 };
 
@@ -938,27 +937,11 @@ export const useSync = () => {
         (stage3Transactions?.networkFailed ?? false) ||
         (stage3Snapshots?.networkFailed ?? false);
 
-      console.log("[debug coldPath] coldFetchFailed=", coldFetchFailed,
-        "stage1Budgets=", stage1Budgets.networkFailed,
-        "stage1Transfers=", stage1Transfers.networkFailed,
-        "stage2Transactions=", stage2Transactions.networkFailed,
-        "stage2SplitTxns=", stage2SplitTxns.networkFailed,
-        "stage2Snapshots=", stage2Snapshots.networkFailed,
-        "stage3Transactions=", stage3Transactions?.networkFailed,
-        "stage3Snapshots=", stage3Snapshots?.networkFailed,
-        "finalData.transfers.size=", finalData.transfers.size,
-        "finalData.transactions.size=", finalData.transactions.size,
-      );
-
       if (!coldFetchFailed) {
         indexedDb
           .clearAllData()
-          .then(() => {
-            console.log("[debug coldPath] cleared, calling saveAllData");
-            return indexedDb.saveAllData(finalData);
-          })
-          .then(() => console.log("[debug coldPath] saveAllData resolved"))
-          .catch((e) => console.error("[debug coldPath] save chain error:", e));
+          .then(() => indexedDb.saveAllData(finalData))
+          .catch(console.error);
         writeLastSyncedAt(new Date());
       }
     } catch (err) {
