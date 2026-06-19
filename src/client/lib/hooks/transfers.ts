@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { TransferPair } from "server";
-import { call, Data, TransferDictionary, useAppContext } from "client";
+import { call, Data, TransferDictionary, indexedDb, StoreName, useAppContext } from "client";
 
 export interface TransferActions {
   /** Confirm a suggested pair: status flips to "confirmed". */
@@ -37,9 +37,15 @@ export const useTransfers = (): TransferActions => {
       setData((oldData) => {
         const prev = oldData.transfers.get(pair_id);
         if (!prev) return oldData;
+        const updatedPair: TransferPair = { ...prev, status: "confirmed" };
+        // IDB mirror: keep the cached pair in sync with React state so
+        // the next warm boot paints with status="confirmed" instead of
+        // the stale "suggested" from the prior cold sync. Fire-and-forget
+        // — never await an IDB write on the latency path.
+        indexedDb.saveTransfer(updatedPair).catch(console.error);
         const newData = new Data(oldData);
         newData.transfers = new TransferDictionary(oldData.transfers);
-        newData.transfers.set(pair_id, { ...prev, status: "confirmed" });
+        newData.transfers.set(pair_id, updatedPair);
         return newData;
       });
     },
@@ -50,6 +56,7 @@ export const useTransfers = (): TransferActions => {
     async (pair_id: string) => {
       const response = await call.delete(`/api/transfers?id=${encodeURIComponent(pair_id)}`);
       if (response.status !== "success") return;
+      indexedDb.remove(StoreName.transfers, pair_id).catch(console.error);
       setData((oldData) => {
         if (!oldData.transfers.has(pair_id)) return oldData;
         const newData = new Data(oldData);
@@ -79,6 +86,7 @@ export const useTransfers = (): TransferActions => {
           status: "confirmed",
           transactions: [a, b],
         };
+        indexedDb.saveTransfer(newPair).catch(console.error);
         const newData = new Data(oldData);
         newData.transfers = new TransferDictionary(oldData.transfers);
         newData.transfers.set(pair_id, newPair);

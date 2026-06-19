@@ -127,7 +127,7 @@ export class TransactionDictionary extends Dictionary<Transaction, TransactionDi
  * filter on `pair.status` at the point of use (matches the suggested-
  * vs-confirmed category-label pattern already in use elsewhere).
  */
-export class TransferDictionary extends Map<string, TransferPair> {
+export class TransferDictionary extends Dictionary<TransferPair, TransferDictionary> {
   private pivot = new Map<string, TransferPair>();
 
   constructor(init?: Iterable<readonly [string, TransferPair]> | null) {
@@ -144,22 +144,28 @@ export class TransferDictionary extends Map<string, TransferPair> {
     return this.pivot.get(transaction_id);
   };
 
-  override set(pair_id: string, pair: TransferPair): this {
-    const prev = super.get(pair_id);
+  // Dictionary's `set` is an arrow-function field, not a prototype
+  // method, so `super.set` from our own arrow field doesn't resolve
+  // (TS2855). Call `Map.prototype.set` directly — same effect as
+  // bypassing Dictionary's server-side guard, which doesn't apply to
+  // transfers (this is FE-only code).
+  override set = (pair_id: string, pair: TransferPair): this => {
+    const prev = Map.prototype.get.call(this, pair_id) as TransferPair | undefined;
     if (prev) {
       prev.transactions.forEach((t) => this.pivot.delete(t.transaction_id));
     }
     pair.transactions.forEach((t) => this.pivot.set(t.transaction_id, pair));
-    return super.set(pair_id, pair);
-  }
+    Map.prototype.set.call(this, pair_id, pair);
+    return this;
+  };
 
-  override delete(pair_id: string): boolean {
-    const prev = super.get(pair_id);
+  override delete = (pair_id: string): boolean => {
+    const prev = Map.prototype.get.call(this, pair_id) as TransferPair | undefined;
     if (prev) {
       prev.transactions.forEach((t) => this.pivot.delete(t.transaction_id));
     }
-    return super.delete(pair_id);
-  }
+    return Map.prototype.delete.call(this, pair_id);
+  };
 }
 
 export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
