@@ -1,6 +1,6 @@
 import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
 import type { JSONTransaction } from "common";
-import { useAppContext, type ConfirmedTransfer } from "client";
+import { useAppContext, useTransfers, type ConfirmedTransfer } from "client";
 import { InstitutionSpan, TransferArrowIcon } from "client/components";
 import "./index.css";
 
@@ -21,7 +21,8 @@ interface Props {
  * the same as TransactionProperties / ConnectionProperties / etc.
  */
 export const TransferProperties = ({ transfer }: Props) => {
-  const { data, transfers } = useAppContext();
+  const { data } = useAppContext();
+  const transferActions = useTransfers();
   const { accounts } = data;
 
   // Sides are anchored to the SIGN of the amount, not the array index,
@@ -41,7 +42,7 @@ export const TransferProperties = ({ transfer }: Props) => {
   const date = outgoing.authorized_date || outgoing.date;
 
   const onClickUnpair = async () => {
-    await transfers.unpair(transfer.pair_id);
+    await transferActions.unpair(transfer.pair_id);
   };
 
   // Per-side block reusable for both halves of the pair. Each side's

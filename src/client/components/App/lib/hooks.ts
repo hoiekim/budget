@@ -12,19 +12,7 @@ import {
 } from "client";
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 
-export interface CalculateOptions {
-  /** Membership-test for confirmed-transfer transaction ids — threaded
-   *  into `getBudgetData` so spent/income aggregation skips
-   *  internal-movement transactions. Typed structurally on `has` so
-   *  the standard call site can pass
-   *  `transfers.confirmedTransferByTransactionId` (a Map) directly
-   *  without materializing a parallel Set. Not threaded into balance
-   *  calcs (per Hoie 2026-06-18: per-account historical balance MUST
-   *  still include transfer effects). Omitted = pre-PR behavior. */
-  confirmedTransferIds?: { has(transaction_id: string): boolean };
-}
-
-type CalculateFn = ((data: Data, opts?: CalculateOptions) => void) & {
+type CalculateFn = ((data: Data) => void) & {
   cache: {
     capacityData: (updater: (current: CapacityData) => CapacityData) => void;
   };
@@ -46,7 +34,7 @@ export const useData = () => {
   const [calculations, setCalculations] = useState(new Calculations());
 
   const calculateAll = useCallback(
-    (data: Data, opts?: CalculateOptions) => {
+    (data: Data) => {
       const {
         accounts,
         accountSnapshots,
@@ -59,18 +47,18 @@ export const useData = () => {
         budgets,
         sections,
         categories,
+        confirmedTransferByTransactionId,
       } = data;
-
-      const confirmedTransferIds = opts?.confirmedTransferIds;
 
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
 
-        // Balance data intentionally does NOT receive confirmedTransferIds:
-        // per-account historical balance is supposed to reflect the actual
-        // value held in each account at each point in time. A transfer
-        // moves real dollars between accounts, so dropping it would
-        // de-sync the chart from the snapshot baseline (Hoie 2026-06-18).
+        // Balance data intentionally does NOT receive
+        // confirmedTransferByTransactionId: per-account historical
+        // balance is supposed to reflect the actual value held in
+        // each account at each point in time. A transfer moves real
+        // dollars between accounts, so dropping it would de-sync the
+        // chart from the snapshot baseline (Hoie 2026-06-18).
         const balanceData = getBalanceData(
           accounts,
           accountSnapshots,
@@ -86,7 +74,7 @@ export const useData = () => {
           budgets,
           sections,
           categories,
-          confirmedTransferIds,
+          confirmedTransferByTransactionId,
         );
 
         const capacityData = getCapacityData(budgets, sections, categories);

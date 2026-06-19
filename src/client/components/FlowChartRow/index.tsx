@@ -23,16 +23,18 @@ export const FlowChartRow = ({
   onSetOrder,
   height = 150,
 }: FlowChartRowProps) => {
-  const { data, viewDate, transfers } = useAppContext();
-  const { accounts, transactions, investmentTransactions, budgets, sections, categories } = data;
+  const { data, viewDate } = useAppContext();
+  const {
+    accounts,
+    transactions,
+    investmentTransactions,
+    budgets,
+    sections,
+    categories,
+    confirmedTransferByTransactionId,
+  } = data;
   const { configuration } = chart;
   const { account_ids } = configuration;
-
-  // `transfers.confirmedTransferByTransactionId` is already a
-  // Map<transaction_id, ConfirmedTransfer> — its `.has(id)` is exactly
-  // what `getSankeyData` checks. Pass the Map straight through; no
-  // need to materialize a parallel Set (Hoie review 2026-06-19).
-  const confirmedTransferIds = transfers.confirmedTransferByTransactionId;
 
   const {
     onDragStart,
@@ -61,7 +63,7 @@ export const FlowChartRow = ({
         sections,
         categories,
         viewDate,
-        confirmedTransferIds,
+        confirmedTransferByTransactionId,
       ),
     [
       selectedAccounts,
@@ -71,7 +73,7 @@ export const FlowChartRow = ({
       sections,
       categories,
       viewDate,
-      confirmedTransferIds,
+      confirmedTransferByTransactionId,
     ],
   );
 

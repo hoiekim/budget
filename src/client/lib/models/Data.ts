@@ -11,6 +11,7 @@ import { Category } from "./Category";
 import { Item } from "./Item";
 import { Chart } from "./Chart";
 import { AccountSnapshot, HoldingSnapshot, SecuritySnapshot } from "./Snapshot";
+import { ConfirmedTransfer } from "../hooks/transfers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class Dictionary<T = any, S extends Dictionary<T> = any> extends Map<string, T> {
@@ -146,6 +147,19 @@ export class Data {
   accountSnapshots = new AccountSnapshotDictionary();
   holdingSnapshots = new HoldingSnapshotDictionary();
   securitySnapshots = new SecuritySnapshotDictionary();
+
+  /** transaction_id → pair_id for pairs the detect-transfers heuristic
+   *  proposed but the user hasn't confirmed yet. Populated by
+   *  `useTransfers().refresh()`. Empty on logout / cold init. */
+  suggestedPairByTransactionId = new Map<string, string>();
+
+  /** transaction_id → bundled confirmed-pair info. Both halves of a
+   *  confirmed pair point at the SAME ConfirmedTransfer object. Read
+   *  by `getBudgetData` / `getSankeyData` to skip transfer halves from
+   *  spent/income aggregation, and by `TransactionsTable` /
+   *  `TransactionProperties` etc. for the bundled-row and "mark as
+   *  non-transfer" UI. Populated by `useTransfers().refresh()`. */
+  confirmedTransferByTransactionId = new Map<string, ConfirmedTransfer>();
 
   constructor(init?: Partial<Data>) {
     assign(this, init);

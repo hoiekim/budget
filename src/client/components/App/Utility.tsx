@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAppContext, useSync, PATH, useDebounce } from "client";
+import { useAppContext, useSync, useTransfers, PATH, useDebounce } from "client";
 
 /**
  * This component is used to run useEffect hooks dependant on context variables.
@@ -7,13 +7,13 @@ import { useAppContext, useSync, PATH, useDebounce } from "client";
  * dev engineers to find them easily.
  */
 const Utility = () => {
-  const { user, router, setSelectedInterval, data, calculate, viewDate, transfers } =
-    useAppContext();
+  const { user, router, setSelectedInterval, data, calculate, viewDate } = useAppContext();
 
   const userLoggedIn = !!user;
   const { path, go } = router;
 
   const { sync, clean } = useSync();
+  const { refresh: refreshTransfers } = useTransfers();
   const debouncer = useDebounce();
 
   /**
@@ -32,21 +32,24 @@ const Utility = () => {
     else clean();
   }, [userLoggedIn, sync, clean]);
 
-  // `transfers.confirmedTransferByTransactionId` is already a
-  // Map<transaction_id, ConfirmedTransfer>; its `.has(id)` answers the
-  // exact question the calcs ask. Feeding the Map straight through
-  // avoids a redundant Set materialization (Hoie review 2026-06-19).
-  // Per-account balance calc intentionally does not consume this —
-  // see `useData`'s `calculateAll` comment.
-  const confirmedTransferIds = transfers.confirmedTransferByTransactionId;
+  /**
+   * Refresh transfer pairs on login so `data.suggestedPairByTransactionId`
+   * / `data.confirmedTransferByTransactionId` are populated for the
+   * first calculator run + the transactions-table render. Each
+   * mutation method on `useTransfers()` re-runs refresh internally;
+   * this effect handles the initial cold load only.
+   */
+  useEffect(() => {
+    if (userLoggedIn) refreshTransfers();
+  }, [userLoggedIn, refreshTransfers]);
 
   /**
    * Calculate balance history when data is updated
    */
   useEffect(() => {
     if (!data.status.isInit) return;
-    debouncer(() => calculate(data, { confirmedTransferIds }));
-  }, [data, calculate, debouncer, confirmedTransferIds]);
+    debouncer(() => calculate(data));
+  }, [data, calculate, debouncer]);
 
   /**
    * Update viewDate when user selects different interval

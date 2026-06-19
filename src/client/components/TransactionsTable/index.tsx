@@ -9,7 +9,8 @@ interface Props {
 }
 
 export const TransactionsTable = ({ transactions }: Props) => {
-  const { transfers } = useAppContext();
+  const { data } = useAppContext();
+  const { confirmedTransferByTransactionId } = data;
 
   // Confirmed transfer pairs render as a single bundled row. Walk the
   // list in order, emitting one `TransferRow` for each pair the first
@@ -26,7 +27,7 @@ export const TransactionsTable = ({ transactions }: Props) => {
       // never participate in a transfer pair (the detection engine
       // pairs whole transactions).
       if (e instanceof Transaction) {
-        const pair = transfers.confirmedTransferByTransactionId.get(e.transaction_id);
+        const pair = confirmedTransferByTransactionId.get(e.transaction_id);
         if (pair) {
           if (renderedPairIds.has(pair.pair_id)) return null;
           renderedPairIds.add(pair.pair_id);

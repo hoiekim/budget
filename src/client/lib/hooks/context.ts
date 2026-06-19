@@ -1,7 +1,7 @@
 import { createContext, useContext, Dispatch, SetStateAction } from "react";
 import { MaskedUser } from "server";
 import { Interval, ViewDate } from "common";
-import { ClientRouter, Status, Data, Calculations, CapacityData, Transfers } from "client";
+import { ClientRouter, Status, Data, Calculations, CapacityData } from "client";
 
 export enum ScreenType {
   Narrow,
@@ -9,17 +9,7 @@ export enum ScreenType {
   Wide,
 }
 
-export interface CalculateOptions {
-  /** Membership-test for confirmed-transfer transaction ids — threaded
-   *  into `getBudgetData` so spent/income aggregation skips
-   *  internal-movement transactions. Typed structurally on `has` so a
-   *  Set<id> OR a Map keyed by id both satisfy it. Balance calc
-   *  intentionally ignores this (per-account historical balance must
-   *  still include transfers — Hoie 2026-06-18). */
-  confirmedTransferIds?: { has(transaction_id: string): boolean };
-}
-
-type CalculateFn = ((data: Data, opts?: CalculateOptions) => void) & {
+type CalculateFn = ((data: Data) => void) & {
   cache: {
     capacityData: (updater: (current: CapacityData) => CapacityData) => void;
   };
@@ -39,7 +29,6 @@ export interface ContextType {
   viewDate: ViewDate;
   setViewDate: Dispatch<SetStateAction<ViewDate>>;
   screenType: ScreenType;
-  transfers: Transfers;
 }
 
 export const Context = createContext<ContextType>({} as ContextType);
