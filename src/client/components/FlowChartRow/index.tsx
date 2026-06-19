@@ -23,10 +23,20 @@ export const FlowChartRow = ({
   onSetOrder,
   height = 150,
 }: FlowChartRowProps) => {
-  const { data, viewDate } = useAppContext();
+  const { data, viewDate, transfers } = useAppContext();
   const { accounts, transactions, investmentTransactions, budgets, sections, categories } = data;
   const { configuration } = chart;
   const { account_ids } = configuration;
+
+  // Confirmed-transfer txn ids — same shape as the set Utility threads
+  // into `calculate()`. Skipping these here prevents both halves of a
+  // pair from inflating income (destination credit) AND expense
+  // (source debit) by the same dollars on the Sankey.
+  const confirmedTransferTxIds = useMemo(() => {
+    const set = new Set<string>();
+    transfers.confirmedTransferByTransactionId.forEach((_pair, txId) => set.add(txId));
+    return set;
+  }, [transfers.confirmedTransferByTransactionId]);
 
   const {
     onDragStart,
@@ -55,6 +65,7 @@ export const FlowChartRow = ({
         sections,
         categories,
         viewDate,
+        confirmedTransferTxIds,
       ),
     [
       selectedAccounts,
@@ -64,6 +75,7 @@ export const FlowChartRow = ({
       sections,
       categories,
       viewDate,
+      confirmedTransferTxIds,
     ],
   );
 
