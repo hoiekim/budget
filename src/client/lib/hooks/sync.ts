@@ -58,7 +58,7 @@ import {
   Holding,
   SecurityDictionary,
   Security,
-  ConfirmedTransfer,
+  TransferDictionary,
 } from "client";
 
 // Browsers cap concurrent fetches per origin (~6 on HTTP/1.1) and queueing
@@ -351,25 +351,23 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
 };
 
 interface FetchTransfersResult {
-  suggestedPairByTransactionId: Map<string, string>;
-  confirmedTransferByTransactionId: Map<string, ConfirmedTransfer>;
+  transfers: TransferDictionary;
   networkFailed: boolean;
 }
 
 /**
  * Lightweight fetch of all transfer pairs for the user. Lives in
  * useSync alongside the other model fetches so a cold/warm load
- * paints with pair state already in place — consumers read the maps
- * from `data.*`, the calc layer reads them positionally, and mutation
- * methods (in `useTransfers`) update `data` in-place via `setData`
- * rather than re-fetching. No IndexedDB caching: pair lists are small
- * and the maps are pure-derived from the response, so a cold-load
- * refetch is cheap.
+ * paints with pair state already in place. Returns a single
+ * TransferDictionary (pair_id → TransferPair) — consumers resolve
+ * transaction_id lookups via `transfers.getByTransactionId(id)` which
+ * is O(1) over the dictionary's internal pivot map. Mutation methods
+ * in `useTransfers` update `data.transfers` in-place via `setData`
+ * (no re-fetch on mutation).
  */
 const fetchTransfers = async (): Promise<FetchTransfersResult> => {
   const result: FetchTransfersResult = {
-    suggestedPairByTransactionId: new Map(),
-    confirmedTransferByTransactionId: new Map(),
+    transfers: new TransferDictionary(),
     networkFailed: false,
   };
 
@@ -381,16 +379,7 @@ const fetchTransfers = async (): Promise<FetchTransfersResult> => {
   if (!response.body) return result;
 
   for (const pair of response.body) {
-    if (pair.status === "suggested") {
-      for (const tx of pair.transactions) {
-        result.suggestedPairByTransactionId.set(tx.transaction_id, pair.pair_id);
-      }
-    } else if (pair.status === "confirmed") {
-      const entry: ConfirmedTransfer = { pair_id: pair.pair_id, transactions: pair.transactions };
-      for (const tx of pair.transactions) {
-        result.confirmedTransferByTransactionId.set(tx.transaction_id, entry);
-      }
-    }
+    result.transfers.set(pair.pair_id, pair);
   }
 
   return result;
@@ -722,8 +711,7 @@ export const useSync = () => {
         refreshed.accountSnapshots = snapshotsResult.accountSnapshots;
         refreshed.holdingSnapshots = snapshotsResult.holdingSnapshots;
         refreshed.securitySnapshots = snapshotsResult.securitySnapshots;
-        refreshed.suggestedPairByTransactionId = transfersResult.suggestedPairByTransactionId;
-        refreshed.confirmedTransferByTransactionId = transfersResult.confirmedTransferByTransactionId;
+        refreshed.transfers = transfersResult.transfers;
         refreshed.status.isInit = true;
         refreshed.status.isLoading = false;
         refreshed.status.isError = false;
@@ -806,10 +794,7 @@ export const useSync = () => {
       const { charts } = stage1Charts;
       const { institutions } = stage1Institutions;
       const { securities } = stage1Securities;
-      const {
-        suggestedPairByTransactionId,
-        confirmedTransferByTransactionId,
-      } = stage1Transfers;
+      const { transfers } = stage1Transfers;
 
       const stage1 = new Data({
         accounts,
@@ -820,8 +805,7 @@ export const useSync = () => {
         charts,
         institutions,
         securities,
-        suggestedPairByTransactionId,
-        confirmedTransferByTransactionId,
+        transfers,
       });
       stage1.status.isInit = true;
       stage1.status.isLoading = true;
@@ -866,8 +850,7 @@ export const useSync = () => {
         charts,
         institutions,
         securities,
-        suggestedPairByTransactionId,
-        confirmedTransferByTransactionId,
+        transfers,
         transactions: recentTransactions,
         investmentTransactions: recentInvestmentTransactions,
         splitTransactions,
@@ -903,8 +886,7 @@ export const useSync = () => {
         charts,
         institutions,
         securities,
-        suggestedPairByTransactionId,
-        confirmedTransferByTransactionId,
+        transfers,
         transactions: recentTransactions,
         investmentTransactions: recentInvestmentTransactions,
         splitTransactions,

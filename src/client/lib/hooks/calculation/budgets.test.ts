@@ -8,7 +8,23 @@ import {
   CategoryDictionary,
   TransactionDictionary,
   SplitTransactionDictionary,
+  TransferDictionary,
 } from "../../models/Data";
+import type { TransferPair } from "server";
+
+// Helper: build a TransferDictionary with the given transaction ids treated
+// as halves of a single CONFIRMED pair. Mirrors what `data.transfers`
+// holds after `fetchTransfers` populates it from `/api/transfers`.
+const makeConfirmedPair = (transaction_ids: string[]): TransferDictionary => {
+  const dict = new TransferDictionary();
+  const pair: TransferPair = {
+    pair_id: "test-pair",
+    status: "confirmed",
+    transactions: transaction_ids.map((id) => ({ transaction_id: id }) as never),
+  };
+  dict.set(pair.pair_id, pair);
+  return dict;
+};
 import { Account } from "../../models/Account";
 import { Budget } from "../../models/Budget";
 import { Section } from "../../models/Section";
@@ -303,7 +319,7 @@ describe("getCapacityData — hierarchy aggregation", () => {
 });
 
 describe("getBudgetData — confirmed-transfer exclusion", () => {
-  test("transactions in confirmedTransferTxIds are skipped from all budget rollups", () => {
+  test("transactions in a confirmed transfer pair are skipped from all budget rollups", () => {
     const w = makeWorld();
 
     // Two confirmed-spending transactions, one of which is a transfer half.
@@ -341,14 +357,14 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
       w.budgets,
       w.sections,
       w.categories,
-      new Set(["tx-transfer-half"]),
+      makeConfirmedPair(["tx-transfer-half", "tx-transfer-half-2"]),
     );
     expect(withTransfer.budgetData.get(w.category.id, readDate).sorted_amount).toBe(250);
     expect(withTransfer.budgetData.get(w.section.id, readDate).sorted_amount).toBe(250);
     expect(withTransfer.budgetData.get(w.budget.id, readDate).sorted_amount).toBe(250);
   });
 
-  test("an unsorted transaction in confirmedTransferTxIds is also skipped (unsorted bucket)", () => {
+  test("an unsorted transaction in a confirmed pair is also skipped (unsorted bucket)", () => {
     const w = makeWorld();
     // Unsorted transaction — no category_id / confidence — would normally
     // land in the unsorted bucket. As a transfer half it should not.
@@ -365,7 +381,7 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
       w.budgets,
       w.sections,
       w.categories,
-      new Set(["tx-transfer-unsorted"]),
+      makeConfirmedPair(["tx-transfer-unsorted", "tx-transfer-unsorted-2"]),
     );
     // Budget bucket exists only if any transaction landed in it. With the
     // sole transaction filtered out, the budget id should not be tracked.
@@ -415,13 +431,13 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
       w.budgets,
       w.sections,
       w.categories,
-      new Set(["tx-transfer-parent"]),
+      makeConfirmedPair(["tx-transfer-parent", "tx-transfer-parent-2"]),
     );
     // No data should land — parent skipped, both splits skipped.
     expect(withTransfer.budgetData.size).toBe(0);
   });
 
-  test("an empty set behaves exactly like the no-arg call (backward compat)", () => {
+  test("an empty TransferDictionary behaves exactly like the no-arg call (backward compat)", () => {
     const w = makeWorld();
     const { transactions } = makeTx(w, 100, {
       budget_id: w.budget.id,
@@ -444,7 +460,7 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
       w.budgets,
       w.sections,
       w.categories,
-      new Set(),
+      new TransferDictionary(),
     );
     expect(emptySet.budgetData.get(w.category.id, readDate).sorted_amount).toBe(
       noArg.budgetData.get(w.category.id, readDate).sorted_amount,

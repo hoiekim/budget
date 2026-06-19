@@ -10,7 +10,7 @@ interface Props {
 
 export const TransactionsTable = ({ transactions }: Props) => {
   const { data } = useAppContext();
-  const { confirmedTransferByTransactionId } = data;
+  const { transfers } = data;
 
   // Confirmed transfer pairs render as a single bundled row. Walk the
   // list in order, emitting one `TransferRow` for each pair the first
@@ -25,9 +25,12 @@ export const TransactionsTable = ({ transactions }: Props) => {
       // Bundled-pair dedup applies to parent Transaction rows only —
       // SplitTransactions inherit their parent's transaction_id but
       // never participate in a transfer pair (the detection engine
-      // pairs whole transactions).
+      // pairs whole transactions). Only CONFIRMED pairs bundle into
+      // a TransferRow; suggested pairs still render as two
+      // individual TransactionRows with the Confirm/Reject controls.
       if (e instanceof Transaction) {
-        const pair = confirmedTransferByTransactionId.get(e.transaction_id);
+        const lookedUp = transfers.getByTransactionId(e.transaction_id);
+        const pair = lookedUp?.status === "confirmed" ? lookedUp : undefined;
         if (pair) {
           if (renderedPairIds.has(pair.pair_id)) return null;
           renderedPairIds.add(pair.pair_id);

@@ -47,18 +47,18 @@ export const useData = () => {
         budgets,
         sections,
         categories,
-        confirmedTransferByTransactionId,
+        transfers,
       } = data;
 
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
 
-        // Balance data intentionally does NOT receive
-        // confirmedTransferByTransactionId: per-account historical
-        // balance is supposed to reflect the actual value held in
-        // each account at each point in time. A transfer moves real
-        // dollars between accounts, so dropping it would de-sync the
-        // chart from the snapshot baseline (Hoie 2026-06-18).
+        // Balance data intentionally does NOT receive `transfers`:
+        // per-account historical balance is supposed to reflect the
+        // actual value held in each account at each point in time. A
+        // transfer moves real dollars between accounts, so dropping
+        // its halves would de-sync the chart from the snapshot
+        // baseline (Hoie 2026-06-18).
         const balanceData = getBalanceData(
           accounts,
           accountSnapshots,
@@ -74,7 +74,7 @@ export const useData = () => {
           budgets,
           sections,
           categories,
-          confirmedTransferByTransactionId,
+          transfers,
         );
 
         const capacityData = getCapacityData(budgets, sections, categories);

@@ -31,7 +31,7 @@ export const FlowChartRow = ({
     budgets,
     sections,
     categories,
-    confirmedTransferByTransactionId,
+    transfers,
   } = data;
   const { configuration } = chart;
   const { account_ids } = configuration;
@@ -63,7 +63,7 @@ export const FlowChartRow = ({
         sections,
         categories,
         viewDate,
-        confirmedTransferByTransactionId,
+        transfers,
       ),
     [
       selectedAccounts,
@@ -73,7 +73,7 @@ export const FlowChartRow = ({
       sections,
       categories,
       viewDate,
-      confirmedTransferByTransactionId,
+      transfers,
     ],
   );
 

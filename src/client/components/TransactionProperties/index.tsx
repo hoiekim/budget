@@ -33,14 +33,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData, calculations } = useAppContext();
   const transferActions = useTransfers();
   const { transactionFamilies } = calculations;
-  const {
-    accounts,
-    budgets,
-    sections,
-    categories,
-    confirmedTransferByTransactionId,
-    suggestedPairByTransactionId,
-  } = data;
+  const { accounts, budgets, sections, categories, transfers } = data;
 
   const {
     transaction_id,
@@ -287,9 +280,8 @@ export const TransactionProperties = ({ transaction }: Props) => {
       // Within ±PARTNER_DATE_WINDOW_DAYS.
       const tDateMs = new LocalDate(t.authorized_date || t.date).getTime();
       if (Math.abs(tDateMs - txDateMs) > PARTNER_DATE_WINDOW_DAYS * ONE_DAY_MS) return;
-      // Skip transactions already in a pair (confirmed or suggested).
-      if (confirmedTransferByTransactionId.has(t.transaction_id)) return;
-      if (suggestedPairByTransactionId.has(t.transaction_id)) return;
+      // Skip transactions already in any pair (confirmed or suggested).
+      if (transfers.getByTransactionId(t.transaction_id)) return;
       candidates.push(t);
     });
     candidates.sort((a, b) => {
@@ -298,14 +290,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
       return Math.abs(aDateMs - txDateMs) - Math.abs(bDateMs - txDateMs);
     });
     return candidates;
-  }, [
-    data.transactions,
-    transaction_id,
-    txAmount,
-    txDateMs,
-    confirmedTransferByTransactionId,
-    suggestedPairByTransactionId,
-  ]);
+  }, [data.transactions, transaction_id, txAmount, txDateMs, transfers]);
 
   const onClickPartnerCandidate = async (partnerId: string) => {
     setPendingPartnerId(partnerId);

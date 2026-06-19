@@ -1,12 +1,13 @@
 import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
 import type { JSONTransaction } from "common";
-import { useAppContext, useTransfers, type ConfirmedTransfer } from "client";
+import type { TransferPair } from "server";
+import { useAppContext, useTransfers } from "client";
 import { InstitutionSpan, TransferArrowIcon } from "client/components";
 import "./index.css";
 
 interface Props {
   /** Both transactions in the confirmed pair, in server order. */
-  transfer: ConfirmedTransfer;
+  transfer: TransferPair;
 }
 
 /**

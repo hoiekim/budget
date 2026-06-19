@@ -10,7 +10,7 @@ import {
   SectionDictionary,
   Transaction,
   TransactionDictionary,
-  type ConfirmedTransfer,
+  TransferDictionary,
 } from "client";
 
 export interface SankeyData {
@@ -26,14 +26,15 @@ export const getSankeyData = (
   sections: SectionDictionary,
   categories: CategoryDictionary,
   viewDate: ViewDate,
-  // transaction_id → confirmed-transfer pair. Halves of a confirmed
-  // pair are skipped because a transfer is internal movement between
-  // the user's own accounts, not flow in or out of total wealth.
-  // Without this skip the Sankey would inflate both the income column
-  // (destination-side credit) AND the expense column (source-side
-  // debit) by the same amount. Defaults to an empty Map so other
-  // callers / tests keep the pre-PR behavior.
-  confirmedTransferByTransactionId: ReadonlyMap<string, ConfirmedTransfer> = new Map(),
+  // All transfer pairs (suggested + confirmed), keyed by pair_id with
+  // a transaction_id pivot. Halves of a CONFIRMED pair are skipped
+  // because a transfer is internal movement between the user's own
+  // accounts, not flow in or out of total wealth. Without this skip
+  // the Sankey would inflate both the income column (destination-side
+  // credit) AND the expense column (source-side debit) by the same
+  // amount. Suggested pairs still aggregate normally. Defaults to an
+  // empty dictionary so callers / tests keep pre-PR behavior.
+  transfers: TransferDictionary = new TransferDictionary(),
 ): SankeyData => {
   const incomeBudgets = new Map<string, SankeyRow>();
   const incomeSections = new Map<string, SankeyRow>();
@@ -45,7 +46,9 @@ export const getSankeyData = (
 
   const processTransaction = (t: Transaction | InvestmentTransaction) => {
     const isInvestment = t instanceof InvestmentTransaction;
-    if (!isInvestment && confirmedTransferByTransactionId.has(t.transaction_id)) return;
+    if (!isInvestment && transfers.getByTransactionId(t.transaction_id)?.status === "confirmed") {
+      return;
+    }
     const authorized_date = !isInvestment ? t.authorized_date : undefined;
     const transactionDate = new LocalDate(authorized_date || t.date);
     if (!viewDate.has(transactionDate)) return;

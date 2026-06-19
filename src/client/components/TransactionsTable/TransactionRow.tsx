@@ -25,7 +25,7 @@ interface Props {
 const TransactionRow = ({ transaction }: Props) => {
   const { data, calculations, setData, router } = useAppContext();
   const transferActions = useTransfers();
-  const { suggestedPairByTransactionId } = data;
+  const { transfers } = data;
   const { transactionFamilies } = calculations;
   const { id, transaction_id, amount, label } = transaction;
   const parentTransaction = data.transactions.get(transaction_id)!;
@@ -105,7 +105,9 @@ const TransactionRow = ({ transaction }: Props) => {
   // transactions, and a split inherits its parent's transaction_id.
   const suggestedPairId = isSplitTransaction
     ? undefined
-    : suggestedPairByTransactionId.get(transaction_id);
+    : transfers.getByTransactionId(transaction_id)?.status === "suggested"
+      ? transfers.getByTransactionId(transaction_id)?.pair_id
+      : undefined;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;

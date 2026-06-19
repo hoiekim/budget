@@ -9,7 +9,7 @@ export type TransactionDetailPageParams = {
 
 export const TransactionDetailPage = () => {
   const { data, router } = useAppContext();
-  const { transactions, confirmedTransferByTransactionId } = data;
+  const { transactions, transfers } = data;
 
   const { path, params, transition } = router;
   let id: string;
@@ -25,7 +25,8 @@ export const TransactionDetailPage = () => {
   // entity, not one side of it (Hoie 2026-06-17). Branch on whether the
   // clicked transaction is part of a confirmed pair and render the
   // dedicated `TransferProperties` view if so.
-  const confirmedTransfer = confirmedTransferByTransactionId.get(transaction.transaction_id);
+  const lookedUp = transfers.getByTransactionId(transaction.transaction_id);
+  const confirmedTransfer = lookedUp?.status === "confirmed" ? lookedUp : undefined;
 
   return (
     <div className="TransactionDetailPage">

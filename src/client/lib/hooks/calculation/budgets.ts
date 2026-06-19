@@ -3,9 +3,9 @@ import {
   TransactionFamilies,
   BudgetData,
   CapacityData,
-  ConfirmedTransfer,
   Transaction,
   TransactionDictionary,
+  TransferDictionary,
   SplitTransactionDictionary,
   SectionDictionary,
   CategoryDictionary,
@@ -25,32 +25,37 @@ export const getBudgetData = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
-  // transaction_id → confirmed-transfer pair. Halves of a confirmed
-  // pair are skipped entirely from budget aggregation because a
-  // transfer is internal movement between the user's own accounts,
-  // not real spending or income. The two halves would otherwise
-  // inflate both the spent column on the source-account budget and
-  // the income column on the destination's. Defaults to an empty Map
-  // so existing tests / callers without confirmed transfers keep the
-  // pre-PR behavior. Same shape lives at
-  // `data.confirmedTransferByTransactionId`; the App wires it through.
-  confirmedTransferByTransactionId: ReadonlyMap<string, ConfirmedTransfer> = new Map(),
+  // All transfer pairs (suggested + confirmed) for the user, keyed by
+  // pair_id with a transaction_id pivot. Halves of a CONFIRMED pair
+  // are skipped entirely from budget aggregation — a transfer is
+  // internal movement between the user's own accounts, not real
+  // spending or income. The two halves would otherwise inflate both
+  // the spent column on the source-account budget and the income
+  // column on the destination's. Suggested pairs still aggregate
+  // normally (they're heuristic proposals the user hasn't confirmed).
+  // Defaults to an empty dictionary so existing tests / callers
+  // without transfers keep pre-PR behavior. Same shape lives at
+  // `data.transfers`; the App wires it through.
+  transfers: TransferDictionary = new TransferDictionary(),
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 
   const transactionFamilies = new TransactionFamilies();
 
+  const isConfirmedTransferHalf = (transaction_id: string): boolean =>
+    transfers.getByTransactionId(transaction_id)?.status === "confirmed";
+
   splitTransactions.forEach((splitTransaction) => {
     const { transaction_id } = splitTransaction;
     const transaction = transactions.get(transaction_id);
     if (!transaction) return;
-    if (confirmedTransferByTransactionId.has(transaction_id)) return;
+    if (isConfirmedTransferHalf(transaction_id)) return;
     transactionFamilies.add(transaction_id, splitTransaction);
   });
 
   const processTransaction = (transaction: Transaction) => {
     const { transaction_id, authorized_date, date, account_id, label, amount } = transaction;
-    if (confirmedTransferByTransactionId.has(transaction_id)) return;
+    if (isConfirmedTransferHalf(transaction_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     const account = accounts.get(account_id);
     if (!account || account.hide) return;
@@ -157,7 +162,7 @@ export const getBudgetData = (
     // split's own id per `SplitTransaction.toTransaction()` — so the
     // in-`processTransaction` guard on line ~51 would never fire for
     // splits even when their parent is a confirmed transfer).
-    if (confirmedTransferByTransactionId.has(st.transaction_id)) return;
+    if (isConfirmedTransferHalf(st.transaction_id)) return;
     const transaction = st.toTransaction();
     processTransaction(transaction);
   });
