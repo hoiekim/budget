@@ -60,17 +60,12 @@ const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];
  */
 export const parseTransactionsTypes = (raw: string | null): TransactionsPageType[] => {
   if (!raw) return [];
-  const valid = new Set<string>(VALID_TYPES);
-  const seen = new Set<TransactionsPageType>();
-  const out: TransactionsPageType[] = [];
-  for (const s of raw.split(",").map((p) => p.trim())) {
-    if (!valid.has(s)) continue;
-    const t = s as TransactionsPageType;
-    if (seen.has(t)) continue;
-    seen.add(t);
-    out.push(t);
-  }
-  return out;
+  const present = new Set(raw.split(",").map((p) => p.trim()));
+  // Canonicalize to VALID_TYPES order (matching writeTypes) so a reversed or
+  // duplicated URL param yields the same sort-preference key as the in-app
+  // toggle — `?transactions_type=expenses,deposits` and `deposits,expenses`
+  // must not store divergent sort keys.
+  return VALID_TYPES.filter((v) => present.has(v));
 };
 
 const serializeTransactionsTypes = (types: TransactionsPageType[]): string => types.join(",");

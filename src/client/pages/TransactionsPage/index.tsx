@@ -134,7 +134,15 @@ export const TransactionsPage = () => {
         }
         if (t === "suggested") return isSuggestedLabel(e);
         if (t === "transfers") {
-          return !!transfers.getByTransactionId(e.transaction_id);
+          // Only whole Transactions participate in transfer pairs. A
+          // SplitTransaction inherits its parent's transaction_id, so an
+          // unguarded lookup would resolve the PARENT's pair and leak split
+          // rows into the Transfers view — same guard the render path uses
+          // (TransactionsTable/index.tsx, TransactionRow.tsx).
+          return (
+            e instanceof Transaction &&
+            !!transfers.getByTransactionId(e.transaction_id)
+          );
         }
         return false;
       });
