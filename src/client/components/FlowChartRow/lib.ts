@@ -8,8 +8,10 @@ import {
   Line,
   Point,
   SectionDictionary,
+  SplitTransactionDictionary,
   Transaction,
   TransactionDictionary,
+  TransactionFamilies,
   TransferDictionary,
 } from "client";
 
@@ -22,6 +24,14 @@ export const getSankeyData = (
   accounts: Account[],
   transactions: TransactionDictionary,
   investmentTransactions: InvestmentTransactionDictionary,
+  // Split children re-label money to a different budget/category than
+  // their parent. The Sankey must mirror the Budgets page
+  // (`getBudgetData`): subtract each parent's children-amount-total
+  // from the parent's flow contribution, then attribute each child
+  // under its OWN label. Without this the parent budget gets the full
+  // amount and the child's budget gets nothing — the two views
+  // disagree about where the money flowed.
+  splitTransactions: SplitTransactionDictionary,
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
@@ -45,9 +55,24 @@ export const getSankeyData = (
   let income = 0;
   let expense = 0;
 
+  const isConfirmedTransferHalf = (transaction_id: string): boolean =>
+    transfers.getByTransactionId(transaction_id)?.status === "confirmed";
+
+  // Group split children under their parent so the parent's flow
+  // contribution can be reduced by what the children re-attribute.
+  // Skip splits whose parent transaction is absent or is a confirmed
+  // transfer half (the whole family is excluded in that case).
+  const transactionFamilies = new TransactionFamilies();
+  splitTransactions.forEach((splitTransaction) => {
+    const { transaction_id } = splitTransaction;
+    if (!transactions.get(transaction_id)) return;
+    if (isConfirmedTransferHalf(transaction_id)) return;
+    transactionFamilies.add(transaction_id, splitTransaction);
+  });
+
   const processTransaction = (t: Transaction | InvestmentTransaction) => {
     const isInvestment = t instanceof InvestmentTransaction;
-    if (!isInvestment && transfers.getByTransactionId(t.transaction_id)?.status === "confirmed") {
+    if (!isInvestment && isConfirmedTransferHalf(t.transaction_id)) {
       return;
     }
     const authorized_date = !isInvestment ? t.authorized_date : undefined;
@@ -62,7 +87,13 @@ export const getSankeyData = (
     const category = category_id && categories.get(category_id);
     const section_id = (category && category.section_id) || `${budget_id}_Unknown`;
     const section = sections.get(section_id);
-    const amount = isInvestment ? -(t.price * t.quantity) : t.amount;
+    // For a parent transaction, subtract its split children's total so
+    // only the un-split remainder is attributed to the parent's label.
+    // Synthetic split transactions (from `toTransaction()`) carry the
+    // split's own id, which keys no family, so their amount is unchanged.
+    const amount = isInvestment
+      ? -(t.price * t.quantity)
+      : t.amount - transactionFamilies.getChildrenAmountTotal(t.transaction_id);
     if (amount < 0) {
       income -= amount;
       incomeSections.set(section_id, {
@@ -96,6 +127,14 @@ export const getSankeyData = (
 
   transactions.forEach(processTransaction);
   investmentTransactions.forEach(processTransaction);
+  splitTransactions.forEach((st) => {
+    // Guard on the PARENT's transaction_id — `toTransaction()` rewrites
+    // the synthetic transaction's id to the split's own id, so the
+    // in-`processTransaction` confirmed-transfer guard would never fire
+    // for a split even when its parent is a confirmed transfer half.
+    if (isConfirmedTransferHalf(st.transaction_id)) return;
+    processTransaction(st.toTransaction());
+  });
 
   const total = Math.max(income, expense);
 
