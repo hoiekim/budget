@@ -20,7 +20,6 @@ import {
   InvestmentTransactionHeaders,
   TransactionHeaders,
   TransactionsPageTitle,
-  TransactionsPageType,
   TransactionsTable,
   parseTransactionsTypes,
 } from "client/components";
@@ -67,24 +66,20 @@ export const TransactionsPage = () => {
 
   const [searchValue, setSearchValue] = useState("");
 
-  let types: TransactionsPageType[];
-  let account_id: string;
-  let budget_id: string;
-  let section_id: string;
-  let category_id: string;
-  if (path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow) {
-    types = parseTransactionsTypes(params.get("transactions_type"));
-    account_id = params.get("account_id") || "";
-    budget_id = params.get("budget_id") || "";
-    section_id = params.get("section_id") || "";
-    category_id = params.get("category_id") || "";
-  } else {
-    types = parseTransactionsTypes(incomingParams.get("transactions_type"));
-    account_id = incomingParams.get("account_id") || "";
-    budget_id = incomingParams.get("budget_id") || "";
-    section_id = incomingParams.get("section_id") || "";
-    category_id = incomingParams.get("category_id") || "";
-  }
+  // Read params from the active path's URLSearchParams — same source
+  // the rest of the page already reads from. Parsing the
+  // `transactions_type` CSV through useMemo keyed on the raw string
+  // (a primitive) so re-renders triggered by unrelated state changes
+  // don't blow the `filteredAndSorted` useMemo's cache via array
+  // reference instability.
+  const activeParams =
+    path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow ? params : incomingParams;
+  const typesRaw = activeParams.get("transactions_type");
+  const types = useMemo(() => parseTransactionsTypes(typesRaw), [typesRaw]);
+  const account_id = activeParams.get("account_id") || "";
+  const budget_id = activeParams.get("budget_id") || "";
+  const section_id = activeParams.get("section_id") || "";
+  const category_id = activeParams.get("category_id") || "";
 
   const account = accounts.get(account_id);
   const budget = budgets.get(budget_id);
@@ -125,11 +120,9 @@ export const TransactionsPage = () => {
 
     // Multi-choice OR: an entry passes the type filter if it matches
     // ANY of the selected types (empty selection = no type filter).
-    // Investment transactions never participate in transfer pairs, so
-    // a "transfers"-only selection produces an empty investment list.
-    const matchesAnySelectedType = (
-      e: Transaction | SplitTransaction | InvestmentTransaction,
-    ): boolean => {
+    // The label/transfer types apply to regular Transactions /
+    // SplitTransactions; the sign types apply to everything.
+    const matchesAnySelectedType = (e: Transaction | SplitTransaction): boolean => {
       if (!types.length) return true;
       return types.some((t) => {
         if (t === "deposits") return e.amount < 0;
@@ -141,13 +134,23 @@ export const TransactionsPage = () => {
         }
         if (t === "suggested") return isSuggestedLabel(e);
         if (t === "transfers") {
-          // Investment transactions can't be in a pair; the detection
-          // engine only pairs Plaid `transactions` rows.
-          if (e instanceof InvestmentTransaction) return false;
           return !!transfers.getByTransactionId(e.transaction_id);
         }
         return false;
       });
+    };
+
+    // Investment transactions don't carry category labels and don't
+    // participate in transfer pairs, so only the sign filters
+    // (deposits / expenses) are meaningful. Other selected types are
+    // no-ops on the investment branch — same as pre-PR behavior where
+    // the investment branch only checked deposits/expenses and let
+    // every other type fall through as a no-op.
+    const matchesAnySelectedInvestmentType = (e: InvestmentTransaction): boolean => {
+      if (!types.length) return true;
+      const signTypes = types.filter((t) => t === "deposits" || t === "expenses");
+      if (!signTypes.length) return true;
+      return signTypes.some((t) => (t === "deposits" ? e.amount < 0 : e.amount > 0));
     };
 
     if (isInvestment) {
@@ -158,7 +161,7 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(e.date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        if (!matchesAnySelectedType(e)) return false;
+        if (!matchesAnySelectedInvestmentType(e)) return false;
         return isSubset(e, filters);
       });
 

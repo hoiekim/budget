@@ -42,6 +42,15 @@ div.TransactionsPage > .heading > button {
   white-space: nowrap;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  overflow: hidden;
+}
+
+div.TransactionsPage > .heading > button > span:not(.checkmark) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 
 div.TransactionsPage > .heading > button > svg {

@@ -55,15 +55,22 @@ const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];
 /**
  * Parse the `transactions_type` URL param. Stored as a comma-separated
  * list so multiple filters compose in the same param slot. Returns
- * the validated subset (unknown values dropped, keeps order).
+ * the validated, deduplicated subset (unknown values dropped, first
+ * occurrence wins on duplicates, original order preserved).
  */
 export const parseTransactionsTypes = (raw: string | null): TransactionsPageType[] => {
   if (!raw) return [];
   const valid = new Set<string>(VALID_TYPES);
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s): s is TransactionsPageType => valid.has(s));
+  const seen = new Set<TransactionsPageType>();
+  const out: TransactionsPageType[] = [];
+  for (const s of raw.split(",").map((p) => p.trim())) {
+    if (!valid.has(s)) continue;
+    const t = s as TransactionsPageType;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
 };
 
 const serializeTransactionsTypes = (types: TransactionsPageType[]): string => types.join(",");
