@@ -138,9 +138,17 @@ export const TransactionsPageTitle = ({
     writeTypes(VALID_TYPES.filter((v) => set.has(v)));
   };
 
+  // Each row shows a checkbox indicating its current state — multi-choice
+  // semantics so the user can see at a glance which filters are active.
+  // "All Transactions" is the clear-all sentinel; its checkbox reflects
+  // "no other filter selected" (i.e. you're viewing everything).
+  const renderCheckbox = (checked: boolean) => (
+    <span className={"checkbox" + (checked ? " checked" : "")} aria-hidden="true" />
+  );
+
   const allButton = (
     <button key="__all" onClick={onClickAll}>
-      {selectedTypes.length === 0 && <span className="checkmark">✓</span>}
+      {renderCheckbox(selectedTypes.length === 0)}
       <span>All Transactions</span>
     </button>
   );
@@ -149,7 +157,7 @@ export const TransactionsPageTitle = ({
     const isSelected = selectedTypes.includes(t);
     return (
       <button key={t} onClick={() => toggleType(t)}>
-        {isSelected && <span className="checkmark">✓</span>}
+        {renderCheckbox(isSelected)}
         <span>{TYPE_LABELS[t]}</span>
       </button>
     );
