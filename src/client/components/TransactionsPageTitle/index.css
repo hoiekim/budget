@@ -42,6 +42,15 @@ div.TransactionsPage > .heading > button {
   white-space: nowrap;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  overflow: hidden;
+}
+
+div.TransactionsPage > .heading > button > span:not(.checkmark) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 
 div.TransactionsPage > .heading > button > svg {
@@ -94,16 +103,39 @@ div.TransactionsPage > .heading > div.select > div.options > button:last-child {
   padding: 4px 0 10px 0;
 }
 
-div.TransactionsPage > .heading > div.select > div.options > button > span {
+div.TransactionsPage > .heading > div.select > div.options > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding-left: 10px;
 }
 
-div.TransactionsPage > .heading > div.select > div.options > button > span:not(.checkmark) {
-  padding-left: 30px;
+div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #888;
+  border-radius: 2px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  position: relative;
 }
 
-div.TransactionsPage > .heading > div.select > div.options > button > span.checkmark {
+div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox.checked {
+  background-color: #4a4a4a;
+  border-color: #aaa;
+}
+
+/* Inset ✓ glyph rendered via ::after so the checkbox span itself stays a
+   pure visual element — keeps the option button click target unified. */
+div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox.checked::after {
+  content: "✓";
   position: absolute;
+  top: -2px;
+  left: 1px;
+  font-size: 12px;
+  line-height: 12px;
+  color: #e8e8e8;
 }
 
 div.SearchBar {

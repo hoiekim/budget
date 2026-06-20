@@ -20,8 +20,8 @@ import {
   InvestmentTransactionHeaders,
   TransactionHeaders,
   TransactionsPageTitle,
-  TransactionsPageType,
   TransactionsTable,
+  parseTransactionsTypes,
 } from "client/components";
 import { useTransactionHit } from "./hooks";
 import "./index.css";
@@ -37,7 +37,11 @@ const isSuggestedLabel = (e: Transaction | SplitTransaction | InvestmentTransact
 };
 
 export type TransactionsPageParams = {
-  transactions_type?: TransactionsPageType;
+  /** Comma-separated list of `TransactionsPageType` values (e.g.
+   *  `expenses,transfers`). Single values stay valid for callers
+   *  that link in with one filter pre-selected (BudgetDetailPage
+   *  uses `transactions_type=unsorted`). */
+  transactions_type?: string;
   budget_id?: string;
   account_id?: string;
   category_id?: string;
@@ -54,6 +58,7 @@ export const TransactionsPage = () => {
     budgets,
     sections,
     categories,
+    transfers,
   } = data;
   const { transactionFamilies } = calculations;
   const { path, params, transition } = router;
@@ -61,24 +66,20 @@ export const TransactionsPage = () => {
 
   const [searchValue, setSearchValue] = useState("");
 
-  let type: TransactionsPageType | undefined;
-  let account_id: string;
-  let budget_id: string;
-  let section_id: string;
-  let category_id: string;
-  if (path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow) {
-    type = (params.get("transactions_type") as TransactionsPageType) || undefined;
-    account_id = params.get("account_id") || "";
-    budget_id = params.get("budget_id") || "";
-    section_id = params.get("section_id") || "";
-    category_id = params.get("category_id") || "";
-  } else {
-    type = (incomingParams.get("transactions_type") as TransactionsPageType) || undefined;
-    account_id = incomingParams.get("account_id") || "";
-    budget_id = incomingParams.get("budget_id") || "";
-    section_id = incomingParams.get("section_id") || "";
-    category_id = incomingParams.get("category_id") || "";
-  }
+  // Read params from the active path's URLSearchParams — same source
+  // the rest of the page already reads from. Parsing the
+  // `transactions_type` CSV through useMemo keyed on the raw string
+  // (a primitive) so re-renders triggered by unrelated state changes
+  // don't blow the `filteredAndSorted` useMemo's cache via array
+  // reference instability.
+  const activeParams =
+    path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow ? params : incomingParams;
+  const typesRaw = activeParams.get("transactions_type");
+  const types = useMemo(() => parseTransactionsTypes(typesRaw), [typesRaw]);
+  const account_id = activeParams.get("account_id") || "";
+  const budget_id = activeParams.get("budget_id") || "";
+  const section_id = activeParams.get("section_id") || "";
+  const category_id = activeParams.get("category_id") || "";
 
   const account = accounts.get(account_id);
   const budget = budgets.get(budget_id);
@@ -89,7 +90,10 @@ export const TransactionsPage = () => {
 
   const hit = useTransactionHit();
 
-  const sortKey = ["transactions", type].filter(Boolean).join("_");
+  // Stable storage key for the sort preferences — distinct per
+  // type-filter combination so e.g. an "expenses" sort doesn't collide
+  // with an "expenses,transfers" sort.
+  const sortKey = ["transactions", ...types].join("_");
 
   const sorter = useSorter<
     Transaction | InvestmentTransaction | SplitTransaction,
@@ -114,6 +118,49 @@ export const TransactionsPage = () => {
       filters.label.category_id = category_id;
     }
 
+    // Multi-choice OR: an entry passes the type filter if it matches
+    // ANY of the selected types (empty selection = no type filter).
+    // The label/transfer types apply to regular Transactions /
+    // SplitTransactions; the sign types apply to everything.
+    const matchesAnySelectedType = (e: Transaction | SplitTransaction): boolean => {
+      if (!types.length) return true;
+      return types.some((t) => {
+        if (t === "deposits") return e.amount < 0;
+        if (t === "expenses") return e.amount > 0;
+        if (t === "unsorted") {
+          const c_id = e.label.category_id;
+          const c_conf = e.label.category_confidence;
+          return !(c_id && (c_conf === 1 || c_conf === 0));
+        }
+        if (t === "suggested") return isSuggestedLabel(e);
+        if (t === "transfers") {
+          // Only whole Transactions participate in transfer pairs. A
+          // SplitTransaction inherits its parent's transaction_id, so an
+          // unguarded lookup would resolve the PARENT's pair and leak split
+          // rows into the Transfers view — same guard the render path uses
+          // (TransactionsTable/index.tsx, TransactionRow.tsx).
+          return (
+            e instanceof Transaction &&
+            !!transfers.getByTransactionId(e.transaction_id)
+          );
+        }
+        return false;
+      });
+    };
+
+    // Investment transactions don't carry category labels and don't
+    // participate in transfer pairs, so only the sign filters
+    // (deposits / expenses) are meaningful. Other selected types are
+    // no-ops on the investment branch — same as pre-PR behavior where
+    // the investment branch only checked deposits/expenses and let
+    // every other type fall through as a no-op.
+    const matchesAnySelectedInvestmentType = (e: InvestmentTransaction): boolean => {
+      if (!types.length) return true;
+      const signTypes = types.filter((t) => t === "deposits" || t === "expenses");
+      if (!signTypes.length) return true;
+      return signTypes.some((t) => (t === "deposits" ? e.amount < 0 : e.amount > 0));
+    };
+
     if (isInvestment) {
       const filtered = investmentTransactions.filter((e) => {
         if (!e.amount) return false;
@@ -122,8 +169,7 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(e.date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        if (type === "deposits" && e.amount > 0) return false;
-        if (type === "expenses" && e.amount < 0) return false;
+        if (!matchesAnySelectedInvestmentType(e)) return false;
         return isSubset(e, filters);
       });
 
@@ -145,22 +191,14 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        // "unsorted" view includes every transaction that is not
-        // user-confirmed (confidence === 1). That covers genuinely
-        // unlabeled rows AND auto-suggested ones: both buckets stay
-        // visible until the user explicitly confirms a label.
-        if (type === "unsorted") {
-          const c_id = e.label.category_id;
-          const c_conf = e.label.category_confidence;
-          if (c_id && (c_conf === 1 || c_conf === 0)) return false;
-        }
-        // "suggested" view is the narrower slice: rows currently bearing
-        // an unreviewed auto-suggestion (0 < confidence < 1).
-        if (type === "suggested") {
-          if (!isSuggestedLabel(e)) return false;
-        }
-        if (type === "deposits" && e.amount > 0) return false;
-        if (type === "expenses" && e.amount < 0) return false;
+        // Multi-choice OR across selected types. "unsorted" widens to
+        // "not user-confirmed" (covers genuinely unlabeled rows AND
+        // auto-suggested ones — both stay visible until the user
+        // explicitly confirms a label). "suggested" is the narrower
+        // slice (0 < confidence < 1). "transfers" matches any pair
+        // (suggested or confirmed) — the user wants to see transfer
+        // rows in either state.
+        if (!matchesAnySelectedType(e)) return false;
 
         if (!isInvestment && !e.label.budget_id && !section_id && !category_id) {
           const account = accounts.get(e.account_id);
@@ -243,7 +281,8 @@ export const TransactionsPage = () => {
     splitTransactions,
     accounts,
     viewDate,
-    type,
+    types,
+    transfers,
     budgets,
     categories,
     institutions,
@@ -335,7 +374,7 @@ export const TransactionsPage = () => {
   return (
     <div className="TransactionsPage">
       <TransactionsPageTitle
-        filters={{ type, account, budget, section, category }}
+        filters={{ types, account, budget, section, category }}
         sorter={sorter}
         onChangeSearchValue={setSearchValue}
       />
