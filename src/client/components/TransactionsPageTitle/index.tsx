@@ -18,10 +18,15 @@ import { TransactionsHead } from "./TransactionsHead";
 import "./index.css";
 import { SearchBar } from "./SearchBar";
 
-export type TransactionsPageType = "deposits" | "expenses" | "unsorted" | "suggested";
+export type TransactionsPageType =
+  | "deposits"
+  | "expenses"
+  | "unsorted"
+  | "suggested"
+  | "transfers";
 
 interface TransactionsPageFilters {
-  type?: TransactionsPageType;
+  types: TransactionsPageType[];
   account?: Account;
   budget?: Budget;
   section?: Section;
@@ -37,17 +42,36 @@ interface TransactionsPageTitleProps {
   onChangeSearchValue: (v: string) => void;
 }
 
-enum TITLES {
-  all = "All Transactions",
-  unsorted = "Unsorted Transactions",
-  suggested = "Suggested Transactions",
-  deposits = "Deposits",
-  expenses = "Expenses",
-}
+const TYPE_LABELS: Record<TransactionsPageType, string> = {
+  unsorted: "Unsorted Transactions",
+  suggested: "Suggested Transactions",
+  deposits: "Deposits",
+  expenses: "Expenses",
+  transfers: "Transfers",
+};
 
-const typeToTitle = (type?: TransactionsPageType) => {
-  if (type) return TITLES[type];
-  return "All Transactions";
+const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];
+
+/**
+ * Parse the `transactions_type` URL param. Stored as a comma-separated
+ * list so multiple filters compose in the same param slot. Returns
+ * the validated subset (unknown values dropped, keeps order).
+ */
+export const parseTransactionsTypes = (raw: string | null): TransactionsPageType[] => {
+  if (!raw) return [];
+  const valid = new Set<string>(VALID_TYPES);
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is TransactionsPageType => valid.has(s));
+};
+
+const serializeTransactionsTypes = (types: TransactionsPageType[]): string => types.join(",");
+
+const titleForSelection = (types: TransactionsPageType[]): string => {
+  if (types.length === 0) return "All Transactions";
+  if (types.length === 1) return TYPE_LABELS[types[0]];
+  return types.map((t) => TYPE_LABELS[t]).join(", ");
 };
 
 export type TransactionHeaders = { [k in keyof JSONTransaction]?: boolean } & {
@@ -66,7 +90,7 @@ export const TransactionsPageTitle = ({
   sorter,
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
-  const { type: selectedType, account, budget, section, category } = filters;
+  const { types: selectedTypes, account, budget, section, category } = filters;
   const { router, screenType } = useAppContext();
   const { go, path, params } = router;
 
@@ -87,19 +111,39 @@ export const TransactionsPageTitle = ({
     return () => document.removeEventListener("touchstart", handleTouchOutside);
   }, []);
 
-  const options = [...Object.entries(TITLES)].map(([type, title]) => {
-    const isSelected = type === (selectedType || "all");
-    const onClickSelectOption = () => {
-      setIsSelecting(false);
-      const newParams = new URLSearchParams(params);
-      if (type === "all") newParams.delete("transactions_type");
-      else newParams.set("transactions_type", type as TransactionsPageType);
-      go(path, { params: newParams, animate: false });
-    };
+  const writeTypes = (next: TransactionsPageType[]) => {
+    const newParams = new URLSearchParams(params);
+    if (next.length === 0) newParams.delete("transactions_type");
+    else newParams.set("transactions_type", serializeTransactionsTypes(next));
+    go(path, { params: newParams, animate: false });
+  };
+
+  // "All Transactions" is the empty-selection sentinel: clicking it
+  // clears every filter, regardless of which were on. Order of the
+  // menu is fixed (alphabetical-ish by intent: status, sign, kind).
+  const onClickAll = () => writeTypes([]);
+  const toggleType = (t: TransactionsPageType) => {
+    const set = new Set(selectedTypes);
+    if (set.has(t)) set.delete(t);
+    else set.add(t);
+    // Preserve VALID_TYPES order so the URL is canonical regardless
+    // of click sequence.
+    writeTypes(VALID_TYPES.filter((v) => set.has(v)));
+  };
+
+  const allButton = (
+    <button key="__all" onClick={onClickAll}>
+      {selectedTypes.length === 0 && <span className="checkmark">✓</span>}
+      <span>All Transactions</span>
+    </button>
+  );
+
+  const typeButtons = VALID_TYPES.map((t) => {
+    const isSelected = selectedTypes.includes(t);
     return (
-      <button key={title} onClick={onClickSelectOption}>
+      <button key={t} onClick={() => toggleType(t)}>
         {isSelected && <span className="checkmark">✓</span>}
-        <span>{title}</span>
+        <span>{TYPE_LABELS[t]}</span>
       </button>
     );
   });
@@ -147,7 +191,7 @@ export const TransactionsPageTitle = ({
     <>
       <h2 className="heading">
         <button onClick={onClickSelect}>
-          <span>{typeToTitle(selectedType)}</span>
+          <span>{titleForSelection(selectedTypes)}</span>
           <ChevronDownIcon size={15} />
         </button>
         {isSelecting && (
@@ -165,10 +209,13 @@ export const TransactionsPageTitle = ({
               tabIndex={0}
               aria-label="Close transaction type selector"
             >
-              <span>Select&nbsp;transaction&nbsp;type</span>
+              <span>Select&nbsp;transaction&nbsp;types</span>
               <button className="closeButton" aria-hidden="true">✕</button>
             </div>
-            <div className="options">{options}</div>
+            <div className="options">
+              {allButton}
+              {typeButtons}
+            </div>
           </div>
         )}
       </h2>
