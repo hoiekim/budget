@@ -56,12 +56,12 @@ export const useTransfers = (): TransferActions => {
     async (pair_id: string) => {
       const response = await call.delete(`/api/transfers?id=${encodeURIComponent(pair_id)}`);
       if (response.status !== "success") return;
-      indexedDb.remove(StoreName.transfers, pair_id).catch(console.error);
       setData((oldData) => {
         if (!oldData.transfers.has(pair_id)) return oldData;
         const newData = new Data(oldData);
         newData.transfers = new TransferDictionary(oldData.transfers);
         newData.transfers.delete(pair_id);
+        indexedDb.remove(StoreName.transfers, pair_id).catch(console.error);
         return newData;
       });
     },

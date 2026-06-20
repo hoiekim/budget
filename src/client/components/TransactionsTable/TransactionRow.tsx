@@ -103,11 +103,11 @@ const TransactionRow = ({ transaction }: Props) => {
   // shows Confirm/Reject instead of the budget/category controls (#354). Split
   // rows never carry the affordance — the detection engine pairs whole
   // transactions, and a split inherits its parent's transaction_id.
-  const suggestedPairId = isSplitTransaction
+  const pendingTransferPair = isSplitTransaction
     ? undefined
-    : transfers.getByTransactionId(transaction_id)?.status === "suggested"
-      ? transfers.getByTransactionId(transaction_id)?.pair_id
-      : undefined;
+    : transfers.getByTransactionId(transaction_id);
+  const suggestedPairId =
+    pendingTransferPair?.status === "suggested" ? pendingTransferPair.pair_id : undefined;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
