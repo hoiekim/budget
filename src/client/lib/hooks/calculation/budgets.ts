@@ -25,18 +25,17 @@ export const getBudgetData = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
-  // All transfer pairs (suggested + confirmed) for the user, keyed by
-  // pair_id with a transaction_id pivot. Halves of a CONFIRMED pair
-  // are skipped entirely from budget aggregation — a transfer is
-  // internal movement between the user's own accounts, not real
-  // spending or income. The two halves would otherwise inflate both
-  // the spent column on the source-account budget and the income
-  // column on the destination's. Suggested pairs still aggregate
-  // normally (they're heuristic proposals the user hasn't confirmed).
-  // Defaults to an empty dictionary so existing tests / callers
-  // without transfers keep pre-PR behavior. Same shape lives at
-  // `data.transfers`; the App wires it through.
-  transfers: TransferDictionary = new TransferDictionary(),
+  // All transfer pairs (suggested + confirmed), keyed by pair_id with
+  // a transaction_id pivot. Halves of a CONFIRMED pair are skipped
+  // entirely from budget aggregation — a transfer is internal
+  // movement between the user's own accounts, not real spending or
+  // income. The two halves would otherwise inflate both the spent
+  // column on the source-account budget and the income column on the
+  // destination's. Suggested pairs still aggregate normally —
+  // they're heuristic proposals the user hasn't confirmed. Required
+  // (no default): the caller threads `data.transfers` through, which
+  // is itself defaulted to an empty `TransferDictionary` on `Data`.
+  transfers: TransferDictionary,
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 

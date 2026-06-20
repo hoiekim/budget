@@ -78,6 +78,7 @@ const makeTx = (
 const empty = {
   transactions: new TransactionDictionary(),
   splits: new SplitTransactionDictionary(),
+  transfers: new TransferDictionary(),
 };
 
 describe("getBudgetData — confidence-gate bucketing", () => {
@@ -90,6 +91,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.size).toBe(0);
   });
@@ -109,6 +111,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.size).toBe(0);
   });
@@ -127,6 +130,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.category.id, readDate).sorted_amount).toBe(100);
     expect(budgetData.get(w.section.id, readDate).sorted_amount).toBe(100);
@@ -153,6 +157,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(40);
     expect(budgetData.get(w.budget.id, readDate).number_of_unsorted_items).toBe(1);
@@ -173,6 +178,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(25);
     expect(budgetData.get(w.category.id, readDate).sorted_amount).toBe(0);
@@ -192,6 +198,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(10);
     expect(budgetData.get(w.budget.id, readDate).number_of_unsorted_items).toBe(1);
@@ -211,6 +218,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(70);
   });
@@ -246,6 +254,7 @@ describe("getBudgetData — split transactions", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
 
     // The parent contributes amount - childrenTotal = 100 - 30 = 70.
@@ -346,6 +355,7 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(baseline.budgetData.get(w.category.id, readDate).sorted_amount).toBe(5350);
 
@@ -452,6 +462,7 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     const emptySet = getBudgetData(
       transactions,

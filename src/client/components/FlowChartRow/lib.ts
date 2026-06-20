@@ -27,14 +27,15 @@ export const getSankeyData = (
   categories: CategoryDictionary,
   viewDate: ViewDate,
   // All transfer pairs (suggested + confirmed), keyed by pair_id with
-  // a transaction_id pivot. Halves of a CONFIRMED pair are skipped
-  // because a transfer is internal movement between the user's own
-  // accounts, not flow in or out of total wealth. Without this skip
-  // the Sankey would inflate both the income column (destination-side
-  // credit) AND the expense column (source-side debit) by the same
-  // amount. Suggested pairs still aggregate normally. Defaults to an
-  // empty dictionary so callers / tests keep pre-PR behavior.
-  transfers: TransferDictionary = new TransferDictionary(),
+  // a transaction_id pivot. Halves of a CONFIRMED pair are skipped —
+  // a transfer is internal movement between the user's own accounts,
+  // not flow in or out of total wealth. Without this skip the Sankey
+  // would inflate both the income column (destination-side credit)
+  // AND the expense column (source-side debit) by the same amount.
+  // Suggested pairs still aggregate normally. Required (no default):
+  // the caller threads `data.transfers` through, which is itself
+  // defaulted to an empty `TransferDictionary` on `Data`.
+  transfers: TransferDictionary,
 ): SankeyData => {
   const incomeBudgets = new Map<string, SankeyRow>();
   const incomeSections = new Map<string, SankeyRow>();
