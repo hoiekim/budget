@@ -1,4 +1,5 @@
 import { JSONSplitTransaction } from "common";
+import type { TransferPair } from "server";
 import {
   BalanceData,
   AmountByMonth,
@@ -14,6 +15,7 @@ import {
   AccountDictionary,
   Account,
   TransactionDictionary,
+  TransferDictionary,
   Dictionary,
   Transaction,
   InvestmentTransactionDictionary,
@@ -167,6 +169,34 @@ export const saveSplitTransactions = async (data: SplitTransactionDictionary) =>
   await saveDictionary(StoreName.splitTransactions, data);
 };
 
+export const saveTransfers = async (data: TransferDictionary) => {
+  await saveDictionary(StoreName.transfers, data);
+};
+
+export const loadTransfers = async (): Promise<TransferDictionary> => {
+  // TransferPair is a plain interface — no model class to construct.
+  // Feed loaded entries directly into TransferDictionary's constructor,
+  // which rebuilds the pivot (transaction_id → pair) from them.
+  const data = await indexedDbAccessor.load<JSON>(StoreName.transfers);
+  const entries: [string, TransferPair][] = Object.entries(data).map(([pair_id, pair]) => [
+    pair_id,
+    pair as unknown as TransferPair,
+  ]);
+  return new TransferDictionary(entries);
+};
+
+/**
+ * Single-pair save for mutations (confirm / pair). The generic
+ * `save()` below switches on `data.constructor` to pick a StoreName;
+ * TransferPair is an interface with no class, so it needs a dedicated
+ * helper. Use this from `useTransfers` after the optimistic setData
+ * lands so the IDB cache and the React state agree on the next warm
+ * boot.
+ */
+export const saveTransfer = (pair: TransferPair) => {
+  return indexedDbAccessor.save(StoreName.transfers, pair.pair_id, pair);
+};
+
 export const loadSplitTransactions = () => {
   return loadDictionary<SplitTransactionDictionary, SplitTransaction>(
     StoreName.splitTransactions,
@@ -281,6 +311,7 @@ export const saveAllData = async (data: Data) => {
     accountSnapshots,
     holdingSnapshots,
     securitySnapshots,
+    transfers,
   } = data;
 
   await Promise.all([
@@ -299,6 +330,7 @@ export const saveAllData = async (data: Data) => {
     saveAccountSnapshots(accountSnapshots),
     saveHoldingSnapshots(holdingSnapshots),
     saveSecuritySnapshots(securitySnapshots),
+    saveTransfers(transfers),
   ]);
 };
 
@@ -319,6 +351,7 @@ export const loadAllData = async () => {
     accountSnapshots,
     holdingSnapshots,
     securitySnapshots,
+    transfers,
   ] = await Promise.all([
     loadInstitutions(),
     loadAccounts(),
@@ -335,6 +368,7 @@ export const loadAllData = async () => {
     loadAccountSnapshots(),
     loadHoldingSnapshots(),
     loadSecuritySnapshots(),
+    loadTransfers(),
   ]);
 
   return new Data({
@@ -353,6 +387,7 @@ export const loadAllData = async () => {
     accountSnapshots,
     holdingSnapshots,
     securitySnapshots,
+    transfers,
   });
 };
 

@@ -8,7 +8,23 @@ import {
   CategoryDictionary,
   TransactionDictionary,
   SplitTransactionDictionary,
+  TransferDictionary,
 } from "../../models/Data";
+import type { TransferPair } from "server";
+
+// Helper: build a TransferDictionary with the given transaction ids treated
+// as halves of a single CONFIRMED pair. Mirrors what `data.transfers`
+// holds after `fetchTransfers` populates it from `/api/transfers`.
+const makeConfirmedPair = (transaction_ids: string[]): TransferDictionary => {
+  const dict = new TransferDictionary();
+  const pair: TransferPair = {
+    pair_id: "test-pair",
+    status: "confirmed",
+    transactions: transaction_ids.map((id) => ({ transaction_id: id }) as never),
+  };
+  dict.set(pair.pair_id, pair);
+  return dict;
+};
 import { Account } from "../../models/Account";
 import { Budget } from "../../models/Budget";
 import { Section } from "../../models/Section";
@@ -62,6 +78,7 @@ const makeTx = (
 const empty = {
   transactions: new TransactionDictionary(),
   splits: new SplitTransactionDictionary(),
+  transfers: new TransferDictionary(),
 };
 
 describe("getBudgetData — confidence-gate bucketing", () => {
@@ -74,6 +91,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.size).toBe(0);
   });
@@ -93,6 +111,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.size).toBe(0);
   });
@@ -111,6 +130,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.category.id, readDate).sorted_amount).toBe(100);
     expect(budgetData.get(w.section.id, readDate).sorted_amount).toBe(100);
@@ -137,6 +157,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(40);
     expect(budgetData.get(w.budget.id, readDate).number_of_unsorted_items).toBe(1);
@@ -157,6 +178,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(25);
     expect(budgetData.get(w.category.id, readDate).sorted_amount).toBe(0);
@@ -176,6 +198,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(10);
     expect(budgetData.get(w.budget.id, readDate).number_of_unsorted_items).toBe(1);
@@ -195,6 +218,7 @@ describe("getBudgetData — confidence-gate bucketing", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(70);
   });
@@ -230,6 +254,7 @@ describe("getBudgetData — split transactions", () => {
       w.budgets,
       w.sections,
       w.categories,
+      empty.transfers,
     );
 
     // The parent contributes amount - childrenTotal = 100 - 30 = 70.
@@ -299,5 +324,157 @@ describe("getCapacityData — hierarchy aggregation", () => {
     const cap = getCapacityData(budgets, sections, new CategoryDictionary());
     const budgetCapId = budget.getActiveCapacity(new Date(0)).id;
     expect(cap.get(budgetCapId).children_total).toBe(-MAX_FLOAT);
+  });
+});
+
+describe("getBudgetData — confirmed-transfer exclusion", () => {
+  test("transactions in a confirmed transfer pair are skipped from all budget rollups", () => {
+    const w = makeWorld();
+
+    // Two confirmed-spending transactions, one of which is a transfer half.
+    const { transactions: t1 } = makeTx(w, 250, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    }, { transaction_id: "tx-spend" });
+    const { transactions: t2 } = makeTx(w, 5100, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    }, { transaction_id: "tx-transfer-half" });
+
+    const transactions = new TransactionDictionary();
+    t1.forEach((v, k) => transactions.set(k, v));
+    t2.forEach((v, k) => transactions.set(k, v));
+
+    // Without the set: both transactions count → category total = 5350.
+    const baseline = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      empty.transfers,
+    );
+    expect(baseline.budgetData.get(w.category.id, readDate).sorted_amount).toBe(5350);
+
+    // With tx-transfer-half flagged: only the $250 spend lands.
+    const withTransfer = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      makeConfirmedPair(["tx-transfer-half", "tx-transfer-half-2"]),
+    );
+    expect(withTransfer.budgetData.get(w.category.id, readDate).sorted_amount).toBe(250);
+    expect(withTransfer.budgetData.get(w.section.id, readDate).sorted_amount).toBe(250);
+    expect(withTransfer.budgetData.get(w.budget.id, readDate).sorted_amount).toBe(250);
+  });
+
+  test("an unsorted transaction in a confirmed pair is also skipped (unsorted bucket)", () => {
+    const w = makeWorld();
+    // Unsorted transaction — no category_id / confidence — would normally
+    // land in the unsorted bucket. As a transfer half it should not.
+    const { transactions } = makeTx(w, 5100, {
+      budget_id: w.budget.id,
+      category_id: null,
+      category_confidence: null,
+    }, { transaction_id: "tx-transfer-unsorted" });
+
+    const withTransfer = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      makeConfirmedPair(["tx-transfer-unsorted", "tx-transfer-unsorted-2"]),
+    );
+    // Budget bucket exists only if any transaction landed in it. With the
+    // sole transaction filtered out, the budget id should not be tracked.
+    expect(withTransfer.budgetData.size).toBe(0);
+  });
+
+  test("splits of a confirmed-transfer parent are also skipped (reviewoie #528 round 1)", () => {
+    const w = makeWorld();
+
+    // Parent transaction is a transfer half (in the set).
+    const { transactions } = makeTx(w, 100, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    }, { transaction_id: "tx-transfer-parent" });
+
+    // Two splits of that parent — they inherit the parent's
+    // transaction_id reference but their own split_transaction_id. If
+    // the guard only checks the synthetic Transaction's id (which is
+    // overridden to split.id by `SplitTransaction.toTransaction()`),
+    // these will leak into Coffee's sorted_amount. The correct shape
+    // is to gate on parent's transaction_id at the split pass.
+    const splitA = new SplitTransaction({
+      split_transaction_id: "split-A",
+      transaction_id: "tx-transfer-parent",
+      account_id: w.account.id,
+      amount: 30,
+      date: DATE,
+      label: { budget_id: w.budget.id, category_id: w.category.id, category_confidence: 1 },
+    });
+    const splitB = new SplitTransaction({
+      split_transaction_id: "split-B",
+      transaction_id: "tx-transfer-parent",
+      account_id: w.account.id,
+      amount: 20,
+      date: DATE,
+      label: { budget_id: w.budget.id, category_id: w.category.id, category_confidence: 1 },
+    });
+    const splits = new SplitTransactionDictionary();
+    splits.set(splitA.id, splitA);
+    splits.set(splitB.id, splitB);
+
+    const withTransfer = getBudgetData(
+      transactions,
+      splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      makeConfirmedPair(["tx-transfer-parent", "tx-transfer-parent-2"]),
+    );
+    // No data should land — parent skipped, both splits skipped.
+    expect(withTransfer.budgetData.size).toBe(0);
+  });
+
+  test("an empty TransferDictionary behaves exactly like the no-arg call (backward compat)", () => {
+    const w = makeWorld();
+    const { transactions } = makeTx(w, 100, {
+      budget_id: w.budget.id,
+      category_id: w.category.id,
+      category_confidence: 1,
+    });
+
+    const noArg = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      empty.transfers,
+    );
+    const emptySet = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      new TransferDictionary(),
+    );
+    expect(emptySet.budgetData.get(w.category.id, readDate).sorted_amount).toBe(
+      noArg.budgetData.get(w.category.id, readDate).sorted_amount,
+    );
   });
 });

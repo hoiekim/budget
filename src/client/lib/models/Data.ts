@@ -11,6 +11,7 @@ import { Category } from "./Category";
 import { Item } from "./Item";
 import { Chart } from "./Chart";
 import { AccountSnapshot, HoldingSnapshot, SecuritySnapshot } from "./Snapshot";
+import type { TransferPair } from "server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class Dictionary<T = any, S extends Dictionary<T> = any> extends Map<string, T> {
@@ -114,6 +115,59 @@ export class SecuritySnapshotDictionary extends Dictionary<
 
 export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {}
 
+/**
+ * Pair-keyed dictionary of transfers. Keys are pair_id; values are the
+ * server's TransferPair (with status + the two transactions). Maintains
+ * a private `pivot: transaction_id → pair` so consumers can resolve "is
+ * this transaction part of any pair?" in O(1) via getByTransactionId(),
+ * without standing up a parallel map at the Data level. Overrides
+ * `set`/`delete` to keep the pivot in sync with the primary map.
+ *
+ * Suggested and confirmed pairs live in the same dictionary — consumers
+ * filter on `pair.status` at the point of use (matches the suggested-
+ * vs-confirmed category-label pattern already in use elsewhere).
+ */
+export class TransferDictionary extends Dictionary<TransferPair, TransferDictionary> {
+  private pivot = new Map<string, TransferPair>();
+
+  constructor(init?: Iterable<readonly [string, TransferPair]> | null) {
+    super(init as Iterable<readonly [string, TransferPair]> | undefined);
+    // Build the pivot from the entries the base Map constructor just
+    // ingested. The entries went through Map.prototype.set (not our
+    // override), so the pivot wasn't populated incrementally.
+    this.forEach((pair) => {
+      pair.transactions.forEach((t) => this.pivot.set(t.transaction_id, pair));
+    });
+  }
+
+  getByTransactionId = (transaction_id: string): TransferPair | undefined => {
+    return this.pivot.get(transaction_id);
+  };
+
+  // Dictionary's `set` is an arrow-function field, not a prototype
+  // method, so `super.set` from our own arrow field doesn't resolve
+  // (TS2855). Call `Map.prototype.set` directly — same effect as
+  // bypassing Dictionary's server-side guard, which doesn't apply to
+  // transfers (this is FE-only code).
+  override set = (pair_id: string, pair: TransferPair): this => {
+    const prev = Map.prototype.get.call(this, pair_id) as TransferPair | undefined;
+    if (prev) {
+      prev.transactions.forEach((t) => this.pivot.delete(t.transaction_id));
+    }
+    pair.transactions.forEach((t) => this.pivot.set(t.transaction_id, pair));
+    Map.prototype.set.call(this, pair_id, pair);
+    return this;
+  };
+
+  override delete = (pair_id: string): boolean => {
+    const prev = Map.prototype.get.call(this, pair_id) as TransferPair | undefined;
+    if (prev) {
+      prev.transactions.forEach((t) => this.pivot.delete(t.transaction_id));
+    }
+    return Map.prototype.delete.call(this, pair_id);
+  };
+}
+
 export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
   return type === "budget" ? Budget : type === "section" ? Section : Category;
 };
@@ -146,6 +200,15 @@ export class Data {
   accountSnapshots = new AccountSnapshotDictionary();
   holdingSnapshots = new HoldingSnapshotDictionary();
   securitySnapshots = new SecuritySnapshotDictionary();
+
+  /** All transfer pairs (suggested + confirmed), keyed by pair_id.
+   *  Read by `getBudgetData` / `getSankeyData` (filtering to
+   *  `status==="confirmed"`) to skip confirmed-transfer halves from
+   *  spent/income aggregation, and by `TransactionsTable` /
+   *  `TransactionProperties` etc. for bundled-row and Confirm/Reject UI.
+   *  Populated by `useSync`'s `fetchTransfers()` on cold/warm load,
+   *  mutated in-place via `useTransfers()` action methods. */
+  transfers = new TransferDictionary();
 
   constructor(init?: Partial<Data>) {
     assign(this, init);

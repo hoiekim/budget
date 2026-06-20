@@ -47,11 +47,18 @@ export const useData = () => {
         budgets,
         sections,
         categories,
+        transfers,
       } = data;
 
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
 
+        // Balance data intentionally does NOT receive `transfers`:
+        // per-account historical balance must reflect the actual
+        // value held in each account at each point in time. A
+        // transfer moves real dollars between accounts, so dropping
+        // its halves would de-sync the chart from the snapshot
+        // baseline.
         const balanceData = getBalanceData(
           accounts,
           accountSnapshots,
@@ -67,6 +74,7 @@ export const useData = () => {
           budgets,
           sections,
           categories,
+          transfers,
         );
 
         const capacityData = getCapacityData(budgets, sections, categories);

@@ -5,6 +5,7 @@ import {
   CapacityData,
   Transaction,
   TransactionDictionary,
+  TransferDictionary,
   SplitTransactionDictionary,
   SectionDictionary,
   CategoryDictionary,
@@ -24,20 +25,36 @@ export const getBudgetData = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
+  // All transfer pairs (suggested + confirmed), keyed by pair_id with
+  // a transaction_id pivot. Halves of a CONFIRMED pair are skipped
+  // entirely from budget aggregation — a transfer is internal
+  // movement between the user's own accounts, not real spending or
+  // income. The two halves would otherwise inflate both the spent
+  // column on the source-account budget and the income column on the
+  // destination's. Suggested pairs still aggregate normally —
+  // they're heuristic proposals the user hasn't confirmed. Required
+  // (no default): the caller threads `data.transfers` through, which
+  // is itself defaulted to an empty `TransferDictionary` on `Data`.
+  transfers: TransferDictionary,
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 
   const transactionFamilies = new TransactionFamilies();
 
+  const isConfirmedTransferHalf = (transaction_id: string): boolean =>
+    transfers.getByTransactionId(transaction_id)?.status === "confirmed";
+
   splitTransactions.forEach((splitTransaction) => {
     const { transaction_id } = splitTransaction;
     const transaction = transactions.get(transaction_id);
     if (!transaction) return;
+    if (isConfirmedTransferHalf(transaction_id)) return;
     transactionFamilies.add(transaction_id, splitTransaction);
   });
 
   const processTransaction = (transaction: Transaction) => {
     const { transaction_id, authorized_date, date, account_id, label, amount } = transaction;
+    if (isConfirmedTransferHalf(transaction_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     const account = accounts.get(account_id);
     if (!account || account.hide) return;
@@ -139,6 +156,12 @@ export const getBudgetData = (
 
   transactions.forEach(processTransaction);
   splitTransactions.forEach((st) => {
+    // Guard at the SPLIT pass on the PARENT's transaction_id, not on
+    // the synthetic Transaction's `transaction_id` (which is the
+    // split's own id per `SplitTransaction.toTransaction()` — so the
+    // in-`processTransaction` guard on line ~51 would never fire for
+    // splits even when their parent is a confirmed transfer).
+    if (isConfirmedTransferHalf(st.transaction_id)) return;
     const transaction = st.toTransaction();
     processTransaction(transaction);
   });

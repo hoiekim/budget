@@ -2,6 +2,7 @@ import { useState, useEffect, ChangeEventHandler, MouseEventHandler, useMemo } f
 import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import {
   useAppContext,
+  useTransfers,
   call,
   PATH,
   Transaction,
@@ -22,7 +23,9 @@ interface Props {
 }
 
 const TransactionRow = ({ transaction }: Props) => {
-  const { data, calculations, setData, router, transfers } = useAppContext();
+  const { data, calculations, setData, router } = useAppContext();
+  const transferActions = useTransfers();
+  const { transfers } = data;
   const { transactionFamilies } = calculations;
   const { id, transaction_id, amount, label } = transaction;
   const parentTransaction = data.transactions.get(transaction_id)!;
@@ -100,9 +103,11 @@ const TransactionRow = ({ transaction }: Props) => {
   // shows Confirm/Reject instead of the budget/category controls (#354). Split
   // rows never carry the affordance — the detection engine pairs whole
   // transactions, and a split inherits its parent's transaction_id.
-  const suggestedPairId = isSplitTransaction
+  const pendingTransferPair = isSplitTransaction
     ? undefined
-    : transfers.suggestedPairByTransactionId.get(transaction_id);
+    : transfers.getByTransactionId(transaction_id);
+  const suggestedPairId =
+    pendingTransferPair?.status === "suggested" ? pendingTransferPair.pair_id : undefined;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -298,8 +303,8 @@ const TransactionRow = ({ transaction }: Props) => {
       <div className="budgetCategoryActions">
         {suggestedPairId ? (
           <TransferControls
-            onConfirm={() => transfers.confirm(suggestedPairId)}
-            onReject={() => transfers.reject(suggestedPairId)}
+            onConfirm={() => transferActions.confirm(suggestedPairId)}
+            onReject={() => transferActions.reject(suggestedPairId)}
           />
         ) : (
           <div className="labelControls">

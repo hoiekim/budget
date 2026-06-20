@@ -1,132 +1,100 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { JSONTransaction } from "common";
-import { MaskedUser, TransferPair, TransfersGetResponse } from "server";
-import { call } from "client";
+import { useCallback } from "react";
+import type { TransferPair } from "server";
+import { call, Data, TransferDictionary, indexedDb, StoreName, useAppContext } from "client";
 
-export interface ConfirmedTransfer {
-  pair_id: string;
-  /** Both transactions in the confirmed pair, in the order the server
-   *  returned them (the bundled row renders pair[0] as the "from"
-   *  side, pair[1] as the "to" side). */
-  transactions: JSONTransaction[];
-}
-
-export interface Transfers {
-  /**
-   * transaction_id → pair_id for pairs still awaiting confirmation. A
-   * transaction is present here only while its pair status is "suggested";
-   * once confirmed it moves to `confirmedTransferByTransactionId`.
-   */
-  suggestedPairByTransactionId: Map<string, string>;
-  /**
-   * transaction_id → bundled confirmed-pair info. Used by
-   * `TransactionsTable` to render the two paired transactions as a
-   * single row (deduped on second sighting) and by
-   * `TransactionProperties` to display the transfer chip + the
-   * "mark as non-transfer" affordance. Both transactions in a
-   * confirmed pair point at the SAME ConfirmedTransfer object.
-   */
-  confirmedTransferByTransactionId: Map<string, ConfirmedTransfer>;
-  /** Confirm a suggested pair: status becomes "confirmed". */
+export interface TransferActions {
+  /** Confirm a suggested pair: status flips to "confirmed". */
   confirm: (pair_id: string) => Promise<void>;
   /** Reject a suggested pair: soft-deletes it so the row reverts. */
   reject: (pair_id: string) => Promise<void>;
   /** Unpair a confirmed pair (same delete path as reject, just
    *  semantically named for the "mark as non-transfer" affordance). */
   unpair: (pair_id: string) => Promise<void>;
-  /** Manually pair two transactions as a confirmed transfer. Used by the
-   *  "Mark as Transfer" affordance on a transaction's detail page for
-   *  cases where (a) the user accidentally unpaired and wants to undo
-   *  later, or (b) the detect-transfers heuristic missed the pair. Lands
-   *  directly as `status="confirmed"` — manual pairing is user intent,
-   *  not a suggestion. */
+  /** Manually pair two transactions as a confirmed transfer. Used by
+   *  the "Mark as Transfer" affordance for cases where (a) the user
+   *  accidentally unpaired and wants to undo later, or (b) the
+   *  detect-transfers heuristic missed the pair. Lands directly as
+   *  `status="confirmed"` — manual pairing is user intent, not a
+   *  suggestion. */
   pair: (transaction_id_a: string, transaction_id_b: string) => Promise<void>;
 }
 
 /**
- * Transfer-pair state for the transactions UI (#354, Phase 3a). Kept separate
- * from the heavyweight cold/warm IndexedDB sync because pairs are a small,
- * cheap list refetched on demand after each confirm/reject rather than cached
- * per-month like transactions.
+ * Transfer-pair actions hook (#354, Phase 3a). Stateless: the pair
+ * dictionary itself lives on `data.transfers`, fetched once by
+ * `useSync` alongside transactions / budgets / etc. Mutation methods
+ * POST to the server then update `data.transfers` in-place via
+ * `setData` — no re-fetch, matching the rest of the app's mutation
+ * pattern.
  */
-export const useTransfers = (user: MaskedUser | undefined): Transfers => {
-  const [pairs, setPairs] = useState<TransferPair[]>([]);
-
-  const refresh = useCallback(async () => {
-    const response = await call.get<TransfersGetResponse>("/api/transfers");
-    if (response.status === "success" && response.body) {
-      setPairs(response.body);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!user) {
-      setPairs([]);
-      return;
-    }
-    refresh();
-  }, [user, refresh]);
-
-  const suggestedPairByTransactionId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const pair of pairs) {
-      if (pair.status !== "suggested") continue;
-      for (const transaction of pair.transactions) {
-        map.set(transaction.transaction_id, pair.pair_id);
-      }
-    }
-    return map;
-  }, [pairs]);
-
-  const confirmedTransferByTransactionId = useMemo(() => {
-    const map = new Map<string, ConfirmedTransfer>();
-    for (const pair of pairs) {
-      if (pair.status !== "confirmed") continue;
-      const entry: ConfirmedTransfer = {
-        pair_id: pair.pair_id,
-        transactions: pair.transactions,
-      };
-      for (const transaction of pair.transactions) {
-        map.set(transaction.transaction_id, entry);
-      }
-    }
-    return map;
-  }, [pairs]);
+export const useTransfers = (): TransferActions => {
+  const { setData } = useAppContext();
 
   const confirm = useCallback(
     async (pair_id: string) => {
       const response = await call.post("/api/transfers/pair", { pair_id });
-      if (response.status === "success") await refresh();
+      if (response.status !== "success") return;
+      setData((oldData) => {
+        const prev = oldData.transfers.get(pair_id);
+        if (!prev) return oldData;
+        const updatedPair: TransferPair = { ...prev, status: "confirmed" };
+        // IDB mirror: keep the cached pair in sync with React state so
+        // the next warm boot paints with status="confirmed" instead of
+        // the stale "suggested" from the prior cold sync. Fire-and-forget
+        // — never await an IDB write on the latency path.
+        indexedDb.saveTransfer(updatedPair).catch(console.error);
+        const newData = new Data(oldData);
+        newData.transfers = new TransferDictionary(oldData.transfers);
+        newData.transfers.set(pair_id, updatedPair);
+        return newData;
+      });
     },
-    [refresh],
+    [setData],
   );
 
   const reject = useCallback(
     async (pair_id: string) => {
       const response = await call.delete(`/api/transfers?id=${encodeURIComponent(pair_id)}`);
-      if (response.status === "success") await refresh();
+      if (response.status !== "success") return;
+      setData((oldData) => {
+        if (!oldData.transfers.has(pair_id)) return oldData;
+        const newData = new Data(oldData);
+        newData.transfers = new TransferDictionary(oldData.transfers);
+        newData.transfers.delete(pair_id);
+        indexedDb.remove(StoreName.transfers, pair_id).catch(console.error);
+        return newData;
+      });
     },
-    [refresh],
+    [setData],
   );
 
   const pair = useCallback(
     async (transaction_id_a: string, transaction_id_b: string) => {
-      const response = await call.post("/api/transfers/pair", {
+      const response = await call.post<{ pair_id: string }>("/api/transfers/pair", {
         transaction_id_a,
         transaction_id_b,
         status: "confirmed",
       });
-      if (response.status === "success") await refresh();
+      if (response.status !== "success" || !response.body) return;
+      const { pair_id } = response.body;
+      setData((oldData) => {
+        const a = oldData.transactions.get(transaction_id_a);
+        const b = oldData.transactions.get(transaction_id_b);
+        if (!a || !b) return oldData;
+        const newPair: TransferPair = {
+          pair_id,
+          status: "confirmed",
+          transactions: [a, b],
+        };
+        indexedDb.saveTransfer(newPair).catch(console.error);
+        const newData = new Data(oldData);
+        newData.transfers = new TransferDictionary(oldData.transfers);
+        newData.transfers.set(pair_id, newPair);
+        return newData;
+      });
     },
-    [refresh],
+    [setData],
   );
 
-  return {
-    suggestedPairByTransactionId,
-    confirmedTransferByTransactionId,
-    confirm,
-    reject,
-    unpair: reject,
-    pair,
-  };
+  return { confirm, reject, unpair: reject, pair };
 };

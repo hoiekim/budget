@@ -1,7 +1,7 @@
 import { createContext, useContext, Dispatch, SetStateAction } from "react";
 import { MaskedUser } from "server";
 import { Interval, ViewDate } from "common";
-import { ClientRouter, Status, Data, Calculations, CapacityData, Transfers } from "client";
+import { ClientRouter, Status, Data, Calculations, CapacityData } from "client";
 
 export enum ScreenType {
   Narrow,
@@ -29,7 +29,6 @@ export interface ContextType {
   viewDate: ViewDate;
   setViewDate: Dispatch<SetStateAction<ViewDate>>;
   screenType: ScreenType;
-  transfers: Transfers;
 }
 
 export const Context = createContext<ContextType>({} as ContextType);

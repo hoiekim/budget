@@ -1,5 +1,5 @@
 const DB_NAME = "BudgetApp";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export enum StoreName {
   // primary data
@@ -18,6 +18,11 @@ export enum StoreName {
   accountSnapshots = "accountSnapshots",
   holdingSnapshots = "holdingSnapshots",
   securitySnapshots = "securitySnapshots",
+  // Transfer pairs (suggested + confirmed) keyed by pair_id. Loaded
+  // into `data.transfers` on warm boot, saved on cold-sync settle and
+  // on each mutation so warm paths paint with the most recent pair
+  // state instead of "no pairs until /api/transfers settles".
+  transfers = "transfers",
   // calculations
   balanceData = "balanceData",
   budgetData = "budgetData",

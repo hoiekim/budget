@@ -10,6 +10,7 @@ import {
   TransactionDictionary,
   TransactionLabel,
   useAppContext,
+  useTransfers,
   call,
   indexedDb,
 } from "client";
@@ -29,9 +30,10 @@ interface Props {
 }
 
 export const TransactionProperties = ({ transaction }: Props) => {
-  const { data, setData, calculations, transfers } = useAppContext();
+  const { data, setData, calculations } = useAppContext();
+  const transferActions = useTransfers();
   const { transactionFamilies } = calculations;
-  const { accounts, budgets, sections, categories } = data;
+  const { accounts, budgets, sections, categories, transfers } = data;
 
   const {
     transaction_id,
@@ -278,9 +280,8 @@ export const TransactionProperties = ({ transaction }: Props) => {
       // Within ±PARTNER_DATE_WINDOW_DAYS.
       const tDateMs = new LocalDate(t.authorized_date || t.date).getTime();
       if (Math.abs(tDateMs - txDateMs) > PARTNER_DATE_WINDOW_DAYS * ONE_DAY_MS) return;
-      // Skip transactions already in a pair (confirmed or suggested).
-      if (transfers.confirmedTransferByTransactionId.has(t.transaction_id)) return;
-      if (transfers.suggestedPairByTransactionId.has(t.transaction_id)) return;
+      // Skip transactions already in any pair (confirmed or suggested).
+      if (transfers.getByTransactionId(t.transaction_id)) return;
       candidates.push(t);
     });
     candidates.sort((a, b) => {
@@ -294,7 +295,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const onClickPartnerCandidate = async (partnerId: string) => {
     setPendingPartnerId(partnerId);
     try {
-      await transfers.pair(transaction_id, partnerId);
+      await transferActions.pair(transaction_id, partnerId);
       setShowPartnerPicker(false);
     } finally {
       setPendingPartnerId(null);

@@ -24,7 +24,15 @@ export const FlowChartRow = ({
   height = 150,
 }: FlowChartRowProps) => {
   const { data, viewDate } = useAppContext();
-  const { accounts, transactions, investmentTransactions, budgets, sections, categories } = data;
+  const {
+    accounts,
+    transactions,
+    investmentTransactions,
+    budgets,
+    sections,
+    categories,
+    transfers,
+  } = data;
   const { configuration } = chart;
   const { account_ids } = configuration;
 
@@ -55,6 +63,7 @@ export const FlowChartRow = ({
         sections,
         categories,
         viewDate,
+        transfers,
       ),
     [
       selectedAccounts,
@@ -64,6 +73,7 @@ export const FlowChartRow = ({
       sections,
       categories,
       viewDate,
+      transfers,
     ],
   );
 
