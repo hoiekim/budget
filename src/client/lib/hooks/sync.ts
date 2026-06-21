@@ -459,10 +459,33 @@ export const useSync = () => {
         return null;
       });
       const cursorRaw = readLastSyncedCursor();
-      // Warm vs cold is gated on BOTH: a populated IDB cache AND a
-      // previously-recorded cursor. Either missing → cold (full fetch,
-      // no cursor on the wire).
-      const isWarm = !!cached && cached.accounts.size > 0 && cursorRaw !== null;
+      // Warm vs cold is gated on:
+      //   - a populated IDB cache (accounts AND at least one
+      //     time-partitioned store; protects against partial-IDB
+      //     states like a future schema migration that resets some
+      //     stores or storage-quota partial eviction), AND
+      //   - a previously-recorded cursor.
+      // Any missing → cold (full fetch, no cursor on the wire) so
+      // the time-partitioned history can re-hydrate from scratch.
+      const isWarm =
+        !!cached &&
+        cached.accounts.size > 0 &&
+        (cached.transactions.size > 0 ||
+          cached.investmentTransactions.size > 0 ||
+          cached.accountSnapshots.size > 0) &&
+        cursorRaw !== null;
+
+      // Cold path purges IDB before the new save block writes the
+      // fresh delta — otherwise pre-tombstone-era rows (soft-deleted
+      // server-side before tombstone delivery existed, hard-deleted,
+      // or admin-removed) persist as cruft. Without a cursor the
+      // server's delta won't replay tombstones for those, so cold is
+      // the only opportunity to reset IDB. Awaited — the new saves
+      // can't safely race against a still-in-flight clearAllData on
+      // the same stores.
+      if (!isWarm) {
+        await indexedDb.clearAllData().catch(console.error);
+      }
       // Pass the cursor to delta fetches ONLY on the warm branch. The
       // cold path must fetch the full history with no `start-date=` —
       // if localStorage has a stale cursor (IDB cleared by quota /
