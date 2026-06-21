@@ -25,7 +25,6 @@ const {
   searchTransactionsById,
   upsertTransactions,
   updateTransactions,
-  getOldestTransactionDate,
 } = await import("./transactions");
 
 afterAll(restoreLeaves);
@@ -246,19 +245,3 @@ describe("updateTransactions", () => {
   });
 });
 
-describe("getOldestTransactionDate", () => {
-  test("returns date string when transactions exist", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ oldest_date: "2025-01-15" }],
-      rowCount: 1,
-    });
-    const result = await getOldestTransactionDate(testUser);
-    expect(result).toBe("2025-01-15");
-  });
-
-  test("returns null when no transactions", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const result = await getOldestTransactionDate(testUser);
-    expect(result).toBeNull();
-  });
-});

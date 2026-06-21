@@ -216,17 +216,3 @@ export const searchTransactionsByAccountId = async (
     investment_transactions: invResult.rows.map((row) => new InvTxModel(row).toJSON()),
   };
 };
-
-export const getOldestTransactionDate = async (
-  user: MaskedUser,
-  account_id?: string,
-): Promise<string | null> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
-  if (account_id) filters[ACCOUNT_ID] = account_id;
-
-  const result = await pool.query<{ oldest_date: string }>(
-    `SELECT MIN(${DATE}) as oldest_date FROM ${TRANSACTIONS} WHERE ${USER_ID} = $1 ${account_id ? `AND ${ACCOUNT_ID} = $2` : ""} AND (is_deleted IS NULL OR is_deleted = FALSE)`,
-    account_id ? [user.user_id, account_id] : [user.user_id],
-  );
-  return result.rows[0]?.oldest_date ?? null;
-};
