@@ -709,12 +709,31 @@ export const useSync = () => {
       // and per-row `remove` for tombstones. AWAITED so the cursor
       // write at the end happens AFTER IDB is durable — a page reload
       // right after sync sees the same state the cursor advertises.
-      // Save the non-time-partitioned stores explicitly — `saveAllData`
-      // would also open readwrite transactions for the 6 time-partitioned
-      // stores with empty dictionaries, which is pointless overhead.
-      // Time-partitioned stores get their own `saveTransactions` /
-      // `saveAccountSnapshots` / etc. calls below using the delta dicts.
-      await Promise.all([
+      // Cursor advances ONLY if every fetch AND every IDB write
+      // succeeded. A swallowed IDB save error here used to silently
+      // advance the cursor — the failed row stayed in React state but
+      // never landed in IDB; once the 60s cursor margin elapsed, the
+      // server stopped re-emitting it (`WHERE updated >= cursor` was
+      // inclusive of the last sync's window only). On next page reload
+      // `loadAllData` painted the prior IDB cache without the row, and
+      // it was permanently gone. So track IDB outcomes too and gate
+      // the cursor on both.
+      const fetchFailed =
+        stage1Budgets.networkFailed ||
+        stage1Charts.networkFailed ||
+        stage1Institutions.networkFailed ||
+        stage1Securities.networkFailed ||
+        stage1Transfers.networkFailed ||
+        transactionsResult.networkFailed ||
+        splitTransactionsResult.networkFailed ||
+        snapshotsResult.networkFailed;
+
+      // Non-time-partitioned stores: explicit per-store saves (avoids
+      // `saveAllData`'s 6 empty-dict transactions). Time-partitioned
+      // stores save the delta dict — the previous-sync state for any
+      // row that wasn't in this delta is already on disk from the
+      // sync that fetched it (idempotent per-id put).
+      const idbSaves: Promise<void>[] = [
         indexedDb.saveAccounts(accounts),
         indexedDb.saveHoldings(holdings),
         indexedDb.saveItems(items),
@@ -731,47 +750,40 @@ export const useSync = () => {
         indexedDb.saveAccountSnapshots(snapshotsResult.accountSnapshots),
         indexedDb.saveHoldingSnapshots(snapshotsResult.holdingSnapshots),
         indexedDb.saveSecuritySnapshots(snapshotsResult.securitySnapshots),
-      ]).catch(console.error);
-
-      // Tombstones: per-row remove. Small N (typically 0–few), so the
-      // serial overhead is negligible and there's no batched-remove
-      // helper. Awaited via Promise.all alongside the saves above
-      // would mix store transactions; keep separate for clarity.
-      const tombstoneRemovals: Promise<void>[] = [];
+      ];
       transactionsResult.tombstoneTxIds.forEach((id) => {
-        tombstoneRemovals.push(indexedDb.remove(StoreName.transactions, id));
+        idbSaves.push(indexedDb.remove(StoreName.transactions, id));
       });
       transactionsResult.tombstoneInvIds.forEach((id) => {
-        tombstoneRemovals.push(indexedDb.remove(StoreName.investmentTransactions, id));
+        idbSaves.push(indexedDb.remove(StoreName.investmentTransactions, id));
       });
       splitTransactionsResult.tombstoneSplitIds.forEach((id) => {
-        tombstoneRemovals.push(indexedDb.remove(StoreName.splitTransactions, id));
+        idbSaves.push(indexedDb.remove(StoreName.splitTransactions, id));
       });
       snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) => {
-        tombstoneRemovals.push(indexedDb.remove(StoreName.accountSnapshots, id));
+        idbSaves.push(indexedDb.remove(StoreName.accountSnapshots, id));
       });
       snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) => {
-        tombstoneRemovals.push(indexedDb.remove(StoreName.holdingSnapshots, id));
+        idbSaves.push(indexedDb.remove(StoreName.holdingSnapshots, id));
       });
       snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) => {
-        tombstoneRemovals.push(indexedDb.remove(StoreName.securitySnapshots, id));
+        idbSaves.push(indexedDb.remove(StoreName.securitySnapshots, id));
       });
-      await Promise.all(tombstoneRemovals).catch(console.error);
 
-      // Cursor advances ONLY if every fetch succeeded. On any failure,
-      // leave the cursor at its previous value so the next sync's delta
-      // still spans the gap that just failed.
-      const fetchFailed =
-        stage1Budgets.networkFailed ||
-        stage1Charts.networkFailed ||
-        stage1Institutions.networkFailed ||
-        stage1Securities.networkFailed ||
-        stage1Transfers.networkFailed ||
-        transactionsResult.networkFailed ||
-        splitTransactionsResult.networkFailed ||
-        snapshotsResult.networkFailed;
+      // `allSettled` rather than `all`: a partial IDB failure
+      // shouldn't tear down the orchestrator (React state already has
+      // the data); we just need to detect the failure so the cursor
+      // stays put and the next sync re-fetches the delta.
+      const idbOutcomes = await Promise.allSettled(idbSaves);
+      const idbFailed = idbOutcomes.some((o) => {
+        if (o.status === "rejected") {
+          console.error("[useSync] IDB persist failed:", o.reason);
+          return true;
+        }
+        return false;
+      });
 
-      if (!fetchFailed) {
+      if (!fetchFailed && !idbFailed) {
         writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
       }
     } catch (err) {
