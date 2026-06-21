@@ -40,7 +40,6 @@ import {
   SecuritySnapshotDictionary,
   InstitutionDictionary,
   Institution,
-  useDebounce,
   indexedDb,
   StoreName,
   HoldingDictionary,
@@ -433,9 +432,18 @@ const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
   return result;
 };
 
+// Module-scoped so the timeout survives the originating component's
+// unmount — `_sync` must fire regardless of whether the caller is
+// still mounted (clean() → setData(new Data()) flips status.isInit and
+// unmounts the page during refresh).
+let syncDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+const debounceSync = (callback: () => void, delay = 50) => {
+  if (syncDebounceTimeout) clearTimeout(syncDebounceTimeout);
+  syncDebounceTimeout = setTimeout(callback, delay);
+};
+
 export const useSync = () => {
   const { user, setData } = useAppContext();
-  const debouncer = useDebounce();
   const _sync = useCallback(async () => {
     if (!user) return;
     setData((oldData) => {
@@ -821,10 +829,14 @@ export const useSync = () => {
     }
   }, [setData, user]);
 
-  const sync = useCallback(() => debouncer(_sync), [_sync, debouncer]);
+  const sync = useCallback(() => debounceSync(_sync), [_sync]);
 
-  const clean = useCallback(() => {
-    indexedDb.clearAllData();
+  const clean = useCallback(async () => {
+    // Await `clearAllData` so the next sync's `loadAllData` sees an
+    // empty IDB. (The next sync's cold-path purge will also clear
+    // again — the await here just lets onClickRefresh treat clean()
+    // as durable.)
+    await indexedDb.clearAllData();
     removeLastSyncedCursor();
     setData(new Data());
   }, [setData]);

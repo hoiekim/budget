@@ -27,37 +27,6 @@ call.delete = <T>(path: string) => call<T>(path, { method: "DELETE" });
 
 export { call };
 
-const CACHE_KEY = "budget-cache";
-
-// Lazy-initialize cache to avoid window reference during SSR/tests
-let promisedCache: Promise<Cache> | undefined;
-const getCache = () => {
-  if (typeof window === "undefined") return undefined;
-  if (!promisedCache) promisedCache = window.caches?.open(CACHE_KEY);
-  return promisedCache;
-};
-
-export const cleanCache = () => typeof window !== "undefined" && window.caches?.delete(CACHE_KEY);
-
-export const cachedCall = async <T = unknown>(path: string) => {
-  const cache = await getCache();
-  if (!cache) return call.get<T>(path);
-  try {
-    const cachedResponse = await cache.match(path);
-    if (cachedResponse) {
-      const result = await cachedResponse?.json();
-      return result as ApiResponse<T>;
-    } else {
-      await cache.add(path);
-      const cachedResponse = await cache.match(path);
-      const result = await cachedResponse?.json();
-      return result as ApiResponse<T>;
-    }
-  } catch (error) {
-    console.error(error);
-  }
-};
-
 export const read = async <T = unknown>(
   path: string,
   callback: (response: ApiResponse<T>) => void,

@@ -5,7 +5,6 @@ import {
   Item,
   ItemDictionary,
   call,
-  cleanCache,
   InstitutionSpan,
   PATH,
   PlaidLinkButton,
@@ -73,8 +72,7 @@ export const Configuration = () => {
   };
 
   const onClickRefresh = async () => {
-    clean();
-    await cleanCache();
+    await clean();
     await sync();
   };
 
