@@ -40,7 +40,6 @@ import {
   SecuritySnapshotDictionary,
   InstitutionDictionary,
   Institution,
-  useDebounce,
   indexedDb,
   StoreName,
   HoldingDictionary,
@@ -433,9 +432,22 @@ const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
   return result;
 };
 
+// Module-scoped debounce: previously a per-hook-instance `useDebounce`,
+// but its `useEffect` cleanup cleared the pending timeout on unmount —
+// and the Refresh button's `clean()` triggers an unmount (via
+// `status.isInit=false` flipping the Router gate to <Spinner/>) BEFORE
+// the debounced `_sync` had a chance to fire. The result was a dead
+// Refresh button. Moving the timeout out of React's hook lifecycle
+// decouples the "should _sync fire" decision from "is this component
+// mounted right now" — sync should fire regardless.
+let syncDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+const debounceSync = (callback: () => void, delay = 50) => {
+  if (syncDebounceTimeout) clearTimeout(syncDebounceTimeout);
+  syncDebounceTimeout = setTimeout(callback, delay);
+};
+
 export const useSync = () => {
   const { user, setData } = useAppContext();
-  const debouncer = useDebounce();
   const _sync = useCallback(async () => {
     if (!user) return;
     setData((oldData) => {
@@ -821,10 +833,14 @@ export const useSync = () => {
     }
   }, [setData, user]);
 
-  const sync = useCallback(() => debouncer(_sync), [_sync, debouncer]);
+  const sync = useCallback(() => debounceSync(_sync), [_sync]);
 
-  const clean = useCallback(() => {
-    indexedDb.clearAllData();
+  const clean = useCallback(async () => {
+    // Await `clearAllData` so the next sync's `loadAllData` sees an
+    // empty IDB. (The next sync's cold-path purge will also clear
+    // again — the await here just lets onClickRefresh treat clean()
+    // as durable.)
+    await indexedDb.clearAllData();
     removeLastSyncedCursor();
     setData(new Data());
   }, [setData]);

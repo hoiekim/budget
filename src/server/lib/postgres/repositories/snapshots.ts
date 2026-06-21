@@ -74,12 +74,11 @@ export const searchSnapshots = async (
 ): Promise<JSONSnapshotData[]> => {
   // Filter by `updated`, not `snapshot_date` — matches the transactions
   // repository (`{ column: UPDATED, ... }`). Soft-deletes and edits bump
-  // the row's `updated` timestamp, so any change surfaces in the latest
-  // month's live query (the FE always live-fetches the current month).
-  // Without this, a snapshot deleted today but originally dated months
-  // ago stays bound to its old month — which is the cachedCall layer's
-  // frozen response — so the deletion never propagates to clients that
-  // already populated IDB from the cold sync.
+  // `updated`, so the FE's delta-by-cursor sync surfaces them regardless
+  // of which month the snapshot is originally dated to. Filtering on
+  // `snapshot_date` would never include a snapshot whose row moved
+  // (deletion / re-dating) but whose original date is outside the
+  // cursor's window.
   const dateRange =
     options.startDate || options.endDate
       ? { column: UPDATED, start: options.startDate, end: options.endDate }

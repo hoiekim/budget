@@ -72,7 +72,7 @@ export const Configuration = () => {
   };
 
   const onClickRefresh = async () => {
-    clean();
+    await clean();
     await sync();
   };
 
