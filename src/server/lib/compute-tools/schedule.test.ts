@@ -13,6 +13,9 @@ const realSyncPlaid = { ...(await import("./sync-plaid")) };
 const realSyncSimpleFin = { ...(await import("./sync-simple-fin")) };
 const realAutoSuggest = { ...(await import("./auto-suggest")) };
 const realDetectTransfers = { ...(await import("./detect-transfers")) };
+const realRefreshSecuritySnapshots = {
+  ...(await import("./refresh-security-snapshots")),
+};
 
 const mockGetAllItems = mock(async () => [] as { item_id: string; provider: ItemProvider }[]);
 const mockUpdateItemSyncStatus = mock(async () => {});
@@ -35,6 +38,13 @@ const mockSyncSimpleFinData = mock(
 );
 const mockRunAutoSuggestions = mock(async () => {});
 const mockRunTransferDetection = mock(async () => {});
+const mockRefreshActiveSecuritySnapshots = mock(async () => ({
+  refreshed: 0,
+  fresh: 0,
+  cash: 0,
+  empty: 0,
+  errors: 0,
+}));
 
 mock.module("server", () => ({
   ...realServer,
@@ -69,6 +79,11 @@ mock.module("./detect-transfers", () => ({
   runTransferDetection: mockRunTransferDetection,
 }));
 
+mock.module("./refresh-security-snapshots", () => ({
+  ...realRefreshSecuritySnapshots,
+  refreshActiveSecuritySnapshots: mockRefreshActiveSecuritySnapshots,
+}));
+
 const { scheduledSync, stopScheduledSync } = await import("./schedule");
 
 const flushMicrotasks = () => new Promise((r) => setTimeout(r, 50));
@@ -96,6 +111,14 @@ beforeEach(() => {
   mockRunAutoSuggestions.mockImplementation(async () => {});
   mockRunTransferDetection.mockReset();
   mockRunTransferDetection.mockImplementation(async () => {});
+  mockRefreshActiveSecuritySnapshots.mockReset();
+  mockRefreshActiveSecuritySnapshots.mockImplementation(async () => ({
+    refreshed: 0,
+    fresh: 0,
+    cash: 0,
+    empty: 0,
+    errors: 0,
+  }));
 });
 
 afterEach(() => {
@@ -111,6 +134,10 @@ afterAll(() => {
   mock.module("./sync-simple-fin", () => realSyncSimpleFin);
   mock.module("./auto-suggest", () => realAutoSuggest);
   mock.module("./detect-transfers", () => realDetectTransfers);
+  mock.module(
+    "./refresh-security-snapshots",
+    () => realRefreshSecuritySnapshots
+  );
   restoreLeaves();
 });
 
@@ -211,7 +238,7 @@ describe("scheduledSync / runSync", () => {
     });
   });
 
-  it("runs auto-suggestions and transfer detection after provider sync", async () => {
+  it("runs auto-suggestions, transfer detection, and security-snapshot refresh after provider sync", async () => {
     mockGetAllItems.mockResolvedValueOnce([]);
 
     scheduledSync();
@@ -219,6 +246,7 @@ describe("scheduledSync / runSync", () => {
 
     expect(mockRunAutoSuggestions).toHaveBeenCalledTimes(1);
     expect(mockRunTransferDetection).toHaveBeenCalledTimes(1);
+    expect(mockRefreshActiveSecuritySnapshots).toHaveBeenCalledTimes(1);
   });
 
   it("swallows auto-suggestion errors without blocking transfer detection", async () => {
