@@ -630,64 +630,14 @@ export const useSync = () => {
 
       // ===== Stage 4: persist + advance the cursor. =====
       //
-      // Persist whatever changed in this delta to IDB per-row:
-      // `indexedDb.save` for added/modified entries, `indexedDb.remove`
-      // for tombstones. These are the load-bearing writes once the
-      // `clearAllData → saveAllData` pattern is gone — IDB must reflect
-      // exactly what setData applied so the next warm boot's
-      // `loadAllData` cache matches.
-      //
-      // Bias toward eager fire-and-forget IDB writes (no awaits) since
-      // a failed IDB write just means the next warm load re-fetches
-      // (correct but slower). The orchestrator's only blocking await
-      // is the cursor write at the end, after every fetch succeeded.
-      transactionsResult.transactions.forEach((t) =>
-        indexedDb.save(t).catch(console.error),
-      );
-      transactionsResult.investmentTransactions.forEach((t) =>
-        indexedDb.save(t).catch(console.error),
-      );
-      transactionsResult.tombstoneTxIds.forEach((id) =>
-        indexedDb.remove(StoreName.transactions, id).catch(console.error),
-      );
-      transactionsResult.tombstoneInvIds.forEach((id) =>
-        indexedDb.remove(StoreName.investmentTransactions, id).catch(console.error),
-      );
-      splitTransactionsResult.splitTransactions.forEach((t) =>
-        indexedDb.save(t).catch(console.error),
-      );
-      splitTransactionsResult.tombstoneSplitIds.forEach((id) =>
-        indexedDb.remove(StoreName.splitTransactions, id).catch(console.error),
-      );
-      snapshotsResult.accountSnapshots.forEach((s) =>
-        indexedDb.save(s).catch(console.error),
-      );
-      snapshotsResult.holdingSnapshots.forEach((s) =>
-        indexedDb.save(s).catch(console.error),
-      );
-      snapshotsResult.securitySnapshots.forEach((s) =>
-        indexedDb.save(s).catch(console.error),
-      );
-      snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) =>
-        indexedDb.remove(StoreName.accountSnapshots, id).catch(console.error),
-      );
-      snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) =>
-        indexedDb.remove(StoreName.holdingSnapshots, id).catch(console.error),
-      );
-      snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) =>
-        indexedDb.remove(StoreName.securitySnapshots, id).catch(console.error),
-      );
-
-      // Non-time-partitioned stores: persist the whole dictionary —
-      // the server may have updated them since the cursor in ways the
-      // delta protocol doesn't surface here (e.g. budget edits). The
-      // `clearAllData → saveAllData` super-replace approach is gone,
-      // so we save these via `saveAllData(refreshed)` separately. That
-      // function `put`s entry-by-entry, idempotent on existing keys,
-      // and is correct as long as we don't need to evict rows that
-      // were never refetched. (For these stores — accounts, budgets,
-      // etc. — there's no per-row tombstone protocol; deletions show
-      // up as a missing id. That's the same behavior as today.)
+      // Per-store batched `saveMany` writes for added/modified entries
+      // and per-row `remove` for tombstones. AWAITED so the cursor
+      // write at the end happens AFTER IDB is durable — a page reload
+      // right after sync sees the same state the cursor advertises.
+      // (Fire-and-forget here would race the next warm boot's
+      // `loadAllData` against the in-flight writes; the test that
+      // surfaced this caught a partial cold-sync state being treated
+      // as the warm-load baseline.)
       const refreshedStage1 = new Data({
         accounts,
         items,
@@ -700,7 +650,40 @@ export const useSync = () => {
         securities,
         transfers,
       });
-      indexedDb.saveAllData(refreshedStage1).catch(console.error);
+      await Promise.all([
+        indexedDb.saveAllData(refreshedStage1),
+        indexedDb.saveTransactions(transactionsResult.transactions),
+        indexedDb.saveInvestmentTransactions(transactionsResult.investmentTransactions),
+        indexedDb.saveSplitTransactions(splitTransactionsResult.splitTransactions),
+        indexedDb.saveAccountSnapshots(snapshotsResult.accountSnapshots),
+        indexedDb.saveHoldingSnapshots(snapshotsResult.holdingSnapshots),
+        indexedDb.saveSecuritySnapshots(snapshotsResult.securitySnapshots),
+      ]).catch(console.error);
+
+      // Tombstones: per-row remove. Small N (typically 0–few), so the
+      // serial overhead is negligible and there's no batched-remove
+      // helper. Awaited via Promise.all alongside the saves above
+      // would mix store transactions; keep separate for clarity.
+      const tombstoneRemovals: Promise<void>[] = [];
+      transactionsResult.tombstoneTxIds.forEach((id) => {
+        tombstoneRemovals.push(indexedDb.remove(StoreName.transactions, id));
+      });
+      transactionsResult.tombstoneInvIds.forEach((id) => {
+        tombstoneRemovals.push(indexedDb.remove(StoreName.investmentTransactions, id));
+      });
+      splitTransactionsResult.tombstoneSplitIds.forEach((id) => {
+        tombstoneRemovals.push(indexedDb.remove(StoreName.splitTransactions, id));
+      });
+      snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) => {
+        tombstoneRemovals.push(indexedDb.remove(StoreName.accountSnapshots, id));
+      });
+      snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) => {
+        tombstoneRemovals.push(indexedDb.remove(StoreName.holdingSnapshots, id));
+      });
+      snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) => {
+        tombstoneRemovals.push(indexedDb.remove(StoreName.securitySnapshots, id));
+      });
+      await Promise.all(tombstoneRemovals).catch(console.error);
 
       // Cursor advances ONLY if every fetch succeeded. On any failure,
       // leave the cursor at its previous value so the next sync's delta
