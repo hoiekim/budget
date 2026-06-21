@@ -486,16 +486,37 @@ export const useSync = () => {
         setData(cached);
       }
 
+      // Kick off every Stage 1 fetch in parallel. Only `fetchInstitutions`
+      // depends on accounts (chained via the promise), the rest are
+      // independent and start as soon as the user is authenticated.
       const accountsPromise = fetchAccounts();
-      const { networkFailed: accountsFailed } = await accountsPromise;
+      const budgetsPromise = fetchBudgets();
+      const chartsPromise = fetchCharts();
+      const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
+      const securitiesPromise = fetchSecurities();
+      const transfersPromise = fetchTransfers();
 
-      if (accountsFailed) {
-        // Updater form (not `setData(cached)`): the warm-path paint
-        // already committed `cached` to React state at line ~471, so
-        // a second `setData(cached)` would be `Object.is`-equal to
-        // the current state and React would bail out — stranding the
-        // loading flag we mutated to `false`. Clone via the updater
-        // so React sees a distinct reference and commits.
+      const [
+        accountsResult,
+        stage1Budgets,
+        stage1Charts,
+        stage1Institutions,
+        stage1Securities,
+        stage1Transfers,
+      ] = await Promise.all([
+        accountsPromise,
+        budgetsPromise,
+        chartsPromise,
+        institutionsPromise,
+        securitiesPromise,
+        transfersPromise,
+      ]);
+
+      if (accountsResult.networkFailed) {
+        // Setdata via the updater so React sees a distinct reference
+        // and commits; the warm-path paint above already committed the
+        // same `cached` ref, so `setData(cached)` would Object.is-bail
+        // and strand the loading flag.
         setData((oldData) => {
           const newData = new Data(oldData);
           newData.status.isInit = true;
@@ -506,21 +527,7 @@ export const useSync = () => {
         return;
       }
 
-      const { accounts, items, holdings } = await accountsPromise;
-
-      const [
-        stage1Budgets,
-        stage1Charts,
-        stage1Institutions,
-        stage1Securities,
-        stage1Transfers,
-      ] = await Promise.all([
-        fetchBudgets(),
-        fetchCharts(),
-        fetchInstitutions(accounts),
-        fetchSecurities(),
-        fetchTransfers(),
-      ]);
+      const { accounts, items, holdings } = accountsResult;
       const { budgets, sections, categories } = stage1Budgets;
       const { charts } = stage1Charts;
       const { institutions } = stage1Institutions;
@@ -647,16 +654,15 @@ export const useSync = () => {
         next.institutions = institutions;
         next.securities = securities;
         next.transfers = transfers;
-        const base = oldData;
 
         // Apply transactions delta: clone the existing dict, set
         // added/modified, delete tombstoned ids.
-        next.transactions = new TransactionDictionary(base.transactions);
+        next.transactions = new TransactionDictionary(oldData.transactions);
         transactionsResult.transactions.forEach((t, id) => next.transactions.set(id, t));
         transactionsResult.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
 
         next.investmentTransactions = new InvestmentTransactionDictionary(
-          base.investmentTransactions,
+          oldData.investmentTransactions,
         );
         transactionsResult.investmentTransactions.forEach((t, id) =>
           next.investmentTransactions.set(id, t),
@@ -665,7 +671,7 @@ export const useSync = () => {
           next.investmentTransactions.delete(id),
         );
 
-        next.splitTransactions = new SplitTransactionDictionary(base.splitTransactions);
+        next.splitTransactions = new SplitTransactionDictionary(oldData.splitTransactions);
         splitTransactionsResult.splitTransactions.forEach((t, id) =>
           next.splitTransactions.set(id, t),
         );
@@ -673,19 +679,19 @@ export const useSync = () => {
           next.splitTransactions.delete(id),
         );
 
-        next.accountSnapshots = new AccountSnapshotDictionary(base.accountSnapshots);
+        next.accountSnapshots = new AccountSnapshotDictionary(oldData.accountSnapshots);
         snapshotsResult.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
         snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) =>
           next.accountSnapshots.delete(id),
         );
 
-        next.holdingSnapshots = new HoldingSnapshotDictionary(base.holdingSnapshots);
+        next.holdingSnapshots = new HoldingSnapshotDictionary(oldData.holdingSnapshots);
         snapshotsResult.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
         snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) =>
           next.holdingSnapshots.delete(id),
         );
 
-        next.securitySnapshots = new SecuritySnapshotDictionary(base.securitySnapshots);
+        next.securitySnapshots = new SecuritySnapshotDictionary(oldData.securitySnapshots);
         snapshotsResult.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
         snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) =>
           next.securitySnapshots.delete(id),
@@ -703,20 +709,22 @@ export const useSync = () => {
       // and per-row `remove` for tombstones. AWAITED so the cursor
       // write at the end happens AFTER IDB is durable — a page reload
       // right after sync sees the same state the cursor advertises.
-      const refreshedStage1 = new Data({
-        accounts,
-        items,
-        holdings,
-        budgets,
-        sections,
-        categories,
-        charts,
-        institutions,
-        securities,
-        transfers,
-      });
+      // Save the non-time-partitioned stores explicitly — `saveAllData`
+      // would also open readwrite transactions for the 6 time-partitioned
+      // stores with empty dictionaries, which is pointless overhead.
+      // Time-partitioned stores get their own `saveTransactions` /
+      // `saveAccountSnapshots` / etc. calls below using the delta dicts.
       await Promise.all([
-        indexedDb.saveAllData(refreshedStage1),
+        indexedDb.saveAccounts(accounts),
+        indexedDb.saveHoldings(holdings),
+        indexedDb.saveItems(items),
+        indexedDb.saveBudgets(budgets),
+        indexedDb.saveSections(sections),
+        indexedDb.saveCategories(categories),
+        indexedDb.saveCharts(charts),
+        indexedDb.saveInstitutions(institutions),
+        indexedDb.saveSecurities(securities),
+        indexedDb.saveTransfers(transfers),
         indexedDb.saveTransactions(transactionsResult.transactions),
         indexedDb.saveInvestmentTransactions(transactionsResult.investmentTransactions),
         indexedDb.saveSplitTransactions(splitTransactionsResult.splitTransactions),
