@@ -75,6 +75,7 @@ export const useData = () => {
           sections,
           categories,
           transfers,
+          data.status.isColdSync,
         );
 
         const capacityData = getCapacityData(budgets, sections, categories);

@@ -96,4 +96,10 @@ export class Status {
   isInit = false;
   isLoading = false;
   isError = false;
+  // True while a cold sync is in flight (no IDB cache to paint from, history
+  // arrives in stages). Consumers whose calc spans the full history — the
+  // rollover accrual in getBudgetData — clamp to the loaded window while
+  // this is set, so the accrual axis and the spending axis cover the same
+  // months. Warm syncs keep this false (IDB cache had everything).
+  isColdSync = false;
 }

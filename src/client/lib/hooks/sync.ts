@@ -585,6 +585,7 @@ export const useSync = () => {
         stage1.status.isInit = true;
         stage1.status.isLoading = true;
         stage1.status.isError = false;
+        stage1.status.isColdSync = true;
         setData(stage1);
       }
 
@@ -640,6 +641,11 @@ export const useSync = () => {
           next.status.isInit = true;
           next.status.isLoading = true;
           next.status.isError = false;
+          // Still mid-cold: Stage 4's unbounded fetch hasn't run yet, so
+          // months older than the recent window have no transactions in
+          // memory. Rollover accrual clamps to the loaded window while
+          // this is true.
+          next.status.isColdSync = true;
           return next;
         });
       }
@@ -731,6 +737,10 @@ export const useSync = () => {
         next.status.isInit = true;
         next.status.isLoading = false;
         next.status.isError = false;
+        // Stage 4's unbounded fetch commits the full history (or, on warm,
+        // applies the delta on top of the cached full history). Either way
+        // the cold-streaming window is over.
+        next.status.isColdSync = false;
         return next;
       });
 

@@ -36,6 +36,10 @@ export const getBudgetData = (
   // (no default): the caller threads `data.transfers` through, which
   // is itself defaulted to an empty `TransferDictionary` on `Data`.
   transfers: TransferDictionary,
+  // True only while a cold sync is still streaming history in — months
+  // older than what's already loaded have no spending in memory yet, so
+  // accruing their capacity would overstate the rollover.
+  isColdSync = false,
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 
@@ -167,13 +171,38 @@ export const getBudgetData = (
   });
 
   const endDate = new ViewDate("month");
+
+  // While the cold sync is still streaming history, the spending axis
+  // only spans months whose transactions have arrived. The accrual axis
+  // (below) must span the same months, or it overstates the rollover
+  // figure. Clamp the accrual start to the earliest loaded month when
+  // `isColdSync` is set. When complete, `earliestLoadedMonth` is
+  // undefined and the start is unchanged.
+  let earliestLoadedMonth: ViewDate | undefined;
+  if (isColdSync) {
+    let earliest: LocalDate | undefined;
+    transactions.forEach((t) => {
+      const d = new LocalDate(t.authorized_date || t.date);
+      if (!earliest || d < earliest) earliest = d;
+    });
+    earliestLoadedMonth = earliest ? new ViewDate("month", earliest) : endDate;
+  }
+
   budgetData.forEach((history, budgetLikeId) => {
     const budgetLike =
       budgets.get(budgetLikeId) || sections.get(budgetLikeId) || categories.get(budgetLikeId);
     if (!budgetLike) return;
     const { roll_over, roll_over_start_date } = budgetLike;
     if (!roll_over || !roll_over_start_date) return;
-    const startDate = new ViewDate("month", roll_over_start_date).next();
+    const rollStart = new ViewDate("month", roll_over_start_date);
+    // Clone before .next() — `effectiveStart` may be `earliestLoadedMonth`,
+    // which is shared across iterations. ViewDate.next() mutates `this.date`,
+    // so unguarded it would advance the shared instance and leave later
+    // rollover budgets with a start past `endDate` (their loop never runs).
+    const startDate = (earliestLoadedMonth && earliestLoadedMonth.getEndDate() > rollStart.getEndDate()
+      ? earliestLoadedMonth.clone()
+      : rollStart
+    ).next();
     while (startDate.getEndDate() <= endDate.getEndDate()) {
       const previousDate = startDate.clone().previous();
       const previousSummary = history.get(previousDate.getEndDate());
