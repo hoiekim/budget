@@ -14,7 +14,7 @@ div.TransactionsHead {
 
 div.TransactionsPage > h2 {
   top: 50px;
-  height: 55px;
+  height: 54px;
   padding: 16px 10px 10px;
   z-index: 111;
 }
@@ -36,6 +36,7 @@ div.wideScreen div.TransactionsPage > h3 {
 div.TransactionsPage > .heading > button {
   padding: 0;
   width: 100%;
+  height: 100%;
   font-size: 1em;
   font-weight: bold;
   background-color: transparent;
@@ -44,6 +45,7 @@ div.TransactionsPage > .heading > button {
   justify-content: space-between;
   align-items: center;
   overflow: hidden;
+  text-align: left;
 }
 
 div.TransactionsPage > .heading > button > span:not(.checkmark) {
@@ -51,11 +53,6 @@ div.TransactionsPage > .heading > button > span:not(.checkmark) {
   text-overflow: ellipsis;
   min-width: 0;
   flex: 1;
-}
-
-div.TransactionsPage > .heading > button > svg {
-  position: relative;
-  top: 6px;
 }
 
 div.TransactionsPage > .heading > div.select {
@@ -88,26 +85,22 @@ div.TransactionsPage > .heading > div.select > div.selectLabel > button.closeBut
 
 div.TransactionsPage > .heading > div.select > div.options > button {
   width: 100%;
-  padding: 4px 0 6px;
+  padding: 4px 0 6px 30px;
   height: 28px;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 div.TransactionsPage > .heading > div.select > div.options > button:first-child {
   height: 32px;
-  padding: 8px 0 6px 0;
+  padding-top: 10px;
+  padding-left: 10px;
 }
 
 div.TransactionsPage > .heading > div.select > div.options > button:last-child {
-  height: 32px;
-  padding: 4px 0 10px 0;
-}
-
-div.TransactionsPage > .heading > div.select > div.options > button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-left: 10px;
+  padding-bottom: 10px;
 }
 
 div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox {
@@ -131,9 +124,9 @@ div.TransactionsPage > .heading > div.select > div.options > button > span.check
 div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox.checked::after {
   content: "✓";
   position: absolute;
-  top: -2px;
-  left: 1px;
-  font-size: 12px;
+  top: -3px;
+  left: 0px;
+  font-size: 18px;
   line-height: 12px;
   color: #e8e8e8;
 }

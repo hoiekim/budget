@@ -18,12 +18,7 @@ import { TransactionsHead } from "./TransactionsHead";
 import "./index.css";
 import { SearchBar } from "./SearchBar";
 
-export type TransactionsPageType =
-  | "deposits"
-  | "expenses"
-  | "unsorted"
-  | "suggested"
-  | "transfers";
+export type TransactionsPageType = "deposits" | "expenses" | "unsorted" | "suggested" | "transfers";
 
 interface TransactionsPageFilters {
   types: TransactionsPageType[];
@@ -43,8 +38,8 @@ interface TransactionsPageTitleProps {
 }
 
 const TYPE_LABELS: Record<TransactionsPageType, string> = {
-  unsorted: "Unsorted Transactions",
-  suggested: "Suggested Transactions",
+  unsorted: "Unsorted",
+  suggested: "Suggested",
   deposits: "Deposits",
   expenses: "Expenses",
   transfers: "Transfers",
@@ -220,7 +215,9 @@ export const TransactionsPageTitle = ({
               aria-label="Close transaction type selector"
             >
               <span>Select&nbsp;transaction&nbsp;types</span>
-              <button className="closeButton" aria-hidden="true">✕</button>
+              <button className="closeButton" aria-hidden="true">
+                ✕
+              </button>
             </div>
             <div className="options">
               {allButton}
