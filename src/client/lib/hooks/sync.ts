@@ -1,18 +1,8 @@
 import { useCallback } from "react";
-import {
-  ViewDate,
-  getDateString,
-  THIRTY_DAYS,
-  JSONInstitution,
-  JSONSnapshotData,
-  LocalDate,
-  Queue,
-} from "common";
+import { JSONInstitution, JSONSnapshotData } from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
-  OldestTransactionDateGetResponse,
-  ApiResponse,
   AccountsGetResponse,
   SplitTransactionsGetResponse,
   ChartsGetResponse,
@@ -35,7 +25,6 @@ import {
   SecuritySnapshot,
   useAppContext,
   call,
-  cachedCall,
   BudgetDictionary,
   SectionDictionary,
   CategoryDictionary,
@@ -61,186 +50,124 @@ import {
   TransferDictionary,
 } from "client";
 
-// Browsers cap concurrent fetches per origin (~6 on HTTP/1.1) and queueing
-// hundreds of `fetch`/`cache.add` calls at once triggers
-// ERR_INSUFFICIENT_RESOURCES — which silently aborts `cache.add` and defeats
-// the Cache API benefit for older months. Gate snapshot fetches through a
-// shared Queue so at most 6 are in flight at any time.
-const snapshotFetchQueue = new Queue({ maxInflight: 6 });
+// Cursor key: ISO timestamp of the last successful sync's start, minus a
+// safety margin. Next sync's delta fetch sends this as `start-date`, so
+// the server returns only rows whose `updated >= cursor`. Cleared by
+// `clean()`.
+const LAST_SYNCED_CURSOR_KEY = "budget:lastSyncedCursor";
+// Old localStorage key (pre-delta-sync). Removed on first load below
+// so returning users don't carry the dead key forever.
+const LEGACY_LAST_SYNCED_AT_KEY = "budget:lastSyncedAt";
 
-// Presence of the key gates warm-vs-cold: a known previous sync means
-// the IndexedDB cache is trustworthy enough to paint upfront. The value
-// drives the warm path's freshness window (`recentSinceMs =
-// lastSyncedAt − FRESHNESS_WINDOW_MS`), passed to
-// fetchTransactions/fetchSnapshots so months in that window go to
-// network and older months use the browser Cache API. Absent → cold
-// (avoids the failure mode where IndexedDB has stale data without a
-// known cutoff).
-const LAST_SYNCED_AT_KEY = "budget:lastSyncedAt";
-// How far back from `lastSyncedAt` we consider "potentially stale" on
-// the client. Wider than Plaid's pending→posted restatement window
-// (commonly cited as ~14d) to also catch user labels / category
-// edits that happened on another device since the last sync.
-const FRESHNESS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-
-const readLastSyncedAt = (): Date | null => {
+const dropLegacyKeys = () => {
   try {
-    const raw = window.localStorage.getItem(LAST_SYNCED_AT_KEY);
-    if (!raw) return null;
-    const t = Date.parse(raw);
-    if (!Number.isFinite(t)) return null;
-    // Reject future timestamps (clock skew between sessions / device wake) —
-    // treat them as missing so we err on the side of a wider refresh.
-    if (t > Date.now()) return null;
-    return new Date(t);
-  } catch {
-    return null;
-  }
-};
-
-const writeLastSyncedAt = (date: Date) => {
-  try {
-    window.localStorage.setItem(LAST_SYNCED_AT_KEY, date.toISOString());
-  } catch {
-    // localStorage can throw in private-mode iOS / over quota. Best
-    // effort; next warm load will fall back to cold path, which is
-    // correct but slower.
-  }
-};
-
-const removeLastSyncedAt = () => {
-  try {
-    window.localStorage.removeItem(LAST_SYNCED_AT_KEY);
+    window.localStorage.removeItem(LEGACY_LAST_SYNCED_AT_KEY);
   } catch {
     // no-op
   }
 };
 
-const getOldestTransactionDate = async (): Promise<Date | undefined> => {
-  const response = await call
-    .get<OldestTransactionDateGetResponse>("/api/oldest-transaction-date")
-    .catch(console.error);
-  if (!response?.body) return undefined;
-  return response.body ? new LocalDate(response.body) : undefined;
+const readLastSyncedCursor = (): string | null => {
+  try {
+    const raw = window.localStorage.getItem(LAST_SYNCED_CURSOR_KEY);
+    if (!raw) return null;
+    const t = Date.parse(raw);
+    if (!Number.isFinite(t)) return null;
+    // Future timestamps (clock skew between sessions) → treat as
+    // missing so the next sync widens to a full fetch.
+    if (t > Date.now()) return null;
+    return raw;
+  } catch {
+    return null;
+  }
 };
 
+const writeLastSyncedCursor = (cursor: string) => {
+  try {
+    window.localStorage.setItem(LAST_SYNCED_CURSOR_KEY, cursor);
+  } catch {
+    // localStorage can throw in private-mode iOS / over quota. Best
+    // effort; next sync without a cursor falls through to the cold
+    // path, which is correct but slower.
+  }
+};
+
+const removeLastSyncedCursor = () => {
+  try {
+    window.localStorage.removeItem(LAST_SYNCED_CURSOR_KEY);
+  } catch {
+    // no-op
+  }
+};
+
+// FE wall-clock minus a safety margin is the next-sync cursor. Sub-row
+// `updated` timestamps aren't on every JSON wire type today, so per-row
+// max(updated) can't drive the cursor without widening common/models.
+// Margin trades a small per-sync re-fetch of the last minute's changes
+// for robustness against client/server clock skew — a sync that picks
+// `Date.now()` as the cursor would silently miss any row whose
+// server-side `updated` lands behind the FE's clock view of "now".
+const CURSOR_SAFETY_MARGIN_MS = 60 * 1000;
+const cursorForNextSync = (syncStartedAt: Date): string =>
+  new Date(syncStartedAt.getTime() - CURSOR_SAFETY_MARGIN_MS).toISOString();
+
+/**
+ * Delta payload for transactions + investment transactions: a single
+ * GET `/api/transactions[?start-date=<cursor>]` carries both the
+ * added/modified rows and any tombstones (`is_deleted=true`) emitted
+ * since the cursor. The orchestrator applies them in-place to the
+ * existing `data.transactions` / `data.investmentTransactions` via
+ * `setData((old) => …)` and mirrors to IDB per row — no
+ * `clearAllData → saveAllData` step. Cursor null = full fetch (cold).
+ */
 interface FetchTransactionsResult {
+  /** Active rows arriving in the response. Constructed clients of
+   *  `Transaction` / `InvestmentTransaction` ready to drop into the
+   *  context dictionaries. */
   transactions: TransactionDictionary;
   investmentTransactions: InvestmentTransactionDictionary;
+  /** Soft-deleted row ids — caller must `delete` from context dicts
+   *  AND `indexedDb.remove(...)` per id for IDB durability. */
+  tombstoneTxIds: Set<string>;
+  tombstoneInvIds: Set<string>;
   networkFailed: boolean;
 }
 
-interface FetchRange {
-  /** Inclusive lower bound on the month start date — loop stops when viewDate < this. */
-  from: Date;
-  /** Exclusive upper bound on the month start date — loop starts at this month-1. */
-  until: Date;
-}
-
-const fetchTransactions = async (
-  accounts: AccountDictionary,
-  range: FetchRange,
-  // Months whose end falls at or after `recentSinceMs` bypass the browser
-  // Cache API (call) and go to network; older months use cachedCall.
-  // Default mirrors the original "last 30 days from now" semantic so the
-  // cold path keeps current behavior. The warm path overrides it with
-  // `lastSyncedAt − 30d` so the freshness threshold tracks the user's
-  // own gap between visits, not wall clock.
-  recentSinceMs: number = Date.now() - THIRTY_DAYS,
-): Promise<FetchTransactionsResult> => {
+const fetchTransactions = async (cursor: string | null): Promise<FetchTransactionsResult> => {
   const result: FetchTransactionsResult = {
     transactions: new TransactionDictionary(),
     investmentTransactions: new InvestmentTransactionDictionary(),
+    tombstoneTxIds: new Set(),
+    tombstoneInvIds: new Set(),
     networkFailed: false,
   };
 
-  // Tombstones collected from any month's response. Applied at the end
-  // so eviction wins regardless of which parallel response arrived
-  // last — mirrors the snapshot-side handling and avoids a stale
-  // `cachedCall` response re-adding a row the live query already
-  // marked deleted.
-  const tombstones = {
-    transaction: new Set<string>(),
-    investmentTransaction: new Set<string>(),
-  };
-
-  const transactionsApiPath = "/api/transactions";
-  const viewDate = new ViewDate("month");
-  // Walk back to the first month whose start < range.until.
-  while (viewDate.getStartDate() >= range.until) viewDate.previous();
-
-  const promises: Promise<void>[] = [];
-
-  while (range.from < viewDate.getStartDate()) {
-    accounts?.forEach((a) => {
-      const params = new URLSearchParams();
-      const startDate = viewDate.getStartDate();
-      const endDate = viewDate.clone().next().getStartDate();
-      params.append("start-date", getDateString(startDate));
-      params.append("end-date", getDateString(endDate));
-      params.append("account-id", a.id);
-      // Route hardcodes `includeDeleted: true` (matches snapshots) — the
-      // soft-deleted rows arrive as tombstones in the response and are
-      // dropped from `result.transactions` / IDB below.
-      const path = transactionsApiPath + "?" + params.toString();
-      const isRecent = endDate.getTime() >= recentSinceMs;
-
-      const fetchTransactionsForAccount = async () => {
-        let response: ApiResponse<TransactionsGetResponse> | void;
-        if (isRecent) {
-          response = await call.get<TransactionsGetResponse>(path).catch(console.error);
-        } else {
-          response = await cachedCall<TransactionsGetResponse>(path).catch(console.error);
-        }
-        if (!response || response.status === "error") {
-          result.networkFailed = true;
-          return;
-        }
-        if (!response.body) return;
-
-        const { transactions, investmentTransactions } = response.body;
-        transactions.forEach((t) => {
-          if (t.is_deleted) {
-            tombstones.transaction.add(t.transaction_id);
-            return;
-          }
-          result.transactions.set(t.transaction_id, new Transaction(t));
-        });
-        investmentTransactions.forEach((t) => {
-          if (t.is_deleted) {
-            tombstones.investmentTransaction.add(t.investment_transaction_id);
-            return;
-          }
-          result.investmentTransactions.set(
-            t.investment_transaction_id,
-            new InvestmentTransaction(t),
-          );
-        });
-      };
-      const promise = fetchTransactionsForAccount();
-
-      promises.push(promise);
-    });
-
-    viewDate.previous();
+  const params = new URLSearchParams();
+  if (cursor) params.append("start-date", cursor);
+  // Route hardcodes `includeDeleted: true`; soft-deleted rows arrive
+  // as tombstones (is_deleted=true).
+  const path = `/api/transactions${params.toString() ? "?" + params.toString() : ""}`;
+  const response = await call.get<TransactionsGetResponse>(path).catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
   }
+  if (!response.body) return result;
 
-  await Promise.all(promises);
-
-  // Apply tombstones after every parallel ingest has landed — same
-  // semantics as the snapshot path. The eager `indexedDb.remove` is
-  // load-bearing for the partial-failure branch in `useSync` (line
-  // ~671): when any fetch fails, `clearAllData → saveAllData` is
-  // skipped, so the only thing that drops the tombstoned row from IDB
-  // is this explicit remove. (The happy-path branches still
-  // clear-then-save from `result`, which would also drop it.)
-  tombstones.transaction.forEach((id) => {
-    result.transactions.delete(id);
-    indexedDb.remove(StoreName.transactions, id).catch(console.error);
+  const { transactions, investmentTransactions } = response.body;
+  transactions.forEach((t) => {
+    if (t.is_deleted) {
+      result.tombstoneTxIds.add(t.transaction_id);
+      return;
+    }
+    result.transactions.set(t.transaction_id, new Transaction(t));
   });
-  tombstones.investmentTransaction.forEach((id) => {
-    result.investmentTransactions.delete(id);
-    indexedDb.remove(StoreName.investmentTransactions, id).catch(console.error);
+  investmentTransactions.forEach((t) => {
+    if (t.is_deleted) {
+      result.tombstoneInvIds.add(t.investment_transaction_id);
+      return;
+    }
+    result.investmentTransactions.set(t.investment_transaction_id, new InvestmentTransaction(t));
   });
 
   return result;
@@ -248,45 +175,36 @@ const fetchTransactions = async (
 
 interface FetchSplitTransactionsResult {
   splitTransactions: SplitTransactionDictionary;
+  tombstoneSplitIds: Set<string>;
   networkFailed: boolean;
 }
 
-const fetchSplitTransactions = async (): Promise<FetchSplitTransactionsResult> => {
-  // Single unbounded GET — splits are small (well under any pagination
-  // threshold for current users) and the per-month-per-account paged
-  // shape from the initial draft of this PR introduced an FE coverage
-  // regression under high concurrency (1100+ in-flight fetches dropped
-  // rows across the response stream — see PR #522 thread). The
-  // `is_deleted` flag still rides on every row so the FE can branch into
-  // active vs tombstone here, matching the snapshot path's eviction
-  // semantics. The server still supports the paged shape (route + repo
-  // accept startDate/endDate/account-id) so a future delta-cursor design
-  // can adopt pagination uniformly across all three stores at once.
+const fetchSplitTransactions = async (
+  cursor: string | null,
+): Promise<FetchSplitTransactionsResult> => {
   const result: FetchSplitTransactionsResult = {
     splitTransactions: new SplitTransactionDictionary(),
+    tombstoneSplitIds: new Set(),
     networkFailed: false,
   };
 
-  const tombstones = new Set<string>();
+  const params = new URLSearchParams();
+  if (cursor) params.append("start-date", cursor);
+  const path = `/api/split-transactions${params.toString() ? "?" + params.toString() : ""}`;
 
-  const response = await call
-    .get<SplitTransactionsGetResponse>("/api/split-transactions")
-    .catch(console.error);
+  const response = await call.get<SplitTransactionsGetResponse>(path).catch(console.error);
   if (!response || response.status === "error") {
     result.networkFailed = true;
     return result;
   }
+  if (!response.body) return result;
 
-  response.body?.forEach((t) => {
+  response.body.forEach((t) => {
     if (t.is_deleted) {
-      tombstones.add(t.split_transaction_id);
+      result.tombstoneSplitIds.add(t.split_transaction_id);
       return;
     }
     result.splitTransactions.set(t.split_transaction_id, new SplitTransaction(t));
-  });
-
-  tombstones.forEach((id) => {
-    indexedDb.remove(StoreName.splitTransactions, id).catch(console.error);
   });
 
   return result;
@@ -389,39 +307,46 @@ interface FetchSnapshotsResult {
   accountSnapshots: AccountSnapshotDictionary;
   holdingSnapshots: HoldingSnapshotDictionary;
   securitySnapshots: SecuritySnapshotDictionary;
+  tombstoneAccountSnapshotIds: Set<string>;
+  tombstoneHoldingSnapshotIds: Set<string>;
+  tombstoneSecuritySnapshotIds: Set<string>;
   networkFailed: boolean;
 }
 
 const fetchSnapshots = async (
   accounts: AccountDictionary,
-  range: FetchRange,
-  // Same semantic as `fetchTransactions`: months whose end is at or after
-  // `recentSinceMs` go to network; older months use cachedCall.
-  recentSinceMs: number = Date.now() - THIRTY_DAYS,
+  cursor: string | null,
 ): Promise<FetchSnapshotsResult> => {
   const result: FetchSnapshotsResult = {
     accountSnapshots: new AccountSnapshotDictionary(),
     holdingSnapshots: new HoldingSnapshotDictionary(),
     securitySnapshots: new SecuritySnapshotDictionary(),
+    tombstoneAccountSnapshotIds: new Set(),
+    tombstoneHoldingSnapshotIds: new Set(),
+    tombstoneSecuritySnapshotIds: new Set(),
     networkFailed: false,
   };
 
-  // Tombstones collected from any month's response. Applied at the end
-  // so the eviction wins regardless of which parallel response arrived
-  // last — without this, a tombstone from June's live query loses to a
-  // cached older-month response that still has the row as active.
-  const tombstones = {
-    account: new Set<string>(),
-    holding: new Set<string>(),
-    security: new Set<string>(),
-  };
+  // Single GET against `/api/snapshots[?start-date=<cursor>]`. The
+  // route's `searchSnapshots` returns user-scoped account+holding
+  // snapshots (no `account-id` narrow) PLUS shared security snapshots
+  // in one response.
+  const params = new URLSearchParams();
+  if (cursor) params.append("start-date", cursor);
+  const path = `/api/snapshots${params.toString() ? "?" + params.toString() : ""}`;
+  const response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
 
-  const ingestSnapshot = (snapshot: JSONSnapshotData) => {
+  response.body.forEach((snapshot: JSONSnapshotData) => {
     if (snapshot.snapshot.is_deleted) {
       const id = snapshot.snapshot.snapshot_id;
-      if ("account" in snapshot) tombstones.account.add(id);
-      else if ("holding" in snapshot) tombstones.holding.add(id);
-      else if ("security" in snapshot) tombstones.security.add(id);
+      if ("account" in snapshot) result.tombstoneAccountSnapshotIds.add(id);
+      else if ("holding" in snapshot) result.tombstoneHoldingSnapshotIds.add(id);
+      else if ("security" in snapshot) result.tombstoneSecuritySnapshotIds.add(id);
       return;
     }
     if ("account" in snapshot) {
@@ -436,97 +361,6 @@ const fetchSnapshots = async (
       const newSnapshot = new SecuritySnapshot(snapshot);
       result.securitySnapshots.set(newSnapshot.snapshot.id, newSnapshot);
     }
-  };
-
-  // Mirror fetchTransactions (Closes #323): slice the full date window into
-  // month-sized chunks, fetched per-account for user-scoped snapshots and
-  // once-per-month for shared security snapshots. Months whose end falls
-  // at or after `recentSinceMs` bypass the browser Cache API and go to
-  // network; older months use cachedCall.
-  const snapshotsApiPath = "/api/snapshots";
-  const viewDate = new ViewDate("month");
-  while (viewDate.getStartDate() >= range.until) viewDate.previous();
-
-  const promises: Promise<void>[] = [];
-
-  while (range.from < viewDate.getStartDate()) {
-    const monthStart = viewDate.getStartDate();
-    const monthEnd = viewDate.clone().next().getStartDate();
-    const startStr = getDateString(monthStart);
-    const endStr = getDateString(monthEnd);
-    const isRecent = monthEnd.getTime() >= recentSinceMs;
-
-    accounts?.forEach((a) => {
-      const params = new URLSearchParams();
-      params.append("start-date", startStr);
-      params.append("end-date", endStr);
-      params.append("account-id", a.id);
-      const path = snapshotsApiPath + "?" + params.toString();
-
-      promises.push(
-        snapshotFetchQueue.add(async () => {
-          let response: ApiResponse<SnapshotsGetResponse> | void;
-          if (isRecent) {
-            response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
-          } else {
-            response = await cachedCall<SnapshotsGetResponse>(path).catch(console.error);
-          }
-          if (!response || response.status === "error") {
-            result.networkFailed = true;
-            return;
-          }
-          response.body?.forEach(ingestSnapshot);
-        }),
-      );
-    });
-
-    // Security snapshots are user-id=NULL (shared) and aren't returned by
-    // the account-scoped queries above. One slice per month, cached for
-    // older months — keeps the per-account URL space cleanly cache-keyed
-    // and avoids re-pulling the full price history on every page load.
-    const securityParams = new URLSearchParams();
-    securityParams.append("start-date", startStr);
-    securityParams.append("end-date", endStr);
-    securityParams.append("snapshot-type", "security");
-    const securityPath = snapshotsApiPath + "?" + securityParams.toString();
-
-    promises.push(
-      snapshotFetchQueue.add(async () => {
-        let response: ApiResponse<SnapshotsGetResponse> | void;
-        if (isRecent) {
-          response = await call.get<SnapshotsGetResponse>(securityPath).catch(console.error);
-        } else {
-          response = await cachedCall<SnapshotsGetResponse>(securityPath).catch(console.error);
-        }
-        if (!response || response.status === "error") {
-          result.networkFailed = true;
-          return;
-        }
-        response.body?.forEach(ingestSnapshot);
-      }),
-    );
-
-    viewDate.previous();
-  }
-
-  await Promise.all(promises);
-
-  // Apply tombstones after every parallel ingest has landed: drop the
-  // id from the dict (in case a stale cachedCall response re-added it)
-  // AND evict from IDB. Order matters — the dict-delete must happen
-  // before the consumer hands the dict to `saveAllData`, which would
-  // otherwise persist the stale row right back.
-  tombstones.account.forEach((id) => {
-    result.accountSnapshots.delete(id);
-    indexedDb.remove(StoreName.accountSnapshots, id).catch(console.error);
-  });
-  tombstones.holding.forEach((id) => {
-    result.holdingSnapshots.delete(id);
-    indexedDb.remove(StoreName.holdingSnapshots, id).catch(console.error);
-  });
-  tombstones.security.forEach((id) => {
-    result.securitySnapshots.delete(id);
-    indexedDb.remove(StoreName.securitySnapshots, id).catch(console.error);
   });
 
   return result;
@@ -563,9 +397,9 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   };
   const promises = accounts.toArray().map(async ({ institution_id }) => {
     if (institution_id === "Unknown") return;
-    const response = await cachedCall<JSONInstitution>(
-      `/api/institution?id=${institution_id}`,
-    ).catch(console.error);
+    const response = await call
+      .get<JSONInstitution>(`/api/institution?id=${institution_id}`)
+      .catch(console.error);
     if (!response || response.status === "error") {
       result.networkFailed = true;
       return;
@@ -611,164 +445,74 @@ export const useSync = () => {
     });
 
     try {
-      // Read IndexedDB synchronously up front. On a warm load (any cached
-      // accounts) we paint from cache immediately and only refresh the
-      // current month — full Stage 1/2/3 slicing is reserved for cold
-      // load (no IndexedDB). The previous fire-and-forget then-callback
-      // raced with Stage 1's setData(new Data({...})) which carries no
-      // transactions/snapshots, blowing away the cached history one
-      // frame after it painted (#399).
+      // Snapshot the wall-clock at sync start. Used to compute the next
+      // cursor *if* every fetch succeeds, so a failed sync doesn't
+      // advance the cursor and miss the rows that landed during the
+      // failed window. Captured here, not at the end, so concurrent
+      // server-side writes between start and end are picked up by the
+      // next sync (which uses cursor = startedAt - safety margin).
+      const syncStartedAt = new Date();
+      dropLegacyKeys();
+
       const cached = await indexedDb.loadAllData().catch((err) => {
         console.error(err);
         return null;
       });
-      const lastSyncedAt = readLastSyncedAt();
-      // Warm-load preconditions: cached data with at least one account,
-      // AND a previously persisted sync timestamp. The timestamp drives
-      // the warm path's freshness window (`recentSinceMs =
-      // lastSyncedAt − 30d`) which decides per-month whether to go to
-      // network or use the browser Cache API. Absent timestamp →
-      // cache is opaque, fall through to cold.
-      const isWarm = !!cached && cached.accounts.size > 0 && lastSyncedAt !== null;
+      const cursorRaw = readLastSyncedCursor();
+      // Warm vs cold is gated on:
+      //   - a populated IDB cache (accounts AND at least one
+      //     time-partitioned store; protects against partial-IDB
+      //     states like a future schema migration that resets some
+      //     stores or storage-quota partial eviction), AND
+      //   - a previously-recorded cursor.
+      // Any missing → cold (full fetch, no cursor on the wire) so
+      // the time-partitioned history can re-hydrate from scratch.
+      const isWarm =
+        !!cached &&
+        cached.accounts.size > 0 &&
+        (cached.transactions.size > 0 ||
+          cached.investmentTransactions.size > 0 ||
+          cached.accountSnapshots.size > 0) &&
+        cursorRaw !== null;
 
-      if (isWarm && cached && lastSyncedAt) {
-        const accountsPromise = fetchAccounts();
-        const { networkFailed } = await accountsPromise;
+      // Cold path purges IDB before the new save block writes the
+      // fresh delta — otherwise pre-tombstone-era rows (soft-deleted
+      // server-side before tombstone delivery existed, hard-deleted,
+      // or admin-removed) persist as cruft. Without a cursor the
+      // server's delta won't replay tombstones for those, so cold is
+      // the only opportunity to reset IDB. Awaited — the new saves
+      // can't safely race against a still-in-flight clearAllData on
+      // the same stores.
+      if (!isWarm) {
+        await indexedDb.clearAllData().catch(console.error);
+      }
+      // Pass the cursor to delta fetches ONLY on the warm branch. The
+      // cold path must fetch the full history with no `start-date=` —
+      // if localStorage has a stale cursor (IDB cleared by quota /
+      // DevTools, or `clean()`'s clearAllData racing the next sync),
+      // sending the cursor would return only rows updated since it
+      // and the reducer's empty-base would commit a near-empty
+      // dataset to React state.
+      const cursor = isWarm ? cursorRaw : null;
 
-        if (networkFailed) {
-          // Offline / server down — use cache as-is, no refresh.
-          cached.status.isInit = true;
-          cached.status.isLoading = false;
-          cached.status.isError = false;
-          setData(cached);
-          return;
-        }
-
-        // Paint from cache immediately; flag still-loading so the UI
-        // can show a refresh indicator while the full fetch settles.
+      // ===== Stage 1: non-historical data (cheap, paints fast). =====
+      // Accounts/items, budgets/sections/categories, charts,
+      // institutions, securities, transfers. None of these are
+      // time-partitioned. Refreshed on every sync (warm + cold).
+      //
+      // For warm load, we paint cached state first so the UI doesn't
+      // flicker between cache and the refreshed view of Stage 1.
+      if (isWarm && cached) {
         cached.status.isInit = true;
         cached.status.isLoading = true;
         cached.status.isError = false;
         setData(cached);
-
-        const { accounts, items, holdings } = await accountsPromise;
-
-        // Full-history fetch (`[oldestDate or 3-months-ago, currentMonth + 1)`)
-        // — same range the cold path covers via Stage 2 + Stage 3. The
-        // narrow freshness window from the prior warm-path design
-        // (`[lastSyncedAt − 30d, now]`) is now passed as `recentSinceMs`
-        // to drive the per-month `isRecent` decision inside
-        // fetchTransactions / fetchSnapshots: months whose end falls
-        // in that freshness window go to network (call), older months
-        // use cachedCall and come from the browser Cache API. Net effect:
-        // state always reflects the full server view, only the recent
-        // months pay network cost, the rest are essentially free.
-        const currentViewDate = new ViewDate("month");
-        const oldestDatePromise = getOldestTransactionDate();
-        const oldestDate = await oldestDatePromise;
-        const defaultFrom = currentViewDate.clone().previous().previous().previous().getStartDate();
-        const fullFrom = oldestDate && oldestDate < defaultFrom ? oldestDate : defaultFrom;
-        const fullUntil = currentViewDate.clone().next().getStartDate();
-        const fullRange: FetchRange = { from: fullFrom, until: fullUntil };
-        // Freshness window: 30 days back from the last sync. Anything
-        // newer than this is potentially-stale on the client and needs a
-        // re-fetch; anything older we trust the HTTP cache for.
-        const recentSinceMs = lastSyncedAt.getTime() - FRESHNESS_WINDOW_MS;
-
-        const [
-          budgetsResult,
-          chartsResult,
-          splitTransactionsResult,
-          transactionsResult,
-          snapshotsResult,
-          institutionsResult,
-          securitiesResult,
-          transfersResult,
-        ] = await Promise.all([
-          fetchBudgets(),
-          fetchCharts(),
-          fetchSplitTransactions(),
-          fetchTransactions(accounts, fullRange, recentSinceMs),
-          fetchSnapshots(accounts, fullRange, recentSinceMs),
-          fetchInstitutions(accounts),
-          fetchSecurities(),
-          fetchTransfers(),
-        ]);
-
-        const refreshed = new Data();
-        refreshed.accounts = accounts;
-        refreshed.holdings = holdings;
-        refreshed.securities = securitiesResult.securities;
-        refreshed.items = items;
-        refreshed.budgets = budgetsResult.budgets;
-        refreshed.sections = budgetsResult.sections;
-        refreshed.categories = budgetsResult.categories;
-        refreshed.charts = chartsResult.charts;
-        refreshed.splitTransactions = splitTransactionsResult.splitTransactions;
-        refreshed.institutions = institutionsResult.institutions;
-        refreshed.transactions = transactionsResult.transactions;
-        refreshed.investmentTransactions = transactionsResult.investmentTransactions;
-        refreshed.accountSnapshots = snapshotsResult.accountSnapshots;
-        refreshed.holdingSnapshots = snapshotsResult.holdingSnapshots;
-        refreshed.securitySnapshots = snapshotsResult.securitySnapshots;
-        refreshed.transfers = transfersResult.transfers;
-        refreshed.status.isInit = true;
-        refreshed.status.isLoading = false;
-        refreshed.status.isError = false;
-        setData(refreshed);
-
-        // If ANY of the warm-path fetches reported a network failure,
-        // don't persist the partial result to IndexedDB — the existing
-        // cache is still good; replacing it with a partial would
-        // permanently lose the dictionaries that fell through to empty.
-        // Same reason for skipping `writeLastSyncedAt` — the next warm
-        // load needs the OLD timestamp so its refresh window still spans
-        // the gap that just failed.
-        const warmFetchFailed =
-          budgetsResult.networkFailed ||
-          chartsResult.networkFailed ||
-          splitTransactionsResult.networkFailed ||
-          transactionsResult.networkFailed ||
-          snapshotsResult.networkFailed ||
-          institutionsResult.networkFailed ||
-          securitiesResult.networkFailed ||
-          transfersResult.networkFailed;
-
-        if (!warmFetchFailed) {
-          indexedDb
-            .clearAllData()
-            .then(() => indexedDb.saveAllData(refreshed))
-            .catch(console.error);
-          writeLastSyncedAt(new Date());
-        }
-        return;
       }
 
-      // ----- Cold start (no IndexedDB) — existing Stage 1/2/3 slicing -----
-
+      // Kick off every Stage 1 fetch in parallel. Only `fetchInstitutions`
+      // depends on accounts (chained via the promise), the rest are
+      // independent and start as soon as the user is authenticated.
       const accountsPromise = fetchAccounts();
-
-      const { networkFailed } = await accountsPromise;
-
-      if (networkFailed) {
-        // Even cold-start can hit a network failure; fall back to whatever
-        // partial IndexedDB read returned (likely empty Data).
-        setData((oldData) => {
-          const newData = new Data(oldData);
-          newData.status.isInit = true;
-          newData.status.isLoading = false;
-          newData.status.isError = true;
-          return newData;
-        });
-        return;
-      }
-
-      // --- Stage 1: non-historical data (paint as soon as it lands).
-      // Accounts/items, budgets/sections/categories, charts, institutions —
-      // none of these are time-partitioned, so they finish quickly and let
-      // the UI render the navigation + summary widgets before the heavy
-      // snapshot/transaction fetches complete.
-      const oldestDatePromise = getOldestTransactionDate();
       const budgetsPromise = fetchBudgets();
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
@@ -776,7 +520,7 @@ export const useSync = () => {
       const transfersPromise = fetchTransfers();
 
       const [
-        { accounts, items },
+        accountsResult,
         stage1Budgets,
         stage1Charts,
         stage1Institutions,
@@ -790,159 +534,280 @@ export const useSync = () => {
         securitiesPromise,
         transfersPromise,
       ]);
+
+      if (accountsResult.networkFailed) {
+        // Setdata via the updater so React sees a distinct reference
+        // and commits; the warm-path paint above already committed the
+        // same `cached` ref, so `setData(cached)` would Object.is-bail
+        // and strand the loading flag.
+        setData((oldData) => {
+          const newData = new Data(oldData);
+          newData.status.isInit = true;
+          newData.status.isLoading = false;
+          newData.status.isError = !isWarm; // online cache wins; cold = real error
+          return newData;
+        });
+        return;
+      }
+
+      const { accounts, items, holdings } = accountsResult;
       const { budgets, sections, categories } = stage1Budgets;
       const { charts } = stage1Charts;
       const { institutions } = stage1Institutions;
       const { securities } = stage1Securities;
       const { transfers } = stage1Transfers;
 
-      const stage1 = new Data({
-        accounts,
-        items,
-        budgets,
-        sections,
-        categories,
-        charts,
-        institutions,
-        securities,
-        transfers,
-      });
-      stage1.status.isInit = true;
-      stage1.status.isLoading = true;
-      stage1.status.isError = false;
-      setData(stage1);
-
-      // --- Stage 2: the most recent 2 months of historical data.
-      // The current month + previous month covers what the active
-      // dashboard / transactions table renders by default, so paint that
-      // as soon as it's available rather than blocking on the full
-      // history. Bounds are exclusive on both ends, matching the original
-      // single-pass loop's `while (oldestDate < viewDate.getStartDate())`
-      // semantics — months M with recentFrom < M.start < recentUntil are
-      // fetched (i.e. current + previous).
-      const currentViewDate = new ViewDate("month");
-      const recentFrom = currentViewDate.clone().previous().previous().getStartDate();
-      const recentUntil = currentViewDate.clone().next().getStartDate();
-      const recentRange: FetchRange = { from: recentFrom, until: recentUntil };
-
-      const [stage2Transactions, stage2SplitTxns, stage2Snapshots] = await Promise.all([
-        fetchTransactions(accounts, recentRange),
-        fetchSplitTransactions(),
-        fetchSnapshots(accounts, recentRange),
-      ]);
-      const {
-        transactions: recentTransactions,
-        investmentTransactions: recentInvestmentTransactions,
-      } = stage2Transactions;
-      const { splitTransactions } = stage2SplitTxns;
-      const {
-        accountSnapshots: recentAccountSnapshots,
-        holdingSnapshots: recentHoldingSnapshots,
-        securitySnapshots: recentSecuritySnapshots,
-      } = stage2Snapshots;
-
-      const stage2 = new Data({
-        accounts,
-        items,
-        budgets,
-        sections,
-        categories,
-        charts,
-        institutions,
-        securities,
-        transfers,
-        transactions: recentTransactions,
-        investmentTransactions: recentInvestmentTransactions,
-        splitTransactions,
-        accountSnapshots: recentAccountSnapshots,
-        holdingSnapshots: recentHoldingSnapshots,
-        securitySnapshots: recentSecuritySnapshots,
-      });
-      stage2.status.isInit = true;
-      stage2.status.isLoading = true;
-      stage2.status.isError = false;
-      setData(stage2);
-
-      // --- Stage 3: everything older. Fetch the rest of the historical
-      // window (oldestTransactionDate → the month right before stage 2's
-      // window) and merge it into the dictionaries from stage 2.
-      // `olderUntil = 1-month-ago start` is exclusive — the older fetch
-      // covers months M with olderFrom < M.start < olderUntil, which
-      // begins one month earlier than stage 2's window so the two stages
-      // tile cleanly with no overlap and no gap.
-      const oldestDate = await oldestDatePromise;
-      const defaultFrom = currentViewDate.clone().previous().previous().previous().getStartDate();
-      const olderFrom = oldestDate && oldestDate < defaultFrom ? oldestDate : defaultFrom;
-      const olderUntil = currentViewDate.clone().previous().getStartDate();
-
-      const olderRange: FetchRange = { from: olderFrom, until: olderUntil };
-
-      const finalData = new Data({
-        accounts,
-        items,
-        budgets,
-        sections,
-        categories,
-        charts,
-        institutions,
-        securities,
-        transfers,
-        transactions: recentTransactions,
-        investmentTransactions: recentInvestmentTransactions,
-        splitTransactions,
-        accountSnapshots: recentAccountSnapshots,
-        holdingSnapshots: recentHoldingSnapshots,
-        securitySnapshots: recentSecuritySnapshots,
-      });
-
-      let stage3Transactions: FetchTransactionsResult | null = null;
-      let stage3Snapshots: FetchSnapshotsResult | null = null;
-      if (olderFrom < olderUntil) {
-        // Splits aren't paged (stage 2 already fetched the full active set
-        // in one shot), so stage 3 only covers transactions + snapshots.
-        [stage3Transactions, stage3Snapshots] = await Promise.all([
-          fetchTransactions(accounts, olderRange),
-          fetchSnapshots(accounts, olderRange),
-        ]);
-
-        stage3Transactions.transactions.forEach((t, id) => finalData.transactions.set(id, t));
-        stage3Transactions.investmentTransactions.forEach((t, id) =>
-          finalData.investmentTransactions.set(id, t),
-        );
-        stage3Snapshots.accountSnapshots.forEach((s, id) => finalData.accountSnapshots.set(id, s));
-        stage3Snapshots.holdingSnapshots.forEach((s, id) => finalData.holdingSnapshots.set(id, s));
-        stage3Snapshots.securitySnapshots.forEach((s, id) =>
-          finalData.securitySnapshots.set(id, s),
-        );
+      // On a cold load, paint Stage 1 immediately so the navigation +
+      // summary widgets render before the historical fetches finish.
+      // On warm load, the cached paint above already covered this; the
+      // delta apply below replaces what changed.
+      if (!isWarm) {
+        const stage1 = new Data({
+          accounts,
+          items,
+          holdings,
+          budgets,
+          sections,
+          categories,
+          charts,
+          institutions,
+          securities,
+          transfers,
+        });
+        stage1.status.isInit = true;
+        stage1.status.isLoading = true;
+        stage1.status.isError = false;
+        setData(stage1);
       }
 
-      finalData.status.isInit = true;
-      finalData.status.isLoading = false;
-      finalData.status.isError = false;
-      setData(finalData);
+      // ===== Stage 2: cold-only recent-window paint. =====
+      // The unbounded fetch below scales with the user's full history
+      // (3s for ~6k transactions, more for larger sets). To keep the
+      // first-historical paint fast on cold load, fetch the recent 2
+      // months first via `start-date=<2-months-ago>` and paint that
+      // window. The unbounded Stage 3 fetch fills in older months
+      // after. On warm load this is skipped — the cached paint
+      // already covered it.
+      if (!isWarm) {
+        const twoMonthsAgo = new Date(
+          syncStartedAt.getTime() - 60 * 24 * 60 * 60 * 1000,
+        ).toISOString();
+        const [recentTx, recentSplits, recentSnaps] = await Promise.all([
+          fetchTransactions(twoMonthsAgo),
+          fetchSplitTransactions(twoMonthsAgo),
+          fetchSnapshots(accounts, twoMonthsAgo),
+        ]);
+        setData((oldData) => {
+          const next = new Data(oldData);
+          next.transactions = new TransactionDictionary(oldData.transactions);
+          recentTx.transactions.forEach((t, id) => next.transactions.set(id, t));
+          recentTx.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
+          next.investmentTransactions = new InvestmentTransactionDictionary(
+            oldData.investmentTransactions,
+          );
+          recentTx.investmentTransactions.forEach((t, id) =>
+            next.investmentTransactions.set(id, t),
+          );
+          recentTx.tombstoneInvIds.forEach((id) => next.investmentTransactions.delete(id));
+          next.splitTransactions = new SplitTransactionDictionary(oldData.splitTransactions);
+          recentSplits.splitTransactions.forEach((t, id) =>
+            next.splitTransactions.set(id, t),
+          );
+          recentSplits.tombstoneSplitIds.forEach((id) => next.splitTransactions.delete(id));
+          next.accountSnapshots = new AccountSnapshotDictionary(oldData.accountSnapshots);
+          recentSnaps.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
+          recentSnaps.tombstoneAccountSnapshotIds.forEach((id) =>
+            next.accountSnapshots.delete(id),
+          );
+          next.holdingSnapshots = new HoldingSnapshotDictionary(oldData.holdingSnapshots);
+          recentSnaps.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
+          recentSnaps.tombstoneHoldingSnapshotIds.forEach((id) =>
+            next.holdingSnapshots.delete(id),
+          );
+          next.securitySnapshots = new SecuritySnapshotDictionary(oldData.securitySnapshots);
+          recentSnaps.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
+          recentSnaps.tombstoneSecuritySnapshotIds.forEach((id) =>
+            next.securitySnapshots.delete(id),
+          );
+          next.status.isInit = true;
+          next.status.isLoading = true;
+          next.status.isError = false;
+          return next;
+        });
+      }
 
-      // Only persist when every cold-path fetch succeeded — same
-      // semantics as the warm path. If anything failed, leave whatever
-      // was in IndexedDB before this run alone and skip the timestamp
-      // write so the next sync still treats this gap as un-pulled.
-      const coldFetchFailed =
+      // ===== Stage 3: time-partitioned stores via delta/full fetch. =====
+      // Cursor null on cold → unbounded GET (fills in older months
+      // after Stage 2 painted recent ones). Cursor set on warm →
+      // server returns only rows whose `updated >= cursor`. The route
+      // filter is inclusive; cursor includes a safety margin so
+      // borderline rows aren't missed at the cost of a small per-sync
+      // re-fetch of the last minute's changes.
+      const [
+        transactionsResult,
+        splitTransactionsResult,
+        snapshotsResult,
+      ] = await Promise.all([
+        fetchTransactions(cursor),
+        fetchSplitTransactions(cursor),
+        fetchSnapshots(accounts, cursor),
+      ]);
+
+      // ===== Stage 4: apply (warm + cold: in-place merge on `oldData`). =====
+      //
+      // Existing state stays — added/modified rows overwrite their
+      // ids in the cloned dictionary; tombstoned ids are explicitly
+      // deleted from the clone. This is the design-doc rule (the calc
+      // depends on prior state, so the orchestrator can't just `new
+      // Data(refreshed)`).
+      //
+      // On cold load, the prior state from Stage 2's recent-window
+      // paint is already in oldData; Stage 4's unbounded fetch
+      // overlays the same recent rows (idempotent) and fills in the
+      // older months.
+      setData((oldData) => {
+        const next = new Data(oldData);
+        next.accounts = accounts;
+        next.holdings = holdings;
+        next.items = items;
+        next.budgets = budgets;
+        next.sections = sections;
+        next.categories = categories;
+        next.charts = charts;
+        next.institutions = institutions;
+        next.securities = securities;
+        next.transfers = transfers;
+
+        // Apply transactions delta: clone the existing dict, set
+        // added/modified, delete tombstoned ids.
+        next.transactions = new TransactionDictionary(oldData.transactions);
+        transactionsResult.transactions.forEach((t, id) => next.transactions.set(id, t));
+        transactionsResult.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
+
+        next.investmentTransactions = new InvestmentTransactionDictionary(
+          oldData.investmentTransactions,
+        );
+        transactionsResult.investmentTransactions.forEach((t, id) =>
+          next.investmentTransactions.set(id, t),
+        );
+        transactionsResult.tombstoneInvIds.forEach((id) =>
+          next.investmentTransactions.delete(id),
+        );
+
+        next.splitTransactions = new SplitTransactionDictionary(oldData.splitTransactions);
+        splitTransactionsResult.splitTransactions.forEach((t, id) =>
+          next.splitTransactions.set(id, t),
+        );
+        splitTransactionsResult.tombstoneSplitIds.forEach((id) =>
+          next.splitTransactions.delete(id),
+        );
+
+        next.accountSnapshots = new AccountSnapshotDictionary(oldData.accountSnapshots);
+        snapshotsResult.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
+        snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) =>
+          next.accountSnapshots.delete(id),
+        );
+
+        next.holdingSnapshots = new HoldingSnapshotDictionary(oldData.holdingSnapshots);
+        snapshotsResult.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
+        snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) =>
+          next.holdingSnapshots.delete(id),
+        );
+
+        next.securitySnapshots = new SecuritySnapshotDictionary(oldData.securitySnapshots);
+        snapshotsResult.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
+        snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) =>
+          next.securitySnapshots.delete(id),
+        );
+
+        next.status.isInit = true;
+        next.status.isLoading = false;
+        next.status.isError = false;
+        return next;
+      });
+
+      // ===== Stage 5: persist + advance the cursor. =====
+      //
+      // Per-store batched `saveMany` writes for added/modified entries
+      // and per-row `remove` for tombstones. AWAITED so the cursor
+      // write at the end happens AFTER IDB is durable — a page reload
+      // right after sync sees the same state the cursor advertises.
+      // Cursor advances ONLY if every fetch AND every IDB write
+      // succeeded. A swallowed IDB save error here used to silently
+      // advance the cursor — the failed row stayed in React state but
+      // never landed in IDB; once the 60s cursor margin elapsed, the
+      // server stopped re-emitting it (`WHERE updated >= cursor` was
+      // inclusive of the last sync's window only). On next page reload
+      // `loadAllData` painted the prior IDB cache without the row, and
+      // it was permanently gone. So track IDB outcomes too and gate
+      // the cursor on both.
+      const fetchFailed =
         stage1Budgets.networkFailed ||
         stage1Charts.networkFailed ||
         stage1Institutions.networkFailed ||
         stage1Securities.networkFailed ||
         stage1Transfers.networkFailed ||
-        stage2Transactions.networkFailed ||
-        stage2SplitTxns.networkFailed ||
-        stage2Snapshots.networkFailed ||
-        (stage3Transactions?.networkFailed ?? false) ||
-        (stage3Snapshots?.networkFailed ?? false);
+        transactionsResult.networkFailed ||
+        splitTransactionsResult.networkFailed ||
+        snapshotsResult.networkFailed;
 
-      if (!coldFetchFailed) {
-        indexedDb
-          .clearAllData()
-          .then(() => indexedDb.saveAllData(finalData))
-          .catch(console.error);
-        writeLastSyncedAt(new Date());
+      // Non-time-partitioned stores: explicit per-store saves (avoids
+      // `saveAllData`'s 6 empty-dict transactions). Time-partitioned
+      // stores save the delta dict — the previous-sync state for any
+      // row that wasn't in this delta is already on disk from the
+      // sync that fetched it (idempotent per-id put).
+      const idbSaves: Promise<void>[] = [
+        indexedDb.saveAccounts(accounts),
+        indexedDb.saveHoldings(holdings),
+        indexedDb.saveItems(items),
+        indexedDb.saveBudgets(budgets),
+        indexedDb.saveSections(sections),
+        indexedDb.saveCategories(categories),
+        indexedDb.saveCharts(charts),
+        indexedDb.saveInstitutions(institutions),
+        indexedDb.saveSecurities(securities),
+        indexedDb.saveTransfers(transfers),
+        indexedDb.saveTransactions(transactionsResult.transactions),
+        indexedDb.saveInvestmentTransactions(transactionsResult.investmentTransactions),
+        indexedDb.saveSplitTransactions(splitTransactionsResult.splitTransactions),
+        indexedDb.saveAccountSnapshots(snapshotsResult.accountSnapshots),
+        indexedDb.saveHoldingSnapshots(snapshotsResult.holdingSnapshots),
+        indexedDb.saveSecuritySnapshots(snapshotsResult.securitySnapshots),
+      ];
+      transactionsResult.tombstoneTxIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.transactions, id));
+      });
+      transactionsResult.tombstoneInvIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.investmentTransactions, id));
+      });
+      splitTransactionsResult.tombstoneSplitIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.splitTransactions, id));
+      });
+      snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.accountSnapshots, id));
+      });
+      snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.holdingSnapshots, id));
+      });
+      snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.securitySnapshots, id));
+      });
+
+      // `allSettled` rather than `all`: a partial IDB failure
+      // shouldn't tear down the orchestrator (React state already has
+      // the data); we just need to detect the failure so the cursor
+      // stays put and the next sync re-fetches the delta.
+      const idbOutcomes = await Promise.allSettled(idbSaves);
+      const idbFailed = idbOutcomes.some((o) => {
+        if (o.status === "rejected") {
+          console.error("[useSync] IDB persist failed:", o.reason);
+          return true;
+        }
+        return false;
+      });
+
+      if (!fetchFailed && !idbFailed) {
+        writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
       }
     } catch (err) {
       console.error(err);
@@ -960,7 +825,7 @@ export const useSync = () => {
 
   const clean = useCallback(() => {
     indexedDb.clearAllData();
-    removeLastSyncedAt();
+    removeLastSyncedCursor();
     setData(new Data());
   }, [setData]);
 
