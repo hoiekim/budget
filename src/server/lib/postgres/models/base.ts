@@ -274,13 +274,19 @@ export abstract class Table<
 
   async bulkSoftDeleteByColumn(
     column: string,
-    columnValue: ParamValue,
+    columnValue: ParamValue | ParamValue[],
     userIdValue?: ParamValue,
     client?: QueryExecutor,
   ): Promise<number> {
     this._assertSimplePrimaryKey("bulkSoftDeleteByColumn");
-    let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${column} = $1`;
-    const values: ParamValue[] = [columnValue];
+    // `columnValue` is either a single value (`column = $1`) or an
+    // array (`column = ANY($1)`) — callers with multiple matching ids
+    // get one round-trip instead of N.
+    const isArray = Array.isArray(columnValue);
+    if (isArray && columnValue.length === 0) return 0;
+    const predicate = isArray ? `${column} = ANY($1)` : `${column} = $1`;
+    let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${predicate}`;
+    const values: ParamValue[] = [columnValue as ParamValue];
 
     if (userIdValue !== undefined) {
       sql += ` AND user_id = $2`;
