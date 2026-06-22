@@ -1,7 +1,14 @@
 import { AccountType } from "plaid";
 import { useEffect, useMemo, useState } from "react";
 import { cap, currencyCodeToSymbol, ViewDate } from "common";
-import { colors, getAccountBalance, ScreenType, useAppContext, useDebounce } from "client";
+import {
+  colors,
+  getAccountBalance,
+  getDisplayBalance,
+  ScreenType,
+  useAppContext,
+  useDebounce,
+} from "client";
 import { AccountsDonut, AccountsTable, DonutData } from "client/components";
 import "./index.css";
 
@@ -50,9 +57,10 @@ export const AccountsPage = () => {
         : endDate;
 
     filteredAccounts.forEach((a, i) => {
-      const balanceHistory = balanceData.get(a.id);
-      const fallback = viewDateDate > today ? getAccountBalance(a) : 0;
-      const value = balanceHistory.get(viewDateDate) || fallback;
+      // While the cold-load history is still streaming, fall back to the live
+      // balance rather than $0 so the headline total doesn't flash a bogus
+      // net-worth collapse (#510).
+      const value = getDisplayBalance(balanceData, a, viewDateDate, today, data.status.isLoading);
       balanceTotal += value;
       const color = colors[i % colors.length];
       const label = a.custom_name || a.name || "Unnamed";
@@ -66,7 +74,7 @@ export const AccountsPage = () => {
     const currencySymbol = currencyCodeToSymbol(currencyCode);
 
     return { donutData, currencySymbol, balanceTotal, totalCredit, numberOfCredits };
-  }, [accounts, balanceData, viewDate]);
+  }, [accounts, balanceData, viewDate, data.status.isLoading]);
 
   const isNarrow = screenType === ScreenType.Narrow;
 
