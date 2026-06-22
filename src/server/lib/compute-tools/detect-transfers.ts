@@ -5,7 +5,7 @@ const BASE_CONFIDENCE = 0.7;
 const PLAID_TRANSFER_BOOST = 0.2;
 const SAME_DAY_BOOST = 0.1;
 const SUGGEST_THRESHOLD = 0.7;
-const DATE_WINDOW_DAYS = 3;
+const DATE_WINDOW_DAYS = 7;
 const PER_USER_CANDIDATE_LIMIT = 500;
 
 export interface DetectionCandidate {
@@ -31,11 +31,22 @@ const fetchUsers = async (): Promise<string[]> => {
 };
 
 const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> => {
+  // Tiebreaker: when multiple candidates share the same `date_delta`,
+  // prefer the candidate whose two accounts are both NOT hidden. When a
+  // user has duplicate-data accounts from the same institution (Plaid
+  // sometimes mirrors the same transactions on two account_ids for the
+  // same product — e.g. BILT cards), the workaround is `account.hide =
+  // true` on the redundant one. Counting hidden accounts on either
+  // side of the candidate (0, 1, or 2) and sorting ASC biases the
+  // match toward the visible-account pairing, which is what the
+  // user's manual labels actually pair against.
   const result = await pool.query(
     `SELECT
        t1.transaction_id AS transaction_id_a,
        t2.transaction_id AS transaction_id_b,
        ABS(t1.date - t2.date) AS date_delta,
+       (CASE WHEN a1.hide THEN 1 ELSE 0 END
+         + CASE WHEN a2.hide THEN 1 ELSE 0 END) AS hidden_count,
        (
          (t1.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
          OR (t2.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
@@ -49,6 +60,8 @@ const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> =>
       AND t1.account_id <> t2.account_id
       AND ABS(t1.date - t2.date) <= $2
       AND t1.transaction_id < t2.transaction_id
+     JOIN accounts a1 ON a1.account_id = t1.account_id
+     JOIN accounts a2 ON a2.account_id = t2.account_id
      WHERE (t1.is_deleted IS NULL OR t1.is_deleted = FALSE)
        AND (t2.is_deleted IS NULL OR t2.is_deleted = FALSE)
        AND NOT EXISTS (
@@ -60,7 +73,11 @@ const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> =>
              OR tp.transaction_id_b IN (t1.transaction_id, t2.transaction_id)
            )
        )
-     ORDER BY ABS(t1.date - t2.date) ASC, t1.transaction_id ASC
+     ORDER BY
+       ABS(t1.date - t2.date) ASC,
+       (CASE WHEN a1.hide THEN 1 ELSE 0 END
+         + CASE WHEN a2.hide THEN 1 ELSE 0 END) ASC,
+       t1.transaction_id ASC
      LIMIT $3`,
     [userId, DATE_WINDOW_DAYS, PER_USER_CANDIDATE_LIMIT],
   );
