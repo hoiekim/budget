@@ -63,13 +63,30 @@ const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> =>
      LEFT JOIN accounts a2 ON a2.account_id = t2.account_id
      WHERE (t1.is_deleted IS NULL OR t1.is_deleted = FALSE)
        AND (t2.is_deleted IS NULL OR t2.is_deleted = FALSE)
+       -- Block on suggested/confirmed pairings only. status='rejected'
+       -- means the user said "no" to a specific pair, not "this
+       -- transaction can never be paired", so the transactions stay
+       -- eligible for OTHER counterparts.
        AND NOT EXISTS (
          SELECT 1 FROM transaction_pairs tp
          WHERE tp.user_id = t1.user_id
            AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
+           AND tp.status <> 'rejected'
            AND (
              tp.transaction_id_a IN (t1.transaction_id, t2.transaction_id)
              OR tp.transaction_id_b IN (t1.transaction_id, t2.transaction_id)
+           )
+       )
+       -- Respect the user's explicit rejection of THIS specific pair:
+       -- if (t1, t2) was rejected before, do not re-suggest it.
+       AND NOT EXISTS (
+         SELECT 1 FROM transaction_pairs tp
+         WHERE tp.user_id = t1.user_id
+           AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
+           AND tp.status = 'rejected'
+           AND (
+             (tp.transaction_id_a = t1.transaction_id AND tp.transaction_id_b = t2.transaction_id)
+             OR (tp.transaction_id_a = t2.transaction_id AND tp.transaction_id_b = t1.transaction_id)
            )
        )
      ORDER BY
@@ -111,11 +128,25 @@ const createPair = async (
        SELECT 1 FROM transaction_pairs tp
        WHERE tp.user_id = $2
          AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
+         AND tp.status <> 'rejected'
          AND (
            tp.transaction_id_a IN ($3, $4)
            OR tp.transaction_id_b IN ($3, $4)
          )
-     )`,
+     )
+       AND NOT EXISTS (
+         -- ON CONFLICT-equivalent for the unique constraint on (a, b):
+         -- if a rejected pair already exists for THIS specific pair,
+         -- don't INSERT another row (the UNIQUE constraint would fire
+         -- anyway, but explicit guard avoids the 23505 round-trip).
+         SELECT 1 FROM transaction_pairs tp
+         WHERE tp.user_id = $2
+           AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
+           AND (
+             (tp.transaction_id_a = $3 AND tp.transaction_id_b = $4)
+             OR (tp.transaction_id_a = $4 AND tp.transaction_id_b = $3)
+           )
+       )`,
     [
       pair_id,
       userId,

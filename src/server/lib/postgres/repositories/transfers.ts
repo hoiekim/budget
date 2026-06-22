@@ -4,7 +4,6 @@ import {
   MaskedUser,
   TransactionModel,
   TransactionPairModel,
-  transactionPairsTable,
   TRANSACTIONS,
   TRANSACTION_PAIRS,
   USER_ID,
@@ -126,11 +125,32 @@ export const confirmTransferPair = async (
 };
 
 /**
- * Remove a transfer pairing — soft-delete the pair row.
+ * Reject a transfer pairing — marks the pair `status = 'rejected'` so the
+ * suggestion engine remembers the user's "no" and won't re-suggest THIS
+ * specific pair on future runs. The pair row stays present (is_deleted
+ * = FALSE) so the rejection is queryable; the two transactions remain
+ * eligible to be paired with OTHER counterparts.
+ *
+ * Distinct from soft-deletion (`is_deleted = TRUE`): soft-deletion is
+ * the system-side cascade when one of the paired transactions itself
+ * gets removed (Plaid tombstone, manual delete) — it has no user-intent
+ * semantics and the surviving transaction is fully eligible for new
+ * suggestions, including the same counterpart if it returns.
+ *
+ * Naming: function was previously `removeTransferPair` (soft-delete);
+ * renamed to reflect the actual semantics now that rejection and
+ * deletion are distinct.
  */
-export const removeTransferPair = async (
+export const rejectTransferPair = async (
   user: MaskedUser,
   pair_id: string,
 ): Promise<void> => {
-  await transactionPairsTable.softDelete(pair_id, user.user_id);
+  await pool.query(
+    `UPDATE ${TRANSACTION_PAIRS}
+     SET ${STATUS} = 'rejected', updated = CURRENT_TIMESTAMP
+     WHERE ${PAIR_ID} = $1
+       AND ${USER_ID} = $2
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+    [pair_id, user.user_id],
+  );
 };

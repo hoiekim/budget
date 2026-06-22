@@ -20,7 +20,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { getTransferPairs, pairTransactions, confirmTransferPair, removeTransferPair } =
+const { getTransferPairs, pairTransactions, confirmTransferPair, rejectTransferPair } =
   await import("./transfers");
 
 afterAll(restoreLeaves);
@@ -191,16 +191,21 @@ describe("confirmTransferPair", () => {
   });
 });
 
-describe("removeTransferPair", () => {
+describe("rejectTransferPair", () => {
   beforeEach(() => mockQuery.mockClear());
 
-  test("soft-deletes the pair row (does not touch transactions)", async () => {
+  test("sets status='rejected' on the pair row (keeps is_deleted=FALSE)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-    await removeTransferPair(mockUser as never, "pair-1");
+    await rejectTransferPair(mockUser as never, "pair-1");
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("UPDATE transaction_pairs");
-    expect(sql).toContain("is_deleted = TRUE");
+    expect(sql).toContain("status = 'rejected'");
+    // Must NOT soft-delete — rejection and deletion are distinct.
+    expect(sql).not.toContain("is_deleted = TRUE");
+    // WHERE clause still excludes already-soft-deleted rows (no point
+    // updating a tombstoned pair).
+    expect(sql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/i);
     expect(values).toContain("pair-1");
     expect(values).toContain("usr-1");
   });
