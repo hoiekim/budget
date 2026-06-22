@@ -13,6 +13,7 @@ import {
   USER_ID,
   INSTITUTION_ID,
   ACCOUNT_ID,
+  HOLDING_ACCOUNT_ID,
   QueryExecutor,
 } from "../models";
 import { pool, withTransaction } from "../client";
@@ -147,7 +148,11 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
       await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
       await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
       await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      // Account-balance snapshots store the account in `account_id`; holding
+      // snapshots store it in `holding_account_id` (their `account_id` is NULL).
+      // Soft-delete both so removing an item leaves no orphaned holding history.
       await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, account_id, user_id, client);
       await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
     }
 
