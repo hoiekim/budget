@@ -5,6 +5,7 @@ import {
   InvTxModel,
   transactionsTable,
   splitTransactionsTable,
+  transactionPairsTable,
   TRANSACTION_ID,
   ACCOUNT_ID,
   USER_ID,
@@ -165,6 +166,15 @@ export const deleteTransactions = async (
 
   for (const tx_id of transaction_ids) {
     await splitTransactionsTable.bulkSoftDeleteByColumn(TRANSACTION_ID, tx_id, user.user_id, client);
+    // Cascade to transaction_pairs: a pair that references a soft-deleted
+    // transaction must itself be soft-deleted, otherwise the surviving
+    // counterpart stays "stuck" paired with a ghost — the transfer
+    // detection engine sees it as already-paired and refuses to suggest
+    // it as part of a new candidate. Plaid pending+settled duplicates
+    // hit this path: the pending row gets soft-deleted on settle but the
+    // pair previously linked to it persists.
+    await transactionPairsTable.bulkSoftDeleteByColumn("transaction_id_a", tx_id, user.user_id, client);
+    await transactionPairsTable.bulkSoftDeleteByColumn("transaction_id_b", tx_id, user.user_id, client);
   }
 
   const deleted = await transactionsTable.bulkSoftDelete(

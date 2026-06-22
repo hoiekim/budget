@@ -93,6 +93,8 @@ describe("runTransferDetection", () => {
   test("inserts a pair for a single candidate above threshold", async () => {
     // SELECT users → [user-1]
     mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "user-1" })], rowCount: 1 });
+    // Stale-pair cleanup UPDATE — runs before fetchCandidates (0 cleaned).
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // SELECT candidates for user-1 → one matching pair
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -120,6 +122,8 @@ describe("runTransferDetection", () => {
 
   test("prevents a single transaction from being paired twice in one run", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "user-1" })], rowCount: 1 });
+    // Stale-pair cleanup UPDATE.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -164,8 +168,10 @@ describe("runTransferDetection", () => {
       rows: [userRow({ user_id: "user-bad" }), userRow({ user_id: "user-good" })],
       rowCount: 2,
     });
-    // user-bad's SELECT candidates → throws
+    // user-bad's stale-pair cleanup UPDATE — throws (simulates fail point)
     mockQuery.mockRejectedValueOnce(new Error("boom"));
+    // user-good's stale-pair cleanup UPDATE → 0 cleaned.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // user-good's SELECT candidates → one matching pair
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -192,6 +198,8 @@ describe("runTransferDetection", () => {
 
   test("logs but continues when an INSERT throws", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "user-1" })], rowCount: 1 });
+    // Stale-pair cleanup UPDATE.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // SELECT candidates → two matching pairs
     mockQuery.mockResolvedValueOnce({
       rows: [

@@ -162,6 +162,33 @@ export const runTransferDetection = async (): Promise<void> => {
     const userIds = await fetchUsers();
     for (const userId of userIds) {
       try {
+        // Pre-step: cascade soft-delete any existing pair whose own
+        // `is_deleted` is FALSE but at least one of its referenced
+        // transactions has been soft-deleted since the pair was
+        // created. Without this, the surviving counterpart stays
+        // "stuck" paired with a ghost — fetchCandidates' existing-pair
+        // filter excludes it from re-detection forever. Going forward,
+        // `deleteTransactions` cascades to pairs at the source, so
+        // this catch-up step handles already-stale rows.
+        const stalePairCleanup = await pool.query(
+          `UPDATE transaction_pairs tp
+           SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+           WHERE tp.user_id = $1
+             AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
+             AND EXISTS (
+               SELECT 1 FROM transactions t
+               WHERE t.transaction_id IN (tp.transaction_id_a, tp.transaction_id_b)
+                 AND t.is_deleted = TRUE
+             )`,
+          [userId],
+        );
+        if ((stalePairCleanup.rowCount ?? 0) > 0) {
+          logger.info("Cleaned stale transfer pairs", {
+            userId,
+            count: stalePairCleanup.rowCount,
+          });
+        }
+
         const candidates = await fetchCandidates(userId);
         if (candidates.length === PER_USER_CANDIDATE_LIMIT) {
           // The LIMIT just truncated the candidate set; the highest-
