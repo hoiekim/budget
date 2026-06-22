@@ -5,12 +5,13 @@ import {
   InvTxModel,
   transactionsTable,
   splitTransactionsTable,
-  transactionPairsTable,
   TRANSACTION_ID,
   TRANSACTION_ID_A,
   TRANSACTION_ID_B,
+  TRANSACTION_PAIRS,
   ACCOUNT_ID,
   USER_ID,
+  IS_DELETED,
   DATE,
   UPDATED,
   INVESTMENT_TRANSACTIONS,
@@ -168,16 +169,26 @@ export const deleteTransactions = async (
 
   for (const tx_id of transaction_ids) {
     await splitTransactionsTable.bulkSoftDeleteByColumn(TRANSACTION_ID, tx_id, user.user_id, client);
-    // Cascade to transaction_pairs: a pair that references a soft-deleted
-    // transaction must itself be soft-deleted, otherwise the surviving
-    // counterpart stays "stuck" paired with a ghost — the transfer
-    // detection engine sees it as already-paired and refuses to suggest
-    // it as part of a new candidate. Plaid pending+settled duplicates
-    // hit this path: the pending row gets soft-deleted on settle but the
-    // pair previously linked to it persists.
-    await transactionPairsTable.bulkSoftDeleteByColumn(TRANSACTION_ID_A, tx_id, user.user_id, client);
-    await transactionPairsTable.bulkSoftDeleteByColumn(TRANSACTION_ID_B, tx_id, user.user_id, client);
   }
+
+  // Cascade to transaction_pairs: a pair that references any soft-deleted
+  // transaction must itself be soft-deleted, otherwise the surviving
+  // counterpart stays "stuck" paired with a ghost — the transfer
+  // detection engine sees it as already-paired and refuses to suggest
+  // a new candidate. Plaid pending+settled duplicates hit this path.
+  // Single UPDATE per cascade (vs. 2N round-trips for N transactions):
+  // both transaction_id_a and transaction_id_b checked via ANY against
+  // the full id list.
+  const executor = client ?? pool;
+  await executor.query(
+    `UPDATE ${TRANSACTION_PAIRS}
+     SET ${IS_DELETED} = TRUE, ${UPDATED} = CURRENT_TIMESTAMP
+     WHERE ${USER_ID} = $1
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+       AND (${TRANSACTION_ID_A} = ANY($2::text[])
+            OR ${TRANSACTION_ID_B} = ANY($2::text[]))`,
+    [user.user_id, transaction_ids],
+  );
 
   const deleted = await transactionsTable.bulkSoftDelete(
     transaction_ids,

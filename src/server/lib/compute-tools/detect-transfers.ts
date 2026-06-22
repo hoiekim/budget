@@ -54,8 +54,8 @@ const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> =>
      JOIN transactions t2
        ON t1.user_id = t2.user_id
       AND t1.user_id = $1
-      AND ABS(t1.amount) = ABS(t2.amount)
-      AND t1.amount * t2.amount < 0
+      AND t1.amount + t2.amount = 0
+      AND t1.amount <> 0
       AND t1.account_id <> t2.account_id
       AND ABS(t1.date - t2.date) <= $2
       AND t1.transaction_id < t2.transaction_id
