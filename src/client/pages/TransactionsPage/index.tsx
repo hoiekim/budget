@@ -10,6 +10,7 @@ import {
   InvestmentTransactionDictionary,
   SplitTransactionDictionary,
   TransactionDictionary,
+  TransferDictionary,
   indexedDb,
   useAppContext,
   PATH,
@@ -298,16 +299,35 @@ export const TransactionsPage = () => {
   ]);
 
   const suggestedInView = filteredAndSorted.filter(isSuggestedLabel);
+  // Suggested transfer pairs whose halves intersect the current view. A pair
+  // is uniquely keyed by `pair_id`, and one row in `filteredAndSorted` can
+  // anchor it via either `transaction_id_a` or `_b` — so dedupe by pair_id.
+  const suggestedTransferPairsInView = useMemo(() => {
+    const visibleIds = new Set(filteredAndSorted.map((e) => e.id));
+    const pairs: { pair_id: string }[] = [];
+    data.transfers.forEach((pair) => {
+      if (pair.status !== "suggested") return;
+      // The pair is keyed uniquely by pair_id (dictionary iteration is already
+      // deduped). A pair is "in view" if either half's transaction id is
+      // visible.
+      if (pair.transactions.some((t) => visibleIds.has(t.transaction_id))) {
+        pairs.push({ pair_id: pair.pair_id });
+      }
+    });
+    return pairs;
+  }, [filteredAndSorted, data.transfers]);
+  const totalSuggestedCount = suggestedInView.length + suggestedTransferPairsInView.length;
   const [isAccepting, setIsAccepting] = useState(false);
 
-  // Accept-All: bulk-confirm every suggested label in the current
-  // filtered/sorted view. Scoped to whatever's visible (router-state aware
-  // because `filteredAndSorted` is derived from `path` / `params`). Per
-  // issue #98 §3: "Scoped to current transaction list view".
+  // Accept-All: bulk-confirm every suggested label AND every suggested
+  // transfer pair in the current filtered/sorted view. Scoped to whatever's
+  // visible (router-state aware because `filteredAndSorted` is derived from
+  // `path` / `params`). Per issue #98 §3: "Scoped to current transaction
+  // list view".
   const onClickAcceptAll = async () => {
-    if (!suggestedInView.length || isAccepting) return;
+    if (!totalSuggestedCount || isAccepting) return;
     setIsAccepting(true);
-    const results = await Promise.allSettled(
+    const labelResults = await Promise.allSettled(
       suggestedInView.map((e) => {
         if (e instanceof InvestmentTransaction) {
           return call.post("/api/investment-transaction", {
@@ -327,15 +347,26 @@ export const TransactionsPage = () => {
         }
       }),
     );
+    const transferResults = await Promise.allSettled(
+      suggestedTransferPairsInView.map((p) =>
+        call.post("/api/transfers/pair", { pair_id: p.pair_id }),
+      ),
+    );
 
     const acceptedIds = new Set<string>();
-    results.forEach((r, i) => {
+    labelResults.forEach((r, i) => {
       if (r.status === "fulfilled" && r.value.status === "success") {
         acceptedIds.add(suggestedInView[i]!.id);
       }
     });
+    const acceptedPairIds = new Set<string>();
+    transferResults.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value.status === "success") {
+        acceptedPairIds.add(suggestedTransferPairsInView[i]!.pair_id);
+      }
+    });
 
-    if (acceptedIds.size) {
+    if (acceptedIds.size || acceptedPairIds.size) {
       setData((oldData) => {
         const newData = new Data(oldData);
         const newTransactions = new TransactionDictionary(newData.transactions);
@@ -364,6 +395,19 @@ export const TransactionsPage = () => {
         newData.transactions = newTransactions;
         newData.splitTransactions = newSplits;
         newData.investmentTransactions = newInvest;
+
+        if (acceptedPairIds.size) {
+          const newTransfers = new TransferDictionary(newData.transfers);
+          acceptedPairIds.forEach((pair_id) => {
+            const prev = newTransfers.get(pair_id);
+            if (!prev) return;
+            const updated = { ...prev, status: "confirmed" as const };
+            indexedDb.saveTransfer(updated).catch(console.error);
+            newTransfers.set(pair_id, updated);
+          });
+          newData.transfers = newTransfers;
+        }
+
         return newData;
       });
     }
@@ -378,7 +422,7 @@ export const TransactionsPage = () => {
         sorter={sorter}
         onChangeSearchValue={setSearchValue}
       />
-      {!!suggestedInView.length && (
+      {!!totalSuggestedCount && (
         <div className="acceptAllSuggestions">
           <button
             className="acceptAllSuggestionsButton"
@@ -386,9 +430,9 @@ export const TransactionsPage = () => {
             disabled={isAccepting}
           >
             {isAccepting
-              ? `Accepting ${suggestedInView.length}…`
-              : `Accept all ${suggestedInView.length} suggestion${
-                  suggestedInView.length === 1 ? "" : "s"
+              ? `Accepting ${totalSuggestedCount}…`
+              : `Accept all ${totalSuggestedCount} suggestion${
+                  totalSuggestedCount === 1 ? "" : "s"
                 }`}
           </button>
         </div>
