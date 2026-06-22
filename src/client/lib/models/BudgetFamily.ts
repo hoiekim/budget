@@ -1,4 +1,12 @@
-import { assign, excludeEnumeration, getDateTimeString, JSONBudgetFamily, LocalDate } from "common";
+import {
+  assign,
+  excludeEnumeration,
+  getDateTimeString,
+  JSONBudgetFamily,
+  LocalDate,
+  MAX_FLOAT,
+  ViewDate,
+} from "common";
 import { Capacity, sortCapacities, type Interval } from "./Capacity";
 import { globalData } from "./Data";
 import { CapacityData } from "client";
@@ -55,6 +63,7 @@ export class BudgetFamily {
       "sortCapacities",
       "getActiveCapacity",
       "getActiveAmount",
+      "getYearlyAmount",
       "isChildrenSynced",
       "getChildren",
       "getParent",
@@ -107,8 +116,39 @@ export class BudgetFamily {
    * through to the stored `month` for non-synced rows.
    */
   getActiveAmount = (date: Date, interval: Interval): number => {
+    if (interval === "year") return this.getYearlyAmount(date);
     const capacity = this.getActiveCapacity(date);
     return capacity.getActiveAmount(date, interval, this.getChildren());
+  };
+
+  /**
+   * Yearly amount = the sum of each of the 12 months' active capacities,
+   * NOT the single year-end rate annualized (`month × 12`). A budget whose
+   * monthly capacity changed mid-year (e.g. $4000/mo through Jan, $3000/mo
+   * from Feb) must report Jan@4000 + Feb–Dec@3000, not Dec-rate × 12.
+   *
+   * This mirrors `Calculations.aggregateYear` on the spending side: the
+   * `LabeledBar` computes `left = capacity − spent`, and `spent` is the
+   * true per-month sum across the year, so the capacity side must aggregate
+   * the same way or the two halves of the bar disagree about the year's
+   * budget. Walking the months also resolves synced rows correctly (each
+   * month sums children at that month's active capacities).
+   *
+   * Infinity poisons the year to ±MAX_FLOAT — summing 12 × MAX_FLOAT would
+   * overflow the sentinel — matching `Capacity.year`'s own guard.
+   */
+  getYearlyAmount = (date: Date): number => {
+    const year = date.getFullYear();
+    const children = this.getChildren();
+    let total = 0;
+    for (let month = 0; month < 12; month++) {
+      const monthEnd = new ViewDate("month", new Date(year, month, 1)).getEndDate();
+      const amount = this.getActiveCapacity(monthEnd).getActiveAmount(monthEnd, "month", children);
+      if (Number.isNaN(amount)) continue;
+      if (Math.abs(amount) === MAX_FLOAT) return amount > 0 ? MAX_FLOAT : -MAX_FLOAT;
+      total += amount;
+    }
+    return total;
   };
 
   isChildrenSynced = (capacityData: CapacityData) => {
