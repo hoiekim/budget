@@ -30,9 +30,16 @@ export interface TransferPair {
  */
 export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]> => {
   const pairsResult = await pool.query<Record<string, unknown>>(
+    // Exclude status='rejected' from the FE response: a rejected pair is
+    // user-marked "no, these don't pair" — the engine remembers it as a
+    // denylist signal but the user shouldn't see the pair in their
+    // Transfers view. Re-confirming a previously-rejected pair goes
+    // through `pairTransactions` (Mark as Transfer), which un-rejects
+    // via ON CONFLICT.
     `SELECT * FROM ${TRANSACTION_PAIRS}
      WHERE ${USER_ID} = $1
        AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+       AND ${STATUS} <> 'rejected'
      ORDER BY ${PAIR_ID}`,
     [user.user_id],
   );
@@ -93,11 +100,14 @@ export const pairTransactions = async (
      ON CONFLICT (${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}) DO UPDATE SET
        ${STATUS} = CASE
          WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE THEN EXCLUDED.${STATUS}
+         WHEN ${TRANSACTION_PAIRS}.${STATUS} = 'rejected' THEN EXCLUDED.${STATUS}
          ELSE ${TRANSACTION_PAIRS}.${STATUS}
        END,
        ${IS_DELETED} = FALSE,
        updated = CASE
-         WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE THEN CURRENT_TIMESTAMP
+         WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE
+           OR ${TRANSACTION_PAIRS}.${STATUS} = 'rejected'
+           THEN CURRENT_TIMESTAMP
          ELSE ${TRANSACTION_PAIRS}.updated
        END
      RETURNING ${PAIR_ID}`,

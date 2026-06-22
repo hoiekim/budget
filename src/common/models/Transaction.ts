@@ -59,7 +59,7 @@ export interface JSONTransaction extends PlaidTransaction {
   is_deleted?: boolean;
 }
 
-export type TransferPairStatus = "suggested" | "confirmed";
+export type TransferPairStatus = "suggested" | "confirmed" | "rejected";
 
 export interface JSONTransferPair {
   pair_id: string;

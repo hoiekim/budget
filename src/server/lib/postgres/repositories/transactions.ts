@@ -7,6 +7,8 @@ import {
   splitTransactionsTable,
   transactionPairsTable,
   TRANSACTION_ID,
+  TRANSACTION_ID_A,
+  TRANSACTION_ID_B,
   ACCOUNT_ID,
   USER_ID,
   DATE,
@@ -173,8 +175,8 @@ export const deleteTransactions = async (
     // it as part of a new candidate. Plaid pending+settled duplicates
     // hit this path: the pending row gets soft-deleted on settle but the
     // pair previously linked to it persists.
-    await transactionPairsTable.bulkSoftDeleteByColumn("transaction_id_a", tx_id, user.user_id, client);
-    await transactionPairsTable.bulkSoftDeleteByColumn("transaction_id_b", tx_id, user.user_id, client);
+    await transactionPairsTable.bulkSoftDeleteByColumn(TRANSACTION_ID_A, tx_id, user.user_id, client);
+    await transactionPairsTable.bulkSoftDeleteByColumn(TRANSACTION_ID_B, tx_id, user.user_id, client);
   }
 
   const deleted = await transactionsTable.bulkSoftDelete(

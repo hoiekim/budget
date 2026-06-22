@@ -135,13 +135,18 @@ const createPair = async (
          )
      )
        AND NOT EXISTS (
-         -- ON CONFLICT-equivalent for the unique constraint on (a, b):
-         -- if a rejected pair already exists for THIS specific pair,
-         -- don't INSERT another row (the UNIQUE constraint would fire
-         -- anyway, but explicit guard avoids the 23505 round-trip).
+         -- Mirror the UNIQUE(transaction_id_a, transaction_id_b)
+         -- constraint: any existing row for this pair — including
+         -- soft-deleted rejected tombstones — would 23505 the INSERT.
+         -- Pre-filtering by the same shape skips the round-trip in
+         -- both the common race (rejection lands between
+         -- fetchCandidates and createPair) and the rarer
+         -- soft-deleted-rejected case (catch-up cleanup tombstoned a
+         -- rejected pair before a fresh transaction re-import). No
+         -- is_deleted predicate — the UNIQUE constraint doesn't care
+         -- about is_deleted, so neither does this guard.
          SELECT 1 FROM transaction_pairs tp
          WHERE tp.user_id = $2
-           AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
            AND (
              (tp.transaction_id_a = $3 AND tp.transaction_id_b = $4)
              OR (tp.transaction_id_a = $4 AND tp.transaction_id_b = $3)

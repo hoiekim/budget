@@ -7,7 +7,7 @@ import { Route, rejectTransferPair, requireQueryString, validationError } from "
 // transactions remain eligible for other counterparts. Soft-deletion
 // is reserved for the system cascade (when a transaction itself is
 // removed).
-export const deleteTransferRoute = new Route("DELETE", "/transfers", async (req) => {
+export const rejectTransferRoute = new Route("DELETE", "/transfers", async (req) => {
   const { user } = req.session;
   if (!user) {
     return { status: "failed", message: "Request user is not authenticated." };

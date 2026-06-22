@@ -18,7 +18,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { deleteTransferRoute } = await import("./delete\-transfer");
+const { rejectTransferRoute } = await import("./reject\-transfer");
 
 afterAll(restoreLeaves);
 
@@ -45,7 +45,7 @@ function makeReq(
       destroy() {},
     },
     ip: "127.0.0.1",
-  } as unknown as Parameters<typeof deleteTransferRoute.execute>[0];
+  } as unknown as Parameters<typeof rejectTransferRoute.execute>[0];
 }
 
 const fakeRes = () =>
@@ -59,11 +59,11 @@ const fakeRes = () =>
       return true;
     },
     end() {},
-  }) as unknown as Parameters<typeof deleteTransferRoute.execute>[1];
+  }) as unknown as Parameters<typeof rejectTransferRoute.execute>[1];
 
-describe("delete-transfer", () => {
+describe("reject-transfer", () => {
   test("rejects unauthenticated requests", async () => {
-    const result = await deleteTransferRoute.execute(
+    const result = await rejectTransferRoute.execute(
       makeReq({ id: "p-1" }, { user: null }),
       fakeRes(),
     );
@@ -73,26 +73,26 @@ describe("delete-transfer", () => {
   });
 
   test("rejects missing id query param", async () => {
-    const result = await deleteTransferRoute.execute(makeReq({}), fakeRes());
+    const result = await rejectTransferRoute.execute(makeReq({}), fakeRes());
     expect(result?.status).toBe("failed");
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   test("rejects empty id query param", async () => {
-    const result = await deleteTransferRoute.execute(makeReq({ id: "   " }), fakeRes());
+    const result = await rejectTransferRoute.execute(makeReq({ id: "   " }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   test("rejects array id query param (?id=a&id=b)", async () => {
-    const result = await deleteTransferRoute.execute(makeReq({ id: ["a", "b"] }), fakeRes());
+    const result = await rejectTransferRoute.execute(makeReq({ id: ["a", "b"] }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   test("happy path returns success and pins user_id into the WHERE clause", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-    const result = await deleteTransferRoute.execute(makeReq({ id: "p-1" }), fakeRes());
+    const result = await rejectTransferRoute.execute(makeReq({ id: "p-1" }), fakeRes());
     expect(result?.status).toBe("success");
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, values] = mockQuery.mock.calls[0];
@@ -104,7 +104,7 @@ describe("delete-transfer", () => {
 
   test("cross-user delete: the route forwards the session user_id, never a client value", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const result = await deleteTransferRoute.execute(
+    const result = await rejectTransferRoute.execute(
       makeReq({ id: "p-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
       fakeRes(),
     );
