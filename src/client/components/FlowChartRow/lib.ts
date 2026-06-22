@@ -89,13 +89,16 @@ export const getSankeyData = (
     const category = category_id && categories.get(category_id);
     const section_id = (category && category.section_id) || `${budget_id}_Unknown`;
     const section = sections.get(section_id);
-    // For an investment, derive cash-flow polarity from the transaction
-    // TYPE rather than the stored sign of `quantity`: a buy is cash out
-    // (→ expense / positive amount), a sell is cash in (→ income / negative
-    // amount). This matches benchmark.ts's investment-sign convention and
-    // stays correct even if Plaid ever emits a buy with a negative quantity.
-    // `cash`/`fee`/`dividend` rows have quantity 0, so magnitude is 0 and
-    // they fall through both branches below (unchanged from prior behavior).
+    // For an investment, only buy/sell rows are external cash flow; derive
+    // their polarity from the transaction TYPE (a buy is cash out → expense /
+    // positive amount, a sell is cash in → income / negative amount) rather
+    // than from the stored sign of `quantity`, so it stays correct even if
+    // Plaid emits a buy with a negative quantity. Every other type — `cash`,
+    // `fee`, `dividend`, `transfer` — is skipped, matching benchmark.ts
+    // (which counts only `Buy`/`Sell` at lib/hooks/calculation/benchmark.ts).
+    // Skipping `transfer` matters: those carry a nonzero `price * quantity`
+    // (internal movement, not external flow) and would otherwise inflate a
+    // column. Including dividends/fees as flow is deferred per Closes #499.
     //
     // For a regular parent transaction, subtract its split children's total
     // so only the un-split remainder is attributed to the parent's label.
@@ -103,6 +106,9 @@ export const getSankeyData = (
     // split's own id, which keys no family, so their amount is unchanged.
     let amount: number;
     if (isInvestment) {
+      if (t.type !== InvestmentTransactionType.Buy && t.type !== InvestmentTransactionType.Sell) {
+        return;
+      }
       const magnitude = Math.abs(t.price * t.quantity);
       amount = t.type === InvestmentTransactionType.Buy ? magnitude : -magnitude;
     } else {

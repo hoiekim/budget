@@ -291,6 +291,21 @@ describe("getSankeyData — investment cash-flow polarity", () => {
     expect(tableData.expense).toBe(0);
   });
 
+  // Only buy/sell are external cash flow. A `transfer` (or cash/fee/dividend)
+  // row is internal movement and must NOT contribute — even when it carries a
+  // nonzero price·quantity. This is the benchmark.ts "count only Buy/Sell"
+  // convention; without the type gate a transfer's magnitude would inflate a
+  // column (reviewoie HIGH on PR #514).
+  test("a non-buy/sell investment type (transfer) with nonzero price·quantity is skipped", () => {
+    const { tableData, graphData } = runInv(
+      buildInvDicts([mkInvestment(InvestmentTransactionType.Transfer, 4875, 1)]),
+    );
+    expect(tableData.income).toBe(0);
+    expect(tableData.expense).toBe(0);
+    // No Surplus/Deficit node either — nothing flowed.
+    expect(graphData.every((col) => col.length === 0)).toBe(true);
+  });
+
   test("regular transactions keep their convention (positive amount = expense)", () => {
     const regular = new Transaction({
       transaction_id: "t-reg",
