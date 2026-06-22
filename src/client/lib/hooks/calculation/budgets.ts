@@ -36,6 +36,10 @@ export const getBudgetData = (
   // (no default): the caller threads `data.transfers` through, which
   // is itself defaulted to an empty `TransferDictionary` on `Data`.
   transfers: TransferDictionary,
+  // True only while a cold sync is still streaming history in — months
+  // older than what's already loaded have no spending in memory yet, so
+  // accruing their capacity would overstate the rollover.
+  isColdSync = false,
 ): GetBudgetDataResult => {
   const budgetData = new BudgetData();
 
@@ -167,6 +171,29 @@ export const getBudgetData = (
   });
 
   const endDate = new ViewDate("month");
+
+  // During a cold sync the loaded `transactions` aren't "the last N months
+  // of history" — the delta-by-cursor fetch keys on `updated`, so Stage 2
+  // can include back-edited rows from years ago whose `date` predates the
+  // recent window. Two effects need suppressing:
+  //   1. `processTransaction` above already carried each transaction's
+  //      amount forward into the next month's `rolled_over_amount`.
+  //   2. The accrual loop below would walk from `roll_over_start_date`,
+  //      accruing capacity for every month against the sparse spending.
+  // Both produce a misleading figure until Stage 4 commits the full
+  // history. Clear any rolled-over amounts that `processTransaction`
+  // wrote and skip the accrual loop. Rollover shows as $0 until cold
+  // settles (~3 s on prod-clone data). Warm syncs keep
+  // `isColdSync=false` so steady-state values are byte-identical.
+  if (isColdSync) {
+    budgetData.forEach((history) => {
+      Object.values(history.getData()).forEach((summary) => {
+        summary.rolled_over_amount = 0;
+      });
+    });
+    return { transactionFamilies, budgetData };
+  }
+
   budgetData.forEach((history, budgetLikeId) => {
     const budgetLike =
       budgets.get(budgetLikeId) || sections.get(budgetLikeId) || categories.get(budgetLikeId);
