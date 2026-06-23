@@ -93,6 +93,8 @@ describe("runTransferDetection", () => {
   test("inserts a pair for a single candidate above threshold", async () => {
     // SELECT users → [user-1]
     mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "user-1" })], rowCount: 1 });
+    // Stale-pair cleanup UPDATE — runs before fetchCandidates (0 cleaned).
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // SELECT candidates for user-1 → one matching pair
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -120,6 +122,8 @@ describe("runTransferDetection", () => {
 
   test("prevents a single transaction from being paired twice in one run", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "user-1" })], rowCount: 1 });
+    // Stale-pair cleanup UPDATE.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -164,8 +168,10 @@ describe("runTransferDetection", () => {
       rows: [userRow({ user_id: "user-bad" }), userRow({ user_id: "user-good" })],
       rowCount: 2,
     });
-    // user-bad's SELECT candidates → throws
+    // user-bad's stale-pair cleanup UPDATE — throws (simulates fail point)
     mockQuery.mockRejectedValueOnce(new Error("boom"));
+    // user-good's stale-pair cleanup UPDATE → 0 cleaned.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // user-good's SELECT candidates → one matching pair
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -192,6 +198,8 @@ describe("runTransferDetection", () => {
 
   test("logs but continues when an INSERT throws", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "user-1" })], rowCount: 1 });
+    // Stale-pair cleanup UPDATE.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // SELECT candidates → two matching pairs
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -219,5 +227,43 @@ describe("runTransferDetection", () => {
     // Both INSERT attempts fired — the first threw, the second succeeded.
     const inserts = findInsertCalls();
     expect(inserts).toHaveLength(2);
+  });
+
+  test("candidate-fetch SQL uses 7-day window + hidden-account exclusion", async () => {
+    // Single user with no candidates — we only inspect the SELECT-candidates
+    // SQL shape that the engine issues per user.
+    mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "u-1" })], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await runTransferDetection();
+
+    const candidateCalls = mockQuery.mock.calls.filter((c) =>
+      /JOIN\s+transactions\s+t2/i.test(c[0] as string),
+    );
+    expect(candidateCalls).toHaveLength(1);
+    const [sql, values] = candidateCalls[0];
+
+    // 7-day window passed as second positional parameter.
+    expect((values as unknown[])[1]).toBe(7);
+
+    // Joins both transactions' accounts so the WHERE clause can filter
+    // by `account.hide`.
+    expect(sql as string).toMatch(/JOIN\s+accounts\s+a1\s+ON\s+a1\.account_id\s*=\s*t1\.account_id/i);
+    expect(sql as string).toMatch(/JOIN\s+accounts\s+a2\s+ON\s+a2\.account_id\s*=\s*t2\.account_id/i);
+
+    // Hidden-account exclusion: both sides must be visible.
+    expect(sql as string).toMatch(/COALESCE\(a1\.hide,\s*FALSE\)\s*=\s*FALSE/i);
+    expect(sql as string).toMatch(/COALESCE\(a2\.hide,\s*FALSE\)\s*=\s*FALSE/i);
+
+    // ORDER BY: date_delta ASC, transaction_id ASC (no hidden-count
+    // tiebreaker — hidden accounts are excluded outright).
+    const sqlStr = sql as string;
+    const orderByIdx = sqlStr.search(/ORDER\s+BY/i);
+    expect(orderByIdx).toBeGreaterThan(-1);
+    const tail = sqlStr.slice(orderByIdx);
+    expect(tail).toMatch(/ABS\(t1\.date\s*-\s*t2\.date\)\s*ASC/i);
+    expect(tail).toMatch(/t1\.transaction_id\s+ASC/i);
+    expect(tail).not.toMatch(/a1\.hide/i);
+    expect(tail).not.toMatch(/a2\.hide/i);
   });
 });

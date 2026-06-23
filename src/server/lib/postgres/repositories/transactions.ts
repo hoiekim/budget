@@ -5,7 +5,10 @@ import {
   InvTxModel,
   transactionsTable,
   splitTransactionsTable,
+  transactionPairsTable,
   TRANSACTION_ID,
+  TRANSACTION_ID_A,
+  TRANSACTION_ID_B,
   ACCOUNT_ID,
   USER_ID,
   DATE,
@@ -163,9 +166,32 @@ export const deleteTransactions = async (
 ): Promise<{ deleted: number }> => {
   if (!transaction_ids.length) return { deleted: 0 };
 
-  for (const tx_id of transaction_ids) {
-    await splitTransactionsTable.bulkSoftDeleteByColumn(TRANSACTION_ID, tx_id, user.user_id, client);
-  }
+  // Soft-delete splits attached to each transaction (existing cascade).
+  await splitTransactionsTable.bulkSoftDeleteByColumn(
+    TRANSACTION_ID,
+    transaction_ids,
+    user.user_id,
+    client,
+  );
+
+  // Cascade to transaction_pairs: a pair that references any soft-deleted
+  // transaction must itself be soft-deleted, otherwise the surviving
+  // counterpart stays "stuck" paired with a ghost — the engine sees it
+  // as already-paired and refuses to suggest a new candidate. Plaid
+  // pending+settled duplicates hit this path. Two UPDATEs per cascade
+  // (one per join column) instead of 2N for N transactions.
+  await transactionPairsTable.bulkSoftDeleteByColumn(
+    TRANSACTION_ID_A,
+    transaction_ids,
+    user.user_id,
+    client,
+  );
+  await transactionPairsTable.bulkSoftDeleteByColumn(
+    TRANSACTION_ID_B,
+    transaction_ids,
+    user.user_id,
+    client,
+  );
 
   const deleted = await transactionsTable.bulkSoftDelete(
     transaction_ids,
