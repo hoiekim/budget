@@ -229,7 +229,7 @@ describe("runTransferDetection", () => {
     expect(inserts).toHaveLength(2);
   });
 
-  test("candidate-fetch SQL uses 7-day window + hidden-count tiebreak", async () => {
+  test("candidate-fetch SQL uses 7-day window + hidden-account exclusion", async () => {
     // Single user with no candidates — we only inspect the SELECT-candidates
     // SQL shape that the engine issues per user.
     mockQuery.mockResolvedValueOnce({ rows: [userRow({ user_id: "u-1" })], rowCount: 1 });
@@ -246,21 +246,24 @@ describe("runTransferDetection", () => {
     // 7-day window passed as second positional parameter.
     expect((values as unknown[])[1]).toBe(7);
 
-    // Joins both transactions' accounts to expose `.hide`.
+    // Joins both transactions' accounts so the WHERE clause can filter
+    // by `account.hide`.
     expect(sql as string).toMatch(/JOIN\s+accounts\s+a1\s+ON\s+a1\.account_id\s*=\s*t1\.account_id/i);
     expect(sql as string).toMatch(/JOIN\s+accounts\s+a2\s+ON\s+a2\.account_id\s*=\s*t2\.account_id/i);
 
-    // ORDER BY: date_delta ASC, hidden-count ASC, transaction_id ASC.
-    // The hidden-count sub-expression appears both in the SELECT (as a
-    // returned column) and in the ORDER BY — match the ORDER BY shape
-    // specifically.
+    // Hidden-account exclusion: both sides must be visible.
+    expect(sql as string).toMatch(/COALESCE\(a1\.hide,\s*FALSE\)\s*=\s*FALSE/i);
+    expect(sql as string).toMatch(/COALESCE\(a2\.hide,\s*FALSE\)\s*=\s*FALSE/i);
+
+    // ORDER BY: date_delta ASC, transaction_id ASC (no hidden-count
+    // tiebreaker — hidden accounts are excluded outright).
     const sqlStr = sql as string;
     const orderByIdx = sqlStr.search(/ORDER\s+BY/i);
     expect(orderByIdx).toBeGreaterThan(-1);
     const tail = sqlStr.slice(orderByIdx);
     expect(tail).toMatch(/ABS\(t1\.date\s*-\s*t2\.date\)\s*ASC/i);
-    expect(tail).toMatch(/a1\.hide/i);
-    expect(tail).toMatch(/a2\.hide/i);
     expect(tail).toMatch(/t1\.transaction_id\s+ASC/i);
+    expect(tail).not.toMatch(/a1\.hide/i);
+    expect(tail).not.toMatch(/a2\.hide/i);
   });
 });

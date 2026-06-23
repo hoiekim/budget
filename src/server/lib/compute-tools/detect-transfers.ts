@@ -31,21 +31,20 @@ const fetchUsers = async (): Promise<string[]> => {
 };
 
 const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> => {
-  // Tiebreaker: when multiple candidates share the same `date_delta`,
-  // prefer the candidate whose two accounts are both `hide = false`.
-  // `account.hide` is the canonical signal that an account is a
+  // Hidden-account exclusion: `account.hide=TRUE` marks an account as
   // duplicate-data view of another (Plaid occasionally surfaces the
-  // same product on two account_ids); the visible account is the one
-  // the user expects pairings to anchor on. Counting hidden accounts
-  // on either side (0, 1, or 2) and sorting ASC biases the match
-  // toward the visible-account pairing.
+  // same product on two `account_id`s; the user hides the redundant
+  // one). Transactions on hidden accounts are mirrors of transactions
+  // on a visible account — the visible-side pairing is the real one.
+  // Including hidden accounts as candidates makes duplicate-data
+  // transactions compete with their visible twins, leaving labeled
+  // transactions on the hidden side unpaired even when the engine
+  // would correctly pair the visible side.
   const result = await pool.query(
     `SELECT
        t1.transaction_id AS transaction_id_a,
        t2.transaction_id AS transaction_id_b,
        ABS(t1.date - t2.date) AS date_delta,
-       (CASE WHEN COALESCE(a1.hide, FALSE) THEN 1 ELSE 0 END
-         + CASE WHEN COALESCE(a2.hide, FALSE) THEN 1 ELSE 0 END) AS hidden_count,
        (
          (t1.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
          OR (t2.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
@@ -59,10 +58,12 @@ const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> =>
       AND t1.account_id <> t2.account_id
       AND ABS(t1.date - t2.date) <= $2
       AND t1.transaction_id < t2.transaction_id
-     LEFT JOIN accounts a1 ON a1.account_id = t1.account_id
-     LEFT JOIN accounts a2 ON a2.account_id = t2.account_id
+     JOIN accounts a1 ON a1.account_id = t1.account_id
+     JOIN accounts a2 ON a2.account_id = t2.account_id
      WHERE (t1.is_deleted IS NULL OR t1.is_deleted = FALSE)
        AND (t2.is_deleted IS NULL OR t2.is_deleted = FALSE)
+       AND COALESCE(a1.hide, FALSE) = FALSE
+       AND COALESCE(a2.hide, FALSE) = FALSE
        -- Block on suggested/confirmed pairings only. status='rejected'
        -- means the user said "no" to a specific pair, not "this
        -- transaction can never be paired", so the transactions stay
@@ -89,11 +90,7 @@ const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> =>
              OR (tp.transaction_id_a = t2.transaction_id AND tp.transaction_id_b = t1.transaction_id)
            )
        )
-     ORDER BY
-       ABS(t1.date - t2.date) ASC,
-       (CASE WHEN COALESCE(a1.hide, FALSE) THEN 1 ELSE 0 END
-         + CASE WHEN COALESCE(a2.hide, FALSE) THEN 1 ELSE 0 END) ASC,
-       t1.transaction_id ASC
+     ORDER BY ABS(t1.date - t2.date) ASC, t1.transaction_id ASC
      LIMIT $3`,
     [userId, DATE_WINDOW_DAYS, PER_USER_CANDIDATE_LIMIT],
   );
