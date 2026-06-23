@@ -142,7 +142,7 @@ export const TransactionsPage = () => {
           // (TransactionsTable/index.tsx, TransactionRow.tsx).
           return (
             e instanceof Transaction &&
-            !!transfers.getByTransactionId(e.transaction_id)
+            transfers.byTransactionId.has(e.transaction_id)
           );
         }
         return false;

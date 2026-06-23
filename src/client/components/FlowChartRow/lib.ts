@@ -55,9 +55,6 @@ export const getSankeyData = (
   let income = 0;
   let expense = 0;
 
-  const isConfirmedTransferHalf = (transaction_id: string): boolean =>
-    transfers.getByTransactionId(transaction_id)?.status === "confirmed";
-
   // Group split children under their parent so the parent's flow
   // contribution can be reduced by what the children re-attribute.
   // Skip splits whose parent transaction is absent or is a confirmed
@@ -66,13 +63,13 @@ export const getSankeyData = (
   splitTransactions.forEach((splitTransaction) => {
     const { transaction_id } = splitTransaction;
     if (!transactions.get(transaction_id)) return;
-    if (isConfirmedTransferHalf(transaction_id)) return;
+    if (transfers.byTransactionId.hasConfirmed(transaction_id)) return;
     transactionFamilies.add(transaction_id, splitTransaction);
   });
 
   const processTransaction = (t: Transaction | InvestmentTransaction) => {
     const isInvestment = t instanceof InvestmentTransaction;
-    if (!isInvestment && isConfirmedTransferHalf(t.transaction_id)) {
+    if (!isInvestment && transfers.byTransactionId.hasConfirmed(t.transaction_id)) {
       return;
     }
     const authorized_date = !isInvestment ? t.authorized_date : undefined;
@@ -132,7 +129,7 @@ export const getSankeyData = (
     // the synthetic transaction's id to the split's own id, so the
     // in-`processTransaction` confirmed-transfer guard would never fire
     // for a split even when its parent is a confirmed transfer half.
-    if (isConfirmedTransferHalf(st.transaction_id)) return;
+    if (transfers.byTransactionId.hasConfirmed(st.transaction_id)) return;
     processTransaction(st.toTransaction());
   });
 

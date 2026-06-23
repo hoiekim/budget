@@ -105,7 +105,7 @@ const TransactionRow = ({ transaction }: Props) => {
   // transactions, and a split inherits its parent's transaction_id.
   const pendingTransferPair = isSplitTransaction
     ? undefined
-    : transfers.getByTransactionId(transaction_id);
+    : transfers.byTransactionId.get(transaction_id);
   const suggestedPairId =
     pendingTransferPair?.status === "suggested" ? pendingTransferPair.pair_id : undefined;
 
