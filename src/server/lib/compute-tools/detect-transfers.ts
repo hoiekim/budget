@@ -1,5 +1,5 @@
 import { pool, logger, usersTable } from "server";
-import { canonicalizePairIds } from "../postgres/models";
+import { canonicalizePairIds, QueryExecutor } from "../postgres/models";
 
 const BASE_CONFIDENCE = 0.7;
 const PLAID_TRANSFER_BOOST = 0.2;
@@ -30,7 +30,10 @@ const fetchUsers = async (): Promise<string[]> => {
   return users.map((u) => u.user_id);
 };
 
-const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> => {
+const fetchCandidates = async (
+  userId: string,
+  executor: QueryExecutor = pool,
+): Promise<DetectionCandidate[]> => {
   // Hidden-account exclusion: `account.hide=TRUE` marks an account as
   // duplicate-data view of another (Plaid occasionally surfaces the
   // same product on two `account_id`s; the user hides the redundant
@@ -40,7 +43,7 @@ const fetchCandidates = async (userId: string): Promise<DetectionCandidate[]> =>
   // transactions compete with their visible twins, leaving labeled
   // transactions on the hidden side unpaired even when the engine
   // would correctly pair the visible side.
-  const result = await pool.query(
+  const result = await executor.query(
     `SELECT
        t1.transaction_id AS transaction_id_a,
        t2.transaction_id AS transaction_id_b,
@@ -107,6 +110,7 @@ const createPair = async (
   userId: string,
   transactionIdA: string,
   transactionIdB: string,
+  executor: QueryExecutor = pool,
 ): Promise<void> => {
   const pair_id = crypto.randomUUID();
   const canonical = canonicalizePairIds(transactionIdA, transactionIdB);
@@ -117,7 +121,7 @@ const createPair = async (
   // pair, even with a different counterpart (the candidates query already
   // filters these out, but the IN clause closes the SELECT-then-INSERT
   // race window).
-  await pool.query(
+  await executor.query(
     `INSERT INTO transaction_pairs
        (pair_id, user_id, transaction_id_a, transaction_id_b, status)
      SELECT $1, $2, $3, $4, 'suggested'
@@ -194,7 +198,23 @@ export const runTransferDetection = async (): Promise<void> => {
   try {
     const userIds = await fetchUsers();
     for (const userId of userIds) {
+      // Per-user transaction with advisory lock: serializes against
+      // `pairTransactions` / `confirmTransferPair` (same lock key, added
+      // in #547) AND against any other concurrent `runTransferDetection`
+      // invocation for this user (e.g. scheduled cron + manual sync
+      // trigger firing back-to-back). Without this, both engine runs
+      // see "A is free" via separate NOT EXISTS reads under READ
+      // COMMITTED and both INSERT pairs involving A — a transaction in
+      // two simultaneous active pairs, the exact invariant #547 was
+      // meant to enforce.
+      const client = await pool.connect();
       try {
+        await client.query("BEGIN");
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`,
+          [userId],
+        );
+
         // Pre-step: cascade soft-delete any existing pair whose own
         // `is_deleted` is FALSE but at least one of its referenced
         // transactions has been soft-deleted since the pair was
@@ -203,7 +223,7 @@ export const runTransferDetection = async (): Promise<void> => {
         // filter excludes it from re-detection forever. Going forward,
         // `deleteTransactions` cascades to pairs at the source, so
         // this catch-up step handles already-stale rows.
-        const stalePairCleanup = await pool.query(
+        const stalePairCleanup = await client.query(
           `UPDATE transaction_pairs tp
            SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
            WHERE tp.user_id = $1
@@ -222,7 +242,7 @@ export const runTransferDetection = async (): Promise<void> => {
           });
         }
 
-        const candidates = await fetchCandidates(userId);
+        const candidates = await fetchCandidates(userId, client);
         if (candidates.length === PER_USER_CANDIDATE_LIMIT) {
           // The LIMIT just truncated the candidate set; the highest-
           // `date_delta` rows fell off the end. Surface so the cap can
@@ -249,16 +269,27 @@ export const runTransferDetection = async (): Promise<void> => {
           );
           if (confidence < SUGGEST_THRESHOLD) continue;
 
+          // SAVEPOINT-per-pair: if `createPair` throws (UNIQUE violation
+          // from a concurrent insert that snuck through, transient DB
+          // error, etc.), we want to ROLLBACK TO that savepoint and
+          // continue with the rest of the candidates — not abort the
+          // whole per-user transaction and lose any pairs created
+          // earlier in the loop. Matches the pre-transaction semantics
+          // where each `createPair` failure logged + continued.
+          await client.query("SAVEPOINT pair_attempt");
           try {
             await createPair(
               userId,
               candidate.transaction_id_a,
               candidate.transaction_id_b,
+              client,
             );
+            await client.query("RELEASE SAVEPOINT pair_attempt");
             usedTxnIds.add(candidate.transaction_id_a);
             usedTxnIds.add(candidate.transaction_id_b);
             userSuggested++;
           } catch (err) {
+            await client.query("ROLLBACK TO SAVEPOINT pair_attempt");
             logger.error(
               "Failed to insert transfer pair",
               {
@@ -271,6 +302,8 @@ export const runTransferDetection = async (): Promise<void> => {
           }
         }
 
+        await client.query("COMMIT");
+
         totalSuggested += userSuggested;
         totalUsers++;
         if (userSuggested > 0) {
@@ -281,7 +314,10 @@ export const runTransferDetection = async (): Promise<void> => {
           });
         }
       } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
         logger.error("Transfer detection failed for user", { userId }, err);
+      } finally {
+        client.release();
       }
     }
   } catch (err) {
