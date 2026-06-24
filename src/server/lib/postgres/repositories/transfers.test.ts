@@ -134,60 +134,283 @@ describe("getTransferPairs", () => {
   });
 });
 
+// Helpers for staging the response sequence of a `pairTransactions`
+// transaction. Stages: BEGIN, collision SELECT, INSERT, cleanup UPDATE,
+// COMMIT (5 calls). On error path the cleanup+UPDATE+COMMIT are replaced
+// by a ROLLBACK.
+function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
+  // BEGIN
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+  // collision SELECT
+  mockQuery.mockResolvedValueOnce({ rows: collisionRows, rowCount: collisionRows.length });
+  // INSERT ... RETURNING
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ pair_id: insertPairId }],
+    rowCount: 1,
+  });
+  // cleanup UPDATE
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // COMMIT
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+}
+
+function stagePairCollision(collidingPairId: string) {
+  // BEGIN
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+  // collision SELECT returns a colliding row → triggers ROLLBACK
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ pair_id: collidingPairId }],
+    rowCount: 1,
+  });
+  // ROLLBACK
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+}
+
 describe("pairTransactions", () => {
   beforeEach(() => mockQuery.mockClear());
 
   test("INSERTs into transaction_pairs and returns the effective pair_id", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-new" }], rowCount: 1 });
-    const pair_id = await pairTransactions(mockUser as never, "tx-a", "tx-b");
-    expect(pair_id).toBe("pair-new");
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain("INSERT INTO transaction_pairs");
-    expect(values).toContain("usr-1");
-    expect(values).toContain("suggested");
+    stagePairOk("pair-new");
+    const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.pair_id).toBe("pair-new");
+    // BEGIN + lock + collision + INSERT + cleanup + COMMIT = 6 calls.
+    expect(mockQuery).toHaveBeenCalledTimes(6);
+    const insertCall = mockQuery.mock.calls.find((c) =>
+      /INSERT INTO transaction_pairs/i.test(c[0] as string),
+    );
+    expect(insertCall).toBeDefined();
+    expect(insertCall![1] as unknown[]).toContain("usr-1");
+    expect(insertCall![1] as unknown[]).toContain("suggested");
   });
 
   test("uses ON CONFLICT (a, b) so a duplicate pair undeletes the existing row", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-existing" }], rowCount: 1 });
-    const pair_id = await pairTransactions(mockUser as never, "tx-a", "tx-b");
-    const [sql] = mockQuery.mock.calls[0] as [string, unknown[]];
+    stagePairOk("pair-existing");
+    const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    const insertCall = mockQuery.mock.calls.find((c) =>
+      /INSERT INTO transaction_pairs/i.test(c[0] as string),
+    )!;
+    const sql = insertCall[0] as string;
     expect(sql).toContain("ON CONFLICT (transaction_id_a, transaction_id_b)");
     expect(sql).toContain("is_deleted = FALSE");
     expect(sql).toMatch(
       /CASE\s+WHEN\s+transaction_pairs\.is_deleted\s*=\s*TRUE\s+THEN\s+EXCLUDED\.status/,
     );
-    expect(pair_id).toBe("pair-existing");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.pair_id).toBe("pair-existing");
   });
 
   test("canonicalizes (a, b) so reversed inputs hit the same row shape", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-1" }], rowCount: 1 });
+    stagePairOk("pair-1");
     await pairTransactions(mockUser as never, "tx-z", "tx-a");
-    const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+    const insertCall = mockQuery.mock.calls.find((c) =>
+      /INSERT INTO transaction_pairs/i.test(c[0] as string),
+    )!;
+    const values = insertCall[1] as unknown[];
     const idxA = values.indexOf("tx-a");
     const idxB = values.indexOf("tx-z");
     expect(idxA).toBeLessThan(idxB);
   });
 
   test("accepts confirmed status", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "pair-1" }], rowCount: 1 });
+    stagePairOk("pair-1");
     await pairTransactions(mockUser as never, "tx-a", "tx-b", "confirmed");
-    const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
-    expect(values).toContain("confirmed");
+    const insertCall = mockQuery.mock.calls.find((c) =>
+      /INSERT INTO transaction_pairs/i.test(c[0] as string),
+    )!;
+    expect(insertCall[1] as unknown[]).toContain("confirmed");
+  });
+
+  test("rejects when one transaction is already in another active confirmed pair", async () => {
+    stagePairCollision("pair-existing-confirmed");
+    const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/already in another confirmed transfer pair/i);
+    }
+    // BEGIN + lock + collision SELECT + ROLLBACK = 4 calls, no INSERT.
+    const insertCalls = mockQuery.mock.calls.filter((c) =>
+      /INSERT INTO transaction_pairs/i.test(c[0] as string),
+    );
+    expect(insertCalls).toHaveLength(0);
+    // Transaction must have been rolled back, not silently dropped.
+    const rolledBack = mockQuery.mock.calls.some((c) =>
+      /^ROLLBACK$/i.test(c[0] as string),
+    );
+    expect(rolledBack).toBe(true);
+    const committed = mockQuery.mock.calls.some((c) => /^COMMIT$/i.test(c[0] as string));
+    expect(committed).toBe(false);
+  });
+
+  test("collision pre-check excludes the SAME (a, b) being re-paired (allows un-reject)", async () => {
+    // Even if the SELECT matched the same (a, b) we're upserting, the WHERE
+    // clause excludes that row via `NOT (transaction_id_a = $a AND ... = $b)`.
+    // We verify the SQL shape.
+    stagePairOk("pair-rejected-reactivated");
+    await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    const collisionCall = mockQuery.mock.calls.find((c) =>
+      /SELECT pair_id FROM transaction_pairs[\s\S]*status = 'confirmed'/i.test(c[0] as string),
+    )!;
+    expect(collisionCall[0] as string).toMatch(
+      /NOT \(transaction_id_a = \$4 AND transaction_id_b = \$5\)/i,
+    );
+  });
+
+  test("cleanup UPDATE flips other suggested pairs to status='rejected'", async () => {
+    stagePairOk("pair-new");
+    await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    const cleanupCall = mockQuery.mock.calls.find((c) => {
+      const sql = c[0] as string;
+      // Cleanup UPDATE: SET status='rejected' WHERE status='suggested'.
+      // The WHERE filter scopes to 'suggested' (so existing rejected
+      // rows stay rejected); the SET sets status='rejected'.
+      return /UPDATE transaction_pairs[\s\S]*SET\s+status\s*=\s*'rejected'/i.test(sql)
+        && /status = 'suggested'/i.test(sql);
+    })!;
+    expect(cleanupCall).toBeDefined();
+    const sql = cleanupCall[0] as string;
+    // Must scope to the user, exclude the just-created pair_id, and only
+    // flip 'suggested' → 'rejected' (NOT touch 'rejected' / 'confirmed').
+    expect(sql).toMatch(/pair_id <> \$2/);
+    expect(sql).toMatch(/status = 'suggested'/);
+    // The cleanup uses status='rejected', not is_deleted=TRUE. Soft-delete
+    // is the SYSTEM cascade for removed transactions; rejection is the
+    // persistent USER-intent denylist.
+    expect(sql).not.toMatch(/is_deleted\s*=\s*TRUE/i);
   });
 });
+
+// Helpers for confirmTransferPair: BEGIN, advisory lock, lookup SELECT,
+// collision SELECT, UPDATE confirmed, cleanup UPDATE, COMMIT (7 calls).
+function stageConfirmOk(
+  pairTxnA = "tx-a",
+  pairTxnB = "tx-b",
+  collisionRows: unknown[] = [],
+) {
+  // BEGIN
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+  // lookup SELECT
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
+    rowCount: 1,
+  });
+  // collision SELECT
+  mockQuery.mockResolvedValueOnce({
+    rows: collisionRows,
+    rowCount: collisionRows.length,
+  });
+  // UPDATE confirmed
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+  // cleanup UPDATE
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // COMMIT
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+}
+
+function stageConfirmCollision(pairTxnA: string, pairTxnB: string) {
+  // BEGIN
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+  // lookup SELECT
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
+    rowCount: 1,
+  });
+  // collision SELECT returns a row → triggers ROLLBACK
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ pair_id: "pair-colliding-confirmed" }],
+    rowCount: 1,
+  });
+  // ROLLBACK
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+}
 
 describe("confirmTransferPair", () => {
   beforeEach(() => mockQuery.mockClear());
 
   test("UPDATEs the pair row by pair_id with confirmed status", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    stageConfirmOk("tx-a", "tx-b");
+    const result = await confirmTransferPair(mockUser as never, "pair-1");
+    expect(result.ok).toBe(true);
+    const updateCall = mockQuery.mock.calls.find((c) => {
+      const sql = c[0] as string;
+      return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
+    })!;
+    expect(updateCall).toBeDefined();
+    expect(updateCall[1] as unknown[]).toContain("pair-1");
+    expect(updateCall[1] as unknown[]).toContain("usr-1");
+  });
+
+  test("returns ok=false when pair not found", async () => {
+    // BEGIN
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    // advisory lock
+    mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+    // lookup SELECT returns no rows
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    // ROLLBACK
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await confirmTransferPair(mockUser as never, "pair-missing");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/not found/i);
+    const updateCalls = mockQuery.mock.calls.filter((c) => {
+      const sql = c[0] as string;
+      return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
+    });
+    expect(updateCalls).toHaveLength(0);
+    expect(mockQuery.mock.calls.some((c) => /^ROLLBACK$/i.test(c[0] as string))).toBe(true);
+  });
+
+  test("rejects when either transaction is already in another active confirmed pair", async () => {
+    stageConfirmCollision("tx-a", "tx-b");
+    const result = await confirmTransferPair(mockUser as never, "pair-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/already in another confirmed transfer pair/i);
+    }
+    // No status UPDATE should fire.
+    const updateCalls = mockQuery.mock.calls.filter((c) => {
+      const sql = c[0] as string;
+      return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
+    });
+    expect(updateCalls).toHaveLength(0);
+    expect(mockQuery.mock.calls.some((c) => /^ROLLBACK$/i.test(c[0] as string))).toBe(true);
+  });
+
+  test("lookup SELECT excludes rejected pairs (status filter)", async () => {
+    stageConfirmOk();
     await confirmTransferPair(mockUser as never, "pair-1");
-    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain("UPDATE transaction_pairs");
-    expect(sql).toContain("'confirmed'");
-    expect(values).toContain("pair-1");
-    expect(values).toContain("usr-1");
+    const lookupCall = mockQuery.mock.calls.find((c) => {
+      const sql = c[0] as string;
+      return /SELECT transaction_id_a, transaction_id_b FROM transaction_pairs/i.test(sql);
+    })!;
+    expect(lookupCall).toBeDefined();
+    // The lookup must refuse to find a `status='rejected'` pair, so a
+    // client can't directly POST a rejected pair_id to confirm it.
+    expect(lookupCall[0] as string).toMatch(/status <> 'rejected'/i);
+  });
+
+  test("cleanup UPDATE flips other suggested pairs to status='rejected'", async () => {
+    stageConfirmOk("tx-a", "tx-b");
+    await confirmTransferPair(mockUser as never, "pair-1");
+    const cleanupCall = mockQuery.mock.calls.find((c) => {
+      const sql = c[0] as string;
+      return /UPDATE transaction_pairs[\s\S]*SET\s+status\s*=\s*'rejected'/i.test(sql)
+        && /status = 'suggested'/i.test(sql);
+    })!;
+    expect(cleanupCall).toBeDefined();
+    const sql = cleanupCall[0] as string;
+    expect(sql).toMatch(/pair_id <> \$2/);
+    expect(sql).toMatch(/status = 'suggested'/);
+    expect(sql).not.toMatch(/is_deleted\s*=\s*TRUE/i);
   });
 });
 

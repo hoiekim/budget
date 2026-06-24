@@ -5,10 +5,14 @@ import { call, Data, TransferDictionary, indexedDb, StoreName, useAppContext } f
 export interface TransferActions {
   /** Confirm a suggested pair: status flips to "confirmed". */
   confirm: (pair_id: string) => Promise<void>;
-  /** Reject a suggested pair: soft-deletes it so the row reverts. */
+  /** Reject a suggested pair: server flips it to `status='rejected'`
+   *  (the row persists as the engine's per-pair denylist signal so the
+   *  same pair isn't re-suggested on future runs). FE removes it from
+   *  the local transfers dictionary. */
   reject: (pair_id: string) => Promise<void>;
-  /** Unpair a confirmed pair (same delete path as reject, just
-   *  semantically named for the "mark as non-transfer" affordance). */
+  /** Unpair a confirmed pair (same route as reject — flips the row to
+   *  status='rejected', not soft-delete — semantically named for the
+   *  "mark as non-transfer" affordance). */
   unpair: (pair_id: string) => Promise<void>;
   /** Manually pair two transactions as a confirmed transfer. Used by
    *  the "Mark as Transfer" affordance for cases where (a) the user
@@ -33,7 +37,14 @@ export const useTransfers = (): TransferActions => {
   const confirm = useCallback(
     async (pair_id: string) => {
       const response = await call.post("/api/transfers/pair", { pair_id });
-      if (response.status !== "success") return;
+      if (response.status !== "success") {
+        // Server refuses the confirm — most common case is the collision
+        // guard catching a stale-suggestion confirm against a txn that
+        // already has another active confirmed pair. Surface the message
+        // so the user knows the click didn't silently succeed.
+        if (response.message) window.alert(response.message);
+        return;
+      }
       setData((oldData) => {
         const prev = oldData.transfers.get(pair_id);
         if (!prev) return oldData;
@@ -75,7 +86,10 @@ export const useTransfers = (): TransferActions => {
         transaction_id_b,
         status: "confirmed",
       });
-      if (response.status !== "success" || !response.body) return;
+      if (response.status !== "success" || !response.body) {
+        if (response.message) window.alert(response.message);
+        return;
+      }
       const { pair_id } = response.body;
       setData((oldData) => {
         const a = oldData.transactions.get(transaction_id_a);
