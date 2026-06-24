@@ -91,12 +91,15 @@ describe("scoreConfidence", () => {
  */
 function setupMock(opts: {
   users?: ReturnType<typeof userRow>[];
-  candidates?: unknown[];
+  candidates?: unknown[] | ((userId: string) => unknown[]);
   insertResult?: { rows: unknown[]; rowCount: number };
   insertRejector?: (sql: string, values: unknown[]) => boolean;
+  /** Throws on the cleanup UPDATE for the named user — simulates a per-user
+   *  failure so we can verify the engine isolates it and continues to the
+   *  next user. */
+  cleanupFailOnUser?: string;
 }) {
   const users = opts.users ?? [];
-  const candidates = opts.candidates ?? [];
   const insertResult = opts.insertResult ?? { rows: [], rowCount: 1 };
 
   mockQuery.mockImplementation(async (sql: string, values?: unknown[]) => {
@@ -109,6 +112,9 @@ function setupMock(opts: {
     }
     // Stale-pair cleanup UPDATE.
     if (/^\s*UPDATE\s+transaction_pairs/i.test(sql) && /is_deleted\s*=\s*TRUE/i.test(sql)) {
+      if (opts.cleanupFailOnUser && (values ?? [])[0] === opts.cleanupFailOnUser) {
+        throw new Error("cleanup rejected by test");
+      }
       return { rows: [], rowCount: 0 };
     }
     // SELECT users.
@@ -117,6 +123,10 @@ function setupMock(opts: {
     }
     // fetchCandidates SELECT.
     if (/JOIN\s+transactions\s+t2/i.test(sql)) {
+      const candidates =
+        typeof opts.candidates === "function"
+          ? opts.candidates((values ?? [])[0] as string)
+          : opts.candidates ?? [];
       return { rows: candidates, rowCount: candidates.length };
     }
     // INSERT INTO transaction_pairs.
@@ -201,12 +211,47 @@ describe("runTransferDetection", () => {
     expect(lockCall[1] as unknown[]).toContain("user-1");
   });
 
-  test.skip("processes each user independently and isolates failures", async () => {
-    // Skipped: the new pattern-based mock can't easily stage different
-    // per-user candidate responses. Coverage retained via the
-    // savepoint-isolation test below + the engine's outer per-user
-    // try/catch wraps the BEGIN/COMMIT block so a user's failure rolls
-    // back its own transaction and the loop continues.
+  test("processes each user independently and isolates failures", async () => {
+    // user-bad's cleanup UPDATE throws → ROLLBACK + log + continue to user-good.
+    // user-good has a candidate that's INSERTed successfully.
+    setupMock({
+      users: [
+        userRow({ user_id: "user-bad" }),
+        userRow({ user_id: "user-good" }),
+      ],
+      candidates: (userId) =>
+        userId === "user-good"
+          ? [
+              {
+                transaction_id_a: "g-a",
+                transaction_id_b: "g-b",
+                date_delta: 0,
+                is_plaid_transfer: true,
+              },
+            ]
+          : [],
+      cleanupFailOnUser: "user-bad",
+    });
+
+    await runTransferDetection();
+
+    const inserts = findInsertCalls();
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values).toContain("user-good");
+    expect(inserts[0].values).toContain("g-a");
+    expect(inserts[0].values).toContain("g-b");
+    // user-bad's transaction must have ROLLBACK'd.
+    const rollbacks = mockQuery.mock.calls.filter(
+      (c) => /^ROLLBACK$/i.test(c[0] as string),
+    );
+    expect(rollbacks.length).toBeGreaterThanOrEqual(1);
+    // user-good's transaction must have COMMITted.
+    const commits = mockQuery.mock.calls.filter((c) => /^COMMIT$/i.test(c[0] as string));
+    expect(commits).toHaveLength(1);
+  });
+
+  test.skip("processes each user independently and isolates failures (legacy)", async () => {
+    // Superseded by the multi-user test above.
     // SELECT users → [user-bad, user-good]
     mockQuery.mockResolvedValueOnce({
       rows: [userRow({ user_id: "user-bad" }), userRow({ user_id: "user-good" })],

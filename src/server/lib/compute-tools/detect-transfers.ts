@@ -1,4 +1,5 @@
 import { pool, logger, usersTable } from "server";
+import type { PoolClient } from "pg";
 import { canonicalizePairIds, QueryExecutor } from "../postgres/models";
 
 const BASE_CONFIDENCE = 0.7;
@@ -207,8 +208,9 @@ export const runTransferDetection = async (): Promise<void> => {
       // COMMITTED and both INSERT pairs involving A — a transaction in
       // two simultaneous active pairs, the exact invariant #547 was
       // meant to enforce.
-      const client = await pool.connect();
+      let client: PoolClient | undefined;
       try {
+        client = await pool.connect();
         await client.query("BEGIN");
         await client.query(
           `SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`,
@@ -314,10 +316,10 @@ export const runTransferDetection = async (): Promise<void> => {
           });
         }
       } catch (err) {
-        await client.query("ROLLBACK").catch(() => {});
+        if (client) await client.query("ROLLBACK").catch(() => {});
         logger.error("Transfer detection failed for user", { userId }, err);
       } finally {
-        client.release();
+        if (client) client.release();
       }
     }
   } catch (err) {
