@@ -354,17 +354,48 @@ export const TransactionsPage = () => {
     );
 
     const acceptedIds = new Set<string>();
+    let failedLabels = 0;
+    let firstFailedLabelMessage: string | undefined;
     labelResults.forEach((r, i) => {
       if (r.status === "fulfilled" && r.value.status === "success") {
         acceptedIds.add(suggestedInView[i]!.id);
+      } else {
+        failedLabels++;
+        if (!firstFailedLabelMessage && r.status === "fulfilled" && r.value.message) {
+          firstFailedLabelMessage = r.value.message;
+        }
       }
     });
     const acceptedPairIds = new Set<string>();
+    let failedPairs = 0;
+    let firstFailedPairMessage: string | undefined;
     transferResults.forEach((r, i) => {
       if (r.status === "fulfilled" && r.value.status === "success") {
         acceptedPairIds.add(suggestedTransferPairsInView[i]!.pair_id);
+      } else {
+        failedPairs++;
+        if (!firstFailedPairMessage && r.status === "fulfilled" && r.value.message) {
+          firstFailedPairMessage = r.value.message;
+        }
       }
     });
+
+    // Surface any per-item failures so the user knows the bulk Accept-All
+    // wasn't fully applied. Common cause: a transfer pair-confirm collides
+    // with an already-confirmed pair (per the #547 integrity guard). Per-row
+    // mutations surface via `useTransfers.confirm`'s alert; the bulk path
+    // had no such signal before — failures were silently dropped from
+    // `acceptedPairIds`.
+    const totalFailed = failedLabels + failedPairs;
+    if (totalFailed > 0) {
+      const totalAttempted = labelResults.length + transferResults.length;
+      const sampleMessage = firstFailedPairMessage ?? firstFailedLabelMessage;
+      const detail = sampleMessage ? ` First reason: ${sampleMessage}` : "";
+      window.alert(
+        `${totalFailed} of ${totalAttempted} couldn't be accepted` +
+          ` (likely a collision with an existing confirmed pair or stale state).${detail}`,
+      );
+    }
 
     if (acceptedIds.size || acceptedPairIds.size) {
       setData((oldData) => {
