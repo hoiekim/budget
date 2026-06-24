@@ -141,6 +141,8 @@ describe("getTransferPairs", () => {
 function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
   // BEGIN
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // collision SELECT
   mockQuery.mockResolvedValueOnce({ rows: collisionRows, rowCount: collisionRows.length });
   // INSERT ... RETURNING
@@ -157,6 +159,8 @@ function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
 function stagePairCollision(collidingPairId: string) {
   // BEGIN
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // collision SELECT returns a colliding row → triggers ROLLBACK
   mockQuery.mockResolvedValueOnce({
     rows: [{ pair_id: collidingPairId }],
@@ -174,8 +178,8 @@ describe("pairTransactions", () => {
     const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.pair_id).toBe("pair-new");
-    // BEGIN + collision + INSERT + cleanup + COMMIT = 5 calls.
-    expect(mockQuery).toHaveBeenCalledTimes(5);
+    // BEGIN + lock + collision + INSERT + cleanup + COMMIT = 6 calls.
+    expect(mockQuery).toHaveBeenCalledTimes(6);
     const insertCall = mockQuery.mock.calls.find((c) =>
       /INSERT INTO transaction_pairs/i.test(c[0] as string),
     );
@@ -228,12 +232,18 @@ describe("pairTransactions", () => {
     if (!result.ok) {
       expect(result.error).toMatch(/already in another confirmed transfer pair/i);
     }
-    // BEGIN + collision SELECT + ROLLBACK = 3 calls, no INSERT.
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    // BEGIN + lock + collision SELECT + ROLLBACK = 4 calls, no INSERT.
     const insertCalls = mockQuery.mock.calls.filter((c) =>
       /INSERT INTO transaction_pairs/i.test(c[0] as string),
     );
     expect(insertCalls).toHaveLength(0);
+    // Transaction must have been rolled back, not silently dropped.
+    const rolledBack = mockQuery.mock.calls.some((c) =>
+      /^ROLLBACK$/i.test(c[0] as string),
+    );
+    expect(rolledBack).toBe(true);
+    const committed = mockQuery.mock.calls.some((c) => /^COMMIT$/i.test(c[0] as string));
+    expect(committed).toBe(false);
   });
 
   test("collision pre-check excludes the SAME (a, b) being re-paired (allows un-reject)", async () => {
@@ -268,8 +278,8 @@ describe("pairTransactions", () => {
   });
 });
 
-// Helpers for confirmTransferPair: BEGIN, lookup SELECT, collision SELECT,
-// UPDATE confirmed, cleanup UPDATE, COMMIT (6 calls).
+// Helpers for confirmTransferPair: BEGIN, advisory lock, lookup SELECT,
+// collision SELECT, UPDATE confirmed, cleanup UPDATE, COMMIT (7 calls).
 function stageConfirmOk(
   pairTxnA = "tx-a",
   pairTxnB = "tx-b",
@@ -277,6 +287,8 @@ function stageConfirmOk(
 ) {
   // BEGIN
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // lookup SELECT
   mockQuery.mockResolvedValueOnce({
     rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
@@ -298,6 +310,8 @@ function stageConfirmOk(
 function stageConfirmCollision(pairTxnA: string, pairTxnB: string) {
   // BEGIN
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // lookup SELECT
   mockQuery.mockResolvedValueOnce({
     rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
@@ -331,6 +345,8 @@ describe("confirmTransferPair", () => {
   test("returns ok=false when pair not found", async () => {
     // BEGIN
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    // advisory lock
+    mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
     // lookup SELECT returns no rows
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // ROLLBACK
@@ -344,6 +360,7 @@ describe("confirmTransferPair", () => {
       return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
     });
     expect(updateCalls).toHaveLength(0);
+    expect(mockQuery.mock.calls.some((c) => /^ROLLBACK$/i.test(c[0] as string))).toBe(true);
   });
 
   test("rejects when either transaction is already in another active confirmed pair", async () => {
@@ -359,6 +376,20 @@ describe("confirmTransferPair", () => {
       return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
     });
     expect(updateCalls).toHaveLength(0);
+    expect(mockQuery.mock.calls.some((c) => /^ROLLBACK$/i.test(c[0] as string))).toBe(true);
+  });
+
+  test("lookup SELECT excludes rejected pairs (status filter)", async () => {
+    stageConfirmOk();
+    await confirmTransferPair(mockUser as never, "pair-1");
+    const lookupCall = mockQuery.mock.calls.find((c) => {
+      const sql = c[0] as string;
+      return /SELECT transaction_id_a, transaction_id_b FROM transaction_pairs/i.test(sql);
+    })!;
+    expect(lookupCall).toBeDefined();
+    // The lookup must refuse to find a `status='rejected'` pair, so a
+    // client can't directly POST a rejected pair_id to confirm it.
+    expect(lookupCall[0] as string).toMatch(/status <> 'rejected'/i);
   });
 
   test("cleanup UPDATE soft-deletes other suggested pairs involving the confirmed pair's txns", async () => {

@@ -84,10 +84,12 @@ describe("post-transfer-pair", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  // `confirmTransferPair` now runs in a DB transaction: BEGIN, lookup
-  // SELECT, collision SELECT, UPDATE status, cleanup UPDATE, COMMIT.
+  // `confirmTransferPair` now runs in a DB transaction: BEGIN, advisory
+  // lock, lookup SELECT, collision SELECT, UPDATE status, cleanup UPDATE,
+  // COMMIT.
   function stageConfirmOk(pairTxnA = "tx-a", pairTxnB = "tx-b") {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockQuery.mockResolvedValueOnce({
       rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
       rowCount: 1,
@@ -167,10 +169,11 @@ describe("post-transfer-pair", () => {
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
-    // `pairTransactions` now runs in a DB transaction: BEGIN, collision
-    // SELECT, INSERT, cleanup UPDATE, COMMIT.
+    // `pairTransactions` now runs in a DB transaction: BEGIN, advisory
+    // lock, collision SELECT, INSERT, cleanup UPDATE, COMMIT.
     function stagePairOk(insertPairId: string) {
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+      mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
       mockQuery.mockResolvedValueOnce({
         rows: [{ pair_id: insertPairId }],

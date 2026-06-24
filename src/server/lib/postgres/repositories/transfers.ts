@@ -119,6 +119,21 @@ export const pairTransactions = async (
   try {
     await client.query("BEGIN");
 
+    // Per-user serialization for all transfer-pair mutations. Without
+    // this, two concurrent `pairTransactions(A, B)` and `confirmTransferPair`
+    // calls (e.g. double-click, two browser tabs) can each pass the
+    // collision SELECT before either commits — READ COMMITTED isolation
+    // hides the in-flight UPDATE — and both succeed, leaving A in two
+    // simultaneous active confirmed pairs (the exact invariant we're
+    // here to enforce). `pg_advisory_xact_lock` is a transaction-scoped
+    // per-key lock; the second concurrent call waits for the first to
+    // COMMIT/ROLLBACK, then sees the new state and the collision check
+    // fires correctly. Per-user-id scope: throughput is fine for
+    // many-user deployments since users only contend with themselves.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`, [
+      user.user_id,
+    ]);
+
     // Collision pre-check: is EITHER transaction in another active confirmed
     // pair with a different counterparty? If so, refuse — confirming would
     // put the transaction in two simultaneous confirmed pairs.
@@ -223,12 +238,23 @@ export const confirmTransferPair = async (
   try {
     await client.query("BEGIN");
 
-    // Look up the pair's transaction_ids. If missing or already
-    // soft-deleted, fail cleanly.
+    // Per-user advisory lock — see comment in `pairTransactions`. Same
+    // race-window concern: a concurrent confirm of a different pair_id
+    // involving the same transaction would slip past the collision SELECT.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`, [
+      user.user_id,
+    ]);
+
+    // Look up the pair's transaction_ids. If missing, soft-deleted, or a
+    // rejection record (kept as engine denylist, not user-promotable),
+    // fail cleanly. Status filter blocks a client from directly POSTing
+    // a rejected pair's pair_id to confirm it (FE filters rejected from
+    // `getTransferPairs`, but the server shouldn't rely on that).
     const lookup = await client.query<{ transaction_id_a: string; transaction_id_b: string }>(
       `SELECT ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B} FROM ${TRANSACTION_PAIRS}
        WHERE ${PAIR_ID} = $1 AND ${USER_ID} = $2
-         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+         AND ${STATUS} <> 'rejected'`,
       [pair_id, user.user_id],
     );
     if (!lookup.rowCount) {

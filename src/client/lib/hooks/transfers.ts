@@ -33,7 +33,14 @@ export const useTransfers = (): TransferActions => {
   const confirm = useCallback(
     async (pair_id: string) => {
       const response = await call.post("/api/transfers/pair", { pair_id });
-      if (response.status !== "success") return;
+      if (response.status !== "success") {
+        // Server refuses the confirm — most common case is the collision
+        // guard catching a stale-suggestion confirm against a txn that
+        // already has another active confirmed pair. Surface the message
+        // so the user knows the click didn't silently succeed.
+        if (response.message) window.alert(response.message);
+        return;
+      }
       setData((oldData) => {
         const prev = oldData.transfers.get(pair_id);
         if (!prev) return oldData;
@@ -75,7 +82,10 @@ export const useTransfers = (): TransferActions => {
         transaction_id_b,
         status: "confirmed",
       });
-      if (response.status !== "success" || !response.body) return;
+      if (response.status !== "success" || !response.body) {
+        if (response.message) window.alert(response.message);
+        return;
+      }
       const { pair_id } = response.body;
       setData((oldData) => {
         const a = oldData.transactions.get(transaction_id_a);
