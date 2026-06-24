@@ -175,9 +175,9 @@ describe("post-transfer-pair", () => {
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
       mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
       mockQuery.mockResolvedValueOnce({
-        rows: [{ a_alive: true, b_alive: true }],
-        rowCount: 1,
-      }); // existence pre-check
+        rows: [{ transaction_id: "t-a" }, { transaction_id: "t-b" }],
+        rowCount: 2,
+      }); // existence pre-check (FOR SHARE), both alive
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
       mockQuery.mockResolvedValueOnce({
         rows: [{ pair_id: insertPairId }],

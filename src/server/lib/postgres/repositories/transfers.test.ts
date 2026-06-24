@@ -135,16 +135,20 @@ describe("getTransferPairs", () => {
 });
 
 // Helpers for staging the response sequence of a `pairTransactions`
-// transaction. Stages: BEGIN, collision SELECT, INSERT, cleanup UPDATE,
-// COMMIT (5 calls). On error path the cleanup+UPDATE+COMMIT are replaced
-// by a ROLLBACK.
+// transaction. Stages: BEGIN, advisory lock, existence pre-check (FOR
+// SHARE), collision SELECT, INSERT, cleanup UPDATE, COMMIT (7 calls).
+// On error path the existence/collision rejection replaces the
+// INSERT+cleanup+COMMIT with a ROLLBACK.
 function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
   // BEGIN
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
   // advisory lock
   mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
-  // existence pre-check — both alive
-  mockQuery.mockResolvedValueOnce({ rows: [{ a_alive: true, b_alive: true }], rowCount: 1 });
+  // existence pre-check (FOR SHARE) — both alive: 2 rows
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ transaction_id: "tx-a" }, { transaction_id: "tx-b" }],
+    rowCount: 2,
+  });
   // collision SELECT
   mockQuery.mockResolvedValueOnce({ rows: collisionRows, rowCount: collisionRows.length });
   // INSERT ... RETURNING
@@ -163,8 +167,11 @@ function stagePairCollision(collidingPairId: string) {
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
   // advisory lock
   mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
-  // existence pre-check — both alive
-  mockQuery.mockResolvedValueOnce({ rows: [{ a_alive: true, b_alive: true }], rowCount: 1 });
+  // existence pre-check (FOR SHARE) — both alive: 2 rows
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ transaction_id: "tx-a" }, { transaction_id: "tx-b" }],
+    rowCount: 2,
+  });
   // collision SELECT returns a colliding row → triggers ROLLBACK
   mockQuery.mockResolvedValueOnce({
     rows: [{ pair_id: collidingPairId }],
@@ -179,11 +186,11 @@ function stagePairMissingTransaction(whichAlive: { a: boolean; b: boolean }) {
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
   // advisory lock
   mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
-  // existence pre-check returns at least one not-alive → triggers ROLLBACK
-  mockQuery.mockResolvedValueOnce({
-    rows: [{ a_alive: whichAlive.a, b_alive: whichAlive.b }],
-    rowCount: 1,
-  });
+  // existence pre-check (FOR SHARE) — at most one row if a transaction missing.
+  const rows: { transaction_id: string }[] = [];
+  if (whichAlive.a) rows.push({ transaction_id: "tx-a" });
+  if (whichAlive.b) rows.push({ transaction_id: "tx-b" });
+  mockQuery.mockResolvedValueOnce({ rows, rowCount: rows.length });
   // ROLLBACK
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 }
@@ -287,6 +294,24 @@ describe("pairTransactions", () => {
     expect(rolledBack).toBe(true);
     const committed = mockQuery.mock.calls.some((c) => /^COMMIT$/i.test(c[0] as string));
     expect(committed).toBe(false);
+  });
+
+  test("existence pre-check scopes by user_id, filters is_deleted, uses FOR SHARE", async () => {
+    // Verify the existence query's SQL shape so a future refactor can't
+    // silently drop the user_id filter (would allow cross-user pairing)
+    // or drop FOR SHARE (would re-open the deleteTransactions race).
+    stagePairOk("pair-new");
+    await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    const existenceCall = mockQuery.mock.calls.find((c) => {
+      const sql = c[0] as string;
+      return /SELECT transaction_id FROM transactions/i.test(sql) && /FOR SHARE/i.test(sql);
+    })!;
+    expect(existenceCall).toBeDefined();
+    const sql = existenceCall[0] as string;
+    expect(sql).toMatch(/WHERE user_id = \$1/i);
+    expect(sql).toMatch(/transaction_id = ANY\(\$2/i);
+    expect(sql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/i);
+    expect(sql).toMatch(/FOR SHARE/);
   });
 
   test("collision pre-check excludes the SAME (a, b) being re-paired (allows un-reject)", async () => {

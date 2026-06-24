@@ -138,23 +138,29 @@ export const pairTransactions = async (
     ]);
 
     // Existence pre-check: BOTH transactions must exist and be alive
-    // (`is_deleted = FALSE`). Without this, a race with concurrent
-    // `deleteTransactions(A)` could create a confirmed pair referencing
-    // a soft-deleted transaction — invisible to FE (getTransferPairs
-    // JOINs WHERE transactions.is_deleted=FALSE), but the DB row is in
-    // an inconsistent state until the engine's stale-pair-cleanup
-    // catches it. Two existence checks in one round-trip.
-    const existence = await client.query<{ a_alive: boolean; b_alive: boolean }>(
-      `SELECT
-         EXISTS (SELECT 1 FROM ${TRANSACTIONS}
-                 WHERE ${TRANSACTION_ID} = $2 AND ${USER_ID} = $1
-                   AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)) AS a_alive,
-         EXISTS (SELECT 1 FROM ${TRANSACTIONS}
-                 WHERE ${TRANSACTION_ID} = $3 AND ${USER_ID} = $1
-                   AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)) AS b_alive`,
-      [user.user_id, canonical.transaction_id_a, canonical.transaction_id_b],
+    // (`is_deleted = FALSE`). `FOR SHARE` takes a row-level share lock
+    // on each matched transaction row that conflicts with
+    // `deleteTransactions`'s subsequent `UPDATE transactions SET
+    // is_deleted=TRUE` (which needs an EXCLUSIVE row lock). This
+    // serializes the existence check vs. any concurrent delete — even
+    // though `deleteTransactions` doesn't take our `:transfers` advisory
+    // lock, the row-level lock conflict forces ordering. Without `FOR
+    // SHARE`, a concurrent delete could commit between our existence
+    // SELECT and our INSERT, leaving a confirmed pair referencing a
+    // soft-deleted transaction.
+    //
+    // Returns 0/1/2 rows; we expect exactly 2 (both alive AND both
+    // belonging to this user — the user_id filter rejects cross-user
+    // transaction_ids).
+    const existence = await client.query<{ transaction_id: string }>(
+      `SELECT ${TRANSACTION_ID} FROM ${TRANSACTIONS}
+       WHERE ${USER_ID} = $1
+         AND ${TRANSACTION_ID} = ANY($2::text[])
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+       FOR SHARE`,
+      [user.user_id, [canonical.transaction_id_a, canonical.transaction_id_b]],
     );
-    if (!existence.rows[0]?.a_alive || !existence.rows[0]?.b_alive) {
+    if ((existence.rowCount ?? 0) !== 2) {
       await client.query("ROLLBACK");
       return {
         ok: false,
@@ -296,11 +302,19 @@ export const confirmTransferPair = async (
     // fail cleanly. Status filter blocks a client from directly POSTing
     // a rejected pair's pair_id to confirm it (FE filters rejected from
     // `getTransferPairs`, but the server shouldn't rely on that).
+    //
+    // `FOR UPDATE` takes a row-level exclusive lock on the pair row so a
+    // concurrent `deleteTransactions`'s pair-cascade (which UPDATEs
+    // is_deleted=TRUE on this same row) blocks until we commit. Without
+    // it, the lookup→UPDATE gap allows the cascade to win, making our
+    // status UPDATE a silent no-op (the `is_deleted=FALSE` filter
+    // returns 0 rows).
     const lookup = await client.query<{ transaction_id_a: string; transaction_id_b: string }>(
       `SELECT ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B} FROM ${TRANSACTION_PAIRS}
        WHERE ${PAIR_ID} = $1 AND ${USER_ID} = $2
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
-         AND ${STATUS} <> 'rejected'`,
+         AND ${STATUS} <> 'rejected'
+       FOR UPDATE`,
       [pair_id, user.user_id],
     );
     if (!lookup.rowCount) {
