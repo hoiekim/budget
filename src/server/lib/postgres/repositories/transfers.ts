@@ -24,6 +24,18 @@ export interface TransferPair {
 }
 
 /**
+ * Result of a pair/confirm mutation. The route translates `ok: false` into a
+ * `{ status: "failed", message }` response so the FE can surface the conflict.
+ */
+export type PairResult =
+  | { ok: true; pair_id: string }
+  | { ok: false; error: string };
+
+export type ConfirmResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
  * Get all transfer pairs for a user. JOINs the pairs table to the two
  * transactions referenced by each pair so the response shape stays the same
  * as before (one entry per pair, with the two paired transactions inline).
@@ -78,60 +90,206 @@ export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]
 };
 
 /**
- * Pair two transactions as a transfer. INSERT into transaction_pairs with
- * ON CONFLICT handling so re-pairing a previously soft-deleted pair undeletes
- * the existing row instead of failing the UNIQUE (a, b) constraint. An active
- * (non-deleted) row's status is preserved — repeat suggestions don't downgrade
- * a manually confirmed pair. Returns the effective pair_id (existing or new).
+ * Pair two transactions as a transfer. Wrapped in a single DB transaction so
+ * the collision pre-check, upsert, and cleanup of other suggestions are
+ * atomic.
+ *
+ * Invariants enforced:
+ *   - REJECT if either transaction is already in ANOTHER active confirmed
+ *     pair (i.e. not the same `(a, b)` we're re-pairing). A transaction may
+ *     appear in at most one active confirmed pair.
+ *   - ALLOW re-pairing a previously-rejected `(a, b)` — the ON CONFLICT
+ *     branch un-rejects.
+ *   - On successful upsert, soft-delete any OTHER active SUGGESTED pair
+ *     that involves either `a` or `b`. The user's explicit pairing
+ *     supersedes any open engine suggestion for those transactions.
+ *     Rejection records (status='rejected') stay intact — they're the
+ *     denylist that the engine reads.
  */
 export const pairTransactions = async (
   user: MaskedUser,
   transaction_id_a: string,
   transaction_id_b: string,
   status: TransferPairStatus = "suggested",
-): Promise<string> => {
+): Promise<PairResult> => {
   const pair_id = crypto.randomUUID();
   const canonical = canonicalizePairIds(transaction_id_a, transaction_id_b);
 
-  const result = await pool.query<{ pair_id: string }>(
-    `INSERT INTO ${TRANSACTION_PAIRS}
-       (${PAIR_ID}, ${USER_ID}, ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}, ${STATUS})
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}) DO UPDATE SET
-       ${STATUS} = CASE
-         WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE THEN EXCLUDED.${STATUS}
-         WHEN ${TRANSACTION_PAIRS}.${STATUS} = 'rejected' THEN EXCLUDED.${STATUS}
-         ELSE ${TRANSACTION_PAIRS}.${STATUS}
-       END,
-       ${IS_DELETED} = FALSE,
-       updated = CASE
-         WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE
-           OR ${TRANSACTION_PAIRS}.${STATUS} = 'rejected'
-           THEN CURRENT_TIMESTAMP
-         ELSE ${TRANSACTION_PAIRS}.updated
-       END
-     RETURNING ${PAIR_ID}`,
-    [pair_id, user.user_id, canonical.transaction_id_a, canonical.transaction_id_b, status],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-  return result.rows[0].pair_id;
+    // Collision pre-check: is EITHER transaction in another active confirmed
+    // pair with a different counterparty? If so, refuse — confirming would
+    // put the transaction in two simultaneous confirmed pairs.
+    const collision = await client.query<{ pair_id: string }>(
+      `SELECT ${PAIR_ID} FROM ${TRANSACTION_PAIRS}
+       WHERE ${USER_ID} = $1
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+         AND ${STATUS} = 'confirmed'
+         AND (${TRANSACTION_ID_A} = $2 OR ${TRANSACTION_ID_B} = $2
+              OR ${TRANSACTION_ID_A} = $3 OR ${TRANSACTION_ID_B} = $3)
+         AND NOT (${TRANSACTION_ID_A} = $4 AND ${TRANSACTION_ID_B} = $5)
+       LIMIT 1`,
+      [
+        user.user_id,
+        canonical.transaction_id_a,
+        canonical.transaction_id_b,
+        canonical.transaction_id_a,
+        canonical.transaction_id_b,
+      ],
+    );
+    if (collision.rowCount && collision.rowCount > 0) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          "One of these transactions is already in another confirmed transfer pair. Reject or unpair the existing pair first.",
+      };
+    }
+
+    const result = await client.query<{ pair_id: string }>(
+      `INSERT INTO ${TRANSACTION_PAIRS}
+         (${PAIR_ID}, ${USER_ID}, ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}, ${STATUS})
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (${TRANSACTION_ID_A}, ${TRANSACTION_ID_B}) DO UPDATE SET
+         ${STATUS} = CASE
+           WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE THEN EXCLUDED.${STATUS}
+           WHEN ${TRANSACTION_PAIRS}.${STATUS} = 'rejected' THEN EXCLUDED.${STATUS}
+           ELSE ${TRANSACTION_PAIRS}.${STATUS}
+         END,
+         ${IS_DELETED} = FALSE,
+         updated = CASE
+           WHEN ${TRANSACTION_PAIRS}.${IS_DELETED} = TRUE
+             OR ${TRANSACTION_PAIRS}.${STATUS} = 'rejected'
+             THEN CURRENT_TIMESTAMP
+           ELSE ${TRANSACTION_PAIRS}.updated
+         END
+       RETURNING ${PAIR_ID}`,
+      [pair_id, user.user_id, canonical.transaction_id_a, canonical.transaction_id_b, status],
+    );
+
+    const effectivePairId = result.rows[0].pair_id;
+
+    // Cleanup: soft-delete any OTHER active SUGGESTED pair involving either
+    // of these transactions. The user's manual pair (or re-pair) supersedes
+    // any open engine suggestion. Rejection records stay intact.
+    await client.query(
+      `UPDATE ${TRANSACTION_PAIRS}
+       SET ${IS_DELETED} = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE ${USER_ID} = $1
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+         AND ${STATUS} = 'suggested'
+         AND ${PAIR_ID} <> $2
+         AND (${TRANSACTION_ID_A} = $3 OR ${TRANSACTION_ID_B} = $3
+              OR ${TRANSACTION_ID_A} = $4 OR ${TRANSACTION_ID_B} = $4)`,
+      [
+        user.user_id,
+        effectivePairId,
+        canonical.transaction_id_a,
+        canonical.transaction_id_b,
+      ],
+    );
+
+    await client.query("COMMIT");
+    return { ok: true, pair_id: effectivePairId };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 /**
- * Confirm a suggested transfer pair. UPDATE one row by pair_id.
+ * Confirm a suggested transfer pair. Wrapped in a single DB transaction so
+ * the lookup, collision pre-check, status update, and cleanup are atomic.
+ *
+ * Invariants enforced:
+ *   - REJECT if either of the pair's transactions is already in ANOTHER
+ *     active confirmed pair. The data-integrity contract is "at most one
+ *     active confirmed pair per transaction" — confirming the stale
+ *     `(A, B)` suggestion while `(A, C)` is already confirmed would
+ *     violate that.
+ *   - On successful confirm, soft-delete any OTHER active SUGGESTED pair
+ *     involving the pair's transactions (engine-generated alternatives
+ *     for either half supersede when the user commits this one).
  */
 export const confirmTransferPair = async (
   user: MaskedUser,
   pair_id: string,
-): Promise<void> => {
-  await pool.query(
-    `UPDATE ${TRANSACTION_PAIRS}
-     SET ${STATUS} = 'confirmed', updated = CURRENT_TIMESTAMP
-     WHERE ${PAIR_ID} = $1
-       AND ${USER_ID} = $2
-       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
-    [pair_id, user.user_id],
-  );
+): Promise<ConfirmResult> => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Look up the pair's transaction_ids. If missing or already
+    // soft-deleted, fail cleanly.
+    const lookup = await client.query<{ transaction_id_a: string; transaction_id_b: string }>(
+      `SELECT ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B} FROM ${TRANSACTION_PAIRS}
+       WHERE ${PAIR_ID} = $1 AND ${USER_ID} = $2
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+      [pair_id, user.user_id],
+    );
+    if (!lookup.rowCount) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: "Pair not found." };
+    }
+    const { transaction_id_a, transaction_id_b } = lookup.rows[0];
+
+    // Collision pre-check: is EITHER transaction already in ANOTHER active
+    // confirmed pair?
+    const collision = await client.query<{ pair_id: string }>(
+      `SELECT ${PAIR_ID} FROM ${TRANSACTION_PAIRS}
+       WHERE ${USER_ID} = $1
+         AND ${PAIR_ID} <> $2
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+         AND ${STATUS} = 'confirmed'
+         AND (${TRANSACTION_ID_A} = $3 OR ${TRANSACTION_ID_B} = $3
+              OR ${TRANSACTION_ID_A} = $4 OR ${TRANSACTION_ID_B} = $4)
+       LIMIT 1`,
+      [user.user_id, pair_id, transaction_id_a, transaction_id_b],
+    );
+    if (collision.rowCount && collision.rowCount > 0) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          "One of these transactions is already in another confirmed transfer pair. Reject or unpair the existing pair first.",
+      };
+    }
+
+    await client.query(
+      `UPDATE ${TRANSACTION_PAIRS}
+       SET ${STATUS} = 'confirmed', updated = CURRENT_TIMESTAMP
+       WHERE ${PAIR_ID} = $1
+         AND ${USER_ID} = $2
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+      [pair_id, user.user_id],
+    );
+
+    // Cleanup: soft-delete any OTHER active SUGGESTED pair involving the
+    // pair's transactions. Rejection records stay intact.
+    await client.query(
+      `UPDATE ${TRANSACTION_PAIRS}
+       SET ${IS_DELETED} = TRUE, updated = CURRENT_TIMESTAMP
+       WHERE ${USER_ID} = $1
+         AND ${PAIR_ID} <> $2
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+         AND ${STATUS} = 'suggested'
+         AND (${TRANSACTION_ID_A} = $3 OR ${TRANSACTION_ID_B} = $3
+              OR ${TRANSACTION_ID_A} = $4 OR ${TRANSACTION_ID_B} = $4)`,
+      [user.user_id, pair_id, transaction_id_a, transaction_id_b],
+    );
+
+    await client.query("COMMIT");
+    return { ok: true };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 /**

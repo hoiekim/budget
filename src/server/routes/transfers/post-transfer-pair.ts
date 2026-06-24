@@ -20,7 +20,8 @@ export const postTransferPairRoute = new Route("POST", "/transfers/pair", async 
 
   // If pair_id is provided, confirm an existing suggested pair
   if (typeof body.pair_id === "string") {
-    await confirmTransferPair(user, body.pair_id);
+    const result = await confirmTransferPair(user, body.pair_id);
+    if (!result.ok) return { status: "failed", message: result.error };
     return { status: "success", body: { pair_id: body.pair_id } };
   }
 
@@ -34,12 +35,13 @@ export const postTransferPairRoute = new Route("POST", "/transfers/pair", async 
   const status =
     body.status === "confirmed" ? "confirmed" : "suggested";
 
-  const pair_id = await pairTransactions(
+  const result = await pairTransactions(
     user,
     aResult.data!,
     bResult.data!,
     status
   );
+  if (!result.ok) return { status: "failed", message: result.error };
 
-  return { status: "success", body: { pair_id } };
+  return { status: "success", body: { pair_id: result.pair_id } };
 });

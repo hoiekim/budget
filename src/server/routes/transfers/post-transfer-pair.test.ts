@@ -84,9 +84,23 @@ describe("post-transfer-pair", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  // `confirmTransferPair` now runs in a DB transaction: BEGIN, lookup
+  // SELECT, collision SELECT, UPDATE status, cleanup UPDATE, COMMIT.
+  function stageConfirmOk(pairTxnA = "tx-a", pairTxnB = "tx-b") {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
+      rowCount: 1,
+    }); // lookup
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // UPDATE confirmed
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // cleanup
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+  }
+
   describe("confirm-existing-pair branch (pair_id is a string)", () => {
     test("happy path: UPDATE scoped to session user_id, returns the pair_id", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      stageConfirmOk();
 
       const result = await postTransferPairRoute.execute(
         makeReq({ pair_id: "p-confirm" }),
@@ -95,25 +109,33 @@ describe("post-transfer-pair", () => {
 
       expect(result?.status).toBe("success");
       expect(result?.body).toEqual({ pair_id: "p-confirm" });
-      expect(mockQuery).toHaveBeenCalledTimes(1);
-      const [sql, values] = mockQuery.mock.calls[0];
-      expect(sql).toMatch(/UPDATE transaction_pairs/i);
-      expect(sql).toMatch(/SET status = 'confirmed'/);
-      expect(sql).toMatch(/WHERE pair_id = \$1\s+AND user_id = \$2/);
-      expect(values).toEqual(["p-confirm", "u-1"]);
+      const updateCall = mockQuery.mock.calls.find((c) => {
+        const sql = c[0] as string;
+        return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
+      })!;
+      expect(updateCall).toBeDefined();
+      expect(updateCall[0] as string).toMatch(/WHERE pair_id = \$1\s+AND user_id = \$2/);
+      expect(updateCall[1] as unknown[]).toEqual(["p-confirm", "u-1"]);
     });
 
     test("cross-user confirm: the route uses the session user_id, never a client value", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      stageConfirmOk();
 
       const result = await postTransferPairRoute.execute(
         makeReq({ pair_id: "p-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
         fakeRes(),
       );
       expect(result?.status).toBe("success");
-      const [, values] = mockQuery.mock.calls[0];
-      expect(values).toEqual(["p-belongs-to-B", "u-A"]);
-      expect(values).not.toContain("u-B");
+      const sessionUserScoped = mockQuery.mock.calls.filter((c) => {
+        const values = c[1] as unknown[] | undefined;
+        return values && values.includes("u-A");
+      });
+      expect(sessionUserScoped.length).toBeGreaterThan(0);
+      const anyCrossUser = mockQuery.mock.calls.some((c) => {
+        const values = c[1] as unknown[] | undefined;
+        return Boolean(values?.includes("u-B"));
+      });
+      expect(anyCrossUser).toBe(false);
     });
   });
 
@@ -145,8 +167,21 @@ describe("post-transfer-pair", () => {
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
+    // `pairTransactions` now runs in a DB transaction: BEGIN, collision
+    // SELECT, INSERT, cleanup UPDATE, COMMIT.
+    function stagePairOk(insertPairId: string) {
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ pair_id: insertPairId }],
+        rowCount: 1,
+      }); // INSERT RETURNING
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // cleanup
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    }
+
     test("happy path with status=confirmed: INSERT scoped to session user_id", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "p-new" }], rowCount: 1 });
+      stagePairOk("p-new");
 
       const result = await postTransferPairRoute.execute(
         makeReq({
@@ -159,28 +194,32 @@ describe("post-transfer-pair", () => {
 
       expect(result?.status).toBe("success");
       expect(result?.body).toEqual({ pair_id: "p-new" });
-      expect(mockQuery).toHaveBeenCalledTimes(1);
-      const [sql, values] = mockQuery.mock.calls[0];
-      expect(sql).toMatch(/INSERT INTO transaction_pairs/i);
-      expect(values?.[1]).toBe("u-1");
-      expect(values?.[4]).toBe("confirmed");
-      const txnIds = [values?.[2], values?.[3]].sort();
+      const insertCall = mockQuery.mock.calls.find((c) =>
+        /INSERT INTO transaction_pairs/i.test(c[0] as string),
+      )!;
+      expect(insertCall).toBeDefined();
+      const values = insertCall[1] as unknown[];
+      expect(values[1]).toBe("u-1");
+      expect(values[4]).toBe("confirmed");
+      const txnIds = [values[2], values[3]].sort();
       expect(txnIds).toEqual(["t-a", "t-b"]);
     });
 
     test("status defaults to 'suggested' when absent", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "p-new" }], rowCount: 1 });
+      stagePairOk("p-new");
 
       await postTransferPairRoute.execute(
         makeReq({ transaction_id_a: "t-a", transaction_id_b: "t-b" }),
         fakeRes(),
       );
-      const [, values] = mockQuery.mock.calls[0];
-      expect(values?.[4]).toBe("suggested");
+      const insertCall = mockQuery.mock.calls.find((c) =>
+        /INSERT INTO transaction_pairs/i.test(c[0] as string),
+      )!;
+      expect((insertCall[1] as unknown[])[4]).toBe("suggested");
     });
 
     test("status defaults to 'suggested' when given any non-'confirmed' value", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "p-new" }], rowCount: 1 });
+      stagePairOk("p-new");
 
       await postTransferPairRoute.execute(
         makeReq({
@@ -190,12 +229,14 @@ describe("post-transfer-pair", () => {
         }),
         fakeRes(),
       );
-      const [, values] = mockQuery.mock.calls[0];
-      expect(values?.[4]).toBe("suggested");
+      const insertCall = mockQuery.mock.calls.find((c) =>
+        /INSERT INTO transaction_pairs/i.test(c[0] as string),
+      )!;
+      expect((insertCall[1] as unknown[])[4]).toBe("suggested");
     });
 
     test("cross-user new pair: route forwards the session user_id, never a client value", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ pair_id: "p-new" }], rowCount: 1 });
+      stagePairOk("p-new");
 
       await postTransferPairRoute.execute(
         makeReq(
@@ -204,8 +245,10 @@ describe("post-transfer-pair", () => {
         ),
         fakeRes(),
       );
-      const [, values] = mockQuery.mock.calls[0];
-      expect(values?.[1]).toBe("u-A");
+      const insertCall = mockQuery.mock.calls.find((c) =>
+        /INSERT INTO transaction_pairs/i.test(c[0] as string),
+      )!;
+      expect((insertCall[1] as unknown[])[1]).toBe("u-A");
     });
   });
 });
