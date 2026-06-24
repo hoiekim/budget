@@ -100,11 +100,14 @@ export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]
  *     appear in at most one active confirmed pair.
  *   - ALLOW re-pairing a previously-rejected `(a, b)` — the ON CONFLICT
  *     branch un-rejects.
- *   - On successful upsert, soft-delete any OTHER active SUGGESTED pair
- *     that involves either `a` or `b`. The user's explicit pairing
- *     supersedes any open engine suggestion for those transactions.
- *     Rejection records (status='rejected') stay intact — they're the
- *     denylist that the engine reads.
+ *   - On successful upsert, REJECT (status='rejected') any OTHER active
+ *     SUGGESTED pair that involves either `a` or `b`. The user's
+ *     explicit pairing is an implicit "the other engine guesses for
+ *     these transactions are wrong" — flipping them to 'rejected'
+ *     persists that intent through the engine's per-pair denylist on
+ *     future runs. Consistent with transaction labeling: confirming
+ *     one category implicitly rejects the engine's other category
+ *     guesses, and the engine remembers.
  */
 export const pairTransactions = async (
   user: MaskedUser,
@@ -186,12 +189,28 @@ export const pairTransactions = async (
 
     const effectivePairId = result.rows[0].pair_id;
 
-    // Cleanup: soft-delete any OTHER active SUGGESTED pair involving either
-    // of these transactions. The user's manual pair (or re-pair) supersedes
-    // any open engine suggestion. Rejection records stay intact.
+    // Cleanup: REJECT any OTHER active SUGGESTED pair involving either of
+    // these transactions. The user's manual pair (or re-pair) is an
+    // explicit "this is the right pairing" — any other engine suggestion
+    // for the same transactions is implicitly the wrong pairing. We mark
+    // those `status='rejected'` so the engine's per-pair denylist
+    // (`fetchCandidates`'s second NOT EXISTS) won't re-suggest them on
+    // a future run, even if the new confirmed pair is later unpaired.
+    //
+    // Consistent with transaction labeling: when the user labels a
+    // transaction as a specific category, that's an implicit rejection
+    // of the engine's other category guesses — and the suggestion engine
+    // remembers it. Same model here.
+    //
+    // Use `status='rejected'` not `is_deleted=TRUE`. Soft-delete is the
+    // SYSTEM-side cascade for when a referenced transaction itself is
+    // removed (Plaid tombstone, manual delete); the per-pair denylist
+    // does NOT apply to soft-deleted rows, so the engine could re-emit
+    // the same pair later. Rejection is the persistent USER-intent
+    // denylist that survives.
     await client.query(
       `UPDATE ${TRANSACTION_PAIRS}
-       SET ${IS_DELETED} = TRUE, updated = CURRENT_TIMESTAMP
+       SET ${STATUS} = 'rejected', updated = CURRENT_TIMESTAMP
        WHERE ${USER_ID} = $1
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
          AND ${STATUS} = 'suggested'
@@ -226,9 +245,10 @@ export const pairTransactions = async (
  *     active confirmed pair per transaction" — confirming the stale
  *     `(A, B)` suggestion while `(A, C)` is already confirmed would
  *     violate that.
- *   - On successful confirm, soft-delete any OTHER active SUGGESTED pair
- *     involving the pair's transactions (engine-generated alternatives
- *     for either half supersede when the user commits this one).
+ *   - On successful confirm, REJECT (status='rejected') any OTHER active
+ *     SUGGESTED pair involving the pair's transactions (engine-generated
+ *     alternatives for either half are now wrong, and the engine's
+ *     per-pair denylist remembers).
  */
 export const confirmTransferPair = async (
   user: MaskedUser,
@@ -294,11 +314,15 @@ export const confirmTransferPair = async (
       [pair_id, user.user_id],
     );
 
-    // Cleanup: soft-delete any OTHER active SUGGESTED pair involving the
-    // pair's transactions. Rejection records stay intact.
+    // Cleanup: REJECT any OTHER active SUGGESTED pair involving the
+    // pair's transactions. Same intent + mechanism as `pairTransactions`
+    // above — confirming this pair implicitly rejects any other engine
+    // suggestion for these transactions, and the engine's per-pair
+    // denylist remembers the rejection persistently. Existing rejected
+    // rows stay rejected (the filter scopes to `status='suggested'`).
     await client.query(
       `UPDATE ${TRANSACTION_PAIRS}
-       SET ${IS_DELETED} = TRUE, updated = CURRENT_TIMESTAMP
+       SET ${STATUS} = 'rejected', updated = CURRENT_TIMESTAMP
        WHERE ${USER_ID} = $1
          AND ${PAIR_ID} <> $2
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)

@@ -260,21 +260,27 @@ describe("pairTransactions", () => {
     );
   });
 
-  test("cleanup UPDATE soft-deletes other suggested pairs involving these txns", async () => {
+  test("cleanup UPDATE flips other suggested pairs to status='rejected'", async () => {
     stagePairOk("pair-new");
     await pairTransactions(mockUser as never, "tx-a", "tx-b");
     const cleanupCall = mockQuery.mock.calls.find((c) => {
       const sql = c[0] as string;
-      return /UPDATE transaction_pairs[\s\S]*is_deleted = TRUE/i.test(sql)
+      // Cleanup UPDATE: SET status='rejected' WHERE status='suggested'.
+      // The WHERE filter scopes to 'suggested' (so existing rejected
+      // rows stay rejected); the SET sets status='rejected'.
+      return /UPDATE transaction_pairs[\s\S]*SET\s+status\s*=\s*'rejected'/i.test(sql)
         && /status = 'suggested'/i.test(sql);
     })!;
     expect(cleanupCall).toBeDefined();
     const sql = cleanupCall[0] as string;
     // Must scope to the user, exclude the just-created pair_id, and only
-    // touch 'suggested' rows (NOT 'rejected' denylist records).
+    // flip 'suggested' → 'rejected' (NOT touch 'rejected' / 'confirmed').
     expect(sql).toMatch(/pair_id <> \$2/);
     expect(sql).toMatch(/status = 'suggested'/);
-    expect(sql).not.toMatch(/status = 'rejected'/);
+    // The cleanup uses status='rejected', not is_deleted=TRUE. Soft-delete
+    // is the SYSTEM cascade for removed transactions; rejection is the
+    // persistent USER-intent denylist.
+    expect(sql).not.toMatch(/is_deleted\s*=\s*TRUE/i);
   });
 });
 
@@ -392,19 +398,19 @@ describe("confirmTransferPair", () => {
     expect(lookupCall[0] as string).toMatch(/status <> 'rejected'/i);
   });
 
-  test("cleanup UPDATE soft-deletes other suggested pairs involving the confirmed pair's txns", async () => {
+  test("cleanup UPDATE flips other suggested pairs to status='rejected'", async () => {
     stageConfirmOk("tx-a", "tx-b");
     await confirmTransferPair(mockUser as never, "pair-1");
     const cleanupCall = mockQuery.mock.calls.find((c) => {
       const sql = c[0] as string;
-      return /UPDATE transaction_pairs[\s\S]*is_deleted = TRUE/i.test(sql)
+      return /UPDATE transaction_pairs[\s\S]*SET\s+status\s*=\s*'rejected'/i.test(sql)
         && /status = 'suggested'/i.test(sql);
     })!;
     expect(cleanupCall).toBeDefined();
     const sql = cleanupCall[0] as string;
     expect(sql).toMatch(/pair_id <> \$2/);
     expect(sql).toMatch(/status = 'suggested'/);
-    expect(sql).not.toMatch(/status = 'rejected'/);
+    expect(sql).not.toMatch(/is_deleted\s*=\s*TRUE/i);
   });
 });
 
