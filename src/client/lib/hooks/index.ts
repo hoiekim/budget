@@ -6,3 +6,4 @@ export * from "./sync";
 export * from "./transfers";
 export * from "./sorter";
 export * from "./reorder";
+export * from "./useVooHistory";

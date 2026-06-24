@@ -68,7 +68,7 @@ const cashSecurityIdsForAccount = (
 };
 
 /**
- * Build the external-flow stream from a user's investment transactions.
+ * Per-security external-flow streams from a user's investment transactions.
  *
  * **Cash-excluded model:** an "external flow" is any movement of money
  * into or out of the *asset side* of the portfolio. That maps onto Plaid's
@@ -80,15 +80,18 @@ const cashSecurityIdsForAccount = (
  *     `buy`/`sell` on cash-shape securities) → skipped. Those are cash-side
  *     events and we're not tracking cash.
  *
- * Same-day flows for the same account are summed.
+ * Same-day flows for the same (account, security) are summed. The returned
+ * map is keyed by `security_id`, each value date-sorted ascending. Used by
+ * `extractCashFlows` (account-wide MWR) and the per-holding S&P 500
+ * benchmark column (#317), which needs flows scoped to one ticker bucket.
  */
-export const extractCashFlows = (
+export const extractCashFlowsBySecurity = (
   investmentTransactions: InvestmentTransactionDictionary,
   holdingSnapshots: HoldingSnapshotDictionary,
   accountId: string,
-): CashFlow[] => {
+): Map<string, CashFlow[]> => {
   const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
-  const flowsByDate = new Map<string, number>();
+  const bySecDate = new Map<string, Map<string, number>>();
 
   investmentTransactions.forEach((t) => {
     if (t.account_id !== accountId) return;
@@ -99,7 +102,42 @@ export const extractCashFlows = (
 
     const date = t.date.slice(0, 10);
     const signed = t.type === InvestmentTransactionType.Buy ? t.amount : -Math.abs(t.amount);
-    flowsByDate.set(date, (flowsByDate.get(date) ?? 0) + signed);
+    const byDate = bySecDate.get(t.security_id) ?? new Map<string, number>();
+    byDate.set(date, (byDate.get(date) ?? 0) + signed);
+    bySecDate.set(t.security_id, byDate);
+  });
+
+  const out = new Map<string, CashFlow[]>();
+  bySecDate.forEach((byDate, securityId) => {
+    out.set(
+      securityId,
+      Array.from(byDate.entries())
+        .map(([date, amount]) => ({ date, amount }))
+        .sort((a, b) => (a.date < b.date ? -1 : 1)),
+    );
+  });
+  return out;
+};
+
+/**
+ * Account-wide external-flow stream — the per-security flows from
+ * `extractCashFlowsBySecurity` merged across all (optionally filtered)
+ * securities, summing same-day amounts. `securityIds`, when given, keeps
+ * only flows for those securities (the per-bucket benchmark passes a
+ * ticker bucket's security_ids).
+ */
+export const extractCashFlows = (
+  investmentTransactions: InvestmentTransactionDictionary,
+  holdingSnapshots: HoldingSnapshotDictionary,
+  accountId: string,
+  securityIds?: ReadonlySet<string>,
+): CashFlow[] => {
+  const bySec = extractCashFlowsBySecurity(investmentTransactions, holdingSnapshots, accountId);
+  const flowsByDate = new Map<string, number>();
+
+  bySec.forEach((flows, securityId) => {
+    if (securityIds && !securityIds.has(securityId)) return;
+    for (const f of flows) flowsByDate.set(f.date, (flowsByDate.get(f.date) ?? 0) + f.amount);
   });
 
   return Array.from(flowsByDate.entries())
@@ -426,4 +464,106 @@ export const findBenchmarkSecurityId = (
     if (snap.security.ticker_symbol === ticker) found = snap.security.security_id;
   });
   return found;
+};
+
+/** One daily close from the static benchmark history CSV. */
+export interface PriceRow {
+  date: string;
+  close: number;
+}
+
+/**
+ * Latest close ≤ `date` in a date-sorted (ascending) price series. Mirrors
+ * the snapshot `priceAt` walk; returns null when the series is empty or
+ * every entry postdates `date`.
+ */
+export const priceAtIn = (history: PriceRow[], date: string): number | null => {
+  if (history.length === 0) return null;
+  let best: number | null = null;
+  for (const r of history) {
+    if (r.date <= date) best = r.close;
+    else break;
+  }
+  return best;
+};
+
+/**
+ * Benchmark price lookup with the standard fallback chain:
+ * `security_snapshots` (Plaid daily close, including Polygon-resolved
+ * backfills) first, static CSV history (`vooHistory`) for the long
+ * historical tail. Returns null when neither source has a price ≤ date.
+ *
+ * Shared by `PerformanceBenchmark` (window TWR) and the Holdings
+ * Composition S&P 500 benchmark column (#317).
+ */
+export const buildBenchmarkPriceAt = (
+  securitySnapshots: SecuritySnapshotDictionary,
+  vooHistory: PriceRow[] | null,
+  ticker = "VOO",
+) => {
+  const benchmarkSecurityId = findBenchmarkSecurityId(securitySnapshots, ticker);
+  const snapPriceAt = buildSnapshotPriceAt(securitySnapshots);
+  return (date: string): number | null => {
+    if (benchmarkSecurityId) {
+      const snap = snapPriceAt(benchmarkSecurityId, date);
+      if (snap != null) return snap;
+    }
+    if (vooHistory && vooHistory.length > 0) {
+      const csv = priceAtIn(vooHistory, date);
+      if (csv != null) return csv;
+    }
+    return null;
+  };
+};
+
+export interface HoldingBenchmarkResult {
+  /** Hypothetical absolute G/L: hypotheticalValue − Σ contributed. */
+  gain: number;
+  /** Hypothetical %-return on the contributed dollars (gain / Σ × 100). */
+  returnPercent: number;
+}
+
+/**
+ * Dynamic-distribution S&P 500 benchmark for a single holding bucket (#317).
+ *
+ * Each contribution `(dateᵢ, amountᵢ)` — buy = +amount, sell = −amount — is
+ * re-priced forward at the index's return from its *own* date to `asOf`:
+ *
+ *   hypotheticalValue = Σ amountᵢ × price(asOf) / price(dateᵢ)
+ *   gain              = hypotheticalValue − Σ amountᵢ
+ *   returnPercent     = gain / Σ amountᵢ × 100
+ *
+ * No averaging of cost basis or contribution dates — uneven contributions
+ * are each tracked at their own date, so the answer reflects *when* the
+ * money went in, matching the holding's own money-weighted experience.
+ *
+ * Returns null when:
+ *   - there are no contributions, or
+ *   - net contributed ≤ 0 (can't express a %-return on a zero/negative
+ *     basis — e.g. a fully-closed position), or
+ *   - any contribution date (or `asOf`) has no index price available.
+ */
+export const computeHoldingBenchmark = (params: {
+  contributions: CashFlow[];
+  asOf: string;
+  benchmarkPriceAt: (date: string) => number | null;
+}): HoldingBenchmarkResult | null => {
+  const { contributions, asOf, benchmarkPriceAt } = params;
+  if (contributions.length === 0) return null;
+
+  const priceEnd = benchmarkPriceAt(asOf);
+  if (priceEnd == null || priceEnd <= 0) return null;
+
+  let hypothetical = 0;
+  let net = 0;
+  for (const c of contributions) {
+    const priceStart = benchmarkPriceAt(c.date);
+    if (priceStart == null || priceStart <= 0) return null;
+    hypothetical += c.amount * (priceEnd / priceStart);
+    net += c.amount;
+  }
+  if (net <= 0) return null;
+
+  const gain = hypothetical - net;
+  return { gain, returnPercent: (gain / net) * 100 };
 };
