@@ -5,10 +5,14 @@ import { call, Data, TransferDictionary, indexedDb, StoreName, useAppContext } f
 export interface TransferActions {
   /** Confirm a suggested pair: status flips to "confirmed". */
   confirm: (pair_id: string) => Promise<void>;
-  /** Reject a suggested pair: soft-deletes it so the row reverts. */
+  /** Reject a suggested pair: server flips it to `status='rejected'`
+   *  (the row persists as the engine's per-pair denylist signal so the
+   *  same pair isn't re-suggested on future runs). FE removes it from
+   *  the local transfers dictionary. */
   reject: (pair_id: string) => Promise<void>;
-  /** Unpair a confirmed pair (same delete path as reject, just
-   *  semantically named for the "mark as non-transfer" affordance). */
+  /** Unpair a confirmed pair (same route as reject — flips the row to
+   *  status='rejected', not soft-delete — semantically named for the
+   *  "mark as non-transfer" affordance). */
   unpair: (pair_id: string) => Promise<void>;
   /** Manually pair two transactions as a confirmed transfer. Used by
    *  the "Mark as Transfer" affordance for cases where (a) the user
