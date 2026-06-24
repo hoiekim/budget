@@ -242,6 +242,36 @@ export const runTransferDetection = async (): Promise<void> => {
           });
         }
 
+        // Pre-step 2: backfill cleanup for hidden-account pairs left over
+        // from before #541's hidden-account exclusion landed.
+        // `fetchCandidates` now excludes hidden accounts at the source so
+        // no NEW such pairs get created, but legacy rows (recurring
+        // monthly suggestions involving hidden duplicate-data accounts)
+        // still surface as live suggestions in the FE. Soft-delete them:
+        // these are duplicate-data-shadow pairs the user never intended;
+        // the visible-account pair is the real one. Same mechanism as
+        // the stale-pair cleanup above — system-side cascade
+        // (`is_deleted=TRUE`), not user-intent rejection.
+        const hiddenPairCleanup = await client.query(
+          `UPDATE transaction_pairs tp
+           SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+           WHERE tp.user_id = $1
+             AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
+             AND EXISTS (
+               SELECT 1 FROM transactions t
+               JOIN accounts a ON a.account_id = t.account_id
+               WHERE t.transaction_id IN (tp.transaction_id_a, tp.transaction_id_b)
+                 AND COALESCE(a.hide, FALSE) = TRUE
+             )`,
+          [userId],
+        );
+        if ((hiddenPairCleanup.rowCount ?? 0) > 0) {
+          logger.info("Cleaned hidden-account transfer pairs", {
+            userId,
+            count: hiddenPairCleanup.rowCount,
+          });
+        }
+
         const candidates = await fetchCandidates(userId, client);
         if (candidates.length === PER_USER_CANDIDATE_LIMIT) {
           // The LIMIT just truncated the candidate set; the highest-
