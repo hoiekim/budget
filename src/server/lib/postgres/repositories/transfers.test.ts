@@ -143,6 +143,8 @@ function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
   // advisory lock
   mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+  // existence pre-check — both alive
+  mockQuery.mockResolvedValueOnce({ rows: [{ a_alive: true, b_alive: true }], rowCount: 1 });
   // collision SELECT
   mockQuery.mockResolvedValueOnce({ rows: collisionRows, rowCount: collisionRows.length });
   // INSERT ... RETURNING
@@ -161,9 +163,25 @@ function stagePairCollision(collidingPairId: string) {
   mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
   // advisory lock
   mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+  // existence pre-check — both alive
+  mockQuery.mockResolvedValueOnce({ rows: [{ a_alive: true, b_alive: true }], rowCount: 1 });
   // collision SELECT returns a colliding row → triggers ROLLBACK
   mockQuery.mockResolvedValueOnce({
     rows: [{ pair_id: collidingPairId }],
+    rowCount: 1,
+  });
+  // ROLLBACK
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+}
+
+function stagePairMissingTransaction(whichAlive: { a: boolean; b: boolean }) {
+  // BEGIN
+  mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  // advisory lock
+  mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+  // existence pre-check returns at least one not-alive → triggers ROLLBACK
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ a_alive: whichAlive.a, b_alive: whichAlive.b }],
     rowCount: 1,
   });
   // ROLLBACK
@@ -178,8 +196,8 @@ describe("pairTransactions", () => {
     const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.pair_id).toBe("pair-new");
-    // BEGIN + lock + collision + INSERT + cleanup + COMMIT = 6 calls.
-    expect(mockQuery).toHaveBeenCalledTimes(6);
+    // BEGIN + lock + existence + collision + INSERT + cleanup + COMMIT = 7 calls.
+    expect(mockQuery).toHaveBeenCalledTimes(7);
     const insertCall = mockQuery.mock.calls.find((c) =>
       /INSERT INTO transaction_pairs/i.test(c[0] as string),
     );
@@ -223,6 +241,31 @@ describe("pairTransactions", () => {
       /INSERT INTO transaction_pairs/i.test(c[0] as string),
     )!;
     expect(insertCall[1] as unknown[]).toContain("confirmed");
+  });
+
+  test("rejects when transaction a is missing (soft-deleted or not user's)", async () => {
+    stagePairMissingTransaction({ a: false, b: true });
+    const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/no longer exist/i);
+    }
+    // No INSERT should fire.
+    expect(
+      mockQuery.mock.calls.some((c) => /INSERT INTO transaction_pairs/i.test(c[0] as string)),
+    ).toBe(false);
+    // ROLLBACK fired.
+    expect(mockQuery.mock.calls.some((c) => /^ROLLBACK$/i.test(c[0] as string))).toBe(true);
+  });
+
+  test("rejects when transaction b is missing", async () => {
+    stagePairMissingTransaction({ a: true, b: false });
+    const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/no longer exist/i);
+    expect(
+      mockQuery.mock.calls.some((c) => /INSERT INTO transaction_pairs/i.test(c[0] as string)),
+    ).toBe(false);
   });
 
   test("rejects when one transaction is already in another active confirmed pair", async () => {

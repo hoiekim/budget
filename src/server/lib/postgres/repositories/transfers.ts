@@ -137,6 +137,32 @@ export const pairTransactions = async (
       user.user_id,
     ]);
 
+    // Existence pre-check: BOTH transactions must exist and be alive
+    // (`is_deleted = FALSE`). Without this, a race with concurrent
+    // `deleteTransactions(A)` could create a confirmed pair referencing
+    // a soft-deleted transaction — invisible to FE (getTransferPairs
+    // JOINs WHERE transactions.is_deleted=FALSE), but the DB row is in
+    // an inconsistent state until the engine's stale-pair-cleanup
+    // catches it. Two existence checks in one round-trip.
+    const existence = await client.query<{ a_alive: boolean; b_alive: boolean }>(
+      `SELECT
+         EXISTS (SELECT 1 FROM ${TRANSACTIONS}
+                 WHERE ${TRANSACTION_ID} = $2 AND ${USER_ID} = $1
+                   AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)) AS a_alive,
+         EXISTS (SELECT 1 FROM ${TRANSACTIONS}
+                 WHERE ${TRANSACTION_ID} = $3 AND ${USER_ID} = $1
+                   AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)) AS b_alive`,
+      [user.user_id, canonical.transaction_id_a, canonical.transaction_id_b],
+    );
+    if (!existence.rows[0]?.a_alive || !existence.rows[0]?.b_alive) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          "One or both transactions no longer exist (deleted or never belonged to this user).",
+      };
+    }
+
     // Collision pre-check: is EITHER transaction in another active confirmed
     // pair with a different counterparty? If so, refuse — confirming would
     // put the transaction in two simultaneous confirmed pairs.

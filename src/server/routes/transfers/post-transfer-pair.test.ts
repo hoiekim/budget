@@ -169,11 +169,15 @@ describe("post-transfer-pair", () => {
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
-    // `pairTransactions` now runs in a DB transaction: BEGIN, advisory
-    // lock, collision SELECT, INSERT, cleanup UPDATE, COMMIT.
+    // `pairTransactions` runs in a DB transaction: BEGIN, advisory lock,
+    // existence pre-check, collision SELECT, INSERT, cleanup UPDATE, COMMIT.
     function stagePairOk(insertPairId: string) {
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
       mockQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ a_alive: true, b_alive: true }],
+        rowCount: 1,
+      }); // existence pre-check
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
       mockQuery.mockResolvedValueOnce({
         rows: [{ pair_id: insertPairId }],
