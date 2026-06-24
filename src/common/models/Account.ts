@@ -70,6 +70,20 @@ export interface JSONAccount extends PlaidAccount {
    */
   hide: boolean;
   /**
+   * User-set flag for "keep this account's history but hide it from the
+   * Accounts page by default" — typically used for expired cards or closed
+   * accounts whose historical transactions are still meaningful for budget
+   * calculation. Distinct from `hide` (which is the duplicate-data-shadow
+   * flag for Plaid's multi-account-id products). Budget/balance/sankey
+   * calc ignores this flag; it's FE-visibility only.
+   *
+   * Optional: legacy account rows from before the column existed return
+   * `undefined`; sync paths that construct fresh `JSONAccount` from Plaid
+   * data don't pre-set it. Reader sites should treat `undefined` as
+   * `false`.
+   */
+  archived?: boolean;
+  /**
    * Represents relations by budget_id.
    */
   label: AccountLabel;

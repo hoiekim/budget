@@ -18,7 +18,7 @@ import { ChangeEventHandler, MouseEventHandler, useEffect, useState } from "reac
 import { AccountPostResponse, SnapshotPostResponse } from "server";
 
 export const useAccountEventHandlers = (account: Account, cursorAmount?: number) => {
-  const { account_id, custom_name, type, label, hide, graphOptions, balances } = account;
+  const { account_id, custom_name, type, label, hide, archived, graphOptions, balances } = account;
 
   const { data, setData, viewDate, router } = useAppContext();
 
@@ -46,6 +46,7 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
   const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(label.budget_id || "");
 
   const [isHidden, setIsHidden] = useState(hide);
+  const [isArchived, setIsArchived] = useState(archived ?? false);
   const [useTransactionsForGraph, setUseTransactionsForGraph] = useState(
     graphOptions?.useTransactions,
   );
@@ -138,6 +139,37 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
       .catch((error) => {
         console.error("Failed to update account visibility:", error);
         setIsHidden(previousValue);
+      });
+  };
+
+  const onClickArchive: ChangeEventHandler<HTMLInputElement> = (e) => {
+    e.stopPropagation();
+    const { checked } = e.target;
+    const previousValue = isArchived;
+    setIsArchived(checked);
+    if (!account_id) return;
+    call
+      .post("/api/account", { account_id, archived: checked })
+      .then((r) => {
+        if (r.status === "success") {
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const existingAccount = newData.accounts.get(account_id);
+            if (!existingAccount) return oldData;
+            const newAccount = new Account({ ...existingAccount, archived: checked });
+            indexedDb.save(newAccount).catch(console.error);
+            const newAccounts = new AccountDictionary(newData.accounts);
+            newAccounts.set(account_id, newAccount);
+            newData.accounts = newAccounts;
+            return newData;
+          });
+        } else {
+          setIsArchived(previousValue);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to update account archived state:", error);
+        setIsArchived(previousValue);
       });
   };
 
@@ -358,6 +390,8 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
     onChangeBudgetSelect,
     isHidden,
     onClickHide,
+    isArchived,
+    onClickArchive,
     useTransactionsForGraph,
     onClickUseTransactionsForGraph,
     useSnapshotsForGraph,

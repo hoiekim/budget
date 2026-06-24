@@ -44,6 +44,8 @@ export const AccountProperties = ({ account }: Props) => {
     onChangeBudgetSelect,
     isHidden,
     onClickHide,
+    isArchived,
+    onClickArchive,
     useTransactionsForGraph,
     onClickUseTransactionsForGraph,
     useSnapshotsForGraph,
@@ -211,6 +213,10 @@ export const AccountProperties = ({ account }: Props) => {
             <div className="row keyValue">
               <span className="propertyName">Hide</span>
               <ToggleInput checked={isHidden} onChange={onClickHide} />
+            </div>
+            <div className="row keyValue">
+              <span className="propertyName">Archive</span>
+              <ToggleInput checked={isArchived} onChange={onClickArchive} />
             </div>
           </div>
         </>
