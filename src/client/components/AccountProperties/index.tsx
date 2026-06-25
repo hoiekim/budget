@@ -212,7 +212,16 @@ export const AccountProperties = ({ account }: Props) => {
             </div>
             <div className="row keyValue">
               <span className="propertyName">Archive</span>
-              <ToggleInput checked={isArchived} onChange={onClickArchive} />
+              {/* Hide already removes the account from view entirely; archiving
+               *  on top adds nothing and would surface in "Show archived (N)"
+               *  even though the user's already hidden the row. Disable to
+               *  steer the user toward Unhide first if they want a different
+               *  classification. Hoie 2026-06-25. */}
+              <ToggleInput
+                checked={isArchived}
+                onChange={onClickArchive}
+                disabled={isHidden}
+              />
             </div>
             <div className="row keyValue">
               <span className="propertyName">Hide</span>
