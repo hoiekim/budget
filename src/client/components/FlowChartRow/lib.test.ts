@@ -1,4 +1,7 @@
+// Run with: bun test --preload ./scripts/test-preload.ts lib.test.ts
 import { describe, test, expect } from "bun:test";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+
 import { LocalDate, ViewDate } from "common";
 import { getSankeyData, SankeyColumn } from "./lib";
 import {
@@ -16,6 +19,7 @@ import { Budget } from "../../lib/models/Budget";
 import { Section } from "../../lib/models/Section";
 import { Category } from "../../lib/models/Category";
 import { Transaction } from "../../lib/models/Transaction";
+import { InvestmentTransaction } from "../../lib/models/InvestmentTransaction";
 import { SplitTransaction } from "../../lib/models/SplitTransaction";
 import type { TransferPair } from "server";
 
@@ -193,5 +197,125 @@ describe("getSankeyData — split re-labeling (#534)", () => {
     } finally {
       globalData.transactions = new TransactionDictionary();
     }
+  });
+});
+
+const INV_ACCT = "inv-acc-1";
+const invViewDate = new ViewDate("month", new LocalDate("2026-02-15")); // Feb 2026
+const invAccount = new Account({ account_id: INV_ACCT, name: "Brokerage" });
+
+// `quantity` is intentionally varied in sign across tests to prove the
+// polarity is derived from `type`, not from the stored sign of quantity.
+const mkInvestment = (
+  type: InvestmentTransactionType,
+  quantity: number,
+  price: number,
+): InvestmentTransaction =>
+  new InvestmentTransaction({
+    account_id: INV_ACCT,
+    type,
+    subtype: InvestmentTransactionSubtype.Buy,
+    quantity,
+    price,
+    amount: price * quantity,
+    date: "2026-02-15",
+  });
+
+const buildInvDicts = (itxns: InvestmentTransaction[], txns: Transaction[] = []) => {
+  const investmentTransactions = new InvestmentTransactionDictionary();
+  itxns.forEach((t) => investmentTransactions.set(t.id, t));
+  const transactions = new TransactionDictionary();
+  txns.forEach((t) => transactions.set(t.id, t));
+  return {
+    investmentTransactions,
+    transactions,
+    budgets: new BudgetDictionary(),
+    sections: new SectionDictionary(),
+    categories: new CategoryDictionary(),
+  };
+};
+
+const runInv = (d: ReturnType<typeof buildInvDicts>) =>
+  getSankeyData(
+    [invAccount],
+    d.transactions,
+    d.investmentTransactions,
+    new SplitTransactionDictionary(),
+    d.budgets,
+    d.sections,
+    d.categories,
+    invViewDate,
+    noTransfers,
+  );
+
+describe("getSankeyData — investment cash-flow polarity", () => {
+  test("a BUY is cash out → counted as expense, not income", () => {
+    // buy: price·quantity = +1000 cash leaving the account
+    const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Buy, 10, 100)]));
+    expect(tableData.expense).toBe(1000);
+    expect(tableData.income).toBe(0);
+  });
+
+  test("a SELL is cash in → counted as income, not expense", () => {
+    // sell: price·quantity = -800 cash entering the account
+    const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Sell, -8, 100)]));
+    expect(tableData.income).toBe(800);
+    expect(tableData.expense).toBe(0);
+  });
+
+  test("buys and sells net to the correct Surplus/Deficit verdict", () => {
+    // 1000 bought (out) vs 800 sold (in) → net 200 deficit, not a surplus
+    const { tableData } = runInv(
+      buildInvDicts([
+        mkInvestment(InvestmentTransactionType.Buy, 10, 100),
+        mkInvestment(InvestmentTransactionType.Sell, -8, 100),
+      ]),
+    );
+    expect(tableData.expense).toBe(1000);
+    expect(tableData.income).toBe(800);
+    expect(tableData.expense - tableData.income).toBe(200); // deficit
+  });
+
+  // Sign-based detection (Hoie, PR #514): polarity follows `type`, not the
+  // stored sign of `quantity`. A buy with a negative quantity is still cash
+  // out (expense); a sell with a positive quantity is still cash in (income).
+  test("a BUY with a negative quantity is still an expense (sign from type, not quantity)", () => {
+    const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Buy, -10, 100)]));
+    expect(tableData.expense).toBe(1000);
+    expect(tableData.income).toBe(0);
+  });
+
+  test("a SELL with a positive quantity is still income (sign from type, not quantity)", () => {
+    const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Sell, 8, 100)]));
+    expect(tableData.income).toBe(800);
+    expect(tableData.expense).toBe(0);
+  });
+
+  // Only buy/sell are external cash flow. A `transfer` (or cash/fee/dividend)
+  // row is internal movement and must NOT contribute — even when it carries a
+  // nonzero price·quantity. This is the benchmark.ts "count only Buy/Sell"
+  // convention; without the type gate a transfer's magnitude would inflate a
+  // column (reviewoie HIGH on PR #514).
+  test("a non-buy/sell investment type (transfer) with nonzero price·quantity is skipped", () => {
+    const { tableData, graphData } = runInv(
+      buildInvDicts([mkInvestment(InvestmentTransactionType.Transfer, 4875, 1)]),
+    );
+    expect(tableData.income).toBe(0);
+    expect(tableData.expense).toBe(0);
+    // No Surplus/Deficit node either — nothing flowed.
+    expect(graphData.every((col) => col.length === 0)).toBe(true);
+  });
+
+  test("regular transactions keep their convention (positive amount = expense)", () => {
+    const regular = new Transaction({
+      transaction_id: "t-reg",
+      account_id: INV_ACCT,
+      amount: 50,
+      date: "2026-02-10",
+      authorized_date: "2026-02-10",
+    });
+    const { tableData } = runInv(buildInvDicts([], [regular]));
+    expect(tableData.expense).toBe(50);
+    expect(tableData.income).toBe(0);
   });
 });
