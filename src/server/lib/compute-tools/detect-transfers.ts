@@ -1,3 +1,4 @@
+import { TRANSFER_DATE_WINDOW_DAYS } from "common";
 import { pool, logger, usersTable } from "server";
 import { canonicalizePairIds } from "../postgres/models";
 
@@ -5,7 +6,8 @@ const BASE_CONFIDENCE = 0.7;
 const PLAID_TRANSFER_BOOST = 0.2;
 const SAME_DAY_BOOST = 0.1;
 const SUGGEST_THRESHOLD = 0.7;
-const DATE_WINDOW_DAYS = 7;
+// Re-exported under the local name kept in the SQL comments + JSDoc.
+const DATE_WINDOW_DAYS = TRANSFER_DATE_WINDOW_DAYS;
 const PER_USER_CANDIDATE_LIMIT = 500;
 
 export interface DetectionCandidate {
