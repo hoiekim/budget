@@ -49,6 +49,13 @@ export interface ClientRouter {
     incomingParams: URLSearchParams;
     transitioning: boolean;
     direction: TransitionDirection | undefined;
+    /**
+     * Vertical offset applied to the slide-in / slide-out panels during
+     * a forward/backward transition so both pages visually share the
+     * outgoing scroll position. Snapshots `window.scrollY` at transition
+     * start and resets to 0 when the new page's saved scroll is restored.
+     */
+    slideAnchorY: number;
   };
   go: (path: PATH, options?: GoOptions) => void;
   forward: (options?: NavigateOptions) => void;
@@ -66,6 +73,23 @@ export interface NavigateOptions {
 export const DEFAULT_TRANSITION_DURATION = 300;
 
 let isRouterRegistered = false;
+
+/**
+ * Per-(path+params) scroll memory. Survives in-session navigation
+ * (module-level Map, like `stateMemory` in `cache.ts`) but NOT page
+ * reload. Key is the URL minus the leading slash, so each filter combo
+ * has its own scroll position (e.g. `/transactions?budget_id=X` and
+ * `/transactions?budget_id=Y` track independently).
+ *
+ * Reset to 0 if no entry is present, matching the historical behavior
+ * of always-scroll-to-top.
+ */
+export const scrollMemory = new Map<string, number>();
+
+export const getScrollKey = (path: PATH, params?: URLSearchParams): string => {
+  const paramString = params?.toString();
+  return path + (paramString ? "?" + paramString : "");
+};
 
 const getPath = () => {
   const locationPath = window.location.pathname.split("/")[1];
@@ -103,6 +127,7 @@ export const useRouter = (): ClientRouter => {
   const [params, setParams] = useState(getParams());
   const [incomingParams, setIncomingParams] = useState(getParams());
   const [direction, setDirection] = useState<TransitionDirection>("forward");
+  const [slideAnchorY, setSlideAnchorY] = useState(0);
 
   const isAnimationEnabled = useRef(false);
 
@@ -110,13 +135,34 @@ export const useRouter = (): ClientRouter => {
 
   const transition = useCallback(
     (newPath: PATH, newParams: URLSearchParams) => {
+      // Snapshot OUTGOING scroll position from window.location BEFORE
+      // pushState mutates it (caller invokes pushState after transition
+      // returns). The current URL is still the outgoing one here.
+      const outgoingPath = getPath();
+      const outgoingParams = getParams();
+      const outgoingScrollY = window.scrollY;
+      scrollMemory.set(getScrollKey(outgoingPath, outgoingParams), outgoingScrollY);
+
+      // Set the slide-anchor offset: during the horizontal slide, both
+      // pages share the same vertical position so the user doesn't see
+      // a jump-to-top jolt before the slide-in completes.
+      setSlideAnchorY(outgoingScrollY);
+
       setIncomingPath(newPath);
       setIncomingParams(newParams);
 
       const endTransition = () => {
-        window.scrollTo(0, 0);
+        // Restore INCOMING scroll position (or 0 if never visited).
+        // `requestAnimationFrame` so the new page's content has a
+        // chance to commit to the DOM before we set scrollTop —
+        // otherwise scrollTo silently no-ops on a short page.
+        const restoredY = scrollMemory.get(getScrollKey(newPath, newParams)) ?? 0;
         setPath(newPath);
         setParams(newParams);
+        requestAnimationFrame(() => {
+          window.scrollTo(0, restoredY);
+          setSlideAnchorY(0);
+        });
         isAnimationEnabled.current = false;
       };
 
@@ -173,6 +219,7 @@ export const useRouter = (): ClientRouter => {
       incomingParams,
       transitioning: incomingPath !== path,
       direction: incomingPath !== path ? direction : undefined,
+      slideAnchorY,
     },
     go,
     forward,

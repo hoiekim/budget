@@ -41,13 +41,24 @@ const getPage = (path: string) => {
 const Router = () => {
   const { user, router, status, screenType } = useAppContext();
   const { path, transition } = router;
-  const { incomingPath, transitioning, direction } = transition;
+  const { incomingPath, transitioning, direction, slideAnchorY } = transition;
 
   const classNames = ["Router"];
   if (transitioning && direction) classNames.push("transitioning", direction);
 
   const currentPage = useMemo(() => getPage(path), [path]);
   const incomingPage = useMemo(() => getPage(incomingPath), [incomingPath]);
+
+  // During the horizontal slide animation, the previousPage / nextPage
+  // panels are `position: fixed; top: 0`, so they default to showing
+  // their content from y=0 — which visually jolts a user who was
+  // scrolled down on the outgoing page. Shifting their `top` by
+  // `-slideAnchorY` anchors them at the outgoing's scroll position so
+  // both pages slide horizontally without a vertical jump. After
+  // `endTransition` restores the incoming page's own saved scroll,
+  // `slideAnchorY` resets to 0 — the now-`currentPage` (relative-
+  // positioned) is in normal flow, ignoring this style.
+  const slidePanelStyle = transitioning ? { top: -slideAnchorY } : undefined;
 
   if (path === PATH.LOGIN) {
     return (
@@ -60,13 +71,15 @@ const Router = () => {
   if (screenType === ScreenType.Narrow) {
     return (
       <div className={classNames.join(" ")}>
-        <div className="previousPage">
+        <div className="previousPage" style={slidePanelStyle}>
           {transitioning && direction === "backward" && incomingPage}
         </div>
         <div className="currentPage">
           {!user ? <></> : status.isInit ? currentPage : <Spinner />}
         </div>
-        <div className="nextPage">{transitioning && direction === "forward" && incomingPage}</div>
+        <div className="nextPage" style={slidePanelStyle}>
+          {transitioning && direction === "forward" && incomingPage}
+        </div>
       </div>
     );
   }
