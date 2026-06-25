@@ -211,23 +211,39 @@ export const AccountProperties = ({ account }: Props) => {
               </select>
             </div>
             <div className="row keyValue">
+              <span className="propertyName">Archive</span>
+              {/* Hide already removes the account from view entirely; archiving
+               *  on top adds nothing and would surface in "Show archived (N)"
+               *  even though the user's already hidden the row. Disable to
+               *  steer the user toward Unhide first if they want a different
+               *  classification. Hoie 2026-06-25. */}
+              <ToggleInput
+                checked={isArchived}
+                onChange={onClickArchive}
+                disabled={isHidden}
+              />
+            </div>
+            <div className="row keyValue">
               <span className="propertyName">Hide</span>
               <ToggleInput checked={isHidden} onChange={onClickHide} />
             </div>
           </div>
         </>
       )}
-      {/* Archive is available for both Plaid- and manual-tracked accounts.
-       *  Manual accounts can age out too (e.g. a brokerage account the user
-       *  stopped using). Distinct from Delete, which removes the history
-       *  the user wants to preserve. */}
-      <div className="propertyLabel">Archive</div>
-      <div className="property">
-        <div className="row keyValue">
-          <span className="propertyName">Archive</span>
-          <ToggleInput checked={isArchived} onChange={onClickArchive} />
+      {/* Orphan path: a manual account that was already archived (e.g. on
+       *  an older client version where Archive was ungated, or via direct
+       *  API). Without this, the user has no UI path back — Delete
+       *  destroys history, which is the exact case `archived` was meant
+       *  to avoid. Renders nothing for the common manual-and-not-archived
+       *  case so we don't reintroduce a separate Archive section. */}
+      {isManualAccount && isArchived && (
+        <div className="property">
+          <div className="row keyValue">
+            <span className="propertyName">Archive</span>
+            <ToggleInput checked={isArchived} onChange={onClickArchive} />
+          </div>
         </div>
-      </div>
+      )}
       <div className="propertyLabel">Navigate</div>
       <div className="property">
         <div className="row button">

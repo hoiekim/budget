@@ -49,7 +49,11 @@ const AccountRow = ({ account, color }: Props) => {
         aria-label={accountLabel}
       >
         <div className="accountTitle">
-          <div className="colorTag colored" style={{ backgroundColor: color }} />
+          {/* Only render the color chip when a donut-mapped color was
+           *  passed. Archived and hidden rows call AccountRow without a
+           *  color, and an empty `.colorTag` div was reading as left
+           *  indentation. Hoie 2026-06-25. */}
+          {color && <div className="colorTag colored" style={{ backgroundColor: color }} />}
           <div className="textTag">
             <div>{custom_name || name}</div>
             <div>

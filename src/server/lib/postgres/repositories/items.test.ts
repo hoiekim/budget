@@ -38,6 +38,7 @@ function makeAccountRow(overrides: Record<string, unknown> = {}) {
     balances_iso_currency_code: "USD",
     custom_name: null,
     hide: false,
+    archived: false,
     label_budget_id: null,
     graph_options_use_snapshots: false,
     graph_options_use_holding_snapshots: false,

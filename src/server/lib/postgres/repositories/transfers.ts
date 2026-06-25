@@ -4,6 +4,7 @@ import {
   MaskedUser,
   transactionsTable,
   transactionPairsTable,
+  TRANSACTIONS,
   TRANSACTION_PAIRS,
   USER_ID,
   PAIR_ID,
