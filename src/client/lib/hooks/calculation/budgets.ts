@@ -11,6 +11,9 @@ import {
   CategoryDictionary,
   AccountDictionary,
   BudgetDictionary,
+  Budget,
+  Section,
+  Category,
 } from "client";
 
 interface GetBudgetDataResult {
@@ -194,12 +197,21 @@ export const getBudgetData = (
     return { transactionFamilies, budgetData };
   }
 
-  budgetData.forEach((history, budgetLikeId) => {
-    const budgetLike =
-      budgets.get(budgetLikeId) || sections.get(budgetLikeId) || categories.get(budgetLikeId);
-    if (!budgetLike) return;
+  // Accrue the per-month capacity carry-forward for EVERY rollover-enabled
+  // budget-like, not just the ones a confirmed transaction happened to
+  // touch. Iterating `budgetData`'s existing keys would skip any budget-like
+  // with no confirmed (sorted) transactions in the window — its history was
+  // never created by `processTransaction`, so its accrual never ran and the
+  // bar rendered "+ 0 rolled" despite a real capacity and a years-old
+  // `roll_over_start_date`. Driving the walk over the budget/section/category
+  // dictionaries makes the carry independent of transaction presence:
+  // `budgetData.get(id)` auto-creates the history for untouched rows, while
+  // touched rows keep the spending `processTransaction` already deposited
+  // (the walk only adds the capacity carry on top of it).
+  const accrueRollover = (budgetLike: Budget | Section | Category) => {
     const { roll_over, roll_over_start_date } = budgetLike;
     if (!roll_over || !roll_over_start_date) return;
+    const history = budgetData.get(budgetLike.id);
     const startDate = new ViewDate("month", roll_over_start_date).next();
     while (startDate.getEndDate() <= endDate.getEndDate()) {
       const previousDate = startDate.clone().previous();
@@ -213,7 +225,11 @@ export const getBudgetData = (
       });
       startDate.next();
     }
-  });
+  };
+
+  budgets.forEach(accrueRollover);
+  sections.forEach(accrueRollover);
+  categories.forEach(accrueRollover);
 
   return { transactionFamilies, budgetData };
 };
