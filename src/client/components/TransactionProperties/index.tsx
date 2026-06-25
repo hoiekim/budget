@@ -1,5 +1,10 @@
 import { ChangeEventHandler, useMemo, useState, useEffect } from "react";
-import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
+import {
+  currencyCodeToSymbol,
+  LocalDate,
+  numberToCommaString,
+  TRANSFER_DATE_WINDOW_DAYS as PARTNER_DATE_WINDOW_DAYS,
+} from "common";
 import { NewSplitTransactionGetResponse } from "server";
 import {
   Category,
@@ -18,11 +23,11 @@ import { InstitutionSpan, TransferArrowIcon } from "client/components";
 import SplitTransactionRow from "./SplitTransactionRow";
 import "./index.css";
 
-// Window for the partner-candidate filter — matches the detect-transfers
-// cron's `DATE_WINDOW_DAYS` (see `compute-tools/detect-transfers.ts:8`).
-// Keeping these aligned means a user-driven "Mark as Transfer" surfaces
-// the same set of candidates the algorithm would have considered.
-const PARTNER_DATE_WINDOW_DAYS = 3;
+// Window for the partner-candidate filter — single source of truth in
+// `common/transfers.ts` so the FE picker stays in lockstep with the
+// detect-transfers cron. Previously this was a separate `const` that
+// drifted to 3 days while the cron moved to 7, so engine-surfaced
+// partners outside ±3 days couldn't be manually re-paired.
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 interface Props {
