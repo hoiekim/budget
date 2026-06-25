@@ -153,16 +153,33 @@ export const useRouter = (): ClientRouter => {
 
       const endTransition = () => {
         // Restore INCOMING scroll position (or 0 if never visited).
-        // `requestAnimationFrame` so the new page's content has a
-        // chance to commit to the DOM before we set scrollTop —
-        // otherwise scrollTo silently no-ops on a short page.
+        // The new page may need async data fetches + layout passes
+        // before its content reaches the target scrollHeight, so a
+        // single `requestAnimationFrame` is not enough — `scrollTo`
+        // would clamp to the partial height. Retry across a few
+        // frames until either the actual `scrollY` matches the
+        // requested value OR ~250ms have elapsed, whichever comes
+        // first. Bounded by a max-attempt count so a genuinely-short
+        // page (where target Y is unreachable) doesn't loop forever.
         const restoredY = scrollMemory.get(getScrollKey(newPath, newParams)) ?? 0;
         setPath(newPath);
         setParams(newParams);
-        requestAnimationFrame(() => {
+
+        const startedAt = performance.now();
+        let attempts = 0;
+        const tryRestore = () => {
           window.scrollTo(0, restoredY);
-          setSlideAnchorY(0);
-        });
+          attempts++;
+          const reached = Math.abs(window.scrollY - restoredY) < 1;
+          const tooLong = performance.now() - startedAt > 250;
+          if (reached || tooLong || attempts > 16) {
+            setSlideAnchorY(0);
+            return;
+          }
+          requestAnimationFrame(tryRestore);
+        };
+        requestAnimationFrame(tryRestore);
+
         isAnimationEnabled.current = false;
       };
 
