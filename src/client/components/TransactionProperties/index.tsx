@@ -286,7 +286,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
       const tDateMs = new LocalDate(t.authorized_date || t.date).getTime();
       if (Math.abs(tDateMs - txDateMs) > PARTNER_DATE_WINDOW_DAYS * ONE_DAY_MS) return;
       // Skip transactions already in any pair (confirmed or suggested).
-      if (transfers.getByTransactionId(t.transaction_id)) return;
+      if (transfers.byTransactionId.has(t.transaction_id)) return;
       candidates.push(t);
     });
     candidates.sort((a, b) => {

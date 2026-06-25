@@ -119,13 +119,17 @@ export class TransactionDictionary extends Dictionary<Transaction, TransactionDi
  * Pair-keyed dictionary of transfers. Keys are pair_id; values are the
  * server's TransferPair (with status + the two transactions). Maintains
  * a private `pivot: transaction_id → pair` so consumers can resolve "is
- * this transaction part of any pair?" in O(1) via getByTransactionId(),
- * without standing up a parallel map at the Data level. Overrides
+ * this transaction part of any pair?" in O(1) via the `byTransactionId`
+ * accessor, without standing up a parallel map at the Data level. Overrides
  * `set`/`delete` to keep the pivot in sync with the primary map.
  *
- * Suggested and confirmed pairs live in the same dictionary — consumers
- * filter on `pair.status` at the point of use (matches the suggested-
- * vs-confirmed category-label pattern already in use elsewhere).
+ * Suggested and confirmed pairs live in the same dictionary. The
+ * `byTransactionId` accessor exposes the per-status membership predicates
+ * (`hasSuggested`/`hasConfirmed`) so the calc layer reads "is this a
+ * confirmed transfer half?" as one method call instead of spelling out
+ * a `pair?.status === "confirmed"` check at every site (matches the
+ * suggested-vs-confirmed category-label pattern already in use
+ * elsewhere). `.get` returns the pair for consumers that need its body.
  */
 export class TransferDictionary extends Dictionary<TransferPair, TransferDictionary> {
   private pivot = new Map<string, TransferPair>();
@@ -140,8 +144,22 @@ export class TransferDictionary extends Dictionary<TransferPair, TransferDiction
     });
   }
 
-  getByTransactionId = (transaction_id: string): TransferPair | undefined => {
-    return this.pivot.get(transaction_id);
+  /**
+   * Per-transaction_id accessors over the pivot. `get`/`has` answer
+   * membership; `hasSuggested`/`hasConfirmed` answer "is this transaction
+   * a half of a pair in that status?" in O(1) without the caller spelling
+   * out the `.status === …` check. Note: keys are real transaction_ids;
+   * synthetic split transactions (`SplitTransaction.toTransaction()`)
+   * carry the split's own id, so a lookup on a synthetic split returns
+   * undefined — callers guard the split pass on the PARENT's id.
+   */
+  byTransactionId = {
+    get: (transaction_id: string): TransferPair | undefined => this.pivot.get(transaction_id),
+    has: (transaction_id: string): boolean => this.pivot.has(transaction_id),
+    hasSuggested: (transaction_id: string): boolean =>
+      this.pivot.get(transaction_id)?.status === "suggested",
+    hasConfirmed: (transaction_id: string): boolean =>
+      this.pivot.get(transaction_id)?.status === "confirmed",
   };
 
   // Dictionary's `set` is an arrow-function field, not a prototype

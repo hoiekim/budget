@@ -45,20 +45,17 @@ export const getBudgetData = (
 
   const transactionFamilies = new TransactionFamilies();
 
-  const isConfirmedTransferHalf = (transaction_id: string): boolean =>
-    transfers.getByTransactionId(transaction_id)?.status === "confirmed";
-
   splitTransactions.forEach((splitTransaction) => {
     const { transaction_id } = splitTransaction;
     const transaction = transactions.get(transaction_id);
     if (!transaction) return;
-    if (isConfirmedTransferHalf(transaction_id)) return;
+    if (transfers.byTransactionId.hasConfirmed(transaction_id)) return;
     transactionFamilies.add(transaction_id, splitTransaction);
   });
 
   const processTransaction = (transaction: Transaction) => {
     const { transaction_id, authorized_date, date, account_id, label, amount } = transaction;
-    if (isConfirmedTransferHalf(transaction_id)) return;
+    if (transfers.byTransactionId.hasConfirmed(transaction_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     const account = accounts.get(account_id);
     if (!account || account.hide) return;
@@ -165,7 +162,7 @@ export const getBudgetData = (
     // split's own id per `SplitTransaction.toTransaction()` — so the
     // in-`processTransaction` guard on line ~51 would never fire for
     // splits even when their parent is a confirmed transfer).
-    if (isConfirmedTransferHalf(st.transaction_id)) return;
+    if (transfers.byTransactionId.hasConfirmed(st.transaction_id)) return;
     const transaction = st.toTransaction();
     processTransaction(transaction);
   });

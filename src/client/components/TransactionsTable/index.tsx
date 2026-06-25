@@ -29,7 +29,7 @@ export const TransactionsTable = ({ transactions }: Props) => {
       // a TransferRow; suggested pairs still render as two
       // individual TransactionRows with the Confirm/Reject controls.
       if (e instanceof Transaction) {
-        const lookedUp = transfers.getByTransactionId(e.transaction_id);
+        const lookedUp = transfers.byTransactionId.get(e.transaction_id);
         const pair = lookedUp?.status === "confirmed" ? lookedUp : undefined;
         if (pair) {
           if (renderedPairIds.has(pair.pair_id)) return null;

@@ -277,8 +277,9 @@ interface FetchTransfersResult {
  * useSync alongside the other model fetches so a cold/warm load
  * paints with pair state already in place. Returns a single
  * TransferDictionary (pair_id → TransferPair) — consumers resolve
- * transaction_id lookups via `transfers.getByTransactionId(id)` which
- * is O(1) over the dictionary's internal pivot map. Mutation methods
+ * transaction_id lookups via `transfers.byTransactionId.get(id)` (and
+ * the `has`/`hasSuggested`/`hasConfirmed` membership predicates), each
+ * O(1) over the dictionary's internal pivot map. Mutation methods
  * in `useTransfers` update `data.transfers` in-place via `setData`
  * (no re-fetch on mutation).
  */
