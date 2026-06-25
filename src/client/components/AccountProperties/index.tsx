@@ -221,6 +221,20 @@ export const AccountProperties = ({ account }: Props) => {
           </div>
         </>
       )}
+      {/* Orphan path: a manual account that was already archived (e.g. on
+       *  an older client version where Archive was ungated, or via direct
+       *  API). Without this, the user has no UI path back — Delete
+       *  destroys history, which is the exact case `archived` was meant
+       *  to avoid. Renders nothing for the common manual-and-not-archived
+       *  case so we don't reintroduce a separate Archive section. */}
+      {isManualAccount && isArchived && (
+        <div className="property">
+          <div className="row keyValue">
+            <span className="propertyName">Archive</span>
+            <ToggleInput checked={isArchived} onChange={onClickArchive} />
+          </div>
+        </div>
+      )}
       <div className="propertyLabel">Navigate</div>
       <div className="property">
         <div className="row button">
