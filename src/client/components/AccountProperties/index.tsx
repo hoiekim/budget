@@ -44,6 +44,8 @@ export const AccountProperties = ({ account }: Props) => {
     onChangeBudgetSelect,
     isHidden,
     onClickHide,
+    isArchived,
+    onClickArchive,
     useTransactionsForGraph,
     onClickUseTransactionsForGraph,
     useSnapshotsForGraph,
@@ -215,6 +217,17 @@ export const AccountProperties = ({ account }: Props) => {
           </div>
         </>
       )}
+      {/* Archive is available for both Plaid- and manual-tracked accounts.
+       *  Manual accounts can age out too (e.g. a brokerage account the user
+       *  stopped using). Distinct from Delete, which removes the history
+       *  the user wants to preserve. */}
+      <div className="propertyLabel">Archive</div>
+      <div className="property">
+        <div className="row keyValue">
+          <span className="propertyName">Archive</span>
+          <ToggleInput checked={isArchived} onChange={onClickArchive} />
+        </div>
+      </div>
       <div className="propertyLabel">Navigate</div>
       <div className="property">
         <div className="row button">

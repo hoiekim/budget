@@ -39,6 +39,12 @@ export class Account implements JSONAccount {
    */
   hide: boolean = false;
   /**
+   * User-set "archived" flag — hides the account from the Accounts page by
+   * default while keeping its historical transactions in calc. Distinct
+   * from `hide` (duplicate-data shadow). Calc layer ignores this flag.
+   */
+  archived: boolean = false;
+  /**
    * Represents relations by budget_id.
    */
   label: AccountLabel = {

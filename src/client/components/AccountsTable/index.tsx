@@ -1,4 +1,4 @@
-import { CSSProperties, ReactNode } from "react";
+import { CSSProperties, ReactNode, useState } from "react";
 import { AccountType } from "plaid";
 import {
   Account,
@@ -26,6 +26,12 @@ export const AccountsTable = ({ donutData, style }: Props) => {
   const { data, setData } = useAppContext();
   const { accounts } = data;
 
+  // Archived accounts hidden behind a toggle. Distinct from "Hide" (which
+  // removes the account from view entirely + skips it for transfer
+  // detection / duplicate-data shadowing). Archived = "I'm done using
+  // this account but its history still counts in budget calc."
+  const [showArchived, setShowArchived] = useState(false);
+
   const donutAccounts: ReactNode[] = donutData.map(({ id, color }) => {
     const account = accounts.get(id);
     if (!account) return <></>;
@@ -33,11 +39,18 @@ export const AccountsTable = ({ donutData, style }: Props) => {
   });
 
   const creditAccounts: ReactNode[] = [];
+  const archivedAccounts: ReactNode[] = [];
   let hasHiddenAccounts = false;
+  let archivedCount = 0;
 
   accounts.forEach((a) => {
     if (a.hide) {
       hasHiddenAccounts = true;
+      return;
+    }
+    if (a.archived) {
+      archivedCount++;
+      archivedAccounts.push(<AccountRow key={a.account_id} account={a} />);
       return;
     }
     const element = <AccountRow key={a.account_id} account={a} />;
@@ -84,6 +97,14 @@ export const AccountsTable = ({ donutData, style }: Props) => {
     <div className="AccountsTable" style={style}>
       {!!donutAccounts.length && <div className="rows">{donutAccounts}</div>}
       {!!creditAccounts.length && <div className="rows">{creditAccounts}</div>}
+      {archivedCount > 0 && (
+        <div>
+          <button onClick={() => setShowArchived((v) => !v)}>
+            {showArchived ? "Hide" : "Show"}&nbsp;archived&nbsp;({archivedCount})
+          </button>
+          {showArchived && <div className="rows">{archivedAccounts}</div>}
+        </div>
+      )}
       <div>{hasHiddenAccounts && <button onClick={onClickUnhide}>Unhide&nbsp;All</button>}</div>
       {!accounts.size && (
         <div className="placeholder">

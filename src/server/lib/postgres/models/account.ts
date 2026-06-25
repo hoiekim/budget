@@ -22,6 +22,7 @@ import {
   BALANCES_ISO_CURRENCY_CODE,
   CUSTOM_NAME,
   HIDE,
+  ARCHIVED,
   LABEL_BUDGET_ID,
   GRAPH_OPTIONS_USE_SNAPSHOTS,
   GRAPH_OPTIONS_USE_HOLDING_SNAPSHOTS,
@@ -48,6 +49,7 @@ const accountSchema = {
   [BALANCES_ISO_CURRENCY_CODE]: "VARCHAR(10)",
   [CUSTOM_NAME]: "TEXT",
   [HIDE]: "BOOLEAN DEFAULT FALSE",
+  [ARCHIVED]: "BOOLEAN DEFAULT FALSE",
   [LABEL_BUDGET_ID]: "UUID",
   [GRAPH_OPTIONS_USE_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
   [GRAPH_OPTIONS_USE_HOLDING_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
@@ -74,6 +76,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
   declare balances_iso_currency_code: string;
   declare custom_name: string;
   declare hide: boolean;
+  declare archived: boolean;
   declare label_budget_id: string | null;
   declare graph_options_use_snapshots: boolean;
   declare graph_options_use_holding_snapshots: boolean;
@@ -96,6 +99,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
     balances_iso_currency_code: isNullableString,
     custom_name: isNullableString,
     hide: isNullableBoolean,
+    archived: isNullableBoolean,
     label_budget_id: isNullableString,
     graph_options_use_snapshots: isNullableBoolean,
     graph_options_use_holding_snapshots: isNullableBoolean,
@@ -128,6 +132,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
       },
       custom_name: this.custom_name,
       hide: this.hide,
+      archived: this.archived ?? false,
       label: { budget_id: this.label_budget_id },
       graphOptions: {
         useSnapshots: this.graph_options_use_snapshots,
@@ -150,6 +155,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
     if (!isUndefined(a.subtype)) r.subtype = a.subtype;
     if (!isUndefined(a.custom_name)) r.custom_name = a.custom_name;
     if (!isUndefined(a.hide)) r.hide = a.hide;
+    if (!isUndefined(a.archived)) r.archived = a.archived;
     if (a.label && !isUndefined(a.label.budget_id)) r.label_budget_id = a.label.budget_id;
     if (a.balances) {
       if (!isUndefined(a.balances.available)) r.balances_available = a.balances.available;
@@ -166,7 +172,14 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
       if (!isUndefined(a.graphOptions.useTransactions))
         r.graph_options_use_transactions = a.graphOptions.useTransactions;
     }
-    const { custom_name: _custom_name, hide: _hide, label: _label, graphOptions: _graphOptions, ...providerData } = a;
+    const {
+      custom_name: _custom_name,
+      hide: _hide,
+      archived: _archived,
+      label: _label,
+      graphOptions: _graphOptions,
+      ...providerData
+    } = a;
     r.raw = providerData;
     return r;
   }

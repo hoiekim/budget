@@ -36,12 +36,16 @@ export const AccountsPage = () => {
       .toArray()
       .sort((a, b) => getAccountBalance(b) - getAccountBalance(a));
 
-    const filteredAccounts = sortedAccounts.filter(({ hide, type }) => {
-      return !hide && type !== AccountType.Credit;
+    // Exclude both `hide` (duplicate-data Plaid shadow) and `archived`
+    // (user-marked-out-of-active-view, typically expired cards) from the
+    // donut + credit-total. Both flags only affect FE visibility; the
+    // calc layer iterates all non-deleted accounts regardless.
+    const filteredAccounts = sortedAccounts.filter(({ hide, archived, type }) => {
+      return !hide && !archived && type !== AccountType.Credit;
     });
 
-    sortedAccounts.forEach(({ hide, type, balances }) => {
-      if (hide || type !== AccountType.Credit) return;
+    sortedAccounts.forEach(({ hide, archived, type, balances }) => {
+      if (hide || archived || type !== AccountType.Credit) return;
       totalCredit += balances.current || 0;
       numberOfCredits++;
     });

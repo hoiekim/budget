@@ -68,6 +68,7 @@ export const BALANCES_LIMIT = "balances_limit";
 export const BALANCES_ISO_CURRENCY_CODE = "balances_iso_currency_code";
 export const CUSTOM_NAME = "custom_name";
 export const HIDE = "hide";
+export const ARCHIVED = "archived";
 export const LABEL_BUDGET_ID = "label_budget_id";
 export const GRAPH_OPTIONS_USE_SNAPSHOTS = "graph_options_use_snapshots";
 export const GRAPH_OPTIONS_USE_HOLDING_SNAPSHOTS = "graph_options_use_holding_snapshots";
