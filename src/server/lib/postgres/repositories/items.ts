@@ -144,17 +144,18 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
   const accountIds = accounts.map((a) => a.account_id);
 
   return withTransaction(async (client) => {
-    for (const account_id of accountIds) {
-      await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
-      await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
-      await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
-      // Account-balance snapshots store the account in `account_id`; holding
-      // snapshots store it in `holding_account_id` (their `account_id` is NULL).
-      // Soft-delete both so removing an item leaves no orphaned holding history.
-      await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
-      await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, account_id, user_id, client);
-      await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
-    }
+    // Batch each cascade over all of the item's accounts in one round-trip
+    // (`column = ANY($1)`) instead of 6 queries per account.
+    // bulkSoftDeleteByColumn short-circuits an empty array, so no guard needed.
+    await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    // Account-balance snapshots store the account in `account_id`; holding
+    // snapshots store it in `holding_account_id` (their `account_id` is NULL).
+    // Soft-delete both so removing an item leaves no orphaned holding history.
+    await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, accountIds, user_id, client);
+    await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
 
     if (accountIds.length > 0) {
       await accountsTable.bulkSoftDelete(accountIds, { [USER_ID]: user_id }, client);
