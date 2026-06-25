@@ -29,6 +29,7 @@ export const getSecurities = async (): Promise<JSONSecurity[]> => {
  * recent unlink doesn't drop the security from the FE dict mid-session.
  */
 export const getSecuritiesForUser = async (user: MaskedUser): Promise<JSONSecurity[]> => {
+  // INNER JOIN against `holdings` + DISTINCT — outside Table.query's surface.
   const sql = `
     SELECT DISTINCT s.*
     FROM ${SECURITIES} s

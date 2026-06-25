@@ -57,6 +57,9 @@ export const createApiKey = async (
 };
 
 export const listApiKeys = async (user_id: string): Promise<ApiKeyJSON[]> => {
+  // Explicit column selection to OMIT key_hash from the response — Table.query
+  // returns full rows (`SELECT *`) and would surface the hash to any caller
+  // that forgot to strip it. Keep raw SQL here as a security carve-out.
   const sql = `
     SELECT key_id, user_id, name, key_prefix, scopes,
            created_at, last_used_at, revoked_at, expires_at
@@ -73,17 +76,16 @@ export const listApiKeys = async (user_id: string): Promise<ApiKeyJSON[]> => {
   });
 };
 
-export const revokeApiKey = async (
-  key_id: string,
-  user_id: string,
-): Promise<boolean> => {
-  const sql = `
-    UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP
-    WHERE key_id = $1 AND user_id = $2 AND revoked_at IS NULL
-    RETURNING key_id
-  `;
-  const result = await pool.query(sql, [key_id, user_id]);
-  return (result.rowCount ?? 0) > 0;
+export const revokeApiKey = async (key_id: string, user_id: string): Promise<boolean> => {
+  const updated = await apiKeysTable.update(
+    key_id,
+    { revoked_at: new Date() },
+    ["key_id"],
+    user_id,
+    undefined,
+    [{ column: "revoked_at", value: null }],
+  );
+  return updated !== null;
 };
 
 export interface ResolvedApiKey {
@@ -103,20 +105,19 @@ export const verifyApiKey = async (
 ): Promise<ResolvedApiKey | null> => {
   if (!plaintext.startsWith(KEY_PLAINTEXT_PREFIX)) return null;
   const hash = hashApiKey(plaintext);
-  const sql = `
-    SELECT key_id, user_id, key_hash, scopes, revoked_at, expires_at
-    FROM api_keys
-    WHERE key_hash = $1
-  `;
-  const result = await pool.query(sql, [hash]);
-  if (result.rowCount === 0) return null;
-  const row = result.rows[0] as {
-    key_id: string;
-    user_id: string;
-    key_hash: string;
-    scopes: string[];
-    revoked_at: string | null;
-    expires_at: string | null;
+  // Lookup by `key_hash` (no user_id available at this point — we're
+  // resolving WHICH user this hash belongs to). queryOne fits the
+  // single-row contract; explicit column projection isn't needed here
+  // because we DO need key_hash for the constant-time compare below.
+  const model = await apiKeysTable.queryOne({ key_hash: hash });
+  if (!model) return null;
+  const row = {
+    key_id: model.key_id,
+    user_id: model.user_id,
+    key_hash: model.key_hash,
+    scopes: model.scopes,
+    revoked_at: model.revoked_at,
+    expires_at: model.expires_at,
   };
 
   const expected = Buffer.from(row.key_hash, "hex");
@@ -130,11 +131,7 @@ export const verifyApiKey = async (
   }
 
   // Best-effort touch; failures here must not block the request.
-  pool
-    .query(`UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE key_id = $1`, [
-      row.key_id,
-    ])
-    .catch(() => undefined);
+  apiKeysTable.update(row.key_id, { last_used_at: new Date() }).catch(() => undefined);
 
   return { key_id: row.key_id, user_id: row.user_id, scopes: row.scopes };
 };

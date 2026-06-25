@@ -2,20 +2,18 @@ import { JSONTransaction, TransferPairStatus } from "common";
 import { pool } from "../client";
 import {
   MaskedUser,
-  TransactionModel,
-  TransactionPairModel,
-  TRANSACTIONS,
+  transactionsTable,
+  transactionPairsTable,
   TRANSACTION_PAIRS,
   USER_ID,
   PAIR_ID,
   TRANSACTION_ID_A,
   TRANSACTION_ID_B,
+  TRANSACTION_ID,
   STATUS,
   IS_DELETED,
   canonicalizePairIds,
 } from "../models";
-
-const TRANSACTION_ID = "transaction_id";
 
 export interface TransferPair {
   pair_id: string;
@@ -41,37 +39,33 @@ export type ConfirmResult =
  * as before (one entry per pair, with the two paired transactions inline).
  */
 export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]> => {
-  const pairsResult = await pool.query<Record<string, unknown>>(
-    // Exclude status='rejected' from the FE response: a rejected pair is
-    // user-marked "no, these don't pair" — the engine remembers it as a
-    // denylist signal but the user shouldn't see the pair in their
-    // Transfers view. Re-confirming a previously-rejected pair goes
-    // through `pairTransactions` (Mark as Transfer), which un-rejects
-    // via ON CONFLICT.
-    `SELECT * FROM ${TRANSACTION_PAIRS}
-     WHERE ${USER_ID} = $1
-       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
-       AND ${STATUS} <> 'rejected'
-     ORDER BY ${PAIR_ID}`,
-    [user.user_id],
+  // Table.query auto-excludes soft-deleted rows (supportsSoftDelete).
+  const allPairs = await transactionPairsTable.query(
+    { [USER_ID]: user.user_id },
+    { orderBy: PAIR_ID },
   );
 
-  if (pairsResult.rows.length === 0) return [];
+  // Exclude status='rejected' from the FE response: a rejected pair is
+  // user-marked "no, these don't pair" — the engine remembers it as a
+  // denylist signal but the user shouldn't see the pair in their Transfers
+  // view. Re-confirming a previously-rejected pair goes through
+  // `pairTransactions` (Mark as Transfer), which un-rejects via ON CONFLICT.
+  // Filtered in JS because Table.query expresses only equality / IN filters,
+  // not the `STATUS <> 'rejected'` inequality.
+  const pairs = allPairs.filter((p) => p.status !== "rejected");
 
-  const pairs = pairsResult.rows.map((row) => new TransactionPairModel(row));
+  if (pairs.length === 0) return [];
+
   const txnIds = pairs.flatMap((p) => [p.transaction_id_a, p.transaction_id_b]);
 
-  const txnsResult = await pool.query<Record<string, unknown>>(
-    `SELECT * FROM ${TRANSACTIONS}
-     WHERE ${USER_ID} = $1
-       AND ${TRANSACTION_ID} = ANY($2::text[])
-       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
-    [user.user_id, txnIds],
+  const txnModels = await transactionsTable.query(
+    { [USER_ID]: user.user_id },
+    { inFilters: { [TRANSACTION_ID]: txnIds } },
   );
 
   const txnById = new Map<string, JSONTransaction>();
-  for (const row of txnsResult.rows) {
-    const tx = new TransactionModel(row).toJSON();
+  for (const m of txnModels) {
+    const tx = m.toJSON();
     txnById.set(tx.transaction_id, tx);
   }
 

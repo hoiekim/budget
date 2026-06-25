@@ -2,8 +2,8 @@ import { JSONTransaction, JSONInvestmentTransaction } from "common";
 import {
   MaskedUser,
   TransactionModel,
-  InvTxModel,
   transactionsTable,
+  investmentTransactionsTable,
   splitTransactionsTable,
   transactionPairsTable,
   TRANSACTION_ID,
@@ -13,18 +13,9 @@ import {
   USER_ID,
   DATE,
   UPDATED,
-  INVESTMENT_TRANSACTIONS,
-  TRANSACTIONS,
   QueryExecutor,
 } from "../models";
-import { pool } from "../client";
-import {
-  buildSelectWithFilters,
-  UpsertResult,
-  successResult,
-  errorResult,
-  noChangeResult,
-} from "../database";
+import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { logger } from "../../logger";
 
 export interface SearchTransactionsOptions {
@@ -49,20 +40,24 @@ export const getTransactions = async (
   user: MaskedUser,
   options: SearchTransactionsOptions = {},
 ): Promise<JSONTransaction[]> => {
-  const { sql, values } = buildSelectWithFilters("transactions", "*", {
-    user_id: user.user_id,
-    filters: { [ACCOUNT_ID]: options.account_id, pending: options.pending },
-    dateRange:
-      options.startDate || options.endDate
-        ? { column: UPDATED, start: options.startDate, end: options.endDate }
-        : undefined,
-    orderBy: `${DATE} DESC`,
-    limit: options.limit,
-    offset: options.offset,
-    excludeDeleted: !options.includeDeleted,
-  });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
-  return result.rows.map((row) => new TransactionModel(row).toJSON());
+  const models = await transactionsTable.query(
+    {
+      [USER_ID]: user.user_id,
+      [ACCOUNT_ID]: options.account_id,
+      pending: options.pending,
+    },
+    {
+      dateRange:
+        options.startDate || options.endDate
+          ? { column: UPDATED, start: options.startDate, end: options.endDate }
+          : undefined,
+      orderBy: `${DATE} DESC`,
+      limit: options.limit,
+      offset: options.offset,
+      excludeDeleted: !options.includeDeleted,
+    },
+  );
+  return models.map((m) => m.toJSON());
 };
 
 export const getTransaction = async (
@@ -85,21 +80,20 @@ export const searchTransactions = async (
 }> => {
   const transactions = await getTransactions(user, options);
 
-  // For now, get investment transactions with the same filters
-  const { sql, values } = buildSelectWithFilters("investment_transactions", "*", {
-    user_id: user.user_id,
-    filters: { [ACCOUNT_ID]: options.account_id },
-    dateRange:
-      options.startDate || options.endDate
-        ? { column: UPDATED, start: options.startDate, end: options.endDate }
-        : undefined,
-    orderBy: `${DATE} DESC`,
-    limit: options.limit,
-    offset: options.offset,
-    excludeDeleted: !options.includeDeleted,
-  });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
-  const investment_transactions = result.rows.map((row) => new InvTxModel(row).toJSON());
+  const invModels = await investmentTransactionsTable.query(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
+    {
+      dateRange:
+        options.startDate || options.endDate
+          ? { column: UPDATED, start: options.startDate, end: options.endDate }
+          : undefined,
+      orderBy: `${DATE} DESC`,
+      limit: options.limit,
+      offset: options.offset,
+      excludeDeleted: !options.includeDeleted,
+    },
+  );
+  const investment_transactions = invModels.map((m) => m.toJSON());
 
   return { transactions, investment_transactions };
 };
@@ -211,34 +205,32 @@ export const searchTransactionsByAccountId = async (
 }> => {
   if (!account_ids.length) return { transactions: [], investment_transactions: [] };
 
-  const placeholders = account_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const values: (string | Date)[] = [user.user_id, ...account_ids];
+  const dateRange =
+    range?.start || range?.end
+      ? { column: DATE, start: range?.start, end: range?.end }
+      : undefined;
 
-  let txSql = `SELECT * FROM ${TRANSACTIONS} WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`;
-  let invSql = `SELECT * FROM ${INVESTMENT_TRANSACTIONS} WHERE ${ACCOUNT_ID} IN (${placeholders}) AND ${USER_ID} = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`;
-
-  if (range?.start) {
-    const idx = values.length + 1;
-    values.push(range.start);
-    txSql += ` AND ${DATE} >= $${idx}`;
-    invSql += ` AND ${DATE} >= $${idx}`;
-  }
-  if (range?.end) {
-    const idx = values.length + 1;
-    values.push(range.end);
-    txSql += ` AND ${DATE} <= $${idx}`;
-    invSql += ` AND ${DATE} <= $${idx}`;
-  }
-  txSql += ` ORDER BY ${DATE} DESC`;
-  invSql += ` ORDER BY ${DATE} DESC`;
-
-  const [txResult, invResult] = await Promise.all([
-    pool.query<Record<string, unknown>>(txSql, values),
-    pool.query<Record<string, unknown>>(invSql, values),
+  const [txModels, invModels] = await Promise.all([
+    transactionsTable.query(
+      { [USER_ID]: user.user_id },
+      {
+        inFilters: { [ACCOUNT_ID]: account_ids },
+        dateRange,
+        orderBy: `${DATE} DESC`,
+      },
+    ),
+    investmentTransactionsTable.query(
+      { [USER_ID]: user.user_id },
+      {
+        inFilters: { [ACCOUNT_ID]: account_ids },
+        dateRange,
+        orderBy: `${DATE} DESC`,
+      },
+    ),
   ]);
 
   return {
-    transactions: txResult.rows.map((row) => new TransactionModel(row).toJSON()),
-    investment_transactions: invResult.rows.map((row) => new InvTxModel(row).toJSON()),
+    transactions: txModels.map((m) => m.toJSON()),
+    investment_transactions: invModels.map((m) => m.toJSON()),
   };
 };

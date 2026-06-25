@@ -2,6 +2,7 @@ import { JSONRejectedCategory } from "common";
 import {
   MaskedUser,
   RejectedCategoryModel,
+  rejectedCategoriesTable,
   REJECTED_CATEGORIES,
   TRANSACTION_ID,
   USER_ID,
@@ -24,6 +25,8 @@ export const addRejectedCategory = async (
   transaction_id: string,
   category_id: string,
 ): Promise<JSONRejectedCategory | null> => {
+  // Composite PRIMARY KEY (transaction_id, category_id) — Table.upsert /
+  // .update / .insert all assert simple PK and would throw. Carve-out.
   const sql = `
     INSERT INTO ${REJECTED_CATEGORIES}
       (${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID})
@@ -52,6 +55,8 @@ export const removeRejectedCategory = async (
   transaction_id: string,
   category_id: string,
 ): Promise<number> => {
+  // Composite PRIMARY KEY — Table.deleteByCondition (and the rest of the
+  // simple-PK helpers) assert simple PK and would throw. Carve-out.
   const sql = `
     DELETE FROM ${REJECTED_CATEGORIES}
     WHERE ${USER_ID} = $1
@@ -85,6 +90,8 @@ export const migrateRejectedCategoriesOnPendingPosted = async (
   pending_transaction_id: string,
   posted_transaction_id: string,
 ): Promise<number> => {
+  // INSERT ... SELECT ... ON CONFLICT inside a transaction — outside
+  // Table.upsert's surface (composite PK + cross-row copy + DELETE).
   if (pending_transaction_id === posted_transaction_id) return 0;
   const client = await pool.connect();
   try {
@@ -123,16 +130,12 @@ export const getRejectedCategoriesForTransactions = async (
   transaction_ids: string[],
 ): Promise<JSONRejectedCategory[]> => {
   if (transaction_ids.length === 0) return [];
-  const placeholders = transaction_ids.map((_, i) => `$${i + 2}`).join(", ");
-  const sql = `
-    SELECT ${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID}, ${REJECTED_AT}
-    FROM ${REJECTED_CATEGORIES}
-    WHERE ${USER_ID} = $1 AND ${TRANSACTION_ID} IN (${placeholders})
-    ORDER BY ${TRANSACTION_ID}, ${REJECTED_AT} DESC
-  `;
-  const result = await pool.query<Record<string, unknown>>(sql, [
-    user.user_id,
-    ...transaction_ids,
-  ]);
-  return result.rows.map((row) => new RejectedCategoryModel(row).toJSON());
+  const models = await rejectedCategoriesTable.query(
+    { [USER_ID]: user.user_id },
+    {
+      inFilters: { [TRANSACTION_ID]: transaction_ids },
+      orderBy: `${TRANSACTION_ID}, ${REJECTED_AT} DESC`,
+    },
+  );
+  return models.map((m) => m.toJSON());
 };

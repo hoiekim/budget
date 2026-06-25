@@ -9,14 +9,7 @@ import {
   DATE,
   QueryExecutor,
 } from "../models";
-import { pool } from "../client";
-import {
-  buildSelectWithFilters,
-  UpsertResult,
-  successResult,
-  errorResult,
-  noChangeResult,
-} from "../database";
+import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { logger } from "../../logger";
 
 export interface SearchInvestmentTransactionsOptions {
@@ -35,19 +28,19 @@ export const getInvestmentTransactions = async (
   user: MaskedUser,
   options: SearchInvestmentTransactionsOptions = {},
 ): Promise<JSONInvestmentTransaction[]> => {
-  const { sql, values } = buildSelectWithFilters("investment_transactions", "*", {
-    user_id: user.user_id,
-    filters: { [ACCOUNT_ID]: options.account_id },
-    dateRange:
-      options.startDate || options.endDate
-        ? { column: DATE, start: options.startDate, end: options.endDate }
-        : undefined,
-    orderBy: `${DATE} DESC`,
-    limit: options.limit,
-    offset: options.offset,
-  });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
-  return result.rows.map((row) => new InvTxModel(row).toJSON());
+  const models = await investmentTransactionsTable.query(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
+    {
+      dateRange:
+        options.startDate || options.endDate
+          ? { column: DATE, start: options.startDate, end: options.endDate }
+          : undefined,
+      orderBy: `${DATE} DESC`,
+      limit: options.limit,
+      offset: options.offset,
+    },
+  );
+  return models.map((m) => m.toJSON());
 };
 
 export const getInvestmentTransaction = async (
