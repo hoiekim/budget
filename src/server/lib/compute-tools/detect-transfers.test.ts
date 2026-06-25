@@ -295,7 +295,7 @@ describe("runTransferDetection", () => {
         { transaction_id_a: "a1", transaction_id_b: "b1", date_delta: 0, is_plaid_transfer: false },
         { transaction_id_a: "a2", transaction_id_b: "b2", date_delta: 0, is_plaid_transfer: false },
       ],
-      insertRejector: (_sql, values) => {
+      insertRejector: (_sql, _values) => {
         inserts++;
         // First attempt throws (UNIQUE collision simulation); second succeeds.
         return inserts === 1;
