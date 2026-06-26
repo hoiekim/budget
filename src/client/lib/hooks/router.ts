@@ -49,6 +49,13 @@ export interface ClientRouter {
     incomingParams: URLSearchParams;
     transitioning: boolean;
     direction: TransitionDirection | undefined;
+    /**
+     * Vertical offset applied to the slide-in / slide-out panels during
+     * a forward/backward transition so both pages visually share the
+     * outgoing scroll position. Snapshots `window.scrollY` at transition
+     * start and resets to 0 when the new page's saved scroll is restored.
+     */
+    slideAnchorY: number;
   };
   go: (path: PATH, options?: GoOptions) => void;
   forward: (options?: NavigateOptions) => void;
@@ -66,6 +73,23 @@ export interface NavigateOptions {
 export const DEFAULT_TRANSITION_DURATION = 300;
 
 let isRouterRegistered = false;
+
+/**
+ * Per-(path+params) scroll memory. Survives in-session navigation
+ * (module-level Map, like `stateMemory` in `cache.ts`) but NOT page
+ * reload. Key is the URL minus the leading slash, so each filter combo
+ * has its own scroll position (e.g. `/transactions?budget_id=X` and
+ * `/transactions?budget_id=Y` track independently).
+ *
+ * Reset to 0 if no entry is present, matching the historical behavior
+ * of always-scroll-to-top.
+ */
+export const scrollMemory = new Map<string, number>();
+
+export const getScrollKey = (path: PATH, params?: URLSearchParams): string => {
+  const paramString = params?.toString();
+  return path + (paramString ? "?" + paramString : "");
+};
 
 const getPath = () => {
   const locationPath = window.location.pathname.split("/")[1];
@@ -103,25 +127,103 @@ export const useRouter = (): ClientRouter => {
   const [params, setParams] = useState(getParams());
   const [incomingParams, setIncomingParams] = useState(getParams());
   const [direction, setDirection] = useState<TransitionDirection>("forward");
+  const [slideAnchorY, setSlideAnchorY] = useState(0);
 
   const isAnimationEnabled = useRef(false);
 
+  // Mirror current path/params into refs so `transition()` can read the
+  // OUTGOING route at the moment it's invoked. `getPath()`/`getParams()`
+  // (which read window.location) are NOT safe here: the popstate
+  // listener fires AFTER the browser has already updated the URL to the
+  // back-target, so window.location at that point is the INCOMING route,
+  // not the outgoing one. Using refs keyed off React state survives that.
+  const currentPathRef = useRef(getPath());
+  const currentParamsRef = useRef(getParams());
+
   const timeout = useRef<Timeout>();
+  // Handle of the in-flight scroll-restore rAF loop, so a new
+  // transition can cancel a stale loop before its terminal
+  // setSlideAnchorY(0) / scrollTo fires mid-slide.
+  const rafHandle = useRef<number>();
 
   const transition = useCallback(
     (newPath: PATH, newParams: URLSearchParams) => {
+      // Supersede any in-flight transition tail before starting a new
+      // one: cancel the pending animated endTransition AND the
+      // scroll-restore rAF loop. Without this, a rapid re-navigation
+      // leaves a stale loop running whose terminal setSlideAnchorY(0)
+      // and window.scrollTo fire mid-slide of THIS transition —
+      // collapsing its anchor (the jolt the feature prevents) and
+      // fighting the new page's scroll.
+      clearTimeout(timeout.current);
+      if (rafHandle.current !== undefined) cancelAnimationFrame(rafHandle.current);
+
+      // Snapshot OUTGOING scroll position keyed by the outgoing path —
+      // read from the ref (not window.location), see comment above.
+      const outgoingPath = currentPathRef.current;
+      const outgoingParams = currentParamsRef.current;
+      const outgoingScrollY = window.scrollY;
+      scrollMemory.set(getScrollKey(outgoingPath, outgoingParams), outgoingScrollY);
+
+      // Advance the current-route refs IMMEDIATELY, not in
+      // endTransition. endTransition is cancelled by a rapid
+      // re-navigation (clearTimeout above), so if the refs only
+      // advanced there, the interrupting transition would read this
+      // stale outgoing route and mis-key its own snapshot under it —
+      // clobbering the previous page's real saved scrollY with the
+      // mid-animation (often clamped-to-0) value.
+      currentPathRef.current = newPath;
+      currentParamsRef.current = newParams;
+
+      // Set the slide-anchor offset to the INCOMING page's OWN saved
+      // scroll position. The fixed-positioned previousPage / nextPage
+      // panels default to showing content from y=0; shifting their
+      // `top` by `-incomingSavedY` makes the sliding-in page render at
+      // exactly the scroll position it had when the user last left it,
+      // matching the post-transition restore — so there's no jump at
+      // the moment the page swaps into normal flow. The outgoing
+      // (currentPage) is relative-positioned and ignores this offset,
+      // continuing to render at its in-progress scrollY.
+      const incomingSavedY = scrollMemory.get(getScrollKey(newPath, newParams)) ?? 0;
+      setSlideAnchorY(incomingSavedY);
+
       setIncomingPath(newPath);
       setIncomingParams(newParams);
 
       const endTransition = () => {
-        window.scrollTo(0, 0);
+        // Restore INCOMING scroll position (or 0 if never visited).
+        // The new page may need async data fetches + layout passes
+        // before its content reaches the target scrollHeight, so a
+        // single `requestAnimationFrame` is not enough — `scrollTo`
+        // would clamp to the partial height. Retry across a few
+        // frames until either the actual `scrollY` matches the
+        // requested value OR ~250ms have elapsed, whichever comes
+        // first. Bounded by a max-attempt count so a genuinely-short
+        // page (where target Y is unreachable) doesn't loop forever.
+        const restoredY = scrollMemory.get(getScrollKey(newPath, newParams)) ?? 0;
         setPath(newPath);
         setParams(newParams);
+
+        const startedAt = performance.now();
+        let attempts = 0;
+        const tryRestore = () => {
+          window.scrollTo(0, restoredY);
+          attempts++;
+          const reached = Math.abs(window.scrollY - restoredY) < 1;
+          const tooLong = performance.now() - startedAt > 250;
+          if (reached || tooLong || attempts > 16) {
+            rafHandle.current = undefined;
+            setSlideAnchorY(0);
+            return;
+          }
+          rafHandle.current = requestAnimationFrame(tryRestore);
+        };
+        rafHandle.current = requestAnimationFrame(tryRestore);
+
         isAnimationEnabled.current = false;
       };
 
       if (window.innerWidth < 950 && isAnimationEnabled.current) {
-        clearTimeout(timeout.current);
         timeout.current = setTimeout(endTransition, DEFAULT_TRANSITION_DURATION);
       } else {
         endTransition();
@@ -173,6 +275,7 @@ export const useRouter = (): ClientRouter => {
       incomingParams,
       transitioning: incomingPath !== path,
       direction: incomingPath !== path ? direction : undefined,
+      slideAnchorY,
     },
     go,
     forward,
