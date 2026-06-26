@@ -51,13 +51,14 @@ const Router = () => {
 
   // During the horizontal slide animation, the previousPage / nextPage
   // panels are `position: fixed; top: 0`, so they default to showing
-  // their content from y=0 — which visually jolts a user who was
-  // scrolled down on the outgoing page. Shifting their `top` by
-  // `-slideAnchorY` anchors them at the outgoing's scroll position so
-  // both pages slide horizontally without a vertical jump. After
-  // `endTransition` restores the incoming page's own saved scroll,
-  // `slideAnchorY` resets to 0 — the now-`currentPage` (relative-
-  // positioned) is in normal flow, ignoring this style.
+  // their content from y=0. `slideAnchorY` carries the INCOMING page's
+  // OWN saved scroll position; shifting `top` by `-slideAnchorY`
+  // anchors the sliding-in page at the exact scrollY it had when the
+  // user last left it — so the slide previews the post-transition
+  // restored state with no jump at swap time. The outgoing currentPage
+  // is relative-positioned and ignores this style; after
+  // `endTransition` restores the actual window scroll, `slideAnchorY`
+  // resets to 0.
   const slidePanelStyle = transitioning ? { top: -slideAnchorY } : undefined;
 
   if (path === PATH.LOGIN) {

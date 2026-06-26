@@ -175,10 +175,17 @@ export const useRouter = (): ClientRouter => {
       currentPathRef.current = newPath;
       currentParamsRef.current = newParams;
 
-      // Set the slide-anchor offset: during the horizontal slide, both
-      // pages share the same vertical position so the user doesn't see
-      // a jump-to-top jolt before the slide-in completes.
-      setSlideAnchorY(outgoingScrollY);
+      // Set the slide-anchor offset to the INCOMING page's OWN saved
+      // scroll position. The fixed-positioned previousPage / nextPage
+      // panels default to showing content from y=0; shifting their
+      // `top` by `-incomingSavedY` makes the sliding-in page render at
+      // exactly the scroll position it had when the user last left it,
+      // matching the post-transition restore — so there's no jump at
+      // the moment the page swaps into normal flow. The outgoing
+      // (currentPage) is relative-positioned and ignores this offset,
+      // continuing to render at its in-progress scrollY.
+      const incomingSavedY = scrollMemory.get(getScrollKey(newPath, newParams)) ?? 0;
+      setSlideAnchorY(incomingSavedY);
 
       setIncomingPath(newPath);
       setIncomingParams(newParams);
