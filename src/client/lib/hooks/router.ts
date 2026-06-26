@@ -131,15 +131,23 @@ export const useRouter = (): ClientRouter => {
 
   const isAnimationEnabled = useRef(false);
 
+  // Mirror current path/params into refs so `transition()` can read the
+  // OUTGOING route at the moment it's invoked. `getPath()`/`getParams()`
+  // (which read window.location) are NOT safe here: the popstate
+  // listener fires AFTER the browser has already updated the URL to the
+  // back-target, so window.location at that point is the INCOMING route,
+  // not the outgoing one. Using refs keyed off React state survives that.
+  const currentPathRef = useRef(getPath());
+  const currentParamsRef = useRef(getParams());
+
   const timeout = useRef<Timeout>();
 
   const transition = useCallback(
     (newPath: PATH, newParams: URLSearchParams) => {
-      // Snapshot OUTGOING scroll position from window.location BEFORE
-      // pushState mutates it (caller invokes pushState after transition
-      // returns). The current URL is still the outgoing one here.
-      const outgoingPath = getPath();
-      const outgoingParams = getParams();
+      // Snapshot OUTGOING scroll position keyed by the outgoing path —
+      // read from the ref (not window.location), see comment above.
+      const outgoingPath = currentPathRef.current;
+      const outgoingParams = currentParamsRef.current;
       const outgoingScrollY = window.scrollY;
       scrollMemory.set(getScrollKey(outgoingPath, outgoingParams), outgoingScrollY);
 
@@ -164,6 +172,8 @@ export const useRouter = (): ClientRouter => {
         const restoredY = scrollMemory.get(getScrollKey(newPath, newParams)) ?? 0;
         setPath(newPath);
         setParams(newParams);
+        currentPathRef.current = newPath;
+        currentParamsRef.current = newParams;
 
         const startedAt = performance.now();
         let attempts = 0;
