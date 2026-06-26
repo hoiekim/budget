@@ -141,15 +141,39 @@ export const useRouter = (): ClientRouter => {
   const currentParamsRef = useRef(getParams());
 
   const timeout = useRef<Timeout>();
+  // Handle of the in-flight scroll-restore rAF loop, so a new
+  // transition can cancel a stale loop before its terminal
+  // setSlideAnchorY(0) / scrollTo fires mid-slide.
+  const rafHandle = useRef<number>();
 
   const transition = useCallback(
     (newPath: PATH, newParams: URLSearchParams) => {
+      // Supersede any in-flight transition tail before starting a new
+      // one: cancel the pending animated endTransition AND the
+      // scroll-restore rAF loop. Without this, a rapid re-navigation
+      // leaves a stale loop running whose terminal setSlideAnchorY(0)
+      // and window.scrollTo fire mid-slide of THIS transition —
+      // collapsing its anchor (the jolt the feature prevents) and
+      // fighting the new page's scroll.
+      clearTimeout(timeout.current);
+      if (rafHandle.current !== undefined) cancelAnimationFrame(rafHandle.current);
+
       // Snapshot OUTGOING scroll position keyed by the outgoing path —
       // read from the ref (not window.location), see comment above.
       const outgoingPath = currentPathRef.current;
       const outgoingParams = currentParamsRef.current;
       const outgoingScrollY = window.scrollY;
       scrollMemory.set(getScrollKey(outgoingPath, outgoingParams), outgoingScrollY);
+
+      // Advance the current-route refs IMMEDIATELY, not in
+      // endTransition. endTransition is cancelled by a rapid
+      // re-navigation (clearTimeout above), so if the refs only
+      // advanced there, the interrupting transition would read this
+      // stale outgoing route and mis-key its own snapshot under it —
+      // clobbering the previous page's real saved scrollY with the
+      // mid-animation (often clamped-to-0) value.
+      currentPathRef.current = newPath;
+      currentParamsRef.current = newParams;
 
       // Set the slide-anchor offset: during the horizontal slide, both
       // pages share the same vertical position so the user doesn't see
@@ -172,8 +196,6 @@ export const useRouter = (): ClientRouter => {
         const restoredY = scrollMemory.get(getScrollKey(newPath, newParams)) ?? 0;
         setPath(newPath);
         setParams(newParams);
-        currentPathRef.current = newPath;
-        currentParamsRef.current = newParams;
 
         const startedAt = performance.now();
         let attempts = 0;
@@ -183,18 +205,18 @@ export const useRouter = (): ClientRouter => {
           const reached = Math.abs(window.scrollY - restoredY) < 1;
           const tooLong = performance.now() - startedAt > 250;
           if (reached || tooLong || attempts > 16) {
+            rafHandle.current = undefined;
             setSlideAnchorY(0);
             return;
           }
-          requestAnimationFrame(tryRestore);
+          rafHandle.current = requestAnimationFrame(tryRestore);
         };
-        requestAnimationFrame(tryRestore);
+        rafHandle.current = requestAnimationFrame(tryRestore);
 
         isAnimationEnabled.current = false;
       };
 
       if (window.innerWidth < 950 && isAnimationEnabled.current) {
-        clearTimeout(timeout.current);
         timeout.current = setTimeout(endTransition, DEFAULT_TRANSITION_DURATION);
       } else {
         endTransition();
