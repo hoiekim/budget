@@ -1,6 +1,13 @@
 import { Dispatch, SetStateAction } from "react";
-import { MAX_FLOAT, currencyCodeToSymbol, numberToCommaString } from "common";
-import { Budget, Category, Section, useReorder, useAppContext } from "client";
+import { MAX_FLOAT, LocalDate, ViewDate, currencyCodeToSymbol, numberToCommaString } from "common";
+import {
+  Budget,
+  Category,
+  Section,
+  getRolledOverAmount,
+  useReorder,
+  useAppContext,
+} from "client";
 import { Bar } from "client/components";
 import EditButton from "./EditButton";
 import "./index.css";
@@ -34,10 +41,21 @@ export const LabeledBar = ({
   const interval = viewDate.getInterval();
 
   const { name, roll_over, roll_over_start_date } = barData;
-  const { sorted_amount, unsorted_amount, rolled_over_amount } =
+  const { sorted_amount, unsorted_amount } =
     interval === "year"
       ? budgetData.get(barData.id).aggregateYear(date.getFullYear())
       : budgetData.get(barData.id, date);
+
+  // Rollover projects forward for future views (#562). For year interval the
+  // bar shows the carry into the year — its January value, matching
+  // aggregateYear's semantics — so project to that year's January.
+  const rolledOverDate =
+    interval === "year"
+      ? new ViewDate("month", new LocalDate(`${date.getFullYear()}-01-15`)).getEndDate()
+      : date;
+  const rolled_over_amount = roll_over
+    ? getRolledOverAmount(barData, budgetData, rolledOverDate)
+    : 0;
 
   // For synced capacities the stored `capacity[interval]` is just the
   // advisory cache, not the live sum — go through getActiveAmount so the

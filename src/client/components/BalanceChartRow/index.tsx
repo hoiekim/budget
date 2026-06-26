@@ -1,7 +1,13 @@
 import { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction } from "react";
 import { AccountType } from "plaid";
 import { numberToCommaString, toTitleCase } from "common";
-import { BalanceChart, getDisplayBalance, useAppContext, useReorder } from "client";
+import {
+  BalanceChart,
+  getDisplayBalance,
+  getRolledOverAmount,
+  useAppContext,
+  useReorder,
+} from "client";
 import { ChevronDownIcon, ChevronUpIcon, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
 import "./index.css";
@@ -69,8 +75,10 @@ export const BalanceChartRow = ({
 
   budgets.forEach((b) => {
     if (!configuration.budget_ids.includes(b.id)) return;
-    const { rolled_over_amount } = budgetData.get(b.id, date);
-    const amount = b.roll_over ? rolled_over_amount : -b.getActiveAmount(date, interval);
+    // Rollover projects forward for future views (#562); capacity already does.
+    const amount = b.roll_over
+      ? getRolledOverAmount(b, budgetData, date)
+      : -b.getActiveAmount(date, interval);
     const stack = { type: "Budget", name: b.name, amount: Math.abs(amount) };
     if (amount > 0) return column1.push(stack);
     else column2.push(stack);

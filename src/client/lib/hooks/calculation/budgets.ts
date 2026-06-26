@@ -231,6 +231,57 @@ export const getBudgetData = (
   return { transactionFamilies, budgetData };
 };
 
+/**
+ * Rollover ("+ $X rolled") for a budget-like at an arbitrary view date.
+ *
+ * `getBudgetData`'s accrual loop only writes rollover entries up to the
+ * current calendar month — extending it to the rendered view date would
+ * mean threading `viewDate` into `getBudgetData` and re-running the whole
+ * (transaction-heavy) calculation on every month the user navigates to.
+ * So past/current months read the accrued, authoritative value straight
+ * from `budgetData`; future months are projected on read here, the same way
+ * capacity and "left" already project forward via `getActiveAmount`.
+ *
+ * Future months carry no spend, so the projection mirrors the accrual
+ * recurrence `rolled(m) = rolled(m-1) − getActiveAmount(m-1)` from the last
+ * accrued month (the current calendar month) up to the requested month.
+ * Without it a future view reads the lazily-created empty summary and
+ * renders "+ $0 rolled" while capacity still projects forward (#562).
+ */
+export const getRolledOverAmount = (
+  budgetLike: Budget | Section | Category,
+  budgetData: BudgetData,
+  date: Date,
+): number => {
+  const history = budgetData.get(budgetLike.id);
+  const current = new ViewDate("month");
+  const target = new ViewDate("month", date);
+
+  // Past and current months are accrued by getBudgetData — authoritative.
+  if (target.getEndDate() <= current.getEndDate()) {
+    return history.get(target.getEndDate()).rolled_over_amount;
+  }
+
+  // Future months: project the capacity carry forward from the current
+  // month. Only accrue once the rollover window has opened — a budget-like
+  // whose `roll_over_start_date` is itself in the future contributes nothing
+  // before it begins.
+  const { roll_over_start_date } = budgetLike;
+  const startMonthEnd = roll_over_start_date
+    ? new ViewDate("month", roll_over_start_date).getEndDate()
+    : undefined;
+
+  let rolled = history.get(current.getEndDate()).rolled_over_amount;
+  const cursor = current.clone();
+  while (cursor.getEndDate() < target.getEndDate()) {
+    if (!startMonthEnd || cursor.getEndDate() >= startMonthEnd) {
+      rolled -= budgetLike.getActiveAmount(cursor.getEndDate(), "month");
+    }
+    cursor.next();
+  }
+  return rolled;
+};
+
 const oldestDate = new Date(0);
 
 export const getCapacityData = (
