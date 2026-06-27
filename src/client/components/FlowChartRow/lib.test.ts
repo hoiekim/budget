@@ -248,61 +248,52 @@ const runInv = (d: ReturnType<typeof buildInvDicts>) =>
     noTransfers,
   );
 
-describe("getSankeyData — investment cash-flow polarity", () => {
-  test("a BUY is cash out → counted as expense, not income", () => {
-    // buy: price·quantity = +1000 cash leaving the account
+describe("getSankeyData — investment transactions are skipped (internal moves)", () => {
+  // Investment transactions are internal household moves between user-owned
+  // cash and user-owned equity, not external cash flow. The cash-side
+  // counterpart (the wire from checking to brokerage) is a regular
+  // `transactions` row that already represents the household cash flow.
+  // Counting BOTH the cash-side row and the investment-side row in Sankey
+  // double-counts every dollar moved into or out of brokerage. Verified
+  // against real account data: investment Buys appeared on BOTH the
+  // cash-side (a brokerage-funding wire labeled under a "Transfers" budget
+  // — Sankey doesn't honor budget-name semantics, so it counts as expense)
+  // AND the invest-side, producing a spurious deficit that contradicted the
+  // Accounts donut's balance Δ for the same month. Skipping investment txns
+  // brings the two views into reconciliation modulo market appreciation.
+  // See issue 564 for the cross-table transfer-detection follow-up that
+  // would surface the cash-side wires as confirmed-transfer halves and let
+  // Sankey attribute investment activity per-budget.
+  test("a BUY is skipped (no contribution to expense or income)", () => {
     const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Buy, 10, 100)]));
-    expect(tableData.expense).toBe(1000);
+    expect(tableData.expense).toBe(0);
     expect(tableData.income).toBe(0);
   });
 
-  test("a SELL is cash in → counted as income, not expense", () => {
-    // sell: price·quantity = -800 cash entering the account
+  test("a SELL is skipped (no contribution to expense or income)", () => {
     const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Sell, -8, 100)]));
-    expect(tableData.income).toBe(800);
     expect(tableData.expense).toBe(0);
+    expect(tableData.income).toBe(0);
   });
 
-  test("buys and sells net to the correct Surplus/Deficit verdict", () => {
-    // 1000 bought (out) vs 800 sold (in) → net 200 deficit, not a surplus
-    const { tableData } = runInv(
+  test("mixed buys + sells contribute nothing to Sankey flow", () => {
+    const { tableData, graphData } = runInv(
       buildInvDicts([
         mkInvestment(InvestmentTransactionType.Buy, 10, 100),
         mkInvestment(InvestmentTransactionType.Sell, -8, 100),
       ]),
     );
-    expect(tableData.expense).toBe(1000);
-    expect(tableData.income).toBe(800);
-    expect(tableData.expense - tableData.income).toBe(200); // deficit
-  });
-
-  // Sign-based detection (Hoie, PR #514): polarity follows `type`, not the
-  // stored sign of `quantity`. A buy with a negative quantity is still cash
-  // out (expense); a sell with a positive quantity is still cash in (income).
-  test("a BUY with a negative quantity is still an expense (sign from type, not quantity)", () => {
-    const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Buy, -10, 100)]));
-    expect(tableData.expense).toBe(1000);
-    expect(tableData.income).toBe(0);
-  });
-
-  test("a SELL with a positive quantity is still income (sign from type, not quantity)", () => {
-    const { tableData } = runInv(buildInvDicts([mkInvestment(InvestmentTransactionType.Sell, 8, 100)]));
-    expect(tableData.income).toBe(800);
     expect(tableData.expense).toBe(0);
+    expect(tableData.income).toBe(0);
+    expect(graphData.every((col) => col.length === 0)).toBe(true);
   });
 
-  // Only buy/sell are external cash flow. A `transfer` (or cash/fee/dividend)
-  // row is internal movement and must NOT contribute — even when it carries a
-  // nonzero price·quantity. This is the benchmark.ts "count only Buy/Sell"
-  // convention; without the type gate a transfer's magnitude would inflate a
-  // column (reviewoie HIGH on PR #514).
-  test("a non-buy/sell investment type (transfer) with nonzero price·quantity is skipped", () => {
+  test("a non-buy/sell investment type (transfer/cash/fee/dividend) is skipped — same as before", () => {
     const { tableData, graphData } = runInv(
       buildInvDicts([mkInvestment(InvestmentTransactionType.Transfer, 4875, 1)]),
     );
     expect(tableData.income).toBe(0);
     expect(tableData.expense).toBe(0);
-    // No Surplus/Deficit node either — nothing flowed.
     expect(graphData.every((col) => col.length === 0)).toBe(true);
   });
 
