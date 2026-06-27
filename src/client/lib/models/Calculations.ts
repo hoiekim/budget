@@ -1,4 +1,4 @@
-import { assign, getYearMonthString, isDate, isUndefined, LocalDate, ViewDate } from "common";
+import { assign, getYearMonthString, Interval, isDate, isUndefined, LocalDate, ViewDate } from "common";
 import { Status } from "./miscellaneous";
 import { SplitTransactionDictionary } from "./Data";
 import { SplitTransaction } from "./SplitTransaction";
@@ -292,6 +292,18 @@ export class BudgetHistory {
   };
 }
 
+/**
+ * The slice of a budget-like (Budget / Section / Category) that the rollover
+ * projection needs. Typed structurally so the calculation models don't import
+ * the budget-family model classes (and risk a cycle).
+ */
+export type BudgetLikeView = {
+  id: string;
+  roll_over: boolean;
+  roll_over_start_date?: Date;
+  getActiveAmount: (date: Date, interval: Interval) => number;
+};
+
 export class BudgetData {
   private data = new Map<string, BudgetHistory>();
 
@@ -330,6 +342,78 @@ export class BudgetData {
 
   add = (budgetLikeId: string, date: Date, budgetSummary: Partial<BudgetSummary>) => {
     this.get(budgetLikeId).add(date, budgetSummary);
+  };
+
+  /**
+   * The carry-forward amount for `budgetLike` at `date`.
+   *
+   * Past and current months are authoritative — accrued into the history by
+   * getBudgetData — so we read the stored `rolled_over_amount`. For future
+   * months there is no stored value yet, so we project the current month's
+   * carry forward, subtracting each month's active capacity once the rollover
+   * window has opened (#562). A budget-like whose `roll_over_start_date` is
+   * itself in the future contributes nothing before it begins.
+   */
+  getRolledOver = (budgetLike: BudgetLikeView, date: Date): number => {
+    const history = this.get(budgetLike.id);
+    const current = new ViewDate("month");
+    const target = new ViewDate("month", date);
+
+    if (target.getEndDate() <= current.getEndDate()) {
+      return history.get(target.getEndDate()).rolled_over_amount;
+    }
+
+    const { roll_over_start_date } = budgetLike;
+    const startMonthEnd = roll_over_start_date
+      ? new ViewDate("month", roll_over_start_date).getEndDate()
+      : undefined;
+
+    let rolled = history.get(current.getEndDate()).rolled_over_amount;
+    const cursor = current.clone();
+    while (cursor.getEndDate() < target.getEndDate()) {
+      if (!startMonthEnd || cursor.getEndDate() >= startMonthEnd) {
+        rolled -= budgetLike.getActiveAmount(cursor.getEndDate(), "month");
+      }
+      cursor.next();
+    }
+    return rolled;
+  };
+
+  /**
+   * The unified per-view figures for `budgetLike` at `viewDate`:
+   * `sorted_amount` / `unsorted_amount` from the stored history (summed across
+   * the year for a year view), and `rolled_over_amount` — the carry-forward,
+   * projected past the current month for future views (#562). For a year view
+   * the bar shows the carry INTO the year (its January value, matching
+   * aggregateYear), so the rollover is read at that year's January.
+   *
+   * One call so a consumer reads all three figures together instead of
+   * re-deriving the rollover on a separate flow.
+   */
+  getView = (budgetLike: BudgetLikeView, viewDate: ViewDate): BudgetSummary => {
+    const date = viewDate.getEndDate();
+    const interval = viewDate.getInterval();
+    const history = this.get(budgetLike.id);
+
+    const base =
+      interval === "year"
+        ? history.aggregateYear(date.getFullYear())
+        : history.get(date);
+
+    const result = new BudgetSummary();
+    result.sorted_amount = base.sorted_amount;
+    result.unsorted_amount = base.unsorted_amount;
+    result.number_of_unsorted_items = base.number_of_unsorted_items;
+
+    if (budgetLike.roll_over) {
+      const rolledOverDate =
+        interval === "year"
+          ? new ViewDate("month", new LocalDate(`${date.getFullYear()}-01-15`)).getEndDate()
+          : date;
+      result.rolled_over_amount = this.getRolledOver(budgetLike, rolledOverDate);
+    }
+
+    return result;
   };
 
   forEach = (cb: (history: BudgetHistory, id: string) => void) => this.data.forEach(cb);

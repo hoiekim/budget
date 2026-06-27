@@ -332,3 +332,77 @@ describe("getRolledOverAmount future-month projection (#562)", () => {
     expect(getRolledOverAmount(budget(), budgetData, januaryNextYear)).not.toBe(0);
   });
 });
+
+// getView is the unified read the bars use: sorted/unsorted + rolled_over from
+// one call, so the rollover no longer flows on a separate path in the UI. It
+// must agree with the underlying history + getRolledOverAmount it abstracts.
+describe("BudgetData.getView unified figures (#562)", () => {
+  const OLD_START = "2022-06-01";
+
+  const buildBudgetData = () => {
+    const { budgetData } = getBudgetData(
+      new TransactionDictionary(),
+      emptySplits(),
+      makeAccount(),
+      makeBudget(OLD_START),
+      emptySections(),
+      emptyCategories(),
+      new TransferDictionary(),
+      false,
+    );
+    return budgetData;
+  };
+
+  const budget = () => makeBudget(OLD_START).get("bud-1")!;
+
+  test("month view returns sorted/unsorted from history and rolled_over from the projection", () => {
+    const budgetData = buildBudgetData();
+    const viewDate = new ViewDate("month");
+    const date = viewDate.getEndDate();
+    const stored = budgetData.get("bud-1", date);
+
+    const view = budgetData.getView(budget(), viewDate);
+    expect(view.sorted_amount).toBe(stored.sorted_amount);
+    expect(view.unsorted_amount).toBe(stored.unsorted_amount);
+    expect(view.rolled_over_amount).toBe(getRolledOverAmount(budget(), budgetData, date));
+  });
+
+  test("future month view projects the rollover (matches getRolledOverAmount)", () => {
+    const budgetData = buildBudgetData();
+    const viewDate = new ViewDate("month").next(2);
+    const view = budgetData.getView(budget(), viewDate);
+    expect(view.rolled_over_amount).toBe(
+      getRolledOverAmount(budget(), budgetData, viewDate.getEndDate()),
+    );
+    expect(view.rolled_over_amount).not.toBe(0);
+  });
+
+  test("year view sums sorted/unsorted and reads the rollover at January", () => {
+    const budgetData = buildBudgetData();
+    const nextYear = new ViewDate("month").getEndDate().getFullYear() + 1;
+    const yearView = new ViewDate("year", new LocalDate(`${nextYear}-07-15`));
+    const aggregate = budgetData.get("bud-1").aggregateYear(nextYear);
+    const januaryEnd = new ViewDate(
+      "month",
+      new LocalDate(`${nextYear}-01-15`),
+    ).getEndDate();
+
+    const view = budgetData.getView(budget(), yearView);
+    expect(view.sorted_amount).toBe(aggregate.sorted_amount);
+    expect(view.unsorted_amount).toBe(aggregate.unsorted_amount);
+    expect(view.rolled_over_amount).toBe(
+      getRolledOverAmount(budget(), budgetData, januaryEnd),
+    );
+  });
+
+  test("a non-rollover budget-like reports rolled_over_amount === 0", () => {
+    const budgetData = buildBudgetData();
+    const notRolling = {
+      id: "bud-1",
+      roll_over: false,
+      getActiveAmount: () => MONTHLY_CAPACITY,
+    };
+    const view = budgetData.getView(notRolling, new ViewDate("month").next(3));
+    expect(view.rolled_over_amount).toBe(0);
+  });
+});
