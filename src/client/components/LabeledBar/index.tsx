@@ -34,10 +34,11 @@ export const LabeledBar = ({
   const interval = viewDate.getInterval();
 
   const { name, roll_over, roll_over_start_date } = barData;
+  // All three figures from one call — rollover no longer flows separately
+  // from sorted/unsorted; getSummary projects the carry forward for future
+  // views (#562) and reads January for a year view internally.
   const { sorted_amount, unsorted_amount, rolled_over_amount } =
-    interval === "year"
-      ? budgetData.get(barData.id).aggregateYear(date.getFullYear())
-      : budgetData.get(barData.id, date);
+    budgetData.getSummary(barData, viewDate);
 
   // For synced capacities the stored `capacity[interval]` is just the
   // advisory cache, not the live sum — go through getActiveAmount so the

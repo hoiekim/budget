@@ -267,3 +267,145 @@ describe("getBudgetData rollover accrues without transactions (#545)", () => {
     expect(budgetData.get("cat-1", now).rolled_over_amount).toBeLessThan(0);
   });
 });
+
+// Regression coverage for #562: the accrual loop only writes rollover entries
+// up to the current calendar month. When the user paged the Budgets/Balance
+// view forward, `budgetData.get(id, futureMonth)` returned a lazily-created
+// empty summary so the bar rendered "+ $0 rolled" while capacity and "left"
+// kept projecting forward. getRolledOver now projects the carry forward
+// on read for future months, mirroring how capacity already projects.
+describe("BudgetData.getRolledOver future-month projection (#562)", () => {
+  const OLD_START = "2022-06-01";
+
+  const buildBudgetData = () => {
+    const { budgetData } = getBudgetData(
+      new TransactionDictionary(),
+      emptySplits(),
+      makeAccount(),
+      makeBudget(OLD_START),
+      emptySections(),
+      emptyCategories(),
+      new TransferDictionary(),
+      false, // warm / steady state
+    );
+    return budgetData;
+  };
+
+  const budget = () => makeBudget(OLD_START).get("bud-1")!;
+
+  test("current month equals the accrued value (authoritative — unchanged)", () => {
+    const budgetData = buildBudgetData();
+    const now = new ViewDate("month").getEndDate();
+    const stored = budgetData.get("bud-1", now).rolled_over_amount;
+    expect(budgetData.getRolledOver(budget(), now)).toBe(stored);
+  });
+
+  test("future months keep accruing one capacity step each — they do NOT reset to 0", () => {
+    const budgetData = buildBudgetData();
+    const now = new ViewDate("month").getEndDate();
+    const current = budgetData.getRolledOver(budget(), now);
+
+    const oneAhead = new ViewDate("month").next().getEndDate();
+    const twoAhead = new ViewDate("month").next(2).getEndDate();
+
+    const r1 = budgetData.getRolledOver(budget(), oneAhead);
+    const r2 = budgetData.getRolledOver(budget(), twoAhead);
+
+    // The bug: r1 === 0. Fixed: rollover is stored negative (renders "+"),
+    // so each future month with no spend grows the surplus by exactly one
+    // month's capacity — strictly more negative than the current month.
+    expect(r1).not.toBe(0);
+    expect(r1).toBeCloseTo(current - MONTHLY_CAPACITY, 6);
+    expect(r2).toBeCloseTo(current - 2 * MONTHLY_CAPACITY, 6);
+  });
+
+  test("a future-year January carry projects too (year-interval view)", () => {
+    const budgetData = buildBudgetData();
+    const now = new ViewDate("month");
+    // Project to January of next year — what the year-interval bar reads.
+    const nextYear = now.getEndDate().getFullYear() + 1;
+    const januaryNextYear = new ViewDate(
+      "month",
+      new LocalDate(`${nextYear}-01-15`),
+    ).getEndDate();
+    expect(budgetData.getRolledOver(budget(), januaryNextYear)).toBeLessThan(0);
+    expect(budgetData.getRolledOver(budget(), januaryNextYear)).not.toBe(0);
+  });
+});
+
+// getSummary is the unified read the bars use: sorted/unsorted + rolled_over
+// from one call, so the rollover no longer flows on a separate path in the UI.
+// It must agree with the underlying history + getRolledOver it abstracts.
+describe("BudgetData.getSummary unified figures (#562)", () => {
+  const OLD_START = "2022-06-01";
+
+  const buildBudgetData = () => {
+    const { budgetData } = getBudgetData(
+      new TransactionDictionary(),
+      emptySplits(),
+      makeAccount(),
+      makeBudget(OLD_START),
+      emptySections(),
+      emptyCategories(),
+      new TransferDictionary(),
+      false,
+    );
+    return budgetData;
+  };
+
+  const budget = () => makeBudget(OLD_START).get("bud-1")!;
+
+  test("month view returns sorted/unsorted from history and rolled_over from the projection", () => {
+    const budgetData = buildBudgetData();
+    const viewDate = new ViewDate("month");
+    const date = viewDate.getEndDate();
+    const stored = budgetData.get("bud-1", date);
+
+    const view = budgetData.getSummary(budget(), viewDate);
+    expect(view.sorted_amount).toBe(stored.sorted_amount);
+    expect(view.unsorted_amount).toBe(stored.unsorted_amount);
+    expect(view.rolled_over_amount).toBe(budgetData.getRolledOver(budget(), date));
+  });
+
+  test("future month view projects the rollover (matches getRolledOver)", () => {
+    const budgetData = buildBudgetData();
+    const viewDate = new ViewDate("month").next(2);
+    const view = budgetData.getSummary(budget(), viewDate);
+    expect(view.rolled_over_amount).toBe(
+      budgetData.getRolledOver(budget(), viewDate.getEndDate()),
+    );
+    expect(view.rolled_over_amount).not.toBe(0);
+  });
+
+  test("year view sums sorted/unsorted and reads the rollover at January", () => {
+    const budgetData = buildBudgetData();
+    const nextYear = new ViewDate("month").getEndDate().getFullYear() + 1;
+    const yearView = new ViewDate("year", new LocalDate(`${nextYear}-07-15`));
+    const aggregate = budgetData.get("bud-1").aggregateYear(nextYear);
+    const januaryEnd = new ViewDate(
+      "month",
+      new LocalDate(`${nextYear}-01-15`),
+    ).getEndDate();
+
+    const view = budgetData.getSummary(budget(), yearView);
+    expect(view.sorted_amount).toBe(aggregate.sorted_amount);
+    expect(view.unsorted_amount).toBe(aggregate.unsorted_amount);
+    expect(view.rolled_over_amount).toBe(budgetData.getRolledOver(budget(), januaryEnd));
+  });
+
+  test("a non-rollover budget-like reports rolled_over_amount === 0", () => {
+    const budgetData = buildBudgetData();
+    const notRolling = new Budget({
+      budget_id: "bud-1",
+      user_id: "u1",
+      name: "Non-Rolling Budget",
+      iso_currency_code: "USD",
+      capacities: [
+        { active_from: null, children: {}, year: MONTHLY_CAPACITY * 12, month: MONTHLY_CAPACITY, week: 0, day: 0 },
+      ],
+      roll_over: false,
+    });
+    const view = budgetData.getSummary(notRolling, new ViewDate("month").next(3));
+    expect(view.rolled_over_amount).toBe(0);
+  });
+});
