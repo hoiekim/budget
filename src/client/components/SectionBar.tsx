@@ -48,6 +48,8 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   }, [categories, section_id, setCategoriesOrder]);
 
   const childrenDivRef = useRef<HTMLDivElement>(null);
+  const sectionBarRef = useRef<HTMLDivElement>(null);
+  const pendingScrollToOpen = useRef(false);
 
   const observerRef = useRef(
     new ResizeObserver((entries) => {
@@ -81,11 +83,15 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   const { iso_currency_code } = budget;
 
   const openCategory = () => {
+    pendingScrollToOpen.current = true;
     setIsOpen(true);
-    const childrenDiv = childrenDivRef.current;
-    if (!childrenDiv) return;
-    childrenDiv.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+
+  useEffect(() => {
+    if (!isOpen || !pendingScrollToOpen.current) return;
+    pendingScrollToOpen.current = false;
+    sectionBarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [isOpen]);
 
   const onClickInfo = () => {
     const params = new URLSearchParams(router.params);
@@ -132,7 +138,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   const childrenClassNames = ["children", "transition"];
 
   return (
-    <div className="SectionBar">
+    <div className="SectionBar" ref={sectionBarRef}>
       {isOpen ? (
         <div
           className="openLabel"
