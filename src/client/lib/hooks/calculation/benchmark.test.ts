@@ -4,10 +4,15 @@ import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 
 import {
   extractCashFlows,
+  extractCashFlowsBySecurity,
   computeMWR,
   computeBenchmarkTWR,
   valueAt,
   buildPriceAt,
+  priceAtIn,
+  buildBenchmarkPriceAt,
+  computeHoldingBenchmark,
+  type PriceRow,
 } from "./benchmark";
 import {
   HoldingSnapshotDictionary,
@@ -460,5 +465,163 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     const ss = new SecuritySnapshotDictionary();
     const priceAt = buildPriceAt(ss, itxns);
     expect(priceAt(VOO, "2024-06-01")).toBeNull();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+describe("extractCashFlowsBySecurity", () => {
+  test("groups signed flows per security, excludes cash, sums same-day", () => {
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(CASH, 100, 1, null, "2026-01-01")); // cash-shape
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("t1", mkTxn({ date: "2026-02-01", type: InvestmentTransactionType.Buy, security_id: VOO, amount: 100, quantity: 1 }));
+    itxns.set("t2", mkTxn({ date: "2026-02-01", type: InvestmentTransactionType.Buy, security_id: VOO, amount: 50, quantity: 1 }));
+    itxns.set("t3", mkTxn({ date: "2026-03-01", type: InvestmentTransactionType.Sell, security_id: VOO, amount: 30, quantity: -1 }));
+    itxns.set("t4", mkTxn({ date: "2026-02-10", type: InvestmentTransactionType.Buy, security_id: "sec-qqq", amount: 200, quantity: 1 }));
+    itxns.set("t5", mkTxn({ date: "2026-02-15", type: InvestmentTransactionType.Buy, security_id: CASH, amount: 500, quantity: 500 }));
+
+    const bySec = extractCashFlowsBySecurity(itxns, hs, ACCT);
+    expect(bySec.get(VOO)).toEqual([
+      { date: "2026-02-01", amount: 150 }, // same-day buys summed
+      { date: "2026-03-01", amount: -30 }, // sell signed negative
+    ]);
+    expect(bySec.get("sec-qqq")).toEqual([{ date: "2026-02-10", amount: 200 }]);
+    expect(bySec.has(CASH)).toBe(false); // cash-shape excluded
+  });
+});
+
+describe("extractCashFlows securityIds filter", () => {
+  test("keeps only flows for the requested securities", () => {
+    const hs = new HoldingSnapshotDictionary();
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("t1", mkTxn({ date: "2026-02-01", type: InvestmentTransactionType.Buy, security_id: VOO, amount: 100, quantity: 1 }));
+    itxns.set("t2", mkTxn({ date: "2026-02-01", type: InvestmentTransactionType.Buy, security_id: "sec-qqq", amount: 200, quantity: 1 }));
+
+    // Unfiltered sums both into one same-day flow.
+    expect(extractCashFlows(itxns, hs, ACCT)).toEqual([{ date: "2026-02-01", amount: 300 }]);
+    // Filtered to VOO only.
+    expect(extractCashFlows(itxns, hs, ACCT, new Set([VOO]))).toEqual([{ date: "2026-02-01", amount: 100 }]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+describe("priceAtIn", () => {
+  const history: PriceRow[] = [
+    { date: "2024-01-01", close: 100 },
+    { date: "2025-01-01", close: 200 },
+    { date: "2026-01-01", close: 400 },
+  ];
+  test("returns latest close ≤ date", () => {
+    expect(priceAtIn(history, "2025-06-01")).toBe(200);
+    expect(priceAtIn(history, "2026-01-01")).toBe(400);
+  });
+  test("null before history starts; empty history null", () => {
+    expect(priceAtIn(history, "2023-12-31")).toBeNull();
+    expect(priceAtIn([], "2025-01-01")).toBeNull();
+  });
+});
+
+describe("buildBenchmarkPriceAt", () => {
+  test("snapshot wins; CSV fills the historical tail; null when neither has it", () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 300, "2025-07-01", "VOO"));
+    const csv: PriceRow[] = [
+      { date: "2020-01-01", close: 100 },
+      { date: "2021-01-01", close: 150 },
+    ];
+    const priceAt = buildBenchmarkPriceAt(ss, csv, "VOO");
+    expect(priceAt("2025-07-01")).toBe(300); // snapshot
+    expect(priceAt("2020-06-01")).toBe(100); // CSV fallback (no snapshot ≤ date)
+    expect(priceAt("2019-01-01")).toBeNull(); // predates everything
+  });
+  test("no snapshot for ticker → CSV only", () => {
+    const ss = new SecuritySnapshotDictionary();
+    const csv: PriceRow[] = [{ date: "2024-01-01", close: 100 }];
+    const priceAt = buildBenchmarkPriceAt(ss, csv, "VOO");
+    expect(priceAt("2024-06-01")).toBe(100);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+describe("computeHoldingBenchmark (dynamic distribution, #317)", () => {
+  // VOO doubled then doubled again: 100 → 200 → 400.
+  const priceAt = (date: string): number | null => {
+    if (date >= "2026-01-01") return 400;
+    if (date >= "2025-01-01") return 200;
+    if (date >= "2024-01-01") return 100;
+    return null;
+  };
+
+  test("single contribution: simple price ratio", () => {
+    const r = computeHoldingBenchmark({
+      contributions: [{ date: "2024-01-01", amount: 1000 }],
+      asOf: "2026-01-01",
+      benchmarkPriceAt: priceAt,
+    });
+    expect(r).not.toBeNull();
+    expect(r!.gain).toBeCloseTo(3000, 6); // 1000×(400/100) − 1000
+    expect(r!.returnPercent).toBeCloseTo(300, 6);
+  });
+
+  test("uneven contributions are re-priced at their OWN dates (no averaging)", () => {
+    const r = computeHoldingBenchmark({
+      contributions: [
+        { date: "2024-01-01", amount: 1000 }, // ×4
+        { date: "2025-01-01", amount: 1000 }, // ×2
+      ],
+      asOf: "2026-01-01",
+      benchmarkPriceAt: priceAt,
+    });
+    // hypothetical = 4000 + 2000 = 6000; net = 2000; gain = 4000; pct = 200%.
+    // Averaging the dates (→ a single mid-window entry) would NOT give this.
+    expect(r!.gain).toBeCloseTo(4000, 6);
+    expect(r!.returnPercent).toBeCloseTo(200, 6);
+  });
+
+  test("sell (negative contribution) reduces net and hypothetical", () => {
+    const r = computeHoldingBenchmark({
+      contributions: [
+        { date: "2024-01-01", amount: 1000 }, // ×4 → 4000
+        { date: "2025-01-01", amount: -500 }, // ×2 → -1000
+      ],
+      asOf: "2026-01-01",
+      benchmarkPriceAt: priceAt,
+    });
+    // hypothetical = 4000 − 1000 = 3000; net = 500; gain = 2500; pct = 500%.
+    expect(r!.gain).toBeCloseTo(2500, 6);
+    expect(r!.returnPercent).toBeCloseTo(500, 6);
+  });
+
+  test("null on: no contributions, net ≤ 0, missing contribution price, missing asOf price", () => {
+    expect(
+      computeHoldingBenchmark({ contributions: [], asOf: "2026-01-01", benchmarkPriceAt: priceAt }),
+    ).toBeNull();
+    // Net zero (fully closed) → can't express a %-return.
+    expect(
+      computeHoldingBenchmark({
+        contributions: [
+          { date: "2024-01-01", amount: 1000 },
+          { date: "2025-01-01", amount: -1000 },
+        ],
+        asOf: "2026-01-01",
+        benchmarkPriceAt: priceAt,
+      }),
+    ).toBeNull();
+    // Contribution predates available index history.
+    expect(
+      computeHoldingBenchmark({
+        contributions: [{ date: "2023-01-01", amount: 1000 }],
+        asOf: "2026-01-01",
+        benchmarkPriceAt: priceAt,
+      }),
+    ).toBeNull();
+    // asOf has no index price.
+    expect(
+      computeHoldingBenchmark({
+        contributions: [{ date: "2024-01-01", amount: 1000 }],
+        asOf: "2023-06-01",
+        benchmarkPriceAt: priceAt,
+      }),
+    ).toBeNull();
   });
 });

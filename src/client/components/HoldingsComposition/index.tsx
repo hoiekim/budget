@@ -1,7 +1,15 @@
 import { KeyboardEvent, useMemo } from "react";
 import { currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
-import { Account, PATH, useAppContext } from "client";
+import { Account, PATH, useAppContext, useVooHistory } from "client";
+import {
+  CashFlow,
+  extractCashFlowsBySecurity,
+  buildBenchmarkPriceAt,
+  computeHoldingBenchmark,
+} from "client/lib/hooks/calculation/benchmark";
 import "./index.css";
+
+const toDateString = (d: Date) => d.toISOString().slice(0, 10);
 
 interface Props {
   account: Account;
@@ -44,7 +52,10 @@ interface TickerRow {
   unrealizedGain: number | null;
   costBasisInferred: boolean;
   isCash: boolean;
-  pct: number;
+  /** Every security_id that bucketed here — the S&P 500 benchmark gathers
+   *  this bucket's investment-transaction contributions across all of them
+   *  (same ticker can span multiple security_ids across institutions). */
+  securityIds: string[];
   /** Whether the row routes to the detail page. False only for placeholder
    *  buckets that have no underlying snapshots (shouldn't happen given the
    *  filter at construction). */
@@ -60,7 +71,8 @@ export const HoldingsComposition = ({ account }: Props) => {
 
   const { calculations, router, viewDate, data } = useAppContext();
   const { holdingsValueData, balanceData } = calculations;
-  const { items, securitySnapshots } = data;
+  const { items, securitySnapshots, investmentTransactions, holdingSnapshots } = data;
+  const vooHistory = useVooHistory();
 
   // Every row is clickable and drills into HOLDING_DETAIL. Edit gating
   // lives on the detail page — synced + current viewDate renders read-only
@@ -140,6 +152,7 @@ export const HoldingsComposition = ({ account }: Props) => {
       name: string | null;
       ticker: string | null;
       securityId: string;
+      securityIds: Set<string>; // all contributors, for the benchmark calc
     }
     const buckets = new Map<string, Acc>();
 
@@ -167,8 +180,10 @@ export const HoldingsComposition = ({ account }: Props) => {
           name: row.name,
           ticker: row.ticker,
           securityId: row.securityId,
+          securityIds: new Set([row.securityId]),
         });
       } else {
+        existing.securityIds.add(row.securityId);
         existing.quantity += row.quantity;
         existing.value += row.value;
         existing.costBasis =
@@ -202,11 +217,58 @@ export const HoldingsComposition = ({ account }: Props) => {
         unrealizedGain: b.unrealizedGain,
         costBasisInferred: b.costBasisInferred,
         isCash: b.isCash,
-        pct: 0,
+        securityIds: Array.from(b.securityIds),
         clickable: true,
       };
     });
   }, [perSecurityRows]);
+
+  // S&P 500 benchmark (#317): for each non-cash bucket, what the unrealized
+  // G/L% would have been if the same contributions had gone into VOO instead
+  // — each contribution re-priced from its OWN date (dynamic distribution,
+  // no cost-basis/date averaging). The Total row aggregates every non-cash
+  // bucket's contributions. Cash buckets and buckets with no investment-
+  // transaction history render "—".
+  const cashFlowsBySecurity = useMemo(
+    () => extractCashFlowsBySecurity(investmentTransactions, holdingSnapshots, account_id),
+    [investmentTransactions, holdingSnapshots, account_id],
+  );
+  const benchmarkAsOf = useMemo(() => {
+    const today = new Date();
+    return toDateString(viewEndDate > today ? today : viewEndDate);
+  }, [viewEndDate]);
+  const benchmarkPriceAt = useMemo(
+    () => buildBenchmarkPriceAt(securitySnapshots, vooHistory),
+    [securitySnapshots, vooHistory],
+  );
+  const benchmark = useMemo(() => {
+    const byBucket = new Map<string, number | null>();
+    const allContributions: CashFlow[] = [];
+    tickerRows.forEach((row) => {
+      if (row.isCash) {
+        byBucket.set(row.bucketKey, null);
+        return;
+      }
+      const contributions: CashFlow[] = [];
+      row.securityIds.forEach((sid) => {
+        const flows = cashFlowsBySecurity.get(sid);
+        if (!flows) return;
+        for (const f of flows) {
+          if (f.date > benchmarkAsOf) continue;
+          contributions.push(f);
+          allContributions.push(f);
+        }
+      });
+      const result = computeHoldingBenchmark({ contributions, asOf: benchmarkAsOf, benchmarkPriceAt });
+      byBucket.set(row.bucketKey, result ? result.returnPercent : null);
+    });
+    const totalResult = computeHoldingBenchmark({
+      contributions: allContributions,
+      asOf: benchmarkAsOf,
+      benchmarkPriceAt,
+    });
+    return { byBucket, total: totalResult ? totalResult.returnPercent : null };
+  }, [tickerRows, cashFlowsBySecurity, benchmarkPriceAt, benchmarkAsOf]);
 
   const goToHoldingDetail = (bucketKey?: string) => {
     const params = new URLSearchParams();
@@ -255,12 +317,12 @@ export const HoldingsComposition = ({ account }: Props) => {
       : null;
   const totalGain = totalCostBasis !== null ? totalValue - totalCostBasis : null;
 
-  // Per-row pct recomputes against the new totalValue so the column
-  // (including the Unknown row, if present) still adds to ~100%.
   const displayRows = tickerRows
-    .map((r) => ({ ...r, pct: totalValue > 0 ? (r.value / totalValue) * 100 : 0 }))
+    .map((r) => ({
+      ...r,
+      benchmarkReturnPercent: benchmark.byBucket.get(r.bucketKey) ?? null,
+    }))
     .sort((a, b) => b.value - a.value);
-  const unknownPct = showUnknownRow && totalValue > 0 ? (unknownDiff / totalValue) * 100 : 0;
 
   return (
     <>
@@ -270,10 +332,15 @@ export const HoldingsComposition = ({ account }: Props) => {
           <span className="col-name">Security</span>
           <span className="col-value">Value</span>
           <span className="col-gain">Growth</span>
-          <span className="col-pct">%</span>
+          <span
+            className="col-bench"
+            title="If the same contributions had gone into the S&P 500 (VOO) instead — each contribution tracked at its own date"
+          >
+            S&amp;P&nbsp;500
+          </span>
         </div>
         {tickerRows.length === 0 && isManualAccount && (
-          <div className="holdingsRow">
+          <div className="holdingsRow holdingsEmpty">
             <span className="col-name disabled">No holdings recorded</span>
           </div>
         )}
@@ -282,6 +349,12 @@ export const HoldingsComposition = ({ account }: Props) => {
             row.isCash || row.unrealizedGain === null
               ? ""
               : row.unrealizedGain >= 0
+                ? "positive"
+                : "negative";
+          const benchClass =
+            row.benchmarkReturnPercent === null
+              ? ""
+              : row.benchmarkReturnPercent >= 0
                 ? "positive"
                 : "negative";
           const onClickRow = row.clickable ? () => goToHoldingDetail(row.bucketKey) : undefined;
@@ -330,7 +403,16 @@ export const HoldingsComposition = ({ account }: Props) => {
                   </>
                 )}
               </span>
-              <span className="col-pct">{row.pct.toFixed(1)}%</span>
+              <span className={`col-bench ${benchClass}`}>
+                {row.benchmarkReturnPercent === null ? (
+                  <span className="no-data">—</span>
+                ) : (
+                  <>
+                    {row.benchmarkReturnPercent >= 0 ? "+" : ""}
+                    {row.benchmarkReturnPercent.toFixed(1)}%
+                  </>
+                )}
+              </span>
             </div>
           );
         })}
@@ -351,7 +433,9 @@ export const HoldingsComposition = ({ account }: Props) => {
             <span className="col-gain">
               <span className="no-data">—</span>
             </span>
-            <span className="col-pct">{unknownPct.toFixed(1)}%</span>
+            <span className="col-bench">
+              <span className="no-data">—</span>
+            </span>
           </div>
         )}
         {(tickerRows.length > 0 || showUnknownRow) && (
@@ -372,7 +456,18 @@ export const HoldingsComposition = ({ account }: Props) => {
                 <span className="no-data">—</span>
               )}
             </span>
-            <span className="col-pct">100%</span>
+            <span
+              className={`col-bench ${benchmark.total === null ? "" : benchmark.total >= 0 ? "positive" : "negative"}`}
+            >
+              {benchmark.total !== null ? (
+                <>
+                  {benchmark.total >= 0 ? "+" : ""}
+                  {benchmark.total.toFixed(1)}%
+                </>
+              ) : (
+                <span className="no-data">—</span>
+              )}
+            </span>
           </div>
         )}
         {isManualAccount && (
@@ -387,6 +482,13 @@ export const HoldingsComposition = ({ account }: Props) => {
         )}
         {tickerRows.some((r) => r.costBasisInferred) && (
           <div className="holdingsFootnote">* Cost basis inferred from transaction history</div>
+        )}
+        {(benchmark.total !== null ||
+          Array.from(benchmark.byBucket.values()).some((v) => v !== null)) && (
+          <div className="holdingsFootnote">
+            S&amp;P&nbsp;500: %-return if the same contributions had gone into VOO instead, each
+            tracked at its own date
+          </div>
         )}
       </div>
     </>
