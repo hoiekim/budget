@@ -433,17 +433,30 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
  * The `t` alias must point at the row whose features are being scored
  * (the historical `transactions` row in both code paths). Parameter
  * indexes match the call site's `params` array.
+ *
+ * Sign discrimination: `merchant_name`, `name`, `plaid_pfc_primary` —
+ * the three identity-like features — also require `SIGN(amount) =
+ * SIGN(target_amount)`. Same merchant with the opposite sign (refund
+ * vs purchase, payout vs payment) is much more likely a different
+ * category than the same one, so the identity-strength match shouldn't
+ * fire in that direction. The amount-band feature is already
+ * sign-preserving via Math.min/Math.max in featuresFromRow. The weak
+ * features (payment_channel, account_id, day_band) are tiebreakers and
+ * don't need the sign gate.
  */
 const SCORE_EXPR = (t: string) => `(
   (CASE WHEN $2::text IS NOT NULL AND ${t}.merchant_name IS NOT NULL
-        AND similarity(${t}.merchant_name, $2) >= $3 THEN ${W_MERCHANT_NAME} ELSE 0 END)
+        AND similarity(${t}.merchant_name, $2) >= $3
+        AND SIGN(${t}.amount) = SIGN($13::numeric) THEN ${W_MERCHANT_NAME} ELSE 0 END)
 + (CASE WHEN $4::text IS NOT NULL AND ${t}.name IS NOT NULL
-        AND similarity(${t}.name, $4) >= $3 THEN ${W_NAME} ELSE 0 END)
+        AND similarity(${t}.name, $4) >= $3
+        AND SIGN(${t}.amount) = SIGN($13::numeric) THEN ${W_NAME} ELSE 0 END)
 + (CASE WHEN ${t}.amount BETWEEN $5 AND $6 THEN ${W_AMOUNT} ELSE 0 END)
 + (CASE WHEN $7::text IS NOT NULL AND ${t}.payment_channel = $7 THEN ${W_PAYMENT_CHANNEL} ELSE 0 END)
 + (CASE WHEN ${t}.account_id = $8 THEN ${W_ACCOUNT} ELSE 0 END)
 + (CASE WHEN $9::text IS NOT NULL
-        AND (${t}.raw->'personal_finance_category'->>'primary') = $9 THEN ${W_PFC} ELSE 0 END)
+        AND (${t}.raw->'personal_finance_category'->>'primary') = $9
+        AND SIGN(${t}.amount) = SIGN($13::numeric) THEN ${W_PFC} ELSE 0 END)
 + (CASE WHEN EXTRACT(DAY FROM ${t}.date::date) BETWEEN $10 AND $11 THEN ${W_DAY} ELSE 0 END)
 )`;
 
@@ -474,6 +487,7 @@ const getFeatureSignal = async (
     f.day_lo, //                     $10
     f.day_hi, //                     $11
     ROW_SCORE_THRESHOLD, //          $12
+    f.amount, //                     $13 (sign source for the identity-feature gates in SCORE_EXPR)
   ];
 
   const result = await pool.query(
