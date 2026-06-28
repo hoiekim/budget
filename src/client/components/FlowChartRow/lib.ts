@@ -1,4 +1,3 @@
-import { InvestmentTransactionType } from "plaid";
 
 import { LocalDate, ViewDate } from "common";
 import {
@@ -86,31 +85,44 @@ export const getSankeyData = (
     const category = category_id && categories.get(category_id);
     const section_id = (category && category.section_id) || `${budget_id}_Unknown`;
     const section = sections.get(section_id);
-    // For an investment, only buy/sell rows are external cash flow; derive
-    // their polarity from the transaction TYPE (a buy is cash out → expense /
-    // positive amount, a sell is cash in → income / negative amount) rather
-    // than from the stored sign of `quantity`, so it stays correct even if
-    // Plaid emits a buy with a negative quantity. Every other type — `cash`,
-    // `fee`, `dividend`, `transfer` — is skipped, matching benchmark.ts
-    // (which counts only `Buy`/`Sell` at lib/hooks/calculation/benchmark.ts).
-    // Skipping `transfer` matters: those carry a nonzero `price * quantity`
-    // (internal movement, not external flow) and would otherwise inflate a
-    // column. Including dividends/fees as flow is deferred per Closes #499.
+    // Investment transactions are internal household moves between
+    // user-owned cash and user-owned equity, not external cash flow.
+    // Their cash-side counterpart is a regular `transactions` row on
+    // the checking account (the wire that funded the Buy, or the
+    // deposit that received the Sell). Counting BOTH the cash-side
+    // row AND the investment-side row in Sankey double-counts every
+    // dollar moved into or out of brokerage. The cash-side row alone
+    // already represents the household cash flow; the
+    // investment-side row represents the asset transformation, which
+    // doesn't belong in cash-flow accounting. Skip all investment
+    // transaction types — buy/sell included.
     //
-    // For a regular parent transaction, subtract its split children's total
-    // so only the un-split remainder is attributed to the parent's label.
-    // Synthetic split transactions (from `toTransaction()`) carry the
-    // split's own id, which keys no family, so their amount is unchanged.
-    let amount: number;
-    if (isInvestment) {
-      if (t.type !== InvestmentTransactionType.Buy && t.type !== InvestmentTransactionType.Sell) {
-        return;
-      }
-      const magnitude = Math.abs(t.price * t.quantity);
-      amount = t.type === InvestmentTransactionType.Buy ? magnitude : -magnitude;
-    } else {
-      amount = t.amount - transactionFamilies.getChildrenAmountTotal(t.transaction_id);
-    }
+    // Trade-off: appreciation/depreciation of manual-tracked
+    // investments (e.g. 401Ks with no transactions) was already
+    // invisible to Sankey and continues to be — Sankey is cash flow,
+    // not net-worth change. The Accounts donut's "from last <interval>"
+    // delta is the right widget for total balance change including
+    // appreciation.
+    //
+    // Verified against real account data: dropping invest-Buy rows from
+    // Out moves Sankey from a spurious deficit to a surplus that
+    // reconciles with the Accounts donut's balance Δ (modulo manual
+    // 401K/RSU appreciation, which Sankey correctly ignores). Closes
+    // the cash-side ↔ invest-side double-count.
+    //
+    // Long-term fix (cross-table transfer-detection) tracked
+    // separately — that would surface the cash-side wires as
+    // confirmed-transfer halves so they're excluded from Sankey
+    // alongside the invest-side, giving the user a richer view that
+    // can still attribute investment activity per-budget.
+    //
+    // For a regular parent transaction, subtract its split children's
+    // total so only the un-split remainder is attributed to the
+    // parent's label. Synthetic split transactions (from
+    // `toTransaction()`) carry the split's own id, which keys no
+    // family, so their amount is unchanged.
+    if (isInvestment) return;
+    const amount = t.amount - transactionFamilies.getChildrenAmountTotal(t.transaction_id);
     if (amount < 0) {
       income -= amount;
       incomeSections.set(section_id, {
