@@ -6,7 +6,7 @@
 .holdingsTable .holdingsHeader,
 .holdingsTable .holdingsRow {
   display: grid;
-  grid-template-columns: 1fr 6em 7em 5em 4em;
+  grid-template-columns: 1fr 6em 7em 5em;
   gap: 0.25em;
   padding: 0.35em 0.75em;
   font-size: 0.85em;
@@ -45,10 +45,15 @@
 
 .holdingsTable .col-value,
 .holdingsTable .col-gain,
-.holdingsTable .col-bench,
-.holdingsTable .col-pct {
+.holdingsTable .col-bench {
   text-align: right;
   white-space: nowrap;
+}
+
+/* Empty-state placeholder spans the whole row instead of being clipped to
+   the first column's track. */
+.holdingsTable .holdingsRow.holdingsEmpty .col-name {
+  grid-column: 1 / -1;
 }
 
 .holdingsTable .col-name {

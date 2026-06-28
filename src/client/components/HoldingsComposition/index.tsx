@@ -52,7 +52,6 @@ interface TickerRow {
   unrealizedGain: number | null;
   costBasisInferred: boolean;
   isCash: boolean;
-  pct: number;
   /** Every security_id that bucketed here — the S&P 500 benchmark gathers
    *  this bucket's investment-transaction contributions across all of them
    *  (same ticker can span multiple security_ids across institutions). */
@@ -218,7 +217,6 @@ export const HoldingsComposition = ({ account }: Props) => {
         unrealizedGain: b.unrealizedGain,
         costBasisInferred: b.costBasisInferred,
         isCash: b.isCash,
-        pct: 0,
         securityIds: Array.from(b.securityIds),
         clickable: true,
       };
@@ -319,16 +317,12 @@ export const HoldingsComposition = ({ account }: Props) => {
       : null;
   const totalGain = totalCostBasis !== null ? totalValue - totalCostBasis : null;
 
-  // Per-row pct recomputes against the new totalValue so the column
-  // (including the Unknown row, if present) still adds to ~100%.
   const displayRows = tickerRows
     .map((r) => ({
       ...r,
-      pct: totalValue > 0 ? (r.value / totalValue) * 100 : 0,
       benchmarkReturnPercent: benchmark.byBucket.get(r.bucketKey) ?? null,
     }))
     .sort((a, b) => b.value - a.value);
-  const unknownPct = showUnknownRow && totalValue > 0 ? (unknownDiff / totalValue) * 100 : 0;
 
   return (
     <>
@@ -344,10 +338,9 @@ export const HoldingsComposition = ({ account }: Props) => {
           >
             S&amp;P&nbsp;500
           </span>
-          <span className="col-pct">%</span>
         </div>
         {tickerRows.length === 0 && isManualAccount && (
-          <div className="holdingsRow">
+          <div className="holdingsRow holdingsEmpty">
             <span className="col-name disabled">No holdings recorded</span>
           </div>
         )}
@@ -420,7 +413,6 @@ export const HoldingsComposition = ({ account }: Props) => {
                   </>
                 )}
               </span>
-              <span className="col-pct">{row.pct.toFixed(1)}%</span>
             </div>
           );
         })}
@@ -444,7 +436,6 @@ export const HoldingsComposition = ({ account }: Props) => {
             <span className="col-bench">
               <span className="no-data">—</span>
             </span>
-            <span className="col-pct">{unknownPct.toFixed(1)}%</span>
           </div>
         )}
         {(tickerRows.length > 0 || showUnknownRow) && (
@@ -477,7 +468,6 @@ export const HoldingsComposition = ({ account }: Props) => {
                 <span className="no-data">—</span>
               )}
             </span>
-            <span className="col-pct">100%</span>
           </div>
         )}
         {isManualAccount && (
