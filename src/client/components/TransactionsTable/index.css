@@ -127,6 +127,20 @@ div.TransactionRow .transferChip.transferChipConfirmed {
   color: #b8b8b8;
 }
 
+/* Confirmed transfer row: stack the "Transfer" chip over a caption
+   that tells the user why the row is absent from the budget math. */
+div.TransferRow > .budgetCategoryActions > .labelControls {
+  flex-direction: column;
+  gap: 2px;
+}
+
+div.TransferRow .transferExclusionNote {
+  font-size: 11px;
+  color: #858585;
+  text-align: center;
+  white-space: nowrap;
+}
+
 div.TransactionRow .transferAmount {
   display: flex;
   align-items: center;

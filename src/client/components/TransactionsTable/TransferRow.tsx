@@ -85,6 +85,9 @@ const TransferRow = ({ transactions }: Props) => {
       <div className="budgetCategoryActions">
         <div className="labelControls">
           <span className="transferChip transferChipConfirmed">Transfer</span>
+          <span className="transferExclusionNote">
+            Excluded from budget totals
+          </span>
         </div>
         <div>
           <button className="kebabButton" onClick={onClickKebab}>
