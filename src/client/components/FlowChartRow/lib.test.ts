@@ -380,4 +380,66 @@ describe("getSankeyData — budget_ids whitelist filter", () => {
     expect(tableData.income).toBe(0);
     expect(graphData.every((col) => col.length === 0)).toBe(true);
   });
+
+  test("empty whitelist includes unsorted (no-budget-label) transactions", () => {
+    const w = makeWorld();
+    // An unlabeled transaction on an account whose own label.budget_id is
+    // unset → effective budget_id falls through to the "Unknown" sentinel.
+    const unlabeledAccount = new Account({ account_id: "acc-unlabeled" });
+    const txn = new Transaction({
+      account_id: unlabeledAccount.id,
+      transaction_id: "tx-unlabeled",
+      amount: 42,
+      date: DATE,
+    });
+    const transactions = new TransactionDictionary();
+    transactions.set(txn.id, txn);
+    const { tableData } = getSankeyData(
+      [unlabeledAccount],
+      transactions,
+      emptyInvestments,
+      new SplitTransactionDictionary(),
+      w.budgets,
+      w.sections,
+      w.categories,
+      viewDate,
+      noTransfers,
+      [],
+    );
+    expect(tableData.expense).toBe(42);
+  });
+
+  test('whitelist with "Unknown" sentinel includes unsorted txns only', () => {
+    const w = makeWorld();
+    const unlabeledAccount = new Account({ account_id: "acc-unlabeled" });
+    const unlabeledTxn = new Transaction({
+      account_id: unlabeledAccount.id,
+      transaction_id: "tx-unlabeled",
+      amount: 42,
+      date: DATE,
+    });
+    const labeledTxn = new Transaction({
+      account_id: w.account.id,
+      transaction_id: "tx-labeled",
+      amount: 100,
+      date: DATE,
+      label: { budget_id: w.budgetA.id, category_id: w.categoryA.id, category_confidence: 1 },
+    });
+    const transactions = new TransactionDictionary();
+    transactions.set(unlabeledTxn.id, unlabeledTxn);
+    transactions.set(labeledTxn.id, labeledTxn);
+    const { tableData } = getSankeyData(
+      [unlabeledAccount, w.account],
+      transactions,
+      emptyInvestments,
+      new SplitTransactionDictionary(),
+      w.budgets,
+      w.sections,
+      w.categories,
+      viewDate,
+      noTransfers,
+      ["Unknown"],
+    );
+    expect(tableData.expense).toBe(42);
+  });
 });
