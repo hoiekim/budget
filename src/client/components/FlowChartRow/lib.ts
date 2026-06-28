@@ -1,5 +1,5 @@
 
-import { LocalDate, ViewDate } from "common";
+import { LocalDate, UNSORTED_BUDGET_ID, ViewDate } from "common";
 import {
   Account,
   BudgetDictionary,
@@ -87,7 +87,7 @@ export const getSankeyData = (
     if (!viewDate.has(transactionDate)) return;
     const account = accounts.find((a) => a.id === t.account_id);
     if (!account) return;
-    const budget_id = t.label.budget_id || account.label.budget_id || "Unknown";
+    const budget_id = t.label.budget_id || account.label.budget_id || UNSORTED_BUDGET_ID;
     if (budget_ids.length > 0 && !budget_ids.includes(budget_id)) return;
     const budget = budgets.get(budget_id);
     const budgetName = budget?.name || "Others";

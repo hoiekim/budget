@@ -1,5 +1,5 @@
 import { ChangeEventHandler } from "react";
-import { ChartType, MAX_FLOAT, numberToCommaString } from "common";
+import { ChartType, MAX_FLOAT, numberToCommaString, UNSORTED_BUDGET_ID } from "common";
 import {
   useAppContext,
   call,
@@ -85,37 +85,57 @@ export const ChartAccountsPage = () => {
       );
     });
 
+  const makeBudgetToggleHandler =
+    (budget_id: string): ChangeEventHandler<HTMLInputElement> =>
+    async () => {
+      const newBudgetIds = budget_ids.includes(budget_id)
+        ? budget_ids.filter((id) => id !== budget_id)
+        : [...budget_ids, budget_id];
+      const updatedFields = { ...configuration, budget_ids: newBudgetIds };
+      const updatedConfiguration =
+        type === ChartType.BALANCE
+          ? new BalanceChartConfiguration(updatedFields)
+          : new FlowChartConfiguration(updatedFields);
+      const r = await call.post("/api/chart", { chart_id, configuration: updatedConfiguration });
+      if (r.status === "success") {
+        setData((oldData) => {
+          const newData = new Data(oldData);
+          const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
+          indexedDb.save(newChart).catch(console.error);
+          const newCharts = new ChartDictionary(newData.charts);
+          newCharts.set(chart_id, newChart);
+          newData.charts = newCharts;
+          return newData;
+        });
+      } else {
+        console.error(r.message);
+        throw new Error(r.message);
+      }
+    };
+
+  // Synthetic "Others" toggle (Flow chart only) for transactions whose
+  // effective budget_id is the UNSORTED_BUDGET_ID sentinel — i.e. no
+  // label on the transaction and no fallback label on the account.
+  // Italic name signals this row is a system-reserved sentinel, not a
+  // user-created budget. Without it, a user who whitelists any real
+  // budget would silently lose unsorted transactions with no escape
+  // hatch other than deselecting every budget (= include all).
+  const othersRow =
+    type === ChartType.FLOW ? (
+      <div key={UNSORTED_BUDGET_ID} className="row keyValue">
+        <div>
+          <em>Others</em>
+          <span className="small">&nbsp;&nbsp;transactions without a budget label</span>
+        </div>
+        <ToggleInput
+          defaultChecked={budget_ids.includes(UNSORTED_BUDGET_ID)}
+          onChange={makeBudgetToggleHandler(UNSORTED_BUDGET_ID)}
+        />
+      </div>
+    ) : null;
+
   const budgetRows = showBudgetSelector
     ? budgets.toArray().map((b) => {
-        const onChangeToggle: ChangeEventHandler<HTMLInputElement> = async () => {
-          const newBudgetIds = budget_ids.includes(b.id)
-            ? budget_ids.filter((id) => id !== b.id)
-            : [...budget_ids, b.id];
-          const updatedFields = { ...configuration, budget_ids: newBudgetIds };
-          const updatedConfiguration =
-            type === ChartType.BALANCE
-              ? new BalanceChartConfiguration(updatedFields)
-              : new FlowChartConfiguration(updatedFields);
-          const r = await call.post("/api/chart", {
-            chart_id,
-            configuration: updatedConfiguration,
-          });
-          if (r.status === "success") {
-            setData((oldData) => {
-              const newData = new Data(oldData);
-              const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
-              indexedDb.save(newChart).catch(console.error);
-              const newCharts = new ChartDictionary(newData.charts);
-              newCharts.set(chart_id, newChart);
-              newData.charts = newCharts;
-              return newData;
-            });
-          } else {
-            console.error(r.message);
-            throw new Error(r.message);
-          }
-        };
-
         const date = viewDate.getEndDate();
         const interval = viewDate.getInterval();
         // Use the derived amount (sums children for synced budgets) for
@@ -137,7 +157,10 @@ export const ChartAccountsPage = () => {
                 &nbsp;&nbsp;{isInfinite ? "Unlimited" : capacityString}
               </span>
             </div>
-            <ToggleInput defaultChecked={budget_ids.includes(b.id)} onChange={onChangeToggle} />
+            <ToggleInput
+              defaultChecked={budget_ids.includes(b.id)}
+              onChange={makeBudgetToggleHandler(b.id)}
+            />
           </div>
         );
       })
@@ -151,7 +174,10 @@ export const ChartAccountsPage = () => {
         {showBudgetSelector && (
           <>
             <div className="propertyLabel">Select budgets</div>
-            <div className="property">{budgetRows}</div>
+            <div className="property">
+              {othersRow}
+              {budgetRows}
+            </div>
           </>
         )}
       </div>
