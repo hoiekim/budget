@@ -78,6 +78,11 @@ div.Properties .row input {
 
 div.Properties .row.keyValue span.propertyName {
   color: #858585;
+  margin-right: 5px;
+}
+
+div.Properties .row.keyValue :last-child {
+  text-align: right;
 }
 
 div.Properties .row > button {

@@ -49,9 +49,15 @@ export const TransferProperties = ({ transfer }: Props) => {
   // Per-side block reusable for both halves of the pair. Each side's
   // own date / amount / memo is rendered — Plaid posts the two halves
   // independently so they can carry different timestamps.
-  const renderSide = (label: string, tx: JSONTransaction, account: ReturnType<typeof accounts.get>) => {
+  const renderSide = (
+    label: string,
+    tx: JSONTransaction,
+    account: ReturnType<typeof accounts.get>,
+  ) => {
     const txDate = tx.authorized_date || tx.date;
-    const txLocations = [tx.location?.city, tx.location?.region, tx.location?.country].filter((e) => e);
+    const txLocations = [tx.location?.city, tx.location?.region, tx.location?.country].filter(
+      (e) => e,
+    );
     return (
       <>
         <div className="propertyLabel">{label}</div>
@@ -81,13 +87,6 @@ export const TransferProperties = ({ transfer }: Props) => {
           <div className="row keyValue">
             <span className="propertyName">Name</span>
             <span>{tx.name}</span>
-          </div>
-          <div className="row keyValue">
-            <span className="propertyName">Amount</span>
-            <span>
-              {currencyCodeToSymbol(tx.iso_currency_code || "")}&nbsp;
-              {numberToCommaString(Math.abs(tx.amount))}
-            </span>
           </div>
           {txLocations.length > 0 && (
             <div className="row keyValue">

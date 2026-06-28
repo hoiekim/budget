@@ -1,7 +1,7 @@
 import { MouseEventHandler } from "react";
 import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import { useAppContext, PATH } from "client";
-import { InstitutionSpan, KebabIcon, TransferArrowIcon } from "client/components";
+import { InstitutionSpan, KebabIcon, RightArrowIcon, TransferArrowIcon } from "client/components";
 import type { JSONTransaction } from "common";
 
 interface Props {
@@ -30,9 +30,9 @@ const TransferRow = ({ transactions }: Props) => {
   // The outgoing side is the one whose amount is positive (Plaid: outflow
   // = positive, inflow = negative). Fall back to the first if signs are
   // equal so the layout never disappears.
-  const outgoing =
-    transactions.find((t) => t.amount > 0) ?? transactions[0];
-  const incoming = transactions.find((t) => t.transaction_id !== outgoing.transaction_id) ?? transactions[1];
+  const outgoing = transactions.find((t) => t.amount > 0) ?? transactions[0];
+  const incoming =
+    transactions.find((t) => t.transaction_id !== outgoing.transaction_id) ?? transactions[1];
 
   const fromAccount = accounts.get(outgoing.account_id);
   const toAccount = accounts.get(incoming.account_id);
@@ -64,7 +64,7 @@ const TransferRow = ({ transactions }: Props) => {
           <div className="bigText">
             {fromAccount?.custom_name || fromAccount?.name}
             <span className="transferPairArrow">
-              <TransferArrowIcon size={12} />
+              <RightArrowIcon size={12} />
             </span>
             {toAccount?.custom_name || toAccount?.name}
           </div>

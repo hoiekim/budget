@@ -141,14 +141,22 @@ export const QuestionIcon = ({ size }: IconProps) => (
   </svg>
 );
 
-// Font Awesome Free v7.2.0 arrow-right-arrow-left — used as the
-// "transfer" amount-sign replacement on confirmed transfer rows
-// (in place of the +/− indicator), per #354 phase 3.
+// Font Awesome Free v7.2.0 arrow-right-arrow-left
 export const TransferArrowIcon = ({ size }: IconProps) => (
   <svg xmlns="http://www.w3.org/2000/svg" height={size} width={size} viewBox="0 0 640 640">
     <path
       fill="currentColor"
       d="M566.6 214.6L470.6 310.6C458.1 323.1 437.8 323.1 425.3 310.6C412.8 298.1 412.8 277.8 425.3 265.3L466.7 224L96 224C78.3 224 64 209.7 64 192C64 174.3 78.3 160 96 160L466.7 160L425.3 118.6C412.8 106.1 412.8 85.8 425.3 73.3C437.8 60.8 458.1 60.8 470.6 73.3L566.6 169.3C579.1 181.8 579.1 202.1 566.6 214.6zM169.3 566.6L73.3 470.6C60.8 458.1 60.8 437.8 73.3 425.3L169.3 329.3C181.8 316.8 202.1 316.8 214.6 329.3C227.1 341.8 227.1 362.1 214.6 374.6L173.3 416L544 416C561.7 416 576 430.3 576 448C576 465.7 561.7 480 544 480L173.3 480L214.7 521.4C227.2 533.9 227.2 554.2 214.7 566.7C202.2 579.2 181.9 579.2 169.4 566.7z"
+    />
+  </svg>
+);
+
+// Font Awesome Free v7.3.0 arrow-right
+export const RightArrowIcon = ({ size }: IconProps) => (
+  <svg xmlns="http://www.w3.org/2000/svg" height={size} width={size} viewBox="0 0 640 640">
+    <path
+      fill="currentColor"
+      d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.9 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"
     />
   </svg>
 );

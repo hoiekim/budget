@@ -127,14 +127,6 @@ div.TransactionRow .transferChip.transferChipConfirmed {
   color: #b8b8b8;
 }
 
-div.TransactionRow .transferAmount {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-  white-space: nowrap;
-}
-
 div.TransactionRow .transferAmountIcon {
   display: inline-flex;
   align-items: center;
