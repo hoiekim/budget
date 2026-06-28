@@ -443,20 +443,26 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
  * sign-preserving via Math.min/Math.max in featuresFromRow. The weak
  * features (payment_channel, account_id, day_band) are tiebreakers and
  * don't need the sign gate.
+ *
+ * Sign-undefined fallback: when the target's amount is 0,
+ * `SIGN($13::numeric) = 0` short-circuits the gate to true so the
+ * identity features still fire against any-sign historicals — a
+ * 0-amount target is sign-undefined, not "negative", so it shouldn't
+ * silently lose all identity signal.
  */
 const SCORE_EXPR = (t: string) => `(
   (CASE WHEN $2::text IS NOT NULL AND ${t}.merchant_name IS NOT NULL
         AND similarity(${t}.merchant_name, $2) >= $3
-        AND SIGN(${t}.amount) = SIGN($13::numeric) THEN ${W_MERCHANT_NAME} ELSE 0 END)
+        AND (SIGN($13::numeric) = 0 OR SIGN(${t}.amount) = SIGN($13::numeric)) THEN ${W_MERCHANT_NAME} ELSE 0 END)
 + (CASE WHEN $4::text IS NOT NULL AND ${t}.name IS NOT NULL
         AND similarity(${t}.name, $4) >= $3
-        AND SIGN(${t}.amount) = SIGN($13::numeric) THEN ${W_NAME} ELSE 0 END)
+        AND (SIGN($13::numeric) = 0 OR SIGN(${t}.amount) = SIGN($13::numeric)) THEN ${W_NAME} ELSE 0 END)
 + (CASE WHEN ${t}.amount BETWEEN $5 AND $6 THEN ${W_AMOUNT} ELSE 0 END)
 + (CASE WHEN $7::text IS NOT NULL AND ${t}.payment_channel = $7 THEN ${W_PAYMENT_CHANNEL} ELSE 0 END)
 + (CASE WHEN ${t}.account_id = $8 THEN ${W_ACCOUNT} ELSE 0 END)
 + (CASE WHEN $9::text IS NOT NULL
         AND (${t}.raw->'personal_finance_category'->>'primary') = $9
-        AND SIGN(${t}.amount) = SIGN($13::numeric) THEN ${W_PFC} ELSE 0 END)
+        AND (SIGN($13::numeric) = 0 OR SIGN(${t}.amount) = SIGN($13::numeric)) THEN ${W_PFC} ELSE 0 END)
 + (CASE WHEN EXTRACT(DAY FROM ${t}.date::date) BETWEEN $10 AND $11 THEN ${W_DAY} ELSE 0 END)
 )`;
 

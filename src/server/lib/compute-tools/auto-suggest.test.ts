@@ -605,11 +605,14 @@ describe("runAutoSuggestions", () => {
       // merchant-only match across signs from dominating the SUM. Weak
       // features (channel/account/day) stay unguarded; the amount-band
       // is already sign-preserving via the lo/hi computation.
-      const signGate = /AND\s+SIGN\(t\.amount\)\s*=\s*SIGN\(\$13::numeric\)/g;
+      const signGate = /AND\s+\(SIGN\(\$13::numeric\)\s*=\s*0\s+OR\s+SIGN\(t\.amount\)\s*=\s*SIGN\(\$13::numeric\)\)/g;
       const gates = sql.match(signGate) ?? [];
-      // Three identity features × twice (accepted CTE + rejected
-      // sub-query, both render SCORE_EXPR) = 6 occurrences minimum.
-      expect(gates.length).toBeGreaterThanOrEqual(6);
+      // Three identity features × three SCORE_EXPR render sites
+      // (scored CTE + rejected sub-query SUM + rejected sub-query
+      // WHERE) = 9 occurrences. The fallback `SIGN($13)=0 OR ...`
+      // preserves identity matching for sign-undefined (0-amount)
+      // targets.
+      expect(gates.length).toBeGreaterThanOrEqual(9);
     });
 
     test("merchant weight >> any single weak-feature weight (100 vs 1) so quality beats volume", async () => {
