@@ -231,21 +231,6 @@ export const getBudgetData = (
   return { transactionFamilies, budgetData };
 };
 
-/**
- * Rollover ("+ $X rolled") for a budget-like at an arbitrary view date.
- *
- * Thin wrapper over `BudgetData.getRolledOver` (the projection lives on the
- * model so `BudgetData.getView` and this single-value consumer share one
- * implementation). Past/current months read the accrued authoritative value;
- * future months are projected on read so a future view reflects the carry
- * forward instead of "+ $0 rolled" (#562).
- */
-export const getRolledOverAmount = (
-  budgetLike: Budget | Section | Category,
-  budgetData: BudgetData,
-  date: Date,
-): number => budgetData.getRolledOver(budgetLike, date);
-
 const oldestDate = new Date(0);
 
 export const getCapacityData = (

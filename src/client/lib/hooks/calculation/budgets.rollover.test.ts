@@ -13,7 +13,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { LocalDate, ViewDate } from "common";
-import { getBudgetData, getRolledOverAmount } from "./budgets";
+import { getBudgetData } from "./budgets";
 import {
   TransactionDictionary,
   SplitTransactionDictionary,
@@ -272,9 +272,9 @@ describe("getBudgetData rollover accrues without transactions (#545)", () => {
 // up to the current calendar month. When the user paged the Budgets/Balance
 // view forward, `budgetData.get(id, futureMonth)` returned a lazily-created
 // empty summary so the bar rendered "+ $0 rolled" while capacity and "left"
-// kept projecting forward. getRolledOverAmount now projects the carry forward
+// kept projecting forward. getRolledOver now projects the carry forward
 // on read for future months, mirroring how capacity already projects.
-describe("getRolledOverAmount future-month projection (#562)", () => {
+describe("BudgetData.getRolledOver future-month projection (#562)", () => {
   const OLD_START = "2022-06-01";
 
   const buildBudgetData = () => {
@@ -297,19 +297,19 @@ describe("getRolledOverAmount future-month projection (#562)", () => {
     const budgetData = buildBudgetData();
     const now = new ViewDate("month").getEndDate();
     const stored = budgetData.get("bud-1", now).rolled_over_amount;
-    expect(getRolledOverAmount(budget(), budgetData, now)).toBe(stored);
+    expect(budgetData.getRolledOver(budget(), now)).toBe(stored);
   });
 
   test("future months keep accruing one capacity step each — they do NOT reset to 0", () => {
     const budgetData = buildBudgetData();
     const now = new ViewDate("month").getEndDate();
-    const current = getRolledOverAmount(budget(), budgetData, now);
+    const current = budgetData.getRolledOver(budget(), now);
 
     const oneAhead = new ViewDate("month").next().getEndDate();
     const twoAhead = new ViewDate("month").next(2).getEndDate();
 
-    const r1 = getRolledOverAmount(budget(), budgetData, oneAhead);
-    const r2 = getRolledOverAmount(budget(), budgetData, twoAhead);
+    const r1 = budgetData.getRolledOver(budget(), oneAhead);
+    const r2 = budgetData.getRolledOver(budget(), twoAhead);
 
     // The bug: r1 === 0. Fixed: rollover is stored negative (renders "+"),
     // so each future month with no spend grows the surplus by exactly one
@@ -328,15 +328,15 @@ describe("getRolledOverAmount future-month projection (#562)", () => {
       "month",
       new LocalDate(`${nextYear}-01-15`),
     ).getEndDate();
-    expect(getRolledOverAmount(budget(), budgetData, januaryNextYear)).toBeLessThan(0);
-    expect(getRolledOverAmount(budget(), budgetData, januaryNextYear)).not.toBe(0);
+    expect(budgetData.getRolledOver(budget(), januaryNextYear)).toBeLessThan(0);
+    expect(budgetData.getRolledOver(budget(), januaryNextYear)).not.toBe(0);
   });
 });
 
-// getView is the unified read the bars use: sorted/unsorted + rolled_over from
-// one call, so the rollover no longer flows on a separate path in the UI. It
-// must agree with the underlying history + getRolledOverAmount it abstracts.
-describe("BudgetData.getView unified figures (#562)", () => {
+// getSummary is the unified read the bars use: sorted/unsorted + rolled_over
+// from one call, so the rollover no longer flows on a separate path in the UI.
+// It must agree with the underlying history + getRolledOver it abstracts.
+describe("BudgetData.getSummary unified figures (#562)", () => {
   const OLD_START = "2022-06-01";
 
   const buildBudgetData = () => {
@@ -361,18 +361,18 @@ describe("BudgetData.getView unified figures (#562)", () => {
     const date = viewDate.getEndDate();
     const stored = budgetData.get("bud-1", date);
 
-    const view = budgetData.getView(budget(), viewDate);
+    const view = budgetData.getSummary(budget(), viewDate);
     expect(view.sorted_amount).toBe(stored.sorted_amount);
     expect(view.unsorted_amount).toBe(stored.unsorted_amount);
-    expect(view.rolled_over_amount).toBe(getRolledOverAmount(budget(), budgetData, date));
+    expect(view.rolled_over_amount).toBe(budgetData.getRolledOver(budget(), date));
   });
 
-  test("future month view projects the rollover (matches getRolledOverAmount)", () => {
+  test("future month view projects the rollover (matches getRolledOver)", () => {
     const budgetData = buildBudgetData();
     const viewDate = new ViewDate("month").next(2);
-    const view = budgetData.getView(budget(), viewDate);
+    const view = budgetData.getSummary(budget(), viewDate);
     expect(view.rolled_over_amount).toBe(
-      getRolledOverAmount(budget(), budgetData, viewDate.getEndDate()),
+      budgetData.getRolledOver(budget(), viewDate.getEndDate()),
     );
     expect(view.rolled_over_amount).not.toBe(0);
   });
@@ -387,22 +387,25 @@ describe("BudgetData.getView unified figures (#562)", () => {
       new LocalDate(`${nextYear}-01-15`),
     ).getEndDate();
 
-    const view = budgetData.getView(budget(), yearView);
+    const view = budgetData.getSummary(budget(), yearView);
     expect(view.sorted_amount).toBe(aggregate.sorted_amount);
     expect(view.unsorted_amount).toBe(aggregate.unsorted_amount);
-    expect(view.rolled_over_amount).toBe(
-      getRolledOverAmount(budget(), budgetData, januaryEnd),
-    );
+    expect(view.rolled_over_amount).toBe(budgetData.getRolledOver(budget(), januaryEnd));
   });
 
   test("a non-rollover budget-like reports rolled_over_amount === 0", () => {
     const budgetData = buildBudgetData();
-    const notRolling = {
-      id: "bud-1",
+    const notRolling = new Budget({
+      budget_id: "bud-1",
+      user_id: "u1",
+      name: "Non-Rolling Budget",
+      iso_currency_code: "USD",
+      capacities: [
+        { active_from: null, children: {}, year: MONTHLY_CAPACITY * 12, month: MONTHLY_CAPACITY, week: 0, day: 0 },
+      ],
       roll_over: false,
-      getActiveAmount: () => MONTHLY_CAPACITY,
-    };
-    const view = budgetData.getView(notRolling, new ViewDate("month").next(3));
+    });
+    const view = budgetData.getSummary(notRolling, new ViewDate("month").next(3));
     expect(view.rolled_over_amount).toBe(0);
   });
 });

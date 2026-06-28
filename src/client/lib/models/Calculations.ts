@@ -1,7 +1,8 @@
-import { assign, getYearMonthString, Interval, isDate, isUndefined, LocalDate, ViewDate } from "common";
+import { assign, getYearMonthString, isDate, isUndefined, LocalDate, ViewDate } from "common";
 import { Status } from "./miscellaneous";
 import { SplitTransactionDictionary } from "./Data";
 import { SplitTransaction } from "./SplitTransaction";
+import type { BudgetFamily } from "./BudgetFamily";
 
 export class Calculations {
   status = new Status();
@@ -292,18 +293,6 @@ export class BudgetHistory {
   };
 }
 
-/**
- * The slice of a budget-like (Budget / Section / Category) that the rollover
- * projection needs. Typed structurally so the calculation models don't import
- * the budget-family model classes (and risk a cycle).
- */
-export type BudgetLikeView = {
-  id: string;
-  roll_over: boolean;
-  roll_over_start_date?: Date;
-  getActiveAmount: (date: Date, interval: Interval) => number;
-};
-
 export class BudgetData {
   private data = new Map<string, BudgetHistory>();
 
@@ -354,7 +343,7 @@ export class BudgetData {
    * window has opened (#562). A budget-like whose `roll_over_start_date` is
    * itself in the future contributes nothing before it begins.
    */
-  getRolledOver = (budgetLike: BudgetLikeView, date: Date): number => {
+  getRolledOver = (budgetLike: BudgetFamily, date: Date): number => {
     const history = this.get(budgetLike.id);
     const current = new ViewDate("month");
     const target = new ViewDate("month", date);
@@ -380,7 +369,7 @@ export class BudgetData {
   };
 
   /**
-   * The unified per-view figures for `budgetLike` at `viewDate`:
+   * The unified per-view summary for `budgetLike` at `viewDate`:
    * `sorted_amount` / `unsorted_amount` from the stored history (summed across
    * the year for a year view), and `rolled_over_amount` — the carry-forward,
    * projected past the current month for future views (#562). For a year view
@@ -390,7 +379,7 @@ export class BudgetData {
    * One call so a consumer reads all three figures together instead of
    * re-deriving the rollover on a separate flow.
    */
-  getView = (budgetLike: BudgetLikeView, viewDate: ViewDate): BudgetSummary => {
+  getSummary = (budgetLike: BudgetFamily, viewDate: ViewDate): BudgetSummary => {
     const date = viewDate.getEndDate();
     const interval = viewDate.getInterval();
     const history = this.get(budgetLike.id);
