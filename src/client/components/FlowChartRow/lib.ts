@@ -1,5 +1,5 @@
 
-import { LocalDate, ViewDate } from "common";
+import { LocalDate, UNSORTED_BUDGET_ID, ViewDate } from "common";
 import {
   Account,
   BudgetDictionary,
@@ -47,6 +47,15 @@ export const getSankeyData = (
   // the caller threads `data.transfers` through, which is itself
   // defaulted to an empty `TransferDictionary` on `Data`.
   transfers: TransferDictionary,
+  // Whitelist of budget_ids the chart is configured to display. Empty
+  // list = no filter (include all budgets — backward-compatible default
+  // for FlowCharts that predate this feature). Non-empty = only
+  // transactions whose effective budget_id is in the list contribute.
+  // Effective budget_id mirrors the assignment at the top of
+  // `processTransaction`: `t.label.budget_id || account.label.budget_id
+  // || "Unknown"`. The `"Unknown"` sentinel can appear in the whitelist
+  // if the user explicitly toggles "Unsorted" on.
+  budget_ids: string[] = [],
 ): SankeyData => {
   const incomeBudgets = new Map<string, SankeyRow>();
   const incomeSections = new Map<string, SankeyRow>();
@@ -78,7 +87,8 @@ export const getSankeyData = (
     if (!viewDate.has(transactionDate)) return;
     const account = accounts.find((a) => a.id === t.account_id);
     if (!account) return;
-    const budget_id = t.label.budget_id || account.label.budget_id || "Unknown";
+    const budget_id = t.label.budget_id || account.label.budget_id || UNSORTED_BUDGET_ID;
+    if (budget_ids.length > 0 && !budget_ids.includes(budget_id)) return;
     const budget = budgets.get(budget_id);
     const budgetName = budget?.name || "Others";
     const category_id = t.label.category_id;

@@ -310,3 +310,136 @@ describe("getSankeyData — investment transactions are skipped (internal moves)
     expect(tableData.income).toBe(0);
   });
 });
+
+describe("getSankeyData — budget_ids whitelist filter", () => {
+  // Build the world ONCE per test so the random ids on budgets/account
+  // line up across the fixture construction and the assertions.
+  const setup = () => {
+    const w = makeWorld();
+    const txnA = new Transaction({
+      account_id: w.account.id,
+      transaction_id: "tx-a",
+      amount: 100,
+      date: DATE,
+      label: { budget_id: w.budgetA.id, category_id: w.categoryA.id, category_confidence: 1 },
+    });
+    const txnB = new Transaction({
+      account_id: w.account.id,
+      transaction_id: "tx-b",
+      amount: 200,
+      date: DATE,
+      label: { budget_id: w.budgetB.id, category_id: w.categoryB.id, category_confidence: 1 },
+    });
+    const transactions = new TransactionDictionary();
+    transactions.set(txnA.id, txnA);
+    transactions.set(txnB.id, txnB);
+    const run = (budget_ids: string[]) =>
+      getSankeyData(
+        [w.account],
+        transactions,
+        emptyInvestments,
+        new SplitTransactionDictionary(),
+        w.budgets,
+        w.sections,
+        w.categories,
+        viewDate,
+        noTransfers,
+        budget_ids,
+      );
+    return { w, run };
+  };
+
+  test("empty whitelist = no filter (all budgets included)", () => {
+    const { w, run } = setup();
+    const { tableData, graphData } = run([]);
+    expect(tableData.expense).toBe(300);
+    expect(findBudget(graphData[3], w.budgetA.id)?.amount).toBe(100);
+    expect(findBudget(graphData[3], w.budgetB.id)?.amount).toBe(200);
+  });
+
+  test("whitelist with only Budget A excludes Budget B's transaction", () => {
+    const { w, run } = setup();
+    const { tableData, graphData } = run([w.budgetA.id]);
+    expect(tableData.expense).toBe(100);
+    expect(findBudget(graphData[3], w.budgetA.id)?.amount).toBe(100);
+    expect(findBudget(graphData[3], w.budgetB.id)).toBeUndefined();
+  });
+
+  test("whitelist with only Budget B excludes Budget A's transaction", () => {
+    const { w, run } = setup();
+    const { tableData, graphData } = run([w.budgetB.id]);
+    expect(tableData.expense).toBe(200);
+    expect(findBudget(graphData[3], w.budgetB.id)?.amount).toBe(200);
+    expect(findBudget(graphData[3], w.budgetA.id)).toBeUndefined();
+  });
+
+  test("whitelist with a non-matching id excludes all", () => {
+    const { run } = setup();
+    const { tableData, graphData } = run(["non-existent-budget-id"]);
+    expect(tableData.expense).toBe(0);
+    expect(tableData.income).toBe(0);
+    expect(graphData.every((col) => col.length === 0)).toBe(true);
+  });
+
+  test("empty whitelist includes unsorted (no-budget-label) transactions", () => {
+    const w = makeWorld();
+    // An unlabeled transaction on an account whose own label.budget_id is
+    // unset → effective budget_id falls through to the "Unknown" sentinel.
+    const unlabeledAccount = new Account({ account_id: "acc-unlabeled" });
+    const txn = new Transaction({
+      account_id: unlabeledAccount.id,
+      transaction_id: "tx-unlabeled",
+      amount: 42,
+      date: DATE,
+    });
+    const transactions = new TransactionDictionary();
+    transactions.set(txn.id, txn);
+    const { tableData } = getSankeyData(
+      [unlabeledAccount],
+      transactions,
+      emptyInvestments,
+      new SplitTransactionDictionary(),
+      w.budgets,
+      w.sections,
+      w.categories,
+      viewDate,
+      noTransfers,
+      [],
+    );
+    expect(tableData.expense).toBe(42);
+  });
+
+  test('whitelist with "Unknown" sentinel includes unsorted txns only', () => {
+    const w = makeWorld();
+    const unlabeledAccount = new Account({ account_id: "acc-unlabeled" });
+    const unlabeledTxn = new Transaction({
+      account_id: unlabeledAccount.id,
+      transaction_id: "tx-unlabeled",
+      amount: 42,
+      date: DATE,
+    });
+    const labeledTxn = new Transaction({
+      account_id: w.account.id,
+      transaction_id: "tx-labeled",
+      amount: 100,
+      date: DATE,
+      label: { budget_id: w.budgetA.id, category_id: w.categoryA.id, category_confidence: 1 },
+    });
+    const transactions = new TransactionDictionary();
+    transactions.set(unlabeledTxn.id, unlabeledTxn);
+    transactions.set(labeledTxn.id, labeledTxn);
+    const { tableData } = getSankeyData(
+      [unlabeledAccount, w.account],
+      transactions,
+      emptyInvestments,
+      new SplitTransactionDictionary(),
+      w.budgets,
+      w.sections,
+      w.categories,
+      viewDate,
+      noTransfers,
+      ["Unknown"],
+    );
+    expect(tableData.expense).toBe(42);
+  });
+});
