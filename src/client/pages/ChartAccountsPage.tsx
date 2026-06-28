@@ -29,6 +29,10 @@ export const ChartAccountsPage = () => {
 
   const { type, configuration } = chart;
   const { account_ids } = configuration;
+  const showBudgetSelector = type === ChartType.BALANCE || type === ChartType.FLOW;
+  const budget_ids = showBudgetSelector
+    ? (configuration as BalanceChartConfiguration | FlowChartConfiguration).budget_ids
+    : [];
   const { accounts, budgets } = data;
 
   const accountRows = accounts
@@ -81,83 +85,70 @@ export const ChartAccountsPage = () => {
       );
     });
 
-  if (type !== ChartType.BALANCE) {
-    return (
-      <div className="ChartAccountsPage">
-        <div className="Properties sidePadding">
-          <div className="propertyLabel">Select accounts</div>
-          <div className="property">{accountRows}</div>
-        </div>
-      </div>
-    );
-  }
-
-  const { budget_ids } = chart.configuration as BalanceChartConfiguration;
-
-  const budgetRows =
-    type === ChartType.BALANCE
-      ? budgets.toArray().map((b) => {
-          const onChangeToggle: ChangeEventHandler<HTMLInputElement> = async () => {
-            const newBudgetIds = budget_ids.includes(b.id)
-              ? budget_ids.filter((id) => id !== b.id)
-              : [...budget_ids, b.id];
-            const updatedConfiguration = new BalanceChartConfiguration({
-              ...configuration,
-              budget_ids: newBudgetIds,
+  const budgetRows = showBudgetSelector
+    ? budgets.toArray().map((b) => {
+        const onChangeToggle: ChangeEventHandler<HTMLInputElement> = async () => {
+          const newBudgetIds = budget_ids.includes(b.id)
+            ? budget_ids.filter((id) => id !== b.id)
+            : [...budget_ids, b.id];
+          const updatedFields = { ...configuration, budget_ids: newBudgetIds };
+          const updatedConfiguration =
+            type === ChartType.BALANCE
+              ? new BalanceChartConfiguration(updatedFields)
+              : new FlowChartConfiguration(updatedFields);
+          const r = await call.post("/api/chart", {
+            chart_id,
+            configuration: updatedConfiguration,
+          });
+          if (r.status === "success") {
+            setData((oldData) => {
+              const newData = new Data(oldData);
+              const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
+              indexedDb.save(newChart).catch(console.error);
+              const newCharts = new ChartDictionary(newData.charts);
+              newCharts.set(chart_id, newChart);
+              newData.charts = newCharts;
+              return newData;
             });
-            const r = await call.post("/api/chart", {
-              chart_id,
-              configuration: updatedConfiguration,
-            });
-            if (r.status === "success") {
-              setData((oldData) => {
-                const newData = new Data(oldData);
-                const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
-                indexedDb.save(newChart).catch(console.error);
-                const newCharts = new ChartDictionary(newData.charts);
-                newCharts.set(chart_id, newChart);
-                newData.charts = newCharts;
-                return newData;
-              });
-            } else {
-              console.error(r.message);
-              throw new Error(r.message);
-            }
-          };
+          } else {
+            console.error(r.message);
+            throw new Error(r.message);
+          }
+        };
 
-          const date = viewDate.getEndDate();
-          const interval = viewDate.getInterval();
-          // Use the derived amount (sums children for synced budgets) for
-          // both the display total and the infinite/income classification —
-          // stored `month` / `isInfinite` / `isIncome` are stale for synced
-          // rows.
-          const derivedAmount = b.getActiveAmount(date, interval);
-          const isInfinite = Math.abs(derivedAmount) === MAX_FLOAT;
-          const isIncome = derivedAmount < 0;
-          const capacityAmount = Math.abs(derivedAmount);
-          const sign = isIncome ? "+" : "";
-          const capacityString = [sign, "$", numberToCommaString(capacityAmount, 0)].join(" ");
+        const date = viewDate.getEndDate();
+        const interval = viewDate.getInterval();
+        // Use the derived amount (sums children for synced budgets) for
+        // both the display total and the infinite/income classification —
+        // stored `month` / `isInfinite` / `isIncome` are stale for synced
+        // rows.
+        const derivedAmount = b.getActiveAmount(date, interval);
+        const isInfinite = Math.abs(derivedAmount) === MAX_FLOAT;
+        const isIncome = derivedAmount < 0;
+        const capacityAmount = Math.abs(derivedAmount);
+        const sign = isIncome ? "+" : "";
+        const capacityString = [sign, "$", numberToCommaString(capacityAmount, 0)].join(" ");
 
-          return (
-            <div key={b.id} className="row keyValue">
-              <div>
-                <span>{b.name}</span>
-                <span className="small">
-                  &nbsp;&nbsp;{isInfinite ? "Unlimited" : capacityString}
-                </span>
-              </div>
-              <ToggleInput defaultChecked={budget_ids.includes(b.id)} onChange={onChangeToggle} />
+        return (
+          <div key={b.id} className="row keyValue">
+            <div>
+              <span>{b.name}</span>
+              <span className="small">
+                &nbsp;&nbsp;{isInfinite ? "Unlimited" : capacityString}
+              </span>
             </div>
-          );
-        })
-      : [];
+            <ToggleInput defaultChecked={budget_ids.includes(b.id)} onChange={onChangeToggle} />
+          </div>
+        );
+      })
+    : [];
 
   return (
     <div className="ChartAccountsPage">
       <div className="Properties sidePadding">
         <div className="propertyLabel">Select accounts</div>
         <div className="property">{accountRows}</div>
-        {type === ChartType.BALANCE && (
+        {showBudgetSelector && (
           <>
             <div className="propertyLabel">Select budgets</div>
             <div className="property">{budgetRows}</div>

@@ -84,6 +84,7 @@ export class ProjectionChartConfiguration implements JSONProjectionChartConfigur
 
 export class FlowChartConfiguration implements JSONFlowChartConfiguration {
   account_ids: string[] = [];
+  budget_ids: string[] = [];
 
   constructor(init?: Partial<FlowChartConfiguration>) {
     assign(this, init);

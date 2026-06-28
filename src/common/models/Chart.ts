@@ -18,6 +18,10 @@ export interface JSONBalanceChartConfiguration {
 
 export interface JSONFlowChartConfiguration {
   account_ids: string[];
+  // Empty list = include all budgets (backward-compatible default for
+  // pre-existing FlowCharts). Non-empty = whitelist: only transactions
+  // whose effective budget_id is in the list contribute to the Sankey.
+  budget_ids: string[];
 }
 
 export interface JSONProjectionChartConfiguration {

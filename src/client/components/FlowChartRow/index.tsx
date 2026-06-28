@@ -35,7 +35,7 @@ export const FlowChartRow = ({
     transfers,
   } = data;
   const { configuration } = chart;
-  const { account_ids } = configuration;
+  const { account_ids, budget_ids } = configuration;
 
   const {
     onDragStart,
@@ -66,6 +66,7 @@ export const FlowChartRow = ({
         categories,
         viewDate,
         transfers,
+        budget_ids,
       ),
     [
       selectedAccounts,
@@ -77,6 +78,7 @@ export const FlowChartRow = ({
       categories,
       viewDate,
       transfers,
+      budget_ids,
     ],
   );
 
