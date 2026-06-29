@@ -225,11 +225,25 @@ describe("matchesAnySelectedType — split-transaction guard", () => {
     const ctx = makeCtx([makePair("p1", "confirmed", ["t1", "t2"])]);
     expect(matchesAnySelectedType(split, ["transfers"], ctx)).toBe(false);
   });
-  test("a SplitTransaction whose parent is in a confirmed pair CAN still be unsorted/suggested", () => {
-    // The pair excludes the PARENT from these filters; the SPLIT (which
-    // isn't a pair half itself) follows the normal label rules.
+  test("a SplitTransaction of a confirmed-transfer parent is EXCLUDED from every budget-semantic filter (matches getBudgetData)", () => {
+    // getBudgetData drops a split whose parent is a confirmed transfer from
+    // ALL budget buckets, keyed on the parent transaction_id (the split
+    // inherits it). The budget-semantic filters must match — so this split
+    // is excluded from unsorted/suggested/expenses/deposits regardless of
+    // its own label. Only the `transfers` view (render classification) keys
+    // on the row's own identity, where the split correctly does NOT appear.
     const split = makeSplit("s1", "t1", 3, { category_id: "c", category_confidence: 0.5 });
     const ctx = makeCtx([makePair("p1", "confirmed", ["t1", "t2"])]);
+    expect(matchesAnySelectedType(split, ["suggested"], ctx)).toBe(false);
+    expect(matchesAnySelectedType(split, ["unsorted"], ctx)).toBe(false);
+    expect(matchesAnySelectedType(split, ["expenses"], ctx)).toBe(false);
+  });
+  test("a SplitTransaction of a SUGGESTED-transfer parent still follows its own label (not yet budget-excluded)", () => {
+    // Only CONFIRMED transfers are excluded from budget. A split of a
+    // merely-suggested transfer parent still counts, so it follows its own
+    // label like any normal split.
+    const split = makeSplit("s1", "t1", 3, { category_id: "c", category_confidence: 0.5 });
+    const ctx = makeCtx([makePair("p1", "suggested", ["t1", "t2"])]);
     expect(matchesAnySelectedType(split, ["suggested"], ctx)).toBe(true);
     expect(matchesAnySelectedType(split, ["unsorted"], ctx)).toBe(true);
   });

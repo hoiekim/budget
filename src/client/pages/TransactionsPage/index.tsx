@@ -26,7 +26,7 @@ import {
 } from "client/components";
 import { useTransactionHit } from "./hooks";
 import {
-  isConfirmedTransferHalf,
+  isBudgetExcludedTransfer,
   isSuggestedLabel,
   matchesAnySelectedInvestmentType,
   matchesAnySelectedType,
@@ -154,14 +154,15 @@ export const TransactionsPage = () => {
         if (!matchesAnySelectedType(e, types, filterCtx)) return false;
 
         // A confirmed transfer carries no budget meaning (getBudgetData
-        // excludes it from totals), so it must not surface under a
-        // budget / section / category drill-down — same exclusion the
-        // totals use. The default and account/transfers views still show
-        // it; only the budget-semantic filters drop it. Suggested
+        // excludes it — and its splits — from totals), so it must not
+        // surface under a budget / section / category drill-down. Keyed on
+        // transaction_id so a split of a confirmed transfer is excluded too,
+        // matching getBudgetData. The default and account/transfers views
+        // still show it; only the budget-semantic filters drop it. Suggested
         // transfers still count toward budget, so they stay.
         if (
           (budget_id || section_id || category_id) &&
-          isConfirmedTransferHalf(e, filterCtx)
+          isBudgetExcludedTransfer(e, filterCtx)
         ) {
           return false;
         }

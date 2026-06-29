@@ -51,11 +51,21 @@ const isWholeTransaction = (
   e: Transaction | SplitTransaction,
 ): e is Transaction => e instanceof Transaction;
 
-export const isConfirmedTransferHalf = (
+/**
+ * Excluded from budget totals: any row — whole Transaction OR a
+ * SplitTransaction of one — whose `transaction_id` belongs to a CONFIRMED
+ * transfer pair. Splits inherit their parent's `transaction_id`, and
+ * `getBudgetData` excludes both the parent and its splits from every budget
+ * bucket via that same id (`calculation/budgets.ts:54,61`). So every
+ * budget-semantic filter (deposits/expenses/unsorted/suggested + the
+ * budget/section/category drill-down) must match — hence NO
+ * `isWholeTransaction` guard here, unlike the transfer-pair *classification*
+ * helpers below, which key on the row's own identity for rendering.
+ */
+export const isBudgetExcludedTransfer = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
-): boolean =>
-  isWholeTransaction(e) && ctx.transfers.byTransactionId.hasConfirmed(e.transaction_id);
+): boolean => ctx.transfers.byTransactionId.hasConfirmed(e.transaction_id);
 
 const isSuggestedTransferHalf = (
   e: Transaction | SplitTransaction,
@@ -77,28 +87,32 @@ type Predicate = (e: Transaction | SplitTransaction, ctx: FilterContext) => bool
  * The OR-combinator at the call site (`types.some(t => PREDICATES[t](e,
  * ctx))`) gives the multi-choice semantics the UI promises.
  *
- *  - `deposits` / `expenses`: sign filters, but a CONFIRMED transfer half
- *    is excluded — it carries no budget meaning (`getBudgetData` skips it),
- *    so it must not surface under an income/expense view. Suggested
- *    transfers still count toward budget until confirmed, so they stay.
+ *  - `deposits` / `expenses`: sign filters, but a confirmed-transfer row
+ *    (whole or split) is excluded — it carries no budget meaning
+ *    (`getBudgetData` skips it), so it must not surface under an
+ *    income/expense view. Suggested transfers still count toward budget
+ *    until confirmed, so they stay.
  *  - `unsorted`: "needs user action" — no user-confirmed category AND not
- *    a confirmed transfer half. A confirmed transfer is "done" from the
- *    user's POV regardless of category state.
+ *    part of a confirmed transfer. A confirmed transfer is "done" from the
+ *    user's POV regardless of category state, and (matching getBudgetData)
+ *    a split of one contributes to no budget, so it never "needs sorting".
  *  - `suggested`: a pending suggestion to review — either a suggested
  *    category label OR a suggested transfer-pair half. Confirmed transfers
- *    are excluded even if their category is still suggested (transfer
- *    state takes precedence).
+ *    (and their splits) are excluded even if a category is still suggested
+ *    (transfer state takes precedence).
  *  - `transfers`: any transfer-pair half (suggested or confirmed). Users
- *    auditing transfers want to see both states.
+ *    auditing transfers want to see both states. This is the one
+ *    render-classification predicate, so it keys on the row's own identity
+ *    (`isTransferHalf` — whole transactions only; splits aren't pair halves).
  *
  * Adding a new type is one row + one test.
  */
 const TYPE_PREDICATES: Record<TransactionsPageType, Predicate> = {
-  deposits: (e, ctx) => !isConfirmedTransferHalf(e, ctx) && e.amount < 0,
-  expenses: (e, ctx) => !isConfirmedTransferHalf(e, ctx) && e.amount > 0,
-  unsorted: (e, ctx) => !isConfirmedTransferHalf(e, ctx) && !isUserLabelConfirmed(e),
+  deposits: (e, ctx) => !isBudgetExcludedTransfer(e, ctx) && e.amount < 0,
+  expenses: (e, ctx) => !isBudgetExcludedTransfer(e, ctx) && e.amount > 0,
+  unsorted: (e, ctx) => !isBudgetExcludedTransfer(e, ctx) && !isUserLabelConfirmed(e),
   suggested: (e, ctx) =>
-    !isConfirmedTransferHalf(e, ctx) && (isSuggestedLabel(e) || isSuggestedTransferHalf(e, ctx)),
+    !isBudgetExcludedTransfer(e, ctx) && (isSuggestedLabel(e) || isSuggestedTransferHalf(e, ctx)),
   transfers: (e, ctx) => isTransferHalf(e, ctx),
 };
 
