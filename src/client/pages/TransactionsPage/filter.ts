@@ -51,7 +51,7 @@ const isWholeTransaction = (
   e: Transaction | SplitTransaction,
 ): e is Transaction => e instanceof Transaction;
 
-const isConfirmedTransferHalf = (
+export const isConfirmedTransferHalf = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
 ): boolean =>
@@ -77,7 +77,10 @@ type Predicate = (e: Transaction | SplitTransaction, ctx: FilterContext) => bool
  * The OR-combinator at the call site (`types.some(t => PREDICATES[t](e,
  * ctx))`) gives the multi-choice semantics the UI promises.
  *
- *  - `deposits` / `expenses`: sign filters. Sign-only, status-blind.
+ *  - `deposits` / `expenses`: sign filters, but a CONFIRMED transfer half
+ *    is excluded — it carries no budget meaning (`getBudgetData` skips it),
+ *    so it must not surface under an income/expense view. Suggested
+ *    transfers still count toward budget until confirmed, so they stay.
  *  - `unsorted`: "needs user action" — no user-confirmed category AND not
  *    a confirmed transfer half. A confirmed transfer is "done" from the
  *    user's POV regardless of category state.
@@ -91,8 +94,8 @@ type Predicate = (e: Transaction | SplitTransaction, ctx: FilterContext) => bool
  * Adding a new type is one row + one test.
  */
 const TYPE_PREDICATES: Record<TransactionsPageType, Predicate> = {
-  deposits: (e) => e.amount < 0,
-  expenses: (e) => e.amount > 0,
+  deposits: (e, ctx) => !isConfirmedTransferHalf(e, ctx) && e.amount < 0,
+  expenses: (e, ctx) => !isConfirmedTransferHalf(e, ctx) && e.amount > 0,
   unsorted: (e, ctx) => !isConfirmedTransferHalf(e, ctx) && !isUserLabelConfirmed(e),
   suggested: (e, ctx) =>
     !isConfirmedTransferHalf(e, ctx) && (isSuggestedLabel(e) || isSuggestedTransferHalf(e, ctx)),

@@ -101,6 +101,31 @@ describe("matchesAnySelectedType — deposits / expenses", () => {
     expect(matchesAnySelectedType(makeTxn("t1", 5), ["expenses"], makeCtx())).toBe(true);
     expect(matchesAnySelectedType(makeTxn("t1", -5), ["expenses"], makeCtx())).toBe(false);
   });
+  test("confirmed-transfer half is excluded from expenses AND deposits", () => {
+    // Bug Hoie flagged on #569: a confirmed transfer was shown under the
+    // expenses/deposits title filter even though getBudgetData excludes it
+    // from totals. A confirmed transfer is neither income nor expense.
+    const expense = makeTxn("t1", 5);
+    const deposit = makeTxn("t2", -5);
+    const ctx = makeCtx([
+      makePair("p1", "confirmed", ["t1", "x1"]),
+      makePair("p2", "confirmed", ["t2", "x2"]),
+    ]);
+    expect(matchesAnySelectedType(expense, ["expenses"], ctx)).toBe(false);
+    expect(matchesAnySelectedType(deposit, ["deposits"], ctx)).toBe(false);
+  });
+  test("SUGGESTED-transfer half still matches expenses/deposits (counts toward budget until confirmed)", () => {
+    // Only confirmed transfers are excluded from budget totals, so a
+    // suggested transfer half must still appear under expenses/deposits.
+    const expense = makeTxn("t1", 5);
+    const deposit = makeTxn("t2", -5);
+    const ctx = makeCtx([
+      makePair("p1", "suggested", ["t1", "x1"]),
+      makePair("p2", "suggested", ["t2", "x2"]),
+    ]);
+    expect(matchesAnySelectedType(expense, ["expenses"], ctx)).toBe(true);
+    expect(matchesAnySelectedType(deposit, ["deposits"], ctx)).toBe(true);
+  });
 });
 
 describe("matchesAnySelectedType — unsorted", () => {
