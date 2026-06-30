@@ -306,6 +306,38 @@ describe("BudgetHistory", () => {
       expect(arr.length).toBe(1);
       expect(arr[0].sorted_amount).toBe(300);
     });
+
+    test("year interval sums all months of a year into its span (matches aggregateYear)", () => {
+      const history = new BudgetHistory();
+      // 12 months of 2025, each with 500 sorted + 100 unsorted spend.
+      for (let month = 0; month < 12; month++) {
+        history.set(new Date(2025, month, 1), { sorted_amount: 500, unsorted_amount: 100 });
+      }
+
+      const viewDate = new ViewDate("year", new Date(2025, 11, 1));
+      const arr = history.toArray(viewDate);
+
+      // Year collapses to a single span; its value is the full-year sum,
+      // not one arbitrary month (the bug understated it by 12x).
+      expect(arr[0].sorted_amount).toBe(6000); // 12 * 500
+      expect(arr[0].unsorted_amount).toBe(1200); // 12 * 100
+      const aggregate = history.aggregateYear(2025);
+      expect(arr[0].sorted_amount).toBe(aggregate.sorted_amount);
+      expect(arr[0].unsorted_amount).toBe(aggregate.unsorted_amount);
+    });
+
+    test("year interval indexes distinct years by span and sums within each", () => {
+      const history = new BudgetHistory();
+      history.set(new Date(2026, 0, 1), { sorted_amount: 100 });
+      history.set(new Date(2026, 6, 1), { sorted_amount: 200 }); // same year, later month
+      history.set(new Date(2025, 0, 1), { sorted_amount: 700 });
+
+      const viewDate = new ViewDate("year", new Date(2026, 11, 1));
+      const arr = history.toArray(viewDate);
+
+      expect(arr[0].sorted_amount).toBe(300); // 2026: 100 + 200
+      expect(arr[1].sorted_amount).toBe(700); // 2025: prior-year span
+    });
   });
 
   describe("constructor with initial data", () => {

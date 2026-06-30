@@ -277,17 +277,23 @@ export class BudgetHistory {
   };
 
   /**
-   * Returns an array of budget history.
-   * Values are 0-indexed where 0 is the month of the given `viewDate`,
-   * 1 is the previous month, and so on.
+   * Returns an array of budget history indexed by span from `viewDate`
+   * (0 is the current period, 1 the previous, and so on).
+   *
+   * For a "year" interval every month of a year maps to the same span, so the
+   * per-span value is the full-year aggregate (via `aggregateYear`) — the same
+   * summation `LabeledBar` uses — not a single arbitrary month. Assigning the
+   * raw monthly bucket here would be last-write-wins and understate a year's
+   * spending by up to 12x.
    */
   toArray = (viewDate: ViewDate) => {
     const result: BudgetSummary[] = [];
+    const isYear = viewDate.getInterval() === "year";
     Object.entries(this.data).forEach(([key, value]) => {
       const date = this.getDate(key);
       if (!isDate(date)) return;
       const span = viewDate.getSpanFrom(date);
-      if (span >= 0) result[span] = value;
+      if (span >= 0) result[span] = isYear ? this.aggregateYear(date.getFullYear()) : value;
     });
     return result;
   };
