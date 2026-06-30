@@ -128,10 +128,7 @@ const isInvestment = (e: AnyRow): e is InvestmentTransaction =>
  *    halves). Not applicable to InvestmentTransaction.
  *
  * `any(types)` returns a predicate that ORs the named types together —
- * pass directly to `Array.prototype.filter`. For an InvestmentTransaction
- * row, non-sign types are no-ops (the predicate would have nothing to
- * filter on), so a selection containing ONLY non-sign types displays
- * every investment row — matching the pre-class branch behavior.
+ * pass directly to `Array.prototype.filter`.
  */
 export class TypePredicates {
   private context: FilterContext;
@@ -158,24 +155,11 @@ export class TypePredicates {
     (isSuggestedLabel(e) || isSuggestedTransferHalf(e, this.context));
   transfers: Predicate = (e) => !isInvestment(e) && isTransferHalf(e, this.context);
 
-  /**
-   * Combine the named types with OR. Empty list = match everything.
-   *
-   * Investment-row carve-out: non-sign types (`unsorted`/`suggested`/
-   * `transfers`) don't apply to investment rows. If the user has ONLY
-   * those types selected, the investment branch would otherwise hide
-   * every row (none of them match) — the pre-class behavior was to
-   * display them all. Preserved here: when the row is an investment AND
-   * no sign filter is in the selection, fall through to "match".
-   */
+  /** Combine the named types with OR. Empty list = match everything. */
   any =
     (types: TransactionsPageType[]): Predicate =>
     (e) => {
       if (!types.length) return true;
-      if (isInvestment(e)) {
-        const hasSignFilter = types.some((t) => t === "deposits" || t === "expenses");
-        if (!hasSignFilter) return true;
-      }
       return types.some((t) => this[t](e));
     };
 }

@@ -274,17 +274,17 @@ describe("TypePredicates.any — investment branch", () => {
   test("empty list matches everything", () => {
     expect(investMatch(mkInv(50), [])).toBe(true);
   });
-  test("non-sign types are no-ops on the investment branch (all rows pass)", () => {
-    expect(investMatch(mkInv(50), ["unsorted"])).toBe(true);
-    expect(investMatch(mkInv(50), ["suggested"])).toBe(true);
-    expect(investMatch(mkInv(50), ["transfers"])).toBe(true);
+  test("non-sign types don't match an investment row (no label/transfer semantic to filter on)", () => {
+    expect(investMatch(mkInv(50), ["unsorted"])).toBe(false);
+    expect(investMatch(mkInv(50), ["suggested"])).toBe(false);
+    expect(investMatch(mkInv(50), ["transfers"])).toBe(false);
   });
   test("deposits / expenses respected", () => {
     expect(investMatch(mkInv(50), ["expenses"])).toBe(true);
     expect(investMatch(mkInv(50), ["deposits"])).toBe(false);
     expect(investMatch(mkInv(-50), ["deposits"])).toBe(true);
   });
-  test("mixed (sign + non-sign): sign rules; non-sign is silently dropped", () => {
+  test("mixed (sign + non-sign): sign rules; non-sign always false", () => {
     expect(investMatch(mkInv(50), ["expenses", "transfers"])).toBe(true);
     expect(investMatch(mkInv(-50), ["expenses", "transfers"])).toBe(false);
   });
