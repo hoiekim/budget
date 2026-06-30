@@ -5,14 +5,25 @@ import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import {
   isSuggestedLabel,
   matchesAnySelectedInvestmentType,
-  matchesAnySelectedType,
+  TypePredicates,
   type FilterContext,
 } from "./filter";
+import type { TransactionsPageType } from "client/components";
 import { Transaction } from "../../lib/models/Transaction";
 import { SplitTransaction } from "../../lib/models/SplitTransaction";
 import { InvestmentTransaction } from "../../lib/models/InvestmentTransaction";
 import { TransferDictionary } from "../../lib/models/Data";
 import type { TransferPair } from "server";
+
+// Thin per-test wrapper around the class API so the assertions stay in
+// the `predicate(row, types, ctx)` shape. Each call constructs its own
+// `TypePredicates` — fine for tests; in production code the class is
+// instantiated once per `filteredAndSorted` memo pass.
+const matchesAnySelectedType = (
+  e: Transaction | SplitTransaction,
+  types: TransactionsPageType[],
+  ctx: FilterContext,
+): boolean => new TypePredicates(ctx).any(types)(e);
 
 const DATE = "2026-03-15";
 

@@ -26,10 +26,10 @@ import {
 } from "client/components";
 import { useTransactionHit } from "./hooks";
 import {
-  isBudgetExcludedTransfer,
+  isConfirmedTransfer,
   isSuggestedLabel,
   matchesAnySelectedInvestmentType,
-  matchesAnySelectedType,
+  TypePredicates,
 } from "./filter";
 import "./index.css";
 
@@ -116,6 +116,7 @@ export const TransactionsPage = () => {
     }
 
     const filterCtx = { transfers };
+    const predicates = new TypePredicates(filterCtx);
 
     const effectiveBudgetId = (e: Transaction | SplitTransaction | InvestmentTransaction) =>
       e.label.budget_id || accounts.get(e.account_id)?.label.budget_id || null;
@@ -143,6 +144,7 @@ export const TransactionsPage = () => {
         return 0;
       });
     } else {
+      const matchesType = predicates.any(types);
       const filterTransaction = (e: Transaction | SplitTransaction) => {
         if (!e.amount) return false;
         const hidden = accounts.get(e.account_id)?.hide;
@@ -151,7 +153,7 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        if (!matchesAnySelectedType(e, types, filterCtx)) return false;
+        if (!matchesType(e)) return false;
 
         // A confirmed transfer carries no budget meaning (getBudgetData
         // excludes it — and its splits — from totals), so it must not
@@ -162,7 +164,7 @@ export const TransactionsPage = () => {
         // transfers still count toward budget, so they stay.
         if (
           (budget_id || section_id || category_id) &&
-          isBudgetExcludedTransfer(e, filterCtx)
+          isConfirmedTransfer(e, filterCtx)
         ) {
           return false;
         }

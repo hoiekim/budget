@@ -8,8 +8,9 @@ import type { TransactionsPageType } from "client/components";
 
 /**
  * Per-row predicate context. Holds the cross-row state every predicate
- * needs to consult (today: the transfer dictionary) so the predicates
- * themselves stay one-liners.
+ * needs to consult (today: the transfer dictionary). Initialized once on
+ * `TypePredicates` construction so the per-row predicates themselves
+ * stay one-liners and don't have to thread `ctx` through every call.
  */
 export interface FilterContext {
   transfers: TransferDictionary;
@@ -52,79 +53,89 @@ const isWholeTransaction = (
 ): e is Transaction => e instanceof Transaction;
 
 /**
- * Excluded from budget totals: any row — whole Transaction OR a
- * SplitTransaction of one — whose `transaction_id` belongs to a CONFIRMED
- * transfer pair. Splits inherit their parent's `transaction_id`, and
- * `getBudgetData` excludes both the parent and its splits from every budget
- * bucket via that same id (`calculation/budgets.ts:54,61`). So every
- * budget-semantic filter (deposits/expenses/unsorted/suggested + the
- * budget/section/category drill-down) must match — hence NO
- * `isWholeTransaction` guard here, unlike the transfer-pair *classification*
- * helpers below, which key on the row's own identity for rendering.
+ * Row — whole Transaction OR a SplitTransaction of one — whose
+ * `transaction_id` belongs to a CONFIRMED transfer pair. Splits inherit
+ * their parent's `transaction_id`, and `getBudgetData` excludes both the
+ * parent and its splits from every budget bucket via that same id
+ * (`calculation/budgets.ts:54,61`). Every budget-semantic filter must
+ * mirror — hence NO `isWholeTransaction` guard here, unlike the
+ * `isTransfer` render-classification helper below which keys on the
+ * row's own identity for rendering.
  */
-export const isBudgetExcludedTransfer = (
+export const isConfirmedTransfer = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
 ): boolean => ctx.transfers.byTransactionId.hasConfirmed(e.transaction_id);
 
-const isSuggestedTransferHalf = (
+const isSuggestedTransfer = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
 ): boolean =>
   isWholeTransaction(e) && ctx.transfers.byTransactionId.hasSuggested(e.transaction_id);
 
-const isTransferHalf = (
+const isTransfer = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
 ): boolean =>
   isWholeTransaction(e) && ctx.transfers.byTransactionId.has(e.transaction_id);
 
-type Predicate = (e: Transaction | SplitTransaction, ctx: FilterContext) => boolean;
+export type Predicate = (e: Transaction | SplitTransaction) => boolean;
 
 /**
- * Per-type predicate map. Each predicate decides whether a row matches
- * the named type — pure, side-effect-free, and independently testable.
- * The OR-combinator at the call site (`types.some(t => PREDICATES[t](e,
- * ctx))`) gives the multi-choice semantics the UI promises.
+ * Per-type predicates for the TransactionsPage type-filter dropdown.
+ *
+ * The `FilterContext` (today: the transfer dictionary) is captured once
+ * in the constructor and read off `this.context` by every predicate, so
+ * the row-level predicates are one-liners and the call site is a
+ * one-row toggle to add a new type.
  *
  *  - `deposits` / `expenses`: sign filters, but a confirmed-transfer row
- *    (whole or split) is excluded — it carries no budget meaning
- *    (`getBudgetData` skips it), so it must not surface under an
+ *    (whole or split) is excluded — `getBudgetData` skips it, so it
+ *    carries no budget meaning and must not surface under an
  *    income/expense view. Suggested transfers still count toward budget
- *    until confirmed, so they stay.
+ *    totals until confirmed, so they stay.
  *  - `unsorted`: "needs user action" — no user-confirmed category AND not
- *    part of a confirmed transfer. A confirmed transfer is "done" from the
- *    user's POV regardless of category state, and (matching getBudgetData)
- *    a split of one contributes to no budget, so it never "needs sorting".
+ *    part of a confirmed transfer. A confirmed transfer is "done" from
+ *    the user's POV regardless of category state.
  *  - `suggested`: a pending suggestion to review — either a suggested
  *    category label OR a suggested transfer-pair half. Confirmed transfers
  *    (and their splits) are excluded even if a category is still suggested
  *    (transfer state takes precedence).
  *  - `transfers`: any transfer-pair half (suggested or confirmed). Users
- *    auditing transfers want to see both states. This is the one
- *    render-classification predicate, so it keys on the row's own identity
- *    (`isTransferHalf` — whole transactions only; splits aren't pair halves).
+ *    auditing transfers want to see both states. The one
+ *    render-classification predicate — keys on the row's own identity
+ *    (`isTransfer`: whole transactions only; splits aren't pair halves).
  *
- * Adding a new type is one row + one test.
+ * `any(types)` returns a predicate that ORs the named types together —
+ * pass directly to `Array.prototype.filter`.
  */
-const TYPE_PREDICATES: Record<TransactionsPageType, Predicate> = {
-  deposits: (e, ctx) => !isBudgetExcludedTransfer(e, ctx) && e.amount < 0,
-  expenses: (e, ctx) => !isBudgetExcludedTransfer(e, ctx) && e.amount > 0,
-  unsorted: (e, ctx) => !isBudgetExcludedTransfer(e, ctx) && !isUserLabelConfirmed(e),
-  suggested: (e, ctx) =>
-    !isBudgetExcludedTransfer(e, ctx) && (isSuggestedLabel(e) || isSuggestedTransferHalf(e, ctx)),
-  transfers: (e, ctx) => isTransferHalf(e, ctx),
-};
+export class TypePredicates {
+  private context: FilterContext;
 
-/** True if `e` matches any of the selected types (empty list = match all). */
-export const matchesAnySelectedType = (
-  e: Transaction | SplitTransaction,
-  types: TransactionsPageType[],
-  ctx: FilterContext,
-): boolean => {
-  if (!types.length) return true;
-  return types.some((t) => TYPE_PREDICATES[t](e, ctx));
-};
+  constructor(context: FilterContext) {
+    this.context = context;
+  }
+
+  deposits: Predicate = (e) => !isConfirmedTransfer(e, this.context) && e.amount < 0;
+  expenses: Predicate = (e) => !isConfirmedTransfer(e, this.context) && e.amount > 0;
+  unsorted: Predicate = (e) =>
+    !isConfirmedTransfer(e, this.context) && !isUserLabelConfirmed(e);
+  suggested: Predicate = (e) =>
+    !isConfirmedTransfer(e, this.context) &&
+    (isSuggestedLabel(e) || isSuggestedTransfer(e, this.context));
+  transfers: Predicate = (e) => isTransfer(e, this.context);
+
+  /**
+   * Combine the named types with OR. Empty list = match everything (no
+   * type filter active).
+   */
+  any =
+    (types: TransactionsPageType[]): Predicate =>
+    (e) => {
+      if (!types.length) return true;
+      return types.some((t) => this[t](e));
+    };
+}
 
 /**
  * Investment transactions don't carry category labels and don't participate
