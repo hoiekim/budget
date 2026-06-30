@@ -1,12 +1,12 @@
-import { useState, useEffect, ChangeEventHandler, useMemo } from "react";
+import { useEffect, ChangeEventHandler } from "react";
 import { currencyCodeToSymbol } from "common";
 import {
   TransactionLabel,
-  Category,
   Data,
   SplitTransactionDictionary,
   SplitTransaction,
   useAppContext,
+  useBudgetCategorySelect,
   call,
   indexedDb,
   StoreName,
@@ -21,7 +21,7 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
   const { split_transaction_id, transaction_id, amount, label } = splitTransaction;
 
   const { data, setData } = useAppContext();
-  const { transactions, accounts, budgets, sections, categories } = data;
+  const { transactions, accounts } = data;
 
   const transaction = transactions.get(transaction_id)!;
   const account = accounts.get(transaction.account_id)!;
@@ -30,57 +30,19 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
 
   const isIncome = transaction.amount < 0;
 
-  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
-    return label.budget_id || account?.label.budget_id || "";
-  });
-  const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
-    return label.category_id || "";
-  });
+  const {
+    selectedBudgetIdLabel,
+    setSelectedBudgetIdLabel,
+    selectedCategoryIdLabel,
+    setSelectedCategoryIdLabel,
+    budgetOptions,
+    categoryOptions,
+  } = useBudgetCategorySelect(label, account, `split_transaction_${split_transaction_id}`);
 
   useEffect(() => {
     if (label.budget_id) return;
     setSelectedBudgetIdLabel(account?.label.budget_id || "");
-  }, [label.budget_id, account?.label.budget_id]);
-
-  const budgetOptions = useMemo(() => {
-    const components: JSX.Element[] = [];
-    budgets.forEach((e) => {
-      if (!e.name.trim()) return;
-      const component = (
-        <option
-          key={`split_transaction_${split_transaction_id}_budget_option_${e.budget_id}`}
-          value={e.budget_id}
-        >
-          {e.name}
-        </option>
-      );
-      components.push(component);
-    });
-    return components;
-  }, [split_transaction_id, budgets]);
-
-  const categoryOptions = useMemo(() => {
-    const availableCategories: Category[] = [];
-    sections.forEach((section) => {
-      const budget_id = label.budget_id || account?.label.budget_id;
-      if (section.budget_id !== budget_id) return;
-      categories.forEach((category) => {
-        if (category.section_id !== section.section_id) return;
-        availableCategories.push(category);
-      });
-    });
-
-    return availableCategories.map((e) => {
-      return (
-        <option
-          key={`split_transaction_${split_transaction_id}_category_option_${e.category_id}`}
-          value={e.category_id}
-        >
-          {e.name}
-        </option>
-      );
-    });
-  }, [split_transaction_id, label.budget_id, account?.label.budget_id, sections, categories]);
+  }, [label.budget_id, account?.label.budget_id, setSelectedBudgetIdLabel]);
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
