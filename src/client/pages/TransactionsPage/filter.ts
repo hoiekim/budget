@@ -58,22 +58,35 @@ const isWholeTransaction = (
  * their parent's `transaction_id`, and `getBudgetData` excludes both the
  * parent and its splits from every budget bucket via that same id
  * (`calculation/budgets.ts:54,61`). Every budget-semantic filter must
- * mirror — hence NO `isWholeTransaction` guard here, unlike the
- * `isTransfer` render-classification helper below which keys on the
- * row's own identity for rendering.
+ * mirror — hence NO `isWholeTransaction` guard here. Named `isIn…` (not
+ * `…Half`) because a split is a SIBLING of the pair half, not a half
+ * itself; but the row is still "in" the transfer for budget-semantic
+ * purposes.
  */
-export const isConfirmedTransfer = (
+export const isInConfirmedTransfer = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
 ): boolean => ctx.transfers.byTransactionId.hasConfirmed(e.transaction_id);
 
-const isSuggestedTransfer = (
+/**
+ * Whole Transaction that IS a half of a SUGGESTED transfer pair.
+ * Render-classification helper: splits inherit their parent's
+ * `transaction_id`, so an unguarded lookup would resolve the PARENT's
+ * pair and leak split rows — guarded on `isWholeTransaction`.
+ */
+const isSuggestedTransferHalf = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
 ): boolean =>
   isWholeTransaction(e) && ctx.transfers.byTransactionId.hasSuggested(e.transaction_id);
 
-const isTransfer = (
+/**
+ * Whole Transaction that IS a half of any transfer pair (suggested or
+ * confirmed). Render-classification helper used by the `transfers`
+ * filter — splits aren't pair halves and must not slip in via their
+ * inherited `transaction_id`.
+ */
+const isTransferHalf = (
   e: Transaction | SplitTransaction,
   ctx: FilterContext,
 ): boolean =>
@@ -104,7 +117,8 @@ export type Predicate = (e: Transaction | SplitTransaction) => boolean;
  *  - `transfers`: any transfer-pair half (suggested or confirmed). Users
  *    auditing transfers want to see both states. The one
  *    render-classification predicate — keys on the row's own identity
- *    (`isTransfer`: whole transactions only; splits aren't pair halves).
+ *    (`isTransferHalf`: whole transactions only; splits aren't pair
+ *    halves).
  *
  * `any(types)` returns a predicate that ORs the named types together —
  * pass directly to `Array.prototype.filter`.
@@ -116,14 +130,14 @@ export class TypePredicates {
     this.context = context;
   }
 
-  deposits: Predicate = (e) => !isConfirmedTransfer(e, this.context) && e.amount < 0;
-  expenses: Predicate = (e) => !isConfirmedTransfer(e, this.context) && e.amount > 0;
+  deposits: Predicate = (e) => !isInConfirmedTransfer(e, this.context) && e.amount < 0;
+  expenses: Predicate = (e) => !isInConfirmedTransfer(e, this.context) && e.amount > 0;
   unsorted: Predicate = (e) =>
-    !isConfirmedTransfer(e, this.context) && !isUserLabelConfirmed(e);
+    !isInConfirmedTransfer(e, this.context) && !isUserLabelConfirmed(e);
   suggested: Predicate = (e) =>
-    !isConfirmedTransfer(e, this.context) &&
-    (isSuggestedLabel(e) || isSuggestedTransfer(e, this.context));
-  transfers: Predicate = (e) => isTransfer(e, this.context);
+    !isInConfirmedTransfer(e, this.context) &&
+    (isSuggestedLabel(e) || isSuggestedTransferHalf(e, this.context));
+  transfers: Predicate = (e) => isTransferHalf(e, this.context);
 
   /**
    * Combine the named types with OR. Empty list = match everything (no

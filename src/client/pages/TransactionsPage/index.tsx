@@ -26,7 +26,7 @@ import {
 } from "client/components";
 import { useTransactionHit } from "./hooks";
 import {
-  isConfirmedTransfer,
+  isInConfirmedTransfer,
   isSuggestedLabel,
   matchesAnySelectedInvestmentType,
   TypePredicates,
@@ -164,7 +164,7 @@ export const TransactionsPage = () => {
         // transfers still count toward budget, so they stay.
         if (
           (budget_id || section_id || category_id) &&
-          isConfirmedTransfer(e, filterCtx)
+          isInConfirmedTransfer(e, filterCtx)
         ) {
           return false;
         }
