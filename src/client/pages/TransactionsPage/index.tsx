@@ -25,12 +25,7 @@ import {
   parseTransactionsTypes,
 } from "client/components";
 import { useTransactionHit } from "./hooks";
-import {
-  isInConfirmedTransfer,
-  isSuggestedLabel,
-  matchesAnySelectedInvestmentType,
-  TypePredicates,
-} from "./filter";
+import { isInConfirmedTransfer, isSuggestedLabel, TypePredicates } from "./filter";
 import "./index.css";
 
 export type TransactionsPageParams = {
@@ -121,6 +116,8 @@ export const TransactionsPage = () => {
     const effectiveBudgetId = (e: Transaction | SplitTransaction | InvestmentTransaction) =>
       e.label.budget_id || accounts.get(e.account_id)?.label.budget_id || null;
 
+    const matchesType = predicates.any(types);
+
     if (isInvestment) {
       const filtered = investmentTransactions.filter((e) => {
         if (!e.amount) return false;
@@ -129,7 +126,7 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(e.date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        if (!matchesAnySelectedInvestmentType(e, types)) return false;
+        if (!matchesType(e)) return false;
         if (budget_id && effectiveBudgetId(e) !== budget_id) return false;
         return isSubset(e, filters);
       });
@@ -144,7 +141,6 @@ export const TransactionsPage = () => {
         return 0;
       });
     } else {
-      const matchesType = predicates.any(types);
       const filterTransaction = (e: Transaction | SplitTransaction) => {
         if (!e.amount) return false;
         const hidden = accounts.get(e.account_id)?.hide;

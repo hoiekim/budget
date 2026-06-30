@@ -16,27 +16,26 @@ export interface FilterContext {
   transfers: TransferDictionary;
 }
 
-type LabeledRow = {
-  label: { category_id?: string | null; category_confidence?: number | null };
-};
-
 /**
  * User has explicitly acted on this row's category — either confirmed
  * (confidence=1) or rejected (confidence=0). Per the JSONTransactionLabel
  * docstring, null = never labeled and 0<conf<1 = engine suggestion.
  */
-const isUserLabelConfirmed = (e: LabeledRow): boolean => {
+const isUserLabelConfirmed = (e: Transaction | SplitTransaction): boolean => {
   const c_id = e.label.category_id;
   const c_conf = e.label.category_confidence;
   return !!(c_id && (c_conf === 1 || c_conf === 0));
 };
 
 /**
- * Engine-emitted suggestion the user hasn't acted on yet. Mirrors the
- * `isSuggestedLabel` helper that drives the Accept-All count — keep these
- * two in sync.
+ * Engine-emitted suggestion the user hasn't acted on yet. Accepts every
+ * row type the TransactionsPage renders (`filteredAndSorted` mixes the
+ * three) — InvestmentTransaction carries the same `label.category_id` /
+ * `label.category_confidence` columns and can be auto-suggested too.
  */
-export const isSuggestedLabel = (e: LabeledRow): boolean => {
+export const isSuggestedLabel = (
+  e: Transaction | SplitTransaction | InvestmentTransaction,
+): boolean => {
   const c_id = e.label.category_id;
   const c_conf = e.label.category_confidence;
   return !!(c_id && c_conf && c_conf > 0 && c_conf < 1);
@@ -92,7 +91,12 @@ const isTransferHalf = (
 ): boolean =>
   isWholeTransaction(e) && ctx.transfers.byTransactionId.has(e.transaction_id);
 
-export type Predicate = (e: Transaction | SplitTransaction) => boolean;
+type AnyRow = Transaction | SplitTransaction | InvestmentTransaction;
+
+export type Predicate = (e: AnyRow) => boolean;
+
+const isInvestment = (e: AnyRow): e is InvestmentTransaction =>
+  e instanceof InvestmentTransaction;
 
 /**
  * Per-type predicates for the TransactionsPage type-filter dropdown.
@@ -102,26 +106,32 @@ export type Predicate = (e: Transaction | SplitTransaction) => boolean;
  * the row-level predicates are one-liners and the call site is a
  * one-row toggle to add a new type.
  *
- *  - `deposits` / `expenses`: sign filters, but a confirmed-transfer row
- *    (whole or split) is excluded — `getBudgetData` skips it, so it
- *    carries no budget meaning and must not surface under an
- *    income/expense view. Suggested transfers still count toward budget
+ *  - `deposits` / `expenses`: sign filters. For Transaction / SplitTransaction
+ *    a confirmed-transfer row (whole or split) is excluded — `getBudgetData`
+ *    skips it, so it carries no budget meaning and must not surface under an
+ *    income/expense view. InvestmentTransaction has no transfer semantics so
+ *    it's a pure sign check. Suggested transfers still count toward budget
  *    totals until confirmed, so they stay.
  *  - `unsorted`: "needs user action" — no user-confirmed category AND not
  *    part of a confirmed transfer. A confirmed transfer is "done" from
- *    the user's POV regardless of category state.
+ *    the user's POV regardless of category state. Not applicable to
+ *    InvestmentTransaction (no category labels).
  *  - `suggested`: a pending suggestion to review — either a suggested
  *    category label OR a suggested transfer-pair half. Confirmed transfers
  *    (and their splits) are excluded even if a category is still suggested
- *    (transfer state takes precedence).
+ *    (transfer state takes precedence). Not applicable to
+ *    InvestmentTransaction.
  *  - `transfers`: any transfer-pair half (suggested or confirmed). Users
  *    auditing transfers want to see both states. The one
  *    render-classification predicate — keys on the row's own identity
  *    (`isTransferHalf`: whole transactions only; splits aren't pair
- *    halves).
+ *    halves). Not applicable to InvestmentTransaction.
  *
  * `any(types)` returns a predicate that ORs the named types together —
- * pass directly to `Array.prototype.filter`.
+ * pass directly to `Array.prototype.filter`. For an InvestmentTransaction
+ * row, non-sign types are no-ops (the predicate would have nothing to
+ * filter on), so a selection containing ONLY non-sign types displays
+ * every investment row — matching the pre-class branch behavior.
  */
 export class TypePredicates {
   private context: FilterContext;
@@ -130,41 +140,42 @@ export class TypePredicates {
     this.context = context;
   }
 
-  deposits: Predicate = (e) => !isInConfirmedTransfer(e, this.context) && e.amount < 0;
-  expenses: Predicate = (e) => !isInConfirmedTransfer(e, this.context) && e.amount > 0;
+  deposits: Predicate = (e) =>
+    isInvestment(e)
+      ? e.amount < 0
+      : !isInConfirmedTransfer(e, this.context) && e.amount < 0;
+  expenses: Predicate = (e) =>
+    isInvestment(e)
+      ? e.amount > 0
+      : !isInConfirmedTransfer(e, this.context) && e.amount > 0;
   unsorted: Predicate = (e) =>
-    !isInConfirmedTransfer(e, this.context) && !isUserLabelConfirmed(e);
+    !isInvestment(e) &&
+    !isInConfirmedTransfer(e, this.context) &&
+    !isUserLabelConfirmed(e);
   suggested: Predicate = (e) =>
+    !isInvestment(e) &&
     !isInConfirmedTransfer(e, this.context) &&
     (isSuggestedLabel(e) || isSuggestedTransferHalf(e, this.context));
-  transfers: Predicate = (e) => isTransferHalf(e, this.context);
+  transfers: Predicate = (e) => !isInvestment(e) && isTransferHalf(e, this.context);
 
   /**
-   * Combine the named types with OR. Empty list = match everything (no
-   * type filter active).
+   * Combine the named types with OR. Empty list = match everything.
+   *
+   * Investment-row carve-out: non-sign types (`unsorted`/`suggested`/
+   * `transfers`) don't apply to investment rows. If the user has ONLY
+   * those types selected, the investment branch would otherwise hide
+   * every row (none of them match) — the pre-class behavior was to
+   * display them all. Preserved here: when the row is an investment AND
+   * no sign filter is in the selection, fall through to "match".
    */
   any =
     (types: TransactionsPageType[]): Predicate =>
     (e) => {
       if (!types.length) return true;
+      if (isInvestment(e)) {
+        const hasSignFilter = types.some((t) => t === "deposits" || t === "expenses");
+        if (!hasSignFilter) return true;
+      }
       return types.some((t) => this[t](e));
     };
 }
-
-/**
- * Investment transactions don't carry category labels and don't participate
- * in transfer pairs, so only the sign filters (deposits/expenses) are
- * meaningful. Other selected types are no-ops on the investment branch —
- * if the user has ONLY non-sign types selected, the investment branch
- * should still display rows (matches pre-PR behavior where the investment
- * filter only ever checked deposits/expenses).
- */
-export const matchesAnySelectedInvestmentType = (
-  e: InvestmentTransaction,
-  types: TransactionsPageType[],
-): boolean => {
-  if (!types.length) return true;
-  const signTypes = types.filter((t) => t === "deposits" || t === "expenses");
-  if (!signTypes.length) return true;
-  return signTypes.some((t) => (t === "deposits" ? e.amount < 0 : e.amount > 0));
-};

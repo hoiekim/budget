@@ -2,12 +2,7 @@
 import { describe, test, expect } from "bun:test";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 
-import {
-  isSuggestedLabel,
-  matchesAnySelectedInvestmentType,
-  TypePredicates,
-  type FilterContext,
-} from "./filter";
+import { isSuggestedLabel, TypePredicates, type FilterContext } from "./filter";
 import type { TransactionsPageType } from "client/components";
 import { Transaction } from "../../lib/models/Transaction";
 import { SplitTransaction } from "../../lib/models/SplitTransaction";
@@ -260,7 +255,7 @@ describe("matchesAnySelectedType — split-transaction guard", () => {
   });
 });
 
-describe("matchesAnySelectedInvestmentType", () => {
+describe("TypePredicates.any — investment branch", () => {
   const investAccount = "inv-acc-1";
   const mkInv = (amount: number): InvestmentTransaction =>
     new InvestmentTransaction({
@@ -273,21 +268,24 @@ describe("matchesAnySelectedInvestmentType", () => {
       date: "2026-02-15",
     });
 
+  const investMatch = (e: InvestmentTransaction, types: TransactionsPageType[]): boolean =>
+    new TypePredicates(makeCtx()).any(types)(e);
+
   test("empty list matches everything", () => {
-    expect(matchesAnySelectedInvestmentType(mkInv(50), [])).toBe(true);
+    expect(investMatch(mkInv(50), [])).toBe(true);
   });
   test("non-sign types are no-ops on the investment branch (all rows pass)", () => {
-    expect(matchesAnySelectedInvestmentType(mkInv(50), ["unsorted"])).toBe(true);
-    expect(matchesAnySelectedInvestmentType(mkInv(50), ["suggested"])).toBe(true);
-    expect(matchesAnySelectedInvestmentType(mkInv(50), ["transfers"])).toBe(true);
+    expect(investMatch(mkInv(50), ["unsorted"])).toBe(true);
+    expect(investMatch(mkInv(50), ["suggested"])).toBe(true);
+    expect(investMatch(mkInv(50), ["transfers"])).toBe(true);
   });
   test("deposits / expenses respected", () => {
-    expect(matchesAnySelectedInvestmentType(mkInv(50), ["expenses"])).toBe(true);
-    expect(matchesAnySelectedInvestmentType(mkInv(50), ["deposits"])).toBe(false);
-    expect(matchesAnySelectedInvestmentType(mkInv(-50), ["deposits"])).toBe(true);
+    expect(investMatch(mkInv(50), ["expenses"])).toBe(true);
+    expect(investMatch(mkInv(50), ["deposits"])).toBe(false);
+    expect(investMatch(mkInv(-50), ["deposits"])).toBe(true);
   });
   test("mixed (sign + non-sign): sign rules; non-sign is silently dropped", () => {
-    expect(matchesAnySelectedInvestmentType(mkInv(50), ["expenses", "transfers"])).toBe(true);
-    expect(matchesAnySelectedInvestmentType(mkInv(-50), ["expenses", "transfers"])).toBe(false);
+    expect(investMatch(mkInv(50), ["expenses", "transfers"])).toBe(true);
+    expect(investMatch(mkInv(-50), ["expenses", "transfers"])).toBe(false);
   });
 });
