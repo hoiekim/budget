@@ -25,17 +25,8 @@ import {
   parseTransactionsTypes,
 } from "client/components";
 import { useTransactionHit } from "./hooks";
+import { isInConfirmedTransfer, isSuggestedLabel, TypePredicates } from "./filter";
 import "./index.css";
-
-// A transaction (or split / investment-transaction) has an unreviewed
-// suggestion when its label has a category set and the confidence is in
-// the open interval (0, 1). 0=rejected, 1=confirmed, null=never labeled
-// — per the JSONTransactionLabel docstring.
-const isSuggestedLabel = (e: Transaction | SplitTransaction | InvestmentTransaction): boolean => {
-  const c_id = e.label.category_id;
-  const c_conf = e.label.category_confidence;
-  return !!(c_id && c_conf && c_conf < 1);
-};
 
 export type TransactionsPageParams = {
   /** Comma-separated list of `TransactionsPageType` values (e.g.
@@ -104,13 +95,13 @@ export const TransactionsPage = () => {
   const { sort } = sorter;
 
   const filteredAndSorted = useMemo(() => {
+    // budget_id is checked inline (with the "account default" fallback)
+    // rather than via `isSubset`, because the row's own `label.budget_id`
+    // may be null and the user routes the whole account to a budget. The
+    // remaining identity filters go through `isSubset`.
     const filters: DeepPartial<Transaction & InvestmentTransaction> = {};
     const category_ids: string[] = [];
     if (account_id) filters.account_id = account_id;
-    if (budget_id) {
-      if (!filters.label) filters.label = {};
-      filters.label.budget_id = budget_id;
-    }
     if (section_id) {
       section?.getChildren().forEach((c) => category_ids.push(c.id));
     }
@@ -119,48 +110,13 @@ export const TransactionsPage = () => {
       filters.label.category_id = category_id;
     }
 
-    // Multi-choice OR: an entry passes the type filter if it matches
-    // ANY of the selected types (empty selection = no type filter).
-    // The label/transfer types apply to regular Transactions /
-    // SplitTransactions; the sign types apply to everything.
-    const matchesAnySelectedType = (e: Transaction | SplitTransaction): boolean => {
-      if (!types.length) return true;
-      return types.some((t) => {
-        if (t === "deposits") return e.amount < 0;
-        if (t === "expenses") return e.amount > 0;
-        if (t === "unsorted") {
-          const c_id = e.label.category_id;
-          const c_conf = e.label.category_confidence;
-          return !(c_id && (c_conf === 1 || c_conf === 0));
-        }
-        if (t === "suggested") return isSuggestedLabel(e);
-        if (t === "transfers") {
-          // Only whole Transactions participate in transfer pairs. A
-          // SplitTransaction inherits its parent's transaction_id, so an
-          // unguarded lookup would resolve the PARENT's pair and leak split
-          // rows into the Transfers view — same guard the render path uses
-          // (TransactionsTable/index.tsx, TransactionRow.tsx).
-          return (
-            e instanceof Transaction &&
-            transfers.byTransactionId.has(e.transaction_id)
-          );
-        }
-        return false;
-      });
-    };
+    const filterCtx = { transfers };
+    const predicates = new TypePredicates(filterCtx);
 
-    // Investment transactions don't carry category labels and don't
-    // participate in transfer pairs, so only the sign filters
-    // (deposits / expenses) are meaningful. Other selected types are
-    // no-ops on the investment branch — same as pre-PR behavior where
-    // the investment branch only checked deposits/expenses and let
-    // every other type fall through as a no-op.
-    const matchesAnySelectedInvestmentType = (e: InvestmentTransaction): boolean => {
-      if (!types.length) return true;
-      const signTypes = types.filter((t) => t === "deposits" || t === "expenses");
-      if (!signTypes.length) return true;
-      return signTypes.some((t) => (t === "deposits" ? e.amount < 0 : e.amount > 0));
-    };
+    const effectiveBudgetId = (e: Transaction | SplitTransaction | InvestmentTransaction) =>
+      e.label.budget_id || accounts.get(e.account_id)?.label.budget_id || null;
+
+    const matchesType = predicates.any(types);
 
     if (isInvestment) {
       const filtered = investmentTransactions.filter((e) => {
@@ -170,7 +126,8 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(e.date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        if (!matchesAnySelectedInvestmentType(e)) return false;
+        if (!matchesType(e)) return false;
+        if (budget_id && effectiveBudgetId(e) !== budget_id) return false;
         return isSubset(e, filters);
       });
 
@@ -192,19 +149,28 @@ export const TransactionsPage = () => {
         const transactionDate = new LocalDate(date);
         const within = viewDate.has(transactionDate);
         if (!within) return false;
-        // Multi-choice OR across selected types. "unsorted" widens to
-        // "not user-confirmed" (covers genuinely unlabeled rows AND
-        // auto-suggested ones — both stay visible until the user
-        // explicitly confirms a label). "suggested" is the narrower
-        // slice (0 < confidence < 1). "transfers" matches any pair
-        // (suggested or confirmed) — the user wants to see transfer
-        // rows in either state.
-        if (!matchesAnySelectedType(e)) return false;
+        if (!matchesType(e)) return false;
 
-        if (!isInvestment && !e.label.budget_id && !section_id && !category_id) {
-          const account = accounts.get(e.account_id);
-          if (account?.label.budget_id === budget_id) return true;
+        // A confirmed transfer carries no budget meaning (getBudgetData
+        // excludes it — and its splits — from totals), so it must not
+        // surface under a budget / section / category drill-down. Keyed on
+        // transaction_id so a split of a confirmed transfer is excluded too,
+        // matching getBudgetData. The default and account/transfers views
+        // still show it; only the budget-semantic filters drop it. Suggested
+        // transfers still count toward budget, so they stay.
+        if (
+          (budget_id || section_id || category_id) &&
+          isInConfirmedTransfer(e, filterCtx)
+        ) {
+          return false;
         }
+
+        // Effective budget_id falls back to the account's default so a row
+        // routed via account default still shows under the budget filter
+        // (the previous short-circuit returned true here, bypassing every
+        // downstream filter including the orphan-split guard — a small bug
+        // closed by inlining the check instead).
+        if (budget_id && effectiveBudgetId(e) !== budget_id) return false;
 
         // filters out orphaned split transactions
         if (!transactions.has(e.transaction_id)) return false;
