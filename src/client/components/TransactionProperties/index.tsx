@@ -7,7 +7,6 @@ import {
 } from "common";
 import { NewSplitTransactionGetResponse } from "server";
 import {
-  Category,
   Data,
   SplitTransaction,
   SplitTransactionDictionary,
@@ -15,6 +14,7 @@ import {
   TransactionDictionary,
   TransactionLabel,
   useAppContext,
+  useBudgetCategorySelect,
   useTransfers,
   call,
   indexedDb,
@@ -38,7 +38,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData, calculations } = useAppContext();
   const transferActions = useTransfers();
   const { transactionFamilies } = calculations;
-  const { accounts, budgets, sections, categories, transfers } = data;
+  const { accounts, sections, categories, transfers } = data;
 
   const {
     transaction_id,
@@ -55,57 +55,19 @@ export const TransactionProperties = ({ transaction }: Props) => {
 
   const account = accounts.get(account_id);
 
-  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
-    return label.budget_id || account?.label.budget_id || "";
-  });
-  const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
-    return label.category_id || "";
-  });
+  const {
+    selectedBudgetIdLabel,
+    setSelectedBudgetIdLabel,
+    selectedCategoryIdLabel,
+    setSelectedCategoryIdLabel,
+    budgetOptions,
+    categoryOptions,
+  } = useBudgetCategorySelect(label, account, `transaction_${transaction_id}`);
 
   useEffect(() => {
     setSelectedBudgetIdLabel(label.budget_id || account?.label.budget_id || "");
     setSelectedCategoryIdLabel(label.category_id || "");
-  }, [label, account]);
-
-  const budgetOptions = useMemo(() => {
-    const components: JSX.Element[] = [];
-    budgets.forEach((e) => {
-      if (!e.name.trim()) return;
-      const component = (
-        <option
-          key={`transaction_${transaction_id}_budget_option_${e.budget_id}`}
-          value={e.budget_id}
-        >
-          {e.name}
-        </option>
-      );
-      components.push(component);
-    });
-    return components;
-  }, [transaction_id, budgets]);
-
-  const categoryOptions = useMemo(() => {
-    const availableCategories: Category[] = [];
-    sections.forEach((section) => {
-      const budget_id = label.budget_id || account?.label.budget_id;
-      if (section.budget_id !== budget_id) return;
-      categories.forEach((category) => {
-        if (category.section_id !== section.section_id) return;
-        availableCategories.push(category);
-      });
-    });
-
-    return availableCategories.map((e) => {
-      return (
-        <option
-          key={`transaction_${transaction_id}_category_option_${e.category_id}`}
-          value={e.category_id}
-        >
-          {e.name}
-        </option>
-      );
-    });
-  }, [transaction_id, label.budget_id, account?.label.budget_id, sections, categories]);
+  }, [label, account, setSelectedBudgetIdLabel, setSelectedCategoryIdLabel]);
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;

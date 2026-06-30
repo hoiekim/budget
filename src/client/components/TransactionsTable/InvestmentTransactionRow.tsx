@@ -1,17 +1,17 @@
 import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import {
   call,
-  Category,
   Data,
   InvestmentTransaction,
   InvestmentTransactionDictionary,
   PATH,
   TransactionLabel,
   useAppContext,
+  useBudgetCategorySelect,
   indexedDb,
 } from "client";
 import { InstitutionSpan, KebabIcon } from "client/components";
-import { ChangeEventHandler, MouseEventHandler, useEffect, useMemo, useState } from "react";
+import { ChangeEventHandler, MouseEventHandler, useEffect, useState } from "react";
 import { ApiResponse } from "server";
 
 interface Props {
@@ -23,18 +23,20 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
   const { id, account_id, date, name, amount, iso_currency_code, label } = investmentTransaction;
 
   const { data, setData, router } = useAppContext();
-  const { accounts, budgets, sections, categories } = data;
+  const { accounts } = data;
   const { go } = router;
 
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
 
-  const [selectedBudgetIdLabel, setSelectedBudgetIdLabel] = useState(() => {
-    return label.budget_id || account?.label.budget_id || "";
-  });
-  const [selectedCategoryIdLabel, setSelectedCategoryIdLabel] = useState(() => {
-    return label.category_id || "";
-  });
+  const {
+    selectedBudgetIdLabel,
+    setSelectedBudgetIdLabel,
+    selectedCategoryIdLabel,
+    setSelectedCategoryIdLabel,
+    budgetOptions,
+    categoryOptions,
+  } = useBudgetCategorySelect(label, account, `investment_transaction_${id}`);
   const [selectedConfidence, setSelectedConfidence] = useState<number | null>(
     () => label.category_confidence ?? null,
   );
@@ -53,53 +55,13 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
   useEffect(() => {
     if (label.budget_id) return;
     setSelectedBudgetIdLabel(account?.label.budget_id || "");
-  }, [label.budget_id, account?.label.budget_id]);
+  }, [label.budget_id, account?.label.budget_id, setSelectedBudgetIdLabel]);
 
   // See TransactionRow — sync confidence from parent-updated transaction
   // so Accept-All reflects without a reload.
   useEffect(() => {
     setSelectedConfidence(label.category_confidence ?? null);
   }, [label.category_confidence]);
-
-  const budgetOptions = useMemo(() => {
-    const components: JSX.Element[] = [];
-    budgets.forEach((e) => {
-      if (!e.name.trim()) return;
-      const component = (
-        <option
-          key={`investment_transaction_${id}_budget_option_${e.budget_id}`}
-          value={e.budget_id}
-        >
-          {e.name}
-        </option>
-      );
-      components.push(component);
-    });
-    return components;
-  }, [id, budgets]);
-
-  const categoryOptions = useMemo(() => {
-    const availableCategories: Category[] = [];
-    sections.forEach((section) => {
-      const budget_id = label.budget_id || account?.label.budget_id;
-      if (section.budget_id !== budget_id) return;
-      categories.forEach((category) => {
-        if (category.section_id !== section.section_id) return;
-        availableCategories.push(category);
-      });
-    });
-
-    return availableCategories.map((e) => {
-      return (
-        <option
-          key={`investment_transaction_${id}_category_option_${e.category_id}`}
-          value={e.category_id}
-        >
-          {e.name}
-        </option>
-      );
-    });
-  }, [id, label.budget_id, account?.label.budget_id, sections, categories]);
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
