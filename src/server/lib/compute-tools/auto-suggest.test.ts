@@ -578,18 +578,41 @@ describe("runAutoSuggestions", () => {
       // Seven features, each contributing its weight when matched.
       // Asserting the structural shape catches a refactor that
       // silently drops a feature OR flattens all weights to 1 (which
-      // was the v1 design and got drowned by category volume).
-      expect(sql).toMatch(/similarity\(t\.merchant_name,\s*\$2\)\s*>=\s*\$3\s+THEN\s+100\s+ELSE\s+0/);
-      expect(sql).toMatch(/similarity\(t\.name,\s*\$4\)\s*>=\s*\$3\s+THEN\s+50\s+ELSE\s+0/);
+      // was the v1 design and got drowned by category volume). The
+      // identity-like features (merchant/name/pfc) additionally gate
+      // on `SIGN(amount) = SIGN($13)` — a separate test below pins
+      // that specifically — so the `.*` between the threshold and the
+      // weight tolerates the gate without re-asserting it here.
+      expect(sql).toMatch(/similarity\(t\.merchant_name,\s*\$2\)\s*>=\s*\$3[\s\S]*?THEN\s+100\s+ELSE\s+0/);
+      expect(sql).toMatch(/similarity\(t\.name,\s*\$4\)\s*>=\s*\$3[\s\S]*?THEN\s+50\s+ELSE\s+0/);
       expect(sql).toMatch(/t\.amount\s+BETWEEN\s+\$5\s+AND\s+\$6\s+THEN\s+5\s+ELSE\s+0/);
       expect(sql).toMatch(/t\.payment_channel\s*=\s*\$7\s+THEN\s+1\s+ELSE\s+0/);
       expect(sql).toMatch(/t\.account_id\s*=\s*\$8\s+THEN\s+1\s+ELSE\s+0/);
       expect(sql).toMatch(
-        /personal_finance_category.+primary.+=\s*\$9\s+THEN\s+10\s+ELSE\s+0/,
+        /personal_finance_category.+primary.+=\s*\$9[\s\S]*?THEN\s+10\s+ELSE\s+0/,
       );
       expect(sql).toMatch(
         /EXTRACT\(DAY\s+FROM\s+t\.date::date\)\s+BETWEEN\s+\$10\s+AND\s+\$11\s+THEN\s+1\s+ELSE\s+0/i,
       );
+    });
+
+    test("identity features (merchant/name/pfc) require sign(amount) to match the target's sign", async () => {
+      const sql = await captureSignalSql();
+      // Same merchant with opposite sign (a refund vs the underlying
+      // purchase, a payout vs a payment) is much more likely a different
+      // category than the same one. Gating the three identity-strength
+      // features on `SIGN(t.amount) = SIGN($13::numeric)` prevents a
+      // merchant-only match across signs from dominating the SUM. Weak
+      // features (channel/account/day) stay unguarded; the amount-band
+      // is already sign-preserving via the lo/hi computation.
+      const signGate = /AND\s+\(SIGN\(\$13::numeric\)\s*=\s*0\s+OR\s+SIGN\(t\.amount\)\s*=\s*SIGN\(\$13::numeric\)\)/g;
+      const gates = sql.match(signGate) ?? [];
+      // Three identity features × three SCORE_EXPR render sites
+      // (scored CTE + rejected sub-query SUM + rejected sub-query
+      // WHERE) = 9 occurrences. The fallback `SIGN($13)=0 OR ...`
+      // preserves identity matching for sign-undefined (0-amount)
+      // targets.
+      expect(gates.length).toBeGreaterThanOrEqual(9);
     });
 
     test("merchant weight >> any single weak-feature weight (100 vs 1) so quality beats volume", async () => {
@@ -695,8 +718,11 @@ describe("runAutoSuggestions", () => {
       // a row only contributes to the SUM if its score exceeds this.
       expect(typeof values[11]).toBe("number");
       expect(values[11] as number).toBeGreaterThan(0);
-      // 12 params total.
-      expect(values).toHaveLength(12);
+      // $13 carries the target's raw amount — used as the sign source
+      // for the merchant/name/pfc gates in SCORE_EXPR.
+      expect(values[12]).toBe(100);
+      // 13 params total.
+      expect(values).toHaveLength(13);
     });
   });
 });
