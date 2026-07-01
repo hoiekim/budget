@@ -40,7 +40,7 @@ export const postSplitTransactionRoute = new Route<SplitTransactionPostResponse>
       if (!result || result.status >= 400) {
         throw new Error("Database responded with an error.");
       }
-      const split_transaction_id = result.update?._id || "";
+      const split_transaction_id = result.update._id || "";
       return { status: "success", body: { split_transaction_id } };
     } catch (error: unknown) {
       logger.error("Failed to update split transaction", { splitTransactionId: idResult.data }, error);
