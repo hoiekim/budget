@@ -7,6 +7,7 @@ import {
   extractCashFlowsBySecurity,
   computeMWR,
   computeBenchmarkTWR,
+  computeBenchmarkEndValue,
   valueAt,
   buildPriceAt,
   priceAtIn,
@@ -241,6 +242,127 @@ describe("computeBenchmarkTWR", () => {
     });
     expect(r.cumulative).toBeCloseTo(0.10, 6);
     expect(r.annualized).toBeCloseTo(0.21, 1);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+describe("computeBenchmarkEndValue (dollar counterfactual)", () => {
+  const priceAt = (points: Record<string, number>) => (date: string) => points[date] ?? null;
+
+  test("vStart only, no flows: replays as windowStart-dated contribution × priceEnd/priceStart", () => {
+    // $10k parked at windowStart; benchmark doubles by windowEnd → $20k end value.
+    const r = computeBenchmarkEndValue({
+      vStart: 10_000,
+      flows: [],
+      benchmarkPriceAt: priceAt({ "2026-01-01": 100, "2026-12-31": 200 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeCloseTo(20_000, 6);
+  });
+
+  test("flows re-priced at their OWN date, not windowStart", () => {
+    // $10k at windowStart (price 100 → 200 = 2x), $5k at mid-window (price 150 → 200 = 1.33x).
+    // End value = 20,000 + 6,666.67 ≈ 26,666.67
+    const r = computeBenchmarkEndValue({
+      vStart: 10_000,
+      flows: [{ date: "2026-07-01", amount: 5_000 }],
+      benchmarkPriceAt: priceAt({
+        "2026-01-01": 100,
+        "2026-07-01": 150,
+        "2026-12-31": 200,
+      }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeCloseTo(20_000 + 5_000 * (200 / 150), 4);
+  });
+
+  test("negative flow (withdrawal) subtracts at its date's price", () => {
+    // $10k in at windowStart, −$2k out at mid.
+    const r = computeBenchmarkEndValue({
+      vStart: 10_000,
+      flows: [{ date: "2026-07-01", amount: -2_000 }],
+      benchmarkPriceAt: priceAt({
+        "2026-01-01": 100,
+        "2026-07-01": 150,
+        "2026-12-31": 200,
+      }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeCloseTo(20_000 - 2_000 * (200 / 150), 4);
+  });
+
+  test("vStart = 0 (clamped-to-earliest-data window): still valid; end value = flows-only replay", () => {
+    const r = computeBenchmarkEndValue({
+      vStart: 0,
+      flows: [{ date: "2026-07-01", amount: 5_000 }],
+      benchmarkPriceAt: priceAt({
+        "2026-01-01": 100,
+        "2026-07-01": 150,
+        "2026-12-31": 200,
+      }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeCloseTo(5_000 * (200 / 150), 4);
+  });
+
+  test("returns null when windowStart price is missing (partial answer would be misleading)", () => {
+    const r = computeBenchmarkEndValue({
+      vStart: 10_000,
+      flows: [],
+      benchmarkPriceAt: priceAt({ "2026-12-31": 200 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeNull();
+  });
+
+  test("returns null when windowEnd price is missing", () => {
+    const r = computeBenchmarkEndValue({
+      vStart: 10_000,
+      flows: [],
+      benchmarkPriceAt: priceAt({ "2026-01-01": 100 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeNull();
+  });
+
+  test("returns null when any flow date has no price", () => {
+    const r = computeBenchmarkEndValue({
+      vStart: 10_000,
+      flows: [
+        { date: "2026-07-01", amount: 5_000 },
+        { date: "2026-09-01", amount: 5_000 },
+      ],
+      benchmarkPriceAt: priceAt({
+        "2026-01-01": 100,
+        "2026-07-01": 150,
+        "2026-12-31": 200,
+        // 2026-09-01 missing
+      }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeNull();
+  });
+
+  test("flat benchmark: end value equals net cash in (vStart + Σ flows)", () => {
+    const r = computeBenchmarkEndValue({
+      vStart: 10_000,
+      flows: [{ date: "2026-07-01", amount: 5_000 }],
+      benchmarkPriceAt: priceAt({
+        "2026-01-01": 100,
+        "2026-07-01": 100,
+        "2026-12-31": 100,
+      }),
+      windowStart: "2026-01-01",
+      windowEnd: "2026-12-31",
+    });
+    expect(r).toBeCloseTo(15_000, 6);
   });
 });
 

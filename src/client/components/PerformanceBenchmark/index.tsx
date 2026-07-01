@@ -14,6 +14,7 @@ import {
   extractCashFlows,
   computeMWR,
   computeBenchmarkTWR,
+  computeBenchmarkEndValue,
   valueAt,
   buildPriceAt,
   buildSnapshotPriceAt,
@@ -36,6 +37,12 @@ const toDateString = (d: Date) => d.toISOString().slice(0, 10);
 const formatPct = (n: number | null): string => {
   if (n === null || !Number.isFinite(n)) return "—";
   return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(2)}%`;
+};
+
+const formatSignedDollars = (n: number): string => {
+  const sign = n >= 0 ? "+" : "−";
+  const abs = Math.abs(Math.round(n));
+  return `${sign}$${abs.toLocaleString("en-US")}`;
 };
 
 export const PerformanceBenchmark = ({ accounts }: Props) => {
@@ -145,6 +152,12 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     const gap =
       mwr.annualized !== null && benchmark ? mwr.annualized - benchmark.annualized : null;
 
+    const vooEndValue =
+      mwr.status === "ok"
+        ? computeBenchmarkEndValue({ vStart, flows, benchmarkPriceAt, windowStart, windowEnd })
+        : null;
+    const gapDollars = vooEndValue !== null ? vEnd - vooEndValue : null;
+
     return {
       windowStart,
       windowEnd,
@@ -154,6 +167,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
       mwr,
       benchmark,
       gap,
+      gapDollars,
       suppressAnnualized,
       isClamped,
     };
@@ -210,7 +224,8 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
   }, [computed, securitySnapshots, setData]);
 
   if (!computed) return null;
-  const { windowStart, windowEnd, mwr, benchmark, gap, suppressAnnualized, isClamped } = computed;
+  const { windowStart, windowEnd, mwr, benchmark, gap, gapDollars, suppressAnnualized, isClamped } =
+    computed;
 
   return (
     <>
@@ -266,6 +281,18 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
             <span className="performanceLabel">vs benchmark</span>
             <span className={`performanceValues ${gap >= 0 ? "positive" : "negative"}`}>
               <span className="ann">{formatPct(gap)}/yr</span>
+            </span>
+          </div>
+        )}
+
+        {gapDollars !== null && (
+          <div
+            className="performanceRow gap"
+            title="Difference between your portfolio's current value and what it would be worth if every dollar you put in had gone into the benchmark on the same dates"
+          >
+            <span className="performanceLabel">vs benchmark ($)</span>
+            <span className={`performanceValues ${gapDollars >= 0 ? "positive" : "negative"}`}>
+              <span className="cum">{formatSignedDollars(gapDollars)}</span>
             </span>
           </div>
         )}
