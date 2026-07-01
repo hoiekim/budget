@@ -245,11 +245,11 @@ export const computeBenchmarkEndValue = (params: {
   const { vStart, flows, benchmarkPriceAt, windowStart, windowEnd } = params;
   const priceStart = benchmarkPriceAt(windowStart);
   const priceEnd = benchmarkPriceAt(windowEnd);
-  if (!priceStart || !priceEnd) return null;
+  if (priceStart == null || priceStart <= 0 || priceEnd == null || priceEnd <= 0) return null;
   let value = vStart * (priceEnd / priceStart);
   for (const f of flows) {
     const p = benchmarkPriceAt(f.date);
-    if (!p) return null;
+    if (p == null || p <= 0) return null;
     value += f.amount * (priceEnd / p);
   }
   return value;

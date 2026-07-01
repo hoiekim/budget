@@ -44,10 +44,6 @@ interface TickerRow {
   unrealizedGain: number | null;
   costBasisInferred: boolean;
   isCash: boolean;
-  /** Every security_id that bucketed here — the S&P 500 benchmark gathers
-   *  this bucket's investment-transaction contributions across all of them
-   *  (same ticker can span multiple security_ids across institutions). */
-  securityIds: string[];
   /** Whether the row routes to the detail page. False only for placeholder
    *  buckets that have no underlying snapshots (shouldn't happen given the
    *  filter at construction). */
@@ -143,7 +139,6 @@ export const HoldingsComposition = ({ account }: Props) => {
       name: string | null;
       ticker: string | null;
       securityId: string;
-      securityIds: Set<string>; // all contributors, for the benchmark calc
     }
     const buckets = new Map<string, Acc>();
 
@@ -171,10 +166,8 @@ export const HoldingsComposition = ({ account }: Props) => {
           name: row.name,
           ticker: row.ticker,
           securityId: row.securityId,
-          securityIds: new Set([row.securityId]),
         });
       } else {
-        existing.securityIds.add(row.securityId);
         existing.quantity += row.quantity;
         existing.value += row.value;
         existing.costBasis =
@@ -208,7 +201,6 @@ export const HoldingsComposition = ({ account }: Props) => {
         unrealizedGain: b.unrealizedGain,
         costBasisInferred: b.costBasisInferred,
         isCash: b.isCash,
-        securityIds: Array.from(b.securityIds),
         clickable: true,
       };
     });
