@@ -270,12 +270,11 @@ describe("post-split-transaction route", () => {
     expect(boundValue(upd!, "label_category_confidence")).toBe(0.7);
   });
 
-  test("does NOT surface a DB error — returns success despite the failed write (known divergence, budget #572)", async () => {
-    // Unlike post-transaction and post-investment-transaction, this handler
-    // reads `response[0].update?._id` without checking `result.status`, so the
-    // repo's errorResult(500) flows through as a "success" with the id echoed
-    // back. Pinned here as current behavior; the asymmetry is tracked in
-    // budget #572 rather than fixed in this test-only PR.
+  test("surfaces a DB error as a failed response", async () => {
+    // Matches its sibling routes: updateSplitTransactions swallows the write
+    // failure into an errorResult(500), the route's `result.status >= 400`
+    // check rethrows, and Route.execute converts the throw into an error
+    // response (it does not reject).
     failQueries = true;
     const result = await postSplitTransactionRoute.execute(
       makeReq(
@@ -285,8 +284,7 @@ describe("post-split-transaction route", () => {
       ),
       fakeRes(),
     );
-    expect(result?.status).toBe("success");
-    expect(result?.body).toEqual({ split_transaction_id: "s-1" });
+    expect(result?.status).toBe("error");
   });
 });
 
