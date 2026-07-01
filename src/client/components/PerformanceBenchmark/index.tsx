@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Account,
   useAppContext,
@@ -57,6 +58,13 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
   const [displayMode, setDisplayMode] = useState<"pct" | "dollar">("pct");
   const toggleDisplayMode = () =>
     setDisplayMode((m) => (m === "pct" ? "dollar" : "pct"));
+  // Space would otherwise scroll the page as well as toggle.
+  const handleToggleKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleDisplayMode();
+    }
+  };
   const vooHistory = useVooHistory();
   // Already-attempted (security_id, date) keys for Polygon resolve so
   // retries don't loop on no_data/plan_limit and window-toggle re-renders
@@ -318,9 +326,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
             onClick={toggleDisplayMode}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") toggleDisplayMode();
-            }}
+            onKeyDown={handleToggleKey}
           >
             {displayMode === "pct"
               ? renderValues(mwr.cumulative, mwr.annualized, "—", formatPct)
@@ -335,9 +341,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
             onClick={toggleDisplayMode}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") toggleDisplayMode();
-            }}
+            onKeyDown={handleToggleKey}
           >
             {displayMode === "pct"
               ? benchmark
@@ -363,9 +367,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
               onClick={toggleDisplayMode}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") toggleDisplayMode();
-              }}
+              onKeyDown={handleToggleKey}
             >
               {displayMode === "pct"
                 ? renderValues(gapPct, gapPctAnnualized, "—", formatPct, gapPct)
