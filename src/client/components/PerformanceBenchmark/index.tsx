@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Account,
   useAppContext,
@@ -14,6 +15,7 @@ import {
   extractCashFlows,
   computeMWR,
   computeBenchmarkTWR,
+  computeBenchmarkEndValue,
   valueAt,
   buildPriceAt,
   buildSnapshotPriceAt,
@@ -38,6 +40,13 @@ const formatPct = (n: number | null): string => {
   return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(2)}%`;
 };
 
+const formatSignedDollars = (n: number | null): string => {
+  if (n === null || !Number.isFinite(n)) return "—";
+  const sign = n >= 0 ? "+" : "−";
+  const abs = Math.abs(Math.round(n));
+  return `${sign}$${abs.toLocaleString("en-US")}`;
+};
+
 export const PerformanceBenchmark = ({ accounts }: Props) => {
   const accountIds = accounts.map((a) => a.account_id);
   // Stable string key for memo deps so array identity doesn't matter.
@@ -46,6 +55,16 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
   const { investmentTransactions, holdingSnapshots, securitySnapshots } = data;
 
   const [windowKey, setWindowKey] = useState<WindowKey>("1Y");
+  const [displayMode, setDisplayMode] = useState<"pct" | "dollar">("pct");
+  const toggleDisplayMode = () =>
+    setDisplayMode((m) => (m === "pct" ? "dollar" : "pct"));
+  // Space would otherwise scroll the page as well as toggle.
+  const handleToggleKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleDisplayMode();
+    }
+  };
   const vooHistory = useVooHistory();
   // Already-attempted (security_id, date) keys for Polygon resolve so
   // retries don't loop on no_data/plan_limit and window-toggle re-renders
@@ -142,8 +161,32 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
       (new Date(windowEnd).getTime() - new Date(windowStart).getTime()) / (1000 * 60 * 60 * 24 * 365);
     const suppressAnnualized = yearsInWindow < 0.5;
 
-    const gap =
+    // Raw dollar counterparts to the percentage returns. Simple accounting:
+    // `netContributed = vStart + Σ flows` is money the user put in over the
+    // window (vStart is the position at window-open, treated as a
+    // windowStart-dated contribution). `gain = vEnd − netContributed` is
+    // what the portfolio ADDED beyond contributions — the raw counterpart
+    // to MWR's cumulative %. Same shape for the VOO counterfactual and the
+    // diff between them.
+    const sumFlows = flows.reduce((s, f) => s + f.amount, 0);
+    const netContributed = vStart + sumFlows;
+    const mwrGain = mwr.status === "ok" ? vEnd - netContributed : null;
+
+    const vooEndValue = computeBenchmarkEndValue({
+      vStart,
+      flows,
+      benchmarkPriceAt,
+      windowStart,
+      windowEnd,
+    });
+    const benchmarkGain = vooEndValue !== null ? vooEndValue - netContributed : null;
+
+    const gapPct =
+      mwr.cumulative !== null && benchmark ? mwr.cumulative - benchmark.cumulative : null;
+    const gapPctAnnualized =
       mwr.annualized !== null && benchmark ? mwr.annualized - benchmark.annualized : null;
+    const gapDollars =
+      mwrGain !== null && benchmarkGain !== null ? mwrGain - benchmarkGain : null;
 
     return {
       windowStart,
@@ -151,9 +194,14 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
       vStart,
       vEnd,
       flowCount: flows.length,
+      yearsInWindow,
       mwr,
+      mwrGain,
       benchmark,
-      gap,
+      benchmarkGain,
+      gapPct,
+      gapPctAnnualized,
+      gapDollars,
       suppressAnnualized,
       isClamped,
     };
@@ -210,7 +258,49 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
   }, [computed, securitySnapshots, setData]);
 
   if (!computed) return null;
-  const { windowStart, windowEnd, mwr, benchmark, gap, suppressAnnualized, isClamped } = computed;
+  const {
+    windowStart,
+    windowEnd,
+    yearsInWindow,
+    mwr,
+    mwrGain,
+    benchmark,
+    benchmarkGain,
+    gapPct,
+    gapPctAnnualized,
+    gapDollars,
+    suppressAnnualized,
+    isClamped,
+  } = computed;
+
+  // Every value cell renders the same shape: a "total" line on top and, if
+  // annualization isn't suppressed for short windows, a per-year line under
+  // it in smaller grey. `renderValues` emits both. The diff row passes
+  // `colorBySign` so the total goes green/red; MWR + benchmark stay neutral.
+  const renderValues = (
+    cumulative: number | null,
+    perYear: number | null,
+    fallback: string,
+    formatter: (n: number | null) => string,
+    colorBySign?: number | null,
+  ): JSX.Element => {
+    if (cumulative === null && perYear === null) {
+      return <span className="no-data">{fallback}</span>;
+    }
+    const cumCls =
+      colorBySign == null ? "cum" : `cum ${colorBySign >= 0 ? "positive" : "negative"}`;
+    return (
+      <>
+        {cumulative !== null && <span className={cumCls}>{formatter(cumulative)}</span>}
+        {!suppressAnnualized && perYear !== null && (
+          <span className="ann">{formatter(perYear)}/yr</span>
+        )}
+      </>
+    );
+  };
+
+  const perYear = (total: number | null): number | null =>
+    total !== null && yearsInWindow > 0 ? total / yearsInWindow : null;
 
   return (
     <>
@@ -231,41 +321,63 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
 
         <div className="performanceRow">
           <span className="performanceLabel">Your asset return (MWR)</span>
-          <span className="performanceValues">
-            {mwr.status === "ok" ? (
-              <>
-                <span className="cum">{formatPct(mwr.cumulative)}</span>
-                {!suppressAnnualized && (
-                  <span className="ann">{formatPct(mwr.annualized)}/yr</span>
-                )}
-              </>
-            ) : (
-              <span className="no-data">—</span>
-            )}
+          <span
+            className="performanceValues clickable"
+            onClick={toggleDisplayMode}
+            role="button"
+            tabIndex={0}
+            onKeyDown={handleToggleKey}
+          >
+            {displayMode === "pct"
+              ? renderValues(mwr.cumulative, mwr.annualized, "—", formatPct)
+              : renderValues(mwrGain, perYear(mwrGain), "—", formatSignedDollars)}
           </span>
         </div>
 
         <div className="performanceRow">
           <span className="performanceLabel">{BENCHMARK_TICKER} benchmark</span>
-          <span className="performanceValues">
-            {benchmark ? (
-              <>
-                <span className="cum">{formatPct(benchmark.cumulative)}</span>
-                {!suppressAnnualized && (
-                  <span className="ann">{formatPct(benchmark.annualized)}/yr</span>
+          <span
+            className="performanceValues clickable"
+            onClick={toggleDisplayMode}
+            role="button"
+            tabIndex={0}
+            onKeyDown={handleToggleKey}
+          >
+            {displayMode === "pct"
+              ? benchmark
+                ? renderValues(benchmark.cumulative, benchmark.annualized, "—", formatPct)
+                : <span className="no-data">{vooHistory ? "no price data" : "loading…"}</span>
+              : renderValues(
+                  benchmarkGain,
+                  perYear(benchmarkGain),
+                  vooHistory ? "no price data" : "loading…",
+                  formatSignedDollars,
                 )}
-              </>
-            ) : (
-              <span className="no-data">{vooHistory ? "no price data" : "loading…"}</span>
-            )}
           </span>
         </div>
 
-        {gap !== null && !suppressAnnualized && (
-          <div className="performanceRow gap">
-            <span className="performanceLabel">vs benchmark</span>
-            <span className={`performanceValues ${gap >= 0 ? "positive" : "negative"}`}>
-              <span className="ann">{formatPct(gap)}/yr</span>
+        {(gapPct !== null || gapDollars !== null) && (
+          <div
+            className="performanceRow gap"
+            title="Difference between your portfolio and the same money invested in the benchmark. Click to toggle % ↔ $"
+          >
+            <span className="performanceLabel">Diff</span>
+            <span
+              className="performanceValues clickable"
+              onClick={toggleDisplayMode}
+              role="button"
+              tabIndex={0}
+              onKeyDown={handleToggleKey}
+            >
+              {displayMode === "pct"
+                ? renderValues(gapPct, gapPctAnnualized, "—", formatPct, gapPct)
+                : renderValues(
+                    gapDollars,
+                    perYear(gapDollars),
+                    "—",
+                    formatSignedDollars,
+                    gapDollars,
+                  )}
             </span>
           </div>
         )}

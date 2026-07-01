@@ -227,6 +227,35 @@ export const computeBenchmarkTWR = (params: {
 };
 
 /**
+ * What the portfolio would be worth right now if every dollar the user put
+ * in had gone into the benchmark instead. `vStart` is replayed as a
+ * windowStart-dated contribution (it represents money already invested at
+ * window open); each in-window flow is re-priced at its OWN date — same
+ * dynamic-distribution shape `computeHoldingBenchmark` uses for the
+ * per-holding what-if. Returns null when `benchmarkPriceAt` can't price
+ * windowStart or any flow date, since a partial answer would be misleading.
+ */
+export const computeBenchmarkEndValue = (params: {
+  vStart: number;
+  flows: CashFlow[];
+  benchmarkPriceAt: (date: string) => number | null;
+  windowStart: string;
+  windowEnd: string;
+}): number | null => {
+  const { vStart, flows, benchmarkPriceAt, windowStart, windowEnd } = params;
+  const priceStart = benchmarkPriceAt(windowStart);
+  const priceEnd = benchmarkPriceAt(windowEnd);
+  if (priceStart == null || priceStart <= 0 || priceEnd == null || priceEnd <= 0) return null;
+  let value = vStart * (priceEnd / priceStart);
+  for (const f of flows) {
+    const p = benchmarkPriceAt(f.date);
+    if (p == null || p <= 0) return null;
+    value += f.amount * (priceEnd / p);
+  }
+  return value;
+};
+
+/**
  * Non-cash asset value at a given date: Σ(non_cash_security_id) qty(t) × price(t).
  *
  * Cash-shape holdings (per `isCashShapeHolding`) are excluded — the
