@@ -36,7 +36,11 @@ export const postSplitTransactionRoute = new Route<SplitTransactionPostResponse>
     try {
       const split = inferLabelConfidence(body as PartialSplitTransaction);
       const response = await updateSplitTransactions(user, [split]);
-      const split_transaction_id = response[0].update?._id || "";
+      const result = response[0];
+      if (!result || result.status >= 400) {
+        throw new Error("Database responded with an error.");
+      }
+      const split_transaction_id = result.update._id || "";
       return { status: "success", body: { split_transaction_id } };
     } catch (error: unknown) {
       logger.error("Failed to update split transaction", { splitTransactionId: idResult.data }, error);
