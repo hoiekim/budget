@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { BalanceHistory, BalanceData, BudgetHistory, BudgetData } from "./Calculations";
+import { Budget } from "./Budget";
 import { ViewDate } from "../../../common/utils";
 
 // ---------------------------------------------------------------------------
@@ -415,5 +416,37 @@ describe("BudgetData", () => {
     expect(entries.length).toBe(1);
     expect(entries[0][0]).toBe("b1");
     expect(entries[0][1]).toBeInstanceOf(BudgetHistory);
+  });
+
+  // Guards the #582 trap: unsorted items live in per-transaction month
+  // buckets, so for a year view the whole-year count MUST come from the
+  // year-aware getSummary — never from a single end-of-year month read.
+  describe("getSummary number_of_unsorted_items (year vs single-month)", () => {
+    test("year view sums unsorted items across all months, not just December", () => {
+      const data = new BudgetData();
+      const budget = new Budget({ budget_id: "b1" });
+      // Unsorted items in Jan/Feb/Mar, none in December.
+      data.add("b1", new Date(2026, 0, 1), { number_of_unsorted_items: 48 });
+      data.add("b1", new Date(2026, 1, 1), { number_of_unsorted_items: 49 });
+      data.add("b1", new Date(2026, 2, 1), { number_of_unsorted_items: 52 });
+
+      const yearView = new ViewDate("year", new Date(2026, 11, 1));
+
+      // getSummary aggregates the whole year — the value the button must show.
+      expect(data.getSummary(budget, yearView).number_of_unsorted_items).toBe(149);
+
+      // The old accessor read only the end-of-year (December) bucket → 0,
+      // which is exactly why the yearly button was disabled + "no unsorted".
+      expect(data.get("b1", yearView.getEndDate()).number_of_unsorted_items).toBe(0);
+    });
+
+    test("month view reads the single month bucket", () => {
+      const data = new BudgetData();
+      const budget = new Budget({ budget_id: "b1" });
+      data.add("b1", new Date(2026, 2, 1), { number_of_unsorted_items: 59 });
+
+      const marchView = new ViewDate("month", new Date(2026, 2, 1));
+      expect(data.getSummary(budget, marchView).number_of_unsorted_items).toBe(59);
+    });
   });
 });
