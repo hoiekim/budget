@@ -24,6 +24,15 @@ body {
   color: #d1d1d1;
   overflow-y: scroll;
   overflow-x: hidden;
+  /* Disable browser scroll-anchoring at the document root. On a
+     SectionBar unfold, replacing `.LabeledBar` (~48px) with the shorter
+     `.openLabel` (~39px) shrinks the header; scroll-anchoring
+     otherwise nudges scrollTop UP by the delta to keep the content
+     below visually stable, which reads to the user as "page scrolls
+     up a little" right before our JS-driven scroll animation. Same
+     rationale for the app in general — our routed page transitions
+     do their own scroll restore. */
+  overflow-anchor: none;
 }
 
 button {
