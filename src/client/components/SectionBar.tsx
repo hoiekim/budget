@@ -90,7 +90,32 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   useEffect(() => {
     if (!isOpen || !pendingScrollToOpen.current) return;
     pendingScrollToOpen.current = false;
-    sectionBarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const el = sectionBarRef.current;
+    if (!el) return;
+    // Wait for the children's CSS height transition (300ms per
+    // BudgetDetailPage/index.css) so the unfolded height is committed
+    // before we measure. Buffer a bit so `getBoundingClientRect()`
+    // reads post-layout.
+    const timer = window.setTimeout(() => {
+      const rect = el.getBoundingClientRect();
+      const viewportH = window.innerHeight;
+      const overshoot = rect.bottom - viewportH;
+      // Section already fits below the fold — no scroll. The whole
+      // point is to minimize page motion.
+      if (overshoot <= 0) return;
+      // Cap the scroll delta so the section's TOP doesn't disappear
+      // above the fixed top-nav header. `.Header > .viewController`
+      // sits at `top: 0; height: 50px` (fixed), so the effective visible
+      // top of content is y=50 — read it back off the DOM in case the
+      // header ever grows a search/filter row.
+      const header = document.querySelector<HTMLElement>(".Header > .viewController");
+      const headerH = header ? header.getBoundingClientRect().height : 0;
+      const maxDelta = Math.max(rect.top - headerH, 0);
+      const delta = Math.min(overshoot, maxDelta);
+      if (delta <= 0) return;
+      window.scrollBy({ top: delta, behavior: "smooth" });
+    }, 320);
+    return () => window.clearTimeout(timer);
   }, [isOpen]);
 
   const onClickInfo = () => {
