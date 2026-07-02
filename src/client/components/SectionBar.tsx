@@ -90,7 +90,51 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
   useEffect(() => {
     if (!isOpen || !pendingScrollToOpen.current) return;
     pendingScrollToOpen.current = false;
-    sectionBarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const el = sectionBarRef.current;
+    const childrenEl = childrenDivRef.current;
+    if (!el || !childrenEl) return;
+    // Fixed regions clipping the visible area. `.Header > .viewController`
+    // is the top nav (`fixed; top:0; height:50px`). `.Header > .navigators`
+    // is either the bottom bar on narrow (`fixed; bottom:0`) or a side
+    // rail on wide (`top:50; width:80px`); it clips the scroll region
+    // only when it's the bottom bar.
+    const header = document.querySelector<HTMLElement>(".Header > .viewController");
+    const headerH = header ? header.getBoundingClientRect().height : 0;
+    const navs = document.querySelector<HTMLElement>(".Header > .navigators");
+    const isNavAtBottom =
+      !!navs && !navs.parentElement?.classList.contains("wideScreen");
+    const navH = isNavAtBottom ? navs.getBoundingClientRect().height : 0;
+    const rect0 = el.getBoundingClientRect();
+    const projectedBottom = rect0.bottom + childrenEl.scrollHeight;
+    const visibleBottom = window.innerHeight - navH;
+    const overshoot = projectedBottom - visibleBottom;
+    if (overshoot <= 0) return;
+    const maxDelta = Math.max(rect0.top - headerH, 0);
+    const delta = Math.min(overshoot, maxDelta);
+    if (delta <= 0) return;
+    // Custom rAF-driven scroll instead of `scrollBy({behavior:"smooth"})`.
+    // The native smooth API clamps to `docHeight − innerHeight` at
+    // animation-start time and doesn't re-target if the doc grows —
+    // which it will, since the CSS `.children.transition` is animating
+    // in parallel with us. A rAF loop re-issues `scrollTo(target)`
+    // every frame, so the browser's per-frame clamp naturally makes
+    // progress as the doc grows. Runs on the same 300ms budget as the
+    // CSS transition so the two animations feel coordinated.
+    const startY = window.scrollY;
+    const target = startY + delta;
+    const startedAt = performance.now();
+    const DURATION = 300;
+    let rafId = 0;
+    const step = (now: number) => {
+      const t = Math.min((now - startedAt) / DURATION, 1);
+      // Ease-out cubic — matches feel of CSS transition's default.
+      const eased = 1 - Math.pow(1 - t, 3);
+      const y = startY + (target - startY) * eased;
+      window.scrollTo(0, y);
+      if (t < 1) rafId = requestAnimationFrame(step);
+    };
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
   }, [isOpen]);
 
   const onClickInfo = () => {
