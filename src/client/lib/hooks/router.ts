@@ -146,8 +146,15 @@ export const useRouter = (): ClientRouter => {
   // setSlideAnchorY(0) / scrollTo fires mid-slide.
   const rafHandle = useRef<number>();
 
+  // `skipScrollRestore` short-circuits the endTransition scroll-restore
+  // rAF loop. Same-path navigation (a control changing query params on
+  // the currently-mounted page) preserves the DOM — the caller usually
+  // wants to control scroll itself (e.g. a section header wanting to
+  // `scrollIntoView` on unfold). Without this, the router's terminal
+  // `window.scrollTo(0, restoredY=0)` fires 16× across 250ms and
+  // clobbers any scroll the caller set up.
   const transition = useCallback(
-    (newPath: PATH, newParams: URLSearchParams) => {
+    (newPath: PATH, newParams: URLSearchParams, skipScrollRestore = false) => {
       // Supersede any in-flight transition tail before starting a new
       // one: cancel the pending animated endTransition AND the
       // scroll-restore rAF loop. Without this, a rapid re-navigation
@@ -204,6 +211,11 @@ export const useRouter = (): ClientRouter => {
         setPath(newPath);
         setParams(newParams);
 
+        if (skipScrollRestore) {
+          isAnimationEnabled.current = false;
+          return;
+        }
+
         const startedAt = performance.now();
         let attempts = 0;
         const tryRestore = () => {
@@ -247,7 +259,12 @@ export const useRouter = (): ClientRouter => {
       const { params: newParams, animate = true } = options || {};
       isAnimationEnabled.current = animate;
       setDirection("forward");
-      transition(target, newParams || new URLSearchParams());
+      // Same-path navigation (control changes query params on the
+      // currently-mounted page) preserves DOM state. Let the caller
+      // handle scroll — see the `skipScrollRestore` comment on
+      // `transition` above.
+      const skipScrollRestore = target === currentPathRef.current;
+      transition(target, newParams || new URLSearchParams(), skipScrollRestore);
       window.history.pushState("", "", getURLString(target, newParams));
     },
     [transition],
