@@ -160,6 +160,10 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
 
   const onClickKebab = () => {
     const params = new URLSearchParams(router.params);
+    // Clear the sibling id so navigating inv-tx → tx → inv-tx doesn't
+    // leave a stale transaction_id in the URL that would win the branch
+    // in `TransactionDetailPage` (which now must pick one of two ids).
+    params.delete("transaction_id");
     params.set("investment_transaction_id", id);
     go(PATH.TRANSACTION_DETAIL, { params });
   };

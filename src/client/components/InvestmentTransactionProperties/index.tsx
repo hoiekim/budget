@@ -1,5 +1,5 @@
 import { ChangeEventHandler, useEffect, useState } from "react";
-import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
+import { currencyCodeToSymbol, LocalDate, numberToCommaString, toTitleCase } from "common";
 import {
   Data,
   InvestmentTransaction,
@@ -186,11 +186,11 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
         </div>
         <div className="row keyValue">
           <span className="propertyName">Type</span>
-          <span>{type}</span>
+          <span>{toTitleCase(type)}</span>
         </div>
         <div className="row keyValue">
           <span className="propertyName">Subtype</span>
-          <span>{subtype}</span>
+          <span>{toTitleCase(subtype)}</span>
         </div>
         <div className="row keyValue">
           <span className="propertyName">Quantity</span>
