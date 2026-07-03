@@ -101,7 +101,11 @@ export const BudgetDetailPage = () => {
   const { graphData, graphViewDate } = useBudgetGraph(budget || new Budget());
 
   const date = viewDate.getEndDate();
-  const { number_of_unsorted_items } = budgetData.get(budget_id, date) || {};
+  // Read through the year-aware summary the bar uses (getSummary), not the
+  // raw single-month accessor. For a year view getEndDate() is Dec 31, so
+  // budgetData.get(budget_id, date) would only see December's bucket and
+  // report 0 unsorted items for the whole year (#582).
+  const { number_of_unsorted_items } = budgetData.getSummary(budget || new Budget(), viewDate);
 
   // Don't read `capacity.isInfinite` directly — that checks the stored
   // `month` cache which is stale for synced budgets. Check the derived
