@@ -2,6 +2,7 @@ export * from "./App";
 export * from "./Page";
 export * from "./Properties";
 export * from "./HoldingProperties";
+export * from "./InvestmentTransactionProperties";
 export * from "./ErrorBoundary";
 export * from "./PlaidLinkContext";
 export * from "./PlaidLinkButton";
