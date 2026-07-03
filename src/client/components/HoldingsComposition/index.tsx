@@ -4,7 +4,7 @@ import { Account, PATH, useAppContext } from "client";
 import "./index.css";
 
 interface Props {
-  account: Account;
+  accounts: Account[];
 }
 
 /** Pseudo-ticker for cash holdings. Aggregation key when `isCash` is true,
@@ -52,20 +52,21 @@ interface TickerRow {
 
 const truncateSecurityId = (id: string) => id.slice(0, 6);
 
-export const HoldingsComposition = ({ account }: Props) => {
-  const { account_id, balances, item_id } = account;
-  const { iso_currency_code } = balances;
+export const HoldingsComposition = ({ accounts }: Props) => {
+  const firstAccount = accounts[0];
+  const { iso_currency_code } = firstAccount?.balances ?? {};
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
   const { calculations, router, viewDate, data } = useAppContext();
   const { holdingsValueData, balanceData } = calculations;
   const { items, securitySnapshots } = data;
 
-  // Every row is clickable and drills into HOLDING_DETAIL. Edit gating
-  // lives on the detail page — synced + current viewDate renders read-only
-  // there. "+ Add Holding" stays manual-only because synced brokers
-  // re-derive their own holding set on every sync.
-  const isManualAccount = items.get(item_id)?.provider === ItemProvider.MANUAL;
+  // "Add Holding" and manual-account visibility only apply when a single
+  // manual account is shown; multi-account aggregation has no single target.
+  const isSingleAccount = accounts.length === 1;
+  const isManualAccount =
+    isSingleAccount &&
+    items.get(firstAccount?.item_id)?.provider === ItemProvider.MANUAL;
 
   const viewEndDate = viewDate.getEndDate();
   const latestViewDate = new ViewDate(viewDate.getInterval());
@@ -75,7 +76,9 @@ export const HoldingsComposition = ({ account }: Props) => {
   // the calculation hook's per-holding summary. Same shape as before; the
   // aggregation step below collapses these into one row per ticker bucket.
   const perSecurityRows = useMemo<PerSecurityRow[]>(() => {
-    const holdingIds = holdingsValueData.getHoldingsForAccount(account_id);
+    const holdingIds = accounts.flatMap((a) =>
+      holdingsValueData.getHoldingsForAccount(a.account_id)
+    );
 
     return holdingIds
       .map((holdingId): PerSecurityRow | null => {
@@ -119,7 +122,7 @@ export const HoldingsComposition = ({ account }: Props) => {
         };
       })
       .filter((r): r is PerSecurityRow => r !== null);
-  }, [account_id, holdingsValueData, viewEndDate, securitySnapshots]);
+  }, [accounts, holdingsValueData, viewEndDate, securitySnapshots]);
 
   // Second pass: bucket per-security rows by ticker. Cash → `__CASH__`
   // (regardless of any ticker on the underlying security). Real ticker
@@ -208,7 +211,7 @@ export const HoldingsComposition = ({ account }: Props) => {
 
   const goToHoldingDetail = (bucketKey?: string) => {
     const params = new URLSearchParams();
-    params.set("account_id", account_id);
+    if (isSingleAccount) params.set("account_id", firstAccount.account_id);
     if (bucketKey) params.set("ticker", bucketKey);
     router.go(PATH.HOLDING_DETAIL, { params });
   };
@@ -229,8 +232,16 @@ export const HoldingsComposition = ({ account }: Props) => {
   // model: account snapshot > holding snapshot > transactions). Falls
   // back to the account's latest `balances.current` only when no data
   // exists for this date at all — which is rare for sync'd accounts.
-  const balanceAtView = balanceData.get(account_id, viewEndDate);
-  const accountBalance = balanceAtView !== undefined ? balanceAtView : (balances.current ?? null);
+  // Sum per-account balances using the same 3-tier fallback as before:
+  // viewDate snapshot > holdings-derived > balances.current. If any
+  // account has no data at all the total is null.
+  const accountBalance = accounts.reduce<number | null>((sum, a) => {
+    if (sum === null) return null;
+    const viewBal = balanceData.get(a.account_id, viewEndDate);
+    const bal = viewBal !== undefined ? viewBal : (a.balances.current ?? null);
+    if (bal === null) return null;
+    return sum + bal;
+  }, 0);
   const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
   const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
 

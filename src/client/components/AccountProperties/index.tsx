@@ -183,7 +183,7 @@ export const AccountProperties = ({ account }: Props) => {
           </div>
         </>
       )}
-      {type === AccountType.Investment && <HoldingsComposition account={account} />}
+      {type === AccountType.Investment && <HoldingsComposition accounts={[account]} />}
       {type === AccountType.Investment && <PerformanceBenchmark accounts={[account]} />}
       {!isManualAccount && (
         <>
