@@ -1,23 +1,39 @@
 import { useAppContext, PATH } from "client";
-import { TransactionProperties, TransferProperties } from "client/components";
+import {
+  InvestmentTransactionProperties,
+  TransactionProperties,
+  TransferProperties,
+} from "client/components";
 
 import "./index.css";
 
 export type TransactionDetailPageParams = {
   transaction_id?: string;
+  investment_transaction_id?: string;
 };
 
 export const TransactionDetailPage = () => {
   const { data, router } = useAppContext();
-  const { transactions, transfers } = data;
+  const { transactions, investmentTransactions, transfers } = data;
 
   const { path, params, transition } = router;
-  let id: string;
-  if (path === PATH.TRANSACTION_DETAIL) id = params.get("transaction_id") || "";
-  else id = transition.incomingParams.get("transaction_id") || "";
+  const paramsToRead =
+    path === PATH.TRANSACTION_DETAIL ? params : transition.incomingParams;
+  const transactionId = paramsToRead.get("transaction_id") || "";
+  const investmentTransactionId = paramsToRead.get("investment_transaction_id") || "";
 
-  const transaction = transactions.get(id);
+  const investmentTransaction = investmentTransactionId
+    ? investmentTransactions.get(investmentTransactionId)
+    : undefined;
+  if (investmentTransaction) {
+    return (
+      <div className="TransactionDetailPage">
+        <InvestmentTransactionProperties investmentTransaction={investmentTransaction} />
+      </div>
+    );
+  }
 
+  const transaction = transactionId ? transactions.get(transactionId) : undefined;
   if (!transaction) return <></>;
 
   // Confirmed-transfer rows surface the same kebab → detail route as a

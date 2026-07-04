@@ -236,6 +236,10 @@ const TransactionRow = ({ transaction }: Props) => {
 
   const onClickKebab = () => {
     const params = new URLSearchParams(router.params);
+    // Clear the sibling id so navigating tx → inv-tx → tx doesn't leave a
+    // stale investment_transaction_id in the URL that would win the branch
+    // in `TransactionDetailPage`.
+    params.delete("investment_transaction_id");
     params.set("transaction_id", parentTransaction.transaction_id);
     go(PATH.TRANSACTION_DETAIL, { params });
   };
