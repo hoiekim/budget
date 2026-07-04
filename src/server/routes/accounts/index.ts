@@ -4,6 +4,8 @@ export * from "./delete-holding-snapshot";
 export * from "./delete-split-transaction";
 export * from "./get-transactions";
 export * from "./get-new-split-transaction";
+export * from "./get-new-transaction";
+export * from "./get-new-investment-transaction";
 export * from "./get-split-transactions";
 export * from "./get-accounts";
 export * from "./get-institution";

@@ -153,6 +153,36 @@ export const updateTransactions = async (
   return results;
 };
 
+/**
+ * Insert a shell `transactions` row for the user to fill in on the
+ * detail page. Callers gate `account_id` on `items.provider === MANUAL`
+ * so we don't accidentally create a duplicate manual row against a
+ * Plaid-synced account (#567 acceptance criteria).
+ */
+export const createManualTransaction = async (
+  user: MaskedUser,
+  input: { account_id: string; iso_currency_code?: string | null },
+): Promise<JSONTransaction> => {
+  const { randomUUID } = await import("crypto");
+  const transaction_id = `manual-${randomUUID()}`;
+  const row = TransactionModel.fromJSON(
+    {
+      transaction_id,
+      account_id: input.account_id,
+      name: "",
+      amount: 0,
+      iso_currency_code: input.iso_currency_code ?? null,
+      date: new Date().toISOString().split("T")[0],
+      pending: false,
+      source: "manual",
+    },
+    user.user_id,
+  );
+  const result = await transactionsTable.insert(row, ["*"]);
+  if (!result) throw new Error("Failed to create manual transaction");
+  return new TransactionModel(result).toJSON();
+};
+
 export const deleteTransactions = async (
   user: MaskedUser,
   transaction_ids: string[],

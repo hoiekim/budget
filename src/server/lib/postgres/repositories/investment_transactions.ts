@@ -109,6 +109,43 @@ export const updateInvestmentTransactions = async (
   return results;
 };
 
+/**
+ * Insert a shell `investment_transactions` row. Unlike the cash-side
+ * `createManualTransaction`, this is NOT gated on `items.provider ===
+ * MANUAL` — #585's motivating case (RSU/ESPP grants that predate
+ * Plaid's 24-month window) lives on a Plaid-connected brokerage
+ * account. Plaid sync only inserts/updates rows keyed by its own IDs,
+ * so a manual UUID-shaped id has no collision surface.
+ */
+export const createManualInvestmentTransaction = async (
+  user: MaskedUser,
+  input: { account_id: string; security_id?: string | null },
+): Promise<JSONInvestmentTransaction> => {
+  const { randomUUID } = await import("crypto");
+  const { InvestmentTransactionType, InvestmentTransactionSubtype } = await import("plaid");
+  const investment_transaction_id = `manual-${randomUUID()}`;
+  const row = InvTxModel.fromJSON(
+    {
+      investment_transaction_id,
+      account_id: input.account_id,
+      security_id: input.security_id ?? null,
+      date: new Date().toISOString().split("T")[0],
+      name: "",
+      amount: 0,
+      quantity: 0,
+      price: 0,
+      iso_currency_code: null,
+      type: InvestmentTransactionType.Buy,
+      subtype: InvestmentTransactionSubtype.Buy,
+      source: "manual",
+    },
+    user.user_id,
+  );
+  const result = await investmentTransactionsTable.insert(row, ["*"]);
+  if (!result) throw new Error("Failed to create manual investment transaction");
+  return new InvTxModel(result).toJSON();
+};
+
 export const deleteInvestmentTransactions = async (
   user: MaskedUser,
   transaction_ids: string[],
