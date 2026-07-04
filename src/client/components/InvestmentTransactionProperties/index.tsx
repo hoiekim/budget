@@ -12,6 +12,7 @@ import {
   indexedDb,
 } from "client";
 import { InstitutionSpan } from "client/components";
+import type { ValidateTickerResponse } from "server";
 
 interface Props {
   investmentTransaction: InvestmentTransaction;
@@ -211,9 +212,12 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     await persistInvTxField({ subtype: value });
   };
   // Ticker → security_id resolution mirrors HoldingProperties'
-  // `POST /api/validate-ticker` flow. On blur, if the ticker resolves
-  // to a security, patch `security_id`; otherwise surface a validation
-  // message and leave the field untouched.
+  // `POST /api/validate-ticker` flow. Body field is `ticker_symbol`
+  // (matches the route's requireStringField); response wraps the
+  // security under `body.security` when `body.valid === true`. On
+  // blur, if the ticker resolves, patch `security_id`; otherwise
+  // surface the server's validation message and leave the field
+  // untouched.
   const onBlurTicker = async () => {
     if (!isManual) return;
     const raw = tickerValue.trim();
@@ -221,15 +225,14 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       setTickerMessage(null);
       return;
     }
-    const r = await call.post<{ security: { security_id: string; name?: string } | null; message?: string }>(
-      "/api/validate-ticker",
-      { ticker: raw },
-    );
-    if (r.status === "success" && r.body?.security) {
+    const r = await call.post<ValidateTickerResponse>("/api/validate-ticker", {
+      ticker_symbol: raw,
+    });
+    if (r.status === "success" && r.body?.valid && r.body.security) {
       setTickerMessage(r.body.security.name ?? "Valid ticker");
       await persistInvTxField({ security_id: r.body.security.security_id });
     } else {
-      setTickerMessage(r.body?.message ?? "Invalid ticker");
+      setTickerMessage(r.body?.message ?? r.message ?? "Invalid ticker");
     }
   };
 
