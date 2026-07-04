@@ -298,13 +298,13 @@ export const HoldingProperties = () => {
       console.error("Failed to mint new investment transaction:", response.message);
       return;
     }
-    const { investment_transaction_id } = response.body;
+    const { investment_transaction_id, name } = response.body;
     const shell = new InvestmentTransaction({
       investment_transaction_id,
       account_id: accountId,
       security_id: primarySecurityId,
       date: new Date().toISOString().split("T")[0],
-      name: "",
+      name,
       amount: 0,
       quantity: 0,
       price: 0,

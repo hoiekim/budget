@@ -8,7 +8,7 @@ import {
   validationError,
 } from "server";
 
-export type NewTransactionGetResponse = { transaction_id: string };
+export type NewTransactionGetResponse = { transaction_id: string; name: string };
 
 /**
  * Mint a shell manual `transactions` row on a manual-account. The FE
@@ -46,6 +46,9 @@ export const getNewTransactionRoute = new Route<NewTransactionGetResponse>(
     });
     if (!created) return { status: "failed", message: "Failed to create transaction." };
 
-    return { status: "success", body: { transaction_id: created.transaction_id } };
+    return {
+      status: "success",
+      body: { transaction_id: created.transaction_id, name: created.name },
+    };
   },
 );

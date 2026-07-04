@@ -126,11 +126,11 @@ export const AccountProperties = ({ account }: Props) => {
       console.error("Failed to mint new transaction:", response.message);
       return;
     }
-    const { transaction_id } = response.body;
+    const { transaction_id, name } = response.body;
     const shell = new Transaction({
       transaction_id,
       account_id,
-      name: "",
+      name,
       amount: 0,
       iso_currency_code: iso_currency_code ?? null,
       date: new Date().toISOString().split("T")[0],
@@ -166,13 +166,13 @@ export const AccountProperties = ({ account }: Props) => {
       console.error("Failed to mint new investment transaction:", response.message);
       return;
     }
-    const { investment_transaction_id } = response.body;
+    const { investment_transaction_id, name } = response.body;
     const shell = new InvestmentTransaction({
       investment_transaction_id,
       account_id,
       security_id: null,
       date: new Date().toISOString().split("T")[0],
-      name: "",
+      name,
       amount: 0,
       quantity: 0,
       price: 0,

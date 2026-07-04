@@ -8,7 +8,10 @@ import {
   validationError,
 } from "server";
 
-export type NewInvestmentTransactionGetResponse = { investment_transaction_id: string };
+export type NewInvestmentTransactionGetResponse = {
+  investment_transaction_id: string;
+  name: string;
+};
 
 /**
  * Mint a shell manual `investment_transactions` row. Unlike
@@ -75,7 +78,10 @@ export const getNewInvestmentTransactionRoute =
 
       return {
         status: "success",
-        body: { investment_transaction_id: created.investment_transaction_id },
+        body: {
+          investment_transaction_id: created.investment_transaction_id,
+          name: created.name,
+        },
       };
     },
   );
