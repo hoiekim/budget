@@ -66,6 +66,7 @@ const txRow = (overrides: Record<string, unknown> = {}) => ({
   raw: null,
   updated: null,
   is_deleted: false,
+  source: "plaid",
   ...overrides,
 });
 

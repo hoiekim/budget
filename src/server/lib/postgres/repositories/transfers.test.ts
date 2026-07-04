@@ -64,6 +64,7 @@ function makeTxRow(overrides: Record<string, unknown> = {}) {
     raw: null,
     updated: "2026-04-01T00:00:00Z",
     is_deleted: false,
+    source: "plaid",
     ...overrides,
   };
 }
