@@ -347,7 +347,7 @@ export const AccountProperties = ({ account }: Props) => {
         <>
           <div className="propertyLabel">Add</div>
           <div className="property">
-            {isManualAccount && (
+            {isManualAccount && type !== AccountType.Investment && (
               <div className="row button">
                 <button onClick={onClickAddTransaction}>
                   +&nbsp;Add&nbsp;Transaction
