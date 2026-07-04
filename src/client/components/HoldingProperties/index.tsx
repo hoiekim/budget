@@ -281,16 +281,22 @@ export const HoldingProperties = () => {
 
   /**
    * `+ Add Investment Transaction` on the holding — Hoie's ask (#585
-   * design): prefill `security_id` with this holding's primary
-   * security so the user doesn't repeat the lookup. When the bucket
-   * spans multiple securities (rare — merged tickers), use the first
-   * bucket snapshot's security_id.
+   * design): prefill `security_id`, `price` (from the holding's
+   * `institution_price`), and `iso_currency_code` from the holding
+   * context so the user starts with values they can confirm/correct
+   * rather than 0 / null defaults. When the bucket spans multiple
+   * securities (rare — merged tickers), use the first snapshot.
    */
-  const primarySecurityId = bucketSnapshots[0]?.holding.security_id ?? null;
+  const primaryHolding = bucketSnapshots[0]?.holding;
+  const primarySecurityId = primaryHolding?.security_id ?? null;
+  const primaryPrice = primaryHolding?.institution_price ?? null;
+  const primaryCurrency = primaryHolding?.iso_currency_code ?? null;
   const onClickAddInvestmentTransaction = async () => {
     if (!accountId) return;
     const params: Record<string, string> = { account_id: accountId };
     if (primarySecurityId) params.security_id = primarySecurityId;
+    if (primaryPrice !== null && primaryPrice >= 0) params.price = String(primaryPrice);
+    if (primaryCurrency) params.iso_currency_code = primaryCurrency;
     const response = await call.get<NewInvestmentTransactionGetResponse>(
       "/api/new-investment-transaction?" + new URLSearchParams(params).toString(),
     );
@@ -307,7 +313,8 @@ export const HoldingProperties = () => {
       name,
       amount: 0,
       quantity: 0,
-      price: 0,
+      price: primaryPrice ?? 0,
+      iso_currency_code: primaryCurrency,
       type: InvestmentTransactionType.Buy,
       subtype: InvestmentTransactionSubtype.Buy,
       source: "manual",

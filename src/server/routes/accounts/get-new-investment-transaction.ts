@@ -68,9 +68,22 @@ export const getNewInvestmentTransactionRoute =
         security_id = security_id_raw;
       }
 
+      // Holding-derived defaults from the caller. The FE prefills
+      // `price` with the security's latest `institution_price` and
+      // `iso_currency_code` with the holding's currency, so the
+      // shell starts with values the user can confirm/correct rather
+      // than a 0 that quietly zeroes the MWR calc if abandoned.
+      const priceRaw = req.query?.price ? Number(req.query.price) : NaN;
+      const price = Number.isFinite(priceRaw) && priceRaw >= 0 ? priceRaw : undefined;
+      const iso_currency_code = req.query?.iso_currency_code
+        ? String(req.query.iso_currency_code)
+        : undefined;
+
       const created = await createManualInvestmentTransaction(user, {
         account_id,
         security_id,
+        price,
+        iso_currency_code,
       });
       if (!created) {
         return { status: "failed", message: "Failed to create investment transaction." };

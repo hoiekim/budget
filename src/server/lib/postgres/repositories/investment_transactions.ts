@@ -140,7 +140,18 @@ const nextInvUnknownIndex = async (user_id: string): Promise<number> => {
 
 export const createManualInvestmentTransaction = async (
   user: MaskedUser,
-  input: { account_id: string; security_id?: string | null },
+  input: {
+    account_id: string;
+    security_id?: string | null;
+    // Holding-derived defaults. When the mint is triggered from the
+    // holding detail page, the caller passes the holding's
+    // `institution_price` and `iso_currency_code` so the shell starts
+    // with a plausible non-zero price the user can confirm/correct.
+    // From the account-level `+` (no holding context) these are
+    // omitted and fall back to 0 / null.
+    price?: number | null;
+    iso_currency_code?: string | null;
+  },
 ): Promise<JSONInvestmentTransaction | null> => {
   const investment_transaction_id = `manual-${randomUUID()}`;
   const index = await nextInvUnknownIndex(user.user_id);
@@ -153,8 +164,8 @@ export const createManualInvestmentTransaction = async (
       name: `Unknown_${index}`,
       amount: 0,
       quantity: 0,
-      price: 0,
-      iso_currency_code: null,
+      price: input.price ?? 0,
+      iso_currency_code: input.iso_currency_code ?? null,
       type: InvestmentTransactionType.Buy,
       subtype: InvestmentTransactionSubtype.Buy,
       source: "manual",
