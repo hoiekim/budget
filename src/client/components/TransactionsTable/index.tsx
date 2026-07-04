@@ -20,12 +20,11 @@ export const TransactionsTable = ({ transactions }: Props) => {
   const transactionRows = transactions
     .map((e) => {
       if (e instanceof InvestmentTransaction) {
-        // `isEditable={true}` exposes the row's budget/category selects
-        // and the kebab that navigates to `PATH.TRANSACTION_DETAIL`. Kept
-        // hidden by default in the row's Props for historical reasons;
-        // flipped on here now that the detail page renders inv-tx (PR
-        // #587) and manual entry needs the kebab as its primary reach
-        // for anyone editing a `source='manual'` row post-creation.
+        // isEditable surfaces the kebab — the sole entry point to
+        // PATH.TRANSACTION_DETAIL for editing a `source='manual'` inv-tx
+        // after creation — alongside the budget/category selects. Those
+        // selects are inert for investment rows (the calc layer skips
+        // investment labels), so only the kebab is load-bearing here.
         return <InvestmentTransactionRow key={e.id} investmentTransaction={e} isEditable={true} />;
       }
       // Bundled-pair dedup applies to parent Transaction rows only —
