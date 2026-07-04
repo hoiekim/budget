@@ -2,6 +2,8 @@ export * from "./delete-account";
 export * from "./delete-snapshot";
 export * from "./delete-holding-snapshot";
 export * from "./delete-split-transaction";
+export * from "./delete-transaction";
+export * from "./delete-investment-transaction";
 export * from "./get-transactions";
 export * from "./get-new-split-transaction";
 export * from "./get-new-transaction";

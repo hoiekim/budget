@@ -5,6 +5,7 @@ import {
   Data,
   InvestmentTransaction,
   InvestmentTransactionDictionary,
+  StoreName,
   TransactionLabel,
   useAppContext,
   useBudgetCategorySelect,
@@ -19,7 +20,7 @@ interface Props {
 }
 
 export const InvestmentTransactionProperties = ({ investmentTransaction }: Props) => {
-  const { data, setData } = useAppContext();
+  const { data, setData, router } = useAppContext();
   const { accounts, sections, categories, securities } = data;
 
   const {
@@ -446,6 +447,39 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
           </div>
         </div>
       </div>
+      {isManual && (
+        <>
+          <br />
+          <div className="property">
+            <div className="row button">
+              <button
+                className="delete colored"
+                onClick={async () => {
+                  if (!window.confirm("Delete this investment transaction? This can't be undone.")) return;
+                  const r = await call.delete(
+                    "/api/investment-transaction?" +
+                      new URLSearchParams({ investment_transaction_id }).toString(),
+                  );
+                  if (r.status !== "success") return;
+                  setData((oldData) => {
+                    const next = new Data(oldData);
+                    const dict = new InvestmentTransactionDictionary(oldData.investmentTransactions);
+                    dict.delete(investment_transaction_id);
+                    next.investmentTransactions = dict;
+                    indexedDb
+                      .remove(StoreName.investmentTransactions, investment_transaction_id)
+                      .catch(console.error);
+                    return next;
+                  });
+                  router.back();
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
