@@ -1,3 +1,4 @@
+import { AccountType } from "plaid";
 import {
   Route,
   createManualInvestmentTransaction,
@@ -32,6 +33,17 @@ export const getNewInvestmentTransactionRoute =
 
       const account = await getAccount(user, account_id);
       if (!account) return { status: "failed", message: "Account not found." };
+      // Match the FE gate: the `+ Add Investment Transaction` button
+      // only renders on investment accounts. Enforce the same server-side
+      // so a direct-URL caller can't mint an investment_transactions row
+      // against a depository/credit account (the row wouldn't render as a
+      // holding, but the data is still wrong).
+      if (account.type !== AccountType.Investment) {
+        return {
+          status: "failed",
+          message: "Investment transactions can only be created on investment accounts.",
+        };
+      }
 
       // `security_id` is optional — omitted when the user clicks the
       // account-level `+ Add Investment Transaction` button and picks
