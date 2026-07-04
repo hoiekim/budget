@@ -2,6 +2,7 @@ import {
   Route,
   createManualInvestmentTransaction,
   getAccount,
+  getSecurity,
   requireQueryString,
   validationError,
 } from "server";
@@ -34,16 +35,31 @@ export const getNewInvestmentTransactionRoute =
 
       // `security_id` is optional — omitted when the user clicks the
       // account-level `+ Add Investment Transaction` button and picks
-      // the security in the detail form. Prefilled when the user clicks
-      // the per-security `+` on the holding detail page.
-      const security_id = req.query?.security_id
+      // the security in the detail form (via ticker-lookup). Prefilled
+      // when the user clicks the per-security `+` on the holding detail
+      // page. When present, validate it resolves to a real security —
+      // without this, a caller could pass a garbage string that
+      // silently inserts and later breaks `data.securities.get()`
+      // lookups on the FE (there's no FK on the column).
+      const security_id_raw = req.query?.security_id
         ? String(req.query.security_id)
         : null;
+      let security_id: string | null = null;
+      if (security_id_raw) {
+        const security = await getSecurity(security_id_raw);
+        if (!security) {
+          return { status: "failed", message: "Security not found." };
+        }
+        security_id = security_id_raw;
+      }
 
       const created = await createManualInvestmentTransaction(user, {
         account_id,
         security_id,
       });
+      if (!created) {
+        return { status: "failed", message: "Failed to create investment transaction." };
+      }
 
       return {
         status: "success",

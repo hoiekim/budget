@@ -44,6 +44,7 @@ export const getNewTransactionRoute = new Route<NewTransactionGetResponse>(
       account_id,
       iso_currency_code: account.balances.iso_currency_code,
     });
+    if (!created) return { status: "failed", message: "Failed to create transaction." };
 
     return { status: "success", body: { transaction_id: created.transaction_id } };
   },

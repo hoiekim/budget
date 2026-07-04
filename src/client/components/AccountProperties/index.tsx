@@ -135,6 +135,7 @@ export const AccountProperties = ({ account }: Props) => {
       iso_currency_code: iso_currency_code ?? null,
       date: new Date().toISOString().split("T")[0],
       pending: false,
+      source: "manual",
     });
     setData((oldData) => {
       const next = new Data(oldData);
@@ -156,11 +157,10 @@ export const AccountProperties = ({ account }: Props) => {
    * window. Server marks the row `source='manual'` so it survives
    * future Plaid syncs.
    */
-  const onClickAddInvestmentTransaction = async (security_id?: string) => {
-    const params: Record<string, string> = { account_id };
-    if (security_id) params.security_id = security_id;
+  const onClickAddInvestmentTransaction = async () => {
     const response = await call.get<NewInvestmentTransactionGetResponse>(
-      "/api/new-investment-transaction?" + new URLSearchParams(params).toString(),
+      "/api/new-investment-transaction?" +
+        new URLSearchParams({ account_id }).toString(),
     );
     if (!response.body) {
       console.error("Failed to mint new investment transaction:", response.message);
@@ -170,7 +170,7 @@ export const AccountProperties = ({ account }: Props) => {
     const shell = new InvestmentTransaction({
       investment_transaction_id,
       account_id,
-      security_id: security_id ?? null,
+      security_id: null,
       date: new Date().toISOString().split("T")[0],
       name: "",
       amount: 0,
@@ -178,6 +178,7 @@ export const AccountProperties = ({ account }: Props) => {
       price: 0,
       type: InvestmentTransactionType.Buy,
       subtype: InvestmentTransactionSubtype.Buy,
+      source: "manual",
     });
     setData((oldData) => {
       const next = new Data(oldData);
@@ -346,7 +347,7 @@ export const AccountProperties = ({ account }: Props) => {
         <>
           <div className="propertyLabel">Add</div>
           <div className="property">
-            {isManualAccount && type !== AccountType.Investment && (
+            {isManualAccount && (
               <div className="row button">
                 <button onClick={onClickAddTransaction}>
                   +&nbsp;Add&nbsp;Transaction
@@ -355,7 +356,7 @@ export const AccountProperties = ({ account }: Props) => {
             )}
             {type === AccountType.Investment && (
               <div className="row button">
-                <button onClick={() => onClickAddInvestmentTransaction()}>
+                <button onClick={onClickAddInvestmentTransaction}>
                   +&nbsp;Add&nbsp;Investment&nbsp;Transaction
                 </button>
               </div>

@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { JSONTransaction, JSONInvestmentTransaction } from "common";
 import {
   MaskedUser,
@@ -162,8 +163,7 @@ export const updateTransactions = async (
 export const createManualTransaction = async (
   user: MaskedUser,
   input: { account_id: string; iso_currency_code?: string | null },
-): Promise<JSONTransaction> => {
-  const { randomUUID } = await import("crypto");
+): Promise<JSONTransaction | null> => {
   const transaction_id = `manual-${randomUUID()}`;
   const row = TransactionModel.fromJSON(
     {
@@ -178,9 +178,14 @@ export const createManualTransaction = async (
     },
     user.user_id,
   );
-  const result = await transactionsTable.insert(row, ["*"]);
-  if (!result) throw new Error("Failed to create manual transaction");
-  return new TransactionModel(result).toJSON();
+  try {
+    const result = await transactionsTable.insert(row, ["*"]);
+    if (!result) return null;
+    return new TransactionModel(result).toJSON();
+  } catch (error) {
+    logger.error("Failed to create manual transaction", { transaction_id, account_id: input.account_id }, error);
+    return null;
+  }
 };
 
 export const deleteTransactions = async (

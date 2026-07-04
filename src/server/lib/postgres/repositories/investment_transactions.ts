@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import { JSONInvestmentTransaction } from "common";
 import {
   MaskedUser,
@@ -120,9 +122,7 @@ export const updateInvestmentTransactions = async (
 export const createManualInvestmentTransaction = async (
   user: MaskedUser,
   input: { account_id: string; security_id?: string | null },
-): Promise<JSONInvestmentTransaction> => {
-  const { randomUUID } = await import("crypto");
-  const { InvestmentTransactionType, InvestmentTransactionSubtype } = await import("plaid");
+): Promise<JSONInvestmentTransaction | null> => {
   const investment_transaction_id = `manual-${randomUUID()}`;
   const row = InvTxModel.fromJSON(
     {
@@ -141,9 +141,14 @@ export const createManualInvestmentTransaction = async (
     },
     user.user_id,
   );
-  const result = await investmentTransactionsTable.insert(row, ["*"]);
-  if (!result) throw new Error("Failed to create manual investment transaction");
-  return new InvTxModel(result).toJSON();
+  try {
+    const result = await investmentTransactionsTable.insert(row, ["*"]);
+    if (!result) return null;
+    return new InvTxModel(result).toJSON();
+  } catch (error) {
+    logger.error("Failed to create manual investment transaction", { investment_transaction_id, account_id: input.account_id }, error);
+    return null;
+  }
 };
 
 export const deleteInvestmentTransactions = async (

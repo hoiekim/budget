@@ -310,6 +310,7 @@ export const HoldingProperties = () => {
       price: 0,
       type: InvestmentTransactionType.Buy,
       subtype: InvestmentTransactionSubtype.Buy,
+      source: "manual",
     });
     setData((oldData) => {
       const next = new Data(oldData);
@@ -758,7 +759,7 @@ export const HoldingProperties = () => {
         );
       })}
 
-      {!isNew && (
+      {!isNew && !isCash && (
         <>
           <PropertyLabel>Add</PropertyLabel>
           <Property>

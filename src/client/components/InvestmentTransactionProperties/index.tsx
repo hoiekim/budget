@@ -1,4 +1,5 @@
 import { ChangeEventHandler, useEffect, useState } from "react";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import { currencyCodeToSymbol, LocalDate, numberToCommaString, toTitleCase } from "common";
 import {
   Data,
@@ -33,7 +34,9 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     type,
     subtype,
     label,
+    source,
   } = investmentTransaction;
+  const isManual = source === "manual";
 
   const account = accounts.get(account_id);
   const security = security_id ? securities.get(security_id) : null;
@@ -121,6 +124,115 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     setMemoValue(label.memo ?? "");
   }, [investment_transaction_id, label.memo]);
 
+  // Manual-row inline editing (#585). Plaid rows keep the read-only
+  // `<span>` display below; only `source === 'manual'` unlocks these
+  // inputs so we never overwrite a Plaid-synced field.
+  const [nameValue, setNameValue] = useState(name ?? "");
+  const [dateValue, setDateValue] = useState((date || "").slice(0, 10));
+  const [quantityValue, setQuantityValue] = useState(String(quantity ?? 0));
+  const [priceValue, setPriceValue] = useState(String(price ?? 0));
+  const [amountValue, setAmountValue] = useState(String(amount ?? 0));
+  const [tickerValue, setTickerValue] = useState(security?.ticker_symbol ?? "");
+  const [tickerMessage, setTickerMessage] = useState<string | null>(null);
+  useEffect(() => {
+    setNameValue(name ?? "");
+    setDateValue((date || "").slice(0, 10));
+    setQuantityValue(String(quantity ?? 0));
+    setPriceValue(String(price ?? 0));
+    setAmountValue(String(amount ?? 0));
+    setTickerValue(security?.ticker_symbol ?? "");
+  }, [investment_transaction_id, name, date, quantity, price, amount, security?.ticker_symbol]);
+
+  const persistInvTxField = async (patch: Partial<InvestmentTransaction>) => {
+    const r = await call.post("/api/investment-transaction", {
+      investment_transaction_id,
+      ...patch,
+    });
+    if (r.status !== "success") return false;
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const dict = new InvestmentTransactionDictionary(oldData.investmentTransactions);
+      const existing = dict.get(investment_transaction_id);
+      if (existing) {
+        const updated = new InvestmentTransaction(existing);
+        Object.assign(updated, patch);
+        indexedDb.save(updated).catch(console.error);
+        dict.set(investment_transaction_id, updated);
+      }
+      newData.investmentTransactions = dict;
+      return newData;
+    });
+    return true;
+  };
+
+  const onBlurName = async () => {
+    if (!isManual || nameValue === (name ?? "")) return;
+    await persistInvTxField({ name: nameValue });
+  };
+  const onBlurDate = async () => {
+    if (!isManual || !dateValue || dateValue === (date || "").slice(0, 10)) return;
+    await persistInvTxField({ date: dateValue });
+  };
+  const onBlurQuantity = async () => {
+    if (!isManual) return;
+    const parsed = parseFloat(quantityValue);
+    if (!Number.isFinite(parsed) || parsed === quantity) {
+      setQuantityValue(String(quantity ?? 0));
+      return;
+    }
+    await persistInvTxField({ quantity: parsed });
+  };
+  const onBlurPrice = async () => {
+    if (!isManual) return;
+    const parsed = parseFloat(priceValue);
+    if (!Number.isFinite(parsed) || parsed === price) {
+      setPriceValue(String(price ?? 0));
+      return;
+    }
+    await persistInvTxField({ price: parsed });
+  };
+  const onBlurAmount = async () => {
+    if (!isManual) return;
+    const parsed = parseFloat(amountValue);
+    if (!Number.isFinite(parsed) || parsed === amount) {
+      setAmountValue(String(amount ?? 0));
+      return;
+    }
+    await persistInvTxField({ amount: parsed });
+  };
+  const onChangeType: ChangeEventHandler<HTMLSelectElement> = async (e) => {
+    if (!isManual) return;
+    const value = e.target.value as InvestmentTransactionType;
+    await persistInvTxField({ type: value });
+  };
+  const onChangeSubtype: ChangeEventHandler<HTMLSelectElement> = async (e) => {
+    if (!isManual) return;
+    const value = e.target.value as InvestmentTransactionSubtype;
+    await persistInvTxField({ subtype: value });
+  };
+  // Ticker → security_id resolution mirrors HoldingProperties'
+  // `POST /api/validate-ticker` flow. On blur, if the ticker resolves
+  // to a security, patch `security_id`; otherwise surface a validation
+  // message and leave the field untouched.
+  const onBlurTicker = async () => {
+    if (!isManual) return;
+    const raw = tickerValue.trim();
+    if (!raw || raw === (security?.ticker_symbol ?? "")) {
+      setTickerMessage(null);
+      return;
+    }
+    const r = await call.post<{ security: { security_id: string; name?: string } | null; message?: string }>(
+      "/api/validate-ticker",
+      { ticker: raw },
+    );
+    if (r.status === "success" && r.body?.security) {
+      setTickerMessage(r.body.security.name ?? "Valid ticker");
+      await persistInvTxField({ security_id: r.body.security.security_id });
+    } else {
+      setTickerMessage(r.body?.message ?? "Invalid ticker");
+    }
+  };
+
   const onChangeMemo: ChangeEventHandler<HTMLInputElement> = (e) => {
     setMemoValue(e.target.value);
   };
@@ -164,17 +276,36 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Date</span>
-          <span>
-            {new LocalDate(date).toLocaleString("en-US", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </span>
+          {isManual ? (
+            <input
+              type="date"
+              value={dateValue}
+              onChange={(e) => setDateValue(e.target.value)}
+              onBlur={onBlurDate}
+            />
+          ) : (
+            <span>
+              {new LocalDate(date).toLocaleString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Name</span>
-          <span>{name}</span>
+          {isManual ? (
+            <input
+              type="text"
+              value={nameValue}
+              placeholder="e.g. RSU grant"
+              onChange={(e) => setNameValue(e.target.value)}
+              onBlur={onBlurName}
+            />
+          ) : (
+            <span>{name}</span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Security</span>
@@ -182,31 +313,97 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
         </div>
         <div className="row keyValue">
           <span className="propertyName">Ticker</span>
-          <span>{security?.ticker_symbol || "—"}</span>
+          {isManual ? (
+            <input
+              type="text"
+              value={tickerValue}
+              placeholder="e.g. VOO"
+              onChange={(e) => setTickerValue(e.target.value.toUpperCase())}
+              onBlur={onBlurTicker}
+            />
+          ) : (
+            <span>{security?.ticker_symbol || "—"}</span>
+          )}
         </div>
+        {isManual && tickerMessage && (
+          <div className="row keyValue">
+            <span className="propertyName">&nbsp;</span>
+            <span>{tickerMessage}</span>
+          </div>
+        )}
         <div className="row keyValue">
           <span className="propertyName">Type</span>
-          <span>{toTitleCase(type)}</span>
+          {isManual ? (
+            <select value={type} onChange={onChangeType}>
+              {Object.values(InvestmentTransactionType).map((v) => (
+                <option key={v} value={v}>
+                  {toTitleCase(v)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span>{toTitleCase(type)}</span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Subtype</span>
-          <span>{toTitleCase(subtype)}</span>
+          {isManual ? (
+            <select value={subtype} onChange={onChangeSubtype}>
+              {Object.values(InvestmentTransactionSubtype).map((v) => (
+                <option key={v} value={v}>
+                  {toTitleCase(v)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span>{toTitleCase(subtype)}</span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Quantity</span>
-          <span>{numberToCommaString(quantity)}</span>
+          {isManual ? (
+            <input
+              type="number"
+              step="any"
+              value={quantityValue}
+              onChange={(e) => setQuantityValue(e.target.value)}
+              onBlur={onBlurQuantity}
+            />
+          ) : (
+            <span>{numberToCommaString(quantity)}</span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Price</span>
-          <span>
-            {currencySymbol}&nbsp;{numberToCommaString(price)}
-          </span>
+          {isManual ? (
+            <input
+              type="number"
+              step="any"
+              value={priceValue}
+              onChange={(e) => setPriceValue(e.target.value)}
+              onBlur={onBlurPrice}
+            />
+          ) : (
+            <span>
+              {currencySymbol}&nbsp;{numberToCommaString(price)}
+            </span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Amount</span>
-          <span>
-            {currencySymbol}&nbsp;{numberToCommaString(amount)}
-          </span>
+          {isManual ? (
+            <input
+              type="number"
+              step="0.01"
+              value={amountValue}
+              onChange={(e) => setAmountValue(e.target.value)}
+              onBlur={onBlurAmount}
+            />
+          ) : (
+            <span>
+              {currencySymbol}&nbsp;{numberToCommaString(amount)}
+            </span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Account</span>
