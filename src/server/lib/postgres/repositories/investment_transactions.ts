@@ -98,11 +98,7 @@ export const updateInvestmentTransactions = async (
       delete row.user_id;
 
       // Scope the update to the caller's user_id — without this a
-       // caller could patch another user's investment transaction by id.
-       // Pre-existing gap on main; the manual-tx UI in this PR widens the
-       // reach of `POST /api/investment-transaction` (kebab now visible on
-       // every inv row per PR #588), so tightening here matches
-       // `updateTransactions` at `transactions.ts:145`.
+      // caller could patch another user's investment transaction by id.
       const updated = await investmentTransactionsTable.update(
         tx.investment_transaction_id,
         row,

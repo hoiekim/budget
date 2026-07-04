@@ -22,9 +22,7 @@ export const TransactionsTable = ({ transactions }: Props) => {
       if (e instanceof InvestmentTransaction) {
         // isEditable surfaces the kebab — the sole entry point to
         // PATH.TRANSACTION_DETAIL for editing a `source='manual'` inv-tx
-        // after creation — alongside the budget/category selects. Those
-        // selects are inert for investment rows (the calc layer skips
-        // investment labels), so only the kebab is load-bearing here.
+        // after creation.
         return <InvestmentTransactionRow key={e.id} investmentTransaction={e} isEditable={true} />;
       }
       // Bundled-pair dedup applies to parent Transaction rows only —
