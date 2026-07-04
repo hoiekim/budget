@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { JSONTransaction, JSONInvestmentTransaction } from "common";
+import { pool } from "../client";
 import {
   MaskedUser,
   TransactionModel,
@@ -160,16 +161,32 @@ export const updateTransactions = async (
  * so we don't accidentally create a duplicate manual row against a
  * Plaid-synced account (#567 acceptance criteria).
  */
+/**
+ * Query the highest `Unknown_N` name for the user on `transactions` and
+ * return `N + 1` — the shell mint gets a spot-in-the-list identifier the
+ * user can recognize + clean up later. Soft-deleted rows count too so a
+ * later undelete can't collide. Falls back to `1` on parse error.
+ */
+const nextUnknownTxIndex = async (user_id: string): Promise<number> => {
+  const sql =
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(name FROM '^Unknown_(\\d+)$') AS INTEGER)), 0) AS max ` +
+    `FROM transactions WHERE user_id = $1 AND name ~ '^Unknown_[0-9]+$'`;
+  const result = await pool.query<{ max: number }>(sql, [user_id]);
+  const currentMax = Number(result.rows[0]?.max ?? 0);
+  return (Number.isFinite(currentMax) ? currentMax : 0) + 1;
+};
+
 export const createManualTransaction = async (
   user: MaskedUser,
   input: { account_id: string; iso_currency_code?: string | null },
 ): Promise<JSONTransaction | null> => {
   const transaction_id = `manual-${randomUUID()}`;
+  const index = await nextUnknownTxIndex(user.user_id);
   const row = TransactionModel.fromJSON(
     {
       transaction_id,
       account_id: input.account_id,
-      name: "",
+      name: `Unknown_${index}`,
       amount: 0,
       iso_currency_code: input.iso_currency_code ?? null,
       date: new Date().toISOString().split("T")[0],

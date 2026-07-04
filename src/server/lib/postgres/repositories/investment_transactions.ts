@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import { JSONInvestmentTransaction } from "common";
+import { pool } from "../client";
 import {
   MaskedUser,
   InvTxModel,
@@ -126,18 +127,30 @@ export const updateInvestmentTransactions = async (
  * account. Plaid sync only inserts/updates rows keyed by its own IDs,
  * so a manual UUID-shaped id has no collision surface.
  */
+/** Same shape as `nextUnknownIndex` in `transactions.ts` — see that comment
+ *  for the rationale on the "count soft-deleted" choice. */
+const nextInvUnknownIndex = async (user_id: string): Promise<number> => {
+  const sql =
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(name FROM '^Unknown_(\\d+)$') AS INTEGER)), 0) AS max ` +
+    `FROM investment_transactions WHERE user_id = $1 AND name ~ '^Unknown_[0-9]+$'`;
+  const result = await pool.query<{ max: number }>(sql, [user_id]);
+  const currentMax = Number(result.rows[0]?.max ?? 0);
+  return (Number.isFinite(currentMax) ? currentMax : 0) + 1;
+};
+
 export const createManualInvestmentTransaction = async (
   user: MaskedUser,
   input: { account_id: string; security_id?: string | null },
 ): Promise<JSONInvestmentTransaction | null> => {
   const investment_transaction_id = `manual-${randomUUID()}`;
+  const index = await nextInvUnknownIndex(user.user_id);
   const row = InvTxModel.fromJSON(
     {
       investment_transaction_id,
       account_id: input.account_id,
       security_id: input.security_id ?? null,
       date: new Date().toISOString().split("T")[0],
-      name: "",
+      name: `Unknown_${index}`,
       amount: 0,
       quantity: 0,
       price: 0,
