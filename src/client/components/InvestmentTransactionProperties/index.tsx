@@ -132,7 +132,6 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
   const [dateValue, setDateValue] = useState((date || "").slice(0, 10));
   const [quantityValue, setQuantityValue] = useState(String(quantity ?? 0));
   const [priceValue, setPriceValue] = useState(String(price ?? 0));
-  const [amountValue, setAmountValue] = useState(String(amount ?? 0));
   const [tickerValue, setTickerValue] = useState(security?.ticker_symbol ?? "");
   const [tickerMessage, setTickerMessage] = useState<string | null>(null);
   useEffect(() => {
@@ -140,9 +139,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     setDateValue((date || "").slice(0, 10));
     setQuantityValue(String(quantity ?? 0));
     setPriceValue(String(price ?? 0));
-    setAmountValue(String(amount ?? 0));
     setTickerValue(security?.ticker_symbol ?? "");
-  }, [investment_transaction_id, name, date, quantity, price, amount, security?.ticker_symbol]);
+  }, [investment_transaction_id, name, date, quantity, price, security?.ticker_symbol]);
 
   const persistInvTxField = async (patch: Partial<InvestmentTransaction>) => {
     const r = await call.post("/api/investment-transaction", {
@@ -174,6 +172,16 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     if (!isManual || !dateValue || dateValue === (date || "").slice(0, 10)) return;
     await persistInvTxField({ date: dateValue });
   };
+  // `amount` is DERIVED from `price * quantity` on manual rows — the
+  // MWR / benchmark calc reads `price * quantity` (not `amount`), so
+  // an amount-only entry gets a $0 MWR contribution while the row
+  // still shows a nonzero amount. Autoderive here + render `Amount`
+  // as a read-only span so the two can't diverge. Sign convention
+  // follows the raw multiplication (users typically enter positive
+  // qty + price; a Sell subtype means the CALC layer flips sign, not
+  // the amount value we store).
+  const roundToCents = (n: number) => Math.round(n * 100) / 100;
+
   const onBlurQuantity = async () => {
     if (!isManual) return;
     const parsed = parseFloat(quantityValue);
@@ -181,7 +189,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       setQuantityValue(String(quantity ?? 0));
       return;
     }
-    await persistInvTxField({ quantity: parsed });
+    const derivedAmount = roundToCents(parsed * (price ?? 0));
+    await persistInvTxField({ quantity: parsed, amount: derivedAmount });
   };
   const onBlurPrice = async () => {
     if (!isManual) return;
@@ -190,16 +199,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       setPriceValue(String(price ?? 0));
       return;
     }
-    await persistInvTxField({ price: parsed });
-  };
-  const onBlurAmount = async () => {
-    if (!isManual) return;
-    const parsed = parseFloat(amountValue);
-    if (!Number.isFinite(parsed) || parsed === amount) {
-      setAmountValue(String(amount ?? 0));
-      return;
-    }
-    await persistInvTxField({ amount: parsed });
+    const derivedAmount = roundToCents((quantity ?? 0) * parsed);
+    await persistInvTxField({ price: parsed, amount: derivedAmount });
   };
   const onChangeType: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     if (!isManual) return;
@@ -394,19 +395,12 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
         </div>
         <div className="row keyValue">
           <span className="propertyName">Amount</span>
-          {isManual ? (
-            <input
-              type="number"
-              step="0.01"
-              value={amountValue}
-              onChange={(e) => setAmountValue(e.target.value)}
-              onBlur={onBlurAmount}
-            />
-          ) : (
-            <span>
-              {currencySymbol}&nbsp;{numberToCommaString(amount)}
-            </span>
-          )}
+          {/* Derived from quantity * price on manual rows (both branches
+              render as a span). Plaid rows show the synced amount as
+              before. */}
+          <span>
+            {currencySymbol}&nbsp;{numberToCommaString(amount)}
+          </span>
         </div>
         <div className="row keyValue">
           <span className="propertyName">Account</span>
