@@ -101,21 +101,15 @@ export const AccountProperties = ({ account }: Props) => {
     router.go(PATH.TRANSACTIONS, { params });
   };
 
-  /**
-   * `+ Add Transaction` on a manual account (#567). Delegates to the
-   * shared `useTransactionEntry` hook — same mint flow as
-   * `HoldingProperties.onClickAddInvestmentTransaction`.
-   */
   const { addTransaction, addInvestmentTransaction } = useTransactionEntry();
   const onClickAddTransaction = () =>
     addTransaction({ account_id, iso_currency_code });
 
   /**
-   * `+ Add Investment Transaction` on any investment account (#585).
-   * NOT gated on `isManualAccount` — the motivating case is RSU/ESPP
-   * grants on a Plaid-connected brokerage that pre-date Plaid's 24-mo
-   * window. Server marks the row `source='manual'` so it survives
-   * future Plaid syncs.
+   * NOT gated on `isManualAccount` — the motivating case (#585) is
+   * RSU/ESPP grants on a Plaid-connected brokerage that pre-date
+   * Plaid's 24-mo transaction window. Server marks the row
+   * `source='manual'` so it survives future Plaid syncs.
    */
   const onClickAddInvestmentTransaction = () =>
     addInvestmentTransaction({ account_id });
