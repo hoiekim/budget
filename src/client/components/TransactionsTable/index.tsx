@@ -20,7 +20,10 @@ export const TransactionsTable = ({ transactions }: Props) => {
   const transactionRows = transactions
     .map((e) => {
       if (e instanceof InvestmentTransaction) {
-        return <InvestmentTransactionRow key={e.id} investmentTransaction={e} />;
+        // isEditable surfaces the kebab — the sole entry point to
+        // PATH.TRANSACTION_DETAIL for editing a `source='manual'` inv-tx
+        // after creation.
+        return <InvestmentTransactionRow key={e.id} investmentTransaction={e} isEditable={true} />;
       }
       // Bundled-pair dedup applies to parent Transaction rows only —
       // SplitTransactions inherit their parent's transaction_id but

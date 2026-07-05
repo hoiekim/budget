@@ -1,4 +1,7 @@
+import { randomUUID } from "crypto";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import { JSONInvestmentTransaction } from "common";
+import { pool } from "../client";
 import {
   MaskedUser,
   InvTxModel,
@@ -95,7 +98,14 @@ export const updateInvestmentTransactions = async (
       delete row.investment_transaction_id;
       delete row.user_id;
 
-      const updated = await investmentTransactionsTable.update(tx.investment_transaction_id, row);
+      // Scope the update to the caller's user_id — without this a
+      // caller could patch another user's investment transaction by id.
+      const updated = await investmentTransactionsTable.update(
+        tx.investment_transaction_id,
+        row,
+        undefined,
+        user.user_id,
+      );
       results.push(
         updated
           ? successResult(tx.investment_transaction_id, 1)
@@ -107,6 +117,69 @@ export const updateInvestmentTransactions = async (
     }
   }
   return results;
+};
+
+/**
+ * Insert a shell `investment_transactions` row. Unlike the cash-side
+ * `createManualTransaction`, this is NOT gated on `items.provider ===
+ * MANUAL` — #585's motivating case (RSU/ESPP grants that predate
+ * Plaid's 24-month window) lives on a Plaid-connected brokerage
+ * account. Plaid sync only inserts/updates rows keyed by its own IDs,
+ * so a manual UUID-shaped id has no collision surface.
+ */
+/** Same shape as `nextUnknownIndex` in `transactions.ts` — see that comment
+ *  for the rationale on the "count soft-deleted" choice. */
+const nextInvUnknownIndex = async (user_id: string): Promise<number> => {
+  const sql =
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(name FROM '^Unknown_(\\d+)$') AS INTEGER)), 0) AS max ` +
+    `FROM investment_transactions WHERE user_id = $1 AND name ~ '^Unknown_[0-9]+$'`;
+  const result = await pool.query<{ max: number }>(sql, [user_id]);
+  const currentMax = Number(result.rows[0]?.max ?? 0);
+  return (Number.isFinite(currentMax) ? currentMax : 0) + 1;
+};
+
+export const createManualInvestmentTransaction = async (
+  user: MaskedUser,
+  input: {
+    account_id: string;
+    security_id?: string | null;
+    // Holding-derived defaults. When the mint is triggered from the
+    // holding detail page, the caller passes the holding's
+    // `institution_price` and `iso_currency_code` so the shell starts
+    // with a plausible non-zero price the user can confirm/correct.
+    // From the account-level `+` (no holding context) these are
+    // omitted and fall back to 0 / null.
+    price?: number | null;
+    iso_currency_code?: string | null;
+  },
+): Promise<JSONInvestmentTransaction | null> => {
+  const investment_transaction_id = `manual-${randomUUID()}`;
+  const index = await nextInvUnknownIndex(user.user_id);
+  const row = InvTxModel.fromJSON(
+    {
+      investment_transaction_id,
+      account_id: input.account_id,
+      security_id: input.security_id ?? null,
+      date: new Date().toISOString().split("T")[0],
+      name: `Unknown_${index}`,
+      amount: 0,
+      quantity: 0,
+      price: input.price ?? 0,
+      iso_currency_code: input.iso_currency_code ?? null,
+      type: InvestmentTransactionType.Buy,
+      subtype: InvestmentTransactionSubtype.Buy,
+      source: "manual",
+    },
+    user.user_id,
+  );
+  try {
+    const result = await investmentTransactionsTable.insert(row, ["*"]);
+    if (!result) return null;
+    return new InvTxModel(result).toJSON();
+  } catch (error) {
+    logger.error("Failed to create manual investment transaction", { investment_transaction_id, account_id: input.account_id }, error);
+    return null;
+  }
 };
 
 export const deleteInvestmentTransactions = async (

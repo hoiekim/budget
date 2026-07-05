@@ -10,6 +10,7 @@ import {
   Data,
   SplitTransaction,
   SplitTransactionDictionary,
+  StoreName,
   Transaction,
   TransactionDictionary,
   TransactionLabel,
@@ -35,7 +36,7 @@ interface Props {
 }
 
 export const TransactionProperties = ({ transaction }: Props) => {
-  const { data, setData, calculations } = useAppContext();
+  const { data, setData, calculations, router } = useAppContext();
   const transferActions = useTransfers();
   const { transactionFamilies } = calculations;
   const { accounts, sections, categories, transfers } = data;
@@ -51,7 +52,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
     label,
     location,
     iso_currency_code,
+    source,
   } = transaction;
+  const isManual = source === "manual";
 
   const account = accounts.get(account_id);
 
@@ -166,6 +169,58 @@ export const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
+  // Manual-row inline editing (#567). Plaid rows keep the read-only
+  // `<span>` display below; only `source === 'manual'` unlocks these
+  // inputs so we never overwrite a Plaid-synced field. Save-on-blur
+  // matches the existing memo pattern — no explicit save button.
+  const [nameValue, setNameValue] = useState(name ?? "");
+  const [amountValue, setAmountValue] = useState(String(amount ?? 0));
+  const [dateValue, setDateValue] = useState((authorized_date || date || "").slice(0, 10));
+  useEffect(() => {
+    setNameValue(name ?? "");
+    setAmountValue(String(amount ?? 0));
+    setDateValue((authorized_date || date || "").slice(0, 10));
+  }, [transaction_id, name, amount, authorized_date, date]);
+
+  const persistTransactionField = async (patch: Partial<Transaction>) => {
+    const r = await call.post("/api/transaction", { transaction_id, ...patch });
+    if (r.status !== "success") return false;
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const dict = new TransactionDictionary(oldData.transactions);
+      const existing = dict.get(transaction_id);
+      if (existing) {
+        const updated = new Transaction(existing);
+        Object.assign(updated, patch);
+        indexedDb.save(updated).catch(console.error);
+        dict.set(transaction_id, updated);
+      }
+      newData.transactions = dict;
+      return newData;
+    });
+    return true;
+  };
+
+  const onBlurName = async () => {
+    if (!isManual) return;
+    if (nameValue === (name ?? "")) return;
+    await persistTransactionField({ name: nameValue });
+  };
+  const onBlurAmount = async () => {
+    if (!isManual) return;
+    const parsed = parseFloat(amountValue);
+    if (!Number.isFinite(parsed) || parsed === amount) {
+      setAmountValue(String(amount ?? 0));
+      return;
+    }
+    await persistTransactionField({ amount: parsed });
+  };
+  const onBlurDate = async () => {
+    if (!isManual) return;
+    if (!dateValue || dateValue === (authorized_date || date || "").slice(0, 10)) return;
+    await persistTransactionField({ date: dateValue });
+  };
+
   const remainingAmount = transaction.getRemainingAmount(transactionFamilies);
 
   const onClickAdd = async () => {
@@ -275,13 +330,22 @@ export const TransactionProperties = ({ transaction }: Props) => {
       <div className="property">
         <div className="row keyValue">
           <span className="propertyName">Date</span>
-          <span>
-            {new LocalDate(authorized_date || date).toLocaleString("en-US", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </span>
+          {isManual ? (
+            <input
+              type="date"
+              value={dateValue}
+              onChange={(e) => setDateValue(e.target.value)}
+              onBlur={onBlurDate}
+            />
+          ) : (
+            <span>
+              {new LocalDate(authorized_date || date).toLocaleString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Merchant&nbsp;Name</span>
@@ -289,15 +353,35 @@ export const TransactionProperties = ({ transaction }: Props) => {
         </div>
         <div className="row keyValue">
           <span className="propertyName">Name</span>
-          <span>{name}</span>
+          {isManual ? (
+            <input
+              type="text"
+              value={nameValue}
+              placeholder="Transaction name…"
+              onChange={(e) => setNameValue(e.target.value)}
+              onBlur={onBlurName}
+            />
+          ) : (
+            <span>{name}</span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Amount</span>
-          <span>
-            {isIncome && <>+&nbsp;</>}
-            {currencySymbol}&nbsp;
-            {numberToCommaString(Math.abs(amount))}
-          </span>
+          {isManual ? (
+            <input
+              type="number"
+              step="0.01"
+              value={amountValue}
+              onChange={(e) => setAmountValue(e.target.value)}
+              onBlur={onBlurAmount}
+            />
+          ) : (
+            <span>
+              {isIncome && <>+&nbsp;</>}
+              {currencySymbol}&nbsp;
+              {numberToCommaString(Math.abs(amount))}
+            </span>
+          )}
         </div>
         <div className="row keyValue">
           <span className="propertyName">Location</span>
@@ -476,6 +560,34 @@ export const TransactionProperties = ({ transaction }: Props) => {
           </>
         )}
       </div>
+      {isManual && (
+        <>
+          <br />
+          <div className="property">
+            <div className="row button">
+              <button
+                className="delete colored"
+                onClick={async () => {
+                  if (!window.confirm("Delete this transaction? This can't be undone.")) return;
+                  const r = await call.delete("/api/transaction?" + new URLSearchParams({ transaction_id }).toString());
+                  if (r.status !== "success") return;
+                  setData((oldData) => {
+                    const next = new Data(oldData);
+                    const dict = new TransactionDictionary(oldData.transactions);
+                    dict.delete(transaction_id);
+                    next.transactions = dict;
+                    indexedDb.remove(StoreName.transactions, transaction_id).catch(console.error);
+                    return next;
+                  });
+                  router.back();
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

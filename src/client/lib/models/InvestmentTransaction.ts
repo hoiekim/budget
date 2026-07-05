@@ -24,6 +24,12 @@ export class InvestmentTransaction implements JSONInvestmentTransaction {
   iso_currency_code: string | null = null;
   unofficial_currency_code: string | null = null;
   /**
+   * Origin marker — same semantics as `Transaction.source`. FE enables
+   * inline editing of security/quantity/price/type/subtype on the
+   * detail page only when this is `"manual"`.
+   */
+  source: string = "plaid";
+  /**
    * Represents relations by pair of budget_id and category_id
    */
   label: TransactionLabel;

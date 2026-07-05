@@ -88,6 +88,15 @@ export class Transaction implements JSONTransaction {
   transaction_code: TransactionCode | null = null;
   personal_finance_category?: PersonalFinanceCategory | null;
   /**
+   * Origin marker — `"plaid"` for synced rows, `"manual"` for rows the
+   * user created via `GET /api/new-transaction`. FE branches on this to
+   * enable inline editing of the core fields (name/amount/date) on the
+   * detail page — Plaid rows are read-only there because Plaid is the
+   * source of truth. Defaults to `"plaid"` so pre-existing IDB rows
+   * migrate cleanly.
+   */
+  source: string = "plaid";
+  /**
    * Represents relations by pair of budget_id and category_id
    */
   label: TransactionLabel;

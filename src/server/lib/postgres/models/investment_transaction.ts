@@ -26,6 +26,7 @@ import {
   RAW,
   UPDATED,
   IS_DELETED,
+  SOURCE,
   INVESTMENT_TRANSACTIONS,
   USERS,
 } from "./common";
@@ -50,6 +51,9 @@ const invTxSchema = {
   [RAW]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+  // See `transaction.ts` — `plaid` / `manual` origin marker with a safe
+  // default so pre-existing rows and Plaid inserts don't need touching.
+  [SOURCE]: "VARCHAR(20) NOT NULL DEFAULT 'plaid'",
 };
 
 type InvTxSchema = typeof invTxSchema;
@@ -74,6 +78,7 @@ export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRo
   declare raw: object | null;
   declare updated: string | null;
   declare is_deleted: boolean;
+  declare source: string;
 
   static typeChecker = {
     investment_transaction_id: isString,
@@ -94,6 +99,7 @@ export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRo
     raw: isNullableObject,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
+    source: isNullableString,
   };
 
   constructor(data: unknown) {
@@ -121,6 +127,7 @@ export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRo
         memo: this.label_memo,
       },
       is_deleted: this.is_deleted ?? false,
+      source: this.source ?? "plaid",
     };
   }
 
@@ -146,7 +153,8 @@ export class InvTxModel extends Model<JSONInvTx, InvTxSchema> implements InvTxRo
       if (tx.label.category_id !== undefined) r.label_category_id = tx.label.category_id;
       if (tx.label.memo !== undefined) r.label_memo = tx.label.memo;
     }
-    const { label: _label, ...providerData } = tx;
+    if (tx.source !== undefined) r.source = tx.source;
+    const { label: _label, source: _source, ...providerData } = tx;
     r.raw = providerData;
     return r;
   }

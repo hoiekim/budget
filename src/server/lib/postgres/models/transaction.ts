@@ -30,6 +30,7 @@ import {
   RAW,
   UPDATED,
   IS_DELETED,
+  SOURCE,
   TRANSACTIONS,
   USERS,
 } from "./common";
@@ -57,6 +58,14 @@ const txSchema = {
   [RAW]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
+  // Origin marker. `plaid` for anything synced from Plaid or simple-fin
+  // (safe default so the auto-migration backfills existing rows without
+  // a script). `manual` for rows the user created via
+  // `GET /api/new-transaction` on a manual account (#567) — those rows
+  // are safe from Plaid overwrite because Plaid uses distinct id shapes,
+  // but the column keeps the intent auditable and future-proofs a CSV
+  // import path.
+  [SOURCE]: "VARCHAR(20) NOT NULL DEFAULT 'plaid'",
 };
 
 type TxSchema = typeof txSchema;
@@ -84,6 +93,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
   declare raw: object | null;
   declare updated: string;
   declare is_deleted: boolean;
+  declare source: string;
 
   static typeChecker = {
     transaction_id: isString,
@@ -107,6 +117,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
     raw: isNullableObject,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
+    source: isNullableString,
   };
 
   constructor(data: unknown) {
@@ -160,6 +171,7 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
       datetime: null,
       transaction_code: null,
       is_deleted: this.is_deleted ?? false,
+      source: this.source ?? "plaid",
     };
   }
 
@@ -190,7 +202,8 @@ export class TransactionModel extends Model<JSONTransaction, TxSchema> implement
       if (!isUndefined(tx.label.memo)) r.label_memo = tx.label.memo;
       if (!isUndefined(tx.label.category_confidence)) r.label_category_confidence = tx.label.category_confidence;
     }
-    const { label: _label, ...providerData } = tx;
+    if (!isUndefined(tx.source)) r.source = tx.source;
+    const { label: _label, source: _source, ...providerData } = tx;
     r.raw = providerData;
     return r;
   }

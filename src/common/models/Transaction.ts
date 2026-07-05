@@ -57,6 +57,12 @@ export interface JSONTransaction extends PlaidTransaction {
    *  route); the FE treats rows with this flag as tombstones for IDB +
    *  dict eviction. */
   is_deleted?: boolean;
+  /** Origin marker — `"plaid"` for Plaid/simple-fin-synced rows,
+   *  `"manual"` for rows the user created via
+   *  `GET /api/new-transaction` on a manual account. Defaults to
+   *  `"plaid"` at the DB layer so pre-existing rows and Plaid inserts
+   *  don't need special-casing. */
+  source?: string;
 }
 
 export type TransferPairStatus = "suggested" | "confirmed" | "rejected";
@@ -78,6 +84,8 @@ export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
    *  `JSONTransaction.is_deleted`; always present on rows from
    *  `/api/transactions`. */
   is_deleted?: boolean;
+  /** Origin marker — same semantics as `JSONTransaction.source`. */
+  source?: string;
 }
 
 export interface RemovedTransaction {

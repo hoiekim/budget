@@ -107,6 +107,7 @@ describe("get-transfers", () => {
       raw: null,
       updated: "2026-05-01T00:00:00Z",
       is_deleted: false,
+      source: "plaid",
     });
     mockQuery.mockResolvedValueOnce({ rows: [pairRow], rowCount: 1 });
     mockQuery.mockResolvedValueOnce({

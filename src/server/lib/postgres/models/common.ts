@@ -25,6 +25,7 @@ export const USER_ID = "user_id";
 export const UPDATED = "updated";
 export const IS_DELETED = "is_deleted";
 export const RAW = "raw";
+export const SOURCE = "source";
 
 export const USERNAME = "username";
 export const PASSWORD = "password";

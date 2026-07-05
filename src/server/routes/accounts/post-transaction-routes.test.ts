@@ -335,6 +335,11 @@ describe("post-investment-transaction route", () => {
     // The route does not call inferLabelConfidence, so no confidence column is
     // written — distinguishing it from the other two routes in the trio.
     expect(boundValue(upd!, "label_category_confidence")).toBe(SENTINEL);
+    // updateInvestmentTransactions scopes the write to the session user
+    // (4th arg userId). Regression guard: dropping the arg loses the
+    // scope silently.
+    expect(upd!.values).toContain("u-1");
+    expect(upd!.values).toContain("i-1");
   });
 
   test("surfaces a DB error as a failed response", async () => {
