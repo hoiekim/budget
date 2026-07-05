@@ -280,13 +280,17 @@ describe("post-split-transaction route", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("success");
-    // The UPDATE's bound-parameter list carries `s-1` (the PK) AND `u-1`
-    // (the caller's user_id). Without `updateSplitTransactions` passing
-    // `user.user_id` as the 4th `Table.update` arg, the WHERE would only
-    // key on the PK — and a caller could patch another user's row by id.
+    // Assert the guard is a WHERE predicate binding the caller's id, not a bare
+    // `values.toContain("u-1")` — the latter passes vacuously for a refactor that
+    // drops the guard but still SETs user_id. Both the PK and the user_id scope
+    // must key the WHERE clause.
     const upd = findUpdate("split_transactions");
-    expect(upd!.values).toContain("s-1");
-    expect(upd!.values).toContain("u-1");
+    const whereUserId = upd!.sql.match(/WHERE[\s\S]*?\buser_id\s*=\s*\$(\d+)/i);
+    const wherePk = upd!.sql.match(/WHERE[\s\S]*?\bsplit_transaction_id\s*=\s*\$(\d+)/i);
+    expect(whereUserId).not.toBeNull();
+    expect(wherePk).not.toBeNull();
+    expect(upd!.values[Number(whereUserId![1]) - 1]).toBe("u-1");
+    expect(upd!.values[Number(wherePk![1]) - 1]).toBe("s-1");
   });
 
   test("surfaces a DB error as a failed response", async () => {
