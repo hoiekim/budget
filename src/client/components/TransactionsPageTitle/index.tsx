@@ -18,7 +18,13 @@ import { TransactionsHead } from "./TransactionsHead";
 import "./index.css";
 import { SearchBar } from "./SearchBar";
 
-export type TransactionsPageType = "deposits" | "expenses" | "unsorted" | "suggested" | "transfers";
+export type TransactionsPageType =
+  | "deposits"
+  | "expenses"
+  | "unsorted"
+  | "suggested"
+  | "transfers"
+  | "manual";
 
 interface TransactionsPageFilters {
   types: TransactionsPageType[];
@@ -43,6 +49,7 @@ const TYPE_LABELS: Record<TransactionsPageType, string> = {
   deposits: "Deposits",
   expenses: "Expenses",
   transfers: "Transfers",
+  manual: "Manual",
 };
 
 const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];

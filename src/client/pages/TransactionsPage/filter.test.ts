@@ -289,3 +289,47 @@ describe("TypePredicates.any — investment branch", () => {
     expect(investMatch(mkInv(-50), ["expenses", "transfers"])).toBe(false);
   });
 });
+
+describe("matchesAnySelectedType — manual (#567/#585)", () => {
+  const mkTxn = (id: string, source: string): Transaction => {
+    const t = makeTxn(id, 10);
+    t.source = source;
+    return t;
+  };
+  const mkInv = (source: string): InvestmentTransaction => {
+    const t = new InvestmentTransaction({
+      account_id: "inv-acc-1",
+      type: InvestmentTransactionType.Buy,
+      subtype: InvestmentTransactionSubtype.Buy,
+      quantity: 1,
+      price: 10,
+      amount: 10,
+      date: "2026-02-15",
+    });
+    t.source = source;
+    return t;
+  };
+
+  test("Transaction source='manual' matches", () => {
+    expect(matchesAnySelectedType(mkTxn("t1", "manual"), ["manual"], makeCtx())).toBe(true);
+  });
+  test("Transaction source='plaid' does not match", () => {
+    expect(matchesAnySelectedType(mkTxn("t1", "plaid"), ["manual"], makeCtx())).toBe(false);
+  });
+  test("InvestmentTransaction source='manual' matches", () => {
+    expect(new TypePredicates(makeCtx()).any(["manual"])(mkInv("manual"))).toBe(true);
+  });
+  test("InvestmentTransaction source='plaid' does not match", () => {
+    expect(new TypePredicates(makeCtx()).any(["manual"])(mkInv("plaid"))).toBe(false);
+  });
+  test("SplitTransaction never matches (splits inherit parent source but carry no field of their own)", () => {
+    // A split can't itself declare source='manual'; the parent's source is
+    // what matters, and today's manual mint flow doesn't create splits.
+    expect(matchesAnySelectedType(makeSplit("s1", "t1", 5), ["manual"], makeCtx())).toBe(false);
+  });
+  test("manual + deposits (multi-select): OR — a Plaid deposit matches under 'deposits'", () => {
+    const plaidDeposit = mkTxn("t1", "plaid");
+    plaidDeposit.amount = -5;
+    expect(matchesAnySelectedType(plaidDeposit, ["manual", "deposits"], makeCtx())).toBe(true);
+  });
+});
