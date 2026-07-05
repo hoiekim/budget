@@ -231,7 +231,11 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       ticker_symbol: raw,
     });
     if (r.status === "success" && r.body?.valid && r.body.security) {
-      setTickerMessage(r.body.security.name ?? "Valid ticker");
+      // Success: the resolved security's name appears in the Security row
+      // above; a "Valid ticker" / echoed-name message here duplicates that
+      // (Hoie 2026-07-05). Clear any prior error text so a subsequent valid
+      // ticker doesn't leave a stale "Invalid ticker" line behind.
+      setTickerMessage(null);
       await persistInvTxField({ security_id: r.body.security.security_id });
     } else {
       setTickerMessage(r.body?.message ?? r.message ?? "Invalid ticker");
