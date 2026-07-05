@@ -97,11 +97,9 @@ export const findStoredTransaction = (
 /**
  * Rewrite each holding's `security_id` to the canonical id when the
  * securities-upsert dedupe folded Plaid's incoming id onto an existing
- * (user-minted) row's id. Pure — no side effects; separated for
- * per-input unit testing. When `idMap` has no entry for a holding's
- * `security_id`, or maps to the same id, the holding is returned
- * unchanged (identity-preserving so downstream `===` checks stay
- * stable). Closes #593 gap 2.
+ * (user-minted) row's id. Skips allocation on the no-op cases (no
+ * mapping, or maps to same id) so the array of unchanged holdings stays
+ * cheap for the common path where no dedupe fires.
  */
 export const remapHoldingSecurityIds = (
   holdings: JSONHolding[],
@@ -345,19 +343,11 @@ export const syncPlaidAccounts = async (item_id: string) => {
 
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
 
-      // Dedupe securities by ticker BEFORE writing holdings.
-      // `upsertSecuritiesWithSnapshots` returns { incomingId → canonicalId }:
-      // when the incoming ticker already exists in `securities` (e.g. a
-      // user-minted row from `POST /api/validate-ticker` before Plaid
-      // returned this position), the canonical id is the existing row's,
-      // not Plaid's fresh id. Holdings written with Plaid's raw
-      // `security_id` would then reference a soon-to-be-orphaned id after
-      // the securities table upsert overwrites under the canonical id.
-      // sync-simple-fin already does this correctly (idMap-remap before
-      // writing holdings); sync-plaid was leaking the pre-dedupe ids
-      // through to `holdings` and driving user-visible double-counting
-      // when the user pre-registered the ticker manually. Closes #593
-      // gap 2.
+      // Dedupe securities by ticker BEFORE writing holdings so incoming
+      // holdings' `security_id` gets canonicalized against the row that
+      // will actually live in `securities` — `upsertSecuritiesWithSnapshots`
+      // returns an `{ incomingId → canonicalId }` idMap keyed on ticker
+      // matches. Mirrors the pattern in `sync-simple-fin.ts`.
       const idMap = await upsertSecuritiesWithSnapshots(securities);
       const mappedHoldings = remapHoldingSecurityIds(allHoldings, idMap);
       await upsertAndDeleteHoldingsWithSnapshots(user, mappedHoldings, storedHoldings);
