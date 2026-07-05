@@ -1,4 +1,4 @@
-import { AccountType, InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { AccountType } from "plaid";
 import { useMemo } from "react";
 import {
   currencyCodeToSymbol,
@@ -7,23 +7,13 @@ import {
   toTitleCase,
   ViewDate,
 } from "common";
-import type {
-  NewTransactionGetResponse,
-  NewInvestmentTransactionGetResponse,
-} from "server";
 import {
   Account,
-  call,
-  Data,
-  indexedDb,
-  InvestmentTransaction,
-  InvestmentTransactionDictionary,
   PATH,
   ScreenType,
-  Transaction,
-  TransactionDictionary,
   useAccountGraph,
   useAppContext,
+  useTransactionEntry,
 } from "client";
 import {
   DateLabel,
@@ -49,7 +39,7 @@ export const AccountProperties = ({ account }: Props) => {
 
   const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
 
-  const { data, setData, viewDate, router, screenType } = useAppContext();
+  const { data, viewDate, router, screenType } = useAppContext();
   const { budgets, items } = data;
 
   const {
@@ -112,43 +102,13 @@ export const AccountProperties = ({ account }: Props) => {
   };
 
   /**
-   * `+ Add Transaction` on a manual account (#567). Mints a shell row
-   * server-side via `GET /api/new-transaction`, optimistically inserts
-   * it into `data.transactions` so the detail page picks it up
-   * immediately without waiting for the next sync, then navigates.
+   * `+ Add Transaction` on a manual account (#567). Delegates to the
+   * shared `useTransactionEntry` hook — same mint flow as
+   * `HoldingProperties.onClickAddInvestmentTransaction`.
    */
-  const onClickAddTransaction = async () => {
-    const query = new URLSearchParams({ account_id }).toString();
-    const response = await call.get<NewTransactionGetResponse>(
-      "/api/new-transaction?" + query,
-    );
-    if (!response.body) {
-      console.error("Failed to mint new transaction:", response.message);
-      return;
-    }
-    const { transaction_id, name } = response.body;
-    const shell = new Transaction({
-      transaction_id,
-      account_id,
-      name,
-      amount: 0,
-      iso_currency_code: iso_currency_code ?? null,
-      date: new Date().toISOString().split("T")[0],
-      pending: false,
-      source: "manual",
-    });
-    setData((oldData) => {
-      const next = new Data(oldData);
-      const dict = new TransactionDictionary(oldData.transactions);
-      dict.set(transaction_id, shell);
-      next.transactions = dict;
-      indexedDb.save(shell).catch(console.error);
-      return next;
-    });
-    router.go(PATH.TRANSACTION_DETAIL, {
-      params: new URLSearchParams({ transaction_id }),
-    });
-  };
+  const { addTransaction, addInvestmentTransaction } = useTransactionEntry();
+  const onClickAddTransaction = () =>
+    addTransaction({ account_id, iso_currency_code });
 
   /**
    * `+ Add Investment Transaction` on any investment account (#585).
@@ -157,41 +117,8 @@ export const AccountProperties = ({ account }: Props) => {
    * window. Server marks the row `source='manual'` so it survives
    * future Plaid syncs.
    */
-  const onClickAddInvestmentTransaction = async () => {
-    const response = await call.get<NewInvestmentTransactionGetResponse>(
-      "/api/new-investment-transaction?" +
-        new URLSearchParams({ account_id }).toString(),
-    );
-    if (!response.body) {
-      console.error("Failed to mint new investment transaction:", response.message);
-      return;
-    }
-    const { investment_transaction_id, name } = response.body;
-    const shell = new InvestmentTransaction({
-      investment_transaction_id,
-      account_id,
-      security_id: null,
-      date: new Date().toISOString().split("T")[0],
-      name,
-      amount: 0,
-      quantity: 0,
-      price: 0,
-      type: InvestmentTransactionType.Buy,
-      subtype: InvestmentTransactionSubtype.Buy,
-      source: "manual",
-    });
-    setData((oldData) => {
-      const next = new Data(oldData);
-      const dict = new InvestmentTransactionDictionary(oldData.investmentTransactions);
-      dict.set(investment_transaction_id, shell);
-      next.investmentTransactions = dict;
-      indexedDb.save(shell).catch(console.error);
-      return next;
-    });
-    router.go(PATH.TRANSACTION_DETAIL, {
-      params: new URLSearchParams({ investment_transaction_id }),
-    });
-  };
+  const onClickAddInvestmentTransaction = () =>
+    addInvestmentTransaction({ account_id });
 
   const onClickConnectionDetail = () => {
     if (!item) return;
