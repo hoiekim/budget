@@ -270,6 +270,25 @@ describe("post-split-transaction route", () => {
     expect(boundValue(upd!, "label_category_confidence")).toBe(0.7);
   });
 
+  test("update WHERE is scoped to caller's user_id (cross-user write guard, #591)", async () => {
+    const result = await postSplitTransactionRoute.execute(
+      makeReq(
+        postSplitTransactionRoute,
+        { split_transaction_id: "s-1", label: { category_id: "c-1" } },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // The UPDATE's bound-parameter list carries `s-1` (the PK) AND `u-1`
+    // (the caller's user_id). Without `updateSplitTransactions` passing
+    // `user.user_id` as the 4th `Table.update` arg, the WHERE would only
+    // key on the PK — and a caller could patch another user's row by id.
+    const upd = findUpdate("split_transactions");
+    expect(upd!.values).toContain("s-1");
+    expect(upd!.values).toContain("u-1");
+  });
+
   test("surfaces a DB error as a failed response", async () => {
     // Matches its sibling routes: updateSplitTransactions swallows the write
     // failure into an errorResult(500), the route's `result.status >= 400`

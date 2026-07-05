@@ -109,7 +109,15 @@ export const updateSplitTransactions = async (
       delete row.split_transaction_id;
       delete row.user_id;
 
-      const updated = await splitTransactionsTable.update(tx.split_transaction_id, row);
+      // Scope the update to the caller's user_id — without this a caller
+      // could patch another user's split transaction by id. Same class of
+      // gap fixed for `updateInvestmentTransactions` on #588 round 3.
+      const updated = await splitTransactionsTable.update(
+        tx.split_transaction_id,
+        row,
+        undefined,
+        user.user_id,
+      );
       results.push(
         updated
           ? successResult(tx.split_transaction_id, 1)
