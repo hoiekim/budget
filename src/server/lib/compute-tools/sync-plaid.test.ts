@@ -4,8 +4,9 @@ import {
   detectPendingPostedTransitions,
   findStoredTransaction,
   getPlaidRemovedInvestmentTransactions,
+  remapHoldingSecurityIds,
 } from "./sync-plaid";
-import type { JSONTransaction, JSONInvestmentTransaction } from "common";
+import type { JSONTransaction, JSONInvestmentTransaction, JSONHolding } from "common";
 
 // Minimal factory helpers
 const makeTx = (overrides: Partial<JSONTransaction>): JSONTransaction =>
@@ -221,5 +222,75 @@ describe("getPlaidRemovedInvestmentTransactions", () => {
     ];
     const result = getPlaidRemovedInvestmentTransactions([], stored);
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("remapHoldingSecurityIds (#593 reconciliation)", () => {
+  const mkHolding = (holding_id: string, security_id: string): JSONHolding =>
+    ({
+      holding_id,
+      account_id: "acc-1",
+      security_id,
+      quantity: 1,
+      institution_price: 100,
+      institution_value: 100,
+      cost_basis: null,
+      iso_currency_code: "USD",
+    }) as unknown as JSONHolding;
+
+  it("remaps holdings whose security_id has a canonical mapping in idMap", () => {
+    const holdings = [
+      mkHolding("h-1", "plaid-1"),
+      mkHolding("h-2", "plaid-2"),
+    ];
+    const idMap = { "plaid-1": "manual-1", "plaid-2": "plaid-2" };
+    const result = remapHoldingSecurityIds(holdings, idMap);
+    expect(result[0].security_id).toBe("manual-1"); // remapped
+    expect(result[1].security_id).toBe("plaid-2"); // identity — unchanged
+  });
+
+  it("leaves holdings unchanged when idMap has no entry (security was filtered out of the dedupe pass — e.g. no ticker_symbol or no close_price)", () => {
+    const holdings = [mkHolding("h-cash", "cash-sec")];
+    const idMap = {}; // dedupe skipped this security
+    const result = remapHoldingSecurityIds(holdings, idMap);
+    expect(result[0].security_id).toBe("cash-sec");
+    expect(result[0]).toBe(holdings[0]); // identity preserved (no allocation)
+  });
+
+  it("identity-preserves holdings when canonical id matches the incoming id (no allocation for the no-op case)", () => {
+    const holdings = [mkHolding("h-1", "sec-a")];
+    const idMap = { "sec-a": "sec-a" };
+    const result = remapHoldingSecurityIds(holdings, idMap);
+    expect(result[0]).toBe(holdings[0]); // same reference
+  });
+
+  it("preserves non-security fields when remapping", () => {
+    const holdings = [
+      { ...mkHolding("h-1", "plaid-1"), quantity: 42, cost_basis: 1234.5 },
+    ];
+    const idMap = { "plaid-1": "manual-1" };
+    const result = remapHoldingSecurityIds(holdings as JSONHolding[], idMap);
+    expect(result[0].security_id).toBe("manual-1");
+    expect(result[0].quantity).toBe(42);
+    expect(result[0].cost_basis).toBe(1234.5);
+    expect(result[0].holding_id).toBe("h-1");
+  });
+
+  it("closes #593 gap 2: user-minted (manual) security id survives Plaid re-arrival for the same ticker", () => {
+    // Scenario: user posted /api/validate-ticker for VOO, minting security
+    // 'manual-voo'. Later Plaid syncs a holding for VOO with its own id
+    // 'plaid-voo'. upsertSecuritiesWithSnapshots ticker-dedupes and returns
+    // { 'plaid-voo' → 'manual-voo' }. If the sync-plaid remap step
+    // regresses (holding written pre-dedupe), the holding's security_id
+    // is 'plaid-voo' — but the securities table no longer has that row
+    // (it was upserted under 'manual-voo'), so the holding orphans.
+    const holdings = [mkHolding("acc-1_plaid-voo", "plaid-voo")];
+    const idMap = { "plaid-voo": "manual-voo" };
+    const result = remapHoldingSecurityIds(holdings, idMap);
+    expect(result[0].security_id).toBe("manual-voo");
+    // holding_id itself is not remapped in this step — the caller
+    // (`upsertAndDeleteHoldingsWithSnapshots`) rewrites it from the
+    // holding row's fields on its next pass, so the persisted row
+    // eventually keys on the canonical (account_id, security_id) pair.
   });
 });

@@ -8,6 +8,7 @@ import {
   getDateString,
   getDateTimeString,
   JSONInvestmentTransaction,
+  JSONHolding,
   isDate,
   LocalDate,
   DEFAULT_GRAPH_OPTIONS,
@@ -92,6 +93,25 @@ export const findStoredTransaction = (
     maps.byCompoundKey.get(`${incoming.account_id}:${incoming.name}:${incoming.amount}`)
   );
 };
+
+/**
+ * Rewrite each holding's `security_id` to the canonical id when the
+ * securities-upsert dedupe folded Plaid's incoming id onto an existing
+ * (user-minted) row's id. Pure — no side effects; separated for
+ * per-input unit testing. When `idMap` has no entry for a holding's
+ * `security_id`, or maps to the same id, the holding is returned
+ * unchanged (identity-preserving so downstream `===` checks stay
+ * stable). Closes #593 gap 2.
+ */
+export const remapHoldingSecurityIds = (
+  holdings: JSONHolding[],
+  idMap: { [key: string]: string },
+): JSONHolding[] =>
+  holdings.map((h) => {
+    const canonical = idMap[h.security_id];
+    if (!canonical || canonical === h.security_id) return h;
+    return { ...h, security_id: canonical };
+  });
 
 /** Identify recently-stored investment transactions that are no longer in the incoming list. */
 export const getPlaidRemovedInvestmentTransactions = (
@@ -324,8 +344,23 @@ export const syncPlaidAccounts = async (item_id: string) => {
       const allHoldings = inferredCash.length ? [...holdings, ...inferredCash] : holdings;
 
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
-      await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
-      await upsertSecuritiesWithSnapshots(securities);
+
+      // Dedupe securities by ticker BEFORE writing holdings.
+      // `upsertSecuritiesWithSnapshots` returns { incomingId → canonicalId }:
+      // when the incoming ticker already exists in `securities` (e.g. a
+      // user-minted row from `POST /api/validate-ticker` before Plaid
+      // returned this position), the canonical id is the existing row's,
+      // not Plaid's fresh id. Holdings written with Plaid's raw
+      // `security_id` would then reference a soon-to-be-orphaned id after
+      // the securities table upsert overwrites under the canonical id.
+      // sync-simple-fin already does this correctly (idMap-remap before
+      // writing holdings); sync-plaid was leaking the pre-dedupe ids
+      // through to `holdings` and driving user-visible double-counting
+      // when the user pre-registered the ticker manually. Closes #593
+      // gap 2.
+      const idMap = await upsertSecuritiesWithSnapshots(securities);
+      const mappedHoldings = remapHoldingSecurityIds(allHoldings, idMap);
+      await upsertAndDeleteHoldingsWithSnapshots(user, mappedHoldings, storedHoldings);
 
       return accounts;
     })
