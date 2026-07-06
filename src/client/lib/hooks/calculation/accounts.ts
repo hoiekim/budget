@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { AccountType } from "plaid";
 import { getYearMonthString, LocalDate, ViewDate } from "common";
 import {
   Account,
@@ -230,7 +231,7 @@ export const getBalanceData = (
 
   const mergedData = new BalanceData();
 
-  accounts.forEach(({ id, graphOptions }) => {
+  accounts.forEach(({ id, type, graphOptions }) => {
     // Collect all available date ranges from all sources
     const ranges: ViewDate[] = [];
     const txHistory = transactionBasedData.get(id);
@@ -271,7 +272,22 @@ export const getBalanceData = (
       // 3-tier fallback: account snapshots → holding snapshots → transactions
       let balance = 0;
       if (useSnapshots && accountSnapshotBasedBalance !== undefined) {
-        balance = accountSnapshotBasedBalance;
+        // For an investment account a Plaid `account_balance` snapshot can
+        // capture only the settled-cash sleeve while the holdings-inclusive
+        // total lives in the same month's `holding` snapshot. Preferring
+        // tier 1 unconditionally lets that cash-only figure override the
+        // larger portfolio total and craters the month, so take whichever is
+        // larger — a cash-only reading must not understate the account.
+        if (
+          type === AccountType.Investment &&
+          useHoldingSnapshots &&
+          holdingSnapshotBasedBalance !== undefined &&
+          holdingSnapshotBasedBalance > accountSnapshotBasedBalance
+        ) {
+          balance = holdingSnapshotBasedBalance;
+        } else {
+          balance = accountSnapshotBasedBalance;
+        }
       } else if (useHoldingSnapshots && holdingSnapshotBasedBalance !== undefined) {
         balance = holdingSnapshotBasedBalance;
       } else if (useTransactions && transactionBasedBalance !== undefined) {
