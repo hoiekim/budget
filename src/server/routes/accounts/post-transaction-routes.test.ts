@@ -270,6 +270,29 @@ describe("post-split-transaction route", () => {
     expect(boundValue(upd!, "label_category_confidence")).toBe(0.7);
   });
 
+  test("update WHERE is scoped to caller's user_id (cross-user write guard, #591)", async () => {
+    const result = await postSplitTransactionRoute.execute(
+      makeReq(
+        postSplitTransactionRoute,
+        { split_transaction_id: "s-1", label: { category_id: "c-1" } },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // Assert the guard is a WHERE predicate binding the caller's id, not a bare
+    // `values.toContain("u-1")` — the latter passes vacuously for a refactor that
+    // drops the guard but still SETs user_id. Both the PK and the user_id scope
+    // must key the WHERE clause.
+    const upd = findUpdate("split_transactions");
+    const whereUserId = upd!.sql.match(/WHERE[\s\S]*?\buser_id\s*=\s*\$(\d+)/i);
+    const wherePk = upd!.sql.match(/WHERE[\s\S]*?\bsplit_transaction_id\s*=\s*\$(\d+)/i);
+    expect(whereUserId).not.toBeNull();
+    expect(wherePk).not.toBeNull();
+    expect(upd!.values[Number(whereUserId![1]) - 1]).toBe("u-1");
+    expect(upd!.values[Number(wherePk![1]) - 1]).toBe("s-1");
+  });
+
   test("surfaces a DB error as a failed response", async () => {
     // Matches its sibling routes: updateSplitTransactions swallows the write
     // failure into an errorResult(500), the route's `result.status >= 400`
