@@ -288,9 +288,9 @@ describe("remapHoldingSecurityIds (#593 reconciliation)", () => {
     const idMap = { "plaid-voo": "manual-voo" };
     const result = remapHoldingSecurityIds(holdings, idMap);
     expect(result[0].security_id).toBe("manual-voo");
-    // holding_id itself is not remapped in this step — the caller
-    // (`upsertAndDeleteHoldingsWithSnapshots`) rewrites it from the
-    // holding row's fields on its next pass, so the persisted row
-    // eventually keys on the canonical (account_id, security_id) pair.
+    // Only security_id is remapped here; holding_id is left as-is.
+    // upsertAndDeleteHoldingsWithSnapshots keys holdings purely on
+    // holding_id, so the row persists under its original id with just
+    // the securities FK repointed to the canonical id.
   });
 });
