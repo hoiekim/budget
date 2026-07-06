@@ -72,7 +72,7 @@ export const useTransactionEntry = () => {
       });
       return transaction_id;
     },
-    [setData, router],
+    [setData, router.go],
   );
 
   /** Investment-side mint. Callable from an account with no holding context
@@ -128,7 +128,7 @@ export const useTransactionEntry = () => {
       });
       return investment_transaction_id;
     },
-    [setData, router],
+    [setData, router.go],
   );
 
   return { addTransaction, addInvestmentTransaction };
