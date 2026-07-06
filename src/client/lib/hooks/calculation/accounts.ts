@@ -273,11 +273,11 @@ export const getBalanceData = (
       let balance = 0;
       if (useSnapshots && accountSnapshotBasedBalance !== undefined) {
         // For an investment account a Plaid `account_balance` snapshot can
-        // capture only the settled-cash sleeve while the holdings-inclusive
+        // capture only the settled-cash sleeve, while the holdings-inclusive
         // total lives in the same month's `holding` snapshot. Preferring
-        // tier 1 unconditionally lets that cash-only figure override the
-        // larger portfolio total and craters the month, so take whichever is
-        // larger — a cash-only reading must not understate the account.
+        // tier 1 unconditionally would let that cash-only figure override the
+        // larger portfolio total, so take whichever is larger — a cash-only
+        // reading must not understate the account.
         if (
           type === AccountType.Investment &&
           useHoldingSnapshots &&
