@@ -78,12 +78,30 @@ export const getNewInvestmentTransactionRoute =
       const iso_currency_code = req.query?.iso_currency_code
         ? String(req.query.iso_currency_code)
         : undefined;
+      // `quantity` is prefilled when the FE knows the exact missing units
+      // (divergence-flag "Add transaction for N missing units" action).
+      // Any finite value is accepted (positive or negative — the delta
+      // might be a "sell N units" reconciliation).
+      const quantityRaw = req.query?.quantity ? Number(req.query.quantity) : NaN;
+      const quantity = Number.isFinite(quantityRaw) ? quantityRaw : undefined;
+      // `date` is prefilled by the divergence-reconciliation flow with
+      // the earliest holdings-snapshot date that shows the surplus, so
+      // the mint explains the phantom shares from THAT date forward
+      // instead of only from today. Without this, a reconciliation buy
+      // dated today closes the current-window divergence but leaves
+      // every prior-month view still flagging the excess (the txn
+      // walker only counts txns up to the window end). Format:
+      // YYYY-MM-DD. Anything else is ignored and falls back to today.
+      const dateRaw = req.query?.date ? String(req.query.date) : "";
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : undefined;
 
       const created = await createManualInvestmentTransaction(user, {
         account_id,
         security_id,
         price,
         iso_currency_code,
+        quantity,
+        date,
       });
       if (!created) {
         return { status: "failed", message: "Failed to create investment transaction." };

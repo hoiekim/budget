@@ -106,3 +106,8 @@
   font-style: italic;
   margin-top: 0.3em;
 }
+
+.performanceDivergence {
+  color: #fbbf24;
+  cursor: help;
+}

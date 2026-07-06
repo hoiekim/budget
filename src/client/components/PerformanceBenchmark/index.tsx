@@ -17,6 +17,7 @@ import {
   computeBenchmarkTWR,
   computeBenchmarkEndValue,
   valueAt,
+  computeQtyDivergence,
   buildPriceAt,
   buildSnapshotPriceAt,
   buildBenchmarkPriceAt,
@@ -188,6 +189,37 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     const gapDollars =
       mwrGain !== null && benchmarkGain !== null ? mwrGain - benchmarkGain : null;
 
+    // Holdings-vs-transactions reconciliation: shares the user owns per the
+    // latest holdings snapshot but that the txn stream can't explain are
+    // excluded from valueAt/the MWR (the phantom-holding guard). Surface the
+    // count so a low/odd return on an incomplete-txn account is explained
+    // rather than silently reported off a partial position.
+    let divergentSecurityCount = 0;
+    let excludedValue = 0;
+    let txnExcessSecurityCount = 0;
+    let txnExcessValue = 0;
+    const divergentSecurities: { security_id: string; deltaQty: number; deltaValue: number }[] = [];
+    const txnExcessSecurities: { security_id: string; deltaQty: number; deltaValue: number }[] = [];
+    for (const id of ids) {
+      const d = computeQtyDivergence({
+        date: windowEnd,
+        windowStart,
+        accountId: id,
+        holdingSnapshots,
+        investmentTransactions,
+        priceAt,
+      });
+      divergentSecurityCount += d.divergentSecurityCount;
+      excludedValue += d.excludedValue;
+      txnExcessSecurityCount += d.txnExcessSecurityCount;
+      txnExcessValue += d.txnExcessValue;
+      divergentSecurities.push(...d.divergentSecurities);
+      txnExcessSecurities.push(...d.txnExcessSecurities);
+    }
+    // Aggregate re-sort in case multiple accounts contributed.
+    divergentSecurities.sort((a, b) => b.deltaValue - a.deltaValue);
+    txnExcessSecurities.sort((a, b) => b.deltaValue - a.deltaValue);
+
     return {
       windowStart,
       windowEnd,
@@ -204,6 +236,12 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
       gapDollars,
       suppressAnnualized,
       isClamped,
+      divergentSecurityCount,
+      excludedValue,
+      divergentSecurities,
+      txnExcessSecurityCount,
+      txnExcessValue,
+      txnExcessSecurities,
     };
   }, [
     accountIdsKey,
@@ -271,6 +309,8 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     gapDollars,
     suppressAnnualized,
     isClamped,
+    divergentSecurityCount,
+    txnExcessSecurityCount,
   } = computed;
 
   // Every value cell renders the same shape: a "total" line on top and, if
@@ -386,6 +426,25 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
           Showing {windowStart} → {windowEnd} · asset positions only (cash excluded)
           {isClamped && " · clamped to earliest data"}
           {suppressAnnualized && " · annualized hidden (window <6mo)"}
+          {/* Aggregate flag only — per-security detail lives on the
+              HoldingsComposition table (red dot on affected rows) and
+              the holding detail page's "Add transaction for N missing
+              units" button. No tooltip; mobile-first, hover doesn't
+              exist on touch. Hoie 2026-07-06. */}
+          {divergentSecurityCount > 0 && (
+            <span className="performanceDivergence">
+              {` · ${divergentSecurityCount} holding${
+                divergentSecurityCount > 1 ? "s" : ""
+              } excluded from return — see the red-flagged rows above`}
+            </span>
+          )}
+          {txnExcessSecurityCount > 0 && (
+            <span className="performanceDivergence">
+              {` · ${txnExcessSecurityCount} securit${
+                txnExcessSecurityCount > 1 ? "ies" : "y"
+              } in transactions but not holdings`}
+            </span>
+          )}
         </div>
       </div>
     </>

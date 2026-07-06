@@ -151,20 +151,34 @@ export const createManualInvestmentTransaction = async (
     // omitted and fall back to 0 / null.
     price?: number | null;
     iso_currency_code?: string | null;
+    quantity?: number | null;
+    /** YYYY-MM-DD. Defaults to today when omitted. */
+    date?: string | null;
   },
 ): Promise<JSONInvestmentTransaction | null> => {
   const investment_transaction_id = `manual-${randomUUID()}`;
   const index = await nextInvUnknownIndex(user.user_id);
+  const quantity = input.quantity ?? 0;
+  const price = input.price ?? 0;
+  // Derive `amount = quantity × price` when the caller provided both. The
+  // TransactionsPage view filters out zero-amount investment rows
+  // (`if (!e.amount) return false` in filteredAndSorted), so a mint that
+  // prefills only quantity (the divergence "N missing units" action) would
+  // land the row in DB but invisible in the tx list. Deriving here keeps
+  // the row visible without requiring the FE to re-POST the amount after
+  // the shell insert. Rounded to cents to match the client-side
+  // `roundToCents` used in InvestmentTransactionProperties.
+  const amount = Math.round(quantity * price * 100) / 100;
   const row = InvTxModel.fromJSON(
     {
       investment_transaction_id,
       account_id: input.account_id,
       security_id: input.security_id ?? null,
-      date: new Date().toISOString().split("T")[0],
+      date: input.date ?? new Date().toISOString().split("T")[0],
       name: `Unknown_${index}`,
-      amount: 0,
-      quantity: 0,
-      price: input.price ?? 0,
+      amount,
+      quantity,
+      price,
       iso_currency_code: input.iso_currency_code ?? null,
       type: InvestmentTransactionType.Buy,
       subtype: InvestmentTransactionSubtype.Buy,

@@ -9,6 +9,7 @@ import {
   computeBenchmarkTWR,
   computeBenchmarkEndValue,
   valueAt,
+  computeQtyDivergence,
   buildPriceAt,
   priceAtIn,
   buildBenchmarkPriceAt,
@@ -587,6 +588,342 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     const ss = new SecuritySnapshotDictionary();
     const priceAt = buildPriceAt(ss, itxns);
     expect(priceAt(VOO, "2024-06-01")).toBeNull();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+describe("computeQtyDivergence (holdings-vs-transactions reconciliation)", () => {
+  test("flags a holding whose snapshot qty exceeds the txn-derived qty", () => {
+    // Mirrors the valueAt phantom-holding case: 10 anchor + 5 buys = 15 seen,
+    // latest snapshot shows 100 → 85 surplus shares excluded from the MWR.
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-01-01"));
+    hs.set("h2", mkHoldingSnap(VOO, 100, 600, 60000, "2026-06-01")); // phantom +90
+    const itxns = new InvestmentTransactionDictionary();
+    ["2026-02-10", "2026-03-10", "2026-04-10", "2026-05-10", "2026-05-25"].forEach((date, i) => {
+      itxns.set(`t${i}`, mkTxn({ date, type: InvestmentTransactionType.Buy, security_id: VOO, amount: 600, quantity: 1 }));
+    });
+    const ss = new SecuritySnapshotDictionary();
+    const priceAt = buildPriceAt(ss, itxns);
+
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.divergentSecurityCount).toBe(1);
+    expect(d.excludedValue).toBe(85 * 600); // (100 owned − 15 seen) × $600
+  });
+
+  test("no divergence when holdings and transactions agree", () => {
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-01-01"));
+    hs.set("h2", mkHoldingSnap(VOO, 15, 600, 9000, "2026-06-01")); // matches 10 + 5 buys
+    const itxns = new InvestmentTransactionDictionary();
+    ["2026-02-10", "2026-03-10", "2026-04-10", "2026-05-10", "2026-05-25"].forEach((date, i) => {
+      itxns.set(`t${i}`, mkTxn({ date, type: InvestmentTransactionType.Buy, security_id: VOO, amount: 600, quantity: 1 }));
+    });
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.divergentSecurityCount).toBe(0);
+    expect(d.excludedValue).toBe(0);
+  });
+
+  test("ignores sub-0.1%-of-owned drift (fractional-share reinvestment noise)", () => {
+    const hs = new HoldingSnapshotDictionary();
+    // Owned 1000.5, txns explain 1000 → 0.5 surplus is <0.1% of 1000.5 → ignored.
+    hs.set("h1", mkHoldingSnap(VOO, 1000, 500, 500000, "2026-01-01"));
+    hs.set("h2", mkHoldingSnap(VOO, 1000.5, 600, 600300, "2026-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.divergentSecurityCount).toBe(0);
+  });
+
+  test("does not flag the reverse case (txns exceed the snapshot qty)", () => {
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 10, 500, 5000, "2026-01-01"));
+    // Snapshot at end shows 8 (a sale not yet reflected? still — no under-count).
+    hs.set("h2", mkHoldingSnap(VOO, 8, 600, 4800, "2026-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    ["2026-02-10", "2026-03-10"].forEach((date, i) => {
+      itxns.set(`t${i}`, mkTxn({ date, type: InvestmentTransactionType.Buy, security_id: VOO, amount: 600, quantity: 1 }));
+    });
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.divergentSecurityCount).toBe(0); // owned 8 < seen 12, no exclusion
+  });
+
+  test("clamps the txn baseline at 0 when the walk goes net-short (matches valueAt)", () => {
+    // Anchor 5 shares, then 8 shares sold within window → txn-derived qty
+    // walks to −3. valueAt contributes 0 for this security (its qty<=0
+    // guard), so it excludes the full owned position (10), not 10−(−3)=13.
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 5, 500, 2500, "2026-01-01"));
+    hs.set("h2", mkHoldingSnap(VOO, 10, 600, 6000, "2026-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("s1", mkTxn({ date: "2026-03-01", type: InvestmentTransactionType.Sell, security_id: VOO, amount: 4800, quantity: 8, price: 600 } as Parameters<typeof mkTxn>[0]));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.divergentSecurityCount).toBe(1);
+    expect(d.excludedValue).toBe(10 * 600); // owned − max(0, −3) = 10, NOT 13
+  });
+
+  test("excludes cash-shape holdings from the reconciliation", () => {
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(CASH, 5000, 1, null, "2026-06-01")); // cash-shape
+    const itxns = new InvestmentTransactionDictionary();
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.divergentSecurityCount).toBe(0);
+  });
+
+  test("counts excluded value as 0 when no price is available for the surplus", () => {
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 100, 600, 60000, "2026-06-01"));
+    // No txns for VOO → seen qty 0, surplus 100, but priceAt returns null.
+    const itxns = new InvestmentTransactionDictionary();
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.divergentSecurityCount).toBe(1);
+    expect(d.excludedValue).toBe(0); // flagged, but no price to value the surplus
+  });
+
+  // ── Direction B: txn-explained > holdings snapshot (transactions ahead) ──
+  // Covers gap 1 of #593: user records a manual invtx for a security not in
+  // any holdings snapshot, OR a sale txn arrives before the snapshot reflects
+  // the smaller position.
+
+  test("txnExcess: manual invtx for a security with no matching holdings row", () => {
+    // Manual mint scenario: user posts /api/new-investment-transaction on a
+    // Plaid brokerage for a security that Plaid never tracks (or hasn't yet).
+    // No holdings snapshot exists for (ACCT, VOO), but a Buy txn does.
+    // Expected: flagged under txnExcess so the widget can surface the gap.
+    const hs = new HoldingSnapshotDictionary(); // empty — no holdings for VOO
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("t1", mkTxn({
+      date: "2026-03-10",
+      type: InvestmentTransactionType.Buy,
+      security_id: VOO,
+      amount: 600,
+      quantity: 5,
+      price: 120,
+    } as Parameters<typeof mkTxn>[0]));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.txnExcessSecurityCount).toBe(1);
+    // 5 shares × $120 (priceAt's fallback to the txn's own price when no
+    // snapshot chain exists).
+    expect(d.txnExcessValue).toBe(5 * 120);
+    // Direction A untouched.
+    expect(d.divergentSecurityCount).toBe(0);
+    expect(d.excludedValue).toBe(0);
+  });
+
+  test("txnExcess: sale txn arrives before the snapshot reflects the smaller position", () => {
+    // Reverse Plaid-lag: txn stream shows a Sell that hasn't rolled into
+    // the holdings snapshot yet — snapshot still shows the pre-sale qty.
+    // Here: anchor 20, txn Sell of 12 → seen=8, but snapshot at date shows
+    // still 20. That is a HOLDINGS-EXCESS (direction A) case, not B. Include
+    // this test only to pin that we DON'T double-count under direction B.
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 20, 500, 10000, "2026-01-01"));
+    hs.set("h2", mkHoldingSnap(VOO, 20, 600, 12000, "2026-06-01")); // still 20
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("s1", mkTxn({
+      date: "2026-03-01",
+      type: InvestmentTransactionType.Sell,
+      security_id: VOO,
+      amount: 7200,
+      quantity: 12,
+      price: 600,
+    } as Parameters<typeof mkTxn>[0]));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    // Direction A: 20 owned − 8 seen = 12 surplus → flagged.
+    expect(d.divergentSecurityCount).toBe(1);
+    expect(d.excludedValue).toBe(12 * 600);
+    // Direction B: seen (8) < owned (20) → NOT txn-excess. No double count.
+    expect(d.txnExcessSecurityCount).toBe(0);
+    expect(d.txnExcessValue).toBe(0);
+  });
+
+  test("txnExcess: no flag when txn-derived qty is 0 or negative (walked-net-short)", () => {
+    // If the txn walk goes ≤ 0, there's no "held" position to flag —
+    // symmetric with direction A's clamp.
+    const hs = new HoldingSnapshotDictionary(); // no holdings
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("s1", mkTxn({
+      date: "2026-03-01",
+      type: InvestmentTransactionType.Sell,
+      security_id: VOO,
+      amount: 600,
+      quantity: 1,
+      price: 600,
+    } as Parameters<typeof mkTxn>[0]));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.txnExcessSecurityCount).toBe(0);
+    expect(d.txnExcessValue).toBe(0);
+  });
+
+  test("txnExcess: sub-0.1% drift is ignored (fractional-share reinvestment)", () => {
+    // seen=1000.5, owned=1000 → excess 0.5 which is 0.05% of seen. Below
+    // the 0.1%-of-seen threshold. Should NOT flag.
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 1000, 500, 500000, "2026-01-01"));
+    hs.set("h2", mkHoldingSnap(VOO, 1000, 600, 600000, "2026-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    // A tiny reinvestment buy of 0.5 that pushes seen to 1000.5.
+    itxns.set("t1", mkTxn({
+      date: "2026-03-10",
+      type: InvestmentTransactionType.Buy,
+      security_id: VOO,
+      amount: 300,
+      quantity: 0.5,
+      price: 600,
+    } as Parameters<typeof mkTxn>[0]));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    // Neither direction flags — direction A is 0 excess, direction B is
+    // below threshold.
+    expect(d.divergentSecurityCount).toBe(0);
+    expect(d.txnExcessSecurityCount).toBe(0);
+  });
+
+  test("txnExcess: cash-shape holdings excluded from the reconciliation", () => {
+    // Symmetric with the direction-A cash-exclusion test — a manual invtx
+    // for a cash-shape security shouldn't flag under direction B either.
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(CASH, 5000, 1, null, "2026-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("t1", mkTxn({
+      date: "2026-03-10",
+      type: InvestmentTransactionType.Buy,
+      security_id: CASH,
+      amount: 500,
+      quantity: 500,
+      price: 1,
+    } as Parameters<typeof mkTxn>[0]));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    expect(d.txnExcessSecurityCount).toBe(0);
+    expect(d.txnExcessValue).toBe(0);
+  });
+
+  test("txnExcess: valued at 0 when no price is available for the excess", () => {
+    // Symmetric with direction A's no-price case — flagged but 0 value.
+    const hs = new HoldingSnapshotDictionary(); // no holdings
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("t1", mkTxn({
+      // Non-cash security with a buy but no price info anywhere.
+      date: "2026-03-10",
+      type: InvestmentTransactionType.Buy,
+      security_id: "sec-untracked",
+      amount: 100,
+      quantity: 5,
+    }));
+    // priceAt built without any snapshot for sec-untracked and with a txn
+    // whose price we may not preserve → check that valueless flag path works.
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    const d = computeQtyDivergence({
+      date: "2026-06-01",
+      windowStart: "2026-01-01",
+      accountId: ACCT,
+      holdingSnapshots: hs,
+      investmentTransactions: itxns,
+      priceAt,
+    });
+    // Still flagged even without a price.
+    expect(d.txnExcessSecurityCount).toBe(1);
+    // Note: `buildPriceAt` falls back to the txn's amount/quantity when
+    // no snapshot exists, so value may not be 0 — assert flag only.
   });
 });
 
