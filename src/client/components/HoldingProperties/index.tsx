@@ -1,17 +1,15 @@
 import { ChangeEventHandler, Fragment, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import { ItemProvider, numberToCommaString, ViewDate, currencyCodeToSymbol } from "common";
 import {
   call,
   PATH,
   useAppContext,
+  useTransactionEntry,
   Data,
   Snapshot,
   Holding,
   HoldingSnapshot,
   HoldingSnapshotDictionary,
-  InvestmentTransaction,
-  InvestmentTransactionDictionary,
   Properties,
   PropertyLabel,
   Property,
@@ -22,7 +20,6 @@ import {
 import { CASH_TICKER } from "../HoldingsComposition";
 import {
   HoldingSnapshotPostResponse,
-  NewInvestmentTransactionGetResponse,
   ValidateTickerResponse,
 } from "server";
 
@@ -280,8 +277,7 @@ export const HoldingProperties = () => {
   };
 
   /**
-   * `+ Add Investment Transaction` on the holding — Hoie's ask (#585
-   * design): prefill `security_id`, `price` (from the holding's
+   * Prefill `security_id`, `price` (from the holding's
    * `institution_price`), and `iso_currency_code` from the holding
    * context so the user starts with values they can confirm/correct
    * rather than 0 / null defaults. When the bucket spans multiple
@@ -291,44 +287,14 @@ export const HoldingProperties = () => {
   const primarySecurityId = primaryHolding?.security_id ?? null;
   const primaryPrice = primaryHolding?.institution_price ?? null;
   const primaryCurrency = primaryHolding?.iso_currency_code ?? null;
-  const onClickAddInvestmentTransaction = async () => {
+  const { addInvestmentTransaction } = useTransactionEntry();
+  const onClickAddInvestmentTransaction = () => {
     if (!accountId) return;
-    const params: Record<string, string> = { account_id: accountId };
-    if (primarySecurityId) params.security_id = primarySecurityId;
-    if (primaryPrice !== null && primaryPrice >= 0) params.price = String(primaryPrice);
-    if (primaryCurrency) params.iso_currency_code = primaryCurrency;
-    const response = await call.get<NewInvestmentTransactionGetResponse>(
-      "/api/new-investment-transaction?" + new URLSearchParams(params).toString(),
-    );
-    if (!response.body) {
-      console.error("Failed to mint new investment transaction:", response.message);
-      return;
-    }
-    const { investment_transaction_id, name } = response.body;
-    const shell = new InvestmentTransaction({
-      investment_transaction_id,
+    return addInvestmentTransaction({
       account_id: accountId,
       security_id: primarySecurityId,
-      date: new Date().toISOString().split("T")[0],
-      name,
-      amount: 0,
-      quantity: 0,
-      price: primaryPrice ?? 0,
+      price: primaryPrice,
       iso_currency_code: primaryCurrency,
-      type: InvestmentTransactionType.Buy,
-      subtype: InvestmentTransactionSubtype.Buy,
-      source: "manual",
-    });
-    setData((oldData) => {
-      const next = new Data(oldData);
-      const dict = new InvestmentTransactionDictionary(oldData.investmentTransactions);
-      dict.set(investment_transaction_id, shell);
-      next.investmentTransactions = dict;
-      indexedDb.save(shell).catch(console.error);
-      return next;
-    });
-    router.go(PATH.TRANSACTION_DETAIL, {
-      params: new URLSearchParams({ investment_transaction_id }),
     });
   };
 
