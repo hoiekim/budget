@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Item, PATH, useAppContext } from "client";
-import { ConnectionProperties, Page, PlaidLinkProvider } from "client/components";
+import { ConnectionProperties, PlaidLinkProvider } from "client/components";
 
 export const ConnectionDetailPage = () => {
   const { data, router } = useAppContext();
@@ -23,9 +23,9 @@ export const ConnectionDetailPage = () => {
 
   return (
     <PlaidLinkProvider>
-      <Page className="ConnectionDetailPage">
+      <div className="ConnectionDetailPage">
         <ConnectionProperties item={item} />
-      </Page>
+      </div>
     </PlaidLinkProvider>
   );
 };

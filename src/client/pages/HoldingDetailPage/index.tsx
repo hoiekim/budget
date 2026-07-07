@@ -1,9 +1,9 @@
-import { HoldingProperties, Page } from "client/components";
+import { HoldingProperties } from "client/components";
 
 export const HoldingDetailPage = () => {
   return (
-    <Page className="HoldingDetailPage">
+    <div className="HoldingDetailPage">
       <HoldingProperties />
-    </Page>
+    </div>
   );
 };
