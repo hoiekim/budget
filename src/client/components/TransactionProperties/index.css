@@ -21,11 +21,6 @@ div.SplitTransactionRow > div > select {
   width: 100%;
 }
 
-div.SplitTransactionRow > .amount {
-  display: flex;
-  align-items: center;
-}
-
 div.SplitTransactionRow > .amount > input {
   background-color: #191919;
   text-align: left;

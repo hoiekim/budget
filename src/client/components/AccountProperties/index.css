@@ -1,8 +1,0 @@
-div.AccountProperties .property > .row > .amount {
-  display: flex;
-  align-items: center;
-}
-
-div.AccountProperties .property > .row > .amount > input:disabled {
-  color: inherit;
-}

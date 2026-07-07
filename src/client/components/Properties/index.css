@@ -77,8 +77,17 @@ div.Properties .row input {
   text-align: right;
 }
 
+div.Properties .amount:has(> input) {
+  display: flex;
+  align-items: center;
+}
+
 div.Properties .amount > input {
   width: calc(100% - 5px);
+}
+
+div.Properties .amount > input:disabled {
+  color: inherit;
 }
 
 div.Properties .row.keyValue span.propertyName {

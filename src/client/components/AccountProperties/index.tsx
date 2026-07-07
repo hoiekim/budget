@@ -30,7 +30,6 @@ import {
   ToggleInput,
 } from "client/components";
 import { useAccountEventHandlers } from "./lib";
-import "./index.css";
 
 interface Props {
   account: Account;
