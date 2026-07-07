@@ -103,15 +103,15 @@ export const TransactionsPageTitle = ({
   const selectBoxRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const onClickSelect = () => setIsSelecting((v) => !v);
+  const onClickSelect = () => setIsSelecting(!isSelecting);
   const closeSelect = () => setIsSelecting(false);
 
   useEffect(() => {
     const handleTouchOutside: EventListener = (event) => {
       const node = event.target as Node;
-      if (!selectBoxRef.current?.contains(node) && !buttonRef.current?.contains(node)) {
-        closeSelect();
-      }
+      const isOutsideSelectBox = !selectBoxRef.current || !selectBoxRef.current.contains(node);
+      const isOutsideButton = !buttonRef.current || !buttonRef.current.contains(node);
+      if (isOutsideSelectBox && isOutsideButton) closeSelect();
     };
     document.addEventListener("touchstart", handleTouchOutside);
     return () => document.removeEventListener("touchstart", handleTouchOutside);
