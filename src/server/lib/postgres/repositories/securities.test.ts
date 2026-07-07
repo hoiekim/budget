@@ -58,6 +58,20 @@ describe("remapSecurityReferences (#598 — Plaid becomes source of truth)", () 
     expect(body.some((s) => /DELETE FROM securities WHERE security_id/.test(s))).toBe(true);
   });
 
+  test("every UPDATE also bumps `updated = CURRENT_TIMESTAMP` so the FE's delta-cursor sync picks up the remapped rows", async () => {
+    // Delta-sync fetches `WHERE updated >= cursor`. If the UPDATE only
+    // touches security_id and leaves `updated` at its historical value,
+    // the FE's cached investment_transactions + holding-snapshot rows
+    // keep pointing at the deleted oldSecurityId and downstream
+    // `securities.get(...)` lookups miss.
+    await remapSecurityReferences("manual-voo", "plaid-voo");
+    const body = capturedCalls().slice(1, -1);
+    const updates = body.filter((c) => /^UPDATE /.test(c.sql.trim()));
+    for (const u of updates) {
+      expect(u.sql).toMatch(/updated = CURRENT_TIMESTAMP/);
+    }
+  });
+
   test("every UPDATE + DELETE binds [newSecurityId, oldSecurityId] in that order", async () => {
     await remapSecurityReferences("manual-voo", "plaid-voo");
     const body = capturedCalls().slice(1, -1); // strip BEGIN/COMMIT
