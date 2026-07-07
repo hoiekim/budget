@@ -43,7 +43,7 @@ const TransferRow = ({ transactions }: Props) => {
   // Detail-page navigation lands on the outgoing side — that's the row
   // the user would have clicked on the un-bundled view. (The detail
   // page itself surfaces the pair as a unit.)
-  const onClickKebab: MouseEventHandler<HTMLButtonElement> = () => {
+  const onClickInfo: MouseEventHandler<HTMLDivElement> = () => {
     const params = new URLSearchParams(router.params);
     params.set("transaction_id", outgoing.transaction_id);
     go(PATH.TRANSACTION_DETAIL, { params });
@@ -53,7 +53,7 @@ const TransferRow = ({ transactions }: Props) => {
 
   return (
     <div className="TransactionRow TransferRow">
-      <div className="transactionInfo">
+      <div className="transactionInfo" onClick={onClickInfo}>
         <div className="authorized_date bigText">
           {new LocalDate(date).toLocaleString("en-US", {
             month: "numeric",
@@ -86,11 +86,7 @@ const TransferRow = ({ transactions }: Props) => {
         <div className="labelControls">
           <span className="transferChip transferChipConfirmed">Transfer</span>
         </div>
-        <div>
-          <button className="kebabButton" onClick={onClickKebab}>
-            <KebabIcon size={15} />
-          </button>
-        </div>
+        <div />
       </div>
     </div>
   );

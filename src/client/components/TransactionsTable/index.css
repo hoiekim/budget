@@ -57,11 +57,6 @@ div.TransactionRow > .budgetCategoryActions > :last-child {
   width: 40px;
 }
 
-div.TransactionRow > .budgetCategoryActions > :last-child button.confirmButton {
-  width: 40px;
-  border: 1px solid var(--darkGreen);
-}
-
 div.TransactionRow > .budgetCategoryActions > div > button.kebabButton {
   display: flex;
   justify-content: center;
@@ -77,35 +72,30 @@ div.TransactionRow > .budgetCategoryActions > .transferControls {
 }
 
 div.TransactionRow .transferControls > .transferChip {
-  /* flex: 1; */
-  width: 50%;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 24px;
   padding: 2px 10px;
   border-radius: 12px;
   font-size: 13px;
   white-space: nowrap;
-  border: 1px solid #444;
+  background-color: #292929;
 }
 
-div.TransactionRow .transferControls > button {
-  width: 25%;
+div.TransactionRow button.confirmButton {
+  width: 40px;
   height: 24px;
   font-size: 14px;
 }
 
-div.TransactionRow .transferControls > button.confirmButton:not(:disabled) {
+div.TransactionRow button.confirmButton:not(:disabled) {
   border: 1px solid var(--darkGreen);
 }
 
-div.TransactionRow .transferControls > button.confirmButton:not(:disabled):hover {
+div.TransactionRow button.confirmButton:not(:disabled):hover {
   background-color: var(--darkGreen);
-}
-
-div.TransactionRow .transferControls > button.rejectButton:not(:disabled) {
-  border: 1px solid var(--darkRed);
-}
-
-div.TransactionRow .transferControls > button.rejectButton:not(:disabled):hover {
-  background-color: var(--darkRed);
 }
 
 div.TransactionRow .smallText {
@@ -117,12 +107,15 @@ div.TransactionRow .smallText {
    budget/category selects, a static "Transfer" chip in their place,
    and the +/- amount sign is replaced with the arrow-swap icon. */
 div.TransactionRow .transferChip.transferChipConfirmed {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   width: 100%;
+  height: 24px;
   padding: 2px 10px;
   border-radius: 12px;
   font-size: 13px;
   white-space: nowrap;
-  text-align: center;
   border: 1px solid #444;
   color: #b8b8b8;
 }

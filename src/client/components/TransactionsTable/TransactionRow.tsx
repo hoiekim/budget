@@ -57,7 +57,7 @@ const TransactionRow = ({ transaction }: Props) => {
   const categoryWrapperClass = !selectedCategoryIdLabel
     ? "notification"
     : isSuggested
-      ? "suggested clickable"
+      ? "suggested"
       : "";
 
   useEffect(() => {
@@ -238,7 +238,7 @@ const TransactionRow = ({ transaction }: Props) => {
     if (isSuggested) void onAcceptSuggestion();
   };
 
-  const onClickKebab = () => {
+  const onClickInfo = () => {
     const params = new URLSearchParams(router.params);
     // Clear the sibling id so navigating tx → inv-tx → tx doesn't leave a
     // stale investment_transaction_id in the URL that would win the branch
@@ -253,7 +253,7 @@ const TransactionRow = ({ transaction }: Props) => {
 
   return (
     <div className="TransactionRow">
-      <div className="transactionInfo" onClick={onClickKebab}>
+      <div className="transactionInfo" onClick={onClickInfo}>
         <div className="authorized_date bigText">
           {new LocalDate(authorized_date || date).toLocaleString("en-US", {
             month: "numeric",
@@ -278,13 +278,10 @@ const TransactionRow = ({ transaction }: Props) => {
       </div>
       <div className="budgetCategoryActions">
         {suggestedPairId ? (
-          <>
-            <TransferControls
-              onConfirm={() => transferActions.confirm(suggestedPairId)}
-              onReject={() => transferActions.reject(suggestedPairId)}
-            />
-            <div />
-          </>
+          <TransferControls
+            onConfirm={() => transferActions.confirm(suggestedPairId)}
+            onReject={() => transferActions.reject(suggestedPairId)}
+          />
         ) : (
           <>
             <div className="labelControls">

@@ -27,12 +27,11 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
 
   return (
     <div className="transferControls">
-      <span className="transferChip">Transfer?</span>
+      <span className="transferChip suggested clickable" onClick={run(onReject)}>
+        Transfer?
+      </span>
       <button className="confirmButton" disabled={busy} onClick={run(onConfirm)}>
-        Confirm
-      </button>
-      <button className="rejectButton" disabled={busy} onClick={run(onReject)}>
-        Reject
+        ✓
       </button>
     </div>
   );

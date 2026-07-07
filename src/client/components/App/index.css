@@ -368,10 +368,6 @@ div.Router:not(.transitioning.backward) > div.currentPage {
   cursor: pointer;
 }
 
-.suggested.clickable:hover::after {
-  background-color: #bbb;
-}
-
 .rotate90deg {
   display: block;
   transform: rotate(90deg);
