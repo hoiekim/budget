@@ -449,11 +449,13 @@ export const TransactionProperties = ({ transaction }: Props) => {
           <Row>
             <div className="SplitTransactionRow">
               <div className="amount">
-                <span>
-                  {isIncome && <>+&nbsp;</>}
-                  {currencySymbol}&nbsp;
-                  {numberToCommaString(Math.abs(remainingAmount))}
-                </span>
+                {isIncome && <>+&nbsp;</>}
+                {currencySymbol}&nbsp;
+                <input
+                  type="text"
+                  value={numberToCommaString(Math.abs(remainingAmount))}
+                  disabled
+                />
               </div>
               <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
                 <option value="">Select Budget</option>

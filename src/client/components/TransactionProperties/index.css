@@ -1,11 +1,3 @@
-div.TransactionProperties .row > .splitItem > input {
-  height: 100%;
-  width: 30%;
-  flex-grow: 1;
-  text-align: center;
-  background-color: #191919;
-}
-
 div.SplitTransactionRow {
   width: 100%;
   display: flex;
