@@ -4,7 +4,10 @@ import {
   SecurityModel,
   securitiesTable,
   snapshotsTable,
+  holdingsTable,
+  investmentTransactionsTable,
   SECURITY_ID,
+  HOLDING_SECURITY_ID,
   SECURITIES,
   HOLDINGS,
   USER_ID,
@@ -102,33 +105,40 @@ export const remapSecurityReferences = async (
   newSecurityId: string,
 ): Promise<void> => {
   if (oldSecurityId === newSecurityId) return;
-  // Every UPDATE bumps `updated = CURRENT_TIMESTAMP` so the FE's
-  // delta-cursor sync (`.../{transactions,snapshots}?start-date=<cursor>`
-  // → `WHERE updated >= cursor`) actually picks up the remapped rows.
-  // Without it, investment_transactions + holding-snapshot rows would
-  // keep pointing at the deleted `oldSecurityId` in the FE cache and
-  // in IndexedDB, and downstream `securities.get(security_id)` lookups
-  // would miss until the user forced a full re-sync. `securities`,
-  // `accounts`+holdings, `budgets` etc. are full-fetched every sync so
-  // the securities row's disappearance propagates without extra help.
+  // `bulkUpdateByColumn` sets `updated = CURRENT_TIMESTAMP` automatically,
+  // which is what the FE's delta-cursor sync
+  // (`.../{transactions,snapshots}?start-date=<cursor>` → `WHERE
+  // updated >= cursor`) needs to notice remapped rows.
+  // `securities` + `accounts` (with holdings) are full-fetched every
+  // sync, so the deleted securities row and remapped holdings.security_id
+  // propagate without extra help — only the two delta paths (invtx +
+  // snapshots) actually need the `updated` bump.
   await withTransaction(async (client) => {
-    await client.query(
-      "UPDATE investment_transactions SET security_id = $1, updated = CURRENT_TIMESTAMP WHERE security_id = $2",
-      [newSecurityId, oldSecurityId],
+    await investmentTransactionsTable.bulkUpdateByColumn(
+      SECURITY_ID,
+      oldSecurityId,
+      { [SECURITY_ID]: newSecurityId },
+      client,
     );
-    await client.query(
-      "UPDATE holdings SET security_id = $1, updated = CURRENT_TIMESTAMP WHERE security_id = $2",
-      [newSecurityId, oldSecurityId],
+    await holdingsTable.bulkUpdateByColumn(
+      SECURITY_ID,
+      oldSecurityId,
+      { [SECURITY_ID]: newSecurityId },
+      client,
     );
-    await client.query(
-      "UPDATE snapshots SET security_id = $1, updated = CURRENT_TIMESTAMP WHERE security_id = $2",
-      [newSecurityId, oldSecurityId],
+    await snapshotsTable.bulkUpdateByColumn(
+      SECURITY_ID,
+      oldSecurityId,
+      { [SECURITY_ID]: newSecurityId },
+      client,
     );
-    await client.query(
-      "UPDATE snapshots SET holding_security_id = $1, updated = CURRENT_TIMESTAMP WHERE holding_security_id = $2",
-      [newSecurityId, oldSecurityId],
+    await snapshotsTable.bulkUpdateByColumn(
+      HOLDING_SECURITY_ID,
+      oldSecurityId,
+      { [HOLDING_SECURITY_ID]: newSecurityId },
+      client,
     );
-    await client.query("DELETE FROM securities WHERE security_id = $1", [oldSecurityId]);
+    await securitiesTable.bulkHardDelete([oldSecurityId], client);
   });
 };
 

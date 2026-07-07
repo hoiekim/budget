@@ -272,6 +272,35 @@ export abstract class Table<
     return result.rowCount ?? 0;
   }
 
+  /**
+   * Set the columns in `data` on every row matching `column = value`, bumping
+   * `updated = CURRENT_TIMESTAMP` so the FE's delta-cursor sync picks the
+   * rows up on its next `WHERE updated >= cursor` fetch. Mirrors the
+   * `bulkSoftDeleteByColumn` shape and returns the number of rows touched.
+   *
+   * Reserve for cross-row rewrites where the affected set is defined by a
+   * non-primary-key column — the security-id remap on ticker collision
+   * (`remapSecurityReferences`) is the motivating case. Prefer the per-row
+   * `update(pk, data)` when you have primary keys.
+   */
+  async bulkUpdateByColumn(
+    column: string,
+    columnValue: ParamValue,
+    data: QueryData,
+    client?: QueryExecutor,
+  ): Promise<number> {
+    const dataEntries = Object.entries(data).filter(([, v]) => v !== undefined);
+    if (!dataEntries.length) return 0;
+    const setClauses = dataEntries.map(([col], i) => `${col} = $${i + 1}`);
+    setClauses.push("updated = CURRENT_TIMESTAMP");
+    const values: ParamValue[] = dataEntries.map(([, v]) => v as ParamValue);
+    values.push(columnValue);
+    const sql = `UPDATE ${this.name} SET ${setClauses.join(", ")} WHERE ${column} = $${values.length}`;
+    const executor = client ?? pool;
+    const result = await executor.query(sql, values);
+    return result.rowCount ?? 0;
+  }
+
   async bulkSoftDeleteByColumn(
     column: string,
     columnValue: ParamValue | ParamValue[],
@@ -306,12 +335,13 @@ export abstract class Table<
     return result.rowCount !== null && result.rowCount > 0;
   }
 
-  async bulkHardDelete(ids: ParamValue[]): Promise<number> {
+  async bulkHardDelete(ids: ParamValue[], client?: QueryExecutor): Promise<number> {
     this._assertSimplePrimaryKey("bulkHardDelete");
     if (ids.length === 0) return 0;
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     const sql = `DELETE FROM ${this.name} WHERE ${this.primaryKey} IN (${placeholders}) RETURNING ${this.primaryKey}`;
-    const result = await pool.query(sql, ids);
+    const executor = client ?? pool;
+    const result = await executor.query(sql, ids);
     return result.rowCount ?? 0;
   }
 
