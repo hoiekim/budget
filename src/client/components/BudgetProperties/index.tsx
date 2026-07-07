@@ -2,7 +2,7 @@ import { ChangeEventHandler, Dispatch, SetStateAction } from "react";
 import { LocalDate, ViewDate, getDateString } from "common";
 import { Capacity, useAppContext } from "client";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
-import { ToggleInput } from "client/components";
+import { Properties, Property, Row, ToggleInput } from "client/components";
 import RadioInputs from "./RadioInputs";
 import CapacitiesInput from "./CapacitiesInput";
 import "./index.css";
@@ -54,8 +54,8 @@ export const BudgetProperties = ({
   const isCategory = budgetLike.type === "category";
 
   return (
-    <div className="BudgetProperties Properties">
-      <div className="property">
+    <Properties className="BudgetProperties">
+      <Property>
         <RadioInputs
           disabled={isSyncedInput}
           checkedOptionId={isIncomeInput ? "income" : "expense"}
@@ -66,29 +66,29 @@ export const BudgetProperties = ({
           ]}
           onChange={(e) => setIsIncomeInput(e.target.id === "income")}
         />
-      </div>
-      <div className="property">
-        <div className="row">
+      </Property>
+      <Property>
+        <Row>
           <span>Limited budget</span>
           <ToggleInput
             disabled={isSyncedInput}
             checked={!isInfiniteInput}
             onChange={(e) => setIsInfiniteInput(!e.target.checked)}
           />
-        </div>
-      </div>
+        </Row>
+      </Property>
       {!isInfiniteInput && (
-        <div className="property">
-          <div className="row">
+        <Property>
+          <Row>
             <span>Rolls over to the next period</span>
             <ToggleInput
               disabled={isSyncedInput}
               checked={isRollOverInput}
               onChange={(e) => setIsRollOverInput(e.target.checked)}
             />
-          </div>
+          </Row>
           {isRollOverInput && (
-            <div className="row">
+            <Row>
               <span>Rolls over from&nbsp;</span>
               <div>
                 <input
@@ -99,12 +99,12 @@ export const BudgetProperties = ({
                   aria-label="Roll over start date"
                 />
               </div>
-            </div>
+            </Row>
           )}
-        </div>
+        </Property>
       )}
-      <div className="property">
-        <div className="row">
+      <Property>
+        <Row>
           <span className={isCategory ? "disabled lineThrough" : undefined}>
             Sync with children
           </span>
@@ -113,7 +113,7 @@ export const BudgetProperties = ({
             checked={isCategory ? false : isSyncedInput}
             onChange={onChangeSync}
           />
-        </div>
+        </Row>
         {!isInfiniteInput && (
           <CapacitiesInput
             budgetLike={budgetLike}
@@ -122,7 +122,7 @@ export const BudgetProperties = ({
             isSyncedInput={isSyncedInput}
           />
         )}
-      </div>
-    </div>
+      </Property>
+    </Properties>
   );
 };

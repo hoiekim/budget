@@ -23,6 +23,10 @@ import {
   PerformanceBenchmark,
   InstitutionSpan,
   MoneyLabel,
+  Properties,
+  Property,
+  PropertyLabel,
+  Row,
   ToggleInput,
 } from "client/components";
 import { useAccountEventHandlers } from "./lib";
@@ -124,14 +128,14 @@ export const AccountProperties = ({ account }: Props) => {
     !isManualAccount && viewDate.getEndDate() >= latestViewDate.getEndDate();
 
   return (
-    <div className="AccountProperties Properties">
-      <div className="propertyLabel">Account&nbsp;Details</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties className="AccountProperties">
+      <PropertyLabel>Account&nbsp;Details</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Name</span>
           <input type="text" value={nameInput} onChange={onChangeNameInput} placeholder={name} />
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Type</span>
           {isManualAccount ? (
             <select value={typeInput} onChange={onChangeTypeInput}>
@@ -144,34 +148,34 @@ export const AccountProperties = ({ account }: Props) => {
           ) : (
             <span>{toTitleCase(subtype || type)}</span>
           )}
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Institution</span>
           {isManualAccount ? (
             <span>Manual</span>
           ) : (
             <InstitutionSpan institution_id={account.institution_id} />
           )}
-        </div>
-      </div>
-      {(!isManualAccount || !!graphData.lines) && <div className="propertyLabel">Balance</div>}
+        </Row>
+      </Property>
+      {(!isManualAccount || !!graphData.lines) && <PropertyLabel>Balance</PropertyLabel>}
       {!isManualAccount && (
-        <div className="property">
-          <div className="row keyValue">
+        <Property>
+          <Row className="keyValue">
             <span className="propertyName">{currentLabel}</span>
             <span>
               {currencySymbol}&nbsp;
               {currentAmountString}
             </span>
-          </div>
-          <div className="row keyValue">
+          </Row>
+          <Row className="keyValue">
             <span className="propertyName">{pendingLabel}</span>
             <span>
               {currencySymbol}&nbsp;
               {pendingAmountString}
             </span>
-          </div>
-        </div>
+          </Row>
+        </Property>
       )}
       {!!graphData.lines && (
         <>
@@ -183,8 +187,8 @@ export const AccountProperties = ({ account }: Props) => {
             memoryKey={account_id}
           />
           <br />
-          <div className="property">
-            <div className="row keyValue">
+          <Property>
+            <Row className="keyValue">
               <span className="propertyName">{viewDate.toString()}&nbsp;balance</span>
               <div className="amount">
                 <DynamicCapacityInput
@@ -197,38 +201,38 @@ export const AccountProperties = ({ account }: Props) => {
                   onBlur={onChangeBalanceSnapshotInput}
                 />
               </div>
-            </div>
-          </div>
+            </Row>
+          </Property>
         </>
       )}
       {type === AccountType.Investment && <HoldingsComposition accounts={[account]} />}
       {type === AccountType.Investment && <PerformanceBenchmark accounts={[account]} />}
       {!isManualAccount && (
         <>
-          <div className="propertyLabel">Balance&nbsp;Graph&nbsp;Options</div>
-          <div className="property">
-            <div className="row keyValue">
+          <PropertyLabel>Balance&nbsp;Graph&nbsp;Options</PropertyLabel>
+          <Property>
+            <Row className="keyValue">
               <span className="propertyName">Use Transactions</span>
               <ToggleInput
                 checked={useTransactionsForGraph}
                 onChange={onClickUseTransactionsForGraph}
               />
-            </div>
-            <div className="row keyValue">
+            </Row>
+            <Row className="keyValue">
               <span className="propertyName">Use Snapshots</span>
               <ToggleInput checked={useSnapshotsForGraph} onChange={onClickUseSnapshotsForGraph} />
-            </div>
-          </div>
-          <div className="propertyLabel">Account&nbsp;Preference</div>
-          <div className="property">
-            <div className="row keyValue">
+            </Row>
+          </Property>
+          <PropertyLabel>Account&nbsp;Preference</PropertyLabel>
+          <Property>
+            <Row className="keyValue">
               <span className="propertyName">Default&nbsp;Budget</span>
               <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
                 <option value="">Select Budget</option>
                 {budgetOptions}
               </select>
-            </div>
-            <div className="row keyValue">
+            </Row>
+            <Row className="keyValue">
               <span className="propertyName">Archive</span>
               {/* Hide already removes the account from view entirely; archiving
                *  on top adds nothing and would surface in "Show archived (N)"
@@ -236,12 +240,12 @@ export const AccountProperties = ({ account }: Props) => {
                *  steer the user toward Unhide first if they want a different
                *  classification. Hoie 2026-06-25. */}
               <ToggleInput checked={isArchived} onChange={onClickArchive} disabled={isHidden} />
-            </div>
-            <div className="row keyValue">
+            </Row>
+            <Row className="keyValue">
               <span className="propertyName">Hide</span>
               <ToggleInput checked={isHidden} onChange={onClickHide} />
-            </div>
-          </div>
+            </Row>
+          </Property>
         </>
       )}
       {/* Orphan path: a manual account that was already archived (e.g. on
@@ -251,57 +255,57 @@ export const AccountProperties = ({ account }: Props) => {
        *  to avoid. Renders nothing for the common manual-and-not-archived
        *  case so we don't reintroduce a separate Archive section. */}
       {isManualAccount && isArchived && (
-        <div className="property">
-          <div className="row keyValue">
+        <Property>
+          <Row className="keyValue">
             <span className="propertyName">Archive</span>
             <ToggleInput checked={isArchived} onChange={onClickArchive} />
-          </div>
-        </div>
+          </Row>
+        </Property>
       )}
       {(isManualAccount || type === AccountType.Investment) && (
         <>
-          <div className="propertyLabel">Add</div>
-          <div className="property">
+          <PropertyLabel>Add</PropertyLabel>
+          <Property>
             {isManualAccount && type !== AccountType.Investment && (
-              <div className="row button">
+              <Row className="button">
                 <button onClick={onClickAddTransaction}>Add&nbsp;Transaction</button>
-              </div>
+              </Row>
             )}
             {type === AccountType.Investment && (
-              <div className="row button">
+              <Row className="button">
                 <button onClick={onClickAddInvestmentTransaction}>
                   Add&nbsp;Investment&nbsp;Transaction
                 </button>
-              </div>
+              </Row>
             )}
-          </div>
+          </Property>
         </>
       )}
-      <div className="propertyLabel">Navigate</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>Navigate</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button onClick={onClickConnectionDetail}>See&nbsp;Connection&nbsp;Details</button>
-        </div>
+        </Row>
         {screenType === ScreenType.Narrow && (
-          <div className="row button">
+          <Row className="button">
             <button className="propertyName" onClick={onClickTransactions}>
               See&nbsp;Transactions
             </button>
-          </div>
+          </Row>
         )}
-      </div>
+      </Property>
       {isManualAccount && (
         <>
           <br />
-          <div className="property">
-            <div className="row button">
+          <Property>
+            <Row className="button">
               <button className="delete colored" onClick={onClickRemove}>
                 Delete
               </button>
-            </div>
-          </div>
+            </Row>
+          </Property>
         </>
       )}
-    </div>
+    </Properties>
   );
 };
