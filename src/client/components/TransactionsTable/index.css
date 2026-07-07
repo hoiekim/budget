@@ -57,9 +57,9 @@ div.TransactionRow > .budgetCategoryActions > :last-child {
   width: 40px;
 }
 
-div.TransactionRow > .budgetCategoryActions > :last-child > * {
-  width: 100%;
-  font-size: 20px;
+div.TransactionRow > .budgetCategoryActions > :last-child button.confirmButton {
+  width: 40px;
+  border: 1px solid var(--darkGreen);
 }
 
 div.TransactionRow > .budgetCategoryActions > div > button.kebabButton {

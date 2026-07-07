@@ -234,6 +234,10 @@ const TransactionRow = ({ transaction }: Props) => {
     if (isSuggested) void onAcceptSuggestion();
   };
 
+  const onClickConfirm: MouseEventHandler<HTMLButtonElement> = (e) => {
+    if (isSuggested) void onAcceptSuggestion();
+  };
+
   const onClickKebab = () => {
     const params = new URLSearchParams(router.params);
     // Clear the sibling id so navigating tx → inv-tx → tx doesn't leave a
@@ -249,7 +253,7 @@ const TransactionRow = ({ transaction }: Props) => {
 
   return (
     <div className="TransactionRow">
-      <div className="transactionInfo">
+      <div className="transactionInfo" onClick={onClickKebab}>
         <div className="authorized_date bigText">
           {new LocalDate(authorized_date || date).toLocaleString("en-US", {
             month: "numeric",
@@ -274,33 +278,40 @@ const TransactionRow = ({ transaction }: Props) => {
       </div>
       <div className="budgetCategoryActions">
         {suggestedPairId ? (
-          <TransferControls
-            onConfirm={() => transferActions.confirm(suggestedPairId)}
-            onReject={() => transferActions.reject(suggestedPairId)}
-          />
+          <>
+            <TransferControls
+              onConfirm={() => transferActions.confirm(suggestedPairId)}
+              onReject={() => transferActions.reject(suggestedPairId)}
+            />
+            <div />
+          </>
         ) : (
-          <div className="labelControls">
-            <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-              <option value="">Select Budget</option>
-              {budgetOptions}
-            </select>
-            <div
-              className={categoryWrapperClass}
-              onClick={onClickCategoryWrapper}
-              title={isSuggested ? "Click the yellow dot to accept this suggestion" : undefined}
-            >
-              <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
-                <option value="">Select Category</option>
-                {categoryOptions}
+          <>
+            <div className="labelControls">
+              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+                <option value="">Select Budget</option>
+                {budgetOptions}
               </select>
+              <div
+                className={categoryWrapperClass}
+                onClick={onClickCategoryWrapper}
+                title={isSuggested ? "Click the yellow dot to accept this suggestion" : undefined}
+              >
+                <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+                  <option value="">Select Category</option>
+                  {categoryOptions}
+                </select>
+              </div>
             </div>
-          </div>
+            <div className="confirmButtonBox">
+              {isSuggested && (
+                <button className="confirmButton" onClick={onClickConfirm}>
+                  ✓
+                </button>
+              )}
+            </div>
+          </>
         )}
-        <div>
-          <button className="kebabButton" onClick={onClickKebab}>
-            <KebabIcon size={15} />
-          </button>
-        </div>
       </div>
     </div>
   );

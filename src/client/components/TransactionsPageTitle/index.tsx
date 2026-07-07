@@ -1,5 +1,5 @@
 import { AccountType } from "plaid";
-import { KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, MouseEventHandler, useCallback, useEffect, useRef, useState } from "react";
 import { JSONInvestmentTransaction, JSONTransaction, toTitleCase } from "common";
 import {
   Account,
@@ -101,6 +101,7 @@ export const TransactionsPageTitle = ({
   const [isSelecting, setIsSelecting] = useState(false);
 
   const selectBoxRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const onClickSelect = () => setIsSelecting((v) => !v);
   const closeSelect = () => setIsSelecting(false);
@@ -108,8 +109,9 @@ export const TransactionsPageTitle = ({
   useEffect(() => {
     const handleTouchOutside: EventListener = (event) => {
       const node = event.target as Node;
-      const { current } = selectBoxRef;
-      if (current && !current.contains(node)) closeSelect();
+      if (!selectBoxRef.current?.contains(node) && !buttonRef.current?.contains(node)) {
+        closeSelect();
+      }
     };
     document.addEventListener("touchstart", handleTouchOutside);
     return () => document.removeEventListener("touchstart", handleTouchOutside);
@@ -202,7 +204,7 @@ export const TransactionsPageTitle = ({
   return (
     <>
       <h2 className="heading">
-        <button onClick={onClickSelect}>
+        <button onClick={onClickSelect} ref={buttonRef}>
           <span>{titleForSelection(selectedTypes)}</span>
           <ChevronDownIcon size={15} />
         </button>
