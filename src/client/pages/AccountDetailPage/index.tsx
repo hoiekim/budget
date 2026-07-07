@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useAppContext, PATH, Account } from "client";
 import { AccountProperties } from "client/components";
 
-
 export type AccountDetailPageParams = {
   id?: string;
 };

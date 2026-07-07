@@ -5,7 +5,6 @@ import {
   TransferProperties,
 } from "client/components";
 
-
 export type TransactionDetailPageParams = {
   transaction_id?: string;
   investment_transaction_id?: string;
