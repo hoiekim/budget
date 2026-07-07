@@ -14,7 +14,7 @@ import {
   SplitTransactionDictionary,
   indexedDb,
 } from "client";
-import { InstitutionSpan, KebabIcon } from "client/components";
+import { InstitutionSpan } from "client/components";
 import { ApiResponse } from "server";
 import TransferControls from "./TransferControls";
 
@@ -234,7 +234,7 @@ const TransactionRow = ({ transaction }: Props) => {
     if (isSuggested) void onAcceptSuggestion();
   };
 
-  const onClickConfirm: MouseEventHandler<HTMLButtonElement> = (e) => {
+  const onClickConfirm: MouseEventHandler<HTMLButtonElement> = () => {
     if (isSuggested) void onAcceptSuggestion();
   };
 
