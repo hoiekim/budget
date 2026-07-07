@@ -10,7 +10,7 @@ import {
  * Soft-delete a single manual investment transaction. Wired to
  * `InvestmentTransactionProperties`' Delete button on `source='manual'`
  * rows. Same rationale as `deleteTransactionRoute` — a stray
- * `+ Add Investment Transaction` click leaves a zero-quantity /
+ * `Add Investment Transaction` click leaves a zero-quantity /
  * zero-price row that would clutter the transactions list forever
  * without this.
  *

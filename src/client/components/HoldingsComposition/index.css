@@ -6,7 +6,7 @@
 .holdingsTable .holdingsHeader,
 .holdingsTable .holdingsRow {
   display: grid;
-  grid-template-columns: 1fr 6em 7em;
+  grid-template-columns: minmax(0, 1fr) 6em 7em;
   gap: 0.25em;
   padding: 0.35em 0.75em;
   font-size: 0.85em;
@@ -17,6 +17,7 @@
   font-weight: 600;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.6);
+  padding-top: 10px;
 }
 
 .holdingsTable .holdingsRow {
@@ -31,7 +32,7 @@
   font-weight: 600;
   border-top: 1px solid rgba(255, 255, 255, 0.15);
   border-bottom: none;
-  margin-top: 0.2em;
+  padding-bottom: 10px;
 }
 
 .holdingsTable .holdingsRow.unknown {
@@ -56,17 +57,16 @@
 }
 
 .holdingsTable .col-name {
-  overflow: hidden;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0.1em;
 }
 
 .holdingsTable .security-name {
   font-weight: 600;
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding-right: 5px;
 }
 
 .holdingsTable .security-fullname {
@@ -75,6 +75,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  align-self: end;
 }
 
 .holdingsTable .col-gain.positive {

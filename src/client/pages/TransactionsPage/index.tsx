@@ -122,8 +122,8 @@ export const TransactionsPage = () => {
       const filtered = investmentTransactions.filter((e) => {
         // Zero-amount rows are hidden by default — they're the Plaid-side
         // non-trade / fee-waiver / qty=0 corrections that shouldn't
-        // surface in the tx list. But manual mints from `+ Add
-        // Transaction` / `+ Add Investment Transaction` / the divergence
+        // surface in the tx list. But manual mints from `Add
+        // Transaction` / `Add Investment Transaction` / the divergence
         // "Add for N missing units" button all land with `amount=0`
         // until the user edits the value on the detail page; if they
         // abandon the mint (or it lands with just qty/price, per the
@@ -179,10 +179,7 @@ export const TransactionsPage = () => {
         // matching getBudgetData. The default and account/transfers views
         // still show it; only the budget-semantic filters drop it. Suggested
         // transfers still count toward budget, so they stay.
-        if (
-          (budget_id || section_id || category_id) &&
-          isInConfirmedTransfer(e, filterCtx)
-        ) {
+        if ((budget_id || section_id || category_id) && isInConfirmedTransfer(e, filterCtx)) {
           return false;
         }
 

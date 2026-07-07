@@ -1,9 +1,6 @@
 import { useCallback } from "react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
-import type {
-  NewTransactionGetResponse,
-  NewInvestmentTransactionGetResponse,
-} from "server";
+import type { NewTransactionGetResponse, NewInvestmentTransactionGetResponse } from "server";
 import {
   Data,
   InvestmentTransaction,
@@ -17,7 +14,7 @@ import {
 import { useAppContext } from "./context";
 
 /**
- * Shared entry-point for the "+ Add Transaction" and "+ Add Investment
+ * Shared entry-point for the "Add Transaction" and "Add Investment
  * Transaction" mint flows on `AccountProperties` and `HoldingProperties`.
  *
  * Consolidates the previously-duplicated per-component handlers (~90%
@@ -36,7 +33,7 @@ import { useAppContext } from "./context";
 export const useTransactionEntry = () => {
   const { setData, router } = useAppContext();
 
-  /** Cash-side mint (`+ Add Transaction`, gated on manual accounts). */
+  /** Cash-side mint (`Add Transaction`, gated on manual accounts). */
   const addTransaction = useCallback(
     async (input: {
       account_id: string;
@@ -107,7 +104,11 @@ export const useTransactionEntry = () => {
         params.price = String(input.price);
       }
       if (input.iso_currency_code) params.iso_currency_code = input.iso_currency_code;
-      if (input.quantity !== undefined && input.quantity !== null && Number.isFinite(input.quantity)) {
+      if (
+        input.quantity !== undefined &&
+        input.quantity !== null &&
+        Number.isFinite(input.quantity)
+      ) {
         // Round to numeric(15,6) precision — FP subtraction of two snap
         // quantities leaves noise like 0.6232000000000539 otherwise.
         params.quantity = (Math.round(input.quantity * 1e6) / 1e6).toString();

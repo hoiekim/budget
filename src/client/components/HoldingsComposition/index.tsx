@@ -68,8 +68,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
   // manual account is shown; multi-account aggregation has no single target.
   const isSingleAccount = accounts.length === 1;
   const isManualAccount =
-    isSingleAccount &&
-    items.get(firstAccount?.item_id)?.provider === ItemProvider.MANUAL;
+    isSingleAccount && items.get(firstAccount?.item_id)?.provider === ItemProvider.MANUAL;
 
   const viewEndDate = viewDate.getEndDate();
   const latestViewDate = new ViewDate(viewDate.getInterval());
@@ -93,7 +92,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
   // aggregation step below collapses these into one row per ticker bucket.
   const perSecurityRows = useMemo<PerSecurityRow[]>(() => {
     const holdingIds = accounts.flatMap((a) =>
-      holdingsValueData.getHoldingsForAccount(a.account_id)
+      holdingsValueData.getHoldingsForAccount(a.account_id),
     );
 
     return holdingIds
@@ -318,27 +317,24 @@ export const HoldingsComposition = ({ accounts }: Props) => {
                 }
               }
             : undefined;
+          const classes = ["holdingsRow"];
+          if (row.clickable) classes.push("clickable");
+
+          const securityNameClasses = ["security-name"];
+          if (row.contributingSecurityIds.some((sid) => divergence.bySecurity.has(sid))) {
+            securityNameClasses.push("notification");
+          }
           return (
             <div
               key={row.bucketKey}
-              className={`holdingsRow${row.clickable ? " clickable" : ""}`}
+              className={classes.join(" ")}
               onClick={onClickRow}
               onKeyDown={onKeyDownRow}
               role={row.clickable ? "button" : undefined}
               tabIndex={row.clickable ? 0 : undefined}
             >
               <span className="col-name">
-                <span className="security-name" title={row.titleLabel}>
-                  {/* Red dot when ANY of the securities aggregated into
-                      this ticker bucket has a holdings-vs-transactions
-                      divergence flagged. Click through opens the holding
-                      detail page, which surfaces per-security actions. */}
-                  {row.contributingSecurityIds.some((sid) => divergence.bySecurity.has(sid)) && (
-                    <span
-                      className="divergenceDot"
-                      aria-label="Holdings and transactions don't match — see detail page"
-                    />
-                  )}
+                <span className={securityNameClasses.join(" ")} title={row.titleLabel}>
                   {row.primaryLabel}
                 </span>
                 {row.secondaryLabel && (
@@ -410,7 +406,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
         {isManualAccount && (
           <div className="holdingsRow holdingsAddRow">
             <button type="button" className="holdingsAddButton" onClick={() => goToHoldingDetail()}>
-              + Add Holding
+              Add Holding
             </button>
           </div>
         )}

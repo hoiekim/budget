@@ -1,4 +1,12 @@
-import { ChangeEventHandler, Fragment, FormEventHandler, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEventHandler,
+  Fragment,
+  FormEventHandler,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { ItemProvider, numberToCommaString, ViewDate, currencyCodeToSymbol } from "common";
 import {
   call,
@@ -20,10 +28,7 @@ import {
   StoreName,
 } from "client";
 import { CASH_TICKER } from "../HoldingsComposition";
-import {
-  HoldingSnapshotPostResponse,
-  ValidateTickerResponse,
-} from "server";
+import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
 
 import "./index.css";
 
@@ -218,10 +223,8 @@ export const HoldingProperties = () => {
           next[id] = existing;
         } else {
           next[id] = {
-            quantity:
-              snap.holding.quantity != null ? String(snap.holding.quantity) : "",
-            costBasis:
-              snap.holding.cost_basis != null ? String(snap.holding.cost_basis) : "",
+            quantity: snap.holding.quantity != null ? String(snap.holding.quantity) : "",
+            costBasis: snap.holding.cost_basis != null ? String(snap.holding.cost_basis) : "",
             date: toIsoDateInput(snap.snapshot.date),
             error: "",
           };
@@ -279,7 +282,7 @@ export const HoldingProperties = () => {
   };
 
   /**
-   * `+ Add Investment Transaction` on the holding — Hoie's ask (#585
+   * `Add Investment Transaction` on the holding — Hoie's ask (#585
    * design): prefill `security_id`, `price` (from the holding's
    * `institution_price`), and `iso_currency_code` from the holding
    * context so the user starts with values they can confirm/correct
@@ -311,7 +314,11 @@ export const HoldingProperties = () => {
   // holdings the user actually owns.
   const divergence = useHoldingDivergence(
     accountId ? [accountId] : [],
-    { holdingSnapshots: data.holdingSnapshots, investmentTransactions: data.investmentTransactions, securitySnapshots: data.securitySnapshots },
+    {
+      holdingSnapshots: data.holdingSnapshots,
+      investmentTransactions: data.investmentTransactions,
+      securitySnapshots: data.securitySnapshots,
+    },
     viewEndDate.toISOString().slice(0, 10),
   );
   // Second computation at TODAY — the button's presence tracks the
@@ -328,7 +335,11 @@ export const HoldingProperties = () => {
   // rather than the viewDate.
   const divergenceNow = useHoldingDivergence(
     accountId ? [accountId] : [],
-    { holdingSnapshots: data.holdingSnapshots, investmentTransactions: data.investmentTransactions, securitySnapshots: data.securitySnapshots },
+    {
+      holdingSnapshots: data.holdingSnapshots,
+      investmentTransactions: data.investmentTransactions,
+      securitySnapshots: data.securitySnapshots,
+    },
     undefined,
   );
   const divergentEntry = primarySecurityId
@@ -338,9 +349,8 @@ export const HoldingProperties = () => {
   // looking at a divergent past window" indicator; today it's unused
   // beyond parity with HoldingsComposition's dot.
   void divergence;
-  const missingUnits = divergentEntry && divergentEntry.direction === "holdingExcess"
-    ? divergentEntry.deltaQty
-    : 0;
+  const missingUnits =
+    divergentEntry && divergentEntry.direction === "holdingExcess" ? divergentEntry.deltaQty : 0;
   // Reconciliation date: the earliest holdings snapshot where the qty
   // FIRST reached the current owned value — i.e. where the surplus
   // "arrived". Backdating there clears the divergence at every window
@@ -382,9 +392,8 @@ export const HoldingProperties = () => {
     // embedded buy/sell prices merged, latest ≤ query date). Falls
     // back to `primaryPrice` if no history covers the reconcile date.
     const priceAt = buildPriceAt(data.securitySnapshots, data.investmentTransactions);
-    const pricedAt = primarySecurityId && reconcileDate
-      ? priceAt(primarySecurityId, reconcileDate)
-      : null;
+    const pricedAt =
+      primarySecurityId && reconcileDate ? priceAt(primarySecurityId, reconcileDate) : null;
     return addInvestmentTransaction({
       account_id: accountId,
       security_id: primarySecurityId,
@@ -819,7 +828,11 @@ export const HoldingProperties = () => {
               {edit.error && <Row className="formError">{edit.error}</Row>}
               {!isReadOnly && (
                 <Row className="button">
-                  <button type="button" className="delete colored" onClick={onClickDeleteSnap(snap)}>
+                  <button
+                    type="button"
+                    className="delete colored"
+                    onClick={onClickDeleteSnap(snap)}
+                  >
                     Remove&nbsp;this&nbsp;snapshot
                   </button>
                 </Row>
@@ -835,7 +848,7 @@ export const HoldingProperties = () => {
           <Property>
             <Row className="button">
               <button type="button" onClick={onClickAddInvestmentTransaction}>
-                +&nbsp;Add&nbsp;Investment&nbsp;Transaction
+                Add&nbsp;Investment&nbsp;Transaction
               </button>
             </Row>
             {missingUnits > 0 && (
@@ -845,7 +858,7 @@ export const HoldingProperties = () => {
                   className="divergenceAction"
                   onClick={onClickAddDivergentTransaction}
                 >
-                  +&nbsp;Add&nbsp;transaction&nbsp;for&nbsp;
+                  Add&nbsp;transaction&nbsp;for&nbsp;
                   {numberToCommaString(missingUnits, 4)}&nbsp;missing&nbsp;units
                 </button>
               </Row>

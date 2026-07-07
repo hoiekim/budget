@@ -102,8 +102,7 @@ export const AccountProperties = ({ account }: Props) => {
   };
 
   const { addTransaction, addInvestmentTransaction } = useTransactionEntry();
-  const onClickAddTransaction = () =>
-    addTransaction({ account_id, iso_currency_code });
+  const onClickAddTransaction = () => addTransaction({ account_id, iso_currency_code });
 
   /**
    * NOT gated on `isManualAccount` — the motivating case (#585) is
@@ -111,8 +110,7 @@ export const AccountProperties = ({ account }: Props) => {
    * Plaid's 24-mo transaction window. Server marks the row
    * `source='manual'` so it survives future Plaid syncs.
    */
-  const onClickAddInvestmentTransaction = () =>
-    addInvestmentTransaction({ account_id });
+  const onClickAddInvestmentTransaction = () => addInvestmentTransaction({ account_id });
 
   const onClickConnectionDetail = () => {
     if (!item) return;
@@ -237,11 +235,7 @@ export const AccountProperties = ({ account }: Props) => {
                *  even though the user's already hidden the row. Disable to
                *  steer the user toward Unhide first if they want a different
                *  classification. Hoie 2026-06-25. */}
-              <ToggleInput
-                checked={isArchived}
-                onChange={onClickArchive}
-                disabled={isHidden}
-              />
+              <ToggleInput checked={isArchived} onChange={onClickArchive} disabled={isHidden} />
             </div>
             <div className="row keyValue">
               <span className="propertyName">Hide</span>
@@ -270,15 +264,13 @@ export const AccountProperties = ({ account }: Props) => {
           <div className="property">
             {isManualAccount && type !== AccountType.Investment && (
               <div className="row button">
-                <button onClick={onClickAddTransaction}>
-                  +&nbsp;Add&nbsp;Transaction
-                </button>
+                <button onClick={onClickAddTransaction}>Add&nbsp;Transaction</button>
               </div>
             )}
             {type === AccountType.Investment && (
               <div className="row button">
                 <button onClick={onClickAddInvestmentTransaction}>
-                  +&nbsp;Add&nbsp;Investment&nbsp;Transaction
+                  Add&nbsp;Investment&nbsp;Transaction
                 </button>
               </div>
             )}
