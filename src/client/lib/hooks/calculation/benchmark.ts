@@ -661,10 +661,20 @@ export const findBenchmarkSecurityId = (
   securitySnapshots: SecuritySnapshotDictionary,
   ticker: string,
 ): string | null => {
+  // Two rows can share a ticker (user-minted + provider-synced). Pick
+  // the security_id whose snapshot chain has the freshest close so
+  // benchmark math uses the most-updated series. Falls back to first-
+  // iterating for ties on missing date (rare — snapshots always carry
+  // a date).
   let found: string | null = null;
+  let foundDate: string | null = null;
   securitySnapshots.forEach((snap) => {
-    if (found) return;
-    if (snap.security.ticker_symbol === ticker) found = snap.security.security_id;
+    if (snap.security.ticker_symbol !== ticker) return;
+    const d = snap.snapshot.date;
+    if (!found || (d && (!foundDate || d > foundDate))) {
+      found = snap.security.security_id;
+      foundDate = d ?? null;
+    }
   });
   return found;
 };

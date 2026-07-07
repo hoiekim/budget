@@ -324,13 +324,8 @@ export const syncPlaidAccounts = async (item_id: string) => {
       const allHoldings = inferredCash.length ? [...holdings, ...inferredCash] : holdings;
 
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
-      // Upsert securities BEFORE holdings so `holdings.security_id`
-      // references a row that already exists in `securities` at every
-      // instant of the sync. `holdings` has no FK on `security_id` so
-      // reversing the order isn't a hard error — just a transient
-      // inconsistency window until `upsertSecuritiesWithSnapshots`
-      // catches up — but the securities-first order matches the
-      // sync-simple-fin.ts shape and closes #593 gap 2.
+      // Securities first so holdings never reference a not-yet-written
+      // securities row within the same sync.
       await upsertSecuritiesWithSnapshots(securities);
       await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
 

@@ -98,26 +98,12 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
 };
 
 /**
- * Upsert incoming securities from a sync (Plaid, SimpleFin) and write a
- * per-day security snapshot for each. The incoming `security_id` is
- * treated as identity — no ticker-collision dedupe. When a user has
- * previously minted a security row for the same ticker (via
- * `/api/validate-ticker`) and Plaid later syncs its own row for the
- * same ticker, both survive as separate `securities` rows.
- *
- * That's intentional: HoldingsComposition buckets by ticker (not by
- * security_id), so the FE aggregates the two into one visual row and
- * users don't see the internal duplication. The pre-dedupe behavior
- * (`newSecurity.security_id = existingSecurity.security_id`) caused
- * an orphan-reference bug — Plaid's holdings were written with
- * Plaid's raw security_id but the securities table was rewritten
- * against the user-minted id, leaving holdings pointing at a row
- * that no longer existed. Skipping dedupe removes the bug in one
- * line.
- *
- * Returns the set of successfully-upserted `security_id`s so callers
- * (`sync-simple-fin.ts` in particular) can drop holdings whose security
- * was filtered out here (no ticker or no close price).
+ * Upsert incoming securities and write today's snapshot for each.
+ * `security_id` is treated as identity — two rows can share a ticker
+ * (user-minted + provider-synced), and `HoldingsComposition` folds them
+ * by ticker on read. Returns the set of successfully-upserted
+ * `security_id`s so callers can drop holdings whose security was
+ * filtered out here (no ticker or no close price).
  */
 export const upsertSecuritiesWithSnapshots = async (
   securities: JSONSecurity[],
