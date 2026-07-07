@@ -13,6 +13,7 @@ import {
 import {
   deleteHoldings,
   MaskedUser,
+  remapSecurityReferences,
   searchSecurities,
   upsertAccounts,
   upsertHoldings,
@@ -101,24 +102,46 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
   await deleteHoldings(user, removedHoldingIds);
 };
 
-export const upsertSecuritiesWithSnapshots = async (securities: JSONSecurity[]) => {
+/**
+ * Upsert incoming securities from a sync (Plaid, SimpleFin). The
+ * incoming `security_id` is treated as the canonical identity — when
+ * an existing row with the same ticker carries a DIFFERENT id (a
+ * user-minted UUID that predates the arrival of the provider's own
+ * ID), the DB references to the old id are repointed to the incoming
+ * one and the old row is deleted (`remapSecurityReferences`). Then
+ * the incoming row is upserted normally. Returns the set of
+ * successfully-upserted `security_id`s so callers can filter their
+ * holdings list to just the securities that actually landed.
+ */
+export const upsertSecuritiesWithSnapshots = async (
+  securities: JSONSecurity[],
+): Promise<Set<string>> => {
   const newSecurities: JSONSecurity[] = [];
   const snapshots: JSONSecuritySnapshot[] = [];
-  const idMap: { [key: string]: string } = {};
+  const upsertedIds = new Set<string>();
 
-  const promises = securities.map(async (s) => {
-    const { security_id, ticker_symbol, close_price, close_price_as_of } = s;
-    if (!ticker_symbol) return;
-    if (!close_price || !close_price_as_of) return;
+  // Remaps must run sequentially — two concurrent remaps against the
+  // same old_id would race on the DELETE. Snapshot-fetch and date
+  // decisions can still parallelize via .map, but the remap +
+  // collection step is awaited in-order below.
+  for (const s of securities) {
+    const { ticker_symbol, close_price, close_price_as_of } = s;
+    if (!ticker_symbol) continue;
+    if (!close_price || !close_price_as_of) continue;
 
     const newSecurity: JSONSecurity = { ...s };
-
     const storedSecurity = await searchSecurities({ ticker_symbol });
+
     if (storedSecurity.length) {
       const existingSecurity: JSONSecurity = { ...storedSecurity[0] };
-      newSecurity.security_id = existingSecurity.security_id;
-      const snapshot_id = `${existingSecurity.security_id}-${getSquashedDateString()}`;
+      // Ticker collision on a DIFFERENT id — promote the incoming id
+      // as canonical (Plaid becomes source of truth) and remap every
+      // DB reference from the old id to the incoming one.
+      if (existingSecurity.security_id !== newSecurity.security_id) {
+        await remapSecurityReferences(existingSecurity.security_id, newSecurity.security_id);
+      }
 
+      const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
       const existingDateString = existingSecurity.close_price_as_of;
       const existingDate = existingDateString && new LocalDate(existingDateString);
       if (existingDate) {
@@ -148,13 +171,11 @@ export const upsertSecuritiesWithSnapshots = async (securities: JSONSecurity[]) 
     }
 
     newSecurities.push(newSecurity);
-    idMap[security_id] = newSecurity.security_id;
-    return;
-  });
+    upsertedIds.add(newSecurity.security_id);
+  }
 
-  await Promise.all(promises);
   await upsertSecurities(newSecurities);
   await upsertSnapshots(snapshots);
 
-  return idMap;
+  return upsertedIds;
 };

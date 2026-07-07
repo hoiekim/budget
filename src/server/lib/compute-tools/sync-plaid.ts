@@ -8,7 +8,6 @@ import {
   getDateString,
   getDateTimeString,
   JSONInvestmentTransaction,
-  JSONHolding,
   isDate,
   LocalDate,
   DEFAULT_GRAPH_OPTIONS,
@@ -94,22 +93,6 @@ export const findStoredTransaction = (
   );
 };
 
-/**
- * Rewrite each holding's `security_id` to the canonical id when the
- * securities-upsert dedupe folded Plaid's incoming id onto an existing
- * (user-minted) row's id. Skips allocation on the no-op cases (no
- * mapping, or maps to same id) so the array of unchanged holdings stays
- * cheap for the common path where no dedupe fires.
- */
-export const remapHoldingSecurityIds = (
-  holdings: JSONHolding[],
-  idMap: { [key: string]: string },
-): JSONHolding[] =>
-  holdings.map((h) => {
-    const canonical = idMap[h.security_id];
-    if (!canonical || canonical === h.security_id) return h;
-    return { ...h, security_id: canonical };
-  });
 
 /** Identify recently-stored investment transactions that are no longer in the incoming list. */
 export const getPlaidRemovedInvestmentTransactions = (
@@ -343,14 +326,15 @@ export const syncPlaidAccounts = async (item_id: string) => {
 
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
 
-      // Dedupe securities by ticker BEFORE writing holdings so incoming
-      // holdings' `security_id` gets canonicalized against the row that
-      // will actually live in `securities` — `upsertSecuritiesWithSnapshots`
-      // returns an `{ incomingId → canonicalId }` idMap keyed on ticker
-      // matches. Mirrors the pattern in `sync-simple-fin.ts`.
-      const idMap = await upsertSecuritiesWithSnapshots(securities);
-      const mappedHoldings = remapHoldingSecurityIds(allHoldings, idMap);
-      await upsertAndDeleteHoldingsWithSnapshots(user, mappedHoldings, storedHoldings);
+      // Upsert securities BEFORE writing holdings — Plaid is the source
+      // of truth for the security_id, so if the ticker already exists on
+      // a user-minted row `upsertSecuritiesWithSnapshots` remaps every
+      // DB reference (investment_transactions, holdings, snapshots) from
+      // the old id to Plaid's, then deletes the old row. Incoming
+      // holdings then carry Plaid's canonical id by construction — no
+      // FE-side remap needed here.
+      await upsertSecuritiesWithSnapshots(securities);
+      await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
 
       return accounts;
     })

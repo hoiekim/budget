@@ -3,7 +3,6 @@ import {
   JSONAccount,
   getDateString,
   getDateTimeString,
-  JSONHolding,
   JSONInvestmentTransaction,
   JSONItem,
   RemovedInvestmentTransaction,
@@ -70,15 +69,17 @@ export const syncSimpleFinData = async (item_id: string) => {
   // inference + holding upsert run after the investment account list is
   // built (further below), because the inference needs each account's
   // balances.current to compute the cash delta.
-  const idMap = await upsertSecuritiesWithSnapshots(securities);
-  const mappedHoldings = holdings
-    .map((h) => {
-      const security_id = idMap[h.security_id];
-      if (!security_id) return undefined;
-      const newHolding: JSONHolding = { ...h, security_id };
-      return newHolding;
-    })
-    .filter((h): h is JSONHolding => !!h);
+  // SimpleFin's incoming security_id is treated as canonical — a ticker
+  // collision on an existing row (whether user-minted or previously
+  // synced) triggers a DB-level remap inside
+  // `upsertSecuritiesWithSnapshots` (references repointed at the
+  // SimpleFin id, old row deleted), so incoming holdings can pass
+  // through without an id-rewrite step. Filter out holdings whose
+  // security was skipped by the upsert (no ticker / no close price) so
+  // downstream doesn't hold orphan references — that was the useful
+  // side effect of the previous id-map filter.
+  const upsertedIds = await upsertSecuritiesWithSnapshots(securities);
+  const mappedHoldings = holdings.filter((h) => upsertedIds.has(h.security_id));
 
   const investmentAccounts: JSONAccount[] = [];
   const otherAccounts: JSONAccount[] = [];

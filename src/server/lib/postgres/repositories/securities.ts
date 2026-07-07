@@ -9,7 +9,7 @@ import {
   HOLDINGS,
   USER_ID,
 } from "../models";
-import { pool } from "../client";
+import { pool, withTransaction } from "../client";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
@@ -82,6 +82,45 @@ export const upsertSecurities = async (securities: JSONSecurity[]): Promise<Upse
     }
   }
   return results;
+};
+
+/**
+ * Repoint every DB reference to `oldSecurityId` at `newSecurityId`, then
+ * hard-delete the old `securities` row. Runs in a single transaction so a
+ * mid-remap failure can't leave orphaned references. Global across users —
+ * `securities` is a shared table, no user_id column, and a ticker
+ * collision on a shared row transitively touches every user that already
+ * referenced it (mirrors the current cross-user behavior of the pre-fix
+ * "canonical wins" flow).
+ *
+ * Callers: `upsertSecuritiesWithSnapshots` when incoming (Plaid/SimpleFin)
+ * `security_id` differs from an existing row with the same ticker. The
+ * incoming ID becomes canonical.
+ */
+export const remapSecurityReferences = async (
+  oldSecurityId: string,
+  newSecurityId: string,
+): Promise<void> => {
+  if (oldSecurityId === newSecurityId) return;
+  await withTransaction(async (client) => {
+    await client.query(
+      "UPDATE investment_transactions SET security_id = $1 WHERE security_id = $2",
+      [newSecurityId, oldSecurityId],
+    );
+    await client.query(
+      "UPDATE holdings SET security_id = $1 WHERE security_id = $2",
+      [newSecurityId, oldSecurityId],
+    );
+    await client.query(
+      "UPDATE snapshots SET security_id = $1 WHERE security_id = $2",
+      [newSecurityId, oldSecurityId],
+    );
+    await client.query(
+      "UPDATE snapshots SET holding_security_id = $1 WHERE holding_security_id = $2",
+      [newSecurityId, oldSecurityId],
+    );
+    await client.query("DELETE FROM securities WHERE security_id = $1", [oldSecurityId]);
+  });
 };
 
 export const deleteSecurities = async (security_ids: string[]): Promise<{ deleted: number }> => {
