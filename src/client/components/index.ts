@@ -1,5 +1,4 @@
 export * from "./App";
-export * from "./Page";
 export * from "./Properties";
 export * from "./HoldingProperties";
 export * from "./InvestmentTransactionProperties";
