@@ -1,5 +1,5 @@
 import { AccountType } from "plaid";
-import { KeyboardEvent, MouseEventHandler, useCallback, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { JSONInvestmentTransaction, JSONTransaction, toTitleCase } from "common";
 import {
   Account,
