@@ -18,6 +18,7 @@ import {
   HOLDING_SECURITY_ID,
   USER_ID,
 } from "../models";
+import type { QueryExecutor } from "../models";
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
 import { searchSecuritiesById } from "./securities";
 import { logger } from "../../logger";
@@ -282,7 +283,10 @@ export const upsertHoldingSnapshots = async (
   return results;
 };
 
-export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<UpsertResult[]> => {
+export const upsertSnapshots = async (
+  snapshots: JSONSnapshotData[],
+  client?: QueryExecutor,
+): Promise<UpsertResult[]> => {
   if (!snapshots.length) return [];
   const results: UpsertResult[] = [];
 
@@ -293,40 +297,52 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
     try {
       if (isAccountSnapshot(snapshotData)) {
         const { account } = snapshotData;
-        await snapshotsTable.upsert({
-          [SNAPSHOT_ID]: snapshot.snapshot_id,
-          [USER_ID]: snapshotData.user?.user_id,
-          [SNAPSHOT_DATE]: snapshot.date,
-          [SNAPSHOT_TYPE]: "account_balance",
-          [ACCOUNT_ID]: account.account_id,
-          balances_available: account.balances?.available,
-          balances_current: account.balances?.current,
-          balances_limit: account.balances?.limit,
-          balances_iso_currency_code: account.balances?.iso_currency_code,
-        });
+        await snapshotsTable.upsert(
+          {
+            [SNAPSHOT_ID]: snapshot.snapshot_id,
+            [USER_ID]: snapshotData.user?.user_id,
+            [SNAPSHOT_DATE]: snapshot.date,
+            [SNAPSHOT_TYPE]: "account_balance",
+            [ACCOUNT_ID]: account.account_id,
+            balances_available: account.balances?.available,
+            balances_current: account.balances?.current,
+            balances_limit: account.balances?.limit,
+            balances_iso_currency_code: account.balances?.iso_currency_code,
+          },
+          undefined,
+          client,
+        );
       } else if (isSecuritySnapshot(snapshotData)) {
         const { security } = snapshotData;
-        await snapshotsTable.upsert({
-          [SNAPSHOT_ID]: snapshot.snapshot_id,
-          [SNAPSHOT_DATE]: snapshot.date,
-          [SNAPSHOT_TYPE]: "security",
-          [SECURITY_ID]: security.security_id,
-          close_price: security.close_price,
-        });
+        await snapshotsTable.upsert(
+          {
+            [SNAPSHOT_ID]: snapshot.snapshot_id,
+            [SNAPSHOT_DATE]: snapshot.date,
+            [SNAPSHOT_TYPE]: "security",
+            [SECURITY_ID]: security.security_id,
+            close_price: security.close_price,
+          },
+          undefined,
+          client,
+        );
       } else if (isHoldingSnapshot(snapshotData)) {
         const { holding } = snapshotData;
-        await snapshotsTable.upsert({
-          [SNAPSHOT_ID]: snapshot.snapshot_id,
-          [USER_ID]: snapshotData.user?.user_id,
-          [SNAPSHOT_DATE]: snapshot.date,
-          [SNAPSHOT_TYPE]: "holding",
-          holding_account_id: holding.account_id,
-          holding_security_id: holding.security_id,
-          institution_price: holding.institution_price,
-          institution_value: holding.institution_value,
-          cost_basis: holding.cost_basis,
-          quantity: holding.quantity,
-        });
+        await snapshotsTable.upsert(
+          {
+            [SNAPSHOT_ID]: snapshot.snapshot_id,
+            [USER_ID]: snapshotData.user?.user_id,
+            [SNAPSHOT_DATE]: snapshot.date,
+            [SNAPSHOT_TYPE]: "holding",
+            holding_account_id: holding.account_id,
+            holding_security_id: holding.security_id,
+            institution_price: holding.institution_price,
+            institution_value: holding.institution_value,
+            cost_basis: holding.cost_basis,
+            quantity: holding.quantity,
+          },
+          undefined,
+          client,
+        );
       }
       results.push(successResult(snapshot.snapshot_id, 1));
     } catch (error) {

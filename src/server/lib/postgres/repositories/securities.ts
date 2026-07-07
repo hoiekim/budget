@@ -13,6 +13,7 @@ import {
   USER_ID,
 } from "../models";
 import { pool, withTransaction } from "../client";
+import type { QueryExecutor } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
@@ -70,14 +71,17 @@ export const searchSecuritiesById = async (security_ids: string[]): Promise<JSON
   return results;
 };
 
-export const upsertSecurities = async (securities: JSONSecurity[]): Promise<UpsertResult[]> => {
+export const upsertSecurities = async (
+  securities: JSONSecurity[],
+  client?: QueryExecutor,
+): Promise<UpsertResult[]> => {
   if (!securities.length) return [];
   const results: UpsertResult[] = [];
 
   for (const security of securities) {
     try {
       const row = SecurityModel.fromJSON(security);
-      await securitiesTable.upsert(row);
+      await securitiesTable.upsert(row, undefined, client);
       results.push(successResult(security.security_id, 1));
     } catch (error) {
       logger.error("Failed to upsert security", { securityId: security.security_id }, error);
@@ -103,6 +107,7 @@ export const upsertSecurities = async (securities: JSONSecurity[]): Promise<Upse
 export const remapSecurityReferences = async (
   oldSecurityId: string,
   newSecurityId: string,
+  outerClient?: QueryExecutor,
 ): Promise<void> => {
   if (oldSecurityId === newSecurityId) return;
   // `bulkUpdateByColumn` sets `updated = CURRENT_TIMESTAMP` automatically,
@@ -113,7 +118,14 @@ export const remapSecurityReferences = async (
   // sync, so the deleted securities row and remapped holdings.security_id
   // propagate without extra help — only the two delta paths (invtx +
   // snapshots) actually need the `updated` bump.
-  await withTransaction(async (client) => {
+  //
+  // When called from `upsertSecuritiesWithSnapshots` the caller passes
+  // its own `withTransaction` client so the remap + subsequent
+  // securities/snapshot upsert commit atomically (no partial-state
+  // window where references point at an incoming id that doesn't
+  // exist in `securities` yet). Standalone callers (tests, ad-hoc
+  // scripts) omit it and get a scoped tx.
+  const runRemap = async (client: QueryExecutor) => {
     await investmentTransactionsTable.bulkUpdateByColumn(
       SECURITY_ID,
       oldSecurityId,
@@ -139,7 +151,9 @@ export const remapSecurityReferences = async (
       client,
     );
     await securitiesTable.bulkHardDelete([oldSecurityId], client);
-  });
+  };
+  if (outerClient) return runRemap(outerClient);
+  await withTransaction(runRemap);
 };
 
 export const deleteSecurities = async (security_ids: string[]): Promise<{ deleted: number }> => {

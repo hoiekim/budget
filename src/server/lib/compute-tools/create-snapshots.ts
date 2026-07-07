@@ -20,6 +20,7 @@ import {
   upsertSecurities,
   upsertSnapshots,
 } from "server";
+import { withTransaction } from "../postgres/client";
 import { getSecurityForSymbol } from "../polygon";
 
 export const upsertAccountsWithSnapshots = async (
@@ -116,66 +117,102 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
 export const upsertSecuritiesWithSnapshots = async (
   securities: JSONSecurity[],
 ): Promise<Set<string>> => {
-  const newSecurities: JSONSecurity[] = [];
-  const snapshots: JSONSecuritySnapshot[] = [];
   const upsertedIds = new Set<string>();
+  if (!securities.length) return upsertedIds;
 
-  // Remaps must run sequentially — two concurrent remaps against the
-  // same old_id would race on the DELETE. Snapshot-fetch and date
-  // decisions can still parallelize via .map, but the remap +
-  // collection step is awaited in-order below.
-  for (const s of securities) {
-    const { ticker_symbol, close_price, close_price_as_of } = s;
-    if (!ticker_symbol) continue;
-    if (!close_price || !close_price_as_of) continue;
+  // Process securities in a deterministic ticker-symbol order so
+  // concurrent syncs that touch overlapping tickers acquire per-
+  // ticker locks in the same order (deadlock avoidance under the
+  // per-ticker `pg_advisory_xact_lock` below).
+  const orderedInputs = [...securities].sort((a, b) =>
+    (a.ticker_symbol ?? "").localeCompare(b.ticker_symbol ?? ""),
+  );
 
-    const newSecurity: JSONSecurity = { ...s };
-    const storedSecurity = await searchSecurities({ ticker_symbol });
+  await withTransaction(async (client) => {
+    const newSecurities: JSONSecurity[] = [];
+    const snapshots: JSONSecuritySnapshot[] = [];
 
-    if (storedSecurity.length) {
-      const existingSecurity: JSONSecurity = { ...storedSecurity[0] };
-      // Ticker collision on a DIFFERENT id — promote the incoming id
-      // as canonical (Plaid becomes source of truth) and remap every
-      // DB reference from the old id to the incoming one.
-      if (existingSecurity.security_id !== newSecurity.security_id) {
-        await remapSecurityReferences(existingSecurity.security_id, newSecurity.security_id);
-      }
+    for (const s of orderedInputs) {
+      const { ticker_symbol, close_price, close_price_as_of } = s;
+      if (!ticker_symbol) continue;
+      if (!close_price || !close_price_as_of) continue;
 
-      const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
-      const existingDateString = existingSecurity.close_price_as_of;
-      const existingDate = existingDateString && new LocalDate(existingDateString);
-      if (existingDate) {
-        if (existingDate < new LocalDate(close_price_as_of)) {
-          snapshots.push({
-            snapshot: { snapshot_id, date: new Date().toISOString() },
-            security: newSecurity,
-          });
-        } else if (existingDate < new LocalDate(getDateString())) {
-          const todaySecurity = await getSecurityForSymbol(ticker_symbol);
-          if (todaySecurity) {
-            newSecurity.close_price = todaySecurity.close_price;
-            newSecurity.close_price_as_of = todaySecurity.close_price_as_of;
+      // Per-ticker transaction-scoped advisory lock. Serializes
+      // concurrent syncs on the same ticker so the READ COMMITTED
+      // race — sync A and sync B both `searchSecurities({ticker})`,
+      // both see the same `existingId`, both remap and delete, then
+      // one inserts a fresh row and the other inserts a duplicate —
+      // can't happen: the second waits at the lock until the first
+      // commits, then re-reads. `hashtext(...)` gives us the int-
+      // keyed lock argument advisory locks require.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':security'))`, [
+        ticker_symbol,
+      ]);
+
+      const newSecurity: JSONSecurity = { ...s };
+      // Search runs on the default pool (Table.query doesn't take a
+      // client). Correctness is preserved because the advisory lock
+      // above forces any concurrent sync to commit before we get
+      // here — so what we see is committed state, not an in-flight
+      // remap.
+      const storedSecurity = await searchSecurities({ ticker_symbol });
+
+      if (storedSecurity.length) {
+        const existingSecurity: JSONSecurity = { ...storedSecurity[0] };
+        // Ticker collision on a DIFFERENT id — promote the incoming
+        // id as canonical (Plaid/SimpleFin becomes source of truth)
+        // and remap every DB reference from the old id to the
+        // incoming one. Passes `client` so the remap participates in
+        // this transaction, not its own — the eventual securities +
+        // snapshot upsert below commits atomically with the remap.
+        if (existingSecurity.security_id !== newSecurity.security_id) {
+          await remapSecurityReferences(
+            existingSecurity.security_id,
+            newSecurity.security_id,
+            client,
+          );
+        }
+
+        const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
+        const existingDateString = existingSecurity.close_price_as_of;
+        const existingDate = existingDateString && new LocalDate(existingDateString);
+        if (existingDate) {
+          if (existingDate < new LocalDate(close_price_as_of)) {
             snapshots.push({
               snapshot: { snapshot_id, date: new Date().toISOString() },
               security: newSecurity,
             });
+          } else if (existingDate < new LocalDate(getDateString())) {
+            const todaySecurity = await getSecurityForSymbol(ticker_symbol);
+            if (todaySecurity) {
+              newSecurity.close_price = todaySecurity.close_price;
+              newSecurity.close_price_as_of = todaySecurity.close_price_as_of;
+              snapshots.push({
+                snapshot: { snapshot_id, date: new Date().toISOString() },
+                security: newSecurity,
+              });
+            }
           }
         }
+      } else {
+        const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
+        snapshots.push({
+          snapshot: { snapshot_id, date: new Date().toISOString() },
+          security: newSecurity,
+        });
       }
-    } else {
-      const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
-      snapshots.push({
-        snapshot: { snapshot_id, date: new Date().toISOString() },
-        security: newSecurity,
-      });
+
+      newSecurities.push(newSecurity);
+      upsertedIds.add(newSecurity.security_id);
     }
 
-    newSecurities.push(newSecurity);
-    upsertedIds.add(newSecurity.security_id);
-  }
-
-  await upsertSecurities(newSecurities);
-  await upsertSnapshots(snapshots);
+    // Inside the same tx as the remap. If either upsert throws, the
+    // whole transaction rolls back — including any remap — so the
+    // partial-state window ("references pointing at an incoming id
+    // that doesn't exist in `securities` yet") can't happen.
+    await upsertSecurities(newSecurities, client);
+    await upsertSnapshots(snapshots, client);
+  });
 
   return upsertedIds;
 };
