@@ -10,7 +10,7 @@ import {
   Data,
   indexedDb,
 } from "client";
-import { BudgetBar } from "client/components";
+import { BudgetBar, Page } from "client/components";
 import "./index.css";
 
 export const BudgetsPage = () => {
@@ -64,7 +64,7 @@ export const BudgetsPage = () => {
   };
 
   return (
-    <div className="BudgetsPage">
+    <Page className="BudgetsPage">
       <h2>All Budgets</h2>
       <div className="budgetsTable">
         {budgetBars}
@@ -77,6 +77,6 @@ export const BudgetsPage = () => {
           </div>
         )}
       </div>
-    </div>
+    </Page>
   );
 };

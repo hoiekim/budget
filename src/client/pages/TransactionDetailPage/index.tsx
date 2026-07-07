@@ -1,6 +1,7 @@
 import { useAppContext, PATH } from "client";
 import {
   InvestmentTransactionProperties,
+  Page,
   TransactionProperties,
   TransferProperties,
 } from "client/components";
@@ -27,9 +28,9 @@ export const TransactionDetailPage = () => {
     : undefined;
   if (investmentTransaction) {
     return (
-      <div className="TransactionDetailPage">
+      <Page className="TransactionDetailPage">
         <InvestmentTransactionProperties investmentTransaction={investmentTransaction} />
-      </div>
+      </Page>
     );
   }
 
@@ -45,12 +46,12 @@ export const TransactionDetailPage = () => {
   const confirmedTransfer = lookedUp?.status === "confirmed" ? lookedUp : undefined;
 
   return (
-    <div className="TransactionDetailPage">
+    <Page className="TransactionDetailPage">
       {confirmedTransfer ? (
         <TransferProperties transfer={confirmedTransfer} />
       ) : (
         <TransactionProperties transaction={transaction} />
       )}
-    </div>
+    </Page>
   );
 };

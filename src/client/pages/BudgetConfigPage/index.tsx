@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getDateTimeString, LocalDate } from "common";
 import { Capacity, useAppContext, PATH } from "client";
-import { NameInput, Bar, ActionButtons, BudgetProperties } from "client/components";
+import { NameInput, Bar, ActionButtons, BudgetProperties, Page } from "client/components";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { useEventHandlers } from "./lib";
 
@@ -165,7 +165,7 @@ export const BudgetConfigPage = () => {
   };
 
   return (
-    <div className="BudgetConfigPage">
+    <Page className="BudgetConfigPage">
       <div className="title">
         <NameInput defaultValue={name} onChange={(e) => setNameInput(e.target.value)} />
       </div>
@@ -193,6 +193,6 @@ export const BudgetConfigPage = () => {
         setIsSyncedInput={setIsSyncedInput}
       />
       <ActionButtons onComplete={onComplete} onCancel={finishEditing} onDelete={onDelete} />
-    </div>
+    </Page>
   );
 };

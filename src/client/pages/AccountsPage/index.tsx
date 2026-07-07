@@ -9,7 +9,7 @@ import {
   useAppContext,
   useDebounce,
 } from "client";
-import { AccountsDonut, AccountsTable, DonutData } from "client/components";
+import { AccountsDonut, AccountsTable, DonutData, Page } from "client/components";
 import "./index.css";
 
 export const AccountsPage = () => {
@@ -92,7 +92,7 @@ export const AccountsPage = () => {
   if (!isNarrow) classNames.push("wideScreen");
 
   return (
-    <div className={classNames.join(" ")}>
+    <Page className={classNames.join(" ")}>
       <h2>All&nbsp;Accounts</h2>
       <AccountsDonut
         balanceTotal={balanceTotal}
@@ -104,6 +104,6 @@ export const AccountsPage = () => {
         style={{ top: donutTop, position: donutPosition }}
       />
       <AccountsTable donutData={donutData} style={{ paddingTop: tablePaddingTop }} />
-    </div>
+    </Page>
   );
 };

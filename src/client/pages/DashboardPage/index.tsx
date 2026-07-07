@@ -14,7 +14,7 @@ import {
   FlowChart,
   indexedDb,
 } from "client";
-import { BalanceChartRow, FlowChartRow, ProjectionChartRow } from "client/components";
+import { BalanceChartRow, FlowChartRow, Page, ProjectionChartRow } from "client/components";
 import "./index.css";
 
 export const DashboardPage = () => {
@@ -96,10 +96,10 @@ export const DashboardPage = () => {
   };
 
   return (
-    <div className="DashboardPage">
+    <Page className="DashboardPage">
       <h2>Dashboard</h2>
       {chartRows}
       <button onClick={onClickAddChart}>Add&nbsp;Chart</button>
-    </div>
+    </Page>
   );
 };

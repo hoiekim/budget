@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppContext, PATH, Account } from "client";
-import { AccountProperties } from "client/components";
+import { AccountProperties, Page } from "client/components";
 
 import "./index.css";
 
@@ -27,8 +27,8 @@ export const AccountDetailPage = () => {
 
   if (!account) return <></>;
   return (
-    <div className="AccountDetailPage">
+    <Page className="AccountDetailPage">
       <AccountProperties account={account} />
-    </div>
+    </Page>
   );
 };

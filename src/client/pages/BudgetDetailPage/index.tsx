@@ -16,7 +16,7 @@ import {
   SectionDictionary,
   indexedDb,
 } from "client";
-import { BudgetBar, Graph, SectionBar } from "client/components";
+import { BudgetBar, Graph, Page, SectionBar } from "client/components";
 import "./index.css";
 import { useBudgetGraph } from "./lib";
 
@@ -115,7 +115,7 @@ export const BudgetDetailPage = () => {
   const isInfinite = Math.abs(derivedAmount) === MAX_FLOAT;
 
   return (
-    <div className="BudgetDetailPage">
+    <Page className="BudgetDetailPage">
       {budget && (
         <div className="BudgetDetail">
           <BudgetBar budget={budget} />
@@ -149,6 +149,6 @@ export const BudgetDetailPage = () => {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 };

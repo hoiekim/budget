@@ -5,6 +5,7 @@ import {
   BalanceChartRow,
   FlowChartProperties,
   FlowChartRow,
+  Page,
   ProjectionChartProperties,
   ProjectionChartRow,
 } from "client/components";
@@ -30,33 +31,33 @@ export const ChartDetailPage = () => {
   if (chart.type === ChartType.BALANCE) {
     const balanceChart = chart as BalanceChart;
     return (
-      <div className="ChartDetailPage">
+      <Page className="ChartDetailPage">
         <BalanceChartProperties chart={balanceChart}>
           <BalanceChartRow showTitle={false} chart={balanceChart} />
         </BalanceChartProperties>
-      </div>
+      </Page>
     );
   }
 
   if (chart.type === ChartType.PROJECTION) {
     const projectionChart = chart as ProjectionChart;
     return (
-      <div className="ChartDetailPage">
+      <Page className="ChartDetailPage">
         <ProjectionChartProperties chart={projectionChart}>
           <ProjectionChartRow showTitle={false} chart={projectionChart} />
         </ProjectionChartProperties>
-      </div>
+      </Page>
     );
   }
 
   if (chart.type === ChartType.FLOW) {
     const projectionChart = chart as FlowChart;
     return (
-      <div className="ChartDetailPage">
+      <Page className="ChartDetailPage">
         <FlowChartProperties chart={projectionChart}>
           <FlowChartRow showTitle={false} chart={projectionChart} height={400} />
         </FlowChartProperties>
-      </div>
+      </Page>
     );
   }
 

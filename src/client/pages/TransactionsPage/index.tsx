@@ -19,6 +19,7 @@ import {
 } from "client";
 import {
   InvestmentTransactionHeaders,
+  Page,
   TransactionHeaders,
   TransactionsPageTitle,
   TransactionsTable,
@@ -431,7 +432,7 @@ export const TransactionsPage = () => {
   };
 
   return (
-    <div className="TransactionsPage">
+    <Page className="TransactionsPage">
       <TransactionsPageTitle
         filters={{ types, account, budget, section, category }}
         sorter={sorter}
@@ -453,6 +454,6 @@ export const TransactionsPage = () => {
         </div>
       )}
       <TransactionsTable transactions={filteredAndSorted} />
-    </div>
+    </Page>
   );
 };
