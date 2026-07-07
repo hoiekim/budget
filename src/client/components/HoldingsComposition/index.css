@@ -136,3 +136,17 @@
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.9);
 }
+
+/* Divergence indicator on holding rows: a small red dot to the left of the
+ * ticker/label when the row's holdings vs transactions disagree. Tap the
+ * row to reach the detail page, which surfaces the per-security action
+ * ("Add transaction for N missing units"). */
+.holdingsTable .divergenceDot {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background-color: var(--darkRed);
+  margin-right: 0.4em;
+  vertical-align: middle;
+}

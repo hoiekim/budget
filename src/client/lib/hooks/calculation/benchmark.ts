@@ -256,12 +256,12 @@ export const computeBenchmarkEndValue = (params: {
 };
 
 /**
- * Non-cash asset value at a given date: Σ(non_cash_security_id) qty(t) × price(t).
+ * Txn-derived quantity per security at `date`, windowStart-anchored. Shared
+ * by `valueAt` (asset valuation) and `computeQtyDivergence` (the
+ * holdings-vs-transactions reconciliation surface) so both see the identical
+ * qty walk.
  *
- * Cash-shape holdings (per `isCashShapeHolding`) are excluded — the
- * widget's scope is the asset portfolio, not the total account.
- *
- * **`qty(t)` is txn-derived.** For each non-cash security:
+ * **`qty(t)` is txn-derived.** For each security:
  *   qty(t) = qty_from_holding_snapshot_at_windowStart
  *          + Σ(buy.quantity − sell.quantity from txns in (windowStart, t])
  *
@@ -274,29 +274,21 @@ export const computeBenchmarkEndValue = (params: {
  *
  * `windowStart` anchors pre-window history we can't reconstruct from txns
  * (the user may have years of holdings predating the snapshot history we
- * have). For `t = windowStart`, this collapses to "holding snapshot qty"
- * which is what we want for V_start.
+ * have). For `t = windowStart`, this collapses to "holding snapshot qty".
  *
- * Returns 0 when no non-cash holding snapshots have been recorded yet.
+ * The returned map may contain cash-shape securities (from the step-1
+ * anchor); callers filter them via `cashSecs`.
  */
-export const valueAt = (params: {
+const txnDerivedQtyBySecurity = (params: {
   date: string;
   windowStart: string;
   accountId: string;
   holdingSnapshots: HoldingSnapshotDictionary;
   investmentTransactions: InvestmentTransactionDictionary;
-  priceAt: (securityId: string, date: string) => number | null;
-}): number => {
-  const { date, windowStart, accountId, holdingSnapshots, investmentTransactions, priceAt } = params;
+  cashSecs: Set<string>;
+}): Map<string, number> => {
+  const { date, windowStart, accountId, holdingSnapshots, investmentTransactions, cashSecs } = params;
 
-  const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
-
-  // qty per security at `date` = Σ(buy.quantity − sell.quantity) over all
-  // txns at-or-before `date` (windowStart-inclusive). Anchor is implicit:
-  // for users with no pre-windowStart txns and no pre-windowStart holding
-  // snapshot, this collapses to "all positions came from observed buys."
-  // The phantom-holding guard from before is preserved: any holding qty in
-  // `holding_snapshots` that exceeds what txns can explain is invisible.
   const qtyBySec = new Map<string, number>();
 
   // 1) Pre-window holdings anchor: take the latest snapshot ≤ windowStart
@@ -346,6 +338,39 @@ export const valueAt = (params: {
     qtyBySec.set(t.security_id, (qtyBySec.get(t.security_id) ?? 0) + signed);
   });
 
+  return qtyBySec;
+};
+
+/**
+ * Non-cash asset value at a given date: Σ(non_cash_security_id) qty(t) × price(t).
+ *
+ * Cash-shape holdings (per `isCashShapeHolding`) are excluded — the
+ * widget's scope is the asset portfolio, not the total account. `qty(t)` is
+ * the txn-derived walk from `txnDerivedQtyBySecurity` (see its docstring for
+ * the phantom-holding guard).
+ *
+ * Returns 0 when no non-cash holding snapshots have been recorded yet.
+ */
+export const valueAt = (params: {
+  date: string;
+  windowStart: string;
+  accountId: string;
+  holdingSnapshots: HoldingSnapshotDictionary;
+  investmentTransactions: InvestmentTransactionDictionary;
+  priceAt: (securityId: string, date: string) => number | null;
+}): number => {
+  const { date, windowStart, accountId, holdingSnapshots, investmentTransactions, priceAt } = params;
+
+  const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
+  const qtyBySec = txnDerivedQtyBySecurity({
+    date,
+    windowStart,
+    accountId,
+    holdingSnapshots,
+    investmentTransactions,
+    cashSecs,
+  });
+
   let total = 0;
   qtyBySec.forEach((qty, sid) => {
     if (cashSecs.has(sid)) return;
@@ -355,6 +380,155 @@ export const valueAt = (params: {
     total += qty * price;
   });
   return total;
+};
+
+/**
+ * Holdings-vs-transactions reconciliation for the account, evaluated at
+ * `date`. Flags the non-cash securities whose latest holdings snapshot
+ * (what the user actually owns per Plaid's holdings stream) shows more
+ * shares than the transaction stream can explain (`txnDerivedQtyBySecurity`).
+ *
+ * Those surplus shares are *invisible* to `valueAt`/the MWR — the widget
+ * intentionally values only the txn-explained position (the phantom-holding
+ * guard that prevents IRR inflation). The trade-off is that on accounts
+ * whose Plaid txn stream is genuinely incomplete, the MWR is computed on
+ * fewer shares than the user holds, understating the return. This surface
+ * lets the widget tell the user *why* — rather than silently reporting a
+ * number off the full position. Self-heals once the matching buy txns land.
+ *
+ * Sub-0.1%-of-owned drift is ignored so fractional-share rounding (dividend
+ * reinvestment) doesn't produce false flags.
+ */
+/** One divergent security, in either direction. Per-security detail lets
+ *  the tooltip surface which ticker + how much rather than an aggregate. */
+export interface DivergentEntry {
+  security_id: string;
+  /** Absolute qty delta (positive on both sides — direction is the map key). */
+  deltaQty: number;
+  /** deltaQty × priceAt (0 when no price is available). */
+  deltaValue: number;
+}
+
+export interface QtyDivergence {
+  // ── Direction A: holdings snapshot > txn-explained (Plaid holdings ahead).
+  // "Shares you own that transactions can't explain yet — the MWR excludes
+  // them until matching buy txns land."
+  /** # of non-cash securities the user owns more of than txns explain. */
+  divergentSecurityCount: number;
+  /** Est. market value of the excluded surplus shares at `date`. The MWR
+   *  values the position MINUS this amount. */
+  excludedValue: number;
+  /** Per-security detail sorted by `deltaValue` desc so the tooltip lists
+   *  the load-bearing ones first. */
+  divergentSecurities: DivergentEntry[];
+
+  // ── Direction B: txn-explained > holdings snapshot (transactions ahead).
+  // Covers (i) the manual-mint case (invtx recorded for a security with no
+  // matching holdings row) and (ii) the Plaid-lag reverse case (a sale txn
+  // arrived but the snapshot still shows the pre-sale qty). Symmetric shape
+  // with direction A; sub-0.1% ignore threshold shared. See #593 gap 1.
+  /** # of non-cash securities the txn stream records but that the latest
+   *  holdings snapshot doesn't reflect at full qty (or at all). */
+  txnExcessSecurityCount: number;
+  /** Est. value of the transactions-only shares at `date` (using the same
+   *  `priceAt` fallback used for direction A). */
+  txnExcessValue: number;
+  /** Per-security detail sorted by `deltaValue` desc. */
+  txnExcessSecurities: DivergentEntry[];
+}
+
+export const computeQtyDivergence = (params: {
+  date: string;
+  windowStart: string;
+  accountId: string;
+  holdingSnapshots: HoldingSnapshotDictionary;
+  investmentTransactions: InvestmentTransactionDictionary;
+  priceAt: (securityId: string, date: string) => number | null;
+}): QtyDivergence => {
+  const { date, windowStart, accountId, holdingSnapshots, investmentTransactions, priceAt } = params;
+
+  const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
+  const seenQty = txnDerivedQtyBySecurity({
+    date,
+    windowStart,
+    accountId,
+    holdingSnapshots,
+    investmentTransactions,
+    cashSecs,
+  });
+
+  // Latest holdings-snapshot qty at-or-before `date` per non-cash security —
+  // the shares the user actually owns per Plaid's holdings stream.
+  const ownedQty = new Map<string, number>();
+  const ownedDate = new Map<string, string>();
+  holdingSnapshots.forEach((snap) => {
+    if (snap.holding.account_id !== accountId) return;
+    const sid = snap.holding.security_id;
+    if (cashSecs.has(sid)) return;
+    const snapDate = snap.snapshot.date.slice(0, 10);
+    if (snapDate > date) return;
+    const cur = ownedDate.get(sid);
+    if (!cur || snapDate > cur) {
+      ownedDate.set(sid, snapDate);
+      ownedQty.set(sid, snap.holding.quantity ?? 0);
+    }
+  });
+
+  let divergentSecurityCount = 0;
+  let excludedValue = 0;
+  const divergentSecurities: DivergentEntry[] = [];
+  ownedQty.forEach((owned, sid) => {
+    // Clamp the txn-derived baseline at 0 to mirror valueAt's `qty <= 0`
+    // guard: valueAt contributes 0 (not a negative value) for a security
+    // whose walk went net-short, so the shares it actually *excludes* are
+    // `owned − max(0, seen)`, not `owned − seen`.
+    const surplus = owned - Math.max(0, seenQty.get(sid) ?? 0);
+    // Ignore sub-0.1%-of-owned drift (fractional-share reinvestment noise).
+    if (surplus <= 0 || surplus <= Math.abs(owned) * 1e-3) return;
+    divergentSecurityCount += 1;
+    const price = priceAt(sid, date);
+    const deltaValue = price !== null ? surplus * price : 0;
+    excludedValue += deltaValue;
+    divergentSecurities.push({ security_id: sid, deltaQty: surplus, deltaValue });
+  });
+  divergentSecurities.sort((a, b) => b.deltaValue - a.deltaValue);
+
+  // Direction B: txn-explained > holdings snapshot. Walk the seen (txn)
+  // qty map and check each non-cash security against the owned map. A
+  // security appears here when either (i) the txn stream records positive
+  // qty AND the holdings snapshot for the same `(account_id, security_id)`
+  // is missing entirely — the manual-mint case: user recorded a buy but no
+  // holding was ever created; OR (ii) the txn qty > the snapshot qty at
+  // `date` — a Plaid-lag reverse case (sale txn arrived, snapshot still
+  // pre-sale). The ignore threshold is 0.1% of `seen` — symmetric with
+  // direction A's `Math.abs(owned) * 1e-3`.
+  let txnExcessSecurityCount = 0;
+  let txnExcessValue = 0;
+  const txnExcessSecurities: DivergentEntry[] = [];
+  seenQty.forEach((seen, sid) => {
+    if (cashSecs.has(sid)) return;
+    // Only positive-qty holdings are meaningful — a walked-net-short
+    // security isn't "held" from either side's view.
+    if (seen <= 0) return;
+    const owned = ownedQty.get(sid) ?? 0;
+    const excess = seen - owned;
+    if (excess <= 0 || excess <= Math.abs(seen) * 1e-3) return;
+    txnExcessSecurityCount += 1;
+    const price = priceAt(sid, date);
+    const deltaValue = price !== null ? excess * price : 0;
+    txnExcessValue += deltaValue;
+    txnExcessSecurities.push({ security_id: sid, deltaQty: excess, deltaValue });
+  });
+  txnExcessSecurities.sort((a, b) => b.deltaValue - a.deltaValue);
+
+  return {
+    divergentSecurityCount,
+    excludedValue,
+    divergentSecurities,
+    txnExcessSecurityCount,
+    txnExcessValue,
+    txnExcessSecurities,
+  };
 };
 
 /**

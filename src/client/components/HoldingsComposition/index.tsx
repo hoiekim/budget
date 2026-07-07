@@ -1,6 +1,6 @@
 import { KeyboardEvent, useMemo } from "react";
 import { currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
-import { Account, PATH, useAppContext } from "client";
+import { Account, PATH, useAppContext, useHoldingDivergence } from "client";
 import "./index.css";
 
 interface Props {
@@ -28,6 +28,9 @@ interface PerSecurityRow {
 }
 
 interface TickerRow {
+  /** Security_ids contributing to this bucket. Used by the divergence-dot
+   *  overlay (a bucket flags if ANY contributing security is divergent). */
+  contributingSecurityIds: string[];
   /** Aggregation key: real `ticker_symbol` when present (case-folded upper),
    *  otherwise `CASH_TICKER` for `isCash` rows, otherwise the truncated
    *  security_id. URL param for the detail page click target. */
@@ -59,7 +62,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
 
   const { calculations, router, viewDate, data } = useAppContext();
   const { holdingsValueData, balanceData } = calculations;
-  const { items, securitySnapshots } = data;
+  const { items, securitySnapshots, holdingSnapshots, investmentTransactions } = data;
 
   // "Add Holding" and manual-account visibility only apply when a single
   // manual account is shown; multi-account aggregation has no single target.
@@ -71,6 +74,19 @@ export const HoldingsComposition = ({ accounts }: Props) => {
   const viewEndDate = viewDate.getEndDate();
   const latestViewDate = new ViewDate(viewDate.getInterval());
   const isCurrentViewDate = viewEndDate >= latestViewDate.getEndDate();
+
+  // Holdings-vs-transactions divergence per security_id — mirrors the
+  // detection that drives the PerformanceBenchmark widget's footnote so
+  // the same set of securities are flagged in both surfaces. Pinned to
+  // `viewEndDate` so a red dot appears (or disappears) for the same
+  // window the widget is looking at — running at `today` here while the
+  // widget runs at the user-selected past month caused the "widget says
+  // check the red flag / there's no red flag" mismatch (Hoie 2026-07-06).
+  const divergence = useHoldingDivergence(
+    accounts.map((a) => a.account_id),
+    { holdingSnapshots, investmentTransactions, securitySnapshots },
+    viewEndDate.toISOString().slice(0, 10),
+  );
 
   // First pass: one row per (account, security) at the current viewDate —
   // the calculation hook's per-holding summary. Same shape as before; the
@@ -142,6 +158,9 @@ export const HoldingsComposition = ({ accounts }: Props) => {
       name: string | null;
       ticker: string | null;
       securityId: string;
+      /** All security_ids that landed in this bucket — the divergence-dot
+       *  overlay checks each against the divergence map. */
+      contributingSecurityIds: Set<string>;
     }
     const buckets = new Map<string, Acc>();
 
@@ -169,6 +188,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
           name: row.name,
           ticker: row.ticker,
           securityId: row.securityId,
+          contributingSecurityIds: new Set([row.securityId]),
         });
       } else {
         existing.quantity += row.quantity;
@@ -184,6 +204,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
         existing.costBasisInferred = existing.costBasisInferred || row.costBasisInferred;
         if (!existing.name && row.name) existing.name = row.name;
         if (!existing.ticker && row.ticker) existing.ticker = row.ticker;
+        existing.contributingSecurityIds.add(row.securityId);
       }
     });
 
@@ -205,6 +226,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
         costBasisInferred: b.costBasisInferred,
         isCash: b.isCash,
         clickable: true,
+        contributingSecurityIds: Array.from(b.contributingSecurityIds),
       };
     });
   }, [perSecurityRows]);
@@ -307,6 +329,16 @@ export const HoldingsComposition = ({ accounts }: Props) => {
             >
               <span className="col-name">
                 <span className="security-name" title={row.titleLabel}>
+                  {/* Red dot when ANY of the securities aggregated into
+                      this ticker bucket has a holdings-vs-transactions
+                      divergence flagged. Click through opens the holding
+                      detail page, which surfaces per-security actions. */}
+                  {row.contributingSecurityIds.some((sid) => divergence.bySecurity.has(sid)) && (
+                    <span
+                      className="divergenceDot"
+                      aria-label="Holdings and transactions don't match — see detail page"
+                    />
+                  )}
                   {row.primaryLabel}
                 </span>
                 {row.secondaryLabel && (
