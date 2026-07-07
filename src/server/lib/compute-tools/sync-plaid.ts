@@ -324,8 +324,10 @@ export const syncPlaidAccounts = async (item_id: string) => {
       const allHoldings = inferredCash.length ? [...holdings, ...inferredCash] : holdings;
 
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
-      await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
+      // Securities first so holdings never reference a not-yet-written
+      // securities row within the same sync.
       await upsertSecuritiesWithSnapshots(securities);
+      await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
 
       return accounts;
     })

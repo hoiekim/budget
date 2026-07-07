@@ -53,7 +53,11 @@ export const searchSecurities = async (
   if (options.ticker_symbol) filters.ticker_symbol = options.ticker_symbol;
   if (options.name) filters.name = options.name;
 
-  const models = await securitiesTable.query(filters);
+  // `updated DESC` gives a stable pick when multiple rows share a
+  // ticker (see `create-snapshots.ts` — `security_id` is identity, not
+  // ticker). Callers that take `.securities[0]` reliably get the most
+  // recently-touched row.
+  const models = await securitiesTable.query(filters, { orderBy: "updated DESC" });
   return models.map((m) => m.toJSON());
 };
 

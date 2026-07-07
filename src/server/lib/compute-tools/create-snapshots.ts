@@ -1,25 +1,21 @@
 import {
   JSONAccount,
   JSONAccountSnapshot,
-  getDateString,
   getSquashedDateString,
   JSONHolding,
   JSONHoldingSnapshot,
   isEqual,
   JSONSecurity,
   JSONSecuritySnapshot,
-  LocalDate,
 } from "common";
 import {
   deleteHoldings,
   MaskedUser,
-  searchSecurities,
   upsertAccounts,
   upsertHoldings,
   upsertSecurities,
   upsertSnapshots,
 } from "server";
-import { getSecurityForSymbol } from "../polygon";
 
 export const upsertAccountsWithSnapshots = async (
   user: MaskedUser,
@@ -101,60 +97,38 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
   await deleteHoldings(user, removedHoldingIds);
 };
 
-export const upsertSecuritiesWithSnapshots = async (securities: JSONSecurity[]) => {
+/**
+ * Upsert incoming securities and write today's snapshot for each.
+ * `security_id` is treated as identity — two rows can share a ticker
+ * (user-minted + provider-synced), and `HoldingsComposition` folds them
+ * by ticker on read. Returns the set of successfully-upserted
+ * `security_id`s so callers can drop holdings whose security was
+ * filtered out here (no ticker or no close price).
+ */
+export const upsertSecuritiesWithSnapshots = async (
+  securities: JSONSecurity[],
+): Promise<Set<string>> => {
   const newSecurities: JSONSecurity[] = [];
   const snapshots: JSONSecuritySnapshot[] = [];
-  const idMap: { [key: string]: string } = {};
+  const upsertedIds = new Set<string>();
 
-  const promises = securities.map(async (s) => {
-    const { security_id, ticker_symbol, close_price, close_price_as_of } = s;
-    if (!ticker_symbol) return;
-    if (!close_price || !close_price_as_of) return;
+  for (const s of securities) {
+    const { ticker_symbol, close_price, close_price_as_of } = s;
+    if (!ticker_symbol) continue;
+    if (!close_price || !close_price_as_of) continue;
 
     const newSecurity: JSONSecurity = { ...s };
-
-    const storedSecurity = await searchSecurities({ ticker_symbol });
-    if (storedSecurity.length) {
-      const existingSecurity: JSONSecurity = { ...storedSecurity[0] };
-      newSecurity.security_id = existingSecurity.security_id;
-      const snapshot_id = `${existingSecurity.security_id}-${getSquashedDateString()}`;
-
-      const existingDateString = existingSecurity.close_price_as_of;
-      const existingDate = existingDateString && new LocalDate(existingDateString);
-      if (existingDate) {
-        if (existingDate < new LocalDate(close_price_as_of)) {
-          snapshots.push({
-            snapshot: { snapshot_id, date: new Date().toISOString() },
-            security: newSecurity,
-          });
-        } else if (existingDate < new LocalDate(getDateString())) {
-          const todaySecurity = await getSecurityForSymbol(ticker_symbol);
-          if (todaySecurity) {
-            newSecurity.close_price = todaySecurity.close_price;
-            newSecurity.close_price_as_of = todaySecurity.close_price_as_of;
-            snapshots.push({
-              snapshot: { snapshot_id, date: new Date().toISOString() },
-              security: newSecurity,
-            });
-          }
-        }
-      }
-    } else {
-      const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
-      snapshots.push({
-        snapshot: { snapshot_id, date: new Date().toISOString() },
-        security: newSecurity,
-      });
-    }
+    const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
+    snapshots.push({
+      snapshot: { snapshot_id, date: new Date().toISOString() },
+      security: newSecurity,
+    });
 
     newSecurities.push(newSecurity);
-    idMap[security_id] = newSecurity.security_id;
-    return;
-  });
+    upsertedIds.add(newSecurity.security_id);
+  }
 
-  await Promise.all(promises);
   await upsertSecurities(newSecurities);
   await upsertSnapshots(snapshots);
-
-  return idMap;
+  return upsertedIds;
 };
