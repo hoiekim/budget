@@ -1,3 +1,7 @@
+div.HoldingProperties {
+  padding: 0 10px;
+}
+
 .HoldingProperties .tickerField {
   display: flex;
   gap: 8px;
