@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiKeyJSON } from "server";
 import { call, PATH, Properties, Property, PropertyLabel, Row, useAppContext } from "client";
 
-import "./index.css";
 
 type KeyView = Omit<ApiKeyJSON, "key_hash" | "revoked_at">;
 
