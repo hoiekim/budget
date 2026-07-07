@@ -3,7 +3,6 @@ import {
   JSONAccount,
   getDateString,
   getDateTimeString,
-  JSONHolding,
   JSONInvestmentTransaction,
   JSONItem,
   RemovedInvestmentTransaction,
@@ -66,19 +65,15 @@ export const syncSimpleFinData = async (item_id: string) => {
     startDate,
   );
 
-  // Map SimpleFin holdings onto local security_ids first; the cash
-  // inference + holding upsert run after the investment account list is
-  // built (further below), because the inference needs each account's
-  // balances.current to compute the cash delta.
-  const idMap = await upsertSecuritiesWithSnapshots(securities);
-  const mappedHoldings = holdings
-    .map((h) => {
-      const security_id = idMap[h.security_id];
-      if (!security_id) return undefined;
-      const newHolding: JSONHolding = { ...h, security_id };
-      return newHolding;
-    })
-    .filter((h): h is JSONHolding => !!h);
+  // Upsert securities first so the FE has ticker/name rows to resolve
+  // against; the cash inference + holding upsert run after the
+  // investment account list is built (further below), because the
+  // inference needs each account's balances.current to compute the
+  // cash delta. Holdings whose security was filtered out
+  // (`upsertedIds` doesn't include them — e.g. no ticker_symbol or no
+  // close_price) get dropped so we don't persist orphan references.
+  const upsertedIds = await upsertSecuritiesWithSnapshots(securities);
+  const mappedHoldings = holdings.filter((h) => upsertedIds.has(h.security_id));
 
   const investmentAccounts: JSONAccount[] = [];
   const otherAccounts: JSONAccount[] = [];
