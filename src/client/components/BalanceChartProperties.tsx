@@ -12,6 +12,10 @@ import {
   getChartTypeName,
   indexedDb,
   StoreName,
+  Properties,
+  PropertyLabel,
+  Property,
+  Row,
 } from "client";
 
 interface BalanceChartPropertiesProps {
@@ -94,14 +98,14 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
   };
 
   return (
-    <div className="Properties">
-      <div className="propertyLabel">Chart&nbsp;Profile</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties>
+      <PropertyLabel>Chart&nbsp;Profile</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Chart&nbsp;Name</span>
           <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Chart&nbsp;Type</span>
           <select value={selectedType} onChange={onChangeType}>
             {Object.values(ChartType).map((v) => {
@@ -113,28 +117,28 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
               );
             })}
           </select>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
-      <div className="propertyLabel">Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button onClick={onClickAccounts}>
             {selectedAccountsCount + selectedBudgetsCount}&nbsp;selected
           </button>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
       {children}
 
-      <div className="propertyLabel">&nbsp;</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>&nbsp;</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button className="delete colored" onClick={onClickRemove}>
             Delete
           </button>
-        </div>
-      </div>
-    </div>
+        </Row>
+      </Property>
+    </Properties>
   );
 };

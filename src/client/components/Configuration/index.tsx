@@ -11,6 +11,10 @@ import {
   useAppContext,
   useSync,
   indexedDb,
+  Properties,
+  PropertyLabel,
+  Property,
+  Row,
 } from "client";
 import { SimpleFinLinkButton } from "client/components";
 import { ApiKeysSection } from "./ApiKeysSection";
@@ -34,7 +38,7 @@ export const Configuration = () => {
       const buttonClassNames = ["connection"];
       if (status !== ItemStatus.OK) buttonClassNames.push("notification");
       return (
-        <div className="row button" key={id}>
+        <Row className="button" key={id}>
           <button className={buttonClassNames.join(" ")} onClick={onClickConnection}>
             <div>
               {institution_id ? (
@@ -45,7 +49,7 @@ export const Configuration = () => {
               <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
             </div>
           </button>
-        </div>
+        </Row>
       );
     });
 
@@ -106,40 +110,40 @@ export const Configuration = () => {
   };
 
   return (
-    <div className="Configuration Properties">
-      <div className="propertyLabel">Manual&nbsp;Accounts</div>
-      <div className="property">
-        <div className="row button">
+    <Properties className="Configuration">
+      <PropertyLabel>Manual&nbsp;Accounts</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button onClick={onClickAddManualAccount}>See&nbsp;Manual&nbsp;Accounts</button>
-        </div>
-      </div>
+        </Row>
+      </Property>
       {!!itemsRow.length && (
         <>
-          <div className="propertyLabel">Connections</div>
-          <div className="property">{itemsRow}</div>
+          <PropertyLabel>Connections</PropertyLabel>
+          <Property>{itemsRow}</Property>
         </>
       )}
-      <div className="propertyLabel">Add&nbsp;Connection</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>Add&nbsp;Connection</PropertyLabel>
+      <Property>
+        <Row className="button">
           <PlaidLinkButton>Connect&nbsp;via&nbsp;Plaid</PlaidLinkButton>
-        </div>
-        <div className="row button">
+        </Row>
+        <Row className="button">
           <SimpleFinLinkButton>Connect&nbsp;via&nbsp;SimpleFin</SimpleFinLinkButton>
-        </div>
-      </div>
+        </Row>
+      </Property>
       <ApiKeysSection />
-      <div className="propertyLabel">&nbsp;</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>&nbsp;</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button onClick={onClickRefresh}>Refresh</button>
-        </div>
-        <div className="row button">
+        </Row>
+        <Row className="button">
           <button className="delete colored" onClick={logout}>
             Logout
           </button>
-        </div>
-      </div>
-    </div>
+        </Row>
+      </Property>
+    </Properties>
   );
 };

@@ -12,6 +12,10 @@ import {
   getChartTypeName,
   indexedDb,
   StoreName,
+  Properties,
+  PropertyLabel,
+  Property,
+  Row,
 } from "client";
 
 interface FlowChartPropertiesProps {
@@ -90,14 +94,14 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
   };
 
   return (
-    <div className="Properties">
-      <div className="propertyLabel">Chart&nbsp;Profile</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties>
+      <PropertyLabel>Chart&nbsp;Profile</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Chart&nbsp;Name</span>
           <input value={nameInput} onChange={onChangeName} />
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Chart&nbsp;Type</span>
           <select value={selectedType} onChange={onChangeType}>
             {Object.values(ChartType).map((v) => {
@@ -109,26 +113,26 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
               );
             })}
           </select>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
-      <div className="propertyLabel">Selected&nbsp;Accounts</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button onClick={onClickAccounts}>{selectedAccountsCount}&nbsp;selected</button>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
       {children}
 
-      <div className="propertyLabel">&nbsp;</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>&nbsp;</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button className="delete colored" onClick={onClickRemove}>
             Delete
           </button>
-        </div>
-      </div>
-    </div>
+        </Row>
+      </Property>
+    </Properties>
   );
 };

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiKeyJSON } from "server";
-import { call, PATH, useAppContext } from "client";
+import {
+  call,
+  PATH,
+  useAppContext,
+  PropertyLabel,
+  Property,
+  Row,
+} from "client";
 
 import "./ApiKeysSection.css";
 
@@ -37,43 +44,43 @@ export const ApiKeysSection = () => {
 
   return (
     <>
-      <div className="propertyLabel">API&nbsp;Keys</div>
+      <PropertyLabel>API&nbsp;Keys</PropertyLabel>
 
       {error && (
-        <div className="property">
-          <div className="row">
+        <Property>
+          <Row>
             <span className="apiKeyError">{error}</span>
-          </div>
-        </div>
+          </Row>
+        </Property>
       )}
 
-      <div className="property">
+      <Property>
         {loading && (
-          <div className="row">
+          <Row>
             <span className="propertyName disabled">Loading&hellip;</span>
-          </div>
+          </Row>
         )}
         {!loading && keys.length === 0 && (
-          <div className="row">
+          <Row>
             <span className="propertyName disabled">No active API keys</span>
-          </div>
+          </Row>
         )}
         {keys.map((k) => (
-          <div className="row button" key={k.key_id}>
+          <Row className="button" key={k.key_id}>
             <button className="connection" onClick={() => goToKey(k.key_id)}>
               <div>
                 <span>{k.name}</span>
                 <span className="small">&nbsp;&nbsp;{k.key_prefix}…</span>
               </div>
             </button>
-          </div>
+          </Row>
         ))}
-        <div className="row button">
+        <Row className="button">
           <button type="button" onClick={goToNewKey}>
             Add
           </button>
-        </div>
-      </div>
+        </Row>
+      </Property>
     </>
   );
 };
