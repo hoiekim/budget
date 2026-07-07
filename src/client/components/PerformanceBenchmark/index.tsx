@@ -9,6 +9,8 @@ import {
   SecuritySnapshotDictionary,
   indexedDb,
   useVooHistory,
+  PropertyLabel,
+  Property,
 } from "client";
 import type { ResolveSecuritySnapshotResponse } from "server/routes/accounts/post-resolve-security-snapshot";
 import {
@@ -344,8 +346,8 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
 
   return (
     <>
-      <div className="propertyLabel">Investment&nbsp;Performance</div>
-      <div className="property performanceBenchmark">
+      <PropertyLabel>Investment&nbsp;Performance</PropertyLabel>
+      <Property className="performanceBenchmark">
         <div className="performanceWindowPicker">
           {WINDOW_OPTIONS.map((opt) => (
             <button
@@ -446,7 +448,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
             </span>
           )}
         </div>
-      </div>
+      </Property>
     </>
   );
 };

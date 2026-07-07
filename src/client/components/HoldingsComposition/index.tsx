@@ -1,6 +1,13 @@
 import { KeyboardEvent, useMemo } from "react";
 import { currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
-import { Account, PATH, useAppContext, useHoldingDivergence } from "client";
+import {
+  Account,
+  PATH,
+  useAppContext,
+  useHoldingDivergence,
+  PropertyLabel,
+  Property,
+} from "client";
 import "./index.css";
 
 interface Props {
@@ -289,8 +296,8 @@ export const HoldingsComposition = ({ accounts }: Props) => {
 
   return (
     <>
-      <div className="propertyLabel">Holdings&nbsp;Composition</div>
-      <div className="property holdingsTable">
+      <PropertyLabel>Holdings&nbsp;Composition</PropertyLabel>
+      <Property className="holdingsTable">
         <div className="holdingsHeader">
           <span className="col-name">Security</span>
           <span className="col-value">Value</span>
@@ -416,7 +423,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
         {tickerRows.some((r) => r.costBasisInferred) && (
           <div className="holdingsFootnote">* Cost basis inferred from transaction history</div>
         )}
-      </div>
+      </Property>
     </>
   );
 };

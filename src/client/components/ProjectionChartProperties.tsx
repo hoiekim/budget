@@ -12,6 +12,10 @@ import {
   getChartTypeName,
   indexedDb,
   StoreName,
+  Properties,
+  PropertyLabel,
+  Property,
+  Row,
 } from "client";
 import {
   ChangeEventHandler,
@@ -174,14 +178,14 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   };
 
   return (
-    <div className="Properties">
-      <div className="propertyLabel">Chart&nbsp;Profile</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties>
+      <PropertyLabel>Chart&nbsp;Profile</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Chart&nbsp;Name</span>
           <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Chart&nbsp;Type</span>
           <select value={selectedType} onChange={onChangeType}>
             {Object.values(ChartType).map((v) => {
@@ -193,21 +197,21 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
               );
             })}
           </select>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
-      <div className="propertyLabel">Selected&nbsp;Accounts</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button onClick={onClickAccounts}>{numberOfSelectedAccounts}&nbsp;selected</button>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
       {children}
 
-      <div className="propertyLabel">Saving&nbsp;Configuration</div>
-      <div className="property">
-        <div className="row keyValue">
+      <PropertyLabel>Saving&nbsp;Configuration</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Initial&nbsp;Saving</span>
           <div>
             <CapacityInput
@@ -217,8 +221,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;$</span>
           </div>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Initial&nbsp;Saving&nbsp;as&nbsp;of</span>
           <input
             type="date"
@@ -226,8 +230,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             onBlur={onBlurInitialSavingDate}
             aria-label="Initial saving as of date"
           />
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Monthly&nbsp;Contribution</span>
           <div>
             <CapacityInput
@@ -237,8 +241,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;$</span>
           </div>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Anual&nbsp;Percentage&nbsp;Yield</span>
           <div>
             <CapacityInput
@@ -251,11 +255,11 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;%</span>
           </div>
-        </div>
-      </div>
-      <div className="propertyLabel">Goal&nbsp;Configuration</div>
-      <div className="property">
-        <div className="row keyValue">
+        </Row>
+      </Property>
+      <PropertyLabel>Goal&nbsp;Configuration</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Living&nbsp;Cost</span>
           <div>
             <CapacityInput
@@ -265,8 +269,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;$</span>
           </div>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Living&nbsp;Cost&nbsp;as&nbsp;of</span>
           <input
             type="date"
@@ -274,8 +278,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             onBlur={onBlurLivingCostDate}
             aria-label="Living cost as of date"
           />
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Tax&nbsp;Rate</span>
           <div>
             <CapacityInput
@@ -288,8 +292,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;%</span>
           </div>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">YoY&nbsp;Inflation</span>
           <div>
             <CapacityInput
@@ -302,17 +306,17 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;%</span>
           </div>
-        </div>
-      </div>
+        </Row>
+      </Property>
 
-      <div className="propertyLabel">&nbsp;</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>&nbsp;</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button className="delete colored" onClick={onClickRemove}>
             Delete
           </button>
-        </div>
-      </div>
-    </div>
+        </Row>
+      </Property>
+    </Properties>
   );
 };
