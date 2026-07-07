@@ -1,7 +1,3 @@
-div.ApiKeyProperties {
-  padding: 0 10px;
-}
-
 .ApiKeyProperties .apiKeyError {
   color: var(--red);
   font-size: 13px;

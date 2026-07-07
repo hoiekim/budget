@@ -9,6 +9,7 @@
 
 div.Properties {
   margin-top: 20px;
+  padding: 0 10px;
 }
 
 div.Properties button:disabled {
@@ -68,12 +69,26 @@ div.Properties .row span.small {
 
 div.Properties .row select {
   font-size: 14px;
+  text-align: right;
 }
 
 div.Properties .row input {
   font-size: 16px;
   height: 18px;
   text-align: right;
+}
+
+div.Properties .amount:has(> input) {
+  display: flex;
+  align-items: center;
+}
+
+div.Properties .amount > input {
+  width: calc(100% - 5px);
+}
+
+div.Properties .amount > input:disabled {
+  color: inherit;
 }
 
 div.Properties .row.keyValue span.propertyName {

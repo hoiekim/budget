@@ -20,7 +20,6 @@ import {
   StoreName,
 } from "client";
 import { ConnectedAccountRow } from "./ConnectedAccountRow";
-import "./index.css";
 
 interface Props {
   item: Item;

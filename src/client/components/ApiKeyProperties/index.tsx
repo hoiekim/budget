@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiKeyJSON } from "server";
-import { call, PATH, useAppContext } from "client";
+import { call, PATH, Properties, Property, PropertyLabel, Row, useAppContext } from "client";
 
 import "./index.css";
 
@@ -105,43 +105,43 @@ export const ApiKeyProperties = () => {
   // ── Just-created view (key_id unset + justCreated set) ───────────────
   if (isNew && justCreated) {
     return (
-      <div className="ApiKeyProperties Properties">
-        <div className="propertyLabel">New&nbsp;Key&nbsp;—&nbsp;Save&nbsp;Now</div>
-        <div className="property">
-          <div className="row">
+      <Properties className="ApiKeyProperties">
+        <PropertyLabel>New&nbsp;Key&nbsp;—&nbsp;Save&nbsp;Now</PropertyLabel>
+        <Property>
+          <Row>
             <span className="apiKeyCopyOnceTitle">
               Copy this key — it will not be shown again.
             </span>
-          </div>
-          <div className="row keyValue">
+          </Row>
+          <Row className="keyValue">
             <span className="propertyName">Key</span>
             <code className="apiKeyPlaintext">{justCreated.plaintext}</code>
-          </div>
-        </div>
-        <div className="propertyLabel">&nbsp;</div>
-        <div className="property">
-          <div className="row button">
+          </Row>
+        </Property>
+        <PropertyLabel>&nbsp;</PropertyLabel>
+        <Property>
+          <Row className="button">
             <button type="button" className="colored" onClick={onCopy}>
               Copy&nbsp;to&nbsp;clipboard
             </button>
-          </div>
-          <div className="row button">
+          </Row>
+          <Row className="button">
             <button type="button" onClick={onSavedConfirm}>
               I&rsquo;ve&nbsp;saved&nbsp;it
             </button>
-          </div>
-        </div>
-      </div>
+          </Row>
+        </Property>
+      </Properties>
     );
   }
 
   // ── Create form (key_id unset, no justCreated yet) ───────────────────
   if (isNew) {
     return (
-      <div className="ApiKeyProperties Properties">
-        <div className="propertyLabel">New&nbsp;API&nbsp;Key</div>
-        <div className="property">
-          <div className="row keyValue">
+      <Properties className="ApiKeyProperties">
+        <PropertyLabel>New&nbsp;API&nbsp;Key</PropertyLabel>
+        <Property>
+          <Row className="keyValue">
             <span className="propertyName">Name</span>
             <input
               type="text"
@@ -151,8 +151,8 @@ export const ApiKeyProperties = () => {
               disabled={creating}
               maxLength={255}
             />
-          </div>
-          <div className="row keyValue">
+          </Row>
+          <Row className="keyValue">
             <span className="propertyName">Scope</span>
             <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={creating}>
               {SCOPE_OPTIONS.map((o) => (
@@ -161,16 +161,16 @@ export const ApiKeyProperties = () => {
                 </option>
               ))}
             </select>
-          </div>
+          </Row>
           {error && (
-            <div className="row">
+            <Row>
               <span className="apiKeyError">{error}</span>
-            </div>
+            </Row>
           )}
-        </div>
-        <div className="propertyLabel">&nbsp;</div>
-        <div className="property">
-          <div className="row button">
+        </Property>
+        <PropertyLabel>&nbsp;</PropertyLabel>
+        <Property>
+          <Row className="button">
             <button
               type="button"
               className="colored"
@@ -179,98 +179,98 @@ export const ApiKeyProperties = () => {
             >
               {creating ? "Creating…" : "Create Key"}
             </button>
-          </div>
-          <div className="row button">
+          </Row>
+          <Row className="button">
             <button type="button" onClick={goBack}>
               Cancel
             </button>
-          </div>
-        </div>
-      </div>
+          </Row>
+        </Property>
+      </Properties>
     );
   }
 
   // ── Detail view loading state ────────────────────────────────────────
   if (loading && !apiKey) {
     return (
-      <div className="ApiKeyProperties Properties">
-        <div className="propertyLabel">API&nbsp;Key</div>
-        <div className="property">
-          <div className="row">
+      <Properties className="ApiKeyProperties">
+        <PropertyLabel>API&nbsp;Key</PropertyLabel>
+        <Property>
+          <Row>
             <span className="propertyName disabled">Loading&hellip;</span>
-          </div>
-        </div>
-      </div>
+          </Row>
+        </Property>
+      </Properties>
     );
   }
 
   // ── Detail view error / not-found ────────────────────────────────────
   if (error || !apiKey) {
     return (
-      <div className="ApiKeyProperties Properties">
-        <div className="propertyLabel">API&nbsp;Key</div>
-        <div className="property">
-          <div className="row">
+      <Properties className="ApiKeyProperties">
+        <PropertyLabel>API&nbsp;Key</PropertyLabel>
+        <Property>
+          <Row>
             <span className="propertyName disabled">{error ?? "Not found"}</span>
-          </div>
-        </div>
-        <div className="propertyLabel">&nbsp;</div>
-        <div className="property">
-          <div className="row button">
+          </Row>
+        </Property>
+        <PropertyLabel>&nbsp;</PropertyLabel>
+        <Property>
+          <Row className="button">
             <button type="button" onClick={goBack}>
               Back
             </button>
-          </div>
-        </div>
-      </div>
+          </Row>
+        </Property>
+      </Properties>
     );
   }
 
   // ── Detail view ──────────────────────────────────────────────────────
   return (
-    <div className="ApiKeyProperties Properties">
-      <div className="propertyLabel">API&nbsp;Key&nbsp;Details</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties className="ApiKeyProperties">
+      <PropertyLabel>API&nbsp;Key&nbsp;Details</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Name</span>
           <span>{apiKey.name}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Prefix</span>
           <code className="apiKeyPrefix">{apiKey.key_prefix}…</code>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Scopes</span>
           <span>{apiKey.scopes.join(", ")}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Created</span>
           <span>{formatDate(apiKey.created_at)}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Last&nbsp;Used</span>
           <span>{formatDate(apiKey.last_used_at)}</span>
-        </div>
+        </Row>
         {apiKey.expires_at && (
-          <div className="row keyValue">
+          <Row className="keyValue">
             <span className="propertyName">Expires</span>
             <span>{formatDate(apiKey.expires_at)}</span>
-          </div>
+          </Row>
         )}
-      </div>
-      <div className="propertyLabel">&nbsp;</div>
-      <div className="property">
-        <div className="row button">
+      </Property>
+      <PropertyLabel>&nbsp;</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button type="button" className="delete colored" onClick={onRevoke}>
             Revoke
           </button>
-        </div>
-        <div className="row button">
+        </Row>
+        <Row className="button">
           <button type="button" onClick={goBack}>
             Back
           </button>
-        </div>
-      </div>
-    </div>
+        </Row>
+      </Property>
+    </Properties>
   );
 };

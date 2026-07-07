@@ -20,7 +20,14 @@ import {
   call,
   indexedDb,
 } from "client";
-import { InstitutionSpan, TransferArrowIcon } from "client/components";
+import {
+  InstitutionSpan,
+  Properties,
+  Property,
+  PropertyLabel,
+  Row,
+  TransferArrowIcon,
+} from "client/components";
 import SplitTransactionRow from "./SplitTransactionRow";
 import "./index.css";
 
@@ -264,9 +271,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
     ?.toArray()
     .map((s) => {
       return (
-        <div key={s.id} className="row">
+        <Row key={s.id}>
           <SplitTransactionRow splitTransaction={s} />
-        </div>
+        </Row>
       );
     });
 
@@ -325,10 +332,10 @@ export const TransactionProperties = ({ transaction }: Props) => {
   };
 
   return (
-    <div className="TransactionProperties Properties">
-      <div className="propertyLabel">Transaction&nbsp;Details</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties className="TransactionProperties">
+      <PropertyLabel>Transaction&nbsp;Details</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Date</span>
           {isManual ? (
             <input
@@ -346,12 +353,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
               })}
             </span>
           )}
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Merchant&nbsp;Name</span>
           <span>{merchant_name}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Name</span>
           {isManual ? (
             <input
@@ -364,8 +371,8 @@ export const TransactionProperties = ({ transaction }: Props) => {
           ) : (
             <span>{name}</span>
           )}
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Amount</span>
           {isManual ? (
             <input
@@ -382,20 +389,20 @@ export const TransactionProperties = ({ transaction }: Props) => {
               {numberToCommaString(Math.abs(amount))}
             </span>
           )}
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Location</span>
           <span>{locations.join(", ")}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Account</span>
           <span>{account?.custom_name || account?.name}</span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Institution</span>
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Memo</span>
           <input
             type="text"
@@ -404,13 +411,13 @@ export const TransactionProperties = ({ transaction }: Props) => {
             onChange={onChangeMemo}
             onBlur={onBlurMemo}
           />
-        </div>
-      </div>
+        </Row>
+      </Property>
       {!splitTransactionInputRows?.length && (
         <>
-          <div className="propertyLabel">Budgets</div>
-          <div className="property">
-            <div className="row keyValue">
+          <PropertyLabel>Budgets</PropertyLabel>
+          <Property>
+            <Row className="keyValue">
               <span className="propertyName">Budget</span>
               <div>
                 <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
@@ -418,12 +425,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
                   {budgetOptions}
                 </select>
               </div>
-            </div>
-            <div className="row keyValue">
+            </Row>
+            <Row className="keyValue">
               <span className="propertyName">Section</span>
               <span>{sectionName}</span>
-            </div>
-            <div className="row keyValue">
+            </Row>
+            <Row className="keyValue">
               <span className="propertyName">Category</span>
               <div className={selectedCategoryIdLabel ? "" : "notification"}>
                 <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
@@ -431,22 +438,24 @@ export const TransactionProperties = ({ transaction }: Props) => {
                   {categoryOptions}
                 </select>
               </div>
-            </div>
-          </div>
+            </Row>
+          </Property>
         </>
       )}
-      <div className="propertyLabel">Split&nbsp;Transactions</div>
-      <div className="property">
+      <PropertyLabel>Split&nbsp;Transactions</PropertyLabel>
+      <Property>
         {splitTransactionInputRows}
         {!!splitTransactionInputRows?.length && (
-          <div className="row">
+          <Row>
             <div className="SplitTransactionRow">
               <div className="amount">
-                <span>
-                  {isIncome && <>+&nbsp;</>}
-                  {currencySymbol}&nbsp;
-                  {numberToCommaString(Math.abs(remainingAmount))}
-                </span>
+                {isIncome && <>+&nbsp;</>}
+                {currencySymbol}&nbsp;
+                <input
+                  type="text"
+                  value={numberToCommaString(Math.abs(remainingAmount))}
+                  disabled
+                />
               </div>
               <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
                 <option value="">Select Budget</option>
@@ -459,16 +468,16 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 </select>
               </div>
             </div>
-          </div>
+          </Row>
         )}
-        <div className="row button">
+        <Row className="button">
           <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</button>
-        </div>
-      </div>
-      <div className="propertyLabel">Transfer</div>
-      <div className="property">
+        </Row>
+      </Property>
+      <PropertyLabel>Transfer</PropertyLabel>
+      <Property>
         {!showPartnerPicker && (
-          <div className="row button">
+          <Row className="button">
             <button
               className="markAsTransferButton"
               onClick={() => setShowPartnerPicker(true)}
@@ -476,20 +485,20 @@ export const TransactionProperties = ({ transaction }: Props) => {
               <TransferArrowIcon size={12} />
               &nbsp;Mark&nbsp;as&nbsp;Transfer
             </button>
-          </div>
+          </Row>
         )}
         {showPartnerPicker && (
           <>
-            <div className="row keyValue">
+            <Row className="keyValue">
               <span className="propertyName">Pair&nbsp;with</span>
-            </div>
+            </Row>
             {partnerCandidates.length === 0 && (
-              <div className="row partnerPickerEmpty">
+              <Row className="partnerPickerEmpty">
                 <span className="partnerPickerEmptyText">
                   No matching transactions within ±{PARTNER_DATE_WINDOW_DAYS} days
                   (opposite sign, same absolute amount, not already paired).
                 </span>
-              </div>
+              </Row>
             )}
             {partnerCandidates.map((candidate) => {
               const candidateAccount = accounts.get(candidate.account_id);
@@ -500,9 +509,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 ? undefined
                 : () => onClickPartnerCandidate(candidate.transaction_id);
               return (
-                <div
+                <Row
                   key={candidate.transaction_id}
-                  className={`row partnerCandidate${disabled ? " disabled" : ""}`}
+                  className={`partnerCandidate${disabled ? " disabled" : ""}`}
                   role="button"
                   tabIndex={disabled ? -1 : 0}
                   aria-disabled={disabled}
@@ -545,10 +554,10 @@ export const TransactionProperties = ({ transaction }: Props) => {
                       {isPending && <>&nbsp;…</>}
                     </div>
                   </div>
-                </div>
+                </Row>
               );
             })}
-            <div className="row button">
+            <Row className="button">
               <button
                 className="markAsTransferCancel"
                 disabled={!!pendingPartnerId}
@@ -556,15 +565,15 @@ export const TransactionProperties = ({ transaction }: Props) => {
               >
                 Cancel
               </button>
-            </div>
+            </Row>
           </>
         )}
-      </div>
+      </Property>
       {isManual && (
         <>
           <br />
-          <div className="property">
-            <div className="row button">
+          <Property>
+            <Row className="button">
               <button
                 className="delete colored"
                 onClick={async () => {
@@ -584,10 +593,10 @@ export const TransactionProperties = ({ transaction }: Props) => {
               >
                 Delete
               </button>
-            </div>
-          </div>
+            </Row>
+          </Property>
         </>
       )}
-    </div>
+    </Properties>
   );
 };

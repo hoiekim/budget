@@ -2,7 +2,14 @@ import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
 import type { JSONTransaction } from "common";
 import type { TransferPair } from "server";
 import { useAppContext, useTransfers } from "client";
-import { InstitutionSpan, TransferArrowIcon } from "client/components";
+import {
+  InstitutionSpan,
+  Properties,
+  Property,
+  PropertyLabel,
+  Row,
+  TransferArrowIcon,
+} from "client/components";
 import "./index.css";
 
 interface Props {
@@ -60,17 +67,17 @@ export const TransferProperties = ({ transfer }: Props) => {
     );
     return (
       <>
-        <div className="propertyLabel">{label}</div>
-        <div className="property">
-          <div className="row keyValue">
+        <PropertyLabel>{label}</PropertyLabel>
+        <Property>
+          <Row className="keyValue">
             <span className="propertyName">Account</span>
             <span>{account?.custom_name || account?.name || tx.account_id}</span>
-          </div>
-          <div className="row keyValue">
+          </Row>
+          <Row className="keyValue">
             <span className="propertyName">Institution</span>
             {account ? <InstitutionSpan institution_id={account.institution_id} /> : <span />}
-          </div>
-          <div className="row keyValue">
+          </Row>
+          <Row className="keyValue">
             <span className="propertyName">Date</span>
             <span>
               {new LocalDate(txDate).toLocaleString("en-US", {
@@ -79,44 +86,44 @@ export const TransferProperties = ({ transfer }: Props) => {
                 year: "numeric",
               })}
             </span>
-          </div>
-          <div className="row keyValue">
+          </Row>
+          <Row className="keyValue">
             <span className="propertyName">Merchant&nbsp;Name</span>
             <span>{tx.merchant_name}</span>
-          </div>
-          <div className="row keyValue">
+          </Row>
+          <Row className="keyValue">
             <span className="propertyName">Name</span>
             <span>{tx.name}</span>
-          </div>
+          </Row>
           {txLocations.length > 0 && (
-            <div className="row keyValue">
+            <Row className="keyValue">
               <span className="propertyName">Location</span>
               <span>{txLocations.join(", ")}</span>
-            </div>
+            </Row>
           )}
           {tx.label?.memo && (
-            <div className="row keyValue">
+            <Row className="keyValue">
               <span className="propertyName">Memo</span>
               <span>{tx.label.memo}</span>
-            </div>
+            </Row>
           )}
-        </div>
+        </Property>
       </>
     );
   };
 
   return (
-    <div className="TransferProperties Properties">
-      <div className="propertyLabel">Transfer&nbsp;Details</div>
-      <div className="property">
-        <div className="row keyValue">
+    <Properties className="TransferProperties">
+      <PropertyLabel>Transfer&nbsp;Details</PropertyLabel>
+      <Property>
+        <Row className="keyValue">
           <span className="propertyName">Type</span>
           <span className="transferChip transferChipConfirmed">
             <TransferArrowIcon size={12} />
             &nbsp;Transfer
           </span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Date</span>
           <span>
             {new LocalDate(date).toLocaleString("en-US", {
@@ -125,26 +132,26 @@ export const TransferProperties = ({ transfer }: Props) => {
               year: "numeric",
             })}
           </span>
-        </div>
-        <div className="row keyValue">
+        </Row>
+        <Row className="keyValue">
           <span className="propertyName">Amount</span>
           <span className="transferAmountInline">
             <TransferArrowIcon size={12} />
             &nbsp;{currencySymbol}&nbsp;
             {numberToCommaString(displayAmount)}
           </span>
-        </div>
-      </div>
+        </Row>
+      </Property>
       {renderSide("From", outgoing, fromAccount)}
       {renderSide("To", incoming, toAccount)}
-      <div className="propertyLabel">Actions</div>
-      <div className="property">
-        <div className="row button">
+      <PropertyLabel>Actions</PropertyLabel>
+      <Property>
+        <Row className="button">
           <button className="unpairButton" onClick={onClickUnpair}>
             Mark&nbsp;as&nbsp;Non-Transfer
           </button>
-        </div>
-      </div>
-    </div>
+        </Row>
+      </Property>
+    </Properties>
   );
 };

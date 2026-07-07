@@ -1,7 +1,7 @@
 import { MouseEventHandler } from "react";
 import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import { useAppContext, PATH } from "client";
-import { InstitutionSpan, KebabIcon, RightArrowIcon, TransferArrowIcon } from "client/components";
+import { InstitutionSpan, RightArrowIcon, TransferArrowIcon } from "client/components";
 import type { JSONTransaction } from "common";
 
 interface Props {

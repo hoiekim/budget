@@ -1,13 +1,3 @@
-div.Configuration {
-  margin-top: 20px;
-  padding: 0 10px;
-}
-
-div.Configuration button.delete {
-  font-weight: 500;
-  color: var(--darkRed);
-}
-
 div.Configuration .row > .connection {
   display: flex;
   justify-content: space-between;
