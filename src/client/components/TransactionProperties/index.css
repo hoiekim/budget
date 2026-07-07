@@ -6,10 +6,6 @@ div.TransactionProperties .row > .splitItem > input {
   background-color: #191919;
 }
 
-div.TransactionProperties .row select {
-  text-align: right;
-}
-
 div.SplitTransactionRow {
   width: 100%;
   display: flex;
@@ -32,7 +28,6 @@ div.SplitTransactionRow > .amount {
 
 div.SplitTransactionRow > .amount > input {
   background-color: #191919;
-  width: calc(100% - 5px);
   text-align: left;
 }
 

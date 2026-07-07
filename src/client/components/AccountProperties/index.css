@@ -3,14 +3,6 @@ div.AccountProperties .property > .row > .amount {
   align-items: center;
 }
 
-div.AccountProperties .property > .row > .amount > input {
-  width: calc(100% - 5px);
-}
-
 div.AccountProperties .property > .row > .amount > input:disabled {
   color: inherit;
-}
-
-div.AccountProperties .property > .row > select {
-  text-align: right;
 }
