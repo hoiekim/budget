@@ -120,7 +120,20 @@ export const TransactionsPage = () => {
 
     if (isInvestment) {
       const filtered = investmentTransactions.filter((e) => {
-        if (!e.amount) return false;
+        // Zero-amount rows are hidden by default — they're the Plaid-side
+        // non-trade / fee-waiver / qty=0 corrections that shouldn't
+        // surface in the tx list. But manual mints from `+ Add
+        // Transaction` / `+ Add Investment Transaction` / the divergence
+        // "Add for N missing units" button all land with `amount=0`
+        // until the user edits the value on the detail page; if they
+        // abandon the mint (or it lands with just qty/price, per the
+        // divergence flow before the server-side amount derivation) the
+        // row exists in DB but has no surface to reach — the delete
+        // affordance lives on the detail page, and the user has no
+        // route back to it without the id. Keep `source='manual'` rows
+        // visible so the user always has a surface to find or delete
+        // their own work.
+        if (!e.amount && e.source !== "manual") return false;
         const hidden = accounts.get(e.account_id)?.hide;
         if (hidden) return false;
         const transactionDate = new LocalDate(e.date);
@@ -142,7 +155,15 @@ export const TransactionsPage = () => {
       });
     } else {
       const filterTransaction = (e: Transaction | SplitTransaction) => {
-        if (!e.amount) return false;
+        // Zero-amount rows are hidden by default — Plaid-side non-trade /
+        // fee-waiver / qty=0 corrections. Manual mints land with amount=0
+        // and need a surface to reach for editing or deletion (rationale
+        // duplicated from the invest branch above). SplitTransaction has
+        // no `source` field of its own — splits inherit from their parent,
+        // and splits of manual parents can't be mint-abandoned via a
+        // dedicated shell, so the manual escape doesn't apply here.
+        const isManualParent = e instanceof Transaction && e.source === "manual";
+        if (!e.amount && !isManualParent) return false;
         const hidden = accounts.get(e.account_id)?.hide;
         if (hidden) return false;
         const date = "authorized_date" in e ? e.authorized_date || e.date : e.date;
