@@ -6,7 +6,10 @@ interface Props {
   /** Text or fragment shown inside the trigger button. */
   label: ReactNode;
   /** When set, the dropdown includes a sticky-close row with this label. */
-  dropdownLabel?: string;
+  dropdownLabel?: ReactNode;
+  /** aria-label on the sticky-close row (defaults to `"Close"`). Set this
+   * when `dropdownLabel` reads awkwardly as `"Close <dropdownLabel>"`. */
+  closeAriaLabel?: string;
   /** Extra class on the outer `<h2>` for per-page overrides (z-index / height). */
   className?: string;
   /** The dropdown options (typically `<button>` elements). */
@@ -23,7 +26,13 @@ interface Props {
  * dropdown label. Consumer only supplies `label`, an optional
  * `dropdownLabel`, and the option buttons as children.
  */
-export const PageFilterTitle = ({ label, dropdownLabel, className, children }: Props) => {
+export const PageFilterTitle = ({
+  label,
+  dropdownLabel,
+  closeAriaLabel = "Close",
+  className,
+  children,
+}: Props) => {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const selectBoxRef = useRef<HTMLDivElement>(null);
@@ -65,7 +74,7 @@ export const PageFilterTitle = ({ label, dropdownLabel, className, children }: P
               onKeyDown={onLabelKeyDown}
               role="button"
               tabIndex={0}
-              aria-label={`Close ${dropdownLabel}`}
+              aria-label={closeAriaLabel}
             >
               <span>{dropdownLabel}</span>
               <button className="closeButton" aria-hidden="true">

@@ -187,7 +187,8 @@ export const TransactionsPageTitle = ({
       <PageFilterTitle
         className="TransactionsFilterTitle"
         label={titleForSelection(selectedTypes)}
-        dropdownLabel="Select transaction types"
+        dropdownLabel={<>Select&nbsp;transaction&nbsp;types</>}
+        closeAriaLabel="Close transaction type selector"
       >
         {allButton}
         {typeButtons}
