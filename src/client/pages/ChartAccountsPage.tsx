@@ -12,7 +12,7 @@ import {
   FlowChartConfiguration,
   indexedDb,
 } from "client";
-import { ToggleInput } from "client/components";
+import { ToggleInput, Properties, PropertyLabel, Property, Row } from "client/components";
 
 export const ChartAccountsPage = () => {
   const { data, setData, router, viewDate } = useAppContext();
@@ -72,7 +72,7 @@ export const ChartAccountsPage = () => {
       };
 
       return (
-        <div key={a.id} className="row keyValue">
+        <Row key={a.id} className="keyValue">
           <div>
             <span>{a.custom_name || a.name}</span>
             <span className="small">&nbsp;&nbsp;{a.type}</span>
@@ -81,7 +81,7 @@ export const ChartAccountsPage = () => {
             defaultChecked={account_ids.includes(a.account_id)}
             onChange={onChangeToggle}
           />
-        </div>
+        </Row>
       );
     });
 
@@ -122,7 +122,7 @@ export const ChartAccountsPage = () => {
   // hatch other than deselecting every budget (= include all).
   const othersRow =
     type === ChartType.FLOW ? (
-      <div key={UNSORTED_BUDGET_ID} className="row keyValue">
+      <Row key={UNSORTED_BUDGET_ID} className="keyValue">
         <div>
           <em>Others</em>
           <span className="small">&nbsp;&nbsp;transactions without a budget label</span>
@@ -131,7 +131,7 @@ export const ChartAccountsPage = () => {
           defaultChecked={budget_ids.includes(UNSORTED_BUDGET_ID)}
           onChange={makeBudgetToggleHandler(UNSORTED_BUDGET_ID)}
         />
-      </div>
+      </Row>
     ) : null;
 
   const budgetRows = showBudgetSelector
@@ -150,7 +150,7 @@ export const ChartAccountsPage = () => {
         const capacityString = [sign, "$", numberToCommaString(capacityAmount, 0)].join(" ");
 
         return (
-          <div key={b.id} className="row keyValue">
+          <Row key={b.id} className="keyValue">
             <div>
               <span>{b.name}</span>
               <span className="small">
@@ -161,26 +161,26 @@ export const ChartAccountsPage = () => {
               defaultChecked={budget_ids.includes(b.id)}
               onChange={makeBudgetToggleHandler(b.id)}
             />
-          </div>
+          </Row>
         );
       })
     : [];
 
   return (
     <div className="ChartAccountsPage">
-      <div className="Properties sidePadding">
-        <div className="propertyLabel">Select accounts</div>
-        <div className="property">{accountRows}</div>
+      <Properties className="sidePadding">
+        <PropertyLabel>Select accounts</PropertyLabel>
+        <Property>{accountRows}</Property>
         {showBudgetSelector && (
           <>
-            <div className="propertyLabel">Select budgets</div>
-            <div className="property">
+            <PropertyLabel>Select budgets</PropertyLabel>
+            <Property>
               {othersRow}
               {budgetRows}
-            </div>
+            </Property>
           </>
         )}
-      </div>
+      </Properties>
     </div>
   );
 };
