@@ -1,5 +1,6 @@
 export * from "./App";
 export * from "./Properties";
+export * from "./PageTitle";
 export * from "./HoldingProperties";
 export * from "./InvestmentTransactionProperties";
 export * from "./ErrorBoundary";
