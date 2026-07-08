@@ -9,3 +9,4 @@ export * from "./reorder";
 export * from "./useVooHistory";
 export * from "./useBudgetCategorySelect";
 export * from "./useTransactionEntry";
+export * from "./useMultiSelectQueryFilter";

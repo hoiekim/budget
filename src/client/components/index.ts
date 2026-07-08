@@ -41,5 +41,6 @@ export * from "./ProjectionChartRow";
 export * from "./FlowChartRow";
 export * from "./ProjectionChartProperties";
 export * from "./BalanceChartProperties";
+export * from "./FilterOption";
 export * from "./FlowChartProperties";
 export * from "./TransferProperties";

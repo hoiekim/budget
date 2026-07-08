@@ -12,8 +12,9 @@ import {
   ScreenType,
   Sorter,
   useAppContext,
+  useMultiSelectQueryFilter,
 } from "client";
-import { PageFilterTitle } from "client/components";
+import { FilterOption, PageFilterTitle } from "client/components";
 import { TransactionsHead } from "./TransactionsHead";
 import "./index.css";
 import { SearchBar } from "./SearchBar";
@@ -27,7 +28,6 @@ export type TransactionsPageType =
   | "manual";
 
 interface TransactionsPageFilters {
-  types: TransactionsPageType[];
   account?: Account;
   budget?: Budget;
   section?: Section;
@@ -56,21 +56,21 @@ const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];
 
 /**
  * Parse the `transactions_type` URL param. Stored as a comma-separated
- * list so multiple filters compose in the same param slot. Returns
- * the validated, deduplicated subset (unknown values dropped, first
- * occurrence wins on duplicates, original order preserved).
+ * list so multiple filters compose in the same param slot. Returns the
+ * validated, deduplicated subset in canonical (VALID_TYPES) order so a
+ * reversed or duplicated URL yields the same sort-preference key as the
+ * in-app toggle — `?transactions_type=expenses,deposits` and
+ * `deposits,expenses` must not store divergent sort keys.
+ *
+ * Kept for `TransactionsPage`'s transition-aware read (`activeParams`
+ * may be `incomingParams` during narrow-screen route transitions off
+ * `/transactions`, which the URL-first hook can't see).
  */
 export const parseTransactionsTypes = (raw: string | null): TransactionsPageType[] => {
   if (!raw) return [];
   const present = new Set(raw.split(",").map((p) => p.trim()));
-  // Canonicalize to VALID_TYPES order (matching writeTypes) so a reversed or
-  // duplicated URL param yields the same sort-preference key as the in-app
-  // toggle — `?transactions_type=expenses,deposits` and `deposits,expenses`
-  // must not store divergent sort keys.
   return VALID_TYPES.filter((v) => present.has(v));
 };
-
-const serializeTransactionsTypes = (types: TransactionsPageType[]): string => types.join(",");
 
 const titleForSelection = (types: TransactionsPageType[]): string => {
   if (types.length === 0) return "All Transactions";
@@ -94,54 +94,18 @@ export const TransactionsPageTitle = ({
   sorter,
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
-  const { types: selectedTypes, account, budget, section, category } = filters;
-  const { router, screenType } = useAppContext();
-  const { go, path, params } = router;
-
-  const writeTypes = (next: TransactionsPageType[]) => {
-    const newParams = new URLSearchParams(params);
-    if (next.length === 0) newParams.delete("transactions_type");
-    else newParams.set("transactions_type", serializeTransactionsTypes(next));
-    go(path, { params: newParams, animate: false });
-  };
-
-  // "All Transactions" is the empty-selection sentinel: clicking it
-  // clears every filter, regardless of which were on. Order of the
-  // menu is fixed (alphabetical-ish by intent: status, sign, kind).
-  const onClickAll = () => writeTypes([]);
-  const toggleType = (t: TransactionsPageType) => {
-    const set = new Set(selectedTypes);
-    if (set.has(t)) set.delete(t);
-    else set.add(t);
-    // Preserve VALID_TYPES order so the URL is canonical regardless
-    // of click sequence.
-    writeTypes(VALID_TYPES.filter((v) => set.has(v)));
-  };
-
-  // Each row shows a checkbox indicating its current state — multi-choice
-  // semantics so the user can see at a glance which filters are active.
-  // "All Transactions" is the clear-all sentinel; its checkbox reflects
-  // "no other filter selected" (i.e. you're viewing everything).
-  const renderCheckbox = (checked: boolean) => (
-    <span className={"checkbox" + (checked ? " checked" : "")} aria-hidden="true" />
+  const { account, budget, section, category } = filters;
+  const { screenType } = useAppContext();
+  // URL is the source of truth for the type filter. The dropdown reads
+  // and writes through the same hook, so `toggle` / `clearAll` mutate
+  // the `transactions_type` URL param, and `selected` is derived from
+  // that param on the next render — closing the loop within this
+  // component. The `options` array is derived from the same `TYPE_LABELS`
+  // record the hook takes, so values and labels can't drift out of sync.
+  const { selected: selectedTypes, toggle, clearAll, options } = useMultiSelectQueryFilter(
+    "transactions_type",
+    TYPE_LABELS,
   );
-
-  const allButton = (
-    <button key="__all" onClick={onClickAll}>
-      {renderCheckbox(selectedTypes.length === 0)}
-      <span>All Transactions</span>
-    </button>
-  );
-
-  const typeButtons = VALID_TYPES.map((t) => {
-    const isSelected = selectedTypes.includes(t);
-    return (
-      <button key={t} onClick={() => toggleType(t)}>
-        {renderCheckbox(isSelected)}
-        <span>{TYPE_LABELS[t]}</span>
-      </button>
-    );
-  });
 
   const accountName = account?.custom_name || account?.name;
   const budgetName = budget?.name;
@@ -190,8 +154,18 @@ export const TransactionsPageTitle = ({
         dropdownLabel={<>Select&nbsp;transaction&nbsp;types</>}
         closeAriaLabel="Close transaction type selector"
       >
-        {allButton}
-        {typeButtons}
+        <FilterOption checked={selectedTypes.length === 0} onSelect={clearAll}>
+          All Transactions
+        </FilterOption>
+        {options.map(({ value, label }) => (
+          <FilterOption
+            key={value}
+            checked={selectedTypes.includes(value)}
+            onSelect={() => toggle(value)}
+          >
+            {label}
+          </FilterOption>
+        ))}
       </PageFilterTitle>
       {!!subtitle && (
         <h3>
