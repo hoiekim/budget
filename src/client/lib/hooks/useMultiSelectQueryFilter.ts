@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useAppContext } from "client";
 
 interface UseMultiSelectQueryFilterResult<T extends string> {
@@ -27,24 +28,33 @@ export function useMultiSelectQueryFilter<T extends string>(
   const { go, path, params } = router;
 
   const raw = params.get(paramKey);
-  const present = raw ? new Set(raw.split(",").map((p) => p.trim())) : new Set<string>();
-  const selected = allValues.filter((v) => present.has(v));
+  const selected = raw
+    ? (() => {
+        const present = new Set(raw.split(",").map((p) => p.trim()));
+        return allValues.filter((v) => present.has(v));
+      })()
+    : [];
 
-  const write = (next: readonly T[]) => {
+  const toggle = useCallback(
+    (t: T) => {
+      const rawNow = params.get(paramKey);
+      const set = new Set<string>(rawNow ? rawNow.split(",").map((p) => p.trim()) : []);
+      if (set.has(t)) set.delete(t);
+      else set.add(t);
+      const next = allValues.filter((v) => set.has(v));
+      const newParams = new URLSearchParams(params);
+      if (next.length === 0) newParams.delete(paramKey);
+      else newParams.set(paramKey, next.join(","));
+      go(path, { params: newParams, animate: false });
+    },
+    [paramKey, allValues, params, go, path],
+  );
+
+  const clearAll = useCallback(() => {
     const newParams = new URLSearchParams(params);
-    if (next.length === 0) newParams.delete(paramKey);
-    else newParams.set(paramKey, allValues.filter((v) => next.includes(v)).join(","));
+    newParams.delete(paramKey);
     go(path, { params: newParams, animate: false });
-  };
-
-  const toggle = (t: T) => {
-    const set = new Set<T>(selected);
-    if (set.has(t)) set.delete(t);
-    else set.add(t);
-    write(allValues.filter((v) => set.has(v)));
-  };
-
-  const clearAll = () => write([]);
+  }, [paramKey, params, go, path]);
 
   return { selected, toggle, clearAll };
 }
