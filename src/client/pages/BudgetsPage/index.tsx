@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { NewBudgetGetResponse } from "server";
 import {
   PATH,
@@ -11,37 +11,56 @@ import {
   Data,
   indexedDb,
 } from "client";
-import { BudgetBar, FilterOption, PageFilterTitle, PageTitle } from "client/components";
+import { BudgetBar, FilterOption, PageFilterTitle } from "client/components";
 import "./index.css";
 
-const titleForSelection = (codes: string[]): string => {
-  if (codes.length === 0) return "All Budgets";
-  if (codes.length === 1) return codes[0];
-  return codes.join(", ");
+/**
+ * Six discrete filter tokens across three binary dimensions of a budget:
+ *
+ * - `expense` vs `income` — sign of the active capacity (`isIncome`).
+ * - `limited` vs `unlimited` — bounded vs infinite active capacity
+ *   (`isInfinite`).
+ * - `rolling-over` vs `non-rolling-over` — the budget's `roll_over` flag.
+ *
+ * Multi-select semantics are OR-within-dimension, AND-across-dimensions:
+ * picking `expense` + `limited` narrows to budgets that are both, but
+ * picking `expense` + `income` collapses that dimension (both sides of
+ * the binary pair are allowed, i.e. the dimension is unfiltered).
+ */
+type BudgetFilterToken =
+  | "expense"
+  | "income"
+  | "limited"
+  | "unlimited"
+  | "rolling-over"
+  | "non-rolling-over";
+
+const BUDGET_FILTER_LABELS: Record<BudgetFilterToken, string> = {
+  expense: "Expense",
+  income: "Income",
+  limited: "Limited",
+  unlimited: "Unlimited",
+  "rolling-over": "Rolling Over",
+  "non-rolling-over": "Non-Rolling Over",
+};
+
+const titleForSelection = (tokens: BudgetFilterToken[]): string => {
+  if (tokens.length === 0) return "All Budgets";
+  if (tokens.length === 1) return BUDGET_FILTER_LABELS[tokens[0]];
+  return tokens.map((t) => BUDGET_FILTER_LABELS[t]).join(", ");
 };
 
 export const BudgetsPage = () => {
-  const { data, setData, router } = useAppContext();
+  const { data, setData, router, viewDate } = useAppContext();
   const { budgets } = data;
   const [budgetsOrder, setBudgetsOrder] = useLocalStorageState<string[]>("budgetsOrder", []);
 
-  // Filter dropdown lists the currencies actually present in the user's
-  // budgets. Codes serve as their own display label (USD, EUR, ...) —
-  // a UI convention that keeps the dropdown short for common single-
-  // currency users and honest about the actual data.
-  const currencyLabels = useMemo(() => {
-    const codes = new Set<string>();
-    budgets.forEach((b) => codes.add(b.iso_currency_code));
-    const sorted = Array.from(codes).sort();
-    return Object.fromEntries(sorted.map((c) => [c, c])) as Record<string, string>;
-  }, [budgets]);
-
   const {
-    selected: selectedCurrencies,
+    selected: selectedFilters,
     toggle,
     clearAll,
     options,
-  } = useMultiSelectQueryFilter<string>("iso_currency_code", currencyLabels);
+  } = useMultiSelectQueryFilter<BudgetFilterToken>("budget_filter", BUDGET_FILTER_LABELS);
 
   useEffect(() => {
     setBudgetsOrder((oldOrder) => {
@@ -51,10 +70,39 @@ export const BudgetsPage = () => {
     });
   }, [budgets, setBudgetsOrder]);
 
+  const filterSet = new Set(selectedFilters);
+  const filterHasIncome = filterSet.has("income");
+  const filterHasExpense = filterSet.has("expense");
+  const filterHasLimited = filterSet.has("limited");
+  const filterHasUnlimited = filterSet.has("unlimited");
+  const filterHasRolling = filterSet.has("rolling-over");
+  const filterHasNonRolling = filterSet.has("non-rolling-over");
+  const date = viewDate.getEndDate();
+
   const budgetBars = Array.from(budgets)
-    .filter(
-      ([, b]) => selectedCurrencies.length === 0 || selectedCurrencies.includes(b.iso_currency_code),
-    )
+    .filter(([, budget]) => {
+      // For each dimension: if the user picked only one side of the
+      // binary pair, filter to that side; if they picked both or
+      // neither, the dimension is unfiltered.
+      const capacity = budget.getActiveCapacity(date);
+      const isIncome = capacity?.isIncome ?? false;
+      const isInfinite = capacity?.isInfinite ?? false;
+      const isRollingOver = budget.roll_over;
+
+      if (filterHasIncome !== filterHasExpense) {
+        if (filterHasIncome && !isIncome) return false;
+        if (filterHasExpense && isIncome) return false;
+      }
+      if (filterHasLimited !== filterHasUnlimited) {
+        if (filterHasLimited && isInfinite) return false;
+        if (filterHasUnlimited && !isInfinite) return false;
+      }
+      if (filterHasRolling !== filterHasNonRolling) {
+        if (filterHasRolling && !isRollingOver) return false;
+        if (filterHasNonRolling && isRollingOver) return false;
+      }
+      return true;
+    })
     .sort(([a], [b]) => {
       const indexA = budgetsOrder.indexOf(a);
       const indexB = budgetsOrder.indexOf(b);
@@ -91,36 +139,26 @@ export const BudgetsPage = () => {
     router.go(PATH.BUDGET_CONFIG, { params: new URLSearchParams({ budget_id }) });
   };
 
-  // Only render the filter chrome when the user has budgets in more
-  // than one currency — a dropdown with a single option reads as
-  // clutter and forces `PageFilterTitle`'s chevron on the header
-  // without anything to pick.
-  const showFilter = options.length > 1;
-
   return (
     <div className="BudgetsPage">
-      {showFilter ? (
-        <PageFilterTitle
-          label={titleForSelection(selectedCurrencies)}
-          dropdownLabel={<>Select&nbsp;currencies</>}
-          closeAriaLabel="Close currency selector"
-        >
-          <FilterOption checked={selectedCurrencies.length === 0} onSelect={clearAll}>
-            All Budgets
+      <PageFilterTitle
+        label={titleForSelection(selectedFilters)}
+        dropdownLabel={<>Select&nbsp;budget&nbsp;filters</>}
+        closeAriaLabel="Close budget filter selector"
+      >
+        <FilterOption checked={selectedFilters.length === 0} onSelect={clearAll}>
+          All&nbsp;Budgets
+        </FilterOption>
+        {options.map(({ value, label }) => (
+          <FilterOption
+            key={value}
+            checked={selectedFilters.includes(value)}
+            onSelect={() => toggle(value)}
+          >
+            {label}
           </FilterOption>
-          {options.map(({ value, label }) => (
-            <FilterOption
-              key={value}
-              checked={selectedCurrencies.includes(value)}
-              onSelect={() => toggle(value)}
-            >
-              {label}
-            </FilterOption>
-          ))}
-        </PageFilterTitle>
-      ) : (
-        <PageTitle>All Budgets</PageTitle>
-      )}
+        ))}
+      </PageFilterTitle>
       <div className="budgetsTable">
         {budgetBars}
         <div className="addButton">
