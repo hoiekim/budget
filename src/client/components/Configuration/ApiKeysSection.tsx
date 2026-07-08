@@ -9,7 +9,7 @@ import {
   Row,
 } from "client";
 
-import "./ApiKeysSection.css";
+import "../ApiKeyProperties/index.css";
 
 type KeyView = Omit<ApiKeyJSON, "key_hash" | "revoked_at">;
 
