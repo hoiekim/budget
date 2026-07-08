@@ -15,6 +15,14 @@ import {
   FlowChart,
   indexedDb,
 } from "client";
+import {
+  BalanceChartRow,
+  FilterOption,
+  FlowChartRow,
+  PageFilterTitle,
+  ProjectionChartRow,
+} from "client/components";
+import "./index.css";
 
 const CHART_TYPE_LABELS: Record<ChartType, string> = {
   [ChartType.BALANCE]: "Balance Chart",
@@ -27,14 +35,6 @@ const titleForSelection = (types: ChartType[]): string => {
   if (types.length === 1) return CHART_TYPE_LABELS[types[0]];
   return types.map((t) => CHART_TYPE_LABELS[t]).join(", ");
 };
-import {
-  BalanceChartRow,
-  FilterOption,
-  FlowChartRow,
-  PageFilterTitle,
-  ProjectionChartRow,
-} from "client/components";
-import "./index.css";
 
 export const DashboardPage = () => {
   const { data, setData, router } = useAppContext();
