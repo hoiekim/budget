@@ -28,7 +28,6 @@ export type TransactionsPageType =
   | "manual";
 
 interface TransactionsPageFilters {
-  types: TransactionsPageType[];
   account?: Account;
   budget?: Budget;
   section?: Section;
@@ -95,9 +94,19 @@ export const TransactionsPageTitle = ({
   sorter,
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
-  const { types: selectedTypes, account, budget, section, category } = filters;
+  const { account, budget, section, category } = filters;
   const { screenType } = useAppContext();
-  const { toggle, clearAll } = useMultiSelectQueryFilter("transactions_type", VALID_TYPES);
+  // URL is the source of truth for the type filter. The dropdown reads
+  // and writes through the same hook, so `toggle` / `clearAll` mutate
+  // the `transactions_type` URL param, and `selected` is derived from
+  // that param on the next render — closing the loop within this
+  // component. The `filters.types` prop is still passed by
+  // `TransactionsPage` for transition-aware transaction-list filtering
+  // (via `activeParams`), which the URL-first hook can't see.
+  const { selected: selectedTypes, toggle, clearAll } = useMultiSelectQueryFilter(
+    "transactions_type",
+    VALID_TYPES,
+  );
 
   const accountName = account?.custom_name || account?.name;
   const budgetName = budget?.name;

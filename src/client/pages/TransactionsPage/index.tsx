@@ -433,7 +433,7 @@ export const TransactionsPage = () => {
   return (
     <div className="TransactionsPage">
       <TransactionsPageTitle
-        filters={{ types, account, budget, section, category }}
+        filters={{ account, budget, section, category }}
         sorter={sorter}
         onChangeSearchValue={setSearchValue}
       />
