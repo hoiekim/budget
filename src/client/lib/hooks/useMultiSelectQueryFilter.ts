@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useAppContext } from "client";
 
 interface FilterOption<T extends string> {
@@ -41,17 +41,22 @@ export function useMultiSelectQueryFilter<T extends string>(
   const { router } = useAppContext();
   const { go, path, params } = router;
 
-  const allValues = Object.keys(labels) as T[];
+  const allValues = useMemo(() => Object.keys(labels) as T[], [labels]);
 
+  // Memoize on the raw URL string so consumers depending on `selected`
+  // (e.g. inside their own `useMemo`) don't re-invalidate on every render
+  // — the reference is stable while the URL param doesn't change.
   const raw = params.get(paramKey);
-  const selected = raw
-    ? (() => {
-        const present = new Set(raw.split(",").map((p) => p.trim()));
-        return allValues.filter((v) => present.has(v));
-      })()
-    : [];
+  const selected = useMemo(() => {
+    if (!raw) return [];
+    const present = new Set(raw.split(",").map((p) => p.trim()));
+    return allValues.filter((v) => present.has(v));
+  }, [raw, allValues]);
 
-  const options: FilterOption<T>[] = allValues.map((value) => ({ value, label: labels[value] }));
+  const options = useMemo<FilterOption<T>[]>(
+    () => allValues.map((value) => ({ value, label: labels[value] })),
+    [allValues, labels],
+  );
 
   const toggle = useCallback(
     (t: T) => {
