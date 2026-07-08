@@ -2,7 +2,7 @@ import { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction } from "reac
 import { AccountType } from "plaid";
 import { numberToCommaString, toTitleCase } from "common";
 import { BalanceChart, getDisplayBalance, useAppContext, useReorder } from "client";
-import { ChevronDownIcon, ChevronUpIcon, QuestionIcon } from "client/components";
+import { ChartRowTitle, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
 import "./index.css";
 
@@ -157,24 +157,12 @@ export const BalanceChartRow = ({
       onDragEnd={onDragEnd}
     >
       {showTitle && (
-        <h3 className="title">
-          <span>{name}</span>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onTouchStart={onTouchHandleStart}
-            onTouchEnd={onTouchHandleEnd}
-            onGotPointerCapture={onGotPointerCapture}
-            style={{ touchAction: "none" }}
-          >
-            <div className="reorderIcon">
-              <ChevronUpIcon size={8} />
-              <ChevronDownIcon size={8} />
-            </div>
-          </button>
-        </h3>
+        <ChartRowTitle
+          name={name}
+          onTouchHandleStart={onTouchHandleStart}
+          onTouchHandleEnd={onTouchHandleEnd}
+          onGotPointerCapture={onGotPointerCapture}
+        />
       )}
       <div className="chart">
         <Stacks data={stacksData} />

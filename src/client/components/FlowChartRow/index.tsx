@@ -1,6 +1,6 @@
 import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
 import { useAppContext, useReorder, FlowChart } from "client";
-import { ChevronDownIcon, ChevronUpIcon } from "client/components";
+import { ChartRowTitle } from "client/components";
 import { getSankeyData } from "./lib";
 import { Sankey } from "./Sankey";
 import "./index.css";
@@ -99,24 +99,12 @@ export const FlowChartRow = ({
       onDragEnd={onDragEnd}
     >
       {showTitle && (
-        <h3 className="title">
-          <span>{chart.name}</span>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onTouchStart={onTouchHandleStart}
-            onTouchEnd={onTouchHandleEnd}
-            onGotPointerCapture={onGotPointerCapture}
-            style={{ touchAction: "none" }}
-          >
-            <div className="reorderIcon">
-              <ChevronUpIcon size={8} />
-              <ChevronDownIcon size={8} />
-            </div>
-          </button>
-        </h3>
+        <ChartRowTitle
+          name={chart.name}
+          onTouchHandleStart={onTouchHandleStart}
+          onTouchHandleEnd={onTouchHandleEnd}
+          onGotPointerCapture={onGotPointerCapture}
+        />
       )}
       <Sankey memoryKey={chart.id} data={graphData} height={height} />
       {showTable && (
