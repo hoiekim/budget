@@ -4,7 +4,8 @@ h3.chartRowTitle {
   align-items: center;
 }
 
-h3.chartRowTitle button {
+h3.chartRowTitle button,
+h3.chartRowTitle button:hover {
   background-color: inherit;
   width: 32px;
   height: 32px;
