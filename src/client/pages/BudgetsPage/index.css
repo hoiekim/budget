@@ -4,19 +4,6 @@ div.BudgetsPage .placeholder {
   align-items: center;
 }
 
-div.BudgetsPage > h2 {
-  margin: 0;
-  padding: 16px 10px 10px;
-  position: sticky;
-  top: 50px;
-  background-color: #191919ee;
-  z-index: 110;
-}
-
-div.wideScreen div.BudgetsPage > h2 {
-  top: 0;
-}
-
 div.BudgetsPage > div.budgetsTable > .addButton {
   margin: 10px 10px;
 }

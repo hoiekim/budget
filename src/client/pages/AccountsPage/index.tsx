@@ -9,7 +9,7 @@ import {
   useAppContext,
   useDebounce,
 } from "client";
-import { AccountsDonut, AccountsTable, DonutData } from "client/components";
+import { AccountsDonut, AccountsTable, DonutData, PageTitle } from "client/components";
 import "./index.css";
 
 export const AccountsPage = () => {
@@ -93,7 +93,7 @@ export const AccountsPage = () => {
 
   return (
     <div className={classNames.join(" ")}>
-      <h2>All&nbsp;Accounts</h2>
+      <PageTitle>All&nbsp;Accounts</PageTitle>
       <AccountsDonut
         balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
