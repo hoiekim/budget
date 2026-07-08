@@ -85,16 +85,18 @@ div.TransactionRow .transferControls > .transferChip {
 }
 
 div.TransactionRow button.confirmButton {
-  width: 40px;
+  width: 100%;
   height: 24px;
   font-size: 14px;
 }
 
 div.TransactionRow button.confirmButton:not(:disabled) {
-  border: 1px solid var(--darkGreen);
+  color: var(--darkGreen);
+  background-color: inherit;
 }
 
 div.TransactionRow button.confirmButton:not(:disabled):hover {
+  color: #d1d1d1;
   background-color: var(--darkGreen);
 }
 

@@ -1,3 +1,4 @@
+import { CheckIcon } from "client/components";
 import { useState } from "react";
 
 interface Props {
@@ -30,9 +31,11 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
       <span className="transferChip suggested clickable" onClick={run(onReject)}>
         Transfer?
       </span>
-      <button className="confirmButton" disabled={busy} onClick={run(onConfirm)}>
-        ✓
-      </button>
+      <div className="confirmButtonBox">
+        <button className="confirmButton" disabled={busy} onClick={run(onConfirm)}>
+          <CheckIcon size={20} />
+        </button>
+      </div>
     </div>
   );
 };

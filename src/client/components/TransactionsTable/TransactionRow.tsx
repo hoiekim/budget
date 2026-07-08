@@ -14,7 +14,7 @@ import {
   SplitTransactionDictionary,
   indexedDb,
 } from "client";
-import { InstitutionSpan } from "client/components";
+import { CheckIcon, InstitutionSpan } from "client/components";
 import { ApiResponse } from "server";
 import TransferControls from "./TransferControls";
 
@@ -303,7 +303,7 @@ const TransactionRow = ({ transaction }: Props) => {
             <div className="confirmButtonBox">
               {isSuggested && (
                 <button className="confirmButton" onClick={onClickConfirm}>
-                  ✓
+                  <CheckIcon size={20} />
                 </button>
               )}
             </div>
