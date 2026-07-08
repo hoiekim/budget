@@ -1,5 +1,5 @@
 import { AccountType } from "plaid";
-import { KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import { JSONInvestmentTransaction, JSONTransaction, toTitleCase } from "common";
 import {
   Account,
@@ -9,11 +9,11 @@ import {
   Section,
   SplitTransaction,
   Transaction,
-  ChevronDownIcon,
   ScreenType,
   Sorter,
   useAppContext,
 } from "client";
+import { PageFilterTitle } from "client/components";
 import { TransactionsHead } from "./TransactionsHead";
 import "./index.css";
 import { SearchBar } from "./SearchBar";
@@ -97,25 +97,6 @@ export const TransactionsPageTitle = ({
   const { types: selectedTypes, account, budget, section, category } = filters;
   const { router, screenType } = useAppContext();
   const { go, path, params } = router;
-
-  const [isSelecting, setIsSelecting] = useState(false);
-
-  const selectBoxRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  const onClickSelect = () => setIsSelecting(!isSelecting);
-  const closeSelect = () => setIsSelecting(false);
-
-  useEffect(() => {
-    const handleTouchOutside: EventListener = (event) => {
-      const node = event.target as Node;
-      const isOutsideSelectBox = !selectBoxRef.current || !selectBoxRef.current.contains(node);
-      const isOutsideButton = !buttonRef.current || !buttonRef.current.contains(node);
-      if (isOutsideSelectBox && isOutsideButton) closeSelect();
-    };
-    document.addEventListener("touchstart", handleTouchOutside);
-    return () => document.removeEventListener("touchstart", handleTouchOutside);
-  }, []);
 
   const writeTypes = (next: TransactionsPageType[]) => {
     const newParams = new URLSearchParams(params);
@@ -203,40 +184,17 @@ export const TransactionsPageTitle = ({
 
   return (
     <>
-      <h2 className="heading">
-        <button onClick={onClickSelect} ref={buttonRef}>
-          <span>{titleForSelection(selectedTypes)}</span>
-          <ChevronDownIcon size={15} />
-        </button>
-        {isSelecting && (
-          <div ref={selectBoxRef} className="select" onMouseLeave={closeSelect}>
-            <div
-              className="selectLabel"
-              onClick={closeSelect}
-              onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
-                if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
-                  e.preventDefault();
-                  closeSelect();
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              aria-label="Close transaction type selector"
-            >
-              <span>Select&nbsp;transaction&nbsp;types</span>
-              <button className="closeButton" aria-hidden="true">
-                ✕
-              </button>
-            </div>
-            <div className="options">
-              {allButton}
-              {typeButtons}
-            </div>
-          </div>
-        )}
-      </h2>
+      <PageFilterTitle
+        className="TransactionsFilterTitle"
+        label={titleForSelection(selectedTypes)}
+        dropdownLabel={<>Select&nbsp;transaction&nbsp;types</>}
+        closeAriaLabel="Close transaction type selector"
+      >
+        {allButton}
+        {typeButtons}
+      </PageFilterTitle>
       {!!subtitle && (
-        <h3 className="heading">
+        <h3>
           <span>{toTitleCase(subtitle)}</span>
         </h3>
       )}

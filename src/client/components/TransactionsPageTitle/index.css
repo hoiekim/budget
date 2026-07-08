@@ -1,4 +1,9 @@
-div.TransactionsPage > h2,
+/* TransactionsPage-specific sticky rules. Base sticky/padding on `h2`
+ * comes from `<PageTitle>`; button + dropdown chrome comes from
+ * `<PageFilterTitle>`. Everything below layers TxPage-specific overrides
+ * (fixed h2 height, higher z-index because SearchBar/TransactionsHead
+ * sit visually below the h2) and the sticky siblings (h3 subtitle,
+ * TransactionsHead, active SearchBar). */
 div.TransactionsPage > h3,
 div.TransactionsPage > div.TransactionsHead,
 div.SearchBar.active {
@@ -12,15 +17,9 @@ div.TransactionsHead {
   z-index: 108;
 }
 
-div.TransactionsPage > h2 {
-  top: 50px;
+h2.TransactionsFilterTitle {
   height: 54px;
-  padding: 16px 10px 10px;
   z-index: 111;
-}
-
-div.wideScreen div.TransactionsPage > h2 {
-  top: 0;
 }
 
 div.TransactionsPage > h3 {
@@ -31,104 +30,6 @@ div.TransactionsPage > h3 {
 
 div.wideScreen div.TransactionsPage > h3 {
   top: 55px;
-}
-
-div.TransactionsPage > .heading > button {
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  font-size: 1em;
-  font-weight: bold;
-  background-color: transparent;
-  white-space: nowrap;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  overflow: hidden;
-  text-align: left;
-}
-
-div.TransactionsPage > .heading > button > span:not(.checkmark) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1;
-}
-
-div.TransactionsPage > .heading > div.select {
-  position: absolute;
-  top: 50px;
-  width: calc(100% - 20px);
-  background-color: #292929;
-  display: block;
-  border-radius: 10px;
-  border: 1px solid #666;
-  overflow: hidden;
-}
-
-div.TransactionsPage > .heading > div.select * {
-  font-size: 14px;
-  font-weight: normal;
-}
-
-div.TransactionsPage > .heading > div.select > div.selectLabel {
-  padding: 10px;
-  border-bottom: 1px solid #666;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-div.TransactionsPage > .heading > div.select > div.selectLabel > button.closeButton {
-  font-size: 18px;
-}
-
-div.TransactionsPage > .heading > div.select > div.options > button {
-  width: 100%;
-  padding: 4px 0 6px 30px;
-  height: 28px;
-  text-align: left;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-div.TransactionsPage > .heading > div.select > div.options > button:first-child {
-  height: 32px;
-  padding-top: 10px;
-  padding-left: 10px;
-}
-
-div.TransactionsPage > .heading > div.select > div.options > button:last-child {
-  padding-bottom: 10px;
-}
-
-div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 1px solid #888;
-  border-radius: 2px;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  position: relative;
-}
-
-div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox.checked {
-  background-color: #4a4a4a;
-  border-color: #aaa;
-}
-
-/* Inset ✓ glyph rendered via ::after so the checkbox span itself stays a
-   pure visual element — keeps the option button click target unified. */
-div.TransactionsPage > .heading > div.select > div.options > button > span.checkbox.checked::after {
-  content: "✓";
-  position: absolute;
-  top: -3px;
-  left: 0px;
-  font-size: 18px;
-  line-height: 12px;
-  color: #e8e8e8;
 }
 
 div.SearchBar {

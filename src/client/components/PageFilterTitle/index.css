@@ -1,0 +1,97 @@
+h2.PageFilterTitle > button {
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 1em;
+  font-weight: bold;
+  background-color: transparent;
+  white-space: nowrap;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  overflow: hidden;
+  text-align: left;
+}
+
+h2.PageFilterTitle > button > span:not(.checkmark) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+h2.PageFilterTitle > div.select {
+  position: absolute;
+  top: 50px;
+  width: calc(100% - 20px);
+  background-color: #292929;
+  display: block;
+  border-radius: 10px;
+  border: 1px solid #666;
+  overflow: hidden;
+}
+
+h2.PageFilterTitle > div.select * {
+  font-size: 14px;
+  font-weight: normal;
+}
+
+h2.PageFilterTitle > div.select > div.selectLabel {
+  padding: 10px;
+  border-bottom: 1px solid #666;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+h2.PageFilterTitle > div.select > div.selectLabel > button.closeButton {
+  font-size: 18px;
+}
+
+h2.PageFilterTitle > div.select > div.options > button {
+  width: 100%;
+  padding: 4px 0 6px 30px;
+  height: 28px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+h2.PageFilterTitle > div.select > div.options > button:first-child {
+  height: 32px;
+  padding-top: 10px;
+  padding-left: 10px;
+}
+
+h2.PageFilterTitle > div.select > div.options > button:last-child {
+  padding-bottom: 10px;
+}
+
+h2.PageFilterTitle > div.select > div.options > button > span.checkbox {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #888;
+  border-radius: 2px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  position: relative;
+}
+
+h2.PageFilterTitle > div.select > div.options > button > span.checkbox.checked {
+  background-color: #4a4a4a;
+  border-color: #aaa;
+}
+
+/* Inset ✓ glyph rendered via ::after so the checkbox span itself stays a
+   pure visual element — keeps the option button click target unified. */
+h2.PageFilterTitle > div.select > div.options > button > span.checkbox.checked::after {
+  content: "✓";
+  position: absolute;
+  top: -3px;
+  left: 0px;
+  font-size: 18px;
+  line-height: 12px;
+  color: #e8e8e8;
+}
