@@ -37,7 +37,7 @@ export const PageFilterTitle = ({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const selectBoxRef = useRef<HTMLDivElement>(null);
 
-  const toggle = () => setIsOpen((v) => !v);
+  const toggle = () => setIsOpen(!isOpen);
   const close = () => setIsOpen(false);
 
   useEffect(() => {
