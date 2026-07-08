@@ -50,6 +50,12 @@ export const AccountsTable = ({ donutData, selectedTypes, style }: Props) => {
 
   const hasTypeFilter = !!selectedTypes && selectedTypes.length > 0;
   const typeMatches = (t: AccountType) => !hasTypeFilter || selectedTypes.includes(t);
+  // Credits already appear in the donut (main) list when the filter
+  // explicitly includes Credit — pushing them into the credit block too
+  // would double-render. Only surface the credit-only block when Credit
+  // is NOT in the current filter selection (which covers both the
+  // no-filter default AND multi-selects that omit Credit).
+  const showCreditsInCreditBlock = !hasTypeFilter || !selectedTypes.includes(AccountType.Credit);
 
   accounts.forEach((a) => {
     // Every sub-list (hidden, archived, credit) respects the user's
@@ -66,8 +72,9 @@ export const AccountsTable = ({ donutData, selectedTypes, style }: Props) => {
       archivedAccounts.push(<AccountRow key={a.account_id} account={a} />);
       return;
     }
-    const element = <AccountRow key={a.account_id} account={a} />;
-    if (a.type === AccountType.Credit) creditAccounts.push(element);
+    if (a.type === AccountType.Credit && showCreditsInCreditBlock) {
+      creditAccounts.push(<AccountRow key={a.account_id} account={a} />);
+    }
   });
 
   return (
