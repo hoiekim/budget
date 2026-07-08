@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from 
 import { LocalDate, ViewDate, currencyCodeToSymbol, getDateString } from "common";
 import { Budget, Capacity, CapacityData, sortCapacities, useAppContext } from "client";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
-import { CapacityInput } from "client/components";
+import { CapacityInput, Row } from "client/components";
 import BudgetDonut from "./BudgetDonut";
 import "./index.css";
 
@@ -76,7 +76,7 @@ const CapacitiesInput = ({
     // time period backward so `new Date(0)` can be used to refer to the default capacity.
     const date = active_from || new Date(0);
     return (
-      <div key={key} className="row">
+      <Row key={key}>
         <div className="capacityAnalysis">
           <div className="dateLabel">
             <div>
@@ -117,7 +117,7 @@ const CapacitiesInput = ({
             />
           )}
         </div>
-      </div>
+      </Row>
     );
   });
 
@@ -156,9 +156,9 @@ const CapacitiesInput = ({
 
   return (
     <div className="CapacitiesInput">
-      <div className="row button">
+      <Row className="button">
         <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Period</button>
-      </div>
+      </Row>
       {rows}
     </div>
   );
