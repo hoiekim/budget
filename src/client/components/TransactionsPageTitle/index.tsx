@@ -100,12 +100,11 @@ export const TransactionsPageTitle = ({
   // and writes through the same hook, so `toggle` / `clearAll` mutate
   // the `transactions_type` URL param, and `selected` is derived from
   // that param on the next render — closing the loop within this
-  // component. The `filters.types` prop is still passed by
-  // `TransactionsPage` for transition-aware transaction-list filtering
-  // (via `activeParams`), which the URL-first hook can't see.
-  const { selected: selectedTypes, toggle, clearAll } = useMultiSelectQueryFilter(
+  // component. The `options` array is derived from the same `TYPE_LABELS`
+  // record the hook takes, so values and labels can't drift out of sync.
+  const { selected: selectedTypes, toggle, clearAll, options } = useMultiSelectQueryFilter(
     "transactions_type",
-    VALID_TYPES,
+    TYPE_LABELS,
   );
 
   const accountName = account?.custom_name || account?.name;
@@ -158,9 +157,13 @@ export const TransactionsPageTitle = ({
         <FilterOption checked={selectedTypes.length === 0} onSelect={clearAll}>
           All Transactions
         </FilterOption>
-        {VALID_TYPES.map((t) => (
-          <FilterOption key={t} checked={selectedTypes.includes(t)} onSelect={() => toggle(t)}>
-            {TYPE_LABELS[t]}
+        {options.map(({ value, label }) => (
+          <FilterOption
+            key={value}
+            checked={selectedTypes.includes(value)}
+            onSelect={() => toggle(value)}
+          >
+            {label}
           </FilterOption>
         ))}
       </PageFilterTitle>
