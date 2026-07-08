@@ -157,7 +157,11 @@ export const AccountsPage = () => {
         radius={donutRadius}
         style={{ top: donutTop, position: donutPosition }}
       />
-      <AccountsTable donutData={donutData} style={{ paddingTop: tablePaddingTop }} />
+      <AccountsTable
+        donutData={donutData}
+        selectedTypes={selectedTypes}
+        style={{ paddingTop: tablePaddingTop }}
+      />
     </div>
   );
 };
