@@ -8,14 +8,43 @@ import {
   ScreenType,
   useAppContext,
   useDebounce,
+  useMultiSelectQueryFilter,
 } from "client";
-import { AccountsDonut, AccountsTable, DonutData, PageTitle } from "client/components";
+import {
+  AccountsDonut,
+  AccountsTable,
+  DonutData,
+  FilterOption,
+  PageFilterTitle,
+} from "client/components";
 import "./index.css";
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  [AccountType.Depository]: "Depository",
+  [AccountType.Credit]: "Credit",
+  [AccountType.Investment]: "Investment",
+  [AccountType.Loan]: "Loan",
+  [AccountType.Brokerage]: "Brokerage",
+  [AccountType.Other]: "Other",
+};
+
+const titleForSelection = (types: AccountType[]): string => {
+  if (types.length === 0) return "All Accounts";
+  if (types.length === 1) return ACCOUNT_TYPE_LABELS[types[0]];
+  return types.map((t) => ACCOUNT_TYPE_LABELS[t]).join(", ");
+};
 
 export const AccountsPage = () => {
   const { data, calculations, viewDate, screenType } = useAppContext();
   const { balanceData } = calculations;
   const { accounts } = data;
+
+  const {
+    selected: selectedTypes,
+    toggle,
+    clearAll,
+    options,
+  } = useMultiSelectQueryFilter<AccountType>("account_type", ACCOUNT_TYPE_LABELS);
 
   const [scrollY, setScrollY] = useState(0);
   const debouncer = useDebounce();
@@ -40,8 +69,16 @@ export const AccountsPage = () => {
     // (user-marked-out-of-active-view, typically expired cards) from the
     // donut + credit-total. Both flags only affect FE visibility; the
     // calc layer iterates all non-deleted accounts regardless.
+    //
+    // When the user hasn't set an explicit type filter, the default view
+    // continues to exclude Credit (which has its own summary tile). When
+    // the filter IS set, honor it verbatim — including a "Credit" pick
+    // which surfaces credit accounts in the donut + table for that
+    // filtered view.
     const filteredAccounts = sortedAccounts.filter(({ hide, archived, type }) => {
-      return !hide && !archived && type !== AccountType.Credit;
+      if (hide || archived) return false;
+      if (selectedTypes.length === 0) return type !== AccountType.Credit;
+      return selectedTypes.includes(type);
     });
 
     sortedAccounts.forEach(({ hide, archived, type, balances }) => {
@@ -78,7 +115,7 @@ export const AccountsPage = () => {
     const currencySymbol = currencyCodeToSymbol(currencyCode);
 
     return { donutData, currencySymbol, balanceTotal, totalCredit, numberOfCredits };
-  }, [accounts, balanceData, viewDate, data.status.isLoading]);
+  }, [accounts, balanceData, viewDate, data.status.isLoading, selectedTypes]);
 
   const isNarrow = screenType === ScreenType.Narrow;
 
@@ -93,7 +130,24 @@ export const AccountsPage = () => {
 
   return (
     <div className={classNames.join(" ")}>
-      <PageTitle>All&nbsp;Accounts</PageTitle>
+      <PageFilterTitle
+        label={titleForSelection(selectedTypes)}
+        dropdownLabel={<>Select&nbsp;account&nbsp;types</>}
+        closeAriaLabel="Close account type selector"
+      >
+        <FilterOption checked={selectedTypes.length === 0} onSelect={clearAll}>
+          All&nbsp;Accounts
+        </FilterOption>
+        {options.map(({ value, label }) => (
+          <FilterOption
+            key={value}
+            checked={selectedTypes.includes(value)}
+            onSelect={() => toggle(value)}
+          >
+            {label}
+          </FilterOption>
+        ))}
+      </PageFilterTitle>
       <AccountsDonut
         balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
