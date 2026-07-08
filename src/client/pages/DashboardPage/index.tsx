@@ -9,18 +9,44 @@ import {
   PATH,
   useAppContext,
   useLocalStorageState,
+  useMultiSelectQueryFilter,
   ChartDictionary,
   Data,
   FlowChart,
   indexedDb,
 } from "client";
-import { BalanceChartRow, FlowChartRow, PageTitle, ProjectionChartRow } from "client/components";
+
+const CHART_TYPE_LABELS: Record<ChartType, string> = {
+  [ChartType.BALANCE]: "Balance Chart",
+  [ChartType.PROJECTION]: "Projection Chart",
+  [ChartType.FLOW]: "Flow Chart",
+};
+
+const titleForSelection = (types: ChartType[]): string => {
+  if (types.length === 0) return "Dashboard";
+  if (types.length === 1) return CHART_TYPE_LABELS[types[0]];
+  return types.map((t) => CHART_TYPE_LABELS[t]).join(", ");
+};
+import {
+  BalanceChartRow,
+  FilterOption,
+  FlowChartRow,
+  PageFilterTitle,
+  ProjectionChartRow,
+} from "client/components";
 import "./index.css";
 
 export const DashboardPage = () => {
   const { data, setData, router } = useAppContext();
   const { charts } = data;
   const [chartsOrder, setChartsOrder] = useLocalStorageState<string[]>("chartsOrder", []);
+
+  const {
+    selected: selectedTypes,
+    toggle,
+    clearAll,
+    options,
+  } = useMultiSelectQueryFilter<ChartType>("chart_type", CHART_TYPE_LABELS);
 
   useEffect(() => {
     setChartsOrder((oldOrder) => {
@@ -31,6 +57,7 @@ export const DashboardPage = () => {
   }, [charts, setChartsOrder]);
 
   const chartRows = Array.from(charts)
+    .filter(([, chart]) => selectedTypes.length === 0 || selectedTypes.includes(chart.type))
     .sort(([a], [b]) => {
       const indexA = chartsOrder.indexOf(a);
       const indexB = chartsOrder.indexOf(b);
@@ -97,7 +124,24 @@ export const DashboardPage = () => {
 
   return (
     <div className="DashboardPage">
-      <PageTitle>Dashboard</PageTitle>
+      <PageFilterTitle
+        label={titleForSelection(selectedTypes)}
+        dropdownLabel={<>Select&nbsp;chart&nbsp;types</>}
+        closeAriaLabel="Close chart type selector"
+      >
+        <FilterOption checked={selectedTypes.length === 0} onSelect={clearAll}>
+          All&nbsp;Charts
+        </FilterOption>
+        {options.map(({ value, label }) => (
+          <FilterOption
+            key={value}
+            checked={selectedTypes.includes(value)}
+            onSelect={() => toggle(value)}
+          >
+            {label}
+          </FilterOption>
+        ))}
+      </PageFilterTitle>
       {chartRows}
       <button onClick={onClickAddChart}>Add&nbsp;Chart</button>
     </div>
