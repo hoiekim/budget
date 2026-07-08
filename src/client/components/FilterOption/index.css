@@ -1,0 +1,3 @@
+/* Layout comes from `h2.PageFilterTitle > div.select > div.options > button`
+ * rules in PageFilterTitle/index.css. `<FilterOption>` only supplies the
+ * checkbox + label content; no dedicated rules needed here yet. */
