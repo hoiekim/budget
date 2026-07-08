@@ -24,6 +24,12 @@ div.TransactionRow > .transactionInfo > .merchant_name {
   width: calc(100% - 140px);
 }
 
+div.TransactionRow > .transactionInfo > .merchant_name > div {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
 div.TransactionRow > .transactionInfo > .amount {
   width: 90px;
   text-align: right;

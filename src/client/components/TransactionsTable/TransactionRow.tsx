@@ -248,9 +248,6 @@ const TransactionRow = ({ transaction }: Props) => {
     go(PATH.TRANSACTION_DETAIL, { params });
   };
 
-  const { city, region, country } = location;
-  const locations = [city, region, country].filter((e) => e);
-
   return (
     <div className="TransactionRow">
       <div className="transactionInfo" onClick={onClickInfo}>
@@ -261,14 +258,17 @@ const TransactionRow = ({ transaction }: Props) => {
           })}
         </div>
         <div className="merchant_name">
-          {merchant_name && <div className="bigText">{merchant_name}</div>}
-          {name && <div className="smallText">{name}</div>}
-          {!!locations.length && <div className="smallText">{locations.join(", ")}</div>}
-
-          <div className="bigText">{account?.custom_name || account?.name}</div>
-          <div className="smallText">
-            {institution_id && <InstitutionSpan institution_id={institution_id} />}
-          </div>
+          {!merchant_name && name ? (
+            <div className="bigText">{name}</div>
+          ) : (
+            <>
+              <div className="bigText">{merchant_name}</div>
+              {name && merchant_name?.toLowerCase() !== name.toLowerCase() && (
+                <div className="smallText">{name}</div>
+              )}
+            </>
+          )}
+          <div className="smallText">{account?.custom_name || account?.name}</div>
         </div>
         <div className="amount">
           {amountAfterSplit < 0 && <>+&nbsp;</>}

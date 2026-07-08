@@ -61,32 +61,19 @@ const TransferRow = ({ transactions }: Props) => {
           })}
         </div>
         <div className="merchant_name">
-          <div className="bigText">
-            {fromAccount?.custom_name || fromAccount?.name}
-            <span className="transferPairArrow">
-              <RightArrowIcon size={12} />
-            </span>
-            {toAccount?.custom_name || toAccount?.name}
-          </div>
+          <div className="bigText">Transfer</div>
           <div className="smallText">
-            {fromAccount?.institution_id && (
-              <InstitutionSpan institution_id={fromAccount.institution_id} />
-            )}
+            {fromAccount?.custom_name || fromAccount?.name}
+            &nbsp;
+            <RightArrowIcon size={8} />
+            &nbsp;
+            {toAccount?.custom_name || toAccount?.name}
           </div>
         </div>
         <div className="amount transferAmount">
-          <span className="transferAmountIcon">
-            <TransferArrowIcon size={12} />
-          </span>
-          &nbsp;{currencyCodeToSymbol(isoCurrency)}&nbsp;
+          {currencyCodeToSymbol(isoCurrency)}&nbsp;
           {numberToCommaString(displayAmount)}
         </div>
-      </div>
-      <div className="budgetCategoryActions">
-        <div className="labelControls">
-          <span className="transferChip transferChipConfirmed">Transfer</span>
-        </div>
-        <div />
       </div>
     </div>
   );
