@@ -1,0 +1,11 @@
+h3.chartRowTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+h3.chartRowTitle button {
+  background-color: inherit;
+  width: 32px;
+  height: 32px;
+}

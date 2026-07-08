@@ -1,7 +1,7 @@
 import React, { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction, useMemo } from "react";
 import { getYearMonthString, numberToCommaString, ViewDate } from "common";
 import { useAccountGraph, useAppContext, useReorder, ProjectionChart } from "client";
-import { ChevronDownIcon, ChevronUpIcon, DateLabel, Graph, MoneyLabel } from "client/components";
+import { ChartRowTitle, DateLabel, Graph, MoneyLabel } from "client/components";
 import { calculateProjection } from "./lib";
 import "./index.css";
 
@@ -174,24 +174,12 @@ export const ProjectionChartRow = ({
       onDragEnd={onDragEnd}
     >
       {showTitle && (
-        <h3 className="title">
-          <span>{chart.name}</span>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onTouchStart={onTouchHandleStart}
-            onTouchEnd={onTouchHandleEnd}
-            onGotPointerCapture={onGotPointerCapture}
-            style={{ touchAction: "none" }}
-          >
-            <div className="reorderIcon">
-              <ChevronUpIcon size={8} />
-              <ChevronDownIcon size={8} />
-            </div>
-          </button>
-        </h3>
+        <ChartRowTitle
+          name={chart.name}
+          onTouchHandleStart={onTouchHandleStart}
+          onTouchHandleEnd={onTouchHandleEnd}
+          onGotPointerCapture={onGotPointerCapture}
+        />
       )}
       <Graph
         height={150}

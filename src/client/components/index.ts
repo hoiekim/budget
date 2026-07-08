@@ -33,6 +33,7 @@ export * from "./ToggleInput";
 export * from "./Spinner";
 export * from "./TransactionsPageTitle";
 export * from "./Icons";
+export * from "./ChartRowTitle";
 export * from "./BalanceChartRow";
 export * from "./ProjectionChartRow";
 export * from "./FlowChartRow";

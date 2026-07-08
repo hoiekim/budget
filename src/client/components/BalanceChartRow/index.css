@@ -1,15 +1,3 @@
-div.BalanceChartRow > .title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-div.BalanceChartRow > .title button {
-  background-color: inherit;
-  width: 32px;
-  height: 32px;
-}
-
 div.BalanceChartRow > .chart {
   display: flex;
   justify-content: space-between;
