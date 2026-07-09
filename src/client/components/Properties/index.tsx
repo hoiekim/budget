@@ -1,4 +1,4 @@
-import { ComponentPropsWithoutRef } from "react";
+import { ComponentPropsWithoutRef, ReactNode } from "react";
 import "./index.css";
 
 type PropertiesProps = ComponentPropsWithoutRef<"div">;
@@ -65,5 +65,22 @@ export const Row = ({ className, children, ...rest }: RowProps) => {
     <div className={merged} {...rest}>
       {children}
     </div>
+  );
+};
+
+type KeyValueProps = ComponentPropsWithoutRef<"div"> & { name: ReactNode };
+
+/** The canonical labeled property row: a `.propertyName` key span followed by
+ *  its value. `name` is the key; `children` is the value. Renders a
+ *  `<Row className="keyValue">` so the key/value CSS
+ *  (`div.Properties .row.keyValue span.propertyName` / `:last-child`) applies.
+ *  Extra `className` composes after `keyValue`. */
+export const KeyValue = ({ name, className, children, ...rest }: KeyValueProps) => {
+  const merged = className ? `keyValue ${className}` : "keyValue";
+  return (
+    <Row className={merged} {...rest}>
+      <span className="propertyName">{name}</span>
+      {children}
+    </Row>
   );
 };

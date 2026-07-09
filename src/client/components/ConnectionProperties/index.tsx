@@ -10,6 +10,7 @@ import {
   TransactionDictionary,
   call,
   InstitutionSpan,
+  KeyValue,
   PlaidLinkButton,
   Properties,
   PropertyLabel,
@@ -131,23 +132,19 @@ export const ConnectionProperties = ({ item }: Props) => {
       <PropertyLabel>Connection&nbsp;Detail</PropertyLabel>
       <Property>
         {!!institution_id && (
-          <Row className="keyValue">
-            <span className="propertyName">Institution</span>
+          <KeyValue name="Institution">
             <InstitutionSpan institution_id={institution_id} />
-          </Row>
+          </KeyValue>
         )}
-        <Row className="keyValue">
-          <span className="propertyName">Last&nbsp;Updated</span>
+        <KeyValue name="Last&nbsp;Updated">
           <span>{updated || "Unknown"}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Status</span>
+        </KeyValue>
+        <KeyValue name="Status">
           <span>{status ? toTitleCase(status) : "Unknown"}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Connection&nbsp;Provider</span>
+        </KeyValue>
+        <KeyValue name="Connection&nbsp;Provider">
           <span>{toUpperCamelCase(provider)}</span>
-        </Row>
+        </KeyValue>
       </Property>
       {accountRows}
       <PropertyLabel>&nbsp;</PropertyLabel>

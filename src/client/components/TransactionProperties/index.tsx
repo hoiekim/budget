@@ -22,6 +22,7 @@ import {
 } from "client";
 import {
   InstitutionSpan,
+  KeyValue,
   Properties,
   Property,
   PropertyLabel,
@@ -335,8 +336,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
     <Properties className="TransactionProperties">
       <PropertyLabel>Transaction&nbsp;Details</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Date</span>
+        <KeyValue name="Date">
           {isManual ? (
             <input
               type="date"
@@ -353,13 +353,11 @@ export const TransactionProperties = ({ transaction }: Props) => {
               })}
             </span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Merchant&nbsp;Name</span>
+        </KeyValue>
+        <KeyValue name="Merchant&nbsp;Name">
           <span>{merchant_name}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Name</span>
+        </KeyValue>
+        <KeyValue name="Name">
           {isManual ? (
             <input
               type="text"
@@ -371,9 +369,8 @@ export const TransactionProperties = ({ transaction }: Props) => {
           ) : (
             <span>{name}</span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Amount</span>
+        </KeyValue>
+        <KeyValue name="Amount">
           {isManual ? (
             <input
               type="number"
@@ -389,21 +386,17 @@ export const TransactionProperties = ({ transaction }: Props) => {
               {numberToCommaString(Math.abs(amount))}
             </span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Location</span>
+        </KeyValue>
+        <KeyValue name="Location">
           <span>{locations.join(", ")}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Account</span>
+        </KeyValue>
+        <KeyValue name="Account">
           <span>{account?.custom_name || account?.name}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Institution</span>
+        </KeyValue>
+        <KeyValue name="Institution">
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Memo</span>
+        </KeyValue>
+        <KeyValue name="Memo">
           <input
             type="text"
             value={memoValue}
@@ -411,34 +404,31 @@ export const TransactionProperties = ({ transaction }: Props) => {
             onChange={onChangeMemo}
             onBlur={onBlurMemo}
           />
-        </Row>
+        </KeyValue>
       </Property>
       {!splitTransactionInputRows?.length && (
         <>
           <PropertyLabel>Budgets</PropertyLabel>
           <Property>
-            <Row className="keyValue">
-              <span className="propertyName">Budget</span>
+            <KeyValue name="Budget">
               <div>
                 <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
                   <option value="">Select Budget</option>
                   {budgetOptions}
                 </select>
               </div>
-            </Row>
-            <Row className="keyValue">
-              <span className="propertyName">Section</span>
+            </KeyValue>
+            <KeyValue name="Section">
               <span>{sectionName}</span>
-            </Row>
-            <Row className="keyValue">
-              <span className="propertyName">Category</span>
+            </KeyValue>
+            <KeyValue name="Category">
               <div className={selectedCategoryIdLabel ? "" : "notification"}>
                 <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
                   <option value="">Select Category</option>
                   {categoryOptions}
                 </select>
               </div>
-            </Row>
+            </KeyValue>
           </Property>
         </>
       )}
@@ -489,9 +479,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
         )}
         {showPartnerPicker && (
           <>
-            <Row className="keyValue">
-              <span className="propertyName">Pair&nbsp;with</span>
-            </Row>
+            <KeyValue name="Pair&nbsp;with"></KeyValue>
             {partnerCandidates.length === 0 && (
               <Row className="partnerPickerEmpty">
                 <span className="partnerPickerEmptyText">

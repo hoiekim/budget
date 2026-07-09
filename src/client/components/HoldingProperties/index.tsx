@@ -24,6 +24,7 @@ import {
   PropertyLabel,
   Property,
   Row,
+  KeyValue,
   indexedDb,
   StoreName,
 } from "client";
@@ -610,10 +611,9 @@ export const HoldingProperties = () => {
       <Properties className="HoldingProperties">
         <PropertyLabel>Holding</PropertyLabel>
         <Property>
-          <Row className="keyValue">
-            <span className="propertyName">Missing&nbsp;account&nbsp;context</span>
+          <KeyValue name="Missing&nbsp;account&nbsp;context">
             <span></span>
-          </Row>
+          </KeyValue>
         </Property>
       </Properties>
     );
@@ -629,8 +629,7 @@ export const HoldingProperties = () => {
             cascade via descendant selectors. */}
         <Property>
           <form onSubmit={onSubmitNew}>
-            <Row className="keyValue">
-              <span className="propertyName">Ticker</span>
+            <KeyValue name="Ticker">
               <div className="tickerField">
                 <input
                   type="text"
@@ -643,12 +642,11 @@ export const HoldingProperties = () => {
                   {tickerStatus === "validating" ? "…" : "Check"}
                 </button>
               </div>
-            </Row>
+            </KeyValue>
             {tickerMessage && (
               <Row className={`tickerFeedback ${tickerStatus}`}>{tickerMessage}</Row>
             )}
-            <Row className="keyValue">
-              <span className="propertyName">Quantity</span>
+            <KeyValue name="Quantity">
               <input
                 type="number"
                 placeholder="0"
@@ -657,9 +655,8 @@ export const HoldingProperties = () => {
                 value={form.quantity}
                 onChange={onChangeField("quantity")}
               />
-            </Row>
-            <Row className="keyValue">
-              <span className="propertyName">Cost&nbsp;basis&nbsp;(opt)</span>
+            </KeyValue>
+            <KeyValue name="Cost&nbsp;basis&nbsp;(opt)">
               <input
                 type="number"
                 placeholder="Total $ paid (all shares)"
@@ -668,15 +665,14 @@ export const HoldingProperties = () => {
                 value={form.costBasis}
                 onChange={onChangeField("costBasis")}
               />
-            </Row>
-            <Row className="keyValue">
-              <span className="propertyName">Snapshot&nbsp;date</span>
+            </KeyValue>
+            <KeyValue name="Snapshot&nbsp;date">
               <input
                 type="date"
                 value={snapshotDateInput}
                 onChange={(e) => setSnapshotDateInput(e.target.value)}
               />
-            </Row>
+            </KeyValue>
             {submitError && <Row className="formError">{submitError}</Row>}
             <Row className="button">
               <button type="submit" className="colored">
@@ -717,32 +713,28 @@ export const HoldingProperties = () => {
     <Properties className="HoldingProperties">
       <PropertyLabel>Holding</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Ticker</span>
+        <KeyValue name="Ticker">
           <span>{bucketInfo.primaryLabel}</span>
-        </Row>
+        </KeyValue>
         {bucketInfo.name && (
-          <Row className="keyValue">
-            <span className="propertyName">Name</span>
+          <KeyValue name="Name">
             <span>{bucketInfo.name}</span>
-          </Row>
+          </KeyValue>
         )}
-        <Row className="keyValue">
-          <span className="propertyName">{isCash ? "Amount" : "Quantity"}</span>
+        <KeyValue name={isCash ? "Amount" : "Quantity"}>
           <span>
             {numberToCommaString(aggregate.totalQuantity, isCash ? 2 : 4)}
             {isCash && <span className="currencyMeta">&nbsp;{currencySymbol}</span>}
           </span>
-        </Row>
+        </KeyValue>
         {!isCash && (
-          <Row className="keyValue">
-            <span className="propertyName">Cost&nbsp;basis&nbsp;(avg)</span>
+          <KeyValue name="Cost&nbsp;basis&nbsp;(avg)">
             <span>
               {aggregate.avgCostBasis !== null
                 ? numberToCommaString(aggregate.avgCostBasis, 4)
                 : "—"}
             </span>
-          </Row>
+          </KeyValue>
         )}
       </Property>
 
@@ -771,8 +763,7 @@ export const HoldingProperties = () => {
               <span className="snapshotMeta">&nbsp;·&nbsp;{snap.holding.security_id}</span>
             </PropertyLabel>
             <Property>
-              <Row className="keyValue">
-                <span className="propertyName">{isCash ? "Amount" : "Quantity"}</span>
+              <KeyValue name={isCash ? "Amount" : "Quantity"}>
                 {isReadOnly ? (
                   <span>
                     {edit.quantity || "—"}
@@ -793,10 +784,9 @@ export const HoldingProperties = () => {
                     {isCash && <span className="currencyMeta">{currencySymbol}</span>}
                   </span>
                 )}
-              </Row>
+              </KeyValue>
               {!isCash && (
-                <Row className="keyValue">
-                  <span className="propertyName">Cost&nbsp;basis</span>
+                <KeyValue name="Cost&nbsp;basis">
                   {isReadOnly ? (
                     <span>{edit.costBasis || "—"}</span>
                   ) : (
@@ -809,10 +799,9 @@ export const HoldingProperties = () => {
                       onBlur={onBlurCostBasis(snap, edit.costBasis)}
                     />
                   )}
-                </Row>
+                </KeyValue>
               )}
-              <Row className="keyValue">
-                <span className="propertyName">Snapshot&nbsp;date</span>
+              <KeyValue name="Snapshot&nbsp;date">
                 {isReadOnly ? (
                   <span>{edit.date || "—"}</span>
                 ) : (
@@ -823,7 +812,7 @@ export const HoldingProperties = () => {
                     onBlur={onBlurDate(snap, edit.date)}
                   />
                 )}
-              </Row>
+              </KeyValue>
               {edit.error && <Row className="formError">{edit.error}</Row>}
               {!isReadOnly && (
                 <Row className="button">

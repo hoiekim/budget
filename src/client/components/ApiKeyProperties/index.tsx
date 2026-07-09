@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiKeyJSON } from "server";
-import { call, PATH, Properties, Property, PropertyLabel, Row, useAppContext } from "client";
+import {
+  call,
+  KeyValue,
+  PATH,
+  Properties,
+  Property,
+  PropertyLabel,
+  Row,
+  useAppContext,
+} from "client";
 import "./index.css";
 
 type KeyView = Omit<ApiKeyJSON, "key_hash" | "revoked_at">;
@@ -107,10 +116,9 @@ export const ApiKeyProperties = () => {
           <Row>
             <span className="apiKeyCopyOnceTitle">Copy this key — it will not be shown again.</span>
           </Row>
-          <Row className="keyValue">
-            <span className="propertyName">Key</span>
+          <KeyValue name="Key">
             <code className="apiKeyPlaintext">{justCreated.plaintext}</code>
-          </Row>
+          </KeyValue>
         </Property>
         <PropertyLabel>&nbsp;</PropertyLabel>
         <Property>
@@ -135,8 +143,7 @@ export const ApiKeyProperties = () => {
       <Properties className="ApiKeyProperties">
         <PropertyLabel>New&nbsp;API&nbsp;Key</PropertyLabel>
         <Property>
-          <Row className="keyValue">
-            <span className="propertyName">Name</span>
+          <KeyValue name="Name">
             <input
               type="text"
               placeholder="e.g. claoie-suggester"
@@ -145,9 +152,8 @@ export const ApiKeyProperties = () => {
               disabled={creating}
               maxLength={255}
             />
-          </Row>
-          <Row className="keyValue">
-            <span className="propertyName">Scope</span>
+          </KeyValue>
+          <KeyValue name="Scope">
             <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={creating}>
               {SCOPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -155,7 +161,7 @@ export const ApiKeyProperties = () => {
                 </option>
               ))}
             </select>
-          </Row>
+          </KeyValue>
           {error && (
             <Row>
               <span className="apiKeyError">{error}</span>
@@ -225,31 +231,25 @@ export const ApiKeyProperties = () => {
     <Properties className="ApiKeyProperties">
       <PropertyLabel>API&nbsp;Key&nbsp;Details</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Name</span>
+        <KeyValue name="Name">
           <span>{apiKey.name}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Prefix</span>
+        </KeyValue>
+        <KeyValue name="Prefix">
           <code className="apiKeyPrefix">{apiKey.key_prefix}…</code>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Scopes</span>
+        </KeyValue>
+        <KeyValue name="Scopes">
           <span>{apiKey.scopes.join(", ")}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Created</span>
+        </KeyValue>
+        <KeyValue name="Created">
           <span>{formatDate(apiKey.created_at)}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Last&nbsp;Used</span>
+        </KeyValue>
+        <KeyValue name="Last&nbsp;Used">
           <span>{formatDate(apiKey.last_used_at)}</span>
-        </Row>
+        </KeyValue>
         {apiKey.expires_at && (
-          <Row className="keyValue">
-            <span className="propertyName">Expires</span>
+          <KeyValue name="Expires">
             <span>{formatDate(apiKey.expires_at)}</span>
-          </Row>
+          </KeyValue>
         )}
       </Property>
       <PropertyLabel>&nbsp;</PropertyLabel>

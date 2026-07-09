@@ -16,6 +16,7 @@ import {
   PropertyLabel,
   Property,
   Row,
+  KeyValue,
 } from "client";
 import {
   ChangeEventHandler,
@@ -181,12 +182,10 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     <Properties>
       <PropertyLabel>Chart&nbsp;Profile</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Chart&nbsp;Name</span>
+        <KeyValue name="Chart&nbsp;Name">
           <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Chart&nbsp;Type</span>
+        </KeyValue>
+        <KeyValue name="Chart&nbsp;Type">
           <select value={selectedType} onChange={onChangeType}>
             {Object.values(ChartType).map((v) => {
               const chartTypeName = getChartTypeName(v);
@@ -197,7 +196,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
               );
             })}
           </select>
-        </Row>
+        </KeyValue>
       </Property>
 
       <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>
@@ -211,8 +210,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
 
       <PropertyLabel>Saving&nbsp;Configuration</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Initial&nbsp;Saving</span>
+        <KeyValue name="Initial&nbsp;Saving">
           <div>
             <CapacityInput
               style={{ width: 100 }}
@@ -221,18 +219,16 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;$</span>
           </div>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Initial&nbsp;Saving&nbsp;as&nbsp;of</span>
+        </KeyValue>
+        <KeyValue name="Initial&nbsp;Saving&nbsp;as&nbsp;of">
           <input
             type="date"
             defaultValue={getDateString(initial_saving.amountAsOf)}
             onBlur={onBlurInitialSavingDate}
             aria-label="Initial saving as of date"
           />
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Monthly&nbsp;Contribution</span>
+        </KeyValue>
+        <KeyValue name="Monthly&nbsp;Contribution">
           <div>
             <CapacityInput
               style={{ width: 100 }}
@@ -241,9 +237,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;$</span>
           </div>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Anual&nbsp;Percentage&nbsp;Yield</span>
+        </KeyValue>
+        <KeyValue name="Anual&nbsp;Percentage&nbsp;Yield">
           <div>
             <CapacityInput
               style={{ width: 100 }}
@@ -255,12 +250,11 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;%</span>
           </div>
-        </Row>
+        </KeyValue>
       </Property>
       <PropertyLabel>Goal&nbsp;Configuration</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Living&nbsp;Cost</span>
+        <KeyValue name="Living&nbsp;Cost">
           <div>
             <CapacityInput
               style={{ width: 100 }}
@@ -269,18 +263,16 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;$</span>
           </div>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Living&nbsp;Cost&nbsp;as&nbsp;of</span>
+        </KeyValue>
+        <KeyValue name="Living&nbsp;Cost&nbsp;as&nbsp;of">
           <input
             type="date"
             defaultValue={getDateString(living_cost.amountAsOf)}
             onBlur={onBlurLivingCostDate}
             aria-label="Living cost as of date"
           />
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Tax&nbsp;Rate</span>
+        </KeyValue>
+        <KeyValue name="Tax&nbsp;Rate">
           <div>
             <CapacityInput
               style={{ width: 100 }}
@@ -292,9 +284,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;%</span>
           </div>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">YoY&nbsp;Inflation</span>
+        </KeyValue>
+        <KeyValue name="YoY&nbsp;Inflation">
           <div>
             <CapacityInput
               style={{ width: 100 }}
@@ -306,7 +297,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             />
             <span className="small">&nbsp;%</span>
           </div>
-        </Row>
+        </KeyValue>
       </Property>
 
       <PropertyLabel>&nbsp;</PropertyLabel>
