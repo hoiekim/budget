@@ -1,6 +1,7 @@
 import { KeyboardEvent, useEffect } from "react";
 import { Interval, ViewDate } from "common";
 import { useAppContext } from "client";
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from "client/components";
 import "./index.css";
 
 interface Props {
@@ -71,19 +72,19 @@ export const DatePickerModal = ({ onClose }: Props) => {
         <div className="header">
           <h3>View&nbsp;Date</h3>
           <button className="closeButton" onClick={onClose} aria-label="Close view date">
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
         <div className="dateLabel">{dateLabel}</div>
         <div className="stepper">
           <button onClick={onPrev} aria-label="Previous period">
-            ◀
+            <ChevronLeftIcon size={14} />
           </button>
           <button className="currentButton" onClick={onCurrent}>
             Current
           </button>
           <button onClick={onNext} aria-label="Next period">
-            ▶
+            <ChevronRightIcon size={14} />
           </button>
         </div>
         <div className="intervalRow">
