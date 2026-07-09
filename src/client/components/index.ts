@@ -38,6 +38,7 @@ export * from "./Spinner";
 export * from "./TransactionsPageTitle";
 export * from "./Icons";
 export * from "./ChartRowTitle";
+export * from "./ChartRowShell";
 export * from "./BalanceChartRow";
 export * from "./ProjectionChartRow";
 export * from "./FlowChartRow";
