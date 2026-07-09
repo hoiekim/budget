@@ -4,6 +4,8 @@ import {
   ArrowLeftIcon,
   BankIcon,
   ChartIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   DatePickerModal,
   HamburgerIcon,
   ListIcon,
@@ -12,7 +14,7 @@ import {
 import "./index.css";
 
 export const Header = () => {
-  const { user, router, viewDate, screenType } = useAppContext();
+  const { user, router, viewDate, setViewDate, screenType } = useAppContext();
 
   const { path, params, go, back } = router;
 
@@ -55,6 +57,9 @@ export const Header = () => {
     interval === "year" ? undefined : { year: "numeric", month: "long" },
   );
 
+  const onPrev = () => setViewDate((v) => v.clone().previous());
+  const onNext = () => setViewDate((v) => v.clone().next());
+
   return (
     <div className={classNames.join(" ")} style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
@@ -67,6 +72,9 @@ export const Header = () => {
             )}
           </div>
           <div className="datePicker">
+            <button className="stepper" onClick={onPrev} aria-label="Previous period">
+              <ChevronLeftIcon size={14} />
+            </button>
             <button
               className="datePickerTrigger"
               onClick={() => setDatePickerOpen(true)}
@@ -74,6 +82,9 @@ export const Header = () => {
               aria-expanded={datePickerOpen}
             >
               {datePickerLabel}
+            </button>
+            <button className="stepper" onClick={onNext} aria-label="Next period">
+              <ChevronRightIcon size={14} />
             </button>
           </div>
           <div className="hamburger">

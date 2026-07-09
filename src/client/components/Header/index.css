@@ -30,7 +30,6 @@ div.Header > .viewController {
   height: 50px;
   background-color: #292929;
   margin: auto;
-  padding: 0 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -53,29 +52,46 @@ div.Header > .navigators > .centerBox {
   width: 100%;
 }
 
+div.Header > .viewController > .centerBox {
+  height: 100%;
+}
+
 div.Header > .viewController > div > div.datePicker {
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
-div.Header > .viewController > div > .backButton {
-  width: 25px;
+div.Header > .viewController > div > div.datePicker > button {
+  height: 100%;
+}
+
+div.Header > .viewController > div > div.datePicker > button.stepper {
+  width: 45px;
+}
+
+div.Header > .viewController > div > .backButton,
+div.Header > .viewController > div > .hamburger {
+  width: 45px;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 div.Header > .viewController > div > .backButton > button {
-  font-size: 20px;
-}
-
-div.Header > .viewController > div > .hamburger {
-  width: 25px;
-  height: 24px;
+  padding: 0 10px;
+  width: 100%;
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
+  font-size: 20px;
 }
 
 div.Header > .viewController > div > .hamburger > a {
+  padding: 0 10px;
   width: 100%;
   height: 100%;
   display: flex;
