@@ -106,7 +106,13 @@ export const ChevronDownIcon = ({ size }: IconProps) => (
 );
 
 export const ChevronRightIcon = ({ size }: IconProps) => (
-  <svg xmlns="http://www.w3.org/2000/svg" height={size} width={size} viewBox="0 0 512 512">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    style={{ position: "relative", left: "2px" }}
+    height={size}
+    width={size}
+    viewBox="0 0 512 512"
+  >
     <path
       fill="currentColor"
       d="M310.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-192 192c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 256 73.4 86.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l192 192z"
@@ -115,7 +121,13 @@ export const ChevronRightIcon = ({ size }: IconProps) => (
 );
 
 export const ChevronLeftIcon = ({ size }: IconProps) => (
-  <svg xmlns="http://www.w3.org/2000/svg" height={size} width={size} viewBox="0 0 512 512">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    style={{ position: "relative", left: "2px" }}
+    height={size}
+    width={size}
+    viewBox="0 0 512 512"
+  >
     <path
       fill="currentColor"
       d="M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l192 192c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L77.3 256 246.6 86.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-192 192z"
@@ -166,6 +178,16 @@ export const CheckIcon = ({ size }: IconProps) => (
     <path
       fill="currentColor"
       d="M530.8 134.1C545.1 144.5 548.3 164.5 537.9 178.8L281.9 530.8C276.4 538.4 267.9 543.1 258.5 543.9C249.1 544.7 240 541.2 233.4 534.6L105.4 406.6C92.9 394.1 92.9 373.8 105.4 361.3C117.9 348.8 138.2 348.8 150.7 361.3L252.2 462.8L486.2 141.1C496.6 126.8 516.6 123.6 530.9 134z"
+    />
+  </svg>
+);
+
+// Font Awesome Free v7 xmark — plain X mark used for close affordances.
+export const CloseIcon = ({ size }: IconProps) => (
+  <svg xmlns="http://www.w3.org/2000/svg" height={size} width={size} viewBox="0 0 384 512">
+    <path
+      fill="currentColor"
+      d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3l105.4 105.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4z"
     />
   </svg>
 );

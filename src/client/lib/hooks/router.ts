@@ -83,6 +83,15 @@ export interface ClientRouter {
 
 export type GoOptions = NavigateOptions & {
   params?: URLSearchParams;
+  /**
+   * `router.go()` copies `view_date` from the current URL into the new
+   * params by default, so cross-page navigation stays anchored to the
+   * period the user was viewing. Pass `preserveViewDate: false` to
+   * bypass — needed for `useViewDate`'s `resetViewDate` (the modal's
+   * Current button) which wants to REMOVE the param entirely, not have
+   * it re-injected.
+   */
+  preserveViewDate?: boolean;
 };
 
 export interface NavigateOptions {
@@ -291,16 +300,36 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
 
   const go = useCallback(
     (target: PATH, options?: GoOptions) => {
-      const { params: newParams, animate = true } = options || {};
+      const { params: providedParams, animate = true, preserveViewDate = true } = options || {};
       isAnimationEnabled.current = animate;
       setDirection("forward");
+
+      // Preserve `view_date` across every cross-page navigation. Users
+      // expect the period they're viewing to persist as they move
+      // between pages — jumping from `/budgets?view_date=2026-05` to a
+      // detail view or the accounts page should keep them anchored to
+      // May 2026 rather than snapping back to the current month.
+      //
+      // Skip preservation when:
+      // - Caller sets `preserveViewDate: false` — explicit opt-out for
+      //   `resetViewDate` (the modal's Current button), which wants to
+      //   REMOVE the param entirely, not have it re-injected.
+      // - Caller supplies `view_date` in `options.params` — caller wins.
+      // - Current URL has NO `view_date` (Current mode = implicit "now")
+      //   — no injection, so bookmarks stay clean.
+      const finalParams = new URLSearchParams(providedParams);
+      if (preserveViewDate && !finalParams.has("view_date")) {
+        const currentViewDate = currentParamsRef.current.get("view_date");
+        if (currentViewDate) finalParams.set("view_date", currentViewDate);
+      }
+
       // Same-path navigation (control changes query params on the
       // currently-mounted page) preserves DOM state. Let the caller
       // handle scroll — see the `skipScrollRestore` comment on
       // `transition` above.
       const skipScrollRestore = target === currentPathRef.current;
-      transition(target, newParams || new URLSearchParams(), skipScrollRestore);
-      window.history.pushState("", "", getURLString(target, newParams));
+      transition(target, finalParams, skipScrollRestore);
+      window.history.pushState("", "", getURLString(target, finalParams));
     },
     [transition],
   );

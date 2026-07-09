@@ -1,0 +1,83 @@
+div.DatePickerModal {
+  position: fixed;
+  inset: 0;
+  /* Above everything: Header's fixed viewController is z-index 800,
+   * Router's page panels are 500–520. Modal needs to sit above them
+   * all so the SVG chart paths from the underlying Dashboard/Budgets
+   * page don't intercept clicks on the stepper buttons. */
+  z-index: 1000;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+div.DatePickerModal > div.panel {
+  background-color: #292929;
+  border: 1px solid #666;
+  border-radius: 12px;
+  padding-bottom: 10px;
+  width: calc(100% - 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+div.DatePickerModal > div.panel > div.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #666;
+  padding: 10px;
+}
+
+div.DatePickerModal > div.panel > div.header > button.closeButton {
+  background-color: transparent;
+  font-size: 18px;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+div.DatePickerModal > div.panel > div.dateInput {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+div.DatePickerModal > div.panel > div.dateInput > input {
+  background-color: #222;
+  text-align: center;
+  min-width: 180px;
+}
+
+div.DatePickerModal > div.panel > div.stepper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+div.DatePickerModal > div.panel > div.stepper > button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 44px;
+  background-color: #222;
+}
+
+div.DatePickerModal > div.panel > div.stepper > button.currentButton {
+  padding: 0 16px;
+}
+
+div.DatePickerModal > div.panel > div.intervalRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+div.DatePickerModal > div.panel > div.intervalRow > select {
+  min-width: 120px;
+  background-color: #222;
+}

@@ -26,6 +26,12 @@ export interface ContextType {
   router: ClientRouter;
   viewDate: ViewDate;
   setViewDate: Dispatch<SetStateAction<ViewDate>>;
+  /** Clear the `view_date` URL param entirely (Current mode) — different
+   * from `setViewDate(new ViewDate("month"))` which writes today's
+   * period explicitly. Used by the date-picker modal's Current button
+   * so a bookmark to `/dashboard` (no param) stays anchored to "now"
+   * rather than freezing to the current period at bookmark time. */
+  resetViewDate: () => void;
   screenType: ScreenType;
 }
 
