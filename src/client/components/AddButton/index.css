@@ -1,0 +1,4 @@
+button.AddButton {
+  width: calc(100% - 20px);
+  margin: 10px 10px;
+}

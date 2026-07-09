@@ -11,8 +11,13 @@ import {
   Data,
   indexedDb,
 } from "client";
-import { BudgetBar, FilterOption, PageFilterTitle, Placeholder } from "client/components";
-import "./index.css";
+import {
+  AddButton,
+  BudgetBar,
+  FilterOption,
+  PageFilterTitle,
+  Placeholder,
+} from "client/components";
 
 /**
  * Six discrete filter tokens across three binary dimensions of a budget:
@@ -165,9 +170,7 @@ export const BudgetsPage = () => {
       </PageFilterTitle>
       <div className="budgetsTable">
         {budgetBars}
-        <div className="addButton">
-          <button onClick={onClickAddBudget}>+</button>
-        </div>
+        <AddButton onClick={onClickAddBudget}>Add&nbsp;Budget</AddButton>
         {!budgetBars.length && (
           <Placeholder>You don't have any budgets! Click this button to create one.</Placeholder>
         )}

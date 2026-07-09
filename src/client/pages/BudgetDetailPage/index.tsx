@@ -16,7 +16,7 @@ import {
   SectionDictionary,
   indexedDb,
 } from "client";
-import { BudgetBar, Graph, SectionBar } from "client/components";
+import { AddButton, BudgetBar, Graph, SectionBar } from "client/components";
 import "./index.css";
 import { useBudgetGraph } from "./lib";
 
@@ -141,9 +141,7 @@ export const BudgetDetailPage = () => {
           <div className="children">
             <div>
               {sectionBars}
-              <div className="addButton">
-                <button onClick={onClickAddSection}>+</button>
-              </div>
+              <AddButton onClick={onClickAddSection}>Add&nbsp;Section</AddButton>
             </div>
           </div>
         </div>
