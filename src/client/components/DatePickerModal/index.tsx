@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect } from "react";
-import { Interval, ViewDate } from "common";
+import { getYearMonthString, Interval, parseYearMonthString, ViewDate } from "common";
 import { useAppContext } from "client";
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from "client/components";
 import "./index.css";
@@ -27,9 +27,9 @@ interface Props {
 export const DatePickerModal = ({ onClose }: Props) => {
   const { viewDate, setViewDate, resetViewDate } = useAppContext();
   const interval = viewDate.getInterval();
-  const dateLabel = viewDate.toString(
-    interval === "year" ? undefined : { year: "numeric", month: "long" },
-  );
+  const endDate = viewDate.getEndDate();
+  const monthInputValue = getYearMonthString(endDate);
+  const yearInputValue = endDate.getFullYear();
 
   const onPrev = () => setViewDate((v) => v.clone().previous());
   const onNext = () => setViewDate((v) => v.clone().next());
@@ -40,6 +40,16 @@ export const DatePickerModal = ({ onClose }: Props) => {
       clone.setInterval(next);
       return clone;
     });
+  };
+  const onChangeMonthInput = (value: string) => {
+    const date = parseYearMonthString(value);
+    if (!date) return;
+    setViewDate((v) => new ViewDate(v.getInterval(), date));
+  };
+  const onChangeYearInput = (value: string) => {
+    const year = parseInt(value);
+    if (!year || year < 1970 || year > 9999) return;
+    setViewDate((v) => new ViewDate(v.getInterval(), new Date(year, 0)));
   };
 
   // Escape closes the modal — matches PageFilterTitle's dismissal shape.
@@ -52,6 +62,13 @@ export const DatePickerModal = ({ onClose }: Props) => {
   }, [onClose]);
 
   const onBackdropKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    // Only handle Enter/Space when the backdrop ITSELF is the target
+    // (activation of the outer div's keyboard "button" affordance).
+    // Reviewoie #624 caught the earlier version treating bubbled events
+    // as backdrop activations — Enter on Prev/Current/Next inside the
+    // panel called preventDefault + onClose, breaking keyboard operation
+    // of every control in the modal.
+    if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onClose();
@@ -64,18 +81,38 @@ export const DatePickerModal = ({ onClose }: Props) => {
       role="dialog"
       aria-modal="true"
       aria-label="View date"
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       onKeyDown={onBackdropKeyDown}
       tabIndex={-1}
     >
-      <div className="panel" onClick={(e) => e.stopPropagation()}>
+      <div className="panel">
         <div className="header">
           <h3>View&nbsp;Date</h3>
           <button className="closeButton" onClick={onClose} aria-label="Close view date">
             <CloseIcon size={14} />
           </button>
         </div>
-        <div className="dateLabel">{dateLabel}</div>
+        <div className="dateInput">
+          {interval === "month" ? (
+            <input
+              type="month"
+              aria-label="Month"
+              value={monthInputValue}
+              onChange={(e) => onChangeMonthInput(e.target.value)}
+            />
+          ) : (
+            <input
+              type="number"
+              aria-label="Year"
+              min={1970}
+              max={9999}
+              value={yearInputValue}
+              onChange={(e) => onChangeYearInput(e.target.value)}
+            />
+          )}
+        </div>
         <div className="stepper">
           <button onClick={onPrev} aria-label="Previous period">
             <ChevronLeftIcon size={14} />

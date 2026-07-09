@@ -45,11 +45,18 @@ div.DatePickerModal > div.panel > div.header > button.closeButton {
   line-height: 1;
 }
 
-div.DatePickerModal > div.panel > div.dateLabel {
+div.DatePickerModal > div.panel > div.dateInput {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+div.DatePickerModal > div.panel > div.dateInput > input {
   font-size: 22px;
   font-weight: 700;
   text-align: center;
-  padding: 8px 0;
+  padding: 6px 10px;
+  min-width: 180px;
 }
 
 div.DatePickerModal > div.panel > div.stepper {

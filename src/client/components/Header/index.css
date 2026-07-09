@@ -59,10 +59,6 @@ div.Header > .viewController > div > div.datePicker {
   align-items: center;
 }
 
-div.Header > .viewController > div > div.datePicker > input {
-  text-align: center;
-}
-
 div.Header > .viewController > div > .backButton {
   width: 25px;
 }
