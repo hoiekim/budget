@@ -4,6 +4,7 @@ import type { TransferPair } from "server";
 import { useAppContext, useTransfers } from "client";
 import {
   InstitutionSpan,
+  KeyValue,
   Properties,
   Property,
   PropertyLabel,
@@ -69,16 +70,13 @@ export const TransferProperties = ({ transfer }: Props) => {
       <>
         <PropertyLabel>{label}</PropertyLabel>
         <Property>
-          <Row className="keyValue">
-            <span className="propertyName">Account</span>
+          <KeyValue name="Account">
             <span>{account?.custom_name || account?.name || tx.account_id}</span>
-          </Row>
-          <Row className="keyValue">
-            <span className="propertyName">Institution</span>
+          </KeyValue>
+          <KeyValue name="Institution">
             {account ? <InstitutionSpan institution_id={account.institution_id} /> : <span />}
-          </Row>
-          <Row className="keyValue">
-            <span className="propertyName">Date</span>
+          </KeyValue>
+          <KeyValue name="Date">
             <span>
               {new LocalDate(txDate).toLocaleString("en-US", {
                 month: "long",
@@ -86,26 +84,22 @@ export const TransferProperties = ({ transfer }: Props) => {
                 year: "numeric",
               })}
             </span>
-          </Row>
-          <Row className="keyValue">
-            <span className="propertyName">Merchant&nbsp;Name</span>
+          </KeyValue>
+          <KeyValue name="Merchant&nbsp;Name">
             <span>{tx.merchant_name}</span>
-          </Row>
-          <Row className="keyValue">
-            <span className="propertyName">Name</span>
+          </KeyValue>
+          <KeyValue name="Name">
             <span>{tx.name}</span>
-          </Row>
+          </KeyValue>
           {txLocations.length > 0 && (
-            <Row className="keyValue">
-              <span className="propertyName">Location</span>
+            <KeyValue name="Location">
               <span>{txLocations.join(", ")}</span>
-            </Row>
+            </KeyValue>
           )}
           {tx.label?.memo && (
-            <Row className="keyValue">
-              <span className="propertyName">Memo</span>
+            <KeyValue name="Memo">
               <span>{tx.label.memo}</span>
-            </Row>
+            </KeyValue>
           )}
         </Property>
       </>
@@ -116,15 +110,13 @@ export const TransferProperties = ({ transfer }: Props) => {
     <Properties className="TransferProperties">
       <PropertyLabel>Transfer&nbsp;Details</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Type</span>
+        <KeyValue name="Type">
           <span className="transferChip transferChipConfirmed">
             <TransferArrowIcon size={12} />
             &nbsp;Transfer
           </span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Date</span>
+        </KeyValue>
+        <KeyValue name="Date">
           <span>
             {new LocalDate(date).toLocaleString("en-US", {
               month: "long",
@@ -132,15 +124,14 @@ export const TransferProperties = ({ transfer }: Props) => {
               year: "numeric",
             })}
           </span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Amount</span>
+        </KeyValue>
+        <KeyValue name="Amount">
           <span className="transferAmountInline">
             <TransferArrowIcon size={12} />
             &nbsp;{currencySymbol}&nbsp;
             {numberToCommaString(displayAmount)}
           </span>
-        </Row>
+        </KeyValue>
       </Property>
       {renderSide("From", outgoing, fromAccount)}
       {renderSide("To", incoming, toAccount)}

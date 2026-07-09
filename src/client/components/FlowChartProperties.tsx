@@ -16,6 +16,7 @@ import {
   PropertyLabel,
   Property,
   Row,
+  KeyValue,
 } from "client";
 
 interface FlowChartPropertiesProps {
@@ -97,12 +98,10 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
     <Properties>
       <PropertyLabel>Chart&nbsp;Profile</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Chart&nbsp;Name</span>
+        <KeyValue name="Chart&nbsp;Name">
           <input value={nameInput} onChange={onChangeName} />
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Chart&nbsp;Type</span>
+        </KeyValue>
+        <KeyValue name="Chart&nbsp;Type">
           <select value={selectedType} onChange={onChangeType}>
             {Object.values(ChartType).map((v) => {
               const chartTypeName = getChartTypeName(v);
@@ -113,7 +112,7 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
               );
             })}
           </select>
-        </Row>
+        </KeyValue>
       </Property>
 
       <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>

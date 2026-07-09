@@ -20,6 +20,7 @@ import {
   DynamicCapacityInput,
   Graph,
   HoldingsComposition,
+  KeyValue,
   PerformanceBenchmark,
   InstitutionSpan,
   MoneyLabel,
@@ -130,12 +131,10 @@ export const AccountProperties = ({ account }: Props) => {
     <Properties className="AccountProperties">
       <PropertyLabel>Account&nbsp;Details</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Name</span>
+        <KeyValue name="Name">
           <input type="text" value={nameInput} onChange={onChangeNameInput} placeholder={name} />
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Type</span>
+        </KeyValue>
+        <KeyValue name="Type">
           {isManualAccount ? (
             <select value={typeInput} onChange={onChangeTypeInput}>
               {Object.values(AccountType).map((type) => (
@@ -147,33 +146,30 @@ export const AccountProperties = ({ account }: Props) => {
           ) : (
             <span>{toTitleCase(subtype || type)}</span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Institution</span>
+        </KeyValue>
+        <KeyValue name="Institution">
           {isManualAccount ? (
             <span>Manual</span>
           ) : (
             <InstitutionSpan institution_id={account.institution_id} />
           )}
-        </Row>
+        </KeyValue>
       </Property>
       {(!isManualAccount || !!graphData.lines) && <PropertyLabel>Balance</PropertyLabel>}
       {!isManualAccount && (
         <Property>
-          <Row className="keyValue">
-            <span className="propertyName">{currentLabel}</span>
+          <KeyValue name={currentLabel}>
             <span>
               {currencySymbol}&nbsp;
               {currentAmountString}
             </span>
-          </Row>
-          <Row className="keyValue">
-            <span className="propertyName">{pendingLabel}</span>
+          </KeyValue>
+          <KeyValue name={pendingLabel}>
             <span>
               {currencySymbol}&nbsp;
               {pendingAmountString}
             </span>
-          </Row>
+          </KeyValue>
         </Property>
       )}
       {!!graphData.lines && (
@@ -187,8 +183,7 @@ export const AccountProperties = ({ account }: Props) => {
           />
           <br />
           <Property>
-            <Row className="keyValue">
-              <span className="propertyName">{viewDate.toString()}&nbsp;balance</span>
+            <KeyValue name={<>{viewDate.toString()}&nbsp;balance</>}>
               <div className="amount">
                 <DynamicCapacityInput
                   disabled={isBalanceInputDisabled}
@@ -200,7 +195,7 @@ export const AccountProperties = ({ account }: Props) => {
                   onBlur={onChangeBalanceSnapshotInput}
                 />
               </div>
-            </Row>
+            </KeyValue>
           </Property>
         </>
       )}
@@ -210,40 +205,35 @@ export const AccountProperties = ({ account }: Props) => {
         <>
           <PropertyLabel>Balance&nbsp;Graph&nbsp;Options</PropertyLabel>
           <Property>
-            <Row className="keyValue">
-              <span className="propertyName">Use Transactions</span>
+            <KeyValue name="Use Transactions">
               <ToggleInput
                 checked={useTransactionsForGraph}
                 onChange={onClickUseTransactionsForGraph}
               />
-            </Row>
-            <Row className="keyValue">
-              <span className="propertyName">Use Snapshots</span>
+            </KeyValue>
+            <KeyValue name="Use Snapshots">
               <ToggleInput checked={useSnapshotsForGraph} onChange={onClickUseSnapshotsForGraph} />
-            </Row>
+            </KeyValue>
           </Property>
           <PropertyLabel>Account&nbsp;Preference</PropertyLabel>
           <Property>
-            <Row className="keyValue">
-              <span className="propertyName">Default&nbsp;Budget</span>
+            <KeyValue name="Default&nbsp;Budget">
               <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
                 <option value="">Select Budget</option>
                 {budgetOptions}
               </select>
-            </Row>
-            <Row className="keyValue">
-              <span className="propertyName">Archive</span>
+            </KeyValue>
+            <KeyValue name="Archive">
               {/* Hide already removes the account from view entirely; archiving
                *  on top adds nothing and would surface in "Show archived (N)"
                *  even though the user's already hidden the row. Disable to
                *  steer the user toward Unhide first if they want a different
                *  classification. Hoie 2026-06-25. */}
               <ToggleInput checked={isArchived} onChange={onClickArchive} disabled={isHidden} />
-            </Row>
-            <Row className="keyValue">
-              <span className="propertyName">Hide</span>
+            </KeyValue>
+            <KeyValue name="Hide">
               <ToggleInput checked={isHidden} onChange={onClickHide} />
-            </Row>
+            </KeyValue>
           </Property>
         </>
       )}
@@ -255,10 +245,9 @@ export const AccountProperties = ({ account }: Props) => {
        *  case so we don't reintroduce a separate Archive section. */}
       {isManualAccount && isArchived && (
         <Property>
-          <Row className="keyValue">
-            <span className="propertyName">Archive</span>
+          <KeyValue name="Archive">
             <ToggleInput checked={isArchived} onChange={onClickArchive} />
-          </Row>
+          </KeyValue>
         </Property>
       )}
       {(isManualAccount || type === AccountType.Investment) && (

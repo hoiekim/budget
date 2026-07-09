@@ -16,6 +16,7 @@ import {
   PropertyLabel,
   Property,
   Row,
+  KeyValue,
 } from "client";
 
 interface BalanceChartPropertiesProps {
@@ -101,12 +102,10 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
     <Properties>
       <PropertyLabel>Chart&nbsp;Profile</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Chart&nbsp;Name</span>
+        <KeyValue name="Chart&nbsp;Name">
           <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Chart&nbsp;Type</span>
+        </KeyValue>
+        <KeyValue name="Chart&nbsp;Type">
           <select value={selectedType} onChange={onChangeType}>
             {Object.values(ChartType).map((v) => {
               const chartTypeName = getChartTypeName(v);
@@ -117,7 +116,7 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
               );
             })}
           </select>
-        </Row>
+        </KeyValue>
       </Property>
 
       <PropertyLabel>Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</PropertyLabel>

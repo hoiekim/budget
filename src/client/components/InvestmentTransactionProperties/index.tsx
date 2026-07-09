@@ -12,7 +12,7 @@ import {
   call,
   indexedDb,
 } from "client";
-import { InstitutionSpan, Properties, Property, PropertyLabel, Row } from "client/components";
+import { InstitutionSpan, KeyValue, Properties, Property, PropertyLabel, Row } from "client/components";
 import type { ValidateTickerResponse } from "server";
 
 interface Props {
@@ -283,8 +283,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     <Properties className="InvestmentTransactionProperties">
       <PropertyLabel>Investment&nbsp;Transaction&nbsp;Details</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Date</span>
+        <KeyValue name="Date">
           {isManual ? (
             <input
               type="date"
@@ -301,9 +300,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
               })}
             </span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Name</span>
+        </KeyValue>
+        <KeyValue name="Name">
           {isManual ? (
             <input
               type="text"
@@ -315,13 +313,11 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
           ) : (
             <span>{name}</span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Security</span>
+        </KeyValue>
+        <KeyValue name="Security">
           <span>{security?.name || "—"}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Ticker</span>
+        </KeyValue>
+        <KeyValue name="Ticker">
           {isManual ? (
             <input
               type="text"
@@ -333,15 +329,13 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
           ) : (
             <span>{security?.ticker_symbol || "—"}</span>
           )}
-        </Row>
+        </KeyValue>
         {isManual && tickerMessage && (
-          <Row className="keyValue">
-            <span className="propertyName">&nbsp;</span>
+          <KeyValue name="&nbsp;">
             <span>{tickerMessage}</span>
-          </Row>
+          </KeyValue>
         )}
-        <Row className="keyValue">
-          <span className="propertyName">Type</span>
+        <KeyValue name="Type">
           {isManual ? (
             <select value={type} onChange={onChangeType}>
               {Object.values(InvestmentTransactionType).map((v) => (
@@ -353,9 +347,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
           ) : (
             <span>{toTitleCase(type)}</span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Subtype</span>
+        </KeyValue>
+        <KeyValue name="Subtype">
           {isManual ? (
             <select value={subtype} onChange={onChangeSubtype}>
               {Object.values(InvestmentTransactionSubtype).map((v) => (
@@ -367,9 +360,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
           ) : (
             <span>{toTitleCase(subtype)}</span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Quantity</span>
+        </KeyValue>
+        <KeyValue name="Quantity">
           {isManual ? (
             <input
               type="number"
@@ -381,9 +373,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
           ) : (
             <span>{numberToCommaString(quantity)}</span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Price</span>
+        </KeyValue>
+        <KeyValue name="Price">
           {isManual ? (
             <input
               type="number"
@@ -397,26 +388,22 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
               {currencySymbol}&nbsp;{numberToCommaString(price)}
             </span>
           )}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Amount</span>
+        </KeyValue>
+        <KeyValue name="Amount">
           {/* Derived from quantity * price on manual rows (both branches
               render as a span). Plaid rows show the synced amount as
               before. */}
           <span>
             {currencySymbol}&nbsp;{numberToCommaString(amount)}
           </span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Account</span>
+        </KeyValue>
+        <KeyValue name="Account">
           <span>{account?.custom_name || account?.name}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Institution</span>
+        </KeyValue>
+        <KeyValue name="Institution">
           {account && <InstitutionSpan institution_id={account?.institution_id} />}
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Memo</span>
+        </KeyValue>
+        <KeyValue name="Memo">
           <input
             type="text"
             value={memoValue}
@@ -424,32 +411,29 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
             onChange={onChangeMemo}
             onBlur={onBlurMemo}
           />
-        </Row>
+        </KeyValue>
       </Property>
       <PropertyLabel>Budgets</PropertyLabel>
       <Property>
-        <Row className="keyValue">
-          <span className="propertyName">Budget</span>
+        <KeyValue name="Budget">
           <div>
             <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
               <option value="">Select Budget</option>
               {budgetOptions}
             </select>
           </div>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Section</span>
+        </KeyValue>
+        <KeyValue name="Section">
           <span>{sectionName}</span>
-        </Row>
-        <Row className="keyValue">
-          <span className="propertyName">Category</span>
+        </KeyValue>
+        <KeyValue name="Category">
           <div className={selectedCategoryIdLabel ? "" : "notification"}>
             <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
               <option value="">Select Category</option>
               {categoryOptions}
             </select>
           </div>
-        </Row>
+        </KeyValue>
       </Property>
       {isManual && (
         <>
