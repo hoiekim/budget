@@ -1,7 +1,11 @@
 div.DatePickerModal {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  /* Above everything: Header's fixed viewController is z-index 800,
+   * Router's page panels are 500–520. Modal needs to sit above them
+   * all so the SVG chart paths from the underlying Dashboard/Budgets
+   * page don't intercept clicks on the stepper buttons. */
+  z-index: 1000;
   background-color: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
