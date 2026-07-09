@@ -5,6 +5,7 @@ import {
   BalanceChart,
   Chart,
   ProjectionChart,
+  ScreenType,
   call,
   PATH,
   useAppContext,
@@ -37,16 +38,24 @@ const titleForSelection = (types: ChartType[]): string => {
 };
 
 export const DashboardPage = () => {
-  const { data, setData, router } = useAppContext();
+  const { data, setData, router, screenType } = useAppContext();
   const { charts } = data;
+  const { path, params, transition } = router;
   const [chartsOrder, setChartsOrder] = useLocalStorageState<string[]>("chartsOrder", []);
+
+  const activeParams =
+    path === PATH.DASHBOARD || screenType !== ScreenType.Narrow
+      ? params
+      : transition.incomingParams;
 
   const {
     selected: selectedTypes,
     toggle,
     clearAll,
     options,
-  } = useMultiSelectQueryFilter<ChartType>("chart_type", CHART_TYPE_LABELS);
+  } = useMultiSelectQueryFilter<ChartType>("chart_type", CHART_TYPE_LABELS, {
+    activeParams,
+  });
 
   useEffect(() => {
     setChartsOrder((oldOrder) => {
