@@ -3,7 +3,7 @@ div.AccountsPage {
 }
 
 div.AccountsPage > div.AccountsDonut {
-  background-color: #191919ee;
+  background-color: var(--bgOverlay);
   z-index: 100;
 }
 

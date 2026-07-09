@@ -4,7 +4,7 @@
  *
  * 🔴 The `> .propertyLabel` / `> .property` selectors are DIRECT-CHILD —
  * any wrapper between <Properties> and its label/property children strips
- * the section frame. That's the failure mode #326 / #472 / PR #478 surfaced
+ * the section frame. That's the failure mode var(--blueDeep) / var(--deepGreenAlt) / PR var(--tealBlue) surfaced
  * and the reason every Properties use must go through the typed component. */
 
 div.Properties {
@@ -14,7 +14,7 @@ div.Properties {
 
 div.Properties button:disabled {
   background-color: inherit;
-  color: #474747;
+  color: var(--divider);
   border: none;
 }
 
@@ -24,7 +24,7 @@ div.Properties > .propertyLabel {
 }
 
 div.Properties > .property {
-  background-color: #292929;
+  background-color: var(--surface);
   border-radius: 5px;
   overflow: hidden;
 }
@@ -34,7 +34,7 @@ div.Properties > .property:not(:last-child) {
 }
 
 div.Properties > .property .disabled.lineThrough {
-  color: #858585;
+  color: var(--textMuted);
   text-decoration: line-through;
 }
 
@@ -51,7 +51,7 @@ div.Properties .row button.delete {
 }
 
 div.Properties .row:not(:last-child) {
-  border-bottom: 1px solid #474747;
+  border-bottom: 1px solid var(--divider);
 }
 
 div.Properties .row:first-child {
@@ -63,7 +63,7 @@ div.Properties .row:last-child {
 }
 
 div.Properties .row span.small {
-  color: #858585;
+  color: var(--textMuted);
   font-size: 12px;
 }
 
@@ -92,7 +92,7 @@ div.Properties .amount > input:disabled {
 }
 
 div.Properties .row.keyValue span.propertyName {
-  color: #858585;
+  color: var(--textMuted);
   margin-right: 5px;
 }
 
@@ -109,5 +109,5 @@ div.Properties .row > button {
 }
 
 div.Properties .row.button:hover {
-  background-color: #383838;
+  background-color: var(--surfaceRaised);
 }

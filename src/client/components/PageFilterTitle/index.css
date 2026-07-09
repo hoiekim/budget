@@ -24,10 +24,10 @@ h2.PageFilterTitle > div.select {
   position: absolute;
   top: 50px;
   width: calc(100% - 20px);
-  background-color: #292929;
+  background-color: var(--surface);
   display: block;
   border-radius: 10px;
-  border: 1px solid #666;
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -38,7 +38,7 @@ h2.PageFilterTitle > div.select * {
 
 h2.PageFilterTitle > div.select > div.selectLabel {
   padding: 10px;
-  border-bottom: 1px solid #666;
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -72,7 +72,7 @@ h2.PageFilterTitle > div.select > div.options > button > span.checkbox {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 1px solid #888;
+  border: 1px solid var(--textFaded);
   border-radius: 2px;
   box-sizing: border-box;
   flex-shrink: 0;
@@ -80,8 +80,8 @@ h2.PageFilterTitle > div.select > div.options > button > span.checkbox {
 }
 
 h2.PageFilterTitle > div.select > div.options > button > span.checkbox.checked {
-  background-color: #4a4a4a;
-  border-color: #aaa;
+  background-color: var(--divider);
+  border-color: var(--textDim);
 }
 
 /* Inset ✓ glyph rendered via ::after so the checkbox span itself stays a
@@ -93,5 +93,5 @@ h2.PageFilterTitle > div.select > div.options > button > span.checkbox.checked::
   left: 0px;
   font-size: 18px;
   line-height: 12px;
-  color: #e8e8e8;
+  color: var(--textBrighter);
 }

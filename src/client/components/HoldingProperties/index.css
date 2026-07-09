@@ -21,15 +21,15 @@
 }
 
 .HoldingProperties .tickerFeedback.valid {
-  color: var(--color-success, #2a8c3a);
+  color: var(--color-success, var(--darkGreen));
 }
 
 .HoldingProperties .tickerFeedback.invalid {
-  color: var(--color-danger, #b03030);
+  color: var(--color-danger, var(--darkRed));
 }
 
 .HoldingProperties .formError {
-  color: var(--color-danger, #b03030);
+  color: var(--color-danger, var(--darkRed));
   font-size: 12px;
   padding: 4px 8px;
 }

@@ -13,8 +13,8 @@ div.DatePickerModal {
 }
 
 div.DatePickerModal > div.panel {
-  background-color: #292929;
-  border: 1px solid #666;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding-bottom: 10px;
   width: calc(100% - 20px);
@@ -30,7 +30,7 @@ div.DatePickerModal > div.panel > div.header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #666;
+  border-bottom: 1px solid var(--border);
   padding: 10px;
 }
 
@@ -48,7 +48,7 @@ div.DatePickerModal > div.panel > div.dateInput {
 }
 
 div.DatePickerModal > div.panel > div.dateInput > input {
-  background-color: #222;
+  background-color: var(--panel);
   text-align: center;
   width: 180px;
 }
@@ -65,7 +65,7 @@ div.DatePickerModal > div.panel > div.stepper > button {
   justify-content: center;
   align-items: center;
   min-width: 44px;
-  background-color: #222;
+  background-color: var(--panel);
 }
 
 div.DatePickerModal > div.panel > div.stepper > button.currentButton {
@@ -81,6 +81,6 @@ div.DatePickerModal > div.panel > div.intervalRow {
 
 div.DatePickerModal > div.panel > div.intervalRow > select {
   min-width: 120px;
-  background-color: #222;
+  background-color: var(--panel);
   text-align: center;
 }

@@ -40,7 +40,7 @@ div.ActionButtons > button.complete {
 }
 
 div.ActionButtons > button.complete > span {
-  color: #fff;
+  color: var(--textWhite);
   font-weight: bold;
 }
 
@@ -53,5 +53,5 @@ div.ActionButtons > button.delete:hover {
 }
 
 div.ActionButtons > button.delete > span {
-  color: #fff;
+  color: var(--textWhite);
 }

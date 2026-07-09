@@ -4,10 +4,58 @@
   --safeAreaInsetBottom: env(safe-area-inset-bottom);
   --safeAreaInsetLeft: env(safe-area-inset-left);
 
+  /* Neutrals (dark → light) — used for backgrounds, borders, and text.
+   * Near-duplicates were collapsed: `#1d1d1d` / `#202020` → `--bg`;
+   * `#4a4a4a` → `--divider`; `#aaa` → `--textDim`. */
+  --bg: #191919; /* darkest surface + page background */
+  --bgOverlay: #191919ee; /* sticky-header overlay */
+  --bgOverlayLight: #191919cc; /* lighter sticky overlay (rare) */
+  --panel: #222;
+  --surface: #292929; /* most common midtone panel */
+  --surfaceRaised: #383838; /* raised panels (dropdowns, modals) */
+  --hover: #444; /* row hover */
+  --divider: #474747; /* subtle horizontal separators */
+  --dividerStrong: #575757;
+  --border: #666;
+  --textMuted: #858585; /* muted body copy */
+  --textFaded: #888;
+  --textDim: #a3a3a3; /* dimmed labels + placeholders */
+  --textSoft: #b2b2b2;
+  --textSoftLight: #b8b8b8;
+  --textBright: #d1d1d1; /* primary body copy */
+  --textBrighter: #e8e8e8;
+  --textWhite: #fff;
+
+  /* Semantic colors — destructive / positive / info. Kept the existing
+   * `--red` / `--darkRed` / `--green` / `--darkGreen` names to avoid a
+   * churn across the codebase; folded near-duplicates:
+   * `#ff4038` → `--red`; `#b03030` → `--darkRed`; `#2a8c3a` → `--darkGreen`. */
   --red: #f43;
+  --redSoft: #f434; /* semi-transparent red (backgrounds) */
+  --redBright: #f87171; /* brighter red-pink */
+  --redDeep: #902;
+  --redDeepSoft: #9024;
+  --redLightBg: #fcc; /* pale pink background */
   --darkRed: #c20;
+  --orange: #f86828;
+  --amber: #fbbf24;
+  --yellow: #ffd500;
+
   --green: #5c3;
+  --greenBright: #4ade80;
   --darkGreen: #291;
+  --deepGreen: #041;
+  --deepGreenAlt: #472;
+  --teal: #097;
+  --tealBg: #189878;
+  --tealBlueDark: #186888;
+
+  --blue: #4a90d9;
+  --blueAlt: #3d7fc4;
+  --blueDeep: #326;
+  --tealBlue: #478;
+  --tealBlueSoft: #8884; /* semi-transparent teal-blue */
+  --grayAlpha: #3334; /* semi-transparent gray */
 
   --headerHeight: 50px;
   --navigatorHeight: 80px;

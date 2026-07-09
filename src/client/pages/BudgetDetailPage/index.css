@@ -8,7 +8,7 @@ div.BudgetDetail .unsortedButton > button {
 
 div.SectionBar {
   padding: 10px 0px;
-  background-color: #1d1d1d;
+  background-color: var(--bg);
   margin-top: 10px;
 }
 
