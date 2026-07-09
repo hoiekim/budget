@@ -22,6 +22,23 @@ export enum PATH {
   CHART_ACCOUNTS = "chart-accounts",
 }
 
+/**
+ * Pure helper backing `router.getActiveParams`. Extracted so it can be
+ * unit-tested without mounting the router hook. See the docstring on
+ * `getActiveParams` inside `useRouter` for the semantics + the foot-gun
+ * on passing a sibling page's PATH.
+ */
+export const deriveActiveParams = (
+  targetPath: PATH,
+  currentPath: PATH,
+  screenType: ScreenType,
+  params: URLSearchParams,
+  incomingParams: URLSearchParams,
+): URLSearchParams => {
+  if (currentPath === targetPath || screenType !== ScreenType.Narrow) return params;
+  return incomingParams;
+};
+
 const getHighLevelPage = (path: string): PATH | undefined => {
   switch (path) {
     case PATH.BUDGETS:
@@ -286,10 +303,28 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
     window.history.back();
   }, []);
 
-  const getActiveParams = (targetPath: PATH) => {
-    if (path === targetPath || screenType !== ScreenType.Narrow) return params;
-    return incomingParams;
-  };
+  /**
+   * URL params source for a page or component whose UI should keep
+   * rendering the OUTGOING state during a narrow-screen slide-out.
+   *
+   * `targetPath` must be the {@link PATH} the caller BELONGS to (the
+   * page that owns this JSX). When we're steady-state on that page, or
+   * on any wide-screen viewport, we return the live `params` — reads +
+   * writes stay in sync. During a narrow-screen transition OFF that
+   * page, `path` has already flipped to the destination but the caller's
+   * JSX is still animating; returning `transition.incomingParams`
+   * (a snapshot of the outgoing URL) prevents its title label / filter
+   * chrome / detail lookup from flashing empty mid-animation.
+   *
+   * Passing the wrong `PATH` (a sibling page's identity) silently keeps
+   * the caller reading `incomingParams` at steady-state, which reads as
+   * "the filter dropdown never updates from the URL" — verify the arg
+   * matches the enclosing route.
+   */
+  const getActiveParams = useCallback(
+    (targetPath: PATH) => deriveActiveParams(targetPath, path, screenType, params, incomingParams),
+    [path, screenType, params, incomingParams],
+  );
 
   return {
     path,

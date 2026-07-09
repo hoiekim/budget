@@ -20,15 +20,25 @@ interface UseMultiSelectQueryFilterResult<T extends string> {
 
 /**
  * URL-first multi-select filter hook. Reads the current selection from
- * `activeParams` (defaults to `router.params`), validates against the
- * keys of `labels`, and provides `toggle` / `clearAll` writers that
- * preserve canonical (label-declaration) order in the serialized URL.
+ * `router.getActiveParams(targetPath)` (comma-separated), validates
+ * against the keys of `labels`, and provides `toggle` / `clearAll`
+ * writers that preserve canonical (label-declaration) order in the
+ * serialized URL.
  *
  * The `labels` record is the single source of truth: the allowed values
  * are `Object.keys(labels)`, and the returned `options` array zips each
  * value with its display label. That makes value/label consistency a
  * compile-time property — adding a new `T` to the union forces adding
  * a `labels` entry, and the hook picks it up automatically.
+ *
+ * `targetPath` must be the {@link PATH} of the page/component that owns
+ * this hook call — it feeds `router.getActiveParams` so the reader
+ * uses `incomingParams` during a narrow-screen slide-out and `params`
+ * otherwise. Passing a sibling page's PATH silently makes the dropdown
+ * read from the outgoing snapshot forever. The WRITER (`toggle` /
+ * `clearAll`) always writes through the live `router.params`; a click
+ * mid-transition should update the destination URL, not the frozen
+ * outgoing snapshot.
  *
  * Consumer contract: `labels` should be a stable (module-level) object
  * — passing a fresh reference every render breaks memoized comparisons
