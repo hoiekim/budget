@@ -14,7 +14,7 @@ import {
   SplitTransactionDictionary,
   indexedDb,
 } from "client";
-import { CheckIcon, InstitutionSpan } from "client/components";
+import { CheckIcon } from "client/components";
 import { ApiResponse } from "server";
 import TransferControls from "./TransferControls";
 
@@ -29,7 +29,7 @@ const TransactionRow = ({ transaction }: Props) => {
   const { transactionFamilies } = calculations;
   const { id, transaction_id, amount, label } = transaction;
   const parentTransaction = data.transactions.get(transaction_id)!;
-  const { account_id, authorized_date, date, merchant_name, name, location, iso_currency_code } =
+  const { account_id, authorized_date, date, merchant_name, name, iso_currency_code } =
     parentTransaction;
   const amountAfterSplit = amount - transactionFamilies.getChildrenAmountTotal(id);
 
@@ -37,7 +37,6 @@ const TransactionRow = ({ transaction }: Props) => {
   const { go } = router;
 
   const account = accounts.get(account_id);
-  const institution_id = account?.institution_id;
 
   const {
     selectedBudgetIdLabel,
