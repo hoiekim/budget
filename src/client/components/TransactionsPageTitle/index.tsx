@@ -6,6 +6,7 @@ import {
   Budget,
   Category,
   InvestmentTransaction,
+  PATH,
   Section,
   SplitTransaction,
   Transaction,
@@ -95,7 +96,19 @@ export const TransactionsPageTitle = ({
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
   const { account, budget, section, category } = filters;
-  const { screenType } = useAppContext();
+  const { router, screenType } = useAppContext();
+  const { path, params, transition } = router;
+
+  // Narrow-screen transitions off `/transactions` still render this
+  // component while `path` has already flipped to the destination —
+  // read from `transition.incomingParams` in that window so the outgoing
+  // dropdown label doesn't snap to "All Transactions" mid-animation.
+  // TransactionsPage uses the same shape for its own filter logic.
+  const activeParams =
+    path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow
+      ? params
+      : transition.incomingParams;
+
   // URL is the source of truth for the type filter. The dropdown reads
   // and writes through the same hook, so `toggle` / `clearAll` mutate
   // the `transactions_type` URL param, and `selected` is derived from
@@ -105,6 +118,7 @@ export const TransactionsPageTitle = ({
   const { selected: selectedTypes, toggle, clearAll, options } = useMultiSelectQueryFilter(
     "transactions_type",
     TYPE_LABELS,
+    { activeParams },
   );
 
   const accountName = account?.custom_name || account?.name;
