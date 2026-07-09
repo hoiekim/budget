@@ -54,6 +54,19 @@ export const DatePickerModal = ({ onClose }: Props) => {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Lock body scroll while the modal is open — otherwise the underlying
+  // page (Dashboard chart rows, Budgets list, etc.) still scrolls behind
+  // the backdrop, which reads as broken modal semantics. Restore the
+  // previous overflow value on unmount so the app-level style isn't
+  // permanently overridden (matches how most modal libraries handle it).
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   const onBackdropKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     // Only handle Enter/Space when the backdrop ITSELF is the target
     // (activation of the outer div's keyboard "button" affordance).
