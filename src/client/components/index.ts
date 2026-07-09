@@ -2,11 +2,8 @@ export * from "./App";
 export * from "./Properties";
 export * from "./PageTitle";
 export * from "./PageFilterTitle";
-<<<<<<< HEAD
 export * from "./Placeholder";
-=======
 export * from "./AddButton";
->>>>>>> 90355875 (refactor(client): extract `<AddButton>` — wide labeled variant, replaces small `+` on Budgets/BudgetDetail (#326 phase 5b))
 export * from "./HoldingProperties";
 export * from "./InvestmentTransactionProperties";
 export * from "./ErrorBoundary";
