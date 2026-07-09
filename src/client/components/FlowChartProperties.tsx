@@ -12,6 +12,7 @@ import {
   getChartTypeName,
   indexedDb,
   StoreName,
+  DeleteButton,
   Properties,
   PropertyLabel,
   Property,
@@ -127,9 +128,7 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
         <Row className="button">
-          <button className="delete colored" onClick={onClickRemove}>
-            Delete
-          </button>
+          <DeleteButton onClick={onClickRemove}>Delete</DeleteButton>
         </Row>
       </Property>
     </Properties>

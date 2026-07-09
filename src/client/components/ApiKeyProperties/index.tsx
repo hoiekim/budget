@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiKeyJSON } from "server";
 import {
   call,
+  DeleteButton,
   KeyValue,
   PATH,
   Properties,
@@ -255,9 +256,7 @@ export const ApiKeyProperties = () => {
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
         <Row className="button">
-          <button type="button" className="delete colored" onClick={onRevoke}>
-            Revoke
-          </button>
+          <DeleteButton onClick={onRevoke}>Revoke</DeleteButton>
         </Row>
         <Row className="button">
           <button type="button" onClick={goBack}>

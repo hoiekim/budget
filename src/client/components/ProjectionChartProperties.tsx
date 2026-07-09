@@ -12,6 +12,7 @@ import {
   getChartTypeName,
   indexedDb,
   StoreName,
+  DeleteButton,
   Properties,
   PropertyLabel,
   Property,
@@ -303,9 +304,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
         <Row className="button">
-          <button className="delete colored" onClick={onClickRemove}>
-            Delete
-          </button>
+          <DeleteButton onClick={onClickRemove}>Delete</DeleteButton>
         </Row>
       </Property>
     </Properties>

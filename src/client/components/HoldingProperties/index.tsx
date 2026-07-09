@@ -20,6 +20,7 @@ import {
   Holding,
   HoldingSnapshot,
   HoldingSnapshotDictionary,
+  DeleteButton,
   Properties,
   PropertyLabel,
   Property,
@@ -816,13 +817,9 @@ export const HoldingProperties = () => {
               {edit.error && <Row className="formError">{edit.error}</Row>}
               {!isReadOnly && (
                 <Row className="button">
-                  <button
-                    type="button"
-                    className="delete colored"
-                    onClick={onClickDeleteSnap(snap)}
-                  >
+                  <DeleteButton onClick={onClickDeleteSnap(snap)}>
                     Remove&nbsp;this&nbsp;snapshot
-                  </button>
+                  </DeleteButton>
                 </Row>
               )}
             </Property>

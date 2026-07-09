@@ -17,6 +17,7 @@ import {
 } from "client";
 import {
   DateLabel,
+  DeleteButton,
   DynamicCapacityInput,
   Graph,
   HoldingsComposition,
@@ -287,9 +288,7 @@ export const AccountProperties = ({ account }: Props) => {
           <br />
           <Property>
             <Row className="button">
-              <button className="delete colored" onClick={onClickRemove}>
-                Delete
-              </button>
+              <DeleteButton onClick={onClickRemove}>Delete</DeleteButton>
             </Row>
           </Property>
         </>

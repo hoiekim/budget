@@ -9,6 +9,7 @@ import {
   ItemDictionary,
   TransactionDictionary,
   call,
+  DeleteButton,
   InstitutionSpan,
   KeyValue,
   PlaidLinkButton,
@@ -160,9 +161,7 @@ export const ConnectionProperties = ({ item }: Props) => {
           </Row>
         ) : (
           <Row className="button">
-            <button className="delete colored" onClick={onClickRemove}>
-              Delete
-            </button>
+            <DeleteButton onClick={onClickRemove}>Delete</DeleteButton>
           </Row>
         )}
       </Property>
