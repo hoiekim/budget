@@ -67,7 +67,11 @@ export const ChartRowShell = ({
       onKeyDown={onClick ? onKeyDown : undefined}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
-      aria-label={chart.name}
+      // Gate `aria-label` on `onClick` too — a plain `<div>` with an
+      // `aria-label` but no `role` isn't announced by most screen
+      // readers, and pairing the label with the same predicate that
+      // gates role/tabIndex reads cleanly.
+      aria-label={onClick ? chart.name : undefined}
       draggable={true}
       onDragStart={onDragStart}
       onDragEnter={onDragEnter}
