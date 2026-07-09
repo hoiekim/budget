@@ -13,7 +13,7 @@ import {
   useMemoryState,
   indexedDb,
 } from "client";
-import { LabeledBar, CategoryBar } from "client/components";
+import { AddButton, LabeledBar, CategoryBar } from "client/components";
 
 interface Props {
   section: Section & { sorted_amount?: number };
@@ -214,9 +214,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
           {isOpen && (
             <>
               {categoryBars}
-              <div className="addButton">
-                <button onClick={onClickAddCategory}>+</button>
-              </div>
+              <AddButton onClick={onClickAddCategory}>Add&nbsp;Category</AddButton>
             </>
           )}
         </div>

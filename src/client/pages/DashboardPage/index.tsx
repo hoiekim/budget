@@ -16,6 +16,7 @@ import {
   indexedDb,
 } from "client";
 import {
+  AddButton,
   BalanceChartRow,
   FilterOption,
   FlowChartRow,
@@ -143,7 +144,7 @@ export const DashboardPage = () => {
         ))}
       </PageFilterTitle>
       {chartRows}
-      <button onClick={onClickAddChart}>Add&nbsp;Chart</button>
+      <AddButton onClick={onClickAddChart}>Add&nbsp;Chart</AddButton>
     </div>
   );
 };

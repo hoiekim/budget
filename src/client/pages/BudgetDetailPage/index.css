@@ -6,10 +6,6 @@ div.BudgetDetail .unsortedButton > button {
   width: 100%;
 }
 
-div.BudgetDetail .addButton {
-  margin: 10px 10px;
-}
-
 div.SectionBar {
   padding: 10px 0px;
   background-color: #1d1d1d;

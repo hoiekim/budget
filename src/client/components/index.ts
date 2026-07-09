@@ -3,6 +3,7 @@ export * from "./Properties";
 export * from "./PageTitle";
 export * from "./PageFilterTitle";
 export * from "./Placeholder";
+export * from "./AddButton";
 export * from "./HoldingProperties";
 export * from "./InvestmentTransactionProperties";
 export * from "./ErrorBoundary";
