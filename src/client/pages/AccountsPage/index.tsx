@@ -5,17 +5,59 @@ import {
   colors,
   getAccountBalance,
   getDisplayBalance,
+  PATH,
   ScreenType,
   useAppContext,
   useDebounce,
+  useMultiSelectQueryFilter,
 } from "client";
-import { AccountsDonut, AccountsTable, DonutData, PageTitle } from "client/components";
+import {
+  AccountsDonut,
+  AccountsTable,
+  DonutData,
+  FilterOption,
+  PageFilterTitle,
+} from "client/components";
 import "./index.css";
 
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  [AccountType.Depository]: "Depository",
+  [AccountType.Credit]: "Credit",
+  [AccountType.Investment]: "Investment",
+  [AccountType.Loan]: "Loan",
+  [AccountType.Brokerage]: "Brokerage",
+  [AccountType.Other]: "Other",
+};
+
+const titleForSelection = (types: AccountType[]): string => {
+  if (types.length === 0) return "All Accounts";
+  if (types.length === 1) return ACCOUNT_TYPE_LABELS[types[0]];
+  return types.map((t) => ACCOUNT_TYPE_LABELS[t]).join(", ");
+};
+
 export const AccountsPage = () => {
-  const { data, calculations, viewDate, screenType } = useAppContext();
+  const { data, calculations, viewDate, screenType, router } = useAppContext();
   const { balanceData } = calculations;
   const { accounts } = data;
+  const { path, params, transition } = router;
+
+  // Narrow-screen route transitions off `/accounts` still render this
+  // page during animation with `path` already flipped to the destination.
+  // Read from `transition.incomingParams` in that window so the outgoing
+  // dropdown label + filtered rows keep showing the outgoing selection
+  // rather than snapping to the destination's URL. Sibling
+  // `TransactionsPage` uses the same shape.
+  const activeParams =
+    path === PATH.ACCOUNTS || screenType !== ScreenType.Narrow ? params : transition.incomingParams;
+
+  const {
+    selected: selectedTypes,
+    toggle,
+    clearAll,
+    options,
+  } = useMultiSelectQueryFilter<AccountType>("account_type", ACCOUNT_TYPE_LABELS, {
+    activeParams,
+  });
 
   const [scrollY, setScrollY] = useState(0);
   const debouncer = useDebounce();
@@ -40,15 +82,32 @@ export const AccountsPage = () => {
     // (user-marked-out-of-active-view, typically expired cards) from the
     // donut + credit-total. Both flags only affect FE visibility; the
     // calc layer iterates all non-deleted accounts regardless.
+    //
+    // When the user hasn't set an explicit type filter, the default view
+    // continues to exclude Credit (which has its own summary tile). When
+    // the filter IS set, honor it verbatim — including a "Credit" pick
+    // which surfaces credit accounts in the donut + table for that
+    // filtered view.
     const filteredAccounts = sortedAccounts.filter(({ hide, archived, type }) => {
-      return !hide && !archived && type !== AccountType.Credit;
+      if (hide || archived) return false;
+      if (selectedTypes.length === 0) return type !== AccountType.Credit;
+      return selectedTypes.includes(type);
     });
 
-    sortedAccounts.forEach(({ hide, archived, type, balances }) => {
-      if (hide || archived || type !== AccountType.Credit) return;
-      totalCredit += balances.current || 0;
-      numberOfCredits++;
-    });
+    // The Credit summary tile (next to the donut) shows totalCredit +
+    // numberOfCredits. Same visibility rule as the credit `.rows` block
+    // in AccountsTable: default view (no filter) always counts credits;
+    // a filter set to a non-Credit subset zeroes out the summary so the
+    // tile hides (via BalanceInfo's `numberOfCredits > 0` guard).
+    const includeCreditSummary =
+      selectedTypes.length === 0 || selectedTypes.includes(AccountType.Credit);
+    if (includeCreditSummary) {
+      sortedAccounts.forEach(({ hide, archived, type, balances }) => {
+        if (hide || archived || type !== AccountType.Credit) return;
+        totalCredit += balances.current || 0;
+        numberOfCredits++;
+      });
+    }
 
     // For yearly view of the current (incomplete) year, viewDate.getEndDate()
     // returns Dec 31 which has no balance data yet. Cap the lookup to the
@@ -78,7 +137,7 @@ export const AccountsPage = () => {
     const currencySymbol = currencyCodeToSymbol(currencyCode);
 
     return { donutData, currencySymbol, balanceTotal, totalCredit, numberOfCredits };
-  }, [accounts, balanceData, viewDate, data.status.isLoading]);
+  }, [accounts, balanceData, viewDate, data.status.isLoading, selectedTypes]);
 
   const isNarrow = screenType === ScreenType.Narrow;
 
@@ -93,7 +152,24 @@ export const AccountsPage = () => {
 
   return (
     <div className={classNames.join(" ")}>
-      <PageTitle>All&nbsp;Accounts</PageTitle>
+      <PageFilterTitle
+        label={titleForSelection(selectedTypes)}
+        dropdownLabel={<>Select&nbsp;account&nbsp;types</>}
+        closeAriaLabel="Close account type selector"
+      >
+        <FilterOption checked={selectedTypes.length === 0} onSelect={clearAll}>
+          All&nbsp;Accounts
+        </FilterOption>
+        {options.map(({ value, label }) => (
+          <FilterOption
+            key={value}
+            checked={selectedTypes.includes(value)}
+            onSelect={() => toggle(value)}
+          >
+            {label}
+          </FilterOption>
+        ))}
+      </PageFilterTitle>
       <AccountsDonut
         balanceTotal={balanceTotal}
         currencySymbol={currencySymbol}
@@ -103,7 +179,11 @@ export const AccountsPage = () => {
         radius={donutRadius}
         style={{ top: donutTop, position: donutPosition }}
       />
-      <AccountsTable donutData={donutData} style={{ paddingTop: tablePaddingTop }} />
+      <AccountsTable
+        donutData={donutData}
+        selectedTypes={selectedTypes}
+        style={{ paddingTop: tablePaddingTop }}
+      />
     </div>
   );
 };

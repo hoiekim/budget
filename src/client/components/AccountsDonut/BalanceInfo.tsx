@@ -46,14 +46,18 @@ export const BalanceInfo = ({
       {!isShrunk && (
         <>
           <div className="label">in&nbsp;{donutData.length}&nbsp;Accounts</div>
-          <br />
-          <Changes
-            currentAmount={0}
-            previousAmount={!viewDateSpan ? totalCredit : 0}
-            currencySymbol={currencySymbol}
-          />
-          <div className="credit label">outstanding</div>
-          <div className="credit label">in&nbsp;{numberOfCredits}&nbsp;Credits</div>
+          {numberOfCredits > 0 && (
+            <>
+              <br />
+              <Changes
+                currentAmount={0}
+                previousAmount={!viewDateSpan ? totalCredit : 0}
+                currencySymbol={currencySymbol}
+              />
+              <div className="credit label">outstanding</div>
+              <div className="credit label">in&nbsp;{numberOfCredits}&nbsp;Credits</div>
+            </>
+          )}
         </>
       )}
     </div>
