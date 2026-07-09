@@ -1,41 +1,59 @@
-import { Dispatch, SetStateAction, useCallback, useState } from "react";
-import { getYearMonthString, ViewDate } from "common";
+import { Dispatch, SetStateAction, useCallback, useMemo } from "react";
+import { getYearMonthString, Interval, parseYearMonthString, ViewDate } from "common";
 import { ClientRouter } from "./router";
+
+/**
+ * Pure parser for the `view_date` URL param. Extracted so it can be
+ * unit-tested without mounting the hook.
+ *
+ * URL format contract (matches what `setViewDate` writes):
+ *
+ * - month interval → `YYYY-MM` (7 chars, dashed — `getYearMonthString`
+ *   output).
+ * - year interval  → `YYYY`     (4 chars — bare year).
+ *
+ * Missing / invalid input falls back to today's month; keeps the hook
+ * from ever throwing on a hand-edited URL.
+ */
+export const parseViewDateString = (
+  viewDateString: string,
+): { interval: Interval; date: Date } => {
+  if (viewDateString.length === 4) {
+    const year = parseInt(viewDateString);
+    if (year) return { interval: "year", date: new Date(year, 0) };
+  }
+  const parsed = parseYearMonthString(viewDateString);
+  return { interval: "month", date: parsed ?? new Date() };
+};
 
 export const useViewDate = (router: ClientRouter) => {
   const { path, params, go } = router;
 
+  // URL is the source of truth. Read `params.get("view_date")` every
+  // render so a back-button / cross-consumer navigation re-derives
+  // viewDate without needing a separate state-sync effect. Memoize on
+  // the raw string so the returned `ViewDate` reference stays stable
+  // while the URL param doesn't change — consumers using viewDate in
+  // their own `useMemo` deps don't thrash.
   const viewDateString = params.get("view_date") || getYearMonthString();
-  const interval = viewDateString.length === 4 ? "year" : "month";
-  const year = parseInt(viewDateString.substring(0, 4));
-  const month = parseInt(viewDateString.substring(4, 6)) || 1;
-  const viewDateInit = new Date(year, month - 1);
-  const defaultViewDate = new ViewDate(interval, viewDateInit);
 
-  const [viewDate, _setViewDate] = useState(defaultViewDate);
+  const viewDate = useMemo(() => {
+    const { interval, date } = parseViewDateString(viewDateString);
+    return new ViewDate(interval, date);
+  }, [viewDateString]);
 
   const setViewDate: Dispatch<SetStateAction<ViewDate>> = useCallback(
     (value) => {
-      _setViewDate((prev) => {
-        let resolvedValue: ViewDate;
-        if (typeof value === "function") resolvedValue = value(prev);
-        else resolvedValue = value;
-
-        const newParams = new URLSearchParams(params);
-        if (resolvedValue.getInterval() === "year") {
-          const year = resolvedValue.getEndDate().getFullYear().toString();
-          newParams.set("view_date", year);
-        } else {
-          const yearMonth = getYearMonthString(resolvedValue.getEndDate());
-          newParams.set("view_date", yearMonth);
-        }
-
-        go(path, { params: newParams, animate: false });
-
-        return resolvedValue;
-      });
+      const resolvedValue = typeof value === "function" ? value(viewDate) : value;
+      const newParams = new URLSearchParams(params);
+      if (resolvedValue.getInterval() === "year") {
+        newParams.set("view_date", resolvedValue.getEndDate().getFullYear().toString());
+      } else {
+        newParams.set("view_date", getYearMonthString(resolvedValue.getEndDate()));
+      }
+      go(path, { params: newParams, animate: false });
     },
-    [_setViewDate, path, params, go],
+    [viewDate, path, params, go],
   );
 
   return [viewDate, setViewDate] as const;

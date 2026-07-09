@@ -1,14 +1,6 @@
 import { useState, useMemo, ReactNode } from "react";
-import {
-  useLocalStorageState,
-  ContextType,
-  Context,
-  useRouter,
-  reduceStatuses,
-  useViewDate,
-} from "client";
+import { ContextType, Context, useRouter, reduceStatuses, useViewDate } from "client";
 import { MaskedUser } from "server";
-import { Interval, ViewDate } from "common";
 import { useData, useScreenType } from "./lib";
 
 interface Props {

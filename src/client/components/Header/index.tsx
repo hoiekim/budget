@@ -4,38 +4,17 @@ import {
   ArrowLeftIcon,
   BankIcon,
   ChartIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   HamburgerIcon,
   ListIcon,
   RecieptIcon,
 } from "client/components";
-import { getYearMonthString, Interval, parseYearMonthString, ViewDate } from "common";
+import { getYearMonthString, parseYearMonthString, ViewDate } from "common";
 import "./index.css";
 
 export const Header = () => {
   const { user, router, viewDate, setViewDate, screenType } = useAppContext();
 
   const { path, params, go, back } = router;
-
-  const onClickPreviousView = () => {
-    setViewDate((oldViewDate) => {
-      const newViewDate = oldViewDate.clone().previous();
-      return newViewDate;
-    });
-  };
-
-  const onClickNextView = () => {
-    setViewDate((oldViewDate) => {
-      const newViewDate = oldViewDate.clone().next();
-      return newViewDate;
-    });
-  };
-
-  const getIntervalOptionText = (interval: Interval, fallback: string) => {
-    if (viewDate.getInterval() !== interval) return fallback;
-    return viewDate.toString();
-  };
 
   const onClickBack: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.preventDefault();

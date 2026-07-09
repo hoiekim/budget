@@ -1,6 +1,6 @@
 import { createContext, useContext, Dispatch, SetStateAction } from "react";
 import { MaskedUser } from "server";
-import { Interval, ViewDate } from "common";
+import { ViewDate } from "common";
 import { ClientRouter, Status, Data, Calculations, CapacityData } from "client";
 
 export enum ScreenType {
