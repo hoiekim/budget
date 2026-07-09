@@ -32,13 +32,24 @@ interface UseMultiSelectQueryFilterResult<T extends string> {
  * a `labels` entry, and the hook picks it up automatically.
  *
  * `targetPath` must be the {@link PATH} of the page/component that owns
- * this hook call — it feeds `router.getActiveParams` so the reader
- * uses `incomingParams` during a narrow-screen slide-out and `params`
- * otherwise. Passing a sibling page's PATH silently makes the dropdown
- * read from the outgoing snapshot forever. The WRITER (`toggle` /
+ * this hook call — it feeds `router.getActiveParams` so that when this
+ * component is the OUTGOING page during a narrow-screen animated
+ * transition (`path` still holds the outgoing route) the reader picks
+ * up `params` (still holds the outgoing URL, so the dropdown label /
+ * chip list keep rendering the caller's own filter as it slides out),
+ * and when this component is the INCOMING page (`path` still holds
+ * the outgoing route, so `path !== targetPath`) it picks up
+ * `incomingParams` (the destination URL) — otherwise the dropdown
+ * label would flash "All Xxx" for the ~300ms before the delayed
+ * `setParams` fires. See the JSDoc on `router.getActiveParams` for
+ * the underlying state model.
+ *
+ * Passing a sibling page's PATH silently makes the dropdown read from
+ * `incomingParams` at steady-state under narrow, which reads as "the
+ * dropdown never updates from the URL." The WRITER (`toggle` /
  * `clearAll`) always writes through the live `router.params`; a click
- * mid-transition should update the destination URL, not the frozen
- * outgoing snapshot.
+ * mid-transition should update the destination URL, not the outgoing
+ * one.
  *
  * Consumer contract: `labels` should be a stable (module-level) object
  * — passing a fresh reference every render breaks memoized comparisons
