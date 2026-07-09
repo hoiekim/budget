@@ -64,7 +64,10 @@ export const useViewDate = (router: ClientRouter) => {
   const resetViewDate = useCallback(() => {
     const newParams = new URLSearchParams(params);
     newParams.delete("view_date");
-    go(path, { params: newParams, animate: false });
+    // Explicit opt-out: `go()`'s default view_date preservation would
+    // re-inject the current URL's `view_date` back into `newParams`
+    // since it isn't set. This writer wants the param GONE.
+    go(path, { params: newParams, animate: false, preserveViewDate: false });
   }, [path, params, go]);
 
   return [viewDate, setViewDate, resetViewDate] as const;

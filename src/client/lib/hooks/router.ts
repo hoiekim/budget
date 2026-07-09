@@ -83,6 +83,15 @@ export interface ClientRouter {
 
 export type GoOptions = NavigateOptions & {
   params?: URLSearchParams;
+  /**
+   * `router.go()` copies `view_date` from the current URL into the new
+   * params by default, so cross-page navigation stays anchored to the
+   * period the user was viewing. Pass `preserveViewDate: false` to
+   * bypass — needed for `useViewDate`'s `resetViewDate` (the modal's
+   * Current button) which wants to REMOVE the param entirely, not have
+   * it re-injected.
+   */
+  preserveViewDate?: boolean;
 };
 
 export interface NavigateOptions {
@@ -291,7 +300,7 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
 
   const go = useCallback(
     (target: PATH, options?: GoOptions) => {
-      const { params: providedParams, animate = true } = options || {};
+      const { params: providedParams, animate = true, preserveViewDate = true } = options || {};
       isAnimationEnabled.current = animate;
       setDirection("forward");
 
@@ -299,14 +308,17 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
       // expect the period they're viewing to persist as they move
       // between pages — jumping from `/budgets?view_date=2026-05` to a
       // detail view or the accounts page should keep them anchored to
-      // May 2026 rather than snapping back to the current month. If the
-      // caller explicitly set `view_date` in `options.params` (e.g. the
-      // date-picker modal), that wins. If the current URL has NO
-      // `view_date` (Current mode — implicit "now"), we don't inject
-      // one so bookmarks stay clean (`/dashboard` bookmarked in Current
-      // mode always shows the current period).
+      // May 2026 rather than snapping back to the current month.
+      //
+      // Skip preservation when:
+      // - Caller sets `preserveViewDate: false` — explicit opt-out for
+      //   `resetViewDate` (the modal's Current button), which wants to
+      //   REMOVE the param entirely, not have it re-injected.
+      // - Caller supplies `view_date` in `options.params` — caller wins.
+      // - Current URL has NO `view_date` (Current mode = implicit "now")
+      //   — no injection, so bookmarks stay clean.
       const finalParams = new URLSearchParams(providedParams);
-      if (!finalParams.has("view_date")) {
+      if (preserveViewDate && !finalParams.has("view_date")) {
         const currentViewDate = currentParamsRef.current.get("view_date");
         if (currentViewDate) finalParams.set("view_date", currentViewDate);
       }
