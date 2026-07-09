@@ -1,6 +1,6 @@
 import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
-import { useAppContext, useReorder, FlowChart } from "client";
-import { ChartRowTitle } from "client/components";
+import { useAppContext, FlowChart } from "client";
+import { ChartRowShell } from "client/components";
 import { getSankeyData } from "./lib";
 import { Sankey } from "./Sankey";
 import "./index.css";
@@ -36,17 +36,6 @@ export const FlowChartRow = ({
   } = data;
   const { configuration } = chart;
   const { account_ids, budget_ids } = configuration;
-
-  const {
-    onDragStart,
-    onDragEnd,
-    onDragEnter,
-    onGotPointerCapture,
-    onTouchHandleStart,
-    onTouchHandleEnd,
-    onPointerEnter,
-    isDragging,
-  } = useReorder(chart.id, onSetOrder);
 
   const selectedAccounts = accounts.filter((a) => {
     const isIncluded = account_ids.includes(a.id);
@@ -85,27 +74,14 @@ export const FlowChartRow = ({
   const { income, expense } = tableData;
   const diff = income - expense;
 
-  const classes = ["FlowChartRow"];
-  if (isDragging) classes.push("dragging");
-
   return (
-    <div
-      className={classes.join(" ")}
+    <ChartRowShell
+      className="FlowChartRow"
+      chart={chart}
+      showTitle={showTitle}
       onClick={onClick}
-      draggable={true}
-      onDragStart={onDragStart}
-      onDragEnter={onDragEnter}
-      onPointerEnter={onPointerEnter}
-      onDragEnd={onDragEnd}
+      onSetOrder={onSetOrder}
     >
-      {showTitle && (
-        <ChartRowTitle
-          name={chart.name}
-          onTouchHandleStart={onTouchHandleStart}
-          onTouchHandleEnd={onTouchHandleEnd}
-          onGotPointerCapture={onGotPointerCapture}
-        />
-      )}
       <Sankey memoryKey={chart.id} data={graphData} height={height} />
       {showTable && (
         <table width="100%">
@@ -141,6 +117,6 @@ export const FlowChartRow = ({
           </tbody>
         </table>
       )}
-    </div>
+    </ChartRowShell>
   );
 };

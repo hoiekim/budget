@@ -1,8 +1,8 @@
 import { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction } from "react";
 import { AccountType } from "plaid";
 import { numberToCommaString, toTitleCase } from "common";
-import { BalanceChart, getDisplayBalance, useAppContext, useReorder } from "client";
-import { ChartRowTitle, QuestionIcon } from "client/components";
+import { BalanceChart, getDisplayBalance, useAppContext } from "client";
+import { ChartRowShell, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
 import "./index.css";
 
@@ -24,18 +24,7 @@ export const BalanceChartRow = ({
   const { data, calculations, viewDate } = useAppContext();
   const { accounts, budgets } = data;
   const { budgetData, balanceData } = calculations;
-  const { name, configuration } = chart;
-
-  const {
-    onDragStart,
-    onDragEnd,
-    onDragEnter,
-    onGotPointerCapture,
-    onTouchHandleStart,
-    onTouchHandleEnd,
-    onPointerEnter,
-    isDragging,
-  } = useReorder(chart.id, onSetOrder);
+  const { configuration } = chart;
 
   const date = viewDate.getEndDate();
   const today = new Date();
@@ -143,27 +132,14 @@ export const BalanceChartRow = ({
     );
   });
 
-  const classes = ["BalanceChartRow"];
-  if (isDragging) classes.push("dragging");
-
   return (
-    <div
-      className={classes.join(" ")}
+    <ChartRowShell
+      className="BalanceChartRow"
+      chart={chart}
+      showTitle={showTitle}
       onClick={onClick}
-      draggable={true}
-      onDragStart={onDragStart}
-      onDragEnter={onDragEnter}
-      onPointerEnter={onPointerEnter}
-      onDragEnd={onDragEnd}
+      onSetOrder={onSetOrder}
     >
-      {showTitle && (
-        <ChartRowTitle
-          name={name}
-          onTouchHandleStart={onTouchHandleStart}
-          onTouchHandleEnd={onTouchHandleEnd}
-          onGotPointerCapture={onGotPointerCapture}
-        />
-      )}
       <div className="chart">
         <Stacks data={stacksData} />
         <div className="equation">
@@ -198,7 +174,7 @@ export const BalanceChartRow = ({
           </tbody>
         </table>
       )}
-    </div>
+    </ChartRowShell>
   );
 };
 

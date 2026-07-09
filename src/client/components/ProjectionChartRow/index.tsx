@@ -1,7 +1,7 @@
-import React, { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction, useMemo } from "react";
+import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
 import { getYearMonthString, numberToCommaString, ViewDate } from "common";
-import { useAccountGraph, useAppContext, useReorder, ProjectionChart } from "client";
-import { ChartRowTitle, DateLabel, Graph, MoneyLabel } from "client/components";
+import { useAccountGraph, useAppContext, ProjectionChart } from "client";
+import { ChartRowShell, DateLabel, Graph, MoneyLabel } from "client/components";
 import { calculateProjection } from "./lib";
 import "./index.css";
 
@@ -32,17 +32,6 @@ export const ProjectionChartRow = ({
     year_over_year_inflation,
   } = configuration;
 
-  const {
-    onDragStart,
-    onDragEnd,
-    onDragEnter,
-    onGotPointerCapture,
-    onTouchHandleStart,
-    onTouchHandleEnd,
-    onPointerEnter,
-    isDragging,
-  } = useReorder(chart.id, onSetOrder);
-
   const selectedAccounts = accounts.filter((a) => {
     const isIncluded = account_ids.includes(a.id);
     const isHidden = a.hide;
@@ -71,26 +60,17 @@ export const ProjectionChartRow = ({
     useLengthFixer: false,
   });
 
-  const onKeyDownChart = (e: KeyboardEvent<HTMLDivElement>) => {
-    if ((e.key === "Enter" || e.key === " ") && onClick) {
-      e.preventDefault();
-      onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
-    }
-  };
-
   if (!account_ids?.length) {
     return (
-      <div
+      <ChartRowShell
         className="ProjectionChartRow"
+        chart={chart}
+        showTitle={showTitle}
         onClick={onClick}
-        onKeyDown={onClick ? onKeyDownChart : undefined}
-        role={onClick ? "button" : undefined}
-        tabIndex={onClick ? 0 : undefined}
-        aria-label={chart.name}
+        onSetOrder={onSetOrder}
       >
-        {showTitle && <div className="title">{chart.name}</div>}
         <Graph height={200} input={{}} />
-      </div>
+      </ChartRowShell>
     );
   }
 
@@ -156,31 +136,14 @@ export const ProjectionChartRow = ({
     latestViewDate.next();
   }
 
-  const classes = ["ProjectionChartRow"];
-  if (isDragging) classes.push("dragging");
-
   return (
-    <div
-      className={classes.join(" ")}
+    <ChartRowShell
+      className="ProjectionChartRow"
+      chart={chart}
+      showTitle={showTitle}
       onClick={onClick}
-      onKeyDown={onClick ? onKeyDownChart : undefined}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      aria-label={chart.name}
-      draggable={true}
-      onDragStart={onDragStart}
-      onDragEnter={onDragEnter}
-      onPointerEnter={onPointerEnter}
-      onDragEnd={onDragEnd}
+      onSetOrder={onSetOrder}
     >
-      {showTitle && (
-        <ChartRowTitle
-          name={chart.name}
-          onTouchHandleStart={onTouchHandleStart}
-          onTouchHandleEnd={onTouchHandleEnd}
-          onGotPointerCapture={onGotPointerCapture}
-        />
-      )}
       <Graph
         height={150}
         input={graphData}
@@ -230,6 +193,6 @@ export const ProjectionChartRow = ({
           </tbody>
         </table>
       )}
-    </div>
+    </ChartRowShell>
   );
 };
