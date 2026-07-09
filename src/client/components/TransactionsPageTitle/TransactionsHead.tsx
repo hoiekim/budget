@@ -43,7 +43,7 @@ export const TransactionsHead = ({ sorter, getHeaderName, headerKeys, style }: P
     });
 
   return (
-    <div className="TransactionsHead" style={style}>
+    <div className="TransactionsHead sticky" style={style}>
       {headerComponents}
     </div>
   );

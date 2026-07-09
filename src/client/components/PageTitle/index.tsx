@@ -11,4 +11,6 @@ interface Props {
  * sticky/padding/z-index styling that every list page's own CSS used to
  * declare identically.
  */
-export const PageTitle = ({ children }: Props) => <h2 className="PageTitle">{children}</h2>;
+export const PageTitle = ({ children }: Props) => (
+  <h2 className="PageTitle sticky">{children}</h2>
+);

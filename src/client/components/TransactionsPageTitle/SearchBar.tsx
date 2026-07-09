@@ -26,7 +26,7 @@ export const SearchBar = ({ onChange, style }: SearchBarProps) => {
   };
 
   const classes = ["SearchBar"];
-  if (value) classes.push("active");
+  if (value) classes.push("active sticky");
   return (
     <div className={classes.join(" ")} style={style}>
       <input
