@@ -27,9 +27,7 @@ interface Props {
 export const DatePickerModal = ({ onClose }: Props) => {
   const { viewDate, setViewDate, resetViewDate } = useAppContext();
   const interval = viewDate.getInterval();
-  const endDate = viewDate.getEndDate();
-  const monthInputValue = getYearMonthString(endDate);
-  const yearInputValue = endDate.getFullYear();
+  const monthInputValue = getYearMonthString(viewDate.getEndDate());
 
   const onPrev = () => setViewDate((v) => v.clone().previous());
   const onNext = () => setViewDate((v) => v.clone().next());
@@ -45,11 +43,6 @@ export const DatePickerModal = ({ onClose }: Props) => {
     const date = parseYearMonthString(value);
     if (!date) return;
     setViewDate((v) => new ViewDate(v.getInterval(), date));
-  };
-  const onChangeYearInput = (value: string) => {
-    const year = parseInt(value);
-    if (!year || year < 1970 || year > 9999) return;
-    setViewDate((v) => new ViewDate(v.getInterval(), new Date(year, 0)));
   };
 
   // Escape closes the modal — matches PageFilterTitle's dismissal shape.
@@ -95,23 +88,17 @@ export const DatePickerModal = ({ onClose }: Props) => {
           </button>
         </div>
         <div className="dateInput">
-          {interval === "month" ? (
-            <input
-              type="month"
-              aria-label="Month"
-              value={monthInputValue}
-              onChange={(e) => onChangeMonthInput(e.target.value)}
-            />
-          ) : (
-            <input
-              type="number"
-              aria-label="Year"
-              min={1970}
-              max={9999}
-              value={yearInputValue}
-              onChange={(e) => onChangeYearInput(e.target.value)}
-            />
-          )}
+          {/* Native month picker for both intervals. In year mode
+           * the specific month within the year is irrelevant to the
+           * calculation surface (`getEndDate` still returns the year's
+           * end via `ViewDate.setInterval`), but keeping the same
+           * picker widget avoids UI shape change on interval flip. */}
+          <input
+            type="month"
+            aria-label={interval === "year" ? "Year (month ignored)" : "Month"}
+            value={monthInputValue}
+            onChange={(e) => onChangeMonthInput(e.target.value)}
+          />
         </div>
         <div className="stepper">
           <button onClick={onPrev} aria-label="Previous period">
