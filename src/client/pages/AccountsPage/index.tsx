@@ -81,11 +81,20 @@ export const AccountsPage = () => {
       return selectedTypes.includes(type);
     });
 
-    sortedAccounts.forEach(({ hide, archived, type, balances }) => {
-      if (hide || archived || type !== AccountType.Credit) return;
-      totalCredit += balances.current || 0;
-      numberOfCredits++;
-    });
+    // The Credit summary tile (next to the donut) shows totalCredit +
+    // numberOfCredits. Same visibility rule as the credit `.rows` block
+    // in AccountsTable: default view (no filter) always counts credits;
+    // a filter set to a non-Credit subset zeroes out the summary so the
+    // tile hides (via BalanceInfo's `numberOfCredits > 0` guard).
+    const includeCreditSummary =
+      selectedTypes.length === 0 || selectedTypes.includes(AccountType.Credit);
+    if (includeCreditSummary) {
+      sortedAccounts.forEach(({ hide, archived, type, balances }) => {
+        if (hide || archived || type !== AccountType.Credit) return;
+        totalCredit += balances.current || 0;
+        numberOfCredits++;
+      });
+    }
 
     // For yearly view of the current (incomplete) year, viewDate.getEndDate()
     // returns Dec 31 which has no balance data yet. Cap the lookup to the
