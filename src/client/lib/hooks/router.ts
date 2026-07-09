@@ -254,6 +254,22 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
         isAnimationEnabled.current = false;
       };
 
+      // Same-path (query-param-only) transitions never slide. Animation
+      // is meaningful for a NEW view — a URL that swapped one filter for
+      // another, or a browser-back stepping through the view_date
+      // history on the current page, should not flash a 300ms slide
+      // over otherwise-identical layout. Callers that navigate
+      // explicitly (e.g. `useMultiSelectQueryFilter`'s writer) already
+      // pass `animate: false` to `go()`, but browser-driven popstate
+      // flips this on: `back()` defaults `isAnimationEnabled.current =
+      // true`, and popstate can't know whether the target is same-path.
+      // Detect it here instead — the refs advanced above hold the
+      // outgoing route.
+      const isSamePath = newPath === outgoingPath;
+      if (isSamePath) {
+        isAnimationEnabled.current = false;
+      }
+
       if (window.innerWidth < 950 && isAnimationEnabled.current) {
         timeout.current = setTimeout(endTransition, DEFAULT_TRANSITION_DURATION);
       } else {
