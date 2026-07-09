@@ -10,32 +10,26 @@ div.DatePickerModal {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
 }
 
 div.DatePickerModal > div.panel {
   background-color: #292929;
   border: 1px solid #666;
   border-radius: 12px;
-  padding: 16px 18px;
-  min-width: 260px;
-  max-width: 360px;
-  width: 100%;
+  padding-bottom: 10px;
+  width: calc(100% - 20px);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
+  overflow: hidden;
 }
 
 div.DatePickerModal > div.panel > div.header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-div.DatePickerModal > div.panel > div.header > h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  border-bottom: 1px solid #666;
+  padding: 10px;
 }
 
 div.DatePickerModal > div.panel > div.header > button.closeButton {
@@ -48,40 +42,42 @@ div.DatePickerModal > div.panel > div.header > button.closeButton {
 div.DatePickerModal > div.panel > div.dateInput {
   display: flex;
   justify-content: center;
-  padding: 4px 0;
+  align-items: center;
 }
 
 div.DatePickerModal > div.panel > div.dateInput > input {
-  font-size: 22px;
-  font-weight: 700;
+  background-color: #222;
   text-align: center;
-  padding: 6px 10px;
   min-width: 180px;
 }
 
 div.DatePickerModal > div.panel > div.stepper {
-  display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
-  gap: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
 }
 
 div.DatePickerModal > div.panel > div.stepper > button {
-  padding: 10px 0;
-  font-size: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 44px;
+  background-color: #222;
+}
+
+div.DatePickerModal > div.panel > div.stepper > button.currentButton {
+  padding: 0 16px;
 }
 
 div.DatePickerModal > div.panel > div.intervalRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
-}
-
-div.DatePickerModal > div.panel > div.intervalRow > label {
-  font-size: 14px;
 }
 
 div.DatePickerModal > div.panel > div.intervalRow > select {
   min-width: 120px;
-  padding: 6px 10px;
+  background-color: #222;
 }

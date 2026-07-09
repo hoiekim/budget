@@ -101,7 +101,7 @@ export const DatePickerModal = ({ onClose }: Props) => {
     >
       <div className="panel">
         <div className="header">
-          <h3>View&nbsp;Date</h3>
+          <div>Select&nbsp;View&nbsp;Date</div>
           <button className="closeButton" onClick={onClose} aria-label="Close view date">
             <CloseIcon size={14} />
           </button>
@@ -113,6 +113,7 @@ export const DatePickerModal = ({ onClose }: Props) => {
            * end via `ViewDate.setInterval`), but keeping the same
            * picker widget avoids UI shape change on interval flip. */}
           <input
+            id="view-date-picker"
             type="month"
             aria-label={interval === "year" ? "Year (month ignored)" : "Month"}
             value={monthInputValue}
