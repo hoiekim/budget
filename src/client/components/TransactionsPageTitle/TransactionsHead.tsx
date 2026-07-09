@@ -1,4 +1,4 @@
-import { CSSProperties } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import {
   InvestmentTransaction,
   SplitTransaction,
@@ -21,7 +21,14 @@ interface Props {
 export const TransactionsHead = ({ sorter, getHeaderName, headerKeys, style }: Props) => {
   const { setSortBy, getArrow, sortings } = sorter;
 
-  const sortOrder = Array.from(sortings.keys());
+  const init = useRef<boolean>(false);
+  const [sortOrder, setSortOrder] = useState(Array.from(sortings.keys()));
+
+  useEffect(() => {
+    if (init.current) return;
+    setSortOrder(Array.from(sortings.keys()));
+    init.current = true;
+  }, [sortings]);
 
   const headerComponents = headerKeys
     .sort((a, b) => sortOrder.indexOf(b) - sortOrder.indexOf(a))
