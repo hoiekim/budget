@@ -304,22 +304,37 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
   }, []);
 
   /**
-   * URL params source for a page or component whose UI should keep
-   * rendering the OUTGOING state during a narrow-screen slide-out.
+   * URL params source for a page or component that renders during a
+   * narrow-screen route transition — while BOTH the outgoing and
+   * incoming page share the DOM for the slide animation.
    *
-   * `targetPath` must be the {@link PATH} the caller BELONGS to (the
-   * page that owns this JSX). When we're steady-state on that page, or
-   * on any wide-screen viewport, we return the live `params` — reads +
-   * writes stay in sync. During a narrow-screen transition OFF that
-   * page, `path` has already flipped to the destination but the caller's
-   * JSX is still animating; returning `transition.incomingParams`
-   * (a snapshot of the outgoing URL) prevents its title label / filter
-   * chrome / detail lookup from flashing empty mid-animation.
+   * `targetPath` must be the {@link PATH} the caller BELONGS to.
+   * The state model during a narrow-screen animated transition (see
+   * `transition()` above, which calls `setIncomingPath` / `setIncomingParams`
+   * immediately but defers `setPath` / `setParams` inside `endTransition`
+   * behind a `setTimeout(..., DEFAULT_TRANSITION_DURATION)`):
+   *
+   * - `path` still holds the OUTGOING route.
+   * - `params` still holds the OUTGOING URL params.
+   * - `incomingPath` holds the DESTINATION route.
+   * - `incomingParams` holds the DESTINATION URL params.
+   *
+   * So for the OUTGOING caller, `path === targetPath` succeeds and this
+   * returns `params` — the caller keeps rendering its own URL as it slides
+   * out. For the INCOMING caller, `path === targetPath` fails (path still
+   * holds the outgoing route), and this returns `incomingParams` — the
+   * caller reads its destination URL before the delayed `setParams` fires
+   * ~300ms later, avoiding a flash-empty title / filter / detail lookup
+   * on the first paint.
+   *
+   * Wide-screen viewports skip the animation entirely (`endTransition`
+   * runs synchronously), so the `screenType !== Narrow` guard returns
+   * `params` unconditionally — reads and writes stay in sync.
    *
    * Passing the wrong `PATH` (a sibling page's identity) silently keeps
-   * the caller reading `incomingParams` at steady-state, which reads as
-   * "the filter dropdown never updates from the URL" — verify the arg
-   * matches the enclosing route.
+   * the caller reading `incomingParams` at steady-state under narrow,
+   * which reads as "the filter dropdown never updates from the URL" —
+   * verify the arg matches the enclosing route.
    */
   const getActiveParams = useCallback(
     (targetPath: PATH) => deriveActiveParams(targetPath, path, screenType, params, incomingParams),
