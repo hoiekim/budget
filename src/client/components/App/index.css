@@ -291,6 +291,7 @@ div.Router > div.previousPage {
 }
 
 div.Router > div.currentPage {
+  margin: auto;
   position: relative;
   z-index: 510;
 }
