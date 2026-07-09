@@ -1,9 +1,3 @@
-div.BudgetsPage .placeholder {
-  padding: 10px;
-  display: flex;
-  align-items: center;
-}
-
 div.BudgetsPage > div.budgetsTable > .addButton {
   margin: 10px 10px;
 }

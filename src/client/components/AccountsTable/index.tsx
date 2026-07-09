@@ -1,6 +1,7 @@
 import { CSSProperties, ReactNode, useState } from "react";
 import { AccountType } from "plaid";
 import { Account, DonutData, useAppContext } from "client";
+import { Placeholder } from "client/components";
 import AccountRow from "./AccountRow";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
@@ -98,9 +99,9 @@ export const AccountsTable = ({ donutData, selectedTypes, style }: Props) => {
         </div>
       )}
       {!accounts.size && (
-        <div className="placeholder">
+        <Placeholder>
           You don't have any connected accounts! Click this button to connect your accounts.
-        </div>
+        </Placeholder>
       )}
     </div>
   );
