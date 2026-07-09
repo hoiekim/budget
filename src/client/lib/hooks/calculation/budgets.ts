@@ -233,6 +233,18 @@ export const getBudgetData = (
 
 const oldestDate = new Date(0);
 
+/**
+ * Point-in-time capacity aggregation, keyed by parent capacity version.
+ *
+ * Each parent capacity version renders its own `BudgetDonut` at
+ * `date = capacity.active_from` (see `CapacitiesInput`), and that donut's
+ * child slices read `child.getActiveAmount(date)`. So each bucket must hold
+ * the sum of its children's amount **active at that same date**: a child
+ * versioned more granularly than its parent (e.g. a section bumped for a new
+ * period while the budget keeps one "All past" capacity) contributes only its
+ * version active at the parent's `active_from`, never the sum of its historical
+ * versions — otherwise the donut's center number drifts off its own ring.
+ */
 export const getCapacityData = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
@@ -240,49 +252,54 @@ export const getCapacityData = (
 ) => {
   const capacityData = new CapacityData();
 
+  // Sum each child's amount active at `date`. A single infinite child
+  // (±MAX_FLOAT) poisons the whole bucket to the sentinel, matching the
+  // BudgetDonut's `isChildrenInfinite` guard and Capacity.getActiveAmount.
+  // getActiveAmount already resolves synced children to their derived sum and
+  // non-synced children to the stored `month` of the version active at `date`.
+  const sumActiveAt = (children: (Section | Category)[], date: Date): number => {
+    let total = 0;
+    for (const child of children) {
+      const amount = child.getActiveAmount(date, "month");
+      if (Math.abs(amount) === MAX_FLOAT) return amount > 0 ? MAX_FLOAT : -MAX_FLOAT;
+      total += amount;
+    }
+    return total;
+  };
+
+  // Group children by parent once (O(sections + categories)) so the aggregation
+  // loops below don't re-scan the full collections per parent.
+  const sectionsByBudget = new Map<string, Section[]>();
   sections.forEach((section) => {
-    const budget = budgets.get(section.budget_id);
-    if (!budget) return;
-    section.capacities.forEach((capacity) => {
-      const { active_from } = capacity;
-      // For is_synced sections the stored `capacity.month` is just the
-      // advisory cache — sum the section's derived amount at this period
-      // so downstream consumers (BudgetDonut, isChildrenSynced legacy
-      // fallthrough) see the live total, not the stale cache.
-      const periodDate = active_from || oldestDate;
-      const capacityAmount = capacity.is_synced
-        ? capacity.getActiveAmount(periodDate, "month", section.getChildren())
-        : capacity.month;
-      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
-      const budgetCapacity = budget.getActiveCapacity(periodDate);
-      if (isInfinite) {
-        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
-        capacityData.get(budgetCapacity.id).children_total = override;
-      } else {
-        capacityData.get(budgetCapacity.id).children_total += capacityAmount;
-      }
+    const list = sectionsByBudget.get(section.budget_id);
+    if (list) list.push(section);
+    else sectionsByBudget.set(section.budget_id, [section]);
+  });
+  const categoriesBySection = new Map<string, Category[]>();
+  categories.forEach((category) => {
+    const list = categoriesBySection.get(category.section_id);
+    if (list) list.push(category);
+    else categoriesBySection.set(category.section_id, [category]);
+  });
+
+  budgets.forEach((budget) => {
+    const budgetSections = sectionsByBudget.get(budget.id) || [];
+    const budgetCategories = budgetSections.flatMap(
+      (s) => categoriesBySection.get(s.id) || [],
+    );
+    budget.capacities.forEach((capacity) => {
+      const date = capacity.active_from || oldestDate;
+      const summary = capacityData.get(capacity.id);
+      summary.children_total = sumActiveAt(budgetSections, date);
+      summary.grand_children_total = sumActiveAt(budgetCategories, date);
     });
   });
 
-  categories.forEach((category) => {
-    const section = sections.get(category.section_id);
-    if (!section) return;
-    const budget = budgets.get(section.budget_id);
-    if (!budget) return;
-    category.capacities.forEach((capacity) => {
-      const { active_from } = capacity;
-      const capacityAmount = capacity.month;
-      const isInfinite = Math.abs(capacityAmount) === MAX_FLOAT;
-      const sectionCapacity = section.getActiveCapacity(active_from || oldestDate);
-      const budgetCapacity = budget.getActiveCapacity(active_from || oldestDate);
-      if (isInfinite) {
-        const override = MAX_FLOAT * (capacityAmount > 0 ? 1 : -1);
-        capacityData.get(sectionCapacity.id).children_total = override;
-        capacityData.get(budgetCapacity.id).grand_children_total = override;
-      } else {
-        capacityData.get(sectionCapacity.id).children_total += capacityAmount;
-        capacityData.get(budgetCapacity.id).grand_children_total += capacityAmount;
-      }
+  sections.forEach((section) => {
+    const sectionCategories = categoriesBySection.get(section.id) || [];
+    section.capacities.forEach((capacity) => {
+      const date = capacity.active_from || oldestDate;
+      capacityData.get(capacity.id).children_total = sumActiveAt(sectionCategories, date);
     });
   });
 
