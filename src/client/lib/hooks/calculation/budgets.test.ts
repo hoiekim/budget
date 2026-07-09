@@ -325,6 +325,54 @@ describe("getCapacityData — hierarchy aggregation", () => {
     const budgetCapId = budget.getActiveCapacity(new Date(0)).id;
     expect(cap.get(budgetCapId).children_total).toBe(-MAX_FLOAT);
   });
+
+  // Regression: #590 — a child versioned more granularly than its parent must
+  // not sum its stale (superseded) versions into the parent bucket. The budget
+  // has ONE "All past" capacity; its donut renders at date = that version's
+  // active_from (epoch), so children_total must equal the section's amount
+  // ACTIVE at epoch (its base 300 version), not 300 + 500 = 800.
+  test("section with two versions under a one-version budget does not double-count the stale version", () => {
+    const budget = new Budget({ name: "B" });
+    const section = new Section({
+      budget_id: budget.id,
+      capacities: [{ month: 300 }, { month: 500, active_from: new Date("2025-01-01") }],
+    });
+    const budgets = new BudgetDictionary();
+    budgets.set(budget.id, budget);
+    const sections = new SectionDictionary();
+    sections.set(section.id, section);
+
+    const cap = getCapacityData(budgets, sections, new CategoryDictionary());
+    const budgetCapId = budget.getActiveCapacity(new Date(0)).id;
+    // Point-in-time at the budget version's active_from (epoch) = base 300,
+    // matching the donut's child slices; NOT 800 (both versions summed).
+    expect(cap.get(budgetCapId).children_total).toBe(300);
+  });
+
+  // Regression: #590 (category granularity) — a category with two versions
+  // under a single-version section + single-version budget must contribute only
+  // its epoch-active version to both the section children_total and the budget
+  // grand_children_total, not the sum of both versions.
+  test("category with two versions does not double-count into section/budget buckets", () => {
+    const budget = new Budget({ name: "B" });
+    const section = new Section({ budget_id: budget.id, capacities: [{ month: 400 }] });
+    const category = new Category({
+      section_id: section.id,
+      capacities: [{ month: 100 }, { month: 250, active_from: new Date("2025-01-01") }],
+    });
+    const budgets = new BudgetDictionary();
+    budgets.set(budget.id, budget);
+    const sections = new SectionDictionary();
+    sections.set(section.id, section);
+    const categories = new CategoryDictionary();
+    categories.set(category.id, category);
+
+    const cap = getCapacityData(budgets, sections, categories);
+    const sectionCapId = section.getActiveCapacity(new Date(0)).id;
+    const budgetCapId = budget.getActiveCapacity(new Date(0)).id;
+    expect(cap.get(sectionCapId).children_total).toBe(100);
+    expect(cap.get(budgetCapId).grand_children_total).toBe(100);
+  });
 });
 
 describe("getBudgetData — confirmed-transfer exclusion", () => {
