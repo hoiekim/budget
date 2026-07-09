@@ -11,7 +11,7 @@ import {
   Data,
   indexedDb,
 } from "client";
-import { BudgetBar, FilterOption, PageFilterTitle } from "client/components";
+import { BudgetBar, FilterOption, PageFilterTitle, Placeholder } from "client/components";
 import "./index.css";
 
 /**
@@ -169,9 +169,7 @@ export const BudgetsPage = () => {
           <button onClick={onClickAddBudget}>+</button>
         </div>
         {!budgetBars.length && (
-          <div className="placeholder">
-            You don't have any budgets! Click this button to create one.
-          </div>
+          <Placeholder>You don't have any budgets! Click this button to create one.</Placeholder>
         )}
       </div>
     </div>
