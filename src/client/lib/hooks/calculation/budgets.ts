@@ -275,10 +275,25 @@ export const getCapacityData = (
     return total;
   };
 
+  // Group children by parent once (O(sections + categories)) so the aggregation
+  // loops below don't re-scan the full collections per parent.
+  const sectionsByBudget = new Map<string, Section[]>();
+  sections.forEach((section) => {
+    const list = sectionsByBudget.get(section.budget_id);
+    if (list) list.push(section);
+    else sectionsByBudget.set(section.budget_id, [section]);
+  });
+  const categoriesBySection = new Map<string, Category[]>();
+  categories.forEach((category) => {
+    const list = categoriesBySection.get(category.section_id);
+    if (list) list.push(category);
+    else categoriesBySection.set(category.section_id, [category]);
+  });
+
   budgets.forEach((budget) => {
-    const budgetSections = sections.filter((s) => s.budget_id === budget.id);
-    const budgetCategories = budgetSections.flatMap((s) =>
-      categories.filter((c) => c.section_id === s.id),
+    const budgetSections = sectionsByBudget.get(budget.id) || [];
+    const budgetCategories = budgetSections.flatMap(
+      (s) => categoriesBySection.get(s.id) || [],
     );
     budget.capacities.forEach((capacity) => {
       const date = capacity.active_from || oldestDate;
@@ -289,7 +304,7 @@ export const getCapacityData = (
   });
 
   sections.forEach((section) => {
-    const sectionCategories = categories.filter((c) => c.section_id === section.id);
+    const sectionCategories = categoriesBySection.get(section.id) || [];
     section.capacities.forEach((capacity) => {
       const date = capacity.active_from || oldestDate;
       capacityData.get(capacity.id).children_total = sumActiveAt(sectionCategories, date);
