@@ -56,5 +56,16 @@ export const useViewDate = (router: ClientRouter) => {
     [viewDate, path, params, go],
   );
 
-  return [viewDate, setViewDate] as const;
+  // Explicit "Current mode" — remove the URL param entirely rather than
+  // setting it to today's period. A bookmark to `/dashboard` with no
+  // `view_date` param always shows the CURRENT period (whatever "now"
+  // is when the bookmark opens), while `/dashboard?view_date=2026-07`
+  // is frozen to that period even on a bookmark loaded in 2027.
+  const resetViewDate = useCallback(() => {
+    const newParams = new URLSearchParams(params);
+    newParams.delete("view_date");
+    go(path, { params: newParams, animate: false });
+  }, [path, params, go]);
+
+  return [viewDate, setViewDate, resetViewDate] as const;
 };

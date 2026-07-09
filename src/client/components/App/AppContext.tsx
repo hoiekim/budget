@@ -14,7 +14,7 @@ const AppContext = ({ initialUser, children }: Props) => {
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
 
   const router = useRouter(screenType);
-  const [viewDate, setViewDate] = useViewDate(router);
+  const [viewDate, setViewDate, resetViewDate] = useViewDate(router);
 
   const status = reduceStatuses(data?.status, calculations?.status);
 
@@ -30,9 +30,21 @@ const AppContext = ({ initialUser, children }: Props) => {
       router,
       viewDate,
       setViewDate,
+      resetViewDate,
       screenType,
     }),
-    [data, setData, calculations, calculate, status, user, router, viewDate, screenType],
+    [
+      data,
+      setData,
+      calculations,
+      calculate,
+      status,
+      user,
+      router,
+      viewDate,
+      resetViewDate,
+      screenType,
+    ],
   );
 
   return <Context.Provider value={contextValue}>{children}</Context.Provider>;

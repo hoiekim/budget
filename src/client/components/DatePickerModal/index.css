@@ -1,0 +1,76 @@
+div.DatePickerModal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+div.DatePickerModal > div.panel {
+  background-color: #292929;
+  border: 1px solid #666;
+  border-radius: 12px;
+  padding: 16px 18px;
+  min-width: 260px;
+  max-width: 360px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+div.DatePickerModal > div.panel > div.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+div.DatePickerModal > div.panel > div.header > h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+div.DatePickerModal > div.panel > div.header > button.closeButton {
+  background-color: transparent;
+  font-size: 18px;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+div.DatePickerModal > div.panel > div.dateLabel {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 0;
+}
+
+div.DatePickerModal > div.panel > div.stepper {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: 8px;
+}
+
+div.DatePickerModal > div.panel > div.stepper > button {
+  padding: 10px 0;
+  font-size: 14px;
+}
+
+div.DatePickerModal > div.panel > div.intervalRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+div.DatePickerModal > div.panel > div.intervalRow > label {
+  font-size: 14px;
+}
+
+div.DatePickerModal > div.panel > div.intervalRow > select {
+  min-width: 120px;
+  padding: 6px 10px;
+}

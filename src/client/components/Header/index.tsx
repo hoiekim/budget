@@ -1,18 +1,18 @@
-import { MouseEventHandler, ReactNode } from "react";
+import { MouseEventHandler, ReactNode, useState } from "react";
 import { useAppContext, PATH, ScreenType } from "client";
 import {
   ArrowLeftIcon,
   BankIcon,
   ChartIcon,
+  DatePickerModal,
   HamburgerIcon,
   ListIcon,
   RecieptIcon,
 } from "client/components";
-import { getYearMonthString, parseYearMonthString, ViewDate } from "common";
 import "./index.css";
 
 export const Header = () => {
-  const { user, router, viewDate, setViewDate, screenType } = useAppContext();
+  const { user, router, viewDate, screenType } = useAppContext();
 
   const { path, params, go, back } = router;
 
@@ -49,7 +49,11 @@ export const Header = () => {
   const classNames = ["Header"];
   if (screenType !== ScreenType.Narrow) classNames.push("wideScreen");
 
-  const datePickerValue = getYearMonthString(viewDate.getEndDate());
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const interval = viewDate.getInterval();
+  const datePickerLabel = viewDate.toString(
+    interval === "year" ? undefined : { year: "numeric", month: "long" },
+  );
 
   return (
     <div className={classNames.join(" ")} style={{ display: user ? undefined : "none" }}>
@@ -63,17 +67,14 @@ export const Header = () => {
             )}
           </div>
           <div className="datePicker">
-            <input
-              id="view_date_picker"
-              type="month"
-              value={datePickerValue}
-              onChange={(e) => {
-                const value = e.target.value;
-                const date = parseYearMonthString(value);
-                if (!date) return;
-                setViewDate((oldViewDate) => new ViewDate(oldViewDate.getInterval(), date));
-              }}
-            />
+            <button
+              className="datePickerTrigger"
+              onClick={() => setDatePickerOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={datePickerOpen}
+            >
+              {datePickerLabel}
+            </button>
           </div>
           <div className="hamburger">
             <a href={PATH.CONFIG} onClick={onClickHamburger}>
@@ -82,6 +83,7 @@ export const Header = () => {
           </div>
         </div>
       </div>
+      {datePickerOpen && <DatePickerModal onClose={() => setDatePickerOpen(false)} />}
       <div className="navigators" style={{ height: navigatorsHeight }}>
         <div className="centerBox">
           <Navigator target={DASHBOARD} subPages={[CHART_DETAIL, CHART_ACCOUNTS]}>

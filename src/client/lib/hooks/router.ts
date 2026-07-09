@@ -291,16 +291,33 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
 
   const go = useCallback(
     (target: PATH, options?: GoOptions) => {
-      const { params: newParams, animate = true } = options || {};
+      const { params: providedParams, animate = true } = options || {};
       isAnimationEnabled.current = animate;
       setDirection("forward");
+
+      // Preserve `view_date` across every cross-page navigation. Users
+      // expect the period they're viewing to persist as they move
+      // between pages — jumping from `/budgets?view_date=2026-05` to a
+      // detail view or the accounts page should keep them anchored to
+      // May 2026 rather than snapping back to the current month. If the
+      // caller explicitly set `view_date` in `options.params` (e.g. the
+      // date-picker modal), that wins. If the current URL has NO
+      // `view_date` (Current mode — implicit "now"), we don't inject
+      // one so bookmarks stay clean (`/dashboard` bookmarked in Current
+      // mode always shows the current period).
+      const finalParams = new URLSearchParams(providedParams);
+      if (!finalParams.has("view_date")) {
+        const currentViewDate = currentParamsRef.current.get("view_date");
+        if (currentViewDate) finalParams.set("view_date", currentViewDate);
+      }
+
       // Same-path navigation (control changes query params on the
       // currently-mounted page) preserves DOM state. Let the caller
       // handle scroll — see the `skipScrollRestore` comment on
       // `transition` above.
       const skipScrollRestore = target === currentPathRef.current;
-      transition(target, newParams || new URLSearchParams(), skipScrollRestore);
-      window.history.pushState("", "", getURLString(target, newParams));
+      transition(target, finalParams, skipScrollRestore);
+      window.history.pushState("", "", getURLString(target, finalParams));
     },
     [transition],
   );
