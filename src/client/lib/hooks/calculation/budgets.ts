@@ -236,22 +236,14 @@ const oldestDate = new Date(0);
 /**
  * Point-in-time capacity aggregation, keyed by parent capacity version.
  *
- * Each parent capacity version renders its own `BudgetDonut` with
+ * Each parent capacity version renders its own `BudgetDonut` at
  * `date = capacity.active_from` (see `CapacitiesInput`), and that donut's
  * child slices read `child.getActiveAmount(date)`. So each bucket must hold
- * the sum of its children's amount **active at that same date** — not the
- * running sum of every historical child version.
- *
- * The previous shape iterated each child's capacity *versions* and bucketed
- * every version by whichever parent version was active at that child version's
- * own `active_from`. When a child is versioned more granularly than its parent
- * (e.g. a section bumped for a new period while the budget keeps one "All past"
- * capacity), two or more child versions collapse into the *same* parent bucket
- * and get summed — inflating the donut's center number by the stale, superseded
- * child versions while its ring (point-in-time child slices) stayed correct, so
- * the two disagreed on the same screen (#590). Summing each child's *active*
- * amount at the parent version's own `active_from` keeps the bucket point-in-
- * time and self-consistent with the ring.
+ * the sum of its children's amount **active at that same date**: a child
+ * versioned more granularly than its parent (e.g. a section bumped for a new
+ * period while the budget keeps one "All past" capacity) contributes only its
+ * version active at the parent's `active_from`, never the sum of its historical
+ * versions — otherwise the donut's center number drifts off its own ring.
  */
 export const getCapacityData = (
   budgets: BudgetDictionary,
