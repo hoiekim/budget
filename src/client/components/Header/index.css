@@ -53,10 +53,14 @@ div.Header > .navigators > .centerBox {
   width: 100%;
 }
 
-div.Header > .viewController > div > div > div {
+div.Header > .viewController > div > div.datePicker {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+div.Header > .viewController > div > div.datePicker > input {
+  text-align: center;
 }
 
 div.Header > .viewController > div > .backButton {
@@ -65,11 +69,6 @@ div.Header > .viewController > div > .backButton {
 
 div.Header > .viewController > div > .backButton > button {
   font-size: 20px;
-}
-
-div.Header > .viewController select.intervalSelect {
-  width: auto;
-  max-width: 130px;
 }
 
 div.Header > .viewController > div > .hamburger {

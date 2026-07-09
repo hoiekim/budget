@@ -69,15 +69,17 @@ const Router = () => {
     );
   }
 
+  if (!user) {
+    return <></>;
+  }
+
   if (screenType === ScreenType.Narrow) {
     return (
       <div className={classNames.join(" ")}>
         <div className="previousPage" style={slidePanelStyle}>
           {transitioning && direction === "backward" && incomingPage}
         </div>
-        <div className="currentPage">
-          {!user ? <></> : status.isInit ? currentPage : <Spinner />}
-        </div>
+        <div className="currentPage">{status.isInit ? currentPage : <Spinner />}</div>
         <div className="nextPage" style={slidePanelStyle}>
           {transitioning && direction === "forward" && incomingPage}
         </div>
@@ -89,14 +91,14 @@ const Router = () => {
 
   return (
     <div className={classNames.join(" ")}>
-      {!user ? (
-        <></>
-      ) : status.isInit ? (
+      {status.isInit ? (
         <>
           <main>{currentPage}</main>
-          <aside>
-            <TransactionsPage />
-          </aside>
+          {path !== PATH.TRANSACTIONS && (
+            <aside>
+              <TransactionsPage />
+            </aside>
+          )}
         </>
       ) : (
         <Spinner />

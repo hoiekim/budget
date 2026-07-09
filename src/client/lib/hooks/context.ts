@@ -24,8 +24,6 @@ export interface ContextType {
   user: MaskedUser | undefined;
   setUser: Dispatch<SetStateAction<MaskedUser | undefined>>;
   router: ClientRouter;
-  selectedInterval: Interval;
-  setSelectedInterval: Dispatch<SetStateAction<Interval>>;
   viewDate: ViewDate;
   setViewDate: Dispatch<SetStateAction<ViewDate>>;
   screenType: ScreenType;

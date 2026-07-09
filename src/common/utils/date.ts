@@ -266,3 +266,14 @@ export const getLocaleDateString = (date: Date) => {
     day: "numeric",
   });
 };
+
+/**
+ * @param yearMonthString YYYY-MM
+ * @returns Date
+ */
+export const parseYearMonthString = (yearMonthString: string) => {
+  const year = parseInt(yearMonthString.substring(0, 4));
+  const month = parseInt(yearMonthString.substring(5, 7));
+  if (!year || !month) return null;
+  return new Date(year, month - 1);
+};

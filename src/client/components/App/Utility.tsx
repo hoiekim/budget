@@ -7,7 +7,7 @@ import { useAppContext, useSync, PATH, useDebounce } from "client";
  * dev engineers to find them easily.
  */
 const Utility = () => {
-  const { user, router, setSelectedInterval, data, calculate, viewDate } = useAppContext();
+  const { user, router, data, calculate } = useAppContext();
 
   const userLoggedIn = !!user;
   const { path, go } = router;
@@ -38,13 +38,6 @@ const Utility = () => {
     if (!data.status.isInit) return;
     debouncer(() => calculate(data));
   }, [data, calculate, debouncer]);
-
-  /**
-   * Update viewDate when user selects different interval
-   */
-  useEffect(() => {
-    setSelectedInterval(viewDate.getInterval());
-  }, [viewDate, setSelectedInterval]);
 
   /**
    * This prevents draggable element's ghost image flying back

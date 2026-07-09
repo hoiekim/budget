@@ -10,7 +10,7 @@ import {
   ListIcon,
   RecieptIcon,
 } from "client/components";
-import { Interval } from "common";
+import { getYearMonthString, Interval, parseYearMonthString, ViewDate } from "common";
 import "./index.css";
 
 export const Header = () => {
@@ -70,6 +70,8 @@ export const Header = () => {
   const classNames = ["Header"];
   if (screenType !== ScreenType.Narrow) classNames.push("wideScreen");
 
+  const datePickerValue = getYearMonthString(viewDate.getEndDate());
+
   return (
     <div className={classNames.join(" ")} style={{ display: user ? undefined : "none" }}>
       <div className="viewController">
@@ -81,28 +83,18 @@ export const Header = () => {
               </button>
             )}
           </div>
-          <div>
-            <button onClick={onClickPreviousView}>
-              <ChevronLeftIcon size={12} />
-            </button>
-            <select
-              className="intervalSelect"
-              value={viewDate.getInterval()}
+          <div className="datePicker">
+            <input
+              id="view_date_picker"
+              type="month"
+              value={datePickerValue}
               onChange={(e) => {
-                const value = e.target.value as Interval;
-                setViewDate((oldViewDate) => {
-                  const newViewDate = oldViewDate.clone();
-                  newViewDate.setInterval(value);
-                  return newViewDate;
-                });
+                const value = e.target.value;
+                const date = parseYearMonthString(value);
+                if (!date) return;
+                setViewDate((oldViewDate) => new ViewDate(oldViewDate.getInterval(), date));
               }}
-            >
-              <option value="year">{getIntervalOptionText("year", "Yearly")}</option>
-              <option value="month">{getIntervalOptionText("month", "Monthly")}</option>
-            </select>
-            <button onClick={onClickNextView}>
-              <ChevronRightIcon size={12} />
-            </button>
+            />
           </div>
           <div className="hamburger">
             <a href={PATH.CONFIG} onClick={onClickHamburger}>

@@ -12,6 +12,10 @@
   user-select: none;
 }
 
+html {
+  color-scheme: light dark;
+}
+
 body {
   width: 100%;
   margin: 0;
@@ -159,7 +163,7 @@ div.Router.wideScreen > aside {
   overflow-y: auto;
   padding-top: 50px;
   padding-bottom: 110px;
-  width: 50%;
+  flex: 1;
 }
 
 div.Router.wideScreen > main {
