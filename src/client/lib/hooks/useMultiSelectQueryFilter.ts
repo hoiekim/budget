@@ -18,10 +18,28 @@ interface UseMultiSelectQueryFilterResult<T extends string> {
   options: FilterOption<T>[];
 }
 
+interface Options {
+  /**
+   * Optional URL params source for READ. Narrow-screen route transitions
+   * want the OUTGOING page to keep rendering the OUTGOING selection
+   * during animation via `router.transition.incomingParams` rather than
+   * the destination URL. Follow the sibling `TransactionsPage` shape:
+   *
+   *     const activeParams = path === PATH.ACCOUNTS ||
+   *       screenType !== ScreenType.Narrow ? params : transition.incomingParams;
+   *     useMultiSelectQueryFilter("account_type", LABELS, { activeParams });
+   *
+   * The WRITER always writes through `router.params` because a
+   * toggle/clearAll during transition mid-flight should update the
+   * live URL, not the outgoing snapshot.
+   */
+  activeParams?: URLSearchParams;
+}
+
 /**
  * URL-first multi-select filter hook. Reads the current selection from
- * `router.params.get(paramKey)` (comma-separated), validates against
- * the keys of `labels`, and provides `toggle` / `clearAll` writers that
+ * `activeParams` (defaults to `router.params`), validates against the
+ * keys of `labels`, and provides `toggle` / `clearAll` writers that
  * preserve canonical (label-declaration) order in the serialized URL.
  *
  * The `labels` record is the single source of truth: the allowed values
@@ -37,16 +55,18 @@ interface UseMultiSelectQueryFilterResult<T extends string> {
 export function useMultiSelectQueryFilter<T extends string>(
   paramKey: string,
   labels: Record<T, string>,
+  hookOptions?: Options,
 ): UseMultiSelectQueryFilterResult<T> {
   const { router } = useAppContext();
   const { go, path, params } = router;
+  const readParams = hookOptions?.activeParams ?? params;
 
   const allValues = useMemo(() => Object.keys(labels) as T[], [labels]);
 
   // Memoize on the raw URL string so consumers depending on `selected`
   // (e.g. inside their own `useMemo`) don't re-invalidate on every render
   // — the reference is stable while the URL param doesn't change.
-  const raw = params.get(paramKey);
+  const raw = readParams.get(paramKey);
   const selected = useMemo(() => {
     if (!raw) return [];
     const present = new Set(raw.split(",").map((p) => p.trim()));

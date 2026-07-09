@@ -5,6 +5,7 @@ import {
   colors,
   getAccountBalance,
   getDisplayBalance,
+  PATH,
   ScreenType,
   useAppContext,
   useDebounce,
@@ -35,16 +36,28 @@ const titleForSelection = (types: AccountType[]): string => {
 };
 
 export const AccountsPage = () => {
-  const { data, calculations, viewDate, screenType } = useAppContext();
+  const { data, calculations, viewDate, screenType, router } = useAppContext();
   const { balanceData } = calculations;
   const { accounts } = data;
+  const { path, params, transition } = router;
+
+  // Narrow-screen route transitions off `/accounts` still render this
+  // page during animation with `path` already flipped to the destination.
+  // Read from `transition.incomingParams` in that window so the outgoing
+  // dropdown label + filtered rows keep showing the outgoing selection
+  // rather than snapping to the destination's URL. Sibling
+  // `TransactionsPage` uses the same shape.
+  const activeParams =
+    path === PATH.ACCOUNTS || screenType !== ScreenType.Narrow ? params : transition.incomingParams;
 
   const {
     selected: selectedTypes,
     toggle,
     clearAll,
     options,
-  } = useMultiSelectQueryFilter<AccountType>("account_type", ACCOUNT_TYPE_LABELS);
+  } = useMultiSelectQueryFilter<AccountType>("account_type", ACCOUNT_TYPE_LABELS, {
+    activeParams,
+  });
 
   const [scrollY, setScrollY] = useState(0);
   const debouncer = useDebounce();
