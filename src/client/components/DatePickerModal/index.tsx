@@ -54,16 +54,22 @@ export const DatePickerModal = ({ onClose }: Props) => {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Lock body scroll while the modal is open — otherwise the underlying
-  // page (Dashboard chart rows, Budgets list, etc.) still scrolls behind
-  // the backdrop, which reads as broken modal semantics. Restore the
-  // previous overflow value on unmount so the app-level style isn't
-  // permanently overridden (matches how most modal libraries handle it).
+  // Lock scroll while the modal is open — otherwise the underlying
+  // page (Dashboard chart rows, Budgets list, etc.) still scrolls
+  // behind the backdrop, which reads as broken modal semantics. Have
+  // to lock BOTH `html` and `body`: in this app's CSS shape, `<html>`
+  // is the scroll root, so `body { overflow: hidden }` alone doesn't
+  // stop user wheel/touch scrolling. Restore both previous values on
+  // unmount so the app-level styles aren't permanently overridden.
   useEffect(() => {
-    const previous = document.body.style.overflow;
+    const html = document.documentElement;
+    const prevHtml = html.style.overflow;
+    const prevBody = document.body.style.overflow;
+    html.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = previous;
+      html.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
     };
   }, []);
 
