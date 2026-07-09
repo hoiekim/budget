@@ -56,9 +56,8 @@ interface SecurityInfo {
 
 export const HoldingProperties = () => {
   const { router, viewDate, data, setData, calculations } = useAppContext();
-  const { path, params, transition } = router;
-  const activeParams = path === PATH.HOLDING_DETAIL ? params : transition.incomingParams;
 
+  const activeParams = router.getActiveParams(PATH.HOLDING_DETAIL);
   const accountId = activeParams.get("account_id") || "";
   const ticker = activeParams.get("ticker") || "";
   const isNew = !ticker;

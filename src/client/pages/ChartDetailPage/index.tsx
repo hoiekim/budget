@@ -17,12 +17,9 @@ export type ChartDetailPageParams = {
 export const ChartDetailPage = () => {
   const { data, router } = useAppContext();
   const { charts } = data;
-  const { path, params, transition } = router;
 
-  let chart_id: string;
-  if (path === PATH.CHART_DETAIL) chart_id = params.get("chart_id") || "";
-  else chart_id = transition.incomingParams.get("chart_id") || "";
-
+  const params = router.getActiveParams(PATH.CHART_DETAIL);
+  const chart_id = params.get("chart_id") || "";
   const chart = charts.get(chart_id);
 
   if (!chart) return <></>;

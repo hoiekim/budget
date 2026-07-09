@@ -35,17 +35,8 @@ export const BudgetConfigPage = () => {
   const date = viewDate.getEndDate();
   const { budgets, sections, categories } = data;
 
-  const { path, params, transition } = router;
-  let id: string;
-  if (path === PATH.BUDGET_CONFIG) {
-    id = params.get("category_id") || params.get("section_id") || params.get("budget_id") || "";
-  } else {
-    id =
-      transition.incomingParams.get("category_id") ||
-      transition.incomingParams.get("section_id") ||
-      transition.incomingParams.get("budget_id") ||
-      "";
-  }
+  const params = router.getActiveParams(PATH.BUDGET_CONFIG);
+  const id = params.get("category_id") || params.get("section_id") || params.get("budget_id") || "";
 
   const defaultBudgetLike = categories.get(id) || sections.get(id) || budgets.get(id);
   const [budgetLike, setBudgetLike] = useState<BudgetFamily | undefined>(defaultBudgetLike);
@@ -94,8 +85,7 @@ export const BudgetConfigPage = () => {
     // sync would silently flip it OFF. Per Hoie: toggle = persisted
     // intent, period.
     const defaultIsSyncInput =
-      budgetLike.type !== "category" &&
-      budgetLike.capacities.some((c) => c.is_synced === true);
+      budgetLike.type !== "category" && budgetLike.capacities.some((c) => c.is_synced === true);
 
     setNameInput(name);
     setCapacitiesInput(defaultCapInput);
@@ -115,8 +105,7 @@ export const BudgetConfigPage = () => {
   const defaultCapInput =
     budgetLike && allDates?.map((d) => budgetLike.getActiveCapacity(d || new Date(0)));
   const defaultIsSyncInput =
-    budgetLike?.type !== "category" &&
-    !!budgetLike?.capacities.some((c) => c.is_synced === true);
+    budgetLike?.type !== "category" && !!budgetLike?.capacities.some((c) => c.is_synced === true);
 
   const [nameInput, setNameInput] = useState(name);
   const [capacitiesInput, setCapacitiesInput] = useState<Capacity[]>(defaultCapInput || []);

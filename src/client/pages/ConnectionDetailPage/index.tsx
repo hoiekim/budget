@@ -6,10 +6,8 @@ export const ConnectionDetailPage = () => {
   const { data, router } = useAppContext();
   const { items } = data;
 
-  const { path, params, transition } = router;
-  let id: string;
-  if (path === PATH.CONNECTION_DETAIL) id = params.get("item_id") || "";
-  else id = transition.incomingParams.get("item_id") || "";
+  const params = router.getActiveParams(PATH.CONNECTION_DETAIL);
+  const id = params.get("item_id") || "";
 
   const defaultItem = items.get(id);
   const [item, setItem] = useState<Item | undefined>(defaultItem);

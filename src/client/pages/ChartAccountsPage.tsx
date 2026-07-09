@@ -17,11 +17,9 @@ import { ToggleInput, Properties, PropertyLabel, Property, Row } from "client/co
 export const ChartAccountsPage = () => {
   const { data, setData, router, viewDate } = useAppContext();
   const { charts } = data;
-  const { path, params, transition } = router;
 
-  let chart_id: string;
-  if (path === PATH.CHART_ACCOUNTS) chart_id = params.get("chart_id") || "";
-  else chart_id = transition.incomingParams.get("chart_id") || "";
+  const params = router.getActiveParams(PATH.CHART_ACCOUNTS);
+  const chart_id = params.get("chart_id") || "";
 
   const chart = charts.get(chart_id);
 
@@ -153,9 +151,7 @@ export const ChartAccountsPage = () => {
           <Row key={b.id} className="keyValue">
             <div>
               <span>{b.name}</span>
-              <span className="small">
-                &nbsp;&nbsp;{isInfinite ? "Unlimited" : capacityString}
-              </span>
+              <span className="small">&nbsp;&nbsp;{isInfinite ? "Unlimited" : capacityString}</span>
             </div>
             <ToggleInput
               defaultChecked={budget_ids.includes(b.id)}

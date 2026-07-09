@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { NewBudgetGetResponse } from "server";
 import {
   PATH,
-  ScreenType,
   call,
   useAppContext,
   useLocalStorageState,
@@ -52,22 +51,20 @@ const titleForSelection = (tokens: BudgetFilterToken[]): string => {
 };
 
 export const BudgetsPage = () => {
-  const { data, setData, router, viewDate, screenType } = useAppContext();
+  const { data, setData, router, viewDate } = useAppContext();
   const { budgets } = data;
-  const { path, params, transition } = router;
   const [budgetsOrder, setBudgetsOrder] = useLocalStorageState<string[]>("budgetsOrder", []);
-
-  const activeParams =
-    path === PATH.BUDGETS || screenType !== ScreenType.Narrow ? params : transition.incomingParams;
 
   const {
     selected: selectedFilters,
     toggle,
     clearAll,
     options,
-  } = useMultiSelectQueryFilter<BudgetFilterToken>("budget_filter", BUDGET_FILTER_LABELS, {
-    activeParams,
-  });
+  } = useMultiSelectQueryFilter<BudgetFilterToken>(
+    "budget_filter",
+    BUDGET_FILTER_LABELS,
+    PATH.BUDGETS,
+  );
 
   useEffect(() => {
     setBudgetsOrder((oldOrder) => {

@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useAppContext } from "client";
+import { PATH, useAppContext } from "client";
 
 interface FilterOption<T extends string> {
   value: T;
@@ -16,24 +16,6 @@ interface UseMultiSelectQueryFilterResult<T extends string> {
   /** Pre-zipped `{ value, label }` array for direct iteration in the JSX. Guaranteed
    * to be in sync with `selected` — the same `labels` record supplies both. */
   options: FilterOption<T>[];
-}
-
-interface Options {
-  /**
-   * Optional URL params source for READ. Narrow-screen route transitions
-   * want the OUTGOING page to keep rendering the OUTGOING selection
-   * during animation via `router.transition.incomingParams` rather than
-   * the destination URL. Follow the sibling `TransactionsPage` shape:
-   *
-   *     const activeParams = path === PATH.ACCOUNTS ||
-   *       screenType !== ScreenType.Narrow ? params : transition.incomingParams;
-   *     useMultiSelectQueryFilter("account_type", LABELS, { activeParams });
-   *
-   * The WRITER always writes through `router.params` because a
-   * toggle/clearAll during transition mid-flight should update the
-   * live URL, not the outgoing snapshot.
-   */
-  activeParams?: URLSearchParams;
 }
 
 /**
@@ -55,11 +37,11 @@ interface Options {
 export function useMultiSelectQueryFilter<T extends string>(
   paramKey: string,
   labels: Record<T, string>,
-  hookOptions?: Options,
+  targetPath: PATH,
 ): UseMultiSelectQueryFilterResult<T> {
   const { router } = useAppContext();
-  const { go, path, params } = router;
-  const readParams = hookOptions?.activeParams ?? params;
+  const { go, path, getActiveParams, params } = router;
+  const readParams = getActiveParams(targetPath);
 
   const allValues = useMemo(() => Object.keys(labels) as T[], [labels]);
 

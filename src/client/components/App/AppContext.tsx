@@ -1,11 +1,5 @@
 import { useState, useMemo, ReactNode } from "react";
-import {
-  useLocalStorageState,
-  ContextType,
-  Context,
-  useRouter,
-  reduceStatuses,
-} from "client";
+import { useLocalStorageState, ContextType, Context, useRouter, reduceStatuses } from "client";
 import { MaskedUser } from "server";
 import { Interval, ViewDate } from "common";
 import { useData, useScreenType } from "./lib";
@@ -25,7 +19,7 @@ const AppContext = ({ initialUser, children }: Props) => {
   );
 
   const [viewDate, setViewDate] = useState(new ViewDate(selectedInterval));
-  const router = useRouter();
+  const router = useRouter(screenType);
 
   const status = reduceStatuses(data?.status, calculations?.status);
 

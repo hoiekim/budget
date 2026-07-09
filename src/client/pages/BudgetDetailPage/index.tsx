@@ -28,10 +28,9 @@ export const BudgetDetailPage = () => {
   const { data, setData, calculations, router, viewDate, screenType } = useAppContext();
   const { budgets, sections } = data;
   const { budgetData } = calculations;
-  const { path, params, transition } = router;
-  let budget_id: string;
-  if (path === PATH.BUDGET_DETAIL) budget_id = params.get("budget_id") || "";
-  else budget_id = transition.incomingParams.get("budget_id") || "";
+
+  const params = router.getActiveParams(PATH.BUDGET_DETAIL);
+  const budget_id = params.get("budget_id") || "";
   const budget = budgets.get(budget_id);
 
   const [sectionsOrder, setSectionsOrder] = useLocalStorageState<string[]>(

@@ -15,7 +15,6 @@ import {
   useAppContext,
   PATH,
   useSorter,
-  ScreenType,
 } from "client";
 import {
   InvestmentTransactionHeaders,
@@ -40,7 +39,7 @@ export type TransactionsPageParams = {
 };
 
 export const TransactionsPage = () => {
-  const { data, calculations, viewDate, router, screenType, setData } = useAppContext();
+  const { data, calculations, viewDate, router, setData } = useAppContext();
   const {
     transactions,
     investmentTransactions,
@@ -53,25 +52,16 @@ export const TransactionsPage = () => {
     transfers,
   } = data;
   const { transactionFamilies } = calculations;
-  const { path, params, transition } = router;
-  const { incomingParams } = transition;
 
   const [searchValue, setSearchValue] = useState("");
 
-  // Read params from the active path's URLSearchParams — same source
-  // the rest of the page already reads from. Parsing the
-  // `transactions_type` CSV through useMemo keyed on the raw string
-  // (a primitive) so re-renders triggered by unrelated state changes
-  // don't blow the `filteredAndSorted` useMemo's cache via array
-  // reference instability.
-  const activeParams =
-    path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow ? params : incomingParams;
-  const typesRaw = activeParams.get("transactions_type");
+  const params = router.getActiveParams(PATH.TRANSACTIONS);
+  const typesRaw = params.get("transactions_type");
   const types = useMemo(() => parseTransactionsTypes(typesRaw), [typesRaw]);
-  const account_id = activeParams.get("account_id") || "";
-  const budget_id = activeParams.get("budget_id") || "";
-  const section_id = activeParams.get("section_id") || "";
-  const category_id = activeParams.get("category_id") || "";
+  const account_id = params.get("account_id") || "";
+  const budget_id = params.get("budget_id") || "";
+  const section_id = params.get("section_id") || "";
+  const category_id = params.get("category_id") || "";
 
   const account = accounts.get(account_id);
   const budget = budgets.get(budget_id);

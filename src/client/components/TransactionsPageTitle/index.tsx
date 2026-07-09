@@ -62,10 +62,6 @@ const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];
  * reversed or duplicated URL yields the same sort-preference key as the
  * in-app toggle — `?transactions_type=expenses,deposits` and
  * `deposits,expenses` must not store divergent sort keys.
- *
- * Kept for `TransactionsPage`'s transition-aware read (`activeParams`
- * may be `incomingParams` during narrow-screen route transitions off
- * `/transactions`, which the URL-first hook can't see).
  */
 export const parseTransactionsTypes = (raw: string | null): TransactionsPageType[] => {
   if (!raw) return [];
@@ -96,18 +92,7 @@ export const TransactionsPageTitle = ({
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
   const { account, budget, section, category } = filters;
-  const { router, screenType } = useAppContext();
-  const { path, params, transition } = router;
-
-  // Narrow-screen transitions off `/transactions` still render this
-  // component while `path` has already flipped to the destination —
-  // read from `transition.incomingParams` in that window so the outgoing
-  // dropdown label doesn't snap to "All Transactions" mid-animation.
-  // TransactionsPage uses the same shape for its own filter logic.
-  const activeParams =
-    path === PATH.TRANSACTIONS || screenType !== ScreenType.Narrow
-      ? params
-      : transition.incomingParams;
+  const { screenType } = useAppContext();
 
   // URL is the source of truth for the type filter. The dropdown reads
   // and writes through the same hook, so `toggle` / `clearAll` mutate
@@ -115,11 +100,12 @@ export const TransactionsPageTitle = ({
   // that param on the next render — closing the loop within this
   // component. The `options` array is derived from the same `TYPE_LABELS`
   // record the hook takes, so values and labels can't drift out of sync.
-  const { selected: selectedTypes, toggle, clearAll, options } = useMultiSelectQueryFilter(
-    "transactions_type",
-    TYPE_LABELS,
-    { activeParams },
-  );
+  const {
+    selected: selectedTypes,
+    toggle,
+    clearAll,
+    options,
+  } = useMultiSelectQueryFilter("transactions_type", TYPE_LABELS, PATH.TRANSACTIONS);
 
   const accountName = account?.custom_name || account?.name;
   const budgetName = budget?.name;

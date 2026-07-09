@@ -10,10 +10,8 @@ export const AccountDetailPage = () => {
   const { data, router } = useAppContext();
   const { accounts } = data;
 
-  const { path, params, transition } = router;
-  let id: string;
-  if (path === PATH.ACCOUNT_DETAIL) id = params.get("account_id") || "";
-  else id = transition.incomingParams.get("account_id") || "";
+  const params = router.getActiveParams(PATH.ACCOUNT_DETAIL);
+  const id = params.get("account_id") || "";
 
   const defaultAccount = accounts.get(id);
   const [account, setAccount] = useState<Account | undefined>(defaultAccount);

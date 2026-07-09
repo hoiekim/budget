@@ -11,18 +11,15 @@ interface CreateResult {
   plaintext: string;
 }
 
-const SCOPE_OPTIONS = [
-  { value: "transactions:suggest", label: "Suggest transaction labels" },
-];
+const SCOPE_OPTIONS = [{ value: "transactions:suggest", label: "Suggest transaction labels" }];
 
 const formatDate = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString() : "Never";
 
 export const ApiKeyProperties = () => {
   const { router } = useAppContext();
-  const { path, params, transition } = router;
-  const activeParams = path === PATH.API_KEY_DETAIL ? params : transition.incomingParams;
-  const keyId = activeParams.get("key_id") || "";
+  const params = router.getActiveParams(PATH.API_KEY_DETAIL);
+  const keyId = params.get("key_id") || "";
   const isNew = !keyId;
 
   // ── Detail view (key_id set) ──────────────────────────────────────────
@@ -108,9 +105,7 @@ export const ApiKeyProperties = () => {
         <PropertyLabel>New&nbsp;Key&nbsp;—&nbsp;Save&nbsp;Now</PropertyLabel>
         <Property>
           <Row>
-            <span className="apiKeyCopyOnceTitle">
-              Copy this key — it will not be shown again.
-            </span>
+            <span className="apiKeyCopyOnceTitle">Copy this key — it will not be shown again.</span>
           </Row>
           <Row className="keyValue">
             <span className="propertyName">Key</span>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import { Timeout } from "common";
+import { ScreenType } from "./context";
 
 export type TransitionDirection = "forward" | "backward";
 
@@ -57,6 +58,7 @@ export interface ClientRouter {
      */
     slideAnchorY: number;
   };
+  getActiveParams: (targetPath: PATH) => URLSearchParams;
   go: (path: PATH, options?: GoOptions) => void;
   forward: (options?: NavigateOptions) => void;
   back: (options?: NavigateOptions) => void;
@@ -110,7 +112,7 @@ const getURLString = (path: PATH, params?: URLSearchParams) => {
   return "/" + path + (paramString ? "?" + paramString : "");
 };
 
-export const useRouter = (): ClientRouter => {
+export const useRouter = (screenType: ScreenType): ClientRouter => {
   const [path, _setPath] = useState<PATH>(getPath());
   const setPath: Dispatch<SetStateAction<PATH>> = useCallback(
     (value) => {
@@ -284,6 +286,11 @@ export const useRouter = (): ClientRouter => {
     window.history.back();
   }, []);
 
+  const getActiveParams = (targetPath: PATH) => {
+    if (path === targetPath || screenType !== ScreenType.Narrow) return params;
+    return incomingParams;
+  };
+
   return {
     path,
     params,
@@ -294,6 +301,7 @@ export const useRouter = (): ClientRouter => {
       direction: incomingPath !== path ? direction : undefined,
       slideAnchorY,
     },
+    getActiveParams,
     go,
     forward,
     back,

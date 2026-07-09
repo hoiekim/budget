@@ -14,11 +14,9 @@ export const TransactionDetailPage = () => {
   const { data, router } = useAppContext();
   const { transactions, investmentTransactions, transfers } = data;
 
-  const { path, params, transition } = router;
-  const paramsToRead =
-    path === PATH.TRANSACTION_DETAIL ? params : transition.incomingParams;
-  const transactionId = paramsToRead.get("transaction_id") || "";
-  const investmentTransactionId = paramsToRead.get("investment_transaction_id") || "";
+  const params = router.getActiveParams(PATH.TRANSACTION_DETAIL);
+  const transactionId = params.get("transaction_id") || "";
+  const investmentTransactionId = params.get("investment_transaction_id") || "";
 
   const investmentTransaction = investmentTransactionId
     ? investmentTransactions.get(investmentTransactionId)
