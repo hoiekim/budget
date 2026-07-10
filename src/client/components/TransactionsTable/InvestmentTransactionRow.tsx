@@ -1,13 +1,12 @@
 import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import { InvestmentTransaction, PATH, useAppContext } from "client";
-import { InstitutionSpan, KebabIcon } from "client/components";
+import { InstitutionSpan } from "client/components";
 
 interface Props {
   investmentTransaction: InvestmentTransaction;
-  isEditable?: boolean;
 }
 
-const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }: Props) => {
+const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
   const { id, account_id, date, name, amount, iso_currency_code } = investmentTransaction;
 
   const { data, router } = useAppContext();
@@ -17,7 +16,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
   const account = accounts.get(account_id);
   const institution_id = account?.institution_id;
 
-  const onClickKebab = () => {
+  const onClickInfo = () => {
     const params = new URLSearchParams(router.params);
     // Clear the sibling id so navigating inv-tx → tx → inv-tx doesn't
     // leave a stale transaction_id in the URL that would win the branch
@@ -29,7 +28,7 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
 
   return (
     <div className="TransactionRow">
-      <div className="transactionInfo">
+      <div className="transactionInfo" onClick={onClickInfo}>
         <div className="authorized_date bigText">
           {new LocalDate(date).toLocaleString("en-US", {
             month: "numeric",
@@ -49,15 +48,6 @@ const InvestmentTransactionRow = ({ investmentTransaction, isEditable = false }:
           {numberToCommaString(Math.abs(amount))}
         </div>
       </div>
-      {isEditable && (
-        <div className="budgetCategoryActions">
-          <div>
-            <button className="kebabButton" onClick={onClickKebab}>
-              <KebabIcon size={15} />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

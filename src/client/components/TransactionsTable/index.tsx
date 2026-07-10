@@ -20,10 +20,7 @@ export const TransactionsTable = ({ transactions }: Props) => {
   const transactionRows = transactions
     .map((e) => {
       if (e instanceof InvestmentTransaction) {
-        // isEditable surfaces the kebab — the sole entry point to
-        // PATH.TRANSACTION_DETAIL for editing a `source='manual'` inv-tx
-        // after creation.
-        return <InvestmentTransactionRow key={e.id} investmentTransaction={e} isEditable={true} />;
+        return <InvestmentTransactionRow key={e.id} investmentTransaction={e} />;
       }
       // Bundled-pair dedup applies to parent Transaction rows only —
       // SplitTransactions inherit their parent's transaction_id but
@@ -46,9 +43,7 @@ export const TransactionsTable = ({ transactions }: Props) => {
 
   return (
     <div className="TransactionsTable">
-      <div>
-        <div>{transactionRows}</div>
-      </div>
+      <div>{transactionRows}</div>
     </div>
   );
 };

@@ -284,7 +284,11 @@ const TransactionRow = ({ transaction }: Props) => {
         ) : (
           <>
             <div className="labelControls">
-              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+              <select
+                id={`budget-label-picker-${id}`}
+                value={selectedBudgetIdLabel}
+                onChange={onChangeBudgetSelect}
+              >
                 <option value="">Select Budget</option>
                 {budgetOptions}
               </select>
@@ -293,7 +297,11 @@ const TransactionRow = ({ transaction }: Props) => {
                 onClick={onClickCategoryWrapper}
                 title={isSuggested ? "Click the yellow dot to accept this suggestion" : undefined}
               >
-                <select value={selectedCategoryIdLabel} onChange={onChangeCategorySelect}>
+                <select
+                  id={`category-label-picker-${id}`}
+                  value={selectedCategoryIdLabel}
+                  onChange={onChangeCategorySelect}
+                >
                   <option value="">Select Category</option>
                   {categoryOptions}
                 </select>
