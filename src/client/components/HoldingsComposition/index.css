@@ -79,11 +79,11 @@
 }
 
 .holdingsTable .col-gain.positive {
-  color: #4ade80;
+  color: var(--greenBright);
 }
 
 .holdingsTable .col-gain.negative {
-  color: #f87171;
+  color: var(--redBright);
 }
 
 .holdingsTable .no-data {

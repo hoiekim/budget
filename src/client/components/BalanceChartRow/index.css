@@ -28,7 +28,7 @@ div.BalanceChartRow > table td.type {
 }
 
 div.BalanceChartRow > table td.type > svg {
-  color: #a3a3a3;
+  color: var(--textDim);
 }
 
 div.BalanceChartRow > table tr.sum {
@@ -63,19 +63,19 @@ div.Stacks > div.column > div.stack {
 }
 
 div.Stacks > div.column:nth-child(odd) > div.stack:nth-child(odd) {
-  background-color: #189878;
+  background-color: var(--tealBg);
 }
 
 div.Stacks > div.column:nth-child(odd) > div.stack:nth-child(even) {
-  background-color: #186888;
+  background-color: var(--tealBlueDark);
 }
 
 div.Stacks > div.column:nth-child(even) > div.stack:nth-child(odd) {
-  background-color: #f86828;
+  background-color: var(--orange);
 }
 
 div.Stacks > div.column:nth-child(even) > div.stack:nth-child(even) {
-  background-color: #ff4038;
+  background-color: var(--red);
 }
 
 div.Stacks > div.column > div.stack > span {

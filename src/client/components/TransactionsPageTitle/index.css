@@ -8,7 +8,7 @@ div.TransactionsPage > h3,
 div.TransactionsPage > div.TransactionsHead,
 div.SearchBar.active {
   position: sticky;
-  background-color: #191919ee;
+  background-color: var(--bgOverlay);
   margin: 0;
 }
 

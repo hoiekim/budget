@@ -17,8 +17,8 @@ div.TransferProperties .transferChip.transferChipConfirmed {
   border-radius: 12px;
   font-size: 13px;
   white-space: nowrap;
-  border: 1px solid #444;
-  color: #b8b8b8;
+  border: 1px solid var(--hover);
+  color: var(--textSoftLight);
 }
 
 div.TransferProperties button.unpairButton {

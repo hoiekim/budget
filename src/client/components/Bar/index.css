@@ -18,11 +18,11 @@ div.Bar > .contentWithoutPadding {
 }
 
 div.Bar.empty > .contentWithoutPadding {
-  background: repeating-linear-gradient(135deg, #292929, #292929 2px, #0000 2px, #0000 4px);
+  background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 2px, #0000 2px, #0000 4px);
 }
 
 div.Bar:not(.empty) > .contentWithoutPadding {
-  background-color: #292929;
+  background-color: var(--surface);
 }
 
 div.Bar > .contentWithoutPadding > div {
@@ -47,11 +47,11 @@ div.Bar > .contentWithoutPadding > .secondaryDottedNumerator::after {
 }
 
 div.Bar > .contentWithoutPadding > .primaryNumerator {
-  background-color: #097;
+  background-color: var(--teal);
 }
 
 div.Bar > .contentWithoutPadding > .primaryNumerator::before {
-  background-color: #fcc;
+  background-color: var(--redLightBg);
 }
 
 div.Bar > .contentWithoutPadding > .primaryNumerator.alert::before {
@@ -59,15 +59,15 @@ div.Bar > .contentWithoutPadding > .primaryNumerator.alert::before {
 }
 
 div.Bar > .contentWithoutPadding > .secondaryNumerator {
-  background-color: #041;
+  background-color: var(--deepGreen);
 }
 
 div.Bar > .contentWithoutPadding > .secondaryNumerator::before {
-  background-color: #f43;
+  background-color: var(--red);
 }
 
 div.Bar > .contentWithoutPadding > .secondaryNumerator::after {
-  background-color: #902;
+  background-color: var(--redDeep);
 }
 
 div.Bar > .contentWithoutPadding > .secondaryNumerator.alert::before {
@@ -79,11 +79,11 @@ div.Bar > .contentWithoutPadding > .secondaryNumerator.alert.more::after {
 }
 
 div.Bar > .contentWithoutPadding > .primaryDottedNumerator {
-  background: repeating-linear-gradient(135deg, #097, #097 1px, #0000 1px, #0000 2px);
+  background: repeating-linear-gradient(135deg, var(--teal), var(--teal) 1px, #0000 1px, #0000 2px);
 }
 
 div.Bar > .contentWithoutPadding > .primaryDottedNumerator::before {
-  background: repeating-linear-gradient(135deg, #fcc, #fcc 1px, #0000 1px, #0000 2px);
+  background: repeating-linear-gradient(135deg, var(--redLightBg), var(--redLightBg) 1px, #0000 1px, #0000 2px);
 }
 
 div.Bar > .contentWithoutPadding > .primaryDottedNumerator.alert::before {
@@ -91,15 +91,15 @@ div.Bar > .contentWithoutPadding > .primaryDottedNumerator.alert::before {
 }
 
 div.Bar > .contentWithoutPadding > .secondaryDottedNumerator {
-  background: repeating-linear-gradient(135deg, #041, #041 1px, #f434 1px, #f434 2px);
+  background: repeating-linear-gradient(135deg, var(--deepGreen), var(--deepGreen) 1px, var(--redSoft) 1px, var(--redSoft) 2px);
 }
 
 div.Bar > .contentWithoutPadding > .secondaryDottedNumerator::before {
-  background: repeating-linear-gradient(135deg, #f43, #f43 1px, #f434 1px, #f434 2px);
+  background: repeating-linear-gradient(135deg, var(--red), var(--red) 1px, var(--redSoft) 1px, var(--redSoft) 2px);
 }
 
 div.Bar > .contentWithoutPadding > .secondaryDottedNumerator::after {
-  background: repeating-linear-gradient(135deg, #902, #902 1px, #9024 1px, #9024 2px);
+  background: repeating-linear-gradient(135deg, var(--redDeep), var(--redDeep) 1px, var(--redDeepSoft) 1px, var(--redDeepSoft) 2px);
 }
 
 div.Bar > .contentWithoutPadding > .secondaryDottedNumerator.alert::before {

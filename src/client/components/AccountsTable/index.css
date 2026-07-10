@@ -4,7 +4,7 @@ div.AccountRow {
   font-size: 16px;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #292929;
+  border-bottom: 1px solid var(--surface);
 }
 
 div.AccountRow.threeChildren > div.accountTitle {
@@ -38,7 +38,7 @@ div.AccountRow > div.accountTitle > div.textTag > div {
 
 div.AccountRow > div.accountTitle > div.textTag > div:nth-child(2) {
   font-size: 12px;
-  color: #858585;
+  color: var(--textMuted);
   margin-top: 5px;
 }
 
@@ -63,15 +63,15 @@ div.Balance > div.Changes {
 }
 
 div.Changes.neutral {
-  color: #858585;
+  color: var(--textMuted);
 }
 
 div.Changes.positive {
-  color: #097;
+  color: var(--teal);
 }
 
 div.Changes.negative {
-  color: #f43;
+  color: var(--red);
 }
 
 div.Balance.credit > div > span:last-child {
@@ -81,7 +81,7 @@ div.Balance.credit > div > span:last-child {
 
 div.Balance.credit > div:last-child {
   font-size: 12px;
-  color: #858585;
+  color: var(--textMuted);
   margin-top: 5px;
 }
 
