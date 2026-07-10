@@ -12,6 +12,17 @@ div.TransactionsHead {
   padding: 0 10px 10px;
 }
 
+/* Local exception to the unified `.sticky` z-index 110. When the
+ * SearchBar is `.active` AND the list is scrolled past its natural
+ * offset, SearchBar and TransactionsHead share the same computed
+ * `top` and land at the same viewport y — the JSX places
+ * TransactionsHead later, so under equal z-index it would paint on
+ * top of the input. Bump SearchBar one notch so the input stays
+ * clickable while active. */
+div.SearchBar.active {
+  z-index: 111;
+}
+
 h2.TransactionsFilterTitle {
   height: 54px;
 }
