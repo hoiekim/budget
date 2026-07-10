@@ -4,7 +4,7 @@
  *
  * 🔴 The `> .propertyLabel` / `> .property` selectors are DIRECT-CHILD —
  * any wrapper between <Properties> and its label/property children strips
- * the section frame. That's the failure mode var(--blueDeep) / var(--deepGreenAlt) / PR var(--tealBlue) surfaced
+ * the section frame. That's the failure mode #326 / #472 / PR #478 surfaced
  * and the reason every Properties use must go through the typed component. */
 
 div.Properties {
