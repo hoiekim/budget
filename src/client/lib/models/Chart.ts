@@ -17,6 +17,9 @@ type ChartConfiguration =
   | FlowChartConfiguration;
 
 export class Chart {
+  static readonly apiPath = "/api/chart";
+  static readonly dataField = "charts" as const;
+
   get id() {
     return this.chart_id;
   }

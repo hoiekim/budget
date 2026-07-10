@@ -40,6 +40,9 @@ export class TransactionLabel implements JSONTransactionLabel {
 }
 
 export class Transaction implements JSONTransaction {
+  static readonly apiPath = "/api/transaction";
+  static readonly dataField = "transactions" as const;
+
   get id() {
     return this.transaction_id;
   }

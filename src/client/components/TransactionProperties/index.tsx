@@ -10,12 +10,12 @@ import {
   Data,
   SplitTransaction,
   SplitTransactionDictionary,
-  StoreName,
   Transaction,
   TransactionDictionary,
   TransactionLabel,
   useAppContext,
   useBudgetCategorySelect,
+  useMutate,
   useTransfers,
   call,
   indexedDb,
@@ -46,6 +46,7 @@ interface Props {
 
 export const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData, calculations, router } = useAppContext();
+  const transactionMutate = useMutate(Transaction);
   const transferActions = useTransfers();
   const { transactionFamilies } = calculations;
   const { accounts, sections, categories, transfers } = data;
@@ -566,16 +567,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
               <DeleteButton
                 confirmMessage="Delete this transaction? This can't be undone."
                 onClick={async () => {
-                  const r = await call.delete("/api/transaction?" + new URLSearchParams({ transaction_id }).toString());
-                  if (r.status !== "success") return;
-                  setData((oldData) => {
-                    const next = new Data(oldData);
-                    const dict = new TransactionDictionary(oldData.transactions);
-                    dict.delete(transaction_id);
-                    next.transactions = dict;
-                    indexedDb.remove(StoreName.transactions, transaction_id).catch(console.error);
-                    return next;
-                  });
+                  await transactionMutate.delete(transaction_id);
                   router.back();
                 }}
               >

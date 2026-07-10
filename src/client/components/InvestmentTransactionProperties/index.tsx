@@ -5,10 +5,10 @@ import {
   Data,
   InvestmentTransaction,
   InvestmentTransactionDictionary,
-  StoreName,
   TransactionLabel,
   useAppContext,
   useBudgetCategorySelect,
+  useMutate,
   call,
   indexedDb,
 } from "client";
@@ -29,6 +29,7 @@ interface Props {
 
 export const InvestmentTransactionProperties = ({ investmentTransaction }: Props) => {
   const { data, setData, router } = useAppContext();
+  const investmentTransactionMutate = useMutate(InvestmentTransaction);
   const { accounts, sections, categories, securities } = data;
 
   const {
@@ -451,21 +452,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
               <DeleteButton
                 confirmMessage="Delete this investment transaction? This can't be undone."
                 onClick={async () => {
-                  const r = await call.delete(
-                    "/api/investment-transaction?" +
-                      new URLSearchParams({ investment_transaction_id }).toString(),
-                  );
-                  if (r.status !== "success") return;
-                  setData((oldData) => {
-                    const next = new Data(oldData);
-                    const dict = new InvestmentTransactionDictionary(oldData.investmentTransactions);
-                    dict.delete(investment_transaction_id);
-                    next.investmentTransactions = dict;
-                    indexedDb
-                      .remove(StoreName.investmentTransactions, investment_transaction_id)
-                      .catch(console.error);
-                    return next;
-                  });
+                  await investmentTransactionMutate.delete(investment_transaction_id);
                   router.back();
                 }}
               >

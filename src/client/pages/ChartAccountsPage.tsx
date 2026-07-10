@@ -2,20 +2,18 @@ import { ChangeEventHandler } from "react";
 import { ChartType, MAX_FLOAT, numberToCommaString, UNSORTED_BUDGET_ID } from "common";
 import {
   useAppContext,
-  call,
+  useMutate,
   PATH,
-  ChartDictionary,
-  Data,
   BalanceChartConfiguration,
   Chart,
   ProjectionChartConfiguration,
   FlowChartConfiguration,
-  indexedDb,
 } from "client";
 import { ToggleInput, Properties, PropertyLabel, Property, Row } from "client/components";
 
 export const ChartAccountsPage = () => {
-  const { data, setData, router, viewDate } = useAppContext();
+  const { data, router, viewDate } = useAppContext();
+  const chartMutate = useMutate(Chart);
   const { charts } = data;
 
   const params = router.getActiveParams(PATH.CHART_ACCOUNTS);
@@ -52,21 +50,7 @@ export const ChartAccountsPage = () => {
         } else {
           updatedConfiguration = new FlowChartConfiguration(updated);
         }
-        const r = await call.post("/api/chart", { chart_id, configuration: updatedConfiguration });
-        if (r.status === "success") {
-          setData((oldData) => {
-            const newData = new Data(oldData);
-            const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
-            indexedDb.save(newChart).catch(console.error);
-            const newCharts = new ChartDictionary(newData.charts);
-            newCharts.set(chart_id, newChart);
-            newData.charts = newCharts;
-            return newData;
-          });
-        } else {
-          console.error(r.message);
-          throw new Error(r.message);
-        }
+        await chartMutate.update(new Chart({ ...chart, configuration: updatedConfiguration }));
       };
 
       return (
@@ -94,21 +78,7 @@ export const ChartAccountsPage = () => {
         type === ChartType.BALANCE
           ? new BalanceChartConfiguration(updatedFields)
           : new FlowChartConfiguration(updatedFields);
-      const r = await call.post("/api/chart", { chart_id, configuration: updatedConfiguration });
-      if (r.status === "success") {
-        setData((oldData) => {
-          const newData = new Data(oldData);
-          const newChart = new Chart({ ...chart, configuration: updatedConfiguration });
-          indexedDb.save(newChart).catch(console.error);
-          const newCharts = new ChartDictionary(newData.charts);
-          newCharts.set(chart_id, newChart);
-          newData.charts = newCharts;
-          return newData;
-        });
-      } else {
-        console.error(r.message);
-        throw new Error(r.message);
-      }
+      await chartMutate.update(new Chart({ ...chart, configuration: updatedConfiguration }));
     };
 
   // Synthetic "Others" toggle (Flow chart only) for transactions whose
