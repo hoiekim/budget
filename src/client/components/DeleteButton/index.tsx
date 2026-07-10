@@ -1,14 +1,7 @@
 import { MouseEventHandler, ReactNode } from "react";
 
 interface Props {
-  /**
-   * If set, `window.confirm(message)` gates the click — the wrapped
-   * `onClick` only fires when the user confirms. Every site in this
-   * codebase that renders a destructive button paired the button JSX
-   * with a bespoke `if (!window.confirm(...)) return;` line, so
-   * folding the gate into the component keeps the messaging
-   * consistent + removes ~8 duplicated call sites.
-   */
+  /** If set, `window.confirm(confirmMessage)` gates the click — `onClick` fires only on confirm. */
   confirmMessage?: string;
   onClick: MouseEventHandler<HTMLButtonElement>;
   /** Button label. Defaults to `"Delete"`. */
