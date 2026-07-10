@@ -288,7 +288,12 @@ export const AccountProperties = ({ account }: Props) => {
           <br />
           <Property>
             <Row className="button">
-              <DeleteButton onClick={onClickRemove}>Delete</DeleteButton>
+              <DeleteButton
+                confirmMessage="Do you want to delete this account?"
+                onClick={onClickRemove}
+              >
+                Delete
+              </DeleteButton>
             </Row>
           </Property>
         </>

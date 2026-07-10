@@ -581,7 +581,6 @@ export const HoldingProperties = () => {
   };
 
   const onClickDeleteSnap = (snap: HoldingSnapshot) => async () => {
-    if (!window.confirm("Remove this holding snapshot?")) return;
     const removedId = snap.snapshot.snapshot_id;
     const r = await call.delete(`/api/snapshots/holding?id=${removedId}`).catch(console.error);
     if (r?.status !== "success") {
@@ -817,7 +816,10 @@ export const HoldingProperties = () => {
               {edit.error && <Row className="formError">{edit.error}</Row>}
               {!isReadOnly && (
                 <Row className="button">
-                  <DeleteButton onClick={onClickDeleteSnap(snap)}>
+                  <DeleteButton
+                    confirmMessage="Remove this holding snapshot?"
+                    onClick={onClickDeleteSnap(snap)}
+                  >
                     Remove&nbsp;this&nbsp;snapshot
                   </DeleteButton>
                 </Row>

@@ -140,7 +140,9 @@ export const Configuration = () => {
           <button onClick={onClickRefresh}>Refresh</button>
         </Row>
         <Row className="button">
-          <DeleteButton onClick={logout}>Logout</DeleteButton>
+          <DeleteButton confirmMessage="Do you want to log out?" onClick={logout}>
+            Logout
+          </DeleteButton>
         </Row>
       </Property>
     </Properties>

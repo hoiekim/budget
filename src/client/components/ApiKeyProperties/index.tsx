@@ -97,7 +97,6 @@ export const ApiKeyProperties = () => {
 
   const onRevoke = async () => {
     if (!apiKey) return;
-    if (!window.confirm(`Revoke API key "${apiKey.name}"? This cannot be undone.`)) return;
     const r = await call.delete<{ revoked: boolean }>(
       `/api/api-keys?key_id=${encodeURIComponent(apiKey.key_id)}`,
     );
@@ -256,7 +255,16 @@ export const ApiKeyProperties = () => {
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
         <Row className="button">
-          <DeleteButton onClick={onRevoke}>Revoke</DeleteButton>
+          <DeleteButton
+            confirmMessage={
+              apiKey
+                ? `Revoke API key "${apiKey.name}"? This cannot be undone.`
+                : "Revoke this API key? This cannot be undone."
+            }
+            onClick={onRevoke}
+          >
+            Revoke
+          </DeleteButton>
         </Row>
         <Row className="button">
           <button type="button" onClick={goBack}>

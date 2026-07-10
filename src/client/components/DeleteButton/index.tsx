@@ -1,7 +1,10 @@
 import { MouseEventHandler, ReactNode } from "react";
 
+const DEFAULT_CONFIRM_MESSAGE = "Are you sure you want to delete this?";
+
 interface Props {
-  /** If set, `window.confirm(confirmMessage)` gates the click — `onClick` fires only on confirm. */
+  /** Prompt shown by `window.confirm` before `onClick` fires. Defaults to a
+   * generic message; every consumer should pass a specific one. */
   confirmMessage?: string;
   onClick: MouseEventHandler<HTMLButtonElement>;
   /** Button label. Defaults to `"Delete"`. */
@@ -10,18 +13,15 @@ interface Props {
   className?: string;
 }
 
-/**
- * Destructive button styled with the codebase's `delete colored` class
- * pair. Meant for use inside `<Properties>` / `<Row>` context — the
- * `div.Properties .row button.delete` CSS rule paints the text
- * `var(--darkRed)`. For the solid-fill variant sitting inside
- * `<ActionButtons>`, see that component instead (self-contained widget,
- * not extracted here).
- */
-export const DeleteButton = ({ confirmMessage, onClick, children = "Delete", className }: Props) => {
+export const DeleteButton = ({
+  confirmMessage = DEFAULT_CONFIRM_MESSAGE,
+  onClick,
+  children = "Delete",
+  className,
+}: Props) => {
   const classes = ["delete", "colored", className].filter(Boolean).join(" ");
   const handleClick: MouseEventHandler<HTMLButtonElement> = (e) => {
-    if (confirmMessage && !window.confirm(confirmMessage)) return;
+    if (!window.confirm(confirmMessage)) return;
     onClick(e);
   };
   return (
