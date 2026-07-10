@@ -306,53 +306,48 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation();
+    call
+      .delete(`/api/account?id=${account_id}`)
+      .then((r) => {
+        if (r.status === "success") {
+          setData((oldData) => {
+            const newData = new Data(oldData);
+            const newAccounts = new AccountDictionary(newData.accounts);
+            indexedDb.remove(StoreName.accounts, account_id).catch(console.error);
+            newAccounts.delete(account_id);
+            newData.accounts = newAccounts;
 
-    const confirmed = window.confirm("Do you want to delete this account?");
-
-    if (confirmed) {
-      call
-        .delete(`/api/account?id=${account_id}`)
-        .then((r) => {
-          if (r.status === "success") {
-            setData((oldData) => {
-              const newData = new Data(oldData);
-              const newAccounts = new AccountDictionary(newData.accounts);
-              indexedDb.remove(StoreName.accounts, account_id).catch(console.error);
-              newAccounts.delete(account_id);
-              newData.accounts = newAccounts;
-
-              const newTransactions = new TransactionDictionary(newData.transactions);
-              newTransactions.forEach((e) => {
-                if (e.account_id === account_id) {
-                  indexedDb.remove(StoreName.transactions, e.transaction_id).catch(console.error);
-                  newTransactions.delete(e.transaction_id);
-                }
-              });
-              newData.transactions = newTransactions;
-
-              const newAccountSnapshots = new AccountSnapshotDictionary(newData.accountSnapshots);
-              newAccountSnapshots.forEach((e) => {
-                if (e.account.account_id === account_id) {
-                  indexedDb
-                    .remove(StoreName.accountSnapshots, e.snapshot.snapshot_id)
-                    .catch(console.error);
-                  newAccountSnapshots.delete(e.snapshot.snapshot_id);
-                }
-              });
-              newData.accountSnapshots = newAccountSnapshots;
-
-              return newData;
+            const newTransactions = new TransactionDictionary(newData.transactions);
+            newTransactions.forEach((e) => {
+              if (e.account_id === account_id) {
+                indexedDb.remove(StoreName.transactions, e.transaction_id).catch(console.error);
+                newTransactions.delete(e.transaction_id);
+              }
             });
+            newData.transactions = newTransactions;
 
-            router.back();
-          } else {
-            console.error("Failed to delete account:", r.message);
-          }
-        })
-        .catch((error) => {
-          console.error("Failed to delete account:", error);
-        });
-    }
+            const newAccountSnapshots = new AccountSnapshotDictionary(newData.accountSnapshots);
+            newAccountSnapshots.forEach((e) => {
+              if (e.account.account_id === account_id) {
+                indexedDb
+                  .remove(StoreName.accountSnapshots, e.snapshot.snapshot_id)
+                  .catch(console.error);
+                newAccountSnapshots.delete(e.snapshot.snapshot_id);
+              }
+            });
+            newData.accountSnapshots = newAccountSnapshots;
+
+            return newData;
+          });
+
+          router.back();
+        } else {
+          console.error("Failed to delete account:", r.message);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to delete account:", error);
+      });
   };
 
   const onChangeTypeInput: ChangeEventHandler<HTMLSelectElement> = async (e) => {

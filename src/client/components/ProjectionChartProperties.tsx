@@ -12,6 +12,7 @@ import {
   getChartTypeName,
   indexedDb,
   StoreName,
+  DeleteButton,
   Properties,
   PropertyLabel,
   Property,
@@ -160,7 +161,6 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   }).length;
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
-    if (!window.confirm("Do you want to delete this chart?")) return;
     const r = await call.delete(`/api/chart?id=${chart_id}`);
     if (r.status === "success") {
       setData((oldData) => {
@@ -303,9 +303,9 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
         <Row className="button">
-          <button className="delete colored" onClick={onClickRemove}>
+          <DeleteButton confirmMessage="Do you want to delete this chart?" onClick={onClickRemove}>
             Delete
-          </button>
+          </DeleteButton>
         </Row>
       </Property>
     </Properties>

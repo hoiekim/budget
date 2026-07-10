@@ -9,6 +9,7 @@ import {
   ItemDictionary,
   TransactionDictionary,
   call,
+  DeleteButton,
   InstitutionSpan,
   KeyValue,
   PlaidLinkButton,
@@ -46,55 +47,50 @@ export const ConnectionProperties = ({ item }: Props) => {
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation();
+    const { item_id } = item;
+    call
+      .delete(`/api/item?id=${item_id}`)
+      .then((r) => {
+        if (r.status === "success") {
+          const accountsInItem: Account[] = [];
 
-    const confirmed = window.confirm("Do you want to remove all data in this connection?");
+          setData((oldData) => {
+            const newData = new Data(oldData);
 
-    if (confirmed) {
-      const { item_id } = item;
-      call
-        .delete(`/api/item?id=${item_id}`)
-        .then((r) => {
-          if (r.status === "success") {
-            const accountsInItem: Account[] = [];
+            const newItems = new ItemDictionary(newData.items);
+            indexedDb.remove(StoreName.items, item_id).catch(console.error);
+            newItems.delete(item_id);
+            newData.items = newItems;
 
-            setData((oldData) => {
-              const newData = new Data(oldData);
-
-              const newItems = new ItemDictionary(newData.items);
-              indexedDb.remove(StoreName.items, item_id).catch(console.error);
-              newItems.delete(item_id);
-              newData.items = newItems;
-
-              const newAccounts = new AccountDictionary(newData.accounts);
-              newAccounts.forEach((e) => {
-                if (e.item_id === item_id) accountsInItem.push(e);
-              });
-              accountsInItem.forEach((e) => {
-                indexedDb.remove(StoreName.accounts, e.account_id).catch(console.error);
-                newAccounts.delete(e.account_id);
-              });
-              newData.accounts = newAccounts;
-
-              const newTransactions = new TransactionDictionary(newData.transactions);
-              newTransactions.forEach((e) => {
-                if (accountsInItem.find((f) => e.account_id === f.account_id)) {
-                  indexedDb.remove(StoreName.transactions, e.transaction_id).catch(console.error);
-                  newTransactions.delete(e.transaction_id);
-                }
-              });
-              newData.transactions = newTransactions;
-              return newData;
+            const newAccounts = new AccountDictionary(newData.accounts);
+            newAccounts.forEach((e) => {
+              if (e.item_id === item_id) accountsInItem.push(e);
             });
+            accountsInItem.forEach((e) => {
+              indexedDb.remove(StoreName.accounts, e.account_id).catch(console.error);
+              newAccounts.delete(e.account_id);
+            });
+            newData.accounts = newAccounts;
 
-            router.back();
-          } else {
-            console.error("Failed to delete connection:", r.message);
-          }
-        })
-        .catch((error) => {
-          console.error("Failed to delete connection:", error);
-        });
-    }
+            const newTransactions = new TransactionDictionary(newData.transactions);
+            newTransactions.forEach((e) => {
+              if (accountsInItem.find((f) => e.account_id === f.account_id)) {
+                indexedDb.remove(StoreName.transactions, e.transaction_id).catch(console.error);
+                newTransactions.delete(e.transaction_id);
+              }
+            });
+            newData.transactions = newTransactions;
+            return newData;
+          });
+
+          router.back();
+        } else {
+          console.error("Failed to delete connection:", r.message);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to delete connection:", error);
+      });
   };
 
   const onClickAddManualAccount: MouseEventHandler<HTMLButtonElement> = async (e) => {
@@ -160,9 +156,12 @@ export const ConnectionProperties = ({ item }: Props) => {
           </Row>
         ) : (
           <Row className="button">
-            <button className="delete colored" onClick={onClickRemove}>
+            <DeleteButton
+              confirmMessage="Do you want to remove all data in this connection?"
+              onClick={onClickRemove}
+            >
               Delete
-            </button>
+            </DeleteButton>
           </Row>
         )}
       </Property>

@@ -21,6 +21,7 @@ import {
   indexedDb,
 } from "client";
 import {
+  DeleteButton,
   InstitutionSpan,
   KeyValue,
   Properties,
@@ -562,10 +563,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
           <br />
           <Property>
             <Row className="button">
-              <button
-                className="delete colored"
+              <DeleteButton
+                confirmMessage="Delete this transaction? This can't be undone."
                 onClick={async () => {
-                  if (!window.confirm("Delete this transaction? This can't be undone.")) return;
                   const r = await call.delete("/api/transaction?" + new URLSearchParams({ transaction_id }).toString());
                   if (r.status !== "success") return;
                   setData((oldData) => {
@@ -580,7 +580,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 }}
               >
                 Delete
-              </button>
+              </DeleteButton>
             </Row>
           </Property>
         </>

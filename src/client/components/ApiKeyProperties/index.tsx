@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiKeyJSON } from "server";
 import {
   call,
+  DeleteButton,
   KeyValue,
   PATH,
   Properties,
@@ -96,7 +97,6 @@ export const ApiKeyProperties = () => {
 
   const onRevoke = async () => {
     if (!apiKey) return;
-    if (!window.confirm(`Revoke API key "${apiKey.name}"? This cannot be undone.`)) return;
     const r = await call.delete<{ revoked: boolean }>(
       `/api/api-keys?key_id=${encodeURIComponent(apiKey.key_id)}`,
     );
@@ -255,9 +255,12 @@ export const ApiKeyProperties = () => {
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
         <Row className="button">
-          <button type="button" className="delete colored" onClick={onRevoke}>
+          <DeleteButton
+            confirmMessage={`Revoke API key "${apiKey.name}"? This cannot be undone.`}
+            onClick={onRevoke}
+          >
             Revoke
-          </button>
+          </DeleteButton>
         </Row>
         <Row className="button">
           <button type="button" onClick={goBack}>

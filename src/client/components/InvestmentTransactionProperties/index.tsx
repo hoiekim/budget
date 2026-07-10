@@ -12,7 +12,15 @@ import {
   call,
   indexedDb,
 } from "client";
-import { InstitutionSpan, KeyValue, Properties, Property, PropertyLabel, Row } from "client/components";
+import {
+  DeleteButton,
+  InstitutionSpan,
+  KeyValue,
+  Properties,
+  Property,
+  PropertyLabel,
+  Row,
+} from "client/components";
 import type { ValidateTickerResponse } from "server";
 
 interface Props {
@@ -440,10 +448,9 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
           <br />
           <Property>
             <Row className="button">
-              <button
-                className="delete colored"
+              <DeleteButton
+                confirmMessage="Delete this investment transaction? This can't be undone."
                 onClick={async () => {
-                  if (!window.confirm("Delete this investment transaction? This can't be undone.")) return;
                   const r = await call.delete(
                     "/api/investment-transaction?" +
                       new URLSearchParams({ investment_transaction_id }).toString(),
@@ -463,7 +470,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
                 }}
               >
                 Delete
-              </button>
+              </DeleteButton>
             </Row>
           </Property>
         </>

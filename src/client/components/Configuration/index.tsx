@@ -11,6 +11,7 @@ import {
   useAppContext,
   useSync,
   indexedDb,
+  DeleteButton,
   Properties,
   PropertyLabel,
   Property,
@@ -139,9 +140,9 @@ export const Configuration = () => {
           <button onClick={onClickRefresh}>Refresh</button>
         </Row>
         <Row className="button">
-          <button className="delete colored" onClick={logout}>
+          <DeleteButton confirmMessage="Do you want to log out?" onClick={logout}>
             Logout
-          </button>
+          </DeleteButton>
         </Row>
       </Property>
     </Properties>
