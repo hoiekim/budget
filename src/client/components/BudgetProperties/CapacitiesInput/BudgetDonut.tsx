@@ -34,9 +34,13 @@ const BudgetDonut = ({
   defaultCapacityInput,
   onChangeAmount,
 }: Props) => {
-  const { calculations, viewDate } = useAppContext();
+  const { calculations } = useAppContext();
   const { capacityData } = calculations;
-  const interval = viewDate.getInterval();
+  // The capacity config surface is month-only: capacities are stored/edited as
+  // `capacity.month`, `onChangeAmount` writes the raw field into `.month`, and
+  // `capacityData` sums in month units. The donut must pin month regardless of
+  // the global Year interval, or the year-scaled input feeds a month writer.
+  const interval = "month";
   const capacity = budgetLike.getActiveCapacity(date);
   const { children_total, grand_children_total } = capacityData.get(capacity.id);
   const children = budgetLike.getChildren().sort((a, b) => {
