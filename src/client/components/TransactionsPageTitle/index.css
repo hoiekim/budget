@@ -1,8 +1,16 @@
-/* TransactionsPage-specific sticky siblings. Base
- * `position: sticky; background-color; z-index` comes from the shared
- * `.sticky` utility (see `App/index.css`) applied via className on
- * each JSX element. This file only owns the per-element `top`,
- * padding, and layout tuning. */
+/* TransactionsPage sticky siblings. Base `position: sticky` +
+ * translucent overlay background come from the shared `.sticky`
+ * utility (see `App/index.css`); this file owns the per-element
+ * `top`, layered z-index, padding, and layout tuning.
+ *
+ * z-index layering matches the visual stack: h2 filter title (top)
+ * > h3 subtitle > SearchBar (when active) > TransactionsHead
+ * (bottom). The `.sticky` utility defaults everything to 110, but
+ * those siblings do overlap on scroll — the SearchBar-active +
+ * scrolled case in particular puts SearchBar and TransactionsHead
+ * at the same computed `top`, so per-element z-index is
+ * load-bearing (see PR #629 review). */
+
 div.TransactionsPage > h3,
 div.SearchBar.active {
   margin: 0;
@@ -10,26 +18,18 @@ div.SearchBar.active {
 
 div.TransactionsHead {
   padding: 0 10px 10px;
-}
-
-/* Local exception to the unified `.sticky` z-index 110. When the
- * SearchBar is `.active` AND the list is scrolled past its natural
- * offset, SearchBar and TransactionsHead share the same computed
- * `top` and land at the same viewport y — the JSX places
- * TransactionsHead later, so under equal z-index it would paint on
- * top of the input. Bump SearchBar one notch so the input stays
- * clickable while active. */
-div.SearchBar.active {
-  z-index: 111;
+  z-index: 108;
 }
 
 h2.TransactionsFilterTitle {
   height: 54px;
+  z-index: 111;
 }
 
 div.TransactionsPage > h3 {
   top: 105px;
   padding: 0 10px 10px;
+  z-index: 110;
 }
 
 div.wideScreen div.TransactionsPage > h3 {
@@ -43,6 +43,7 @@ div.SearchBar {
   justify-content: center;
   align-items: center;
   padding: 0 10px 10px;
+  z-index: 109;
 }
 
 div.SearchBar > input {
