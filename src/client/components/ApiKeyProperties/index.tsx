@@ -256,11 +256,7 @@ export const ApiKeyProperties = () => {
       <Property>
         <Row className="button">
           <DeleteButton
-            confirmMessage={
-              apiKey
-                ? `Revoke API key "${apiKey.name}"? This cannot be undone.`
-                : "Revoke this API key? This cannot be undone."
-            }
+            confirmMessage={`Revoke API key "${apiKey.name}"? This cannot be undone.`}
             onClick={onRevoke}
           >
             Revoke
