@@ -1,5 +1,5 @@
-import { FormEventHandler, useMemo, useState } from "react";
-import { ViewDate } from "common";
+import { Fragment, FormEventHandler, useMemo, useRef, useState } from "react";
+import { getDateString, LocalDate } from "common";
 import {
   call,
   PATH,
@@ -19,20 +19,7 @@ import {
   KeyValue,
 } from "client";
 import { SnapshotPostResponse } from "server";
-
-const toDateInputValue = (d: Date) => d.toISOString().split("T")[0];
-
-const toIsoDateInput = (raw: string | null | undefined): string => {
-  if (!raw) return "";
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? raw.slice(0, 10) : toDateInputValue(date);
-};
-
-/** A snapshot belongs on the page when its date falls inside the current view range. */
-const isInRange = (isoDate: string, viewDate: ViewDate) => {
-  const d = new Date(isoDate);
-  return d >= viewDate.getStartDate() && d <= viewDate.getEndDate();
-};
+import { dateInputValue, isInRange, hasDateCollision } from "./lib";
 
 interface RowEdit {
   value: string;
@@ -53,11 +40,26 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
 
   const account = accounts.get(accountId);
 
+  // Every snapshot for this account (id + date), for one-per-day collision
+  // checks — not scoped to the view range, since a date edit can move a
+  // snapshot onto a day outside the current window.
+  const accountSnaps = useMemo(() => {
+    const all: { id: string; date: string }[] = [];
+    accountSnapshots.forEach((snap) => {
+      if (snap.account.account_id === accountId) {
+        all.push({ id: snap.snapshot.snapshot_id, date: snap.snapshot.date });
+      }
+    });
+    return all;
+  }, [accountSnapshots, accountId]);
+
   const bucket = useMemo(() => {
+    const start = viewDate.getStartDate();
+    const end = viewDate.getEndDate();
     const list: AccountSnapshot[] = [];
     accountSnapshots.forEach((snap) => {
       if (snap.account.account_id !== accountId) return;
-      if (!isInRange(snap.snapshot.date, viewDate)) return;
+      if (!isInRange(snap.snapshot.date, start, end)) return;
       list.push(snap);
     });
     return list.sort((a, b) => (a.snapshot.date < b.snapshot.date ? 1 : -1));
@@ -65,8 +67,9 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
 
   const [edits, setEdits] = useState<Record<string, RowEdit>>({});
   const [addValue, setAddValue] = useState("");
-  const [addDate, setAddDate] = useState(toDateInputValue(viewDate.getEndDate()));
+  const [addDate, setAddDate] = useState(getDateString(viewDate.getEndDate()));
   const [addError, setAddError] = useState("");
+  const saving = useRef<Set<string>>(new Set());
 
   const goBack = () => {
     const params = new URLSearchParams();
@@ -79,51 +82,70 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
 
   const saveSnapshot = async (snap: AccountSnapshot, edit: RowEdit) => {
     const oldId = snap.snapshot.snapshot_id;
+    const originalValue = String(snap.account.balances.current ?? "");
+    const dateChanged = dateInputValue(snap.snapshot.date) !== edit.date;
+    // No-op check first, so blurring an untouched row (incl. a null balance
+    // rendered as "") never trips the numeric validation below.
+    if (edit.value === originalValue && !dateChanged) return;
+
     const numericValue = parseFloat(edit.value);
     if (Number.isNaN(numericValue)) return setRowError(oldId, "Balance must be a number");
     if (!edit.date) return setRowError(oldId, "Date is required");
-
-    const newDate = new Date(edit.date).toISOString();
-    const noChange =
-      numericValue === snap.account.balances.current &&
-      toIsoDateInput(snap.snapshot.date) === edit.date;
-    if (noChange) return;
-
-    const newAccount = new Account({
-      ...snap.account,
-      balances: { ...snap.account.balances, current: numericValue },
-    });
-    const r = await call
-      .post<SnapshotPostResponse>("/api/snapshot", {
-        account: newAccount,
-        snapshot: { date: newDate },
-      })
-      .catch(console.error);
-    const newId = r?.body?.snapshot_id;
-    if (r?.status !== "success" || !newId) {
-      return setRowError(oldId, r?.message || "Failed to save snapshot");
+    if (dateChanged && hasDateCollision(accountSnaps, edit.date, oldId)) {
+      return setRowError(oldId, "A snapshot already exists on that date");
     }
+    if (saving.current.has(oldId)) return;
+    saving.current.add(oldId);
 
-    // The account snapshot id is derived from `${account_id}-${date}`, so a
-    // date edit lands under a new id — drop the stale row it left behind.
-    if (newId !== oldId) await call.delete(`/api/snapshot?id=${oldId}`).catch(console.error);
-
-    setData((oldData) => {
-      const newData = new Data(oldData);
-      const next = new AccountSnapshotDictionary(newData.accountSnapshots);
-      if (newId !== oldId) {
-        next.delete(oldId);
-        indexedDb.remove(StoreName.accountSnapshots, oldId).catch(console.error);
-      }
-      const newSnapshot = new AccountSnapshot({
-        snapshot: new Snapshot({ snapshot_id: newId, date: newDate }),
-        account: newAccount,
+    try {
+      // Bare `YYYY-MM-DD` — the server's `LocalDate` reads it as local
+      // midnight, so the derived `${account_id}-${YYYYMMDD}` id lands on the
+      // day the user picked (an ISO string would shift it a day in PST).
+      const newDate = new LocalDate(edit.date).toISOString();
+      const newAccount = new Account({
+        ...snap.account,
+        balances: { ...snap.account.balances, current: numericValue },
       });
-      next.set(newId, newSnapshot);
-      indexedDb.save(newSnapshot).catch(console.error);
-      newData.accountSnapshots = next;
-      return newData;
-    });
+      const r = await call
+        .post<SnapshotPostResponse>("/api/snapshot", {
+          account: newAccount,
+          snapshot: { date: edit.date },
+        })
+        .catch(console.error);
+      const newId = r?.body?.snapshot_id;
+      if (r?.status !== "success" || !newId) {
+        return setRowError(oldId, r?.message || "Failed to save snapshot");
+      }
+
+      // A date edit lands under a new id — only evict the stale row once the
+      // server confirms its deletion, so a failed DELETE can't desync the
+      // cache from the server (which would resurrect it on the next sync).
+      let oldDeleted = false;
+      if (newId !== oldId) {
+        const dr = await call.delete(`/api/snapshot?id=${oldId}`).catch(console.error);
+        oldDeleted = dr?.status === "success";
+        if (!oldDeleted) setRowError(oldId, "Saved, but failed to remove the old-date snapshot");
+      }
+
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        const next = new AccountSnapshotDictionary(newData.accountSnapshots);
+        if (newId !== oldId && oldDeleted) {
+          next.delete(oldId);
+          indexedDb.remove(StoreName.accountSnapshots, oldId).catch(console.error);
+        }
+        const newSnapshot = new AccountSnapshot({
+          snapshot: new Snapshot({ snapshot_id: newId, date: newDate }),
+          account: newAccount,
+        });
+        next.set(newId, newSnapshot);
+        indexedDb.save(newSnapshot).catch(console.error);
+        newData.accountSnapshots = next;
+        return newData;
+      });
+    } finally {
+      saving.current.delete(oldId);
+    }
   };
 
   const deleteSnapshot = (snap: AccountSnapshot) => async () => {
@@ -147,8 +169,11 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
     const numericValue = parseFloat(addValue);
     if (Number.isNaN(numericValue)) return setAddError("Balance must be a number");
     if (!addDate) return setAddError("Date is required");
+    if (hasDateCollision(accountSnaps, addDate, "")) {
+      return setAddError("A snapshot already exists on that date");
+    }
 
-    const newDate = new Date(addDate).toISOString();
+    const newDate = new LocalDate(addDate).toISOString();
     const newAccount = new Account({
       ...account,
       balances: { ...account.balances, current: numericValue },
@@ -156,7 +181,7 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
     const r = await call
       .post<SnapshotPostResponse>("/api/snapshot", {
         account: newAccount,
-        snapshot: { date: newDate },
+        snapshot: { date: addDate },
       })
       .catch(console.error);
     const newId = r?.body?.snapshot_id;
@@ -199,41 +224,46 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
         const id = snap.snapshot.snapshot_id;
         const edit = edits[id] ?? {
           value: String(snap.account.balances.current ?? ""),
-          date: toIsoDateInput(snap.snapshot.date),
+          date: dateInputValue(snap.snapshot.date),
           error: "",
         };
         const setEdit = (patch: Partial<RowEdit>) =>
           setEdits((prev) => ({ ...prev, [id]: { ...edit, ...patch } }));
+        // Fragment keeps each per-snapshot <PropertyLabel> + <Property> pair as
+        // DIRECT children of <Properties> so the `div.Properties > .propertyLabel`
+        // / `> .property` direct-child styling applies (no wrapper div).
         return (
-          <Property key={id}>
+          <Fragment key={id}>
             <PropertyLabel>Snapshot&nbsp;{idx + 1}</PropertyLabel>
-            <KeyValue name="Balance">
-              <input
-                type="number"
-                step="any"
-                value={edit.value}
-                onChange={(e) => setEdit({ value: e.target.value, error: "" })}
-                onBlur={() => saveSnapshot(snap, edit)}
-              />
-            </KeyValue>
-            <KeyValue name="Date">
-              <input
-                type="date"
-                value={edit.date}
-                onChange={(e) => setEdit({ date: e.target.value, error: "" })}
-                onBlur={() => saveSnapshot(snap, edit)}
-              />
-            </KeyValue>
-            {edit.error && <Row className="formError">{edit.error}</Row>}
-            <Row className="button">
-              <DeleteButton
-                confirmMessage="Delete this account snapshot?"
-                onClick={deleteSnapshot(snap)}
-              >
-                Delete&nbsp;this&nbsp;snapshot
-              </DeleteButton>
-            </Row>
-          </Property>
+            <Property>
+              <KeyValue name="Balance">
+                <input
+                  type="number"
+                  step="any"
+                  value={edit.value}
+                  onChange={(e) => setEdit({ value: e.target.value, error: "" })}
+                  onBlur={() => saveSnapshot(snap, edit)}
+                />
+              </KeyValue>
+              <KeyValue name="Date">
+                <input
+                  type="date"
+                  value={edit.date}
+                  onChange={(e) => setEdit({ date: e.target.value, error: "" })}
+                  onBlur={() => saveSnapshot(snap, edit)}
+                />
+              </KeyValue>
+              {edit.error && <Row className="formError">{edit.error}</Row>}
+              <Row className="button">
+                <DeleteButton
+                  confirmMessage="Delete this account snapshot?"
+                  onClick={deleteSnapshot(snap)}
+                >
+                  Delete&nbsp;this&nbsp;snapshot
+                </DeleteButton>
+              </Row>
+            </Property>
+          </Fragment>
         );
       })}
 
