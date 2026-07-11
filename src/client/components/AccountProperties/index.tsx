@@ -134,6 +134,12 @@ export const AccountProperties = ({ account }: Props) => {
     router.go(PATH.CONNECTION_DETAIL, { params });
   };
 
+  const onClickSnapshots = () => {
+    const params = new URLSearchParams();
+    params.append("account_id", account_id);
+    router.go(PATH.SNAPSHOTS, { params });
+  };
+
   const latestViewDate = new ViewDate(viewDate.getInterval());
   const isBalanceInputDisabled =
     !isManualAccount && viewDate.getEndDate() >= latestViewDate.getEndDate();
@@ -281,6 +287,7 @@ export const AccountProperties = ({ account }: Props) => {
       <PropertyLabel>Navigate</PropertyLabel>
       <Property>
         <ButtonRow onClick={onClickConnectionDetail}>See&nbsp;Connection&nbsp;Details</ButtonRow>
+        <ButtonRow onClick={onClickSnapshots}>Manage&nbsp;Snapshots</ButtonRow>
         {screenType === ScreenType.Narrow && (
           <ButtonRow onClick={onClickTransactions}>See&nbsp;Transactions</ButtonRow>
         )}
