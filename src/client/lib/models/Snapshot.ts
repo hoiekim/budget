@@ -39,6 +39,8 @@ export class AccountSnapshot implements JSONAccountSnapshot {
 }
 
 export class HoldingSnapshot implements JSONHoldingSnapshot {
+  static readonly apiPath = "/api/snapshots/holding";
+
   get id() {
     return this.snapshot.snapshot_id;
   }

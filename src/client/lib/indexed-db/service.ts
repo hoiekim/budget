@@ -401,7 +401,7 @@ export const saveAllCalculations = async (data: Calculations) => {
   ]);
 };
 
-type StoredModel =
+export type StoredModel =
   | Account
   | Holding
   | Security

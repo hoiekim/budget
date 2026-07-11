@@ -24,7 +24,7 @@ export const deleteInvestmentTransactionRoute = new Route(
     const { user } = req.session;
     if (!user) return { status: "failed", message: "Request user is not authenticated." };
 
-    const idResult = requireQueryString(req, "investment_transaction_id");
+    const idResult = requireQueryString(req, "id");
     if (!idResult.success) return validationError(idResult.error!);
     const investment_transaction_id = idResult.data!;
 

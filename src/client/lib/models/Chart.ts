@@ -17,6 +17,8 @@ type ChartConfiguration =
   | FlowChartConfiguration;
 
 export class Chart {
+  static readonly apiPath = "/api/chart";
+
   get id() {
     return this.chart_id;
   }

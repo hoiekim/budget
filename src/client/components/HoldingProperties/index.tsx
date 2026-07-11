@@ -13,6 +13,7 @@ import {
   PATH,
   useAppContext,
   useHoldingDivergence,
+  useMutate,
   useTransactionEntry,
   buildPriceAt,
   Data,
@@ -27,7 +28,6 @@ import {
   Row,
   KeyValue,
   indexedDb,
-  StoreName,
 } from "client";
 import { CASH_TICKER } from "../HoldingsComposition";
 import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
@@ -58,6 +58,7 @@ interface SecurityInfo {
 
 export const HoldingProperties = () => {
   const { router, viewDate, data, setData, calculations } = useAppContext();
+  const holdingSnapshotMutate = useMutate(HoldingSnapshot);
 
   const activeParams = router.getActiveParams(PATH.HOLDING_DETAIL);
   const accountId = activeParams.get("account_id") || "";
@@ -582,25 +583,16 @@ export const HoldingProperties = () => {
 
   const onClickDeleteSnap = (snap: HoldingSnapshot) => async () => {
     const removedId = snap.snapshot.snapshot_id;
-    const r = await call.delete(`/api/snapshots/holding?id=${removedId}`).catch(console.error);
-    if (r?.status !== "success") {
+    try {
+      await holdingSnapshotMutate.delete(removedId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete holding";
       setSnapEdits((prev) => ({
         ...prev,
-        [removedId]: {
-          ...prev[removedId],
-          error: r?.message || "Failed to delete holding",
-        },
+        [removedId]: { ...prev[removedId], error: message },
       }));
       return;
     }
-    setData((oldData) => {
-      const newData = new Data(oldData);
-      indexedDb.remove(StoreName.holdingSnapshots, removedId).catch(console.error);
-      const next = new HoldingSnapshotDictionary(newData.holdingSnapshots);
-      next.delete(removedId);
-      newData.holdingSnapshots = next;
-      return newData;
-    });
     // If we just deleted the last underlying snapshot, the bucket is empty
     // and there's nothing more to render — go back.
     if (bucketSnapshots.length <= 1) goBackToAccount();

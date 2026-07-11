@@ -23,7 +23,7 @@ export const deleteTransactionRoute = new Route("DELETE", "/transaction", async 
   const { user } = req.session;
   if (!user) return { status: "failed", message: "Request user is not authenticated." };
 
-  const idResult = requireQueryString(req, "transaction_id");
+  const idResult = requireQueryString(req, "id");
   if (!idResult.success) return validationError(idResult.error!);
   const transaction_id = idResult.data!;
 

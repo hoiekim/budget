@@ -3,15 +3,11 @@ import { ChartType } from "common";
 import {
   FlowChart,
   Chart,
-  ChartDictionary,
-  Data,
-  call,
   PATH,
   useAppContext,
   useDebounce,
+  useMutate,
   getChartTypeName,
-  indexedDb,
-  StoreName,
   DeleteButton,
   Properties,
   PropertyLabel,
@@ -30,30 +26,17 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
   const { name, chart_id, type, configuration } = chart;
   const { account_ids } = configuration;
 
-  const { data, setData } = useAppContext();
+  const { data } = useAppContext();
   const { accounts } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [selectedType, setSelectedType] = useState<ChartType>(type);
 
   const updateDebouncer = useDebounce();
+  const mutate = useMutate(Chart);
 
-  const updateChart = async (updatedChart: Partial<Chart>) => {
-    const r = await call.post("/api/chart", { chart_id, ...updatedChart });
-    if (r.status === "success") {
-      setData((oldData) => {
-        const newData = new Data(oldData);
-        const newChart = new Chart({ ...chart, ...updatedChart });
-        indexedDb.save(newChart).catch(console.error);
-        const newCharts = new ChartDictionary(newData.charts);
-        newCharts.set(chart_id, newChart);
-        newData.charts = newCharts;
-        return newData;
-      });
-    } else {
-      console.error(r.message);
-      throw new Error(r.message);
-    }
+  const updateChart = (updatedChart: Partial<Chart>) => {
+    return mutate.update(new Chart({ ...chart, ...updatedChart }));
   };
 
   const onChangeName: ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -77,21 +60,8 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
   }).length;
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
-    const r = await call.delete(`/api/chart?id=${chart_id}`);
-    if (r.status === "success") {
-      setData((oldData) => {
-        const newData = new Data(oldData);
-        const newCharts = new ChartDictionary(newData.charts);
-        indexedDb.remove(StoreName.charts, chart_id).catch(console.error);
-        newCharts.delete(chart_id);
-        newData.charts = newCharts;
-        return newData;
-      });
-      router.back();
-    } else {
-      console.error(r.message);
-      throw new Error(r.message);
-    }
+    await mutate.delete(chart_id);
+    router.back();
   };
 
   return (
