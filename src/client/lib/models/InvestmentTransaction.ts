@@ -5,7 +5,6 @@ import { TransactionLabel } from "./Transaction";
 
 export class InvestmentTransaction implements JSONInvestmentTransaction {
   static readonly apiPath = "/api/investment-transaction";
-  static readonly dataField = "investmentTransactions" as const;
 
   get id() {
     return this.investment_transaction_id;

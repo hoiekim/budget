@@ -1,21 +1,17 @@
 import { useCallback, useMemo } from "react";
-import { call, useAppContext, indexedDb, StoreName, Data } from "client";
-import type { Dictionary } from "client/lib/models/Data";
+import { call, useAppContext, indexedDb, Data } from "client";
+import type { StoredModel } from "client/lib/indexed-db/service";
 
 /**
  * Contract every mutable client model exposes so `useMutate` can drive
- * its CRUD from just the class reference:
- *
- * - `apiPath` — POST/DELETE target under `/api`.
- * - `dataField` — the `Data` field that holds this model's dictionary.
- *   Values match `StoreName.*` verbatim (`"charts"`, `"transactions"`,
- *   …), so we don't need a separate StoreName static.
+ * its CRUD from just the class reference. Model class carries only its
+ * API root; the model → `Data` slot / `StoreName` / `Dictionary` mapping
+ * lives on `Data` itself (see `Data.dictOf` / `storeNameOf` / `set`).
  */
-export interface MutableModel<T extends { readonly id: string }> {
+export interface MutableModel<T extends StoredModel> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   new (...args: any[]): T;
   readonly apiPath: string;
-  readonly dataField: keyof Data;
 }
 
 export interface MutateApi<T> {
@@ -39,18 +35,15 @@ export interface MutateApi<T> {
  * split exists at the interface level for reader clarity at call
  * sites. Deletes go through DELETE `?id=…`.
  *
- * The state update writes back through the SAME dictionary constructor
- * that Data currently holds, so callers don't need to import the
- * per-model Dictionary class — the hook reads it off the live
- * dictionary's prototype.
+ * State updates go through `Data.dictOf(Model).clone()` + `Data.set` —
+ * the model → slot mapping lives on `Data`, so the hook body has no
+ * casts and no per-model wiring beyond `Model.apiPath`.
  *
  * Not covered here: cascading deletes (Account, Connection) that touch
  * more than one dictionary — those keep their bespoke handlers until
  * we design a cascade extension.
  */
-export const useMutate = <T extends { readonly id: string }>(
-  Model: MutableModel<T>,
-): MutateApi<T> => {
+export const useMutate = <T extends StoredModel>(Model: MutableModel<T>): MutateApi<T> => {
   const { setData } = useAppContext();
 
   const upsert = useCallback(
@@ -62,16 +55,10 @@ export const useMutate = <T extends { readonly id: string }>(
       }
       setData((oldData) => {
         const newData = new Data(oldData);
-        const current = newData[Model.dataField] as unknown as Dictionary<T>;
-        const DictCtor = current.constructor as new (
-          source?: Iterable<readonly [string, T]>,
-        ) => Dictionary<T>;
-        const next = new DictCtor(current);
-        next.set(instance.id, instance);
-        indexedDb
-          .save(instance as unknown as Parameters<typeof indexedDb.save>[0])
-          .catch(console.error);
-        (newData[Model.dataField] as unknown as Dictionary<T>) = next;
+        const newDict = newData.dictOf(Model).clone();
+        newDict.set(instance.id, instance);
+        newData.set(newDict);
+        indexedDb.save(instance).catch(console.error);
         return newData;
       });
     },
@@ -87,22 +74,15 @@ export const useMutate = <T extends { readonly id: string }>(
       }
       setData((oldData) => {
         const newData = new Data(oldData);
-        const current = newData[Model.dataField] as unknown as Dictionary<T>;
-        const DictCtor = current.constructor as new (
-          source?: Iterable<readonly [string, T]>,
-        ) => Dictionary<T>;
-        const next = new DictCtor(current);
-        next.delete(id);
-        indexedDb.remove(Model.dataField as StoreName, id).catch(console.error);
-        (newData[Model.dataField] as unknown as Dictionary<T>) = next;
+        const newDict = newData.dictOf(Model).clone();
+        newDict.delete(id);
+        newData.set(newDict);
+        indexedDb.remove(newData.storeNameOf(Model), id).catch(console.error);
         return newData;
       });
     },
     [Model, setData],
   );
 
-  return useMemo(
-    () => ({ create: upsert, update: upsert, delete: del }),
-    [upsert, del],
-  );
+  return useMemo(() => ({ create: upsert, update: upsert, delete: del }), [upsert, del]);
 };

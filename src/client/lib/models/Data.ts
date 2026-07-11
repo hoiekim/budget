@@ -1,4 +1,5 @@
 import { assign, ValueOf, environment } from "common";
+import { StoreName } from "client/lib/indexed-db/accessor";
 import { Account } from "./Account";
 import { Holding, Institution, Security, Status } from "./miscellaneous";
 import { BudgetFamily, BudgetFamilyType } from "./BudgetFamily";
@@ -12,6 +13,8 @@ import { Item } from "./Item";
 import { Chart } from "./Chart";
 import { AccountSnapshot, HoldingSnapshot, SecuritySnapshot } from "./Snapshot";
 import type { TransferPair } from "server";
+import type { MutableModel } from "client/lib/hooks/useMutate";
+import type { StoredModel } from "client/lib/indexed-db/service";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class Dictionary<T = any, S extends Dictionary<T> = any> extends Map<string, T> {
@@ -235,6 +238,53 @@ export class Data {
   update = (init: Partial<Data>) => {
     assign(this, init);
   };
+
+  /** Fetch a Model's dictionary from this `Data`. Overloads keep call
+   *  sites precisely typed (`data.dictOf(Chart)` → `ChartDictionary`,
+   *  etc.); the impl dispatches on the class ref. Extend both the
+   *  overload list AND the impl switch to wire a new model into
+   *  `useMutate`.
+   *
+   *  Central mapping for `useMutate` — the model-to-slot dispatch lives
+   *  here alongside the field declarations, so a new model only needs
+   *  entries in `dictOf` / `storeNameOf` / `set` below (no per-model
+   *  static plumbing on the Model class itself). */
+  dictOf(Model: typeof Chart): ChartDictionary;
+  dictOf(Model: typeof Transaction): TransactionDictionary;
+  dictOf(Model: typeof InvestmentTransaction): InvestmentTransactionDictionary;
+  dictOf(Model: typeof HoldingSnapshot): HoldingSnapshotDictionary;
+  dictOf<T extends StoredModel>(Model: MutableModel<T>): Dictionary<T>;
+  dictOf<T extends StoredModel>(Model: MutableModel<T>): Dictionary<T> {
+    if (Model === Chart) return this.charts as unknown as Dictionary<T>;
+    if (Model === Transaction) return this.transactions as unknown as Dictionary<T>;
+    if (Model === InvestmentTransaction)
+      return this.investmentTransactions as unknown as Dictionary<T>;
+    if (Model === HoldingSnapshot) return this.holdingSnapshots as unknown as Dictionary<T>;
+    throw new Error(`Data.dictOf: no dictionary for ${Model.name}`);
+  }
+
+  /** IDB `StoreName` for a Model — same inline mapping shape as
+   *  `dictOf`. Kept here (not on the Model class) so all model →
+   *  slot / store wiring lives in this one file. */
+  storeNameOf<T extends StoredModel>(Model: MutableModel<T>): StoreName {
+    if (Model === Chart) return StoreName.charts;
+    if (Model === Transaction) return StoreName.transactions;
+    if (Model === InvestmentTransaction) return StoreName.investmentTransactions;
+    if (Model === HoldingSnapshot) return StoreName.holdingSnapshots;
+    throw new Error(`Data.storeNameOf: no store for ${Model.name}`);
+  }
+
+  /** Write a Dictionary back to its slot. `instanceof` dispatch so
+   *  callers don't need to pass the Model class again — the Dictionary
+   *  knows its own type via its constructor. */
+  set(dict: Dictionary): void {
+    if (dict instanceof ChartDictionary) this.charts = dict;
+    else if (dict instanceof TransactionDictionary) this.transactions = dict;
+    else if (dict instanceof InvestmentTransactionDictionary)
+      this.investmentTransactions = dict;
+    else if (dict instanceof HoldingSnapshotDictionary) this.holdingSnapshots = dict;
+    else throw new Error(`Data.set: unknown dictionary ${dict.constructor.name}`);
+  }
 }
 
 export const globalData = new Data();
