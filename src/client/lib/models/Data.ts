@@ -66,7 +66,13 @@ export class Dictionary<T = any, S extends Dictionary<T> = any> extends Map<stri
     return clone;
   };
 
-  clone = () => new Dictionary<T>(this) as S;
+  // Construct via `this.constructor`, not `new Dictionary(...)`, so the clone
+  // keeps the concrete subclass — `Data.set` dispatches on `instanceof`, and a
+  // base-Dictionary clone would fall through to its `unknown dictionary` throw.
+  clone = (): S => {
+    const Ctor = this.constructor as new (init: Iterable<readonly [string, T]>) => S;
+    return new Ctor(this);
+  };
 
   override set = (key: string, value: T) => {
     if (environment === "server") {
