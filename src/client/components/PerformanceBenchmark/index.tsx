@@ -320,14 +320,20 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     txnExcessSecurityCount,
   } = computed;
 
-  // A steady contributor (≥2 in-window purchases) whose money-weighted return
-  // trails the benchmark's time-weighted return is seeing the effect of *when*
-  // the money went in — later dollars had less time to compound — not weaker
-  // security selection. Shown only when that misread is actually possible: a
-  // negative gap with a multi-contribution stream. A positive gap needs no
-  // such disclaimer.
+  // For a steady contributor (≥2 in-window purchases), part of a negative gap
+  // is dollar-weighting: later contributions had less time to compound, so the
+  // money-weighted return trails the benchmark's time-weighted return even for
+  // identical holdings. That mechanism only pulls the gap *negative* when the
+  // benchmark ROSE over the window — in a falling window steady buying is
+  // cheaper and timing pushes the gap positive, so the caption would be
+  // backwards. Gate on a rising benchmark accordingly. (The gap still mixes
+  // selection and timing, so the copy says "part of", not "all".)
   const showDollarWeightingCaption =
-    contributionCount >= 2 && gapPct !== null && gapPct < 0;
+    contributionCount >= 2 &&
+    gapPct !== null &&
+    gapPct < 0 &&
+    benchmark !== null &&
+    benchmark.cumulative > 0;
 
   // Every value cell renders the same shape: a "total" line on top and, if
   // annualization isn't suppressed for short windows, a per-year line under
@@ -465,9 +471,10 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
 
         {showDollarWeightingCaption && (
           <div className="performanceCaption">
-            Steady contributions pull your money-weighted return below the
-            benchmark&apos;s time-weighted return even with identical holdings —
-            the gap reflects when you invested (dollar-weighting), not weaker
+            With steady contributions in a rising market, part of this gap is
+            dollar-weighting — later contributions had less time to compound, so
+            your money-weighted return trails the benchmark&apos;s time-weighted
+            return even for identical holdings — rather than necessarily weaker
             selection.
           </div>
         )}
