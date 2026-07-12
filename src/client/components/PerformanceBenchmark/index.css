@@ -111,3 +111,10 @@
   color: var(--amber);
   cursor: help;
 }
+
+.performanceCaption {
+  font-size: 0.75em;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+  line-height: 1.35;
+}

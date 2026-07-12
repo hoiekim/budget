@@ -228,6 +228,10 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
       vStart,
       vEnd,
       flowCount: flows.length,
+      // In-window purchases (positive flows). ≥2 signals a steady-
+      // contribution (DCA) pattern, which dollar-weights the MWR — see the
+      // caption render.
+      contributionCount: flows.filter((f) => f.amount > 0).length,
       yearsInWindow,
       mwr,
       mwrGain,
@@ -311,9 +315,19 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     gapDollars,
     suppressAnnualized,
     isClamped,
+    contributionCount,
     divergentSecurityCount,
     txnExcessSecurityCount,
   } = computed;
+
+  // A steady contributor (≥2 in-window purchases) whose money-weighted return
+  // trails the benchmark's time-weighted return is seeing the effect of *when*
+  // the money went in — later dollars had less time to compound — not weaker
+  // security selection. Shown only when that misread is actually possible: a
+  // negative gap with a multi-contribution stream. A positive gap needs no
+  // such disclaimer.
+  const showDollarWeightingCaption =
+    contributionCount >= 2 && gapPct !== null && gapPct < 0;
 
   // Every value cell renders the same shape: a "total" line on top and, if
   // annualization isn't suppressed for short windows, a per-year line under
@@ -448,6 +462,15 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
             </span>
           )}
         </div>
+
+        {showDollarWeightingCaption && (
+          <div className="performanceCaption">
+            Steady contributions pull your money-weighted return below the
+            benchmark&apos;s time-weighted return even with identical holdings —
+            the gap reflects when you invested (dollar-weighting), not weaker
+            selection.
+          </div>
+        )}
       </Property>
     </>
   );
