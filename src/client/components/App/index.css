@@ -16,6 +16,18 @@ html {
   color-scheme: light dark;
 }
 
+/* Shared sticky-header rule. `top` and any padding/height are
+ * per-consumer — this only owns the pattern's invariants (sticky
+ * positioning, translucent overlay background, and a unified stacking
+ * level). Per Hoie 2026-07-09, all sticky headers share z-index 110
+ * since they never visually overlap — the intent is "these are the
+ * sticky layer," not a bespoke ordering. */
+.sticky {
+  position: sticky;
+  background-color: var(--bgOverlay);
+  z-index: 110;
+}
+
 body {
   width: 100%;
   margin: 0;

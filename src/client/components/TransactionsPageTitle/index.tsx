@@ -168,7 +168,7 @@ export const TransactionsPageTitle = ({
         ))}
       </PageFilterTitle>
       {!!subtitle && (
-        <h3>
+        <h3 className="sticky">
           <span>{toTitleCase(subtitle)}</span>
         </h3>
       )}

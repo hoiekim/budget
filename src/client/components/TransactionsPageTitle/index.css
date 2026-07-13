@@ -1,14 +1,18 @@
-/* TransactionsPage-specific sticky rules. Base sticky/padding on `h2`
- * comes from `<PageTitle>`; button + dropdown chrome comes from
- * `<PageFilterTitle>`. Everything below layers TxPage-specific overrides
- * (fixed h2 height, higher z-index because SearchBar/TransactionsHead
- * sit visually below the h2) and the sticky siblings (h3 subtitle,
- * TransactionsHead, active SearchBar). */
+/* TransactionsPage sticky siblings. Base `position: sticky` +
+ * translucent overlay background come from the shared `.sticky`
+ * utility (see `App/index.css`); this file owns the per-element
+ * `top`, layered z-index, padding, and layout tuning.
+ *
+ * z-index layering matches the visual stack: h2 filter title (top)
+ * > h3 subtitle > SearchBar (when active) > TransactionsHead
+ * (bottom). The `.sticky` utility defaults everything to 110, but
+ * those siblings do overlap on scroll — the SearchBar-active +
+ * scrolled case in particular puts SearchBar and TransactionsHead
+ * at the same computed `top`, so per-element z-index is
+ * load-bearing (see PR #629 review). */
+
 div.TransactionsPage > h3,
-div.TransactionsPage > div.TransactionsHead,
 div.SearchBar.active {
-  position: sticky;
-  background-color: var(--bgOverlay);
   margin: 0;
 }
 

@@ -60,7 +60,7 @@ export const PageFilterTitle = ({
   };
 
   return (
-    <h2 className={"PageTitle PageFilterTitle" + (className ? " " + className : "")}>
+    <h2 className={"PageTitle PageFilterTitle sticky" + (className ? " " + className : "")}>
       <button onClick={toggle} ref={buttonRef}>
         <span>{label}</span>
         <ChevronDownIcon size={15} />
