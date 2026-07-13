@@ -12,6 +12,7 @@ export * from "./ErrorBoundary";
 export * from "./PlaidLinkContext";
 export * from "./PlaidLinkButton";
 export * from "./SimpleFinLinkButton";
+export * from "./TransactionRowInfo";
 export * from "./TransactionsTable";
 export * from "./AccountsTable";
 export * from "./AccountProperties";
