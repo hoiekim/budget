@@ -363,7 +363,14 @@ export class BudgetData {
       ? new ViewDate("month", roll_over_start_date).getEndDate()
       : undefined;
 
-    let rolled = history.get(current.getEndDate()).rolled_over_amount;
+    // Seed with the carry INTO the current month T plus T's own spend-to-date
+    // S(T). `processTransaction` banks S(T) into the stored NEXT-month bucket
+    // (rolled_over(T+1)), while the accrual loop stops at T, so the recurrence
+    // rolled_over(T+1) = rolled_over(T) + S(T) - C(T) is completed here by
+    // reading both buckets. For a not-yet-open rollover both are 0.
+    let rolled =
+      history.get(current.getEndDate()).rolled_over_amount +
+      history.get(current.clone().next().getEndDate()).rolled_over_amount;
     const cursor = current.clone();
     while (cursor.getEndDate() < target.getEndDate()) {
       if (!startMonthEnd || cursor.getEndDate() >= startMonthEnd) {
