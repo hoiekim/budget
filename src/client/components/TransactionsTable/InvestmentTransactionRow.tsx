@@ -1,6 +1,5 @@
-import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import { InvestmentTransaction, PATH, useAppContext } from "client";
-import { InstitutionSpan } from "client/components";
+import { InstitutionSpan, TransactionRowInfo } from "client/components";
 
 interface Props {
   investmentTransaction: InvestmentTransaction;
@@ -28,26 +27,18 @@ const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
 
   return (
     <div className="TransactionRow">
-      <div className="transactionInfo" onClick={onClickInfo}>
-        <div className="authorized_date bigText">
-          {new LocalDate(date).toLocaleString("en-US", {
-            month: "numeric",
-            day: "numeric",
-          })}
+      <TransactionRowInfo
+        date={date}
+        amount={amount}
+        isoCurrency={iso_currency_code || ""}
+        onClickInfo={onClickInfo}
+      >
+        {name && <div className="smallText">{name}</div>}
+        <div className="bigText">{account?.custom_name || account?.name}</div>
+        <div className="smallText">
+          {institution_id && <InstitutionSpan institution_id={institution_id} />}
         </div>
-        <div className="merchant_name">
-          {name && <div className="smallText">{name}</div>}
-          <div className="bigText">{account?.custom_name || account?.name}</div>
-          <div className="smallText">
-            {institution_id && <InstitutionSpan institution_id={institution_id} />}
-          </div>
-        </div>
-        <div className="amount">
-          {amount < 0 && <>+&nbsp;</>}
-          {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
-          {numberToCommaString(Math.abs(amount))}
-        </div>
-      </div>
+      </TransactionRowInfo>
     </div>
   );
 };

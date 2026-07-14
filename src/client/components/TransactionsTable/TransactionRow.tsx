@@ -1,5 +1,4 @@
 import { useEffect, ChangeEventHandler, MouseEventHandler } from "react";
-import { numberToCommaString, currencyCodeToSymbol, LocalDate } from "common";
 import {
   useAppContext,
   useBudgetCategorySelect,
@@ -14,7 +13,7 @@ import {
   SplitTransactionDictionary,
   indexedDb,
 } from "client";
-import { CheckIcon } from "client/components";
+import { CheckIcon, TransactionRowInfo } from "client/components";
 import { ApiResponse } from "server";
 import TransferControls from "./TransferControls";
 
@@ -249,32 +248,24 @@ const TransactionRow = ({ transaction }: Props) => {
 
   return (
     <div className="TransactionRow">
-      <div className="transactionInfo" onClick={onClickInfo}>
-        <div className="authorized_date bigText">
-          {new LocalDate(authorized_date || date).toLocaleString("en-US", {
-            month: "numeric",
-            day: "numeric",
-          })}
-        </div>
-        <div className="merchant_name">
-          {!merchant_name && name ? (
-            <div className="bigText">{name}</div>
-          ) : (
-            <>
-              <div className="bigText">{merchant_name}</div>
-              {name && merchant_name?.toLowerCase() !== name.toLowerCase() && (
-                <div className="smallText">{name}</div>
-              )}
-            </>
-          )}
-          <div className="smallText">{account?.custom_name || account?.name}</div>
-        </div>
-        <div className="amount">
-          {amountAfterSplit < 0 && <>+&nbsp;</>}
-          {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
-          {numberToCommaString(Math.abs(amountAfterSplit))}
-        </div>
-      </div>
+      <TransactionRowInfo
+        date={authorized_date || date}
+        amount={amountAfterSplit}
+        isoCurrency={iso_currency_code || ""}
+        onClickInfo={onClickInfo}
+      >
+        {!merchant_name && name ? (
+          <div className="bigText">{name}</div>
+        ) : (
+          <>
+            <div className="bigText">{merchant_name}</div>
+            {name && merchant_name?.toLowerCase() !== name.toLowerCase() && (
+              <div className="smallText">{name}</div>
+            )}
+          </>
+        )}
+        <div className="smallText">{account?.custom_name || account?.name}</div>
+      </TransactionRowInfo>
       <div className="budgetCategoryActions">
         {suggestedPairId ? (
           <TransferControls
