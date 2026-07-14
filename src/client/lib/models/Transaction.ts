@@ -35,17 +35,13 @@ export class TransactionLabel implements JSONTransactionLabel {
   }
 
   /**
-   * Suggestion-state predicates over `category_confidence` + `category_id`,
-   * per this label's field docstring: 1 → confirmed, 0 < x < 1 → engine
-   * suggestion the user hasn't reviewed. Centralizes the check so the calc
-   * and the TransactionsPage filter read one method instead of respelling
-   * the confidence comparison at each site.
-   *
-   * These are methods on the label — not accessors keyed by transaction_id
-   * on TransactionDictionary — because the budget calc runs them on synthetic
-   * split transactions (`SplitTransaction.toTransaction()`) whose ids are NOT
-   * keys in the dictionary, so a by-id lookup would miss the split's own
-   * label. The label is always in hand, so read it directly.
+   * Suggestion-state predicates that centralize the `category_confidence`
+   * check so the calc and the TransactionsPage filter read one method instead
+   * of respelling it at each site. Methods on the label — not accessors keyed
+   * by transaction_id on TransactionDictionary — because the budget calc runs
+   * them on synthetic split transactions (`SplitTransaction.toTransaction()`)
+   * whose ids are NOT keys in the dictionary, so a by-id lookup would miss the
+   * split's own label. The label is always in hand, so read it directly.
    */
   isConfirmed(): boolean {
     return this.category_confidence === 1 && !!this.category_id;
