@@ -18,7 +18,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { deleteHoldings } = await import("./holdings");
+const { deleteHoldings, searchHoldingsByAccountId } = await import("./holdings");
 
 afterAll(restoreLeaves);
 
@@ -73,6 +73,36 @@ describe("deleteHoldings — terminator-only model (#471)", () => {
     await deleteHoldings(mockUser, ["acc-1-sec-a"]);
     const [sql, values] = mockQuery.mock.calls[0];
     expect(String(sql)).toContain("user_id");
+    expect(values).toContain("usr-1");
+  });
+});
+
+describe("searchHoldingsByAccountId — single batched query (#642)", () => {
+  // Previously this looped `holdingsTable.query` once per account_id — an N+1
+  // on the Plaid/SimpleFin sync path (one round-trip per account of an item,
+  // per user, per sync). Lock in that N accounts now resolve in ONE
+  // `account_id IN (...)` query so the cost is O(1) round-trips, not O(N).
+
+  test("N accounts issue exactly one SELECT with an IN clause", async () => {
+    await searchHoldingsByAccountId(mockUser, ["acc-1", "acc-2", "acc-3"]);
+    const selectCalls = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).toUpperCase().includes("SELECT"),
+    );
+    expect(selectCalls.length).toBe(1);
+    const [sql, values] = selectCalls[0];
+    expect(String(sql)).toContain("account_id IN (");
+    expect(values).toEqual(expect.arrayContaining(["usr-1", "acc-1", "acc-2", "acc-3"]));
+  });
+
+  test("empty input is a no-op (no SQL emitted)", async () => {
+    await searchHoldingsByAccountId(mockUser, []);
+    expect(mockQuery.mock.calls.length).toBe(0);
+  });
+
+  test("query is scoped by user_id", async () => {
+    await searchHoldingsByAccountId(mockUser, ["acc-1"]);
+    const [sql, values] = mockQuery.mock.calls[0];
+    expect(String(sql)).toContain("user_id = $1");
     expect(values).toContain("usr-1");
   });
 });
