@@ -212,6 +212,9 @@ export const snapshotsTable = createTable({
     // scan + row filter — fine for low-cardinality users but slows down
     // as snapshot history grows. See PR #470 / #445.
     { column: HOLDING_ACCOUNT_ID },
+    // `searchSnapshots` delta reads filter `WHERE user_id = ? AND updated >= ?`
+    // on every app load; the composite keeps the read O(rows-changed). See #641.
+    { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: SnapshotModel,
 });
