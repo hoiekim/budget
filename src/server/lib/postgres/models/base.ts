@@ -33,9 +33,7 @@ export type Constraints = string[];
 
 export type RowValueType = string | number | Date | boolean | null | Object;
 
-export interface IndexDefinition {
-  column: string;
-}
+export type IndexDefinition = { column: string } | { columns: string[] };
 
 export type PropertyChecker<T> = {
   [K in keyof T]: (value: unknown) => boolean;

@@ -74,7 +74,8 @@ export const initializePostgres = async (): Promise<void> => {
       await pool.query(createTableSql);
 
       for (const idx of table.indexes) {
-        const createIndexSql = buildCreateIndex(table.name, idx.column);
+        const columns = "columns" in idx ? idx.columns : idx.column;
+        const createIndexSql = buildCreateIndex(table.name, columns);
         await pool.query(createIndexSql);
       }
     }
