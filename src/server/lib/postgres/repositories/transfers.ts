@@ -26,10 +26,11 @@ export interface TransferPair {
    *  Optional because the FE's optimistic Mark-as-Transfer path mints a pair
    *  locally before the server's `updated` is known. */
   updated?: string | null;
-  /** True for a tombstone: a soft-deleted pair returned only when the caller
-   *  passes `includeDeleted`, so the FE can evict it from its local cache.
-   *  Tombstones carry no `transactions` (the cascade may have soft-deleted
-   *  them too); `pair_id` + `is_deleted` is all the FE needs to evict. */
+  /** True for a soft-deleted pair. Returned only when the caller passes
+   *  `includeDeleted`. A soft-deleted OR `status='rejected'` pair is an
+   *  eviction signal (empty `transactions`) the FE removes from its cache —
+   *  it evicts on `is_deleted || status === 'rejected'`, so `pair_id` +
+   *  `status` + `is_deleted` is all it needs. */
   is_deleted?: boolean;
 }
 
@@ -71,37 +72,47 @@ export const getTransferPairs = async (
     { orderBy: PAIR_ID, excludeDeleted: !options.includeDeleted },
   );
 
-  // Exclude status='rejected' from the FE response: a rejected pair is
-  // user-marked "no, these don't pair" — the engine remembers it as a
-  // denylist signal but the user shouldn't see the pair in their Transfers
-  // view. Re-confirming a previously-rejected pair goes through
+  if (allPairs.length === 0) return [];
+
+  // A pair is FE-visible only when it's active AND not user-rejected. Both
+  // `is_deleted` (soft-delete / cascade) and `status='rejected'` (user marked
+  // "no, these don't pair") hide a pair from the Transfers view — rejected is
+  // transfers' second FE-hidden axis (transactions/snapshots have only
+  // `is_deleted`). Re-confirming a rejected pair goes through
   // `pairTransactions` (Mark as Transfer), which un-rejects via ON CONFLICT.
-  // Filtered in JS because Table.query expresses only equality / IN filters,
-  // not the `STATUS <> 'rejected'` inequality.
-  const pairs = allPairs.filter((p) => p.status !== "rejected");
+  // Rejection is expressed in JS because Table.query has no `<>` inequality.
+  const isVisible = (p: (typeof allPairs)[number]) =>
+    !p.is_deleted && p.status !== "rejected";
+  const visiblePairs = allPairs.filter(isVisible);
 
-  if (pairs.length === 0) return [];
+  // Under `includeDeleted`, every non-visible pair — soft-deleted OR rejected
+  // — is delivered as an eviction signal so the delta-reducing FE removes it
+  // from its local cache (it evicts on `is_deleted || status === 'rejected'`).
+  // Eviction signals need no transaction resolution: a cascade soft-delete may
+  // have soft-deleted the referenced transactions too (the active-only txn
+  // query below wouldn't find them), and `pair_id` + `status` + `is_deleted` +
+  // `updated` is all the FE needs to evict. On the default path `allPairs`
+  // already excludes soft-deleted at the SQL layer and rejected pairs are
+  // simply omitted, so there are no eviction signals — the response is
+  // active-non-rejected only, byte-for-byte the prior contract plus the
+  // additive `updated` / `is_deleted` fields.
+  const evictions = options.includeDeleted
+    ? allPairs
+        .filter((p) => !isVisible(p))
+        .map(
+          (pair): TransferPair => ({
+            pair_id: pair.pair_id,
+            status: pair.status,
+            transactions: [],
+            updated: pair.updated,
+            is_deleted: !!pair.is_deleted,
+          }),
+        )
+    : [];
 
-  // Tombstones need no transaction resolution — a cascade soft-delete may
-  // have soft-deleted the referenced transactions too, so the active-only
-  // txn query below wouldn't find them. The FE evicts on `pair_id`, so a
-  // tombstone only carries `pair_id` + `is_deleted` + `updated`.
-  const activePairs = pairs.filter((p) => !p.is_deleted);
-  const deletedPairs = pairs.filter((p) => p.is_deleted);
+  if (visiblePairs.length === 0) return evictions;
 
-  const tombstones = deletedPairs.map(
-    (pair): TransferPair => ({
-      pair_id: pair.pair_id,
-      status: pair.status,
-      transactions: [],
-      updated: pair.updated,
-      is_deleted: true,
-    }),
-  );
-
-  if (activePairs.length === 0) return tombstones;
-
-  const txnIds = activePairs.flatMap((p) => [p.transaction_id_a, p.transaction_id_b]);
+  const txnIds = visiblePairs.flatMap((p) => [p.transaction_id_a, p.transaction_id_b]);
 
   const txnModels = await transactionsTable.query(
     { [USER_ID]: user.user_id },
@@ -114,7 +125,7 @@ export const getTransferPairs = async (
     txnById.set(tx.transaction_id, tx);
   }
 
-  const active = activePairs
+  const active = visiblePairs
     .map((pair): TransferPair | null => {
       const a = txnById.get(pair.transaction_id_a);
       const b = txnById.get(pair.transaction_id_b);
@@ -129,7 +140,7 @@ export const getTransferPairs = async (
     })
     .filter((p): p is TransferPair => p !== null);
 
-  return [...active, ...tombstones];
+  return [...active, ...evictions];
 };
 
 /**

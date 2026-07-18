@@ -229,4 +229,55 @@ describe("get-transfers", () => {
     const [pairsSql] = mockQuery.mock.calls[0];
     expect(pairsSql).not.toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
   });
+
+  test("include-deleted=true delivers rejected (non-deleted) pairs as eviction signals — transfers' second FE-hidden axis", async () => {
+    // A rejected pair is not soft-deleted, but it is FE-hidden. Under the
+    // delta contract it must be delivered as an eviction signal so the
+    // reducing FE removes a pair that flipped suggested/confirmed → rejected.
+    const rejectedPairRow = {
+      pair_id: "p-rej",
+      user_id: "u-1",
+      transaction_id_a: "t-a",
+      transaction_id_b: "t-b",
+      status: "rejected",
+      created_at: "2026-05-01T00:00:00Z",
+      updated: "2026-05-04T08:00:00Z",
+      is_deleted: false,
+    };
+    mockQuery.mockResolvedValueOnce({ rows: [rejectedPairRow], rowCount: 1 });
+
+    const result = await getTransfersRoute.execute(
+      makeReq({ query: { "include-deleted": "true" } }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    // Eviction signal carries status='rejected' + is_deleted:false, no txns.
+    expect(result?.body).toEqual([
+      { pair_id: "p-rej", status: "rejected", transactions: [], updated: "2026-05-04T08:00:00Z", is_deleted: false },
+    ]);
+    // No transaction resolution for eviction signals.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  test("default (no include-deleted) omits rejected pairs entirely — not delivered as eviction signals", async () => {
+    const rejectedPairRow = {
+      pair_id: "p-rej",
+      user_id: "u-1",
+      transaction_id_a: "t-a",
+      transaction_id_b: "t-b",
+      status: "rejected",
+      created_at: "2026-05-01T00:00:00Z",
+      updated: "2026-05-04T08:00:00Z",
+      is_deleted: false,
+    };
+    mockQuery.mockResolvedValueOnce({ rows: [rejectedPairRow], rowCount: 1 });
+
+    const result = await getTransfersRoute.execute(makeReq(), fakeRes());
+    // On the wholesale-replace default path, a rejected pair is simply absent
+    // (absence = eviction); it must NOT surface as an eviction-signal row.
+    expect(result?.body).toEqual([]);
+    // No second (txn) query — nothing visible to resolve.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
 });
