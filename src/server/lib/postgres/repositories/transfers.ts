@@ -20,6 +20,26 @@ export interface TransferPair {
   pair_id: string;
   status: TransferPairStatus;
   transactions: JSONTransaction[];
+  /** Bumped on every mutation (confirm/reject/cascade-delete). Lets the FE
+   *  reduce over a delta by `updated` instead of replacing its cache
+   *  wholesale — same role `updated` plays on transactions/snapshots.
+   *  Optional because the FE's optimistic Mark-as-Transfer path mints a pair
+   *  locally before the server's `updated` is known. */
+  updated?: string | null;
+  /** True for a tombstone: a soft-deleted pair returned only when the caller
+   *  passes `includeDeleted`, so the FE can evict it from its local cache.
+   *  Tombstones carry no `transactions` (the cascade may have soft-deleted
+   *  them too); `pair_id` + `is_deleted` is all the FE needs to evict. */
+  is_deleted?: boolean;
+}
+
+export interface GetTransferPairsOptions {
+  /** When true, soft-deleted (`is_deleted = TRUE`) pairs are INCLUDED as
+   *  tombstones. Defaults to false for backward compatibility — the current
+   *  FE full-fetches and replaces wholesale, so it must NOT receive
+   *  tombstones as active rows. The FE-hook migration (#542 parts 4-5) flips
+   *  its fetch to opt in, mirroring the transactions/snapshots contract. */
+  includeDeleted?: boolean;
 }
 
 /**
@@ -39,11 +59,16 @@ export type ConfirmResult =
  * transactions referenced by each pair so the response shape stays the same
  * as before (one entry per pair, with the two paired transactions inline).
  */
-export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]> => {
-  // Table.query auto-excludes soft-deleted rows (supportsSoftDelete).
+export const getTransferPairs = async (
+  user: MaskedUser,
+  options: GetTransferPairsOptions = {},
+): Promise<TransferPair[]> => {
+  // Table.query auto-excludes soft-deleted rows (supportsSoftDelete). When
+  // the caller opts into tombstone delivery, keep them by unsetting the
+  // exclusion — matches the transactions/snapshots delta-delivery contract.
   const allPairs = await transactionPairsTable.query(
     { [USER_ID]: user.user_id },
-    { orderBy: PAIR_ID },
+    { orderBy: PAIR_ID, excludeDeleted: !options.includeDeleted },
   );
 
   // Exclude status='rejected' from the FE response: a rejected pair is
@@ -57,7 +82,26 @@ export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]
 
   if (pairs.length === 0) return [];
 
-  const txnIds = pairs.flatMap((p) => [p.transaction_id_a, p.transaction_id_b]);
+  // Tombstones need no transaction resolution — a cascade soft-delete may
+  // have soft-deleted the referenced transactions too, so the active-only
+  // txn query below wouldn't find them. The FE evicts on `pair_id`, so a
+  // tombstone only carries `pair_id` + `is_deleted` + `updated`.
+  const activePairs = pairs.filter((p) => !p.is_deleted);
+  const deletedPairs = pairs.filter((p) => p.is_deleted);
+
+  const tombstones = deletedPairs.map(
+    (pair): TransferPair => ({
+      pair_id: pair.pair_id,
+      status: pair.status,
+      transactions: [],
+      updated: pair.updated,
+      is_deleted: true,
+    }),
+  );
+
+  if (activePairs.length === 0) return tombstones;
+
+  const txnIds = activePairs.flatMap((p) => [p.transaction_id_a, p.transaction_id_b]);
 
   const txnModels = await transactionsTable.query(
     { [USER_ID]: user.user_id },
@@ -70,7 +114,7 @@ export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]
     txnById.set(tx.transaction_id, tx);
   }
 
-  return pairs
+  const active = activePairs
     .map((pair): TransferPair | null => {
       const a = txnById.get(pair.transaction_id_a);
       const b = txnById.get(pair.transaction_id_b);
@@ -79,9 +123,13 @@ export const getTransferPairs = async (user: MaskedUser): Promise<TransferPair[]
         pair_id: pair.pair_id,
         status: pair.status,
         transactions: [a, b],
+        updated: pair.updated,
+        is_deleted: false,
       };
     })
     .filter((p): p is TransferPair => p !== null);
+
+  return [...active, ...tombstones];
 };
 
 /**
