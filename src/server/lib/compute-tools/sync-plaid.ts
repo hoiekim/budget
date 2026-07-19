@@ -101,6 +101,7 @@ export const getPlaidRemovedInvestmentTransactions = (
   const incomingIds = new Set(incomingTransactions.map((f) => f.investment_transaction_id));
   const removed: RemovedInvestmentTransaction[] = [];
   storedTransactions.forEach((e) => {
+    if (e.source === "manual") return; // Plaid sync must not remove user-entered rows
     const age = new Date().getTime() - new LocalDate(e.date).getTime();
     if (age > TWO_WEEKS) return;
     if (!incomingIds.has(e.investment_transaction_id)) {
@@ -232,6 +233,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
 
       // Adjust counters for recent stored transactions that are still present (modified).
       storedInvestmentTransactions.forEach((e) => {
+        if (e.source === "manual") return; // manual rows aren't Plaid-managed
         const age = new Date().getTime() - new LocalDate(e.date).getTime();
         if (age > TWO_WEEKS) return;
         if (!removedIdSet.has(e.investment_transaction_id)) {
