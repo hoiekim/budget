@@ -87,10 +87,11 @@ export const AccountProperties = ({ account }: Props) => {
 
   let currentLabel = "Current";
   let pendingLabel = "Pending";
-  const currentAmountString = numberToCommaString(current as number);
+  let currentAmountString = numberToCommaString(current as number);
   let pendingAmountString = numberToCommaString(
     current && available ? current - available : ((current || available) as number),
   );
+  let showPendingRow = true;
   if (type === AccountType.Credit) {
     currentLabel = "Spent";
     pendingLabel = "Available";
@@ -98,7 +99,15 @@ export const AccountProperties = ({ account }: Props) => {
   } else if (type === AccountType.Investment) {
     currentLabel = "Invested";
     pendingLabel = "In Cash";
+    // `available` is already included in `current`, so "Invested" (the non-cash
+    // portion) is current − available; rendering full `current` here while also
+    // listing `available` as "In Cash" would present the cash twice.
+    currentAmountString = numberToCommaString(
+      current && available ? current - available : (current as number),
+    );
     pendingAmountString = numberToCommaString(available as number);
+    // No cash figure to partition off when Plaid reports no `available`.
+    showPendingRow = available != null;
   }
 
   const onClickTransactions = () => {
@@ -166,12 +175,14 @@ export const AccountProperties = ({ account }: Props) => {
               {currentAmountString}
             </span>
           </KeyValue>
-          <KeyValue name={pendingLabel}>
-            <span>
-              {currencySymbol}&nbsp;
-              {pendingAmountString}
-            </span>
-          </KeyValue>
+          {showPendingRow && (
+            <KeyValue name={pendingLabel}>
+              <span>
+                {currencySymbol}&nbsp;
+                {pendingAmountString}
+              </span>
+            </KeyValue>
+          )}
         </Property>
       )}
       {!!graphData.lines && (
