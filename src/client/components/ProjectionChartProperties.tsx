@@ -1,4 +1,4 @@
-import { ChartType, getDateString, LocalDate, Optional, ViewDate } from "common";
+import { ChartType, getDateString, LocalDate, ViewDate } from "common";
 import {
   Chart,
   ProjectionChart,
@@ -15,9 +15,7 @@ import {
   Row,
   KeyValue,
   ToggleInput,
-  BalanceData,
   ProjectionChartConfiguration,
-  AmountInTime,
   CapacityNumberInput,
   inferSavingConfig,
 } from "client";
@@ -90,12 +88,16 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const onChangeAutoConfig: ChangeEventHandler<HTMLInputElement> = (e) => {
     e.stopPropagation();
     const { checked } = e.target;
-    const newConfig = { ...configuration, auto_saving_config: checked };
+    const newConfig = { ...configInput, auto_saving_config: checked };
     setPartialConfigInput(newConfig);
     updateChart({ configuration: newConfig });
   };
 
   const onBlurConfigInput = () => updateChart({ configuration: configInput });
+
+  const onBlurApy = (e: { target: { value: number } }) => {
+    updateChart({ configuration: { ...configInput, anual_percentage_yield: e.target.value / 100 + 1 } });
+  };
 
   const onBlurLivingCostAmount: FocusEventHandler<HTMLInputElement> = (e) => {
     const newAmount = +e.target.value;
@@ -249,7 +251,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
               maxValue={1000}
               minValue={0}
               fixed={2}
-              onBlur={onBlurConfigInput}
+              onBlur={onBlurApy}
             />
             <span className="small">&nbsp;%</span>
           </div>

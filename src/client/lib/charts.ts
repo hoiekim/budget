@@ -25,13 +25,13 @@ export const inferSavingConfig = (
       startValue = 0;
       maxLength = balanceArray.length;
     }
-    startValue += balanceArray[maxLength] || 0;
+    startValue += balanceArray[maxLength - 1] || 0;
     endValue += balanceArray[0] || 0;
   });
 
   const n = maxLength - 1;
 
-  const startValueAsOf = viewDate.clone().previous(n).getEndDate();
+  const startValueAsOf = viewDate.clone().previous(Math.max(0, n)).getEndDate();
 
   const config: Optional<ProjectionChartConfiguration, "living_cost" | "year_over_year_inflation"> =
     new ProjectionChartConfiguration({
@@ -44,12 +44,14 @@ export const inferSavingConfig = (
   delete config.living_cost;
   delete config.year_over_year_inflation;
 
-  const { anual_percentage_yield } = config;
-  const mpy = Math.pow(anual_percentage_yield, 1 / 12);
-  const mpyn = Math.pow(mpy, n);
+  if (n > 0) {
+    const { anual_percentage_yield } = config;
+    const mpy = Math.pow(anual_percentage_yield, 1 / 12);
+    const mpyn = Math.pow(mpy, n);
 
-  // enjoy the math
-  config.contribution = ((endValue - startValue * mpyn) * (mpy - 1)) / (mpyn - 1);
+    // enjoy the math
+    config.contribution = ((endValue - startValue * mpyn) * (mpy - 1)) / (mpyn - 1);
+  }
 
   return config;
 };
