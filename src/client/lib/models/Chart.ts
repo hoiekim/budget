@@ -45,11 +45,17 @@ export class Chart {
       }
     } else if (this.configuration) {
       if (this.type === ChartType.BALANCE) {
-        this.configuration = new BalanceChartConfiguration(this.configuration as Partial<BalanceChartConfiguration>);
+        this.configuration = new BalanceChartConfiguration(
+          this.configuration as Partial<BalanceChartConfiguration>,
+        );
       } else if (this.type === ChartType.PROJECTION) {
-        this.configuration = new ProjectionChartConfiguration(this.configuration as Partial<ProjectionChartConfiguration>);
+        this.configuration = new ProjectionChartConfiguration(
+          this.configuration as Partial<ProjectionChartConfiguration>,
+        );
       } else if (this.type === ChartType.FLOW) {
-        this.configuration = new FlowChartConfiguration(this.configuration as Partial<FlowChartConfiguration>);
+        this.configuration = new FlowChartConfiguration(
+          this.configuration as Partial<FlowChartConfiguration>,
+        );
       }
     }
   };
@@ -71,6 +77,7 @@ export class BalanceChartConfiguration implements JSONBalanceChartConfiguration 
 
 export class ProjectionChartConfiguration implements JSONProjectionChartConfiguration {
   account_ids: string[] = [];
+  auto_saving_config = false;
   initial_saving = new AmountInTime();
   living_cost = new AmountInTime();
   contribution = 0;

@@ -38,6 +38,7 @@ export const UNSORTED_BUDGET_ID = "Unknown";
 
 export interface JSONProjectionChartConfiguration {
   account_ids: string[];
+  auto_saving_config?: boolean;
   initial_saving: JSONAmountInTime;
   living_cost: JSONAmountInTime;
   contribution: number;

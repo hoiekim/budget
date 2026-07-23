@@ -1,4 +1,4 @@
-import { ChartType, getDateString, LocalDate } from "common";
+import { ChartType, getDateString, LocalDate, ViewDate } from "common";
 import {
   Chart,
   ProjectionChart,
@@ -14,6 +14,10 @@ import {
   Property,
   Row,
   KeyValue,
+  ToggleInput,
+  ProjectionChartConfiguration,
+  CapacityNumberInput,
+  inferSavingConfig,
 } from "client";
 import {
   ChangeEventHandler,
@@ -32,6 +36,17 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const { router } = useAppContext();
   const { chart_id, name, type, configuration } = chart;
 
+  const { data, calculations } = useAppContext();
+  const { accounts } = data;
+
+  const [selectedType, setSelectedType] = useState<ChartType>(type);
+  const [nameInput, setNameInput] = useState(name);
+  const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
+
+  const setPartialConfigInput = (config: Partial<ProjectionChartConfiguration>) => {
+    setConfigInput((old) => new ProjectionChartConfiguration({ ...old, ...config }));
+  };
+
   const {
     account_ids,
     initial_saving,
@@ -39,13 +54,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     living_cost,
     anual_percentage_yield,
     year_over_year_inflation,
-  } = configuration;
-
-  const { data } = useAppContext();
-  const { accounts } = data;
-
-  const [selectedType, setSelectedType] = useState<ChartType>(type);
-  const [nameInput, setNameInput] = useState(name);
+  } = configInput;
 
   const updateDebouncer = useDebounce();
   const mutate = useMutate(Chart);
@@ -70,37 +79,24 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ chart_id }) });
   };
 
-  const onBlurInitialSavingAmount: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newAmount = +e.target.value;
-    const newConfiguration = {
-      ...configuration,
-      initial_saving: { ...initial_saving, amount: newAmount },
-    };
-    updateChart({ configuration: newConfiguration });
+  const inferredSavingConfig = inferSavingConfig(
+    calculations.balanceData,
+    account_ids,
+    new ViewDate("month"),
+  );
+
+  const onChangeAutoConfig: ChangeEventHandler<HTMLInputElement> = (e) => {
+    e.stopPropagation();
+    const { checked } = e.target;
+    const newConfig = { ...configInput, auto_saving_config: checked };
+    setPartialConfigInput(newConfig);
+    updateChart({ configuration: newConfig });
   };
 
-  const onBlurInitialSavingDate: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newDate = new LocalDate(e.target.value);
-    const newConfiguration = {
-      ...configuration,
-      initial_saving: { ...initial_saving, amountAsOf: newDate },
-    };
-    updateChart({ configuration: newConfiguration });
-  };
+  const onBlurConfigInput = () => updateChart({ configuration: configInput });
 
-  const onBlurContribution: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newAmount = +e.target.value;
-    const newConfiguration = { ...configuration, contribution: newAmount };
-    updateChart({ configuration: newConfiguration });
-  };
-
-  const onBlurApy: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newRate = +e.target.value / 100 + 1;
-    const newConfiguration = {
-      ...configuration,
-      anual_percentage_yield: newRate,
-    };
-    updateChart({ configuration: newConfiguration });
+  const onBlurApy = (e: { target: { value: number } }) => {
+    updateChart({ configuration: { ...configInput, anual_percentage_yield: e.target.value / 100 + 1 } });
   };
 
   const onBlurLivingCostAmount: FocusEventHandler<HTMLInputElement> = (e) => {
@@ -178,14 +174,31 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
 
       {children}
 
-      <PropertyLabel>Saving&nbsp;Configuration</PropertyLabel>
+      <PropertyLabel>
+        Saving&nbsp;Configuration
+        <KeyValue name="Auto">
+          <ToggleInput
+            compact={true}
+            checked={configInput.auto_saving_config}
+            onChange={onChangeAutoConfig}
+          />
+        </KeyValue>
+      </PropertyLabel>
       <Property>
         <KeyValue name="Initial&nbsp;Saving">
           <div>
-            <CapacityInput
+            <CapacityNumberInput
               style={{ width: 100 }}
-              defaultValue={initial_saving.amount}
-              onBlur={onBlurInitialSavingAmount}
+              disabled={configInput.auto_saving_config}
+              value={
+                configInput.auto_saving_config
+                  ? inferredSavingConfig.initial_saving.amount
+                  : initial_saving.amount
+              }
+              setValue={(v) =>
+                setPartialConfigInput({ initial_saving: { ...initial_saving, amount: v } })
+              }
+              onBlur={onBlurConfigInput}
             />
             <span className="small">&nbsp;$</span>
           </div>
@@ -193,26 +206,48 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
         <KeyValue name="Initial&nbsp;Saving&nbsp;as&nbsp;of">
           <input
             type="date"
-            defaultValue={getDateString(initial_saving.amountAsOf)}
-            onBlur={onBlurInitialSavingDate}
+            disabled={configInput.auto_saving_config}
+            value={
+              configInput.auto_saving_config
+                ? getDateString(inferredSavingConfig.initial_saving.amountAsOf)
+                : getDateString(initial_saving.amountAsOf)
+            }
+            onChange={(e) =>
+              setPartialConfigInput({
+                initial_saving: { ...initial_saving, amountAsOf: new LocalDate(e.target.value) },
+              })
+            }
+            onBlur={onBlurConfigInput}
             aria-label="Initial saving as of date"
           />
         </KeyValue>
         <KeyValue name="Monthly&nbsp;Contribution">
           <div>
-            <CapacityInput
+            <CapacityNumberInput
               style={{ width: 100 }}
-              defaultValue={contribution}
-              onBlur={onBlurContribution}
+              disabled={configInput.auto_saving_config}
+              value={
+                configInput.auto_saving_config ? inferredSavingConfig.contribution : contribution
+              }
+              setValue={(v) => setPartialConfigInput({ contribution: v })}
+              onBlur={onBlurConfigInput}
             />
             <span className="small">&nbsp;$</span>
           </div>
         </KeyValue>
         <KeyValue name="Anual&nbsp;Percentage&nbsp;Yield">
           <div>
-            <CapacityInput
+            <CapacityNumberInput
               style={{ width: 100 }}
-              defaultValue={(anual_percentage_yield - 1) * 100}
+              disabled={configInput.auto_saving_config}
+              value={
+                ((configInput.auto_saving_config
+                  ? inferredSavingConfig.anual_percentage_yield
+                  : anual_percentage_yield) -
+                  1) *
+                100
+              }
+              setValue={(v) => setPartialConfigInput({ anual_percentage_yield: v / 100 + 1 })}
               maxValue={1000}
               minValue={0}
               fixed={2}

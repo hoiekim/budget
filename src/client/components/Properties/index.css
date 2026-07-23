@@ -21,6 +21,16 @@ div.Properties button:disabled {
 div.Properties > .propertyLabel {
   font-size: 14px;
   padding: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+div.Properties > div.propertyLabel > div.row.keyValue {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  text-align: right;
 }
 
 div.Properties > .property {
@@ -38,14 +48,14 @@ div.Properties > .property .disabled.lineThrough {
   text-decoration: line-through;
 }
 
-div.Properties .row {
+div.Properties > div.property > div.row {
   padding: 14px 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-div.Properties .row button.delete {
+div.Properties > div.property > div.row button.delete {
   font-weight: 500;
   color: var(--darkRed);
 }
@@ -54,11 +64,11 @@ div.Properties .row:not(:last-child) {
   border-bottom: 1px solid var(--divider);
 }
 
-div.Properties .row:first-child {
+div.Properties > div.property > div.row:first-child {
   padding-top: 16px;
 }
 
-div.Properties .row:last-child {
+div.Properties > div.property > div.row:last-child {
   padding-bottom: 18px;
 }
 
@@ -67,12 +77,12 @@ div.Properties .row span.small {
   font-size: 12px;
 }
 
-div.Properties .row select {
+div.Properties > div.property > div.row select {
   font-size: 14px;
   text-align: right;
 }
 
-div.Properties .row input {
+div.Properties > div.property > div.row input {
   font-size: 16px;
   height: 18px;
   text-align: right;
@@ -96,11 +106,11 @@ div.Properties .row.keyValue span.propertyName {
   margin-right: 5px;
 }
 
-div.Properties .row.keyValue :last-child {
+div.Properties > div.property > div.row.keyValue :last-child {
   text-align: right;
 }
 
-div.Properties .row > button {
+div.Properties > div.property > div.row > button {
   width: 100%;
   text-align: left;
   font-size: 16px;
