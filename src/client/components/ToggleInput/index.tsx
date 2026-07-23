@@ -1,9 +1,12 @@
 import { ChangeEventHandler, InputHTMLAttributes, useRef, useState } from "react";
 import "./index.css";
 
-type Props = InputHTMLAttributes<HTMLInputElement>;
+type Props = InputHTMLAttributes<HTMLInputElement> & {
+  compact?: boolean;
+};
 
 export const ToggleInput = ({
+  compact = false,
   defaultChecked,
   checked: _checked,
   children,
@@ -23,6 +26,7 @@ export const ToggleInput = ({
   };
 
   const classes = ["ToggleInput"];
+  if (compact) classes.push("compact");
   if (checked) classes.push("checked");
   if (disabled) classes.push("disabled");
 

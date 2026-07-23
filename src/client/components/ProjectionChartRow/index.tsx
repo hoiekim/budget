@@ -1,6 +1,6 @@
 import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
 import { getYearMonthString, numberToCommaString, ViewDate } from "common";
-import { useAccountGraph, useAppContext, ProjectionChart } from "client";
+import { useAccountGraph, useAppContext, ProjectionChart, inferSavingConfig } from "client";
 import { ChartRowShell, DateLabel, Graph, MoneyLabel } from "client/components";
 import { calculateProjection } from "./lib";
 import "./index.css";
@@ -20,17 +20,16 @@ export const ProjectionChartRow = ({
   onClick,
   onSetOrder,
 }: ProjectionChartRowProps) => {
-  const { data } = useAppContext();
+  const { data, calculations } = useAppContext();
   const { accounts } = data;
   const { configuration } = chart;
-  const {
-    account_ids,
-    initial_saving,
-    contribution,
-    living_cost,
-    anual_percentage_yield,
-    year_over_year_inflation,
-  } = configuration;
+  const { account_ids, auto_saving_config, living_cost, year_over_year_inflation } = configuration;
+
+  const savingConfig = auto_saving_config
+    ? inferSavingConfig(calculations.balanceData, account_ids, new ViewDate("month"))
+    : configuration;
+
+  const { initial_saving, contribution, anual_percentage_yield } = savingConfig;
 
   const selectedAccounts = accounts.filter((a) => {
     const isIncluded = account_ids.includes(a.id);
