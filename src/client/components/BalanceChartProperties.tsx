@@ -1,5 +1,4 @@
 import { ChangeEventHandler, MouseEventHandler, ReactNode, useState } from "react";
-import { ChartType } from "common";
 import {
   BalanceChart,
   Chart,
@@ -7,13 +6,13 @@ import {
   useAppContext,
   useDebounce,
   useMutate,
-  getChartTypeName,
   DeleteButton,
   Properties,
   PropertyLabel,
   Property,
   Row,
   KeyValue,
+  ChartTypeSelect,
 } from "client";
 
 interface BalanceChartPropertiesProps {
@@ -23,14 +22,13 @@ interface BalanceChartPropertiesProps {
 
 export const BalanceChartProperties = ({ chart, children }: BalanceChartPropertiesProps) => {
   const { router } = useAppContext();
-  const { name, chart_id, type, configuration } = chart;
+  const { name, chart_id, configuration } = chart;
   const { account_ids, budget_ids } = configuration;
 
   const { data } = useAppContext();
   const { accounts, budgets } = data;
 
   const [nameInput, setNameInput] = useState(name);
-  const [selectedType, setSelectedType] = useState<ChartType>(type);
 
   const updateDebouncer = useDebounce();
   const mutate = useMutate(Chart);
@@ -43,12 +41,6 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
     const newName = e.target.value;
     setNameInput(newName);
     updateDebouncer(() => updateChart({ name: newName }).catch(() => setNameInput(name)), 300);
-  };
-
-  const onChangeType: ChangeEventHandler<HTMLSelectElement> = (e) => {
-    const newType = e.target.value as ChartType;
-    setSelectedType(newType);
-    updateChart({ type: newType });
   };
 
   const onClickAccounts: MouseEventHandler<HTMLButtonElement> = () => {
@@ -75,18 +67,7 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
         <KeyValue name="Chart&nbsp;Name">
           <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
         </KeyValue>
-        <KeyValue name="Chart&nbsp;Type">
-          <select value={selectedType} onChange={onChangeType}>
-            {Object.values(ChartType).map((v) => {
-              const chartTypeName = getChartTypeName(v);
-              return (
-                <option key={`chart_type_option_${v}`} value={v}>
-                  {chartTypeName}
-                </option>
-              );
-            })}
-          </select>
-        </KeyValue>
+        <ChartTypeSelect chart={chart} />
       </Property>
 
       <PropertyLabel>Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</PropertyLabel>

@@ -1,4 +1,4 @@
-import { ChartType, getDateString, LocalDate, ViewDate } from "common";
+import { getDateString, LocalDate, ViewDate } from "common";
 import {
   Chart,
   ProjectionChart,
@@ -7,13 +7,13 @@ import {
   useAppContext,
   useDebounce,
   useMutate,
-  getChartTypeName,
   DeleteButton,
   Properties,
   PropertyLabel,
   Property,
   Row,
   KeyValue,
+  ChartTypeSelect,
   ToggleInput,
   ProjectionChartConfiguration,
   CapacityNumberInput,
@@ -35,12 +35,11 @@ interface ProjectionChartPropertiesProps {
 
 export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPropertiesProps) => {
   const { router } = useAppContext();
-  const { chart_id, name, type, configuration } = chart;
+  const { chart_id, name, configuration } = chart;
 
   const { data, calculations } = useAppContext();
   const { accounts } = data;
 
-  const [selectedType, setSelectedType] = useState<ChartType>(type);
   const [nameInput, setNameInput] = useState(name);
   const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
 
@@ -72,12 +71,6 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     const newName = e.target.value;
     setNameInput(newName);
     updateDebouncer(() => updateChart({ name: newName }).catch(() => setNameInput(name)), 300);
-  };
-
-  const onChangeType: ChangeEventHandler<HTMLSelectElement> = (e) => {
-    const newType = e.target.value as ChartType;
-    setSelectedType(newType);
-    updateChart({ type: newType });
   };
 
   const onClickAccounts: MouseEventHandler<HTMLButtonElement> = (_e) => {
@@ -156,18 +149,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
         <KeyValue name="Chart&nbsp;Name">
           <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
         </KeyValue>
-        <KeyValue name="Chart&nbsp;Type">
-          <select value={selectedType} onChange={onChangeType}>
-            {Object.values(ChartType).map((v) => {
-              const chartTypeName = getChartTypeName(v);
-              return (
-                <option key={`chart_type_option_${v}`} value={v}>
-                  {chartTypeName}
-                </option>
-              );
-            })}
-          </select>
-        </KeyValue>
+        <ChartTypeSelect chart={chart} />
       </Property>
 
       <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>
