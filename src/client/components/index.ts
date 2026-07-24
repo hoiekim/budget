@@ -36,6 +36,7 @@ export * from "./ConnectionProperties";
 export * from "./ApiKeyProperties";
 export * from "./NameInput";
 export * from "./CapacityInput";
+export * from "./ChartTypeSelect";
 export * from "./ToggleInput";
 export * from "./Spinner";
 export * from "./TransactionsPageTitle";
