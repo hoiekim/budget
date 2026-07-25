@@ -121,14 +121,23 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     // Aggregate asset value across all in-scope accounts at an arbitrary
     // date — the shared primitive behind the window boundaries (vStart/vEnd)
     // and every TWR sub-period boundary. windowStart anchors the txn-derived
-    // qty walk consistently for all dates.
-    const valueAtAll = (date: string) =>
-      ids.reduce(
+    // qty walk consistently for all dates. Each `valueAt` re-derives the
+    // per-account cash-security set + txn qty walk, so memoize per date: the
+    // window boundaries are queried by both vStart/vEnd and computeTWR, and a
+    // heavy-trader account can have many flow boundaries.
+    const valueCache = new Map<string, number>();
+    const valueAtAll = (date: string) => {
+      const cached = valueCache.get(date);
+      if (cached !== undefined) return cached;
+      const total = ids.reduce(
         (sum, id) =>
           sum +
           valueAt({ date, windowStart, accountId: id, holdingSnapshots, investmentTransactions, priceAt }),
         0,
       );
+      valueCache.set(date, total);
+      return total;
+    };
     const vStart = valueAtAll(windowStart);
     const vEnd = valueAtAll(windowEnd);
 

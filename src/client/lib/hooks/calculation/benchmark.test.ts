@@ -293,6 +293,43 @@ describe("computeTWR", () => {
     expect(r.cumulative!).toBeCloseTo(0.1, 6);
   });
 
+  test("chains ≥2 interior flows: three linked 10% sub-periods → 33.1%", () => {
+    // start 1000 → +10% → 1100, +1000 buy (2100) → +10% → 2310, +1000 buy
+    // (3310) → +10% → 3641. TWR = 1.1³ − 1 = 0.331, contributions ignored.
+    const r = computeTWR({
+      flows: [
+        { date: "2026-05-01", amount: 1000 },
+        { date: "2026-09-01", amount: 1000 },
+      ],
+      valueAt: vAt({
+        "2026-01-01": 1000,
+        "2026-05-01": 2100,
+        "2026-09-01": 3310,
+        "2027-01-01": 3641,
+      }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.331, 6);
+  });
+
+  test("skips a sub-period whose closing value falls below the same-day buy (exec ≫ close anomaly)", () => {
+    // A buy priced far above the day's close makes endBeforeFlow negative for
+    // that sub-period — skipped rather than reported as a bogus loss; the
+    // funded remainder still measures its market move (10%).
+    const r = computeTWR({
+      flows: [{ date: "2026-07-01", amount: 2000 }],
+      valueAt: vAt({ "2026-01-01": 1000, "2026-07-01": 1500, "2027-01-01": 1650 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    // sub1: base 1000 > 0 but endBeforeFlow = 1500 − 2000 = −500 ≤ 0 → skip.
+    // sub2: base 1500, close 1650 → HPR 1.1. Only sub2 counts.
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.1, 6);
+  });
+
   test("insufficient_data when no sub-period has a positive opening base", () => {
     const r = computeTWR({
       flows: [],
