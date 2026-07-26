@@ -13,6 +13,7 @@ import {
   stopRateLimitCleanup,
   pool,
   getClientIp,
+  SECURITY_HEADERS,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -184,24 +185,6 @@ const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
   ["/plaid-hook", new Set(["POST"])],
   ["/health", new Set(["GET"])],
 ];
-
-const SECURITY_HEADERS: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "1; mode=block",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Content-Security-Policy": [
-    "default-src 'self'",
-    "script-src 'self' https://cdn.plaid.com",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
-    "connect-src 'self' https://*.plaid.com",
-    "frame-src https://cdn.plaid.com",
-    "font-src 'self' data:",
-    "object-src 'none'",
-    "base-uri 'self'",
-  ].join("; "),
-};
 
 function jsonResponse(
   data: unknown,

@@ -4,6 +4,7 @@ import {
   registerSubscriber,
   unregisterSubscriber,
   subscriberCount,
+  SECURITY_HEADERS,
   type Subscriber,
 } from "server";
 
@@ -15,6 +16,7 @@ const SSE_KEEPALIVE_MS = 30_000;
 const MAX_SUBSCRIBERS_PER_USER = 20;
 
 const SSE_HEADERS: Record<string, string> = {
+  ...SECURITY_HEADERS,
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache, no-transform",
   Connection: "keep-alive",
@@ -26,17 +28,6 @@ const formatSseBlock = (event: string, payload: unknown): string => {
   return `event: ${event}\n${dataLine}\n`;
 };
 
-/**
- * GET /events — one long-open Server-Sent Events stream per user tab.
- * Every mutation route emits via `emitToUser(userId, tableName, {originTabId?})`;
- * each open tab's subscriber receives an `event: <table_name>-updated` block
- * and calls the matching sync function on the client. The originating tab
- * filters its own event out by comparing `originTabId`.
- *
- * Returns a raw `Response(ReadableStream, ...)` because the connection stays
- * open for the tab's lifetime. `Route.execute` passes raw Response objects
- * through unmodified — see `handleApiRequest` in `start.ts`.
- */
 export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
   const userId = req.session.user!.user_id;
 

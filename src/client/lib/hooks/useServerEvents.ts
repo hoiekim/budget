@@ -1,13 +1,6 @@
 import { useEffect, useRef } from "react";
 import { TableName } from "common/constants";
 
-/**
- * The set of event domains the SSE receiver knows about is exactly
- * `TableName` — the same enum the server emits from. Keeping one
- * source of truth means adding a new mutation surface on the server
- * is a compile error on the client until the receiver-side dispatch
- * (PR 2) picks it up.
- */
 export type ServerEventDomain = TableName;
 
 export interface ServerEventPayload {
@@ -22,18 +15,12 @@ export type ServerEventHandler = (
 /**
  * One tab-lifetime `EventSource` to `/api/events`. Every domain event
  * the server broadcasts to this user fires `handler(domain, payload)`.
- * The handler should compare `payload.originTabId` against this tab's
- * `X-Tab-Id` to filter its own writes (avoids a redundant self-refetch
- * right after `useMutate` already patched local state).
+ * `EventSource` handles reconnection natively; the hook does not.
  *
- * EventSource handles reconnection natively — on network drop the
- * browser reopens the connection with exponential backoff. We don't
- * need to wire that ourselves.
- *
- * Consumers register at most one handler per hook call; if a component
- * needs multiple listeners (e.g. Dashboard cares about both `charts`
- * and `budgets`), pass a switch/dispatch inside the single handler.
- * The router-level `App` wires the global dispatcher.
+ * The handler receives one `(domain, payload)` call per event. To split
+ * dispatch across multiple concerns, switch on `domain` inside a single
+ * handler passed to one `useServerEvents` call — extra hook instances
+ * would open extra streams and blow past the per-user subscriber cap.
  */
 export const useServerEvents = (handler: ServerEventHandler): void => {
   // Keep the latest handler in a ref so we don't tear the EventSource

@@ -13,3 +13,4 @@ export * from "./rate-limit";
 export * from "./infer-label-confidence";
 export * from "./record-category-rejection";
 export * from "./realtime";
+export * from "./security-headers";

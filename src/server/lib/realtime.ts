@@ -20,16 +20,6 @@ export interface Subscriber {
 
 const subscribers = new Map<string, Set<Subscriber>>();
 
-/**
- * Domain namespaces the emit path speaks. Every domain is a real DB table
- * name (`TableName`) so server and client share one source of truth —
- * see `common/constants.ts`. The client's dispatch table (PR 2) maps
- * a single table event (e.g. `snapshots-updated`) to the client-side
- * shelves it needs to re-sync (`snapshots` + `holdingSnapshots`).
- *
- * Referencing `TableName.X` at emit call sites gives a compile-time
- * check that the string is a real table.
- */
 export type EmitDomain = TableName;
 
 export interface EmitPayload {
@@ -58,11 +48,6 @@ export const unregisterSubscriber = (userId: string, sub: Subscriber): void => {
 export const subscriberCount = (userId: string): number =>
   subscribers.get(userId)?.size ?? 0;
 
-/**
- * Broadcast a mutation event to every open tab of a single user. Called
- * from mutation route handlers after the DB write settles — see the
- * follow-up PR for the per-route wiring.
- */
 export const emitToUser = (
   userId: string,
   domain: EmitDomain,
