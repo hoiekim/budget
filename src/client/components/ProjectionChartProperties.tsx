@@ -24,6 +24,7 @@ import {
   FocusEventHandler,
   MouseEventHandler,
   ReactNode,
+  useEffect,
   useState,
 } from "react";
 
@@ -42,6 +43,10 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const [selectedType, setSelectedType] = useState<ChartType>(type);
   const [nameInput, setNameInput] = useState(name);
   const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
+
+  useEffect(() => {
+    setConfigInput(new ProjectionChartConfiguration(configuration));
+  }, [configuration]);
 
   const setPartialConfigInput = (config: Partial<ProjectionChartConfiguration>) => {
     setConfigInput((old) => new ProjectionChartConfiguration({ ...old, ...config }));
