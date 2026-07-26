@@ -34,6 +34,24 @@ export class TransactionLabel implements JSONTransactionLabel {
     return category.getParent()?.id;
   }
 
+  /**
+   * Suggestion-state predicates that centralize the `category_confidence`
+   * check so the calc and the TransactionsPage filter read one method instead
+   * of respelling it at each site. Methods on the label — not accessors keyed
+   * by transaction_id on TransactionDictionary — because the budget calc runs
+   * them on synthetic split transactions (`SplitTransaction.toTransaction()`)
+   * whose ids are NOT keys in the dictionary, so a by-id lookup would miss the
+   * split's own label. The label is always in hand, so read it directly.
+   */
+  isConfirmed(): boolean {
+    return this.category_confidence === 1 && !!this.category_id;
+  }
+
+  isSuggested(): boolean {
+    const confidence = this.category_confidence;
+    return !!(this.category_id && confidence && confidence > 0 && confidence < 1);
+  }
+
   constructor(init?: Partial<TransactionLabel>) {
     assign(this, init);
   }

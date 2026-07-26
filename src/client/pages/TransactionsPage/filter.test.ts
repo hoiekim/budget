@@ -67,20 +67,29 @@ const makeCtx = (pairs: TransferPair[] = []): FilterContext => {
 };
 
 describe("isSuggestedLabel", () => {
+  // Build rows through makeTxn so `label` is a real TransactionLabel (as it
+  // always is in production — every row constructor wraps its init label),
+  // which is what `label.isSuggested()` reads.
   test("category_id + confidence in (0,1) → suggested", () => {
-    expect(isSuggestedLabel({ label: { category_id: "c", category_confidence: 0.5 } })).toBe(true);
+    expect(isSuggestedLabel(makeTxn("t1", 0, { category_id: "c", category_confidence: 0.5 }))).toBe(
+      true,
+    );
   });
   test("confidence = 1 → confirmed, not suggested", () => {
-    expect(isSuggestedLabel({ label: { category_id: "c", category_confidence: 1 } })).toBe(false);
+    expect(isSuggestedLabel(makeTxn("t1", 0, { category_id: "c", category_confidence: 1 }))).toBe(
+      false,
+    );
   });
   test("confidence = 0 → rejected, not suggested", () => {
-    expect(isSuggestedLabel({ label: { category_id: "c", category_confidence: 0 } })).toBe(false);
+    expect(isSuggestedLabel(makeTxn("t1", 0, { category_id: "c", category_confidence: 0 }))).toBe(
+      false,
+    );
   });
   test("no category_id → not suggested", () => {
-    expect(isSuggestedLabel({ label: { category_confidence: 0.5 } })).toBe(false);
+    expect(isSuggestedLabel(makeTxn("t1", 0, { category_confidence: 0.5 }))).toBe(false);
   });
   test("null confidence → not suggested", () => {
-    expect(isSuggestedLabel({ label: { category_id: "c", category_confidence: null } })).toBe(
+    expect(isSuggestedLabel(makeTxn("t1", 0, { category_id: "c", category_confidence: null }))).toBe(
       false,
     );
   });

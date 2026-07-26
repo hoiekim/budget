@@ -35,11 +35,7 @@ const isUserLabelConfirmed = (e: Transaction | SplitTransaction): boolean => {
  */
 export const isSuggestedLabel = (
   e: Transaction | SplitTransaction | InvestmentTransaction,
-): boolean => {
-  const c_id = e.label.category_id;
-  const c_conf = e.label.category_confidence;
-  return !!(c_id && c_conf && c_conf > 0 && c_conf < 1);
-};
+): boolean => e.label.isSuggested();
 
 /**
  * Only whole Transactions participate in transfer pairs. A SplitTransaction

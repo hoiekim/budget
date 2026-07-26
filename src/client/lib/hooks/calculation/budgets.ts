@@ -66,7 +66,7 @@ export const getBudgetData = (
     const childrenAmountTotal = transactionFamilies.getChildrenAmountTotal(transaction_id);
     const amountAfterSplit = amount - childrenAmountTotal;
 
-    const { budget_id, category_id, category_confidence } = label;
+    const { budget_id, category_id } = label;
 
     const nextMonthDate = new ViewDate("month", transactionDate).next().getEndDate();
 
@@ -83,7 +83,7 @@ export const getBudgetData = (
     // malformed `confidence=1 AND category_id=null` row falling into the
     // sorted-amount path below where `categories.get(null)` would skip it
     // entirely (contributing to neither bucket).
-    const isConfirmed = category_confidence === 1 && !!category_id;
+    const isConfirmed = label.isConfirmed();
 
     // Calculates unsorted transactions amount for budgets
     if (!isConfirmed) {
@@ -109,7 +109,11 @@ export const getBudgetData = (
       return;
     }
 
-    // Calcuates sorted transactions amount for categories
+    // Calcuates sorted transactions amount for categories.
+    // isConfirmed() is true only when category_id is present (it routes the
+    // malformed confidence=1/category_id=null row into the unsorted branch
+    // above), so this lookup always has a key — the guard makes that explicit.
+    if (!category_id) return;
     const parentCategory = categories.get(category_id);
     if (!parentCategory) return;
     budgetData.add(parentCategory.id, transactionDate, {
