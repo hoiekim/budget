@@ -334,12 +334,11 @@ describe("BudgetData.getRolledOver future-month projection (#562)", () => {
 });
 
 // #634: the future-month projection dropped the CURRENT month's spend-to-date
-// S(T). processTransaction banks S(T) into the stored next-month bucket
-// (rolled_over(T+1)) but the accrual loop stops at T, so getRolledOver's seed
-// (rolled_over(T) alone) omitted it — overstating a future "+ rolled" surplus
-// by S(T). getRolledOver now seeds with rolled_over(T) + rolled_over(T+1). The
-// #562 projection tests above build from an EMPTY TransactionDictionary, so
-// S(T) = 0 and the defect is invisible — these use a current-month spend.
+// S(T). The accrual loop in getBudgetData runs one month past T, so the stored
+// rolled_over(T+1) is the authoritative recurrence rolled_over(T) + S(T) - C(T);
+// getRolledOver seeds its projection directly from that bucket. The #562
+// projection tests above build from an EMPTY TransactionDictionary, so S(T) = 0
+// and the defect is invisible — these use a current-month spend.
 describe("BudgetData.getRolledOver future projection subtracts current-month spend (#634)", () => {
   const OLD_START = "2022-06-01";
   const SPEND = 20;
@@ -376,10 +375,18 @@ describe("BudgetData.getRolledOver future projection subtracts current-month spe
 
   const budget = () => makeBudget(OLD_START).get("bud-1")!;
 
-  test("current-month spend is banked into the stored next-month bucket", () => {
+  test("the accrual loop writes the authoritative recurrence into the stored T+1 bucket", () => {
     const budgetData = buildBudgetData(makeCurrentMonthSpend());
+    const now = new ViewDate("month").getEndDate();
     const oneAhead = new ViewDate("month").next().getEndDate();
-    expect(budgetData.get("bud-1", oneAhead).rolled_over_amount).toBeCloseTo(SPEND, 6);
+
+    const carryIntoCurrent = budgetData.get("bud-1", now).rolled_over_amount;
+    // Stored by getBudgetData, not reconstructed at read time:
+    // rolled_over(T+1) = rolled_over(T) + S(T) - C(T).
+    expect(budgetData.get("bud-1", oneAhead).rolled_over_amount).toBeCloseTo(
+      carryIntoCurrent + SPEND - MONTHLY_CAPACITY,
+      6,
+    );
   });
 
   test("next-month projection = carry(T) + S(T) - C(T), not carry(T) - C(T)", () => {
@@ -405,6 +412,19 @@ describe("BudgetData.getRolledOver future projection subtracts current-month spe
     // rolled_over is stored negative (renders "+"). Spending S(T) makes the
     // surplus exactly S(T) SMALLER — less negative than the empty-month case.
     expect(projectedSpend - projectedEmpty).toBeCloseTo(SPEND, 6);
+  });
+
+  test("projection continues past T+1: T+2 subtracts one more month's capacity", () => {
+    const withSpend = buildBudgetData(makeCurrentMonthSpend());
+    const oneAhead = new ViewDate("month").next().getEndDate();
+    const twoAhead = new ViewDate("month").next().next().getEndDate();
+
+    const projectedOneAhead = withSpend.getRolledOver(budget(), oneAhead);
+    const projectedTwoAhead = withSpend.getRolledOver(budget(), twoAhead);
+
+    // Seeded from the stored T+1 bucket, each further future month subtracts
+    // exactly one active capacity C — pinning the cursor's T+1 start.
+    expect(projectedTwoAhead).toBeCloseTo(projectedOneAhead - MONTHLY_CAPACITY, 6);
   });
 });
 

@@ -209,12 +209,20 @@ export const getBudgetData = (
   // `budgetData.get(id)` auto-creates the history for untouched rows, while
   // touched rows keep the spending `processTransaction` already deposited
   // (the walk only adds the capacity carry on top of it).
+  // Accrue one month PAST the current month T, so `rolled_over(T+1)` is the
+  // authoritative recurrence `rolled_over(T) + S(T) - C(T)` in the stored
+  // history — not a coincidental side-product that only holds S(T) because the
+  // deposit ran but the accrual didn't. `getRolledOver` seeds its future
+  // projection directly from this bucket, so the seed no longer reconstructs
+  // T+1 by reading two buckets and hoping the loop boundary lines up.
+  const accrualEnd = endDate.clone().next();
+
   const accrueRollover = (budgetLike: Budget | Section | Category) => {
     const { roll_over, roll_over_start_date } = budgetLike;
     if (!roll_over || !roll_over_start_date) return;
     const history = budgetData.get(budgetLike.id);
     const startDate = new ViewDate("month", roll_over_start_date).next();
-    while (startDate.getEndDate() <= endDate.getEndDate()) {
+    while (startDate.getEndDate() <= accrualEnd.getEndDate()) {
       const previousDate = startDate.clone().previous();
       const previousSummary = history.get(previousDate.getEndDate());
       // Use the children-aware derived amount: for is_synced rows the
