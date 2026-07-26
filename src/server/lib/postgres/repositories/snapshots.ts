@@ -7,7 +7,6 @@ import {
   isAccountSnapshot,
   isSecuritySnapshot,
   isHoldingSnapshot,
-  SNAPSHOTS,
   SNAPSHOT_ID,
   SNAPSHOT_TYPE,
   SNAPSHOT_DATE,
@@ -18,6 +17,8 @@ import {
   HOLDING_SECURITY_ID,
   USER_ID,
 } from "../models";
+import { SNAPSHOTS } from "common/constants";
+
 import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
 import { searchSecuritiesById } from "./securities";
 import { logger } from "../../logger";

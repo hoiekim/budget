@@ -16,9 +16,12 @@ import {
   CAPACITIES,
   UPDATED,
   IS_DELETED,
+} from "./common";
+import {
   BUDGETS,
   USERS,
-} from "./common";
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const budgetSchema = {

@@ -5,12 +5,15 @@ import {
   searchSecuritiesById,
   polygon,
   logger,
-  HOLDINGS,
-  SNAPSHOTS,
   SECURITY_ID,
   SNAPSHOT_TYPE,
   UPDATED,
 } from "server";
+import {
+  HOLDINGS,
+  SNAPSHOTS,
+} from "common/constants";
+
 
 export interface RefreshSecuritySnapshotsResult {
   /** Securities for which a fresh snapshot was written this run. */

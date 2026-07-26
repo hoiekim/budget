@@ -30,6 +30,12 @@ export interface ServerRequest {
   rawBody?: string;
   session: ServerSession;
   ip: string;
+  /**
+   * Abort signal from the underlying HTTP request. Fires when the client
+   * disconnects. Routes that hold long-lived responses open (e.g. SSE)
+   * subscribe to it to release resources on tab close.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ServerResponse {
@@ -44,7 +50,7 @@ export type GetResponse<T = undefined> = (
   req: ServerRequest,
   res: ServerResponse,
   stream: Stream<T>,
-) => Promise<ApiResponse<T> | void>;
+) => Promise<ApiResponse<T> | Response | void>;
 
 export class Route<T> {
   path: string;
@@ -70,7 +76,10 @@ export class Route<T> {
     this.requiredScope = options.requiredScope;
   }
 
-  async execute(req: ServerRequest, res: ServerResponse): Promise<ApiResponse<T> | null> {
+  async execute(
+    req: ServerRequest,
+    res: ServerResponse,
+  ): Promise<ApiResponse<T> | Response | null> {
     try {
       const stream: Stream<T> = (response) => {
         res.write(JSON.stringify(response) + "\n");

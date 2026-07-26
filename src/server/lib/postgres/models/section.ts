@@ -16,10 +16,13 @@ import {
   CAPACITIES,
   UPDATED,
   IS_DELETED,
-  SECTIONS,
-  BUDGETS,
-  USERS,
 } from "./common";
+import {
+  BUDGETS,
+  SECTIONS,
+  USERS,
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const sectionSchema = {

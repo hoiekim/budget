@@ -15,8 +15,9 @@ import {
   COOKIE_SAME_SITE,
   CREATED_AT,
   UPDATED,
-  SESSIONS,
 } from "./common";
+import { SESSIONS } from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 export interface SessionCookie {

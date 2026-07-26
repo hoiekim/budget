@@ -17,8 +17,9 @@ import {
   CUSIP,
   RAW,
   UPDATED,
-  SECURITIES,
 } from "./common";
+import { SECURITIES } from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const securitySchema = {

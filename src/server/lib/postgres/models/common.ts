@@ -1,25 +1,9 @@
 /**
- * Column name constants and table names for type-safe database operations.
+ * Column name constants for type-safe database operations. Table-name
+ * constants live in `src/common/constants.ts` so both server and client
+ * share them — import from there directly, not from this file.
  * All column names are snake_case to match PostgreSQL convention.
  */
-
-export const USERS = "users";
-export const SESSIONS = "sessions";
-export const ITEMS = "items";
-export const INSTITUTIONS = "institutions";
-export const ACCOUNTS = "accounts";
-export const HOLDINGS = "holdings";
-export const SECURITIES = "securities";
-export const TRANSACTIONS = "transactions";
-export const INVESTMENT_TRANSACTIONS = "investment_transactions";
-export const SPLIT_TRANSACTIONS = "split_transactions";
-export const BUDGETS = "budgets";
-export const SECTIONS = "sections";
-export const CATEGORIES = "categories";
-export const SNAPSHOTS = "snapshots";
-export const CHARTS = "charts";
-export const API_KEYS = "api_keys";
-export const REJECTED_CATEGORIES = "rejected_categories";
 
 export const USER_ID = "user_id";
 export const UPDATED = "updated";
@@ -104,7 +88,6 @@ export const LABEL_CATEGORY_ID = "label_category_id";
 export const LABEL_MEMO = "label_memo";
 export const LABEL_CATEGORY_CONFIDENCE = "label_category_confidence";
 
-export const TRANSACTION_PAIRS = "transaction_pairs";
 export const PAIR_ID = "pair_id";
 export const TRANSACTION_ID_A = "transaction_id_a";
 export const TRANSACTION_ID_B = "transaction_id_b";

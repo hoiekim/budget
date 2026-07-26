@@ -13,6 +13,7 @@ import {
   stopRateLimitCleanup,
   pool,
   getClientIp,
+  SECURITY_HEADERS,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -185,24 +186,6 @@ const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
   ["/health", new Set(["GET"])],
 ];
 
-const SECURITY_HEADERS: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "1; mode=block",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Content-Security-Policy": [
-    "default-src 'self'",
-    "script-src 'self' https://cdn.plaid.com",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
-    "connect-src 'self' https://*.plaid.com",
-    "frame-src https://cdn.plaid.com",
-    "font-src 'self' data:",
-    "object-src 'none'",
-    "base-uri 'self'",
-  ].join("; "),
-};
-
 function jsonResponse(
   data: unknown,
   status = 200,
@@ -322,6 +305,7 @@ async function handleApiRequest(
     rawBody,
     session,
     ip,
+    signal: request.signal,
   };
 
   // Look up the matching route up-front so we can consult its requiredScope
@@ -354,7 +338,7 @@ async function handleApiRequest(
 
   // Route dispatch
   const mutableRes = new MutableResponse();
-  let result: ApiResponse<unknown> | null = null;
+  let result: ApiResponse<unknown> | Response | null = null;
   let routeHandled = false;
 
   if (matchedRoute) {
@@ -364,6 +348,13 @@ async function handleApiRequest(
 
   if (!routeHandled) {
     return jsonResponse({ status: "error", message: "Not Found" }, 404);
+  }
+
+  // A route may return a raw `Response` when it owns its own body (e.g. an
+  // SSE stream that must stay open for the tab's lifetime). Pass it through
+  // unmodified — no MutableResponse buffering, no session-cookie rebind.
+  if (result instanceof Response) {
+    return result;
   }
 
   // Apply JSON result if the handler returned one and didn't stream

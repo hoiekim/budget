@@ -9,10 +9,13 @@ import {
   CREATED_AT,
   UPDATED,
   IS_DELETED,
-  TRANSACTION_PAIRS,
-  TRANSACTIONS,
-  USERS,
 } from "./common";
+import {
+  TRANSACTIONS,
+  TRANSACTION_PAIRS,
+  USERS,
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const transactionPairSchema = {
