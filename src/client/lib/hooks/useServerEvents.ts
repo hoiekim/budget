@@ -1,24 +1,14 @@
 import { useEffect, useRef } from "react";
+import { TableName } from "common/constants";
 
 /**
- * Data-domain namespace mirrors `EmitDomain` on the server. Kept as a
- * literal union so a typo at a listener registration site is a compile
- * error. Extend when a new domain gets a mutation surface.
+ * The set of event domains the SSE receiver knows about is exactly
+ * `TableName` — the same enum the server emits from. Keeping one
+ * source of truth means adding a new mutation surface on the server
+ * is a compile error on the client until the receiver-side dispatch
+ * (PR 2) picks it up.
  */
-export type ServerEventDomain =
-  | "accounts"
-  | "budgets"
-  | "categories"
-  | "charts"
-  | "holdings"
-  | "holding-snapshots"
-  | "investment-transactions"
-  | "items"
-  | "sections"
-  | "snapshots"
-  | "split-transactions"
-  | "transactions"
-  | "transfers";
+export type ServerEventDomain = TableName;
 
 export interface ServerEventPayload {
   originTabId?: string;
@@ -56,21 +46,7 @@ export const useServerEvents = (handler: ServerEventHandler): void => {
     // request is anonymous and the server 401s.
     const source = new EventSource("/api/events", { withCredentials: true });
 
-    const domains: ServerEventDomain[] = [
-      "accounts",
-      "budgets",
-      "categories",
-      "charts",
-      "holdings",
-      "holding-snapshots",
-      "investment-transactions",
-      "items",
-      "sections",
-      "snapshots",
-      "split-transactions",
-      "transactions",
-      "transfers",
-    ];
+    const domains = Object.values(TableName);
 
     const perDomain = new Map<ServerEventDomain, (e: MessageEvent) => void>();
     for (const domain of domains) {

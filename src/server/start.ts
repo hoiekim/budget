@@ -13,10 +13,6 @@ import {
   stopRateLimitCleanup,
   pool,
   getClientIp,
-  registerSubscriber,
-  unregisterSubscriber,
-  subscriberCount,
-  type Subscriber,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -223,135 +219,6 @@ function jsonResponse(
 }
 
 // ---------------------------------------------------------------------------
-// Server-Sent Events (SSE) — one long-open GET per user tab. Every mutation
-// route emits via `emitToUser(userId, domain, {originTabId?})`; each open
-// tab's subscriber receives an `event: <domain>-updated` block and calls the
-// matching sync function on the client. The originating tab filters its own
-// event out by comparing `originTabId`.
-//
-// The route lives here (not in `routes/`) because it needs to return a
-// `Response(ReadableStream, {...})` directly — the normal `Route.execute`
-// path buffers into `MutableResponse` and returns after the callback settles,
-// which is incompatible with a stream that stays open for the tab's lifetime.
-// ---------------------------------------------------------------------------
-
-const SSE_KEEPALIVE_MS = 30_000;
-// Bound the number of concurrent tabs per user so a bug or abuse can't grow
-// the subscriber map without limit. Each sub holds a keepalive timer + stream
-// controller. 20 is comfortably above normal (a few tabs + a few devices)
-// while still tripping on runaway reconnect loops.
-const MAX_SUBSCRIBERS_PER_USER = 20;
-
-const formatSseBlock = (event: string, payload: unknown): string => {
-  const dataLine = `data: ${JSON.stringify(payload)}\n`;
-  return `event: ${event}\n${dataLine}\n`;
-};
-
-async function handleSseRequest(request: Request): Promise<Response> {
-  const session = await loadSession(request);
-  const user = session.user;
-  if (!user) {
-    return jsonResponse({ status: "failed", message: "Not authenticated." }, 401);
-  }
-  const userId = user.user_id;
-
-  if (subscriberCount(userId) >= MAX_SUBSCRIBERS_PER_USER) {
-    return jsonResponse(
-      { status: "failed", message: "Too many open event streams for this user." },
-      429,
-    );
-  }
-
-  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
-  const encoder = new TextEncoder();
-  let keepalive: ReturnType<typeof setInterval> | null = null;
-  let sub: Subscriber | null = null;
-  let closed = false;
-
-  const cleanup = () => {
-    if (closed) return;
-    closed = true;
-    if (keepalive) {
-      clearInterval(keepalive);
-      keepalive = null;
-    }
-    if (sub) {
-      unregisterSubscriber(userId, sub);
-      sub = null;
-    }
-    logger.info("SSE unsubscribed", { userId, remaining: subscriberCount(userId) });
-    try {
-      controllerRef?.close();
-    } catch {
-      // controller may already be closed by client disconnect
-    }
-  };
-
-  // If the request is already aborted at handler entry, addEventListener("abort")
-  // on an already-aborted signal is a no-op per the DOM spec — the listener
-  // would never fire and the subscriber would sit in the map until the first
-  // keepalive tick (30s) tripped over the closed controller. Handle that
-  // window by short-circuiting via the `closed` flag before `start` runs.
-  if (request.signal.aborted) {
-    closed = true;
-  } else {
-    request.signal.addEventListener("abort", cleanup);
-  }
-
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controllerRef = controller;
-      if (closed) {
-        try {
-          controller.close();
-        } catch {
-          // already closed
-        }
-        return;
-      }
-      // Prime the connection so the browser fires `onopen` immediately and
-      // any proxy in front of us commits to streaming rather than buffering.
-      controller.enqueue(encoder.encode(": connected\n\n"));
-
-      sub = {
-        send: (event, payload) => {
-          if (closed) return;
-          controller.enqueue(encoder.encode(formatSseBlock(event, payload)));
-        },
-        close: cleanup,
-      };
-      registerSubscriber(userId, sub);
-      logger.info("SSE subscribed", { userId, total: subscriberCount(userId) });
-
-      // Keep proxies from timing the connection out; also lets the client
-      // detect a dead connection via missed pings.
-      keepalive = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(": keepalive\n\n"));
-        } catch {
-          cleanup();
-        }
-      }, SSE_KEEPALIVE_MS);
-    },
-    cancel() {
-      cleanup();
-    },
-  });
-
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-      ...SECURITY_HEADERS,
-    },
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
 
@@ -455,6 +322,7 @@ async function handleApiRequest(
     rawBody,
     session,
     ip,
+    signal: request.signal,
   };
 
   // Look up the matching route up-front so we can consult its requiredScope
@@ -487,7 +355,7 @@ async function handleApiRequest(
 
   // Route dispatch
   const mutableRes = new MutableResponse();
-  let result: ApiResponse<unknown> | null = null;
+  let result: ApiResponse<unknown> | Response | null = null;
   let routeHandled = false;
 
   if (matchedRoute) {
@@ -497,6 +365,13 @@ async function handleApiRequest(
 
   if (!routeHandled) {
     return jsonResponse({ status: "error", message: "Not Found" }, 404);
+  }
+
+  // A route may return a raw `Response` when it owns its own body (e.g. an
+  // SSE stream that must stay open for the tab's lifetime). Pass it through
+  // unmodified — no MutableResponse buffering, no session-cookie rebind.
+  if (result instanceof Response) {
+    return result;
   }
 
   // Apply JSON result if the handler returned one and didn't stream
@@ -541,13 +416,6 @@ const server = Bun.serve({
 
     // Strip /api prefix to get the route path
     const apiPath = fullPath.slice(4) || "/";
-
-    // SSE stream handled inline — the normal Route.execute path buffers into
-    // MutableResponse and returns after the callback settles, which is
-    // incompatible with a stream that stays open for the tab's lifetime.
-    if (request.method === "GET" && apiPath === "/events") {
-      return handleSseRequest(request);
-    }
 
     const startTime = performance.now();
     const log: RequestLogContext = { method: request.method, path: fullPath };

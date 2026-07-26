@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
+import { TableName } from "common/constants";
 import {
   registerSubscriber,
   unregisterSubscriber,
@@ -6,7 +7,6 @@ import {
   emitToUser,
   closeAllSubscribers,
   type Subscriber,
-  type EmitDomain,
 } from "./realtime";
 
 // Simple recorder subscriber for tests. `send` captures every (event,
@@ -62,7 +62,7 @@ describe("realtime", () => {
     registerSubscriber("u1", b);
     registerSubscriber("u2", other);
 
-    emitToUser("u1", "charts");
+    emitToUser("u1", TableName.Charts);
 
     expect(a.sent).toEqual([{ event: "charts-updated", payload: {} }]);
     expect(b.sent).toEqual([{ event: "charts-updated", payload: {} }]);
@@ -70,36 +70,22 @@ describe("realtime", () => {
   });
 
   it("emitToUser is a no-op when no subscribers exist for the user", () => {
-    expect(() => emitToUser("nobody", "charts")).not.toThrow();
+    expect(() => emitToUser("nobody", TableName.Charts)).not.toThrow();
   });
 
   it("emitToUser forwards the originTabId payload verbatim", () => {
     const rec = makeRecorder();
     registerSubscriber("u1", rec);
-    emitToUser("u1", "transactions", { originTabId: "tab-abc" });
+    emitToUser("u1", TableName.Transactions, { originTabId: "tab-abc" });
     expect(rec.sent).toEqual([
       { event: "transactions-updated", payload: { originTabId: "tab-abc" } },
     ]);
   });
 
-  it("event name is `<domain>-updated` for every domain", () => {
+  it("event name is `<table_name>-updated` for every TableName", () => {
     const rec = makeRecorder();
     registerSubscriber("u1", rec);
-    const domains: EmitDomain[] = [
-      "accounts",
-      "budgets",
-      "categories",
-      "charts",
-      "holdings",
-      "holding-snapshots",
-      "investment-transactions",
-      "items",
-      "sections",
-      "snapshots",
-      "split-transactions",
-      "transactions",
-      "transfers",
-    ];
+    const domains = Object.values(TableName);
     for (const domain of domains) emitToUser("u1", domain);
     const events = rec.sent.map((s) => s.event);
     expect(events).toEqual(domains.map((d) => `${d}-updated`));
@@ -111,7 +97,7 @@ describe("realtime", () => {
     registerSubscriber("u1", throwing);
     registerSubscriber("u1", healthy);
 
-    emitToUser("u1", "charts");
+    emitToUser("u1", TableName.Charts);
 
     // healthy still received the event
     expect(healthy.sent).toEqual([{ event: "charts-updated", payload: {} }]);

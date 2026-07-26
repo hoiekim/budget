@@ -1,3 +1,4 @@
+import { TableName } from "common/constants";
 import { logger } from "./logger";
 
 /**
@@ -20,25 +21,16 @@ export interface Subscriber {
 const subscribers = new Map<string, Set<Subscriber>>();
 
 /**
- * Domain namespaces the emit path speaks — matches the top-level dicts on
- * `Data` (client). Kept as a literal-string union so a typo at any
- * emit call site is a compile error. Extend when a new data-domain
- * gets a mutation surface.
+ * Domain namespaces the emit path speaks. Every domain is a real DB table
+ * name (`TableName`) so server and client share one source of truth —
+ * see `common/constants.ts`. The client's dispatch table (PR 2) maps
+ * a single table event (e.g. `snapshots-updated`) to the client-side
+ * shelves it needs to re-sync (`snapshots` + `holdingSnapshots`).
+ *
+ * Referencing `TableName.X` at emit call sites gives a compile-time
+ * check that the string is a real table.
  */
-export type EmitDomain =
-  | "accounts"
-  | "budgets"
-  | "categories"
-  | "charts"
-  | "holdings"
-  | "holding-snapshots"
-  | "investment-transactions"
-  | "items"
-  | "sections"
-  | "snapshots"
-  | "split-transactions"
-  | "transactions"
-  | "transfers";
+export type EmitDomain = TableName;
 
 export interface EmitPayload {
   /** Opaque tag the originating tab attached via `X-Tab-Id` header — the
