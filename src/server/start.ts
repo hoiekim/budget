@@ -236,6 +236,11 @@ function jsonResponse(
 // ---------------------------------------------------------------------------
 
 const SSE_KEEPALIVE_MS = 30_000;
+// Bound the number of concurrent tabs per user so a bug or abuse can't grow
+// the subscriber map without limit. Each sub holds a keepalive timer + stream
+// controller. 20 is comfortably above normal (a few tabs + a few devices)
+// while still tripping on runaway reconnect loops.
+const MAX_SUBSCRIBERS_PER_USER = 20;
 
 const formatSseBlock = (event: string, payload: unknown): string => {
   const dataLine = `data: ${JSON.stringify(payload)}\n`;
@@ -249,6 +254,13 @@ async function handleSseRequest(request: Request): Promise<Response> {
     return jsonResponse({ status: "failed", message: "Not authenticated." }, 401);
   }
   const userId = user.user_id;
+
+  if (subscriberCount(userId) >= MAX_SUBSCRIBERS_PER_USER) {
+    return jsonResponse(
+      { status: "failed", message: "Too many open event streams for this user." },
+      429,
+    );
+  }
 
   let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
   const encoder = new TextEncoder();
@@ -275,11 +287,28 @@ async function handleSseRequest(request: Request): Promise<Response> {
     }
   };
 
-  request.signal.addEventListener("abort", cleanup);
+  // If the request is already aborted at handler entry, addEventListener("abort")
+  // on an already-aborted signal is a no-op per the DOM spec — the listener
+  // would never fire and the subscriber would sit in the map until the first
+  // keepalive tick (30s) tripped over the closed controller. Handle that
+  // window by short-circuiting via the `closed` flag before `start` runs.
+  if (request.signal.aborted) {
+    closed = true;
+  } else {
+    request.signal.addEventListener("abort", cleanup);
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controllerRef = controller;
+      if (closed) {
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+        return;
+      }
       // Prime the connection so the browser fires `onopen` immediately and
       // any proxy in front of us commits to streaming rather than buffering.
       controller.enqueue(encoder.encode(": connected\n\n"));
