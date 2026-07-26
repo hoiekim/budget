@@ -41,7 +41,7 @@ const Utility = () => {
   useServerEvents((_domain, payload) => {
     if (payload.originTabId === tabId) return;
     sync();
-  });
+  }, userLoggedIn);
 
   /**
    * Calculate balance history when data is updated
