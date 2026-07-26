@@ -1,15 +1,31 @@
 import { ApiResponse } from "server";
 
+/**
+ * Stable per-tab identifier, generated once when the client bundle loads (so
+ * each browser tab gets its own). Sent as `X-Tab-Id` on every request; the
+ * server echoes it back on the real-time event it emits for the resulting
+ * mutation, letting this tab recognize and skip its own writes (#656).
+ */
+export const tabId =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 const call = async <T = unknown>(path: string, options?: RequestInit): Promise<ApiResponse<T>> => {
   const method = options?.method || "GET";
   const body = options?.body;
 
-  const init: RequestInit | undefined = options;
+  const init: RequestInit = { ...options };
+  const headers: Record<string, string> = {
+    ...(options?.headers as Record<string, string> | undefined),
+    "X-Tab-Id": tabId,
+  };
 
   if (method === "POST") {
-    (init as RequestInit).headers = { "Content-Type": "application/json" };
-    (init as RequestInit).body = JSON.stringify(body);
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
   }
+  init.headers = headers;
 
   try {
     const httpResponse = await fetch(path, init);

@@ -14,6 +14,8 @@ import {
   pool,
   getClientIp,
   SECURITY_HEADERS,
+  emitToUser,
+  mutationEmitDomain,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -352,9 +354,22 @@ async function handleApiRequest(
 
   // A route may return a raw `Response` when it owns its own body (e.g. an
   // SSE stream that must stay open for the tab's lifetime). Pass it through
-  // unmodified — no MutableResponse buffering, no session-cookie rebind.
+  // unmodified — no MutableResponse buffering, no session-cookie rebind. A
+  // raw-Response route is not a mutation surface, so skip the emit path too.
   if (result instanceof Response) {
     return result;
+  }
+
+  // Real-time collaboration signal (#656): a successful mutation broadcasts a
+  // `<domain>-updated` event to the acting user's open tabs so they re-sync.
+  // `originTabId` (the caller's `X-Tab-Id`) is echoed back so the tab that made
+  // the change can filter its own event and skip a redundant self-refetch — its
+  // local state was already patched optimistically by `useMutate`.
+  const emitDomain = mutationEmitDomain(request.method, apiPath);
+  if (emitDomain && result?.status === "success" && session.user) {
+    const tabHeader = headers["x-tab-id"];
+    const originTabId = Array.isArray(tabHeader) ? tabHeader[0] : tabHeader;
+    emitToUser(session.user.user_id, emitDomain, originTabId ? { originTabId } : {});
   }
 
   // Apply JSON result if the handler returned one and didn't stream

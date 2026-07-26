@@ -22,6 +22,49 @@ const subscribers = new Map<string, Set<Subscriber>>();
 
 export type EmitDomain = TableName;
 
+/**
+ * Maps a mutating route's path to the DB table a successful write touches.
+ * A GET read on a path that also has a write verb (`/snapshots/holding`,
+ * `/transfers`) is excluded by the method gate in `mutationEmitDomain`, not
+ * by this table.
+ */
+const MUTATION_DOMAINS: Record<string, EmitDomain> = {
+  "/transaction": TableName.Transactions,
+  "/new-transaction": TableName.Transactions,
+  "/suggest-category": TableName.Transactions,
+  "/split-transaction": TableName.SplitTransactions,
+  "/new-split-transaction": TableName.SplitTransactions,
+  "/investment-transaction": TableName.InvestmentTransactions,
+  "/new-investment-transaction": TableName.InvestmentTransactions,
+  "/account": TableName.Accounts,
+  "/public-token": TableName.Accounts,
+  "/item": TableName.Accounts,
+  "/snapshot": TableName.Snapshots,
+  "/snapshots/holding": TableName.Snapshots,
+  "/resolve-security-snapshot": TableName.Snapshots,
+  "/budget": TableName.Budgets,
+  "/new-budget": TableName.Budgets,
+  "/section": TableName.Sections,
+  "/new-section": TableName.Sections,
+  "/category": TableName.Categories,
+  "/new-category": TableName.Categories,
+  "/chart": TableName.Charts,
+  "/new-chart": TableName.Charts,
+  "/transfers/pair": TableName.TransactionPairs,
+  "/transfers": TableName.TransactionPairs,
+};
+
+/**
+ * The DB table a request mutates, or `null` if it isn't a domain write. A
+ * path emits only under a mutating verb — POST, DELETE, or a `/new-*` shell
+ * INSERT that a GET performs.
+ */
+export const mutationEmitDomain = (method: string, path: string): EmitDomain | null => {
+  const isMutating = method === "POST" || method === "DELETE" || path.startsWith("/new-");
+  if (!isMutating) return null;
+  return MUTATION_DOMAINS[path] ?? null;
+};
+
 export interface EmitPayload {
   /** Opaque tag the originating tab attached via `X-Tab-Id` header — the
    *  emit path echoes it back so the tab that just wrote can filter its

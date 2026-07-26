@@ -5,6 +5,7 @@ import {
   unregisterSubscriber,
   subscriberCount,
   emitToUser,
+  mutationEmitDomain,
   closeAllSubscribers,
   type Subscriber,
 } from "./realtime";
@@ -103,6 +104,63 @@ describe("realtime", () => {
     expect(healthy.sent).toEqual([{ event: "charts-updated", payload: {} }]);
     // throwing was closed (drop-on-failure branch)
     expect(throwing.closed).toBe(true);
+  });
+
+  it("mutationEmitDomain maps POST/DELETE writes to their table", () => {
+    expect(mutationEmitDomain("POST", "/transaction")).toBe(TableName.Transactions);
+    expect(mutationEmitDomain("DELETE", "/transaction")).toBe(TableName.Transactions);
+    expect(mutationEmitDomain("POST", "/account")).toBe(TableName.Accounts);
+    expect(mutationEmitDomain("DELETE", "/account")).toBe(TableName.Accounts);
+    expect(mutationEmitDomain("POST", "/budget")).toBe(TableName.Budgets);
+    expect(mutationEmitDomain("POST", "/section")).toBe(TableName.Sections);
+    expect(mutationEmitDomain("POST", "/category")).toBe(TableName.Categories);
+    expect(mutationEmitDomain("POST", "/chart")).toBe(TableName.Charts);
+    expect(mutationEmitDomain("POST", "/split-transaction")).toBe(TableName.SplitTransactions);
+    expect(mutationEmitDomain("POST", "/investment-transaction")).toBe(
+      TableName.InvestmentTransactions,
+    );
+    expect(mutationEmitDomain("POST", "/snapshot")).toBe(TableName.Snapshots);
+  });
+
+  it("mutationEmitDomain treats /new-* shell INSERTs (GET) as mutating", () => {
+    expect(mutationEmitDomain("GET", "/new-transaction")).toBe(TableName.Transactions);
+    expect(mutationEmitDomain("GET", "/new-budget")).toBe(TableName.Budgets);
+    expect(mutationEmitDomain("GET", "/new-chart")).toBe(TableName.Charts);
+  });
+
+  it("mutationEmitDomain maps multi-domain writes to their representative table", () => {
+    // Linking / unlinking an item creates or removes accounts; a re-sync of the
+    // accounts domain refreshes items + holdings together (one GET /accounts).
+    expect(mutationEmitDomain("POST", "/public-token")).toBe(TableName.Accounts);
+    expect(mutationEmitDomain("DELETE", "/item")).toBe(TableName.Accounts);
+    // suggest-category writes transaction labels + rejected categories.
+    expect(mutationEmitDomain("POST", "/suggest-category")).toBe(TableName.Transactions);
+    // resolving a security snapshot writes into the snapshots table.
+    expect(mutationEmitDomain("POST", "/resolve-security-snapshot")).toBe(TableName.Snapshots);
+  });
+
+  it("mutationEmitDomain returns null for a GET read on a shared write path", () => {
+    // These paths carry both a read (GET) and a write (POST/DELETE) verb — the
+    // read must not emit.
+    expect(mutationEmitDomain("GET", "/snapshots/holding")).toBeNull();
+    expect(mutationEmitDomain("POST", "/snapshots/holding")).toBe(TableName.Snapshots);
+    expect(mutationEmitDomain("GET", "/transfers")).toBeNull();
+    expect(mutationEmitDomain("DELETE", "/transfers")).toBe(TableName.TransactionPairs);
+    expect(mutationEmitDomain("POST", "/transfers/pair")).toBe(TableName.TransactionPairs);
+  });
+
+  it("mutationEmitDomain returns null for pure reads and non-domain writes", () => {
+    expect(mutationEmitDomain("GET", "/transactions")).toBeNull();
+    expect(mutationEmitDomain("GET", "/accounts")).toBeNull();
+    // auth / api-keys / validation / logging are not data domains.
+    expect(mutationEmitDomain("POST", "/login")).toBeNull();
+    expect(mutationEmitDomain("DELETE", "/login")).toBeNull();
+    expect(mutationEmitDomain("POST", "/api-keys")).toBeNull();
+    expect(mutationEmitDomain("DELETE", "/api-keys")).toBeNull();
+    expect(mutationEmitDomain("POST", "/validate-ticker")).toBeNull();
+    expect(mutationEmitDomain("POST", "/client-error")).toBeNull();
+    // unknown path
+    expect(mutationEmitDomain("POST", "/does-not-exist")).toBeNull();
   });
 
   it("closeAllSubscribers calls close on every registered sub", () => {

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAppContext, useSync, PATH, useDebounce } from "client";
+import { useAppContext, useSync, useServerEvents, tabId, PATH, useDebounce } from "client";
 
 /**
  * This component is used to run useEffect hooks dependant on context variables.
@@ -30,6 +30,18 @@ const Utility = () => {
     if (userLoggedIn) sync();
     else clean();
   }, [userLoggedIn, sync, clean]);
+
+  /**
+   * Real-time collaboration (#656): a server-pushed `<domain>-updated` event
+   * means another tab / another user changed data — re-sync to pull it in.
+   * `sync()` is already delta/cursor-based and internally debounced, so a burst
+   * of events collapses to one incremental fetch. Events tagged with this tab's
+   * own `tabId` are its own writes (already applied optimistically) and skipped.
+   */
+  useServerEvents((_domain, payload) => {
+    if (payload.originTabId === tabId) return;
+    sync();
+  });
 
   /**
    * Calculate balance history when data is updated
