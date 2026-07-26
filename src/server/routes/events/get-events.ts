@@ -37,10 +37,11 @@ const formatSseBlock = (event: string, payload: unknown): string => {
  * open for the tab's lifetime. `Route.execute` passes raw Response objects
  * through unmodified — see `handleApiRequest` in `start.ts`.
  */
-export const getEventsRoute = new Route("GET", "/events", async (req) => {
+export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
   const userId = req.session.user!.user_id;
 
   if (subscriberCount(userId) >= MAX_SUBSCRIBERS_PER_USER) {
+    res.status(429);
     return {
       status: "failed",
       message: "Too many open event streams for this user.",
