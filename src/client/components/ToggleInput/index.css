@@ -11,6 +11,13 @@ label.ToggleInput > div.switch {
   font-size: 12px;
 }
 
+label.ToggleInput.compact > div.switch {
+  width: 38px;
+  height: 18px;
+  border-radius: 12px;
+  font-size: 9px;
+}
+
 label.ToggleInput > div.switch * {
   cursor: pointer;
 }
@@ -20,7 +27,6 @@ label.ToggleInput > div.switch > div.background {
   width: 100%;
   -webkit-transition: 300ms;
   transition: 300ms;
-  border-radius: 10px;
 }
 
 label.ToggleInput:not(.checked) > div.switch > div.background {
@@ -48,9 +54,21 @@ label.ToggleInput > div.switch > div.background:before {
   transition: 300ms;
 }
 
+label.ToggleInput.compact > div.switch > div.background:before {
+  border-radius: 9px;
+  height: 12px;
+  width: 18px;
+  left: 1px;
+  bottom: 1px;
+}
+
 label.ToggleInput.checked > div.switch > div.background:before {
   left: 19px;
   background-color: var(--textBright);
+}
+
+label.ToggleInput.compact.checked > div.switch > div.background:before {
+  left: 15px;
 }
 
 label.ToggleInput.disabled > div.switch > div.background:before {
