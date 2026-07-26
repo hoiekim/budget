@@ -5,10 +5,13 @@ import {
   securitiesTable,
   snapshotsTable,
   SECURITY_ID,
-  SECURITIES,
-  HOLDINGS,
   USER_ID,
 } from "../models";
+import {
+  HOLDINGS,
+  SECURITIES,
+} from "common/constants";
+
 import { pool } from "../client";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";

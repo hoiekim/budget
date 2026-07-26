@@ -4,11 +4,14 @@ import {
   USER_ID,
   CATEGORY_ID,
   REJECTED_AT,
+} from "./common";
+import {
+  CATEGORIES,
   REJECTED_CATEGORIES,
   TRANSACTIONS,
   USERS,
-  CATEGORIES,
-} from "./common";
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const isNullableString = (v: unknown): v is string | null =>

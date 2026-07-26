@@ -3,13 +3,14 @@ import {
   MaskedUser,
   RejectedCategoryModel,
   rejectedCategoriesTable,
-  REJECTED_CATEGORIES,
   TRANSACTION_ID,
   USER_ID,
   CATEGORY_ID,
   REJECTED_AT,
   pool,
 } from "server";
+import { REJECTED_CATEGORIES } from "common/constants";
+
 
 /**
  * Record a user's rejection of `category_id` for `transaction_id`. UPSERT

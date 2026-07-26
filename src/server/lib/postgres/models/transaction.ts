@@ -31,9 +31,12 @@ import {
   UPDATED,
   IS_DELETED,
   SOURCE,
+} from "./common";
+import {
   TRANSACTIONS,
   USERS,
-} from "./common";
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const txSchema = {

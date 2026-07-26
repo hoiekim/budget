@@ -11,8 +11,9 @@ import {
   REVOKED_AT,
   EXPIRES_AT,
   UPDATED,
-  API_KEYS,
 } from "./common";
+import { API_KEYS } from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 export interface ApiKeyJSON {

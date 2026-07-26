@@ -4,8 +4,6 @@ import {
   MaskedUser,
   transactionsTable,
   transactionPairsTable,
-  TRANSACTIONS,
-  TRANSACTION_PAIRS,
   USER_ID,
   PAIR_ID,
   TRANSACTION_ID_A,
@@ -15,6 +13,11 @@ import {
   IS_DELETED,
   canonicalizePairIds,
 } from "../models";
+import {
+  TRANSACTIONS,
+  TRANSACTION_PAIRS,
+} from "common/constants";
+
 
 export interface TransferPair {
   pair_id: string;

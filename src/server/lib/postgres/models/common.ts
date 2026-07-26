@@ -1,32 +1,9 @@
 /**
  * Column name constants for type-safe database operations. Table-name
- * constants live in `src/common/constants.ts` (accessible from both
- * server and client — the SSE emit path needs them on both sides) and
- * are re-exported here so existing server-side callers keep working.
+ * constants live in `src/common/constants.ts` so both server and client
+ * share them — import from there directly, not from this file.
  * All column names are snake_case to match PostgreSQL convention.
  */
-
-export {
-  TableName,
-  USERS,
-  SESSIONS,
-  ITEMS,
-  INSTITUTIONS,
-  ACCOUNTS,
-  HOLDINGS,
-  SECURITIES,
-  TRANSACTIONS,
-  INVESTMENT_TRANSACTIONS,
-  SPLIT_TRANSACTIONS,
-  TRANSACTION_PAIRS,
-  BUDGETS,
-  SECTIONS,
-  CATEGORIES,
-  SNAPSHOTS,
-  CHARTS,
-  API_KEYS,
-  REJECTED_CATEGORIES,
-} from "common/constants";
 
 export const USER_ID = "user_id";
 export const UPDATED = "updated";

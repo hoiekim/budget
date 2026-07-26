@@ -20,9 +20,12 @@ import {
   LABEL_CATEGORY_CONFIDENCE,
   UPDATED,
   IS_DELETED,
+} from "./common";
+import {
   SPLIT_TRANSACTIONS,
   USERS,
-} from "./common";
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const splitTxSchema = {

@@ -16,10 +16,13 @@ import {
   CAPACITIES,
   UPDATED,
   IS_DELETED,
+} from "./common";
+import {
   CATEGORIES,
   SECTIONS,
   USERS,
-} from "./common";
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const categorySchema = {

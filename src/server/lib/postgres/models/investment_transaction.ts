@@ -27,9 +27,12 @@ import {
   UPDATED,
   IS_DELETED,
   SOURCE,
+} from "./common";
+import {
   INVESTMENT_TRANSACTIONS,
   USERS,
-} from "./common";
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const invTxSchema = {

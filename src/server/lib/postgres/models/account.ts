@@ -30,9 +30,12 @@ import {
   RAW,
   UPDATED,
   IS_DELETED,
+} from "./common";
+import {
   ACCOUNTS,
   USERS,
-} from "./common";
+} from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const accountSchema = {

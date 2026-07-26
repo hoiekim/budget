@@ -8,8 +8,9 @@ import {
   TOKEN,
   UPDATED,
   IS_DELETED,
-  USERS,
 } from "./common";
+import { USERS } from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 export interface MaskedUser {

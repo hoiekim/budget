@@ -28,8 +28,9 @@ import {
   QUANTITY,
   UPDATED,
   IS_DELETED,
-  SNAPSHOTS,
 } from "./common";
+import { SNAPSHOTS } from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 export type SnapshotType = "account_balance" | "security" | "holding";

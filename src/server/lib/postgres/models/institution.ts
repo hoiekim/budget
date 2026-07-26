@@ -1,5 +1,12 @@
 import { JSONInstitution, isString, isNullableString, isNullableObject } from "common";
-import { INSTITUTION_ID, NAME, RAW, UPDATED, INSTITUTIONS } from "./common";
+import {
+  INSTITUTION_ID,
+  NAME,
+  RAW,
+  UPDATED,
+} from "./common";
+import { INSTITUTIONS } from "common/constants";
+
 import { Model, RowValueType, createTable } from "./base";
 
 const institutionSchema = {
