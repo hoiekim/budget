@@ -32,6 +32,7 @@ const mockGetUserItem = mock(
 const mockUpsertItems = mock(
   async (_user: unknown, _items: unknown[]) => [] as unknown[],
 );
+const mockEmitToUser = mock((_userId: string, _domain: string, _payload?: unknown) => {});
 const mockSendAlarm = mock(async () => {});
 const mockLogger = {
   info: mock(() => {}),
@@ -50,6 +51,7 @@ mock.module("server", () => ({
   updateItemStatus: mockUpdateItemStatus,
   getUserItem: mockGetUserItem,
   upsertItems: mockUpsertItems,
+  emitToUser: mockEmitToUser,
 }));
 
 mock.module("server/lib/alarm", () => ({
@@ -94,6 +96,7 @@ beforeEach(() => {
   }));
   mockUpsertItems.mockReset();
   mockUpsertItems.mockImplementation(async () => []);
+  mockEmitToUser.mockReset();
   mockSendAlarm.mockReset();
   mockSendAlarm.mockImplementation(async () => {});
   mockLogger.info.mockReset();
@@ -208,6 +211,27 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
     expect(result).toMatchObject({ status: "success" });
   });
 
+  test("SYNC_UPDATES_AVAILABLE emits transactions + investment_transactions to owner on non-empty change", async () => {
+    mockSyncPlaidTransactions.mockImplementation(async () => ({ added: 3, modified: 0, removed: 0 }));
+    await run({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-7",
+    });
+    expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "transactions");
+    expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "investment_transactions");
+  });
+
+  test("SYNC_UPDATES_AVAILABLE does NOT emit when nothing changed", async () => {
+    mockSyncPlaidTransactions.mockImplementation(async () => ({ added: 0, modified: 0, removed: 0 }));
+    await run({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-7",
+    });
+    expect(mockEmitToUser).not.toHaveBeenCalled();
+  });
+
   test("SYNC_UPDATES_AVAILABLE with null sync result → failed", async () => {
     mockSyncPlaidTransactions.mockImplementation(async () => null);
     const { result } = await run({
@@ -216,6 +240,7 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
       item_id: "item-7",
     });
     expect(result).toMatchObject({ status: "failed" });
+    expect(mockEmitToUser).not.toHaveBeenCalled();
   });
 
   for (const code of [
@@ -232,6 +257,7 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
       });
       expect(result).toMatchObject({ status: "success" });
       expect(mockSyncPlaidTransactions).not.toHaveBeenCalled();
+      expect(mockEmitToUser).not.toHaveBeenCalled();
     });
   }
 
@@ -257,7 +283,7 @@ describe("post-plaid-hook — ITEM", () => {
     expect(mockUpdateItemStatus).not.toHaveBeenCalled();
   });
 
-  test("PENDING_EXPIRATION → marks item BAD and alarms", async () => {
+  test("PENDING_EXPIRATION → marks item BAD, alarms, and emits accounts to owner", async () => {
     const { result } = await run({
       webhook_type: "ITEM",
       webhook_code: "PENDING_EXPIRATION",
@@ -265,6 +291,7 @@ describe("post-plaid-hook — ITEM", () => {
     });
     expect(mockUpdateItemStatus).toHaveBeenCalledWith("item-9", ItemStatus.BAD);
     expect(mockSendAlarm).toHaveBeenCalled();
+    expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "accounts");
     expect(result).toMatchObject({ status: "success" });
   });
 
@@ -304,7 +331,7 @@ describe("post-plaid-hook — ITEM", () => {
   });
 
   for (const code of ["USER_ACCOUNT_REVOKED", "ITEM_UPDATED"]) {
-    test(`${code} → refreshes item products`, async () => {
+    test(`${code} → refreshes item products and emits accounts to owner`, async () => {
       const { result } = await run({
         webhook_type: "ITEM",
         webhook_code: code,
@@ -313,6 +340,7 @@ describe("post-plaid-hook — ITEM", () => {
       expect(mockGetUserItem).toHaveBeenCalledWith("item-5");
       expect(mockGetItem).toHaveBeenCalledWith("access-tok");
       expect(mockUpsertItems).toHaveBeenCalled();
+      expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "accounts");
       expect(result).toMatchObject({ status: "success" });
     });
   }
