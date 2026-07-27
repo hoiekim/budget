@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { JSONInstitution, JSONSnapshotData } from "common";
+import { JSONInstitution, JSONSnapshotData, TableName } from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
@@ -443,6 +443,27 @@ const debounceSync = (callback: () => void, delay = 50) => {
   syncDebounceTimeout = setTimeout(callback, delay);
 };
 
+// Per-domain debounce for `syncDomain`. A burst of `<domain>-updated`
+// events for the same domain collapses into a single refetch; different
+// domains debounce independently so a `transactions-updated` doesn't
+// swallow a concurrent `budgets-updated`.
+const domainDebounceTimeouts = new Map<TableName, ReturnType<typeof setTimeout>>();
+const debounceDomain = (
+  domain: TableName,
+  callback: () => void,
+  delay = 50,
+) => {
+  const existing = domainDebounceTimeouts.get(domain);
+  if (existing) clearTimeout(existing);
+  domainDebounceTimeouts.set(
+    domain,
+    setTimeout(() => {
+      domainDebounceTimeouts.delete(domain);
+      callback();
+    }, delay),
+  );
+};
+
 export const useSync = () => {
   const { user, setData } = useAppContext();
   const _sync = useCallback(async () => {
@@ -842,6 +863,217 @@ export const useSync = () => {
 
   const sync = useCallback(() => debounceSync(_sync), [_sync]);
 
+  // Refetch a single table's slot and merge it into `Data`. Called by the
+  // real-time receiver on `<table>-updated` events so a mutation in one
+  // domain doesn't burn a whole-app refresh. Uses the cursor when present
+  // (delta for time-partitioned tables) but does NOT advance it — only the
+  // full `sync()` owns cursor advancement, because it fetches every domain.
+  const _syncDomain = useCallback(
+    async (domain: TableName) => {
+      if (!user) return;
+      const cursor = readLastSyncedCursor();
+      try {
+        switch (domain) {
+          case TableName.Transactions:
+          case TableName.InvestmentTransactions: {
+            const r = await fetchTransactions(cursor);
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.transactions = new TransactionDictionary(oldData.transactions);
+              r.transactions.forEach((t, id) => next.transactions.set(id, t));
+              r.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
+              next.investmentTransactions = new InvestmentTransactionDictionary(
+                oldData.investmentTransactions,
+              );
+              r.investmentTransactions.forEach((t, id) =>
+                next.investmentTransactions.set(id, t),
+              );
+              r.tombstoneInvIds.forEach((id) => next.investmentTransactions.delete(id));
+              return next;
+            });
+            await Promise.allSettled([
+              indexedDb.saveTransactions(r.transactions),
+              indexedDb.saveInvestmentTransactions(r.investmentTransactions),
+              ...[...r.tombstoneTxIds].map((id) =>
+                indexedDb.remove(StoreName.transactions, id),
+              ),
+              ...[...r.tombstoneInvIds].map((id) =>
+                indexedDb.remove(StoreName.investmentTransactions, id),
+              ),
+            ]);
+            return;
+          }
+          case TableName.SplitTransactions: {
+            const r = await fetchSplitTransactions(cursor);
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.splitTransactions = new SplitTransactionDictionary(oldData.splitTransactions);
+              r.splitTransactions.forEach((t, id) => next.splitTransactions.set(id, t));
+              r.tombstoneSplitIds.forEach((id) => next.splitTransactions.delete(id));
+              return next;
+            });
+            await Promise.allSettled([
+              indexedDb.saveSplitTransactions(r.splitTransactions),
+              ...[...r.tombstoneSplitIds].map((id) =>
+                indexedDb.remove(StoreName.splitTransactions, id),
+              ),
+            ]);
+            return;
+          }
+          case TableName.Snapshots: {
+            // fetchSnapshots needs the accounts dict for the account-snapshot
+            // hydration path — read from current data since we're not
+            // refetching accounts here.
+            let accountsForSnapshot: AccountDictionary | undefined;
+            setData((oldData) => {
+              accountsForSnapshot = oldData.accounts;
+              return oldData;
+            });
+            if (!accountsForSnapshot) return;
+            const r = await fetchSnapshots(accountsForSnapshot, cursor);
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.accountSnapshots = new AccountSnapshotDictionary(oldData.accountSnapshots);
+              r.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
+              r.tombstoneAccountSnapshotIds.forEach((id) => next.accountSnapshots.delete(id));
+              next.holdingSnapshots = new HoldingSnapshotDictionary(oldData.holdingSnapshots);
+              r.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
+              r.tombstoneHoldingSnapshotIds.forEach((id) => next.holdingSnapshots.delete(id));
+              next.securitySnapshots = new SecuritySnapshotDictionary(oldData.securitySnapshots);
+              r.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
+              r.tombstoneSecuritySnapshotIds.forEach((id) => next.securitySnapshots.delete(id));
+              return next;
+            });
+            await Promise.allSettled([
+              indexedDb.saveAccountSnapshots(r.accountSnapshots),
+              indexedDb.saveHoldingSnapshots(r.holdingSnapshots),
+              indexedDb.saveSecuritySnapshots(r.securitySnapshots),
+              ...[...r.tombstoneAccountSnapshotIds].map((id) =>
+                indexedDb.remove(StoreName.accountSnapshots, id),
+              ),
+              ...[...r.tombstoneHoldingSnapshotIds].map((id) =>
+                indexedDb.remove(StoreName.holdingSnapshots, id),
+              ),
+              ...[...r.tombstoneSecuritySnapshotIds].map((id) =>
+                indexedDb.remove(StoreName.securitySnapshots, id),
+              ),
+            ]);
+            return;
+          }
+          case TableName.Accounts:
+          case TableName.Items:
+          case TableName.Holdings: {
+            const r = await fetchAccounts();
+            if (r.networkFailed) return;
+            const inst = await fetchInstitutions(r.accounts);
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.accounts = r.accounts;
+              next.items = r.items;
+              next.holdings = r.holdings;
+              if (!inst.networkFailed) next.institutions = inst.institutions;
+              return next;
+            });
+            await Promise.allSettled([
+              indexedDb.saveAccounts(r.accounts),
+              indexedDb.saveItems(r.items),
+              indexedDb.saveHoldings(r.holdings),
+              !inst.networkFailed
+                ? indexedDb.saveInstitutions(inst.institutions)
+                : Promise.resolve(),
+            ]);
+            return;
+          }
+          case TableName.Budgets:
+          case TableName.Sections:
+          case TableName.Categories: {
+            const r = await fetchBudgets();
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.budgets = r.budgets;
+              next.sections = r.sections;
+              next.categories = r.categories;
+              return next;
+            });
+            await Promise.allSettled([
+              indexedDb.saveBudgets(r.budgets),
+              indexedDb.saveSections(r.sections),
+              indexedDb.saveCategories(r.categories),
+            ]);
+            return;
+          }
+          case TableName.Charts: {
+            const r = await fetchCharts();
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.charts = r.charts;
+              return next;
+            });
+            await indexedDb.saveCharts(r.charts).catch(console.error);
+            return;
+          }
+          case TableName.TransactionPairs: {
+            const r = await fetchTransfers();
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.transfers = r.transfers;
+              return next;
+            });
+            await indexedDb.saveTransfers(r.transfers).catch(console.error);
+            return;
+          }
+          case TableName.Securities: {
+            const r = await fetchSecurities();
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.securities = r.securities;
+              return next;
+            });
+            await indexedDb.saveSecurities(r.securities).catch(console.error);
+            return;
+          }
+          case TableName.Institutions: {
+            let accountsForInst: AccountDictionary | undefined;
+            setData((oldData) => {
+              accountsForInst = oldData.accounts;
+              return oldData;
+            });
+            if (!accountsForInst) return;
+            const r = await fetchInstitutions(accountsForInst);
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.institutions = r.institutions;
+              return next;
+            });
+            await indexedDb.saveInstitutions(r.institutions).catch(console.error);
+            return;
+          }
+          // Tables the client doesn't mirror into `Data` — no-op.
+          case TableName.Users:
+          case TableName.Sessions:
+          case TableName.ApiKeys:
+          case TableName.RejectedCategories:
+            return;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    [setData, user],
+  );
+  const syncDomain = useCallback(
+    (domain: TableName) => debounceDomain(domain, () => _syncDomain(domain)),
+    [_syncDomain],
+  );
+
   const clean = useCallback(async () => {
     // Await `clearAllData` so the next sync's `loadAllData` sees an
     // empty IDB. (The next sync's cold-path purge will also clear
@@ -852,5 +1084,5 @@ export const useSync = () => {
     setData(new Data());
   }, [setData]);
 
-  return { sync, clean };
+  return { sync, syncDomain, clean };
 };

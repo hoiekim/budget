@@ -12,7 +12,7 @@ const Utility = () => {
   const userLoggedIn = !!user;
   const { path, go } = router;
 
-  const { sync, clean } = useSync();
+  const { sync, syncDomain, clean } = useSync();
   const debouncer = useDebounce();
 
   /**
@@ -32,15 +32,16 @@ const Utility = () => {
   }, [userLoggedIn, sync, clean]);
 
   /**
-   * Real-time collaboration (#656): a server-pushed `<domain>-updated` event
-   * means another tab / another user changed data — re-sync to pull it in.
-   * `sync()` is already delta/cursor-based and internally debounced, so a burst
-   * of events collapses to one incremental fetch. Events tagged with this tab's
-   * own `tabId` are its own writes (already applied optimistically) and skipped.
+   * Real-time collaboration (#656): a server-pushed `<table>-updated` event
+   * means another tab / another user changed that table — refetch just that
+   * domain's slot via `syncDomain(domain)`. Events tagged with this tab's
+   * own `tabId` are its own writes (already applied optimistically) and
+   * skipped. Per-domain debouncing collapses bursts of the same event; the
+   * cursor is not advanced (only the whole-app `sync()` owns that).
    */
-  useServerEvents((_domain, payload) => {
+  useServerEvents((domain, payload) => {
     if (payload.originTabId === tabId) return;
-    sync();
+    syncDomain(domain);
   }, userLoggedIn);
 
   /**
