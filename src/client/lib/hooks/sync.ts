@@ -47,6 +47,7 @@ import {
   SecurityDictionary,
   Security,
   TransferDictionary,
+  globalData,
 } from "client";
 
 // Cursor key: ISO timestamp of the last successful sync's start, minus a
@@ -924,15 +925,12 @@ export const useSync = () => {
           }
           case TableName.Snapshots: {
             // fetchSnapshots needs the accounts dict for the account-snapshot
-            // hydration path — read from current data since we're not
-            // refetching accounts here.
-            let accountsForSnapshot: AccountDictionary | undefined;
-            setData((oldData) => {
-              accountsForSnapshot = oldData.accounts;
-              return oldData;
-            });
-            if (!accountsForSnapshot) return;
-            const r = await fetchSnapshots(accountsForSnapshot, cursor);
+            // hydration path. Read from the mutable `globalData` mirror (kept
+            // in lockstep with React state by `useData`'s setData wrapper) —
+            // reading via a setData updater has an eager-bailout hazard when
+            // any sibling AppContext state has a pending update, dropping the
+            // refetch silently.
+            const r = await fetchSnapshots(globalData.accounts, cursor);
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
@@ -1040,13 +1038,7 @@ export const useSync = () => {
             return;
           }
           case TableName.Institutions: {
-            let accountsForInst: AccountDictionary | undefined;
-            setData((oldData) => {
-              accountsForInst = oldData.accounts;
-              return oldData;
-            });
-            if (!accountsForInst) return;
-            const r = await fetchInstitutions(accountsForInst);
+            const r = await fetchInstitutions(globalData.accounts);
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
@@ -1062,6 +1054,13 @@ export const useSync = () => {
           case TableName.ApiKeys:
           case TableName.RejectedCategories:
             return;
+          default: {
+            // Exhaustiveness guard: adding a new `TableName` value that
+            // syncDomain doesn't handle is a compile-time error here.
+            const unhandled: never = domain;
+            console.warn(`syncDomain: unhandled domain "${unhandled}" — no-op`);
+            return;
+          }
         }
       } catch (err) {
         console.error(err);
