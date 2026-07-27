@@ -21,14 +21,24 @@ export type ServerEventHandler = (
  * dispatch across multiple concerns, switch on `domain` inside a single
  * handler passed to one `useServerEvents` call — extra hook instances
  * would open extra streams and blow past the per-user subscriber cap.
+ *
+ * `enabled` MUST be false until the user is authenticated. `/api/events`
+ * 401s for an anonymous request, and per the EventSource spec a non-2xx
+ * response is a fatal close — the browser does NOT auto-reconnect after
+ * it. Opening the stream on mount (before login) would therefore leave
+ * a permanently-dead connection that never recovers once the user logs
+ * in. Gating on `enabled` opens the stream only once authenticated, and
+ * the effect re-runs (reconnecting) when auth flips.
  */
-export const useServerEvents = (handler: ServerEventHandler): void => {
+export const useServerEvents = (handler: ServerEventHandler, enabled = true): void => {
   // Keep the latest handler in a ref so we don't tear the EventSource
   // down every time the parent re-renders with a new closure.
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   useEffect(() => {
+    if (!enabled) return;
+
     // withCredentials sends the session cookie; without it the SSE
     // request is anonymous and the server 401s.
     const source = new EventSource("/api/events", { withCredentials: true });
@@ -64,5 +74,5 @@ export const useServerEvents = (handler: ServerEventHandler): void => {
       }
       source.close();
     };
-  }, []);
+  }, [enabled]);
 };
