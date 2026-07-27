@@ -122,10 +122,9 @@ export const searchHoldingsByAccountId = async (
   account_ids: string[],
 ): Promise<JSONHolding[]> => {
   if (!account_ids.length) return [];
-  const results: JSONHolding[] = [];
-  for (const account_id of account_ids) {
-    const models = await holdingsTable.query({ [ACCOUNT_ID]: account_id, [USER_ID]: user.user_id });
-    results.push(...models.map((m) => m.toJSON()));
-  }
-  return results;
+  const models = await holdingsTable.query(
+    { [USER_ID]: user.user_id },
+    { inFilters: { [ACCOUNT_ID]: account_ids } },
+  );
+  return models.map((m) => m.toJSON());
 };
