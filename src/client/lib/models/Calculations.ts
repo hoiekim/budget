@@ -342,12 +342,12 @@ export class BudgetData {
   /**
    * The carry-forward amount for `budgetLike` at `date`.
    *
-   * Past and current months are authoritative — accrued into the history by
-   * getBudgetData — so we read the stored `rolled_over_amount`. For future
-   * months there is no stored value yet, so we project the current month's
-   * carry forward, subtracting each month's active capacity once the rollover
-   * window has opened (#562). A budget-like whose `roll_over_start_date` is
-   * itself in the future contributes nothing before it begins.
+   * Months through the next one (T+1) are authoritative — accrued into the
+   * history by getBudgetData — so we read the stored `rolled_over_amount`.
+   * Beyond T+1 there is no stored value yet, so we project forward from T+1,
+   * subtracting each month's active capacity once the rollover window has
+   * opened (#562). A budget-like whose `roll_over_start_date` is itself in the
+   * future contributes nothing before it begins.
    */
   getRolledOver = (budgetLike: BudgetFamily, date: Date): number => {
     const history = this.get(budgetLike.id);
@@ -363,8 +363,15 @@ export class BudgetData {
       ? new ViewDate("month", roll_over_start_date).getEndDate()
       : undefined;
 
-    let rolled = history.get(current.getEndDate()).rolled_over_amount;
-    const cursor = current.clone();
+    // Seed from the authoritative carry INTO month T+1: getBudgetData's accrual
+    // loop now runs one month past T, completing the recurrence
+    // rolled_over(T+1) = rolled_over(T) + S(T) - C(T) in the stored history
+    // (rather than leaving T+1 as a bare S(T) deposit), so T's own spend-to-date
+    // is already folded in. Project from T+1 onward. For a not-yet-open rollover
+    // the seed is 0.
+    const oneAhead = current.clone().next();
+    let rolled = history.get(oneAhead.getEndDate()).rolled_over_amount;
+    const cursor = oneAhead.clone();
     while (cursor.getEndDate() < target.getEndDate()) {
       if (!startMonthEnd || cursor.getEndDate() >= startMonthEnd) {
         rolled -= budgetLike.getActiveAmount(cursor.getEndDate(), "month");
