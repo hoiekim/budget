@@ -265,6 +265,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
   await Promise.all([syncTransactions, syncInvestmentTransactions]);
 
   return {
+    user_id: user.user_id,
     added: addedCount,
     modified: modifiedCount,
     removed: removedCount,

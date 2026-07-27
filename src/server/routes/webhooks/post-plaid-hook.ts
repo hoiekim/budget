@@ -1,5 +1,5 @@
-import { ItemStatus } from "common";
-import { Route, updateItemStatus, syncPlaidTransactions, getUserItem, upsertItems, requireBodyObject, validationError, plaid } from "server";
+import { ItemStatus, TableName } from "common";
+import { Route, updateItemStatus, syncPlaidTransactions, getUserItem, upsertItems, requireBodyObject, validationError, plaid, emitToUser } from "server";
 import { logger } from "server/lib/logger";
 import { sendAlarm } from "server/lib/alarm";
 
@@ -67,11 +67,33 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
   logger.warn("Unhandled webhook", { itemId: item_id, webhookType: webhook_type, webhookCode: webhook_code, body: req.body });
 });
 
+// Real-time collaboration (#656): a Plaid webhook lands out-of-band from any
+// user tab, so mutations here don't ride the normal per-user-request emit
+// path in start.ts. Resolve the item's owner from `item_id` and fan the
+// resulting `<table>-updated` events out to that user's open tabs so the UI
+// picks up the auto-imported data without a page reload.
+const emitToItemOwner = async (item_id: string, domains: TableName[]) => {
+  const userItem = await getUserItem(item_id);
+  if (!userItem) {
+    logger.warn("Plaid webhook emit skipped — no user for item", { itemId: item_id });
+    return;
+  }
+  for (const domain of domains) emitToUser(userItem.user.user_id, domain);
+};
+
 const syncAndLog = async (item_id: string) => {
   const response = await syncPlaidTransactions(item_id);
   if (!response) return { status: "failed" as const };
-  const { added, modified, removed } = response;
+  const { user_id, added, modified, removed } = response;
   logger.info("Synced transactions via webhook", { itemId: item_id, added, modified, removed });
+  if (added || modified || removed) {
+    // syncPlaidTransactions writes to both transactions and investment_transactions
+    // (parallel branches). Emit only `transactions` — the client's syncDomain
+    // case body handles both series in a single /api/transactions fetch, so
+    // emitting `investment_transactions` too would double the client refetch
+    // (different debounce keys don't collapse into one call).
+    emitToUser(user_id, TableName.Transactions);
+  }
   return { status: "success" as const };
 };
 
@@ -83,6 +105,7 @@ const refreshItemProducts = async (item_id: string) => {
   const available_products = [...consented_products, ...products];
   await upsertItems(user, [{ ...item, available_products }]);
   logger.info("Refreshed available_products for item", { itemId: item_id, available_products });
+  emitToUser(user.user_id, TableName.Accounts);
   return { status: "success" as const };
 };
 
@@ -90,5 +113,6 @@ const markBadItem = async (item_id: string, reason: string) => {
   const response = await updateItemStatus(item_id, ItemStatus.BAD);
   if (!response) return { status: "failed" as const };
   sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${reason}`).catch(() => undefined);
+  await emitToItemOwner(item_id, [TableName.Accounts]);
   return { status: "success" as const };
 };
