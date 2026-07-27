@@ -84,13 +84,15 @@ const emitToItemOwner = async (item_id: string, domains: TableName[]) => {
 const syncAndLog = async (item_id: string) => {
   const response = await syncPlaidTransactions(item_id);
   if (!response) return { status: "failed" as const };
-  const { added, modified, removed } = response;
+  const { user_id, added, modified, removed } = response;
   logger.info("Synced transactions via webhook", { itemId: item_id, added, modified, removed });
   if (added || modified || removed) {
     // syncPlaidTransactions writes to both transactions and investment_transactions
-    // (parallel branches); the counts don't disaggregate, so signal both. Client
-    // syncDomain collapses concurrent domain events per its per-domain debounce.
-    await emitToItemOwner(item_id, [TableName.Transactions, TableName.InvestmentTransactions]);
+    // (parallel branches). Emit only `transactions` — the client's syncDomain
+    // case body handles both series in a single /api/transactions fetch, so
+    // emitting `investment_transactions` too would double the client refetch
+    // (different debounce keys don't collapse into one call).
+    emitToUser(user_id, TableName.Transactions);
   }
   return { status: "success" as const };
 };
