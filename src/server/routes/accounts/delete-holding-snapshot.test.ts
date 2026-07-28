@@ -66,13 +66,11 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof deleteHoldingSnapshotRoute.execute>[1];
 
 /**
- * A canned holding-snapshot row matching the projection the route's
- * `getHoldingSnapshots` does on the snapshots SELECT. Only the columns
- * the ownership-check actually consumes need to be present.
+ * A canned holding-snapshot row for the route's `getHoldingSnapshots`
+ * ownership-check. Reads flow through `snapshotsTable.query`, which hydrates
+ * each row into a `SnapshotModel` — its typeChecker requires every column
+ * present (null is fine, undefined is not), so this returns the full row shape.
  */
-// Reads now flow through `snapshotsTable.query`, which hydrates each row into
-// a `SnapshotModel` — its typeChecker requires every column present (null is
-// fine, undefined is not), so this returns the full row shape.
 const snapshotRow = (overrides: Record<string, unknown> = {}) => ({
   snapshot_id: "snap-1",
   user_id: null,
