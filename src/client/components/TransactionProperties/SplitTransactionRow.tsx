@@ -1,4 +1,4 @@
-import { useEffect, ChangeEventHandler } from "react";
+import { ChangeEventHandler } from "react";
 import { currencyCodeToSymbol } from "common";
 import {
   TransactionLabel,
@@ -38,11 +38,6 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
     budgetOptions,
     categoryOptions,
   } = useBudgetCategorySelect(label, account, `split_transaction_${split_transaction_id}`);
-
-  useEffect(() => {
-    if (label.budget_id) return;
-    setSelectedBudgetIdLabel(account?.label.budget_id || "");
-  }, [label.budget_id, account?.label.budget_id, setSelectedBudgetIdLabel]);
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;

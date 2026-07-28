@@ -1,4 +1,4 @@
-import { useEffect, ChangeEventHandler, MouseEventHandler } from "react";
+import { ChangeEventHandler, MouseEventHandler } from "react";
 import {
   useAppContext,
   useBudgetCategorySelect,
@@ -57,11 +57,6 @@ const TransactionRow = ({ transaction }: Props) => {
     : isSuggested
       ? "suggested"
       : "";
-
-  useEffect(() => {
-    if (label.budget_id) return;
-    setSelectedBudgetIdLabel(account?.label.budget_id || "");
-  }, [label.budget_id, account?.label.budget_id, setSelectedBudgetIdLabel]);
 
   const isSplitTransaction = transaction instanceof SplitTransaction;
 
