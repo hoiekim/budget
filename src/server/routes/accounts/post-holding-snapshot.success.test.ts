@@ -117,15 +117,30 @@ const existingSecurityRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// `getHoldingSnapshots` (the ownership gate) now reads through
+// `snapshotsTable.query`, which hydrates each row into a `SnapshotModel` — its
+// typeChecker requires every column present (null is fine, undefined is not),
+// so this returns the full row shape.
 const holdingSnapshotRow = (overrides: Record<string, unknown> = {}) => ({
   snapshot_id: "snap-1",
+  user_id: null,
   snapshot_date: "2024-03-15",
+  snapshot_type: "holding",
+  account_id: null,
+  balances_available: null,
+  balances_current: null,
+  balances_limit: null,
+  balances_iso_currency_code: null,
+  security_id: null,
+  close_price: null,
   holding_account_id: "acct-1",
   holding_security_id: "sec-1",
   quantity: 10,
   cost_basis: 1000,
   institution_price: 110,
   institution_value: 1100,
+  updated: null,
+  is_deleted: false,
   ...overrides,
 });
 

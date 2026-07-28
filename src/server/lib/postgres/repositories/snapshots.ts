@@ -1,5 +1,4 @@
 import { JSONSnapshotData } from "common";
-import { pool } from "../client";
 import {
   MaskedUser,
   SnapshotModel,
@@ -17,9 +16,7 @@ import {
   HOLDING_SECURITY_ID,
   USER_ID,
 } from "../models";
-import { SNAPSHOTS } from "common/constants";
-
-import { UpsertResult, successResult, errorResult, buildSelectWithFilters } from "../database";
+import { UpsertResult, successResult, errorResult } from "../database";
 import { searchSecuritiesById } from "./securities";
 import { logger } from "../../logger";
 
@@ -57,18 +54,15 @@ export interface HoldingSnapshot {
   quantity?: number;
 }
 
-const rowToSnapshot = (row: Record<string, unknown>): JSONSnapshotData =>
-  new SnapshotModel(row).toJSON();
-
 // Security snapshots are price data — stored with `user_id = NULL` because
 // they're shared across all users. The user-scoped query below would
 // otherwise exclude them by the `user_id = $1` filter, leaving the frontend
 // unable to resolve `security_id → ticker_symbol` (Closes #323).
 //
-// Two queries instead of one: the user-scoped table-helper path doesn't
-// support an OR predicate, and a raw SQL rewrite of the whole search would
-// duplicate the date-range / inFilters logic that `buildSelectWithFilters`
-// already encodes. Two helper calls + concat is the smaller change.
+// Two queries instead of one: `snapshotsTable.query` filters by a single
+// `user_id`, so it can't express the `user_id = $1 OR user_id IS NULL` union
+// that surfacing shared security rows alongside the user's own requires.
+// Two scoped `.query` calls + concat is the smaller change.
 export const searchSnapshots = async (
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {},
@@ -85,20 +79,21 @@ export const searchSnapshots = async (
       ? { column: UPDATED, start: options.startDate, end: options.endDate }
       : undefined;
 
-  const userScoped = buildSelectWithFilters(SNAPSHOTS, "*", {
-    user_id: user?.user_id,
-    filters: {
+  const userSnapshots = await snapshotsTable.query(
+    {
       [SNAPSHOT_TYPE]: options.snapshot_type,
       [ACCOUNT_ID]: options.account_id,
       [SECURITY_ID]: options.security_id,
     },
-    inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
-    dateRange,
-    orderBy: `${SNAPSHOT_DATE} DESC`,
-    limit: options.limit,
-    excludeDeleted: !options.includeDeleted,
-  });
-  const userResult = await pool.query<Record<string, unknown>>(userScoped.sql, userScoped.values);
+    {
+      user_id: user?.user_id,
+      inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
+      dateRange,
+      orderBy: `${SNAPSHOT_DATE} DESC`,
+      limit: options.limit,
+      excludeDeleted: !options.includeDeleted,
+    },
+  );
 
   // Holding snapshots store the account in `holding_account_id` and leave
   // `account_id` NULL — so the `account_id`-filtered query above never
@@ -116,11 +111,10 @@ export const searchSnapshots = async (
   const wantsHoldingByAccount =
     (!options.snapshot_type || options.snapshot_type === "holding") &&
     (options.account_id || options.account_ids?.length);
-  const holdingByAccountRows: Record<string, unknown>[] = [];
+  const holdingByAccountSnapshots: SnapshotModel[] = [];
   if (wantsHoldingByAccount) {
-    const holdingScoped = buildSelectWithFilters(SNAPSHOTS, "*", {
-      user_id: user?.user_id,
-      filters: {
+    const holdingSnapshots = await snapshotsTable.query(
+      {
         [SNAPSHOT_TYPE]: "holding",
         [HOLDING_ACCOUNT_ID]: options.account_id,
         // Holding rows store the security in `holding_security_id`; the
@@ -129,19 +123,18 @@ export const searchSnapshots = async (
         // passes both `account_id` and `security_id`).
         [HOLDING_SECURITY_ID]: options.security_id,
       },
-      inFilters: options.account_ids?.length
-        ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
-        : undefined,
-      dateRange,
-      orderBy: `${SNAPSHOT_DATE} DESC`,
-      limit: options.limit,
-      excludeDeleted: !options.includeDeleted,
-    });
-    const holdingResult = await pool.query<Record<string, unknown>>(
-      holdingScoped.sql,
-      holdingScoped.values,
+      {
+        user_id: user?.user_id,
+        inFilters: options.account_ids?.length
+          ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
+          : undefined,
+        dateRange,
+        orderBy: `${SNAPSHOT_DATE} DESC`,
+        limit: options.limit,
+        excludeDeleted: !options.includeDeleted,
+      },
     );
-    holdingByAccountRows.push(...holdingResult.rows);
+    holdingByAccountSnapshots.push(...holdingSnapshots);
   }
 
   // Security snapshots only make sense when the caller isn't narrowing to a
@@ -152,22 +145,20 @@ export const searchSnapshots = async (
     !options.account_id &&
     !options.account_ids?.length;
   if (!wantsSecurity) {
-    return [...userResult.rows, ...holdingByAccountRows].map(rowToSnapshot);
+    return [...userSnapshots, ...holdingByAccountSnapshots].map((s) => s.toJSON());
   }
 
-  const globalSecurity = buildSelectWithFilters(SNAPSHOTS, "*", {
-    filters: {
+  const securitySnapshots = await snapshotsTable.query(
+    {
       [SNAPSHOT_TYPE]: "security",
       [SECURITY_ID]: options.security_id,
     },
-    dateRange,
-    orderBy: `${SNAPSHOT_DATE} DESC`,
-    limit: options.limit,
-    excludeDeleted: !options.includeDeleted,
-  });
-  const securityResult = await pool.query<Record<string, unknown>>(
-    globalSecurity.sql,
-    globalSecurity.values,
+    {
+      dateRange,
+      orderBy: `${SNAPSHOT_DATE} DESC`,
+      limit: options.limit,
+      excludeDeleted: !options.includeDeleted,
+    },
   );
 
   // Enrich each security snapshot with ticker_symbol / name / type from the
@@ -176,13 +167,13 @@ export const searchSnapshots = async (
   // still couldn't resolve `security_id → ticker`. Same enrichment pattern
   // as `getHoldingSnapshotsRoute`.
   const uniqueSecurityIds = [
-    ...new Set(securityResult.rows.map((r) => r.security_id as string).filter(Boolean)),
+    ...new Set(securitySnapshots.map((s) => s.security_id as string).filter(Boolean)),
   ];
   const securities = uniqueSecurityIds.length ? await searchSecuritiesById(uniqueSecurityIds) : [];
   const securityMap = new Map(securities.map((s) => [s.security_id, s]));
 
-  const enrichedSecuritySnapshots = securityResult.rows.map((row) => {
-    const snap = rowToSnapshot(row);
+  const enrichedSecuritySnapshots = securitySnapshots.map((model) => {
+    const snap = model.toJSON();
     if (!isSecuritySnapshot(snap)) return snap;
     const sec = securityMap.get(snap.security.security_id);
     if (sec) {
@@ -195,8 +186,8 @@ export const searchSnapshots = async (
   });
 
   return [
-    ...userResult.rows.map(rowToSnapshot),
-    ...holdingByAccountRows.map(rowToSnapshot),
+    ...userSnapshots.map((s) => s.toJSON()),
+    ...holdingByAccountSnapshots.map((s) => s.toJSON()),
     ...enrichedSecuritySnapshots,
   ];
 };
@@ -204,21 +195,22 @@ export const searchSnapshots = async (
 export const getSecuritySnapshots = async (
   options: { security_id?: string; startDate?: string; endDate?: string } = {},
 ): Promise<SecuritySnapshot[]> => {
-  const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
-    filters: { [SNAPSHOT_TYPE]: "security", [SECURITY_ID]: options.security_id },
-    dateRange:
-      options.startDate || options.endDate
-        ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
-        : undefined,
-    orderBy: SNAPSHOT_DATE,
-  });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
+  const snapshots = await snapshotsTable.query(
+    { [SNAPSHOT_TYPE]: "security", [SECURITY_ID]: options.security_id },
+    {
+      dateRange:
+        options.startDate || options.endDate
+          ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
+          : undefined,
+      orderBy: SNAPSHOT_DATE,
+    },
+  );
 
-  return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id as string,
-    snapshot_date: String(row.snapshot_date),
-    security_id: row.security_id as string,
-    close_price: row.close_price != null ? Number(row.close_price) : undefined,
+  return snapshots.map((s) => ({
+    snapshot_id: s.snapshot_id,
+    snapshot_date: String(s.snapshot_date),
+    security_id: s.security_id as string,
+    close_price: s.close_price != null ? Number(s.close_price) : undefined,
   }));
 };
 
@@ -230,26 +222,24 @@ export const getHoldingSnapshots = async (
   if (options.account_id) filters.holding_account_id = options.account_id;
   if (options.security_id) filters.holding_security_id = options.security_id;
 
-  const { sql, values } = buildSelectWithFilters(SNAPSHOTS, "*", {
+  const snapshots = await snapshotsTable.query(filters, {
     user_id: user.user_id,
-    filters,
     dateRange:
       options.startDate || options.endDate
         ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
         : undefined,
     orderBy: SNAPSHOT_DATE,
   });
-  const result = await pool.query<Record<string, unknown>>(sql, values);
 
-  return result.rows.map((row) => ({
-    snapshot_id: row.snapshot_id as string,
-    snapshot_date: String(row.snapshot_date),
-    holding_account_id: row.holding_account_id as string,
-    holding_security_id: row.holding_security_id as string,
-    institution_price: row.institution_price != null ? Number(row.institution_price) : undefined,
-    institution_value: row.institution_value != null ? Number(row.institution_value) : undefined,
-    cost_basis: row.cost_basis != null ? Number(row.cost_basis) : undefined,
-    quantity: row.quantity != null ? Number(row.quantity) : undefined,
+  return snapshots.map((s) => ({
+    snapshot_id: s.snapshot_id,
+    snapshot_date: String(s.snapshot_date),
+    holding_account_id: s.holding_account_id as string,
+    holding_security_id: s.holding_security_id as string,
+    institution_price: s.institution_price != null ? Number(s.institution_price) : undefined,
+    institution_value: s.institution_value != null ? Number(s.institution_value) : undefined,
+    cost_basis: s.cost_basis != null ? Number(s.cost_basis) : undefined,
+    quantity: s.quantity != null ? Number(s.quantity) : undefined,
   }));
 };
 

@@ -99,12 +99,29 @@ const makeSecurityRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// `getSecuritySnapshots` now reads through `snapshotsTable.query`, which
+// hydrates each row into a `SnapshotModel` — its typeChecker requires every
+// column present (null is fine, undefined is not), so this returns the full
+// row shape.
 const makeSnapshotRow = (overrides: Record<string, unknown> = {}) => ({
   snapshot_id: "snap-1",
+  user_id: null,
   snapshot_date: "2026-04-15",
   snapshot_type: "security",
+  account_id: null,
+  balances_available: null,
+  balances_current: null,
+  balances_limit: null,
+  balances_iso_currency_code: null,
   security_id: "sec-1",
   close_price: 90,
+  holding_account_id: null,
+  holding_security_id: null,
+  institution_price: null,
+  institution_value: null,
+  cost_basis: null,
+  quantity: null,
+  updated: null,
   is_deleted: false,
   ...overrides,
 });

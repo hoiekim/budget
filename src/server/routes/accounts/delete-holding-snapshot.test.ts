@@ -70,15 +70,29 @@ const fakeRes = () =>
  * `getHoldingSnapshots` does on the snapshots SELECT. Only the columns
  * the ownership-check actually consumes need to be present.
  */
+// Reads now flow through `snapshotsTable.query`, which hydrates each row into
+// a `SnapshotModel` — its typeChecker requires every column present (null is
+// fine, undefined is not), so this returns the full row shape.
 const snapshotRow = (overrides: Record<string, unknown> = {}) => ({
   snapshot_id: "snap-1",
+  user_id: null,
   snapshot_date: "2026-05-14",
+  snapshot_type: "holding",
+  account_id: null,
+  balances_available: null,
+  balances_current: null,
+  balances_limit: null,
+  balances_iso_currency_code: null,
+  security_id: null,
+  close_price: null,
   holding_account_id: "acc-1",
   holding_security_id: "sec-1",
-  institution_price: "12.50",
-  institution_value: "125.00",
-  cost_basis: "100.00",
-  quantity: "10",
+  institution_price: 12.5,
+  institution_value: 125,
+  cost_basis: 100,
+  quantity: 10,
+  updated: null,
+  is_deleted: false,
   ...overrides,
 });
 
