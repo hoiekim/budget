@@ -61,11 +61,6 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     categoryOptions,
   } = useBudgetCategorySelect(label, account, `investment_transaction_${investment_transaction_id}`);
 
-  useEffect(() => {
-    setSelectedBudgetIdLabel(label.budget_id || account?.label.budget_id || "");
-    setSelectedCategoryIdLabel(label.category_id || "");
-  }, [label, account, setSelectedBudgetIdLabel, setSelectedCategoryIdLabel]);
-
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
     if (value === selectedBudgetIdLabel) return;
