@@ -37,5 +37,12 @@ jobs:
 
     steps:
       - name: Trigger deploy
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
-          curl -X POST ${{ secrets.DEPLOY_URL }} -H "Content-Type: application/json" -d '{"secret": "${{ secrets.DEPLOY_SECRET }}"}'
+          curl --fail-with-body -sS -X POST "$DEPLOY_URL" \
+            -H "Authorization: Bearer $DEPLOY_SECRET" \
+            -H "Content-Type: application/json" \
+            -w '\n---\nstatus: %{http_code}, duration: %{time_total}s\n' \
+            --data "{\"sha\":\"${GITHUB_SHA}\",\"repo\":\"${GITHUB_REPOSITORY}\"}"
