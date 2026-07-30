@@ -31,7 +31,9 @@ export const postClientErrorRoute = new Route("POST", "/client-error", async (re
     .filter(Boolean)
     .join("\n");
 
-  await sendAlarm("Client JS Error", detail);
+  // Dedicated cooldown bucket: this endpoint is unauthenticated, so sharing a
+  // bucket let any caller suppress unrelated server-side alarms indefinitely.
+  await sendAlarm("Client JS Error", detail, "client-error");
 
   return { status: "success" as const };
 });
