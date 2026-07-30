@@ -8,6 +8,7 @@ import {
   Properties,
   Property,
   PropertyLabel,
+  ButtonRow,
   Row,
   useAppContext,
 } from "client";
@@ -122,16 +123,12 @@ export const ApiKeyProperties = () => {
         </Property>
         <PropertyLabel>&nbsp;</PropertyLabel>
         <Property>
-          <Row className="button">
-            <button type="button" className="colored" onClick={onCopy}>
-              Copy&nbsp;to&nbsp;clipboard
-            </button>
-          </Row>
-          <Row className="button">
-            <button type="button" onClick={onSavedConfirm}>
-              I&rsquo;ve&nbsp;saved&nbsp;it
-            </button>
-          </Row>
+          <ButtonRow type="button" className="colored" onClick={onCopy}>
+            Copy&nbsp;to&nbsp;clipboard
+          </ButtonRow>
+          <ButtonRow type="button" onClick={onSavedConfirm}>
+            I&rsquo;ve&nbsp;saved&nbsp;it
+          </ButtonRow>
         </Property>
       </Properties>
     );
@@ -170,21 +167,17 @@ export const ApiKeyProperties = () => {
         </Property>
         <PropertyLabel>&nbsp;</PropertyLabel>
         <Property>
-          <Row className="button">
-            <button
-              type="button"
-              className="colored"
-              onClick={onCreate}
-              disabled={creating || !name.trim()}
-            >
-              {creating ? "Creating…" : "Create Key"}
-            </button>
-          </Row>
-          <Row className="button">
-            <button type="button" onClick={goBack}>
-              Cancel
-            </button>
-          </Row>
+          <ButtonRow
+            type="button"
+            className="colored"
+            onClick={onCreate}
+            disabled={creating || !name.trim()}
+          >
+            {creating ? "Creating…" : "Create Key"}
+          </ButtonRow>
+          <ButtonRow type="button" onClick={goBack}>
+            Cancel
+          </ButtonRow>
         </Property>
       </Properties>
     );
@@ -216,11 +209,9 @@ export const ApiKeyProperties = () => {
         </Property>
         <PropertyLabel>&nbsp;</PropertyLabel>
         <Property>
-          <Row className="button">
-            <button type="button" onClick={goBack}>
-              Back
-            </button>
-          </Row>
+          <ButtonRow type="button" onClick={goBack}>
+            Back
+          </ButtonRow>
         </Property>
       </Properties>
     );
@@ -262,11 +253,9 @@ export const ApiKeyProperties = () => {
             Revoke
           </DeleteButton>
         </Row>
-        <Row className="button">
-          <button type="button" onClick={goBack}>
-            Back
-          </button>
-        </Row>
+        <ButtonRow type="button" onClick={goBack}>
+          Back
+        </ButtonRow>
       </Property>
     </Properties>
   );

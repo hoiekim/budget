@@ -6,6 +6,7 @@ import {
   useAppContext,
   PropertyLabel,
   Property,
+  ButtonRow,
   Row,
 } from "client";
 
@@ -66,20 +67,16 @@ export const ApiKeysSection = () => {
           </Row>
         )}
         {keys.map((k) => (
-          <Row className="button" key={k.key_id}>
-            <button className="connection" onClick={() => goToKey(k.key_id)}>
-              <div>
-                <span>{k.name}</span>
-                <span className="small">&nbsp;&nbsp;{k.key_prefix}…</span>
-              </div>
-            </button>
-          </Row>
+          <ButtonRow key={k.key_id} className="connection" onClick={() => goToKey(k.key_id)}>
+            <div>
+              <span>{k.name}</span>
+              <span className="small">&nbsp;&nbsp;{k.key_prefix}…</span>
+            </div>
+          </ButtonRow>
         ))}
-        <Row className="button">
-          <button type="button" onClick={goToNewKey}>
-            Add
-          </button>
-        </Row>
+        <ButtonRow type="button" onClick={goToNewKey}>
+          Add
+        </ButtonRow>
       </Property>
     </>
   );

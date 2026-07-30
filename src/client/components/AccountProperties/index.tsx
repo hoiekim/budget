@@ -28,6 +28,7 @@ import {
   Properties,
   Property,
   PropertyLabel,
+  ButtonRow,
   Row,
   ToggleInput,
 } from "client/components";
@@ -256,31 +257,23 @@ export const AccountProperties = ({ account }: Props) => {
           <PropertyLabel>Add</PropertyLabel>
           <Property>
             {isManualAccount && type !== AccountType.Investment && (
-              <Row className="button">
-                <button onClick={onClickAddTransaction}>Add&nbsp;Transaction</button>
-              </Row>
+              <ButtonRow onClick={onClickAddTransaction}>Add&nbsp;Transaction</ButtonRow>
             )}
             {type === AccountType.Investment && (
-              <Row className="button">
-                <button onClick={onClickAddInvestmentTransaction}>
-                  Add&nbsp;Investment&nbsp;Transaction
-                </button>
-              </Row>
+              <ButtonRow onClick={onClickAddInvestmentTransaction}>
+                Add&nbsp;Investment&nbsp;Transaction
+              </ButtonRow>
             )}
           </Property>
         </>
       )}
       <PropertyLabel>Navigate</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button onClick={onClickConnectionDetail}>See&nbsp;Connection&nbsp;Details</button>
-        </Row>
+        <ButtonRow onClick={onClickConnectionDetail}>See&nbsp;Connection&nbsp;Details</ButtonRow>
         {screenType === ScreenType.Narrow && (
-          <Row className="button">
-            <button className="propertyName" onClick={onClickTransactions}>
-              See&nbsp;Transactions
-            </button>
-          </Row>
+          <ButtonRow className="propertyName" onClick={onClickTransactions}>
+            See&nbsp;Transactions
+          </ButtonRow>
         )}
       </Property>
       {isManualAccount && (

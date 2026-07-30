@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, ChangeEventHandler, useRef, useEffect } from 
 import { LocalDate, ViewDate, currencyCodeToSymbol, getDateString } from "common";
 import { Budget, Capacity, CapacityData, sortCapacities, useAppContext } from "client";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
-import { CapacityInput, Row } from "client/components";
+import { CapacityInput, ButtonRow, Row } from "client/components";
 import BudgetDonut from "./BudgetDonut";
 import "./index.css";
 
@@ -156,9 +156,7 @@ const CapacitiesInput = ({
 
   return (
     <div className="CapacitiesInput">
-      <Row className="button">
-        <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Period</button>
-      </Row>
+      <ButtonRow onClick={onClickAdd}>Add&nbsp;New&nbsp;Period</ButtonRow>
       {rows}
     </div>
   );

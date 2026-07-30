@@ -8,7 +8,7 @@ import {
   Properties,
   Property,
   PropertyLabel,
-  Row,
+  ButtonRow,
   TransferArrowIcon,
 } from "client/components";
 import "./index.css";
@@ -137,11 +137,9 @@ export const TransferProperties = ({ transfer }: Props) => {
       {renderSide("To", incoming, toAccount)}
       <PropertyLabel>Actions</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button className="unpairButton" onClick={onClickUnpair}>
-            Mark&nbsp;as&nbsp;Non-Transfer
-          </button>
-        </Row>
+        <ButtonRow className="unpairButton" onClick={onClickUnpair}>
+          Mark&nbsp;as&nbsp;Non-Transfer
+        </ButtonRow>
       </Property>
     </Properties>
   );

@@ -12,6 +12,7 @@ import {
   Properties,
   PropertyLabel,
   Property,
+  ButtonRow,
   Row,
   KeyValue,
   ToggleInput,
@@ -172,9 +173,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
 
       <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button onClick={onClickAccounts}>{numberOfSelectedAccounts}&nbsp;selected</button>
-        </Row>
+        <ButtonRow onClick={onClickAccounts}>{numberOfSelectedAccounts}&nbsp;selected</ButtonRow>
       </Property>
 
       {children}

@@ -12,6 +12,7 @@ import {
   Properties,
   PropertyLabel,
   Property,
+  ButtonRow,
   Row,
   KeyValue,
 } from "client";
@@ -91,11 +92,9 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
 
       <PropertyLabel>Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button onClick={onClickAccounts}>
-            {selectedAccountsCount + selectedBudgetsCount}&nbsp;selected
-          </button>
-        </Row>
+        <ButtonRow onClick={onClickAccounts}>
+          {selectedAccountsCount + selectedBudgetsCount}&nbsp;selected
+        </ButtonRow>
       </Property>
 
       {children}

@@ -16,6 +16,7 @@ import {
   Properties,
   PropertyLabel,
   Property,
+  ButtonRow,
   Row,
   useAppContext,
   indexedDb,
@@ -151,9 +152,7 @@ export const ConnectionProperties = ({ item }: Props) => {
           </Row>
         )}
         {provider === ItemProvider.MANUAL ? (
-          <Row className="button">
-            <button onClick={onClickAddManualAccount}>Add&nbsp;Account</button>
-          </Row>
+          <ButtonRow onClick={onClickAddManualAccount}>Add&nbsp;Account</ButtonRow>
         ) : (
           <Row className="button">
             <DeleteButton

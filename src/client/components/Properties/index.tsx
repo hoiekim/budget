@@ -84,3 +84,22 @@ export const KeyValue = ({ name, className, children, ...rest }: KeyValueProps) 
     </Row>
   );
 };
+
+type ButtonRowProps = ComponentPropsWithoutRef<"button">;
+
+/** The canonical action row: a `<Row className="button">` wrapping one native
+ *  `<button>`, so the row-level CSS (`div.Properties .row.button:hover`)
+ *  applies. `children` is the label; every other prop (`onClick`, `type`,
+ *  `className`, `disabled`, …) lands on the inner button — where the existing
+ *  per-site classes (`colored`, `connection`, `propertyName`, …) already live.
+ *
+ *  Rows whose child is a button *component* rather than a native `<button>`
+ *  (`<DeleteButton>`, `<PlaidLinkButton>`, `<SimpleFinLinkButton>`) render
+ *  their own `<button>`, so those keep the raw `<Row className="button">`. */
+export const ButtonRow = ({ children, ...rest }: ButtonRowProps) => {
+  return (
+    <Row className="button">
+      <button {...rest}>{children}</button>
+    </Row>
+  );
+};
