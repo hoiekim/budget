@@ -109,12 +109,17 @@ describe("sendAlarm", () => {
     for (let i = 0; i < 10; i += 1) {
       await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
     }
+    // Offset the refusal from the 10 sends so the window and a wrongly-spent
+    // cooldown expire at different instants. Refusing at the same instant lets
+    // one advance() clear both, and the assertion below passes either way.
+    advance(5_000);
     await alarm.sendAlarm("Scheduled Sync Failed", "dropped by ceiling");
     expect(mockFetch).toHaveBeenCalledTimes(10);
 
-    // The window clears the 10 sends; the refused key must be eligible again
-    // immediately rather than serving a 60s cooldown it never earned.
-    advance(60_001);
+    // Now past the window (the 10 sends are pruned) but still inside the 60s
+    // that a cooldown spent at the refusal would have started, so the refused
+    // key gets through only if the ceiling branch left its cooldown untouched.
+    advance(55_001);
     await alarm.sendAlarm("Scheduled Sync Failed", "now it gets through");
     expect(mockFetch).toHaveBeenCalledTimes(11);
   });
