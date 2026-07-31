@@ -40,7 +40,11 @@ export const Configuration = () => {
       const buttonClassNames = ["connection"];
       if (status !== ItemStatus.OK) buttonClassNames.push("notification");
       return (
-        <ButtonRow key={id} className={buttonClassNames.join(" ")} onClick={onClickConnection}>
+        <ButtonRow
+          key={id}
+          buttonClassName={buttonClassNames.join(" ")}
+          onClick={onClickConnection}
+        >
           <div>
             {institution_id ? (
               <InstitutionSpan institution_id={institution_id} />

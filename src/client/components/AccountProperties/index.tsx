@@ -271,9 +271,7 @@ export const AccountProperties = ({ account }: Props) => {
       <Property>
         <ButtonRow onClick={onClickConnectionDetail}>See&nbsp;Connection&nbsp;Details</ButtonRow>
         {screenType === ScreenType.Narrow && (
-          <ButtonRow className="propertyName" onClick={onClickTransactions}>
-            See&nbsp;Transactions
-          </ButtonRow>
+          <ButtonRow onClick={onClickTransactions}>See&nbsp;Transactions</ButtonRow>
         )}
       </Property>
       {isManualAccount && (

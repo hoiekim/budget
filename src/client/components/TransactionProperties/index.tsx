@@ -463,10 +463,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
       <PropertyLabel>Transfer</PropertyLabel>
       <Property>
         {!showPartnerPicker && (
-          <ButtonRow
-            className="markAsTransferButton"
-            onClick={() => setShowPartnerPicker(true)}
-          >
+          <ButtonRow onClick={() => setShowPartnerPicker(true)}>
             <TransferArrowIcon size={12} />
             &nbsp;Mark&nbsp;as&nbsp;Transfer
           </ButtonRow>
@@ -539,11 +536,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 </Row>
               );
             })}
-            <ButtonRow
-              className="markAsTransferCancel"
-              disabled={!!pendingPartnerId}
-              onClick={() => setShowPartnerPicker(false)}
-            >
+            <ButtonRow disabled={!!pendingPartnerId} onClick={() => setShowPartnerPicker(false)}>
               Cancel
             </ButtonRow>
           </>

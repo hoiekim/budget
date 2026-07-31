@@ -667,7 +667,7 @@ export const HoldingProperties = () => {
               />
             </KeyValue>
             {submitError && <Row className="formError">{submitError}</Row>}
-            <ButtonRow type="submit" className="colored">
+            <ButtonRow type="submit" buttonClassName="colored">
               Add
             </ButtonRow>
             <ButtonRow type="button" onClick={goBackToAccount}>
@@ -824,11 +824,7 @@ export const HoldingProperties = () => {
               Add&nbsp;Investment&nbsp;Transaction
             </ButtonRow>
             {missingUnits > 0 && (
-              <ButtonRow
-                type="button"
-                className="divergenceAction"
-                onClick={onClickAddDivergentTransaction}
-              >
+              <ButtonRow type="button" onClick={onClickAddDivergentTransaction}>
                 Add&nbsp;transaction&nbsp;for&nbsp;
                 {numberToCommaString(missingUnits, 4)}&nbsp;missing&nbsp;units
               </ButtonRow>

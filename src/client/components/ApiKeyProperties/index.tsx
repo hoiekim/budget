@@ -123,7 +123,7 @@ export const ApiKeyProperties = () => {
         </Property>
         <PropertyLabel>&nbsp;</PropertyLabel>
         <Property>
-          <ButtonRow type="button" className="colored" onClick={onCopy}>
+          <ButtonRow type="button" buttonClassName="colored" onClick={onCopy}>
             Copy&nbsp;to&nbsp;clipboard
           </ButtonRow>
           <ButtonRow type="button" onClick={onSavedConfirm}>
@@ -169,7 +169,7 @@ export const ApiKeyProperties = () => {
         <Property>
           <ButtonRow
             type="button"
-            className="colored"
+            buttonClassName="colored"
             onClick={onCreate}
             disabled={creating || !name.trim()}
           >

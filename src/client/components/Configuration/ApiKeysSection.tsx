@@ -67,7 +67,7 @@ export const ApiKeysSection = () => {
           </Row>
         )}
         {keys.map((k) => (
-          <ButtonRow key={k.key_id} className="connection" onClick={() => goToKey(k.key_id)}>
+          <ButtonRow key={k.key_id} buttonClassName="connection" onClick={() => goToKey(k.key_id)}>
             <div>
               <span>{k.name}</span>
               <span className="small">&nbsp;&nbsp;{k.key_prefix}…</span>

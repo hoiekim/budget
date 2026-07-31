@@ -137,7 +137,7 @@ export const TransferProperties = ({ transfer }: Props) => {
       {renderSide("To", incoming, toAccount)}
       <PropertyLabel>Actions</PropertyLabel>
       <Property>
-        <ButtonRow className="unpairButton" onClick={onClickUnpair}>
+        <ButtonRow buttonClassName="unpairButton" onClick={onClickUnpair}>
           Mark&nbsp;as&nbsp;Non-Transfer
         </ButtonRow>
       </Property>
