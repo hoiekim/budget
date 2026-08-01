@@ -29,12 +29,24 @@ export type ServerEventHandler = (
  * a permanently-dead connection that never recovers once the user logs
  * in. Gating on `enabled` opens the stream only once authenticated, and
  * the effect re-runs (reconnecting) when auth flips.
+ *
+ * `onReconnect` fires on every `open` after the first one on the same
+ * stream. The server buffers nothing and replays nothing, so an event
+ * emitted while the connection was down reaches no one — the peer must
+ * reconcile by refetching once it is back.
  */
-export const useServerEvents = (handler: ServerEventHandler, enabled = true): void => {
+export const useServerEvents = (
+  handler: ServerEventHandler,
+  enabled = true,
+  onReconnect?: () => void,
+): void => {
   // Keep the latest handler in a ref so we don't tear the EventSource
   // down every time the parent re-renders with a new closure.
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
+
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
 
   useEffect(() => {
     if (!enabled) return;
@@ -60,6 +72,13 @@ export const useServerEvents = (handler: ServerEventHandler, enabled = true): vo
       perDomain.set(domain, listener);
     }
 
+    let opened = false;
+    const onOpen = () => {
+      if (opened) onReconnectRef.current?.();
+      opened = true;
+    };
+    source.addEventListener("open", onOpen);
+
     source.addEventListener("error", () => {
       // EventSource auto-reconnects on error; log only when the connection
       // stays broken (readyState === CLOSED means auto-reconnect gave up).
@@ -72,6 +91,7 @@ export const useServerEvents = (handler: ServerEventHandler, enabled = true): vo
       for (const [domain, listener] of perDomain) {
         source.removeEventListener(`${domain}-updated`, listener);
       }
+      source.removeEventListener("open", onOpen);
       source.close();
     };
   }, [enabled]);

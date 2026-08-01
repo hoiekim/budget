@@ -16,6 +16,7 @@ import {
   SECURITY_HEADERS,
   emitToUser,
   mutationEmitDomain,
+  SERVER_IDLE_TIMEOUT_SECONDS,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -397,6 +398,7 @@ async function handleApiRequest(
 
 const server = Bun.serve({
   port: process.env.PORT || 3005,
+  idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);

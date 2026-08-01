@@ -5,10 +5,10 @@ import {
   unregisterSubscriber,
   subscriberCount,
   SECURITY_HEADERS,
+  SSE_KEEPALIVE_MS,
   type Subscriber,
 } from "server";
 
-const SSE_KEEPALIVE_MS = 30_000;
 // Bound the number of concurrent tabs per user so a bug or abuse can't grow
 // the subscriber map without limit. Each sub holds a keepalive timer + stream
 // controller. 20 is comfortably above normal (a few tabs + a few devices)

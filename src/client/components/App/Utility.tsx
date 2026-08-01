@@ -38,11 +38,19 @@ const Utility = () => {
    * own `tabId` are its own writes (already applied optimistically) and
    * skipped. Per-domain debouncing collapses bursts of the same event; the
    * cursor is not advanced (only the whole-app `sync()` owns that).
+   *
+   * Events emitted while the stream was down are not replayed, so a
+   * reconnect reconciles with a whole-app `sync()` instead of assuming the
+   * gap was empty.
    */
-  useServerEvents((domain, payload) => {
-    if (payload.originTabId === tabId) return;
-    syncDomain(domain);
-  }, userLoggedIn);
+  useServerEvents(
+    (domain, payload) => {
+      if (payload.originTabId === tabId) return;
+      syncDomain(domain);
+    },
+    userLoggedIn,
+    sync,
+  );
 
   /**
    * Calculate balance history when data is updated
