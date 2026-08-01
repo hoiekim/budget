@@ -24,6 +24,7 @@ const {
   getAccount,
   searchAccounts,
   searchAccountsById,
+  createAccount,
   upsertAccounts,
   deleteAccounts,
 } = await import("./accounts");
@@ -244,6 +245,54 @@ describe("upsertAccounts", () => {
     const result = await upsertAccounts(testUser, accounts);
     expect(result).toHaveLength(3);
     expect(result.every((r: { status: number }) => r.status === 200)).toBe(true);
+  });
+});
+
+describe("createAccount", () => {
+  const newAccount = {
+    account_id: "acc-new",
+    item_id: "item-1",
+    institution_id: "Unknown",
+    name: "Unknown",
+    type: AccountType.Other,
+  } as Parameters<typeof createAccount>[1];
+
+  test("issues an INSERT, never an UPSERT — ON CONFLICT has no user_id guard", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ account_id: "acc-new" }], rowCount: 1 });
+    await createAccount(testUser, newAccount);
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toMatch(/^\s*INSERT\s+INTO\s+accounts\b/i);
+    expect(sql).not.toMatch(/ON\s+CONFLICT/i);
+  });
+
+  test("binds the requesting user's id and the account's own id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ account_id: "acc-new" }], rowCount: 1 });
+    await createAccount({ user_id: "usr-99", username: "other" }, newAccount);
+    const values = mockQuery.mock.calls[0][1] as unknown[];
+    expect(values).toContain("usr-99");
+    expect(values).toContain("acc-new");
+    expect(values).toContain("item-1");
+  });
+
+  test("returns a success result when a row comes back", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ account_id: "acc-new" }], rowCount: 1 });
+    const result = await createAccount(testUser, newAccount);
+    expect(result.status).toBe(200);
+    expect(result.update._id).toBe("acc-new");
+  });
+
+  test("returns an error result when the insert returns no row", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await createAccount(testUser, newAccount);
+    expect(result.status).toBe(500);
+    expect(result.update._id).toBe("acc-new");
+  });
+
+  test("returns an error result on a unique violation", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("duplicate key value violates unique constraint"));
+    const result = await createAccount(testUser, newAccount);
+    expect(result.status).toBe(500);
+    expect(result.update._id).toBe("acc-new");
   });
 });
 
