@@ -18,6 +18,22 @@ export interface Subscriber {
   close: () => void;
 }
 
+/** Gap between `: keepalive` blocks on an otherwise-quiet SSE stream. */
+export const SSE_KEEPALIVE_MS = 15_000;
+
+/**
+ * `idleTimeout` for `Bun.serve`. Bun's default is 10 seconds, which reaps
+ * every SSE stream before its first keepalive tick can refresh the socket —
+ * a keepalive longer than the timeout is dead code, and the connection
+ * churns forever. Derived from `SSE_KEEPALIVE_MS` rather than picked
+ * independently so the two cannot drift back apart; 255 is Bun's ceiling.
+ *
+ * Server-wide, not SSE-only: it also bounds how long any handler may go
+ * without writing a byte, so raising it relaxes the deadline on slow
+ * requests (Plaid/SimpleFIN sync) too.
+ */
+export const SERVER_IDLE_TIMEOUT_SECONDS = Math.min(255, (SSE_KEEPALIVE_MS / 1000) * 4);
+
 const subscribers = new Map<string, Set<Subscriber>>();
 
 export type EmitDomain = TableName;

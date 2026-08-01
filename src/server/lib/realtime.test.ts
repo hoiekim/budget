@@ -7,6 +7,8 @@ import {
   emitToUser,
   mutationEmitDomain,
   closeAllSubscribers,
+  SSE_KEEPALIVE_MS,
+  SERVER_IDLE_TIMEOUT_SECONDS,
   type Subscriber,
 } from "./realtime";
 
@@ -173,5 +175,10 @@ describe("realtime", () => {
     expect(b.closed).toBe(true);
     expect(subscriberCount("u1")).toBe(0);
     expect(subscriberCount("u2")).toBe(0);
+  });
+
+  it("the server idle timeout outlives a keepalive tick and stays under Bun's ceiling", () => {
+    expect(SERVER_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(SSE_KEEPALIVE_MS / 1000);
+    expect(SERVER_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
   });
 });
