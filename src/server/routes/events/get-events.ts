@@ -6,6 +6,7 @@ import {
   subscriberCount,
   SECURITY_HEADERS,
   SSE_KEEPALIVE_MS,
+  SSE_IDLE_TIMEOUT_SECONDS,
   type Subscriber,
 } from "server";
 
@@ -30,6 +31,8 @@ const formatSseBlock = (event: string, payload: unknown): string => {
 
 export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
   const userId = req.session.user!.user_id;
+
+  req.setIdleTimeout?.(SSE_IDLE_TIMEOUT_SECONDS);
 
   if (subscriberCount(userId) >= MAX_SUBSCRIBERS_PER_USER) {
     res.status(429);

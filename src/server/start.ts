@@ -16,7 +16,6 @@ import {
   SECURITY_HEADERS,
   emitToUser,
   mutationEmitDomain,
-  SERVER_IDLE_TIMEOUT_SECONDS,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -243,6 +242,7 @@ async function handleApiRequest(
   url: URL,
   apiPath: string,
   log: RequestLogContext,
+  setIdleTimeout: (seconds: number) => void,
 ): Promise<Response> {
   // Parse request headers as a plain record
   const headers: Record<string, string | string[] | undefined> = {};
@@ -309,6 +309,7 @@ async function handleApiRequest(
     session,
     ip,
     signal: request.signal,
+    setIdleTimeout,
   };
 
   // Look up the matching route up-front so we can consult its requiredScope
@@ -398,9 +399,8 @@ async function handleApiRequest(
 
 const server = Bun.serve({
   port: process.env.PORT || 3005,
-  idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
 
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request, server): Promise<Response> {
     const url = new URL(request.url);
     const fullPath = url.pathname;
 
@@ -419,7 +419,9 @@ const server = Bun.serve({
 
     const startTime = performance.now();
     const log: RequestLogContext = { method: request.method, path: fullPath };
-    const response = await handleApiRequest(request, url, apiPath, log);
+    const response = await handleApiRequest(request, url, apiPath, log, (seconds) =>
+      server.timeout(request, seconds),
+    );
 
     // /health is polled constantly by uptime checks and carries no debugging
     // value — keep it out of the log as before.
