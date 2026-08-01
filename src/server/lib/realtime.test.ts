@@ -8,7 +8,7 @@ import {
   mutationEmitDomain,
   closeAllSubscribers,
   SSE_KEEPALIVE_MS,
-  SERVER_IDLE_TIMEOUT_SECONDS,
+  SSE_IDLE_TIMEOUT_SECONDS,
   type Subscriber,
 } from "./realtime";
 
@@ -177,8 +177,15 @@ describe("realtime", () => {
     expect(subscriberCount("u2")).toBe(0);
   });
 
-  it("the server idle timeout outlives a keepalive tick and stays under Bun's ceiling", () => {
-    expect(SERVER_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(SSE_KEEPALIVE_MS / 1000);
-    expect(SERVER_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
+  it("the SSE idle timeout outlives a keepalive tick", () => {
+    expect(SSE_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(SSE_KEEPALIVE_MS / 1000);
+  });
+
+  it("the SSE idle timeout is an integer within Bun's accepted range", () => {
+    // `server.timeout` throws on a fractional or out-of-range value, and the
+    // throw lands inside the request handler that opens the stream.
+    expect(Number.isInteger(SSE_IDLE_TIMEOUT_SECONDS)).toBe(true);
+    expect(SSE_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(0);
+    expect(SSE_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
   });
 });

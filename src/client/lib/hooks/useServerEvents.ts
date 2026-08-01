@@ -12,10 +12,23 @@ export type ServerEventHandler = (
   payload: ServerEventPayload,
 ) => void;
 
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+
 /**
- * One tab-lifetime `EventSource` to `/api/events`. Every domain event
- * the server broadcasts to this user fires `handler(domain, payload)`.
- * `EventSource` handles reconnection natively; the hook does not.
+ * Backoff before the next reconnect attempt. Jittered because every tab of
+ * every user is knocked off by the same event (a deploy, a proxy blip) and
+ * would otherwise re-subscribe — and re-sync — in the same instant, against
+ * a server that has just started.
+ */
+export const reconnectDelayMs = (attempt: number, random: () => number = Math.random): number => {
+  const base = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** Math.max(0, attempt));
+  return Math.round(base * (0.75 + random() * 0.5));
+};
+
+/**
+ * One tab-lifetime subscription to `/api/events`. Every domain event the
+ * server broadcasts to this user fires `handler(domain, payload)`.
  *
  * The handler receives one `(domain, payload)` call per event. To split
  * dispatch across multiple concerns, switch on `domain` inside a single
@@ -24,16 +37,16 @@ export type ServerEventHandler = (
  *
  * `enabled` MUST be false until the user is authenticated. `/api/events`
  * 401s for an anonymous request, and per the EventSource spec a non-2xx
- * response is a fatal close — the browser does NOT auto-reconnect after
- * it. Opening the stream on mount (before login) would therefore leave
- * a permanently-dead connection that never recovers once the user logs
- * in. Gating on `enabled` opens the stream only once authenticated, and
- * the effect re-runs (reconnecting) when auth flips.
+ * response is a fatal close. Gating on `enabled` opens the stream only once
+ * authenticated, and the effect re-runs (reconnecting) when auth flips.
  *
- * `onReconnect` fires on every `open` after the first one on the same
- * stream. The server buffers nothing and replays nothing, so an event
- * emitted while the connection was down reaches no one — the peer must
- * reconcile by refetching once it is back.
+ * Reconnection is the hook's job, not the browser's: `EventSource` gives up
+ * for good (`readyState === CLOSED`) whenever the response is non-2xx or the
+ * server drops the socket — which is what a restart or a proxy blip looks
+ * like — so relying on its native retry leaves every tab silently deaf until
+ * a manual reload. Each re-established stream calls `onReconnect`, because
+ * the server buffers nothing and replays nothing: an event emitted while the
+ * stream was down reached no one, and only a refetch can close that gap.
  */
 export const useServerEvents = (
   handler: ServerEventHandler,
@@ -51,48 +64,52 @@ export const useServerEvents = (
   useEffect(() => {
     if (!enabled) return;
 
-    // withCredentials sends the session cookie; without it the SSE
-    // request is anonymous and the server 401s.
-    const source = new EventSource("/api/events", { withCredentials: true });
-
     const domains = Object.values(TableName);
+    let source: EventSource | null = null;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    let everOpened = false;
+    let disposed = false;
 
-    const perDomain = new Map<ServerEventDomain, (e: MessageEvent) => void>();
-    for (const domain of domains) {
-      const listener = (e: MessageEvent) => {
-        let payload: ServerEventPayload = {};
-        try {
-          if (e.data) payload = JSON.parse(e.data) as ServerEventPayload;
-        } catch {
-          // malformed payload — dispatch with empty
-        }
-        handlerRef.current(domain, payload);
-      };
-      source.addEventListener(`${domain}-updated`, listener);
-      perDomain.set(domain, listener);
-    }
+    const connect = () => {
+      // withCredentials sends the session cookie; without it the SSE
+      // request is anonymous and the server 401s.
+      const es = new EventSource("/api/events", { withCredentials: true });
+      source = es;
 
-    let opened = false;
-    const onOpen = () => {
-      if (opened) onReconnectRef.current?.();
-      opened = true;
-    };
-    source.addEventListener("open", onOpen);
-
-    source.addEventListener("error", () => {
-      // EventSource auto-reconnects on error; log only when the connection
-      // stays broken (readyState === CLOSED means auto-reconnect gave up).
-      if (source.readyState === EventSource.CLOSED) {
-        console.warn("SSE connection closed and will not auto-reconnect.");
+      for (const domain of domains) {
+        es.addEventListener(`${domain}-updated`, (e: MessageEvent) => {
+          let payload: ServerEventPayload = {};
+          try {
+            if (e.data) payload = JSON.parse(e.data) as ServerEventPayload;
+          } catch {
+            // malformed payload — dispatch with empty
+          }
+          handlerRef.current(domain, payload);
+        });
       }
-    });
+
+      es.addEventListener("open", () => {
+        attempt = 0;
+        if (everOpened) onReconnectRef.current?.();
+        everOpened = true;
+      });
+
+      es.addEventListener("error", () => {
+        // A transient error the browser will itself retry leaves readyState
+        // at CONNECTING; only a terminal close is ours to recover from.
+        if (es.readyState !== EventSource.CLOSED || disposed) return;
+        es.close();
+        retryTimeout = setTimeout(connect, reconnectDelayMs(attempt++));
+      });
+    };
+
+    connect();
 
     return () => {
-      for (const [domain, listener] of perDomain) {
-        source.removeEventListener(`${domain}-updated`, listener);
-      }
-      source.removeEventListener("open", onOpen);
-      source.close();
+      disposed = true;
+      if (retryTimeout) clearTimeout(retryTimeout);
+      source?.close();
     };
   }, [enabled]);
 };

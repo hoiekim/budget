@@ -36,6 +36,14 @@ export interface ServerRequest {
    * subscribe to it to release resources on tab close.
    */
   signal?: AbortSignal;
+  /**
+   * Widens this one request's idle deadline, in seconds (255 max — Bun's
+   * ceiling). Bun reaps any request that goes `idleTimeout` seconds without
+   * traffic, default 10; a route that holds a response open with long
+   * silences between writes (SSE) must raise its own deadline rather than
+   * the server relaxing it for every request.
+   */
+  setIdleTimeout?: (seconds: number) => void;
 }
 
 export interface ServerResponse {
