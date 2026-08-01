@@ -1,8 +1,7 @@
-import { ItemProvider } from "common";
+import { ItemProvider, isUndefined } from "common";
 import {
   Route,
   createAccount,
-  getAccount,
   getItem,
   updateAccounts,
   requireBodyObject,
@@ -33,12 +32,16 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
   const idResult = requireStringField(body, "account_id");
   if (!idResult.success) return validationError(idResult.error!);
 
-  const existing = await getAccount(user, idResult.data!);
+  // A create posts a whole Account, `item_id` included; an edit posts only the
+  // fields it changes and never carries one. Reading the row back to classify
+  // the request instead would put an extra statement on every edit.
+  const isCreate = !isUndefined(body.item_id);
 
-  if (!existing) {
+  if (isCreate) {
     const itemIdResult = requireStringField(body, "item_id");
     if (!itemIdResult.success) return validationError(itemIdResult.error!);
 
+    // institution_id is NOT NULL, so an INSERT needs it up front.
     const institutionIdResult = requireStringField(body, "institution_id");
     if (!institutionIdResult.success) return validationError(institutionIdResult.error!);
 
@@ -59,18 +62,25 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
   }
 
   try {
-    const result: UpsertResult | undefined = existing
-      ? (await updateAccounts(user, [body as PartialAccount]))[0]
-      : await createAccount(user, body as CreatableAccount);
+    const result: UpsertResult | undefined = isCreate
+      ? await createAccount(user, body as CreatableAccount)
+      : (await updateAccounts(user, [body as PartialAccount]))[0];
 
-    // 200 is the only status that means a row was written. 304 (no row matched)
-    // and 404 (zero row count) both mean the write silently did nothing.
-    if (!result || result.status !== 200) {
-      throw new Error(`Account write did not persist, status ${result?.status ?? "missing"}`);
+    switch (result?.status) {
+      case 200: {
+        const account_id = result.update._id;
+        if (!account_id) throw new Error("Account ID is missing after write");
+        return { status: "success", body: { account_id } };
+      }
+      case 304:
+        // The UPDATE matched no row: the account is gone, or was never the
+        // requesting user's.
+        return { status: "failed", message: "Account not found." };
+      case 409:
+        return { status: "failed", message: "Account already exists." };
+      default:
+        throw new Error(`Account write did not persist, status ${result?.status ?? "missing"}`);
     }
-    const account_id = result.update._id;
-    if (!account_id) throw new Error("Account ID is missing after upsert");
-    return { status: "success", body: { account_id } };
   } catch (error: unknown) {
     logger.error("Failed to write account", { accountId: idResult.data }, error);
     throw error instanceof Error ? error : new Error(String(error));

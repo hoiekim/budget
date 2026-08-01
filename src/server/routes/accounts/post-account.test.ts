@@ -16,22 +16,26 @@ type Row = Record<string, unknown>;
  * mutable fixture instead.
  */
 const db = {
-  account: null as Row | null,
   item: null as Row | null,
   insertReturns: [] as Row[],
+  insertError: null as Error | null,
   updateReturns: [] as Row[],
+  updateError: null as Error | null,
 };
 
 const mockQuery = mock(async (sql: string, _values?: unknown[]) => {
   const rows = (() => {
-    if (/^\s*SELECT\b[\s\S]*\bFROM\s+accounts\b/i.test(sql)) {
-      return db.account ? [db.account] : [];
-    }
     if (/^\s*SELECT\b[\s\S]*\bFROM\s+items\b/i.test(sql)) {
       return db.item ? [db.item] : [];
     }
-    if (/^\s*INSERT\s+INTO\s+accounts\b/i.test(sql)) return db.insertReturns;
-    if (/^\s*UPDATE\s+accounts\b/i.test(sql)) return db.updateReturns;
+    if (/^\s*INSERT\s+INTO\s+accounts\b/i.test(sql)) {
+      if (db.insertError) throw db.insertError;
+      return db.insertReturns;
+    }
+    if (/^\s*UPDATE\s+accounts\b/i.test(sql)) {
+      if (db.updateError) throw db.updateError;
+      return db.updateReturns;
+    }
     return [];
   })();
   return { rows: rows as unknown[], rowCount: rows.length as number | null };
@@ -56,13 +60,14 @@ afterAll(restoreLeaves);
 beforeEach(() => {
   // Clear the call log but keep the fixture-driven implementation.
   mockQuery.mockClear();
-  db.account = null;
   db.item = null;
   db.insertReturns = [];
+  db.insertError = null;
   db.updateReturns = [];
+  db.updateError = null;
 });
 
-/** Full rows — `Table.queryOne` hydrates a Model, which validates every column. */
+/** Full row — `Table.queryOne` hydrates an ItemModel, which validates every column. */
 const makeItemRow = (overrides: Row = {}): Row => ({
   item_id: "item-manual",
   user_id: "u-1",
@@ -81,30 +86,6 @@ const makeItemRow = (overrides: Row = {}): Row => ({
   ...overrides,
 });
 
-const makeAccountRow = (overrides: Row = {}): Row => ({
-  account_id: "acc-1",
-  user_id: "u-1",
-  item_id: "item-manual",
-  institution_id: "Unknown",
-  name: "Unknown",
-  type: "other",
-  subtype: null,
-  balances_available: 0,
-  balances_current: 0,
-  balances_limit: null,
-  balances_iso_currency_code: "USD",
-  custom_name: null,
-  hide: false,
-  archived: false,
-  label_budget_id: null,
-  graph_options_use_snapshots: true,
-  graph_options_use_holding_snapshots: true,
-  graph_options_use_transactions: false,
-  raw: null,
-  updated: "2026-08-01T00:00:00Z",
-  is_deleted: false,
-  ...overrides,
-});
 
 const newAccountBody = {
   account_id: "acc-new",
@@ -193,7 +174,6 @@ describe("post-account create path", () => {
     expect(insert!.values).toContain("acc-new");
     expect(insert!.values).toContain("u-1");
     expect(insert!.values).toContain("item-manual");
-    // The bug this replaces: the create path ran an UPDATE that matched no row.
     expect(findStatement(UPDATE_ACCOUNTS)).toBeNull();
   });
 
@@ -203,7 +183,8 @@ describe("post-account create path", () => {
 
     const result = await postAccountRoute.execute(makeReq(newAccountBody, "u-1"), fakeRes());
 
-    expect(result?.status).not.toBe("success");
+    expect(result?.status).toBe("error");
+    expect(result?.message).toBe("Internal server error");
   });
 
   test("rejects a create against an item the user does not own", async () => {
@@ -229,14 +210,16 @@ describe("post-account create path", () => {
     expect(findStatement(INSERT_ACCOUNTS)).toBeNull();
   });
 
-  test("rejects a create with no item_id", async () => {
-    const { item_id: _item_id, ...withoutItemId } = newAccountBody;
+  test("reports a conflict, not a fault, when the id is already taken", async () => {
+    db.item = makeItemRow();
+    db.insertError = Object.assign(new Error("duplicate key"), { code: "23505" });
 
-    const result = await postAccountRoute.execute(makeReq(withoutItemId, "u-1"), fakeRes());
+    const result = await postAccountRoute.execute(makeReq(newAccountBody, "u-1"), fakeRes());
 
+    // A soft-deleted row keeps its primary key, so re-creating that id is a
+    // client error. Escalating to a 500 would fire the global-cooldown alarm.
     expect(result?.status).toBe("failed");
-    expect(result?.message).toMatch(/item_id/i);
-    expect(findStatement(INSERT_ACCOUNTS)).toBeNull();
+    expect(result?.message).toBe("Account already exists.");
   });
 
   test("rejects a create with no institution_id — the column is NOT NULL", async () => {
@@ -263,14 +246,12 @@ describe("post-account create path", () => {
 });
 
 describe("post-account update path", () => {
+  const editBody = { account_id: "acc-1", custom_name: "Renamed" };
+
   test("updates an existing account and never inserts", async () => {
-    db.account = makeAccountRow();
     db.updateReturns = [{ account_id: "acc-1" }];
 
-    const result = await postAccountRoute.execute(
-      makeReq({ account_id: "acc-1", custom_name: "Renamed" }, "u-1"),
-      fakeRes(),
-    );
+    const result = await postAccountRoute.execute(makeReq(editBody, "u-1"), fakeRes());
 
     expect(result?.status).toBe("success");
     expect(result?.body?.account_id).toBe("acc-1");
@@ -282,27 +263,32 @@ describe("post-account update path", () => {
     expect(findStatement(INSERT_ACCOUNTS)).toBeNull();
   });
 
-  test("does not consult the item table when the account already exists", async () => {
-    db.account = makeAccountRow();
+  test("costs exactly one statement — no existence probe on the hot edit path", async () => {
     db.updateReturns = [{ account_id: "acc-1" }];
 
-    await postAccountRoute.execute(
-      makeReq({ account_id: "acc-1", custom_name: "Renamed" }, "u-1"),
-      fakeRes(),
-    );
+    await postAccountRoute.execute(makeReq(editBody, "u-1"), fakeRes());
 
+    expect(mockQuery.mock.calls).toHaveLength(1);
     expect(findStatement(/^\s*SELECT\b[\s\S]*\bFROM\s+items\b/i)).toBeNull();
   });
 
-  test("reports failure when the update matches no row", async () => {
-    db.account = makeAccountRow();
+  test("reports Account not found when the update matches no row", async () => {
     db.updateReturns = [];
 
-    const result = await postAccountRoute.execute(
-      makeReq({ account_id: "acc-1", custom_name: "Renamed" }, "u-1"),
-      fakeRes(),
-    );
+    const result = await postAccountRoute.execute(makeReq(editBody, "u-1"), fakeRes());
 
-    expect(result?.status).not.toBe("success");
+    // An edit body carries no item_id, so a vanished row must not be reported
+    // as a missing-item_id validation error.
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Account not found.");
+  });
+
+  test("surfaces a DB fault on the edit path as an error", async () => {
+    db.updateError = new Error("db down");
+
+    const result = await postAccountRoute.execute(makeReq(editBody, "u-1"), fakeRes());
+
+    expect(result?.status).toBe("error");
+    expect(result?.message).toBe("Internal server error");
   });
 });

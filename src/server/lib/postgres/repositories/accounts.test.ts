@@ -288,8 +288,21 @@ describe("createAccount", () => {
     expect(result.update._id).toBe("acc-new");
   });
 
-  test("returns an error result on a unique violation", async () => {
-    mockQuery.mockRejectedValueOnce(new Error("duplicate key value violates unique constraint"));
+  test("returns a conflict result — not a fault — on a 23505 unique violation", async () => {
+    mockQuery.mockRejectedValueOnce(
+      Object.assign(new Error("duplicate key value violates unique constraint"), {
+        code: "23505",
+      }),
+    );
+    const result = await createAccount(testUser, newAccount);
+    expect(result.status).toBe(409);
+    expect(result.update._id).toBe("acc-new");
+  });
+
+  test("returns an error result when the insert throws for any other reason", async () => {
+    mockQuery.mockRejectedValueOnce(Object.assign(new Error("invalid input syntax"), {
+      code: "22P02",
+    }));
     const result = await createAccount(testUser, newAccount);
     expect(result.status).toBe(500);
     expect(result.update._id).toBe("acc-new");

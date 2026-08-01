@@ -15,7 +15,14 @@ import {
   INSTITUTION_ID,
   QueryExecutor,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import {
+  UpsertResult,
+  successResult,
+  errorResult,
+  noChangeResult,
+  conflictResult,
+  isUniqueViolation,
+} from "../database";
 import { withTransaction } from "../client";
 import { logger } from "../../logger";
 
@@ -79,7 +86,8 @@ export const searchAccountsById = async (
  * Deliberately not `accountsTable.upsert`: its `ON CONFLICT` clause carries no
  * `user_id` guard, so a caller supplying an `account_id` that already belongs
  * to another user would overwrite that user's row. An INSERT raises a unique
- * violation instead, which is reported as an error result.
+ * violation instead, reported as a conflict — a client error, not a fault, so
+ * the caller can answer it without the route escalating to a 500 and an alarm.
  */
 export const createAccount = async (
   user: MaskedUser,
@@ -90,6 +98,7 @@ export const createAccount = async (
     const inserted = await accountsTable.insert(row);
     return inserted ? successResult(account.account_id, 1) : errorResult(account.account_id);
   } catch (error) {
+    if (isUniqueViolation(error)) return conflictResult(account.account_id);
     logger.error("Failed to create account", { accountId: account.account_id }, error);
     return errorResult(account.account_id);
   }
