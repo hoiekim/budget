@@ -13,6 +13,7 @@ export class Item implements JSONItem {
   available_products: Products[] = [];
   cursor?: string;
   status?: ItemStatus;
+  status_reason?: string | undefined;
   plaidError?: PlaidError;
   provider = ItemProvider.PLAID;
   /**

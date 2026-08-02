@@ -18,6 +18,7 @@ import {
   AVAILABLE_PRODUCTS,
   CURSOR,
   STATUS,
+  STATUS_REASON,
   PROVIDER,
   LAST_SYNC_STATUS,
   LAST_SYNC_AT,
@@ -26,10 +27,7 @@ import {
   UPDATED,
   IS_DELETED,
 } from "./common";
-import {
-  ITEMS,
-  USERS,
-} from "common/constants";
+import { ITEMS, USERS } from "common/constants";
 
 import { Model, RowValueType, createTable } from "./base";
 
@@ -41,6 +39,7 @@ const itemSchema = {
   [AVAILABLE_PRODUCTS]: "TEXT[]",
   [CURSOR]: "TEXT",
   [STATUS]: "VARCHAR(50)",
+  [STATUS_REASON]: "VARCHAR(50)",
   [PROVIDER]: "VARCHAR(50)",
   [LAST_SYNC_STATUS]: "VARCHAR(20)",
   [LAST_SYNC_AT]: "TIMESTAMPTZ",
@@ -61,6 +60,7 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
   declare available_products: Products[];
   declare cursor: string | null;
   declare status: ItemStatus | null;
+  declare status_reason: string | null;
   declare provider: ItemProvider;
   declare last_sync_status: SyncStatus | null;
   declare last_sync_at: string | null;
@@ -77,6 +77,7 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
     available_products: isNullableArray,
     cursor: isNullableString,
     status: isNullableString,
+    status_reason: isNullableString,
     provider: isNullableString,
     last_sync_status: isNullableString,
     last_sync_at: isNullableString,
@@ -98,6 +99,7 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
       available_products: this.available_products,
       cursor: this.cursor || undefined,
       status: this.status || undefined,
+      status_reason: this.status_reason || undefined,
       provider: this.provider,
       updated: this.updated || undefined,
       last_sync_status: this.last_sync_status || undefined,
@@ -116,6 +118,7 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
     if (item.available_products !== undefined) r.available_products = item.available_products;
     if (item.cursor !== undefined) r.cursor = item.cursor ?? null;
     if (item.status !== undefined) r.status = item.status ?? null;
+    if (item.status_reason !== undefined) r.status_reason = item.status_reason ?? null;
     if (item.provider !== undefined) r.provider = item.provider;
     if (item.last_sync_status !== undefined) r.last_sync_status = item.last_sync_status ?? null;
     if (item.last_sync_at !== undefined) r.last_sync_at = item.last_sync_at ?? null;

@@ -9,7 +9,6 @@ import {
   Products,
 } from "plaid";
 import { MaskedUser, updateItemStatus, upsertItems, logger } from "server";
-import { sendAlarm } from "server/lib/alarm";
 import { JSONItem, ItemStatus, getDateString, LocalDate } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
@@ -64,12 +63,15 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
       } catch (error: unknown) {
         const errorWithResponse = error as { response?: { data?: PlaidError } };
         plaidError = errorWithResponse?.response?.data ?? null;
-        logger.error("Failed to get transactions data", { itemId: item_id }, plaidError || error);
+        if (plaidError?.error_code === "ITEM_LOGIN_REQUIRED") {
+          logger.warn("Failed to get transactions data: ITEM_LOGIN_REQUIRED", { itemId: item_id });
+        } else {
+          logger.error("Failed to get transactions data", { itemId: item_id }, plaidError || error);
+        }
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-          updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+          updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
             logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
-          sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getTransactions`).catch(() => undefined);
         }
         hasMore = false;
       }
@@ -162,19 +164,27 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
         const plaidError = errorWithResponse?.response?.data;
         const errorCode = plaidError?.error_code;
         if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
-          logger.info("Investment transactions not supported for item, removing Investments from available_products", { itemId: item_id });
-          const updated_products = item.available_products.filter((p) => p !== Products.Investments);
+          logger.info(
+            "Investment transactions not supported for item, removing Investments from available_products",
+            { itemId: item_id },
+          );
+          const updated_products = item.available_products.filter(
+            (p) => p !== Products.Investments,
+          );
           upsertItems(user, [{ ...item, available_products: updated_products }]).catch((e) => {
             logger.error("Failed to update available_products for item", { itemId: item_id }, e);
           });
           break;
         } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
-          logger.error("Failed to get investment transaction data", { itemId: item_id }, plaidError || error);
+          logger.error(
+            "Failed to get investment transaction data",
+            { itemId: item_id },
+            plaidError || error,
+          );
           if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-            updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+            updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
               logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
             });
-            sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getInvestmentTransactions`).catch(() => undefined);
           }
           data.items.push({ ...item, plaidError });
         }

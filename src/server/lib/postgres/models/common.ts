@@ -37,6 +37,7 @@ export const INSTITUTION_ID = "institution_id";
 export const AVAILABLE_PRODUCTS = "available_products";
 export const CURSOR = "cursor";
 export const STATUS = "status";
+export const STATUS_REASON = "status_reason";
 export const PROVIDER = "provider";
 export const LAST_SYNC_STATUS = "last_sync_status";
 export const LAST_SYNC_AT = "last_sync_at";
@@ -91,7 +92,6 @@ export const LABEL_CATEGORY_CONFIDENCE = "label_category_confidence";
 export const PAIR_ID = "pair_id";
 export const TRANSACTION_ID_A = "transaction_id_a";
 export const TRANSACTION_ID_B = "transaction_id_b";
-
 
 export const INVESTMENT_TRANSACTION_ID = "investment_transaction_id";
 export const PRICE = "price";

@@ -1,7 +1,16 @@
 import { ItemStatus, TableName } from "common";
-import { Route, updateItemStatus, syncPlaidTransactions, getUserItem, upsertItems, requireBodyObject, validationError, plaid, emitToUser } from "server";
+import {
+  Route,
+  updateItemStatus,
+  syncPlaidTransactions,
+  getUserItem,
+  upsertItems,
+  requireBodyObject,
+  validationError,
+  plaid,
+  emitToUser,
+} from "server";
 import { logger } from "server/lib/logger";
-import { sendAlarm } from "server/lib/alarm";
 
 interface PlaidWebhookBody {
   webhook_type: "TRANSACTIONS" | "ITEM" | "HOLDINGS" | "INVESTMENTS_TRANSACTIONS";
@@ -36,7 +45,7 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
       return await syncAndLog(item_id);
     } else if (
       ["DEFAULT_UPDATE", "INITIAL_UPDATE", "HISTORICAL_UPDATE", "TRANSACTIONS_REMOVED"].includes(
-        webhook_code
+        webhook_code,
       )
     ) {
       return { status: "success" };
@@ -64,7 +73,12 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
     }
   }
 
-  logger.warn("Unhandled webhook", { itemId: item_id, webhookType: webhook_type, webhookCode: webhook_code, body: req.body });
+  logger.warn("Unhandled webhook", {
+    itemId: item_id,
+    webhookType: webhook_type,
+    webhookCode: webhook_code,
+    body: req.body,
+  });
 });
 
 // Real-time collaboration (#656): a Plaid webhook lands out-of-band from any
@@ -110,9 +124,8 @@ const refreshItemProducts = async (item_id: string) => {
 };
 
 const markBadItem = async (item_id: string, reason: string) => {
-  const response = await updateItemStatus(item_id, ItemStatus.BAD);
+  const response = await updateItemStatus(item_id, ItemStatus.BAD, reason);
   if (!response) return { status: "failed" as const };
-  sendAlarm("Item Bad Status", `**Item:** ${item_id}\n**Reason:** ${reason}`).catch(() => undefined);
   await emitToItemOwner(item_id, [TableName.Accounts]);
   return { status: "success" as const };
 };

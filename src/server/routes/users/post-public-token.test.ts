@@ -71,6 +71,7 @@ const itemRow = (overrides: Record<string, unknown> = {}) => ({
   available_products: null,
   cursor: null,
   status: null,
+  status_reason: null,
   provider: "manual",
   last_sync_status: null,
   last_sync_at: null,

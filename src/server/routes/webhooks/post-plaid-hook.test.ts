@@ -19,9 +19,7 @@ const mockGetItem = mock(async (_accessToken: string) => ({
 const mockSyncPlaidTransactions = mock(
   async (_itemId: string) => ({ user_id: "u-1", added: 0, modified: 0, removed: 0 }) as unknown,
 );
-const mockUpdateItemStatus = mock(
-  async (_itemId: string, _status: ItemStatus) => true as unknown,
-);
+const mockUpdateItemStatus = mock(async (_itemId: string, _status: ItemStatus) => true as unknown);
 const mockGetUserItem = mock(
   async (_itemId: string) =>
     ({
@@ -29,9 +27,7 @@ const mockGetUserItem = mock(
       item: { item_id: "item-1", access_token: "access-tok" },
     }) as unknown,
 );
-const mockUpsertItems = mock(
-  async (_user: unknown, _items: unknown[]) => [] as unknown[],
-);
+const mockUpsertItems = mock(async (_user: unknown, _items: unknown[]) => [] as unknown[]);
 const mockEmitToUser = mock((_userId: string, _domain: string, _payload?: unknown) => {});
 const mockSendAlarm = mock(async () => {});
 const mockLogger = {
@@ -115,8 +111,7 @@ function makeReq(
   opts: ReqOpts = {},
 ): Parameters<typeof postPlaidHookRoute.execute>[0] {
   const headers: Record<string, string> = {};
-  if (opts.signedJwt !== undefined)
-    headers["plaid-verification"] = opts.signedJwt;
+  if (opts.signedJwt !== undefined) headers["plaid-verification"] = opts.signedJwt;
   return {
     method: "POST",
     path: "/plaid-hook",
@@ -213,7 +208,12 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
   });
 
   test("SYNC_UPDATES_AVAILABLE emits ONLY transactions on non-empty change", async () => {
-    mockSyncPlaidTransactions.mockImplementation(async () => ({ user_id: "u-1", added: 3, modified: 0, removed: 0 }));
+    mockSyncPlaidTransactions.mockImplementation(async () => ({
+      user_id: "u-1",
+      added: 3,
+      modified: 0,
+      removed: 0,
+    }));
     await run({
       webhook_type: "TRANSACTIONS",
       webhook_code: "SYNC_UPDATES_AVAILABLE",
@@ -227,7 +227,12 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
   });
 
   test("SYNC_UPDATES_AVAILABLE does NOT emit when nothing changed", async () => {
-    mockSyncPlaidTransactions.mockImplementation(async () => ({ user_id: "u-1", added: 0, modified: 0, removed: 0 }));
+    mockSyncPlaidTransactions.mockImplementation(async () => ({
+      user_id: "u-1",
+      added: 0,
+      modified: 0,
+      removed: 0,
+    }));
     await run({
       webhook_type: "TRANSACTIONS",
       webhook_code: "SYNC_UPDATES_AVAILABLE",
@@ -287,27 +292,35 @@ describe("post-plaid-hook — ITEM", () => {
     expect(mockUpdateItemStatus).not.toHaveBeenCalled();
   });
 
-  test("PENDING_EXPIRATION → marks item BAD, alarms, and emits accounts to owner", async () => {
+  test("PENDING_EXPIRATION → marks item BAD and emits accounts to owner without alarms", async () => {
     const { result } = await run({
       webhook_type: "ITEM",
       webhook_code: "PENDING_EXPIRATION",
       item_id: "item-9",
     });
-    expect(mockUpdateItemStatus).toHaveBeenCalledWith("item-9", ItemStatus.BAD);
-    expect(mockSendAlarm).toHaveBeenCalled();
+    expect(mockUpdateItemStatus).toHaveBeenCalledWith(
+      "item-9",
+      ItemStatus.BAD,
+      "PENDING_EXPIRATION",
+    );
+    expect(mockSendAlarm).not.toHaveBeenCalled();
     expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "accounts");
     expect(result).toMatchObject({ status: "success" });
   });
 
-  test("ERROR + ITEM_LOGIN_REQUIRED → marks item BAD, alarms, and emits accounts to owner", async () => {
+  test("ERROR + ITEM_LOGIN_REQUIRED → marks item BAD and emits accounts to owner without alarms", async () => {
     const { result } = await run({
       webhook_type: "ITEM",
       webhook_code: "ERROR",
       item_id: "item-9",
       error: { error_code: "ITEM_LOGIN_REQUIRED" },
     });
-    expect(mockUpdateItemStatus).toHaveBeenCalledWith("item-9", ItemStatus.BAD);
-    expect(mockSendAlarm).toHaveBeenCalled();
+    expect(mockUpdateItemStatus).toHaveBeenCalledWith(
+      "item-9",
+      ItemStatus.BAD,
+      "ITEM_LOGIN_REQUIRED",
+    );
+    expect(mockSendAlarm).not.toHaveBeenCalled();
     expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "accounts");
     expect(result).toMatchObject({ status: "success" });
   });
@@ -374,7 +387,12 @@ describe("post-plaid-hook — ITEM", () => {
 
 describe("post-plaid-hook — HOLDINGS", () => {
   test("DEFAULT_UPDATE → syncs, emits transactions on non-empty change, returns success", async () => {
-    mockSyncPlaidTransactions.mockImplementation(async () => ({ user_id: "u-1", added: 1, modified: 0, removed: 0 }));
+    mockSyncPlaidTransactions.mockImplementation(async () => ({
+      user_id: "u-1",
+      added: 1,
+      modified: 0,
+      removed: 0,
+    }));
     const { result } = await run({
       webhook_type: "HOLDINGS",
       webhook_code: "DEFAULT_UPDATE",
@@ -401,7 +419,12 @@ describe("post-plaid-hook — HOLDINGS", () => {
 describe("post-plaid-hook — INVESTMENTS_TRANSACTIONS", () => {
   for (const code of ["DEFAULT_UPDATE", "HISTORICAL_UPDATE"]) {
     test(`${code} → syncs, emits transactions on non-empty change, returns success`, async () => {
-      mockSyncPlaidTransactions.mockImplementation(async () => ({ user_id: "u-1", added: 2, modified: 0, removed: 0 }));
+      mockSyncPlaidTransactions.mockImplementation(async () => ({
+        user_id: "u-1",
+        added: 2,
+        modified: 0,
+        removed: 0,
+      }));
       const { result } = await run({
         webhook_type: "INVESTMENTS_TRANSACTIONS",
         webhook_code: code,

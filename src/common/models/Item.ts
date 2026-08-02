@@ -25,6 +25,7 @@ export interface JSONItem {
   available_products: Products[];
   cursor?: string;
   status?: ItemStatus;
+  status_reason?: string;
   plaidError?: PlaidError;
   provider: ItemProvider;
   /**

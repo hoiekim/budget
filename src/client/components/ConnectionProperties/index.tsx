@@ -30,7 +30,11 @@ interface Props {
 export const ConnectionProperties = ({ item }: Props) => {
   const { data, setData, router } = useAppContext();
   const { accounts } = data;
-  const { institution_id, status, updated, provider } = item;
+  const { institution_id, status, status_reason, updated, provider } = item;
+
+  const statusString = status
+    ? toTitleCase(status) + (status_reason ? ` — ${toTitleCase(status_reason)}` : "")
+    : "Unknown";
 
   const accountRows = accounts
     .filter(({ item_id }) => item_id === item.id)
@@ -136,7 +140,7 @@ export const ConnectionProperties = ({ item }: Props) => {
           <span>{updated || "Unknown"}</span>
         </KeyValue>
         <KeyValue name="Status">
-          <span>{status ? toTitleCase(status) : "Unknown"}</span>
+          <span>{statusString}</span>
         </KeyValue>
         <KeyValue name="Connection&nbsp;Provider">
           <span>{toUpperCamelCase(provider)}</span>

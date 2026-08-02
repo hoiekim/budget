@@ -1,5 +1,5 @@
 import { PlaidError, PlaidErrorType, Products } from "plaid";
-import { MaskedUser, updateItemStatus, upsertItems, logger, sendAlarm } from "server";
+import { MaskedUser, updateItemStatus, upsertItems, logger } from "server";
 import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
 import { getClient, ignorable_error_codes } from "./util";
 
@@ -29,15 +29,15 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
     } catch (error: unknown) {
       const errorWithResponse = error as { response?: { data?: PlaidError } };
       const plaidError = errorWithResponse?.response?.data;
-      logger.error("Failed to get accounts data", { itemId: item_id }, plaidError || error);
+      if (plaidError?.error_code === "ITEM_LOGIN_REQUIRED") {
+        logger.warn("Failed to get accounts data: ITEM_LOGIN_REQUIRED", { itemId: item_id });
+      } else {
+        logger.error("Failed to get accounts data", { itemId: item_id }, plaidError || error);
+      }
       if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-        updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+        updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
           logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
         });
-        sendAlarm(
-          "Item Bad Status",
-          `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getAccounts`,
-        ).catch(() => undefined);
       }
       data.items.push({ ...item, plaidError });
     }
@@ -95,7 +95,10 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       const plaidError = errorWithResponse?.response?.data;
       const errorCode = plaidError?.error_code;
       if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
-        logger.info("Holdings not supported for item, removing Investments from available_products", { itemId: item_id });
+        logger.info(
+          "Holdings not supported for item, removing Investments from available_products",
+          { itemId: item_id },
+        );
         const updated_products = item.available_products.filter((p) => p !== Products.Investments);
         upsertItems(user, [{ ...item, available_products: updated_products }]).catch((e) => {
           logger.error("Failed to update available_products for item", { itemId: item_id }, e);
@@ -103,13 +106,9 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
         logger.error("Failed to get holdings data", { itemId: item_id }, plaidError || error);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-          updateItemStatus(item_id, ItemStatus.BAD).catch((e) => {
+          updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
             logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
-          sendAlarm(
-            "Item Bad Status",
-            `**Item:** ${item_id}\n**Reason:** ${plaidError.error_code}\n**Context:** getHoldings`,
-          ).catch(() => undefined);
         }
         data.items.push({ ...item, plaidError });
       }

@@ -221,6 +221,7 @@ const ITEM_NULLABLE = [
   "available_products",
   "cursor",
   "status",
+  "status_reason",
   "provider",
   "last_sync_status",
   "last_sync_at",

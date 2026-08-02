@@ -116,8 +116,15 @@ export const updateItemCursor = async (item_id: string, cursor: string): Promise
   return updated !== null;
 };
 
-export const updateItemStatus = async (item_id: string, status: string): Promise<boolean> => {
-  const updated = await itemsTable.update(item_id, { status });
+export const updateItemStatus = async (
+  item_id: string,
+  status: string,
+  status_reason?: string,
+): Promise<boolean> => {
+  const updated = await itemsTable.update(item_id, {
+    status,
+    status_reason: status_reason ?? null,
+  });
   return updated !== null;
 };
 
@@ -149,7 +156,12 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
     // (`column = ANY($1)`) instead of 6 queries per account.
     // bulkSoftDeleteByColumn short-circuits an empty array, so no guard needed.
     await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
-    await investmentTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    await investmentTransactionsTable.bulkSoftDeleteByColumn(
+      ACCOUNT_ID,
+      accountIds,
+      user_id,
+      client,
+    );
     await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
     // Account-balance snapshots store the account in `account_id`; holding
     // snapshots store it in `holding_account_id` (their `account_id` is NULL).
