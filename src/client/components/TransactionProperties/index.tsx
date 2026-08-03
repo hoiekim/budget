@@ -27,6 +27,7 @@ import {
   Properties,
   Property,
   PropertyLabel,
+  ButtonRow,
   Row,
   TransferArrowIcon,
 } from "client/components";
@@ -457,22 +458,15 @@ export const TransactionProperties = ({ transaction }: Props) => {
             </div>
           </Row>
         )}
-        <Row className="button">
-          <button onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</button>
-        </Row>
+        <ButtonRow onClick={onClickAdd}>Add&nbsp;New&nbsp;Split</ButtonRow>
       </Property>
       <PropertyLabel>Transfer</PropertyLabel>
       <Property>
         {!showPartnerPicker && (
-          <Row className="button">
-            <button
-              className="markAsTransferButton"
-              onClick={() => setShowPartnerPicker(true)}
-            >
-              <TransferArrowIcon size={12} />
-              &nbsp;Mark&nbsp;as&nbsp;Transfer
-            </button>
-          </Row>
+          <ButtonRow onClick={() => setShowPartnerPicker(true)}>
+            <TransferArrowIcon size={12} />
+            &nbsp;Mark&nbsp;as&nbsp;Transfer
+          </ButtonRow>
         )}
         {showPartnerPicker && (
           <>
@@ -542,15 +536,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 </Row>
               );
             })}
-            <Row className="button">
-              <button
-                className="markAsTransferCancel"
-                disabled={!!pendingPartnerId}
-                onClick={() => setShowPartnerPicker(false)}
-              >
-                Cancel
-              </button>
-            </Row>
+            <ButtonRow disabled={!!pendingPartnerId} onClick={() => setShowPartnerPicker(false)}>
+              Cancel
+            </ButtonRow>
           </>
         )}
       </Property>

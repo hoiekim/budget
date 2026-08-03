@@ -10,6 +10,7 @@ import {
   Properties,
   PropertyLabel,
   Property,
+  ButtonRow,
   Row,
   KeyValue,
   ChartTypeSelect,
@@ -68,9 +69,7 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
 
       <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button onClick={onClickAccounts}>{selectedAccountsCount}&nbsp;selected</button>
-        </Row>
+        <ButtonRow onClick={onClickAccounts}>{selectedAccountsCount}&nbsp;selected</ButtonRow>
       </Property>
 
       {children}

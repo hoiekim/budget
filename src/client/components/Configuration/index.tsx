@@ -15,6 +15,7 @@ import {
   Properties,
   PropertyLabel,
   Property,
+  ButtonRow,
   Row,
 } from "client";
 import { SimpleFinLinkButton } from "client/components";
@@ -39,18 +40,20 @@ export const Configuration = () => {
       const buttonClassNames = ["connection"];
       if (status !== ItemStatus.OK) buttonClassNames.push("notification");
       return (
-        <Row className="button" key={id}>
-          <button className={buttonClassNames.join(" ")} onClick={onClickConnection}>
-            <div>
-              {institution_id ? (
-                <InstitutionSpan institution_id={institution_id} />
-              ) : (
-                <span>{id.slice(0, 6).toUpperCase()}</span>
-              )}
-              <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
-            </div>
-          </button>
-        </Row>
+        <ButtonRow
+          key={id}
+          buttonClassName={buttonClassNames.join(" ")}
+          onClick={onClickConnection}
+        >
+          <div>
+            {institution_id ? (
+              <InstitutionSpan institution_id={institution_id} />
+            ) : (
+              <span>{id.slice(0, 6).toUpperCase()}</span>
+            )}
+            <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
+          </div>
+        </ButtonRow>
       );
     });
 
@@ -114,9 +117,7 @@ export const Configuration = () => {
     <Properties className="Configuration">
       <PropertyLabel>Manual&nbsp;Accounts</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button onClick={onClickAddManualAccount}>See&nbsp;Manual&nbsp;Accounts</button>
-        </Row>
+        <ButtonRow onClick={onClickAddManualAccount}>See&nbsp;Manual&nbsp;Accounts</ButtonRow>
       </Property>
       {!!itemsRow.length && (
         <>
@@ -136,9 +137,7 @@ export const Configuration = () => {
       <ApiKeysSection />
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button onClick={onClickRefresh}>Refresh</button>
-        </Row>
+        <ButtonRow onClick={onClickRefresh}>Refresh</ButtonRow>
         <Row className="button">
           <DeleteButton confirmMessage="Do you want to log out?" onClick={logout}>
             Logout

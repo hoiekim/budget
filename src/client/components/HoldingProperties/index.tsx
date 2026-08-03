@@ -25,6 +25,7 @@ import {
   Properties,
   PropertyLabel,
   Property,
+  ButtonRow,
   Row,
   KeyValue,
   indexedDb,
@@ -666,16 +667,12 @@ export const HoldingProperties = () => {
               />
             </KeyValue>
             {submitError && <Row className="formError">{submitError}</Row>}
-            <Row className="button">
-              <button type="submit" className="colored">
-                Add
-              </button>
-            </Row>
-            <Row className="button">
-              <button type="button" onClick={goBackToAccount}>
-                Cancel
-              </button>
-            </Row>
+            <ButtonRow type="submit" buttonClassName="colored">
+              Add
+            </ButtonRow>
+            <ButtonRow type="button" onClick={goBackToAccount}>
+              Cancel
+            </ButtonRow>
           </form>
         </Property>
       </Properties>
@@ -691,11 +688,9 @@ export const HoldingProperties = () => {
         </Property>
         <PropertyLabel>&nbsp;</PropertyLabel>
         <Property>
-          <Row className="button">
-            <button type="button" onClick={goBackToAccount}>
-              Back
-            </button>
-          </Row>
+          <ButtonRow type="button" onClick={goBackToAccount}>
+            Back
+          </ButtonRow>
         </Property>
       </Properties>
     );
@@ -825,22 +820,14 @@ export const HoldingProperties = () => {
         <>
           <PropertyLabel>Add</PropertyLabel>
           <Property>
-            <Row className="button">
-              <button type="button" onClick={onClickAddInvestmentTransaction}>
-                Add&nbsp;Investment&nbsp;Transaction
-              </button>
-            </Row>
+            <ButtonRow type="button" onClick={onClickAddInvestmentTransaction}>
+              Add&nbsp;Investment&nbsp;Transaction
+            </ButtonRow>
             {missingUnits > 0 && (
-              <Row className="button">
-                <button
-                  type="button"
-                  className="divergenceAction"
-                  onClick={onClickAddDivergentTransaction}
-                >
-                  Add&nbsp;transaction&nbsp;for&nbsp;
-                  {numberToCommaString(missingUnits, 4)}&nbsp;missing&nbsp;units
-                </button>
-              </Row>
+              <ButtonRow type="button" onClick={onClickAddDivergentTransaction}>
+                Add&nbsp;transaction&nbsp;for&nbsp;
+                {numberToCommaString(missingUnits, 4)}&nbsp;missing&nbsp;units
+              </ButtonRow>
             )}
           </Property>
         </>
@@ -848,11 +835,9 @@ export const HoldingProperties = () => {
 
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>
-        <Row className="button">
-          <button type="button" onClick={goBackToAccount}>
-            Back
-          </button>
-        </Row>
+        <ButtonRow type="button" onClick={goBackToAccount}>
+          Back
+        </ButtonRow>
       </Property>
     </Properties>
   );

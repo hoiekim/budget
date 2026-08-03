@@ -84,3 +84,40 @@ export const KeyValue = ({ name, className, children, ...rest }: KeyValueProps) 
     </Row>
   );
 };
+
+type ButtonRowProps = ComponentPropsWithoutRef<"button"> & {
+  /** Merged onto the inner `<button>`, where the per-site CSS hooks
+   *  (`colored`, `connection`, `unpairButton`, …) are selected from. */
+  buttonClassName?: string;
+};
+
+/** The canonical action row: a `<Row className="button">` wrapping one native
+ *  `<button>`. `className` composes after the reserved `"button"` token on the
+ *  row, like every other primitive here; the button's own hooks go through
+ *  `buttonClassName`.
+ *
+ *  Rows whose child is a button *component* rather than a native `<button>`
+ *  (`<DeleteButton>`, `<PlaidLinkButton>`, `<SimpleFinLinkButton>`) render
+ *  their own `<button>`, so those keep the raw `<Row className="button">`.
+ *
+ *  Only the descendant-selector row CSS (`div.Properties .row.button:hover`,
+ *  `div.Properties .row:not(:last-child)`) travels with the primitive. Row
+ *  padding, flex and `> button { width: 100% }` come from the direct-child
+ *  `div.Properties > div.property > div.row`, so a site that renders this
+ *  below an extra wrapper — `<CapacitiesInput>` is the one today — is laid
+ *  out by that wrapper's own CSS instead. */
+export const ButtonRow = ({
+  className,
+  buttonClassName,
+  children,
+  ...rest
+}: ButtonRowProps) => {
+  const merged = className ? `button ${className}` : "button";
+  return (
+    <Row className={merged}>
+      <button className={buttonClassName} {...rest}>
+        {children}
+      </button>
+    </Row>
+  );
+};
