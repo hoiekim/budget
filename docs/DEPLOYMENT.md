@@ -29,9 +29,10 @@ Merges to `main` trigger:
 
 ### Pull Request Checks
 
-- TypeScript type checking (`bun run typecheck`)
-- ESLint linting (`bun run lint`)
-- Unit tests (`bun run test`)
+`ci.yml`'s `test` job runs ESLint (`bun run lint`), TypeScript
+(`bun run typecheck`) and the suite with coverage thresholds
+(`bun run test:coverage`). A `build` job runs `bun run build` after it
+(`needs: test`).
 
 ### Where the checks actually gate
 
@@ -40,20 +41,29 @@ risks:
 
 | Trigger | Runs | Gates |
 |---------|------|-------|
-| `ci.yml` on `pull_request: [main]` | lint, typecheck, test, build | The merge — a red check is visible on the PR before it lands |
+| `ci.yml` on `pull_request: [main]` | lint, typecheck, test **with coverage thresholds**, build | Nothing mechanically — it is a visible signal on the PR. `main`'s ruleset requires a review and thread resolution, but has no required status check, so a red run does not block the merge button |
 | `Dockerfile` builder stage, via `cd.yml` on `push: [main]` | lint, typecheck, test, build | The deploy — `docker-push` fails, and `deploy` is `needs: docker-push`, so nothing ships |
 
-Because merges land only via PR, every commit on `main` has already passed
-the PR checks. And because the deploy path re-runs the same checks against
-the merged commit inside the Docker build, a squash-merge that combines two
-individually-green PRs into a broken result fails the image build and never
-reaches production.
+**The builder stage is the only mechanical gate.** Merges land via PR, so the
+PR checks run on every commit that reaches `main` — but running is not the
+same as passing, and nothing today enforces that they were green. What
+enforces correctness is the second row: the same check set re-runs against
+the merged commit inside the Docker build, so a squash-merge that combines
+two individually-green PRs into a broken result fails the image build and
+never reaches production.
+
+The two sets are not quite identical. `ci.yml` runs `test:coverage`, which
+also enforces the thresholds in `scripts/check-coverage.ts`; the builder
+stage runs plain `test`. A coverage regression is therefore caught on the PR
+only.
 
 ### Decision: CI does not trigger on `push: [main]`
 
 `ci.yml` deliberately has no `push: branches: [main]` trigger. **Do not add
-one.** This has been proposed at least three times (#218, #438, #560/#640)
-and rejected each time. The reasoning:
+one.** It has been proposed and rejected twice — #438, closed 2026-06-07,
+and #560, implemented as #640 and pivoted away from. (#218 is adjacent but
+distinct: it asked for branch protection, a `needs: ci` dependency, or
+post-deploy rollback, not this trigger.) The reasoning:
 
 - A `push` trigger fires *after* the commit is already on `main`, so it
   prevents nothing. It is a detector, not a gate.
@@ -66,5 +76,8 @@ and rejected each time. The reasoning:
 - The only pushes it would newly cover are direct pushes to `main`, which are
   maintainer overrides and intentionally exempt.
 
-Pre-merge enforcement, if it is ever wanted, is a repository setting (required
-status checks / merge queue) rather than a workflow change.
+Pre-merge enforcement, if it is ever wanted, is a repository setting — adding
+the `test` / `build` contexts as required status checks on `main`'s ruleset,
+or a merge queue — rather than a workflow change. That is what #218 asked for
+and it remains available; it is a different change from the one rejected
+here.
