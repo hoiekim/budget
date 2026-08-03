@@ -11,8 +11,10 @@ export type ClientErrorPostBody = {
 /**
  * POST /client-error
  *
- * Accepts frontend error reports sent via navigator.sendBeacon.
- * Forwards to Discord alarm. No auth required (beacon fires after page unload).
+ * Accepts frontend error reports sent via navigator.sendBeacon and forwards
+ * them to the Discord alarm. Session-gated like every other route (it is absent
+ * from `PUBLIC_PATH_METHODS` in start.ts), so errors thrown before login are
+ * rejected with 401 and never reported.
  */
 export const postClientErrorRoute = new Route("POST", "/client-error", async (req) => {
   const body = req.body as ClientErrorPostBody;
@@ -31,7 +33,9 @@ export const postClientErrorRoute = new Route("POST", "/client-error", async (re
     .filter(Boolean)
     .join("\n");
 
-  await sendAlarm("Client JS Error", detail);
+  // Dedicated cooldown bucket so client report volume, which any session can
+  // drive, is charged here instead of to the server-side alarm sources.
+  await sendAlarm("Client JS Error", detail, "client-error");
 
   return { status: "success" as const };
 });
