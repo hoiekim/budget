@@ -182,8 +182,9 @@ describe("realtime", () => {
   });
 
   it("the SSE idle timeout is an integer within Bun's accepted range", () => {
-    // `server.timeout` throws on a fractional or out-of-range value, and the
-    // throw lands inside the request handler that opens the stream.
+    // `server.timeout` accepts a fractional or out-of-range value silently,
+    // so nothing at runtime would report a deadline that had drifted under
+    // the keepalive. This assertion is the only place that would.
     expect(Number.isInteger(SSE_IDLE_TIMEOUT_SECONDS)).toBe(true);
     expect(SSE_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(0);
     expect(SSE_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);

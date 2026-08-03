@@ -27,8 +27,12 @@ export const SSE_KEEPALIVE_MS = 30_000;
  * goes quiet between events, and it must outlive the keepalive period —
  * a tick scheduled past the deadline can never refresh the socket. Derived
  * rather than picked so the two cannot drift apart; 3x tolerates one missed
- * tick, 255 is Bun's ceiling, and the value must stay an integer or
- * `server.timeout` throws.
+ * tick, and 255 is Bun's ceiling.
+ *
+ * The clamp and the floor are guards, not error handling: `server.timeout`
+ * accepts a fractional or out-of-range value silently (measured on Bun
+ * 1.3.14 — 7.5 and 300 both return normally), so a value that drifts below
+ * the keepalive would reap the stream with nothing raised anywhere.
  */
 export const SSE_IDLE_TIMEOUT_SECONDS = Math.min(
   255,

@@ -42,8 +42,12 @@ export interface ServerRequest {
    * traffic, default 10; a route that holds a response open with long
    * silences between writes (SSE) must raise its own deadline rather than
    * the server relaxing it for every request.
+   *
+   * Required, not optional: the symptom of a missing implementation is #669
+   * itself — the stream dies at ~12s with no error anywhere — so a caller
+   * that builds a `ServerRequest` has to say what it does about it.
    */
-  setIdleTimeout?: (seconds: number) => void;
+  setIdleTimeout: (seconds: number) => void;
 }
 
 export interface ServerResponse {
