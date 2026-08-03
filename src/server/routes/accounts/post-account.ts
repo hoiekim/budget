@@ -32,12 +32,32 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
   const idResult = requireStringField(body, "account_id");
   if (!idResult.success) return validationError(idResult.error!);
 
-  // A create posts a whole Account, `item_id` included; an edit posts only the
-  // fields it changes and never carries one. Reading the row back to classify
-  // the request instead would put an extra statement on every edit.
-  const isCreate = !isUndefined(body.item_id);
+  const succeed = (result: UpsertResult) => {
+    const account_id = result.update._id;
+    if (!account_id) throw new Error("Account ID is missing after write");
+    return { status: "success" as const, body: { account_id } };
+  };
 
-  if (isCreate) {
+  try {
+    // UPDATE first, so the database decides whether this is an edit or a
+    // create. Classifying by body shape instead — treating a request as a
+    // create because it carries `item_id` — makes a server decision out of a
+    // client convention: an edit that happens to send `item_id` would skip the
+    // UPDATE, hit the primary key on INSERT, and report "already exists" for a
+    // rename that should have succeeded. An edit costs the one statement it
+    // always did; only a miss pays for the second.
+    const updated = (await updateAccounts(user, [body as PartialAccount]))[0];
+    if (updated?.status === 200) return succeed(updated);
+    if (updated?.status !== 304) {
+      throw new Error(`Account update did not persist, status ${updated?.status ?? "missing"}`);
+    }
+
+    // No live row of the user's carries this id, so the id is free. A create
+    // needs the columns an edit never has to supply.
+    if (isUndefined(body.item_id)) {
+      return { status: "failed", message: "Account not found." };
+    }
+
     const itemIdResult = requireStringField(body, "item_id");
     if (!itemIdResult.success) return validationError(itemIdResult.error!);
 
@@ -59,27 +79,18 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
         message: "Account is not a manual account.",
       };
     }
-  }
 
-  try {
-    const result: UpsertResult | undefined = isCreate
-      ? await createAccount(user, body as CreatableAccount)
-      : (await updateAccounts(user, [body as PartialAccount]))[0];
+    const created = await createAccount(user, body as CreatableAccount);
 
-    switch (result?.status) {
-      case 200: {
-        const account_id = result.update._id;
-        if (!account_id) throw new Error("Account ID is missing after write");
-        return { status: "success", body: { account_id } };
-      }
-      case 304:
-        // The UPDATE matched no row: the account is gone, or was never the
-        // requesting user's.
-        return { status: "failed", message: "Account not found." };
+    switch (created?.status) {
+      case 200:
+        return succeed(created);
       case 409:
+        // A soft-deleted row keeps its primary key, and the UPDATE above
+        // deliberately does not match one, so the id is taken but unusable.
         return { status: "failed", message: "Account already exists." };
       default:
-        throw new Error(`Account write did not persist, status ${result?.status ?? "missing"}`);
+        throw new Error(`Account insert did not persist, status ${created?.status ?? "missing"}`);
     }
   } catch (error: unknown) {
     logger.error("Failed to write account", { accountId: idResult.data }, error);

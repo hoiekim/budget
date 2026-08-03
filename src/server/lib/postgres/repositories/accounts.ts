@@ -138,7 +138,18 @@ export const updateAccounts = async (
       delete row.account_id;
       delete row.user_id;
 
-      const updated = await accountsTable.update(account.account_id, row, undefined, user.user_id);
+      // Soft-deleted rows keep their primary key but are invisible to every
+      // read. Updating one would report a change the user can never see, and
+      // it is what tells `POST /account` that the id is free to insert into.
+      const updated = await accountsTable.update(
+        account.account_id,
+        row,
+        undefined,
+        user.user_id,
+        undefined,
+        undefined,
+        true,
+      );
       results.push(
         updated ? successResult(account.account_id, 1) : noChangeResult(account.account_id),
       );

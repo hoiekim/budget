@@ -77,6 +77,7 @@ const makeItemRow = (overrides: Row = {}): Row => ({
   cursor: null,
   status: "ok",
   provider: ItemProvider.MANUAL,
+  status_reason: null,
   last_sync_status: null,
   last_sync_at: null,
   last_sync_error: null,
@@ -85,7 +86,6 @@ const makeItemRow = (overrides: Row = {}): Row => ({
   is_deleted: false,
   ...overrides,
 });
-
 
 const newAccountBody = {
   account_id: "acc-new",
@@ -174,7 +174,43 @@ describe("post-account create path", () => {
     expect(insert!.values).toContain("acc-new");
     expect(insert!.values).toContain("u-1");
     expect(insert!.values).toContain("item-manual");
-    expect(findStatement(UPDATE_ACCOUNTS)).toBeNull();
+
+    // The create path is reached by the UPDATE matching nothing, not by the
+    // body carrying an item_id — so the UPDATE runs first and precedes it.
+    const update = findStatement(UPDATE_ACCOUNTS);
+    expect(update).not.toBeNull();
+    expect(mockQuery.mock.calls.findIndex((c) => UPDATE_ACCOUNTS.test(c[0] as string))).toBeLessThan(
+      mockQuery.mock.calls.findIndex((c) => INSERT_ACCOUNTS.test(c[0] as string)),
+    );
+  });
+
+  test("treats a body carrying item_id as an edit when the row exists", async () => {
+    db.updateReturns = [{ account_id: "acc-1" }];
+
+    // Nothing stops a client from posting item_id on an edit. Classifying by
+    // body shape would send this to INSERT, hit the primary key, and report
+    // "Account already exists." for a rename that should have succeeded.
+    const result = await postAccountRoute.execute(
+      makeReq({ account_id: "acc-1", item_id: "item-manual", custom_name: "Renamed" }, "u-1"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.account_id).toBe("acc-1");
+    expect(findStatement(INSERT_ACCOUNTS)).toBeNull();
+  });
+
+  test("does not resurrect a soft-deleted row on the way to the insert", async () => {
+    db.item = makeItemRow();
+    db.insertError = Object.assign(new Error("duplicate key"), { code: "23505" });
+
+    const result = await postAccountRoute.execute(makeReq(newAccountBody, "u-1"), fakeRes());
+
+    // A soft-deleted row keeps its primary key. If the UPDATE matched it, the
+    // route would answer success for a row no read can see.
+    const update = findStatement(UPDATE_ACCOUNTS);
+    expect(update!.sql).toContain("is_deleted");
+    expect(result?.message).toBe("Account already exists.");
   });
 
   test("reports failure — not success — when the insert writes no row", async () => {

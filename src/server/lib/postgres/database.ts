@@ -45,6 +45,8 @@ export type AdditionalWhere = { column: string; value: ParamValue | typeof IS_NO
 export interface UpdateOptions {
   additionalWhere?: AdditionalWhere | AdditionalWhere[];
   returning?: string[];
+  /** Restrict the UPDATE to live rows, the way `prepareQuery` already does. */
+  excludeDeleted?: boolean;
 }
 
 export interface UpsertOptions {
@@ -183,6 +185,10 @@ export function buildUpdate(
         paramIndex++;
       }
     }
+  }
+
+  if (options.excludeDeleted) {
+    sql += ` AND ${SOFT_DELETE_CONDITION}`;
   }
 
   if (options.returning && options.returning.length > 0) {
