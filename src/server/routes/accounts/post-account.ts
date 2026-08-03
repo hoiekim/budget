@@ -38,32 +38,14 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
     return { status: "success" as const, body: { account_id } };
   };
 
-  try {
-    // UPDATE first, so the database decides whether this is an edit or a
-    // create. Classifying by body shape instead — treating a request as a
-    // create because it carries `item_id` — makes a server decision out of a
-    // client convention: an edit that happens to send `item_id` would skip the
-    // UPDATE, hit the primary key on INSERT, and report "already exists" for a
-    // rename that should have succeeded. An edit costs the one statement it
-    // always did; only a miss pays for the second.
-    const updated = (await updateAccounts(user, [body as PartialAccount]))[0];
-    if (updated?.status === 200) return succeed(updated);
-    if (updated?.status !== 304) {
-      throw new Error(`Account update did not persist, status ${updated?.status ?? "missing"}`);
-    }
-
-    // No live row of the user's carries this id, so the id is free. A create
-    // needs the columns an edit never has to supply.
-    if (isUndefined(body.item_id)) {
-      return { status: "failed", message: "Account not found." };
-    }
-
+  // `item_id` decides which item an account hangs off, and the column carries
+  // no foreign key — so it is validated wherever it appears, not only on the
+  // create path. Writing it unchecked would let a request move an owned
+  // account onto someone else's item, or onto a Plaid item that the
+  // manual-only guard below exists to keep it off.
+  if (!isUndefined(body.item_id)) {
     const itemIdResult = requireStringField(body, "item_id");
     if (!itemIdResult.success) return validationError(itemIdResult.error!);
-
-    // institution_id is NOT NULL, so an INSERT needs it up front.
-    const institutionIdResult = requireStringField(body, "institution_id");
-    if (!institutionIdResult.success) return validationError(institutionIdResult.error!);
 
     const item = await getItem(user, itemIdResult.data!);
     if (!item) {
@@ -79,6 +61,32 @@ export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account
         message: "Account is not a manual account.",
       };
     }
+  }
+
+  try {
+    // UPDATE first, so the database decides whether this is an edit or a
+    // create. Classifying by body shape instead — treating a request as a
+    // create because it carries `item_id` — makes a server decision out of a
+    // client convention: an edit that happens to send `item_id` would skip the
+    // UPDATE, hit the primary key on INSERT, and report "already exists" for a
+    // rename that should have succeeded. The hot edit path still costs the one
+    // statement it always did.
+    const updated = (await updateAccounts(user, [body as PartialAccount]))[0];
+    if (updated?.status === 200) return succeed(updated);
+    if (updated?.status !== 304) {
+      throw new Error(`Account update did not persist, status ${updated?.status ?? "missing"}`);
+    }
+
+    // Either no live row of the user's carries this id, or the body held
+    // nothing `buildUpdate` could set. A create needs the columns an edit never
+    // has to supply, so a body without `item_id` can only be the former.
+    if (isUndefined(body.item_id)) {
+      return { status: "failed", message: "Account not found." };
+    }
+
+    // institution_id is NOT NULL, so an INSERT needs it up front.
+    const institutionIdResult = requireStringField(body, "institution_id");
+    if (!institutionIdResult.success) return validationError(institutionIdResult.error!);
 
     const created = await createAccount(user, body as CreatableAccount);
 

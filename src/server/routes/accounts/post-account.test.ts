@@ -185,6 +185,7 @@ describe("post-account create path", () => {
   });
 
   test("treats a body carrying item_id as an edit when the row exists", async () => {
+    db.item = makeItemRow();
     db.updateReturns = [{ account_id: "acc-1" }];
 
     // Nothing stops a client from posting item_id on an edit. Classifying by
@@ -198,6 +199,37 @@ describe("post-account create path", () => {
     expect(result?.status).toBe("success");
     expect(result?.body?.account_id).toBe("acc-1");
     expect(findStatement(INSERT_ACCOUNTS)).toBeNull();
+  });
+
+  test("refuses to move an existing account onto an item the user does not own", async () => {
+    db.item = null;
+    db.updateReturns = [{ account_id: "acc-1" }];
+
+    // account_id is the user's, so the UPDATE would match. item_id has no
+    // foreign key, so writing it unchecked would reparent the account onto
+    // someone else's item.
+    const result = await postAccountRoute.execute(
+      makeReq({ account_id: "acc-1", item_id: "item-somebody-else" }, "u-1"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/item not found/i);
+    expect(findStatement(UPDATE_ACCOUNTS)).toBeNull();
+  });
+
+  test("refuses to move an existing account onto a Plaid item", async () => {
+    db.item = makeItemRow({ item_id: "item-plaid", provider: ItemProvider.PLAID });
+    db.updateReturns = [{ account_id: "acc-1" }];
+
+    const result = await postAccountRoute.execute(
+      makeReq({ account_id: "acc-1", item_id: "item-plaid" }, "u-1"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/not a manual account/i);
+    expect(findStatement(UPDATE_ACCOUNTS)).toBeNull();
   });
 
   test("does not resurrect a soft-deleted row on the way to the insert", async () => {
@@ -259,6 +291,7 @@ describe("post-account create path", () => {
   });
 
   test("rejects a create with no institution_id — the column is NOT NULL", async () => {
+    db.item = makeItemRow();
     const { institution_id: _institution_id, ...withoutInstitutionId } = newAccountBody;
 
     const result = await postAccountRoute.execute(makeReq(withoutInstitutionId, "u-1"), fakeRes());
