@@ -4,11 +4,12 @@ WORKDIR /app
 
 COPY package.json bun.lockb* ./
 COPY tsconfig.json tsconfig.node.json ./
-COPY vite.config.ts ./
+COPY vite.config.ts eslint.config.js ./
 COPY src src
 COPY scripts scripts
 
 RUN bun install
+RUN bun run lint
 RUN bun run typecheck
 RUN bun run test
 RUN bun run build
