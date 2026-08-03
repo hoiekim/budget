@@ -394,6 +394,16 @@ describe("DDL builders", () => {
       "CREATE INDEX IF NOT EXISTS custom_idx ON things(name)",
     );
   });
+
+  it("buildCreateIndex builds a composite index over multiple columns", () => {
+    expect(buildCreateIndex("transactions", ["user_id", "updated"])).toBe(
+      "CREATE INDEX IF NOT EXISTS idx_transactions_user_id_updated ON transactions(user_id, updated)",
+    );
+    // A single-element array matches the scalar form exactly (no trailing comma/space).
+    expect(buildCreateIndex("things", ["name"])).toBe(
+      buildCreateIndex("things", "name"),
+    );
+  });
 });
 
 describe("result helpers", () => {

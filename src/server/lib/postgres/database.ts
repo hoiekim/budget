@@ -68,9 +68,14 @@ export function buildCreateTable(
   `.trim();
 }
 
-export function buildCreateIndex(tableName: string, column: string, indexName?: string): string {
-  const name = indexName || `idx_${tableName}_${column}`;
-  return `CREATE INDEX IF NOT EXISTS ${name} ON ${tableName}(${column})`;
+export function buildCreateIndex(
+  tableName: string,
+  column: string | string[],
+  indexName?: string,
+): string {
+  const columns = Array.isArray(column) ? column : [column];
+  const name = indexName || `idx_${tableName}_${columns.join("_")}`;
+  return `CREATE INDEX IF NOT EXISTS ${name} ON ${tableName}(${columns.join(", ")})`;
 }
 
 export function prepareParamValue(value: ParamValue): ParamValue {
