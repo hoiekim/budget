@@ -35,16 +35,6 @@ export interface TransferPair {
   is_deleted?: boolean;
 }
 
-/**
- * An eviction signal is a pair delivered with no `transactions`: there is
- * nothing left to render, so the delta-reducing FE drops it from its cache.
- * A pair always carries exactly two transactions when it is renderable, so
- * emptiness is the whole predicate — the FE never has to re-derive which
- * combination of `is_deleted` / `status` / unresolved halves hides a pair.
- */
-export const isEvictionSignal = (pair: TransferPair): boolean =>
-  pair.transactions.length === 0;
-
 export interface GetTransferPairsOptions {
   /** When true, non-renderable pairs are INCLUDED as eviction signals.
    *  Defaults to false: a caller that just wants the current pair list gets
@@ -151,12 +141,12 @@ export const getTransferPairs = async (
     const a = txnById.get(pair.transaction_id_a);
     const b = txnById.get(pair.transaction_id_b);
     if (!a || !b) {
-      // The pair row is active but one half resolves to nothing — the
-      // transaction was soft-deleted without the cascade reaching the pair.
-      // Omitting it was enough while the FE replaced its cache wholesale;
-      // a delta reducer never revisits an id it isn't sent, so under
-      // `includeDeleted` this has to be an explicit eviction or the stale
-      // pair outlives its transaction in the client cache.
+      // Active pair, but a half no longer resolves. Omitting it was enough
+      // while the client replaced its cache wholesale; a delta reducer never
+      // revisits an id it is not sent, so under `includeDeleted` the pair has
+      // to be evicted explicitly. This only reaches a cursor-filtered caller
+      // when something bumped the pair's own `updated` after the cursor —
+      // orphaning a half does not, so it is not on its own a fix for #683.
       if (options.includeDeleted) evictions.push(toEviction(pair));
       continue;
     }

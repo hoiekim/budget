@@ -300,11 +300,14 @@ const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResu
 
   const params = new URLSearchParams();
   if (cursor) params.append("start-date", cursor);
-  // Opt into eviction-signal delivery. Unlike /transactions and /snapshots
-  // — whose routes hardcode it — /transfers keeps it a param, so a sync that
-  // forgets it silently degrades to "additions only" and pairs the user
-  // rejected stay on screen until the next cold load.
-  params.append("include-deleted", "true");
+  // Eviction signals only mean something when there is a cache to
+  // reconcile. The cold path has already run `clearAllData` and rebuilds
+  // the dictionary from this response, so asking for them there would pull
+  // every pair the user has ever rejected — a set that only grows, since
+  // rejections are retained as the detection engine's denylist — and
+  // discard all of it. On warm they are the whole point: without them a
+  // pair the user rejected stays on screen until the next cold load.
+  if (cursor) params.append("include-deleted", "true");
   const path = `/api/transfers?${params.toString()}`;
   const response = await call.get<TransfersGetResponse>(path).catch(console.error);
   if (!response || response.status === "error") {
