@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import type { TransferPair } from "server";
-import { TransferDictionary } from "./Data";
+import { TransactionDictionary, TransferDictionary, resolveTransferSides } from "./Data";
 
 // Build a one-pair dictionary whose two halves carry the given ids and
 // status. Mirrors what `data.transfers` holds after `fetchTransfers`.
@@ -71,5 +71,48 @@ describe("TransferDictionary.byTransactionId", () => {
     const copy = new TransferDictionary(seed);
     expect(copy.byTransactionId.hasConfirmed("a")).toBe(true);
     expect(copy.byTransactionId.get("b")?.pair_id).toBe("p");
+  });
+});
+
+describe("resolveTransferSides", () => {
+  // The pair's embedded halves are a copy taken when the pair row was last
+  // written. Nothing bumps `transaction_pairs.updated` when a referenced
+  // transaction changes, so under delta sync that copy goes stale while
+  // `data.transactions` carries the edit.
+  const stalePair = (): TransferPair => ({
+    pair_id: "p",
+    status: "confirmed",
+    transactions: [
+      { transaction_id: "t-a", amount: 10, name: "old name" } as never,
+      { transaction_id: "t-b", amount: -10, name: "old name" } as never,
+    ],
+  });
+
+  test("reads each half through the authoritative transactions dictionary", () => {
+    const transactions = new TransactionDictionary();
+    transactions.set("t-a", { transaction_id: "t-a", amount: 12.34, name: "new name" } as never);
+    transactions.set("t-b", { transaction_id: "t-b", amount: -12.34, name: "new name" } as never);
+
+    const [a, b] = resolveTransferSides(stalePair(), transactions);
+    expect(a.amount).toBe(12.34);
+    expect(b.amount).toBe(-12.34);
+    expect(a.name).toBe("new name");
+  });
+
+  test("falls back to the embedded copy for a half that is not loaded", () => {
+    const transactions = new TransactionDictionary();
+    transactions.set("t-a", { transaction_id: "t-a", amount: 12.34, name: "new name" } as never);
+
+    const [a, b] = resolveTransferSides(stalePair(), transactions);
+    expect(a.amount).toBe(12.34);
+    // t-b is outside the loaded window (or soft-deleted) — the row still
+    // renders rather than blanking a side.
+    expect(b.amount).toBe(-10);
+    expect(b.transaction_id).toBe("t-b");
+  });
+
+  test("preserves server order, so the sign-based side anchoring is unaffected", () => {
+    const resolved = resolveTransferSides(stalePair(), new TransactionDictionary());
+    expect(resolved.map((t) => t.transaction_id)).toEqual(["t-a", "t-b"]);
   });
 });
