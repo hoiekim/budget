@@ -270,27 +270,42 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
 
 interface FetchTransfersResult {
   transfers: TransferDictionary;
+  /** Pair ids the server sent as eviction signals — caller must `delete`
+   *  from the context dictionary AND `indexedDb.remove(...)` per id. */
+  tombstonePairIds: Set<string>;
   networkFailed: boolean;
 }
 
 /**
- * Lightweight fetch of all transfer pairs for the user. Lives in
- * useSync alongside the other model fetches so a cold/warm load
- * paints with pair state already in place. Returns a single
- * TransferDictionary (pair_id → TransferPair) — consumers resolve
- * transaction_id lookups via `transfers.byTransactionId.get(id)` (and
- * the `has`/`hasSuggested`/`hasConfirmed` membership predicates), each
- * O(1) over the dictionary's internal pivot map. Mutation methods
- * in `useTransfers` update `data.transfers` in-place via `setData`
- * (no re-fetch on mutation).
+ * Delta fetch of transfer pairs. Consumers resolve transaction_id
+ * lookups via `transfers.byTransactionId.get(id)` (and the
+ * `has`/`hasSuggested`/`hasConfirmed` membership predicates), each O(1)
+ * over the dictionary's internal pivot map. Mutation methods in
+ * `useTransfers` update `data.transfers` in-place via `setData` (no
+ * re-fetch on mutation).
+ *
+ * A pair leaves the view by being soft-deleted, rejected, or losing one
+ * of its transactions; the server collapses all three into the same
+ * wire shape — a pair with no `transactions` — so the reducer here has
+ * one predicate rather than a mirror of the server's visibility rules.
+ * Cursor null = full fetch (cold).
  */
-const fetchTransfers = async (): Promise<FetchTransfersResult> => {
+const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResult> => {
   const result: FetchTransfersResult = {
     transfers: new TransferDictionary(),
+    tombstonePairIds: new Set(),
     networkFailed: false,
   };
 
-  const response = await call.get<TransfersGetResponse>("/api/transfers").catch(console.error);
+  const params = new URLSearchParams();
+  if (cursor) params.append("start-date", cursor);
+  // Opt into eviction-signal delivery. Unlike /transactions and /snapshots
+  // — whose routes hardcode it — /transfers keeps it a param, so a sync that
+  // forgets it silently degrades to "additions only" and pairs the user
+  // rejected stay on screen until the next cold load.
+  params.append("include-deleted", "true");
+  const path = `/api/transfers?${params.toString()}`;
+  const response = await call.get<TransfersGetResponse>(path).catch(console.error);
   if (!response || response.status === "error") {
     result.networkFailed = true;
     return result;
@@ -298,6 +313,10 @@ const fetchTransfers = async (): Promise<FetchTransfersResult> => {
   if (!response.body) return result;
 
   for (const pair of response.body) {
+    if (!pair.transactions.length) {
+      result.tombstonePairIds.add(pair.pair_id);
+      continue;
+    }
     result.transfers.set(pair.pair_id, pair);
   }
 
@@ -548,7 +567,7 @@ export const useSync = () => {
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
       const securitiesPromise = fetchSecurities();
-      const transfersPromise = fetchTransfers();
+      const transfersPromise = fetchTransfers(cursor);
 
       const [
         accountsResult,
@@ -713,7 +732,13 @@ export const useSync = () => {
         next.charts = charts;
         next.institutions = institutions;
         next.securities = securities;
-        next.transfers = transfers;
+
+        // Apply transfers delta the same way as the time-partitioned
+        // stores below. On cold the delta IS the whole set, so the merge
+        // over Stage 1's paint is a no-op overlay.
+        next.transfers = new TransferDictionary(oldData.transfers);
+        transfers.forEach((p, id) => next.transfers.set(id, p));
+        stage1Transfers.tombstonePairIds.forEach((id) => next.transfers.delete(id));
 
         // Apply transactions delta: clone the existing dict, set
         // added/modified, delete tombstoned ids.
@@ -815,6 +840,9 @@ export const useSync = () => {
         indexedDb.saveHoldingSnapshots(snapshotsResult.holdingSnapshots),
         indexedDb.saveSecuritySnapshots(snapshotsResult.securitySnapshots),
       ];
+      stage1Transfers.tombstonePairIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.transfers, id));
+      });
       transactionsResult.tombstoneTxIds.forEach((id) => {
         idbSaves.push(indexedDb.remove(StoreName.transactions, id));
       });
@@ -1016,14 +1044,19 @@ export const useSync = () => {
             return;
           }
           case TableName.TransactionPairs: {
-            const r = await fetchTransfers();
+            const r = await fetchTransfers(cursor);
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
-              next.transfers = r.transfers;
+              next.transfers = new TransferDictionary(oldData.transfers);
+              r.transfers.forEach((p, id) => next.transfers.set(id, p));
+              r.tombstonePairIds.forEach((id) => next.transfers.delete(id));
               return next;
             });
-            await indexedDb.saveTransfers(r.transfers).catch(console.error);
+            await Promise.allSettled([
+              indexedDb.saveTransfers(r.transfers),
+              ...[...r.tombstonePairIds].map((id) => indexedDb.remove(StoreName.transfers, id)),
+            ]);
             return;
           }
           case TableName.Securities: {
