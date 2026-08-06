@@ -27,6 +27,22 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("React error boundary caught an error:", error, errorInfo);
+    // start.tsx's `window.addEventListener("error"|"unhandledrejection")`
+    // beacons don't fire for boundary-caught errors — React swallows the
+    // exception before it bubbles to window. Post the same shape here so
+    // /api/client-error can alarm on render-time throws too. sendBeacon
+    // is fire-and-forget; a failure here must not itself throw and take
+    // down the fallback UI.
+    try {
+      const body = JSON.stringify({
+        message: error.message,
+        stack: error.stack ?? "",
+        url: window.location.href,
+      });
+      navigator.sendBeacon("/api/client-error", new Blob([body], { type: "application/json" }));
+    } catch (beaconError) {
+      console.error("ErrorBoundary sendBeacon failed:", beaconError);
+    }
   }
 
   handleReload = () => {
