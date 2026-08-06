@@ -107,7 +107,25 @@ export class AmountInTime implements JSONAmountInTime {
 
   constructor(init?: Partial<AmountInTime | JSONAmountInTime>) {
     assign(this, init);
-    if (init?.amountAsOf) this.amountAsOf = new LocalDate(init.amountAsOf);
+    // Two upstream paths produce a not-a-valid-Date for `amountAsOf`
+    // that reaches downstream `date.getFullYear()` calls and crashes
+    // the render:
+    //  - Mid-typing in a `type="date"` field: `new LocalDate("")` /
+    //    `new LocalDate("2024-01-")` — Invalid Date (a Date object
+    //    whose `.getTime()` returns NaN). Passed straight through the
+    //    local React state.
+    //  - Round-trip via server: `Date.prototype.toJSON` on an Invalid
+    //    Date returns `null`, so a saved config comes back with
+    //    `amountAsOf === null`. `assign` above copies null verbatim
+    //    and the old guard `if (init?.amountAsOf)` skipped the
+    //    re-wrap because null is falsy.
+    //
+    // Force a VALID Date instance in every case: try to construct one
+    // from init (Date, string, number all handled by LocalDate → Date),
+    // then fall back to `new Date()` if the result is invalid or the
+    // input was falsy.
+    const candidate = init?.amountAsOf ? new LocalDate(init.amountAsOf) : new Date();
+    this.amountAsOf = isNaN(candidate.getTime()) ? new Date() : candidate;
   }
 }
 
