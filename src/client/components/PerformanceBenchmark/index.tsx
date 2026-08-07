@@ -16,6 +16,7 @@ import type { ResolveSecuritySnapshotResponse } from "server/routes/accounts/pos
 import {
   extractCashFlows,
   computeMWR,
+  computeTWR,
   computeBenchmarkTWR,
   computeBenchmarkEndValue,
   valueAt,
@@ -117,18 +118,28 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     // anything Polygon has backfilled via resolve-security-snapshot.
     // Txn fills the long historical tail predating Plaid's sync.
     const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
-    const vStart = ids.reduce(
-      (sum, id) =>
-        sum +
-        valueAt({ date: windowStart, windowStart, accountId: id, holdingSnapshots, investmentTransactions, priceAt }),
-      0,
-    );
-    const vEnd = ids.reduce(
-      (sum, id) =>
-        sum +
-        valueAt({ date: windowEnd, windowStart, accountId: id, holdingSnapshots, investmentTransactions, priceAt }),
-      0,
-    );
+    // Aggregate asset value across all in-scope accounts at an arbitrary
+    // date — the shared primitive behind the window boundaries (vStart/vEnd)
+    // and every TWR sub-period boundary. windowStart anchors the txn-derived
+    // qty walk consistently for all dates. Each `valueAt` re-derives the
+    // per-account cash-security set + txn qty walk, so memoize per date: the
+    // window boundaries are queried by both vStart/vEnd and computeTWR, and a
+    // heavy-trader account can have many flow boundaries.
+    const valueCache = new Map<string, number>();
+    const valueAtAll = (date: string) => {
+      const cached = valueCache.get(date);
+      if (cached !== undefined) return cached;
+      const total = ids.reduce(
+        (sum, id) =>
+          sum +
+          valueAt({ date, windowStart, accountId: id, holdingSnapshots, investmentTransactions, priceAt }),
+        0,
+      );
+      valueCache.set(date, total);
+      return total;
+    };
+    const vStart = valueAtAll(windowStart);
+    const vEnd = valueAtAll(windowEnd);
 
     const flowsByDate = new Map<string, number>();
     for (const id of ids) {
@@ -142,6 +153,12 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     const flows = allFlows.filter((f) => f.date > windowStart && f.date <= windowEnd);
 
     const mwr = computeMWR({ flows, vStart, vEnd, windowStart, windowEnd });
+
+    // Time-weighted return over the same window — timing-neutral by
+    // construction, so it isolates *selection* (did the holdings beat the
+    // index?) from *timing* (did contribution timing help?). Uses the same
+    // asset-side flows + valuations as the MWR (see computeTWR).
+    const twr = computeTWR({ flows, valueAt: valueAtAll, windowStart, windowEnd });
 
     // Benchmark TWR fallback chain: security_snapshots → static CSV.
     // (Polygon resolve fires async in a separate useEffect and merges
@@ -231,6 +248,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
       yearsInWindow,
       mwr,
       mwrGain,
+      twr,
       benchmark,
       benchmarkGain,
       gapPct,
@@ -304,6 +322,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     yearsInWindow,
     mwr,
     mwrGain,
+    twr,
     benchmark,
     benchmarkGain,
     gapPct,
@@ -373,6 +392,18 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
             {displayMode === "pct"
               ? renderValues(mwr.cumulative, mwr.annualized, "—", formatPct)
               : renderValues(mwrGain, perYear(mwrGain), "—", formatSignedDollars)}
+          </span>
+        </div>
+
+        <div className="performanceRow">
+          <span className="performanceLabel">Your asset return (TWR)</span>
+          {/* TWR is a pure rate — the actual dollars earned ARE the MWR gain,
+              so there's no honest dollar counterpart. The row always renders %
+              and doesn't participate in the $ ↔ % toggle. */}
+          <span className="performanceValues">
+            {twr.status === "ok"
+              ? renderValues(twr.cumulative, twr.annualized, "—", formatPct)
+              : <span className="no-data">—</span>}
           </span>
         </div>
 
