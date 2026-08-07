@@ -116,7 +116,7 @@ describe("POST /client-error", () => {
 describe("POST /client-error rate limit", () => {
   test("accepts reports up to the per-IP cap, then rejects with 429", async () => {
     const ip = nextIp();
-    const CAP = 20;
+    const CAP = 12;
 
     for (let i = 0; i < CAP; i++) {
       const result = await postClientErrorRoute.execute(
@@ -140,11 +140,17 @@ describe("POST /client-error rate limit", () => {
     expect(res.status).toHaveBeenCalledWith(429);
     // The point of the limit: a rejected report costs no alarm fan-out.
     expect(mockSendAlarm).toHaveBeenCalledTimes(CAP);
+    // ...but it is still traceable, since a tripped limiter means a looping client.
+    expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+    expect(mockLogger.warn.mock.calls[0]).toEqual([
+      "Client error report rate-limited",
+      { ip },
+    ]);
   });
 
   test("one flooding IP does not consume another IP's quota", async () => {
     const flooder = nextIp();
-    for (let i = 0; i < 21; i++) {
+    for (let i = 0; i < 13; i++) {
       await postClientErrorRoute.execute(makeReq({ message: "flood" }, flooder), makeRes());
     }
     mockSendAlarm.mockReset();

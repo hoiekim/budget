@@ -25,6 +25,7 @@ mock.module("pg", () => ({
 }));
 
 const { postLoginRoute } = await import("./post-login");
+const { loginRateLimiter } = await import("server/lib/rate-limit");
 
 afterAll(restoreLeaves);
 
@@ -57,7 +58,7 @@ interface SessionStub {
 
 function makeReq(
   body: unknown,
-  opts: { regenerateErr?: Error } = {},
+  opts: { regenerateErr?: Error; ip?: string } = {},
 ): Parameters<typeof postLoginRoute.execute>[0] {
   const session: SessionStub = {
     id: "s-1",
@@ -75,7 +76,7 @@ function makeReq(
     query: {},
     body,
     session,
-    ip: "127.0.0.1",
+    ip: opts.ip ?? "127.0.0.1",
   } as unknown as Parameters<typeof postLoginRoute.execute>[0];
 }
 
@@ -195,5 +196,68 @@ describe("post-login auth outcomes", () => {
     const result = await postLoginRoute.execute(req, res);
     expect(result?.status).toBe("error");
     expect((res as { statusCode: number }).statusCode).toBe(500);
+  });
+});
+
+describe("post-login rate-limiter wiring", () => {
+  // The route decides which outcomes cost a slot; the limiter itself is
+  // outcome-blind. Nothing but these tests holds the #389 invariant in place,
+  // so they drive the real route rather than the limiter directly.
+  let ipCounter = 0;
+  const nextIp = () => `192.0.2.${++ipCounter}`;
+
+  const attemptLogin = async (ip: string, password: string) => {
+    mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+    return postLoginRoute.execute(
+      makeReq({ username: "alice", password }, { ip }),
+      fakeRes(),
+    );
+  };
+
+  test("wrong passwords charge the limiter — 5 of them lock the IP out", async () => {
+    const ip = nextIp();
+    expect(loginRateLimiter.isLimited(ip)).toBe(false);
+
+    for (let i = 0; i < 4; i++) {
+      const result = await attemptLogin(ip, "wrong-password");
+      expect(result?.status).toBe("failed");
+    }
+    expect(loginRateLimiter.isLimited(ip)).toBe(false);
+
+    await attemptLogin(ip, "wrong-password");
+    expect(loginRateLimiter.isLimited(ip)).toBe(true);
+  });
+
+  test("a successful login clears the IP's prior failures (the #389 regression)", async () => {
+    const ip = nextIp();
+    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password");
+
+    const success = await attemptLogin(ip, REAL_PASSWORD);
+    expect(success?.status).toBe("success");
+
+    // Without the reset, these 4 land on top of the earlier 4 and cross the
+    // cap of 5. With it, the IP is back to a clean window.
+    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password");
+    expect(loginRateLimiter.isLimited(ip)).toBe(false);
+  });
+
+  test("a successful login never charges a slot on its own", async () => {
+    // The literal shape of #389: signing in from 6 devices inside one window
+    // must not lock the IP out.
+    const ip = nextIp();
+    for (let i = 0; i < 6; i++) {
+      const result = await attemptLogin(ip, REAL_PASSWORD);
+      expect(result?.status).toBe("success");
+      expect(loginRateLimiter.isLimited(ip)).toBe(false);
+    }
+  });
+
+  test("one IP's failures do not lock out another IP", async () => {
+    const locked = nextIp();
+    for (let i = 0; i < 5; i++) await attemptLogin(locked, "wrong-password");
+    expect(loginRateLimiter.isLimited(locked)).toBe(true);
+
+    const bystander = nextIp();
+    expect(loginRateLimiter.isLimited(bystander)).toBe(false);
   });
 });
