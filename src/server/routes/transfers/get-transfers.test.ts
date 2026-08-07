@@ -280,4 +280,78 @@ describe("get-transfers", () => {
     // No second (txn) query — nothing visible to resolve.
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
+
+  const activePairRow = {
+    pair_id: "p-1",
+    user_id: "u-1",
+    transaction_id_a: "t-a",
+    transaction_id_b: "t-b",
+    status: "confirmed",
+    created_at: "2026-05-01T00:00:00Z",
+    updated: "2026-05-02T09:00:00Z",
+    is_deleted: false,
+  };
+
+  test("start-date narrows the pairs SELECT by `updated`", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getTransfersRoute.execute(
+      makeReq({ query: { "start-date": "2026-05-02T00:00:00Z" } }),
+      fakeRes(),
+    );
+    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    expect(pairsSql).toMatch(/updated >= \$2/);
+    expect(pairsValues).toEqual(["u-1", "2026-05-02T00:00:00Z"]);
+  });
+
+  test("no start-date leaves the read unbounded (cold sync)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getTransfersRoute.execute(makeReq(), fakeRes());
+    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    expect(pairsSql).not.toMatch(/updated >=/);
+    expect(pairsValues).toEqual(["u-1"]);
+  });
+
+  test("start-date composes with include-deleted — cursor filter plus tombstone delivery", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getTransfersRoute.execute(
+      makeReq({ query: { "start-date": "2026-05-02T00:00:00Z", "include-deleted": "true" } }),
+      fakeRes(),
+    );
+    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    expect(pairsSql).toMatch(/updated >= \$2/);
+    expect(pairsSql).not.toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
+    expect(pairsValues).toEqual(["u-1", "2026-05-02T00:00:00Z"]);
+  });
+
+  test("include-deleted=true turns an active pair with unresolvable transactions into an eviction signal", async () => {
+    // The pair row is active and not rejected, but neither half comes back
+    // from the (soft-delete-excluding) transactions query. Omitting it is
+    // enough for a client that replaces wholesale; a delta reducer never
+    // revisits an id it isn't sent, so it has to be told explicitly.
+    mockQuery.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await getTransfersRoute.execute(
+      makeReq({ query: { "include-deleted": "true" } }),
+      fakeRes(),
+    );
+
+    expect(result?.body).toEqual([
+      {
+        pair_id: "p-1",
+        status: "confirmed",
+        transactions: [],
+        updated: "2026-05-02T09:00:00Z",
+        is_deleted: false,
+      },
+    ]);
+  });
+
+  test("default (no include-deleted) still drops an unresolvable pair silently", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await getTransfersRoute.execute(makeReq(), fakeRes());
+    expect(result?.body).toEqual([]);
+  });
 });

@@ -11,6 +11,7 @@ import {
   TRANSACTION_ID,
   STATUS,
   IS_DELETED,
+  UPDATED,
   canonicalizePairIds,
 } from "../models";
 import {
@@ -30,20 +31,19 @@ export interface TransferPair {
    *  locally before the server's `updated` is known. */
   updated?: string | null;
   /** True for a soft-deleted pair. Returned only when the caller passes
-   *  `includeDeleted`. A soft-deleted OR `status='rejected'` pair is an
-   *  eviction signal (empty `transactions`) the FE removes from its cache —
-   *  it evicts on `is_deleted || status === 'rejected'`, so `pair_id` +
-   *  `status` + `is_deleted` is all it needs. */
+   *  `includeDeleted`. */
   is_deleted?: boolean;
 }
 
 export interface GetTransferPairsOptions {
-  /** When true, soft-deleted (`is_deleted = TRUE`) pairs are INCLUDED as
-   *  tombstones. Defaults to false for backward compatibility — the current
-   *  FE full-fetches and replaces wholesale, so it must NOT receive
-   *  tombstones as active rows. The FE-hook migration (#542 parts 4-5) flips
-   *  its fetch to opt in, mirroring the transactions/snapshots contract. */
+  /** When true, non-renderable pairs are INCLUDED as eviction signals.
+   *  Defaults to false: a caller that just wants the current pair list gets
+   *  active-non-rejected rows only, exactly as before delta delivery. */
   includeDeleted?: boolean;
+  /** Delta cursor. When set, only pairs whose `updated >= startDate` are
+   *  returned, so a warm sync costs O(pairs-changed) instead of O(pairs).
+   *  Backed by the `(user_id, updated)` composite index on the table. */
+  startDate?: string;
 }
 
 /**
@@ -72,7 +72,13 @@ export const getTransferPairs = async (
   // exclusion — matches the transactions/snapshots delta-delivery contract.
   const allPairs = await transactionPairsTable.query(
     { [USER_ID]: user.user_id },
-    { orderBy: PAIR_ID, excludeDeleted: !options.includeDeleted },
+    {
+      orderBy: PAIR_ID,
+      excludeDeleted: !options.includeDeleted,
+      dateRange: options.startDate
+        ? { column: UPDATED, start: options.startDate }
+        : undefined,
+    },
   );
 
   if (allPairs.length === 0) return [];
@@ -90,27 +96,23 @@ export const getTransferPairs = async (
 
   // Under `includeDeleted`, every non-visible pair — soft-deleted OR rejected
   // — is delivered as an eviction signal so the delta-reducing FE removes it
-  // from its local cache (it evicts on `is_deleted || status === 'rejected'`).
-  // Eviction signals need no transaction resolution: a cascade soft-delete may
-  // have soft-deleted the referenced transactions too (the active-only txn
-  // query below wouldn't find them), and `pair_id` + `status` + `is_deleted` +
-  // `updated` is all the FE needs to evict. On the default path `allPairs`
-  // already excludes soft-deleted at the SQL layer and rejected pairs are
-  // simply omitted, so there are no eviction signals — the response is
-  // active-non-rejected only, byte-for-byte the prior contract plus the
+  // from its local cache. Eviction signals need no transaction resolution: a
+  // cascade soft-delete may have soft-deleted the referenced transactions too
+  // (the active-only txn query below wouldn't find them). On the default path
+  // `allPairs` already excludes soft-deleted at the SQL layer and rejected
+  // pairs are simply omitted, so there are no eviction signals — the response
+  // is active-non-rejected only, byte-for-byte the prior contract plus the
   // additive `updated` / `is_deleted` fields.
-  const evictions = options.includeDeleted
-    ? allPairs
-        .filter((p) => !isVisible(p))
-        .map(
-          (pair): TransferPair => ({
-            pair_id: pair.pair_id,
-            status: pair.status,
-            transactions: [],
-            updated: pair.updated,
-            is_deleted: !!pair.is_deleted,
-          }),
-        )
+  const toEviction = (pair: (typeof allPairs)[number]): TransferPair => ({
+    pair_id: pair.pair_id,
+    status: pair.status,
+    transactions: [],
+    updated: pair.updated,
+    is_deleted: !!pair.is_deleted,
+  });
+
+  const evictions: TransferPair[] = options.includeDeleted
+    ? allPairs.filter((p) => !isVisible(p)).map(toEviction)
     : [];
 
   if (visiblePairs.length === 0) return evictions;
@@ -128,20 +130,29 @@ export const getTransferPairs = async (
     txnById.set(tx.transaction_id, tx);
   }
 
-  const active = visiblePairs
-    .map((pair): TransferPair | null => {
-      const a = txnById.get(pair.transaction_id_a);
-      const b = txnById.get(pair.transaction_id_b);
-      if (!a || !b) return null;
-      return {
-        pair_id: pair.pair_id,
-        status: pair.status,
-        transactions: [a, b],
-        updated: pair.updated,
-        is_deleted: false,
-      };
-    })
-    .filter((p): p is TransferPair => p !== null);
+  const active: TransferPair[] = [];
+
+  for (const pair of visiblePairs) {
+    const a = txnById.get(pair.transaction_id_a);
+    const b = txnById.get(pair.transaction_id_b);
+    if (!a || !b) {
+      // Active pair, but a half no longer resolves. Omitting it was enough
+      // while the client replaced its cache wholesale; a delta reducer never
+      // revisits an id it is not sent, so under `includeDeleted` the pair has
+      // to be evicted explicitly. This only reaches a cursor-filtered caller
+      // when something bumped the pair's own `updated` after the cursor —
+      // orphaning a half does not, so it is not on its own a fix for #683.
+      if (options.includeDeleted) evictions.push(toEviction(pair));
+      continue;
+    }
+    active.push({
+      pair_id: pair.pair_id,
+      status: pair.status,
+      transactions: [a, b],
+      updated: pair.updated,
+      is_deleted: false,
+    });
+  }
 
   return [...active, ...evictions];
 };

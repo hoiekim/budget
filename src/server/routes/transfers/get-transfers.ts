@@ -8,17 +8,20 @@ export const getTransfersRoute = new Route<TransfersGetResponse>("GET", "/transf
     return { status: "failed", message: "Request user is not authenticated." };
   }
 
-  // Opt-in eviction-signal delivery (soft-deleted + rejected pairs). Unlike
-  // /transactions and /snapshots — which hardcode `includeDeleted: true`
-  // because their FE reducers were migrated in the same PR — the transfers FE
-  // still full-fetches and replaces its cache wholesale, so it must NOT
-  // receive tombstones/rejected pairs as active rows. Delivery stays behind
-  // this param until the FE hook migrates (#542 parts 4-5).
+  // Eviction-signal delivery is opt-in rather than hardcoded the way
+  // /transactions and /snapshots do it, so a caller that has no cache to
+  // reconcile — anything reading this endpoint for the current pair list —
+  // isn't handed rows it would only have to filter back out. `useSync` opts
+  // in on every fetch.
   const includeDeletedResult = optionalQueryString(req, "include-deleted");
   if (!includeDeletedResult.success) return validationError(includeDeletedResult.error!);
 
+  const startResult = optionalQueryString(req, "start-date");
+  if (!startResult.success) return validationError(startResult.error!);
+
   const pairs = await getTransferPairs(user, {
     includeDeleted: includeDeletedResult.data === "true",
+    startDate: startResult.data,
   });
   return { status: "success", body: pairs };
 });
