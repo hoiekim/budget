@@ -13,8 +13,13 @@ export type ClientErrorPostBody = {
 // bounds how much logging and Discord fan-out one client can buy. A page that
 // throws on every render burns its quota and goes quiet; a user hitting a
 // handful of distinct errors never reaches it.
+//
+// Deliberately under the alarm cooldown's own ceiling: `sendAlarm` lets this
+// bucket through once a minute, so a 15-minute window carries at most 15
+// alarms. Capping one IP below that keeps a single chatty client from holding
+// the bucket for the whole window.
 const clientErrorRateLimiter = createRateLimiter("client-error", {
-  maxAttempts: 20,
+  maxAttempts: 12,
   windowMs: 15 * 60 * 1000,
 });
 
@@ -28,6 +33,10 @@ const clientErrorRateLimiter = createRateLimiter("client-error", {
  */
 export const postClientErrorRoute = new Route("POST", "/client-error", async (req, res) => {
   if (clientErrorRateLimiter.isLimited(req.ip)) {
+    // The dropped report is the one worth knowing about — it means a client is
+    // looping — but the access log only carries the status, so name the source
+    // here. Stays out of `sendAlarm`: that fan-out is what the cap exists for.
+    logger.warn("Client error report rate-limited", { ip: req.ip });
     res.status(429);
     return {
       status: "failed" as const,

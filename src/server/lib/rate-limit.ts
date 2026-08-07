@@ -90,7 +90,10 @@ export interface RateLimiter {
 /**
  * Build a limiter over its own (bucket, IP) counters.
  *
- * @param bucket Namespace for this limiter's counters, unique per limiter
+ * @param bucket Namespace for this limiter's counters. Must be unique per
+ *   limiter and must not contain `:` — the key is `${bucket}:${ip}`, so a
+ *   colon in the bucket makes that split ambiguous against a colon-bearing
+ *   (IPv6) address.
  */
 export const createRateLimiter = (
   bucket: string,
