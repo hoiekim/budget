@@ -217,13 +217,14 @@ export const transactionsTable = createTable({
   primaryKey: TRANSACTION_ID,
   schema: txSchema,
   indexes: [
-    { column: USER_ID },
     { column: ACCOUNT_ID },
     { column: DATE },
     { column: PENDING },
     // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
     // every app load (PR #536). Without a leading-`updated` composite the planner
     // seq-scans the user's whole table; this keeps the read O(rows-changed). See #641.
+    // Also the only `user_id` index this table needs: a `user_id`-only lookup is a
+    // leftmost-prefix scan of this composite.
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: TransactionModel,
