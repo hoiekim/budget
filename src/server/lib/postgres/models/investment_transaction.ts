@@ -168,11 +168,12 @@ export const investmentTransactionsTable = createTable({
   primaryKey: INVESTMENT_TRANSACTION_ID,
   schema: invTxSchema,
   indexes: [
-    { column: USER_ID },
     { column: ACCOUNT_ID },
     { column: DATE },
     // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
     // every app load; the composite keeps the read O(rows-changed). See #641.
+    // Also the only `user_id` index this table needs: a `user_id`-only lookup is a
+    // leftmost-prefix scan of this composite.
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: InvTxModel,
