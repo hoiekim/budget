@@ -20,37 +20,35 @@ mock.module("pg", () => ({
 
 const models = await import("./index");
 const { USER_ID, UPDATED } = models;
+type IndexDefinition = { column: string } | { columns: string[] };
 
 afterAll(restoreLeaves);
 
-// Mirrors the `tables` registry in `initialize.ts`, which is module-private.
-// Every table that boot creates indexes for must appear here, otherwise a new
-// table can reintroduce a redundant index without tripping these guards.
-const tables = [
-  models.usersTable,
-  models.sessionsTable,
-  models.institutionsTable,
-  models.securitiesTable,
-  models.itemsTable,
-  models.accountsTable,
-  models.holdingsTable,
-  models.transactionsTable,
-  models.transactionPairsTable,
-  models.investmentTransactionsTable,
-  models.splitTransactionsTable,
-  models.budgetsTable,
-  models.sectionsTable,
-  models.categoriesTable,
-  models.snapshotsTable,
-  models.chartsTable,
-  models.apiKeysTable,
-  models.rejectedCategoriesTable,
-];
+// Derived from the barrel rather than hand-listed, so a table added later is
+// covered without anyone remembering to update this file. `initialize.ts` holds
+// the boot registry but does not export it, and importing it here would pull in
+// the repositories and the server logger for no benefit.
+type IndexedTable = { name: string; indexes: IndexDefinition[] };
 
-const columnsOf = (idx: { column: string } | { columns: string[] }): string[] =>
+const isTable = (v: unknown): v is IndexedTable =>
+  typeof v === "object" &&
+  v !== null &&
+  typeof (v as IndexedTable).name === "string" &&
+  Array.isArray((v as IndexedTable).indexes);
+
+const tables = Object.values(models).filter(isTable);
+
+const columnsOf = (idx: IndexDefinition): string[] =>
   "columns" in idx ? idx.columns : [idx.column];
 
 describe("index definitions carry no leftmost-prefix redundancy (#645)", () => {
+  // Guards the derivation above: if the barrel filter silently matched nothing,
+  // every test.each below would vacuously pass on an empty table list.
+  test("the barrel yields the full table registry", () => {
+    expect(tables.length).toBe(18);
+    expect(tables.map((t) => t.name)).toContain("transaction_pairs");
+  });
+
   // A btree on (a, b) already serves every `WHERE a = ?` lookup as a leftmost-
   // prefix scan, so a standalone (a) alongside it is pure write amplification:
   // two overlapping trees maintained on every INSERT/UPDATE/soft-delete for one
