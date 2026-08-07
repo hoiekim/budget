@@ -34,7 +34,15 @@ beforeEach(() => {
   mockLogger.error.mockReset();
 });
 
-const makeReq = (body: unknown): Parameters<typeof postClientErrorRoute.execute>[0] =>
+// The route's limiter holds module-level per-IP counters, so every test takes
+// a fresh IP rather than resetting shared state.
+let ipCounter = 0;
+const nextIp = () => `203.0.113.${++ipCounter}`;
+
+const makeReq = (
+  body: unknown,
+  ip: string = nextIp(),
+): Parameters<typeof postClientErrorRoute.execute>[0] =>
   ({
     method: "POST",
     path: "/client-error",
@@ -42,7 +50,7 @@ const makeReq = (body: unknown): Parameters<typeof postClientErrorRoute.execute>
     headers: {},
     query: {},
     body,
-    ip: "127.0.0.1",
+    ip,
   }) as unknown as Parameters<typeof postClientErrorRoute.execute>[0];
 
 const makeRes = (): Parameters<typeof postClientErrorRoute.execute>[1] =>
@@ -102,5 +110,53 @@ describe("POST /client-error", () => {
       makeRes()
     );
     expect(result).toEqual({ status: "success" });
+  });
+});
+
+describe("POST /client-error rate limit", () => {
+  test("accepts reports up to the per-IP cap, then rejects with 429", async () => {
+    const ip = nextIp();
+    const CAP = 20;
+
+    for (let i = 0; i < CAP; i++) {
+      const result = await postClientErrorRoute.execute(
+        makeReq({ message: `boom ${i}` }, ip),
+        makeRes()
+      );
+      expect(result).toEqual({ status: "success" });
+    }
+    expect(mockSendAlarm).toHaveBeenCalledTimes(CAP);
+
+    const res = makeRes();
+    const result = await postClientErrorRoute.execute(
+      makeReq({ message: "over the cap" }, ip),
+      res
+    );
+
+    expect(result).toEqual({
+      status: "failed",
+      message: "Too many client error reports, try again later",
+    });
+    expect(res.status).toHaveBeenCalledWith(429);
+    // The point of the limit: a rejected report costs no alarm fan-out.
+    expect(mockSendAlarm).toHaveBeenCalledTimes(CAP);
+  });
+
+  test("one flooding IP does not consume another IP's quota", async () => {
+    const flooder = nextIp();
+    for (let i = 0; i < 21; i++) {
+      await postClientErrorRoute.execute(makeReq({ message: "flood" }, flooder), makeRes());
+    }
+    mockSendAlarm.mockReset();
+
+    const res = makeRes();
+    const result = await postClientErrorRoute.execute(
+      makeReq({ message: "unrelated client" }, nextIp()),
+      res
+    );
+
+    expect(result).toEqual({ status: "success" });
+    expect(res.status).not.toHaveBeenCalled();
+    expect(mockSendAlarm).toHaveBeenCalledTimes(1);
   });
 });

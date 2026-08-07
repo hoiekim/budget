@@ -25,9 +25,12 @@ interface RateLimitRecord {
   resetAt: number;
 }
 
+/**
+ * One record per (bucket, IP). Buckets share this Map — and therefore the
+ * single cleanup timer below — but never share counters, so a limiter that
+ * fills up only blocks its own callers.
+ */
 const attempts = new Map<string, RateLimitRecord>();
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_ATTEMPTS = 5;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 /**
@@ -35,9 +38,9 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
  */
 const cleanupStaleRecords = () => {
   const now = Date.now();
-  for (const [ip, record] of attempts) {
+  for (const [key, record] of attempts) {
     if (now >= record.resetAt) {
-      attempts.delete(ip);
+      attempts.delete(key);
     }
   }
 };
@@ -63,39 +66,61 @@ export const stopRateLimitCleanup = () => {
   }
 };
 
+export interface RateLimiter {
+  /**
+   * Read-only check: true once the IP has consumed `maxAttempts` slots within
+   * the active window. Does NOT mutate state, so a caller can check without
+   * charging the quota.
+   */
+  isLimited(ip: string): boolean;
+  /**
+   * Consume one slot for the given IP. The caller decides which outcomes cost
+   * a slot — the login limiter charges only failed auth (see #389: charging
+   * successes locked out anyone signing in from 5+ devices in one window),
+   * while a volume limiter charges every accepted request.
+   */
+  consume(ip: string): void;
+  /**
+   * Clear the IP's slots so earlier attempts don't accumulate against them for
+   * the rest of the window.
+   */
+  reset(ip: string): void;
+}
+
 /**
- * Read-only check: returns true if the IP has hit the failure cap within
- * the active window. Does NOT mutate state.
+ * Build a limiter over its own (bucket, IP) counters.
  *
- * Successful logins must not consume a slot — that's what failure-only
- * counting prevents. See #389: counting successes locked out anyone who
- * legitimately signed in from 5+ devices within 15 minutes.
+ * @param bucket Namespace for this limiter's counters, unique per limiter
  */
-export const isLoginRateLimited = (ip: string): boolean => {
-  const now = Date.now();
-  const record = attempts.get(ip);
-  return !!record && now < record.resetAt && record.count >= MAX_ATTEMPTS;
+export const createRateLimiter = (
+  bucket: string,
+  { maxAttempts, windowMs }: { maxAttempts: number; windowMs: number },
+): RateLimiter => {
+  const keyFor = (ip: string) => `${bucket}:${ip}`;
+
+  return {
+    isLimited: (ip) => {
+      const record = attempts.get(keyFor(ip));
+      return !!record && Date.now() < record.resetAt && record.count >= maxAttempts;
+    },
+    consume: (ip) => {
+      const key = keyFor(ip);
+      const now = Date.now();
+      const record = attempts.get(key);
+
+      if (record && now < record.resetAt) {
+        record.count++;
+      } else {
+        attempts.set(key, { count: 1, resetAt: now + windowMs });
+      }
+    },
+    reset: (ip) => {
+      attempts.delete(keyFor(ip));
+    },
+  };
 };
 
-/**
- * Record a failed login attempt for the given IP. Call only after auth
- * has actually failed.
- */
-export const recordLoginFailure = (ip: string): void => {
-  const now = Date.now();
-  const record = attempts.get(ip);
-
-  if (record && now < record.resetAt) {
-    record.count++;
-  } else {
-    attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-  }
-};
-
-/**
- * Clear the bucket for an IP on a successful login so a user's prior
- * failures don't accumulate against them indefinitely within the window.
- */
-export const resetLoginAttempts = (ip: string): void => {
-  attempts.delete(ip);
-};
+export const loginRateLimiter = createRateLimiter("login", {
+  maxAttempts: 5,
+  windowMs: 15 * 60 * 1000,
+});
