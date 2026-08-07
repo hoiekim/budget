@@ -7,8 +7,7 @@ import {
   requireBodyObject,
   requireStringField,
   validationError,
-  recordLoginFailure,
-  resetLoginAttempts,
+  loginRateLimiter,
 } from "server";
 
 export type LoginPostResponse = MaskedUser;
@@ -37,7 +36,7 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
   if (pwMatches && user) {
     // Successful auth: clear any prior failures so they don't accumulate
     // against the user within the window.
-    resetLoginAttempts(req.ip);
+    loginRateLimiter.reset(req.ip);
     const maskedUser = maskUser(user);
     await new Promise<void>((resolve, reject) => {
       req.session.regenerate((err) => {
@@ -49,8 +48,8 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
     return { status: "success", body: maskedUser };
   }
 
-  // Only auth failures count toward the rate limit.
-  recordLoginFailure(req.ip);
+  // Only auth failures count toward the rate limit (#389).
+  loginRateLimiter.consume(req.ip);
 
   // Return the same generic message regardless of whether the username exists
   // to prevent username enumeration attacks.

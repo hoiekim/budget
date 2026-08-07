@@ -8,7 +8,7 @@ import {
   stopScheduledSync,
   logger,
   sendAlarm,
-  isLoginRateLimited,
+  loginRateLimiter,
   startRateLimitCleanup,
   stopRateLimitCleanup,
   pool,
@@ -284,7 +284,7 @@ async function handleApiRequest(
   // Read-only check — the counter is bumped only on auth failure inside
   // post-login.ts.
   if (request.method === "POST" && apiPath === "/login") {
-    if (isLoginRateLimited(ip)) {
+    if (loginRateLimiter.isLimited(ip)) {
       return jsonResponse(
         { status: "failed", message: "Too many login attempts, try again later" },
         429,
