@@ -39,10 +39,14 @@ const Utility = () => {
    * skipped. Per-domain debouncing collapses bursts of the same event; the
    * cursor is not advanced (only the whole-app `sync()` owns that).
    */
-  useServerEvents((domain, payload) => {
-    if (payload.originTabId === tabId) return;
-    syncDomain(domain);
-  }, userLoggedIn);
+  useServerEvents(
+    (domain, payload) => {
+      if (payload.originTabId === tabId) return;
+      syncDomain(domain);
+    },
+    userLoggedIn,
+    sync,
+  );
 
   /**
    * Calculate balance history when data is updated

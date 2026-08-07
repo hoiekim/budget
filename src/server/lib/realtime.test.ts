@@ -7,6 +7,8 @@ import {
   emitToUser,
   mutationEmitDomain,
   closeAllSubscribers,
+  SSE_KEEPALIVE_MS,
+  SSE_IDLE_TIMEOUT_SECONDS,
   type Subscriber,
 } from "./realtime";
 
@@ -173,5 +175,18 @@ describe("realtime", () => {
     expect(b.closed).toBe(true);
     expect(subscriberCount("u1")).toBe(0);
     expect(subscriberCount("u2")).toBe(0);
+  });
+
+  it("the SSE idle timeout outlives a keepalive tick", () => {
+    expect(SSE_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(SSE_KEEPALIVE_MS / 1000);
+  });
+
+  it("the SSE idle timeout is an integer within Bun's accepted range", () => {
+    // `server.timeout` accepts a fractional or out-of-range value silently,
+    // so nothing at runtime would report a deadline that had drifted under
+    // the keepalive. This assertion is the only place that would.
+    expect(Number.isInteger(SSE_IDLE_TIMEOUT_SECONDS)).toBe(true);
+    expect(SSE_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(0);
+    expect(SSE_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
   });
 });
