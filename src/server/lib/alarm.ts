@@ -5,6 +5,11 @@
  * independent limits: a per-key cooldown so one chatty source cannot starve the
  * others, and a global per-window ceiling so a broad outage (every route 5xxing
  * into its own bucket) cannot burst past Discord's webhook rate limit.
+ *
+ * The ceiling is split into two lanes. Recurring sources stop short of the top
+ * so that single-shot sources — the crash handlers, which fire once and are
+ * never retried — always have somewhere to go during the outage that produced
+ * them.
  */
 
 import { logger } from "server/lib/logger";
@@ -16,7 +21,27 @@ const COOLDOWN_MS = 60_000; // 1 minute
  * buckets per registered route path, so a total outage has as many eligible
  * keys as there are routes — Discord rate-limits well below that.
  */
-const MAX_SENDS_PER_WINDOW = 10;
+export const MAX_SENDS_PER_WINDOW = 10;
+
+/**
+ * Slots at the top of the ceiling that only single-shot sources may take.
+ *
+ * The ceiling is otherwise arrival-ordered, which is the wrong priority for
+ * the sources that matter most. `Route.execute` fires per failing request and
+ * re-competes as the window slides, so a broad outage can hold every slot.
+ * `unhandledRejection` / `uncaughtException` fire once, are not retried, and
+ * carry the crash itself — a refusal drops them permanently, precisely when
+ * the process is least able to tell anyone what happened.
+ */
+export const SINGLE_SHOT_RESERVE = 2;
+
+/** Lane a caller competes in for the per-window ceiling. */
+type AlarmLane = "recurring" | "single-shot";
+
+const ceilingFor = (lane: AlarmLane): number =>
+  lane === "single-shot"
+    ? MAX_SENDS_PER_WINDOW
+    : MAX_SENDS_PER_WINDOW - SINGLE_SHOT_RESERVE;
 
 const lastAlarmAt = new Map<string, number>();
 const sendTimestamps: number[] = [];
@@ -42,7 +67,8 @@ const pruneExpired = (now: number): void => {
 export const sendAlarm = async (
   title: string,
   detail: string,
-  key: string = title
+  key: string = title,
+  lane: AlarmLane = "recurring"
 ): Promise<void> => {
   const webhookUrl = process.env.DISCORD_ALARM_WEBHOOK;
   if (!webhookUrl) return;
@@ -53,10 +79,13 @@ export const sendAlarm = async (
   const last = lastAlarmAt.get(key) ?? 0;
   if (now - last < COOLDOWN_MS) return;
 
-  if (sendTimestamps.length >= MAX_SENDS_PER_WINDOW) {
+  const ceiling = ceilingFor(lane);
+  if (sendTimestamps.length >= ceiling) {
     logger.warn("Discord alarm dropped — global rate ceiling reached", {
       key,
       title,
+      lane,
+      ceiling,
       windowSends: sendTimestamps.length,
     });
     return;
@@ -96,6 +125,41 @@ export const sendAlarm = async (
     // Don't throw — alarm failure should never crash the server
     logger.error("Failed to send Discord alarm", { key, title }, err);
   }
+};
+
+/**
+ * Max time a crash handler waits for its alarm to reach Discord before the
+ * process exits anyway. Bounded so a slow or unreachable webhook cannot turn
+ * a crash into a hang.
+ */
+export const CRASH_ALARM_TIMEOUT_MS = 5_000;
+
+/** Render a thrown value as the alarm body: message plus a bounded stack. */
+export const formatCrashDetail = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? (error.stack ?? "") : "";
+  return `**Message:** ${message}\n\`\`\`\n${stack.slice(0, 1000)}\n\`\`\``;
+};
+
+/**
+ * Send a crash alarm in the single-shot lane and wait for it, bounded by
+ * `CRASH_ALARM_TIMEOUT_MS`.
+ *
+ * Load-bearing on any path that exits: `sendAlarm` POSTs to a webhook, and a
+ * fire-and-forget call followed by `process.exit` kills the process before the
+ * request flushes, so the crash pages nobody. Never rejects — a failed alarm
+ * must not divert the caller's crash sequence.
+ */
+export const deliverCrashAlarm = async (
+  title: string,
+  error: unknown
+): Promise<void> => {
+  await Promise.race([
+    sendAlarm(title, formatCrashDetail(error), title, "single-shot").catch(
+      () => undefined
+    ),
+    new Promise<void>((resolve) => setTimeout(resolve, CRASH_ALARM_TIMEOUT_MS)),
+  ]);
 };
 
 /** Reset cooldown state (for testing). */
