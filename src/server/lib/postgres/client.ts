@@ -1,5 +1,4 @@
 import { Pool, PoolClient, PoolConfig, types } from "pg";
-import { logger } from "../logger";
 
 const {
   POSTGRES_HOST: host = "localhost",
@@ -83,21 +82,6 @@ export const pool: Pool = new Proxy({} as Pool, {
   getPrototypeOf() {
     return Reflect.getPrototypeOf(getPool());
   },
-});
-
-// Process-level error handlers (SIGTERM/SIGINT are handled in start.ts for ordered shutdown)
-process.on("unhandledRejection", (reason) => {
-  logger.error("Unhandled promise rejection", {}, reason);
-});
-
-process.on("uncaughtException", async (error) => {
-  logger.error("Uncaught exception", {}, error);
-  try {
-    await pool.end();
-  } catch {
-    // ignore pool shutdown errors during crash
-  }
-  process.exit(1);
 });
 
 
