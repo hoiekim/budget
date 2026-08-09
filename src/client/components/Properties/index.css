@@ -5,7 +5,12 @@
  * 🔴 The `> .propertyLabel` / `> .property` selectors are DIRECT-CHILD —
  * any wrapper between <Properties> and its label/property children strips
  * the section frame. That's the failure mode #326 / #472 / PR #478 surfaced
- * and the reason every Properties use must go through the typed component. */
+ * and the reason every Properties use must go through the typed component.
+ *
+ * The row-box rules below (`div.property div.row`) are deliberately NOT
+ * direct-child: a sub-component that needs its own wrapper for scoping
+ * still renders rows that must be laid out as rows. Binding the box to
+ * depth silently un-flexed every wrapped row instead. */
 
 div.Properties {
   margin-top: 20px;
@@ -48,7 +53,7 @@ div.Properties > .property .disabled.lineThrough {
   text-decoration: line-through;
 }
 
-div.Properties > div.property > div.row {
+div.Properties > div.property div.row {
   padding: 14px 10px;
   display: flex;
   justify-content: space-between;
@@ -110,7 +115,7 @@ div.Properties > div.property > div.row.keyValue :last-child {
   text-align: right;
 }
 
-div.Properties > div.property > div.row > button {
+div.Properties > div.property div.row > button {
   width: 100%;
   text-align: left;
   font-size: 16px;

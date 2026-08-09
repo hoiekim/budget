@@ -4,10 +4,6 @@ div.CapacitiesInput {
   position: relative;
 }
 
-div.CapacitiesInput > div:not(:last-child) {
-  margin-bottom: 5px;
-}
-
 div.CapacitiesInput > div > table {
   width: 100%;
 }
