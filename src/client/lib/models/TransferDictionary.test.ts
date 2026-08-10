@@ -72,6 +72,50 @@ describe("TransferDictionary.byTransactionId", () => {
     expect(copy.byTransactionId.hasConfirmed("a")).toBe(true);
     expect(copy.byTransactionId.get("b")?.pair_id).toBe("p");
   });
+
+  // A transaction can be handed to a new pair in the same delta batch that
+  // retires its old one, and the reducer applies the whole delta before any
+  // tombstone. Both orders have to leave the pivot pointing at whichever
+  // pair actually holds the half — a retirement may only drop entries that
+  // still point at the pair being retired.
+  describe("a half reclaimed by another pair survives the old pair's removal", () => {
+    // Plaid drops "c": the cascade soft-deletes (a, c) and the same
+    // detection run inserts (a, b). The delta carries both.
+    const seeded = () => {
+      const d = new TransferDictionary();
+      d.set("p-ac", makePair("p-ac", "suggested", ["a", "c"]));
+      return d;
+    };
+
+    test("delete after set (the reducer's order)", () => {
+      const d = seeded();
+      d.set("p-ab", makePair("p-ab", "confirmed", ["a", "b"]));
+      d.delete("p-ac");
+      expect(d.byTransactionId.get("a")?.pair_id).toBe("p-ab");
+      expect(d.byTransactionId.get("b")?.pair_id).toBe("p-ab");
+      expect(d.byTransactionId.hasConfirmed("a")).toBe(true);
+      // "c" belonged only to the retired pair, so it does leave.
+      expect(d.byTransactionId.has("c")).toBe(false);
+    });
+
+    test("set after delete (the inverse order)", () => {
+      const d = seeded();
+      d.delete("p-ac");
+      d.set("p-ab", makePair("p-ab", "confirmed", ["a", "b"]));
+      expect(d.byTransactionId.get("a")?.pair_id).toBe("p-ab");
+      expect(d.byTransactionId.has("c")).toBe(false);
+    });
+
+    // Same hazard through `set`'s own prev-cleanup: re-setting p-ac with a
+    // different half list must not strip "a" from the pair that now owns it.
+    test("re-setting the old pair does not steal the half back", () => {
+      const d = seeded();
+      d.set("p-ab", makePair("p-ab", "confirmed", ["a", "b"]));
+      d.set("p-ac", makePair("p-ac", "suggested", ["c", "d"]));
+      expect(d.byTransactionId.get("a")?.pair_id).toBe("p-ab");
+      expect(d.byTransactionId.get("d")?.pair_id).toBe("p-ac");
+    });
+  });
 });
 
 describe("resolveTransferSides", () => {

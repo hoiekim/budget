@@ -291,7 +291,10 @@ interface FetchTransfersResult {
  * one predicate rather than a mirror of the server's visibility rules.
  * Cursor null = full fetch (cold).
  */
-const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResult> => {
+const fetchTransfers = async (
+  cursor: string | null,
+  includeDeleted: boolean,
+): Promise<FetchTransfersResult> => {
   const result: FetchTransfersResult = {
     transfers: new TransferDictionary(),
     tombstonePairIds: new Set(),
@@ -301,13 +304,13 @@ const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResu
   const params = new URLSearchParams();
   if (cursor) params.append("start-date", cursor);
   // Eviction signals only mean something when there is a cache to
-  // reconcile. The cold path has already run `clearAllData` and rebuilds
-  // the dictionary from this response, so asking for them there would pull
-  // every pair the user has ever rejected — a set that only grows, since
-  // rejections are retained as the detection engine's denylist — and
-  // discard all of it. On warm they are the whole point: without them a
-  // pair the user rejected stays on screen until the next cold load.
-  if (cursor) params.append("include-deleted", "true");
+  // reconcile, which is the caller's question, not the cursor's: a
+  // realtime refetch merges into the live dictionary whether or not
+  // localStorage happens to hold a cursor. Asking for them when there is
+  // nothing to reconcile pulls every pair the user has ever rejected — a
+  // set that only grows, since rejections are retained as the detection
+  // engine's denylist — and discards all of it.
+  if (includeDeleted) params.append("include-deleted", "true");
   const path = `/api/transfers?${params.toString()}`;
   const response = await call.get<TransfersGetResponse>(path).catch(console.error);
   if (!response || response.status === "error") {
@@ -538,13 +541,25 @@ export const useSync = () => {
           cached.accountSnapshots.size > 0) &&
         cursorRaw !== null;
 
-      // Cold path purges IDB before the new save block writes the fresh delta
-      // — otherwise pre-tombstone-era rows persist as cruft. Without a cursor
-      // the server's delta won't replay tombstones for those, so cold is the
-      // only opportunity to reset IDB. Awaited — the new saves can't safely
-      // race against a still-in-flight clearAllData on the same stores.
+      // Cold path purges IDB before the new save block writes the
+      // fresh delta — otherwise pre-tombstone-era rows (soft-deleted
+      // server-side before tombstone delivery existed, hard-deleted,
+      // or admin-removed) persist as cruft. Without a cursor the
+      // server's delta won't replay tombstones for those, so cold is
+      // the only opportunity to reset IDB. Awaited — the new saves
+      // can't safely race against a still-in-flight clearAllData on
+      // the same stores.
+      // A purge that rejects leaves the pre-existing rows in place, so the
+      // cold response alone can no longer be trusted to be the whole truth
+      // — ask for eviction signals after all, the way the four sibling
+      // stores get them unconditionally from their routes. Only the healthy
+      // cold path skips them.
+      let purgeFailed = false;
       if (!isWarm) {
-        await indexedDb.clearAllData().catch(console.error);
+        await indexedDb.clearAllData().catch((err) => {
+          console.error(err);
+          purgeFailed = true;
+        });
       }
       // Pass the cursor to delta fetches ONLY on the warm branch. The
       // cold path must fetch the full history with no `start-date=` —
@@ -576,7 +591,7 @@ export const useSync = () => {
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
       const securitiesPromise = fetchSecurities();
-      const transfersPromise = fetchTransfers(cursor);
+      const transfersPromise = fetchTransfers(cursor, isWarm || purgeFailed);
 
       const [
         accountsResult,
@@ -1044,7 +1059,11 @@ export const useSync = () => {
             return;
           }
           case TableName.TransactionPairs: {
-            const r = await fetchTransfers(cursor);
+            // Always merges into the live dictionary, so it always needs
+            // eviction signals — a rejected pair has to leave the screen
+            // even for a user whose cursor is missing (blocked
+            // localStorage, backwards clock jump).
+            const r = await fetchTransfers(cursor, true);
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
