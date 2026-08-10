@@ -1130,7 +1130,15 @@ export const useSync = () => {
     // empty IDB. (The next sync's cold-path purge will also clear
     // again — the await here just lets onClickRefresh treat clean()
     // as durable.)
-    await indexedDb.clearAllData();
+    //
+    // A rejection must not take the other two steps down with it. Neither
+    // caller awaits or catches this (logout is a bare `clean()`), so an
+    // IDB failure here surfaced as an unhandled rejection AND skipped
+    // `removeLastSyncedCursor` + `setData` — logging out on a browser with
+    // a broken IDB left the sync cursor in localStorage and the previous
+    // user's data on screen. Clearing the cursor is what makes the next
+    // sync go cold and rebuild, so it is the step that must survive.
+    await indexedDb.clearAllData().catch(console.error);
     removeLastSyncedCursor();
     setData(new Data());
   }, [setData]);
