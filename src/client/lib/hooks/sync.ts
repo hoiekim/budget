@@ -1126,10 +1126,11 @@ export const useSync = () => {
   );
 
   const clean = useCallback(async () => {
-    // Await `clearAllData` so the next sync's `loadAllData` sees an
-    // empty IDB. (The next sync's cold-path purge will also clear
-    // again — the await here just lets onClickRefresh treat clean()
-    // as durable.)
+    // Await `clearAllData` so the next sync's `loadAllData` sees an empty
+    // IDB when the purge succeeds. It is an attempt, not a guarantee —
+    // `onClickRefresh` awaits this, but a rejecting IDB still resolves. What
+    // makes that safe is the cursor: clearing it sends the next sync down
+    // the cold path, which re-purges and tracks `purgeFailed`.
     //
     // A rejection must not take the other two steps down with it. Neither
     // caller awaits or catches this (logout is a bare `clean()`), so an
