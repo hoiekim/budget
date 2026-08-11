@@ -24,7 +24,12 @@ import {
   parseTransactionsTypes,
 } from "client/components";
 import { useTransactionHit } from "./hooks";
-import { isInConfirmedTransfer, isSuggestedLabel, TypePredicates } from "./filter";
+import {
+  isAcceptableSuggestion,
+  isInConfirmedTransfer,
+  pickAcceptableTransferPairs,
+  TypePredicates,
+} from "./filter";
 import "./index.css";
 
 export type TransactionsPageParams = {
@@ -272,24 +277,25 @@ export const TransactionsPage = () => {
     transactionFamilies,
   ]);
 
-  const suggestedInView = filteredAndSorted.filter(isSuggestedLabel);
-  // Suggested transfer pairs whose halves intersect the current view. A pair
-  // is uniquely keyed by `pair_id`, and one row in `filteredAndSorted` can
-  // anchor it via either `transaction_id_a` or `_b` — so dedupe by pair_id.
-  const suggestedTransferPairsInView = useMemo(() => {
-    const visibleIds = new Set(filteredAndSorted.map((e) => e.id));
-    const pairs: { pair_id: string }[] = [];
-    data.transfers.forEach((pair) => {
-      if (pair.status !== "suggested") return;
-      // The pair is keyed uniquely by pair_id (dictionary iteration is already
-      // deduped). A pair is "in view" if either half's transaction id is
-      // visible.
-      if (pair.transactions.some((t) => visibleIds.has(t.transaction_id))) {
-        pairs.push({ pair_id: pair.pair_id });
-      }
-    });
-    return pairs;
-  }, [filteredAndSorted, data.transfers]);
+  // Rows in the current view that carry an accepted-suggestion status —
+  // engine-labeled AND not a half of a confirmed transfer (transfer state
+  // takes precedence over any lingering category label; see the
+  // `isAcceptableSuggestion` docstring). Without the confirmed-transfer
+  // guard the Transfers-view button would count and mutate rows that were
+  // already accepted.
+  const suggestedInView = useMemo(
+    () => filteredAndSorted.filter((e) => isAcceptableSuggestion(e, { transfers })),
+    [filteredAndSorted, transfers],
+  );
+  // Suggested transfer pairs whose halves intersect the current view.
+  // `pickAcceptableTransferPairs` keys the visibility set on
+  // `transaction_id` (whole Transactions only) so a pair whose in-view
+  // row is a split of one half — split.id is split_transaction_id, not
+  // transaction_id — doesn't silently miss.
+  const suggestedTransferPairsInView = useMemo(
+    () => pickAcceptableTransferPairs(filteredAndSorted, transfers),
+    [filteredAndSorted, transfers],
+  );
   const totalSuggestedCount = suggestedInView.length + suggestedTransferPairsInView.length;
   const [isAccepting, setIsAccepting] = useState(false);
 
