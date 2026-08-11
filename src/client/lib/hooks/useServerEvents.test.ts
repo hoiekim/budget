@@ -51,9 +51,13 @@ describe("reconnectDelayMs", () => {
  * `dropStream()` is a server-closed 200 (CONNECTING — the browser would retry
  * on its own), `refuse()` is a non-2xx (CLOSED — the browser has given up).
  */
+/** Chromium's measured native retry cadence for a dropped 200 stream. */
+const NATIVE_RETRY_MS = 3_000;
+
 class StubEventSource {
   readyState = 0;
   closed = false;
+  nativeRetry: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Map<string, ((e: unknown) => void)[]>();
 
   addEventListener(type: string, fn: (e: unknown) => void) {
@@ -65,6 +69,10 @@ class StubEventSource {
   close() {
     this.readyState = 2;
     this.closed = true;
+    if (this.nativeRetry) {
+      clearTimeout(this.nativeRetry);
+      this.nativeRetry = null;
+    }
   }
 
   private dispatch(type: string, event: unknown) {
@@ -76,10 +84,20 @@ class StubEventSource {
     this.dispatch("open", {});
   }
 
-  /** Server closed an established 200 stream. */
+  /**
+   * Server closed an established 200 stream. The browser's own retry then
+   * re-opens this same `EventSource` a few seconds later unless the hook
+   * closed it — modelling that is what makes the `es.close()` in the error
+   * handler observable, and without it the hook could drop that line and run
+   * two live streams per tab with nothing going red.
+   */
   dropStream() {
     this.readyState = 0;
     this.dispatch("error", {});
+    this.nativeRetry = setTimeout(() => {
+      if (this.closed) return;
+      this.open();
+    }, NATIVE_RETRY_MS);
   }
 
   /** Server answered non-2xx (401 on an expired session, 429 over the cap). */
@@ -93,11 +111,19 @@ class StubEventSource {
   }
 }
 
-const harness = () => {
+/** Jitter the harness's midpoint `random` produces on the resync band. */
+const RESYNC_JITTER = 1_000;
+
+const harness = (opts: { random?: () => number } = {}) => {
   const sources: StubEventSource[] = [];
   const syncs: number[] = [];
   const received: [ServerEventDomain, ServerEventPayload][] = [];
   let clock = 1_000_000;
+
+  const advance = (ms: number) => {
+    clock += ms;
+    jest.advanceTimersByTime(ms);
+  };
 
   const connection = createServerEventsConnection({
     onEvent: (domain, payload) => received.push([domain, payload]),
@@ -108,7 +134,9 @@ const harness = () => {
       return stub as unknown as EventSource;
     },
     now: () => clock,
-    random: () => 0.5, // midpoint of the jitter band: delay === base
+    // Midpoint of every band: the reconnect delay equals its base, and the
+    // resync jitter is half of RESYNC_JITTER_MS.
+    random: opts.random ?? (() => 0.5),
   });
 
   return {
@@ -117,10 +145,8 @@ const harness = () => {
     received,
     connection,
     latest: () => sources[sources.length - 1],
-    advance: (ms: number) => {
-      clock += ms;
-      jest.advanceTimersByTime(ms);
-    },
+    advance,
+    advanceUntil: (t: number) => advance(Math.max(0, t - clock)),
   };
 };
 
@@ -157,8 +183,34 @@ describe("createServerEventsConnection", () => {
     h.latest().open();
     expect(h.syncs).toHaveLength(0);
     flap(h, 1_000);
+    h.advance(RESYNC_JITTER); // the resync is spread, so it is not synchronous with `open`
     expect(h.syncs).toHaveLength(1);
     h.connection.close();
+  });
+
+  it("spreads the resync itself, not just the reconnect that triggers it", () => {
+    // The reconnect backoff spreads a herd recovering from a real outage, but
+    // not a sub-second blip: every tab errors once, returns inside 1.5s, and
+    // fires a whole-app refetch in the same instant.
+    const early = harness({ random: () => 0 });
+    early.latest().open();
+    early.latest().dropStream();
+    early.advance(500); // bottom of the reconnect band for attempt 0
+    early.latest().open();
+    early.advance(0);
+    expect(early.syncs).toHaveLength(1); // bottom of the resync band: no wait
+    early.connection.close();
+
+    const late = harness({ random: () => 1 });
+    late.latest().open();
+    late.latest().dropStream();
+    late.advance(1_500); // top of the reconnect band for attempt 0
+    late.latest().open();
+    late.advance(1_999);
+    expect(late.syncs).toHaveLength(0);
+    late.advance(1);
+    expect(late.syncs).toHaveLength(1); // top of the band: a full 2s later
+    late.connection.close();
   });
 
   it("reconciles a gap that closes inside the throttle window instead of dropping it", () => {
@@ -169,13 +221,15 @@ describe("createServerEventsConnection", () => {
     const h = harness();
     h.latest().open();
 
-    flap(h, 1_000); // first reconnect: fires immediately
+    flap(h, 1_000); // first reconnect: fires as soon as the jitter is out
+    h.advance(RESYNC_JITTER);
+    expect(h.syncs).toHaveLength(1);
+    const firstAt = h.syncs[0];
+
+    flap(h, 2_000); // second gap, seconds later — inside the 30s window
     expect(h.syncs).toHaveLength(1);
 
-    flap(h, 2_000); // second gap, 2s later — inside the 30s window
-    expect(h.syncs).toHaveLength(1);
-
-    h.advance(27_999);
+    h.advanceUntil(firstAt + 30_000 + RESYNC_JITTER - 1);
     expect(h.syncs).toHaveLength(1);
     h.advance(1);
     expect(h.syncs).toHaveLength(2); // deferred to the end of the window, not dropped
@@ -188,6 +242,7 @@ describe("createServerEventsConnection", () => {
     h.latest().open();
 
     flap(h, 1_000);
+    h.advance(RESYNC_JITTER);
     expect(h.syncs).toHaveLength(1);
 
     flap(h, 2_000);
@@ -218,16 +273,69 @@ describe("createServerEventsConnection", () => {
     h.connection.close();
   });
 
-  it("gives up after ten consecutive refusals, which no retry can fix", () => {
+  it("drops to a slow cadence after ten consecutive refusals, but never stops", () => {
+    // Stopping is wrong even here: a 401 from a session-store blip, a 429 from
+    // the subscriber cap and a 500 from a route error are all non-2xx and all
+    // heal on their own. A tab that has stopped renders a normal app that
+    // silently never updates again.
     const h = harness();
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 10; i++) {
       h.latest().refuse();
       h.advance(60_000);
     }
-
     expect(h.sources).toHaveLength(10);
-    expect(warn).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    h.advance(60_000); // way past the fast backoff — the slow lane is longer
+    expect(h.sources).toHaveLength(10);
+
+    h.advance(240_000);
+    expect(h.sources).toHaveLength(11); // still asking, once per few minutes
+
+    h.latest().refuse(); // and the answer is still no
+    h.advance(300_000);
+    expect(h.sources).toHaveLength(12);
+    expect(warn).toHaveBeenCalledTimes(1); // one warning, not one per cycle
+
+    h.connection.close();
+  });
+
+  it("recovers at full speed once a refused stream is finally accepted", () => {
+    const h = harness();
+
+    for (let i = 0; i < 10; i++) {
+      h.latest().refuse();
+      h.advance(60_000);
+    }
+    h.advance(300_000); // the slow-lane retry lands
+    h.latest().open(); // the store blip healed and the stream was accepted
+    h.advance(60_000); // and it holds, so the backoff resets too
+    const healed = h.sources.length;
+
+    h.latest().dropStream();
+    h.advance(1_000);
+    expect(h.sources).toHaveLength(healed + 1); // 1s, not 5 minutes
+
+    h.connection.close();
+  });
+
+  it("counts only consecutive refusals — a dropped stream clears the count", () => {
+    const h = harness();
+
+    for (let i = 0; i < 9; i++) {
+      h.latest().refuse();
+      h.advance(60_000);
+    }
+    h.latest().dropStream(); // the server is reachable and answering
+    h.advance(60_000);
+
+    for (let i = 0; i < 9; i++) {
+      h.latest().refuse();
+      h.advance(60_000);
+    }
+    expect(warn).not.toHaveBeenCalled(); // never reached ten in a row
+
     h.connection.close();
   });
 
@@ -246,8 +354,31 @@ describe("createServerEventsConnection", () => {
       h.latest().refuse();
       h.advance(60_000);
     }
-    expect(h.sources).toHaveLength(19); // not stopped at the ceiling
+    expect(h.sources).toHaveLength(19); // not slowed at the ceiling
     expect(warn).not.toHaveBeenCalled();
+
+    h.connection.close();
+  });
+
+  it("clears the stability timer when the stream dies, so the backoff keeps growing", () => {
+    // Without the clear, an open that dies seconds later still resets `attempt`
+    // sixty seconds after that open — so an accept-then-drop proxy never grows
+    // the delay, which is the whole point of the timer.
+    const h = harness();
+    h.latest().open(); // stability timer armed here
+    h.advance(1_000);
+
+    h.latest().dropStream(); // attempt 0 -> 1
+    h.advance(1_000); // reconnect: this stream is never accepted
+    expect(h.sources).toHaveLength(2);
+
+    h.advance(59_000); // past the armed timer — it must not fire
+    h.latest().dropStream(); // attempt 1 -> 2, so the next delay is 2s
+
+    h.advance(1_000);
+    expect(h.sources).toHaveLength(2); // still waiting: 1s would already be up
+    h.advance(1_000);
+    expect(h.sources).toHaveLength(3);
 
     h.connection.close();
   });
@@ -276,7 +407,7 @@ describe("createServerEventsConnection", () => {
     h.latest().open();
 
     flap(h, 1_000); // attempt 0 consumed
-    h.advance(60_000); // this stream held: backoff resets to attempt 0
+    h.advance(60_000); // this stream held for the stable interval: backoff resets
 
     h.latest().dropStream();
     h.advance(999);
@@ -292,6 +423,7 @@ describe("createServerEventsConnection", () => {
     h.latest().open();
 
     flap(h, 1_000);
+    h.advance(RESYNC_JITTER);
     flap(h, 2_000); // deferred
     expect(h.syncs).toHaveLength(1);
 

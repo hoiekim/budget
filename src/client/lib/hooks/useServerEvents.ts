@@ -22,19 +22,42 @@ const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_BASE_MS = 30_000;
 
 /**
- * Consecutive *fatal* closes before the hook stops trying. A fatal close is a
- * non-2xx response — an expired session is the common one — and none of those
- * can succeed until the user logs in again, so retrying forever would be one
- * request per tab per attempt against a server that will keep saying no. The
- * effect re-runs on the auth transition anyway.
+ * Consecutive *fatal* closes — non-2xx responses — before the hook drops into
+ * the slow lane below. An expired session is the common one, and no amount of
+ * retrying fixes it before the user logs in again, so a tab should stop asking
+ * every half minute.
  *
  * Deliberately does NOT bound the transport shape (a dropped 200). A server
  * that is merely down comes back, and the browser's own retry recovers that
  * case on its own — so a ceiling there would make an outage longer than the
- * horizon permanently deafen the tab, which is the bug in #669 by another
- * road. The transport shape retries at the capped backoff indefinitely.
+ * horizon permanently deafen the tab, which is #669 by another road. The
+ * transport shape retries at the capped backoff indefinitely.
  */
 const RECONNECT_MAX_FATAL_ATTEMPTS = 10;
+
+/**
+ * What the hook does after that many refusals: keep going, far more slowly,
+ * rather than stop. Stopping is wrong even for the fatal shape, because "the
+ * server said no" is not the same as "the server will always say no" —
+ * `sessionStore.get` failing open yields a 401 from a *store* blip, the
+ * per-user subscriber cap yields a 429 that clears when a tab closes, and an
+ * unhandled route error yields a 500. All three are non-2xx, all three heal on
+ * their own, and a tab that has given up renders a normal app that silently
+ * never updates again. Once per few minutes costs nothing and removes the
+ * whole permanently-deaf class; a genuinely expired session is still only
+ * being asked twelve times an hour instead of a hundred.
+ */
+const RECONNECT_FATAL_SLOW_MS = 300_000;
+
+/**
+ * Spread applied to `onReconnect` itself. The reconnect backoff already
+ * spreads a herd recovering from a real outage — every tab errors repeatedly
+ * while the server is down, so their timers end up scattered across the
+ * accumulated delay. It does not spread the *blip* case: one error each, every
+ * tab back inside 1.5s, and each firing a whole-app refetch in the same
+ * second. Jittering the refetch rather than the reconnect decouples the two.
+ */
+const RESYNC_JITTER_MS = 2_000;
 
 /** An open that survives this long counts as recovered and clears the backoff. */
 const STABLE_CONNECTION_MS = 60_000;
@@ -105,6 +128,7 @@ export const createServerEventsConnection = (
   let pendingResyncTimeout: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
   let fatalAttempts = 0;
+  let warnedExhausted = false;
   let everOpened = false;
   let lastResyncAt = 0;
   let disposed = false;
@@ -116,26 +140,19 @@ export const createServerEventsConnection = (
 
   /**
    * Trailing-edge throttle. Inside the interval the call is deferred to the
-   * moment the interval expires, and repeat requests collapse into that one
-   * pending call rather than queueing or replacing it.
+   * moment the interval expires; outside it, only the jitter is waited out.
+   * Either way it goes through the timer, so repeat requests collapse into the
+   * one pending call rather than queueing.
    */
   const requestResync = () => {
-    const earliest = lastResyncAt + RESYNC_MIN_INTERVAL_MS;
-    const elapsed = now();
-    if (elapsed >= earliest) {
-      if (pendingResyncTimeout) {
-        clearTimeout(pendingResyncTimeout);
-        pendingResyncTimeout = null;
-      }
-      runResync();
-      return;
-    }
     if (pendingResyncTimeout) return;
+    const earliest = lastResyncAt + RESYNC_MIN_INTERVAL_MS;
+    const wait = Math.max(0, earliest - now()) + Math.round(random() * RESYNC_JITTER_MS);
     pendingResyncTimeout = setTimeout(() => {
       pendingResyncTimeout = null;
       if (disposed) return;
       runResync();
-    }, earliest - elapsed);
+    }, wait);
   };
 
   const connect = () => {
@@ -156,6 +173,7 @@ export const createServerEventsConnection = (
 
     es.addEventListener("open", () => {
       fatalAttempts = 0;
+      warnedExhausted = false;
       // Clearing the backoff after a stable interval rather than on `open`
       // itself: a proxy that accepts the request and drops the stream seconds
       // later would otherwise restart the delay at ~1s every cycle instead of
@@ -185,10 +203,27 @@ export const createServerEventsConnection = (
       // once per few seconds, forever.
       es.close();
 
-      if (fatal && ++fatalAttempts >= RECONNECT_MAX_FATAL_ATTEMPTS) {
-        console.warn(
-          `SSE stream was refused ${RECONNECT_MAX_FATAL_ATTEMPTS} times in a row; giving up until the next auth change or reload.`,
-        );
+      // One `EventSource` fires at most one `error` once closed, so this is
+      // belt-and-braces — but two live retry timers would double the stream
+      // count per tab against a 20-subscriber cap, so never leak one.
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
+      }
+
+      // "Consecutive" has to mean consecutive: a dropped stream in between is
+      // evidence the server is reachable and answering, so it clears the count.
+      if (fatal) fatalAttempts++;
+      else fatalAttempts = 0;
+
+      if (fatalAttempts >= RECONNECT_MAX_FATAL_ATTEMPTS) {
+        if (!warnedExhausted) {
+          warnedExhausted = true;
+          console.warn(
+            `SSE stream was refused ${RECONNECT_MAX_FATAL_ATTEMPTS} times in a row; retrying every few minutes instead.`,
+          );
+        }
+        retryTimeout = setTimeout(connect, Math.round(RECONNECT_FATAL_SLOW_MS * (0.5 + random())));
         return;
       }
       retryTimeout = setTimeout(connect, reconnectDelayMs(attempt++, random));
@@ -234,8 +269,12 @@ export const createServerEventsConnection = (
  *   `CLOSED` and the browser gives up for good.
  *
  * So the error handler closes the stream in both cases and owns the retry,
- * which is what puts a backoff on the first shape and a ceiling on the second
- * — only the second, since a server that is merely down does come back. Each
+ * which is what puts a backoff on the first shape and a far slower cadence on
+ * the second — only the second, since a server that is merely down does come
+ * back. Neither shape ever stops retrying: a non-2xx is not always a permanent
+ * one (a session-store blip, the subscriber cap, a 500 all answer non-2xx and
+ * all heal by themselves), and a tab that has stopped renders a normal app
+ * that silently never updates again. Each
  * re-established stream calls `onReconnect`, because the server buffers
  * nothing and replays nothing: an event emitted while the stream was down
  * reached no one, and only a refetch can close that gap. That call is
