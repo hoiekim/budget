@@ -2,7 +2,13 @@
 import { describe, test, expect } from "bun:test";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 
-import { isSuggestedLabel, TypePredicates, type FilterContext } from "./filter";
+import {
+  isAcceptableSuggestion,
+  isSuggestedLabel,
+  pickAcceptableTransferPairs,
+  TypePredicates,
+  type FilterContext,
+} from "./filter";
 import type { TransactionsPageType } from "client/components";
 import { Transaction } from "../../lib/models/Transaction";
 import { SplitTransaction } from "../../lib/models/SplitTransaction";
@@ -296,6 +302,121 @@ describe("TypePredicates.any — investment branch", () => {
   test("mixed (sign + non-sign): sign rules; non-sign always false", () => {
     expect(investMatch(mkInv(50), ["expenses", "transfers"])).toBe(true);
     expect(investMatch(mkInv(-50), ["expenses", "transfers"])).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Accept-All button count invariants — mirrored on the button in
+// `TransactionsPage/index.tsx`. Regression pin for the shape Hoie hit on
+// 2026-08-10: the Transfers view was reporting "Accept all 3 suggestions"
+// while the visible rows were confirmed transfer halves that had already been
+// accepted. The button count and the button action must agree, and neither may
+// include confirmed transfer halves.
+// -----------------------------------------------------------------------------
+
+describe("isAcceptableSuggestion", () => {
+  test("engine-labeled non-transfer row is acceptable", () => {
+    const row = makeTxn("t1", 10, { category_id: "c", category_confidence: 0.7 });
+    expect(isAcceptableSuggestion(row, makeCtx())).toBe(true);
+  });
+
+  test("engine-labeled half of a SUGGESTED pair is acceptable", () => {
+    const row = makeTxn("t-a", 10, { category_id: "c", category_confidence: 0.7 });
+    const ctx = makeCtx([makePair("p1", "suggested", ["t-a", "t-b"])]);
+    expect(isAcceptableSuggestion(row, ctx)).toBe(true);
+  });
+
+  test("engine-labeled half of a CONFIRMED pair is NOT acceptable (transfer state wins)", () => {
+    // This is the Hoie-screenshot regression: `confirmTransferPair` doesn't
+    // rewrite the halves' `category_confidence`, so a row can hold a
+    // still-suggested category label while its pair is confirmed. Accept-All
+    // must not count or act on it.
+    const row = makeTxn("t-a", 10, { category_id: "c", category_confidence: 0.7 });
+    const ctx = makeCtx([makePair("p1", "confirmed", ["t-a", "t-b"])]);
+    expect(isAcceptableSuggestion(row, ctx)).toBe(false);
+  });
+
+  test("user-confirmed label (confidence=1) is NOT acceptable", () => {
+    const row = makeTxn("t1", 10, { category_id: "c", category_confidence: 1 });
+    expect(isAcceptableSuggestion(row, makeCtx())).toBe(false);
+  });
+
+  test("user-rejected label (confidence=0) is NOT acceptable", () => {
+    const row = makeTxn("t1", 10, { category_id: "c", category_confidence: 0 });
+    expect(isAcceptableSuggestion(row, makeCtx())).toBe(false);
+  });
+
+  test("SPLIT of a confirmed-transfer parent is NOT acceptable (transfer state cascades to splits)", () => {
+    // Splits inherit parent's transaction_id, so `isInConfirmedTransfer`
+    // returns true for them too — Accept-All must not surface a still-
+    // engine-labeled split whose parent is a confirmed transfer half.
+    const split = makeSplit("s1", "t-a", 5, {
+      category_id: "c",
+      category_confidence: 0.5,
+    });
+    const ctx = makeCtx([makePair("p1", "confirmed", ["t-a", "t-b"])]);
+    expect(isAcceptableSuggestion(split, ctx)).toBe(false);
+  });
+
+  test("InvestmentTransaction with suggested label IS acceptable (no transfer semantics)", () => {
+    const inv = new InvestmentTransaction({
+      account_id: "inv-acc-1",
+      type: InvestmentTransactionType.Buy,
+      subtype: InvestmentTransactionSubtype.Buy,
+      quantity: 1,
+      price: 10,
+      amount: 10,
+      date: "2026-02-15",
+      label: { category_id: "c", category_confidence: 0.5 },
+    });
+    expect(isAcceptableSuggestion(inv, makeCtx())).toBe(true);
+  });
+});
+
+describe("pickAcceptableTransferPairs", () => {
+  test("picks a suggested pair when one half is in-view", () => {
+    const half = makeTxn("t-a", 10);
+    const ctx = makeCtx([makePair("p1", "suggested", ["t-a", "t-b"])]);
+    expect(pickAcceptableTransferPairs([half], ctx.transfers)).toEqual([{ pair_id: "p1" }]);
+  });
+
+  test("does NOT pick a CONFIRMED pair even if a half is visible", () => {
+    const half = makeTxn("t-a", 10);
+    const ctx = makeCtx([makePair("p1", "confirmed", ["t-a", "t-b"])]);
+    expect(pickAcceptableTransferPairs([half], ctx.transfers)).toEqual([]);
+  });
+
+  test("does NOT pick a REJECTED pair", () => {
+    const half = makeTxn("t-a", 10);
+    const ctx = makeCtx([makePair("p1", "rejected", ["t-a", "t-b"])]);
+    expect(pickAcceptableTransferPairs([half], ctx.transfers)).toEqual([]);
+  });
+
+  test("does NOT pick a pair when a split of a half — not the half itself — is in view", () => {
+    // Pre-fix, visibleIds was built from `rows.map(e => e.id)`, which for a
+    // SplitTransaction is `split_transaction_id`, not `transaction_id`. The
+    // pair-intersect check then compared apples to oranges. The fix uses a
+    // whole-transaction-only visibility set — a suggested pair whose half is
+    // only present as a split can't be Accept-All'd (the whole isn't visible
+    // to click, so it stays a manual per-row action).
+    const split = makeSplit("s1", "t-a", 5);
+    const ctx = makeCtx([makePair("p1", "suggested", ["t-a", "t-b"])]);
+    expect(pickAcceptableTransferPairs([split], ctx.transfers)).toEqual([]);
+  });
+
+  test("does NOT pick a pair whose halves are entirely out of view", () => {
+    const other = makeTxn("t-c", 10);
+    const ctx = makeCtx([makePair("p1", "suggested", ["t-a", "t-b"])]);
+    expect(pickAcceptableTransferPairs([other], ctx.transfers)).toEqual([]);
+  });
+
+  test("de-dupes by pair_id when both halves are visible", () => {
+    const halfA = makeTxn("t-a", 10);
+    const halfB = makeTxn("t-b", -10);
+    const ctx = makeCtx([makePair("p1", "suggested", ["t-a", "t-b"])]);
+    expect(pickAcceptableTransferPairs([halfA, halfB], ctx.transfers)).toEqual([
+      { pair_id: "p1" },
+    ]);
   });
 });
 

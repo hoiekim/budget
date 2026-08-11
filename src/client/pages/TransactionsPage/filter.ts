@@ -38,6 +38,68 @@ export const isSuggestedLabel = (
 ): boolean => e.label.isSuggested();
 
 /**
+ * The "acceptable-suggestion" invariant that Accept-All must honor —
+ * mirrors the `suggested` filter predicate (see `TypePredicates.suggested`
+ * below) so button count and button action agree.
+ *
+ * Rules:
+ *  - `label.isSuggested()` must be true (engine label, not user-acted).
+ *  - A row that IS a half of a CONFIRMED transfer is "done" from the
+ *    user's POV — the transfer state takes precedence over any lingering
+ *    engine category label. `confirmTransferPair` doesn't rewrite the
+ *    two halves' `category_confidence` columns, so a row can legitimately
+ *    hold `label.isSuggested() === true` while its pair is confirmed;
+ *    the Suggested view hides these, and Accept-All must not count them.
+ *    (Without this guard the Transfers view — which shows both statuses
+ *    for user audit — reports "Accept all N" against rows that were
+ *    already accepted, and Accept-All fires a redundant no-op label
+ *    mutation on each confirmed half.)
+ *  - InvestmentTransaction has no transfer semantics; the transfer-guard
+ *    doesn't apply and any suggested investment label is acceptable.
+ */
+export const isAcceptableSuggestion = (
+  e: Transaction | SplitTransaction | InvestmentTransaction,
+  ctx: FilterContext,
+): boolean => {
+  if (!isSuggestedLabel(e)) return false;
+  if (e instanceof InvestmentTransaction) return true;
+  return !isInConfirmedTransfer(e, ctx);
+};
+
+/**
+ * Pick the subset of `data.transfers` whose pair has status `"suggested"`
+ * AND at least one of its halves is present as a whole Transaction in
+ * `visibleRows`. The visibility set is keyed by `transaction_id`, so
+ * splits (whose `.id === split_transaction_id`) and investment rows
+ * (which carry no `transaction_id`) can't produce a match — a pair whose
+ * only in-view row is a split of a half would silently miss under the
+ * pre-fix version, which built the visibility set from `rows.map(r =>
+ * r.id)`.
+ *
+ * Returns `[pair_id]` (deduped by `data.transfers`'s own uniqueness on
+ * pair_id). The caller uses each pair_id as the argument to
+ * `POST /api/transfers/pair` in the Accept-All fan-out.
+ */
+export const pickAcceptableTransferPairs = (
+  visibleRows: readonly (Transaction | SplitTransaction | InvestmentTransaction)[],
+  transfers: TransferDictionary,
+): { pair_id: string }[] => {
+  const visibleTxIds = new Set(
+    visibleRows
+      .filter((e): e is Transaction => e instanceof Transaction)
+      .map((e) => e.transaction_id),
+  );
+  const pairs: { pair_id: string }[] = [];
+  transfers.forEach((pair) => {
+    if (pair.status !== "suggested") return;
+    if (pair.transactions.some((t) => visibleTxIds.has(t.transaction_id))) {
+      pairs.push({ pair_id: pair.pair_id });
+    }
+  });
+  return pairs;
+};
+
+/**
  * Only whole Transactions participate in transfer pairs. A SplitTransaction
  * inherits its parent's transaction_id, so an unguarded lookup would resolve
  * the PARENT's pair and leak split rows into the Transfers view — same guard
