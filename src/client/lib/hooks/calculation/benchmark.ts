@@ -425,6 +425,96 @@ const txnDerivedQtyBySecurity = (params: {
 };
 
 /**
+ * Given a requested `windowStart`, return the earliest date ≥ `windowStart`
+ * at which `priceIndex.priceEntryAt(sid, requestedWindowStart)` can price
+ * EVERY non-cash security the account holds at requestedWindowStart using
+ * an exact-match entry (i.e. `sourceDate === date`, not a stale-forward or
+ * pre-history fallback).
+ *
+ * Motivation: TWR telescopes to `priceAt(windowEnd) / priceAt(windowStart)`.
+ * When `priceAt(windowStart)` falls back — stale-forward to an older prior
+ * txn (dates between txns in the pre-snapshot era) or pre-history to
+ * `arr[0].price` (dates before the first surviving entry) — the account's
+ * effective TWR starts from the fallback's actual source date, but the
+ * label and the benchmark compare-to still use the requested date. The
+ * mismatch produces a directional divergence that grows with window
+ * width (a longer window puts requestedWindowStart deeper into the
+ * fallback-prone pre-snapshot era). This helper computes the honest
+ * "effective start" so the caller can re-anchor the whole window (label +
+ * account valueAt + benchmark) to a single date the calc CAN price
+ * exactly for every asset security.
+ *
+ * Rules:
+ *   - For each in-scope account, walk EVERY non-cash security the account
+ *     touches — via any holdings snapshot OR any investment_transaction.
+ *     This is deliberately WIDER than "held at requestedWindowStart":
+ *     the narrow set would miss the pre-first-txn case (all held qtys
+ *     are 0 at the requested date, so no security would drive the shift
+ *     and the effective start would collapse back to the requested one)
+ *     and the "security starts being held mid-window but its data doesn't
+ *     exist until even later" case.
+ *   - For each such security, if `priceEntryAt(sid, requestedWindowStart)`
+ *     returned an entry whose `sourceDate === requestedWindowStart` (an
+ *     exact match), no shift needed for that security.
+ *   - Otherwise ask `earliestOnOrAfter(sid, requestedWindowStart)` for the
+ *     first exact-match entry AT OR AFTER the requested date. That
+ *     entry's date is a candidate effective start.
+ *   - Take the LATEST candidate across all securities — every asset
+ *     security needs an honest same-date price at the effective start,
+ *     so the aggregate `valueAt` doesn't mix a fresh price for one with
+ *     a stale fallback for another.
+ *   - When no security's index has any entry on or after
+ *     `requestedWindowStart` (rare: an account whose only priceable
+ *     entries all predate the requested window), return
+ *     `requestedWindowStart` unchanged — nothing to shift toward, the
+ *     caller falls through to the existing legacy behavior.
+ *   - Cash-shape securities are excluded, matching `valueAt`'s scope.
+ */
+export const computeEffectiveWindowStart = (params: {
+  requestedWindowStart: string;
+  accountIds: readonly string[];
+  holdingSnapshots: HoldingSnapshotDictionary;
+  investmentTransactions: InvestmentTransactionDictionary;
+  priceIndex: PriceIndex;
+}): string => {
+  const { requestedWindowStart, accountIds, holdingSnapshots, investmentTransactions, priceIndex } =
+    params;
+  let effective = requestedWindowStart;
+  for (const accountId of accountIds) {
+    const cashSecs = cashSecurityIdsForAccount(holdingSnapshots, accountId);
+    // Collect every non-cash security the account touches — via any holdings
+    // snapshot or any investment_transaction. This is deliberately WIDER
+    // than "held at requestedWindowStart" (which would miss the pre-first-
+    // txn case where every security has qty=0 at requestedWindowStart, and
+    // also miss a security that STARTS being held later in the window but
+    // whose data doesn't exist until an even later date). The narrow set
+    // would shift to `requestedWindowStart` and pretend the position is
+    // priceable, when it isn't.
+    const relevantSecIds = new Set<string>();
+    holdingSnapshots.forEach((snap) => {
+      if (snap.holding.account_id !== accountId) return;
+      if (cashSecs.has(snap.holding.security_id)) return;
+      relevantSecIds.add(snap.holding.security_id);
+    });
+    investmentTransactions.forEach((t) => {
+      if (t.account_id !== accountId) return;
+      if (t.security_id == null) return;
+      if (cashSecs.has(t.security_id)) return;
+      relevantSecIds.add(t.security_id);
+    });
+    relevantSecIds.forEach((sid) => {
+      const entry = priceIndex.priceEntryAt(sid, requestedWindowStart);
+      if (!entry) return; // security has no priceable data at all — nothing to shift toward
+      if (entry.sourceDate === requestedWindowStart) return; // exact match, no shift needed
+      const next = priceIndex.earliestOnOrAfter(sid, requestedWindowStart);
+      if (!next) return; // no future data for this security either; leave effective alone
+      if (next.sourceDate > effective) effective = next.sourceDate;
+    });
+  }
+  return effective;
+};
+
+/**
  * Non-cash asset value at a given date: Σ(non_cash_security_id) qty(t) × price(t).
  *
  * Cash-shape holdings (per `isCashShapeHolding`) are excluded — the
@@ -665,10 +755,46 @@ export const earliestDataDate = (params: {
  * the long tail. For securities the user has never transacted in and
  * has no snapshot for, returns null.
  */
-export const buildPriceAt = (
+/**
+ * One entry in the merged price index — the price value and the date it
+ * came from. `sourceDate` may be BEFORE the query date (stale-forward
+ * fallback), EQUAL to it (exact match), or AFTER it (pre-history
+ * fallback via `arr[0]`).
+ */
+export interface PriceEntry {
+  price: number;
+  sourceDate: string;
+}
+
+/**
+ * Merged price-index primitive. Exposes three lookups over one shared
+ * per-security sorted array:
+ *
+ *   - `priceAt(sid, date)` — legacy API, returns just the price. Unchanged
+ *     semantics (stable-sort keeps snapshot before txn on collision → txn
+ *     wins the last-≤ walk; pre-history fallback to `arr[0].price`).
+ *   - `priceEntryAt(sid, date)` — same walk, but returns `{price, sourceDate}`
+ *     so the caller can detect fallback. Load-bearing for the
+ *     `PerformanceBenchmark` window-anchor honesty fix: when
+ *     `sourceDate !== date`, priceAt is pricing `date` from a different
+ *     day's data, and the caller should either accept the fallback or
+ *     shift the anchor to a date the index CAN price exactly.
+ *   - `earliestOnOrAfter(sid, date)` — first entry whose `entry.date >=
+ *     date`. Returns null when no such entry exists. Used to find the
+ *     earliest date the account has honest price data for a security,
+ *     given a requested window start. Same underlying array as the
+ *     other two lookups.
+ */
+export interface PriceIndex {
+  priceAt: (securityId: string, date: string) => number | null;
+  priceEntryAt: (securityId: string, date: string) => PriceEntry | null;
+  earliestOnOrAfter: (securityId: string, date: string) => PriceEntry | null;
+}
+
+export const buildPriceIndex = (
   securitySnapshots: SecuritySnapshotDictionary,
   investmentTransactions: InvestmentTransactionDictionary,
-) => {
+): PriceIndex => {
   const bySec = new Map<string, Array<{ date: string; price: number }>>();
 
   securitySnapshots.forEach((snap) => {
@@ -692,18 +818,54 @@ export const buildPriceAt = (
 
   bySec.forEach((arr) => arr.sort((a, b) => (a.date < b.date ? -1 : 1)));
 
-  return (securityId: string, date: string): number | null => {
-    const arr = bySec.get(securityId);
-    if (!arr || arr.length === 0) return null;
-    let best: number | null = null;
+  const lastOnOrBefore = (
+    arr: Array<{ date: string; price: number }>,
+    date: string,
+  ): { date: string; price: number } | null => {
+    let best: { date: string; price: number } | null = null;
     for (const entry of arr) {
-      if (entry.date <= date) best = entry.price;
+      if (entry.date <= date) best = entry;
       else break;
     }
-    if (best === null) best = arr[0].price; // pre-history fallback
     return best;
   };
+
+  return {
+    priceAt: (securityId, date) => {
+      const arr = bySec.get(securityId);
+      if (!arr || arr.length === 0) return null;
+      const hit = lastOnOrBefore(arr, date);
+      if (hit) return hit.price;
+      return arr[0].price; // pre-history fallback
+    },
+    priceEntryAt: (securityId, date) => {
+      const arr = bySec.get(securityId);
+      if (!arr || arr.length === 0) return null;
+      const hit = lastOnOrBefore(arr, date);
+      if (hit) return { price: hit.price, sourceDate: hit.date };
+      return { price: arr[0].price, sourceDate: arr[0].date }; // pre-history fallback
+    },
+    earliestOnOrAfter: (securityId, date) => {
+      const arr = bySec.get(securityId);
+      if (!arr || arr.length === 0) return null;
+      for (const entry of arr) {
+        if (entry.date >= date) return { price: entry.price, sourceDate: entry.date };
+      }
+      return null;
+    },
+  };
 };
+
+/**
+ * Legacy price-lookup API — the closure form of `buildPriceIndex().priceAt`.
+ * Kept as-is so existing callers (`HoldingProperties`, `divergence.ts`) don't
+ * churn. New callers that need `sourceDate` should use `buildPriceIndex`
+ * directly and read `.priceEntryAt` / `.earliestOnOrAfter`.
+ */
+export const buildPriceAt = (
+  securitySnapshots: SecuritySnapshotDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+) => buildPriceIndex(securitySnapshots, investmentTransactions).priceAt;
 
 /**
  * Snapshot-only price lookup for the benchmark side. Returns null when
