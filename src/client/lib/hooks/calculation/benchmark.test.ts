@@ -12,6 +12,8 @@ import {
   valueAt,
   computeQtyDivergence,
   buildPriceAt,
+  buildPriceIndex,
+  computeEffectiveWindowStart,
   priceAtIn,
   buildBenchmarkPriceAt,
   computeHoldingBenchmark,
@@ -1123,6 +1125,264 @@ describe("priceAtIn", () => {
   test("null before history starts; empty history null", () => {
     expect(priceAtIn(history, "2023-12-31")).toBeNull();
     expect(priceAtIn([], "2025-01-01")).toBeNull();
+  });
+});
+
+describe("buildPriceIndex — sourceDate + earliestOnOrAfter", () => {
+  // Snapshots on 2024-06-01/2024-07-01, a buy on 2024-06-15. Merged index.
+  const setup = () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 300, "2024-06-01", "VOO"));
+    ss.set("s2", mkSecuritySnap(VOO, 320, "2024-07-01", "VOO"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2024-06-15",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 305,
+        quantity: 1,
+      }),
+    );
+    return buildPriceIndex(ss, itxns);
+  };
+
+  test("priceEntryAt returns exact-match sourceDate on a snapshot date", () => {
+    const idx = setup();
+    expect(idx.priceEntryAt(VOO, "2024-06-01")).toEqual({ price: 300, sourceDate: "2024-06-01" });
+  });
+
+  test("priceEntryAt returns exact-match sourceDate on a txn date (txn wins over collision)", () => {
+    const idx = setup();
+    expect(idx.priceEntryAt(VOO, "2024-06-15")).toEqual({ price: 305, sourceDate: "2024-06-15" });
+  });
+
+  test("priceEntryAt stale-forwards: sourceDate is the PRIOR entry's date, not the query date", () => {
+    const idx = setup();
+    // 2024-06-10 has neither a snapshot nor a txn — walks back to 2024-06-01 snapshot.
+    expect(idx.priceEntryAt(VOO, "2024-06-10")).toEqual({ price: 300, sourceDate: "2024-06-01" });
+  });
+
+  test("priceEntryAt pre-history fallback: sourceDate is the FIRST entry, which is AFTER the query date", () => {
+    const idx = setup();
+    // 2024-01-01 predates everything → arr[0] which is 2024-06-01 (300).
+    expect(idx.priceEntryAt(VOO, "2024-01-01")).toEqual({ price: 300, sourceDate: "2024-06-01" });
+  });
+
+  test("earliestOnOrAfter returns the first entry with date >= query", () => {
+    const idx = setup();
+    expect(idx.earliestOnOrAfter(VOO, "2024-06-10")).toEqual({ price: 305, sourceDate: "2024-06-15" });
+    expect(idx.earliestOnOrAfter(VOO, "2024-07-01")).toEqual({ price: 320, sourceDate: "2024-07-01" });
+    expect(idx.earliestOnOrAfter(VOO, "2024-07-02")).toBeNull();
+  });
+
+  test("priceAt (legacy) is unchanged: same values as the pre-refactor closure", () => {
+    const idx = setup();
+    expect(idx.priceAt(VOO, "2024-06-01")).toBe(300);
+    expect(idx.priceAt(VOO, "2024-06-15")).toBe(305);
+    expect(idx.priceAt(VOO, "2024-06-10")).toBe(300);
+    expect(idx.priceAt(VOO, "2024-01-01")).toBe(300); // pre-history fallback price
+    expect(idx.priceAt(VOO, "2024-08-01")).toBe(320);
+  });
+
+  test("legacy buildPriceAt closure returns the same value as buildPriceIndex().priceAt", () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 300, "2024-06-01", "VOO"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2024-06-15",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 305,
+        quantity: 1,
+      }),
+    );
+    const legacy = buildPriceAt(ss, itxns);
+    const idx = buildPriceIndex(ss, itxns);
+    for (const d of ["2024-01-01", "2024-06-01", "2024-06-10", "2024-06-15", "2024-07-01"]) {
+      expect(legacy(VOO, d)).toBe(idx.priceAt(VOO, d));
+    }
+  });
+});
+
+describe("computeEffectiveWindowStart (window-anchor honesty)", () => {
+  // Account: 10 VOO bought 2022-10-06 (pre-history), 1 VOO on 2023-07-05
+  // (last pre-3Y-window txn), then holdings snapshots start 2024-06-01
+  // (daily). Requested windowStart in different eras:
+  //  - Pre-first-txn (ALL clamp shape): shifts forward to 2022-10-06.
+  //  - Between-txn era (pre-snapshot 3Y start): shifts forward to the next
+  //    exact-match entry ≥ requested — a snapshot on 2024-06-01, since no
+  //    txn between 2023-07-05 and then.
+  //  - Post-snapshot era: no shift (snapshot on that date is exact match).
+  const setup = () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 500, "2024-06-01", "VOO"));
+    ss.set("s2", mkSecuritySnap(VOO, 520, "2024-07-01", "VOO"));
+    ss.set("s3", mkSecuritySnap(VOO, 550, "2024-08-01", "VOO"));
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 10, 340, 3400, "2024-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t1",
+      mkTxn({
+        date: "2022-10-06",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 3400,
+        quantity: 10,
+      }),
+    );
+    itxns.set(
+      "t2",
+      mkTxn({
+        date: "2023-07-05",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 400,
+        quantity: 1,
+      }),
+    );
+    const priceIndex = buildPriceIndex(ss, itxns);
+    return { hs, itxns, priceIndex };
+  };
+
+  test("pre-first-txn request (ALL-window shape): shifts to the first buy's date", () => {
+    // The Hoie-observed ALL-window case: requested = 2022-10-04, no txn on that
+    // date survives buildPriceIndex (only sell qty=0 in his data), so priceAt
+    // fell back to arr[0] = 2022-10-06 buy. Shift forward to that same date so
+    // the label / valueAt / benchmark all reference it consistently.
+    const { hs, itxns, priceIndex } = setup();
+    expect(
+      computeEffectiveWindowStart({
+        requestedWindowStart: "2022-10-04",
+        accountIds: [ACCT],
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceIndex,
+      }),
+    ).toBe("2022-10-06");
+  });
+
+  test("stale-forward era (3Y windowStart between txns): shifts to next exact-match entry", () => {
+    // Requested 2023-08-12 → priceEntryAt returns 2023-07-05 (stale-forward).
+    // Next exact-match ≥ 2023-08-12: no txns, first snapshot at 2024-06-01.
+    const { hs, itxns, priceIndex } = setup();
+    expect(
+      computeEffectiveWindowStart({
+        requestedWindowStart: "2023-08-12",
+        accountIds: [ACCT],
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceIndex,
+      }),
+    ).toBe("2024-06-01");
+  });
+
+  test("post-snapshot era (exact match): no shift", () => {
+    // Requested 2024-07-01 — snapshot exists on that date → exact match →
+    // effective start === requested.
+    const { hs, itxns, priceIndex } = setup();
+    expect(
+      computeEffectiveWindowStart({
+        requestedWindowStart: "2024-07-01",
+        accountIds: [ACCT],
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceIndex,
+      }),
+    ).toBe("2024-07-01");
+  });
+
+  test("multi-security account: shift is the MAX across per-security effective starts", () => {
+    // Two securities in one account. VOO's earliest exact-match ≥ 2024-06-01
+    // is 2024-06-01 (snapshot on that date). DASH's earliest exact-match is
+    // 2024-07-15 (no earlier snapshot or txn). Effective = MAX = 2024-07-15,
+    // so the aggregate valueAt uses honest same-date prices for BOTH.
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 500, "2024-06-01", "VOO"));
+    ss.set("s2", mkSecuritySnap("sec-dash", 100, "2024-07-15", "DASH"));
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 5, 340, 1700, "2024-06-01"));
+    hs.set(
+      "h2",
+      new HoldingSnapshot({
+        snapshot: { snapshot_id: "hs_dash_2024-07-15", date: "2024-07-15" },
+        holding: {
+          account_id: ACCT,
+          security_id: "sec-dash",
+          quantity: 3,
+          institution_price: 100,
+          institution_value: 300,
+          cost_basis: 300,
+          institution_price_as_of: "2024-07-15",
+          iso_currency_code: "USD",
+          unofficial_currency_code: null,
+        },
+      }),
+    );
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t_voo",
+      mkTxn({
+        date: "2024-05-15",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 340,
+        quantity: 1,
+      }),
+    );
+    // DASH has NO txn — its only priceable entry in the index is the 2024-07-15
+    // snapshot. That's the load-bearing shape: DASH data doesn't exist before
+    // 2024-07-15, so any earlier window start is dishonest for the aggregate.
+    const priceIndex = buildPriceIndex(ss, itxns);
+    expect(
+      computeEffectiveWindowStart({
+        requestedWindowStart: "2024-06-01",
+        accountIds: [ACCT],
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceIndex,
+      }),
+    ).toBe("2024-07-15");
+  });
+
+  test("cash-shape securities are ignored (matches valueAt scope)", () => {
+    // A QACDS-like cash-shape holding (price=1, cost_basis=null) exists on
+    // every snapshot. Even if it has no post-request entries, it must NOT
+    // affect the effective start.
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s1", mkSecuritySnap(VOO, 500, "2024-06-01", "VOO"));
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h_voo", mkHoldingSnap(VOO, 5, 340, 1700, "2023-06-01"));
+    hs.set("h_cash", mkHoldingSnap(CASH, 100, 1, null, "2023-06-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t_voo",
+      mkTxn({
+        date: "2023-06-01",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 340,
+        quantity: 1,
+      }),
+    );
+    const priceIndex = buildPriceIndex(ss, itxns);
+    // Cash has no snapshot / txn in the index (cash-shape secs also produce
+    // no priceable entries), so its absence shouldn't block the shift.
+    // Requested 2023-07-01 → VOO priceEntryAt stales to 2023-06-01, next
+    // exact-match ≥ 2023-07-01 for VOO is snapshot 2024-06-01.
+    expect(
+      computeEffectiveWindowStart({
+        requestedWindowStart: "2023-07-01",
+        accountIds: [ACCT],
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceIndex,
+      }),
+    ).toBe("2024-06-01");
   });
 });
 

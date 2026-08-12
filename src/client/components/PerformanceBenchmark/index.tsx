@@ -21,11 +21,12 @@ import {
   computeBenchmarkEndValue,
   valueAt,
   computeQtyDivergence,
-  buildPriceAt,
+  buildPriceIndex,
   buildSnapshotPriceAt,
   buildBenchmarkPriceAt,
   findBenchmarkSecurityId,
   earliestDataDate,
+  computeEffectiveWindowStart,
 } from "client/lib/hooks/calculation/benchmark";
 import "./index.css";
 
@@ -97,27 +98,48 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
       return t < earliest! ? { value: earliest!, clamped: true } : { value: t, clamped: false };
     };
 
-    let windowStart: string;
+    let requestedWindowStart: string;
     let isClamped = false;
     if (windowKey === "All") {
-      windowStart = earliest;
+      requestedWindowStart = earliest;
     } else {
       const years = windowKey === "1Y" ? 1 : 3;
       const target = new Date(effectiveEnd);
       target.setFullYear(target.getFullYear() - years);
       const r = clampStart(target);
-      windowStart = r.value;
+      requestedWindowStart = r.value;
       isClamped = r.clamped;
     }
 
-    if (windowEnd <= windowStart) return null;
+    if (windowEnd <= requestedWindowStart) return null;
 
-    // User-MWR priceAt merges security_snapshots (daily institutional
+    // User-MWR price index — merges security_snapshots (daily institutional
     // close from Plaid) with the user's own investment_transactions.
-    // Snapshot wins for boundary dates that have one — including
-    // anything Polygon has backfilled via resolve-security-snapshot.
-    // Txn fills the long historical tail predating Plaid's sync.
-    const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
+    // Snapshot wins for boundary dates that have one — including anything
+    // Polygon has backfilled via resolve-security-snapshot. Txn fills the
+    // long historical tail predating Plaid's sync. `buildPriceIndex`
+    // additionally exposes `priceEntryAt` + `earliestOnOrAfter` for the
+    // window-anchor honesty computation below.
+    const priceIndex = buildPriceIndex(securitySnapshots, investmentTransactions);
+    const priceAt = priceIndex.priceAt;
+
+    // Window-anchor honesty: TWR telescopes to `priceAt(windowEnd) /
+    // priceAt(windowStart)`. If `priceAt(requestedWindowStart)` falls back
+    // (stale-forward to an older prior txn, or pre-history to `arr[0]`),
+    // the account's effective TWR starts from the fallback's actual source
+    // date but the label + benchmark still use the requested date — a
+    // directional drift proportional to how much the market moved between
+    // the fallback source date and the requested date. Shift forward to
+    // the earliest exact-match date so the label, valueAt, and benchmark
+    // all reference the same date the calc CAN price honestly.
+    const windowStart = computeEffectiveWindowStart({
+      requestedWindowStart,
+      accountIds: ids,
+      holdingSnapshots,
+      investmentTransactions,
+      priceIndex,
+    });
+    if (windowEnd <= windowStart) return null;
     // Aggregate asset value across all in-scope accounts at an arbitrary
     // date — the shared primitive behind the window boundaries (vStart/vEnd)
     // and every TWR sub-period boundary. windowStart anchors the txn-derived
