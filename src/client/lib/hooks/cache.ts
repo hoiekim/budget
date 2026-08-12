@@ -10,15 +10,29 @@ export const useLocalStorageState = <T>(key: string, initialValue: T) => {
   const isDictionary = key.indexOf("dictionary_") === 0;
   const parse = isMap ? parseMap : isDictionary ? parseDictionary : JSON.parse;
 
-  const [storedValue, setStoredValue] = useState<T>(() => {
+  const read = (k: string): T => {
     try {
-      const item = window.localStorage.getItem(key);
+      const item = window.localStorage.getItem(k);
       return item ? parse(item) : initialValue;
     } catch (error) {
       console.error(error);
       return initialValue;
     }
-  });
+  };
+
+  const [storedValue, setStoredValue] = useState<T>(() => read(key));
+
+  // This state IS whatever is stored under `key`, so a caller that swaps
+  // keys while mounted must see the new key's value — otherwise the
+  // previous key's value stays on screen and the next write carries it
+  // into the new slot. Assigned during render (React's documented way to
+  // reset state on a changed input) rather than in an effect, so the new
+  // key's value is never painted a frame late.
+  const keyRef = useRef(key);
+  if (keyRef.current !== key) {
+    keyRef.current = key;
+    setStoredValue(read(key));
+  }
 
   const setValue: Dispatch<SetStateAction<T>> = useCallback(
     (value) => {
