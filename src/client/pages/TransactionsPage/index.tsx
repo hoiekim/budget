@@ -24,7 +24,7 @@ import {
   parseTransactionsTypes,
 } from "client/components";
 import { useOrderingContext, useTransactionHit } from "./hooks";
-import { formatSortValue } from "./sort";
+import { buildSortKey, orderRows, TransactionRow } from "./sort";
 import {
   isAcceptableSuggestion,
   isInConfirmedTransfer,
@@ -77,21 +77,12 @@ export const TransactionsPage = () => {
   const orderingCtx = useOrderingContext();
   const hit = useTransactionHit(orderingCtx);
 
-  // Stable storage key for the sort preferences — distinct per
-  // type-filter combination so e.g. an "expenses" sort doesn't collide
-  // with an "expenses,transfers" sort, and distinct per row-type view
-  // because the investment header set (date/amount/account) is a strict
-  // subset of the cash one: sharing the slot let a sort chosen on an
-  // investment account silently re-order every cash list. "investment"
-  // is not a `TransactionsPageType`, so it can't collide with a filter.
-  const sortKey = ["transactions", ...(isInvestment ? ["investment"] : []), ...types].join("_");
-
   const sorter = useSorter<
     Transaction | InvestmentTransaction | SplitTransaction,
     TransactionHeaders & InvestmentTransactionHeaders
-  >(sortKey, new Map([["date", "descending"]]));
+  >(buildSortKey(isInvestment, types), new Map([["date", "descending"]]));
 
-  const { sort } = sorter;
+  const { sortings } = sorter;
 
   const filteredAndSorted = useMemo(() => {
     // budget_id is checked inline (with the "account default" fallback)
@@ -117,7 +108,7 @@ export const TransactionsPage = () => {
 
     const matchesType = predicates.any(types);
 
-    let filtered: (Transaction | SplitTransaction | InvestmentTransaction)[];
+    let filtered: TransactionRow[];
 
     if (isInvestment) {
       filtered = investmentTransactions.filter((e) => {
@@ -144,11 +135,6 @@ export const TransactionsPage = () => {
         if (budget_id && effectiveBudgetId(e) !== budget_id) return false;
         return isSubset(e, filters);
       });
-
-      // Deterministic base order so the column sort below — which is
-      // stable — resolves ties the same way on every render. Mirrors the
-      // cash branch's `transaction_id` pre-sort.
-      filtered.sort((a, b) => (a.id > b.id ? 1 : a.id === b.id ? 0 : -1));
     } else {
       const filterTransaction = (e: Transaction | SplitTransaction) => {
         // Zero-amount rows are hidden by default — Plaid-side non-trade /
@@ -199,26 +185,10 @@ export const TransactionsPage = () => {
       filtered = [
         ...transactions.filter(filterTransaction),
         ...splitTransactions.filter(filterTransaction),
-      ].sort((a, b) =>
-        a.transaction_id > b.transaction_id ? 1 : a.transaction_id === b.transaction_id ? 0 : -1,
-      );
+      ];
     }
 
-    // One ordering tail for both views. The investment branch used to
-    // return its own hand-rolled comparator here and never reach
-    // `sort`, so the header buttons it renders did nothing and the
-    // `date descending` default they advertise was never applied.
-    const sortedByColumns = sort(filtered, (e, key) => formatSortValue(e, key, orderingCtx));
-
-    if (!searchValue) return sortedByColumns;
-
-    return sortedByColumns.sort((a, b) => {
-      const hitA = hit(searchValue, a);
-      const hitB = hit(searchValue, b);
-      if (hitA < hitB) return 1;
-      if (hitA > hitB) return -1;
-      return 0;
-    });
+    return orderRows(filtered, sortings, orderingCtx, hit, searchValue);
   }, [
     isInvestment,
     transactions,
@@ -228,7 +198,7 @@ export const TransactionsPage = () => {
     viewDate,
     types,
     transfers,
-    sort,
+    sortings,
     account_id,
     budget_id,
     section_id,
