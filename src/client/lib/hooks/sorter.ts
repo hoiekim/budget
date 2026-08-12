@@ -48,6 +48,30 @@ export interface Sorter<T = unknown, H = unknown> {
   sortings: Sortings<H>;
 }
 
+/**
+ * Apply a sorting map to an array, in place. Each entry re-sorts the
+ * whole array, so — `Array.prototype.sort` being stable — the last entry
+ * is the primary key and earlier ones survive as tiebreaks. Exported so
+ * a caller's formatter can be tested against the real comparison.
+ */
+export const applySortings = <T, H>(
+  array: T[],
+  sortings: Sortings<H>,
+  formatter: Formatter<T, H>,
+): T[] => {
+  sortings.forEach(async (option, key) => {
+    array.sort((a, b) => {
+      const comparable = new Comparable(a, b);
+      comparable.format((e) => formatter(e, key));
+      const aMinusB = comparable.a === comparable.b ? 0 : comparable.a > comparable.b ? 1 : -1;
+      if (option === "ascending") return aMinusB;
+      else return -aMinusB;
+    });
+  });
+
+  return array;
+};
+
 export const useSorter = <T, H>(
   name: string,
   initialSortings?: Sortings<H>,
@@ -64,19 +88,7 @@ export const useSorter = <T, H>(
   );
 
   const sort: Sorter<T, H>["sort"] = useCallback(
-    (array, formatter) => {
-      sortings.forEach(async (option, key) => {
-        array.sort((a, b) => {
-          const comparable = new Comparable(a, b);
-          comparable.format((e) => formatter(e, key));
-          const aMinusB = comparable.a === comparable.b ? 0 : comparable.a > comparable.b ? 1 : -1;
-          if (option === "ascending") return aMinusB;
-          else return -aMinusB;
-        });
-      });
-
-      return array;
-    },
+    (array, formatter) => applySortings(array, sortings, formatter),
     [sortings]
   );
 
