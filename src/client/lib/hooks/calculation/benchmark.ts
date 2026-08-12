@@ -445,8 +445,14 @@ const txnDerivedQtyBySecurity = (params: {
  * exactly for every asset security.
  *
  * Rules:
- *   - For each in-scope account, walk the non-cash securities held at
- *     `requestedWindowStart` (per `txnDerivedQtyBySecurity`).
+ *   - For each in-scope account, walk EVERY non-cash security the account
+ *     touches — via any holdings snapshot OR any investment_transaction.
+ *     This is deliberately WIDER than "held at requestedWindowStart":
+ *     the narrow set would miss the pre-first-txn case (all held qtys
+ *     are 0 at the requested date, so no security would drive the shift
+ *     and the effective start would collapse back to the requested one)
+ *     and the "security starts being held mid-window but its data doesn't
+ *     exist until even later" case.
  *   - For each such security, if `priceEntryAt(sid, requestedWindowStart)`
  *     returned an entry whose `sourceDate === requestedWindowStart` (an
  *     exact match), no shift needed for that security.

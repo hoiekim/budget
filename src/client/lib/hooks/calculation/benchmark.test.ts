@@ -1153,9 +1153,39 @@ describe("buildPriceIndex — sourceDate + earliestOnOrAfter", () => {
     expect(idx.priceEntryAt(VOO, "2024-06-01")).toEqual({ price: 300, sourceDate: "2024-06-01" });
   });
 
-  test("priceEntryAt returns exact-match sourceDate on a txn date (txn wins over collision)", () => {
+  test("priceEntryAt returns exact-match sourceDate on a bare txn date (no collision)", () => {
+    // The setup has ONLY a txn on 2024-06-15 (no same-date snapshot). This
+    // exercises the txn-only branch — the collision case is pinned in the
+    // dedicated test below.
     const idx = setup();
     expect(idx.priceEntryAt(VOO, "2024-06-15")).toEqual({ price: 305, sourceDate: "2024-06-15" });
+  });
+
+  test("same-date collision: txn wins over snapshot in the last-≤ walk (load-bearing sort quirk)", () => {
+    // On a date that has BOTH a snapshot AND a txn, JS Array.prototype.sort
+    // is stable and buildPriceIndex pushes snapshots first then txns — so
+    // the txn ends up LAST in the sorted array, and the last-≤ walk returns
+    // the txn's price. Pin this so a future sort/push-order change surfaces
+    // via a red test.
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("s_collision", mkSecuritySnap(VOO, 400, "2024-08-15", "VOO"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set(
+      "t_collision",
+      mkTxn({
+        date: "2024-08-15",
+        type: InvestmentTransactionType.Buy,
+        security_id: VOO,
+        amount: 399, // deliberately different from the snapshot close 400
+        quantity: 1,
+      }),
+    );
+    const idx = buildPriceIndex(ss, itxns);
+    expect(idx.priceEntryAt(VOO, "2024-08-15")).toEqual({
+      price: 399, // txn wins
+      sourceDate: "2024-08-15",
+    });
+    expect(idx.priceAt(VOO, "2024-08-15")).toBe(399);
   });
 
   test("priceEntryAt stale-forwards: sourceDate is the PRIOR entry's date, not the query date", () => {
@@ -1177,34 +1207,18 @@ describe("buildPriceIndex — sourceDate + earliestOnOrAfter", () => {
     expect(idx.earliestOnOrAfter(VOO, "2024-07-02")).toBeNull();
   });
 
-  test("priceAt (legacy) is unchanged: same values as the pre-refactor closure", () => {
+  test("priceAt returns literal expected values on every branch (numeric pin)", () => {
+    // Hard-coded expected values are the honest parity pin against the
+    // pre-refactor `buildPriceAt` behavior. `legacy === buildPriceIndex(...)
+    // .priceAt` (delegation), so any assertion of the form `legacy(x) ===
+    // idx.priceAt(x)` is a no-op — literal values are the real check.
+    // A regression in either the delegation OR the underlying lookup goes red.
     const idx = setup();
-    expect(idx.priceAt(VOO, "2024-06-01")).toBe(300);
-    expect(idx.priceAt(VOO, "2024-06-15")).toBe(305);
-    expect(idx.priceAt(VOO, "2024-06-10")).toBe(300);
-    expect(idx.priceAt(VOO, "2024-01-01")).toBe(300); // pre-history fallback price
-    expect(idx.priceAt(VOO, "2024-08-01")).toBe(320);
-  });
-
-  test("legacy buildPriceAt closure returns the same value as buildPriceIndex().priceAt", () => {
-    const ss = new SecuritySnapshotDictionary();
-    ss.set("s1", mkSecuritySnap(VOO, 300, "2024-06-01", "VOO"));
-    const itxns = new InvestmentTransactionDictionary();
-    itxns.set(
-      "t1",
-      mkTxn({
-        date: "2024-06-15",
-        type: InvestmentTransactionType.Buy,
-        security_id: VOO,
-        amount: 305,
-        quantity: 1,
-      }),
-    );
-    const legacy = buildPriceAt(ss, itxns);
-    const idx = buildPriceIndex(ss, itxns);
-    for (const d of ["2024-01-01", "2024-06-01", "2024-06-10", "2024-06-15", "2024-07-01"]) {
-      expect(legacy(VOO, d)).toBe(idx.priceAt(VOO, d));
-    }
+    expect(idx.priceAt(VOO, "2024-06-01")).toBe(300); // exact snapshot match
+    expect(idx.priceAt(VOO, "2024-06-15")).toBe(305); // exact txn match
+    expect(idx.priceAt(VOO, "2024-06-10")).toBe(300); // stale-forward to prior snapshot
+    expect(idx.priceAt(VOO, "2024-01-01")).toBe(300); // pre-history fallback → arr[0].price
+    expect(idx.priceAt(VOO, "2024-08-01")).toBe(320); // stale-forward to 2024-07-01 snapshot
   });
 });
 
