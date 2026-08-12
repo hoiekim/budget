@@ -23,7 +23,8 @@ import {
   TransactionsTable,
   parseTransactionsTypes,
 } from "client/components";
-import { useTransactionHit } from "./hooks";
+import { useOrderingContext, useTransactionHit } from "./hooks";
+import { formatSortValue } from "./sort";
 import {
   isAcceptableSuggestion,
   isInConfirmedTransfer,
@@ -44,19 +45,17 @@ export type TransactionsPageParams = {
 };
 
 export const TransactionsPage = () => {
-  const { data, calculations, viewDate, router, setData } = useAppContext();
+  const { data, viewDate, router, setData } = useAppContext();
   const {
     transactions,
     investmentTransactions,
     splitTransactions,
     accounts,
-    institutions,
     budgets,
     sections,
     categories,
     transfers,
   } = data;
-  const { transactionFamilies } = calculations;
 
   const [searchValue, setSearchValue] = useState("");
 
@@ -75,12 +74,17 @@ export const TransactionsPage = () => {
 
   const isInvestment = account?.type === AccountType.Investment;
 
-  const hit = useTransactionHit();
+  const orderingCtx = useOrderingContext();
+  const hit = useTransactionHit(orderingCtx);
 
   // Stable storage key for the sort preferences — distinct per
   // type-filter combination so e.g. an "expenses" sort doesn't collide
-  // with an "expenses,transfers" sort.
-  const sortKey = ["transactions", ...types].join("_");
+  // with an "expenses,transfers" sort, and distinct per row-type view
+  // because the investment header set (date/amount/account) is a strict
+  // subset of the cash one: sharing the slot let a sort chosen on an
+  // investment account silently re-order every cash list. "investment"
+  // is not a `TransactionsPageType`, so it can't collide with a filter.
+  const sortKey = ["transactions", ...(isInvestment ? ["investment"] : []), ...types].join("_");
 
   const sorter = useSorter<
     Transaction | InvestmentTransaction | SplitTransaction,
@@ -113,8 +117,10 @@ export const TransactionsPage = () => {
 
     const matchesType = predicates.any(types);
 
+    let filtered: (Transaction | SplitTransaction | InvestmentTransaction)[];
+
     if (isInvestment) {
-      const filtered = investmentTransactions.filter((e) => {
+      filtered = investmentTransactions.filter((e) => {
         // Zero-amount rows are hidden by default — they're the Plaid-side
         // non-trade / fee-waiver / qty=0 corrections that shouldn't
         // surface in the tx list. But manual mints from `Add
@@ -139,15 +145,10 @@ export const TransactionsPage = () => {
         return isSubset(e, filters);
       });
 
-      return filtered.sort((a, b) => {
-        const scoreA = hit(searchValue, a);
-        const scoreB = hit(searchValue, b);
-        if (scoreA < scoreB) return 1;
-        if (scoreA > scoreB) return -1;
-        if (a.id < b.id) return 1;
-        if (a.id > b.id) return -1;
-        return 0;
-      });
+      // Deterministic base order so the column sort below — which is
+      // stable — resolves ties the same way on every render. Mirrors the
+      // cash branch's `transaction_id` pre-sort.
+      filtered.sort((a, b) => (a.id > b.id ? 1 : a.id === b.id ? 0 : -1));
     } else {
       const filterTransaction = (e: Transaction | SplitTransaction) => {
         // Zero-amount rows are hidden by default — Plaid-side non-trade /
@@ -195,65 +196,29 @@ export const TransactionsPage = () => {
         return true;
       };
 
-      const filtered = [
+      filtered = [
         ...transactions.filter(filterTransaction),
         ...splitTransactions.filter(filterTransaction),
       ].sort((a, b) =>
         a.transaction_id > b.transaction_id ? 1 : a.transaction_id === b.transaction_id ? 0 : -1,
       );
-
-      const sortedByColumns = sort(filtered, (e, key) => {
-        if (e instanceof InvestmentTransaction) {
-          if (key === "date") {
-            return new LocalDate(e.date);
-          } else if (key === "account") {
-            const account = accounts.get(e.account_id);
-            return account?.custom_name || account?.name || "";
-          } else if (key === "institution") {
-            const account = accounts.get(e.account_id);
-            return institutions.get(account?.institution_id || "")?.name || "";
-          } else {
-            return e[key as keyof InvestmentTransaction] || e.id;
-          }
-        } else {
-          const t = e.toTransaction();
-          if (key === "date") {
-            return new LocalDate(t.authorized_date || t.date);
-          } else if (key === "merchant_name") {
-            return t.merchant_name || t.name || "";
-          } else if (key === "account") {
-            const account = accounts.get(t.account_id);
-            return account?.custom_name || account?.name || "";
-          } else if (key === "institution") {
-            const account = accounts.get(t.account_id);
-            return institutions.get(account?.institution_id || "")?.name || "";
-          } else if (key === "category") {
-            return categories.get(e.label.category_id || "")?.name || "";
-          } else if (key === "budget") {
-            const account = accounts.get(t.account_id);
-            const budget_id = e.label.budget_id || account?.label.budget_id;
-            return budgets.get(budget_id || "")?.name || "";
-          } else if (key === "location") {
-            const { city, region, country } = t.location;
-            return [city, region || country].filter((e) => e).join(", ");
-          } else if (key === "amount") {
-            return t.getRemainingAmount(transactionFamilies);
-          } else {
-            return t[key as keyof Transaction] || t.id;
-          }
-        }
-      });
-
-      if (!searchValue) return sortedByColumns;
-
-      return sortedByColumns.sort((a, b) => {
-        const hitA = hit(searchValue, a);
-        const hitB = hit(searchValue, b);
-        if (hitA < hitB) return 1;
-        if (hitA > hitB) return -1;
-        return 0;
-      });
     }
+
+    // One ordering tail for both views. The investment branch used to
+    // return its own hand-rolled comparator here and never reach
+    // `sort`, so the header buttons it renders did nothing and the
+    // `date descending` default they advertise was never applied.
+    const sortedByColumns = sort(filtered, (e, key) => formatSortValue(e, key, orderingCtx));
+
+    if (!searchValue) return sortedByColumns;
+
+    return sortedByColumns.sort((a, b) => {
+      const hitA = hit(searchValue, a);
+      const hitB = hit(searchValue, b);
+      if (hitA < hitB) return 1;
+      if (hitA > hitB) return -1;
+      return 0;
+    });
   }, [
     isInvestment,
     transactions,
@@ -263,9 +228,6 @@ export const TransactionsPage = () => {
     viewDate,
     types,
     transfers,
-    budgets,
-    categories,
-    institutions,
     sort,
     account_id,
     budget_id,
@@ -274,7 +236,7 @@ export const TransactionsPage = () => {
     hit,
     searchValue,
     section,
-    transactionFamilies,
+    orderingCtx,
   ]);
 
   // Rows in the current view that carry an accepted-suggestion status —
