@@ -6,6 +6,7 @@ import {
   extractCashFlows,
   extractCashFlowsBySecurity,
   computeMWR,
+  computeTWR,
   computeBenchmarkTWR,
   computeBenchmarkEndValue,
   valueAt,
@@ -218,6 +219,151 @@ describe("computeMWR", () => {
     });
     const years = (new Date("2026-12-31").getTime() - new Date("2026-01-01").getTime()) / (1000 * 60 * 60 * 24 * 365);
     expect(r.cumulative!).toBeCloseTo(Math.pow(1 + r.annualized!, years) - 1, 6);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+describe("computeTWR", () => {
+  // Helper: a valueAt closure backed by a date→value map.
+  const vAt = (m: Record<string, number>) => (date: string) => m[date] ?? 0;
+
+  test("no flows: TWR is the plain price ratio (10% over 1y)", () => {
+    const r = computeTWR({
+      flows: [],
+      valueAt: vAt({ "2026-01-01": 1000, "2027-01-01": 1100 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.1, 6);
+    expect(r.annualized!).toBeCloseTo(0.1, 2);
+  });
+
+  test("mid-window contribution does NOT distort TWR (isolates timing)", () => {
+    // 1000 → +10% → 1100, then +1000 bought (value 2100), → +10% → 2310.
+    // TWR = 1.1 × 1.1 − 1 = 21% regardless of the contribution timing.
+    const r = computeTWR({
+      flows: [{ date: "2026-07-01", amount: 1000 }],
+      valueAt: vAt({ "2026-01-01": 1000, "2026-07-01": 2100, "2027-01-01": 2310 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.21, 6);
+  });
+
+  test("TWR differs from MWR under DCA in a rising market (the #638 misread)", () => {
+    // A DCA user: 0 at open, +1000 at mid, market +10% each half → value
+    // sequence 0 / 1000 (just bought) / 1100. MWR annualizes the late dollar
+    // aggressively (~21%); TWR sees only the funded half's 10% move.
+    const args = {
+      flows: [{ date: "2026-07-01", amount: 1000 }],
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    };
+    const twr = computeTWR({ ...args, valueAt: vAt({ "2026-01-01": 0, "2026-07-01": 1000, "2027-01-01": 1100 }) });
+    const mwr = computeMWR({ ...args, vStart: 0, vEnd: 1100 });
+    expect(twr.status).toBe("ok");
+    expect(twr.cumulative!).toBeCloseTo(0.1, 6); // only the funded half's move
+    expect(mwr.annualized!).toBeGreaterThan(twr.cumulative!); // timing inflates MWR
+  });
+
+  test("sell mid-window: chains market return across the withdrawal", () => {
+    // 1000 → +10% → 1100, sell 550 (value 550 left), → +10% → 605.
+    // TWR = 1.1 × 1.1 − 1 = 21%. Sell = −550 flow.
+    const r = computeTWR({
+      flows: [{ date: "2026-07-01", amount: -550 }],
+      valueAt: vAt({ "2026-01-01": 1000, "2026-07-01": 550, "2027-01-01": 605 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.21, 6);
+  });
+
+  test("skips sub-periods opening on a zero base; measures only the funded span", () => {
+    // Unfunded first half (base 0 at open) then funded: only sub-period 2 counts.
+    const r = computeTWR({
+      flows: [{ date: "2026-07-01", amount: 1000 }],
+      valueAt: vAt({ "2026-01-01": 0, "2026-07-01": 1000, "2027-01-01": 1100 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.1, 6);
+  });
+
+  test("chains ≥2 interior flows: three linked 10% sub-periods → 33.1%", () => {
+    // start 1000 → +10% → 1100, +1000 buy (2100) → +10% → 2310, +1000 buy
+    // (3310) → +10% → 3641. TWR = 1.1³ − 1 = 0.331, contributions ignored.
+    const r = computeTWR({
+      flows: [
+        { date: "2026-05-01", amount: 1000 },
+        { date: "2026-09-01", amount: 1000 },
+      ],
+      valueAt: vAt({
+        "2026-01-01": 1000,
+        "2026-05-01": 2100,
+        "2026-09-01": 3310,
+        "2027-01-01": 3641,
+      }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.331, 6);
+  });
+
+  test("skips a sub-period whose closing value falls below the same-day buy (exec ≫ close anomaly)", () => {
+    // A buy priced far above the day's close makes endBeforeFlow negative for
+    // that sub-period — skipped rather than reported as a bogus loss; the
+    // funded remainder still measures its market move (10%).
+    const r = computeTWR({
+      flows: [{ date: "2026-07-01", amount: 2000 }],
+      valueAt: vAt({ "2026-01-01": 1000, "2026-07-01": 1500, "2027-01-01": 1650 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    // sub1: base 1000 > 0 but endBeforeFlow = 1500 − 2000 = −500 ≤ 0 → skip.
+    // sub2: base 1500, close 1650 → HPR 1.1. Only sub2 counts.
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.1, 6);
+  });
+
+  test("insufficient_data when no sub-period has a positive opening base", () => {
+    const r = computeTWR({
+      flows: [],
+      valueAt: vAt({ "2026-01-01": 0, "2027-01-01": 0 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("insufficient_data");
+    expect(r.cumulative).toBeNull();
+    expect(r.annualized).toBeNull();
+  });
+
+  test("a flow exactly on windowEnd is excluded from the closing value (earns no window time)", () => {
+    // 1000 → +10% → 1100, then a +5000 buy lands on the very last day.
+    // valueAt(end) = 6100 but the 5000 earned no time; TWR must stay 10%.
+    const r = computeTWR({
+      flows: [{ date: "2027-01-01", amount: 5000 }],
+      valueAt: vAt({ "2026-01-01": 1000, "2027-01-01": 6100 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.cumulative!).toBeCloseTo(0.1, 6);
+  });
+
+  test("cumulative and annualized are consistent: (1+cum)^(1/years) − 1", () => {
+    const r = computeTWR({
+      flows: [{ date: "2026-07-01", amount: 500 }],
+      valueAt: vAt({ "2026-01-01": 1000, "2026-07-01": 1600, "2027-01-01": 1800 }),
+      windowStart: "2026-01-01",
+      windowEnd: "2027-01-01",
+    });
+    const years = (new Date("2027-01-01").getTime() - new Date("2026-01-01").getTime()) / (1000 * 60 * 60 * 24 * 365);
+    expect(r.annualized!).toBeCloseTo(Math.pow(1 + r.cumulative!, 1 / years) - 1, 6);
   });
 });
 

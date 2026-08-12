@@ -209,6 +209,89 @@ export const computeMWR = (params: {
   return { status: "ok", annualized, cumulative };
 };
 
+export interface TwrResult {
+  status: "ok" | "insufficient_data";
+  /** Cumulative time-weighted return over the window: Π(1+HPRᵢ) − 1. */
+  cumulative: number | null;
+  /** Annualized equivalent: (1 + cumulative)^(1/years) − 1. */
+  annualized: number | null;
+}
+
+/**
+ * Time-weighted return of the asset portfolio over [windowStart, windowEnd].
+ *
+ * TWR strips out *when* and *how much* the user contributed — unlike
+ * `computeMWR` (dollar-weighted), which rewards or penalizes contribution
+ * timing. It chain-links the holding-period return of the existing position
+ * across the sub-periods bounded by each external cash flow:
+ *
+ *   HPRᵢ = (V(bᵢ) − CFᵢ) / V(bᵢ₋₁)          TWR = Π HPRᵢ − 1
+ *
+ * where `bᵢ` walks windowStart → each interior flow date → windowEnd, `V(b)`
+ * is the asset value at `b` from the passed `valueAt` closure, and `CFᵢ` is
+ * the flow landing on `bᵢ` (buy = +, sell = −). Because `valueAt` values
+ * shares the same day they're bought (same-date-inclusive, matching how the
+ * MWR's `vStart`/`vEnd` are taken), subtracting `CFᵢ` at the closing boundary
+ * isolates the period's *market* move from the new money — the flow then
+ * re-enters as the opening value of the next sub-period.
+ *
+ * **Boundary-value approximation.** `CFᵢ` is the flow's cash at its execution
+ * price while `V(bᵢ)` prices that day's shares at the close, so when execution
+ * ≠ close the per-period return carries that small basis error — the same
+ * modeled-price limitation the MWR already lives with (see `buildPriceAt`).
+ * Sub-periods opening on a zero/negative asset base (position not yet funded,
+ * or fully liquidated then re-funded) are skipped rather than treated as ±∞
+ * returns; the chain resumes at the next funded boundary. Returns
+ * `insufficient_data` when no sub-period has a positive opening base.
+ */
+export const computeTWR = (params: {
+  flows: CashFlow[];
+  valueAt: (date: string) => number;
+  windowStart: string;
+  windowEnd: string;
+}): TwrResult => {
+  const { flows, valueAt, windowStart, windowEnd } = params;
+
+  // Sum flows per date (defensive — extractCashFlows already dedups by date).
+  // A flow on windowStart belongs to the opening value; one on windowEnd is
+  // subtracted from the closing value (it earned no time in the window),
+  // mirroring the MWR's `f.date > windowStart && f.date <= windowEnd` filter.
+  const cfByDate = new Map<string, number>();
+  for (const f of flows) {
+    if (f.date <= windowStart || f.date > windowEnd) continue;
+    cfByDate.set(f.date, (cfByDate.get(f.date) ?? 0) + f.amount);
+  }
+
+  // Ordered boundaries: windowStart, each interior flow date, windowEnd. A
+  // flow exactly on windowEnd is not its own boundary — it folds into the
+  // final sub-period's closing subtraction.
+  const interior = Array.from(cfByDate.keys())
+    .filter((d) => d < windowEnd)
+    .sort((a, b) => (a < b ? -1 : 1));
+  const boundaries = [windowStart, ...interior, windowEnd];
+
+  let product = 1;
+  let counted = 0;
+  for (let i = 1; i < boundaries.length; i++) {
+    const base = valueAt(boundaries[i - 1]);
+    if (base <= 0) continue; // segment not funded yet / fully closed — skip
+    const cf = cfByDate.get(boundaries[i]) ?? 0; // 0 at windowEnd w/o a flow
+    const endBeforeFlow = valueAt(boundaries[i]) - cf;
+    if (endBeforeFlow <= 0) continue; // modeled anomaly (exec ≪ close) — skip
+    product *= endBeforeFlow / base;
+    counted += 1;
+  }
+
+  if (counted === 0) {
+    return { status: "insufficient_data", cumulative: null, annualized: null };
+  }
+
+  const cumulative = product - 1;
+  const years = yearsBetween(windowStart, windowEnd);
+  const annualized = Math.pow(1 + cumulative, 1 / years) - 1;
+  return { status: "ok", cumulative, annualized };
+};
+
 /**
  * Benchmark return for a passive security held over the same window.
  * For an ETF like VOO with no contributions, TWR = simple price ratio.
