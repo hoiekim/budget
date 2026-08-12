@@ -59,6 +59,85 @@ const getHighLevelPage = (path: string): PATH | undefined => {
   }
 };
 
+/**
+ * URL params that describe HOW the current page is being viewed rather than
+ * WHICH page the user is on. Changing only these is not a step through the
+ * page tree, so it REPLACES the history entry instead of pushing one.
+ *
+ * Without this, every period step in the header's date picker leaves a
+ * history entry behind, and the back button walks back through the view
+ * dates one at a time instead of leaving the page.
+ *
+ * - `view_date` — the period every page renders against. `useViewDate`'s
+ *   writer navigates same-path on each prev/next/pick.
+ * - `transactions_type` — the Transactions page's filter chips.
+ *   `useMultiSelectQueryFilter`'s `toggle` / `clearAll` navigate same-path
+ *   on each click. Arriving at Transactions *with* a preset filter (from
+ *   the budget detail page) is a genuine step because the path changes.
+ *
+ * Every other param in the app identifies which entity's page is open
+ * (`account_id`, `budget_id`, `transaction_id`, `chart_id`, …), so a change
+ * to one is a real navigation and stays pushed.
+ */
+export const NON_NAVIGATIONAL_PARAMS = new Set(["view_date", "transactions_type"]);
+
+/**
+ * The parent page to fall back to when the back button has no in-session
+ * history to walk — a reload or a shared link that lands straight on a
+ * detail page. `getHighLevelPage` covers the four navigator sections;
+ * the config subtree has no navigator entry, so it is named here.
+ *
+ * Only a FALLBACK. Several pages have more than one parent
+ * (`transaction-detail` hangs off both Accounts and Transactions,
+ * `connection-detail` off both Accounts and Config), so the real
+ * previous page comes from session history whenever there is one.
+ * Returns `undefined` for a section root, which is where back stops.
+ */
+export const getParentPath = (path: PATH): PATH | undefined => {
+  if (path === PATH.CONNECTION_DETAIL || path === PATH.API_KEY_DETAIL) return PATH.CONFIG;
+  const section = getHighLevelPage(path);
+  return section === path ? undefined : section;
+};
+
+/**
+ * Whether navigating from one route to another is a step through the page
+ * tree (push a history entry) rather than a change of view on the page the
+ * user is already on (replace it).
+ *
+ * Exported for unit testing; `go()` is the only caller.
+ */
+export const isPageTreeStep = (
+  fromPath: PATH,
+  fromParams: URLSearchParams,
+  toPath: PATH,
+  toParams: URLSearchParams,
+): boolean => {
+  if (fromPath !== toPath) return true;
+  // Same page: a step only if a param that identifies the page changed.
+  // Compare the union of both sides' keys so that ADDING or REMOVING a
+  // navigational param counts, not just editing one that exists on both.
+  const keys = new Set([...fromParams.keys(), ...toParams.keys()]);
+  for (const key of keys) {
+    if (NON_NAVIGATIONAL_PARAMS.has(key)) continue;
+    if (fromParams.get(key) !== toParams.get(key)) return true;
+  }
+  return false;
+};
+
+/**
+ * Index of the current entry within this session's history, carried on
+ * `history.state` so it survives a browser back/forward. Reading it back
+ * out in the popstate handler is what tells the router which direction the
+ * user moved — `event.state` is the entry being restored, not the one
+ * being left.
+ */
+type HistoryState = { idx: number } | null;
+
+const getHistoryIndex = (state: unknown): number => {
+  const idx = (state as HistoryState)?.idx;
+  return typeof idx === "number" ? idx : 0;
+};
+
 export interface ClientRouter {
   path: PATH;
   params: URLSearchParams;
@@ -79,6 +158,12 @@ export interface ClientRouter {
   go: (path: PATH, options?: GoOptions) => void;
   forward: (options?: NavigateOptions) => void;
   back: (options?: NavigateOptions) => void;
+  /**
+   * Whether `back()` has anywhere to go — an earlier page in this session,
+   * or a parent in the page tree. False on a section root opened directly,
+   * which is the one case the header hides the button.
+   */
+  canGoBack: boolean;
 }
 
 export type GoOptions = NavigateOptions & {
@@ -156,6 +241,19 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
   const [incomingParams, setIncomingParams] = useState(getParams());
   const [direction, setDirection] = useState<TransitionDirection>("forward");
   const [slideAnchorY, setSlideAnchorY] = useState(0);
+
+  // Position within this session's history. State (not just a ref) because
+  // the header reads `canGoBack` during render. The ref mirrors it so the
+  // popstate listener — registered once, and so closed over the first
+  // render's values — reads the live value instead of a stale 0.
+  const [historyIndex, setHistoryIndex] = useState(() =>
+    getHistoryIndex(window.history.state),
+  );
+  const historyIndexRef = useRef(historyIndex);
+  const setHistoryIndexTo = useCallback((idx: number) => {
+    historyIndexRef.current = idx;
+    setHistoryIndex(idx);
+  }, []);
 
   const isAnimationEnabled = useRef(false);
 
@@ -290,19 +388,38 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
 
   useEffect(() => {
     if (!isRouterRegistered) {
-      const listner = () => {
+      const listner = (event: PopStateEvent) => {
+        // `event.state` belongs to the entry being RESTORED, so comparing
+        // it against the index we were sitting on says which way the user
+        // moved. Browser back/forward reach the router only through here,
+        // and without this they would animate in whatever direction the
+        // last programmatic navigation happened to set.
+        const nextIndex = getHistoryIndex(event.state);
+        setDirection(nextIndex < historyIndexRef.current ? "backward" : "forward");
+        setHistoryIndexTo(nextIndex);
         transition(getPath(), getParams());
       };
       window.addEventListener("popstate", listner, false);
       isRouterRegistered = true;
     }
-  }, [transition]);
+  }, [transition, setHistoryIndexTo]);
 
-  const go = useCallback(
-    (target: PATH, options?: GoOptions) => {
+  /**
+   * `go`, plus the two things only `back`'s page-tree fallback needs: it
+   * slides backward, and it climbs into the entry it started on instead of
+   * pushing a new one — going UP from a directly-opened detail page should
+   * not leave a deeper history than the user arrived with.
+   */
+  const navigate = useCallback(
+    (
+      target: PATH,
+      options: GoOptions | undefined,
+      direction: TransitionDirection,
+      forceReplace = false,
+    ) => {
       const { params: providedParams, animate = true, preserveViewDate = true } = options || {};
       isAnimationEnabled.current = animate;
-      setDirection("forward");
+      setDirection(direction);
 
       // Preserve `view_date` across every cross-page navigation. Users
       // expect the period they're viewing to persist as they move
@@ -323,15 +440,43 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
         if (currentViewDate) finalParams.set("view_date", currentViewDate);
       }
 
+      // Decided BEFORE `transition`, which advances the current-route
+      // refs this reads.
+      const isStep =
+        !forceReplace &&
+        isPageTreeStep(
+          currentPathRef.current,
+          currentParamsRef.current,
+          target,
+          finalParams,
+        );
+
       // Same-path navigation (control changes query params on the
       // currently-mounted page) preserves DOM state. Let the caller
       // handle scroll — see the `skipScrollRestore` comment on
       // `transition` above.
       const skipScrollRestore = target === currentPathRef.current;
       transition(target, finalParams, skipScrollRestore);
-      window.history.pushState("", "", getURLString(target, finalParams));
+
+      // A change of view on the page the user is already on overwrites the
+      // entry it happened on, so the back button steps through pages
+      // rather than through every period or filter the user tried. The
+      // URL still updates either way, so reload and share keep working.
+      const url = getURLString(target, finalParams);
+      if (isStep) {
+        const nextIndex = historyIndexRef.current + 1;
+        window.history.pushState({ idx: nextIndex }, "", url);
+        setHistoryIndexTo(nextIndex);
+      } else {
+        window.history.replaceState({ idx: historyIndexRef.current }, "", url);
+      }
     },
-    [transition],
+    [transition, setHistoryIndexTo],
+  );
+
+  const go = useCallback(
+    (target: PATH, options?: GoOptions) => navigate(target, options, "forward"),
+    [navigate],
   );
 
   const forward = useCallback((options?: NavigateOptions) => {
@@ -341,12 +486,28 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
     window.history.forward();
   }, []);
 
-  const back = useCallback((options?: NavigateOptions) => {
-    const { animate = true } = options || {};
-    isAnimationEnabled.current = animate;
-    setDirection("backward");
-    window.history.back();
-  }, []);
+  const parentPath = getParentPath(path);
+
+  /**
+   * Session history first: it knows which of a page's several parents the
+   * user actually came through, and with which params. Only when there is
+   * none — a reload or a shared link opening straight onto a detail page —
+   * does back climb the static page tree instead. `history.back()` there
+   * would hand the user to whatever site preceded the app.
+   */
+  const back = useCallback(
+    (options?: NavigateOptions) => {
+      const { animate = true } = options || {};
+      if (historyIndexRef.current > 0) {
+        isAnimationEnabled.current = animate;
+        setDirection("backward");
+        window.history.back();
+        return;
+      }
+      if (parentPath) navigate(parentPath, { animate }, "backward", true);
+    },
+    [navigate, parentPath],
+  );
 
   /**
    * URL params source for a page or component that renders during a
@@ -400,5 +561,6 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
     go,
     forward,
     back,
+    canGoBack: historyIndex > 0 || parentPath !== undefined,
   };
 };

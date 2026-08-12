@@ -16,7 +16,7 @@ import "./index.css";
 export const Header = () => {
   const { user, router, viewDate, setViewDate, screenType } = useAppContext();
 
-  const { path, params, go, back } = router;
+  const { path, go, back, canGoBack } = router;
 
   const onClickBack: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.preventDefault();
@@ -36,13 +36,15 @@ export const Header = () => {
     TRANSACTION_DETAIL,
   } = PATH;
 
-  const isBackButtonDisabled =
-    !params.toString() && [DASHBOARD, BUDGETS, ACCOUNTS, TRANSACTIONS].includes(path);
-
   const onClickHamburger: MouseEventHandler<HTMLAnchorElement> = (e) => {
     e.preventDefault();
-    if ([PATH.CONFIG, PATH.CONNECTION_DETAIL].includes(path)) back();
-    else go(PATH.CONFIG);
+    // A toggle: it opens Config, and closes it by going back the way the
+    // user came in. Config opened directly has no way back, so closing it
+    // lands on the dashboard rather than leaving the button inert.
+    if ([PATH.CONFIG, PATH.CONNECTION_DETAIL].includes(path)) {
+      if (canGoBack) back();
+      else go(DASHBOARD);
+    } else go(PATH.CONFIG);
   };
   const { innerHeight, innerWidth } = window;
   const navigatorsHeight =
@@ -65,7 +67,7 @@ export const Header = () => {
       <div className="viewController">
         <div className="centerBox">
           <div className="backButton">
-            {!isBackButtonDisabled && (
+            {canGoBack && (
               <button onClick={onClickBack}>
                 <ArrowLeftIcon size={15} />
               </button>
