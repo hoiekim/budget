@@ -192,8 +192,8 @@ const matchesType = (value: unknown, type: FieldType): boolean => {
  * `label.budget_id` travels unchecked into a numeric / `UUID` column, Postgres
  * raises `22P02 invalid_text_representation` at the write, the route throws,
  * and `Route.execute` answers 500 **and** calls `sendAlarm`. A client type
- * error must not page — and while `alarm.ts` still uses one global cooldown,
- * one malformed request a minute suppresses every other server alarm.
+ * error must not page, and must not spend a slot of `alarm.ts`'s global
+ * per-window send ceiling that a real fault needs.
  *
  * Returns the FIRST failure so the caller can answer `status: "failed"` with a
  * message that names the offending path. Missing optional fields are skipped:
