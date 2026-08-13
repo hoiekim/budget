@@ -44,13 +44,16 @@ risks:
 | `ci.yml` on `pull_request: [main]` | lint, typecheck, test **with coverage thresholds**, build | Nothing mechanically — it is a visible signal on the PR. `main`'s ruleset requires a review and thread resolution, but has no required status check, so a red run does not block the merge button |
 | `Dockerfile` builder stage, via `cd.yml` on `push: [main]` | lint, typecheck, test, build | The deploy — `docker-push` fails, and `deploy` is `needs: docker-push`, so nothing ships |
 
-**The builder stage is the only mechanical gate.** Merges land via PR, so the
-PR checks run on every commit that reaches `main` — but running is not the
-same as passing, and nothing today enforces that they were green. What
-enforces correctness is the second row: the same check set re-runs against
-the merged commit inside the Docker build, so a squash-merge that combines
-two individually-green PRs into a broken result fails the image build and
-never reaches production.
+**The builder stage is the only mechanical gate.** Every commit that reaches
+`main` came from a PR that had the checks run against it — but not against
+the merged result. `ci.yml` triggers only on `pull_request`, so it runs
+against the PR's ephemeral merge ref, a different SHA from the squash commit
+that lands, and different *content* whenever `main` advances between the last
+PR run and the merge. Nothing enforces that those runs were green either.
+What enforces correctness is the second row: the same check set minus the
+coverage threshold re-runs against the merged commit inside the Docker build,
+so a squash-merge that combines two individually-green PRs into a broken
+result fails the image build and never reaches production.
 
 The two sets are not quite identical. `ci.yml` runs `test:coverage`, which
 also enforces the thresholds in `scripts/check-coverage.ts`; the builder
@@ -73,11 +76,15 @@ post-deploy rollback, not this trigger.) The reasoning:
   PR run ever saw — is already caught by the Dockerfile builder stage, which
   runs the full check set against exactly that merged commit and fails the
   deploy.
-- The only pushes it would newly cover are direct pushes to `main`, which are
-  maintainer overrides and intentionally exempt.
+- It would newly cover nothing. The only pushes a `push: [main]` trigger adds
+  over `pull_request` are direct pushes to `main`, and `main`'s ruleset
+  (`protect_main`, `enforcement: active`, a `pull_request` rule and no bypass
+  actors) forbids those for every actor, owner included.
 
 Pre-merge enforcement, if it is ever wanted, is a repository setting — adding
 the `test` / `build` contexts as required status checks on `main`'s ruleset,
-or a merge queue — rather than a workflow change. That is what #218 asked for
-and it remains available; it is a different change from the one rejected
-here.
+or a merge queue — rather than a workflow change. It is a different change
+from the one rejected here, and nothing currently tracks it: #218 asked for
+it but was closed as completed by #221, which only bumped action versions, so
+the required-status-check option was never actually implemented. Treat it as
+untracked, not as a live item.
