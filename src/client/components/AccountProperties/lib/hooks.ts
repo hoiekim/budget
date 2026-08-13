@@ -352,7 +352,6 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
 
   const onChangeTypeInput: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
-    if (value === selectedBudgetIdLabel) return;
     if (!isAccountType(value)) return;
 
     setTypeInput(value);
