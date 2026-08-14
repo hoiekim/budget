@@ -1,3 +1,4 @@
+import { numberToCommaString } from "common";
 import { DonutData, getDisplayBalance, useAppContext } from "client";
 import { Changes } from "client/components";
 
@@ -23,7 +24,6 @@ export const BalanceInfo = ({
   const { accounts } = data;
 
   const today = new Date();
-  const viewDateSpan = Math.max(-viewDate.getSpanFrom(today), 0);
   const previousDate = viewDate.clone().previous().getEndDate();
 
   // Match the headline total's loading-aware fallback (#510): while history is
@@ -49,11 +49,17 @@ export const BalanceInfo = ({
           {numberOfCredits > 0 && (
             <>
               <br />
-              <Changes
-                currentAmount={0}
-                previousAmount={!viewDateSpan ? totalCredit : 0}
-                currencySymbol={currencySymbol}
-              />
+              {/* `Changes` is a delta widget whose zero case renders the
+                  neutral "-" placeholder. Driving it with `currentAmount={0}`
+                  to print a negative total meant any period whose total was
+                  suppressed showed "-" under a label reading "outstanding",
+                  i.e. "nothing owed" (#706). The outstanding total is a
+                  static figure, so render it as one. */}
+              <div className={`Changes credit amount ${totalCredit ? "negative" : "neutral"}`}>
+                {totalCredit ? "-" : ""}
+                {currencySymbol}
+                {numberToCommaString(totalCredit)}
+              </div>
               <div className="credit label">outstanding</div>
               <div className="credit label">in&nbsp;{numberOfCredits}&nbsp;Credits</div>
             </>

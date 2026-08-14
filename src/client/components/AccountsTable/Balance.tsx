@@ -10,10 +10,9 @@ export const Balance = ({ account }: BalanceProps) => {
   const { viewDate, calculations, data } = useAppContext();
   const { balanceData } = calculations;
   const { type, subtype, balances } = account;
-  const { available, current, iso_currency_code, unofficial_currency_code } = balances;
+  const { available, iso_currency_code, unofficial_currency_code } = balances;
 
   const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
-  const currentString = numberToCommaString(current!);
 
   const today = new Date();
   const viewDateDate = viewDate.getEndDate();
@@ -26,23 +25,31 @@ export const Balance = ({ account }: BalanceProps) => {
   const previousAmount = getDisplayBalance(balanceData, account, previousDate, today, isLoading);
 
   if (type === AccountType.Credit) {
-    const availableString = numberToCommaString(available!);
+    // `available` is a live-only figure: `BalanceData` records one number per
+    // (account, month) and `getAccountBalance` fills it from `current`, so
+    // there is no historical available to resolve. Render it only for periods
+    // that are not in the past — exactly the periods where the balance beside
+    // it is the live one too. Showing today's available under a past header
+    // was the second half of #680.
+    const isPast = viewDate.getSpanFrom(today) < 0;
     return (
       <div className="Balance credit">
         <div>
           <span>
             {symbol}
-            {currentString}
+            {numberToCommaString(dynamicAmount)}
           </span>
           <span>spent</span>
         </div>
-        <div>
-          <span>
-            {symbol}
-            {availableString}
-          </span>
-          <span>available</span>
-        </div>
+        {!isPast && (
+          <div>
+            <span>
+              {symbol}
+              {numberToCommaString(available!)}
+            </span>
+            <span>available</span>
+          </div>
+        )}
       </div>
     );
   }
