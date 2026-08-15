@@ -1,5 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { deriveActiveParams, PATH } from "./router";
+import {
+  deriveActiveParams,
+  getParentPath,
+  isPageTreeStep,
+  NON_NAVIGATIONAL_PARAMS,
+  PATH,
+} from "./router";
 import { ScreenType } from "./context";
 
 const p = (init: string) => new URLSearchParams(init);
@@ -114,5 +120,172 @@ describe("deriveActiveParams", () => {
       paramsIncoming,
     );
     expect(out).toBe(paramsLive);
+  });
+});
+
+/**
+ * Which navigations leave a history entry behind. This is what decides
+ * whether the header's back button walks pages or walks every period the
+ * user stepped through on one page (#699).
+ */
+describe("isPageTreeStep", () => {
+  test("a different page is always a step", () => {
+    expect(isPageTreeStep(PATH.ACCOUNTS, p(""), PATH.ACCOUNT_DETAIL, p("account_id=a"))).toBe(
+      true,
+    );
+  });
+
+  test("stepping the period on one page is not a step", () => {
+    // The reported bug: `useViewDate`'s writer navigates same-path on
+    // every prev/next/pick, so each one used to push an entry and back
+    // rewound the date instead of leaving the page.
+    expect(
+      isPageTreeStep(PATH.DASHBOARD, p("view_date=2026-08"), PATH.DASHBOARD, p("view_date=2026-07")),
+    ).toBe(false);
+  });
+
+  test("adding or removing the period param is not a step either", () => {
+    // `resetViewDate` (the picker's Current button) DELETES the param, and
+    // the first date pick ADDS it. Comparing only the keys present on one
+    // side would miss both, and each would push an entry again.
+    expect(isPageTreeStep(PATH.DASHBOARD, p("view_date=2026-08"), PATH.DASHBOARD, p(""))).toBe(
+      false,
+    );
+    expect(isPageTreeStep(PATH.DASHBOARD, p(""), PATH.DASHBOARD, p("view_date=2026-08"))).toBe(
+      false,
+    );
+  });
+
+  test("toggling the transactions filter chips is not a step", () => {
+    expect(
+      isPageTreeStep(
+        PATH.TRANSACTIONS,
+        p("transactions_type=expenses"),
+        PATH.TRANSACTIONS,
+        p("transactions_type=expenses,deposits"),
+      ),
+    ).toBe(false);
+  });
+
+  test("toggling any of the four filter-chip families is not a step (same-page filter change)", () => {
+    // Every `useMultiSelectQueryFilter` chip family in the app has to be in
+    // NON_NAVIGATIONAL_PARAMS or the same-page toggle pushes a history
+    // entry and back walks through chip states instead of leaving the page
+    // — the regression reviewoie R1 caught (only `transactions_type` was
+    // present pre-fix; `account_type` / `budget_filter` / `chart_type` all
+    // pushed). One case per section root:
+    const cases: [PATH, string][] = [
+      [PATH.ACCOUNTS, "account_type"],
+      [PATH.BUDGETS, "budget_filter"],
+      [PATH.DASHBOARD, "chart_type"],
+      [PATH.TRANSACTIONS, "transactions_type"],
+    ];
+    for (const [path, key] of cases) {
+      expect(
+        isPageTreeStep(path, p(`${key}=a`), path, p(`${key}=a,b`)),
+      ).toBe(false);
+      // The empty-to-populated (or vice-versa) same-page toggle is the
+      // exact click "clear all" fires. Also has to read as non-step.
+      expect(isPageTreeStep(path, p(""), path, p(`${key}=a`))).toBe(false);
+      expect(isPageTreeStep(path, p(`${key}=a`), path, p(""))).toBe(false);
+    }
+  });
+
+  test("switching which entity the page shows IS a step", () => {
+    // Same path, but a different account's detail page is a different
+    // page in the tree — back has to return to the first one.
+    expect(
+      isPageTreeStep(
+        PATH.ACCOUNT_DETAIL,
+        p("account_id=a"),
+        PATH.ACCOUNT_DETAIL,
+        p("account_id=b"),
+      ),
+    ).toBe(true);
+  });
+
+  test("a navigational param changing alongside the period is a step", () => {
+    // `go()` copies `view_date` into every cross-page navigation, so the
+    // two kinds of param routinely change together. The non-navigational
+    // one must not mask the other.
+    expect(
+      isPageTreeStep(
+        PATH.ACCOUNT_DETAIL,
+        p("account_id=a&view_date=2026-08"),
+        PATH.ACCOUNT_DETAIL,
+        p("account_id=b&view_date=2026-07"),
+      ),
+    ).toBe(true);
+  });
+
+  test("a navigational param appearing on only one side is a step", () => {
+    // Comparing just the keys the CURRENT url has would read an added
+    // param as "no key changed" and replace the entry, so back would skip
+    // straight past the unfiltered page the user came from. The mirror
+    // case (dropping the param) has the same hole.
+    expect(isPageTreeStep(PATH.TRANSACTIONS, p(""), PATH.TRANSACTIONS, p("budget_id=b"))).toBe(
+      true,
+    );
+    expect(isPageTreeStep(PATH.TRANSACTIONS, p("budget_id=b"), PATH.TRANSACTIONS, p(""))).toBe(
+      true,
+    );
+  });
+
+  test("navigating to the identical route is not a step", () => {
+    expect(
+      isPageTreeStep(PATH.BUDGETS, p("view_date=2026-08"), PATH.BUDGETS, p("view_date=2026-08")),
+    ).toBe(false);
+  });
+});
+
+/**
+ * The NON_NAVIGATIONAL_PARAMS registry is the sole source that decides
+ * push-vs-replace for a same-page param change. Every `useMultiSelectQueryFilter`
+ * chip family + `useViewDate` writer has to be in it; a missing key silently
+ * regresses back-button behavior on that section (see reviewoie R1 HIGH).
+ */
+describe("NON_NAVIGATIONAL_PARAMS registry", () => {
+  test("covers every filter-chip param key + view_date — no silent drift", () => {
+    // Anchoring this exact set means adding a new useMultiSelectQueryFilter
+    // has to touch NON_NAVIGATIONAL_PARAMS, not silently pick a new key.
+    expect([...NON_NAVIGATIONAL_PARAMS].sort()).toEqual([
+      "account_type",
+      "budget_filter",
+      "chart_type",
+      "transactions_type",
+      "view_date",
+    ]);
+  });
+});
+
+/**
+ * The fallback used when there is no session history to walk — a reload or
+ * a shared link that opens straight onto a detail page.
+ */
+describe("getParentPath", () => {
+  test("a detail page climbs to its section root", () => {
+    expect(getParentPath(PATH.ACCOUNT_DETAIL)).toBe(PATH.ACCOUNTS);
+    expect(getParentPath(PATH.HOLDING_DETAIL)).toBe(PATH.ACCOUNTS);
+    expect(getParentPath(PATH.BUDGET_DETAIL)).toBe(PATH.BUDGETS);
+    expect(getParentPath(PATH.BUDGET_CONFIG)).toBe(PATH.BUDGETS);
+    expect(getParentPath(PATH.TRANSACTION_DETAIL)).toBe(PATH.TRANSACTIONS);
+    expect(getParentPath(PATH.CHART_DETAIL)).toBe(PATH.DASHBOARD);
+    expect(getParentPath(PATH.CHART_ACCOUNTS)).toBe(PATH.DASHBOARD);
+  });
+
+  test("the config subtree climbs to config — it has no navigator entry", () => {
+    expect(getParentPath(PATH.CONNECTION_DETAIL)).toBe(PATH.CONFIG);
+    expect(getParentPath(PATH.API_KEY_DETAIL)).toBe(PATH.CONFIG);
+  });
+
+  test("a section root has no parent — this is where back stops", () => {
+    // Drives `canGoBack`, so a root opened directly renders no back
+    // button at all rather than one that hands the user to the previous
+    // website.
+    expect(getParentPath(PATH.DASHBOARD)).toBeUndefined();
+    expect(getParentPath(PATH.BUDGETS)).toBeUndefined();
+    expect(getParentPath(PATH.ACCOUNTS)).toBeUndefined();
+    expect(getParentPath(PATH.TRANSACTIONS)).toBeUndefined();
+    expect(getParentPath(PATH.CONFIG)).toBeUndefined();
   });
 });
