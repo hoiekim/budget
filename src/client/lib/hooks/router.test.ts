@@ -1,5 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { deriveActiveParams, getParentPath, isPageTreeStep, PATH } from "./router";
+import {
+  deriveActiveParams,
+  getParentPath,
+  isPageTreeStep,
+  NON_NAVIGATIONAL_PARAMS,
+  PATH,
+} from "./router";
 import { ScreenType } from "./context";
 
 const p = (init: string) => new URLSearchParams(init);
@@ -161,6 +167,30 @@ describe("isPageTreeStep", () => {
     ).toBe(false);
   });
 
+  test("toggling any of the four filter-chip families is not a step (same-page filter change)", () => {
+    // Every `useMultiSelectQueryFilter` chip family in the app has to be in
+    // NON_NAVIGATIONAL_PARAMS or the same-page toggle pushes a history
+    // entry and back walks through chip states instead of leaving the page
+    // — the regression reviewoie R1 caught (only `transactions_type` was
+    // present pre-fix; `account_type` / `budget_filter` / `chart_type` all
+    // pushed). One case per section root:
+    const cases: [PATH, string][] = [
+      [PATH.ACCOUNTS, "account_type"],
+      [PATH.BUDGETS, "budget_filter"],
+      [PATH.DASHBOARD, "chart_type"],
+      [PATH.TRANSACTIONS, "transactions_type"],
+    ];
+    for (const [path, key] of cases) {
+      expect(
+        isPageTreeStep(path, p(`${key}=a`), path, p(`${key}=a,b`)),
+      ).toBe(false);
+      // The empty-to-populated (or vice-versa) same-page toggle is the
+      // exact click "clear all" fires. Also has to read as non-step.
+      expect(isPageTreeStep(path, p(""), path, p(`${key}=a`))).toBe(false);
+      expect(isPageTreeStep(path, p(`${key}=a`), path, p(""))).toBe(false);
+    }
+  });
+
   test("switching which entity the page shows IS a step", () => {
     // Same path, but a different account's detail page is a different
     // page in the tree — back has to return to the first one.
@@ -205,6 +235,26 @@ describe("isPageTreeStep", () => {
     expect(
       isPageTreeStep(PATH.BUDGETS, p("view_date=2026-08"), PATH.BUDGETS, p("view_date=2026-08")),
     ).toBe(false);
+  });
+});
+
+/**
+ * The NON_NAVIGATIONAL_PARAMS registry is the sole source that decides
+ * push-vs-replace for a same-page param change. Every `useMultiSelectQueryFilter`
+ * chip family + `useViewDate` writer has to be in it; a missing key silently
+ * regresses back-button behavior on that section (see reviewoie R1 HIGH).
+ */
+describe("NON_NAVIGATIONAL_PARAMS registry", () => {
+  test("covers every filter-chip param key + view_date — no silent drift", () => {
+    // Anchoring this exact set means adding a new useMultiSelectQueryFilter
+    // has to touch NON_NAVIGATIONAL_PARAMS, not silently pick a new key.
+    expect([...NON_NAVIGATIONAL_PARAMS].sort()).toEqual([
+      "account_type",
+      "budget_filter",
+      "chart_type",
+      "transactions_type",
+      "view_date",
+    ]);
   });
 });
 

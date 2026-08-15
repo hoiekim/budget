@@ -70,16 +70,25 @@ const getHighLevelPage = (path: string): PATH | undefined => {
  *
  * - `view_date` — the period every page renders against. `useViewDate`'s
  *   writer navigates same-path on each prev/next/pick.
- * - `transactions_type` — the Transactions page's filter chips.
- *   `useMultiSelectQueryFilter`'s `toggle` / `clearAll` navigate same-path
- *   on each click. Arriving at Transactions *with* a preset filter (from
- *   the budget detail page) is a genuine step because the path changes.
+ * - `transactions_type` / `account_type` / `budget_filter` / `chart_type`
+ *   — every `useMultiSelectQueryFilter` chip on the four sections. Each
+ *   filter's `toggle` / `clearAll` navigates same-path on click, and they
+ *   all share the same "filter state stays put across a page change,
+ *   but toggling a chip is not a page change" contract. Arriving at any
+ *   of these pages *with* a preset filter (e.g. Transactions from the
+ *   budget detail page) is a genuine step because the path changes.
  *
  * Every other param in the app identifies which entity's page is open
  * (`account_id`, `budget_id`, `transaction_id`, `chart_id`, …), so a change
  * to one is a real navigation and stays pushed.
  */
-export const NON_NAVIGATIONAL_PARAMS = new Set(["view_date", "transactions_type"]);
+export const NON_NAVIGATIONAL_PARAMS = new Set([
+  "view_date",
+  "transactions_type",
+  "account_type",
+  "budget_filter",
+  "chart_type",
+]);
 
 /**
  * The parent page to fall back to when the back button has no in-session
@@ -414,12 +423,17 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
     (
       target: PATH,
       options: GoOptions | undefined,
-      direction: TransitionDirection,
+      // Named `transitionDirection` to avoid shadowing the outer
+      // `[direction, setDirection] = useState(...)` state variable at
+      // line 251 — re-readers were routinely confused about which
+      // `direction` the `setDirection(direction)` line was reading (the
+      // parameter, always — but the shadow made it non-obvious).
+      transitionDirection: TransitionDirection,
       forceReplace = false,
     ) => {
       const { params: providedParams, animate = true, preserveViewDate = true } = options || {};
       isAnimationEnabled.current = animate;
-      setDirection(direction);
+      setDirection(transitionDirection);
 
       // Preserve `view_date` across every cross-page navigation. Users
       // expect the period they're viewing to persist as they move
