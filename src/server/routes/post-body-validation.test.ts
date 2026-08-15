@@ -7,10 +7,10 @@
 // collapses it into an error result, the route throws, and `Route.execute`
 // answers 500 **and** calls `sendAlarm`.
 //
-// The alarm half is what makes this more than cosmetic: `alarm.ts` still keeps
-// a single global cooldown (per-key is proposed in 663 / PR 664, unmerged), so
-// one malformed request a minute suppresses every OTHER server alarm — route
-// 5xx, uncaughtException, unhandledRejection, sync failures.
+// The alarm half is what makes this more than cosmetic: a client type error
+// must not page, and must not spend a slot of `alarm.ts`'s global per-window
+// send ceiling that a real fault — route 5xx, uncaughtException,
+// unhandledRejection, sync failure — needs.
 //
 // So each case here pins three things at once: the status is `failed`, no SQL
 // was issued, and `sendAlarm` was never called. Asserting only the status
@@ -36,15 +36,28 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const mockSendAlarm = mock(async (_title: string, _body?: string) => undefined);
+// `mock.module` is process-global in Bun and `restoreLeaves` only restores the
+// `pg` / `bcrypt` leaves, so spread the real module rather than replacing it —
+// `alarm.test.ts` drives `resetAlarmState` — and put it back in `afterAll`
+// (the post-plaid-hook.test.ts pattern) so sibling files sharing the process
+// exercise the real `sendAlarm`.
+const realAlarm = { ...(await import("server/lib/alarm")) };
+
+const mockSendAlarm = mock(
+  async (_title: string, _detail: string, _key?: string) => undefined
+);
 mock.module("server/lib/alarm", () => ({
+  ...realAlarm,
   sendAlarm: mockSendAlarm,
 }));
 
 const { postAccountRoute } = await import("./accounts/post-account");
 const { postBudgetRoute } = await import("./budgets/post-budget");
 
-afterAll(restoreLeaves);
+afterAll(() => {
+  mock.module("server/lib/alarm", () => realAlarm);
+  restoreLeaves();
+});
 
 type AnyRoute = typeof postAccountRoute | typeof postBudgetRoute;
 
