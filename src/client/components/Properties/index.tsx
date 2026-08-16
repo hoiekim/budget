@@ -88,8 +88,9 @@ export const KeyValue = ({ name, className, children, ...rest }: KeyValueProps) 
 type ButtonRowProps = ComponentPropsWithoutRef<"button"> & {
   /** Merged onto the inner `<button>`, where the per-site CSS hooks
    *  (`connection`, `notification`, `unpairButton`, …) are selected from.
-   *  Not `colored` — that token exists so `div.dragging` can neutralize an
-   *  element's own colour, so it needs a colour rule of its own to act on. */
+   *  Not `colored` — that token exists so `div.dragging` can flatten an
+   *  element's own *background*, so it needs a background rule of its own to
+   *  act on. Text colour is already forced for the whole dragging subtree. */
   buttonClassName?: string;
 };
 
