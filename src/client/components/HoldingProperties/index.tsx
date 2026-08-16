@@ -667,7 +667,7 @@ export const HoldingProperties = () => {
               />
             </KeyValue>
             {submitError && <Row className="formError">{submitError}</Row>}
-            <ButtonRow type="submit" buttonClassName="colored">
+            <ButtonRow type="submit">
               Add
             </ButtonRow>
             <ButtonRow type="button" onClick={goBackToAccount}>
