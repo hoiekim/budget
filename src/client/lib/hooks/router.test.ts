@@ -5,6 +5,7 @@ import {
   isPageTreeStep,
   NON_NAVIGATIONAL_PARAMS,
   PATH,
+  preserveViewDateAcrossBack,
 } from "./router";
 import { ScreenType } from "./context";
 
@@ -287,5 +288,79 @@ describe("getParentPath", () => {
     expect(getParentPath(PATH.ACCOUNTS)).toBeUndefined();
     expect(getParentPath(PATH.TRANSACTIONS)).toBeUndefined();
     expect(getParentPath(PATH.CONFIG)).toBeUndefined();
+  });
+});
+
+/**
+ * The popstate handler's `view_date`-preservation rule for BACK: the user
+ * expects back to walk pages, not periods. Same rule applies to both the
+ * app's back() button and the browser back button (popstate is the single
+ * entry point). Forward navigation intentionally isn't patched — the
+ * restored URL's `view_date` is what the user picked when they pushed
+ * that entry.
+ */
+describe("preserveViewDateAcrossBack", () => {
+  test("outgoing view_date wins when restored URL has a different one", () => {
+    // The primary case Hoie reported: user is viewing view_date=2026-08
+    // and hits back — restored URL has view_date=2026-05 from an earlier
+    // push. Patched keeps 2026-08 so the picker doesn't jump.
+    const out = preserveViewDateAcrossBack(
+      p("view_date=2026-08&account_id=a"),
+      p("view_date=2026-05&account_id=b"),
+    );
+    expect(out.get("view_date")).toBe("2026-08");
+    // Other params of the restored URL are preserved verbatim.
+    expect(out.get("account_id")).toBe("b");
+  });
+
+  test("outgoing view_date wins when restored URL has none", () => {
+    // The restored URL predates any period pick (view_date was never set
+    // when the entry was pushed). Still fill it in with the current
+    // period so the user doesn't get bumped back to Current.
+    const out = preserveViewDateAcrossBack(
+      p("view_date=2026-08"),
+      p(""),
+    );
+    expect(out.get("view_date")).toBe("2026-08");
+  });
+
+  test("outgoing has no view_date (Current mode) — restored loses view_date too", () => {
+    // Symmetric case: the user was on Current when they hit back. The
+    // restored URL had a period pick from earlier — drop it so the user
+    // stays on Current across the back. resetViewDate DELETES the param
+    // rather than substituting a value, so "no view_date" IS the signal
+    // for Current mode.
+    const out = preserveViewDateAcrossBack(
+      p(""),
+      p("view_date=2026-05&account_id=b"),
+    );
+    expect(out.has("view_date")).toBe(false);
+    expect(out.get("account_id")).toBe("b");
+  });
+
+  test("view_date already matches — same URLSearchParams reference back", () => {
+    // The popstate handler branches on `patched !== nextParams` to decide
+    // whether to `replaceState` — matching return-same-reference lets it
+    // skip the redundant history write. Pinning that identity.
+    const restored = p("view_date=2026-08&account_id=b");
+    const out = preserveViewDateAcrossBack(
+      p("view_date=2026-08&account_id=a"),
+      restored,
+    );
+    expect(out).toBe(restored);
+  });
+
+  test("both sides missing view_date — same reference back (no-op)", () => {
+    const restored = p("account_id=b");
+    const out = preserveViewDateAcrossBack(p("account_id=a"), restored);
+    expect(out).toBe(restored);
+  });
+
+  test("does not mutate the restored params object", () => {
+    // The caller reads restored again via `nextParams` — the helper must
+    // return a NEW URLSearchParams when patching, not edit-in-place.
+    const restored = p("view_date=2026-05");
+    preserveViewDateAcrossBack(p("view_date=2026-08"), restored);
+    expect(restored.get("view_date")).toBe("2026-05");
   });
 });

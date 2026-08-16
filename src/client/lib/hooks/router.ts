@@ -134,6 +134,40 @@ export const isPageTreeStep = (
 };
 
 /**
+ * Pure helper used by the popstate handler to patch the restored URL's
+ * `view_date` so a back navigation NEVER changes which period the user is
+ * viewing. Returns a new URLSearchParams; the input is not mutated.
+ *
+ * Symmetric on both directions of the mismatch:
+ * - Outgoing has `view_date=X`, restored has `view_date=Y` (or missing) →
+ *   patched has `view_date=X`.
+ * - Outgoing has no `view_date` (Current mode), restored has `view_date=Y` →
+ *   patched has `view_date` DROPPED (stay on Current across back).
+ *
+ * `null` in / `null` out on the outgoing side both mean "no view_date on
+ * the URL," which is the app's Current-mode signal (`useViewDate`'s
+ * `resetViewDate` deletes the param rather than substituting a value).
+ *
+ * Exported for unit testing; the popstate handler in `useRouter` is the
+ * only production caller.
+ */
+export const preserveViewDateAcrossBack = (
+  outgoingParams: URLSearchParams,
+  restoredParams: URLSearchParams,
+): URLSearchParams => {
+  const outgoing = outgoingParams.get("view_date");
+  const restored = restoredParams.get("view_date");
+  if ((outgoing ?? null) === (restored ?? null)) return restoredParams;
+  const patched = new URLSearchParams(restoredParams);
+  if (outgoing) {
+    patched.set("view_date", outgoing);
+  } else {
+    patched.delete("view_date");
+  }
+  return patched;
+};
+
+/**
  * Index of the current entry within this session's history, carried on
  * `history.state` so it survives a browser back/forward. Reading it back
  * out in the popstate handler is what tells the router which direction the
@@ -404,9 +438,33 @@ export const useRouter = (screenType: ScreenType): ClientRouter => {
         // and without this they would animate in whatever direction the
         // last programmatic navigation happened to set.
         const nextIndex = getHistoryIndex(event.state);
-        setDirection(nextIndex < historyIndexRef.current ? "backward" : "forward");
+        const isBackward = nextIndex < historyIndexRef.current;
+        setDirection(isBackward ? "backward" : "forward");
         setHistoryIndexTo(nextIndex);
-        transition(getPath(), getParams());
+
+        // Preserve `view_date` across a BACK navigation — user's mental
+        // model is "back means previous PAGE, not previous date." Without
+        // this, `window.history.back()` restores the pushed URL's
+        // `view_date` verbatim, so any earlier navigation that pushed a
+        // different period walks the picker back to it and the user
+        // suddenly sees a different month. Applies to both browser back
+        // and app back button — this handler is the single entry point
+        // for both. On forward, do nothing: the restored URL's
+        // `view_date` is what the user picked when they pushed the entry.
+        let nextParams = getParams();
+        if (isBackward) {
+          const patched = preserveViewDateAcrossBack(
+            currentParamsRef.current,
+            nextParams,
+          );
+          if (patched !== nextParams) {
+            const url = getURLString(getPath(), patched);
+            window.history.replaceState({ idx: nextIndex }, "", url);
+            nextParams = patched;
+          }
+        }
+
+        transition(getPath(), nextParams);
       };
       window.addEventListener("popstate", listner, false);
       isRouterRegistered = true;
