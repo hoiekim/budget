@@ -24,6 +24,7 @@ const {
   getAccount,
   searchAccounts,
   searchAccountsById,
+  createManualAccount,
   upsertAccounts,
   deleteAccounts,
 } = await import("./accounts");
@@ -244,6 +245,69 @@ describe("upsertAccounts", () => {
     const result = await upsertAccounts(testUser, accounts);
     expect(result).toHaveLength(3);
     expect(result.every((r: { status: number }) => r.status === 200)).toBe(true);
+  });
+});
+
+describe("createManualAccount", () => {
+  test("issues an INSERT into accounts, no ON CONFLICT clause", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow({ account_id: "manual-abc" })], rowCount: 1 });
+    await createManualAccount(testUser, { item_id: "item-1" });
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toMatch(/^\s*INSERT\s+INTO\s+accounts\b/i);
+    expect(sql).not.toMatch(/ON\s+CONFLICT/i);
+  });
+
+  test("binds the requesting user's id and the item_id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    await createManualAccount({ user_id: "usr-99", username: "other" }, { item_id: "item-x" });
+    const values = mockQuery.mock.calls[0][1] as unknown[];
+    expect(values).toContain("usr-99");
+    expect(values).toContain("item-x");
+  });
+
+  test("server-generates a `manual-<uuid>` account_id — the FE never supplies one", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    await createManualAccount(testUser, { item_id: "item-1" });
+    const values = mockQuery.mock.calls[0][1] as unknown[];
+    const minted = values.find((v) => typeof v === "string" && /^manual-/.test(v as string));
+    expect(minted).toBeDefined();
+  });
+
+  test("defaults institution_id to \"Unknown\" — the sentinel `sync.ts` recognises", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    await createManualAccount(testUser, { item_id: "item-1" });
+    const values = mockQuery.mock.calls[0][1] as unknown[];
+    expect(values).toContain("Unknown");
+  });
+
+  test("returns the created JSONAccount when a row comes back", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeAccountRow({ account_id: "manual-abc", name: "Unknown" })],
+      rowCount: 1,
+    });
+    const result = await createManualAccount(testUser, { item_id: "item-1" });
+    expect(result).not.toBeNull();
+    expect(result?.account_id).toBe("manual-abc");
+    expect(result?.name).toBe("Unknown");
+  });
+
+  test("returns null when the insert returns no row", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await createManualAccount(testUser, { item_id: "item-1" });
+    expect(result).toBeNull();
+  });
+
+  test("returns null when the insert throws — logged, not raised", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("DB unavailable"));
+    const result = await createManualAccount(testUser, { item_id: "item-1" });
+    expect(result).toBeNull();
+  });
+
+  test("does not write the `raw` column — it exists for a provider's payload, and a manual account has none", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    await createManualAccount(testUser, { item_id: "item-1" });
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).not.toMatch(/\braw\b/);
   });
 });
 

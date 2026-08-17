@@ -17,7 +17,6 @@
 
 .HoldingProperties .tickerFeedback {
   font-size: 12px;
-  padding: 0 8px;
 }
 
 .HoldingProperties .tickerFeedback.valid {
@@ -26,6 +25,11 @@
 
 .HoldingProperties .tickerFeedback.invalid {
   color: var(--color-danger, var(--darkRed));
+}
+
+.HoldingProperties .formError {
+  color: var(--color-danger, var(--darkRed));
+  font-size: 12px;
 }
 
 /* Date suffix inside a per-snapshot `.propertyLabel`. The label itself

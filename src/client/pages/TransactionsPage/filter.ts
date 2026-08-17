@@ -17,17 +17,6 @@ export interface FilterContext {
 }
 
 /**
- * User has explicitly acted on this row's category — either confirmed
- * (confidence=1) or rejected (confidence=0). Per the JSONTransactionLabel
- * docstring, null = never labeled and 0<conf<1 = engine suggestion.
- */
-const isUserLabelConfirmed = (e: Transaction | SplitTransaction): boolean => {
-  const c_id = e.label.category_id;
-  const c_conf = e.label.category_confidence;
-  return !!(c_id && (c_conf === 1 || c_conf === 0));
-};
-
-/**
  * Engine-emitted suggestion the user hasn't acted on yet. Accepts every
  * row type the TransactionsPage renders (`filteredAndSorted` mixes the
  * three) — InvestmentTransaction carries the same `label.category_id` /
@@ -206,7 +195,7 @@ export class TypePredicates {
   unsorted: Predicate = (e) =>
     !isInvestment(e) &&
     !isInConfirmedTransfer(e, this.context) &&
-    !isUserLabelConfirmed(e);
+    !e.label.isConfirmed();
   suggested: Predicate = (e) =>
     !isInvestment(e) &&
     !isInConfirmedTransfer(e, this.context) &&
