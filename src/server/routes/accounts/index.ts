@@ -6,6 +6,7 @@ export * from "./delete-transaction";
 export * from "./delete-investment-transaction";
 export * from "./get-transactions";
 export * from "./get-new-split-transaction";
+export * from "./get-new-account";
 export * from "./get-new-transaction";
 export * from "./get-new-investment-transaction";
 export * from "./get-split-transactions";

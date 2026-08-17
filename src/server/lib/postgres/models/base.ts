@@ -170,6 +170,10 @@ export abstract class Table<
    * whose label_category_confidence is still NULL"). Values follow
    * `prepareQuery` semantics: `null` → IS NULL, `IS_NOT_NULL` → IS NOT NULL,
    * anything else → `column = $N`.
+   *
+   * `excludeDeleted` opts into the live-row predicate `query` applies by
+   * default. Opt-in rather than default here because an update is also how a
+   * soft-deleted row would be restored.
    */
   async update(
     primaryKeyValue: ParamValue,
@@ -178,6 +182,7 @@ export abstract class Table<
     userId?: string,
     client?: QueryExecutor,
     extraWhere?: AdditionalWhere[],
+    excludeDeleted?: boolean,
   ): Promise<Record<string, unknown> | null> {
     this._assertSimplePrimaryKey("update");
     const additionalWhere: AdditionalWhere[] = [];
@@ -186,6 +191,7 @@ export abstract class Table<
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {
       returning: returning ?? [this.primaryKey],
       additionalWhere: additionalWhere.length > 0 ? additionalWhere : undefined,
+      excludeDeleted: excludeDeleted && this.supportsSoftDelete,
     });
     if (!query) return null;
     const executor = client ?? pool;

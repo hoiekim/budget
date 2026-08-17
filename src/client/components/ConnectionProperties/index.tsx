@@ -1,6 +1,6 @@
 import { MouseEventHandler } from "react";
-import { AccountGraphOptions, ItemProvider, toTitleCase, toUpperCamelCase } from "common";
-import { AccountPostResponse } from "server";
+import { ItemProvider, toTitleCase, toUpperCamelCase } from "common";
+import type { NewAccountGetResponse } from "server";
 import {
   Account,
   AccountDictionary,
@@ -100,29 +100,24 @@ export const ConnectionProperties = ({ item }: Props) => {
 
   const onClickAddManualAccount: MouseEventHandler<HTMLButtonElement> = async (e) => {
     e.stopPropagation();
-    const newAccountGraphOptions: AccountGraphOptions = {
-      useSnapshots: true,
-      useHoldingSnapshots: true,
-      useTransactions: false,
-    };
-    const newAccount = new Account({ item_id: item.id, graphOptions: newAccountGraphOptions });
     try {
-      const { status, body, message } = await call.post<AccountPostResponse>(
-        "/api/account",
-        newAccount,
+      const { status, body, message } = await call.get<NewAccountGetResponse>(
+        `/api/new-account?item_id=${encodeURIComponent(item.id)}`,
       );
-      if (status === "success" && body) {
-        setData((oldData) => {
-          const newData = new Data(oldData);
-          indexedDb.save(newAccount).catch(console.error);
-          const newAccounts = new AccountDictionary(newData.accounts);
-          newAccounts.set(newAccount.id, newAccount);
-          newData.accounts = newAccounts;
-          return newData;
-        });
-      } else {
+      if (status !== "success" || !body) {
         console.error("Failed to add manual account:", message);
+        return;
       }
+      const { account_id, name } = body;
+      const newAccount = new Account({ account_id, item_id: item.id, name });
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        indexedDb.save(newAccount).catch(console.error);
+        const newAccounts = new AccountDictionary(newData.accounts);
+        newAccounts.set(newAccount.id, newAccount);
+        newData.accounts = newAccounts;
+        return newData;
+      });
     } catch (error) {
       console.error("Failed to add manual account:", error);
     }
