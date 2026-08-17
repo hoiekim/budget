@@ -72,6 +72,8 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
     return all;
   }, [accountSnapshots, accountId]);
 
+  const rangeEnd = getDateString(viewDate.getEndDate());
+
   const bucket = useMemo(() => {
     const start = viewDate.getStartDate();
     const end = viewDate.getEndDate();
@@ -87,8 +89,24 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
   const [edits, setEdits] = useState<Record<string, RowEdit>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [addValue, setAddValue] = useState("");
-  const [addDate, setAddDate] = useState(getDateString(viewDate.getEndDate()));
+  const [addDate, setAddDate] = useState(rangeEnd);
   const [addError, setAddError] = useState("");
+
+  // The header's period steppers are global and `setViewDate` navigates to the
+  // SAME path with new params, so this page re-renders without remounting. A
+  // once-at-mount seed would leave the Add form defaulting into a month that is
+  // no longer on screen — and adding from it would file a snapshot the list then
+  // filters out, which reads as a silent failure. Re-default on a period change
+  // while keeping a date the user typed within the period. Render-phase reset
+  // rather than a ref guard: budget renders a concurrent root under
+  // StrictMode, where a ref survives an abandoned render but a queued update
+  // does not.
+  const [prevRangeEnd, setPrevRangeEnd] = useState(rangeEnd);
+  if (prevRangeEnd !== rangeEnd) {
+    setPrevRangeEnd(rangeEnd);
+    setAddDate(rangeEnd);
+    setAddError("");
+  }
   const saving = useRef<Set<string>>(new Set());
 
   const setRowError = (id: string, error: string) =>
