@@ -18,6 +18,27 @@ export interface Subscriber {
   close: () => void;
 }
 
+/** Gap between `: keepalive` blocks on an otherwise-quiet SSE stream. */
+export const SSE_KEEPALIVE_MS = 30_000;
+
+/**
+ * How long Bun may let an `/api/events` request idle before reaping it.
+ * Bun's default is 10 seconds, so this MUST be raised for a stream that
+ * goes quiet between events, and it must outlive the keepalive period —
+ * a tick scheduled past the deadline can never refresh the socket. Derived
+ * rather than picked so the two cannot drift apart; 3x tolerates one missed
+ * tick, and 255 is Bun's ceiling.
+ *
+ * The clamp and the floor are guards, not error handling: `server.timeout`
+ * accepts a fractional or out-of-range value silently (measured on Bun
+ * 1.3.14 — 7.5 and 300 both return normally), so a value that drifts below
+ * the keepalive would reap the stream with nothing raised anywhere.
+ */
+export const SSE_IDLE_TIMEOUT_SECONDS = Math.min(
+  255,
+  Math.floor((SSE_KEEPALIVE_MS / 1000) * 3),
+);
+
 const subscribers = new Map<string, Set<Subscriber>>();
 
 export type EmitDomain = TableName;
