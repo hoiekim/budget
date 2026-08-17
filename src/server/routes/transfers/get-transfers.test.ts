@@ -18,7 +18,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { getTransfersRoute } = await import("./get\-transfers");
+const { getTransfersRoute } = await import("./get-transfers");
 
 afterAll(restoreLeaves);
 
@@ -279,5 +279,44 @@ describe("get-transfers", () => {
     expect(result?.body).toEqual([]);
     // No second (txn) query — nothing visible to resolve.
     expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  test("updated-after=<cursor> narrows the pairs SELECT to rows whose `updated` moved", async () => {
+    // The dateRange primitive emits `updated >= $N` (inclusive with a
+    // 60s cursorForNextSync safety margin owned by the FE) — the intent
+    // is a delta cutoff, not a strict inequality.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getTransfersRoute.execute(
+      makeReq({ query: { "updated-after": "2026-08-17T00:00:00Z" } }),
+      fakeRes(),
+    );
+    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    expect(pairsSql).toMatch(/updated\s*>=\s*\$\d+/);
+    expect(pairsValues).toEqual(expect.arrayContaining(["2026-08-17T00:00:00Z"]));
+  });
+
+  test("omitted updated-after issues a full-set fetch — no `updated >=` clause on the pairs SELECT", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getTransfersRoute.execute(makeReq(), fakeRes());
+    const [pairsSql] = mockQuery.mock.calls[0];
+    expect(pairsSql).not.toMatch(/updated\s*>=/);
+  });
+
+  test("updated-after + include-deleted composes: cursor filter AND tombstone delivery both apply", async () => {
+    // The two SQL guarantees the delta path relies on, verified at the
+    // wire boundary rather than through the model resolver: the pairs
+    // SELECT (a) filters by updated>=$cursor and (b) drops the
+    // soft-delete exclusion so eviction rows survive.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getTransfersRoute.execute(
+      makeReq({
+        query: { "updated-after": "2026-08-17T00:00:00Z", "include-deleted": "true" },
+      }),
+      fakeRes(),
+    );
+    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    expect(pairsSql).toMatch(/updated\s*>=\s*\$\d+/);
+    expect(pairsSql).not.toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
+    expect(pairsValues).toEqual(expect.arrayContaining(["2026-08-17T00:00:00Z"]));
   });
 });

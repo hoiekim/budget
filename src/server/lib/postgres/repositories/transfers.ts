@@ -11,6 +11,7 @@ import {
   TRANSACTION_ID,
   STATUS,
   IS_DELETED,
+  UPDATED,
   canonicalizePairIds,
 } from "../models";
 import {
@@ -39,11 +40,19 @@ export interface TransferPair {
 
 export interface GetTransferPairsOptions {
   /** When true, soft-deleted (`is_deleted = TRUE`) pairs are INCLUDED as
-   *  tombstones. Defaults to false for backward compatibility — the current
-   *  FE full-fetches and replaces wholesale, so it must NOT receive
-   *  tombstones as active rows. The FE-hook migration (#542 parts 4-5) flips
-   *  its fetch to opt in, mirroring the transactions/snapshots contract. */
+   *  tombstones. Defaults to false for backward compatibility — a caller
+   *  that full-fetches and replaces wholesale must NOT receive tombstones
+   *  as active rows. The FE delta-sync path opts in, mirroring the
+   *  transactions/snapshots contract. */
   includeDeleted?: boolean;
+  /** ISO timestamp cutoff — return only pairs whose `updated` is strictly
+   *  greater. Paired with `includeDeleted: true` for the FE's
+   *  delta-by-cursor sync, so a soft-deleted pair that changed after
+   *  `updatedAfter` is delivered as an eviction signal instead of
+   *  silently vanishing from the client's cache. Uses `updated`, not
+   *  `snapshot_date` or `pair_created`, so confirm/reject/cascade-delete
+   *  mutations all surface. Omitted → full fetch (backward compat). */
+  updatedAfter?: string;
 }
 
 /**
@@ -70,9 +79,16 @@ export const getTransferPairs = async (
   // Table.query auto-excludes soft-deleted rows (supportsSoftDelete). When
   // the caller opts into tombstone delivery, keep them by unsetting the
   // exclusion — matches the transactions/snapshots delta-delivery contract.
+  // `updatedAfter` narrows the SQL scan to rows whose `updated > $cursor`,
+  // so a warm sync fetches only the delta instead of the full pair set
+  // (the transfers endpoint was 88% of the sync payload before this — see
+  // PR #674 profiling).
+  const dateRange = options.updatedAfter
+    ? { column: UPDATED, start: options.updatedAfter }
+    : undefined;
   const allPairs = await transactionPairsTable.query(
     { [USER_ID]: user.user_id },
-    { orderBy: PAIR_ID, excludeDeleted: !options.includeDeleted },
+    { orderBy: PAIR_ID, excludeDeleted: !options.includeDeleted, dateRange },
   );
 
   if (allPairs.length === 0) return [];

@@ -270,27 +270,50 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
 
 interface FetchTransfersResult {
   transfers: TransferDictionary;
+  tombstonePairIds: Set<string>;
   networkFailed: boolean;
 }
 
 /**
- * Lightweight fetch of all transfer pairs for the user. Lives in
- * useSync alongside the other model fetches so a cold/warm load
- * paints with pair state already in place. Returns a single
- * TransferDictionary (pair_id → TransferPair) — consumers resolve
- * transaction_id lookups via `transfers.byTransactionId.get(id)` (and
- * the `has`/`hasSuggested`/`hasConfirmed` membership predicates), each
- * O(1) over the dictionary's internal pivot map. Mutation methods
- * in `useTransfers` update `data.transfers` in-place via `setData`
- * (no re-fetch on mutation).
+ * Fetch transfer pairs — delta-by-cursor when `cursor` is supplied, full
+ * fetch when it is `null`. Full fetch is used on cold load; warm sync and
+ * per-domain event refetch pass the last-synced cursor so the payload is
+ * only the pairs whose `updated` moved (confirm / reject / cascade-delete).
+ * `include-deleted=true` is passed alongside so soft-deleted OR rejected
+ * pairs come back as empty-`transactions` rows the orchestrator uses as
+ * eviction signals — the same contract `/api/transactions` and
+ * `/api/snapshots` use.
+ *
+ * The dictionary this returns holds ONLY the delta (or the full set on
+ * cold). The orchestrator merges it into `oldData.transfers` in place
+ * (`new TransferDictionary(oldData.transfers)` + `set` per entry +
+ * `delete` per tombstone), so the pre-existing pair state is preserved.
+ * Consumers resolve `transaction_id` lookups via
+ * `transfers.byTransactionId.get(id)` — O(1) over the dict's pivot map,
+ * which is rebuilt on each new dictionary construction. Mutation methods
+ * in `useTransfers` update `data.transfers` in-place via `setData` (no
+ * re-fetch on mutation).
+ *
+ * Before this PR, transfers full-fetched every sync — measured as 399 KB
+ * of the 453 KB warm-sync payload (88%) in the PR #674 profiling. Warm
+ * delta collapses to a few bytes when nothing changed.
  */
-const fetchTransfers = async (): Promise<FetchTransfersResult> => {
+const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResult> => {
   const result: FetchTransfersResult = {
     transfers: new TransferDictionary(),
+    tombstonePairIds: new Set(),
     networkFailed: false,
   };
 
-  const response = await call.get<TransfersGetResponse>("/api/transfers").catch(console.error);
+  const params = new URLSearchParams();
+  // Always opt in to eviction-signal delivery. On cold (no cursor) the
+  // server has no soft-deleted-rejected pairs to send that aren't already
+  // absent from an active-only fetch, so this is a no-op there.
+  params.append("include-deleted", "true");
+  if (cursor) params.append("updated-after", cursor);
+  const path = `/api/transfers?${params.toString()}`;
+
+  const response = await call.get<TransfersGetResponse>(path).catch(console.error);
   if (!response || response.status === "error") {
     result.networkFailed = true;
     return result;
@@ -298,6 +321,13 @@ const fetchTransfers = async (): Promise<FetchTransfersResult> => {
   if (!response.body) return result;
 
   for (const pair of response.body) {
+    // Eviction shape: soft-deleted OR user-rejected. `transactions: []` is
+    // the wire signal — the server strips them because they carry no
+    // budget meaning. The FE evicts on either predicate.
+    if (pair.is_deleted || pair.status === "rejected") {
+      result.tombstonePairIds.add(pair.pair_id);
+      continue;
+    }
     result.transfers.set(pair.pair_id, pair);
   }
 
@@ -548,7 +578,11 @@ export const useSync = () => {
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
       const securitiesPromise = fetchSecurities();
-      const transfersPromise = fetchTransfers();
+      // Transfers takes the same delta cursor as the other time-partitioned
+      // fetches — before this PR it was a full fetch every sync (88% of the
+      // warm-sync payload measured in PR #674 profiling). Cold load still
+      // asks for the full set because IDB is empty and needs seeding.
+      const transfersPromise = fetchTransfers(cursor);
 
       const [
         accountsResult,
@@ -586,7 +620,7 @@ export const useSync = () => {
       const { charts } = stage1Charts;
       const { institutions } = stage1Institutions;
       const { securities } = stage1Securities;
-      const { transfers } = stage1Transfers;
+      const { transfers, tombstonePairIds: tombstoneTransferPairIds } = stage1Transfers;
 
       // On a cold load, paint Stage 1 immediately so the navigation +
       // summary widgets render before the historical fetches finish.
@@ -713,7 +747,17 @@ export const useSync = () => {
         next.charts = charts;
         next.institutions = institutions;
         next.securities = securities;
-        next.transfers = transfers;
+
+        // Apply transfers delta in-place — cold sends the full set and
+        // ships zero tombstones (no soft-deleted pair pre-dates a
+        // never-seen client), warm ships only the pairs whose `updated`
+        // moved plus eviction ids for soft-deleted/rejected. Mirrors the
+        // transactions/split-transactions/snapshots pattern below —
+        // required by [[project_budget_delta_sync_design]] to preserve
+        // the pre-existing pair state on the warm path.
+        next.transfers = new TransferDictionary(oldData.transfers);
+        transfers.forEach((pair, id) => next.transfers.set(id, pair));
+        tombstoneTransferPairIds.forEach((id) => next.transfers.delete(id));
 
         // Apply transactions delta: clone the existing dict, set
         // added/modified, delete tombstoned ids.
@@ -832,6 +876,9 @@ export const useSync = () => {
       });
       snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) => {
         idbSaves.push(indexedDb.remove(StoreName.securitySnapshots, id));
+      });
+      tombstoneTransferPairIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.transfers, id));
       });
 
       // `allSettled` rather than `all`: a partial IDB failure
@@ -1016,14 +1063,28 @@ export const useSync = () => {
             return;
           }
           case TableName.TransactionPairs: {
-            const r = await fetchTransfers();
+            // Per-event refresh — one event says "the transfers table
+            // changed on another tab". Deliberately passes `null` (full
+            // fetch, no cursor) so the refresh does not need to know
+            // this tab's own cursor state; the delta path is used by
+            // the reconnect-driven `sync()` above. Still applies delta
+            // in-place because a soft-deleted pair on the peer must
+            // evict from this tab's cache.
+            const r = await fetchTransfers(null);
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
-              next.transfers = r.transfers;
+              next.transfers = new TransferDictionary(oldData.transfers);
+              r.transfers.forEach((pair, id) => next.transfers.set(id, pair));
+              r.tombstonePairIds.forEach((id) => next.transfers.delete(id));
               return next;
             });
-            await indexedDb.saveTransfers(r.transfers).catch(console.error);
+            await Promise.allSettled([
+              indexedDb.saveTransfers(r.transfers),
+              ...Array.from(r.tombstonePairIds, (id) =>
+                indexedDb.remove(StoreName.transfers, id),
+              ),
+            ]);
             return;
           }
           case TableName.Securities: {
