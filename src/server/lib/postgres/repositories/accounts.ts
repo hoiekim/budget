@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
+
 import { JSONAccount } from "common";
+import type { AccountGraphOptions } from "common";
 import {
   MaskedUser,
   AccountModel,
@@ -15,7 +18,12 @@ import {
   INSTITUTION_ID,
   QueryExecutor,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import {
+  UpsertResult,
+  successResult,
+  errorResult,
+  noChangeResult,
+} from "../database";
 import { withTransaction } from "../client";
 import { logger } from "../../logger";
 
@@ -67,6 +75,54 @@ export const searchAccountsById = async (
   return models.map((m) => m.toJSON());
 };
 
+/**
+ * Mint a shell `accounts` row for a manual item. The `account_id` is
+ * server-generated (`manual-<uuid>`) so the FE never needs to invent
+ * one — matches the `createManualTransaction` / `createManualInvestmentTransaction`
+ * flow. Ownership and provider gating live at the route boundary
+ * (`getNewAccountRoute`).
+ */
+export const createManualAccount = async (
+  user: MaskedUser,
+  input: { item_id: string; institution_id?: string; graphOptions?: AccountGraphOptions },
+): Promise<JSONAccount | null> => {
+  const account_id = `manual-${randomUUID()}`;
+  const row = AccountModel.fromJSON(
+    {
+      account_id,
+      item_id: input.item_id,
+      institution_id: input.institution_id ?? "Unknown",
+      name: "Unknown",
+      type: "other",
+      subtype: null,
+      balances: {
+        current: null,
+        available: null,
+        limit: null,
+        iso_currency_code: null,
+        unofficial_currency_code: null,
+      },
+      mask: null,
+      official_name: null,
+      graphOptions: input.graphOptions,
+    } as unknown as JSONAccount,
+    user.user_id,
+  );
+  // `raw` exists to hold a provider's payload; a manual account has none,
+  // so `AccountModel.fromJSON` would fill it with a verbatim copy of the
+  // caller-supplied init — unbounded, unvalidated, and a duplicate of the
+  // columns written beside it.
+  delete row.raw;
+  try {
+    const inserted = await accountsTable.insert(row, ["*"]);
+    if (!inserted) return null;
+    return new AccountModel(inserted).toJSON();
+  } catch (error) {
+    logger.error("Failed to create manual account", { account_id, item_id: input.item_id }, error);
+    return null;
+  }
+};
+
 export const upsertAccounts = async (
   user: MaskedUser,
   accounts: JSONAccount[],
@@ -100,8 +156,26 @@ export const updateAccounts = async (
       const row = AccountModel.fromJSON(account, user.user_id);
       delete row.account_id;
       delete row.user_id;
+      // `institution_id` and `item_id` are create-only: an edit body naming
+      // either would move an owned account between items or persist an
+      // arbitrary institution string (neither column carries a foreign key).
+      // `createManualAccount` is the sole writer of both — the mint route is
+      // the only surface that can create or reparent.
+      delete row.institution_id;
+      delete row.item_id;
 
-      const updated = await accountsTable.update(account.account_id, row, undefined, user.user_id);
+      // Soft-deleted rows keep their primary key but are invisible to every
+      // read. Updating one would report a change no user can see; excluding
+      // them here keeps "update" and "reachable" in agreement.
+      const updated = await accountsTable.update(
+        account.account_id,
+        row,
+        undefined,
+        user.user_id,
+        undefined,
+        undefined,
+        true,
+      );
       results.push(
         updated ? successResult(account.account_id, 1) : noChangeResult(account.account_id),
       );

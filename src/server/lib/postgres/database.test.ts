@@ -206,6 +206,39 @@ describe("buildUpdate", () => {
     );
     expect(q!.sql.endsWith("RETURNING id")).toBe(true);
   });
+
+  it("omits the live-row predicate by default — an update is also how a row is restored", () => {
+    const q = buildUpdate("transactions", "id", "t1", { amount: 5 });
+    expect(q!.sql).not.toContain("is_deleted");
+  });
+
+  it("appends the live-row predicate for excludeDeleted without consuming a param", () => {
+    const q = buildUpdate(
+      "transactions",
+      "id",
+      "t1",
+      { amount: 5 },
+      { excludeDeleted: true },
+    );
+    expect(q!.sql).toBe(
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)",
+    );
+    expect(q!.values).toEqual([5, "t1"]);
+  });
+
+  it("orders the live-row predicate after additionalWhere, leaving its numbering intact", () => {
+    const q = buildUpdate(
+      "transactions",
+      "id",
+      "t1",
+      { amount: 5 },
+      { additionalWhere: { column: "user_id", value: "u-1" }, excludeDeleted: true, returning: ["id"] },
+    );
+    expect(q!.sql).toBe(
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2 AND user_id = $3 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING id",
+    );
+    expect(q!.values).toEqual([5, "t1", "u-1"]);
+  });
 });
 
 describe("buildUpsert", () => {
