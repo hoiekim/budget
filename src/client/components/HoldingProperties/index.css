@@ -28,12 +28,6 @@
   color: var(--color-danger, var(--darkRed));
 }
 
-.HoldingProperties .formError {
-  color: var(--color-danger, var(--darkRed));
-  font-size: 12px;
-  padding: 4px 8px;
-}
-
 /* Date suffix inside a per-snapshot `.propertyLabel`. The label itself
  * picks up the canonical `div.Properties > .propertyLabel` styling because
  * the snapshot's label + property are rendered as direct children of the

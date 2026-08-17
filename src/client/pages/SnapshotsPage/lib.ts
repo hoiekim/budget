@@ -7,11 +7,19 @@ export const dateInputValue = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : getDateString(d);
 };
 
-/** A snapshot belongs on the page when its date falls inside the current view range. */
-export const isInRange = (iso: string, start: Date, end: Date): boolean => {
-  const d = new Date(iso);
-  return d >= start && d <= end;
-};
+/**
+ * A snapshot belongs on the page when the day it occupies falls inside the
+ * current view range.
+ *
+ * Takes a bare `YYYY-MM-DD` day rather than the stored instant, and compares it
+ * against the range's local day bounds, so it agrees with the day the row shows
+ * and edits against. Comparing the raw timestamp instead files a row by the
+ * browser's reading of a server-local midnight, which can drop it into the
+ * neighbouring month — a snapshot whose id says the 1st listed under the
+ * previous month while displaying the 1st.
+ */
+export const isDayInRange = (day: string, start: Date, end: Date): boolean =>
+  !!day && day >= getDateString(start) && day <= getDateString(end);
 
 /**
  * The id `POST /api/snapshot` will derive for `targetDate`. The server builds it
@@ -51,11 +59,11 @@ export const dateFromSnapshotId = (id: string): string | null => {
  * UTC-10 browser, and the guard would miss the very collision it exists to catch.
  */
 export const hasDateCollision = (
-  snapshots: { id: string; date: string }[],
+  snapshotIds: string[],
   accountId: string,
   targetDate: string,
   excludeId: string,
 ): boolean => {
   const targetId = snapshotIdFor(accountId, targetDate);
-  return snapshots.some((s) => s.id !== excludeId && s.id === targetId);
+  return snapshotIds.some((id) => id !== excludeId && id === targetId);
 };

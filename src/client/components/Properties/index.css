@@ -121,3 +121,13 @@ div.Properties > div.property > div.row > button {
 div.Properties .row.button:hover {
   background-color: var(--surfaceRaised);
 }
+
+/* Inline validation / save-failure text for any Properties-based screen.
+ * Lived under `.HoldingProperties` while that was the only screen with a
+ * form; SnapshotsPage has no stylesheet of its own, so its error rows
+ * rendered as ordinary body text and read like a value row. */
+div.Properties .formError {
+  color: var(--color-danger, var(--darkRed));
+  font-size: 12px;
+  padding: 4px 8px;
+}

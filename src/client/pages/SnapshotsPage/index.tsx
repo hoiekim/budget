@@ -20,7 +20,7 @@ import {
   KeyValue,
 } from "client";
 import { SnapshotPostResponse } from "server";
-import { dateInputValue, isInRange, hasDateCollision, dateFromSnapshotId } from "./lib";
+import { dateInputValue, isDayInRange, hasDateCollision, dateFromSnapshotId } from "./lib";
 
 /**
  * The day a row occupies, taken from its id — the snapshot's identity — with the
@@ -28,6 +28,15 @@ import { dateInputValue, isInRange, hasDateCollision, dateFromSnapshotId } from 
  */
 const rowDate = (snap: AccountSnapshot): string =>
   dateFromSnapshotId(snap.snapshot.snapshot_id) ?? dateInputValue(snap.snapshot.date);
+
+/**
+ * The message to show for a failed call. `call` returns `status: "error"` with
+ * the raw transport text for a fetch failure ("Failed to fetch", "Load failed"
+ * — wording varies by browser), so only a `status: "failed"` message is a
+ * domain message worth surfacing; anything else falls back to our own wording.
+ */
+const failureMessage = (r: { status: string; message?: string } | void, fallback: string): string =>
+  r && r.status === "failed" && r.message ? r.message : fallback;
 
 /**
  * Only the fields the user types. Errors live in a separate map keyed by the
@@ -58,11 +67,9 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
   // checks — not scoped to the view range, since a date edit can move a
   // snapshot onto a day outside the current window.
   const accountSnaps = useMemo(() => {
-    const all: { id: string; date: string }[] = [];
+    const all: string[] = [];
     accountSnapshots.forEach((snap) => {
-      if (snap.account.account_id === accountId) {
-        all.push({ id: snap.snapshot.snapshot_id, date: snap.snapshot.date });
-      }
+      if (snap.account.account_id === accountId) all.push(snap.snapshot.snapshot_id);
     });
     return all;
   }, [accountSnapshots, accountId]);
@@ -73,10 +80,10 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
     const list: AccountSnapshot[] = [];
     accountSnapshots.forEach((snap) => {
       if (snap.account.account_id !== accountId) return;
-      if (!isInRange(snap.snapshot.date, start, end)) return;
+      if (!isDayInRange(rowDate(snap), start, end)) return;
       list.push(snap);
     });
-    return list.sort((a, b) => (a.snapshot.date < b.snapshot.date ? 1 : -1));
+    return list.sort((a, b) => (rowDate(a) < rowDate(b) ? 1 : -1));
   }, [accountSnapshots, accountId, viewDate]);
 
   const [edits, setEdits] = useState<Record<string, RowEdit>>({});
@@ -88,6 +95,16 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
 
   const setRowError = (id: string, error: string) =>
     setRowErrors((prev) => ({ ...prev, [id]: error }));
+
+  const clearRowState = (ids: string[]) => {
+    const drop = <T,>(prev: Record<string, T>): Record<string, T> => {
+      const next = { ...prev };
+      ids.forEach((id) => delete next[id]);
+      return next;
+    };
+    setEdits(drop);
+    setRowErrors(drop);
+  };
 
   const saveSnapshot = async (snap: AccountSnapshot, edit: RowEdit) => {
     const oldId = snap.snapshot.snapshot_id;
@@ -127,7 +144,7 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
         .catch(console.error);
       const newId = r?.body?.snapshot_id;
       if (r?.status !== "success" || !newId) {
-        return setRowError(oldId, r?.message || "Failed to save snapshot");
+        return setRowError(oldId, failureMessage(r, "Failed to save snapshot"));
       }
       // Cache the date the SERVER stored, not a browser-local re-derivation of
       // the same input — otherwise the optimistic row disagrees with the next
@@ -141,7 +158,19 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       if (newId !== oldId) {
         const dr = await call.delete(`/api/snapshot?id=${oldId}`).catch(console.error);
         oldDeleted = dr?.status === "success";
-        if (!oldDeleted) setRowError(oldId, "Saved, but failed to remove the old-date snapshot");
+      }
+
+      // Drop this row's typed-in state once it is persisted, under BOTH ids.
+      // The edit map is keyed by snapshot_id, which is derived from the date, so
+      // a date edit moves the row to a new key and leaves the old entry behind.
+      // Move the row back later and that stale entry is picked up again — the
+      // row then renders the abandoned date while the server holds the real one,
+      // and the next focus/blur saves the stale value, moving the snapshot with
+      // no user edit at all. Clearing both makes the row re-derive from the
+      // snapshot, which is the only state that survived the round trip.
+      clearRowState([oldId, newId]);
+      if (newId !== oldId && !oldDeleted) {
+        setRowError(newId, "Saved, but failed to remove the old-date snapshot");
       }
 
       setData((oldData) => {
@@ -168,7 +197,8 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
   const deleteSnapshot = (snap: AccountSnapshot) => async () => {
     const id = snap.snapshot.snapshot_id;
     const r = await call.delete(`/api/snapshot?id=${id}`).catch(console.error);
-    if (r?.status !== "success") return setRowError(id, r?.message || "Failed to delete snapshot");
+    if (r?.status !== "success")
+      return setRowError(id, failureMessage(r, "Failed to delete snapshot"));
     setData((oldData) => {
       const newData = new Data(oldData);
       const next = new AccountSnapshotDictionary(newData.accountSnapshots);
@@ -201,7 +231,7 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       .catch(console.error);
     const newId = r?.body?.snapshot_id;
     if (r?.status !== "success" || !newId) {
-      return setAddError(r?.message || "Failed to add snapshot");
+      return setAddError(failureMessage(r, "Failed to add snapshot"));
     }
     const newDate = r.body?.date ?? new LocalDate(addDate).toISOString();
     setData((oldData) => {
