@@ -306,9 +306,11 @@ const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResu
   };
 
   const params = new URLSearchParams();
-  // Always opt in to eviction-signal delivery. On cold (no cursor) the
-  // server has no soft-deleted-rejected pairs to send that aren't already
-  // absent from an active-only fetch, so this is a no-op there.
+  // Always opt in to eviction-signal delivery so a peer's soft-delete
+  // or rejection evicts from this tab's cache even when the mutation
+  // predates this tab's oldest cursor. The FE filters the extra rows
+  // into `tombstonePairIds`; the additional wire cost is one row per
+  // soft-deleted/rejected pair the user has, not per-sync churn.
   params.append("include-deleted", "true");
   if (cursor) params.append("updated-after", cursor);
   const path = `/api/transfers?${params.toString()}`;
@@ -1064,13 +1066,13 @@ export const useSync = () => {
           }
           case TableName.TransactionPairs: {
             // Per-event refresh — one event says "the transfers table
-            // changed on another tab". Deliberately passes `null` (full
-            // fetch, no cursor) so the refresh does not need to know
-            // this tab's own cursor state; the delta path is used by
-            // the reconnect-driven `sync()` above. Still applies delta
-            // in-place because a soft-deleted pair on the peer must
-            // evict from this tab's cache.
-            const r = await fetchTransfers(null);
+            // changed on another tab". Passes the same delta cursor
+            // sibling time-partitioned domains in this switch already
+            // do (transactions/inv-tx/splits/snapshots), so a peer
+            // confirming one pair costs a ~few-byte delta on every
+            // open tab instead of the full 399 KB pair set. The
+            // in-place setData below evicts soft-deleted pairs.
+            const r = await fetchTransfers(cursor);
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
