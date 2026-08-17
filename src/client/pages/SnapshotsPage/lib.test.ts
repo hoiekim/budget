@@ -1,28 +1,38 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect } from "bun:test";
+import { resolve } from "path";
 import { dateInputValue, isInRange, hasDateCollision, snapshotIdFor } from "./lib";
+
+const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..");
 
 describe("SnapshotsPage/lib", () => {
   describe("dateInputValue", () => {
-    // `bun test` runs at UTC, where reading a Date's local components and
-    // slicing its ISO string are the same operation — so the day-shift this
-    // function exists to prevent is invisible unless the zone is pinned.
-    // Restored after the block; `process.env.TZ` is process-global.
-    const originalTZ = process.env.TZ;
-    beforeAll(() => {
-      process.env.TZ = "America/Los_Angeles";
-    });
-    afterAll(() => {
-      if (originalTZ === undefined) delete process.env.TZ;
-      else process.env.TZ = originalTZ;
-    });
-
     it("reads the LOCAL calendar day, not the UTC one", () => {
-      // 2026-07-10 23:00 PDT is 2026-07-11 06:00 UTC — the two readings disagree,
-      // so a `toISOString().slice(0, 10)` implementation fails the second assert.
-      const iso = new Date(2026, 6, 10, 23).toISOString();
+      // Reading a Date's local components and slicing its ISO string are the
+      // same operation at UTC, which is where CI runs — so this guarantee is
+      // untestable in-process without pinning the zone, and pinning
+      // `process.env.TZ` in-process leaks into every suite that runs after
+      // this one (it shifted two unrelated date tests by a day). Pin it in a
+      // child process instead, where it cannot escape.
+      //
+      // 2026-07-10 23:00 PDT is 2026-07-11 06:00 UTC: the local and UTC days
+      // disagree, so a `toISOString().slice(0, 10)` implementation fails here.
+      const script = [
+        'import { dateInputValue } from "./src/client/pages/SnapshotsPage/lib";',
+        "const iso = new Date(2026, 6, 10, 23).toISOString();",
+        "console.log(JSON.stringify({ iso, rendered: dateInputValue(iso) }));",
+      ].join("\n");
 
+      const { stdout, stderr, exitCode } = Bun.spawnSync({
+        cmd: ["bun", "-e", script],
+        cwd: REPO_ROOT,
+        env: { ...process.env, TZ: "America/Los_Angeles" },
+      });
+      expect(exitCode, stderr.toString()).toBe(0);
+
+      const { iso, rendered } = JSON.parse(stdout.toString());
+      // The fixture only proves anything if the two readings really do differ.
       expect(iso.slice(0, 10)).toBe("2026-07-11");
-      expect(dateInputValue(iso)).toBe("2026-07-10");
+      expect(rendered).toBe("2026-07-10");
     });
 
     it("returns '' for an empty string", () => {
