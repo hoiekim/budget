@@ -27,6 +27,16 @@ export type InstitutionsGetResponse = JSONInstitution[];
  * yet — same fallback `GET /institution?id=` already implements). Plaid's
  * `getInstitution` is per-id, so the fallback is a small `Promise.all` over
  * the misses, not a re-batch — Plaid has no matching endpoint.
+ *
+ * **Divergence from the single-id sibling**: on a Plaid miss, this route
+ * silently omits the id from the response (partial-success 200), whereas
+ * `get-institution.ts` throws (`Server failed to get institutions.`) on the
+ * same failure and the framework turns it into a 500. The batch semantic
+ * has to be all-or-nothing OR partial; partial keeps every other resolved
+ * institution reachable to the caller even when one is unreachable — a
+ * fresh institution the FE just connected shouldn't blank every other
+ * institution's logo/name on the same render pass. Do NOT copy-paste the
+ * single-id `throw` into this loop.
  */
 export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
   "GET",

@@ -9,6 +9,7 @@ import {
   SnapshotsGetResponse,
   SecuritiesGetResponse,
   TransfersGetResponse,
+  InstitutionsGetResponse,
 } from "server";
 import {
   Account,
@@ -444,7 +445,7 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   if (ids.length === 0) return result;
 
   const response = await call
-    .get<JSONInstitution[]>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
+    .get<InstitutionsGetResponse>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
     .catch(console.error);
   if (!response || response.status === "error") {
     result.networkFailed = true;
