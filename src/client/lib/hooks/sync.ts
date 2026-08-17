@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { JSONInstitution, JSONSnapshotData, TableName } from "common";
+import { JSONSnapshotData, TableName } from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
