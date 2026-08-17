@@ -1,4 +1,4 @@
-import { Fragment, FormEventHandler, useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { getDateString, LocalDate } from "common";
 import {
   call,
@@ -16,15 +16,22 @@ import {
   PropertyLabel,
   Property,
   Row,
+  ButtonRow,
   KeyValue,
 } from "client";
 import { SnapshotPostResponse } from "server";
 import { dateInputValue, isInRange, hasDateCollision } from "./lib";
 
+/**
+ * Only the fields the user types. Errors live in a separate map keyed by the
+ * same id — folding them in here meant a `setRowError` on a row the user never
+ * touched stored `{ error }` with no `value`/`date`, and the render's `??`
+ * fallback (nullish only) let that win and flipped both inputs from controlled
+ * to uncontrolled.
+ */
 interface RowEdit {
   value: string;
   date: string;
-  error: string;
 }
 
 /**
@@ -35,7 +42,7 @@ interface RowEdit {
  * balance graph for a month.
  */
 const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
-  const { data, viewDate, setData, router } = useAppContext();
+  const { data, viewDate, setData } = useAppContext();
   const { accountSnapshots, accounts } = data;
 
   const account = accounts.get(accountId);
@@ -66,19 +73,14 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
   }, [accountSnapshots, accountId, viewDate]);
 
   const [edits, setEdits] = useState<Record<string, RowEdit>>({});
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [addValue, setAddValue] = useState("");
   const [addDate, setAddDate] = useState(getDateString(viewDate.getEndDate()));
   const [addError, setAddError] = useState("");
   const saving = useRef<Set<string>>(new Set());
 
-  const goBack = () => {
-    const params = new URLSearchParams();
-    params.set("account_id", accountId);
-    router.go(PATH.ACCOUNT_DETAIL, { params });
-  };
-
   const setRowError = (id: string, error: string) =>
-    setEdits((prev) => ({ ...prev, [id]: { ...prev[id], error } }));
+    setRowErrors((prev) => ({ ...prev, [id]: error }));
 
   const saveSnapshot = async (snap: AccountSnapshot, edit: RowEdit) => {
     const oldId = snap.snapshot.snapshot_id;
@@ -91,21 +93,20 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
     const numericValue = parseFloat(edit.value);
     if (Number.isNaN(numericValue)) return setRowError(oldId, "Balance must be a number");
     if (!edit.date) return setRowError(oldId, "Date is required");
-    if (dateChanged && hasDateCollision(accountSnaps, edit.date, oldId)) {
+    if (dateChanged && hasDateCollision(accountSnaps, accountId, edit.date, oldId)) {
       return setRowError(oldId, "A snapshot already exists on that date");
     }
     if (saving.current.has(oldId)) return;
     saving.current.add(oldId);
 
     try {
-      // Bare `YYYY-MM-DD` — the server's `LocalDate` reads it as local
-      // midnight, so the derived `${account_id}-${YYYYMMDD}` id lands on the
-      // day the user picked (an ISO string would shift it a day in PST).
-      const newDate = new LocalDate(edit.date).toISOString();
       const newAccount = new Account({
         ...snap.account,
         balances: { ...snap.account.balances, current: numericValue },
       });
+      // Bare `YYYY-MM-DD` — the server's `LocalDate` reads it as local
+      // midnight, so the derived `${account_id}-${YYYYMMDD}` id lands on the
+      // day the user picked (an ISO string would shift it a day in PST).
       const r = await call
         .post<SnapshotPostResponse>("/api/snapshot", {
           account: newAccount,
@@ -116,6 +117,10 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       if (r?.status !== "success" || !newId) {
         return setRowError(oldId, r?.message || "Failed to save snapshot");
       }
+      // Cache the date the SERVER stored, not a browser-local re-derivation of
+      // the same input — otherwise the optimistic row disagrees with the next
+      // sync whenever the browser and the server sit in different zones.
+      const newDate = r.body?.date ?? new LocalDate(edit.date).toISOString();
 
       // A date edit lands under a new id — only evict the stale row once the
       // server confirms its deletion, so a failed DELETE can't desync the
@@ -162,18 +167,16 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
     });
   };
 
-  const onSubmitAdd: FormEventHandler<HTMLFormElement> = async (e) => {
-    e.preventDefault();
+  const onSubmitAdd = async () => {
     setAddError("");
     if (!account) return setAddError("Account context is missing");
     const numericValue = parseFloat(addValue);
     if (Number.isNaN(numericValue)) return setAddError("Balance must be a number");
     if (!addDate) return setAddError("Date is required");
-    if (hasDateCollision(accountSnaps, addDate, "")) {
+    if (hasDateCollision(accountSnaps, accountId, addDate, "")) {
       return setAddError("A snapshot already exists on that date");
     }
 
-    const newDate = new LocalDate(addDate).toISOString();
     const newAccount = new Account({
       ...account,
       balances: { ...account.balances, current: numericValue },
@@ -188,6 +191,7 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
     if (r?.status !== "success" || !newId) {
       return setAddError(r?.message || "Failed to add snapshot");
     }
+    const newDate = r.body?.date ?? new LocalDate(addDate).toISOString();
     setData((oldData) => {
       const newData = new Data(oldData);
       const next = new AccountSnapshotDictionary(newData.accountSnapshots);
@@ -225,10 +229,12 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
         const edit = edits[id] ?? {
           value: String(snap.account.balances.current ?? ""),
           date: dateInputValue(snap.snapshot.date),
-          error: "",
         };
-        const setEdit = (patch: Partial<RowEdit>) =>
+        const error = rowErrors[id] ?? "";
+        const setEdit = (patch: Partial<RowEdit>) => {
           setEdits((prev) => ({ ...prev, [id]: { ...edit, ...patch } }));
+          setRowError(id, "");
+        };
         // Fragment keeps each per-snapshot <PropertyLabel> + <Property> pair as
         // DIRECT children of <Properties> so the `div.Properties > .propertyLabel`
         // / `> .property` direct-child styling applies (no wrapper div).
@@ -241,7 +247,7 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
                   type="number"
                   step="any"
                   value={edit.value}
-                  onChange={(e) => setEdit({ value: e.target.value, error: "" })}
+                  onChange={(e) => setEdit({ value: e.target.value })}
                   onBlur={() => saveSnapshot(snap, edit)}
                 />
               </KeyValue>
@@ -249,11 +255,11 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
                 <input
                   type="date"
                   value={edit.date}
-                  onChange={(e) => setEdit({ date: e.target.value, error: "" })}
+                  onChange={(e) => setEdit({ date: e.target.value })}
                   onBlur={() => saveSnapshot(snap, edit)}
                 />
               </KeyValue>
-              {edit.error && <Row className="formError">{edit.error}</Row>}
+              {error && <Row className="formError">{error}</Row>}
               <Row className="button">
                 <DeleteButton
                   confirmMessage="Delete this account snapshot?"
@@ -268,34 +274,25 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       })}
 
       <PropertyLabel>Add&nbsp;Snapshot</PropertyLabel>
+      {/* No <form> wrapper: it would sit between div.property and every
+          div.row, and the Properties styling is direct-child
+          (`div.Properties > div.property > div.row`), so this whole section
+          would lose its row padding, key/value spread and input alignment. */}
       <Property>
-        <form onSubmit={onSubmitAdd}>
-          <KeyValue name="Balance">
-            <input
-              type="number"
-              step="any"
-              value={addValue}
-              onChange={(e) => setAddValue(e.target.value)}
-              placeholder="0"
-            />
-          </KeyValue>
-          <KeyValue name="Date">
-            <input type="date" value={addDate} onChange={(e) => setAddDate(e.target.value)} />
-          </KeyValue>
-          {addError && <Row className="formError">{addError}</Row>}
-          <Row className="button">
-            <button type="submit">Add</button>
-          </Row>
-        </form>
-      </Property>
-
-      <PropertyLabel>&nbsp;</PropertyLabel>
-      <Property>
-        <Row className="button">
-          <button type="button" onClick={goBack}>
-            Back
-          </button>
-        </Row>
+        <KeyValue name="Balance">
+          <input
+            type="number"
+            step="any"
+            value={addValue}
+            onChange={(e) => setAddValue(e.target.value)}
+            placeholder="0"
+          />
+        </KeyValue>
+        <KeyValue name="Date">
+          <input type="date" value={addDate} onChange={(e) => setAddDate(e.target.value)} />
+        </KeyValue>
+        {addError && <Row className="formError">{addError}</Row>}
+        <ButtonRow onClick={onSubmitAdd}>Add</ButtonRow>
       </Property>
     </Properties>
   );

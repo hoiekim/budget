@@ -15,6 +15,7 @@ import {
   SECURITY_ID,
   HOLDING_SECURITY_ID,
   USER_ID,
+  IS_DELETED,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { searchSecuritiesById } from "./securities";
@@ -257,6 +258,7 @@ export const upsertHoldingSnapshots = async (
         [USER_ID]: user.user_id,
         [SNAPSHOT_DATE]: snapshot.snapshot_date,
         [SNAPSHOT_TYPE]: "holding",
+        [IS_DELETED]: false,
         holding_account_id: snapshot.holding_account_id,
         holding_security_id: snapshot.holding_security_id,
         institution_price: snapshot.institution_price,
@@ -290,6 +292,11 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
           [SNAPSHOT_DATE]: snapshot.date,
           [SNAPSHOT_TYPE]: "account_balance",
           [ACCOUNT_ID]: account.account_id,
+          // Deletes are soft, so a re-add (or a date edit) that lands on a
+          // previously deleted day updates the tombstoned row. Without this the
+          // row keeps `is_deleted = TRUE`, the write "succeeds", and the next
+          // delta sync reads it back as a tombstone and evicts it again.
+          [IS_DELETED]: false,
           balances_available: account.balances?.available,
           balances_current: account.balances?.current,
           balances_limit: account.balances?.limit,
@@ -311,6 +318,7 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
           [USER_ID]: snapshotData.user?.user_id,
           [SNAPSHOT_DATE]: snapshot.date,
           [SNAPSHOT_TYPE]: "holding",
+          [IS_DELETED]: false,
           holding_account_id: holding.account_id,
           holding_security_id: holding.security_id,
           institution_price: holding.institution_price,
