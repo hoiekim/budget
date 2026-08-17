@@ -23,6 +23,24 @@ export const snapshotIdFor = (accountId: string, targetDate: string): string =>
   `${accountId}-${targetDate.replace(/-/g, "")}`;
 
 /**
+ * The inverse: the calendar day an account snapshot's id encodes.
+ *
+ * This — not the stored timestamp — is what the row must show and edit against.
+ * The id is the snapshot's identity (one per account per day) and both writers
+ * derive it the same way, from the SERVER's local components: `post-snapshot.ts`
+ * for user edits and `create-snapshots.ts` for the sync. Rendering the
+ * timestamp instead reads it in the BROWSER's zone, so a row can display, and
+ * compare against, a different day than it actually occupies.
+ *
+ * Returns null when the id is not the expected `<account_id>-<YYYYMMDD>` shape,
+ * so the caller can fall back rather than render garbage.
+ */
+export const dateFromSnapshotId = (id: string): string | null => {
+  const match = /-(\d{4})(\d{2})(\d{2})$/.exec(id);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
+};
+
+/**
  * Account snapshot ids are one-per-day (`${account_id}-${YYYYMMDD}`), so moving
  * a snapshot onto a day another snapshot already occupies would silently
  * overwrite it. Detect that before the write so the UI can block it.

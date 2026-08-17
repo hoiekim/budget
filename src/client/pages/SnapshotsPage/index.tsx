@@ -20,7 +20,14 @@ import {
   KeyValue,
 } from "client";
 import { SnapshotPostResponse } from "server";
-import { dateInputValue, isInRange, hasDateCollision } from "./lib";
+import { dateInputValue, isInRange, hasDateCollision, dateFromSnapshotId } from "./lib";
+
+/**
+ * The day a row occupies, taken from its id — the snapshot's identity — with the
+ * stored timestamp only as a fallback for an id that is not the expected shape.
+ */
+const rowDate = (snap: AccountSnapshot): string =>
+  dateFromSnapshotId(snap.snapshot.snapshot_id) ?? dateInputValue(snap.snapshot.date);
 
 /**
  * Only the fields the user types. Errors live in a separate map keyed by the
@@ -85,7 +92,12 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
   const saveSnapshot = async (snap: AccountSnapshot, edit: RowEdit) => {
     const oldId = snap.snapshot.snapshot_id;
     const originalValue = String(snap.account.balances.current ?? "");
-    const dateChanged = dateInputValue(snap.snapshot.date) !== edit.date;
+    // Compare against the day the id encodes, not a browser-local render of the
+    // stored timestamp. Those disagree whenever the browser and server sit in
+    // different zones, and reading `dateChanged` as false on a row whose
+    // displayed day already differs from its id would skip the collision guard
+    // below and silently re-date the snapshot on a balance-only edit.
+    const dateChanged = rowDate(snap) !== edit.date;
     // No-op check first, so blurring an untouched row (incl. a null balance
     // rendered as "") never trips the numeric validation below.
     if (edit.value === originalValue && !dateChanged) return;
@@ -228,7 +240,7 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
         const id = snap.snapshot.snapshot_id;
         const edit = edits[id] ?? {
           value: String(snap.account.balances.current ?? ""),
-          date: dateInputValue(snap.snapshot.date),
+          date: rowDate(snap),
         };
         const error = rowErrors[id] ?? "";
         const setEdit = (patch: Partial<RowEdit>) => {

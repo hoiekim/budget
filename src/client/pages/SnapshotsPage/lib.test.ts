@@ -1,6 +1,12 @@
 import { describe, it, expect } from "bun:test";
 import { resolve } from "path";
-import { dateInputValue, isInRange, hasDateCollision, snapshotIdFor } from "./lib";
+import {
+  dateInputValue,
+  isInRange,
+  hasDateCollision,
+  snapshotIdFor,
+  dateFromSnapshotId,
+} from "./lib";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..");
 
@@ -62,6 +68,35 @@ describe("SnapshotsPage/lib", () => {
   describe("snapshotIdFor", () => {
     it("mirrors the server's `${account_id}-${YYYYMMDD}` derivation", () => {
       expect(snapshotIdFor("a", "2026-07-10")).toBe("a-20260710");
+    });
+  });
+
+  describe("dateFromSnapshotId", () => {
+    it("reads back the day snapshotIdFor encoded", () => {
+      expect(dateFromSnapshotId("a-20260710")).toBe("2026-07-10");
+      expect(dateFromSnapshotId(snapshotIdFor("acct-1", "2026-12-31"))).toBe("2026-12-31");
+    });
+
+    it("survives an account id that itself contains dashes and digits", () => {
+      expect(dateFromSnapshotId("acct-99-20260710")).toBe("2026-07-10");
+    });
+
+    it("returns null for an id that is not the expected shape", () => {
+      expect(dateFromSnapshotId("acct-1")).toBe(null);
+      expect(dateFromSnapshotId("")).toBe(null);
+      // Too few digits — must not be read as a partial date.
+      expect(dateFromSnapshotId("a-2026071")).toBe(null);
+    });
+
+    it("is the day the row must edit against when the timestamp renders differently", () => {
+      // The bypass this exists to close: a row whose stored timestamp renders as
+      // 07-09 in this browser but whose id says 07-10. Initialising the row's
+      // date from the timestamp would make a balance-only edit look like no date
+      // change, skip the collision guard, and re-date the snapshot.
+      const id = "a-20260710";
+      const stored = new Date(2026, 6, 9, 12).toISOString();
+      expect(dateInputValue(stored)).toBe("2026-07-09");
+      expect(dateFromSnapshotId(id)).toBe("2026-07-10");
     });
   });
 
