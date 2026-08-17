@@ -6,6 +6,7 @@ import {
   hasDateCollision,
   snapshotIdFor,
   dateFromSnapshotId,
+  failureMessage,
 } from "./lib";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..");
@@ -70,11 +71,41 @@ describe("SnapshotsPage/lib", () => {
     });
 
     it("files a boundary day by the day itself, not by a zone-shifted instant", () => {
-      // The row whose id says the 1st: as a bare day it belongs to July in any
-      // zone. Read as an instant, a server-local midnight can fall into June for
-      // a browser behind the server, listing the row under the previous month
-      // while it displays the 1st.
-      expect(isDayInRange(dateFromSnapshotId("acct-20260701")!, start, end)).toBe(true);
+      // At UTC a bare day string and the range bounds are the same instant, so
+      // an implementation that re-reads the day as a Date passes here — and CI
+      // runs at UTC. Pin a zone behind the server in a child process (never
+      // in-process: `process.env.TZ` leaks across suites and reddened CI once
+      // already) so this actually protects the change.
+      //
+      // The row whose id says July 1 belongs to July in any zone. Read as an
+      // instant, `new Date("2026-07-01")` is UTC midnight = 2026-06-30 17:00
+      // PDT, which sorts before a local-midnight July 1 bound and drops the row
+      // into June.
+      const script = [
+        'import { isDayInRange, dateFromSnapshotId } from "./src/client/pages/SnapshotsPage/lib";',
+        'const start = new Date("2026-07-01T00:00:00");',
+        'const end = new Date("2026-07-31T23:59:59");',
+        'const day = dateFromSnapshotId("acct-20260701");',
+        "const shifted = new Date(day);",
+        "console.log(JSON.stringify({",
+        "  day,",
+        "  inRange: isDayInRange(day, start, end),",
+        "  asInstantWouldBe: shifted >= start && shifted <= end,",
+        "}));",
+      ].join("\n");
+
+      const { stdout, stderr, exitCode } = Bun.spawnSync({
+        cmd: ["bun", "-e", script],
+        cwd: REPO_ROOT,
+        env: { ...process.env, TZ: "America/Los_Angeles" },
+      });
+      expect(exitCode, stderr.toString()).toBe(0);
+
+      const { day, inRange, asInstantWouldBe } = JSON.parse(stdout.toString());
+      expect(day).toBe("2026-07-01");
+      // The fixture only proves anything if the two readings really do differ.
+      expect(asInstantWouldBe).toBe(false);
+      expect(inRange).toBe(true);
     });
   });
 
@@ -110,6 +141,33 @@ describe("SnapshotsPage/lib", () => {
       const stored = new Date(2026, 6, 9, 12).toISOString();
       expect(dateInputValue(stored)).toBe("2026-07-09");
       expect(dateFromSnapshotId(id)).toBe("2026-07-10");
+    });
+  });
+
+  describe("failureMessage", () => {
+    it("shows a domain message from a `failed` response", () => {
+      // What the 401 gate returns — the user needs to see this one.
+      expect(failureMessage({ status: "failed", message: "Not authenticated." }, "fallback")).toBe(
+        "Not authenticated.",
+      );
+    });
+
+    it("suppresses the browser's own words on a transport failure", () => {
+      // `call` returns status "error" with the raw fetch text.
+      expect(failureMessage({ status: "error", message: "Failed to fetch" }, "Failed to save")).toBe(
+        "Failed to save",
+      );
+    });
+
+    it("suppresses Route's catch-all error message", () => {
+      expect(
+        failureMessage({ status: "error", message: "Internal server error" }, "Failed to save"),
+      ).toBe("Failed to save");
+    });
+
+    it("falls back when there is no response or no message at all", () => {
+      expect(failureMessage(undefined, "Failed to save")).toBe("Failed to save");
+      expect(failureMessage({ status: "failed" }, "Failed to save")).toBe("Failed to save");
     });
   });
 

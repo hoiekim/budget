@@ -20,7 +20,13 @@ import {
   KeyValue,
 } from "client";
 import { SnapshotPostResponse } from "server";
-import { dateInputValue, isDayInRange, hasDateCollision, dateFromSnapshotId } from "./lib";
+import {
+  dateInputValue,
+  isDayInRange,
+  hasDateCollision,
+  dateFromSnapshotId,
+  failureMessage,
+} from "./lib";
 
 /**
  * The day a row occupies, taken from its id — the snapshot's identity — with the
@@ -28,15 +34,6 @@ import { dateInputValue, isDayInRange, hasDateCollision, dateFromSnapshotId } fr
  */
 const rowDate = (snap: AccountSnapshot): string =>
   dateFromSnapshotId(snap.snapshot.snapshot_id) ?? dateInputValue(snap.snapshot.date);
-
-/**
- * The message to show for a failed call. `call` returns `status: "error"` with
- * the raw transport text for a fetch failure ("Failed to fetch", "Load failed"
- * — wording varies by browser), so only a `status: "failed"` message is a
- * domain message worth surfacing; anything else falls back to our own wording.
- */
-const failureMessage = (r: { status: string; message?: string } | void, fallback: string): string =>
-  r && r.status === "failed" && r.message ? r.message : fallback;
 
 /**
  * Only the fields the user types. Errors live in a separate map keyed by the
@@ -96,14 +93,30 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
   const setRowError = (id: string, error: string) =>
     setRowErrors((prev) => ({ ...prev, [id]: error }));
 
-  const clearRowState = (ids: string[]) => {
-    const drop = <T,>(prev: Record<string, T>): Record<string, T> => {
+  /**
+   * Drop a row's typed-in state once its write has landed, so the row
+   * re-derives from the snapshot.
+   *
+   * `keepIfChanged` is the edit object the write was built from. A save is
+   * async, so the user can type into the row while it is in flight; `setEdit`
+   * always stores a fresh object, so a reference mismatch means "touched since
+   * the request went out" and that entry is left alone rather than reverted out
+   * from under them.
+   */
+  const clearRowState = (ids: string[], keepIfChanged?: RowEdit) => {
+    setEdits((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => {
+        if (keepIfChanged && prev[id] && prev[id] !== keepIfChanged) return;
+        delete next[id];
+      });
+      return next;
+    });
+    setRowErrors((prev) => {
       const next = { ...prev };
       ids.forEach((id) => delete next[id]);
       return next;
-    };
-    setEdits(drop);
-    setRowErrors(drop);
+    });
   };
 
   const saveSnapshot = async (snap: AccountSnapshot, edit: RowEdit) => {
@@ -168,7 +181,7 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       // and the next focus/blur saves the stale value, moving the snapshot with
       // no user edit at all. Clearing both makes the row re-derive from the
       // snapshot, which is the only state that survived the round trip.
-      clearRowState([oldId, newId]);
+      clearRowState([oldId, newId], edit);
       if (newId !== oldId && !oldDeleted) {
         setRowError(newId, "Saved, but failed to remove the old-date snapshot");
       }

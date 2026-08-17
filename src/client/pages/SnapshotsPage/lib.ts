@@ -67,3 +67,18 @@ export const hasDateCollision = (
   const targetId = snapshotIdFor(accountId, targetDate);
   return snapshotIds.some((id) => id !== excludeId && id === targetId);
 };
+
+/**
+ * The message to show for a failed call.
+ *
+ * `call` returns `status: "error"` with the raw transport text for a fetch or
+ * parse failure ("Failed to fetch", "Load failed" — the wording is the
+ * browser's, not ours), so only a `status: "failed"` message is a domain
+ * message worth putting in front of the user. The 401 gate
+ * (`start.ts` → "Not authenticated.") is `failed`; `Route`'s catch-all
+ * ("Internal server error") is `error`.
+ */
+export const failureMessage = (
+  r: { status: string; message?: string } | void,
+  fallback: string,
+): string => (r && r.status === "failed" && r.message ? r.message : fallback);
