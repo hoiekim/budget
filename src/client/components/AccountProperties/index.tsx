@@ -228,41 +228,28 @@ export const AccountProperties = ({ account }: Props) => {
               <ToggleInput checked={useSnapshotsForGraph} onChange={onClickUseSnapshotsForGraph} />
             </KeyValue>
           </Property>
-          <PropertyLabel>Account&nbsp;Preference</PropertyLabel>
-          <Property>
-            <KeyValue name="Default&nbsp;Budget">
-              <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
-                <option value="">Select Budget</option>
-                {budgetOptions}
-              </select>
-            </KeyValue>
-            <KeyValue name="Archive">
-              {/* Hide already removes the account from view entirely; archiving
-               *  on top adds nothing and would surface in "Show archived (N)"
-               *  even though the user's already hidden the row. Disable to
-               *  steer the user toward Unhide first if they want a different
-               *  classification. Hoie 2026-06-25. */}
-              <ToggleInput checked={isArchived} onChange={onClickArchive} disabled={isHidden} />
-            </KeyValue>
-            <KeyValue name="Hide">
-              <ToggleInput checked={isHidden} onChange={onClickHide} />
-            </KeyValue>
-          </Property>
         </>
       )}
-      {/* Orphan path: a manual account that was already archived (e.g. on
-       *  an older client version where Archive was ungated, or via direct
-       *  API). Without this, the user has no UI path back — Delete
-       *  destroys history, which is the exact case `archived` was meant
-       *  to avoid. Renders nothing for the common manual-and-not-archived
-       *  case so we don't reintroduce a separate Archive section. */}
-      {isManualAccount && isArchived && (
-        <Property>
-          <KeyValue name="Archive">
-            <ToggleInput checked={isArchived} onChange={onClickArchive} />
-          </KeyValue>
-        </Property>
-      )}
+      <PropertyLabel>Account&nbsp;Preference</PropertyLabel>
+      <Property>
+        <KeyValue name="Default&nbsp;Budget">
+          <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>
+            <option value="">Select Budget</option>
+            {budgetOptions}
+          </select>
+        </KeyValue>
+        <KeyValue name="Archive">
+          {/* Hide already removes the account from view entirely; archiving
+           *  on top adds nothing and would surface in "Show archived (N)"
+           *  even though the user's already hidden the row. Disable to
+           *  steer the user toward Unhide first if they want a different
+           *  classification. Hoie 2026-06-25. */}
+          <ToggleInput checked={isArchived} onChange={onClickArchive} disabled={isHidden} />
+        </KeyValue>
+        <KeyValue name="Hide">
+          <ToggleInput checked={isHidden} onChange={onClickHide} />
+        </KeyValue>
+      </Property>
       {(isManualAccount || type === AccountType.Investment) && (
         <>
           <PropertyLabel>Add</PropertyLabel>
