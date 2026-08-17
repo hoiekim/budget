@@ -26,6 +26,7 @@ import {
   hasDateCollision,
   dateFromSnapshotId,
   failureMessage,
+  dropRowState,
 } from "./lib";
 
 /**
@@ -104,19 +105,10 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
    * from under them.
    */
   const clearRowState = (ids: string[], keepIfChanged?: RowEdit) => {
-    setEdits((prev) => {
-      const next = { ...prev };
-      ids.forEach((id) => {
-        if (keepIfChanged && prev[id] && prev[id] !== keepIfChanged) return;
-        delete next[id];
-      });
-      return next;
-    });
-    setRowErrors((prev) => {
-      const next = { ...prev };
-      ids.forEach((id) => delete next[id]);
-      return next;
-    });
+    setEdits((prev) => dropRowState(prev, ids, keepIfChanged));
+    // Errors take no guard: `setEdit` blanks the row's error on every keystroke,
+    // so after a successful write any surviving error is stale by definition.
+    setRowErrors((prev) => dropRowState(prev, ids));
   };
 
   const saveSnapshot = async (snap: AccountSnapshot, edit: RowEdit) => {
@@ -181,7 +173,11 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       // and the next focus/blur saves the stale value, moving the snapshot with
       // no user edit at all. Clearing both makes the row re-derive from the
       // snapshot, which is the only state that survived the round trip.
-      clearRowState([oldId, newId], edit);
+      // Only guard the in-flight edit when the id is unchanged. If the row moved
+      // to `newId`, the key it renders under changed too, so preserving the entry
+      // under `oldId` would strand it exactly the way the abandoned entries above
+      // were stranded — and re-create the bug this clearing exists to fix.
+      clearRowState([oldId, newId], newId === oldId ? edit : undefined);
       if (newId !== oldId && !oldDeleted) {
         setRowError(newId, "Saved, but failed to remove the old-date snapshot");
       }
@@ -220,6 +216,10 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       newData.accountSnapshots = next;
       return newData;
     });
+    // Ids are one-per-day, so re-adding this same day reuses this exact key.
+    // Leaving the entry behind would render the deleted row's typed value, date
+    // and error on the new row, and its first blur would re-date the snapshot.
+    clearRowState([id]);
   };
 
   const onSubmitAdd = async () => {
@@ -259,6 +259,10 @@ const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
       newData.accountSnapshots = next;
       return newData;
     });
+    // Same reuse hazard as the delete path: this id may carry state left over
+    // from a row that previously occupied this day, so the freshly added row
+    // must start from the snapshot rather than inherit it.
+    clearRowState([newId]);
     setAddValue("");
   };
 

@@ -19,7 +19,7 @@ export const dateInputValue = (iso: string): string => {
  * previous month while displaying the 1st.
  */
 export const isDayInRange = (day: string, start: Date, end: Date): boolean =>
-  !!day && day >= getDateString(start) && day <= getDateString(end);
+  day >= getDateString(start) && day <= getDateString(end);
 
 /**
  * The id `POST /api/snapshot` will derive for `targetDate`. The server builds it
@@ -82,3 +82,26 @@ export const failureMessage = (
   r: { status: string; message?: string } | void,
   fallback: string,
 ): string => (r && r.status === "failed" && r.message ? r.message : fallback);
+
+/**
+ * Drop `ids` from a per-row state map.
+ *
+ * `keepIfChanged` is the value the in-flight write was built from: an entry that
+ * is no longer reference-equal to it has been touched since the request went
+ * out, so it is preserved rather than reverted out from under the user. Pass it
+ * ONLY when the row's key is unchanged — if the row moved to a new id, a
+ * preserved entry would sit under a key nothing renders, which is the stranded
+ * state this clearing exists to prevent.
+ */
+export const dropRowState = <T,>(
+  prev: Record<string, T>,
+  ids: string[],
+  keepIfChanged?: T,
+): Record<string, T> => {
+  const next = { ...prev };
+  ids.forEach((id) => {
+    if (keepIfChanged && prev[id] && prev[id] !== keepIfChanged) return;
+    delete next[id];
+  });
+  return next;
+};

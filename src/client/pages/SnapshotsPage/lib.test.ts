@@ -7,6 +7,7 @@ import {
   snapshotIdFor,
   dateFromSnapshotId,
   failureMessage,
+  dropRowState,
 } from "./lib";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..");
@@ -66,7 +67,10 @@ describe("SnapshotsPage/lib", () => {
       expect(isDayInRange("2026-08-01", start, end)).toBe(false);
     });
 
-    it("excludes an empty day rather than sorting it before every bound", () => {
+    it("excludes an empty day", () => {
+      // Falls out of the lexicographic compare ("" sorts before any real bound)
+      // rather than needing its own guard — asserted so a future rewrite that
+      // reaches for Date parsing, where "" becomes Invalid Date, goes red here.
       expect(isDayInRange("", start, end)).toBe(false);
     });
 
@@ -168,6 +172,44 @@ describe("SnapshotsPage/lib", () => {
     it("falls back when there is no response or no message at all", () => {
       expect(failureMessage(undefined, "Failed to save")).toBe("Failed to save");
       expect(failureMessage({ status: "failed" }, "Failed to save")).toBe("Failed to save");
+    });
+  });
+
+  describe("dropRowState", () => {
+    const edit = { value: "10", date: "2026-07-10" };
+
+    it("drops every id when nothing is in flight", () => {
+      const prev = { "a-20260710": edit, "a-20260720": { value: "20", date: "2026-07-20" } };
+      expect(dropRowState(prev, ["a-20260710", "a-20260720"])).toEqual({});
+    });
+
+    it("leaves untouched ids alone", () => {
+      const other = { value: "20", date: "2026-07-20" };
+      expect(dropRowState({ "a-20260710": edit, "a-20260720": other }, ["a-20260710"])).toEqual({
+        "a-20260720": other,
+      });
+    });
+
+    it("preserves an entry the user changed while the write was in flight", () => {
+      // `setEdit` always stores a fresh object, so a reference mismatch means
+      // "typed since the request went out" — reverting it would discard input.
+      const typedSince = { value: "10", date: "2026-07-15" };
+      expect(dropRowState({ "a-20260710": typedSince }, ["a-20260710"], edit)).toEqual({
+        "a-20260710": typedSince,
+      });
+    });
+
+    it("drops the entry the write was built from", () => {
+      expect(dropRowState({ "a-20260710": edit }, ["a-20260710"], edit)).toEqual({});
+    });
+
+    it("strands nothing when the caller omits the guard for an id-changing save", () => {
+      // The row moves to a new key, so preserving anything under the old id
+      // would leave state under a key nothing renders — which is exactly the
+      // stranded entry that made a later no-op blur re-date the snapshot.
+      const typedSince = { value: "10", date: "2026-07-15" };
+      const prev = { "a-20260710": typedSince };
+      expect(dropRowState(prev, ["a-20260710", "a-20260720"], undefined)).toEqual({});
     });
   });
 
