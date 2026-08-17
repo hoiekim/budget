@@ -18,7 +18,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { getEventsRoute } = await import("./get\-events");
+const { getEventsRoute } = await import("./get-events");
 const { SSE_KEEPALIVE_MS, SSE_IDLE_TIMEOUT_SECONDS, subscriberCount } = await import("server");
 
 afterAll(restoreLeaves);

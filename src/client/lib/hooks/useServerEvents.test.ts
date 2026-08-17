@@ -188,6 +188,43 @@ describe("createServerEventsConnection", () => {
     h.connection.close();
   });
 
+  it("reconciles the initial gap when the first open follows refused attempts", () => {
+    // A tab that opens against `MAX_SUBSCRIBERS_PER_USER = 20` currently held
+    // by peer tabs gets a 429 (or a `sessionStore.get` blip yields a 401) on
+    // its first `/api/events` request. The browser retries; the first `open`
+    // fires after N failed attempts, and a peer mutation landing in that
+    // window reached no live subscriber. Without this, `everOpened === false`
+    // suppresses the reconcile — for the life of the tab, since nothing else
+    // reconciles (see the `Utility.tsx` wiring).
+    const h = harness();
+    for (let i = 0; i < 5; i++) {
+      h.latest().refuse();
+      h.advance(60_000);
+    }
+    expect(h.sources).toHaveLength(6);
+    h.latest().open();
+    h.advance(RESYNC_JITTER);
+    expect(h.syncs).toHaveLength(1);
+    h.connection.close();
+  });
+
+  it("reconciles the initial gap when the first open follows dropped 200s", () => {
+    // Same class as above via the transport shape: the server drops the
+    // stream mid-negotiation before `open` ever fires. The browser retries;
+    // the first `open` after N drops still needs a reconcile because
+    // `emitToUser` broadcast to nobody during the drops.
+    const h = harness();
+    for (let i = 0; i < 3; i++) {
+      h.latest().dropStream();
+      h.advance(60_000);
+    }
+    expect(h.sources).toHaveLength(4);
+    h.latest().open();
+    h.advance(RESYNC_JITTER);
+    expect(h.syncs).toHaveLength(1);
+    h.connection.close();
+  });
+
   it("spreads the resync itself, not just the reconnect that triggers it", () => {
     // The reconnect backoff spreads a herd recovering from a real outage, but
     // not a sub-second blip: every tab errors once, returns inside 1.5s, and
