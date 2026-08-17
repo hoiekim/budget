@@ -4,6 +4,11 @@ import { logger } from "server/lib/logger";
 
 export interface SnapshotPostResponse {
   snapshot_id: string;
+  /** The date actually persisted, as an ISO string. The id and the stored date
+   *  are both derived from the server's local midnight, so a client that echoed
+   *  its own `new LocalDate(input)` into the cache would disagree with the next
+   *  sync whenever the browser and the server sit in different zones. */
+  date: string;
 }
 
 export const postSnapshotRoute = new Route<SnapshotPostResponse>(
@@ -41,7 +46,7 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
     try {
       const response = await upsertSnapshots([newSnapshot]);
       const snapshot_id = response[0].update?._id || "";
-      return { status: "success", body: { snapshot_id } };
+      return { status: "success", body: { snapshot_id, date: snapshot.date } };
     } catch (error: unknown) {
       logger.error("Failed to update snapshot", { snapshotId: snapshot.snapshot_id }, error);
       throw error instanceof Error ? error : new Error(String(error));
