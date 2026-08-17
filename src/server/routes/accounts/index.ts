@@ -11,7 +11,6 @@ export * from "./get-new-transaction";
 export * from "./get-new-investment-transaction";
 export * from "./get-split-transactions";
 export * from "./get-accounts";
-export * from "./get-institution";
 export * from "./get-institutions";
 export * from "./get-securities";
 export * from "./get-snapshots";

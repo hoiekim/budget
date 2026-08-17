@@ -8,11 +8,6 @@ export const getInstitutions = async (): Promise<JSONInstitution[]> => {
   return models.map((m) => m.toJSON());
 };
 
-export const getInstitution = async (institution_id: string): Promise<JSONInstitution | null> => {
-  const model = await institutionsTable.queryOne({ [INSTITUTION_ID]: institution_id });
-  return model?.toJSON() ?? null;
-};
-
 export const searchInstitutions = async (
   options: { institution_id?: string; name?: string } = {},
 ): Promise<JSONInstitution[]> => {

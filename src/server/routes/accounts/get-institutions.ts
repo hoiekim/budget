@@ -12,31 +12,29 @@ import { logger } from "server/lib/logger";
 export type InstitutionsGetResponse = JSONInstitution[];
 
 /**
- * Batch companion to `GET /institution?id=<one>` — takes a CSV `ids=<a>,<b>`
- * and returns the resolved `JSONInstitution[]`. Order of the response is not
- * guaranteed to match the request; callers index by `institution_id`.
+ * Batch institution fetch — takes a CSV `ids=<a>,<b>,<c>` and returns the
+ * resolved `JSONInstitution[]`. Order of the response is not guaranteed to
+ * match the request; callers index by `institution_id`. Sibling to
+ * `searchAccountsById` / `searchTransactionsById` — same `queryByIds` shape.
  *
  * Before this route the FE issued one `GET /institution?id=` per account per
  * sync — the PR #674 profiling measured 14 sequential GETs (with duplicates
  * `ins_5 ×3`, `ins_56 ×3`) as ~3 KB of payload but 14 RTTs of latency and log
- * noise. This route serves the same payload in one query. Sibling to
- * `searchAccountsById` / `searchTransactionsById` — same `queryByIds` shape.
+ * noise. This route serves the same payload in one query and the single-id
+ * route was removed the same PR (no other in-tree caller).
  *
  * A `Plaid-fallback` fires for any requested id that is NOT in the DB (the
  * user just connected a new institution and its row hasn't been persisted
- * yet — same fallback `GET /institution?id=` already implements). Plaid's
- * `getInstitution` is per-id, so the fallback is a small `Promise.all` over
- * the misses, not a re-batch — Plaid has no matching endpoint.
+ * yet). Plaid's `getInstitution` is per-id, so the fallback is a small
+ * `Promise.all` over the misses, not a re-batch — Plaid has no matching
+ * endpoint.
  *
- * **Divergence from the single-id sibling**: on a Plaid miss, this route
- * silently omits the id from the response (partial-success 200), whereas
- * `get-institution.ts` throws (`Server failed to get institutions.`) on the
- * same failure and the framework turns it into a 500. The batch semantic
- * has to be all-or-nothing OR partial; partial keeps every other resolved
- * institution reachable to the caller even when one is unreachable — a
- * fresh institution the FE just connected shouldn't blank every other
- * institution's logo/name on the same render pass. Do NOT copy-paste the
- * single-id `throw` into this loop.
+ * **Partial-success on Plaid miss**: a fallback failure silently omits that
+ * one id from the response (200 with the other ids resolved). A fresh
+ * institution the FE just connected shouldn't blank every other
+ * institution's logo/name on the same render pass; the alternative — throw
+ * → 500 for the whole batch — is what the removed single-id route did, and
+ * the batch semantic has to be more forgiving.
  */
 export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
   "GET",
