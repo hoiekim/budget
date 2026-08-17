@@ -428,19 +428,33 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
     institutions: new InstitutionDictionary(),
     networkFailed: false,
   };
-  const promises = accounts.toArray().map(async ({ institution_id }) => {
-    if (institution_id === "Unknown") return;
-    const response = await call
-      .get<JSONInstitution>(`/api/institution?id=${institution_id}`)
-      .catch(console.error);
-    if (!response || response.status === "error") {
-      result.networkFailed = true;
-      return;
-    }
-    result.institutions.set(institution_id, new Institution(response.body));
-  });
 
-  await Promise.all(promises);
+  // Dedupe institution_ids across accounts — the pre-fix per-id-per-account
+  // fan-out issued 14 `/api/institution?id=` GETs per sync on Hoie's data,
+  // three of which were `ins_5` and three `ins_56` (same institution, three
+  // accounts each). One batched IN query serves the whole set.
+  const ids = Array.from(
+    new Set(
+      accounts
+        .toArray()
+        .map((a) => a.institution_id)
+        .filter((id) => id && id !== "Unknown"),
+    ),
+  );
+  if (ids.length === 0) return result;
+
+  const response = await call
+    .get<JSONInstitution[]>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
+    .catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
+
+  for (const institution of response.body) {
+    result.institutions.set(institution.institution_id, new Institution(institution));
+  }
 
   return result;
 };
