@@ -2,24 +2,27 @@ div.RadioInputs {
   width: 100%;
 }
 
-div.RadioInputs > .option {
-  height: 44px;
-}
-
 div.RadioInputs > .option * {
   cursor: pointer;
 }
 
+/* The option's height comes from the shell row padding. The label carries
+ * that padding itself, cancelled by an equal negative margin, so the whole
+ * row stays a single tap target instead of only the text line — and the
+ * label's border box, not the text line, is what `min-height` floors at the
+ * 44px this option used to set as a fixed `height`. */
 div.RadioInputs > .option > label {
   flex-grow: 1;
-  height: 100%;
+  margin: -14px 0;
+  padding: 14px 0;
+  min-height: 44px;
   display: flex;
   justify-content: flex-start;
   align-items: center;
 }
 
 div.RadioInputs > .option > .checkMark {
-  margin: 0 10px;
+  margin-left: 10px;
   color: var(--green);
 }
 

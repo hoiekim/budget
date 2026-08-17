@@ -100,12 +100,10 @@ type ButtonRowProps = ComponentPropsWithoutRef<"button"> & {
  *  (`<DeleteButton>`, `<PlaidLinkButton>`, `<SimpleFinLinkButton>`) render
  *  their own `<button>`, so those keep the raw `<Row className="button">`.
  *
- *  Only the descendant-selector row CSS (`div.Properties .row.button:hover`,
- *  `div.Properties .row:not(:last-child)`) travels with the primitive. Row
- *  padding, flex and `> button { width: 100% }` come from the direct-child
- *  `div.Properties > div.property > div.row`, so a site that renders this
- *  below an extra wrapper — `<CapacitiesInput>` is the one today — is laid
- *  out by that wrapper's own CSS instead. */
+ *  The row box (padding, flex, `> button { width: 100% }`) travels with the
+ *  primitive at any depth inside a `<Property>`, so rendering it below a
+ *  sub-component's own wrapper — `<CapacitiesInput>` is the one today — is
+ *  laid out the same as a direct child. */
 export const ButtonRow = ({
   className,
   buttonClassName,
