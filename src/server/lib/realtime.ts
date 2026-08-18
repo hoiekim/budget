@@ -14,7 +14,7 @@ import { logger } from "./logger";
  * disconnect, tab close) and removes the subscriber from the registry.
  */
 export interface Subscriber {
-  send: (event: string, payload: unknown) => void;
+  send: (event: string, payload: unknown, id?: string) => void;
   close: () => void;
 }
 
@@ -40,6 +40,91 @@ export const SSE_IDLE_TIMEOUT_SECONDS = Math.min(
 );
 
 const subscribers = new Map<string, Set<Subscriber>>();
+
+/**
+ * One buffered SSE event for reconnect replay. Reconnecting clients
+ * request events by id via the browser's Last-Event-ID header; when the
+ * ring covers the gap the caller replays these; when it doesn't, the
+ * caller emits a `retry-full` signal and the client resyncs.
+ *
+ * Coverage is bounded by `RING_BUFFER_MAX_ENTRIES` and
+ * `RING_BUFFER_MAX_AGE_MS`, whichever hits first. In-memory per process
+ * — a multi-instance deployment would move this to Redis or a broker.
+ */
+export interface StoredEvent {
+  /** Monotonic per-user counter. All of a user's tabs share the id
+   *  space so any peer emit flows into every subscriber's buffer. */
+  id: string;
+  domain: EmitDomain;
+  payload: EmitPayload;
+  timestamp: number;
+}
+
+export const RING_BUFFER_MAX_ENTRIES = 512;
+export const RING_BUFFER_MAX_AGE_MS = 15 * 60 * 1000;
+
+const perUserBuffer = new Map<string, StoredEvent[]>();
+const perUserCounter = new Map<string, number>();
+
+const nextEventId = (userId: string): string => {
+  const cur = (perUserCounter.get(userId) ?? 0) + 1;
+  perUserCounter.set(userId, cur);
+  return String(cur);
+};
+
+const appendToBuffer = (userId: string, event: StoredEvent): void => {
+  let buf = perUserBuffer.get(userId);
+  if (!buf) {
+    buf = [];
+    perUserBuffer.set(userId, buf);
+  }
+  buf.push(event);
+  const cutoff = Date.now() - RING_BUFFER_MAX_AGE_MS;
+  while (buf.length > 0 && (buf.length > RING_BUFFER_MAX_ENTRIES || buf[0].timestamp < cutoff)) {
+    buf.shift();
+  }
+};
+
+/**
+ * Return the events a reconnecting client asked for, or the signal that
+ * the client should refetch everything.
+ *
+ * Semantics:
+ *  - `lastEventId === null` → new stream. If the counter is 0 (never
+ *    emitted for this user in this process) or the buffer is empty, the
+ *    client's most recent state is what the login-time `sync()` already
+ *    fetched — covered with no replay. Otherwise (buffer has events, but
+ *    the client never received an id) → overflow, because between the
+ *    client's `sync()` and this SSE subscribe some peer emit landed and
+ *    the client would silently miss it.
+ *  - `lastEventId` parses AND `lastId <= counterTip` (client isn't from a
+ *    future / restarted-process past) AND the buffer's oldest id is
+ *    `<= lastEventId + 1` (no gap) → covered; replay events with
+ *    `id > last`.
+ *  - Otherwise → overflow; caller emits `retry-full` and the client
+ *    resyncs. This covers malformed id, empty buffer with a non-null id,
+ *    oldest > last+1, AND the restart case where the process's counter
+ *    reset below the client's remembered id.
+ */
+export const getEventsSince = (
+  userId: string,
+  lastEventId: string | null,
+): { events: StoredEvent[]; overflow: boolean } => {
+  const buf = perUserBuffer.get(userId);
+  const counterTip = perUserCounter.get(userId) ?? 0;
+  if (lastEventId === null) {
+    const hasBuffered = !!buf && buf.length > 0;
+    return { events: [], overflow: hasBuffered };
+  }
+  const lastId = Number.parseInt(lastEventId, 10);
+  if (!Number.isFinite(lastId)) return { events: [], overflow: true };
+  if (lastId > counterTip) return { events: [], overflow: true };
+  if (!buf || buf.length === 0) return { events: [], overflow: true };
+  const firstStoredId = Number.parseInt(buf[0].id, 10);
+  if (firstStoredId > lastId + 1) return { events: [], overflow: true };
+  const events = buf.filter((e) => Number.parseInt(e.id, 10) > lastId);
+  return { events, overflow: false };
+};
 
 export type EmitDomain = TableName;
 
@@ -106,6 +191,10 @@ export const unregisterSubscriber = (userId: string, sub: Subscriber): void => {
   const set = subscribers.get(userId);
   if (!set) return;
   set.delete(sub);
+  // Buffer + counter deliberately survive last-subscriber-out so a
+  // reconnect (iOS backgrounding, proxy blip) still resolves via
+  // Last-Event-ID replay. Per-user eviction of never-returning users
+  // is a scalability follow-up.
   if (set.size === 0) subscribers.delete(userId);
 };
 
@@ -117,12 +206,18 @@ export const emitToUser = (
   domain: EmitDomain,
   payload: EmitPayload = {},
 ): void => {
+  // Buffer first so a peer emit landing during a reconnect gap is
+  // replayable when the client comes back with Last-Event-ID.
+  const id = nextEventId(userId);
+  const event: StoredEvent = { id, domain, payload, timestamp: Date.now() };
+  appendToBuffer(userId, event);
+
   const set = subscribers.get(userId);
   if (!set || set.size === 0) return;
   const eventName = `${domain}-updated`;
   for (const sub of set) {
     try {
-      sub.send(eventName, payload);
+      sub.send(eventName, payload, id);
     } catch (err) {
       logger.warn("SSE subscriber send failed — dropping", { userId, domain }, err);
       try {
@@ -150,3 +245,13 @@ export const closeAllSubscribers = (): void => {
   }
   subscribers.clear();
 };
+
+/** Test hook — clears the ring buffer and id counters. Not called on request paths. */
+export const resetRingBufferForTests = (): void => {
+  perUserBuffer.clear();
+  perUserCounter.clear();
+};
+
+/** Test/introspection — how many events are currently buffered for a user. */
+export const bufferedEventCount = (userId: string): number =>
+  perUserBuffer.get(userId)?.length ?? 0;

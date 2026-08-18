@@ -5,8 +5,12 @@ import {
   unregisterSubscriber,
   subscriberCount,
   emitToUser,
+  getEventsSince,
   mutationEmitDomain,
   closeAllSubscribers,
+  resetRingBufferForTests,
+  bufferedEventCount,
+  RING_BUFFER_MAX_ENTRIES,
   SSE_KEEPALIVE_MS,
   SSE_IDLE_TIMEOUT_SECONDS,
   type Subscriber,
@@ -35,6 +39,7 @@ const makeRecorder = (opts: { throwOnSend?: boolean } = {}): Subscriber & {
 
 beforeEach(() => {
   closeAllSubscribers();
+  resetRingBufferForTests();
 });
 
 describe("realtime", () => {
@@ -188,5 +193,137 @@ describe("realtime", () => {
     expect(Number.isInteger(SSE_IDLE_TIMEOUT_SECONDS)).toBe(true);
     expect(SSE_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(0);
     expect(SSE_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
+  });
+});
+
+describe("ring buffer", () => {
+  it("appends every emit to the per-user buffer, even when no subscriber is live", () => {
+    // The whole point of the buffer: a reconnect after a gap can replay
+    // whatever landed during the gap. Skipping the append on "no subscriber"
+    // would reintroduce the pre-buffer silent-drop.
+    emitToUser("u1", TableName.Accounts, { originTabId: "tab-a" });
+    emitToUser("u1", TableName.Budgets, { originTabId: "tab-b" });
+    expect(bufferedEventCount("u1")).toBe(2);
+    expect(bufferedEventCount("u2")).toBe(0);
+  });
+
+  it("assigns monotonic ids scoped per user — one user's counter does not disturb another's", () => {
+    emitToUser("u1", TableName.Accounts);
+    emitToUser("u1", TableName.Accounts);
+    emitToUser("u2", TableName.Accounts);
+    const u1 = getEventsSince("u1", "0");
+    const u2 = getEventsSince("u2", "0");
+    expect(u1.events.map((e) => e.id)).toEqual(["1", "2"]);
+    expect(u2.events.map((e) => e.id)).toEqual(["1"]);
+  });
+
+  it("getEventsSince returns everything with id > lastEventId when the buffer covers it", () => {
+    emitToUser("u1", TableName.Accounts, { originTabId: "a" });
+    emitToUser("u1", TableName.Budgets, { originTabId: "b" });
+    emitToUser("u1", TableName.Transactions, { originTabId: "c" });
+    const covered = getEventsSince("u1", "1");
+    expect(covered.overflow).toBe(false);
+    expect(covered.events.map((e) => e.id)).toEqual(["2", "3"]);
+    expect(covered.events.map((e) => e.domain)).toEqual([
+      TableName.Budgets,
+      TableName.Transactions,
+    ]);
+  });
+
+  it("getEventsSince flags overflow when the client's remembered id sits above the counter tip — the server-restart case", () => {
+    // Pre-restart client held id=100. Server restarts (perUserCounter
+    // resets to 0), two peer emits fire → buffer=[{id:1},{id:2}]. Without
+    // this branch, `filter(e.id > 100)` returns [] AND overflow=false, so
+    // events 1 and 2 are silently missed for the life of the tab.
+    emitToUser("u1", TableName.Accounts); // counter=1
+    emitToUser("u1", TableName.Accounts); // counter=2
+    const restart = getEventsSince("u1", "100");
+    expect(restart.overflow).toBe(true);
+    expect(restart.events).toEqual([]);
+  });
+
+  it("getEventsSince flags overflow when the buffer's oldest id has evicted past the requested id", () => {
+    resetRingBufferForTests();
+    // Simulate: counter has advanced to 200 but the buffer only holds
+    // ids 150-200 (older evicted). A client asking for id=100 has lost
+    // events 101-149.
+    for (let i = 0; i < 200; i++) emitToUser("u1", TableName.Accounts);
+    const stale = getEventsSince("u1", "100");
+    // With RING_BUFFER_MAX_ENTRIES=512, all 200 fit — pick a scenario
+    // that exceeds the cap.
+    expect(stale.overflow).toBe(false); // 200 < 512 = still covered
+    resetRingBufferForTests();
+    for (let i = 0; i < 600; i++) emitToUser("u1", TableName.Accounts);
+    // Buffer holds ids 89..600 (evicted the oldest 88). Client asking
+    // for id=1 → firstStored 89 > 1+1 → overflow.
+    const evicted = getEventsSince("u1", "1");
+    expect(evicted.overflow).toBe(true);
+  });
+
+  it("getEventsSince flags overflow when lastEventId does not parse", () => {
+    emitToUser("u1", TableName.Accounts);
+    const result = getEventsSince("u1", "not-a-number");
+    expect(result.overflow).toBe(true);
+  });
+
+  it("getEventsSince returns covered on a fresh connection with an empty buffer (typical single-tab boot)", () => {
+    // No prior emits for this user → login-time `sync()` already carries
+    // fresh state and the SSE stream just needs to start listening.
+    const result = getEventsSince("u1", null);
+    expect(result.overflow).toBe(false);
+    expect(result.events).toEqual([]);
+  });
+
+  it("getEventsSince flags overflow on a fresh connection when the buffer has events — peer mutation between login-sync and SSE-subscribe would be missed", () => {
+    // A second tab / device where tab A's mutation buffered before tab
+    // B's SSE subscribed. Tab B's browser sends no Last-Event-ID (never
+    // received one). Without this branch, tab B would silently miss the
+    // event since the client hook no longer resyncs blindly on `open`.
+    emitToUser("u1", TableName.Accounts);
+    const result = getEventsSince("u1", null);
+    expect(result.overflow).toBe(true);
+  });
+
+  it("evicts by count when the buffer exceeds RING_BUFFER_MAX_ENTRIES", () => {
+    // Overshoot the cap. The oldest events fall out; the newest window is
+    // still coverable and retained.
+    const overshoot = 10;
+    for (let i = 0; i < RING_BUFFER_MAX_ENTRIES + overshoot; i++) {
+      emitToUser("u1", TableName.Accounts);
+    }
+    expect(bufferedEventCount("u1")).toBe(RING_BUFFER_MAX_ENTRIES);
+    // The buffer's oldest id is now `overshoot + 1`. A client asking for
+    // an id from before that is overflow.
+    const stale = getEventsSince("u1", "1");
+    expect(stale.overflow).toBe(true);
+    // A client asking for something inside the window is covered.
+    const fresh = getEventsSince("u1", String(RING_BUFFER_MAX_ENTRIES));
+    expect(fresh.overflow).toBe(false);
+    expect(fresh.events).toHaveLength(overshoot);
+  });
+
+  it("delivers the id to live subscribers so EventSource can echo it as Last-Event-ID on reconnect", () => {
+    const received: Array<{ event: string; id?: string }> = [];
+    const sub: Subscriber = {
+      send: (event, _payload, id) => received.push({ event, id }),
+      close: () => {},
+    };
+    registerSubscriber("u1", sub);
+    emitToUser("u1", TableName.Accounts);
+    emitToUser("u1", TableName.Budgets);
+    expect(received.map((r) => r.id)).toEqual(["1", "2"]);
+  });
+
+  it("preserves the buffer past last-subscriber-out so a single-tab reconnect still resolves via Last-Event-ID", () => {
+    // The iOS-backgrounding shape: one tab, one subscription, drops on
+    // background, reconnects on foreground. Evicting on last-out would
+    // regress this to a whole-app resync every foreground.
+    const sub: Subscriber = { send: () => {}, close: () => {} };
+    registerSubscriber("u1", sub);
+    emitToUser("u1", TableName.Accounts);
+    unregisterSubscriber("u1", sub);
+    const covered = getEventsSince("u1", "1");
+    expect(covered.overflow).toBe(false);
+    expect(covered.events).toEqual([]);
   });
 });

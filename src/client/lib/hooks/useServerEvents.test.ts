@@ -109,6 +109,14 @@ class StubEventSource {
   emit(domain: ServerEventDomain, payload: ServerEventPayload) {
     this.dispatch(`${domain}-updated`, { data: JSON.stringify(payload) });
   }
+
+  /** Server-emitted overflow signal — the ring buffer no longer covers the
+   *  gap this connection asked about. The client turns this into a
+   *  whole-app resync. Modelled as a raw dispatch since it carries no
+   *  domain-scoped payload. */
+  retryFull() {
+    this.dispatch("retry-full", { data: "{}" });
+  }
 }
 
 /** Jitter the harness's midpoint `random` produces on the resync band. */
@@ -150,8 +158,23 @@ const harness = (opts: { random?: () => number } = {}) => {
   };
 };
 
-/** Drop the live stream and let the backoff bring the next one up. */
+/**
+ * Drop the live stream, let the backoff bring the next one up, and simulate
+ * the SSE ring-buffer overflowing the gap — the server's `retry-full` event
+ * is what turns a reconnect into a resync now, so any test that expects a
+ * resync from a flap emits it here.
+ */
 const flap = (h: ReturnType<typeof harness>, backoffMs: number) => {
+  h.latest().dropStream();
+  h.advance(backoffMs);
+  h.latest().open();
+  h.latest().retryFull();
+};
+
+/** Drop-and-reconnect with the ring buffer covering the gap — no
+ *  retry-full, so no resync fires. Distinct from `flap` because the whole
+ *  point of the ring buffer is that covered reconnects are silent. */
+const flapCovered = (h: ReturnType<typeof harness>, backoffMs: number) => {
   h.latest().dropStream();
   h.advance(backoffMs);
   h.latest().open();
@@ -178,6 +201,19 @@ describe("createServerEventsConnection", () => {
     h.connection.close();
   });
 
+  it("does NOT resync on a covered reconnect — the ring buffer replay is enough", () => {
+    // The whole point of the ring buffer: a reconnect that stays within the
+    // buffer's coverage window replays via the server's `id:` field / the
+    // browser's Last-Event-ID header — no whole-app sync needed. `flapCovered`
+    // models that server-side outcome: reconnect open, no retry-full.
+    const h = harness();
+    h.latest().open();
+    flapCovered(h, 1_000);
+    h.advance(60_000); // well past any throttle / jitter window
+    expect(h.syncs).toHaveLength(0);
+    h.connection.close();
+  });
+
   it("does not resync on the first open, only on a re-established stream", () => {
     const h = harness();
     h.latest().open();
@@ -188,14 +224,14 @@ describe("createServerEventsConnection", () => {
     h.connection.close();
   });
 
-  it("reconciles the initial gap when the first open follows refused attempts", () => {
+  it("reconciles the initial gap when the first open follows refused attempts and server signals retry-full", () => {
     // A tab that opens against `MAX_SUBSCRIBERS_PER_USER = 20` currently held
     // by peer tabs gets a 429 (or a `sessionStore.get` blip yields a 401) on
     // its first `/api/events` request. The browser retries; the first `open`
-    // fires after N failed attempts, and a peer mutation landing in that
-    // window reached no live subscriber. Without this, `everOpened === false`
-    // suppresses the reconcile — for the life of the tab, since nothing else
-    // reconciles (see the `Utility.tsx` wiring).
+    // fires after N failed attempts. Under the ring-buffer contract the
+    // server sees no Last-Event-ID and emits `retry-full`, which the client
+    // turns into the reconcile — the reconciled events are the peer
+    // mutations that arrived during the refused window.
     const h = harness();
     for (let i = 0; i < 5; i++) {
       h.latest().refuse();
@@ -203,16 +239,16 @@ describe("createServerEventsConnection", () => {
     }
     expect(h.sources).toHaveLength(6);
     h.latest().open();
+    h.latest().retryFull();
     h.advance(RESYNC_JITTER);
     expect(h.syncs).toHaveLength(1);
     h.connection.close();
   });
 
-  it("reconciles the initial gap when the first open follows dropped 200s", () => {
-    // Same class as above via the transport shape: the server drops the
-    // stream mid-negotiation before `open` ever fires. The browser retries;
-    // the first `open` after N drops still needs a reconcile because
-    // `emitToUser` broadcast to nobody during the drops.
+  it("reconciles the initial gap when the first open follows dropped 200s and server signals retry-full", () => {
+    // Transport-shape counterpart of the case above: the server drops the
+    // stream mid-negotiation before `open` ever fires. Retry-full fires on
+    // the eventual success because the client had no Last-Event-ID to send.
     const h = harness();
     for (let i = 0; i < 3; i++) {
       h.latest().dropStream();
@@ -220,20 +256,24 @@ describe("createServerEventsConnection", () => {
     }
     expect(h.sources).toHaveLength(4);
     h.latest().open();
+    h.latest().retryFull();
     h.advance(RESYNC_JITTER);
     expect(h.syncs).toHaveLength(1);
     h.connection.close();
   });
 
-  it("spreads the resync itself, not just the reconnect that triggers it", () => {
+  it("spreads the resync itself when retry-full fires — not just the reconnect that triggers it", () => {
     // The reconnect backoff spreads a herd recovering from a real outage, but
     // not a sub-second blip: every tab errors once, returns inside 1.5s, and
-    // fires a whole-app refetch in the same instant.
+    // the server sends retry-full to each after the buffer overflow — every
+    // tab would then fire a whole-app refetch in the same instant without
+    // the resync-side jitter.
     const early = harness({ random: () => 0 });
     early.latest().open();
     early.latest().dropStream();
     early.advance(500); // bottom of the reconnect band for attempt 0
     early.latest().open();
+    early.latest().retryFull();
     early.advance(0);
     expect(early.syncs).toHaveLength(1); // bottom of the resync band: no wait
     early.connection.close();
@@ -243,6 +283,7 @@ describe("createServerEventsConnection", () => {
     late.latest().dropStream();
     late.advance(1_500); // top of the reconnect band for attempt 0
     late.latest().open();
+    late.latest().retryFull();
     late.advance(1_999);
     expect(late.syncs).toHaveLength(0);
     late.advance(1);

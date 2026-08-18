@@ -4,6 +4,7 @@ import {
   registerSubscriber,
   unregisterSubscriber,
   subscriberCount,
+  getEventsSince,
   SECURITY_HEADERS,
   SSE_KEEPALIVE_MS,
   SSE_IDLE_TIMEOUT_SECONDS,
@@ -24,10 +25,14 @@ const SSE_HEADERS: Record<string, string> = {
   "X-Accel-Buffering": "no",
 };
 
-const formatSseBlock = (event: string, payload: unknown): string => {
-  const dataLine = `data: ${JSON.stringify(payload)}\n`;
-  return `event: ${event}\n${dataLine}\n`;
+// `id:` precedes `event:`/`data:` per the SSE spec so the browser
+// captures it before dispatch and can echo it as Last-Event-ID.
+const formatSseBlock = (event: string, payload: unknown, id?: string): string => {
+  const idLine = id !== undefined ? `id: ${id}\n` : "";
+  return `${idLine}event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
 };
+
+const RETRY_FULL_EVENT = "retry-full";
 
 export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
   const userId = req.session.user!.user_id;
@@ -81,6 +86,12 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
     signal?.addEventListener("abort", cleanup);
   }
 
+  // Read Last-Event-ID before registering the subscriber so replay is
+  // ordered strictly before any live emit. Headers are lowercased.
+  const lastEventIdRaw = req.headers["last-event-id"];
+  const lastEventId =
+    typeof lastEventIdRaw === "string" && lastEventIdRaw.length > 0 ? lastEventIdRaw : null;
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controllerRef = controller;
@@ -96,15 +107,29 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
       // any proxy in front of us commits to streaming rather than buffering.
       controller.enqueue(encoder.encode(": connected\n\n"));
 
+      const { events: replay, overflow } = getEventsSince(userId, lastEventId);
+      if (overflow) {
+        controller.enqueue(encoder.encode(formatSseBlock(RETRY_FULL_EVENT, {})));
+      } else {
+        for (const e of replay) {
+          controller.enqueue(encoder.encode(formatSseBlock(`${e.domain}-updated`, e.payload, e.id)));
+        }
+      }
+
       sub = {
-        send: (event, payload) => {
+        send: (event, payload, id) => {
           if (closed) return;
-          controller.enqueue(encoder.encode(formatSseBlock(event, payload)));
+          controller.enqueue(encoder.encode(formatSseBlock(event, payload, id)));
         },
         close: cleanup,
       };
       registerSubscriber(userId, sub);
-      logger.info("SSE subscribed", { userId, total: subscriberCount(userId) });
+      logger.info("SSE subscribed", {
+        userId,
+        total: subscriberCount(userId),
+        replayed: replay.length,
+        retryFull: overflow,
+      });
 
       // Keep proxies from timing the connection out; also lets the client
       // detect a dead connection via missed pings.
