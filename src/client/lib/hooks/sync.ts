@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { JSONInstitution, JSONSnapshotData, TableName } from "common";
+import { JSONSnapshotData, TableName } from "common";
 import {
   BudgetsGetResponse,
   TransactionsGetResponse,
@@ -9,6 +9,7 @@ import {
   SnapshotsGetResponse,
   SecuritiesGetResponse,
   TransfersGetResponse,
+  InstitutionsGetResponse,
 } from "server";
 import {
   Account,
@@ -428,19 +429,32 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
     institutions: new InstitutionDictionary(),
     networkFailed: false,
   };
-  const promises = accounts.toArray().map(async ({ institution_id }) => {
-    if (institution_id === "Unknown") return;
-    const response = await call
-      .get<JSONInstitution>(`/api/institution?id=${institution_id}`)
-      .catch(console.error);
-    if (!response || response.status === "error") {
-      result.networkFailed = true;
-      return;
-    }
-    result.institutions.set(institution_id, new Institution(response.body));
-  });
 
-  await Promise.all(promises);
+  // Dedupe institution_ids across accounts — a single institution can back
+  // multiple accounts and the pre-batch fan-out would GET the same id once
+  // per account. One batched IN query serves the whole set.
+  const ids = Array.from(
+    new Set(
+      accounts
+        .toArray()
+        .map((a) => a.institution_id)
+        .filter((id) => id && id !== "Unknown"),
+    ),
+  );
+  if (ids.length === 0) return result;
+
+  const response = await call
+    .get<InstitutionsGetResponse>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
+    .catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
+
+  for (const institution of response.body) {
+    result.institutions.set(institution.institution_id, new Institution(institution));
+  }
 
   return result;
 };

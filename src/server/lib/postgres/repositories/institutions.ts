@@ -8,11 +8,6 @@ export const getInstitutions = async (): Promise<JSONInstitution[]> => {
   return models.map((m) => m.toJSON());
 };
 
-export const getInstitution = async (institution_id: string): Promise<JSONInstitution | null> => {
-  const model = await institutionsTable.queryOne({ [INSTITUTION_ID]: institution_id });
-  return model?.toJSON() ?? null;
-};
-
 export const searchInstitutions = async (
   options: { institution_id?: string; name?: string } = {},
 ): Promise<JSONInstitution[]> => {
@@ -44,14 +39,19 @@ export const upsertInstitutions = async (
   return results;
 };
 
+/**
+ * Batch lookup: one `IN`-based query for every id at once, not per-id.
+ * Missing ids are simply absent from the result — callers that need
+ * Plaid-fallback for unknown institution_ids handle it at the route
+ * layer (`GET /institutions?ids=...` does).
+ */
 export const searchInstitutionsById = async (
   institution_ids: string[],
 ): Promise<JSONInstitution[]> => {
   if (!institution_ids.length) return [];
-  const results: JSONInstitution[] = [];
-  for (const id of institution_ids) {
-    const inst = await getInstitution(id);
-    if (inst) results.push(inst);
-  }
-  return results;
+  // Dedupe defensively — the client dedupes, but the repo shouldn't
+  // trust that.
+  const unique = Array.from(new Set(institution_ids));
+  const models = await institutionsTable.queryByIds(unique);
+  return models.map((m) => m.toJSON());
 };
