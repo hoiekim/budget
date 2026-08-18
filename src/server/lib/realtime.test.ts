@@ -313,4 +313,17 @@ describe("ring buffer", () => {
     emitToUser("u1", TableName.Budgets);
     expect(received.map((r) => r.id)).toEqual(["1", "2"]);
   });
+
+  it("preserves the buffer past last-subscriber-out so a single-tab reconnect still resolves via Last-Event-ID", () => {
+    // The iOS-backgrounding shape: one tab, one subscription, drops on
+    // background, reconnects on foreground. Evicting on last-out would
+    // regress this to a whole-app resync every foreground.
+    const sub: Subscriber = { send: () => {}, close: () => {} };
+    registerSubscriber("u1", sub);
+    emitToUser("u1", TableName.Accounts);
+    unregisterSubscriber("u1", sub);
+    const covered = getEventsSince("u1", "1");
+    expect(covered.overflow).toBe(false);
+    expect(covered.events).toEqual([]);
+  });
 });

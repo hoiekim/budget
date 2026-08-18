@@ -191,14 +191,11 @@ export const unregisterSubscriber = (userId: string, sub: Subscriber): void => {
   const set = subscribers.get(userId);
   if (!set) return;
   set.delete(sub);
-  if (set.size === 0) {
-    subscribers.delete(userId);
-    // Drop buffer + counter on last disconnect — otherwise idle users
-    // accumulate per-process memory forever (age eviction only fires
-    // on the next append, which never comes for a disconnected user).
-    perUserBuffer.delete(userId);
-    perUserCounter.delete(userId);
-  }
+  // Buffer + counter deliberately survive last-subscriber-out so a
+  // reconnect (iOS backgrounding, proxy blip) still resolves via
+  // Last-Event-ID replay. Per-user eviction of never-returning users
+  // is a scalability follow-up.
+  if (set.size === 0) subscribers.delete(userId);
 };
 
 export const subscriberCount = (userId: string): number =>
