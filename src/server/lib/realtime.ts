@@ -42,23 +42,18 @@ export const SSE_IDLE_TIMEOUT_SECONDS = Math.min(
 const subscribers = new Map<string, Set<Subscriber>>();
 
 /**
- * Per-user event ring buffer. Reconnecting clients ask for events they may
- * have missed via the browser's own `Last-Event-ID` header (RFC EventSource
- * — set automatically from the `id:` field of the last event the client
- * received). Coverage is bounded by `RING_BUFFER_MAX_ENTRIES` and
- * `RING_BUFFER_MAX_AGE_MS`, whichever hits first; a client asking for an
- * evicted id receives a `retry-full` signal so it falls back to a whole-app
- * sync — same worst-case behaviour as pre-buffer.
+ * One buffered SSE event for reconnect replay. Reconnecting clients
+ * request events by id via the browser's Last-Event-ID header; when the
+ * ring covers the gap the caller replays these; when it doesn't, the
+ * caller emits a `retry-full` signal and the client resyncs.
  *
- * In-memory per process. Zero cross-instance visibility is by design: the
- * app is single-instance, and a restart is exactly the "buffer evicted →
- * retry-full" path. A future multi-instance deployment would need to move
- * this to Redis or push it through a broker.
+ * Coverage is bounded by `RING_BUFFER_MAX_ENTRIES` and
+ * `RING_BUFFER_MAX_AGE_MS`, whichever hits first. In-memory per process
+ * — a multi-instance deployment would move this to Redis or a broker.
  */
 export interface StoredEvent {
-  /** Monotonic per-user counter, string-encoded (EventSource `id:` is a
-   *  string on the wire). Two clients of the same user share the same id
-   *  space so a peer's mutation flows into everyone's buffer. */
+  /** Monotonic per-user counter. All of a user's tabs share the id
+   *  space so any peer emit flows into every subscriber's buffer. */
   id: string;
   domain: EmitDomain;
   payload: EmitPayload;
@@ -84,9 +79,6 @@ const appendToBuffer = (userId: string, event: StoredEvent): void => {
     perUserBuffer.set(userId, buf);
   }
   buf.push(event);
-  // Evict by count first, then age. Amortized O(1) — a burst of writes
-  // trims once via `shift`, and idle users' buffers age out on the next
-  // append.
   const cutoff = Date.now() - RING_BUFFER_MAX_AGE_MS;
   while (buf.length > 0 && (buf.length > RING_BUFFER_MAX_ENTRIES || buf[0].timestamp < cutoff)) {
     buf.shift();
@@ -98,21 +90,35 @@ const appendToBuffer = (userId: string, event: StoredEvent): void => {
  * the client should refetch everything.
  *
  * Semantics:
- *  - `lastEventId === null` → new stream, no replay. Returned as `covered`
- *    with an empty list so the caller can uniformly enter the live loop.
- *  - `lastEventId` parses to an id AND the buffer's oldest id is `<=
- *    lastEventId + 1` (no gap) → covered; replay events with `id > last`.
- *  - Otherwise (malformed id, empty buffer, oldest > last+1) → overflow;
- *    caller emits `retry-full` and the client resyncs.
+ *  - `lastEventId === null` → new stream. If the counter is 0 (never
+ *    emitted for this user in this process) or the buffer is empty, the
+ *    client's most recent state is what the login-time `sync()` already
+ *    fetched — covered with no replay. Otherwise (buffer has events, but
+ *    the client never received an id) → overflow, because between the
+ *    client's `sync()` and this SSE subscribe some peer emit landed and
+ *    the client would silently miss it.
+ *  - `lastEventId` parses AND `lastId <= counterTip` (client isn't from a
+ *    future / restarted-process past) AND the buffer's oldest id is
+ *    `<= lastEventId + 1` (no gap) → covered; replay events with
+ *    `id > last`.
+ *  - Otherwise → overflow; caller emits `retry-full` and the client
+ *    resyncs. This covers malformed id, empty buffer with a non-null id,
+ *    oldest > last+1, AND the restart case where the process's counter
+ *    reset below the client's remembered id.
  */
 export const getEventsSince = (
   userId: string,
   lastEventId: string | null,
 ): { events: StoredEvent[]; overflow: boolean } => {
-  if (lastEventId === null) return { events: [], overflow: false };
+  const buf = perUserBuffer.get(userId);
+  const counterTip = perUserCounter.get(userId) ?? 0;
+  if (lastEventId === null) {
+    const hasBuffered = !!buf && buf.length > 0;
+    return { events: [], overflow: hasBuffered };
+  }
   const lastId = Number.parseInt(lastEventId, 10);
   if (!Number.isFinite(lastId)) return { events: [], overflow: true };
-  const buf = perUserBuffer.get(userId);
+  if (lastId > counterTip) return { events: [], overflow: true };
   if (!buf || buf.length === 0) return { events: [], overflow: true };
   const firstStoredId = Number.parseInt(buf[0].id, 10);
   if (firstStoredId > lastId + 1) return { events: [], overflow: true };
@@ -185,7 +191,14 @@ export const unregisterSubscriber = (userId: string, sub: Subscriber): void => {
   const set = subscribers.get(userId);
   if (!set) return;
   set.delete(sub);
-  if (set.size === 0) subscribers.delete(userId);
+  if (set.size === 0) {
+    subscribers.delete(userId);
+    // Drop buffer + counter on last disconnect — otherwise idle users
+    // accumulate per-process memory forever (age eviction only fires
+    // on the next append, which never comes for a disconnected user).
+    perUserBuffer.delete(userId);
+    perUserCounter.delete(userId);
+  }
 };
 
 export const subscriberCount = (userId: string): number =>
@@ -196,11 +209,8 @@ export const emitToUser = (
   domain: EmitDomain,
   payload: EmitPayload = {},
 ): void => {
-  // Append to the ring buffer BEFORE the live broadcast — a peer mutation
-  // that lands during a reconnect gap MUST end up in the buffer so the
-  // returning client can replay it via Last-Event-ID. `emitToUser` no
-  // longer short-circuits on "no live subscriber" the way pre-buffer did:
-  // the whole point of the buffer is to cover that exact window.
+  // Buffer first so a peer emit landing during a reconnect gap is
+  // replayable when the client comes back with Last-Event-ID.
   const id = nextEventId(userId);
   const event: StoredEvent = { id, domain, payload, timestamp: Date.now() };
   appendToBuffer(userId, event);

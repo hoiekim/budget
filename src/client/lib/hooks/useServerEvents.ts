@@ -170,11 +170,7 @@ export const createServerEventsConnection = (
       });
     }
 
-    // Server-emitted signal — the ring buffer no longer covers the gap
-    // this connection asked about (buffer overflow, server restart, or
-    // first connect without a valid Last-Event-ID). Run the whole-app
-    // resync; the throttle inside `requestResync` collapses a flap-storm
-    // of retry-fulls into one.
+    // Server signal that the ring buffer can't cover the reconnect gap.
     es.addEventListener("retry-full", () => {
       if (disposed) return;
       requestResync();
@@ -192,13 +188,8 @@ export const createServerEventsConnection = (
         attempt = 0;
       }, STABLE_CONNECTION_MS);
 
-      // Deliberately NO `requestResync()` on `open` — with the server-side
-      // ring buffer, a reconnect that stays covered by the buffer needs no
-      // resync (the server replays the covered events via the
-      // `Last-Event-ID` header). When coverage is lost the server emits
-      // `retry-full` before this event fires, and the handler above owns
-      // the resync. This is the whole point of the SSE ring buffer — no
-      // blind whole-app refetch on every reconnect.
+      // No requestResync on open — reconnects that stay covered by the
+      // ring buffer replay via Last-Event-ID; overflow fires retry-full.
     });
 
     es.addEventListener("error", () => {

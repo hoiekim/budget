@@ -230,28 +230,34 @@ describe("ring buffer", () => {
     ]);
   });
 
-  it("getEventsSince flags overflow when the buffer has been evicted past the requested id", () => {
-    // Prime the buffer, then simulate eviction: the client asks for a very
-    // old id, and the oldest still-buffered id is greater than that + 1.
-    emitToUser("u1", TableName.Accounts);
-    emitToUser("u1", TableName.Accounts);
-    // A client asking for id=0 while the buffer starts at id=1 is fine
-    // (covered — buffer's oldest is exactly lastId+1). But asking for
-    // something older than the oldest by more than 1 counts as overflow.
-    // Bake that by resetting and starting id counter fresh via a new user.
+  it("getEventsSince flags overflow when the client's remembered id sits above the counter tip — the server-restart case", () => {
+    // Pre-restart client held id=100. Server restarts (perUserCounter
+    // resets to 0), two peer emits fire → buffer=[{id:1},{id:2}]. Without
+    // this branch, `filter(e.id > 100)` returns [] AND overflow=false, so
+    // events 1 and 2 are silently missed for the life of the tab.
+    emitToUser("u1", TableName.Accounts); // counter=1
+    emitToUser("u1", TableName.Accounts); // counter=2
+    const restart = getEventsSince("u1", "100");
+    expect(restart.overflow).toBe(true);
+    expect(restart.events).toEqual([]);
+  });
+
+  it("getEventsSince flags overflow when the buffer's oldest id has evicted past the requested id", () => {
     resetRingBufferForTests();
-    emitToUser("u2", TableName.Accounts); // id=1
-    emitToUser("u2", TableName.Accounts); // id=2
-    // A stale client asks about id=100 — buffer's oldest is 1, so it can
-    // reasonably serve 100+1=101 onward, but has nothing.
-    const stale = getEventsSince("u2", "100");
-    expect(stale.overflow).toBe(false); // still covered — buf oldest 1 <= 101
-    expect(stale.events).toEqual([]); // just nothing new since 100
-    // Now vice versa: server restarted (fresh counter), client remembers
-    // id=100 from previous session.
+    // Simulate: counter has advanced to 200 but the buffer only holds
+    // ids 150-200 (older evicted). A client asking for id=100 has lost
+    // events 101-149.
+    for (let i = 0; i < 200; i++) emitToUser("u1", TableName.Accounts);
+    const stale = getEventsSince("u1", "100");
+    // With RING_BUFFER_MAX_ENTRIES=512, all 200 fit — pick a scenario
+    // that exceeds the cap.
+    expect(stale.overflow).toBe(false); // 200 < 512 = still covered
     resetRingBufferForTests();
-    const restart = getEventsSince("u2", "100");
-    expect(restart.overflow).toBe(true); // no buffer at all
+    for (let i = 0; i < 600; i++) emitToUser("u1", TableName.Accounts);
+    // Buffer holds ids 89..600 (evicted the oldest 88). Client asking
+    // for id=1 → firstStored 89 > 1+1 → overflow.
+    const evicted = getEventsSince("u1", "1");
+    expect(evicted.overflow).toBe(true);
   });
 
   it("getEventsSince flags overflow when lastEventId does not parse", () => {
@@ -260,11 +266,22 @@ describe("ring buffer", () => {
     expect(result.overflow).toBe(true);
   });
 
-  it("getEventsSince returns covered-with-no-events on a fresh connection (lastEventId is null)", () => {
-    emitToUser("u1", TableName.Accounts);
+  it("getEventsSince returns covered on a fresh connection with an empty buffer (typical single-tab boot)", () => {
+    // No prior emits for this user → login-time `sync()` already carries
+    // fresh state and the SSE stream just needs to start listening.
     const result = getEventsSince("u1", null);
     expect(result.overflow).toBe(false);
     expect(result.events).toEqual([]);
+  });
+
+  it("getEventsSince flags overflow on a fresh connection when the buffer has events — peer mutation between login-sync and SSE-subscribe would be missed", () => {
+    // A second tab / device where tab A's mutation buffered before tab
+    // B's SSE subscribed. Tab B's browser sends no Last-Event-ID (never
+    // received one). Without this branch, tab B would silently miss the
+    // event since the client hook no longer resyncs blindly on `open`.
+    emitToUser("u1", TableName.Accounts);
+    const result = getEventsSince("u1", null);
+    expect(result.overflow).toBe(true);
   });
 
   it("evicts by count when the buffer exceeds RING_BUFFER_MAX_ENTRIES", () => {

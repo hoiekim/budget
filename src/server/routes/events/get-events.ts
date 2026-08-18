@@ -25,18 +25,13 @@ const SSE_HEADERS: Record<string, string> = {
   "X-Accel-Buffering": "no",
 };
 
+// `id:` precedes `event:`/`data:` per the SSE spec so the browser
+// captures it before dispatch and can echo it as Last-Event-ID.
 const formatSseBlock = (event: string, payload: unknown, id?: string): string => {
-  // `id:` MUST precede `event:` and `data:` per the SSE spec — the browser's
-  // EventSource captures the id AT the time it dispatches the event so it
-  // can echo it back on the next reconnect via `Last-Event-ID`. Without
-  // this, the ring-buffer replay on reconnect never fires.
   const idLine = id !== undefined ? `id: ${id}\n` : "";
   return `${idLine}event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
 };
 
-// Custom event name the FE listens on to trigger a full `sync()` when the
-// server can no longer cover the reconnect gap from the ring buffer.
-// Kept as a named string so a reader can grep it in the client hook.
 const RETRY_FULL_EVENT = "retry-full";
 
 export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
@@ -91,11 +86,8 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
     signal?.addEventListener("abort", cleanup);
   }
 
-  // EventSource echoes the id of the last-received event back on every
-  // reconnect as `Last-Event-ID`. Reading it BEFORE registering the
-  // subscriber so a replay-then-live sequence lands in order (the newly
-  // registered sub can't have received any live event yet). Headers are
-  // lowercased on the way into `req.headers`.
+  // Read Last-Event-ID before registering the subscriber so replay is
+  // ordered strictly before any live emit. Headers are lowercased.
   const lastEventIdRaw = req.headers["last-event-id"];
   const lastEventId =
     typeof lastEventIdRaw === "string" && lastEventIdRaw.length > 0 ? lastEventIdRaw : null;
@@ -115,14 +107,6 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
       // any proxy in front of us commits to streaming rather than buffering.
       controller.enqueue(encoder.encode(": connected\n\n"));
 
-      // Reconnect-gap resolution: if the client asked for a specific
-      // Last-Event-ID and the ring buffer still holds every event since
-      // then, replay them in order (each carries its `id:` so the browser
-      // keeps tracking the tip). Otherwise emit a `retry-full` event; the
-      // client turns that into a whole-app `sync()`, which is the same
-      // worst-case behaviour that predated the buffer. Both branches
-      // happen BEFORE the subscriber is registered so the replay is
-      // strictly ordered against subsequent live emits.
       const { events: replay, overflow } = getEventsSince(userId, lastEventId);
       if (overflow) {
         controller.enqueue(encoder.encode(formatSseBlock(RETRY_FULL_EVENT, {})));
