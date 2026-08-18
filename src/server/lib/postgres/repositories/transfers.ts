@@ -104,15 +104,10 @@ export const getTransferPairs = async (
 
   // Under `includeDeleted`, every non-visible pair — soft-deleted OR rejected
   // — is delivered as an eviction signal so the delta-reducing FE removes it
-  // from its local cache (it evicts on `is_deleted || status === 'rejected'`).
-  // Eviction signals need no transaction resolution: a cascade soft-delete may
-  // have soft-deleted the referenced transactions too (the active-only txn
-  // query below wouldn't find them), and `pair_id` + `status` + `is_deleted` +
-  // `updated` is all the FE needs to evict. On the default path `allPairs`
-  // already excludes soft-deleted at the SQL layer and rejected pairs are
-  // simply omitted, so there are no eviction signals — the response is
-  // active-non-rejected only, byte-for-byte the prior contract plus the
-  // additive `updated` / `is_deleted` fields.
+  // from its local cache. Eviction signals carry `pair_id + status +
+  // is_deleted + updated` only — no transaction resolution needed, and a
+  // cascade soft-delete may have soft-deleted the referenced transactions too
+  // (the active-only txn query below wouldn't find them).
   const evictions = options.includeDeleted
     ? allPairs
         .filter((p) => !isVisible(p))
@@ -193,36 +188,22 @@ export const pairTransactions = async (
   try {
     await client.query("BEGIN");
 
-    // Per-user serialization for all transfer-pair mutations. Without
-    // this, two concurrent `pairTransactions(A, B)` and `confirmTransferPair`
-    // calls (e.g. double-click, two browser tabs) can each pass the
-    // collision SELECT before either commits — READ COMMITTED isolation
-    // hides the in-flight UPDATE — and both succeed, leaving A in two
-    // simultaneous active confirmed pairs (the exact invariant we're
-    // here to enforce). `pg_advisory_xact_lock` is a transaction-scoped
-    // per-key lock; the second concurrent call waits for the first to
-    // COMMIT/ROLLBACK, then sees the new state and the collision check
-    // fires correctly. Per-user-id scope: throughput is fine for
-    // many-user deployments since users only contend with themselves.
+    // Per-user serialization for all transfer-pair mutations via a
+    // transaction-scoped advisory lock. Without it, two concurrent calls
+    // (double-click, two tabs) can each pass the collision SELECT before
+    // either commits — READ COMMITTED hides the in-flight UPDATE — and both
+    // succeed, leaving A in two simultaneous active confirmed pairs. Per-user
+    // scope so users only contend with themselves.
     await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`, [
       user.user_id,
     ]);
 
-    // Existence pre-check: BOTH transactions must exist and be alive
-    // (`is_deleted = FALSE`). `FOR SHARE` takes a row-level share lock
-    // on each matched transaction row that conflicts with
-    // `deleteTransactions`'s subsequent `UPDATE transactions SET
-    // is_deleted=TRUE` (which needs an EXCLUSIVE row lock). This
-    // serializes the existence check vs. any concurrent delete — even
-    // though `deleteTransactions` doesn't take our `:transfers` advisory
-    // lock, the row-level lock conflict forces ordering. Without `FOR
-    // SHARE`, a concurrent delete could commit between our existence
-    // SELECT and our INSERT, leaving a confirmed pair referencing a
-    // soft-deleted transaction.
-    //
-    // Returns 0/1/2 rows; we expect exactly 2 (both alive AND both
-    // belonging to this user — the user_id filter rejects cross-user
-    // transaction_ids).
+    // Existence pre-check: BOTH transactions must exist, be alive, and belong
+    // to this user. `FOR SHARE` takes a row-level share lock that conflicts
+    // with `deleteTransactions`'s subsequent EXCLUSIVE lock, serializing the
+    // existence check against any concurrent delete — without it, a delete
+    // could commit between our SELECT and INSERT, leaving a confirmed pair
+    // referencing a soft-deleted transaction. Returns 0/1/2 rows; we expect 2.
     const existence = await client.query<{ transaction_id: string }>(
       `SELECT ${TRANSACTION_ID} FROM ${TRANSACTIONS}
        WHERE ${USER_ID} = $1
@@ -292,25 +273,17 @@ export const pairTransactions = async (
 
     const effectivePairId = result.rows[0].pair_id;
 
-    // Cleanup: REJECT any OTHER active SUGGESTED pair involving either of
-    // these transactions. The user's manual pair (or re-pair) is an
-    // explicit "this is the right pairing" — any other engine suggestion
-    // for the same transactions is implicitly the wrong pairing. We mark
-    // those `status='rejected'` so the engine's per-pair denylist
-    // (`fetchCandidates`'s second NOT EXISTS) won't re-suggest them on
-    // a future run, even if the new confirmed pair is later unpaired.
+    // Cleanup: REJECT any OTHER active SUGGESTED pair involving either
+    // transaction. The user's manual pair is an explicit "this is the right
+    // pairing", so any other engine suggestion for the same transactions is
+    // implicitly wrong; marking them `status='rejected'` keeps the engine's
+    // per-pair denylist (`fetchCandidates`'s second NOT EXISTS) from re-
+    // suggesting them.
     //
-    // Consistent with transaction labeling: when the user labels a
-    // transaction as a specific category, that's an implicit rejection
-    // of the engine's other category guesses — and the suggestion engine
-    // remembers it. Same model here.
-    //
-    // Use `status='rejected'` not `is_deleted=TRUE`. Soft-delete is the
-    // SYSTEM-side cascade for when a referenced transaction itself is
-    // removed (Plaid tombstone, manual delete); the per-pair denylist
-    // does NOT apply to soft-deleted rows, so the engine could re-emit
-    // the same pair later. Rejection is the persistent USER-intent
-    // denylist that survives.
+    // Rejection (not soft-delete) is the persistent USER-intent denylist:
+    // soft-delete is the SYSTEM cascade for when a referenced transaction
+    // itself is removed, and the per-pair denylist does NOT apply to soft-
+    // deleted rows.
     await client.query(
       `UPDATE ${TRANSACTION_PAIRS}
        SET ${STATUS} = 'rejected', updated = CURRENT_TIMESTAMP
@@ -368,18 +341,14 @@ export const confirmTransferPair = async (
       user.user_id,
     ]);
 
-    // Look up the pair's transaction_ids. If missing, soft-deleted, or a
-    // rejection record (kept as engine denylist, not user-promotable),
-    // fail cleanly. Status filter blocks a client from directly POSTing
-    // a rejected pair's pair_id to confirm it (FE filters rejected from
-    // `getTransferPairs`, but the server shouldn't rely on that).
+    // Look up the pair's transaction_ids. Missing, soft-deleted, or
+    // rejection records all fail cleanly. The status filter blocks a client
+    // from directly POSTing a rejected pair's pair_id to confirm it.
     //
-    // `FOR UPDATE` takes a row-level exclusive lock on the pair row so a
-    // concurrent `deleteTransactions`'s pair-cascade (which UPDATEs
-    // is_deleted=TRUE on this same row) blocks until we commit. Without
-    // it, the lookup→UPDATE gap allows the cascade to win, making our
-    // status UPDATE a silent no-op (the `is_deleted=FALSE` filter
-    // returns 0 rows).
+    // `FOR UPDATE` takes a row-level exclusive lock so a concurrent
+    // `deleteTransactions` pair-cascade blocks until we commit — without it
+    // the cascade could win the lookup→UPDATE gap and turn our status UPDATE
+    // into a silent no-op.
     const lookup = await client.query<{ transaction_id_a: string; transaction_id_b: string }>(
       `SELECT ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B} FROM ${TRANSACTION_PAIRS}
        WHERE ${PAIR_ID} = $1 AND ${USER_ID} = $2

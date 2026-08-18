@@ -535,14 +535,10 @@ export const useSync = () => {
         return null;
       });
       const cursorRaw = readLastSyncedCursor();
-      // Warm vs cold is gated on:
-      //   - a populated IDB cache (accounts AND at least one
-      //     time-partitioned store; protects against partial-IDB
-      //     states like a future schema migration that resets some
-      //     stores or storage-quota partial eviction), AND
-      //   - a previously-recorded cursor.
-      // Any missing → cold (full fetch, no cursor on the wire) so
-      // the time-partitioned history can re-hydrate from scratch.
+      // Warm requires a populated IDB cache (accounts AND at least one
+      // time-partitioned store) AND a previously-recorded cursor. Any missing
+      // → cold (full fetch, no cursor on the wire) so the time-partitioned
+      // history can re-hydrate from scratch.
       const isWarm =
         !!cached &&
         cached.accounts.size > 0 &&
@@ -551,24 +547,20 @@ export const useSync = () => {
           cached.accountSnapshots.size > 0) &&
         cursorRaw !== null;
 
-      // Cold path purges IDB before the new save block writes the
-      // fresh delta — otherwise pre-tombstone-era rows (soft-deleted
-      // server-side before tombstone delivery existed, hard-deleted,
-      // or admin-removed) persist as cruft. Without a cursor the
-      // server's delta won't replay tombstones for those, so cold is
-      // the only opportunity to reset IDB. Awaited — the new saves
-      // can't safely race against a still-in-flight clearAllData on
-      // the same stores.
+      // Cold path purges IDB before the new save block writes the fresh delta
+      // — otherwise pre-tombstone-era rows persist as cruft. Without a cursor
+      // the server's delta won't replay tombstones for those, so cold is the
+      // only opportunity to reset IDB. Awaited — the new saves can't safely
+      // race against a still-in-flight clearAllData on the same stores.
       if (!isWarm) {
         await indexedDb.clearAllData().catch(console.error);
       }
       // Pass the cursor to delta fetches ONLY on the warm branch. The
       // cold path must fetch the full history with no `start-date=` —
-      // if localStorage has a stale cursor (IDB cleared by quota /
-      // DevTools, or `clean()`'s clearAllData racing the next sync),
-      // sending the cursor would return only rows updated since it
-      // and the reducer's empty-base would commit a near-empty
-      // dataset to React state.
+      // if localStorage has a stale cursor (IDB cleared by quota / DevTools,
+      // or `clean()`'s clearAllData racing the next sync), sending the cursor
+      // would return only rows updated since it and the reducer's empty-base
+      // would commit a near-empty dataset to React state.
       const cursor = isWarm ? cursorRaw : null;
 
       // ===== Stage 1: non-historical data (cheap, paints fast). =====
@@ -739,17 +731,12 @@ export const useSync = () => {
       ]);
 
       // ===== Stage 4: apply (warm + cold: in-place merge on `oldData`). =====
-      //
-      // Existing state stays — added/modified rows overwrite their
-      // ids in the cloned dictionary; tombstoned ids are explicitly
-      // deleted from the clone. This is the design-doc rule (the calc
-      // depends on prior state, so the orchestrator can't just `new
-      // Data(refreshed)`).
-      //
-      // On cold load, the prior state from Stage 2's recent-window
-      // paint is already in oldData; Stage 4's unbounded fetch
-      // overlays the same recent rows (idempotent) and fills in the
-      // older months.
+      // Existing state stays — added/modified rows overwrite their ids in the
+      // cloned dictionary; tombstoned ids are explicitly deleted. The calc
+      // depends on prior state, so the orchestrator can't just
+      // `new Data(refreshed)`. On cold load, Stage 2's recent-window paint is
+      // already in oldData; Stage 4's unbounded fetch overlays the same rows
+      // (idempotent) and fills in the older months.
       setData((oldData) => {
         const next = new Data(oldData);
         next.accounts = accounts;
@@ -762,13 +749,10 @@ export const useSync = () => {
         next.institutions = institutions;
         next.securities = securities;
 
-        // Apply transfers delta in-place — cold sends the full set and
-        // ships zero tombstones (no soft-deleted pair pre-dates a
-        // never-seen client), warm ships only the pairs whose `updated`
-        // moved plus eviction ids for soft-deleted/rejected. Mirrors the
-        // transactions/split-transactions/snapshots pattern below —
-        // required by [[project_budget_delta_sync_design]] to preserve
-        // the pre-existing pair state on the warm path.
+        // Apply transfers delta in-place — cold sends the full set and ships
+        // zero tombstones; warm ships only the pairs whose `updated` moved
+        // plus eviction ids for soft-deleted/rejected. Same pattern as the
+        // transactions/split-transactions/snapshots block below.
         next.transfers = new TransferDictionary(oldData.transfers);
         transfers.forEach((pair, id) => next.transfers.set(id, pair));
         tombstoneTransferPairIds.forEach((id) => next.transfers.delete(id));
@@ -826,20 +810,13 @@ export const useSync = () => {
       });
 
       // ===== Stage 5: persist + advance the cursor. =====
-      //
-      // Per-store batched `saveMany` writes for added/modified entries
-      // and per-row `remove` for tombstones. AWAITED so the cursor
-      // write at the end happens AFTER IDB is durable — a page reload
-      // right after sync sees the same state the cursor advertises.
-      // Cursor advances ONLY if every fetch AND every IDB write
-      // succeeded. A swallowed IDB save error here used to silently
-      // advance the cursor — the failed row stayed in React state but
-      // never landed in IDB; once the 60s cursor margin elapsed, the
-      // server stopped re-emitting it (`WHERE updated >= cursor` was
-      // inclusive of the last sync's window only). On next page reload
-      // `loadAllData` painted the prior IDB cache without the row, and
-      // it was permanently gone. So track IDB outcomes too and gate
-      // the cursor on both.
+      // Per-store batched `saveMany` writes for added/modified entries and
+      // per-row `remove` for tombstones. AWAITED so the cursor write happens
+      // AFTER IDB is durable — a page reload right after sync sees the same
+      // state the cursor advertises. Cursor advances ONLY if every fetch AND
+      // every IDB write succeeded: advancing on a swallowed IDB save error
+      // would permanently lose the row (React state has it, IDB doesn't;
+      // once the 60s cursor margin elapses the server stops re-emitting).
       const fetchFailed =
         stage1Budgets.networkFailed ||
         stage1Charts.networkFailed ||

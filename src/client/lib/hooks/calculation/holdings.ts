@@ -318,21 +318,13 @@ export const getHoldingsValueData = ({
       const { price } = priceResult;
       const value = price * quantity;
 
-      // Two-channel cash detection. EITHER predicate fires → row is cash:
-      //
-      // 1. Holding-side: `institution_price === 1`. Plaid (and every other
-      //    broker) quotes 1 for cash because cash doesn't trade against
-      //    itself. Catches deposit sweeps whose security row never gets a
-      //    `securitySnapshot` written (no `close_price_as_of` → skipped by
-      //    `upsertSecuritiesWithSnapshots`).
-      // 2. Security-side: `Security.isCash` (type === "cash" /
-      //    is_cash_equivalent / `CUR:*` ticker). Catches cash whose broker
-      //    quote drifts off 1.0 (FX precision, stale quote).
-      //
-      // Cash rows report `cost_basis === value` → `unrealizedGain === 0`
-      // and `returnPercent === 0%`. The `inferCostBasis` transaction-replay
-      // path is skipped — Plaid encodes sweep deposits as `type='buy'`
-      // with `price=1`, which would otherwise pile up a phantom basis.
+      // Cash detection fires when EITHER: (1) `institution_price === 1`
+      // (brokers quote 1 for cash — catches sweeps whose security row lacks a
+      // snapshot); or (2) `Security.isCash` (type "cash" / cash-equivalent /
+      // `CUR:*` ticker — catches cash whose broker quote drifts off 1.0).
+      // Cash rows report `cost_basis === value` so unrealizedGain is 0. The
+      // `inferCostBasis` replay is skipped: Plaid encodes sweep deposits as
+      // `type='buy'` with `price=1`, which would pile up a phantom basis.
       const isCash =
         holding.institution_price === 1 || securities.get(security_id)?.isCash === true;
 
