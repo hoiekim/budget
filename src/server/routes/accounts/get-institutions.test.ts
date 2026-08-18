@@ -1,8 +1,8 @@
-// Route coverage for `GET /api/institutions?ids=<csv>` — the batch companion
-// to the single-id route. Pins: (1) SQL layer uses one IN query, not N per-id
-// lookups; (2) Plaid-fallback fires for misses only; (3) empty / "Unknown"
-// filter (the sentinel a fresh manual account carries) short-circuits; (4)
-// dedupe protects the SQL layer even without the FE dedupe.
+// Route coverage for `GET /api/institutions?ids=<csv>`. Pins: (1) SQL layer
+// uses one IN query, not N per-id lookups; (2) Plaid-fallback fires for
+// misses only; (3) empty / "Unknown" filter (the sentinel a fresh manual
+// account carries) short-circuits; (4) dedupe protects the SQL layer even
+// without the FE dedupe.
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { restoreLeaves } from "test-helpers";
@@ -151,10 +151,8 @@ describe("get-institutions route", () => {
 });
 
 // The Plaid-fallback path (a requested id not in the DB triggers a per-id
-// Plaid GET + upsert) mirrors the single-id `GET /api/institution?id=` route,
-// which itself has no unit test — Plaid is not mockable through the barrel
-// import from a spec at this depth without pulling in the whole "server"
-// module. The behaviour is covered end-to-end when a real sandbox first
-// resolves a new institution; the shape here is a straight copy of the
-// single-id path in `get-institution.ts`.
+// Plaid GET + upsert) has no unit test — Plaid is not mockable through the
+// barrel import from a spec at this depth without pulling in the whole
+// "server" module. The behaviour is covered end-to-end when a real sandbox
+// first resolves a new institution.
 

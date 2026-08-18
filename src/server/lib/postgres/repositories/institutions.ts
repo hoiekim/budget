@@ -43,8 +43,7 @@ export const upsertInstitutions = async (
  * Batch lookup: one `IN`-based query for every id at once, not per-id.
  * Missing ids are simply absent from the result — callers that need
  * Plaid-fallback for unknown institution_ids handle it at the route
- * layer (`GET /institutions?ids=...` does), same as
- * `GET /institution?id=...` does for its single-id case.
+ * layer (`GET /institutions?ids=...` does).
  */
 export const searchInstitutionsById = async (
   institution_ids: string[],

@@ -430,10 +430,9 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
     networkFailed: false,
   };
 
-  // Dedupe institution_ids across accounts — the pre-fix per-id-per-account
-  // fan-out issued 14 `/api/institution?id=` GETs per sync on Hoie's data,
-  // three of which were `ins_5` and three `ins_56` (same institution, three
-  // accounts each). One batched IN query serves the whole set.
+  // Dedupe institution_ids across accounts — a single institution can back
+  // multiple accounts and the pre-batch fan-out would GET the same id once
+  // per account. One batched IN query serves the whole set.
   const ids = Array.from(
     new Set(
       accounts
