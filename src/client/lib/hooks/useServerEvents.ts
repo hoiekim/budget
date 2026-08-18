@@ -129,7 +129,6 @@ export const createServerEventsConnection = (
   let attempt = 0;
   let fatalAttempts = 0;
   let warnedExhausted = false;
-  let everOpened = false;
   let lastResyncAt = 0;
   let disposed = false;
 
@@ -171,17 +170,17 @@ export const createServerEventsConnection = (
       });
     }
 
+    // Server-emitted signal — the ring buffer no longer covers the gap
+    // this connection asked about (buffer overflow, server restart, or
+    // first connect without a valid Last-Event-ID). Run the whole-app
+    // resync; the throttle inside `requestResync` collapses a flap-storm
+    // of retry-fulls into one.
+    es.addEventListener("retry-full", () => {
+      if (disposed) return;
+      requestResync();
+    });
+
     es.addEventListener("open", () => {
-      // Read the "did any prior attempt fail?" facts BEFORE the resets below
-      // — the resync guard depends on them. A first `open` that follows one
-      // or more refused/dropped attempts stands for a gap during which
-      // `emitToUser` broadcast to no live subscriber, and the client only
-      // reconciles on reconnect: without this, the initial gap is lost for
-      // the life of the tab (a MAX_SUBSCRIBERS_PER_USER 429 or a sessionStore
-      // 401 blip is the reachable case). A genuinely clean first open has
-      // `attempt === 0 && fatalAttempts === 0` so the existing
-      // "first-open-does-not-resync" behaviour holds.
-      const hadPriorFailure = attempt > 0 || fatalAttempts > 0;
       fatalAttempts = 0;
       warnedExhausted = false;
       // Clearing the backoff after a stable interval rather than on `open`
@@ -193,8 +192,13 @@ export const createServerEventsConnection = (
         attempt = 0;
       }, STABLE_CONNECTION_MS);
 
-      if (everOpened || hadPriorFailure) requestResync();
-      everOpened = true;
+      // Deliberately NO `requestResync()` on `open` — with the server-side
+      // ring buffer, a reconnect that stays covered by the buffer needs no
+      // resync (the server replays the covered events via the
+      // `Last-Event-ID` header). When coverage is lost the server emits
+      // `retry-full` before this event fires, and the handler above owns
+      // the resync. This is the whole point of the SSE ring buffer — no
+      // blind whole-app refetch on every reconnect.
     });
 
     es.addEventListener("error", () => {
