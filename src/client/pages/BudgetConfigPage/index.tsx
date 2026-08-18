@@ -82,7 +82,7 @@ export const BudgetConfigPage = () => {
     // the natural-math heuristic. Otherwise a budget whose parent.month
     // happens to equal Σ children (no explicit user intent) would show
     // the toggle ON, and a single child edit that breaks the natural
-    // sync would silently flip it OFF. Per Hoie: toggle = persisted
+    // sync would silently flip it OFF. toggle = persisted
     // intent, period.
     const defaultIsSyncInput =
       budgetLike.type !== "category" && budgetLike.capacities.some((c) => c.is_synced === true);

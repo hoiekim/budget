@@ -1,12 +1,9 @@
 import { describe, it, expect } from "bun:test";
 import { AmountInTime } from "./Chart";
 
-// The pre-fix constructor silently accepted null / Invalid-Date
-// `amountAsOf` and propagated them to `getSpanFrom` / other consumers
-// via `date.getFullYear()`, which crashed the render with
-// "Cannot read properties of null (reading 'getFullYear')".
-// These tests pin the invariant that `amountAsOf` is always a VALID
-// Date after construction.
+// `amountAsOf` must always be a VALID Date after construction: a null or
+// Invalid-Date value propagates to `getSpanFrom` and other consumers via
+// `date.getFullYear()`, crashing the render.
 
 describe("AmountInTime — amountAsOf validity invariant", () => {
   it("defaults to a valid Date when init is undefined", () => {

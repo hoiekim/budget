@@ -1,15 +1,7 @@
-// Run with: bun test --preload ./scripts/test-preload.ts budgets.rollover.test.ts
-//
-// Regression coverage for #484: on a cold load the rollover ("+ $X rolled")
-// accrued a month of capacity for EVERY month from roll_over_start_date to now,
-// but spending only existed for the subset of months whose transactions had
-// streamed in — so the figure overstated (~12× in prod) until the full history
-// loaded. getBudgetData now takes `isColdSync`; when set, it skips the accrual
-// loop entirely so the figure stays at 0 until Stage 4 commits the full
-// history. Reason: under the new delta-by-cursor sync the loaded subset is
-// keyed by `updated`, not `date`, so back-edited rows from years ago appear in
-// Stage 2 with no relation to "the last N months of history" — the axis
-// mismatch is unfixable until the full history lands.
+// Rollover ("+ $X rolled") must stay at 0 during cold sync: the loaded subset
+// is keyed by `updated`, not `date`, so accruing per-month capacity would
+// overstate against a partial spending history. getBudgetData takes
+// `isColdSync` and skips the accrual loop while set.
 
 import { describe, test, expect } from "bun:test";
 import { LocalDate, ViewDate } from "common";
@@ -98,7 +90,7 @@ const rolledThisMonth = (
   return budgetData.get("bud-1", new ViewDate("month").getEndDate()).rolled_over_amount;
 };
 
-describe("getBudgetData rollover cold-sync skip (#484)", () => {
+describe("getBudgetData rollover cold-sync skip", () => {
   const txns = makeTransactions(1);
   const OLD_START = "2022-06-01";
 
@@ -141,15 +133,11 @@ describe("getBudgetData rollover cold-sync skip (#484)", () => {
   });
 });
 
-// Regression coverage for #545: the warm-load accrual loop iterated
-// `budgetData`'s existing keys, so it only ran for budget-likes a confirmed
-// (or, for budgets, any) transaction had touched. A rollover-enabled
-// budget-like with zero such transactions never got a `budgetData` entry, its
-// accrual never ran, and the bar rendered "+ 0 rolled" despite a real capacity
-// and a years-old `roll_over_start_date`. The fix drives the accrual over the
-// budget/section/category dictionaries instead, so the carry is independent of
-// transaction presence.
-describe("getBudgetData rollover accrues without transactions (#545)", () => {
+// Rollover accrual must run for every configured budget-like, even ones with
+// no transactions — otherwise a zero-transaction rollover renders "+ 0 rolled"
+// despite a real capacity and a years-old `roll_over_start_date`. Drives the
+// accrual over the budget/section/category dictionaries, not `budgetData` keys.
+describe("getBudgetData rollover accrues without transactions", () => {
   const OLD_START = "2022-06-01";
   const SPEND = 50;
 
@@ -268,13 +256,10 @@ describe("getBudgetData rollover accrues without transactions (#545)", () => {
   });
 });
 
-// Regression coverage for #562: the accrual loop only writes rollover entries
-// up to the current calendar month. When the user paged the Budgets/Balance
-// view forward, `budgetData.get(id, futureMonth)` returned a lazily-created
-// empty summary so the bar rendered "+ $0 rolled" while capacity and "left"
-// kept projecting forward. getRolledOver now projects the carry forward
-// on read for future months, mirroring how capacity already projects.
-describe("BudgetData.getRolledOver future-month projection (#562)", () => {
+// The accrual loop only writes rollover entries up to the current month.
+// getRolledOver projects the carry forward on read for future months, mirroring
+// how capacity already projects.
+describe("BudgetData.getRolledOver future-month projection", () => {
   const OLD_START = "2022-06-01";
 
   const buildBudgetData = () => {
@@ -311,9 +296,8 @@ describe("BudgetData.getRolledOver future-month projection (#562)", () => {
     const r1 = budgetData.getRolledOver(budget(), oneAhead);
     const r2 = budgetData.getRolledOver(budget(), twoAhead);
 
-    // The bug: r1 === 0. Fixed: rollover is stored negative (renders "+"),
-    // so each future month with no spend grows the surplus by exactly one
-    // month's capacity — strictly more negative than the current month.
+    // Rollover is stored negative (renders "+"), so each future month with no
+    // spend grows the surplus by exactly one month's capacity.
     expect(r1).not.toBe(0);
     expect(r1).toBeCloseTo(current - MONTHLY_CAPACITY, 6);
     expect(r2).toBeCloseTo(current - 2 * MONTHLY_CAPACITY, 6);
@@ -333,13 +317,11 @@ describe("BudgetData.getRolledOver future-month projection (#562)", () => {
   });
 });
 
-// #634: the future-month projection dropped the CURRENT month's spend-to-date
-// S(T). The accrual loop in getBudgetData runs one month past T, so the stored
+// The accrual loop in getBudgetData runs one month past T, so the stored
 // rolled_over(T+1) is the authoritative recurrence rolled_over(T) + S(T) - C(T);
-// getRolledOver seeds its projection directly from that bucket. The #562
-// projection tests above build from an EMPTY TransactionDictionary, so S(T) = 0
-// and the defect is invisible — these use a current-month spend.
-describe("BudgetData.getRolledOver future projection subtracts current-month spend (#634)", () => {
+// getRolledOver seeds its projection directly from that bucket. Exercises the
+// case where current-month spend S(T) is non-zero.
+describe("BudgetData.getRolledOver future projection subtracts current-month spend", () => {
   const OLD_START = "2022-06-01";
   const SPEND = 20;
 
@@ -431,7 +413,7 @@ describe("BudgetData.getRolledOver future projection subtracts current-month spe
 // getSummary is the unified read the bars use: sorted/unsorted + rolled_over
 // from one call, so the rollover no longer flows on a separate path in the UI.
 // It must agree with the underlying history + getRolledOver it abstracts.
-describe("BudgetData.getSummary unified figures (#562)", () => {
+describe("BudgetData.getSummary unified figures", () => {
   const OLD_START = "2022-06-01";
 
   const buildBudgetData = () => {

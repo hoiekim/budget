@@ -285,8 +285,7 @@ export const HoldingProperties = () => {
   };
 
   /**
-   * `Add Investment Transaction` on the holding — Hoie's ask (#585
-   * design): prefill `security_id`, `price` (from the holding's
+   * `Add Investment Transaction` on the holding   * design): prefill `security_id`, `price` (from the holding's
    * `institution_price`), and `iso_currency_code` from the holding
    * context so the user starts with values they can confirm/correct
    * rather than 0 / null defaults. When the bucket spans multiple
@@ -324,18 +323,15 @@ export const HoldingProperties = () => {
     },
     viewEndDate.toISOString().slice(0, 10),
   );
-  // Second computation at TODAY — the button's presence tracks the
-  // security's LATEST unreconciled surplus, not just the current view's
-  // window. This lets the user reach the reconcile action from any
-  // past view (Hoie 2026-07-06: "buttons exist in June but not in May
-  // or April"). Reason for the mismatch: divergence at a past view can
-  // fire for a DIFFERENT security than the one the user is inspecting
-  // (widget footnote aggregates across the account), or the current
-  // holding's snapshot history might not extend that far back — either
-  // way the per-viewDate map wouldn't include the security. Using the
-  // today-anchored divergence gates the button on "does this security
-  // still have unreconciled shares", which is a property of the data
-  // rather than the viewDate.
+  // Second computation at TODAY — the button's presence tracks the security's
+  // LATEST unreconciled surplus, not just the current view's window, so the
+  // user can reach the reconcile action from any past view. Reason for the
+  // mismatch with per-viewDate divergence: divergence at a past view can fire
+  // for a DIFFERENT security than the one the user is inspecting (widget
+  // footnote aggregates across the account), or the current holding's snapshot
+  // history might not extend that far back. Today-anchored divergence gates
+  // the button on "does this security still have unreconciled shares" — a
+  // property of the data rather than the viewDate.
   const divergenceNow = useHoldingDivergence(
     accountId ? [accountId] : [],
     {
@@ -366,8 +362,7 @@ export const HoldingProperties = () => {
   // at the anchor value and divergence still fires. Dating at the
   // qty-jump point puts the txn STRICTLY BETWEEN the "before" and
   // "after" anchor eras, so it's in-walk for every window ending at-or-
-  // after the jump. (Hoie 2026-07-06 report: added missing invtx and
-  // warnings didn't clear for any view dates.)
+  // after the jump.
   const reconcileDate = useMemo(() => {
     if (!primarySecurityId || !accountId) return undefined;
     const snaps: { date: string; qty: number }[] = [];
@@ -735,9 +730,10 @@ export const HoldingProperties = () => {
         };
         const setEdit = (patch: Partial<typeof edit>) =>
           setSnapEdits((prev) => ({ ...prev, [id]: { ...edit, ...patch } }));
-        // <Fragment> keeps the per-snapshot <PropertyLabel> + <Property>
-        // pair as DIRECT children of <Properties> — no wrapper div. See
-        // PR #478 for the regression this guards against.
+        // <Fragment> keeps the per-snapshot <PropertyLabel> + <Property> pair
+        // as DIRECT children of <Properties> — a wrapper div would break the
+        // grid layout because <Properties>'s styles depend on the direct-child
+        // pairing.
         return (
           <Fragment key={id}>
             {/* Suffix is `security_id` — sections are grouped by security

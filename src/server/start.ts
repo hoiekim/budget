@@ -216,11 +216,9 @@ const isProduction = process.env.NODE_ENV === "production";
 // ---------------------------------------------------------------------------
 // Request logging
 //
-// One structured access-log line per API request (#316). The bare
-// {method, path} the server used to emit was useless — 25 identical
-// `GET /api/transactions` lines told you nothing about who called, with what,
-// or how it went. We now attach caller context (user, ip), a payload hint, and
-// the outcome (status, durationMs) so each line is debuggable on its own.
+// One structured access-log line per API request: caller context (user, ip), a
+// payload hint (field NAMES only, never values), and the outcome (status,
+// durationMs) — enough that each line is debuggable on its own.
 // ---------------------------------------------------------------------------
 
 type RequestLogContext = Record<string, unknown>;
@@ -284,7 +282,7 @@ async function handleApiRequest(
 
   // Rate-limit POST /login before session loading to fail fast.
   // Read-only check — the counter is bumped only on auth failure inside
-  // post-login.ts (#389).
+  // post-login.ts.
   if (request.method === "POST" && apiPath === "/login") {
     if (isLoginRateLimited(ip)) {
       return jsonResponse(
@@ -362,7 +360,7 @@ async function handleApiRequest(
     return result;
   }
 
-  // Real-time collaboration signal (#656): a successful mutation broadcasts a
+  // Real-time collaboration signal: a successful mutation broadcasts a
   // `<domain>-updated` event to the acting user's open tabs so they re-sync.
   // `originTabId` (the caller's `X-Tab-Id`) is echoed back so the tab that made
   // the change can filter its own event and skip a redundant self-refetch — its
@@ -405,7 +403,7 @@ const server = Bun.serve({
     const fullPath = url.pathname;
 
     // Serve static files for non-API paths. `isApiPath` rejects /api-anything
-    // (e.g. /api-key-detail SPA route, #391) so those fall through to the SPA.
+    // (e.g. /api-key-detail SPA route) so those fall through to the SPA.
     if (!isApiPath(fullPath)) {
       const filePath = path.join(clientPath, fullPath === "/" ? "index.html" : fullPath);
       const file = Bun.file(filePath);

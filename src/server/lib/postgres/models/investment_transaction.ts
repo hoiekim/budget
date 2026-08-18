@@ -172,7 +172,7 @@ export const investmentTransactionsTable = createTable({
     { column: ACCOUNT_ID },
     { column: DATE },
     // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
-    // every app load; the composite keeps the read O(rows-changed). See #641.
+    // every app load; the composite keeps the read O(rows-changed).
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: InvTxModel,

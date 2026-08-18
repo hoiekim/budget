@@ -19,15 +19,13 @@ interface Props {
 }
 
 /**
- * Detail page for a confirmed transfer PAIR rather than for either
- * single transaction inside it. Hoie 2026-06-17: the kebab on a transfer
- * row should land here regardless of which side the user clicked from,
- * so the page can't be biased toward the "outgoing" side — both sides
- * are surfaced as equal first-class halves of the transfer.
+ * Detail page for a confirmed transfer PAIR rather than for either single
+ * transaction inside it. The kebab on a transfer row lands here regardless of
+ * which side the user clicked from, so the page can't be biased toward the
+ * "outgoing" side — both sides are surfaced as equal first-class halves.
  *
- * Layout mirrors the other `*Properties` panels: `propertyLabel`
- * section headers, `row keyValue` rows inside, so this component reads
- * the same as TransactionProperties / ConnectionProperties / etc.
+ * Layout mirrors the other `*Properties` panels: `propertyLabel` section
+ * headers, `row keyValue` rows inside.
  */
 export const TransferProperties = ({ transfer }: Props) => {
   const { data } = useAppContext();

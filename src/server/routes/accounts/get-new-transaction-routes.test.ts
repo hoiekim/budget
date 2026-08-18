@@ -1,20 +1,10 @@
-// Route + repo coverage for the two manual-transaction mint endpoints
+// Route + repo coverage for the manual-transaction mint endpoints
 // (`GET /api/new-transaction` — provider-gated to MANUAL — and
-// `GET /api/new-investment-transaction` — allowed on any investment
-// account for the #585 RSU/ESPP case). The routes read query params,
-// look up account/item/security in the repo layer, then insert a shell
-// row via `createManualTransaction` / `createManualInvestmentTransaction`.
-// The pg-FakePool seam intercepts every DB call; a SQL router dispatches
-// by table so we can seed accounts / items / securities without needing
-// live tables.
-//
-// What we're pinning here:
-//   - unauth / missing-arg / not-found rejections
-//   - provider gate (cash mint refused on Plaid accounts — #567 AC)
-//   - account.type gate (invest mint refused on depository/credit)
-//   - security_id validation (garbage id refused via getSecurity)
-//   - happy paths write `source='manual'` and a `manual-<uuid>` id
-// Without these, dropping any of the guards would pass silently.
+// `GET /api/new-investment-transaction` — allowed on any investment account
+// for RSU/ESPP mints). Pins: unauth / missing-arg / not-found rejections;
+// provider gate (cash mint refused on Plaid accounts); account.type gate
+// (invest mint refused on depository/credit); security_id validation; happy
+// paths write `source='manual'` and a `manual-<uuid>` id.
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { restoreLeaves } from "test-helpers";
@@ -322,7 +312,7 @@ describe("get-new-transaction route", () => {
     expect(findInsert("transactions")).toBeNull();
   });
 
-  test("rejects when the account's item is not MANUAL provider (Plaid/simple-fin) — #567 AC", async () => {
+  test("rejects when the account's item is not MANUAL provider (Plaid/simple-fin)", async () => {
     accountRow = plaidInvestAccount();
     itemRow = plaidItem();
     const result = await getNewTransactionRoute.execute(
@@ -437,7 +427,7 @@ describe("get-new-investment-transaction route", () => {
     expect(findInsert("investment_transactions")).toBeNull();
   });
 
-  test("happy path with security_id: INSERT sets security_id + source='manual' on a Plaid brokerage (#585 case)", async () => {
+  test("happy path with security_id: INSERT sets security_id + source='manual' on a Plaid brokerage", async () => {
     accountRow = plaidInvestAccount();
     securityRow = someSecurity();
     const result = await getNewInvestmentTransactionRoute.execute(

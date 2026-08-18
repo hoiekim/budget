@@ -293,9 +293,9 @@ describe("createServerEventsConnection", () => {
 
   it("reconciles a gap that closes inside the throttle window instead of dropping it", () => {
     // The server buffers and replays nothing, so every gap needs its own
-    // refetch. A leading-edge throttle discards the suppressed call and the
-    // events from that gap are never reconciled — the tab renders stale data
-    // with no error, which is #669 reached by another road.
+    // refetch. A leading-edge throttle would discard the suppressed call and
+    // events from that gap would never reconcile — the tab would render stale
+    // data with no error.
     const h = harness();
     h.latest().open();
 

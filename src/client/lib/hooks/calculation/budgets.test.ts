@@ -140,9 +140,9 @@ describe("getBudgetData — confidence-gate bucketing", () => {
     expect(budgetData.get(w.budget.id, readDate).number_of_unsorted_items).toBe(0);
   });
 
-  // The #333 invariant: a rejected suggestion keeps its category_id (so the
-  // merchant signal can learn the negative) but MUST still count as unsorted —
-  // never attributed to the rejected category.
+  // A rejected suggestion keeps its category_id (so the merchant signal can
+  // learn the negative) but MUST still count as unsorted — never attributed to
+  // the rejected category.
   test("rejected (confidence=0 + category_id set) → unsorted bucket, NOT the category", () => {
     const w = makeWorld();
     const { transactions } = makeTx(w, 40, {
@@ -326,11 +326,11 @@ describe("getCapacityData — hierarchy aggregation", () => {
     expect(cap.get(budgetCapId).children_total).toBe(-MAX_FLOAT);
   });
 
-  // Regression: #590 — a child versioned more granularly than its parent must
-  // not sum its stale (superseded) versions into the parent bucket. The budget
-  // has ONE "All past" capacity; its donut renders at date = that version's
-  // active_from (epoch), so children_total must equal the section's amount
-  // ACTIVE at epoch (its base 300 version), not 300 + 500 = 800.
+  // A child versioned more granularly than its parent must not sum its stale
+  // (superseded) versions into the parent bucket. The budget has ONE "All past"
+  // capacity; its donut renders at date = that version's active_from (epoch),
+  // so children_total must equal the section's amount ACTIVE at epoch (its
+  // base 300 version), not 300 + 500 = 800.
   test("section with two versions under a one-version budget does not double-count the stale version", () => {
     const budget = new Budget({ name: "B" });
     const section = new Section({
@@ -349,9 +349,9 @@ describe("getCapacityData — hierarchy aggregation", () => {
     expect(cap.get(budgetCapId).children_total).toBe(300);
   });
 
-  // Regression: #590 (category granularity) — a category with two versions
-  // under a single-version section + single-version budget must contribute only
-  // its epoch-active version to both the section children_total and the budget
+  // Category granularity: a category with two versions under a single-version
+  // section + single-version budget must contribute only its epoch-active
+  // version to both the section children_total and the budget
   // grand_children_total, not the sum of both versions.
   test("category with two versions does not double-count into section/budget buckets", () => {
     const budget = new Budget({ name: "B" });
@@ -446,7 +446,7 @@ describe("getBudgetData — confirmed-transfer exclusion", () => {
     expect(withTransfer.budgetData.size).toBe(0);
   });
 
-  test("splits of a confirmed-transfer parent are also skipped (reviewoie #528 round 1)", () => {
+  test("splits of a confirmed-transfer parent are also skipped", () => {
     const w = makeWorld();
 
     // Parent transaction is a transfer half (in the set).

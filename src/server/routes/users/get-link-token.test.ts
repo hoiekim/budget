@@ -1,5 +1,5 @@
 /**
- * Tests for GET /api/link-token (#393 — partial: get-link-token.ts coverage).
+ * Tests for GET /api/link-token.
  *
  * `plaid.isPlaidConfigured` is a top-level const computed at module load
  * from PLAID_* env vars; the test env has none, so it evaluates to false.

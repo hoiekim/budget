@@ -26,7 +26,7 @@ export const BalanceInfo = ({
   const viewDateSpan = Math.max(-viewDate.getSpanFrom(today), 0);
   const previousDate = viewDate.clone().previous().getEndDate();
 
-  // Match the headline total's loading-aware fallback (#510): while history is
+  // Match the headline total's loading-aware fallback: while history is
   // still streaming, missing previous-period balances fall back to the live
   // balance rather than 0, so the "from last <period>" delta doesn't spike.
   const previousAmount = donutData.reduce((a, { id }) => {

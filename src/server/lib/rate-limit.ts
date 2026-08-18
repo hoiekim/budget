@@ -68,7 +68,7 @@ export const stopRateLimitCleanup = () => {
  * the active window. Does NOT mutate state.
  *
  * Successful logins must not consume a slot — that's what failure-only
- * counting prevents. See #389: counting successes locked out anyone who
+ * counting prevents.: counting successes locked out anyone who
  * legitimately signed in from 5+ devices within 15 minutes.
  */
 export const isLoginRateLimited = (ip: string): boolean => {

@@ -75,11 +75,9 @@ export const DatePickerModal = ({ onClose }: Props) => {
 
   const onBackdropKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     // Only handle Enter/Space when the backdrop ITSELF is the target
-    // (activation of the outer div's keyboard "button" affordance).
-    // Reviewoie #624 caught the earlier version treating bubbled events
-    // as backdrop activations — Enter on Prev/Current/Next inside the
-    // panel called preventDefault + onClose, breaking keyboard operation
-    // of every control in the modal.
+    // (activation of the outer div's keyboard "button" affordance) — treating
+    // bubbled events as backdrop activations would break keyboard operation of
+    // every control inside the panel.
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();

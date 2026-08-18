@@ -211,10 +211,10 @@ export const snapshotsTable = createTable({
     // (when caller narrows by account) and `getHoldingSnapshots`. Without
     // this, the WHERE-on-holding_account_id falls back to a user_id-index
     // scan + row filter — fine for low-cardinality users but slows down
-    // as snapshot history grows. See PR #470 / #445.
+    // as snapshot history grows.
     { column: HOLDING_ACCOUNT_ID },
     // `searchSnapshots` delta reads filter `WHERE user_id = ? AND updated >= ?`
-    // on every app load; the composite keeps the read O(rows-changed). See #641.
+    // on every app load; the composite keeps the read O(rows-changed).
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: SnapshotModel,

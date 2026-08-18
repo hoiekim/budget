@@ -36,7 +36,7 @@ export const LabeledBar = ({
   const { name, roll_over, roll_over_start_date } = barData;
   // All three figures from one call — rollover no longer flows separately
   // from sorted/unsorted; getSummary projects the carry forward for future
-  // views (#562) and reads January for a year view internally.
+  // views and reads January for a year view internally.
   const { sorted_amount, unsorted_amount, rolled_over_amount } =
     budgetData.getSummary(barData, viewDate);
 

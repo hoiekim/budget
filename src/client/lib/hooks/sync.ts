@@ -295,9 +295,8 @@ interface FetchTransfersResult {
  * in `useTransfers` update `data.transfers` in-place via `setData` (no
  * re-fetch on mutation).
  *
- * Before this PR, transfers full-fetched every sync — measured as 399 KB
- * of the 453 KB warm-sync payload (88%) in the PR #674 profiling. Warm
- * delta collapses to a few bytes when nothing changed.
+ * Warm sync delta collapses to a few bytes when nothing changed; without this,
+ * transfers full-fetched every sync at ~88% of the warm-sync payload.
  */
 const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResult> => {
   const result: FetchTransfersResult = {
@@ -595,9 +594,8 @@ export const useSync = () => {
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
       const securitiesPromise = fetchSecurities();
       // Transfers takes the same delta cursor as the other time-partitioned
-      // fetches — before this PR it was a full fetch every sync (88% of the
-      // warm-sync payload measured in PR #674 profiling). Cold load still
-      // asks for the full set because IDB is empty and needs seeding.
+      // fetches. Cold load still asks for the full set because IDB is empty
+      // and needs seeding.
       const transfersPromise = fetchTransfers(cursor);
 
       const [

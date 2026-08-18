@@ -123,9 +123,9 @@ describe("matchesAnySelectedType — deposits / expenses", () => {
     expect(matchesAnySelectedType(makeTxn("t1", -5), ["expenses"], makeCtx())).toBe(false);
   });
   test("confirmed-transfer half is excluded from expenses AND deposits", () => {
-    // Bug Hoie flagged on #569: a confirmed transfer was shown under the
-    // expenses/deposits title filter even though getBudgetData excludes it
-    // from totals. A confirmed transfer is neither income nor expense.
+    // A confirmed transfer must NOT surface under the expenses/deposits title
+    // filter — getBudgetData already excludes it from totals, and it's neither
+    // income nor expense.
     const expense = makeTxn("t1", 5);
     const deposit = makeTxn("t2", -5);
     const ctx = makeCtx([
@@ -176,7 +176,7 @@ describe("matchesAnySelectedType — unsorted", () => {
     // write path: `inferLabelConfidence` maps a set category to conf=1, and
     // a rejection clears category_id to null + writes to
     // `rejected_categories`. Any row still in this state (3 rows on prod
-    // as of 2026-08-17) is legacy corruption from the pre-#431
+    // as of 2026-08-17) is legacy corruption from the pre
     // updateSplitTransactions path. Aligning here with `Label.isConfirmed()`
     // (conf===1 && category_id) keeps the count in `budgets.ts` and the
     // list here on the same predicate — see the Aug 2026 "Budget client
@@ -190,10 +190,9 @@ describe("matchesAnySelectedType — unsorted", () => {
     ).toBe(true);
   });
   test("confirmed-transfer half is excluded from unsorted (transfer state takes precedence)", () => {
-    // A half of a confirmed transfer pair whose category is still suggested:
-    // pre-PR this passed "unsorted" because the category check widened to
-    // 'not user-confirmed'. The transfer is "done" from the user's POV;
-    // exclude it.
+    // A half of a confirmed transfer pair whose category is still suggested
+    // must NOT surface under "unsorted" even though the category isn't
+    // user-confirmed — the transfer is "done" from the user's POV.
     const txn = makeTxn("t1", 5, { category_id: "c", category_confidence: 0.5 });
     const ctx = makeCtx([makePair("p1", "confirmed", ["t1", "t2"])]);
     expect(matchesAnySelectedType(txn, ["unsorted"], ctx)).toBe(false);
@@ -214,17 +213,15 @@ describe("matchesAnySelectedType — suggested", () => {
     expect(matchesAnySelectedType(makeTxn("t1", 5), ["suggested"], makeCtx())).toBe(false);
   });
   test("confirmed-transfer half is excluded from suggested even with a suggested category", () => {
-    // Bug Hoie reported: pre-PR this row showed up under the suggested
-    // filter because the confidence is 0.5. Confirmed transfers should
-    // be excluded — the user already acted on them.
+    // A row with confidence 0.5 whose transfer pair is already confirmed must
+    // NOT surface under the suggested filter — the user already acted on it.
     const txn = makeTxn("t1", 5, { category_id: "c", category_confidence: 0.5 });
     const ctx = makeCtx([makePair("p1", "confirmed", ["t1", "t2"])]);
     expect(matchesAnySelectedType(txn, ["suggested"], ctx)).toBe(false);
   });
   test("suggested transfer-pair half (no category label) → matches suggested", () => {
-    // Bug 2: pre-PR an unlabeled row that's a half of a SUGGESTED pair
-    // didn't match the suggested filter, even though the Accept-All
-    // count included it (asymmetric UX). Now it does.
+    // An unlabeled row that's a half of a SUGGESTED pair must match the
+    // suggested filter — the Accept-All count includes it.
     const txn = makeTxn("t1", 5); // no category label at all
     const ctx = makeCtx([makePair("p1", "suggested", ["t1", "t2"])]);
     expect(matchesAnySelectedType(txn, ["suggested"], ctx)).toBe(true);
@@ -316,11 +313,9 @@ describe("TypePredicates.any — investment branch", () => {
 
 // -----------------------------------------------------------------------------
 // Accept-All button count invariants — mirrored on the button in
-// `TransactionsPage/index.tsx`. Regression pin for the shape Hoie hit on
-// 2026-08-10: the Transfers view was reporting "Accept all 3 suggestions"
-// while the visible rows were confirmed transfer halves that had already been
-// accepted. The button count and the button action must agree, and neither may
-// include confirmed transfer halves.
+// `TransactionsPage/index.tsx`. The button count and the button action must
+// agree, and neither may include confirmed transfer halves (which have already
+// been accepted even though the row still carries a suggested confidence).
 // -----------------------------------------------------------------------------
 
 describe("isAcceptableSuggestion", () => {
@@ -336,10 +331,9 @@ describe("isAcceptableSuggestion", () => {
   });
 
   test("engine-labeled half of a CONFIRMED pair is NOT acceptable (transfer state wins)", () => {
-    // This is the Hoie-screenshot regression: `confirmTransferPair` doesn't
-    // rewrite the halves' `category_confidence`, so a row can hold a
-    // still-suggested category label while its pair is confirmed. Accept-All
-    // must not count or act on it.
+    // `confirmTransferPair` doesn't rewrite the halves' `category_confidence`,
+    // so a row can hold a still-suggested category label while its pair is
+    // confirmed. Accept-All must not count or act on it.
     const row = makeTxn("t-a", 10, { category_id: "c", category_confidence: 0.7 });
     const ctx = makeCtx([makePair("p1", "confirmed", ["t-a", "t-b"])]);
     expect(isAcceptableSuggestion(row, ctx)).toBe(false);
@@ -429,7 +423,7 @@ describe("pickAcceptableTransferPairs", () => {
   });
 });
 
-describe("matchesAnySelectedType — manual (#567/#585)", () => {
+describe("matchesAnySelectedType — manual", () => {
   const mkTxn = (id: string, source: string): Transaction => {
     const t = makeTxn(id, 10);
     t.source = source;

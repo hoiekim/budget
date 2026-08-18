@@ -13,7 +13,7 @@ export interface BudgetCategorySelect {
 /**
  * The budget + category `<select>` machine shared by every per-row label
  * editor — `TransactionRow`, `InvestmentTransactionRow`, `SplitTransactionRow`,
- * and the `TransactionProperties` panel (#336). Each of those carried its own
+ * and the `TransactionProperties` panel. Each of those carried its own
  * verbatim copy of: the two `selected*IdLabel` states (initialised from the
  * row's own label, falling back to the account's default budget), the
  * `budgetOptions` list, and the section→budget-filtered `categoryOptions` list.
@@ -48,7 +48,7 @@ export const useBudgetCategorySelect = (
   // Keep local <select> state in lockstep with the underlying label the hook
   // was called with. Without these effects the initial `useState` lazy
   // initializers snapshot the label at mount and never re-read — an
-  // external update to the transaction (another tab via the #656 SSE
+  // external update to the transaction (another tab via the SSE
   // fanout, a background sync-plaid write, a suggestion-engine pass)
   // updates the underlying `data.transactions[id].label` but the
   // component's rendered <select> keeps displaying the stale mount-time

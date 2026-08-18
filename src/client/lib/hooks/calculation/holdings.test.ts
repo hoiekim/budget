@@ -375,7 +375,7 @@ describe("inferCostBasis", () => {
   });
 
   test("should reduce (not inflate) basis when a sell uses Plaid's negative quantity", () => {
-    // Regression for #459: a negative sell quantity must remove shares + basis,
+    //: a negative sell quantity must remove shares + basis,
     // not add them. Pre-fix this returned { totalQuantity: 14, costBasis: 1400 }.
     const transactions = new InvestmentTransactionDictionary();
     // Buy 10 @ $100 = $1000

@@ -36,7 +36,7 @@ test("Capacity preserves an explicitly provided capacity_id", () => {
   expect(c.capacity_id).toBe("preset-id");
 });
 
-test("Capacity falls back to manual UUID v4 when crypto.randomUUID is missing (issue #320)", () => {
+test("Capacity falls back to manual UUID v4 when crypto.randomUUID is missing", () => {
   Object.defineProperty(globalThis.crypto, "randomUUID", {
     value: undefined,
     configurable: true,
@@ -192,9 +192,9 @@ describe("Capacity.getActiveAmount", () => {
   });
 
   test("does NOT use this.active_from for child resolution (regression for the view-date bug)", () => {
-    // The pre-fix bug: getActiveAmount silently used this.active_from to
-    // query children. Here the parent's active_from is in 2024 but the
-    // caller asks for 2025. The 2024 child capacity must NOT win.
+    // getActiveAmount must query children by the caller's date, not
+    // `this.active_from`: parent's active_from is in 2024 but caller asks for
+    // 2025, so the 2024 child capacity must NOT win.
     const parent = new Capacity({
       is_synced: true,
       active_from: new Date("2024-01-01T00:00:00Z"),

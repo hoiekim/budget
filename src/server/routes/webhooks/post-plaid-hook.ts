@@ -81,7 +81,7 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
   });
 });
 
-// Real-time collaboration (#656): a Plaid webhook lands out-of-band from any
+// Real-time collaboration: a Plaid webhook lands out-of-band from any
 // user tab, so mutations here don't ride the normal per-user-request emit
 // path in start.ts. Resolve the item's owner from `item_id` and fan the
 // resulting `<table>-updated` events out to that user's open tabs so the UI

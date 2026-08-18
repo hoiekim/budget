@@ -104,7 +104,7 @@ export abstract class Table<
    *
    * Composite-PK tables must use raw `pool.query` writes in their
    * repository layer (mirroring what `repositories/suggestions.ts` already
-   * does for #496).
+   * does).
    */
   private _assertSimplePrimaryKey(methodName: string): void {
     // Matches both `PRIMARY KEY (a, b)` and `CONSTRAINT pk_name PRIMARY KEY

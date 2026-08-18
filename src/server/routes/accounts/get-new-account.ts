@@ -17,7 +17,7 @@ export type NewAccountGetResponse = { account_id: string; name: string };
  *
  * Mirrors the sibling `get-new-transaction` / `get-new-investment-transaction`
  * routes — create is a distinct endpoint from edit, so the 304-sails-as-success
- * class of bug on `POST /account` (#668) is impossible by construction.
+ * class of bug on `POST /account` is impossible by construction.
  */
 export const getNewAccountRoute = new Route<NewAccountGetResponse>(
   "GET",

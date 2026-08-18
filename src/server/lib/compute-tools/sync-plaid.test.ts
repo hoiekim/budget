@@ -203,7 +203,7 @@ describe("getPlaidRemovedInvestmentTransactions", () => {
 
   it("does not flag manually-entered (source='manual') transactions as removed", () => {
     // Manual invest txns can live on a Plaid brokerage (RSU/ESPP) and never appear
-    // in Plaid's incoming list — they must not be soft-deleted by sync. See #647.
+    // in Plaid's incoming list — they must not be soft-deleted by sync.
     const incoming: JSONInvestmentTransaction[] = [];
     const stored = [
       makeInvTx({ investment_transaction_id: "manual-1", source: "manual" }),

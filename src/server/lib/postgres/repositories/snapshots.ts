@@ -58,7 +58,7 @@ export interface HoldingSnapshot {
 // Security snapshots are price data — stored with `user_id = NULL` because
 // they're shared across all users. The user-scoped query below would
 // otherwise exclude them by the `user_id = $1` filter, leaving the frontend
-// unable to resolve `security_id → ticker_symbol` (Closes #323).
+// unable to resolve `security_id → ticker_symbol`.
 //
 // Two queries instead of one: `snapshotsTable.query` filters by a single
 // `user_id`, so it can't express the `user_id = $1 OR user_id IS NULL` union
@@ -104,11 +104,10 @@ export const searchSnapshots = async (
   // security-snapshot branch below works around the same single-table-
   // multiple-row-shapes problem.
   //
-  // Without this branch, `data.holdingSnapshots` is empty for every
-  // user (sync.ts calls /api/snapshots per-account, month-sliced —
-  // post-PR #364), which silently breaks Holdings Composition,
-  // Investment Performance MWR's snapshot anchor, and the holding-snap
-  // balance fallback. See #445.
+  // Without this branch, `data.holdingSnapshots` is empty for every user
+  // (sync.ts calls /api/snapshots per-account, month-sliced), which silently
+  // breaks Holdings Composition, Investment Performance MWR's snapshot anchor,
+  // and the holding-snap balance fallback.
   const wantsHoldingByAccount =
     (!options.snapshot_type || options.snapshot_type === "holding") &&
     (options.account_id || options.account_ids?.length);

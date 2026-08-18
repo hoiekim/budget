@@ -120,7 +120,7 @@ export const AccountProperties = ({ account }: Props) => {
   const onClickAddTransaction = () => addTransaction({ account_id, iso_currency_code });
 
   /**
-   * NOT gated on `isManualAccount` — the motivating case (#585) is
+   * NOT gated on `isManualAccount` — the motivating case is
    * RSU/ESPP grants on a Plaid-connected brokerage that pre-date
    * Plaid's 24-mo transaction window. Server marks the row
    * `source='manual'` so it survives future Plaid syncs.
@@ -247,9 +247,8 @@ export const AccountProperties = ({ account }: Props) => {
         <KeyValue name="Archive">
           {/* Hide already removes the account from view entirely; archiving
            *  on top adds nothing and would surface in "Show archived (N)"
-           *  even though the user's already hidden the row. Disable to
-           *  steer the user toward Unhide first if they want a different
-           *  classification. Hoie 2026-06-25. */}
+           *  even though the user's already hidden the row. Disable to steer
+           *  the user toward Unhide first. */}
           <ToggleInput checked={isArchived} onChange={onClickArchive} disabled={isHidden} />
         </KeyValue>
         <KeyValue name="Hide">

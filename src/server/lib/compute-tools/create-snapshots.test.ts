@@ -41,7 +41,7 @@ const mkSecurity = (overrides: Partial<JSONSecurity>): JSONSecurity =>
     ...overrides,
   }) as JSONSecurity;
 
-describe("upsertSecuritiesWithSnapshots — identity-not-ticker semantics (#593 gap 2 fix)", () => {
+describe("upsertSecuritiesWithSnapshots — identity-not-ticker semantics", () => {
   test("two securities with the same ticker but different security_ids BOTH survive", async () => {
     const result = await upsertSecuritiesWithSnapshots([
       mkSecurity({ security_id: "manual-voo", ticker_symbol: "VOO" }),

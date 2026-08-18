@@ -15,20 +15,16 @@ import { useAppContext } from "./context";
 
 /**
  * Shared entry-point for the "Add Transaction" and "Add Investment
- * Transaction" mint flows on `AccountProperties` and `HoldingProperties`.
- *
- * Consolidates the previously-duplicated per-component handlers (~90%
- * identical, called out on hoiekim/budget#588 review round 1) so the
- * mint flow is one source of truth:
+ * Transaction" mint flows on `AccountProperties` and `HoldingProperties`:
  *
  *   GET  /api/new-*transaction?... → mint shell on server (source='manual')
  *   optimistic shell inserted into data.transactions / .investmentTransactions
  *   indexedDb.save(shell)
  *   router.go(PATH.TRANSACTION_DETAIL, { params: { <id> } })
  *
- * Callers pass account-level context (`account_id`, `iso_currency_code`)
- * and holding-level context (`security_id`, `price`) when available;
- * defaults fall through to the server-side createManual* helpers.
+ * Callers pass account-level context (`account_id`, `iso_currency_code`) and
+ * holding-level context (`security_id`, `price`) when available; defaults
+ * fall through to the server-side createManual* helpers.
  */
 export const useTransactionEntry = () => {
   const { setData, router } = useAppContext();
@@ -80,7 +76,7 @@ export const useTransactionEntry = () => {
    *  values instead of the default `quantity=0 date=today`. Server derives
    *  `amount = quantity × price` at that price, so the row shows up in
    *  the tx list immediately (`TransactionsPage.filteredAndSorted`
-   *  filters zero-amount rows unless `source='manual'`, per PR #601). */
+   *  filters zero-amount rows unless `source='manual'`,). */
   const addInvestmentTransaction = useCallback(
     async (input: {
       account_id: string;
@@ -138,7 +134,7 @@ export const useTransactionEntry = () => {
         name,
         // Mirror the server-side derivation so the optimistic shell
         // isn't filtered out of TransactionsPage's zero-amount guard
-        // (PR #601). Rounded to cents.
+        //. Rounded to cents.
         amount: Math.round(shellQty * shellPrice * 100) / 100,
         quantity: shellQty,
         price: shellPrice,

@@ -482,10 +482,9 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
           {isClamped && " · clamped to earliest data"}
           {suppressAnnualized && " · annualized hidden (window <6mo)"}
           {/* Aggregate flag only — per-security detail lives on the
-              HoldingsComposition table (red dot on affected rows) and
-              the holding detail page's "Add transaction for N missing
-              units" button. No tooltip; mobile-first, hover doesn't
-              exist on touch. Hoie 2026-07-06. */}
+              HoldingsComposition table (red dot on affected rows) and the
+              holding detail page's "Add transaction for N missing units"
+              button. No tooltip; mobile-first, hover doesn't exist on touch. */}
           {divergentSecurityCount > 0 && (
             <span className="performanceDivergence">
               {` · ${divergentSecurityCount} holding${

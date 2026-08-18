@@ -26,8 +26,8 @@ describe("rejectedCategoriesTable — composite-PK Table guards", () => {
   // The Table framework's built-in single-PK helpers must throw for this
   // table — composite PRIMARY KEY (transaction_id, category_id) means
   // `this.primaryKey` (= "transaction_id" alone) is not the row key.
-  // The runtime guard `_assertSimplePrimaryKey` (from #496's review pass)
-  // catches misuse before SQL goes out.
+  // The runtime guard `_assertSimplePrimaryKey` catches misuse before SQL
+  // goes out.
 
   const data = {
     transaction_id: "tx-1",

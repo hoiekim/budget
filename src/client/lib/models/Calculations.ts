@@ -346,7 +346,7 @@ export class BudgetData {
    * history by getBudgetData — so we read the stored `rolled_over_amount`.
    * Beyond T+1 there is no stored value yet, so we project forward from T+1,
    * subtracting each month's active capacity once the rollover window has
-   * opened (#562). A budget-like whose `roll_over_start_date` is itself in the
+   * opened. A budget-like whose `roll_over_start_date` is itself in the
    * future contributes nothing before it begins.
    */
   getRolledOver = (budgetLike: BudgetFamily, date: Date): number => {
@@ -385,7 +385,7 @@ export class BudgetData {
    * The unified per-view summary for `budgetLike` at `viewDate`:
    * `sorted_amount` / `unsorted_amount` from the stored history (summed across
    * the year for a year view), and `rolled_over_amount` — the carry-forward,
-   * projected past the current month for future views (#562). For a year view
+   * projected past the current month for future views. For a year view
    * the bar shows the carry INTO the year (its January value, matching
    * aggregateYear), so the rollover is read at that year's January.
    *

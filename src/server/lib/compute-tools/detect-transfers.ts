@@ -202,14 +202,13 @@ export const runTransferDetection = async (): Promise<void> => {
     const userIds = await fetchUsers();
     for (const userId of userIds) {
       // Per-user transaction with advisory lock: serializes against
-      // `pairTransactions` / `confirmTransferPair` (same lock key, added
-      // in #547) AND against any other concurrent `runTransferDetection`
-      // invocation for this user (e.g. scheduled cron + manual sync
-      // trigger firing back-to-back). Without this, both engine runs
-      // see "A is free" via separate NOT EXISTS reads under READ
-      // COMMITTED and both INSERT pairs involving A — a transaction in
-      // two simultaneous active pairs, the exact invariant #547 was
-      // meant to enforce.
+      // `pairTransactions` / `confirmTransferPair` (same lock key) AND against
+      // any other concurrent `runTransferDetection` invocation for this user
+      // (e.g. scheduled cron + manual sync trigger firing back-to-back).
+      // Without this, both engine runs see "A is free" via separate NOT EXISTS
+      // reads under READ COMMITTED and both INSERT pairs involving A — a
+      // transaction in two simultaneous active pairs, violating the
+      // one-active-pair-per-transaction invariant.
       let client: PoolClient | undefined;
       try {
         client = await pool.connect();

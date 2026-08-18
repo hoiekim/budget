@@ -110,7 +110,7 @@ export const AccountsPage = () => {
     filteredAccounts.forEach((a, i) => {
       // While the cold-load history is still streaming, fall back to the live
       // balance rather than $0 so the headline total doesn't flash a bogus
-      // net-worth collapse (#510).
+      // net-worth collapse.
       const value = getDisplayBalance(balanceData, a, viewDateDate, today, data.status.isLoading);
       balanceTotal += value;
       const color = colors[i % colors.length];

@@ -85,7 +85,7 @@ export const transactionPairsTable = createTable({
     // Matches the delta-by-cursor read pattern the sync path now uses:
     // `WHERE user_id = $1 AND updated >= $cursor`. Same shape every other
     // delta-fetched table carries (transactions, split_transactions,
-    // investment_transactions, snapshots) per PR #641. Without this, the
+    // investment_transactions, snapshots). Without this, the
     // planner does a user_id lookup then scans + filters all of that user's
     // pairs — O(all-pairs-for-user) not O(rows-changed).
     { columns: [USER_ID, UPDATED] },

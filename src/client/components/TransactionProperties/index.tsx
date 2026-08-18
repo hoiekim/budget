@@ -175,7 +175,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
-  // Manual-row inline editing (#567). Plaid rows keep the read-only
+  // Manual-row inline editing. Plaid rows keep the read-only
   // `<span>` display below; only `source === 'manual'` unlocks these
   // inputs so we never overwrite a Plaid-synced field. Save-on-blur
   // matches the existing memo pattern — no explicit save button.

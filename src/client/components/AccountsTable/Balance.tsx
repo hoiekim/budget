@@ -20,7 +20,7 @@ export const Balance = ({ account }: BalanceProps) => {
   const previousDate = viewDate.clone().previous().getEndDate();
   // Fall back to the live balance for future dates, and for past dates while
   // the cold-load history is still streaming in — flashing $0 there reports a
-  // bogus net-worth collapse (#510). Once loaded, missing past data → 0 (#428).
+  // bogus net-worth collapse. Once loaded, missing past data → 0.
   const isLoading = data.status.isLoading;
   const dynamicAmount = getDisplayBalance(balanceData, account, viewDateDate, today, isLoading);
   const previousAmount = getDisplayBalance(balanceData, account, previousDate, today, isLoading);
@@ -50,7 +50,7 @@ export const Balance = ({ account }: BalanceProps) => {
   // Show the per-row Changes widget whenever either side of the
   // comparison has value — covers regular accounts (prev>0 AND
   // current>0), new accounts (prev=0, current>0 → "+$current"), and
-  // closed accounts (prev>0, current=0 → "-$prev"). Closes #357: the
+  // closed accounts (prev>0, current=0 → "-$prev").: the
   // donut's `BalanceInfo` headline change already counts new-account
   // currents on the current side; gating the row widget on
   // `!!previousAmount` was hiding the matching per-row entry, which is

@@ -194,7 +194,7 @@ describe("computeMWR", () => {
     expect(r.status).toBe("no_solution");
   });
 
-  test("returns no_solution when portfolio is empty at both boundaries (regression for #390)", () => {
+  test("returns no_solution when portfolio is empty at both boundaries", () => {
     // Manual investment account with no investment_transactions and no
     // priced security_snapshots: valueAt returns 0 at both ends, flows is
     // empty. Pre-fix this returned annualized=-0.99 (a fake −99% return)
@@ -254,7 +254,7 @@ describe("computeTWR", () => {
     expect(r.cumulative!).toBeCloseTo(0.21, 6);
   });
 
-  test("TWR differs from MWR under DCA in a rising market (the #638 misread)", () => {
+  test("TWR differs from MWR under DCA in a rising market", () => {
     // A DCA user: 0 at open, +1000 at mid, market +10% each half → value
     // sequence 0 / 1000 (just bought) / 1100. MWR annualizes the late dollar
     // aggressively (~21%); TWR sees only the funded half's 10% move.
@@ -883,9 +883,8 @@ describe("computeQtyDivergence (holdings-vs-transactions reconciliation)", () =>
   });
 
   // ── Direction B: txn-explained > holdings snapshot (transactions ahead) ──
-  // Covers gap 1 of #593: user records a manual invtx for a security not in
-  // any holdings snapshot, OR a sale txn arrives before the snapshot reflects
-  // the smaller position.
+  // User records a manual invtx for a security not in any holdings snapshot,
+  // OR a sale txn arrives before the snapshot reflects the smaller position.
 
   test("txnExcess: manual invtx for a security with no matching holdings row", () => {
     // Manual mint scenario: user posts /api/new-investment-transaction on a
@@ -1264,10 +1263,10 @@ describe("computeEffectiveWindowStart (window-anchor honesty)", () => {
   };
 
   test("pre-first-txn request (ALL-window shape): shifts to the first buy's date", () => {
-    // The Hoie-observed ALL-window case: requested = 2022-10-04, no txn on that
-    // date survives buildPriceIndex (only sell qty=0 in his data), so priceAt
-    // fell back to arr[0] = 2022-10-06 buy. Shift forward to that same date so
-    // the label / valueAt / benchmark all reference it consistently.
+    // ALL-window case: requested = 2022-10-04, no txn on that date survives
+    // buildPriceIndex (only sell qty=0), so priceAt falls back to arr[0] =
+    // 2022-10-06 buy. Shift forward to that same date so the label / valueAt
+    // / benchmark all reference it consistently.
     const { hs, itxns, priceIndex } = setup();
     expect(
       computeEffectiveWindowStart({
@@ -1422,7 +1421,7 @@ describe("buildBenchmarkPriceAt", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-describe("computeHoldingBenchmark (dynamic distribution, #317)", () => {
+describe("computeHoldingBenchmark (dynamic distribution)", () => {
   // VOO doubled then doubled again: 100 → 200 → 400.
   const priceAt = (date: string): number | null => {
     if (date >= "2026-01-01") return 400;

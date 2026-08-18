@@ -6,13 +6,11 @@ import { restoreLeaves } from "test-helpers";
 // The repo functions and `inferLabelConfidence` are unit-tested in isolation;
 // what is uncovered is the *wiring* that ties them together — the route reads
 // the body, runs the confidence inference, and hands the result to the repo.
-// PR #431 added the inference to two of these routes precisely because a
-// silent confidence drop went unobserved while the route layer had no test.
 //
-// We pin behavior at the SQL-param layer: a FakePool intercepts pg, the route
-// is driven through `.execute`, and the UPDATE statement's bound values are
-// asserted. This catches a regression in the route→repo handoff that a repo
-// unit test (which writes exactly what it's told) cannot.
+// Pins behavior at the SQL-param layer: a FakePool intercepts pg, the route is
+// driven through `.execute`, and the UPDATE statement's bound values are
+// asserted — catching regressions in the route→repo handoff that a repo unit
+// test (which writes exactly what it's told) cannot.
 // A single flag drives the failure path. Re-`mockImplementation`-ing a Bun
 // mock inside a test does not reliably replace the `beforeEach` default, so the
 // default impl itself branches on this flag — flip it to simulate a DB error.
@@ -270,7 +268,7 @@ describe("post-split-transaction route", () => {
     expect(boundValue(upd!, "label_category_confidence")).toBe(0.7);
   });
 
-  test("update WHERE is scoped to caller's user_id (cross-user write guard, #591)", async () => {
+  test("update WHERE is scoped to caller's user_id (cross-user write guard)", async () => {
     const result = await postSplitTransactionRoute.execute(
       makeReq(
         postSplitTransactionRoute,

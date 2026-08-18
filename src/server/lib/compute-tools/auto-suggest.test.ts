@@ -338,7 +338,7 @@ describe("runAutoSuggestions", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────
-  // Split-transactions pass (#334)
+  // Split-transactions pass
   // ──────────────────────────────────────────────────────────────────────
 
   test("applies suggestions to split transactions via the second pass", async () => {

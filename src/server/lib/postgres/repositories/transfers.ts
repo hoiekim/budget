@@ -80,9 +80,7 @@ export const getTransferPairs = async (
   // the caller opts into tombstone delivery, keep them by unsetting the
   // exclusion — matches the transactions/snapshots delta-delivery contract.
   // `updatedAfter` narrows the SQL scan to rows whose `updated > $cursor`,
-  // so a warm sync fetches only the delta instead of the full pair set
-  // (the transfers endpoint was 88% of the sync payload before this — see
-  // PR #674 profiling).
+  // so a warm sync fetches only the delta instead of the full pair set.
   const dateRange = options.updatedAfter
     ? { column: UPDATED, start: options.updatedAfter }
     : undefined;

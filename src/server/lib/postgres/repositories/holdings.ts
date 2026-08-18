@@ -109,7 +109,7 @@ export const deleteHoldings = async (
   // holding BEFORE calling this — that terminator is the deletion
   // signal historical readers (charts, performance calcs) consume.
   // Earlier this function wiped the entire account's snapshot history
-  // (filtering by `holding_account_id` only — see #471) which silently
+  // (filtering by `holding_account_id` only) which silently
   // erased every holding's history when a single position was removed.
   // The fix is not a tighter filter on the soft-delete; it's removing
   // the soft-delete entirely.

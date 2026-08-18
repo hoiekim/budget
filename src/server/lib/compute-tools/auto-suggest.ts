@@ -237,7 +237,7 @@ const applyLabel = async (
 // own — they inherit from their parent transaction via
 // `split_transactions.transaction_id`. The fetch joins to the parent so
 // every feature comes from the parent row, matching how a user mentally
-// categorizes splits. Closes #334.
+// categorizes splits.
 const fetchUnlabeledSplits = async (userId: string): Promise<UnlabeledSplit[]> => {
   const result = await pool.query(
     `SELECT st.split_transaction_id,
@@ -396,7 +396,7 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
     suggested++;
   }
 
-  // Pass 2: split transactions. Closes #334.
+  // Pass 2: split transactions.
   const unlabeledSplits = await fetchUnlabeledSplits(userId);
   for (const { split_transaction_id, features } of unlabeledSplits) {
     const signal = await getFeatureSignal(userId, features);

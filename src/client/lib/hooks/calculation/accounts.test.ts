@@ -63,14 +63,12 @@ describe("getAccountBalance", () => {
   });
 });
 
-// Regression coverage for #510: on a cold load, navigating to a past month
-// rendered every not-yet-streamed account as $0.00 — feeding a bogus
-// net-worth collapse into the Accounts table, the "All Accounts" headline,
-// and the balance charts — before self-healing once the backfill reached
-// that month. getDisplayBalance now distinguishes "history still loading"
+// On a cold load, `getDisplayBalance` must distinguish "history still loading"
 // (fall back to the live balance, like future dates) from "load complete,
-// genuinely no record" (fall back to 0, preserving #428).
-describe("getDisplayBalance (#510 cold-load past-balance flash)", () => {
+// genuinely no record" (fall back to 0). Without the distinction a not-yet-
+// streamed past month renders every account as $0 and feeds a bogus
+// net-worth collapse into the Accounts table and balance charts.
+describe("getDisplayBalance cold-load past-balance flash", () => {
   const LIVE = 1000;
   const RECORDED = 250;
   const makeAccount = () =>
@@ -111,7 +109,7 @@ describe("getDisplayBalance (#510 cold-load past-balance flash)", () => {
     expect(getDisplayBalance(balanceData, account, pastDate, today, true)).toBe(LIVE);
   });
 
-  test("missing past balance falls back to 0 once the load is complete (#428 preserved)", () => {
+  test("missing past balance falls back to 0 once the load is complete", () => {
     const account = makeAccount();
     const balanceData = new BalanceData();
     expect(getDisplayBalance(balanceData, account, pastDate, today, false)).toBe(0);

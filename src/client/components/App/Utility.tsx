@@ -32,7 +32,7 @@ const Utility = () => {
   }, [userLoggedIn, sync, clean]);
 
   /**
-   * Real-time collaboration (#656): a server-pushed `<table>-updated` event
+   * Real-time collaboration: a server-pushed `<table>-updated` event
    * means another tab / another user changed that table — refetch just that
    * domain's slot via `syncDomain(domain)`. Events tagged with this tab's
    * own `tabId` are its own writes (already applied optimistically) and

@@ -24,7 +24,7 @@ export interface TransferActions {
 }
 
 /**
- * Transfer-pair actions hook (#354, Phase 3a). Stateless: the pair
+ * Transfer-pair actions hook (Phase 3a). Stateless: the pair
  * dictionary itself lives on `data.transfers`, fetched once by
  * `useSync` alongside transactions / budgets / etc. Mutation methods
  * POST to the server then update `data.transfers` in-place via

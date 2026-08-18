@@ -59,7 +59,7 @@ sw.addEventListener("fetch", (event) => {
   }
 
   // Never intercept other API calls. `isApiPath` rejects /api-anything
-  // (e.g. the /api-key-detail SPA route, #391).
+  // (e.g. the /api-key-detail SPA route).
   if (isApiPath(url.pathname)) return;
 
   // Cache-first for hashed assets (JS, CSS under /assets/)
