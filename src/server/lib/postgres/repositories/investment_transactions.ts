@@ -121,11 +121,11 @@ export const updateInvestmentTransactions = async (
 
 /**
  * Insert a shell `investment_transactions` row. Unlike the cash-side
- * `createManualTransaction`, this is NOT gated on `items.provider ===
- * MANUAL` motivating case (RSU/ESPP grants that predate
- * Plaid's 24-month window) lives on a Plaid-connected brokerage
- * account. Plaid sync only inserts/updates rows keyed by its own IDs,
- * so a manual UUID-shaped id has no collision surface.
+ * `createManualTransaction`, this is NOT gated on
+ * `items.provider === MANUAL` — the motivating case (RSU/ESPP grants
+ * that predate Plaid's 24-month window) lives on a Plaid-connected
+ * brokerage account. Plaid sync only inserts/updates rows keyed by its
+ * own IDs, so a manual UUID-shaped id has no collision surface.
  */
 /** Same shape as `nextUnknownIndex` in `transactions.ts` — see that comment
  *  for the rationale on the "count soft-deleted" choice. */

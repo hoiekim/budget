@@ -76,7 +76,7 @@ export const useTransactionEntry = () => {
    *  values instead of the default `quantity=0 date=today`. Server derives
    *  `amount = quantity × price` at that price, so the row shows up in
    *  the tx list immediately (`TransactionsPage.filteredAndSorted`
-   *  filters zero-amount rows unless `source='manual'`,). */
+   *  filters zero-amount rows unless `source='manual'`). */
   const addInvestmentTransaction = useCallback(
     async (input: {
       account_id: string;
@@ -133,8 +133,8 @@ export const useTransactionEntry = () => {
         date: input.date ?? new Date().toISOString().split("T")[0],
         name,
         // Mirror the server-side derivation so the optimistic shell
-        // isn't filtered out of TransactionsPage's zero-amount guard
-        //. Rounded to cents.
+        // isn't filtered out of TransactionsPage's zero-amount guard.
+        // Rounded to cents.
         amount: Math.round(shellQty * shellPrice * 100) / 100,
         quantity: shellQty,
         price: shellPrice,

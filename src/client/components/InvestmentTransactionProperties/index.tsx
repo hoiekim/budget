@@ -237,7 +237,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     if (r.status === "success" && r.body?.valid && r.body.security) {
       // Success: the resolved security's name appears in the Security row
       // above; a "Valid ticker" / echoed-name message here duplicates that
-      //. Clear any prior error text so a subsequent valid
+      // Clear any prior error text so a subsequent valid
       // ticker doesn't leave a stale "Invalid ticker" line behind.
       setTickerMessage(null);
       await persistInvTxField({ security_id: r.body.security.security_id });

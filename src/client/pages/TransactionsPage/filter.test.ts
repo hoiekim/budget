@@ -175,12 +175,10 @@ describe("matchesAnySelectedType — unsorted", () => {
     // conf=0 with a non-null category_id is not producible by the current
     // write path: `inferLabelConfidence` maps a set category to conf=1, and
     // a rejection clears category_id to null + writes to
-    // `rejected_categories`. Any row still in this state (3 rows on prod
-    // as of 2026-08-17) is legacy corruption from the pre
-    // updateSplitTransactions path. Aligning here with `Label.isConfirmed()`
-    // (conf===1 && category_id) keeps the count in `budgets.ts` and the
-    // list here on the same predicate — see the Aug 2026 "Budget client
-    // bug" thread.
+    // `rejected_categories`. Any row still in this state is legacy
+    // corruption from an older `updateSplitTransactions` path. Aligning
+    // here with `Label.isConfirmed()` (conf===1 && category_id) keeps the
+    // count in `budgets.ts` and the list here on the same predicate.
     expect(
       matchesAnySelectedType(
         makeTxn("t1", 5, { category_id: "c", category_confidence: 0 }),

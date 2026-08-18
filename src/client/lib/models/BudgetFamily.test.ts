@@ -11,7 +11,7 @@ import { Capacity } from "./Capacity";
 // ---------------------------------------------------------------------------
 // BudgetFamily.getActiveAmount / getYearlyAmount
 //
-//: the yearly capacity must be the sum of each
+// The yearly capacity must be the sum of each
 // of the 12 months' active capacities, NOT the single year-end rate × 12.
 // Mirrors Calculations.aggregateYear on the spending side so the LabeledBar's
 // `left = capacity − spent` compares like-aggregated quantities.

@@ -285,11 +285,12 @@ export const HoldingProperties = () => {
   };
 
   /**
-   * `Add Investment Transaction` on the holding   * design): prefill `security_id`, `price` (from the holding's
-   * `institution_price`), and `iso_currency_code` from the holding
-   * context so the user starts with values they can confirm/correct
-   * rather than 0 / null defaults. When the bucket spans multiple
-   * securities (rare — merged tickers), use the first snapshot.
+   * `Add Investment Transaction` on the holding: prefill `security_id`,
+   * `price` (from the holding's `institution_price`), and
+   * `iso_currency_code` from the holding context so the user starts
+   * with values they can confirm/correct rather than 0 / null defaults.
+   * When the bucket spans multiple securities (rare — merged tickers),
+   * use the first snapshot.
    */
   const primaryHolding = bucketSnapshots[0]?.holding;
   const primarySecurityId = primaryHolding?.security_id ?? null;
