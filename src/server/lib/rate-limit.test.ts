@@ -77,8 +77,8 @@ describe("loginRateLimiter.reset", () => {
 });
 describe("bucket isolation", () => {
   test("filling one limiter leaves a different limiter's quota untouched for the same IP", () => {
-    // The property #663 needs: a chatty endpoint must not be able to lock an
-    // IP out of the login path (or vice versa) by exhausting a shared counter.
+    // A chatty endpoint must not be able to lock an IP out of the login path
+    // (or vice versa) by exhausting a shared counter.
     const ip = nextIp();
     const noisy = createRateLimiter("noisy-bucket", { maxAttempts: 2, windowMs: 60_000 });
     const quiet = createRateLimiter("quiet-bucket", { maxAttempts: 2, windowMs: 60_000 });
@@ -127,16 +127,23 @@ describe("bucket isolation", () => {
     expect(lenient.isLimited(ip)).toBe(false);
   });
 
-  test("a window that has elapsed starts a fresh count", () => {
+  test("a window that has elapsed starts a fresh count", async () => {
     const ip = nextIp();
-    const instant = createRateLimiter("instant-bucket", { maxAttempts: 1, windowMs: -1 });
+    const brief = createRateLimiter("brief-bucket", { maxAttempts: 2, windowMs: 20 });
 
-    instant.consume(ip);
+    brief.consume(ip);
+    brief.consume(ip);
+    expect(brief.isLimited(ip)).toBe(true);
 
-    // resetAt is already in the past, so the record is expired: not limited,
-    // and the next consume opens a new window rather than incrementing.
-    expect(instant.isLimited(ip)).toBe(false);
-    instant.consume(ip);
-    expect(instant.isLimited(ip)).toBe(false);
+    await Bun.sleep(30);
+    expect(brief.isLimited(ip)).toBe(false);
+
+    // The new window must carry a fresh count, not a resumed one: if the
+    // expired record were incremented in place its resetAt would stay in the
+    // past and the IP would never be limited again.
+    brief.consume(ip);
+    expect(brief.isLimited(ip)).toBe(false);
+    brief.consume(ip);
+    expect(brief.isLimited(ip)).toBe(true);
   });
 });

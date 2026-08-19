@@ -75,8 +75,8 @@ export interface RateLimiter {
   isLimited(ip: string): boolean;
   /**
    * Consume one slot for the given IP. The caller decides which outcomes cost
-   * a slot — the login limiter charges only failed auth (see #389: charging
-   * successes locked out anyone signing in from 5+ devices in one window),
+   * a slot — the login limiter charges only failed auth, since charging
+   * successes locks out anyone signing in from several devices in one window,
    * while a volume limiter charges every accepted request.
    */
   consume(ip: string): void;
@@ -127,3 +127,56 @@ export const loginRateLimiter = createRateLimiter("login", {
   maxAttempts: 5,
   windowMs: 15 * 60 * 1000,
 });
+
+// Reports are driven by a browser loop the server does not control, so the cap
+// bounds what one client can buy. A page that throws on every render burns its
+// quota and goes quiet; a user hitting a handful of distinct errors never
+// reaches it.
+//
+// Deliberately under the alarm cooldown's own ceiling: `sendAlarm` lets this
+// bucket through once a minute, so a 15-minute window carries at most 15
+// alarms. Capping one IP below that keeps a single chatty client from holding
+// the bucket for the whole window.
+export const clientErrorRateLimiter = createRateLimiter("client-error", {
+  maxAttempts: 12,
+  windowMs: 15 * 60 * 1000,
+});
+
+const PRE_SESSION_RATE_LIMITS: {
+  method: string;
+  path: string;
+  limiter: RateLimiter;
+  message: string;
+}[] = [
+  {
+    method: "POST",
+    path: "/login",
+    limiter: loginRateLimiter,
+    message: "Too many login attempts, try again later",
+  },
+  {
+    method: "POST",
+    path: "/client-error",
+    limiter: clientErrorRateLimiter,
+    message: "Too many client error reports, try again later",
+  },
+];
+
+/**
+ * The message to shed a request with, or null to let it through.
+ *
+ * Consulted before the body is read and before the session is loaded, so a
+ * caller over its cap costs no parse, no session read and no session write.
+ * Read-only: the slot is charged by the route, which decides which outcomes
+ * cost one — failed auth for login, every accepted report for client-error.
+ */
+export const preSessionShedMessage = (
+  method: string,
+  path: string,
+  ip: string,
+): string | null => {
+  const entry = PRE_SESSION_RATE_LIMITS.find(
+    (candidate) => candidate.method === method && candidate.path === path,
+  );
+  return entry && entry.limiter.isLimited(ip) ? entry.message : null;
+};

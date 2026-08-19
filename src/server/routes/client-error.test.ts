@@ -19,6 +19,9 @@ mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm 
 mock.module("server/lib/logger", () => ({ ...realLogger, logger: mockLogger }));
 
 const { postClientErrorRoute } = await import("./client-error");
+const { preSessionShedMessage, clientErrorRateLimiter } = await import(
+  "server/lib/rate-limit"
+);
 
 afterAll(() => {
   mock.module("server/lib/alarm", () => realAlarm);
@@ -113,11 +116,18 @@ describe("POST /client-error", () => {
 });
 
 describe("POST /client-error rate limit", () => {
-  test("accepts reports up to the per-IP cap, then rejects with 429", async () => {
+  // The route charges a slot per accepted report; the shed itself happens at
+  // the pre-session gate, before the body is read or the session is loaded.
+  // Both halves have to line up, so these drive the route and then ask the
+  // gate what it would do with the next request from the same IP.
+  const shedFor = (ip: string) => preSessionShedMessage("POST", "/client-error", ip);
+
+  test("accepts reports up to the per-IP cap, then sheds before the handler", async () => {
     const ip = nextIp();
     const CAP = 12;
 
     for (let i = 0; i < CAP; i++) {
+      expect(shedFor(ip)).toBeNull();
       const result = await postClientErrorRoute.execute(
         makeReq({ message: `boom ${i}` }, ip),
         makeRes()
@@ -126,25 +136,25 @@ describe("POST /client-error rate limit", () => {
     }
     expect(mockSendAlarm).toHaveBeenCalledTimes(CAP);
 
-    const res = makeRes();
-    const result = await postClientErrorRoute.execute(
-      makeReq({ message: "over the cap" }, ip),
-      res
-    );
+    expect(shedFor(ip)).toBe("Too many client error reports, try again later");
+  });
 
-    expect(result).toEqual({
-      status: "failed",
-      message: "Too many client error reports, try again later",
-    });
-    expect(res.status).toHaveBeenCalledWith(429);
-    // The point of the limit: a rejected report costs no alarm fan-out.
-    expect(mockSendAlarm).toHaveBeenCalledTimes(CAP);
-    // ...but it is still traceable, since a tripped limiter means a looping client.
-    expect(mockLogger.warn).toHaveBeenCalledTimes(1);
-    expect(mockLogger.warn.mock.calls[0]).toEqual([
-      "Client error report rate-limited",
-      { ip },
-    ]);
+  test("a shed report costs no alarm fan-out and no log line", async () => {
+    const ip = nextIp();
+    for (let i = 0; i < 12; i++) {
+      await postClientErrorRoute.execute(makeReq({ message: "boom" }, ip), makeRes());
+    }
+    mockSendAlarm.mockReset();
+    mockLogger.warn.mockReset();
+    mockLogger.error.mockReset();
+
+    // The gate returns a message, so `handleApiRequest` answers 429 without
+    // ever reaching the handler — nothing below this point runs for the
+    // rejected request.
+    expect(shedFor(ip)).not.toBeNull();
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
   test("one flooding IP does not consume another IP's quota", async () => {
@@ -154,14 +164,24 @@ describe("POST /client-error rate limit", () => {
     }
     mockSendAlarm.mockReset();
 
-    const res = makeRes();
+    const unrelated = nextIp();
+    expect(shedFor(flooder)).not.toBeNull();
+    expect(shedFor(unrelated)).toBeNull();
+
     const result = await postClientErrorRoute.execute(
-      makeReq({ message: "unrelated client" }, nextIp()),
-      res
+      makeReq({ message: "unrelated client" }, unrelated),
+      makeRes()
     );
 
     expect(result).toEqual({ status: "success" });
-    expect(res.status).not.toHaveBeenCalled();
     expect(mockSendAlarm).toHaveBeenCalledTimes(1);
+  });
+
+  test("the gate leaves an unlimited path alone", () => {
+    const ip = nextIp();
+    for (let i = 0; i < 20; i++) clientErrorRateLimiter.consume(ip);
+    expect(shedFor(ip)).not.toBeNull();
+    expect(preSessionShedMessage("POST", "/transactions", ip)).toBeNull();
+    expect(preSessionShedMessage("GET", "/client-error", ip)).toBeNull();
   });
 });

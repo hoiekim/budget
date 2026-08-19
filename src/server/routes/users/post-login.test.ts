@@ -201,8 +201,8 @@ describe("post-login auth outcomes", () => {
 
 describe("post-login rate-limiter wiring", () => {
   // The route decides which outcomes cost a slot; the limiter itself is
-  // outcome-blind. Nothing but these tests holds the #389 invariant in place,
-  // so they drive the real route rather than the limiter directly.
+  // outcome-blind. Nothing but these tests holds that split in place, so they
+  // drive the real route rather than the limiter directly.
   let ipCounter = 0;
   const nextIp = () => `192.0.2.${++ipCounter}`;
 
@@ -228,7 +228,7 @@ describe("post-login rate-limiter wiring", () => {
     expect(loginRateLimiter.isLimited(ip)).toBe(true);
   });
 
-  test("a successful login clears the IP's prior failures (the #389 regression)", async () => {
+  test("a successful login clears the IP's prior failures", async () => {
     const ip = nextIp();
     for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password");
 
@@ -242,8 +242,7 @@ describe("post-login rate-limiter wiring", () => {
   });
 
   test("a successful login never charges a slot on its own", async () => {
-    // The literal shape of #389: signing in from 6 devices inside one window
-    // must not lock the IP out.
+    // Signing in from 6 devices inside one window must not lock the IP out.
     const ip = nextIp();
     for (let i = 0; i < 6; i++) {
       const result = await attemptLogin(ip, REAL_PASSWORD);
