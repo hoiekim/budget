@@ -318,7 +318,7 @@ describe("deleteAccounts", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  test("soft-deletes snapshots by BOTH account_id and holding_account_id (#474)", async () => {
+  test("soft-deletes snapshots by BOTH account_id and holding_account_id", async () => {
     mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
     await deleteAccounts(testUser, ["acc-del"]);
 

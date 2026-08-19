@@ -159,7 +159,7 @@ export const updateTransactions = async (
  * Insert a shell `transactions` row for the user to fill in on the
  * detail page. Callers gate `account_id` on `items.provider === MANUAL`
  * so we don't accidentally create a duplicate manual row against a
- * Plaid-synced account (#567 acceptance criteria).
+ * Plaid-synced account.
  */
 /**
  * Query the highest `Unknown_N` name for the user on `transactions` and

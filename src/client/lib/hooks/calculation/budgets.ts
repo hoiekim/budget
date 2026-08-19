@@ -28,16 +28,9 @@ export const getBudgetData = (
   budgets: BudgetDictionary,
   sections: SectionDictionary,
   categories: CategoryDictionary,
-  // All transfer pairs (suggested + confirmed), keyed by pair_id with
-  // a transaction_id pivot. Halves of a CONFIRMED pair are skipped
-  // entirely from budget aggregation — a transfer is internal
-  // movement between the user's own accounts, not real spending or
-  // income. The two halves would otherwise inflate both the spent
-  // column on the source-account budget and the income column on the
-  // destination's. Suggested pairs still aggregate normally —
-  // they're heuristic proposals the user hasn't confirmed. Required
-  // (no default): the caller threads `data.transfers` through, which
-  // is itself defaulted to an empty `TransferDictionary` on `Data`.
+  // Halves of a CONFIRMED transfer pair are skipped from budget aggregation
+  // — a transfer is internal movement between the user's own accounts, not
+  // spending or income. Suggested pairs still aggregate normally.
   transfers: TransferDictionary,
   // True only while a cold sync is still streaming history in — months
   // older than what's already loaded have no spending in memory yet, so
@@ -70,19 +63,12 @@ export const getBudgetData = (
 
     const nextMonthDate = new ViewDate("month", transactionDate).next().getEndDate();
 
-    // "Unsorted" for the purposes of budget bar graphs / counts is any
-    // transaction the user hasn't confirmed. That bundles three states:
-    //   - genuinely unlabeled (category_id null, confidence null)
-    //   - explicitly rejected (category_id null, confidence 0)
-    //   - auto-suggested but unreviewed (category_id set, 0 < confidence < 1)
-    // The unsorted-count and the unsorted-amount-bar reflect "needs my
-    // review", not just "literally lacking a category", so the gate is
-    // `confidence !== 1`.
-    // A row only counts toward the sorted/category bucket if it's
-    // confirmed AND has a category_id; the latter guards against a
-    // malformed `confidence=1 AND category_id=null` row falling into the
-    // sorted-amount path below where `categories.get(null)` would skip it
-    // entirely (contributing to neither bucket).
+    // "Unsorted" means any transaction the user hasn't confirmed —
+    // `confidence !== 1` — bundling unlabeled, rejected, and auto-suggested-
+    // but-unreviewed. A row only counts toward the sorted/category bucket if
+    // it's confirmed AND has a category_id; the second half guards against a
+    // malformed `confidence=1 AND category_id=null` row silently dropping out
+    // of both buckets when `categories.get(null)` returns undefined.
     const isConfirmed = label.isConfirmed();
 
     // Calculates unsorted transactions amount for budgets
@@ -176,19 +162,12 @@ export const getBudgetData = (
 
   const endDate = new ViewDate("month");
 
-  // During a cold sync the loaded `transactions` aren't "the last N months
-  // of history" — the delta-by-cursor fetch keys on `updated`, so Stage 2
-  // can include back-edited rows from years ago whose `date` predates the
-  // recent window. Two effects need suppressing:
-  //   1. `processTransaction` above already carried each transaction's
-  //      amount forward into the next month's `rolled_over_amount`.
-  //   2. The accrual loop below would walk from `roll_over_start_date`,
-  //      accruing capacity for every month against the sparse spending.
-  // Both produce a misleading figure until Stage 4 commits the full
-  // history. Clear any rolled-over amounts that `processTransaction`
-  // wrote and skip the accrual loop. Rollover shows as $0 until cold
-  // settles (~3 s on prod-clone data). Warm syncs keep
-  // `isColdSync=false` so steady-state values are byte-identical.
+  // During a cold sync the loaded `transactions` aren't "the last N months of
+  // history" — the delta-by-cursor fetch keys on `updated`, so Stage 2 can
+  // include back-edited rows from years ago whose `date` predates the recent
+  // window. Rollover shows as $0 until cold settles: clear any rolled-over
+  // amounts `processTransaction` wrote and skip the accrual loop. Warm syncs
+  // keep `isColdSync=false` so steady-state values are byte-identical.
   if (isColdSync) {
     budgetData.forEach((history) => {
       Object.values(history.getData()).forEach((summary) => {
@@ -199,22 +178,16 @@ export const getBudgetData = (
   }
 
   // Accrue the per-month capacity carry-forward for EVERY rollover-enabled
-  // budget-like, not just the ones a confirmed transaction happened to
-  // touch. Iterating `budgetData`'s existing keys would skip any budget-like
-  // with no confirmed (sorted) transactions in the window — its history was
-  // never created by `processTransaction`, so its accrual never ran and the
-  // bar rendered "+ 0 rolled" despite a real capacity and a years-old
-  // `roll_over_start_date`. Driving the walk over the budget/section/category
-  // dictionaries makes the carry independent of transaction presence:
-  // `budgetData.get(id)` auto-creates the history for untouched rows, while
-  // touched rows keep the spending `processTransaction` already deposited
-  // (the walk only adds the capacity carry on top of it).
-  // Accrue one month PAST the current month T, so `rolled_over(T+1)` is the
+  // budget-like, not just the ones a confirmed transaction touched. Driving
+  // the walk over the budget/section/category dictionaries (rather than
+  // `budgetData`'s existing keys) makes the carry independent of transaction
+  // presence — a budget-like with zero confirmed transactions still gets its
+  // accrual.
+  //
+  // Accrue one month PAST the current month T so `rolled_over(T+1)` is the
   // authoritative recurrence `rolled_over(T) + S(T) - C(T)` in the stored
-  // history — not a coincidental side-product that only holds S(T) because the
-  // deposit ran but the accrual didn't. `getRolledOver` seeds its future
-  // projection directly from this bucket, so the seed no longer reconstructs
-  // T+1 by reading two buckets and hoping the loop boundary lines up.
+  // history. `getRolledOver` seeds its future projection directly from that
+  // bucket.
   const accrualEnd = endDate.clone().next();
 
   const accrueRollover = (budgetLike: Budget | Section | Category) => {

@@ -52,9 +52,8 @@ const makeRes = (): Parameters<typeof postClientErrorRoute.execute>[1] =>
 
 describe("POST /client-error", () => {
   test("charges the alarm to its own cooldown bucket, not the title's", async () => {
-    // The invariant that closes #663: without the explicit third argument the
-    // key falls back to the title and client reports again share a bucket with
-    // every server-side alarm.
+    // Without the explicit third argument the key falls back to the title and
+    // client reports would share a cooldown bucket with every server-side alarm.
     await postClientErrorRoute.execute(
       makeReq({ message: "boom", stack: "at foo", url: "http://x/page" }),
       makeRes()

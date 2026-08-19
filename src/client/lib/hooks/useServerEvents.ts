@@ -29,9 +29,9 @@ const RECONNECT_MAX_BASE_MS = 30_000;
  *
  * Deliberately does NOT bound the transport shape (a dropped 200). A server
  * that is merely down comes back, and the browser's own retry recovers that
- * case on its own — so a ceiling there would make an outage longer than the
- * horizon permanently deafen the tab, which is #669 by another road. The
- * transport shape retries at the capped backoff indefinitely.
+ * case on its own — a ceiling there would let an outage longer than the
+ * horizon permanently deafen the tab. The transport shape retries at the
+ * capped backoff indefinitely.
  */
 const RECONNECT_MAX_FATAL_ATTEMPTS = 10;
 

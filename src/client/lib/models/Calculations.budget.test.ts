@@ -418,9 +418,9 @@ describe("BudgetData", () => {
     expect(entries[0][1]).toBeInstanceOf(BudgetHistory);
   });
 
-  // Guards the #582 trap: unsorted items live in per-transaction month
-  // buckets, so for a year view the whole-year count MUST come from the
-  // year-aware getSummary — never from a single end-of-year month read.
+  // Unsorted items live in per-transaction month buckets, so for a year view
+  // the whole-year count MUST come from the year-aware getSummary — never
+  // from a single end-of-year month read.
   describe("getSummary number_of_unsorted_items (year vs single-month)", () => {
     test("year view sums unsorted items across all months, not just December", () => {
       const data = new BudgetData();

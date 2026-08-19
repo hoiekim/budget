@@ -115,7 +115,7 @@ describe("searchSnapshots", () => {
     expect(mockQuery.mock.calls[1][1]).toEqual(["security", "2026-01-01"]);
   });
 
-  test("skips the security query when narrowing to a specific account_id (still runs the holding_account_id query — see #445)", async () => {
+  test("skips the security query when narrowing to a specific account_id (still runs the holding_account_id query)", async () => {
     mockQuery
       .mockImplementationOnce(async () => ({
         rows: [makeAccountRow({ account_id: "acc-7" })],
@@ -125,7 +125,7 @@ describe("searchSnapshots", () => {
 
     await searchSnapshots(testUser, { account_id: "acc-7" });
 
-    // 1 = account_id-scoped, 2 = holding_account_id-scoped (#445 fix).
+    // 1 = account_id-scoped, 2 = holding_account_id-scoped.
     // No 3rd call for global security.
     expect(mockQuery).toHaveBeenCalledTimes(2);
     expect(mockQuery.mock.calls[0][1]).toContain("acc-7");
@@ -144,7 +144,7 @@ describe("searchSnapshots", () => {
     expect(mockQuery.mock.calls[0][1]).toContain("holding");
   });
 
-  test("skips the security query when caller passes a non-empty account_ids list (still runs the holding_account_id query — see #445)", async () => {
+  test("skips the security query when caller passes a non-empty account_ids list (still runs the holding_account_id query)", async () => {
     mockQuery
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
@@ -288,12 +288,12 @@ describe("searchSnapshots", () => {
   });
 });
 
-describe("searchSnapshots — #445 holding_account_id regression", () => {
+describe("searchSnapshots — holding_account_id fallback", () => {
   test("when account_id is set, also queries holdings via holding_account_id", async () => {
-    // First call: account_id-scoped (returns empty — historical bug: holdings'
-    // account_id is NULL so this never returns holding rows).
-    // Second call: holding_account_id-scoped (this is the fix; returns the
-    // brokerage's holding snapshots).
+    // First call: account_id-scoped (returns empty — holdings' account_id is
+    // NULL so this never returns holding rows).
+    // Second call: holding_account_id-scoped — returns the brokerage's holding
+    // snapshots.
     mockQuery
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({

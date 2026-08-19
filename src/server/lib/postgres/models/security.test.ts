@@ -35,7 +35,7 @@ const baseRow = {
   updated: "2026-06-01T00:00:00Z",
 };
 
-describe("SecurityModel.toJSON — round-trips raw Plaid fields (regression for #492)", () => {
+describe("SecurityModel.toJSON — round-trips raw Plaid fields", () => {
   test("is_cash_equivalent=true surfaces from raw instead of hardcoded null", () => {
     const model = new SecurityModel({
       ...baseRow,

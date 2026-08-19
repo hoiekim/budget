@@ -64,7 +64,7 @@ const txSchema = {
   // Origin marker. `plaid` for anything synced from Plaid or simple-fin
   // (safe default so the auto-migration backfills existing rows without
   // a script). `manual` for rows the user created via
-  // `GET /api/new-transaction` on a manual account (#567) — those rows
+  // `GET /api/new-transaction` on a manual account — those rows
   // are safe from Plaid overwrite because Plaid uses distinct id shapes,
   // but the column keeps the intent auditable and future-proofs a CSV
   // import path.
@@ -222,8 +222,8 @@ export const transactionsTable = createTable({
     { column: DATE },
     { column: PENDING },
     // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
-    // every app load (PR #536). Without a leading-`updated` composite the planner
-    // seq-scans the user's whole table; this keeps the read O(rows-changed). See #641.
+    // every app load. Without a leading-`updated` composite the planner
+    // seq-scans the user's whole table; this keeps the read O(rows-changed).
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: TransactionModel,

@@ -1,8 +1,6 @@
 /**
- * Tests for GET /api/login (#393 — partial: get-login.ts coverage).
- *
- * No external mocks needed — get-login reads `req.session.user` and the
- * exported `version` constant, no DB or downstream calls.
+ * Tests for GET /api/login. No external mocks needed — the route reads
+ * `req.session.user` and the exported `version` constant.
  */
 
 import { describe, test, expect } from "bun:test";

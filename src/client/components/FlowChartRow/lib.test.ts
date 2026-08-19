@@ -28,7 +28,7 @@ const DATE = "2026-03-15";
 const viewDate = new ViewDate("month", new LocalDate(DATE));
 
 // Two independent budget→section→category trees so a split child can be
-// re-labeled to a DIFFERENT budget than its parent (the #534 case).
+// re-labeled to a DIFFERENT budget than its parent.
 const makeWorld = () => {
   const budgetA = new Budget({ name: "Budget A" });
   const sectionA = new Section({ budget_id: budgetA.id, name: "Section A" });
@@ -71,7 +71,7 @@ const makeConfirmedPair = (transaction_ids: string[]): TransferDictionary => {
   return dict;
 };
 
-describe("getSankeyData — split re-labeling (#534)", () => {
+describe("getSankeyData — split re-labeling", () => {
   test("split child re-labeled to a different budget is attributed to that budget, not the parent's", () => {
     const w = makeWorld();
 

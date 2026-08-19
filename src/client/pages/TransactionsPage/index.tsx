@@ -362,10 +362,8 @@ export const TransactionsPage = () => {
 
     // Surface any per-item failures so the user knows the bulk Accept-All
     // wasn't fully applied. Common cause: a transfer pair-confirm collides
-    // with an already-confirmed pair (per the #547 integrity guard). Per-row
-    // mutations surface via `useTransfers.confirm`'s alert; the bulk path
-    // had no such signal before — failures were silently dropped from
-    // `acceptedPairIds`.
+    // with an already-confirmed pair (rejected by the one-active-pair-per-
+    // transaction guard).
     const totalFailed = failedLabels + failedPairs;
     if (totalFailed > 0) {
       const totalAttempted = labelResults.length + transferResults.length;

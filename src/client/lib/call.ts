@@ -4,7 +4,7 @@ import { ApiResponse } from "server";
  * Stable per-tab identifier, generated once when the client bundle loads (so
  * each browser tab gets its own). Sent as `X-Tab-Id` on every request; the
  * server echoes it back on the real-time event it emits for the resulting
- * mutation, letting this tab recognize and skip its own writes (#656).
+ * mutation, letting this tab recognize and skip its own writes.
  */
 export const tabId =
   typeof crypto !== "undefined" && "randomUUID" in crypto

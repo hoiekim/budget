@@ -15,7 +15,7 @@ export type NewTransactionGetResponse = { transaction_id: string; name: string }
  * navigates the user to the transaction detail page for the returned
  * id; the page's save-on-blur handlers fill in the fields. Gated to
  * `items.provider === MANUAL` so we don't accidentally create a
- * duplicate row on a Plaid-synced account (#567 acceptance criteria).
+ * duplicate row on a Plaid-synced account.
  */
 export const getNewTransactionRoute = new Route<NewTransactionGetResponse>(
   "GET",

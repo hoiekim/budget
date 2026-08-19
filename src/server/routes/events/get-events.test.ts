@@ -67,10 +67,10 @@ const fakeRes = () =>
 
 describe("get-events", () => {
   test("widens this request's idle deadline past the keepalive period", async () => {
-    // Deleting the `req.setIdleTimeout(...)` line leaves `bun run typecheck`
-    // clean and every other test green, and #669 is back — the stream dies at
-    // ~12s with no error anywhere. Making the field required on
-    // `ServerRequest` proves the plumbing exists, not that this route uses it.
+    // Deleting the `req.setIdleTimeout(...)` line leaves typecheck clean and
+    // every other test green, but the stream then dies at ~12s with no error
+    // anywhere. Making the field required on `ServerRequest` proves the
+    // plumbing exists, not that this route uses it.
     const calls: number[] = [];
     const result = await getEventsRoute.execute(
       makeReq((seconds) => calls.push(seconds)),

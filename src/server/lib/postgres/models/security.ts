@@ -74,7 +74,7 @@ export class SecurityModel extends Model<JSONSecurity, SecuritySchema> implement
     // Fields without a dedicated column are round-tripped through `raw` (the
     // JSONSecurity stored by fromJSON). Reading them back instead of hardcoding
     // null preserves Plaid signals the FE/BE rely on — notably is_cash_equivalent,
-    // which feeds the cash-holding detectors. See #492.
+    // which feeds the cash-holding detectors.
     const raw = (this.raw ?? {}) as Partial<JSONSecurity>;
     return {
       security_id: this.security_id,

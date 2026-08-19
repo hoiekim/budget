@@ -42,7 +42,7 @@ describe("recordLoginFailure / lockout threshold", () => {
   });
 });
 
-describe("successful-login behavior (the #389 regression)", () => {
+describe("successful-login behavior", () => {
   test("a successful login resets the counter so subsequent logins are not blocked", () => {
     const ip = nextIp();
     // 4 failed attempts under the cap, then a success clears the bucket.

@@ -87,7 +87,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
   // `viewEndDate` so a red dot appears (or disappears) for the same
   // window the widget is looking at — running at `today` here while the
   // widget runs at the user-selected past month caused the "widget says
-  // check the red flag / there's no red flag" mismatch (Hoie 2026-07-06).
+  // check the red flag / there's no red flag" mismatch.
   const divergence = useHoldingDivergence(
     accounts.map((a) => a.account_id),
     { holdingSnapshots, investmentTransactions, securitySnapshots },
@@ -249,12 +249,11 @@ export const HoldingsComposition = ({ accounts }: Props) => {
   // exist and disagree, the diff renders as an "Unknown" row in the
   // holdings summary table.
   //
-  // The Unknown row is the UI safeguard for reconciliation gaps; the data
-  // fix is PR #353's auto-inferred USD cash holding on the server side. On
-  // a freshly-synced account #353 closes the gap and Unknown stays at $0
-  // (no row); on transient state (just after deploy / before next sync)
-  // the Unknown row carries the residual, positive OR negative, so the
-  // table's Total still equals the per-view-date account balance either way.
+  // The Unknown row is the UI safeguard for reconciliation gaps; the data fix
+  // is an auto-inferred USD cash holding on the server side. On a freshly-
+  // synced account Unknown stays at $0 (no row); on transient state the
+  // Unknown row carries the residual, positive OR negative, so the table's
+  // Total still equals the per-view-date account balance either way.
   const holdingsTotal = tickerRows.reduce((s, r) => s + r.value, 0);
   // Per-view-date balance comes from balanceData (the 3-tier-fallback
   // model: account snapshot > holding snapshot > transactions). Falls

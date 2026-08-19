@@ -40,7 +40,7 @@ const splitTxSchema = {
   [LABEL_CATEGORY_ID]: "UUID",
   [LABEL_MEMO]: "TEXT",
   // Mirrors the same column on `transactions`. Required for the two-pass
-  // auto-suggest engine to write per-split suggestions (closes #334).
+  // auto-suggest engine to write per-split suggestions.
   [LABEL_CATEGORY_CONFIDENCE]: "FLOAT",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
@@ -130,7 +130,7 @@ export const splitTransactionsTable = createTable({
     { column: TRANSACTION_ID },
     { column: ACCOUNT_ID },
     // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
-    // every app load; the composite keeps the read O(rows-changed). See #641.
+    // every app load; the composite keeps the read O(rows-changed).
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: SplitTransactionModel,

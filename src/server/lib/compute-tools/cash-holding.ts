@@ -70,7 +70,7 @@ const isCashLikeSecurity = (sec: JSONSecurity | undefined): boolean => {
  * (`HoldingsComposition`): cash holdings always quote `institution_price = 1`
  * and never carry a real cost basis. This catches money-market funds and
  * broker-proprietary cash sweeps that don't surface as `type='cash'` /
- * `is_cash_equivalent` / `CUR:*` at the *security* layer (#368).
+ * `is_cash_equivalent` / `CUR:*` at the *security* layer.
  *
  * Falsy `cost_basis` covers both DB-NULL and the `?? 0` collapse that
  * happens on serialisation, so this matches whether the holding came

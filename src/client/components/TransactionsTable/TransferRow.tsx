@@ -8,17 +8,12 @@ interface Props {
 }
 
 /**
- * Bundled single-row presentation of a confirmed transfer pair (#354
- * phase 3). The two paired transactions are folded into one row that
- * shows the date, both accounts (from → to), the pair's absolute
- * amount (no +/− sign since the money doesn't leave the household),
- * and a "Transfer" label where the merchant would normally sit.
- *
- * The first transaction in the pair is rendered as the "outgoing" side
- * (negative amount → money leaving) and the second is the "incoming"
- * side. Plaid signs both with the same sign relative to each account,
- * so we pick the side with the negative `amount` as the source to keep
- * the visual stable regardless of pair ordering.
+ * Bundled single-row presentation of a confirmed transfer pair. The two paired
+ * transactions are folded into one row showing the date, both accounts
+ * (from → to), the pair's absolute amount (no +/− sign since the money
+ * doesn't leave the household), and a "Transfer" label where the merchant
+ * would sit. The side whose `amount` is positive (Plaid outflow) is the
+ * "outgoing" side; falls back to the first if signs are equal.
  */
 const TransferRow = ({ transactions }: Props) => {
   const { data, router } = useAppContext();

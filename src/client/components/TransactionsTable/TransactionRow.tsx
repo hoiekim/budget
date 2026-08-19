@@ -61,7 +61,7 @@ const TransactionRow = ({ transaction }: Props) => {
   const isSplitTransaction = transaction instanceof SplitTransaction;
 
   // A row whose parent transaction belongs to a still-suggested transfer pair
-  // shows Confirm/Reject instead of the budget/category controls (#354). Split
+  // shows Confirm/Reject instead of the budget/category controls. Split
   // rows never carry the affordance — the detection engine pairs whole
   // transactions, and a split inherits its parent's transaction_id.
   const pendingTransferPair = isSplitTransaction

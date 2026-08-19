@@ -38,7 +38,7 @@ export const BalanceChartRow = ({
     // Use historical balance for the selected view date so that switching
     // to a past month reflects the balance at that time rather than today's
     // live Plaid balance. While the cold-load history is still streaming,
-    // fall back to the live balance instead of flashing $0 (#510).
+    // fall back to the live balance instead of flashing $0.
     const historicalBalance = getDisplayBalance(balanceData, a, date, today, data.status.isLoading);
     const stack = { type: a.type, name: a.custom_name || a.name, amount: historicalBalance };
     if (!configuration.account_ids.includes(a.id)) return;
@@ -58,7 +58,7 @@ export const BalanceChartRow = ({
 
   budgets.forEach((b) => {
     if (!configuration.budget_ids.includes(b.id)) return;
-    // Rollover projects forward for future views (#562); capacity already does.
+    // Rollover projects forward for future views; capacity already does.
     const amount = b.roll_over
       ? budgetData.getRolledOver(b, date)
       : -b.getActiveAmount(date, interval);

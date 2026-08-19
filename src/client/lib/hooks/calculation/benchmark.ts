@@ -83,7 +83,7 @@ const cashSecurityIdsForAccount = (
  * Same-day flows for the same (account, security) are summed. The returned
  * map is keyed by `security_id`, each value date-sorted ascending. Used by
  * `extractCashFlows` (account-wide MWR) and the per-holding S&P 500
- * benchmark column (#317), which needs flows scoped to one ticker bucket.
+ * benchmark column, which needs flows scoped to one ticker bucket.
  */
 export const extractCashFlowsBySecurity = (
   investmentTransactions: InvestmentTransactionDictionary,
@@ -599,7 +599,7 @@ export interface QtyDivergence {
   // Covers (i) the manual-mint case (invtx recorded for a security with no
   // matching holdings row) and (ii) the Plaid-lag reverse case (a sale txn
   // arrived but the snapshot still shows the pre-sale qty). Symmetric shape
-  // with direction A; sub-0.1% ignore threshold shared. See #593 gap 1.
+  // with direction A; sub-0.1% ignore threshold shared. gap 1.
   /** # of non-cash securities the txn stream records but that the latest
    *  holdings snapshot doesn't reflect at full qty (or at all). */
   txnExcessSecurityCount: number;
@@ -952,7 +952,7 @@ export const priceAtIn = (history: PriceRow[], date: string): number | null => {
  * historical tail. Returns null when neither source has a price ≤ date.
  *
  * Shared by `PerformanceBenchmark` (window TWR) and the Holdings
- * Composition S&P 500 benchmark column (#317).
+ * Composition S&P 500 benchmark column.
  */
 export const buildBenchmarkPriceAt = (
   securitySnapshots: SecuritySnapshotDictionary,
@@ -982,7 +982,7 @@ export interface HoldingBenchmarkResult {
 }
 
 /**
- * Dynamic-distribution S&P 500 benchmark for a single holding bucket (#317).
+ * Dynamic-distribution S&P 500 benchmark for a single holding bucket.
  *
  * Each contribution `(dateᵢ, amountᵢ)` — buy = +amount, sell = −amount — is
  * re-priced forward at the index's return from its *own* date to `asOf`:

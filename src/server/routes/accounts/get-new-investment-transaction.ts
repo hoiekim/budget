@@ -16,11 +16,11 @@ export type NewInvestmentTransactionGetResponse = {
 /**
  * Mint a shell manual `investment_transactions` row. Unlike
  * `getNewTransactionRoute`, this is NOT gated on
- * `items.provider === MANUAL` — #585's motivating case (RSU/ESPP
- * grants that predate Plaid's 24-month window) lives on a
- * Plaid-connected brokerage account. Plaid sync inserts/updates rows
- * keyed by its own IDs; the `manual-<uuid>` prefix here has no
- * collision surface, and `source='manual'` keeps the intent auditable.
+ * `items.provider === MANUAL` — the motivating case (RSU/ESPP grants
+ * that predate Plaid's 24-month window) lives on a Plaid-connected
+ * brokerage account. Plaid sync inserts/updates rows keyed by its own
+ * IDs; the `manual-<uuid>` prefix here has no collision surface, and
+ * `source='manual'` keeps the intent auditable.
  */
 export const getNewInvestmentTransactionRoute = new Route<NewInvestmentTransactionGetResponse>(
   "GET",

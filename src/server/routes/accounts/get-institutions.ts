@@ -17,12 +17,6 @@ export type InstitutionsGetResponse = JSONInstitution[];
  * match the request; callers index by `institution_id`. Sibling to
  * `searchAccountsById` / `searchTransactionsById` — same `queryByIds` shape.
  *
- * Before this route the FE issued one `GET /institution?id=` per account per
- * sync — the PR #674 profiling measured 14 sequential GETs (with duplicates
- * `ins_5 ×3`, `ins_56 ×3`) as ~3 KB of payload but 14 RTTs of latency and log
- * noise. This route serves the same payload in one query and the single-id
- * route was removed the same PR (no other in-tree caller).
- *
  * A `Plaid-fallback` fires for any requested id that is NOT in the DB (the
  * user just connected a new institution and its row hasn't been persisted
  * yet). Plaid's `getInstitution` is per-id, so the fallback is a small
@@ -31,10 +25,8 @@ export type InstitutionsGetResponse = JSONInstitution[];
  *
  * **Partial-success on Plaid miss**: a fallback failure silently omits that
  * one id from the response (200 with the other ids resolved). A fresh
- * institution the FE just connected shouldn't blank every other
- * institution's logo/name on the same render pass; the alternative — throw
- * → 500 for the whole batch — is what the removed single-id route did, and
- * the batch semantic has to be more forgiving.
+ * institution the FE just connected shouldn't blank every other institution's
+ * logo/name on the same render pass.
  */
 export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
   "GET",

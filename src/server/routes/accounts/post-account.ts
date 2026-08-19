@@ -16,7 +16,7 @@ export interface AccountPostResponse {
  * Edit an existing account. Purely UPDATE — create lives on the sibling
  * `GET /new-account` mint route, so a body naming an `account_id` that
  * does not exist yet answers `Account not found.` instead of an
- * ambiguous 304-that-looks-like-success (#668). `item_id` and
+ * ambiguous 304-that-looks-like-success. `item_id` and
  * `institution_id` are create-only and stripped in `updateAccounts`.
  */
 export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account", async (req) => {

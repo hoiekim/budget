@@ -34,7 +34,7 @@ export const TransactionDetailPage = () => {
 
   // Confirmed-transfer rows surface the same kebab → detail route as a
   // regular transaction, but the page should treat the pair as the
-  // entity, not one side of it (Hoie 2026-06-17). Branch on whether the
+  // entity, not one side of it. Branch on whether the
   // clicked transaction is part of a confirmed pair and render the
   // dedicated `TransferProperties` view if so.
   const lookedUp = transfers.byTransactionId.get(transaction.transaction_id);

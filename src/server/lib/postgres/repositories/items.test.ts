@@ -57,7 +57,7 @@ describe("deleteItem", () => {
     mockQuery.mockReset();
   });
 
-  test("soft-deletes snapshots by BOTH account_id and holding_account_id (#539)", async () => {
+  test("soft-deletes snapshots by BOTH account_id and holding_account_id", async () => {
     // The initial account lookup must return an account so the per-account
     // cascade runs; every other query (the soft-deletes, BEGIN/COMMIT) returns
     // empty.

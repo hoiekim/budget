@@ -16,7 +16,7 @@ type PropertiesProps = ComponentPropsWithoutRef<"div">;
  * wrap groups of children in an extra `<div>` — the shell CSS uses
  * `div.Properties > .propertyLabel` and `div.Properties > .property`
  * direct-child selectors, so any intermediate wrapper strips the section
- * frame (PR #472 regression caught 2026-06-04). Use `<React.Fragment>` if
+ * frame. Use `<React.Fragment>` if
  * you need to render an array of label/property pairs from a `.map`.
  */
 export const Properties = ({ className, children, ...rest }: PropertiesProps) => {

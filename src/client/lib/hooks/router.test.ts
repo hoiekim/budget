@@ -127,7 +127,7 @@ describe("deriveActiveParams", () => {
 /**
  * Which navigations leave a history entry behind. This is what decides
  * whether the header's back button walks pages or walks every period the
- * user stepped through on one page (#699).
+ * user stepped through on one page.
  */
 describe("isPageTreeStep", () => {
   test("a different page is always a step", () => {
@@ -170,11 +170,9 @@ describe("isPageTreeStep", () => {
 
   test("toggling any of the four filter-chip families is not a step (same-page filter change)", () => {
     // Every `useMultiSelectQueryFilter` chip family in the app has to be in
-    // NON_NAVIGATIONAL_PARAMS or the same-page toggle pushes a history
-    // entry and back walks through chip states instead of leaving the page
-    // — the regression reviewoie R1 caught (only `transactions_type` was
-    // present pre-fix; `account_type` / `budget_filter` / `chart_type` all
-    // pushed). One case per section root:
+    // NON_NAVIGATIONAL_PARAMS or the same-page toggle pushes a history entry
+    // and back walks through chip states instead of leaving the page. One case
+    // per section root:
     const cases: [PATH, string][] = [
       [PATH.ACCOUNTS, "account_type"],
       [PATH.BUDGETS, "budget_filter"],
@@ -243,7 +241,7 @@ describe("isPageTreeStep", () => {
  * The NON_NAVIGATIONAL_PARAMS registry is the sole source that decides
  * push-vs-replace for a same-page param change. Every `useMultiSelectQueryFilter`
  * chip family + `useViewDate` writer has to be in it; a missing key silently
- * regresses back-button behavior on that section (see reviewoie R1 HIGH).
+ * regresses back-button behavior on that section.
  */
 describe("NON_NAVIGATIONAL_PARAMS registry", () => {
   test("covers every filter-chip param key + view_date — no silent drift", () => {
@@ -301,9 +299,9 @@ describe("getParentPath", () => {
  */
 describe("preserveViewDateAcrossBack", () => {
   test("outgoing view_date wins when restored URL has a different one", () => {
-    // The primary case Hoie reported: user is viewing view_date=2026-08
-    // and hits back — restored URL has view_date=2026-05 from an earlier
-    // push. Patched keeps 2026-08 so the picker doesn't jump.
+    // Primary case: user is viewing view_date=2026-08 and hits back — restored
+    // URL has view_date=2026-05 from an earlier push. Patched keeps 2026-08 so
+    // the picker doesn't jump.
     const out = preserveViewDateAcrossBack(
       p("view_date=2026-08&account_id=a"),
       p("view_date=2026-05&account_id=b"),

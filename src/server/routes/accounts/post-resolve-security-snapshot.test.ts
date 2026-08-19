@@ -1,6 +1,6 @@
 //
 // `POST /api/resolve-security-snapshot` powers the PerformanceBenchmark
-// widget's on-demand benchmark price fetch (#386, #414). Uses the
+// widget's on-demand benchmark price fetch. Uses the
 // leaf-mock pg pattern: every DB call (getSecurity, getSecuritySnapshots,
 // upsertSnapshots → securitiesTable / snapshotsTable / pool.query) lands
 // on `mockQuery` via a FakePool. A SQL router dispatches by table name.

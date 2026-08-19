@@ -32,19 +32,13 @@ beforeEach(() => {
   mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
 });
 
-describe("deleteHoldings — terminator-only model (#471)", () => {
+describe("deleteHoldings — terminator-only model", () => {
   // The sync path writes a `quantity = 0` terminator snapshot for every
   // removed holding BEFORE calling deleteHoldings (see
-  // compute-tools/create-snapshots.ts). That terminator is the
-  // deletion signal historical readers consume — there's no need (and
-  // it's actively unsafe) for deleteHoldings to soft-delete snapshot
-  // rows on top.
-  //
-  // The previous implementation soft-deleted snapshots filtered on
-  // `holding_account_id` alone, which wiped EVERY holding's snapshot
-  // history for the entire account whenever a single position was
-  // removed (#471). Lock the new contract in: deleteHoldings only
-  // touches the `holdings` table.
+  // compute-tools/create-snapshots.ts). That terminator is the deletion signal
+  // historical readers consume — deleteHoldings must NOT soft-delete snapshot
+  // rows on top: doing so wipes every holding's snapshot history for the
+  // entire account when a single position is removed.
 
   test("only the holdings table is updated — snapshots are untouched", async () => {
     await deleteHoldings(mockUser, ["acc-1-sec-a", "acc-1-sec-b"]);
@@ -77,7 +71,7 @@ describe("deleteHoldings — terminator-only model (#471)", () => {
   });
 });
 
-describe("searchHoldingsByAccountId — single batched query (#642)", () => {
+describe("searchHoldingsByAccountId — single batched query", () => {
   // Previously this looped `holdingsTable.query` once per account_id — an N+1
   // on the Plaid/SimpleFin sync path (one round-trip per account of an item,
   // per user, per sync). Lock in that N accounts now resolve in ONE

@@ -12,7 +12,7 @@ describe("isApiPath", () => {
     expect(isApiPath("/api/")).toBe(true);
   });
 
-  it("rejects /api-<anything> (regression for #391)", () => {
+  it("rejects /api-<anything>", () => {
     // SPA routes whose names happen to start with the characters "api".
     expect(isApiPath("/api-key-detail")).toBe(false);
     expect(isApiPath("/apikey-detail")).toBe(false);

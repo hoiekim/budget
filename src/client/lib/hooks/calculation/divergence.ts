@@ -55,15 +55,13 @@ export interface DivergenceMap {
 }
 
 /**
- * `viewEndDate` (YYYY-MM-DD) pins the detection to the same window
- * boundary the `PerformanceBenchmark` widget is showing. Both surfaces
- * MUST use the same date — otherwise the widget footnote flags an
- * excluded holding while the composition table's red dot has already
- * evaluated at today, cleared it, and shows nothing (Hoie 2026-07-06:
- * "the yellow warning says check red flag above and there's no red flag
- * in holdings composition table"). Callers pass
- * `viewDate.getEndDate()` / `LocalDate` toString. Defaults to today
- * only if the caller genuinely wants today's snapshot.
+ * `viewEndDate` (YYYY-MM-DD) pins the detection to the same window boundary
+ * the `PerformanceBenchmark` widget is showing. Both surfaces MUST use the
+ * same date — otherwise the widget footnote flags an excluded holding while
+ * the composition table's red dot has already evaluated at today, cleared it,
+ * and shows nothing. Callers pass `viewDate.getEndDate()` / `LocalDate`
+ * toString. Defaults to today only if the caller genuinely wants today's
+ * snapshot.
  */
 export const useHoldingDivergence = (
   accountIds: string[],

@@ -80,9 +80,8 @@ export const rejectedCategoriesTable = createTable({
   // Composite primary key; the Table framework requires a single-column
   // `primaryKey` field for its built-in CRUD helpers, none of which the
   // rejected-categories repository uses (all writes go through raw SQL).
-  // The runtime guard `_assertSimplePrimaryKey` (added with #496's review
-  // pass) throws if a future contributor reaches for those generic
-  // helpers on this table.
+  // The runtime guard `_assertSimplePrimaryKey` throws if a future contributor
+  // reaches for those generic helpers on this table.
   primaryKey: TRANSACTION_ID,
   schema: rejectedCategorySchema,
   constraints: [`PRIMARY KEY (${TRANSACTION_ID}, ${CATEGORY_ID})`],

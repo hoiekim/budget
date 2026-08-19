@@ -1,9 +1,9 @@
-// Success / side-effect coverage for POST /snapshots/holding (#359). The
-// sibling `post-holding-snapshot.test.ts` (from #427) pins the cheap pre-DB
-// validation guards; this file drives the two real modes (update + create)
-// through a SQL-routing fake `pg` Pool so the ownership gate, the re-sync
-// chain, the deterministic snapshot_id, and the no-API-key branch are
-// actually exercised — not just the early returns.
+// Success / side-effect coverage for POST /snapshots/holding. The sibling
+// `post-holding-snapshot.test.ts` pins the cheap pre-DB validation guards;
+// this file drives the two real modes (update + create) through a SQL-routing
+// fake `pg` Pool so the ownership gate, the re-sync chain, the deterministic
+// snapshot_id, and the no-API-key branch are actually exercised — not just the
+// early returns.
 //
 // Routing rather than a per-call queue keeps the test robust to the extra
 // writes (upsert/update) and the fire-and-forget backfill the route emits:

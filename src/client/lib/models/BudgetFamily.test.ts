@@ -11,7 +11,7 @@ import { Capacity } from "./Capacity";
 // ---------------------------------------------------------------------------
 // BudgetFamily.getActiveAmount / getYearlyAmount
 //
-// Regression coverage for #526: the yearly capacity must be the sum of each
+// The yearly capacity must be the sum of each
 // of the 12 months' active capacities, NOT the single year-end rate × 12.
 // Mirrors Calculations.aggregateYear on the spending side so the LabeledBar's
 // `left = capacity − spent` compares like-aggregated quantities.
@@ -26,7 +26,7 @@ describe("BudgetFamily.getActiveAmount('year')", () => {
     expect(b.getActiveAmount(IN_2026, "year")).toBe(12000);
   });
 
-  test("mid-year rate cut sums each month, not year-end rate × 12 (#526 repro)", () => {
+  test("mid-year rate cut sums each month, not year-end rate × 12", () => {
     // $4000/mo default, lowered to $3000/mo effective 2026-02-01.
     const b = new Budget({
       capacities: [

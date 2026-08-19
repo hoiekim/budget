@@ -49,11 +49,11 @@ interface RowEdit {
 }
 
 /**
- * Management surface Hoie requested in the closed PR #600 discussion on #599:
- * rather than auto-picking the "most accurate" account snapshot, let the user
- * see every snapshot in the view range and delete the bad one — e.g. the
- * cash-only `account_balance` snapshot that craters an investment account's
- * balance graph for a month.
+ * Management surface for the per-account snapshot list: rather than auto-
+ * picking the "most accurate" account snapshot, let the user see every
+ * snapshot in the view range and delete the bad one — e.g. the cash-only
+ * `account_balance` snapshot that craters an investment account's balance
+ * graph for a month.
  */
 const AccountSnapshotsManager = ({ accountId }: { accountId: string }) => {
   const { data, viewDate, setData } = useAppContext();

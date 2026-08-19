@@ -56,14 +56,12 @@ export const isAcceptableSuggestion = (
 };
 
 /**
- * Pick the subset of `data.transfers` whose pair has status `"suggested"`
- * AND at least one of its halves is present as a whole Transaction in
- * `visibleRows`. The visibility set is keyed by `transaction_id`, so
- * splits (whose `.id === split_transaction_id`) and investment rows
- * (which carry no `transaction_id`) can't produce a match — a pair whose
- * only in-view row is a split of a half would silently miss under the
- * pre-fix version, which built the visibility set from `rows.map(r =>
- * r.id)`.
+ * Pick the subset of `data.transfers` whose pair has status `"suggested"` AND
+ * at least one of its halves is present as a whole Transaction in
+ * `visibleRows`. The visibility set is keyed by `transaction_id` so splits
+ * (`.id === split_transaction_id`) and investment rows (no `transaction_id`)
+ * can't produce a match — building it from `rows.map(r => r.id)` would
+ * silently miss a pair whose only in-view row is a split of a half.
  *
  * Returns `[pair_id]` (deduped by `data.transfers`'s own uniqueness on
  * pair_id). The caller uses each pair_id as the argument to
@@ -202,14 +200,12 @@ export class TypePredicates {
     (isSuggestedLabel(e) || isSuggestedTransferHalf(e, this.context));
   transfers: Predicate = (e) => !isInvestment(e) && isTransferHalf(e, this.context);
   /**
-   * User-created row (cash or investment) — `source === "manual"`. Filed
-   * via #567/#585's mint routes; distinguishes hand-entered rows from
-   * synced Plaid history. Splits don't carry their own `source` and are
-   * treated as inheriting from their parent transaction — but the
-   * SplitTransaction row itself has no `source` field, so a split of a
-   * manual parent does NOT surface under this filter today. That matches
-   * how the current UI works: manual mint doesn't create splits, and
-   * splitting a manual parent isn't wired.
+   * User-created row (cash or investment) — `source === "manual"`. Filed via
+   * the manual-mint routes; distinguishes hand-entered rows from synced Plaid
+   * history. Splits have no `source` field of their own, so a split of a
+   * manual parent does NOT surface under this filter — matches the current UI
+   * (manual mint doesn't create splits, and splitting a manual parent isn't
+   * wired).
    */
   manual: Predicate = (e) =>
     !(e instanceof SplitTransaction) && (e as { source?: string }).source === "manual";

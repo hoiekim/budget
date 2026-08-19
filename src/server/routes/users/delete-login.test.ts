@@ -1,5 +1,5 @@
 /**
- * Tests for DELETE /api/login (#393 — partial: delete-login.ts coverage).
+ * Tests for DELETE /api/login.
  *
  * The route calls `req.session.destroy(cb)` and returns success.
  * If the callback receives an error, the route throws — the Route base

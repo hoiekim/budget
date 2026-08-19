@@ -7,7 +7,7 @@ import { restoreLeaves } from "test-helpers";
 // must strip `item_id` + `institution_id` so an edit body can't reparent
 // a row or persist an arbitrary institution string; a body naming an
 // `account_id` that does not exist yet must answer `Account not found.`
-// instead of an ambiguous 304-that-looks-like-success (#668).
+// instead of an ambiguous 304-that-looks-like-success.
 
 type Row = Record<string, unknown>;
 

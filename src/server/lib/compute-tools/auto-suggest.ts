@@ -10,11 +10,8 @@ import {
 // Compare-and-swap guard for both the transactions and split-transactions
 // UPDATEs. The engine must only overwrite a row that is STILL unlabeled
 // (`label_category_confidence IS NULL`) — never a row a user just confirmed
-// (confidence = 1) between the fetch and the per-row apply. Lifted to a named
-// exported constant so:
-//   1. it's grep-able when reviewing changes to the suggestion path;
-//   2. tests can assert both apply sites thread this exact reference, not
-//      a silently-altered inline literal.
+// between the fetch and the per-row apply. Exported so both apply sites
+// thread the same reference and tests can assert it.
 export const CAS_NULL_CONFIDENCE: AdditionalWhere = {
   column: "label_category_confidence",
   value: null,
@@ -237,7 +234,7 @@ const applyLabel = async (
 // own — they inherit from their parent transaction via
 // `split_transactions.transaction_id`. The fetch joins to the parent so
 // every feature comes from the parent row, matching how a user mentally
-// categorizes splits. Closes #334.
+// categorizes splits.
 const fetchUnlabeledSplits = async (userId: string): Promise<UnlabeledSplit[]> => {
   const result = await pool.query(
     `SELECT st.split_transaction_id,
@@ -341,26 +338,14 @@ export const runAutoSuggestions = async (): Promise<void> => {
   });
 };
 
-// Score a per-target signal against the three gates:
-//
-//   1. Count gate — at least 3 historical confirmed rows must have
-//      cleared the per-row threshold and ended up in the winning
-//      category. Sample-size floor.
-//
-//   2. Reject rate — weighted rejection score must be < 10% of the
-//      accept/reject total. The user explicitly rejected this category
-//      for similar transactions; back off.
-//
-//   3. Quality — average per-row score across the winning category's
-//      matched rows must be at least `MIN_QUALITY` of the maximum
-//      possible. Below the floor means the signal is dominated by
-//      weak-feature coincidences rather than identity-feature matches.
-//
-// When all three pass, the stored confidence is the quality value
-// itself, clamped to [ENGINE_CONFIDENCE_FLOOR, ENGINE_CONFIDENCE_CEIL].
-// This preserves "strength of evidence" through to downstream UX
-// while keeping engine writes inside the contract band (below 0.99
-// API reservation, below 1.0 user-confirmed).
+// Score a per-target signal against three gates:
+//   1. Count — ≥3 historical confirmed rows in the winning category.
+//   2. Reject rate — weighted rejections < 10% of accept+reject total.
+//   3. Quality — average per-row score ≥ `MIN_QUALITY` of the maximum,
+//      guarding against weak-feature coincidences.
+// When all three pass, the stored confidence is the quality value clamped to
+// [ENGINE_CONFIDENCE_FLOOR, ENGINE_CONFIDENCE_CEIL] so engine writes stay
+// below the 0.99 API reservation and the 1.0 user-confirmed sentinel.
 const evaluateSignal = (signal: FeatureSignal): number | null => {
   if (signal.count_matched < 3) return null;
   const totalLabeled = signal.accepted + signal.rejected;
@@ -396,7 +381,7 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
     suggested++;
   }
 
-  // Pass 2: split transactions. Closes #334.
+  // Pass 2: split transactions.
   const unlabeledSplits = await fetchUnlabeledSplits(userId);
   for (const { split_transaction_id, features } of unlabeledSplits) {
     const signal = await getFeatureSignal(userId, features);
@@ -470,16 +455,12 @@ const getFeatureSignal = async (
   userId: string,
   f: TargetFeatures,
 ): Promise<FeatureSignal | null> => {
-  // Per-row score = weighted sum of feature matches (see
-  // W_MERCHANT_NAME, W_NAME, etc.). SUM(score) per category, winner =
-  // highest total. The weights are large enough that high-quality
-  // matches dominate category volume — a single merchant+name match
-  // (150) beats 50 weak-feature-only matches (50 × 3 = 150) on a tie,
-  // and decisively beats it after one more strong feature.
-  //
-  // Symmetric on the rejected side: same SCORE_EXPR is applied to
-  // (rejected_categories ⋈ transactions) so the accept/reject gate
-  // compares two numbers from the same formula.
+  // Per-row score = weighted sum of feature matches; SUM(score) per category,
+  // winner = highest total. Weights are set so a single merchant+name match
+  // (150) beats 50 weak-feature-only matches on a tie and decisively wins
+  // with one more strong feature. Same SCORE_EXPR is applied to
+  // (rejected_categories ⋈ transactions) so the accept/reject gate compares
+  // two numbers from the same formula.
   const params = [
     userId, //                       $1
     f.merchant_name, //              $2 (or null)
