@@ -1,5 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { createRateLimiter, loginRateLimiter } from "./rate-limit";
+import {
+  createRateLimiter,
+  loginRateLimiter,
+  clientErrorRateLimiter,
+  preSessionShedMessage
+} from "./rate-limit";
 
 // Each test uses a unique IP so the module-level Map state can't bleed
 // between tests. No mocking needed — the pure failure-only API is testable
@@ -145,5 +150,46 @@ describe("bucket isolation", () => {
     expect(brief.isLimited(ip)).toBe(false);
     brief.consume(ip);
     expect(brief.isLimited(ip)).toBe(true);
+  });
+});
+
+describe("preSessionShedMessage", () => {
+  test("sheds POST /login once the IP is over the login cap", () => {
+    const ip = nextIp();
+    expect(preSessionShedMessage("POST", "/login", ip)).toBeNull();
+
+    for (let i = 0; i < 5; i++) loginRateLimiter.consume(ip);
+
+    expect(preSessionShedMessage("POST", "/login", ip)).toBe(
+      "Too many login attempts, try again later",
+    );
+  });
+
+  test("sheds POST /client-error once the IP is over the client-error cap", () => {
+    const ip = nextIp();
+    expect(preSessionShedMessage("POST", "/client-error", ip)).toBeNull();
+
+    for (let i = 0; i < 12; i++) clientErrorRateLimiter.consume(ip);
+
+    expect(preSessionShedMessage("POST", "/client-error", ip)).toBe(
+      "Too many client error reports, try again later",
+    );
+  });
+
+  test("the two entries shed independently for the same IP", () => {
+    const ip = nextIp();
+    for (let i = 0; i < 5; i++) loginRateLimiter.consume(ip);
+
+    expect(preSessionShedMessage("POST", "/login", ip)).not.toBeNull();
+    expect(preSessionShedMessage("POST", "/client-error", ip)).toBeNull();
+  });
+
+  test("both the method and the path have to match", () => {
+    const ip = nextIp();
+    for (let i = 0; i < 5; i++) loginRateLimiter.consume(ip);
+
+    expect(preSessionShedMessage("GET", "/login", ip)).toBeNull();
+    expect(preSessionShedMessage("POST", "/logout", ip)).toBeNull();
+    expect(preSessionShedMessage("POST", "/transactions", ip)).toBeNull();
   });
 });

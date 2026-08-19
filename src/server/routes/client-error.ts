@@ -18,9 +18,6 @@ export type ClientErrorPostBody = {
  * rejected with 401 and never reported. Rate-limited per IP on top of that.
  */
 export const postClientErrorRoute = new Route("POST", "/client-error", async (req) => {
-  // Unlike the login limiter, which charges only failed auth, every accepted
-  // report costs a slot — the cap is on volume, not on a failure outcome. The
-  // shedding check itself runs before the body and session are read.
   clientErrorRateLimiter.consume(req.ip);
 
   const body = req.body as ClientErrorPostBody;

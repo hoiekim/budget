@@ -139,22 +139,27 @@ describe("POST /client-error rate limit", () => {
     expect(shedFor(ip)).toBe("Too many client error reports, try again later");
   });
 
-  test("a shed report costs no alarm fan-out and no log line", async () => {
+  test("the handler itself has no cap — shedding is the gate's job", async () => {
     const ip = nextIp();
     for (let i = 0; i < 12; i++) {
       await postClientErrorRoute.execute(makeReq({ message: "boom" }, ip), makeRes());
     }
+    expect(shedFor(ip)).not.toBeNull();
+
     mockSendAlarm.mockReset();
     mockLogger.warn.mockReset();
-    mockLogger.error.mockReset();
 
-    // The gate returns a message, so `handleApiRequest` answers 429 without
-    // ever reaching the handler — nothing below this point runs for the
-    // rejected request.
-    expect(shedFor(ip)).not.toBeNull();
-    expect(mockSendAlarm).not.toHaveBeenCalled();
+    // Invoked directly, as the gate never would, the handler still accepts and
+    // fans out: it carries no cap of its own. That is exactly why the shed has
+    // to happen upstream, and it is what makes the gate load-bearing rather
+    // than a second opinion.
+    const result = await postClientErrorRoute.execute(
+      makeReq({ message: "past the cap" }, ip),
+      makeRes()
+    );
+    expect(result).toEqual({ status: "success" });
+    expect(mockSendAlarm).toHaveBeenCalledTimes(1);
     expect(mockLogger.warn).not.toHaveBeenCalled();
-    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
   test("one flooding IP does not consume another IP's quota", async () => {

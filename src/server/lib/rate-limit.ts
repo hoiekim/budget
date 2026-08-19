@@ -75,9 +75,8 @@ export interface RateLimiter {
   isLimited(ip: string): boolean;
   /**
    * Consume one slot for the given IP. The caller decides which outcomes cost
-   * a slot — the login limiter charges only failed auth, since charging
-   * successes locks out anyone signing in from several devices in one window,
-   * while a volume limiter charges every accepted request.
+   * a slot: the login limiter charges only failed auth, a volume limiter
+   * charges every accepted request.
    */
   consume(ip: string): void;
   /**
@@ -128,15 +127,8 @@ export const loginRateLimiter = createRateLimiter("login", {
   windowMs: 15 * 60 * 1000,
 });
 
-// Reports are driven by a browser loop the server does not control, so the cap
-// bounds what one client can buy. A page that throws on every render burns its
-// quota and goes quiet; a user hitting a handful of distinct errors never
-// reaches it.
-//
-// Deliberately under the alarm cooldown's own ceiling: `sendAlarm` lets this
-// bucket through once a minute, so a 15-minute window carries at most 15
-// alarms. Capping one IP below that keeps a single chatty client from holding
-// the bucket for the whole window.
+// Kept under the alarm cooldown's own ceiling: `sendAlarm` lets this bucket
+// through once a minute, so a 15-minute window carries at most 15 alarms.
 export const clientErrorRateLimiter = createRateLimiter("client-error", {
   maxAttempts: 12,
   windowMs: 15 * 60 * 1000,

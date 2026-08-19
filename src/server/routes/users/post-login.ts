@@ -48,7 +48,7 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
     return { status: "success", body: maskedUser };
   }
 
-  // Only auth failures count toward the rate limit (#389).
+  // Only auth failures count toward the rate limit.
   loginRateLimiter.consume(req.ip);
 
   // Return the same generic message regardless of whether the username exists
