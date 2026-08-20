@@ -7,6 +7,7 @@ import type { ServerRequest } from "./route";
 import {
   isString,
   isNumber,
+  isBoolean,
   isArray,
   isObject,
   isUndefined,
@@ -148,6 +149,104 @@ export function requireNumberField<T extends object>(
   }
 
   return { success: true, data: value };
+}
+
+/**
+ * Field types a request body can be checked against, named after the column
+ * type the value ends up in rather than the JS typeof.
+ */
+export type FieldType = "string" | "number" | "boolean" | "uuid";
+
+export interface FieldSpec {
+  /** Dot path into the body — `"balances.current"`, `"label.budget_id"`. */
+  path: string;
+  type: FieldType;
+  /** Absent (or `undefined`) is an error. Default false: these bodies are partial updates. */
+  required?: boolean;
+  /** Explicit `null` is accepted — use where the column is nullable. Default false. */
+  nullable?: boolean;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const matchesType = (value: unknown, type: FieldType): boolean => {
+  switch (type) {
+    case "string":
+      return isString(value);
+    case "number":
+      // Postgres numerics reject NaN/Infinity, and JSON.parse can produce
+      // neither — but a hand-built body over the wire can, so pin finiteness
+      // here rather than letting the driver decide.
+      return isNumber(value) && Number.isFinite(value);
+    case "boolean":
+      return isBoolean(value);
+    case "uuid":
+      return isString(value) && UUID_RE.test(value);
+  }
+};
+
+/**
+ * Check a request body's typed fields BEFORE any of them reach SQL.
+ *
+ * Without this, a body like `{ balances: { current: "abc" } }` or a non-UUID
+ * `label.budget_id` travels unchecked into a numeric / `UUID` column, Postgres
+ * raises `22P02 invalid_text_representation` at the write, the route throws,
+ * and `Route.execute` answers 500 **and** calls `sendAlarm`. A client type
+ * error must not page, and must not spend a slot of `alarm.ts`'s global
+ * per-window send ceiling that a real fault needs.
+ *
+ * Returns the FIRST failure so the caller can answer `status: "failed"` with a
+ * message that names the offending path. Missing optional fields are skipped:
+ * these routes take partial updates, so "absent" and "explicitly wrong" are
+ * different answers.
+ */
+export function validateFields(obj: object, specs: FieldSpec[]): ValidationResult<void> {
+  for (const spec of specs) {
+    const segments = spec.path.split(".");
+    const leaf = segments.pop()!;
+
+    let container: unknown = obj;
+    for (const segment of segments) {
+      if (isUndefined(container) || isNull(container)) break;
+      if (!isObject(container) || isArray(container)) {
+        return { success: false, error: `Field ${segment} must be an object` };
+      }
+      container = (container as Record<string, unknown>)[segment];
+    }
+
+    // A parent that isn't there at all leaves nothing to check — the write
+    // side skips the whole branch too (`if (a.balances) { … }`).
+    if (isUndefined(container) || isNull(container)) {
+      if (spec.required) {
+        return { success: false, error: `Missing required field: ${spec.path}` };
+      }
+      continue;
+    }
+    if (!isObject(container) || isArray(container)) {
+      return {
+        success: false,
+        error: `Field ${segments[segments.length - 1] ?? spec.path} must be an object`,
+      };
+    }
+
+    const value = (container as Record<string, unknown>)[leaf];
+
+    if (isUndefined(value)) {
+      if (spec.required) {
+        return { success: false, error: `Missing required field: ${spec.path}` };
+      }
+      continue;
+    }
+    if (isNull(value)) {
+      if (spec.nullable) continue;
+      return { success: false, error: `Field ${spec.path} must be a ${spec.type}` };
+    }
+    if (!matchesType(value, spec.type)) {
+      return { success: false, error: `Field ${spec.path} must be a ${spec.type}` };
+    }
+  }
+
+  return { success: true };
 }
 
 /**

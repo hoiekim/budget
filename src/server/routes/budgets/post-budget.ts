@@ -1,5 +1,27 @@
-import { Route, updateBudget, requireBodyObject, requireStringField, validationError } from "server";
+import {
+  Route,
+  updateBudget,
+  requireBodyObject,
+  requireStringField,
+  validateFields,
+  validationError,
+} from "server";
+import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
+
+/**
+ * Typed fields `BudgetModel.fromJSON` copies into a row (`models/budget.ts`).
+ * `budget_id` is the table's `UUID PRIMARY KEY`, so a non-UUID reaches the
+ * `WHERE` clause and raises `22P02` — required AND uuid-checked here.
+ * `capacities` is JSONB and takes any shape; it is not listed.
+ */
+const BUDGET_BODY_SPEC: FieldSpec[] = [
+  { path: "budget_id", type: "uuid", required: true },
+  { path: "name", type: "string", nullable: true },
+  { path: "iso_currency_code", type: "string", nullable: true },
+  { path: "roll_over", type: "boolean", nullable: true },
+  { path: "roll_over_start_date", type: "string", nullable: true },
+];
 
 export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
   const { user } = req.session;
@@ -16,6 +38,9 @@ export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
   const body = bodyResult.data as Record<string, unknown>;
   const idResult = requireStringField(body, "budget_id");
   if (!idResult.success) return validationError(idResult.error!);
+
+  const fieldsResult = validateFields(body, BUDGET_BODY_SPEC);
+  if (!fieldsResult.success) return validationError(fieldsResult.error!);
 
   const { budget_id, ...data } = body;
 
