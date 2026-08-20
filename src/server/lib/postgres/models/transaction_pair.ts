@@ -79,7 +79,6 @@ export const transactionPairsTable = createTable({
     `CONSTRAINT transaction_pairs_pair_unique UNIQUE (${TRANSACTION_ID_A}, ${TRANSACTION_ID_B})`,
   ],
   indexes: [
-    { column: USER_ID },
     { column: TRANSACTION_ID_A },
     { column: TRANSACTION_ID_B },
     // Matches the delta-by-cursor read pattern the sync path now uses:
@@ -88,6 +87,8 @@ export const transactionPairsTable = createTable({
     // investment_transactions, snapshots). Without this, the
     // planner does a user_id lookup then scans + filters all of that user's
     // pairs — O(all-pairs-for-user) not O(rows-changed).
+    // Also the only `user_id` index this table needs: a `user_id`-only lookup is a
+    // leftmost-prefix scan of this composite.
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: TransactionPairModel,

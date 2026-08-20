@@ -126,11 +126,12 @@ export const splitTransactionsTable = createTable({
   primaryKey: SPLIT_TRANSACTION_ID,
   schema: splitTxSchema,
   indexes: [
-    { column: USER_ID },
     { column: TRANSACTION_ID },
     { column: ACCOUNT_ID },
     // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
     // every app load; the composite keeps the read O(rows-changed).
+    // Also the only `user_id` index this table needs: a `user_id`-only lookup is a
+    // leftmost-prefix scan of this composite.
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: SplitTransactionModel,
