@@ -12,7 +12,7 @@ export const getTransfersRoute = new Route<TransfersGetResponse>("GET", "/transf
   // /transactions and /snapshots do it, so a caller that has no cache to
   // reconcile — anything reading this endpoint for the current pair list —
   // isn't handed rows it would only have to filter back out. `useSync` opts
-  // in on every fetch.
+  // in on a warm sync and after a failed purge, not on a healthy cold load.
   const includeDeletedResult = optionalQueryString(req, "include-deleted");
   if (!includeDeletedResult.success) return validationError(includeDeletedResult.error!);
 

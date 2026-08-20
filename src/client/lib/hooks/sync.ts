@@ -1129,13 +1129,8 @@ export const useSync = () => {
     // makes that safe is the cursor: clearing it sends the next sync down
     // the cold path, which re-purges and tracks `purgeFailed`.
     //
-    // A rejection must not take the other two steps down with it. Neither
-    // caller awaits or catches this (logout is a bare `clean()`), so an
-    // IDB failure here surfaced as an unhandled rejection AND skipped
-    // `removeLastSyncedCursor` + `setData` — logging out on a browser with
-    // a broken IDB left the sync cursor in localStorage and the previous
-    // user's data on screen. Clearing the cursor is what makes the next
-    // sync go cold and rebuild, so it is the step that must survive.
+    // Neither caller awaits or catches this, so a rejection must not take
+    // the two steps below it down with it.
     await indexedDb.clearAllData().catch(console.error);
     removeLastSyncedCursor();
     setData(new Data());

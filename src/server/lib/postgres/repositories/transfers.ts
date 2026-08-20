@@ -143,7 +143,7 @@ export const getTransferPairs = async (
       // revisits an id it is not sent, so under `includeDeleted` the pair has
       // to be evicted explicitly. This only reaches a cursor-filtered caller
       // when something bumped the pair's own `updated` after the cursor —
-      // orphaning a half does not, so it is not on its own a fix for #683.
+      // orphaning a half does not, so it is not on its own a stale-half fix.
       if (options.includeDeleted) evictions.push(toEviction(pair));
       continue;
     }
