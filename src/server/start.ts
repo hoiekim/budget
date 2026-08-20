@@ -8,7 +8,7 @@ import {
   stopScheduledSync,
   logger,
   sendAlarm,
-  isLoginRateLimited,
+  preSessionShedMessage,
   startRateLimitCleanup,
   stopRateLimitCleanup,
   pool,
@@ -251,6 +251,11 @@ async function handleApiRequest(
   const ip = getClientIp(headers, undefined);
   log.ip = ip;
 
+  const shedMessage = preSessionShedMessage(request.method, apiPath, ip);
+  if (shedMessage) {
+    return jsonResponse({ status: "failed", message: shedMessage }, 429);
+  }
+
   // Parse body for JSON requests
   let body: unknown = undefined;
   let rawBody: string | undefined = undefined;
@@ -279,18 +284,6 @@ async function handleApiRequest(
     }
   });
   if (Object.keys(query).length > 0) log.query = query;
-
-  // Rate-limit POST /login before session loading to fail fast.
-  // Read-only check — the counter is bumped only on auth failure inside
-  // post-login.ts.
-  if (request.method === "POST" && apiPath === "/login") {
-    if (isLoginRateLimited(ip)) {
-      return jsonResponse(
-        { status: "failed", message: "Too many login attempts, try again later" },
-        429,
-      );
-    }
-  }
 
   // Load or create session
   const session = await loadSession(request);
