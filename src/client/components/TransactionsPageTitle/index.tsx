@@ -139,8 +139,13 @@ export const TransactionsPageTitle = ({
   );
 
   const isInvestment = account?.type === AccountType.Investment;
+  // No `account` header on the investment set: that view is only ever
+  // reached with an `account_id` filter resolving to an investment
+  // account, so every row shares one account and the column can never
+  // re-order anything. It rendered a button whose only effect was to
+  // move its own arrow.
   const headerKeys = isInvestment
-    ? ["date", "amount", "account"]
+    ? ["date", "amount"]
     : ["date", "merchant_name", "amount", "account", "budget", "category"];
 
   let transactionsHeadTop = subtitle ? 137 : 104;

@@ -10,15 +10,35 @@ export const useLocalStorageState = <T>(key: string, initialValue: T) => {
   const isDictionary = key.indexOf("dictionary_") === 0;
   const parse = isMap ? parseMap : isDictionary ? parseDictionary : JSON.parse;
 
-  const [storedValue, setStoredValue] = useState<T>(() => {
+  const read = (k: string): T => {
     try {
-      const item = window.localStorage.getItem(key);
+      const item = window.localStorage.getItem(k);
       return item ? parse(item) : initialValue;
     } catch (error) {
       console.error(error);
       return initialValue;
     }
-  });
+  };
+
+  const [storedValue, setStoredValue] = useState<T>(() => read(key));
+
+  // This state IS whatever is stored under `key`, so a caller that swaps
+  // keys while mounted must see the new key's value — otherwise the
+  // previous key's value stays on screen and the next write carries it
+  // into the new slot. Assigned during render (React's documented way to
+  // reset state on a changed input) rather than in an effect, so the new
+  // key's value is never painted a frame late.
+  //
+  // The previous key is held in state, not a ref, precisely because the
+  // app renders under StrictMode on a concurrent root: a ref mutation
+  // survives a render React abandons, while the queued state update does
+  // not — a ref guard could therefore be marked "already handled" for a
+  // render that never committed and never resync at all.
+  const [previousKey, setPreviousKey] = useState(key);
+  if (previousKey !== key) {
+    setPreviousKey(key);
+    setStoredValue(read(key));
+  }
 
   const setValue: Dispatch<SetStateAction<T>> = useCallback(
     (value) => {
@@ -41,6 +61,15 @@ export const useLocalStorageState = <T>(key: string, initialValue: T) => {
 
 export const stateMemory = new Map<string, unknown>();
 
+/**
+ * Sibling of `useLocalStorageState`, deliberately WITHOUT its
+ * key-change resync. Every caller that passes a template-literal key
+ * (`section_${section_id}_isOpen`, `graph_svgWidth_${memoryKey}`, the
+ * `Bar` family) is rendered under a React `key` carrying the same id, so
+ * an id change remounts the component and the initializer re-runs — the
+ * resync would be dead code. If a caller ever reads a key that varies on
+ * a mounted component, this needs the same guard as its sibling above.
+ */
 export const useMemoryState = <T>(key: string | undefined, initialValue: T) => {
   const [state, _setState] = useState<T>(() => {
     if (key && stateMemory.has(key)) return stateMemory.get(key) as T;
