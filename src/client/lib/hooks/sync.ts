@@ -852,9 +852,6 @@ export const useSync = () => {
         indexedDb.saveHoldingSnapshots(snapshotsResult.holdingSnapshots),
         indexedDb.saveSecuritySnapshots(snapshotsResult.securitySnapshots),
       ];
-      stage1Transfers.tombstonePairIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.transfers, id));
-      });
       transactionsResult.tombstoneTxIds.forEach((id) => {
         idbSaves.push(indexedDb.remove(StoreName.transactions, id));
       });

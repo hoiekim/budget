@@ -70,11 +70,8 @@ export const getTransferPairs = async (
   // Table.query auto-excludes soft-deleted rows (supportsSoftDelete). When
   // the caller opts into tombstone delivery, keep them by unsetting the
   // exclusion — matches the transactions/snapshots delta-delivery contract.
-  // `updatedAfter` narrows the SQL scan to rows whose `updated > $cursor`,
-  // so a warm sync fetches only the delta instead of the full pair set.
-  const dateRange = options.updatedAfter
-    ? { column: UPDATED, start: options.updatedAfter }
-    : undefined;
+  // `startDate` narrows the SQL scan to rows whose `updated >= $cursor`, so a
+  // warm sync fetches only the delta instead of the full pair set.
   const allPairs = await transactionPairsTable.query(
     { [USER_ID]: user.user_id },
     {
