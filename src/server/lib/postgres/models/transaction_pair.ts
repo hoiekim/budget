@@ -83,7 +83,7 @@ export const transactionPairsTable = createTable({
     { column: TRANSACTION_ID_A },
     { column: TRANSACTION_ID_B },
     // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
-    // every app load; the composite keeps the read O(rows-changed). See #641.
+    // every app load; the composite keeps the read O(rows-changed).
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: TransactionPairModel,
