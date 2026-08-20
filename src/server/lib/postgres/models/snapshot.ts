@@ -213,7 +213,7 @@ export const snapshotsTable = createTable({
     // as snapshot history grows.
     { column: HOLDING_ACCOUNT_ID },
     // `searchSnapshots` delta reads filter `WHERE user_id = ? AND updated >= ?`
-    // on every app load; the composite keeps the read O(rows-changed). See #641.
+    // on every app load; the composite keeps the read O(rows-changed).
     // Also the only `user_id` index this table needs: a `user_id`-only lookup is a
     // leftmost-prefix scan of this composite.
     { columns: [USER_ID, UPDATED] },
