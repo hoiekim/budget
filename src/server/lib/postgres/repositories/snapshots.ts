@@ -274,6 +274,18 @@ export const upsertHoldingSnapshots = async (
   return results;
 };
 
+/** Columns an account-balance conflict may rewrite. `Table.upsert` otherwise
+ *  defaults to every supplied key, which lets a colliding `snapshot_id` reassign
+ *  the row's owner. */
+const ACCOUNT_SNAPSHOT_UPDATE_COLUMNS = [
+  SNAPSHOT_DATE,
+  IS_DELETED,
+  "balances_available",
+  "balances_current",
+  "balances_limit",
+  "balances_iso_currency_code",
+];
+
 export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<UpsertResult[]> => {
   if (!snapshots.length) return [];
   const results: UpsertResult[] = [];
@@ -300,7 +312,7 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
           balances_current: account.balances?.current,
           balances_limit: account.balances?.limit,
           balances_iso_currency_code: account.balances?.iso_currency_code,
-        });
+        }, ACCOUNT_SNAPSHOT_UPDATE_COLUMNS);
       } else if (isSecuritySnapshot(snapshotData)) {
         const { security } = snapshotData;
         await snapshotsTable.upsert({
