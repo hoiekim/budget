@@ -1,5 +1,11 @@
 import { JSONAccount, getSquashedDateString, JSONSnapshot, LocalDate } from "common";
-import { Route, upsertSnapshots, requireBodyObject, validationError } from "server";
+import {
+  Route,
+  upsertSnapshots,
+  requireBodyObject,
+  validationError,
+  getAccount,
+} from "server";
 import { logger } from "server/lib/logger";
 
 export interface SnapshotPostResponse {
@@ -32,7 +38,15 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
     }
 
     // TODO: Snapshot can be holding or security snapshot as well
-    const account: JSONAccount = body.account as JSONAccount;
+    const account = body.account as JSONAccount | undefined;
+    if (!account || typeof account !== "object" || typeof account.account_id !== "string") {
+      return validationError("Request body must contain an account with an account_id");
+    }
+
+    if (!(await getAccount(user, account.account_id))) {
+      return { status: "failed", message: "Account not found or access denied." };
+    }
+
     const snapshotData = body.snapshot as Record<string, unknown>;
     const date = snapshotData.date ? new LocalDate(snapshotData.date as string) : new Date();
     const snapshot: JSONSnapshot = {

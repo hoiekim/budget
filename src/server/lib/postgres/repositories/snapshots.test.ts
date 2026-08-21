@@ -31,7 +31,7 @@ mock.module("./securities", () => ({
   searchSecuritiesById: mockSearchSecuritiesById,
 }));
 
-const { searchSnapshots } = await import("./snapshots");
+const { searchSnapshots, upsertSnapshots } = await import("./snapshots");
 
 afterAll(() => {
   mock.module("./securities", () => realSecuritiesSnap);
@@ -433,5 +433,53 @@ describe("searchSnapshots — holding_account_id fallback", () => {
     const securitySegment = segments.find((s) => s.includes("security_id ="));
     expect(securitySegment).toContain("holding_security_id");
     expect(holdingValues).toContain("sec-voo");
+  });
+});
+
+describe("upsertSnapshots account_balance conflict", () => {
+  const upsertAccountSnapshot = async () => {
+    mockQuery.mockImplementationOnce(async () => ({
+      rows: [{ snapshot_id: "acct-A-20260701" }],
+      rowCount: 1,
+    }));
+    await upsertSnapshots([
+      {
+        user: { user_id: "attacker" },
+        snapshot: { snapshot_id: "acct-A-20260701", date: "2026-07-01" },
+        account: {
+          account_id: "acct-A",
+          balances: { current: 1, available: 1, iso_currency_code: "USD" },
+        },
+      } as unknown as Parameters<typeof upsertSnapshots>[0][number],
+    ]);
+    return mockQuery.mock.calls[0][0] as string;
+  };
+
+  test("never reassigns the row owner or the account", async () => {
+    const sql = await upsertAccountSnapshot();
+    const updateClause = sql.split("DO UPDATE SET")[1];
+    expect(updateClause).toBeTruthy();
+    expect(updateClause).not.toContain("user_id");
+    expect(updateClause).not.toContain("account_id");
+    expect(updateClause).not.toContain("snapshot_type");
+  });
+
+  test("still rewrites the balances and clears the tombstone", async () => {
+    const updateClause = (await upsertAccountSnapshot()).split("DO UPDATE SET")[1];
+    for (const column of [
+      "balances_available",
+      "balances_current",
+      "balances_limit",
+      "balances_iso_currency_code",
+      "is_deleted",
+      "snapshot_date",
+    ]) {
+      expect(updateClause).toContain(`${column} = EXCLUDED.${column}`);
+    }
+  });
+
+  test("inserts the owner on a first write", async () => {
+    const sql = await upsertAccountSnapshot();
+    expect(sql.split("DO UPDATE SET")[0]).toContain("user_id");
   });
 });
