@@ -2,7 +2,6 @@ import {
   InvestmentTransaction,
   SplitTransaction,
   Transaction,
-  resolveTransferSides,
   useAppContext,
 } from "client";
 import TransactionRow from "./TransactionRow";
@@ -16,7 +15,7 @@ interface Props {
 
 export const TransactionsTable = ({ transactions }: Props) => {
   const { data } = useAppContext();
-  const { transfers, transactions: allTransactions } = data;
+  const { transfers } = data;
 
   // Confirmed transfer pairs render as a single bundled row. Walk the
   // list in order, emitting one `TransferRow` for each pair the first
@@ -43,7 +42,7 @@ export const TransactionsTable = ({ transactions }: Props) => {
           return (
             <TransferRow
               key={`transfer_${pair.pair_id}`}
-              transactions={resolveTransferSides(pair, allTransactions)}
+              transactions={data.resolveTransferSides(pair)}
             />
           );
         }

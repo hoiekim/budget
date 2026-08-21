@@ -1,7 +1,7 @@
 import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
 import type { JSONTransaction } from "common";
 import type { TransferPair } from "server";
-import { useAppContext, useTransfers, resolveTransferSides } from "client";
+import { useAppContext, useTransfers } from "client";
 import {
   InstitutionSpan,
   KeyValue,
@@ -30,13 +30,13 @@ interface Props {
 export const TransferProperties = ({ transfer }: Props) => {
   const { data } = useAppContext();
   const transferActions = useTransfers();
-  const { accounts, transactions } = data;
+  const { accounts } = data;
 
   // Sides are anchored to the SIGN of the amount, not the array index,
   // so the visual stays stable regardless of how the server orders the
   // pair. Plaid: positive amount = outflow (money leaving), negative =
   // inflow.
-  const [a, b] = resolveTransferSides(transfer, transactions);
+  const [a, b] = data.resolveTransferSides(transfer);
   const outgoing: JSONTransaction = a.amount > 0 ? a : b;
   const incoming: JSONTransaction = outgoing.transaction_id === a.transaction_id ? b : a;
 

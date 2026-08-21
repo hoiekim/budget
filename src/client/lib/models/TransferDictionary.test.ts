@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import type { TransferPair } from "server";
-import { TransactionDictionary, TransferDictionary, resolveTransferSides } from "./Data";
+import { Data, TransactionDictionary, TransferDictionary } from "./Data";
 
 // Build a one-pair dictionary whose two halves carry the given ids and
 // status. Mirrors what `data.transfers` holds after `fetchTransfers`.
@@ -118,7 +118,7 @@ describe("TransferDictionary.byTransactionId", () => {
   });
 });
 
-describe("resolveTransferSides", () => {
+describe("Data.resolveTransferSides", () => {
   // The pair's embedded halves are a copy taken when the pair row was last
   // written. Nothing bumps `transaction_pairs.updated` when a referenced
   // transaction changes, so under delta sync that copy goes stale while
@@ -137,7 +137,7 @@ describe("resolveTransferSides", () => {
     transactions.set("t-a", { transaction_id: "t-a", amount: 12.34, name: "new name" } as never);
     transactions.set("t-b", { transaction_id: "t-b", amount: -12.34, name: "new name" } as never);
 
-    const [a, b] = resolveTransferSides(stalePair(), transactions);
+    const [a, b] = new Data({ transactions }).resolveTransferSides(stalePair());
     expect(a.amount).toBe(12.34);
     expect(b.amount).toBe(-12.34);
     expect(a.name).toBe("new name");
@@ -147,7 +147,7 @@ describe("resolveTransferSides", () => {
     const transactions = new TransactionDictionary();
     transactions.set("t-a", { transaction_id: "t-a", amount: 12.34, name: "new name" } as never);
 
-    const [a, b] = resolveTransferSides(stalePair(), transactions);
+    const [a, b] = new Data({ transactions }).resolveTransferSides(stalePair());
     expect(a.amount).toBe(12.34);
     // t-b is outside the loaded window (or soft-deleted) — the row still
     // renders rather than blanking a side.
@@ -156,7 +156,7 @@ describe("resolveTransferSides", () => {
   });
 
   test("preserves server order, so the sign-based side anchoring is unaffected", () => {
-    const resolved = resolveTransferSides(stalePair(), new TransactionDictionary());
+    const resolved = new Data().resolveTransferSides(stalePair());
     expect(resolved.map((t) => t.transaction_id)).toEqual(["t-a", "t-b"]);
   });
 });
