@@ -3,79 +3,135 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
+
 /**
  * The two directions ask different questions, so they scan different trees.
  *
  * "Is every read documented?" is about the knobs an operator supplies to the
- * running server, which is `src/`. A one-off migration script under `scripts/`
- * has its own env surface that has no business in the deployment's env file.
+ * running server, so it scans `src/`. A one-off script's own env surface has no
+ * business in a deployment's env file.
  *
- * "Is this entry dead?" is about whether anything reads the name at all, so it
- * spans both — otherwise the guard would recommend deleting an entry a script
- * still depends on.
+ * "Is this entry dead?" is about whether anything at all reads the name, so it
+ * spans every tree that ships or runs — including files at the repo root, which
+ * is where the container healthcheck lives.
  */
-const SERVER_ROOTS = [path.join(REPO_ROOT, "src")];
-const ALL_ROOTS = [path.join(REPO_ROOT, "src"), path.join(REPO_ROOT, "scripts")];
+const SERVER_ROOTS = ["src"];
+const ALL_ROOTS = ["src", "scripts", "."];
+
+const SOURCE_FILE = /\.(?:[mc]?[jt]sx?)$/;
+const TEST_FILE = /\.test\.[mc]?[jt]sx?$/;
+const SKIP_DIR = /^(?:node_modules|build|dist|coverage|\.git)$/;
 
 /**
- * Names no static extraction can attribute to a read, each with the reason it
- * is nonetheless live. An entry is a claim someone checked, which is the point:
- * a variable whose only appearance is inside a log string or a comment would
- * otherwise absolve itself, and that is exactly how a dead entry survives.
+ * Names that reach their reader by a route no static extraction can follow,
+ * each with the reason. An entry is a claim someone checked, and the only way
+ * a name is exempted — there is no path by which a variable absolves itself.
  */
 const INDIRECTLY_READ: Record<string, string> = {};
 
-const sourceFiles = (dir: string): string[] =>
+const sourceFiles = (dir: string, recurse: boolean): string[] =>
   readdirSync(dir).flatMap((entry) => {
     const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) return sourceFiles(full);
-    if (!/\.tsx?$/.test(entry) || /\.test\.tsx?$/.test(entry)) return [];
+    if (statSync(full).isDirectory()) {
+      return recurse && !SKIP_DIR.test(entry) ? sourceFiles(full, true) : [];
+    }
+    if (!SOURCE_FILE.test(entry) || TEST_FILE.test(entry)) return [];
     return [full];
   });
 
+const filesUnder = (roots: string[]): string[] =>
+  roots.flatMap((root) => {
+    const dir = path.join(REPO_ROOT, root);
+    if (!existsSync(dir)) return [];
+    return sourceFiles(dir, root !== ".");
+  });
+
+const ENV_OBJECT = /(?:process|Bun)\.env\s*(?:\?\.)?\[\s*$/;
 const ASSIGNMENT = /^\s*(?:\?\?|\|\||&&|\+|-|\*|\/|%|\*\*)?=(?!=)/;
 
-/**
- * `process.env.NAME`, `process.env["NAME"]` and their `?.` forms. The name is
- * captured by a whole-identifier class with no lookahead inside it, so the
- * match cannot backtrack into a truncated prefix when the text that follows is
- * rejected — a phantom name would fail this suite on a variable that does not
- * exist.
- *
- * Writes are excluded, whatever their operator: a variable the server assigns
- * to itself is not a surface an operator supplies.
- */
-const ENV_ACCESS =
-  /(delete\s+)?process\.env\s*(?:\?\.|\.)\s*([A-Za-z_$][A-Za-z0-9_$]*)|(delete\s+)?process\.env\s*(?:\?\.)?\[\s*["']([^"']*)["']\s*\]/g;
+interface Scanned {
+  /** Comment bodies and string contents blanked to spaces. Text that merely
+   *  looks like a read is not one, and brace depth stays balanced. */
+  code: string;
+  /** `env["NAME"]` names, collected before blanking hides them. */
+  bracketReads: string[];
+}
 
-const directReads = (source: string): string[] => {
+const scan = (source: string): Scanned => {
+  const out = source.split("");
+  const bracketReads: string[] = [];
+  let i = 0;
+
+  const blank = (from: number, to: number) => {
+    for (let j = from; j < to; j++) if (out[j] !== "\n") out[j] = " ";
+  };
+
+  while (i < source.length) {
+    const two = source.slice(i, i + 2);
+    if (two === "//") {
+      const end = source.indexOf("\n", i);
+      blank(i, end === -1 ? source.length : end);
+      i = end === -1 ? source.length : end;
+    } else if (two === "/*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      blank(i, stop);
+      i = stop;
+    } else if (source[i] === '"' || source[i] === "'" || source[i] === "`") {
+      const quote = source[i];
+      let j = i + 1;
+      while (j < source.length && source[j] !== quote) {
+        if (source[j] === "\\") j += 1;
+        j += 1;
+      }
+      const body = source.slice(i + 1, j);
+      if (ENV_OBJECT.test(source.slice(0, i)) && !body.includes("\\")) {
+        const close = source.indexOf("]", j);
+        const isDelete = /delete\s+(?:process|Bun)\.env\s*(?:\?\.)?\[\s*$/.test(
+          source.slice(0, i)
+        );
+        if (close !== -1 && !isDelete && !ASSIGNMENT.test(source.slice(close + 1))) {
+          bracketReads.push(body);
+        }
+      }
+      blank(i + 1, j);
+      i = j + 1;
+    } else {
+      i += 1;
+    }
+  }
+
+  return { code: out.join(""), bracketReads };
+};
+
+const DOT_READ = /(delete\s+)?(?:process|Bun)\.env\s*(?:\?\.|\.)\s*([A-Za-z_$][A-Za-z0-9_$]*)/g;
+
+/**
+  * `env.NAME` on the right-hand side. A variable the server assigns to itself is
+  * not a surface an operator supplies, so writes are excluded whatever their
+  * operator. The name is one whole-identifier capture and the assignment test
+  * runs outside the pattern, so no name can be reported as a partial match.
+  */
+const dotReads = (code: string): string[] => {
   const names: string[] = [];
-  for (const match of source.matchAll(ENV_ACCESS)) {
-    if (match[1] || match[3]) continue;
-    const name = match[2] ?? match[4];
-    if (!name) continue;
-    if (ASSIGNMENT.test(source.slice(match.index + match[0].length))) continue;
-    names.push(name);
+  for (const match of code.matchAll(DOT_READ)) {
+    if (match[1]) continue;
+    if (ASSIGNMENT.test(code.slice(match.index + match[0].length))) continue;
+    names.push(match[2]);
   }
   return names;
 };
 
-/**
- * `const { A, B = "fallback" } = process.env`, single- or multi-line. Scans
- * backwards from the matching brace rather than matching `[^{}]*`, so a default
- * value that itself contains braces does not silently yield nothing — an
- * under-captured read reads as an undocumented variable one direction and as a
- * dead entry the other.
- */
-const destructuredReads = (source: string): string[] => {
+/** `const { A, B = "fallback" } = env`, single- or multi-line. */
+const destructuredReads = (code: string): string[] => {
   const names: string[] = [];
-  for (const match of source.matchAll(/\}\s*=\s*process\.env\b/g)) {
-    const close = source.indexOf("}", match.index);
+  for (const match of code.matchAll(/\}\s*=\s*(?:process|Bun)\.env\b/g)) {
+    const close = code.indexOf("}", match.index);
     let depth = 0;
     let open = -1;
     for (let i = close; i >= 0; i--) {
-      if (source[i] === "}") depth += 1;
-      else if (source[i] === "{") {
+      if (code[i] === "}") depth += 1;
+      else if (code[i] === "{") {
         depth -= 1;
         if (depth === 0) {
           open = i;
@@ -84,25 +140,35 @@ const destructuredReads = (source: string): string[] => {
       }
     }
     if (open === -1) continue;
-    for (const part of source.slice(open + 1, close).split(",")) {
-      const name = part.split(/[=:]/)[0].trim();
-      if (/^[A-Z_][A-Z0-9_]*$/.test(name)) names.push(name);
+    for (const part of code.slice(open + 1, close).split(",")) {
+      names.push(part.split(/[=:]/)[0].trim());
     }
   }
   return names;
 };
 
-const readVariables = (roots: string[]): Set<string> => {
-  const names = new Set<string>();
-  for (const root of roots) {
-    if (!existsSync(root)) continue;
-    for (const file of sourceFiles(root)) {
-      const source = readFileSync(file, "utf8");
-      for (const name of directReads(source)) names.add(name);
-      for (const name of destructuredReads(source)) names.add(name);
+/**
+ * `const env = process.env` hands the object to a name this file cannot follow.
+ * Reporting it is the only honest option: skipping it would let an undocumented
+ * read through, and guessing at the alias's members would invent evidence.
+ */
+const aliases = (code: string): string[] =>
+  [...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:process|Bun)\.env\s*(?![.?[\w$])/g)]
+    .map((match) => match[1]);
+
+const collect = (roots: string[]) => {
+  const read = new Set<string>();
+  const aliased: string[] = [];
+  for (const file of filesUnder(roots)) {
+    const { code, bracketReads } = scan(readFileSync(file, "utf8"));
+    for (const name of [...dotReads(code), ...destructuredReads(code), ...bracketReads]) {
+      if (/^[A-Z_][A-Z0-9_]*$/.test(name)) read.add(name);
+    }
+    for (const alias of aliases(code)) {
+      aliased.push(`${path.relative(REPO_ROOT, file)}: ${alias}`);
     }
   }
-  return names;
+  return { read, aliased };
 };
 
 const documentedVariables = (): Set<string> =>
@@ -117,18 +183,21 @@ const documentedVariables = (): Set<string> =>
 describe(".env.example", () => {
   it("documents every variable the server reads", () => {
     const documented = documentedVariables();
-    const undocumented = [...readVariables(SERVER_ROOTS)]
-      .filter((name) => /^[A-Z_][A-Z0-9_]*$/.test(name))
+    const undocumented = [...collect(SERVER_ROOTS).read]
       .filter((name) => !documented.has(name))
       .sort();
     expect(undocumented).toEqual([]);
   });
 
   it("documents no variable that is never read", () => {
-    const read = readVariables(ALL_ROOTS);
+    const { read } = collect(ALL_ROOTS);
     const dead = [...documentedVariables()]
       .filter((name) => !read.has(name) && !(name in INDIRECTLY_READ))
       .sort();
     expect(dead).toEqual([]);
+  });
+
+  it("has no env alias it cannot follow", () => {
+    expect(collect(ALL_ROOTS).aliased).toEqual([]);
   });
 });
