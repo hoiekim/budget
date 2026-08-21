@@ -3,7 +3,19 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
-const SCAN_ROOTS = ["src", "scripts"].map((d) => path.join(REPO_ROOT, d));
+/**
+ * The two directions ask different questions, so they scan different trees.
+ *
+ * "Is every read documented?" is about the knobs an operator supplies to the
+ * running server, which is `src/`. A one-off migration script under `scripts/`
+ * has its own env surface that has no business in the deployment's env file.
+ *
+ * "Is this entry dead?" is about whether anything reads the name at all, so it
+ * spans both — otherwise the guard would recommend deleting an entry a script
+ * still depends on.
+ */
+const SERVER_ROOTS = [path.join(REPO_ROOT, "src")];
+const ALL_ROOTS = [path.join(REPO_ROOT, "src"), path.join(REPO_ROOT, "scripts")];
 
 /**
  * Names no static extraction can attribute to a read, each with the reason it
@@ -80,9 +92,9 @@ const destructuredReads = (source: string): string[] => {
   return names;
 };
 
-const readVariables = (): Set<string> => {
+const readVariables = (roots: string[]): Set<string> => {
   const names = new Set<string>();
-  for (const root of SCAN_ROOTS) {
+  for (const root of roots) {
     if (!existsSync(root)) continue;
     for (const file of sourceFiles(root)) {
       const source = readFileSync(file, "utf8");
@@ -105,7 +117,7 @@ const documentedVariables = (): Set<string> =>
 describe(".env.example", () => {
   it("documents every variable the server reads", () => {
     const documented = documentedVariables();
-    const undocumented = [...readVariables()]
+    const undocumented = [...readVariables(SERVER_ROOTS)]
       .filter((name) => /^[A-Z_][A-Z0-9_]*$/.test(name))
       .filter((name) => !documented.has(name))
       .sort();
@@ -113,7 +125,7 @@ describe(".env.example", () => {
   });
 
   it("documents no variable that is never read", () => {
-    const read = readVariables();
+    const read = readVariables(ALL_ROOTS);
     const dead = [...documentedVariables()]
       .filter((name) => !read.has(name) && !(name in INDIRECTLY_READ))
       .sort();
