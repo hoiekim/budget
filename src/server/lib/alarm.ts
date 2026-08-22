@@ -32,6 +32,11 @@ export const MAX_SENDS_PER_WINDOW = 10;
  * `unhandledRejection` / `uncaughtException` fire once, are not retried, and
  * carry the crash itself — a refusal drops them permanently, precisely when
  * the process is least able to tell anyone what happened.
+ *
+ * Sized to the number of distinct single-shot cooldown keys — one per crash
+ * handler. Each key can land at most once per window because the cooldown
+ * equals the ceiling window, so a reserve of that size makes every single-shot
+ * source deliverable. A new single-shot caller with a new key must raise it.
  */
 export const SINGLE_SHOT_RESERVE = 2;
 
@@ -56,13 +61,16 @@ const pruneExpired = (now: number): void => {
 };
 
 /**
- * Send a Discord webhook alarm message.
+ * Send a Discord webhook alarm message. Never rejects — a delivery failure is
+ * logged, so no caller has to guard against one.
  *
  * @param title Embed title (also the default cooldown key)
  * @param detail Embed description
  * @param key Cooldown bucket. Defaults to `title`. Pass an explicit value for
  *   sources whose title is fixed but whose volume is caller-driven, so their
  *   traffic is charged to one bucket instead of the reporting source's.
+ * @param lane Which slice of the per-window ceiling to compete for. Only
+ *   sources that fire once and are never retried may pass `"single-shot"`.
  */
 export const sendAlarm = async (
   title: string,
@@ -142,24 +150,42 @@ export const formatCrashDetail = (error: unknown): string => {
 };
 
 /**
+ * Send a crash alarm in the single-shot lane without waiting for it.
+ *
+ * For crash paths the process outlives, where the POST flushes on its own.
+ *
+ * @example
+ * process.on("unhandledRejection", (reason) => {
+ *   void reportCrashAlarm("Unhandled Promise Rejection", reason);
+ * });
+ */
+export const reportCrashAlarm = (title: string, error: unknown): Promise<void> =>
+  sendAlarm(title, formatCrashDetail(error), title, "single-shot");
+
+/**
  * Send a crash alarm in the single-shot lane and wait for it, bounded by
- * `CRASH_ALARM_TIMEOUT_MS`.
+ * `timeoutMs`.
  *
  * Load-bearing on any path that exits: `sendAlarm` POSTs to a webhook, and a
  * fire-and-forget call followed by `process.exit` kills the process before the
- * request flushes, so the crash pages nobody. Never rejects — a failed alarm
- * must not divert the caller's crash sequence.
+ * request flushes, so the crash pages nobody.
+ *
+ * @param timeoutMs Bound on the wait. Defaults to `CRASH_ALARM_TIMEOUT_MS`.
  */
 export const deliverCrashAlarm = async (
   title: string,
-  error: unknown
+  error: unknown,
+  timeoutMs: number = CRASH_ALARM_TIMEOUT_MS
 ): Promise<void> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
-    sendAlarm(title, formatCrashDetail(error), title, "single-shot").catch(
-      () => undefined
-    ),
-    new Promise<void>((resolve) => setTimeout(resolve, CRASH_ALARM_TIMEOUT_MS)),
+    reportCrashAlarm(title, error),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+      timer.unref();
+    }),
   ]);
+  clearTimeout(timer);
 };
 
 /** Reset cooldown state (for testing). */
