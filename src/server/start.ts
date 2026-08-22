@@ -7,7 +7,8 @@ import {
   scheduledSync,
   stopScheduledSync,
   logger,
-  sendAlarm,
+  deliverCrashAlarm,
+  reportCrashAlarm,
   isLoginRateLimited,
   startRateLimitCleanup,
   stopRateLimitCleanup,
@@ -206,6 +207,31 @@ function jsonResponse(
 // ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
+
+// These are the process's only crash handlers — `postgres/client.ts` must not
+// register its own, or its earlier-registered listener reaches process.exit
+// first and kills the alarm below mid-flight. Registered before the boot
+// sequence so a rejection during it is logged and alarmed rather than killing
+// the process bare.
+//
+// `unhandledRejection` does not exit, so the process outlives its POST and the
+// alarm stays fire-and-forget. `uncaughtException` exits, so it has to await
+// the delivery under the bounded race first.
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection", {}, reason);
+  void reportCrashAlarm("Unhandled Promise Rejection", reason);
+});
+
+process.on("uncaughtException", async (error) => {
+  logger.error("Uncaught exception", {}, error);
+  await deliverCrashAlarm("Uncaught Exception", error);
+  try {
+    await pool.end();
+  } catch {
+    // ignore pool shutdown errors during crash
+  }
+  process.exit(1);
+});
 
 await initializePostgres();
 startRateLimitCleanup();
@@ -465,27 +491,3 @@ const shutdown = async (signal: string) => {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
-
-process.on("unhandledRejection", (reason) => {
-  logger.error("Unhandled promise rejection", {}, reason);
-  const message = reason instanceof Error ? reason.message : String(reason);
-  const stack = reason instanceof Error ? (reason.stack ?? "") : "";
-  sendAlarm(
-    "Unhandled Promise Rejection",
-    `**Message:** ${message}\n\`\`\`\n${stack.slice(0, 1000)}\n\`\`\``,
-  ).catch(() => undefined);
-});
-
-process.on("uncaughtException", async (error) => {
-  logger.error("Uncaught exception", {}, error);
-  sendAlarm(
-    "Uncaught Exception",
-    `**Message:** ${error.message}\n\`\`\`\n${(error.stack ?? "").slice(0, 1000)}\n\`\`\``,
-  ).catch(() => undefined);
-  try {
-    await pool.end();
-  } catch {
-    // ignore pool shutdown errors during crash
-  }
-  process.exit(1);
-});

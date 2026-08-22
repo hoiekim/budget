@@ -35,6 +35,10 @@ afterEach(() => {
 
 const WEBHOOK = "https://discord.com/api/webhooks/test";
 
+/** Slots a recurring source may take — the ceiling minus the single-shot reserve. */
+const recurringCeiling = (): number =>
+  alarm.MAX_SENDS_PER_WINDOW - alarm.SINGLE_SHOT_RESERVE;
+
 describe("sendAlarm", () => {
   it("does nothing when DISCORD_ALARM_WEBHOOK is not set", async () => {
     delete process.env.DISCORD_ALARM_WEBHOOK;
@@ -93,20 +97,21 @@ describe("sendAlarm", () => {
     expect(mockFetch).toHaveBeenCalledTimes(3); // both real alarms got through
   });
 
-  it("caps total sends per window when many distinct keys fire at once", async () => {
+  it("caps recurring sends per window when many distinct keys fire at once", async () => {
     process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
     // Route.execute keys on the registered path, so a total outage makes every
     // route its own eligible bucket — the per-key cooldown alone does not bound
-    // outbound webhook traffic.
+    // outbound webhook traffic. Recurring sources stop at the reserve, not at
+    // the full ceiling, so a crash still has somewhere to go.
     for (let i = 0; i < 40; i += 1) {
       await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
     }
-    expect(mockFetch).toHaveBeenCalledTimes(10);
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling());
   });
 
   it("does not spend a cooldown on a key the global ceiling refused", async () => {
     process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
-    for (let i = 0; i < 10; i += 1) {
+    for (let i = 0; i < alarm.MAX_SENDS_PER_WINDOW; i += 1) {
       await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
     }
     // Offset the refusal from the 10 sends so the window and a wrongly-spent
@@ -114,27 +119,27 @@ describe("sendAlarm", () => {
     // one advance() clear both, and the assertion below passes either way.
     advance(5_000);
     await alarm.sendAlarm("Scheduled Sync Failed", "dropped by ceiling");
-    expect(mockFetch).toHaveBeenCalledTimes(10);
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling());
 
     // Now past the window (the 10 sends are pruned) but still inside the 60s
     // that a cooldown spent at the refusal would have started, so the refused
     // key gets through only if the ceiling branch left its cooldown untouched.
     advance(55_001);
     await alarm.sendAlarm("Scheduled Sync Failed", "now it gets through");
-    expect(mockFetch).toHaveBeenCalledTimes(11);
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling() + 1);
   });
 
   it("frees ceiling slots as the window slides", async () => {
     process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
-    for (let i = 0; i < 10; i += 1) {
+    for (let i = 0; i < alarm.MAX_SENDS_PER_WINDOW; i += 1) {
       await alarm.sendAlarm(`Route Error: GET /a${i}`, "boom");
     }
     await alarm.sendAlarm("Route Error: GET /blocked", "boom");
-    expect(mockFetch).toHaveBeenCalledTimes(10);
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling());
 
     advance(60_001);
     await alarm.sendAlarm("Route Error: GET /blocked", "boom");
-    expect(mockFetch).toHaveBeenCalledTimes(11);
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling() + 1);
   });
 
   it("does not throw when the webhook returns a non-2xx", async () => {
@@ -162,5 +167,119 @@ describe("sendAlarm", () => {
     advance(60_001);
     await alarm.sendAlarm("Route Error: GET /p0", "boom");
     expect(alarm.getCooldownKeyCount()).toBe(1);
+  });
+});
+
+describe("single-shot lane", () => {
+  it("a recurring flood cannot consume the reserve — a crash alarm still gets through", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    // A broad outage: every route 5xxes into its own bucket and re-competes as
+    // the window slides.
+    for (let i = 0; i < 40; i += 1) {
+      await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling());
+
+    await alarm.sendAlarm("Uncaught Exception", "the crash", "Uncaught Exception", "single-shot");
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling() + 1);
+  });
+
+  it("single-shot sources may take the full ceiling, and no more", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    for (let i = 0; i < 40; i += 1) {
+      await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
+    }
+    for (let i = 0; i < alarm.SINGLE_SHOT_RESERVE; i += 1) {
+      await alarm.sendAlarm(`Crash ${i}`, "boom", `Crash ${i}`, "single-shot");
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(alarm.MAX_SENDS_PER_WINDOW);
+
+    // The reserve is a floor for single-shot sources, not an exemption from the
+    // ceiling Discord's own rate limit motivates.
+    await alarm.sendAlarm("Crash overflow", "boom", "Crash overflow", "single-shot");
+    expect(mockFetch).toHaveBeenCalledTimes(alarm.MAX_SENDS_PER_WINDOW);
+  });
+
+  it("both crash paths reach Discord through a recurring flood", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    for (let i = 0; i < 40; i += 1) {
+      await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling());
+
+    await alarm.deliverCrashAlarm("Uncaught Exception", new Error("boom"));
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling() + 1);
+
+    await alarm.reportCrashAlarm("Unhandled Promise Rejection", new Error("boom"));
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling() + 2);
+  });
+
+  it("the reserve does not lower the ceiling when only single-shot sources fire", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    for (let i = 0; i < alarm.MAX_SENDS_PER_WINDOW + 5; i += 1) {
+      await alarm.sendAlarm(`Crash ${i}`, "boom", `Crash ${i}`, "single-shot");
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(alarm.MAX_SENDS_PER_WINDOW);
+  });
+});
+
+describe("formatCrashDetail", () => {
+  it("renders an Error's message and stack", () => {
+    const error = new Error("pool connect ECONNREFUSED");
+    const detail = alarm.formatCrashDetail(error);
+    expect(detail).toContain("**Message:** pool connect ECONNREFUSED");
+    expect(detail).toContain(error.stack!.slice(0, 40));
+  });
+
+  it("stringifies a non-Error value and emits an empty stack block", () => {
+    expect(alarm.formatCrashDetail("plain string reason")).toBe(
+      "**Message:** plain string reason\n```\n\n```",
+    );
+  });
+
+  it("truncates the stack at 1000 characters", () => {
+    const error = new Error("long");
+    error.stack = "x".repeat(5_000);
+    expect(alarm.formatCrashDetail(error)).toBe(
+      `**Message:** long\n\`\`\`\n${"x".repeat(1000)}\n\`\`\``,
+    );
+  });
+});
+
+describe("deliverCrashAlarm", () => {
+  it("waits for a slow webhook to settle before resolving", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    let settled = false;
+    mockFetch.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => {
+            settled = true;
+            resolve({ ok: true } as Response);
+          }, 200),
+        ) as Promise<Response>,
+    );
+    await alarm.deliverCrashAlarm("Uncaught Exception", new Error("boom"));
+    expect(settled).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves rather than rejecting when the webhook errors", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    mockFetch.mockImplementation(() => Promise.reject(new Error("network down")));
+    expect(
+      await alarm.deliverCrashAlarm("Uncaught Exception", new Error("boom")),
+    ).toBe(undefined);
+  });
+
+  it("gives up on a hung webhook once the bound elapses", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    mockFetch.mockImplementation(() => new Promise(() => undefined) as Promise<Response>);
+    const bound = 50;
+    const started = realDateNow();
+    await alarm.deliverCrashAlarm("Uncaught Exception", new Error("hang"), bound);
+    const elapsed = realDateNow() - started;
+    expect(elapsed).toBeGreaterThanOrEqual(bound);
+    expect(elapsed).toBeLessThan(alarm.CRASH_ALARM_TIMEOUT_MS);
   });
 });
