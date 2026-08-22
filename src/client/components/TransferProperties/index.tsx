@@ -36,7 +36,7 @@ export const TransferProperties = ({ transfer }: Props) => {
   // so the visual stays stable regardless of how the server orders the
   // pair. Plaid: positive amount = outflow (money leaving), negative =
   // inflow.
-  const [a, b] = transfer.transactions;
+  const [a, b] = data.resolveTransferSides(transfer);
   const outgoing: JSONTransaction = a.amount > 0 ? a : b;
   const incoming: JSONTransaction = outgoing.transaction_id === a.transaction_id ? b : a;
 

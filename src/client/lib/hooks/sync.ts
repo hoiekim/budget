@@ -271,34 +271,30 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
 
 interface FetchTransfersResult {
   transfers: TransferDictionary;
+  /** Pair ids the server sent as eviction signals — caller must `delete`
+   *  from the context dictionary AND `indexedDb.remove(...)` per id. */
   tombstonePairIds: Set<string>;
   networkFailed: boolean;
 }
 
 /**
- * Fetch transfer pairs — delta-by-cursor when `cursor` is supplied, full
- * fetch when it is `null`. Full fetch is used on cold load; warm sync and
- * per-domain event refetch pass the last-synced cursor so the payload is
- * only the pairs whose `updated` moved (confirm / reject / cascade-delete).
- * `include-deleted=true` is passed alongside so soft-deleted OR rejected
- * pairs come back as empty-`transactions` rows the orchestrator uses as
- * eviction signals — the same contract `/api/transactions` and
- * `/api/snapshots` use.
- *
- * The dictionary this returns holds ONLY the delta (or the full set on
- * cold). The orchestrator merges it into `oldData.transfers` in place
- * (`new TransferDictionary(oldData.transfers)` + `set` per entry +
- * `delete` per tombstone), so the pre-existing pair state is preserved.
- * Consumers resolve `transaction_id` lookups via
- * `transfers.byTransactionId.get(id)` — O(1) over the dict's pivot map,
- * which is rebuilt on each new dictionary construction. Mutation methods
- * in `useTransfers` update `data.transfers` in-place via `setData` (no
+ * Delta fetch of transfer pairs. Consumers resolve transaction_id
+ * lookups via `transfers.byTransactionId.get(id)` (and the
+ * `has`/`hasSuggested`/`hasConfirmed` membership predicates), each O(1)
+ * over the dictionary's internal pivot map. Mutation methods in
+ * `useTransfers` update `data.transfers` in-place via `setData` (no
  * re-fetch on mutation).
  *
- * Warm sync delta collapses to a few bytes when nothing changed; without this,
- * transfers full-fetched every sync at ~88% of the warm-sync payload.
+ * A pair leaves the view by being soft-deleted, rejected, or losing one
+ * of its transactions; the server collapses all three into the same
+ * wire shape — a pair with no `transactions` — so the reducer here has
+ * one predicate rather than a mirror of the server's visibility rules.
+ * Cursor null = full fetch (cold).
  */
-const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResult> => {
+const fetchTransfers = async (
+  cursor: string | null,
+  includeDeleted: boolean,
+): Promise<FetchTransfersResult> => {
   const result: FetchTransfersResult = {
     transfers: new TransferDictionary(),
     tombstonePairIds: new Set(),
@@ -306,15 +302,16 @@ const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResu
   };
 
   const params = new URLSearchParams();
-  // Always opt in to eviction-signal delivery so a peer's soft-delete
-  // or rejection evicts from this tab's cache even when the mutation
-  // predates this tab's oldest cursor. The FE filters the extra rows
-  // into `tombstonePairIds`; the additional wire cost is one row per
-  // soft-deleted/rejected pair the user has, not per-sync churn.
-  params.append("include-deleted", "true");
-  if (cursor) params.append("updated-after", cursor);
+  if (cursor) params.append("start-date", cursor);
+  // Eviction signals only mean something when there is a cache to
+  // reconcile, which is the caller's question, not the cursor's: a
+  // realtime refetch merges into the live dictionary whether or not
+  // localStorage happens to hold a cursor. Asking for them when there is
+  // nothing to reconcile pulls every pair the user has ever rejected — a
+  // set that only grows, since rejections are retained as the detection
+  // engine's denylist — and discards all of it.
+  if (includeDeleted) params.append("include-deleted", "true");
   const path = `/api/transfers?${params.toString()}`;
-
   const response = await call.get<TransfersGetResponse>(path).catch(console.error);
   if (!response || response.status === "error") {
     result.networkFailed = true;
@@ -323,10 +320,7 @@ const fetchTransfers = async (cursor: string | null): Promise<FetchTransfersResu
   if (!response.body) return result;
 
   for (const pair of response.body) {
-    // Eviction shape: soft-deleted OR user-rejected. `transactions: []` is
-    // the wire signal — the server strips them because they carry no
-    // budget meaning. The FE evicts on either predicate.
-    if (pair.is_deleted || pair.status === "rejected") {
+    if (!pair.transactions.length) {
       result.tombstonePairIds.add(pair.pair_id);
       continue;
     }
@@ -547,13 +541,25 @@ export const useSync = () => {
           cached.accountSnapshots.size > 0) &&
         cursorRaw !== null;
 
-      // Cold path purges IDB before the new save block writes the fresh delta
-      // — otherwise pre-tombstone-era rows persist as cruft. Without a cursor
-      // the server's delta won't replay tombstones for those, so cold is the
-      // only opportunity to reset IDB. Awaited — the new saves can't safely
-      // race against a still-in-flight clearAllData on the same stores.
+      // Cold path purges IDB before the new save block writes the
+      // fresh delta — otherwise pre-tombstone-era rows (soft-deleted
+      // server-side before tombstone delivery existed, hard-deleted,
+      // or admin-removed) persist as cruft. Without a cursor the
+      // server's delta won't replay tombstones for those, so cold is
+      // the only opportunity to reset IDB. Awaited — the new saves
+      // can't safely race against a still-in-flight clearAllData on
+      // the same stores.
+      // A purge that rejects leaves the pre-existing rows in place, so the
+      // cold response alone can no longer be trusted to be the whole truth
+      // — ask for eviction signals after all, the way the four sibling
+      // stores get them unconditionally from their routes. Only the healthy
+      // cold path skips them.
+      let purgeFailed = false;
       if (!isWarm) {
-        await indexedDb.clearAllData().catch(console.error);
+        await indexedDb.clearAllData().catch((err) => {
+          console.error(err);
+          purgeFailed = true;
+        });
       }
       // Pass the cursor to delta fetches ONLY on the warm branch. The
       // cold path must fetch the full history with no `start-date=` —
@@ -585,10 +591,7 @@ export const useSync = () => {
       const chartsPromise = fetchCharts();
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
       const securitiesPromise = fetchSecurities();
-      // Transfers takes the same delta cursor as the other time-partitioned
-      // fetches. Cold load still asks for the full set because IDB is empty
-      // and needs seeding.
-      const transfersPromise = fetchTransfers(cursor);
+      const transfersPromise = fetchTransfers(cursor, isWarm || purgeFailed);
 
       const [
         accountsResult,
@@ -749,12 +752,11 @@ export const useSync = () => {
         next.institutions = institutions;
         next.securities = securities;
 
-        // Apply transfers delta in-place — cold sends the full set and ships
-        // zero tombstones; warm ships only the pairs whose `updated` moved
-        // plus eviction ids for soft-deleted/rejected. Same pattern as the
-        // transactions/split-transactions/snapshots block below.
+        // Apply transfers delta the same way as the time-partitioned
+        // stores below. On cold the delta IS the whole set, so the merge
+        // over Stage 1's paint is a no-op overlay.
         next.transfers = new TransferDictionary(oldData.transfers);
-        transfers.forEach((pair, id) => next.transfers.set(id, pair));
+        transfers.forEach((p, id) => next.transfers.set(id, p));
         tombstoneTransferPairIds.forEach((id) => next.transfers.delete(id));
 
         // Apply transactions delta: clone the existing dict, set
@@ -1054,27 +1056,22 @@ export const useSync = () => {
             return;
           }
           case TableName.TransactionPairs: {
-            // Per-event refresh — one event says "the transfers table
-            // changed on another tab". Passes the same delta cursor
-            // sibling time-partitioned domains in this switch already
-            // do (transactions/inv-tx/splits/snapshots), so a peer
-            // confirming one pair costs a ~few-byte delta on every
-            // open tab instead of the full 399 KB pair set. The
-            // in-place setData below evicts soft-deleted pairs.
-            const r = await fetchTransfers(cursor);
+            // Always merges into the live dictionary, so it always needs
+            // eviction signals — a rejected pair has to leave the screen
+            // even for a user whose cursor is missing (blocked
+            // localStorage, backwards clock jump).
+            const r = await fetchTransfers(cursor, true);
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
               next.transfers = new TransferDictionary(oldData.transfers);
-              r.transfers.forEach((pair, id) => next.transfers.set(id, pair));
+              r.transfers.forEach((p, id) => next.transfers.set(id, p));
               r.tombstonePairIds.forEach((id) => next.transfers.delete(id));
               return next;
             });
             await Promise.allSettled([
               indexedDb.saveTransfers(r.transfers),
-              ...Array.from(r.tombstonePairIds, (id) =>
-                indexedDb.remove(StoreName.transfers, id),
-              ),
+              ...[...r.tombstonePairIds].map((id) => indexedDb.remove(StoreName.transfers, id)),
             ]);
             return;
           }
@@ -1126,11 +1123,15 @@ export const useSync = () => {
   );
 
   const clean = useCallback(async () => {
-    // Await `clearAllData` so the next sync's `loadAllData` sees an
-    // empty IDB. (The next sync's cold-path purge will also clear
-    // again — the await here just lets onClickRefresh treat clean()
-    // as durable.)
-    await indexedDb.clearAllData();
+    // Await `clearAllData` so the next sync's `loadAllData` sees an empty
+    // IDB when the purge succeeds. It is an attempt, not a guarantee —
+    // `onClickRefresh` awaits this, but a rejecting IDB still resolves. What
+    // makes that safe is the cursor: clearing it sends the next sync down
+    // the cold path, which re-purges and tracks `purgeFailed`.
+    //
+    // Neither caller awaits or catches this, so a rejection must not take
+    // the two steps below it down with it.
+    await indexedDb.clearAllData().catch(console.error);
     removeLastSyncedCursor();
     setData(new Data());
   }, [setData]);

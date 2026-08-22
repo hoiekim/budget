@@ -34,7 +34,12 @@ export const TransactionsTable = ({ transactions }: Props) => {
         if (pair) {
           if (renderedPairIds.has(pair.pair_id)) return null;
           renderedPairIds.add(pair.pair_id);
-          return <TransferRow key={`transfer_${pair.pair_id}`} transactions={pair.transactions} />;
+          return (
+            <TransferRow
+              key={`transfer_${pair.pair_id}`}
+              transactions={data.resolveTransferSides(pair)}
+            />
+          );
         }
       }
       return <TransactionRow key={e.id} transaction={e} />;
