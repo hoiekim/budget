@@ -170,11 +170,11 @@ describe("sendAlarm", () => {
   });
 });
 
-describe("single-shot lane (#665)", () => {
+describe("single-shot lane", () => {
   it("a recurring flood cannot consume the reserve — a crash alarm still gets through", async () => {
     process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
     // A broad outage: every route 5xxes into its own bucket and re-competes as
-    // the window slides. Before the lane split this held all ten slots.
+    // the window slides.
     for (let i = 0; i < 40; i += 1) {
       await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
     }
@@ -198,6 +198,20 @@ describe("single-shot lane (#665)", () => {
     // ceiling Discord's own rate limit motivates.
     await alarm.sendAlarm("Crash overflow", "boom", "Crash overflow", "single-shot");
     expect(mockFetch).toHaveBeenCalledTimes(alarm.MAX_SENDS_PER_WINDOW);
+  });
+
+  it("both crash paths reach Discord through a recurring flood", async () => {
+    process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
+    for (let i = 0; i < 40; i += 1) {
+      await alarm.sendAlarm(`Route Error: GET /r${i}`, "boom");
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling());
+
+    await alarm.deliverCrashAlarm("Uncaught Exception", new Error("boom"));
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling() + 1);
+
+    await alarm.reportCrashAlarm("Unhandled Promise Rejection", new Error("boom"));
+    expect(mockFetch).toHaveBeenCalledTimes(recurringCeiling() + 2);
   });
 
   it("the reserve does not lower the ceiling when only single-shot sources fire", async () => {
@@ -234,9 +248,6 @@ describe("formatCrashDetail", () => {
 
 describe("deliverCrashAlarm", () => {
   it("waits for a slow webhook to settle before resolving", async () => {
-    // The regression this exists to prevent: the old uncaughtException handler
-    // fired sendAlarm without awaiting, so process.exit ran while the POST was
-    // still in flight and the crash paged nobody.
     process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
     let settled = false;
     mockFetch.mockImplementation(
@@ -261,13 +272,14 @@ describe("deliverCrashAlarm", () => {
     ).toBe(undefined);
   });
 
-  it("gives up on a hung webhook at CRASH_ALARM_TIMEOUT_MS", async () => {
+  it("gives up on a hung webhook once the bound elapses", async () => {
     process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
     mockFetch.mockImplementation(() => new Promise(() => undefined) as Promise<Response>);
+    const bound = 50;
     const started = realDateNow();
-    await alarm.deliverCrashAlarm("Uncaught Exception", new Error("hang"));
+    await alarm.deliverCrashAlarm("Uncaught Exception", new Error("hang"), bound);
     const elapsed = realDateNow() - started;
-    expect(elapsed).toBeGreaterThanOrEqual(alarm.CRASH_ALARM_TIMEOUT_MS - 100);
-    expect(elapsed).toBeLessThan(alarm.CRASH_ALARM_TIMEOUT_MS + 2_000);
-  }, 10_000);
+    expect(elapsed).toBeGreaterThanOrEqual(bound);
+    expect(elapsed).toBeLessThan(alarm.CRASH_ALARM_TIMEOUT_MS);
+  });
 });
