@@ -150,7 +150,7 @@ describe("get-transfers", () => {
     expect(values).toEqual(["u-B"]);
   });
 
-  test("projects `updated` and `is_deleted: false` on active pairs (delta-delivery contract)", async () => {
+  test("projects `updated` on active pairs (delta-delivery contract)", async () => {
     const pairRow = {
       pair_id: "p-1",
       user_id: "u-1",
@@ -190,7 +190,6 @@ describe("get-transfers", () => {
 
     const result = await getTransfersRoute.execute(makeReq(), fakeRes());
     expect(result?.body?.[0].updated).toBe("2026-05-02T09:00:00Z");
-    expect(result?.body?.[0].is_deleted).toBe(false);
   });
 
   test("default (no include-deleted) excludes soft-deleted pairs at the SQL layer", async () => {
@@ -219,9 +218,9 @@ describe("get-transfers", () => {
     );
 
     expect(result?.status).toBe("success");
-    // Tombstone shape: pair_id + is_deleted + updated, no transactions.
+    // Tombstone shape: pair_id + status + updated, no transactions.
     expect(result?.body).toEqual([
-      { pair_id: "p-dead", status: "confirmed", transactions: [], updated: "2026-05-03T12:00:00Z", is_deleted: true },
+      { pair_id: "p-dead", status: "confirmed", transactions: [], updated: "2026-05-03T12:00:00Z" },
     ]);
     // A tombstone needs no transaction resolution — only the pairs SELECT runs.
     expect(mockQuery).toHaveBeenCalledTimes(1);
@@ -252,9 +251,9 @@ describe("get-transfers", () => {
     );
 
     expect(result?.status).toBe("success");
-    // Eviction signal carries status='rejected' + is_deleted:false, no txns.
+    // Eviction signal carries status='rejected', no txns.
     expect(result?.body).toEqual([
-      { pair_id: "p-rej", status: "rejected", transactions: [], updated: "2026-05-04T08:00:00Z", is_deleted: false },
+      { pair_id: "p-rej", status: "rejected", transactions: [], updated: "2026-05-04T08:00:00Z" },
     ]);
     // No transaction resolution for eviction signals.
     expect(mockQuery).toHaveBeenCalledTimes(1);
@@ -342,7 +341,6 @@ describe("get-transfers", () => {
         status: "confirmed",
         transactions: [],
         updated: "2026-05-02T09:00:00Z",
-        is_deleted: false,
       },
     ]);
   });

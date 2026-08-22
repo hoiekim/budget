@@ -757,7 +757,7 @@ export const useSync = () => {
         // over Stage 1's paint is a no-op overlay.
         next.transfers = new TransferDictionary(oldData.transfers);
         transfers.forEach((p, id) => next.transfers.set(id, p));
-        stage1Transfers.tombstonePairIds.forEach((id) => next.transfers.delete(id));
+        tombstoneTransferPairIds.forEach((id) => next.transfers.delete(id));
 
         // Apply transactions delta: clone the existing dict, set
         // added/modified, delete tombstoned ids.
