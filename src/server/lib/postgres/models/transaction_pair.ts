@@ -82,8 +82,12 @@ export const transactionPairsTable = createTable({
     { column: USER_ID },
     { column: TRANSACTION_ID_A },
     { column: TRANSACTION_ID_B },
-    // Delta-by-cursor warm sync filters `WHERE user_id = ? AND updated >= ?` on
-    // every app load; the composite keeps the read O(rows-changed).
+    // Matches the delta-by-cursor read pattern the sync path now uses:
+    // `WHERE user_id = $1 AND updated >= $cursor`. Same shape every other
+    // delta-fetched table carries (transactions, split_transactions,
+    // investment_transactions, snapshots). Without this, the
+    // planner does a user_id lookup then scans + filters all of that user's
+    // pairs — O(all-pairs-for-user) not O(rows-changed).
     { columns: [USER_ID, UPDATED] },
   ],
   ModelClass: TransactionPairModel,

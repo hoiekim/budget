@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import type { TransferPair } from "server";
 import {
   Data,
   Dictionary,
@@ -79,5 +80,85 @@ describe("Data.dictOf → clone → set round-trip (the useMutate flow)", () => 
     dict.delete(chart.id);
     expect(() => data.set(dict)).not.toThrow();
     expect(data.charts.has(chart.id)).toBe(false);
+  });
+});
+
+describe("Data.resolveTransferSides", () => {
+  // A pair's embedded halves are a copy taken when the pair row was last
+  // written, and nothing bumps `transaction_pairs.updated` when a referenced
+  // transaction changes — so under delta sync that copy goes stale while
+  // `data.transactions` carries the edit.
+  const half = (
+    transaction_id: string,
+    account_id: string,
+    amount: number,
+    name: string,
+    memo: string,
+    city: string,
+    authorized_date: string,
+  ) => {
+    const transaction = new Transaction({
+      transaction_id,
+      account_id,
+      amount,
+      name,
+      authorized_date,
+      label: { memo },
+    });
+    transaction.location = { ...transaction.location, city };
+    return transaction;
+  };
+
+  const staleHalf = (transaction_id: string, account_id: string, amount: number) => ({
+    ...half(transaction_id, account_id, amount, "old name", "old memo", "Old City", "2026-05-01"),
+  });
+
+  const stalePair = (): TransferPair => ({
+    pair_id: "p",
+    status: "confirmed",
+    transactions: [staleHalf("t-a", "acc-out", 10), staleHalf("t-b", "acc-in", -10)],
+  });
+
+  const dataWith = (...transactions: Transaction[]) => {
+    const dict = new TransactionDictionary();
+    transactions.forEach((t) => dict.set(t.transaction_id, t));
+    return new Data({ transactions: dict });
+  };
+
+  test("reads each half through the authoritative transactions dictionary", () => {
+    const [a, b] = dataWith(
+      half("t-a", "acc-out", 12.34, "new name", "new memo", "New City", "2026-05-02"),
+      half("t-b", "acc-in", -12.34, "new name", "new memo", "New City", "2026-05-02"),
+    ).resolveTransferSides(stalePair());
+
+    expect(a.amount).toBe(12.34);
+    expect(b.amount).toBe(-12.34);
+    expect(a.name).toBe("new name");
+    // TransferRow and TransferProperties read the whole half — date, memo and
+    // location, not just the edited amount — so every field a rendered row
+    // touches has to come from the dictionary copy, not the embedded one.
+    expect(a.authorized_date).toBe("2026-05-02");
+    expect(a.label?.memo).toBe("new memo");
+    expect(a.location?.city).toBe("New City");
+  });
+
+  test("falls back to the embedded copy for a half that is not loaded", () => {
+    const [a, b] = dataWith(
+      half("t-a", "acc-out", 12.34, "new name", "new memo", "New City", "2026-05-02"),
+    ).resolveTransferSides(stalePair());
+
+    expect(a.amount).toBe(12.34);
+    // t-b is outside the loaded window (or soft-deleted) — the row still
+    // renders rather than blanking a side.
+    expect(b.amount).toBe(-10);
+    expect(b.transaction_id).toBe("t-b");
+    expect(b.account_id).toBe("acc-in");
+    expect(b.label?.memo).toBe("old memo");
+    expect(b.location?.city).toBe("Old City");
+  });
+
+  test("preserves server order, so the sign-based side anchoring is unaffected", () => {
+    const resolved = new Data().resolveTransferSides(stalePair());
+    expect(resolved.map((t) => t.transaction_id)).toEqual(["t-a", "t-b"]);
   });
 });

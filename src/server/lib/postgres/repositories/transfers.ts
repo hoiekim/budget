@@ -30,9 +30,6 @@ export interface TransferPair {
    *  Optional because the FE's optimistic Mark-as-Transfer path mints a pair
    *  locally before the server's `updated` is known. */
   updated?: string | null;
-  /** True for a soft-deleted pair. Returned only when the caller passes
-   *  `includeDeleted`. */
-  is_deleted?: boolean;
 }
 
 export interface GetTransferPairsOptions {
@@ -104,13 +101,12 @@ export const getTransferPairs = async (
   // `allPairs` already excludes soft-deleted at the SQL layer and rejected
   // pairs are simply omitted, so there are no eviction signals — the response
   // is active-non-rejected only, byte-for-byte the prior contract plus the
-  // additive `updated` / `is_deleted` fields.
+  // additive `updated` field.
   const toEviction = (pair: (typeof allPairs)[number]): TransferPair => ({
     pair_id: pair.pair_id,
     status: pair.status,
     transactions: [],
     updated: pair.updated,
-    is_deleted: !!pair.is_deleted,
   });
 
   const evictions: TransferPair[] = options.includeDeleted
@@ -152,7 +148,6 @@ export const getTransferPairs = async (
       status: pair.status,
       transactions: [a, b],
       updated: pair.updated,
-      is_deleted: false,
     });
   }
 

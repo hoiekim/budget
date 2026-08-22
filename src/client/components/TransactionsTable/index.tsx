@@ -1,9 +1,4 @@
-import {
-  InvestmentTransaction,
-  SplitTransaction,
-  Transaction,
-  useAppContext,
-} from "client";
+import { InvestmentTransaction, SplitTransaction, Transaction, useAppContext } from "client";
 import TransactionRow from "./TransactionRow";
 import InvestmentTransactionRow from "./InvestmentTransactionRow";
 import TransferRow from "./TransferRow";
