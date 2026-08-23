@@ -171,6 +171,10 @@ describe("sendAlarm", () => {
 });
 
 describe("single-shot lane", () => {
+  it("gives recurring sources 8 of the 10 slots and single-shot sources all 10", () => {
+    expect([recurringCeiling(), alarm.MAX_SENDS_PER_WINDOW]).toEqual([8, 10]);
+  });
+
   it("a recurring flood cannot consume the reserve — a crash alarm still gets through", async () => {
     process.env.DISCORD_ALARM_WEBHOOK = WEBHOOK;
     // A broad outage: every route 5xxes into its own bucket and re-competes as

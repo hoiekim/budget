@@ -84,7 +84,6 @@ export const pool: Pool = new Proxy({} as Pool, {
   },
 });
 
-
 /**
  * Execute a function within a database transaction.
  * Automatically handles BEGIN, COMMIT, and ROLLBACK.
