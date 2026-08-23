@@ -84,10 +84,6 @@ describe("Data.dictOf → clone → set round-trip (the useMutate flow)", () => 
 });
 
 describe("Data.resolveTransferSides", () => {
-  // A pair's embedded halves are a copy taken when the pair row was last
-  // written, and nothing bumps `transaction_pairs.updated` when a referenced
-  // transaction changes — so under delta sync that copy goes stale while
-  // `data.transactions` carries the edit.
   const half = (
     transaction_id: string,
     account_id: string,
