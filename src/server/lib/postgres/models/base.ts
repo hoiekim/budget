@@ -303,6 +303,46 @@ export abstract class Table<
     return result.rowCount ?? 0;
   }
 
+  /**
+   * Soft-delete rows whose `column` matches a row of `sourceTable` selected by
+   * `sourceColumn = ANY(sourceValues)`.
+   *
+   * For a cascade that has to travel through another table — `transaction_pairs`
+   * joins `transactions` by id, while an item cascade only knows account ids.
+   * The subquery keeps the matched set inside Postgres; selecting the source ids
+   * into the process and passing them back would put a row-count-sized array on
+   * the wire twice.
+   *
+   * `sourceTable` / `sourceColumn` / `column` are schema constants, never user
+   * input — only the values are parameterized.
+   */
+  async bulkSoftDeleteByRelatedColumn(
+    column: string,
+    source: {
+      table: string;
+      selectColumn: string;
+      matchColumn: string;
+      matchValues: ParamValue[];
+    },
+    userIdValue?: ParamValue,
+    client?: QueryExecutor,
+  ): Promise<number> {
+    this._assertSimplePrimaryKey("bulkSoftDeleteByRelatedColumn");
+    if (source.matchValues.length === 0) return 0;
+    let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${column} IN (SELECT ${source.selectColumn} FROM ${source.table} WHERE ${source.matchColumn} = ANY($1))`;
+    const values: ParamValue[] = [source.matchValues as unknown as ParamValue];
+
+    if (userIdValue !== undefined) {
+      sql += ` AND user_id = $2`;
+      values.push(userIdValue);
+    }
+    sql += ` RETURNING ${this.primaryKey}`;
+
+    const executor = client ?? pool;
+    const result = await executor.query(sql, values);
+    return result.rowCount ?? 0;
+  }
+
   async hardDelete(primaryKeyValue: ParamValue): Promise<boolean> {
     this._assertSimplePrimaryKey("hardDelete");
     const sql = `DELETE FROM ${this.name} WHERE ${this.primaryKey} = $1 RETURNING ${this.primaryKey}`;

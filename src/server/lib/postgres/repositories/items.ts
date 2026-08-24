@@ -9,11 +9,15 @@ import {
   splitTransactionsTable,
   snapshotsTable,
   holdingsTable,
+  transactionPairsTable,
   ITEM_ID,
   USER_ID,
   INSTITUTION_ID,
   ACCOUNT_ID,
   HOLDING_ACCOUNT_ID,
+  TRANSACTION_ID,
+  TRANSACTION_ID_A,
+  TRANSACTION_ID_B,
   QueryExecutor,
 } from "../models";
 import { pool, withTransaction } from "../client";
@@ -163,6 +167,30 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
       client,
     );
     await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    // A pair references transactions by id, so removing an item has to reach
+    // them through the transactions it just soft-deleted. Without this the
+    // surviving half keeps `is_deleted = FALSE`, still bundles into a
+    // `TransferRow` for an account that no longer exists, and — because
+    // `updated` never moves — no delta sync can tell the client otherwise.
+    // Mirrors the cascade in `deleteTransactions`, one UPDATE per join column.
+    const pairSource = {
+      table: transactionsTable.name,
+      selectColumn: TRANSACTION_ID,
+      matchColumn: ACCOUNT_ID,
+      matchValues: accountIds,
+    };
+    await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
+      TRANSACTION_ID_A,
+      pairSource,
+      user_id,
+      client,
+    );
+    await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
+      TRANSACTION_ID_B,
+      pairSource,
+      user_id,
+      client,
+    );
     // Account-balance snapshots store the account in `account_id`; holding
     // snapshots store it in `holding_account_id` (their `account_id` is NULL).
     // Soft-delete both so removing an item leaves no orphaned holding history.
