@@ -52,3 +52,23 @@ export const restoreLeaves = (): void => {
   mock.module("bcrypt", () => __REAL_BCRYPT);
   resetPool();
 };
+
+/** Column names on the left of a `DO UPDATE SET` clause.
+ *
+ *  Compare the parsed set rather than substring-matching the clause: column
+ *  names nest (`holding_account_id` contains `account_id`), so
+ *  `expect(clause).not.toContain("account_id")` passes on a clause that
+ *  rewrites it.
+ *
+ *  ```ts
+ *  expect(updateColumnsOf(sql)).not.toContain(USER_ID);
+ *  ```
+ */
+export const updateColumnsOf = (sql: string): string[] => {
+  const clause = sql.split("DO UPDATE SET")[1];
+  if (!clause) return [];
+  return clause
+    .split(/,\s*/)
+    .map((part) => part.trim().split(/\s*=/)[0].trim())
+    .filter(Boolean);
+};

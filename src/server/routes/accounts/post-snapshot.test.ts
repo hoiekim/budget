@@ -145,8 +145,21 @@ describe("post-snapshot body validation", () => {
   });
 
   // `snapshot` is the sibling axis of `account`: both are caller-supplied
-  // objects the route dereferences before any write. Each case below throws on
-  // the pre-guard route — a 500 that also pages the global alarm.
+  // objects the route dereferences before any write.
+  test("rejects a snapshot that is not a plain object", async () => {
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    for (const snapshot of [[], [{ date: "2026-07-01" }], "2026-07-01", 7]) {
+      issued.length = 0;
+      const result = await postSnapshotRoute.execute(
+        makeReq({ account: victimsAccount.account, snapshot }, "owner"),
+        fakeRes(),
+      );
+      expect(result!.status).toBe("failed");
+      expect(result!.message).toMatch(/snapshot data/i);
+      expect(issued.some((q) => /INSERT INTO snapshots/i.test(q.sql))).toBe(false);
+    }
+  });
+
   test("rejects an explicitly null snapshot instead of throwing", async () => {
     ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
     const result = await postSnapshotRoute.execute(

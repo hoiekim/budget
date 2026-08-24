@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { restoreLeaves, updateColumnsOf } from "test-helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -102,17 +102,6 @@ describe("searchHoldingsByAccountId — single batched query", () => {
 });
 
 
-/** Column names on the left of a `DO UPDATE SET` clause. Comparing the parsed
- *  set beats substring assertions: `security_id` contains no `user_id`, but
- *  `holding_id` does contain `id`, and a substring test drifts silently. */
-const updateColumnsOf = (sql: string): string[] => {
-  const clause = sql.split("DO UPDATE SET")[1];
-  if (!clause) return [];
-  return clause
-    .split(/,\s*/)
-    .map((part) => part.trim().split(/\s*=/)[0].trim())
-    .filter(Boolean);
-};
 
 describe("upsertHoldings conflict", () => {
   const upsertOne = async () => {
@@ -159,5 +148,24 @@ describe("upsertHoldings conflict", () => {
   test("inserts the owner on a first write", async () => {
     const sql = await upsertOne();
     expect(sql.split("DO UPDATE SET")[0]).toContain("user_id");
+  });
+
+  test("leaves a column the caller omitted alone rather than nulling it", async () => {
+    // `institution_price_as_of` is optional on Plaid's holding payload, so
+    // `HoldingModel.fromJSON` leaves it undefined and it never reaches the
+    // INSERT column list. A SET entry for it would resolve `EXCLUDED` to the
+    // column default and wipe the stored date.
+    await upsertHoldings(mockUser, [
+      {
+        holding_id: "acct-A-sec-1",
+        account_id: "acct-A",
+        security_id: "sec-1",
+        quantity: 999,
+      } as never,
+    ]);
+    const columns = updateColumnsOf(mockQuery.mock.calls[0][0] as string);
+    expect(columns).toContain("quantity");
+    expect(columns).not.toContain("institution_price_as_of");
+    expect(columns).not.toContain("cost_basis");
   });
 });

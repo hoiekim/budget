@@ -268,8 +268,7 @@ describe("post-holding-snapshot create mode", () => {
     const second = await postHoldingSnapshotRoute.execute(makeReq(body), fakeRes());
 
     // Deterministic id means an in-place upsert, not a duplicate row. Anchored
-    // on the literal id: comparing the two responses alone passes when both are
-    // `undefined`, which is what a failing create path returns.
+    // on the literal id, which a failing create path cannot produce.
     const expectedDate = getSquashedDateString(new LocalDate("2024-03-15"));
     expect(first?.body?.snapshot_id).toBe(`holding-acct-9-sec-1-${expectedDate}`);
     expect(second?.body?.snapshot_id).toBe(first?.body?.snapshot_id);
@@ -298,6 +297,22 @@ describe("post-holding-snapshot create mode", () => {
     // a cross-tenant write.
     expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
     expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+  });
+
+  test("rejects a non-string account_id instead of minting ids from it", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    for (const account_id of [{ $ne: null }, 42, ["acct-9"]]) {
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id, ticker_symbol: "VOO", quantity: 1 }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/account_id/i);
+      expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+      expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+    }
   });
 
   test("the ownership lookup carries the caller's user_id and the requested account_id", async () => {

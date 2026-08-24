@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { restoreLeaves, updateColumnsOf } from "test-helpers";
 import * as realSecurities from "./securities";
 
 // Snapshot real `./securities` exports before partially overriding the
@@ -436,17 +436,6 @@ describe("searchSnapshots — holding_account_id fallback", () => {
   });
 });
 
-/** Column names on the left of a `DO UPDATE SET` clause. Comparing the parsed
- *  set beats substring assertions: `holding_account_id` contains `account_id`,
- *  so `not.toContain("account_id")` passes on a clause that rewrites it. */
-const updateColumnsOf = (sql: string): string[] => {
-  const clause = sql.split("DO UPDATE SET")[1];
-  if (!clause) return [];
-  return clause
-    .split(/,\s*/)
-    .map((part) => part.trim().split(/\s*=/)[0].trim())
-    .filter(Boolean);
-};
 
 describe("upsertHoldingSnapshots conflict", () => {
   const upsertOne = async () => {
@@ -518,26 +507,49 @@ describe("upsertSnapshots account_balance conflict", () => {
   };
 
   test("never reassigns the row owner or the account", async () => {
-    const sql = await upsertAccountSnapshot();
-    const updateClause = sql.split("DO UPDATE SET")[1];
-    expect(updateClause).toBeTruthy();
-    expect(updateClause).not.toContain("user_id");
-    expect(updateClause).not.toContain("account_id");
-    expect(updateClause).not.toContain("snapshot_type");
+    const columns = updateColumnsOf(await upsertAccountSnapshot());
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns).not.toContain("user_id");
+    expect(columns).not.toContain("account_id");
+    expect(columns).not.toContain("snapshot_type");
   });
 
-  test("still rewrites the balances and clears the tombstone", async () => {
-    const updateClause = (await upsertAccountSnapshot()).split("DO UPDATE SET")[1];
+  test("rewrites the balances it was given and clears the tombstone", async () => {
+    const columns = updateColumnsOf(await upsertAccountSnapshot());
     for (const column of [
       "balances_available",
       "balances_current",
-      "balances_limit",
       "balances_iso_currency_code",
       "is_deleted",
       "snapshot_date",
     ]) {
-      expect(updateClause).toContain(`${column} = EXCLUDED.${column}`);
+      expect(columns).toContain(column);
     }
+  });
+
+  test("leaves a balance the caller omitted alone rather than nulling it", async () => {
+    // The fixture supplies no `limit`, so `balances_limit` never reaches the
+    // INSERT column list. A SET entry for it would resolve `EXCLUDED` to the
+    // column default and wipe the stored value.
+    expect(updateColumnsOf(await upsertAccountSnapshot())).not.toContain("balances_limit");
+  });
+
+  test("rewrites a balance the caller did supply", async () => {
+    mockQuery.mockImplementationOnce(async () => ({
+      rows: [{ snapshot_id: "acct-A-20260701" }],
+      rowCount: 1,
+    }));
+    await upsertSnapshots([
+      {
+        user: { user_id: "attacker" },
+        snapshot: { snapshot_id: "acct-A-20260701", date: "2026-07-01" },
+        account: {
+          account_id: "acct-A",
+          balances: { current: 1, available: 1, limit: 5, iso_currency_code: "USD" },
+        },
+      } as unknown as Parameters<typeof upsertSnapshots>[0][number],
+    ]);
+    expect(updateColumnsOf(mockQuery.mock.calls[0][0] as string)).toContain("balances_limit");
   });
 
   test("inserts the owner on a first write", async () => {

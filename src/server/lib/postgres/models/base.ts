@@ -1,4 +1,5 @@
 import { PoolClient } from "pg";
+import { isUndefined } from "common";
 import { pool } from "../client";
 import {
   buildSelectWithFilters,
@@ -205,8 +206,18 @@ export abstract class Table<
     client?: QueryExecutor,
   ): Promise<Record<string, unknown> | null> {
     this._assertSimplePrimaryKey("upsert");
+    // `buildUpsert` drops undefined values from the INSERT column list, so a
+    // SET entry for such a column resolves `EXCLUDED.col` to the column default
+    // and overwrites the stored value with it. Intersecting keeps the two
+    // clauses talking about the same columns: omitting a field leaves it alone
+    // rather than clearing it.
+    const writable = Object.keys(data).filter(
+      (k) => k !== this.primaryKey && !isUndefined(data[k]),
+    );
     const { sql, values } = buildUpsert(this.name, this.primaryKey, data, {
-      updateColumns: updateColumns ?? Object.keys(data).filter((k) => k !== this.primaryKey),
+      updateColumns: updateColumns
+        ? updateColumns.filter((c) => writable.includes(c))
+        : writable,
       returning: ["*"],
     });
     const executor = client ?? pool;
