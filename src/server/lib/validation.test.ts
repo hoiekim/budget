@@ -260,13 +260,6 @@ describe("optionalDateField", () => {
   });
 });
 
-/**
- * Client type errors must be answered as `status: "failed"` BEFORE any value
- * reaches SQL. Letting one through raises Postgres `22P02` at the write, which
- * `Route.execute` turns into a 500 **and** a `sendAlarm` call — and while
- * `alarm.ts` keeps a single global cooldown, one malformed request a minute
- * blinds every other server alarm. See issue 671.
- */
 describe("validateFields", () => {
   const ACCOUNT_SPEC: FieldSpec[] = [
     { path: "hide", type: "boolean", nullable: true },
@@ -357,5 +350,45 @@ describe("validateFields", () => {
       ACCOUNT_SPEC
     );
     expect(result.error).toBe("Field hide must be a boolean");
+  });
+
+  const DATE_SPEC: FieldSpec[] = [{ path: "roll_over_start_date", type: "date", nullable: true }];
+
+  it("accepts the date shapes a DATE column takes", () => {
+    for (const roll_over_start_date of [
+      "2026-08-24",
+      // What the client actually serializes, via `getDateTimeString`.
+      "2026-08-24T00:00:00",
+      "2026-08-24T00:00:00.000Z",
+      "2024-02-29",
+    ]) {
+      const result = validateFields({ roll_over_start_date }, DATE_SPEC);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects a non-date string before it reaches the DATE column", () => {
+    for (const roll_over_start_date of [
+      "hello",
+      "",
+      "2026-13-45",
+      // Parses under `Date.parse` — rolls to March 2 — but Postgres answers
+      // `22008 date/time field value out of range`.
+      "2026-02-30",
+      "08/24/2026",
+      "2026-08-24Tnope",
+      20260824,
+    ]) {
+      const result = validateFields({ roll_over_start_date }, DATE_SPEC);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Field roll_over_start_date must be a date");
+    }
+  });
+
+  it("names the non-object holder, not the key being looked up, at every depth", () => {
+    const deep: FieldSpec[] = [{ path: "a.b.c", type: "string" }];
+    const result = validateFields({ a: "str" }, deep);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field a must be an object");
   });
 });

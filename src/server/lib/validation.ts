@@ -194,7 +194,7 @@ export function optionalDateField<T extends object>(
  * Field types a request body can be checked against, named after the column
  * type the value ends up in rather than the JS typeof.
  */
-export type FieldType = "string" | "number" | "boolean" | "uuid";
+export type FieldType = "string" | "number" | "boolean" | "uuid" | "date";
 
 export interface FieldSpec {
   /** Dot path into the body — `"balances.current"`, `"label.budget_id"`. */
@@ -207,6 +207,27 @@ export interface FieldSpec {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The client serializes a date column as `YYYY-MM-DDT00:00:00`, which a DATE
+// column takes as readily as a bare `YYYY-MM-DD` — so the time part stays
+// allowed and only the calendar day is pinned. `Date.parse` alone is not that
+// check: it rolls `2026-02-30` forward to March 2, where Postgres answers
+// `22008 date/time field value out of range`.
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/;
+
+const isDateString = (value: unknown): boolean => {
+  if (!isString(value)) return false;
+  const match = DATE_RE.exec(value);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day &&
+    !Number.isNaN(Date.parse(value))
+  );
+};
 
 const matchesType = (value: unknown, type: FieldType): boolean => {
   switch (type) {
@@ -221,6 +242,8 @@ const matchesType = (value: unknown, type: FieldType): boolean => {
       return isBoolean(value);
     case "uuid":
       return isString(value) && UUID_RE.test(value);
+    case "date":
+      return isDateString(value);
   }
 };
 
@@ -245,12 +268,17 @@ export function validateFields(obj: object, specs: FieldSpec[]): ValidationResul
     const leaf = segments.pop()!;
 
     let container: unknown = obj;
-    for (const segment of segments) {
+    for (let i = 0; i < segments.length; i++) {
       if (isUndefined(container) || isNull(container)) break;
       if (!isObject(container) || isArray(container)) {
-        return { success: false, error: `Field ${segment} must be an object` };
+        // `container` holds the value at the PREVIOUS segment, so that is the
+        // key the message has to name — not the one being looked up.
+        return {
+          success: false,
+          error: `Field ${segments[i - 1] ?? spec.path} must be an object`,
+        };
       }
-      container = (container as Record<string, unknown>)[segment];
+      container = (container as Record<string, unknown>)[segments[i]];
     }
 
     // A parent that isn't there at all leaves nothing to check — the write

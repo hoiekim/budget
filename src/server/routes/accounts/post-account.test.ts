@@ -39,12 +39,26 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
+// `mock.module` is process-global in Bun and `restoreLeaves` only restores the
+// `pg` / `bcrypt` leaves, so spread the real module rather than replacing it —
+// `alarm.test.ts` drives `resetAlarmState` — and put it back in `afterAll`
+// (the post-plaid-hook.test.ts pattern) so sibling files sharing the process
+// exercise the real `sendAlarm`.
+const realAlarm = { ...(await import("server/lib/alarm")) };
+
+const mockSendAlarm = mock(async (_title: string, _detail: string, _key?: string) => undefined);
+mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm }));
+
 const { postAccountRoute } = await import("./post-account");
 
-afterAll(restoreLeaves);
+afterAll(() => {
+  mock.module("server/lib/alarm", () => realAlarm);
+  restoreLeaves();
+});
 
 beforeEach(() => {
   mockQuery.mockClear();
+  mockSendAlarm.mockClear();
   db.updateReturns = [];
   db.updateError = null;
 });
@@ -217,5 +231,77 @@ describe("post-account edit path", () => {
     const update = findStatement(UPDATE_ACCOUNTS);
     expect(update).not.toBeNull();
     expect(update!.sql).toMatch(/is_deleted/i);
+  });
+});
+
+// A client type error must be answered as `status: "failed"` BEFORE any value
+// reaches SQL. Without the guard, `{ balances: { current: "abc" } }` travels
+// into a DECIMAL column and a non-UUID `label.budget_id` into a UUID column,
+// Postgres raises `22P02 invalid_text_representation` at the write, the repo
+// collapses it into an error result, the route throws, and `Route.execute`
+// answers 500 **and** calls `sendAlarm`. A client type error must not page, and
+// must not spend a slot of `alarm.ts`'s global per-window send ceiling that a
+// real fault needs.
+describe("post-account typed body fields", () => {
+  const UUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+
+  // Stage a matching row AND arm the write to fail the way Postgres fails on a
+  // bad value, so removing the guard flips the status to `error` and the message
+  // to the framework's — and, on the bodies carrying a value into a column,
+  // fires the query and pages the alarm. No assertion below is decorative.
+  const rejects = async (body: unknown, expectedError: string) => {
+    db.updateReturns = [{ account_id: "acc-1" }];
+    db.updateError = new Error('invalid input syntax for type numeric: "abc"');
+
+    const result = await postAccountRoute.execute(makeReq(body, "u-1"), fakeRes());
+
+    expect(result?.status).toBe("failed");
+    expect((result as { message?: string })?.message).toBe(expectedError);
+    // The point of validating at the boundary: nothing reached Postgres…
+    expect(mockQuery).not.toHaveBeenCalled();
+    // …so nothing could page.
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  };
+
+  test("a string in balances.current is refused before SQL", async () => {
+    await rejects(
+      { account_id: "acc-1", balances: { current: "abc" } },
+      "Field balances.current must be a number",
+    );
+  });
+
+  test("a non-UUID label.budget_id is refused before SQL", async () => {
+    await rejects(
+      { account_id: "acc-1", label: { budget_id: "not-a-uuid" } },
+      "Field label.budget_id must be a uuid",
+    );
+  });
+
+  test("a string in a boolean column is refused before SQL", async () => {
+    await rejects({ account_id: "acc-1", hide: "true" }, "Field hide must be a boolean");
+  });
+
+  test("a non-object balances is refused before SQL", async () => {
+    await rejects({ account_id: "acc-1", balances: "broke" }, "Field balances must be an object");
+  });
+
+  test("a well-formed partial body passes validation and reaches the repo", async () => {
+    db.updateReturns = [{ account_id: "acc-1" }];
+    const result = await postAccountRoute.execute(
+      makeReq(
+        {
+          account_id: "acc-1",
+          hide: true,
+          label: { budget_id: UUID },
+          balances: { current: -12.5 },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    // The guard has to reject bad input without rejecting good input.
+    expect(result?.status).toBe("success");
+    expect(findStatement(UPDATE_ACCOUNTS)).not.toBeNull();
+    expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 });

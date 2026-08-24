@@ -14,10 +14,12 @@ export interface AccountPostResponse {
 }
 
 /**
- * Every typed field `AccountModel.fromJSON` copies into a row, mirroring the
- * column types in `models/account.ts`. All of them are nullable there, so an
- * explicit null clears the column rather than failing. `account_id` is checked
- * separately (`requireStringField`) because it is the only required one.
+ * The typed fields an edit can set, mirroring their column types in
+ * `models/account.ts`. Each is nullable there, so an explicit null clears the
+ * column rather than failing. `account_id` is checked separately
+ * (`requireStringField`) because it is the only required one; `item_id` and
+ * `institution_id` are absent because `updateAccounts` strips them, not
+ * because they are nullable — both columns are `NOT NULL`.
  */
 const ACCOUNT_BODY_SPEC: FieldSpec[] = [
   { path: "name", type: "string", nullable: true },
@@ -36,6 +38,13 @@ const ACCOUNT_BODY_SPEC: FieldSpec[] = [
   { path: "graphOptions.useTransactions", type: "boolean", nullable: true },
 ];
 
+/**
+ * Edit an existing account. Purely UPDATE — create lives on the sibling
+ * `GET /new-account` mint route, so a body naming an `account_id` that
+ * does not exist yet answers `Account not found.` instead of an
+ * ambiguous 304-that-looks-like-success. `item_id` and
+ * `institution_id` are create-only and stripped in `updateAccounts`.
+ */
 export const postAccountRoute = new Route<AccountPostResponse>("POST", "/account", async (req) => {
   const { user } = req.session;
   if (!user) {
