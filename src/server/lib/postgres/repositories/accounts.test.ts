@@ -349,7 +349,7 @@ describe("deleteAccounts", () => {
     expect(pairDeletes).toHaveLength(2);
     for (const [sql, values] of pairDeletes as [string, unknown[]][]) {
       expect(sql).toMatch(
-        /SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)/i,
+        /SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)\)/i,
       );
       expect(sql).toMatch(/AND\s+user_id\s*=\s*\$2/i);
       expect(values).toEqual([["acc-a", "acc-b"], "usr-1"]);

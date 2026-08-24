@@ -309,10 +309,9 @@ export abstract class Table<
    *
    * For a cascade that has to travel through a second table — one where the
    * caller holds the ids of the *related* rows rather than of the rows being
-   * deleted. The subquery resolves the match inside Postgres; selecting the
-   * related ids into the process and passing them back would put a
-   * row-count-sized array on the wire in both directions, and would mean
-   * reading whole rows to use one column.
+   * deleted. The subquery resolves the match inside Postgres, so the related
+   * ids never enter the process; the alternative is selecting them out and
+   * passing them back, which also means reading whole rows to use one column.
    *
    * `column`, `source.table`, `source.selectColumn` and `source.matchColumn`
    * are all interpolated and must be schema constants, never user input. Only

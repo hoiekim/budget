@@ -164,7 +164,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
       client,
     );
     await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
-    await softDeleteTransactionPairsByAccounts(user_id, accountIds, client);
+    await softDeleteTransactionPairsByAccounts(user, accountIds, client);
     // Account-balance snapshots store the account in `account_id`; holding
     // snapshots store it in `holding_account_id` (their `account_id` is NULL).
     // Soft-delete both so removing an item leaves no orphaned holding history.

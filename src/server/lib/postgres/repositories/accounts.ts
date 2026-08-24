@@ -215,7 +215,7 @@ export const deleteAccounts = async (
       await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
     }
 
-    await softDeleteTransactionPairsByAccounts(user_id, account_ids, client);
+    await softDeleteTransactionPairsByAccounts(user, account_ids, client);
 
     const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: user_id }, client);
     return { deleted };

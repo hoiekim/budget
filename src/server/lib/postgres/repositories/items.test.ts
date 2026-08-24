@@ -127,7 +127,7 @@ describe("deleteItem", () => {
       // The subquery selects transaction ids for the item's accounts, and it
       // must NOT exclude soft-deleted rows: the transactions this cascade
       // travels through were soft-deleted earlier in the same transaction.
-      expect(sql).toMatch(/SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)/i);
+      expect(sql).toMatch(/SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)\)/i);
       expect(sql).not.toMatch(/is_deleted\s*=\s*FALSE/i);
       // Scoped to the owner — a pair is never reachable across users.
       expect(sql).toMatch(/AND\s+user_id\s*=\s*\$2/i);

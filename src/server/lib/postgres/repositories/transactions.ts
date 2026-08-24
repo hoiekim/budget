@@ -222,7 +222,7 @@ export const createManualTransaction = async (
  * Both join columns, one statement each, whatever the account count.
  */
 export const softDeleteTransactionPairsByAccounts = async (
-  user_id: string,
+  user: MaskedUser,
   account_ids: string[],
   client?: QueryExecutor,
 ): Promise<void> => {
@@ -235,13 +235,13 @@ export const softDeleteTransactionPairsByAccounts = async (
   await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
     TRANSACTION_ID_A,
     source,
-    user_id,
+    user.user_id,
     client,
   );
   await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
     TRANSACTION_ID_B,
     source,
-    user_id,
+    user.user_id,
     client,
   );
 };
