@@ -11,17 +11,14 @@ import {
   splitTransactionsTable,
   snapshotsTable,
   holdingsTable,
-  transactionPairsTable,
   ACCOUNT_ID,
   HOLDING_ACCOUNT_ID,
   USER_ID,
   ITEM_ID,
   INSTITUTION_ID,
-  TRANSACTION_ID,
-  TRANSACTION_ID_A,
-  TRANSACTION_ID_B,
   QueryExecutor,
 } from "../models";
+import { softDeleteTransactionPairsByAccounts } from "./transactions";
 import {
   UpsertResult,
   successResult,
@@ -218,34 +215,7 @@ export const deleteAccounts = async (
       await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
     }
 
-    // Same cascade `deleteItem` runs, for the same reason: a pair references
-    // transactions by id, so deleting an account has to reach its pairs through
-    // the transactions on it. Otherwise the surviving half stays bundled as a
-    // transfer to an account that no longer exists, and an untouched `updated`
-    // keeps any delta sync from correcting the client.
-    //
-    // Hoisted out of the per-account loop — one statement per join column
-    // covers every account — and placed after every transactions soft-delete,
-    // whose exclusive row locks serialize this against a concurrent
-    // `pairTransactions`.
-    const pairSource = {
-      table: transactionsTable.name,
-      selectColumn: TRANSACTION_ID,
-      matchColumn: ACCOUNT_ID,
-      matchValues: account_ids,
-    };
-    await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
-      TRANSACTION_ID_A,
-      pairSource,
-      user_id,
-      client,
-    );
-    await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
-      TRANSACTION_ID_B,
-      pairSource,
-      user_id,
-      client,
-    );
+    await softDeleteTransactionPairsByAccounts(user_id, account_ids, client);
 
     const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: user_id }, client);
     return { deleted };

@@ -205,6 +205,47 @@ export const createManualTransaction = async (
   }
 };
 
+/**
+ * Soft-delete every pair that references a transaction on one of `account_ids`.
+ *
+ * A pair joins `transactions` by id, so a cascade that only knows accounts has
+ * to travel through them. Left live, the surviving half stays bundled as a
+ * transfer to an account that no longer exists, the detection engine treats it
+ * as already-paired and will not re-suggest it, and an untouched `updated`
+ * keeps any delta sync from correcting the client.
+ *
+ * Call this AFTER the caller's `transactions` soft-delete: that UPDATE holds an
+ * exclusive row lock until commit, which is what blocks a concurrent
+ * `pairTransactions` — whose existence pre-check takes `FOR SHARE` on the same
+ * rows — from minting a pair behind the cascade.
+ *
+ * Both join columns, one statement each, whatever the account count.
+ */
+export const softDeleteTransactionPairsByAccounts = async (
+  user_id: string,
+  account_ids: string[],
+  client?: QueryExecutor,
+): Promise<void> => {
+  const source = {
+    table: transactionsTable.name,
+    selectColumn: TRANSACTION_ID,
+    matchColumn: ACCOUNT_ID,
+    matchValues: account_ids,
+  };
+  await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
+    TRANSACTION_ID_A,
+    source,
+    user_id,
+    client,
+  );
+  await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
+    TRANSACTION_ID_B,
+    source,
+    user_id,
+    client,
+  );
+};
+
 export const deleteTransactions = async (
   user: MaskedUser,
   transaction_ids: string[],

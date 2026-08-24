@@ -9,17 +9,14 @@ import {
   splitTransactionsTable,
   snapshotsTable,
   holdingsTable,
-  transactionPairsTable,
   ITEM_ID,
   USER_ID,
   INSTITUTION_ID,
   ACCOUNT_ID,
   HOLDING_ACCOUNT_ID,
-  TRANSACTION_ID,
-  TRANSACTION_ID_A,
-  TRANSACTION_ID_B,
   QueryExecutor,
 } from "../models";
+import { softDeleteTransactionPairsByAccounts } from "./transactions";
 import { pool, withTransaction } from "../client";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
 import { logger } from "../../logger";
@@ -167,37 +164,7 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
       client,
     );
     await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
-    // A pair references transactions by id, so removing an item has to reach
-    // them through this item's accounts. Without this the surviving half keeps
-    // `is_deleted = FALSE`, still bundles into a `TransferRow` for an account
-    // that no longer exists, and — because `updated` never moves — no delta
-    // sync can tell the client otherwise. Mirrors `deleteTransactions`, one
-    // UPDATE per join column.
-    //
-    // Must stay AFTER the transactions soft-delete above: that UPDATE holds an
-    // exclusive row lock until commit, which is what blocks a concurrent
-    // `pairTransactions` (its existence pre-check takes `FOR SHARE` on the same
-    // rows) from minting a new pair behind this cascade. Run first, and that
-    // pair is created after the sweep has already passed and survives on
-    // soft-deleted transactions.
-    const pairSource = {
-      table: transactionsTable.name,
-      selectColumn: TRANSACTION_ID,
-      matchColumn: ACCOUNT_ID,
-      matchValues: accountIds,
-    };
-    await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
-      TRANSACTION_ID_A,
-      pairSource,
-      user_id,
-      client,
-    );
-    await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
-      TRANSACTION_ID_B,
-      pairSource,
-      user_id,
-      client,
-    );
+    await softDeleteTransactionPairsByAccounts(user_id, accountIds, client);
     // Account-balance snapshots store the account in `account_id`; holding
     // snapshots store it in `holding_account_id` (their `account_id` is NULL).
     // Soft-delete both so removing an item leaves no orphaned holding history.
