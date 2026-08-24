@@ -168,11 +168,18 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
     );
     await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
     // A pair references transactions by id, so removing an item has to reach
-    // them through the transactions it just soft-deleted. Without this the
-    // surviving half keeps `is_deleted = FALSE`, still bundles into a
-    // `TransferRow` for an account that no longer exists, and — because
-    // `updated` never moves — no delta sync can tell the client otherwise.
-    // Mirrors the cascade in `deleteTransactions`, one UPDATE per join column.
+    // them through this item's accounts. Without this the surviving half keeps
+    // `is_deleted = FALSE`, still bundles into a `TransferRow` for an account
+    // that no longer exists, and — because `updated` never moves — no delta
+    // sync can tell the client otherwise. Mirrors `deleteTransactions`, one
+    // UPDATE per join column.
+    //
+    // Must stay AFTER the transactions soft-delete above: that UPDATE holds an
+    // exclusive row lock until commit, which is what blocks a concurrent
+    // `pairTransactions` (its existence pre-check takes `FOR SHARE` on the same
+    // rows) from minting a new pair behind this cascade. Run first, and that
+    // pair is created after the sweep has already passed and survives on
+    // soft-deleted transactions.
     const pairSource = {
       table: transactionsTable.name,
       selectColumn: TRANSACTION_ID,

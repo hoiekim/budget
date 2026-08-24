@@ -135,6 +135,36 @@ describe("deleteItem", () => {
     }
   });
 
+  test("runs the pairs cascade AFTER the transactions soft-delete", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
+        return {
+          rows: [makeAccountRow({ account_id: "acc-del", item_id: "item-del" })],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await deleteItem(testUser, "item-del");
+
+    const sqls = mockQuery.mock.calls
+      .map(([sql]) => sql)
+      .filter((sql): sql is string => typeof sql === "string");
+    const transactionsDelete = sqls.findIndex(
+      (sql) => /UPDATE\s+transactions\b/i.test(sql) && /is_deleted/i.test(sql),
+    );
+    const firstPairDelete = sqls.findIndex((sql) => /UPDATE\s+transaction_pairs\b/i.test(sql));
+
+    expect(transactionsDelete).toBeGreaterThanOrEqual(0);
+    expect(firstPairDelete).toBeGreaterThanOrEqual(0);
+    // The transactions UPDATE holds an exclusive row lock until commit, which
+    // is what stops a concurrent pairTransactions (FOR SHARE existence check)
+    // from minting a pair behind this cascade. Reversed, that pair survives on
+    // soft-deleted transactions.
+    expect(transactionsDelete).toBeLessThan(firstPairDelete);
+  });
+
   test("skips the transaction_pairs cascade when the item owns no accounts", async () => {
     mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
 

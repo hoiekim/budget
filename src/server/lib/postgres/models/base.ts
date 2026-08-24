@@ -304,17 +304,22 @@ export abstract class Table<
   }
 
   /**
-   * Soft-delete rows whose `column` matches a row of `sourceTable` selected by
-   * `sourceColumn = ANY(sourceValues)`.
+   * Soft-delete rows whose `column` matches a row of `source.table` selected by
+   * `source.matchColumn = ANY(source.matchValues)`.
    *
-   * For a cascade that has to travel through another table — `transaction_pairs`
-   * joins `transactions` by id, while an item cascade only knows account ids.
-   * The subquery keeps the matched set inside Postgres; selecting the source ids
-   * into the process and passing them back would put a row-count-sized array on
-   * the wire twice.
+   * For a cascade that has to travel through a second table — one where the
+   * caller holds the ids of the *related* rows rather than of the rows being
+   * deleted. The subquery resolves the match inside Postgres; selecting the
+   * related ids into the process and passing them back would put a
+   * row-count-sized array on the wire in both directions, and would mean
+   * reading whole rows to use one column.
    *
-   * `sourceTable` / `sourceColumn` / `column` are schema constants, never user
-   * input — only the values are parameterized.
+   * `column`, `source.table`, `source.selectColumn` and `source.matchColumn`
+   * are all interpolated and must be schema constants, never user input. Only
+   * `source.matchValues` and `userIdValue` are parameterized.
+   *
+   * Note this does not exclude rows that are already soft-deleted, matching
+   * `bulkSoftDeleteByColumn`; re-stamping one is idempotent.
    */
   async bulkSoftDeleteByRelatedColumn(
     column: string,
