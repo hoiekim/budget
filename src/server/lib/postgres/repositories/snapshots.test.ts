@@ -31,7 +31,7 @@ mock.module("./securities", () => ({
   searchSecuritiesById: mockSearchSecuritiesById,
 }));
 
-const { searchSnapshots, upsertSnapshots } = await import("./snapshots");
+const { searchSnapshots, upsertSnapshots, upsertHoldingSnapshots } = await import("./snapshots");
 
 afterAll(() => {
   mock.module("./securities", () => realSecuritiesSnap);
@@ -433,6 +433,68 @@ describe("searchSnapshots — holding_account_id fallback", () => {
     const securitySegment = segments.find((s) => s.includes("security_id ="));
     expect(securitySegment).toContain("holding_security_id");
     expect(holdingValues).toContain("sec-voo");
+  });
+});
+
+/** Column names on the left of a `DO UPDATE SET` clause. Comparing the parsed
+ *  set beats substring assertions: `holding_account_id` contains `account_id`,
+ *  so `not.toContain("account_id")` passes on a clause that rewrites it. */
+const updateColumnsOf = (sql: string): string[] => {
+  const clause = sql.split("DO UPDATE SET")[1];
+  if (!clause) return [];
+  return clause
+    .split(/,\s*/)
+    .map((part) => part.trim().split(/\s*=/)[0].trim())
+    .filter(Boolean);
+};
+
+describe("upsertHoldingSnapshots conflict", () => {
+  const upsertOne = async () => {
+    mockQuery.mockImplementationOnce(async () => ({
+      rows: [{ snapshot_id: "holding-acct-A-sec-1-20260701" }],
+      rowCount: 1,
+    }));
+    await upsertHoldingSnapshots({ user_id: "attacker" } as never, [
+      {
+        snapshot_id: "holding-acct-A-sec-1-20260701",
+        snapshot_date: "2026-07-01",
+        holding_account_id: "acct-A",
+        holding_security_id: "sec-1",
+        quantity: 999,
+        cost_basis: 1,
+        institution_price: 1,
+        institution_value: 999,
+      },
+    ]);
+    return mockQuery.mock.calls[0][0] as string;
+  };
+
+  test("never reassigns the row owner, the account or the snapshot type", async () => {
+    const columns = updateColumnsOf(await upsertOne());
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns).not.toContain("user_id");
+    expect(columns).not.toContain("holding_account_id");
+    expect(columns).not.toContain("snapshot_type");
+  });
+
+  test("still rewrites the position and clears the tombstone", async () => {
+    const columns = updateColumnsOf(await upsertOne());
+    for (const column of [
+      "snapshot_date",
+      "is_deleted",
+      "holding_security_id",
+      "institution_price",
+      "institution_value",
+      "cost_basis",
+      "quantity",
+    ]) {
+      expect(columns).toContain(column);
+    }
+  });
+
+  test("inserts the owner on a first write", async () => {
+    const sql = await upsertOne();
+    expect(sql.split("DO UPDATE SET")[0]).toContain("user_id");
   });
 });
 

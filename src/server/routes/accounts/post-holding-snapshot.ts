@@ -7,6 +7,7 @@ import {
   upsertHoldings,
   searchSecurities,
   upsertSecurities,
+  getAccount,
   getHoldingSnapshots,
   polygon,
   backfillMonthlySecuritySnapshotsForward,
@@ -169,8 +170,13 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const snapshot_date = body.snapshot_date as string | undefined;
 
     if (!account_id) return validationError("account_id is required");
+    if (typeof account_id !== "string") return validationError("account_id must be a string");
     if (!ticker_symbol) return validationError("ticker_symbol is required");
     if (quantity === undefined || quantity === null) return validationError("quantity is required");
+
+    if (!(await getAccount(user, account_id))) {
+      return { status: "failed", message: "Account not found or access denied." };
+    }
 
     const cost_basis = body.cost_basis as number | undefined;
     const institution_price = body.institution_price as number | undefined;

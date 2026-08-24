@@ -18,7 +18,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { deleteHoldings, searchHoldingsByAccountId } = await import("./holdings");
+const { deleteHoldings, searchHoldingsByAccountId, upsertHoldings } = await import("./holdings");
 
 afterAll(restoreLeaves);
 
@@ -98,5 +98,66 @@ describe("searchHoldingsByAccountId — single batched query", () => {
     const [sql, values] = mockQuery.mock.calls[0];
     expect(String(sql)).toContain("user_id = $1");
     expect(values).toContain("usr-1");
+  });
+});
+
+
+/** Column names on the left of a `DO UPDATE SET` clause. Comparing the parsed
+ *  set beats substring assertions: `security_id` contains no `user_id`, but
+ *  `holding_id` does contain `id`, and a substring test drifts silently. */
+const updateColumnsOf = (sql: string): string[] => {
+  const clause = sql.split("DO UPDATE SET")[1];
+  if (!clause) return [];
+  return clause
+    .split(/,\s*/)
+    .map((part) => part.trim().split(/\s*=/)[0].trim())
+    .filter(Boolean);
+};
+
+describe("upsertHoldings conflict", () => {
+  const upsertOne = async () => {
+    await upsertHoldings(mockUser, [
+      {
+        holding_id: "acct-A-sec-1",
+        account_id: "acct-A",
+        security_id: "sec-1",
+        quantity: 999,
+        cost_basis: 1,
+        institution_price: 1,
+        institution_price_as_of: "2026-07-01",
+        institution_value: 999,
+        iso_currency_code: "USD",
+        unofficial_currency_code: null,
+      },
+    ]);
+    return mockQuery.mock.calls[0][0] as string;
+  };
+
+  test("never reassigns the row owner or the account", async () => {
+    const columns = updateColumnsOf(await upsertOne());
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns).not.toContain("user_id");
+    expect(columns).not.toContain("account_id");
+    expect(columns).not.toContain("holding_id");
+  });
+
+  test("still rewrites the position", async () => {
+    const columns = updateColumnsOf(await upsertOne());
+    for (const column of [
+      "security_id",
+      "institution_price",
+      "institution_price_as_of",
+      "institution_value",
+      "cost_basis",
+      "quantity",
+      "iso_currency_code",
+    ]) {
+      expect(columns).toContain(column);
+    }
+  });
+
+  test("inserts the owner on a first write", async () => {
+    const sql = await upsertOne();
+    expect(sql.split("DO UPDATE SET")[0]).toContain("user_id");
   });
 });

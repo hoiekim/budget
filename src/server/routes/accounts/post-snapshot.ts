@@ -33,7 +33,8 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
     if (!bodyResult.success) return validationError(bodyResult.error!);
 
     const body = bodyResult.data as Record<string, unknown>;
-    if (!("snapshot" in body)) {
+    const snapshotData = body.snapshot;
+    if (!snapshotData || typeof snapshotData !== "object" || Array.isArray(snapshotData)) {
       return validationError("Request body must contain snapshot data");
     }
 
@@ -47,8 +48,14 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
       return { status: "failed", message: "Account not found or access denied." };
     }
 
-    const snapshotData = body.snapshot as Record<string, unknown>;
-    const date = snapshotData.date ? new LocalDate(snapshotData.date as string) : new Date();
+    const rawDate = (snapshotData as Record<string, unknown>).date;
+    if (rawDate !== undefined && typeof rawDate !== "string") {
+      return validationError("snapshot.date must be a string");
+    }
+    const date = rawDate ? new LocalDate(rawDate) : new Date();
+    if (Number.isNaN(date.getTime())) {
+      return validationError("snapshot.date is not a valid date");
+    }
     const snapshot: JSONSnapshot = {
       snapshot_id: `${account.account_id}-${getSquashedDateString(date)}`,
       date: date.toISOString(),

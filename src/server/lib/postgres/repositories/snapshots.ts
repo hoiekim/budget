@@ -16,6 +16,14 @@ import {
   HOLDING_SECURITY_ID,
   USER_ID,
   IS_DELETED,
+  BALANCES_AVAILABLE,
+  BALANCES_CURRENT,
+  BALANCES_LIMIT,
+  BALANCES_ISO_CURRENCY_CODE,
+  INSTITUTION_PRICE,
+  INSTITUTION_VALUE,
+  COST_BASIS,
+  QUANTITY,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { searchSecuritiesById } from "./securities";
@@ -243,6 +251,19 @@ export const getHoldingSnapshots = async (
   }));
 };
 
+/** Columns a holding-snapshot conflict may rewrite. `snapshot_id` is minted
+ *  from a caller-supplied `account_id`, so without an allowlist `Table.upsert`
+ *  defaults to every supplied key and a colliding id reassigns the row's owner. */
+const HOLDING_SNAPSHOT_UPDATE_COLUMNS = [
+  SNAPSHOT_DATE,
+  IS_DELETED,
+  HOLDING_SECURITY_ID,
+  INSTITUTION_PRICE,
+  INSTITUTION_VALUE,
+  COST_BASIS,
+  QUANTITY,
+];
+
 export const upsertHoldingSnapshots = async (
   user: MaskedUser,
   snapshots: HoldingSnapshot[],
@@ -264,7 +285,7 @@ export const upsertHoldingSnapshots = async (
         institution_value: snapshot.institution_value,
         cost_basis: snapshot.cost_basis,
         quantity: snapshot.quantity,
-      });
+      }, HOLDING_SNAPSHOT_UPDATE_COLUMNS);
       results.push(successResult(snapshot.snapshot_id, 1));
     } catch (error) {
       logger.error("Failed to upsert holding snapshot", { snapshotId: snapshot.snapshot_id }, error);
@@ -280,10 +301,10 @@ export const upsertHoldingSnapshots = async (
 const ACCOUNT_SNAPSHOT_UPDATE_COLUMNS = [
   SNAPSHOT_DATE,
   IS_DELETED,
-  "balances_available",
-  "balances_current",
-  "balances_limit",
-  "balances_iso_currency_code",
+  BALANCES_AVAILABLE,
+  BALANCES_CURRENT,
+  BALANCES_LIMIT,
+  BALANCES_ISO_CURRENCY_CODE,
 ];
 
 export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<UpsertResult[]> => {

@@ -143,4 +143,52 @@ describe("post-snapshot body validation", () => {
     expect(result!.status).toBe("failed");
     expect(result!.message).toMatch(/account_id/i);
   });
+
+  // `snapshot` is the sibling axis of `account`: both are caller-supplied
+  // objects the route dereferences before any write. Each case below throws on
+  // the pre-guard route — a 500 that also pages the global alarm.
+  test("rejects an explicitly null snapshot instead of throwing", async () => {
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    const result = await postSnapshotRoute.execute(
+      makeReq({ account: victimsAccount.account, snapshot: null }, "owner"),
+      fakeRes(),
+    );
+    expect(result!.status).toBe("failed");
+    expect(result!.message).toMatch(/snapshot data/i);
+    expect(issued.some((q) => /INSERT INTO snapshots/i.test(q.sql))).toBe(false);
+  });
+
+  test("rejects an unparseable snapshot.date instead of minting a NaN id", async () => {
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    for (const date of ["garbage", "2026-13-45x"]) {
+      issued.length = 0;
+      const result = await postSnapshotRoute.execute(
+        makeReq({ account: victimsAccount.account, snapshot: { date } }, "owner"),
+        fakeRes(),
+      );
+      expect(result!.status).toBe("failed");
+      expect(result!.message).toMatch(/not a valid date/i);
+      expect(issued.some((q) => /INSERT INTO snapshots/i.test(q.sql))).toBe(false);
+    }
+  });
+
+  test("rejects a non-string snapshot.date", async () => {
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    const result = await postSnapshotRoute.execute(
+      makeReq({ account: victimsAccount.account, snapshot: { date: 20260701 } }, "owner"),
+      fakeRes(),
+    );
+    expect(result!.status).toBe("failed");
+    expect(result!.message).toMatch(/must be a string/i);
+  });
+
+  test("a snapshot with no date still defaults to today and writes", async () => {
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    const result = await postSnapshotRoute.execute(
+      makeReq({ account: victimsAccount.account, snapshot: {} }, "owner"),
+      fakeRes(),
+    );
+    expect(result!.status).toBe("success");
+    expect(issued.some((q) => /INSERT INTO snapshots/i.test(q.sql))).toBe(true);
+  });
 });
