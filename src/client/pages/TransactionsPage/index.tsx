@@ -77,10 +77,12 @@ export const TransactionsPage = () => {
   const orderingCtx = useOrderingContext();
   const hit = useTransactionHit(orderingCtx);
 
-  const sorter = useSorter<
-    Transaction | InvestmentTransaction | SplitTransaction,
-    TransactionHeaders & InvestmentTransactionHeaders
-  >(buildSortKey(isInvestment, types), new Map([["date", "descending"]]));
+  const sortKey = buildSortKey(isInvestment, types);
+
+  const sorter = useSorter<TransactionHeaders & InvestmentTransactionHeaders>(
+    sortKey,
+    new Map([["date", "descending"]]),
+  );
 
   const { sortings } = sorter;
 
@@ -361,6 +363,7 @@ export const TransactionsPage = () => {
       <TransactionsPageTitle
         filters={{ account, budget, section, category }}
         sorter={sorter}
+        sortKey={sortKey}
         onChangeSearchValue={setSearchValue}
       />
       {!!totalSuggestedCount && (

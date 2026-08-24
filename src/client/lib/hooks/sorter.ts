@@ -38,8 +38,7 @@ type GetVisible<H> = (key: keyof H) => boolean;
 type ToggleVisible<H> = (key: keyof H) => void;
 type Formatter<T, H> = (e: T, key: keyof H) => string | number | Date | unknown;
 
-export interface Sorter<T = unknown, H = unknown> {
-  sort: (array: T[], formatter: Formatter<T, H>) => T[];
+export interface Sorter<H = unknown> {
   setSortBy: SetSortBy<H>;
   getArrow: GetArrow<H>;
   visibles: { [k in keyof H]?: boolean };
@@ -78,11 +77,11 @@ export const applySortings = <T, H>(
   return array;
 };
 
-export const useSorter = <T, H>(
+export const useSorter = <H>(
   name: string,
   initialSortings?: Sortings<H>,
   initialVisibles?: Visibles<H>
-): Sorter<T, H> => {
+): Sorter<H> => {
   const [sortings, setSortings] = useLocalStorageState<Sortings<H>>(
     `map_${name}_sortings`,
     initialSortings || new Map()
@@ -93,12 +92,7 @@ export const useSorter = <T, H>(
     initialVisibles || {}
   );
 
-  const sort: Sorter<T, H>["sort"] = useCallback(
-    (array, formatter) => applySortings(array, sortings, formatter),
-    [sortings]
-  );
-
-  const setSortBy: Sorter<T, H>["setSortBy"] = useCallback(
+  const setSortBy: Sorter<H>["setSortBy"] = useCallback(
     (key) => {
       setSortings((oldSortings) => {
         const newSortings = new Map(oldSortings);
@@ -116,7 +110,7 @@ export const useSorter = <T, H>(
     [setSortings]
   );
 
-  const getArrow: Sorter<T, H>["getArrow"] = useCallback(
+  const getArrow: Sorter<H>["getArrow"] = useCallback(
     (key) => {
       switch (sortings.get(key)) {
         case "ascending":
@@ -130,12 +124,12 @@ export const useSorter = <T, H>(
     [sortings]
   );
 
-  const getVisible: Sorter<T, H>["getVisible"] = useCallback((key) => !!visibles[key], [visibles]);
+  const getVisible: Sorter<H>["getVisible"] = useCallback((key) => !!visibles[key], [visibles]);
 
-  const toggleVisible: Sorter<T, H>["toggleVisible"] = useCallback(
+  const toggleVisible: Sorter<H>["toggleVisible"] = useCallback(
     (key) => setVisibles((oldVisibles) => ({ ...oldVisibles, [key]: !oldVisibles[key] })),
     [setVisibles]
   );
 
-  return { sort, setSortBy, getArrow, visibles, getVisible, toggleVisible, sortings };
+  return { setSortBy, getArrow, visibles, getVisible, toggleVisible, sortings };
 };

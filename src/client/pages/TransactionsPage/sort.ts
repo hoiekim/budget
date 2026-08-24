@@ -43,10 +43,9 @@ export interface OrderingContext {
  * Storage slot for the sort preferences. Distinct per type-filter
  * combination so e.g. an "expenses" sort doesn't collide with an
  * "expenses,transfers" sort, and distinct per row-type view because the
- * investment header set is a strict subset of the cash one — sharing one
- * slot let a sort chosen on an investment account re-order every cash
- * list. `"investment"` is not a `TransactionsPageType`, so it cannot
- * collide with any filter combination.
+ * investment header set is a strict subset of the cash one.
+ * `"investment"` is not a `TransactionsPageType`, so it cannot collide
+ * with any filter combination.
  */
 export const buildSortKey = (isInvestment: boolean, types: TransactionsPageType[]): string =>
   ["transactions", ...(isInvestment ? ["investment"] : []), ...types].join("_");
@@ -148,10 +147,6 @@ export const formatSortValue = (
  * a row through text the user cannot see on it; that is pre-existing
  * for whole transactions and is kept uniform here rather than made
  * type-specific.
- *
- * Before #676 only whole `Transaction`s filled the pool, so investment
- * rows and splits scored zero for every query and sank to the bottom of
- * every search.
  */
 export const getSearchPool = (e: TransactionRow, ctx: OrderingContext): string[] => {
   const searchPool: string[] = [];
@@ -201,15 +196,13 @@ const baseOrderKey = (e: TransactionRow): string =>
 /**
  * The whole ordering tail of the transactions list: base order, then
  * the user's column sort, then the search re-rank. Shared by the
- * investment and cash branches of `filteredAndSorted` — the investment
- * branch used to return its own hand-rolled comparator before reaching
- * any of this, which is why the sort buttons its header renders did
- * nothing and the `date descending` default they advertise was never
- * applied.
+ * investment and cash branches of `filteredAndSorted`, so the header's
+ * sort buttons and its `date descending` default order rows the same
+ * way in both.
  */
 export const orderRows = (
   rows: TransactionRow[],
-  sortings: Sorter<TransactionRow, TransactionHeaderSet>["sortings"],
+  sortings: Sorter<TransactionHeaderSet>["sortings"],
   ctx: OrderingContext,
   hit: (searchValue: string, row: TransactionRow) => number,
   searchValue: string,

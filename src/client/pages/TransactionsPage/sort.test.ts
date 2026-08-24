@@ -28,6 +28,8 @@ import {
   TransactionDictionary,
 } from "../../lib/models/Data";
 import { TransactionFamilies } from "../../lib/models/Calculations";
+import { VALID_TYPES } from "../../components/TransactionsPageTitle";
+import { LocalDate } from "common";
 
 const ACCOUNT_ID = "acc-brokerage";
 const OTHER_ACCOUNT_ID = "acc-checking";
@@ -115,19 +117,22 @@ describe("buildSortKey", () => {
   test("no cash/investment pair of type-filter subsets produces the same key", () => {
     // The full `VALID_TYPES` product, so the collision-freedom claim is
     // checked rather than argued from `"investment"` not being a type.
-    const ALL = ["unsorted", "suggested", "deposits", "expenses", "transfers", "manual"] as const;
+    // Derived from `VALID_TYPES` rather than hand-copied so a seventh
+    // type widens the product instead of leaving this green at the old
+    // one.
+    const subsets = 1 << VALID_TYPES.length;
+    const expected = 2 * subsets;
     const keys = new Set<string>();
     let count = 0;
-    for (let mask = 0; mask < 1 << ALL.length; mask++) {
-      const types = ALL.filter((_, i) => mask & (1 << i));
+    for (let mask = 0; mask < subsets; mask++) {
+      const types = VALID_TYPES.filter((_, i) => mask & (1 << i));
       for (const isInvestment of [false, true]) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        keys.add(buildSortKey(isInvestment, types as any));
+        keys.add(buildSortKey(isInvestment, types));
         count++;
       }
     }
-    expect(count).toBe(128);
-    expect(keys.size).toBe(128);
+    expect(count).toBe(expected);
+    expect(keys.size).toBe(expected);
   });
 });
 
@@ -165,9 +170,9 @@ describe("formatSortValue — investment rows", () => {
 });
 
 describe("formatSortValue — cash rows", () => {
-  // This formatter is shared with the investment view as of #676, so an
-  // edit aimed at investment rows can now silently re-order the cash
-  // list. These pin the cash arms against that.
+  // This formatter is shared with the investment view, so an edit aimed
+  // at investment rows can silently re-order the cash list. These pin
+  // the cash arms against that.
   const makeTxn = () =>
     new Transaction({
       transaction_id: "txn-1",
@@ -270,7 +275,12 @@ describe("formatSortValue — split rows resolve their parent through the contex
 
   test("date comes from the parent's authorized_date", () => {
     const { ctx, split } = setup();
-    expect((format(split, "date", ctx) as Date).getDate()).toBe(15);
+    // The whole instant, not the day-of-month: a split resolved through
+    // the model default carries today's date, which collides on the
+    // 15th of every month and leaves the assertion inert that day.
+    expect((format(split, "date", ctx) as Date).getTime()).toBe(
+      new LocalDate("2026-02-15").getTime(),
+    );
   });
 
   test("location comes from the parent", () => {
@@ -287,8 +297,7 @@ describe("formatSortValue — split rows resolve their parent through the contex
 
 describe("orderRows — the ordering tail both views now share", () => {
   // Ids deliberately ordered so a plain `investment_transaction_id`
-  // comparison disagrees with every column ordering asserted below —
-  // that opaque-id order is exactly what the page rendered before #676.
+  // comparison disagrees with every column ordering asserted below.
   const rows = (): TransactionRow[] => [
     makeInvestment("o-1", "2026-02-03", -300),
     makeInvestment("a-1", "2026-02-17", -100),

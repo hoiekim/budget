@@ -1,18 +1,9 @@
-import { CSSProperties, useEffect, useRef, useState } from "react";
-import {
-  InvestmentTransaction,
-  SplitTransaction,
-  Transaction,
-  InvestmentTransactionHeaders,
-  Sorter,
-} from "client";
+import { CSSProperties, useState } from "react";
+import { InvestmentTransactionHeaders, Sorter } from "client";
 import { TransactionHeaders } from ".";
 
 interface Props {
-  sorter: Sorter<
-    Transaction | InvestmentTransaction | SplitTransaction,
-    TransactionHeaders & InvestmentTransactionHeaders
-  >;
+  sorter: Sorter<TransactionHeaders & InvestmentTransactionHeaders>;
   getHeaderName: (key: keyof TransactionHeaders | keyof InvestmentTransactionHeaders) => string;
   headerKeys: (keyof TransactionHeaders | keyof InvestmentTransactionHeaders)[];
   style?: CSSProperties;
@@ -21,14 +12,11 @@ interface Props {
 export const TransactionsHead = ({ sorter, getHeaderName, headerKeys, style }: Props) => {
   const { setSortBy, getArrow, sortings } = sorter;
 
-  const init = useRef<boolean>(false);
-  const [sortOrder, setSortOrder] = useState(Array.from(sortings.keys()));
-
-  useEffect(() => {
-    if (init.current) return;
-    setSortOrder(Array.from(sortings.keys()));
-    init.current = true;
-  }, [sortings]);
+  // Captured at mount and deliberately not updated: `setSortBy` moves
+  // the clicked key to the end of `sortings`, so following it live would
+  // make the buttons jump under the cursor. A stored-slot swap remounts
+  // this component instead — see the React `key` at its call site.
+  const [sortOrder] = useState(() => Array.from(sortings.keys()));
 
   const headerComponents = headerKeys
     .sort((a, b) => sortOrder.indexOf(b) - sortOrder.indexOf(a))

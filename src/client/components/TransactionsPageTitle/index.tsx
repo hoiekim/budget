@@ -5,11 +5,8 @@ import {
   Account,
   Budget,
   Category,
-  InvestmentTransaction,
   PATH,
   Section,
-  SplitTransaction,
-  Transaction,
   ScreenType,
   Sorter,
   useAppContext,
@@ -37,10 +34,8 @@ interface TransactionsPageFilters {
 
 interface TransactionsPageTitleProps {
   filters: TransactionsPageFilters;
-  sorter: Sorter<
-    Transaction | InvestmentTransaction | SplitTransaction,
-    TransactionHeaders & InvestmentTransactionHeaders
-  >;
+  sorter: Sorter<TransactionHeaders & InvestmentTransactionHeaders>;
+  sortKey: string;
   onChangeSearchValue: (v: string) => void;
 }
 
@@ -53,7 +48,7 @@ const TYPE_LABELS: Record<TransactionsPageType, string> = {
   manual: "Manual",
 };
 
-const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];
+export const VALID_TYPES = Object.keys(TYPE_LABELS) as TransactionsPageType[];
 
 /**
  * Parse the `transactions_type` URL param. Stored as a comma-separated
@@ -89,6 +84,7 @@ export type InvestmentTransactionHeaders = { [k in keyof JSONInvestmentTransacti
 export const TransactionsPageTitle = ({
   filters,
   sorter,
+  sortKey,
   onChangeSearchValue,
 }: TransactionsPageTitleProps) => {
   const { account, budget, section, category } = filters;
@@ -142,8 +138,7 @@ export const TransactionsPageTitle = ({
   // No `account` header on the investment set: that view is only ever
   // reached with an `account_id` filter resolving to an investment
   // account, so every row shares one account and the column can never
-  // re-order anything. It rendered a button whose only effect was to
-  // move its own arrow.
+  // re-order anything.
   const headerKeys = isInvestment
     ? ["date", "amount"]
     : ["date", "merchant_name", "amount", "account", "budget", "category"];
@@ -179,6 +174,7 @@ export const TransactionsPageTitle = ({
       )}
       <SearchBar onChange={onChangeSearchValue} style={{ top: transactionsHeadTop }} />
       <TransactionsHead
+        key={sortKey}
         sorter={sorter}
         getHeaderName={getHeader}
         headerKeys={headerKeys as (keyof TransactionHeaders | keyof InvestmentTransactionHeaders)[]}

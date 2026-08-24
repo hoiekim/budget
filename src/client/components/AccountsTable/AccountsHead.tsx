@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { Account, Sorter } from "client";
+import { Sorter } from "client";
 import { AccountHeaders } from ".";
 
 interface Props {
-  sorter: Sorter<Account, AccountHeaders>;
+  sorter: Sorter<AccountHeaders>;
   getHeader: (key: keyof AccountHeaders) => string;
 }
 
