@@ -131,6 +131,9 @@ describe("deleteItem", () => {
       expect(sql).not.toMatch(/is_deleted\s*=\s*FALSE/i);
       // Scoped to the owner — a pair is never reachable across users.
       expect(sql).toMatch(/AND\s+user_id\s*=\s*\$2/i);
+      // The `updated` bump is what lets a delta sync deliver the tombstone;
+      // without it the client keeps the stale pair until a cold load.
+      expect(sql).toMatch(/SET\s+is_deleted\s*=\s*TRUE,\s*updated\s*=\s*CURRENT_TIMESTAMP/i);
       expect(values).toEqual([["acc-del"], "usr-1"]);
     }
   });
