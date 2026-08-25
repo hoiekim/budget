@@ -314,8 +314,7 @@ describe("post-holding-snapshot create mode", () => {
     const first = await postHoldingSnapshotRoute.execute(makeReq(body), fakeRes());
     const second = await postHoldingSnapshotRoute.execute(makeReq(body), fakeRes());
 
-    // Deterministic id means an in-place upsert, not a duplicate row. Anchored
-    // on the literal id, which a failing create path cannot produce.
+    // Deterministic id means an in-place upsert, not a duplicate row.
     const expectedDate = getSquashedDateString(new LocalDate("2024-03-15"));
     expect(first?.body?.snapshot_id).toBe(`holding-acct-9-sec-1-${expectedDate}`);
     expect(second?.body?.snapshot_id).toBe(first?.body?.snapshot_id);
@@ -379,6 +378,21 @@ describe("post-holding-snapshot create mode", () => {
     expect(lookup).not.toBeNull();
     expect(lookup!.values).toContain("u-1");
     expect(lookup!.values).toContain("victim-account");
+  });
+
+  test("a create with no snapshot_date defaults to today, not to a fixed instant", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1 }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.snapshot_id).toBe(
+      `holding-acct-9-sec-1-${getSquashedDateString(new Date())}`,
+    );
   });
 
   test("rejects an unparseable snapshot_date instead of minting a NaN id", async () => {

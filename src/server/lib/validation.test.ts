@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { LocalDate } from "common";
 import type { ServerRequest } from "./route";
 import {
   requireQueryString,
@@ -222,10 +223,13 @@ describe("optionalDateField", () => {
     }
   });
 
-  it("should parse a valid date string", () => {
+  // `LocalDate` reads a bare YYYY-MM-DD as local midnight; the built-in `Date`
+  // reads it as UTC. Asserting the subclass is what distinguishes them — the
+  // test runner pins UTC, so no in-process clock comparison can.
+  it("should parse a valid date string as a LocalDate, not a bare Date", () => {
     const result = optionalDateField({ date: "2024-03-15" }, "date");
     expect(result.success).toBe(true);
-    expect(result.data).toBeInstanceOf(Date);
+    expect(result.data).toBeInstanceOf(LocalDate);
     expect(Number.isNaN(result.data!.getTime())).toBe(false);
   });
 

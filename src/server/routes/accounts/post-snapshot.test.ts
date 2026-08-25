@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { restoreLeaves } from "test-helpers";
+import { getSquashedDateString } from "common";
 
 const issued: { sql: string; values?: unknown[] }[] = [];
 let ownedAccountRows: unknown[] = [];
@@ -203,5 +204,9 @@ describe("post-snapshot body validation", () => {
     );
     expect(result!.status).toBe("success");
     expect(issued.some((q) => /INSERT INTO snapshots/i.test(q.sql))).toBe(true);
+    // Naming "today" without asserting it lets the default drift to any fixed
+    // instant — including the epoch, which is the 1970 row the input guards
+    // above exist to prevent.
+    expect(result!.body!.snapshot_id).toBe(`acct-A-${getSquashedDateString(new Date())}`);
   });
 });
