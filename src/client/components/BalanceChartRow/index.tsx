@@ -4,6 +4,7 @@ import { numberToCommaString, toTitleCase } from "common";
 import { BalanceChart, getDisplayBalance, useAppContext } from "client";
 import { ChartRowShell, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
+import { getBudgetColumns } from "./lib";
 import "./index.css";
 
 export interface BalanceChartRowProps {
@@ -30,8 +31,8 @@ export const BalanceChartRow = ({
   const today = new Date();
   const interval = viewDate.getInterval();
 
-  const column1: StackData[] = [];
-  const column2: StackData[] = [];
+  const accountAssets: StackData[] = [];
+  const accountLiabilities: StackData[] = [];
 
   accounts.forEach((a) => {
     if (a.hide) return;
@@ -50,22 +51,21 @@ export const BalanceChartRow = ({
       a.type === AccountType.Investment ||
       a.type === AccountType.Brokerage
     ) {
-      column1.push(stack);
+      accountAssets.push(stack);
     } else if (a.type === AccountType.Credit || a.type === AccountType.Loan) {
-      column2.push(stack);
+      accountLiabilities.push(stack);
     }
   });
 
-  budgets.forEach((b) => {
-    if (!configuration.budget_ids.includes(b.id)) return;
-    // Rollover projects forward for future views; capacity already does.
-    const amount = b.roll_over
-      ? budgetData.getRolledOver(b, date)
-      : -b.getActiveAmount(date, interval);
-    const stack = { type: "Budget", name: b.name, amount: Math.abs(amount) };
-    if (amount > 0) return column1.push(stack);
-    else column2.push(stack);
-  });
+  const budgetColumns = getBudgetColumns(
+    budgets.toArray(),
+    configuration.budget_ids,
+    budgetData.getRolledOver,
+    date,
+    interval,
+  );
+  const column1 = [...accountAssets, ...budgetColumns.assets];
+  const column2 = [...accountLiabilities, ...budgetColumns.liabilities];
 
   const stacksData: ColumnData[] = [column1, column2];
   stacksData.forEach((column) => {
@@ -78,37 +78,48 @@ export const BalanceChartRow = ({
   const total = sum1 + sum2;
   const sign = total >= 0 ? "" : "-";
 
-  const tableRows1 = column1.map(({ type, name, amount }, i) => {
+  const tableRows1 = column1.map(({ type, name, amount, capacityKind }, i) => {
     const amountString = numberToCommaString(amount, 0);
-    const isOverspentBudget = type === "Budget";
-    const onClickOverspentBudget = () => {
-      if (isOverspentBudget) {
-        window.alert(
-          `You overspent $${amountString} for the budget "${name}". We're displaying overspent amount stacked together with the deposit amounts because it's the amount that would have been in the depositories.`,
-        );
-      }
+    // An income budget also lands here — its target is money expected to
+    // arrive — so the overspend copy has to be scoped to the case it
+    // describes rather than to every budget in the column.
+    const explanation =
+      capacityKind === "expense"
+        ? `You overspent $${amountString} for the budget "${name}". We're displaying overspent amount stacked together with the deposit amounts because it's the amount that would have been in the depositories.`
+        : capacityKind === "income"
+          ? `"${name}" is an income budget targeting $${amountString}. We're displaying it stacked together with the deposit amounts because it's the amount expected to land in the depositories.`
+          : undefined;
+    const isExplained = explanation !== undefined;
+    const onClickExplain = () => {
+      if (explanation) window.alert(explanation);
     };
     return (
       <tr
         key={`${i}_${name}`}
-        onClick={onClickOverspentBudget}
+        onClick={onClickExplain}
         onKeyDown={
-          isOverspentBudget
+          isExplained
             ? (e: KeyboardEvent<HTMLTableRowElement>) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  onClickOverspentBudget();
+                  onClickExplain();
                 }
               }
             : undefined
         }
-        role={isOverspentBudget ? "button" : undefined}
-        tabIndex={isOverspentBudget ? 0 : undefined}
-        aria-label={isOverspentBudget ? `Overspent budget: ${name}` : undefined}
+        role={isExplained ? "button" : undefined}
+        tabIndex={isExplained ? 0 : undefined}
+        aria-label={
+          capacityKind === "income"
+            ? `Income budget: ${name}`
+            : isExplained
+              ? `Overspent budget: ${name}`
+              : undefined
+        }
       >
         <td className="type">
           {toTitleCase(type)}
-          {isOverspentBudget && (
+          {isExplained && (
             <>
               &nbsp;
               <QuestionIcon size={12} />
