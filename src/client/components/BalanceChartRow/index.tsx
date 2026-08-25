@@ -4,7 +4,7 @@ import { numberToCommaString, toTitleCase } from "common";
 import { BalanceChart, getDisplayBalance, useAppContext } from "client";
 import { ChartRowShell, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
-import { BudgetStack, getBudgetColumns } from "./lib";
+import { AnnotatedStack, getBudgetColumns } from "./lib";
 import "./index.css";
 
 export interface BalanceChartRowProps {
@@ -64,8 +64,8 @@ export const BalanceChartRow = ({
     date,
     interval,
   );
-  const column1: BudgetStack[] = [...accountAssets, ...budgetColumns.assets];
-  const column2: BudgetStack[] = [...accountLiabilities, ...budgetColumns.liabilities];
+  const column1: AnnotatedStack[] = [...accountAssets, ...budgetColumns.assets];
+  const column2: AnnotatedStack[] = [...accountLiabilities, ...budgetColumns.liabilities];
 
   const stacksData: ColumnData[] = [column1, column2];
   stacksData.forEach((column) => {

@@ -2,19 +2,20 @@ import { Interval, MAX_FLOAT, numberToCommaString } from "common";
 import type { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { StackData } from "./Stacks";
 
-/** What a budget stack in the asset column is, shown on tap. */
+/** What a stack in the asset column is, shown on tap. */
 export interface StackNote {
   label: string;
   message: string;
 }
 
-export interface BudgetStack extends StackData {
+/** A chart stack that may explain itself. Account stacks carry no note. */
+export interface AnnotatedStack extends StackData {
   note?: StackNote;
 }
 
 export interface BudgetColumns {
-  assets: BudgetStack[];
-  liabilities: BudgetStack[];
+  assets: AnnotatedStack[];
+  liabilities: AnnotatedStack[];
 }
 
 const STACKED_WITH_DEPOSITS =
@@ -60,8 +61,8 @@ export const getBudgetColumns = (
   date: Date,
   interval: Interval,
 ): BudgetColumns => {
-  const assets: BudgetStack[] = [];
-  const liabilities: BudgetStack[] = [];
+  const assets: AnnotatedStack[] = [];
+  const liabilities: AnnotatedStack[] = [];
 
   budgets.forEach((b) => {
     if (!budgetIds.includes(b.id)) return;
@@ -69,7 +70,7 @@ export const getBudgetColumns = (
     if (Math.abs(capacity) === MAX_FLOAT) return;
     // Rollover projects forward for future views; capacity already does.
     const amount = b.roll_over ? getRolledOver(b, date) : -capacity;
-    const stack: BudgetStack = { type: "Budget", name: b.name, amount: Math.abs(amount) };
+    const stack: AnnotatedStack = { type: "Budget", name: b.name, amount: Math.abs(amount) };
     if (amount > 0) {
       assets.push({ ...stack, note: assetNote(b.name, stack.amount, capacity, b.roll_over) });
     } else {
