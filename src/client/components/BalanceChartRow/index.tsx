@@ -4,7 +4,7 @@ import { numberToCommaString, toTitleCase } from "common";
 import { BalanceChart, getDisplayBalance, useAppContext } from "client";
 import { ChartRowShell, QuestionIcon } from "client/components";
 import { ColumnData, StackData, Stacks } from "./Stacks";
-import { getBudgetColumns } from "./lib";
+import { BudgetStack, getBudgetColumns } from "./lib";
 import "./index.css";
 
 export interface BalanceChartRowProps {
@@ -64,8 +64,8 @@ export const BalanceChartRow = ({
     date,
     interval,
   );
-  const column1 = [...accountAssets, ...budgetColumns.assets];
-  const column2 = [...accountLiabilities, ...budgetColumns.liabilities];
+  const column1: BudgetStack[] = [...accountAssets, ...budgetColumns.assets];
+  const column2: BudgetStack[] = [...accountLiabilities, ...budgetColumns.liabilities];
 
   const stacksData: ColumnData[] = [column1, column2];
   stacksData.forEach((column) => {
@@ -78,20 +78,11 @@ export const BalanceChartRow = ({
   const total = sum1 + sum2;
   const sign = total >= 0 ? "" : "-";
 
-  const tableRows1 = column1.map(({ type, name, amount, capacityKind }, i) => {
+  const tableRows1 = column1.map(({ type, name, amount, note }, i) => {
     const amountString = numberToCommaString(amount, 0);
-    // An income budget also lands here — its target is money expected to
-    // arrive — so the overspend copy has to be scoped to the case it
-    // describes rather than to every budget in the column.
-    const explanation =
-      capacityKind === "expense"
-        ? `You overspent $${amountString} for the budget "${name}". We're displaying overspent amount stacked together with the deposit amounts because it's the amount that would have been in the depositories.`
-        : capacityKind === "income"
-          ? `"${name}" is an income budget targeting $${amountString}. We're displaying it stacked together with the deposit amounts because it's the amount expected to land in the depositories.`
-          : undefined;
-    const isExplained = explanation !== undefined;
+    const isExplained = note !== undefined;
     const onClickExplain = () => {
-      if (explanation) window.alert(explanation);
+      if (note) window.alert(note.message);
     };
     return (
       <tr
@@ -109,13 +100,7 @@ export const BalanceChartRow = ({
         }
         role={isExplained ? "button" : undefined}
         tabIndex={isExplained ? 0 : undefined}
-        aria-label={
-          capacityKind === "income"
-            ? `Income budget: ${name}`
-            : isExplained
-              ? `Overspent budget: ${name}`
-              : undefined
-        }
+        aria-label={note?.label}
       >
         <td className="type">
           {toTitleCase(type)}
