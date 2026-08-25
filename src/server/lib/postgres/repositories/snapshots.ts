@@ -357,7 +357,7 @@ export const upsertSnapshots = async (snapshots: JSONSnapshotData[]): Promise<Up
           institution_value: holding.institution_value,
           cost_basis: holding.cost_basis,
           quantity: holding.quantity,
-        });
+        }, HOLDING_SNAPSHOT_UPDATE_COLUMNS);
       }
       results.push(successResult(snapshot.snapshot_id, 1));
     } catch (error) {

@@ -1,8 +1,9 @@
-import { JSONAccount, getSquashedDateString, JSONSnapshot, LocalDate } from "common";
+import { JSONAccount, getSquashedDateString, JSONSnapshot } from "common";
 import {
   Route,
   upsertSnapshots,
   requireBodyObject,
+  optionalDateField,
   validationError,
   getAccount,
 } from "server";
@@ -48,14 +49,13 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
       return { status: "failed", message: "Account not found or access denied." };
     }
 
-    const rawDate = (snapshotData as Record<string, unknown>).date;
-    if (rawDate !== undefined && typeof rawDate !== "string") {
-      return validationError("snapshot.date must be a string");
-    }
-    const date = rawDate ? new LocalDate(rawDate) : new Date();
-    if (Number.isNaN(date.getTime())) {
-      return validationError("snapshot.date is not a valid date");
-    }
+    const parsedDate = optionalDateField(
+      snapshotData as Record<string, unknown>,
+      "date",
+      "snapshot.date",
+    );
+    if (!parsedDate.success) return validationError(parsedDate.error!);
+    const date = parsedDate.data ?? new Date();
     const snapshot: JSONSnapshot = {
       snapshot_id: `${account.account_id}-${getSquashedDateString(date)}`,
       date: date.toISOString(),

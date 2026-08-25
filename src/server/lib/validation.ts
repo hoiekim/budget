@@ -11,6 +11,7 @@ import {
   isObject,
   isUndefined,
   isNull,
+  LocalDate,
 } from "common";
 
 export interface ValidationResult<T> {
@@ -148,6 +149,44 @@ export function requireNumberField<T extends object>(
   }
 
   return { success: true, data: value };
+}
+
+/**
+ * Parse an optional caller-supplied date field into a `LocalDate`.
+ *
+ * An absent, null or empty value yields `undefined` so the caller keeps its own
+ * default. Anything else is rejected here rather than becoming an `Invalid
+ * Date` that survives until `getSquashedDateString` mints a `NaNNaNNaN` id or
+ * `toISOString` throws a `RangeError` past the handler's try block.
+ *
+ * ```ts
+ * const parsed = optionalDateField(body, "snapshot_date");
+ * if (!parsed.success) return validationError(parsed.error!);
+ * const date = parsed.data ?? new Date();
+ * ```
+ */
+export function optionalDateField<T extends object>(
+  obj: T,
+  field: keyof T,
+  label: string = String(field)
+): ValidationResult<Date | undefined> {
+  const value = obj[field];
+
+  if (isUndefined(value) || isNull(value) || value === "") {
+    return { success: true, data: undefined };
+  }
+
+  if (!isString(value)) {
+    return { success: false, error: `${label} must be a string` };
+  }
+
+  const date = new LocalDate(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return { success: false, error: `${label} is not a valid date` };
+  }
+
+  return { success: true, data: date };
 }
 
 /**

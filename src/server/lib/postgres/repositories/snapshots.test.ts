@@ -436,7 +436,6 @@ describe("searchSnapshots — holding_account_id fallback", () => {
   });
 });
 
-
 describe("upsertHoldingSnapshots conflict", () => {
   const upsertOne = async () => {
     mockQuery.mockImplementationOnce(async () => ({
@@ -554,6 +553,58 @@ describe("upsertSnapshots account_balance conflict", () => {
 
   test("inserts the owner on a first write", async () => {
     const sql = await upsertAccountSnapshot();
+    expect(sql.split("DO UPDATE SET")[0]).toContain("user_id");
+  });
+});
+
+describe("upsertSnapshots holding conflict", () => {
+  const upsertHoldingBranch = async () => {
+    mockQuery.mockImplementationOnce(async () => ({
+      rows: [{ snapshot_id: "holding-acct-A-sec-1-20260701" }],
+      rowCount: 1,
+    }));
+    await upsertSnapshots([
+      {
+        user: { user_id: "attacker" },
+        snapshot: { snapshot_id: "holding-acct-A-sec-1-20260701", date: "2026-07-01" },
+        holding: {
+          account_id: "acct-A",
+          security_id: "sec-1",
+          quantity: 999,
+          cost_basis: 1,
+          institution_price: 1,
+          institution_value: 999,
+        },
+      } as unknown as Parameters<typeof upsertSnapshots>[0][number],
+    ]);
+    return mockQuery.mock.calls[0][0] as string;
+  };
+
+  test("never reassigns the row owner, the account or the snapshot type", async () => {
+    const columns = updateColumnsOf(await upsertHoldingBranch());
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns).not.toContain("user_id");
+    expect(columns).not.toContain("holding_account_id");
+    expect(columns).not.toContain("snapshot_type");
+  });
+
+  test("still rewrites the position and clears the tombstone", async () => {
+    const columns = updateColumnsOf(await upsertHoldingBranch());
+    for (const column of [
+      "snapshot_date",
+      "is_deleted",
+      "holding_security_id",
+      "institution_price",
+      "institution_value",
+      "cost_basis",
+      "quantity",
+    ]) {
+      expect(columns).toContain(column);
+    }
+  });
+
+  test("inserts the owner on a first write", async () => {
+    const sql = await upsertHoldingBranch();
     expect(sql.split("DO UPDATE SET")[0]).toContain("user_id");
   });
 });

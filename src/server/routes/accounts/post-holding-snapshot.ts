@@ -1,7 +1,8 @@
-import { getRandomId, getSquashedDateString, LocalDate, JSONHolding, JSONSecurity } from "common";
+import { getRandomId, getSquashedDateString, JSONHolding, JSONSecurity } from "common";
 import {
   Route,
   requireBodyObject,
+  optionalDateField,
   validationError,
   upsertHoldingSnapshots,
   upsertHoldings,
@@ -106,9 +107,10 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         new_security_id = resolved.security_id;
         patch.holding_security_id = new_security_id;
       }
-      if (typeof body.snapshot_date === "string" && body.snapshot_date) {
-        const d = new LocalDate(body.snapshot_date);
-        patch.snapshot_date = d.toISOString().split("T")[0];
+      const parsedPatchDate = optionalDateField(body, "snapshot_date");
+      if (!parsedPatchDate.success) return validationError(parsedPatchDate.error!);
+      if (parsedPatchDate.data) {
+        patch.snapshot_date = parsedPatchDate.data.toISOString().split("T")[0];
       }
       if (body.quantity !== undefined) patch.quantity = body.quantity;
       if (body.cost_basis !== undefined) patch.cost_basis = body.cost_basis;
@@ -167,12 +169,14 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const account_id = body.account_id as string | undefined;
     const ticker_symbol = body.ticker_symbol as string | undefined;
     const quantity = body.quantity as number | undefined;
-    const snapshot_date = body.snapshot_date as string | undefined;
 
     if (!account_id) return validationError("account_id is required");
     if (typeof account_id !== "string") return validationError("account_id must be a string");
     if (!ticker_symbol) return validationError("ticker_symbol is required");
     if (quantity === undefined || quantity === null) return validationError("quantity is required");
+
+    const parsedDate = optionalDateField(body, "snapshot_date");
+    if (!parsedDate.success) return validationError(parsedDate.error!);
 
     if (!(await getAccount(user, account_id))) {
       return { status: "failed", message: "Account not found or access denied." };
@@ -182,7 +186,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const institution_price = body.institution_price as number | undefined;
     const institution_value = body.institution_value as number | undefined;
 
-    const date: Date = snapshot_date ? new LocalDate(snapshot_date) : new Date();
+    const date: Date = parsedDate.data ?? new Date();
     const dateString = getSquashedDateString(date);
 
     const resolved = await resolveSecurityId(ticker_symbol);

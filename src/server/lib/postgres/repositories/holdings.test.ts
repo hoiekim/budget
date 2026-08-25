@@ -101,8 +101,6 @@ describe("searchHoldingsByAccountId — single batched query", () => {
   });
 });
 
-
-
 describe("upsertHoldings conflict", () => {
   const upsertOne = async () => {
     await upsertHoldings(mockUser, [

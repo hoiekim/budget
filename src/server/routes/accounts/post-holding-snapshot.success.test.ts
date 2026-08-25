@@ -229,6 +229,53 @@ describe("post-holding-snapshot update mode", () => {
     expect(upd!.values).toContain("snap-1");
     expect(upd!.values).toContain("u-1");
   });
+
+  // The date axis the sibling route guards: an unparseable string reaches
+  // `toISOString` outside the handler's try, so the client sees a 500 and the
+  // global alarm pages.
+  test("rejects an unparseable snapshot_date instead of throwing past the try", async () => {
+    for (const snapshot_date of ["garbage", "2026-13-45x"]) {
+      mockQuery.mockClear();
+      snapshotRows = [holdingSnapshotRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ snapshot_id: "snap-1", snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/not a valid date/i);
+      expect(findCall(/update\s+snapshots/i)).toBeNull();
+    }
+  });
+
+  test("rejects a non-string snapshot_date instead of dropping it from the patch", async () => {
+    for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
+      mockQuery.mockClear();
+      snapshotRows = [holdingSnapshotRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ snapshot_id: "snap-1", snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/must be a string/i);
+      expect(findCall(/update\s+snapshots/i)).toBeNull();
+    }
+  });
+
+  test("a valid snapshot_date still patches the row", async () => {
+    snapshotRows = [holdingSnapshotRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(findCall(/update\s+snapshots/i)!.values).toContain("2024-03-15");
+  });
 });
 
 describe("post-holding-snapshot create mode", () => {
@@ -332,5 +379,56 @@ describe("post-holding-snapshot create mode", () => {
     expect(lookup).not.toBeNull();
     expect(lookup!.values).toContain("u-1");
     expect(lookup!.values).toContain("victim-account");
+  });
+
+  test("rejects an unparseable snapshot_date instead of minting a NaN id", async () => {
+    for (const snapshot_date of ["garbage", "2026-13-45x"]) {
+      mockQuery.mockClear();
+      securityRows = [existingSecurityRow()];
+      accountRows = [accountRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1, snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/not a valid date/i);
+      expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+      expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+    }
+  });
+
+  // A number is epoch-milliseconds to `LocalDate`, so an unchecked cast writes
+  // a real 1970 snapshot into the user's graph rather than failing.
+  test("rejects a non-string snapshot_date instead of reading it as epoch ms", async () => {
+    for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
+      mockQuery.mockClear();
+      securityRows = [existingSecurityRow()];
+      accountRows = [accountRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1, snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/must be a string/i);
+      expect(result?.body?.snapshot_id).toBeUndefined();
+      expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+      expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+    }
+  });
+
+  test("a malformed snapshot_date fails before the ownership round trip", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1, snapshot_date: "garbage" }),
+      fakeRes(),
+    );
+
+    expect(findCall(/select[\s\S]*from\s+accounts/i)).toBeNull();
   });
 });
