@@ -18,6 +18,7 @@ import {
   INSTITUTION_ID,
   QueryExecutor,
 } from "../models";
+import { softDeleteTransactionPairsByAccounts } from "./transactions";
 import {
   UpsertResult,
   successResult,
@@ -213,6 +214,8 @@ export const deleteAccounts = async (
       await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, account_id, user_id, client);
       await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
     }
+
+    await softDeleteTransactionPairsByAccounts(user, account_ids, client);
 
     const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: user_id }, client);
     return { deleted };

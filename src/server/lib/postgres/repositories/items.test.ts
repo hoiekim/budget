@@ -87,4 +87,95 @@ describe("deleteItem", () => {
     expect(snapshotDeletes.some((sql) => /WHERE\s+account_id\s*=/i.test(sql))).toBe(true);
     expect(snapshotDeletes.some((sql) => /WHERE\s+holding_account_id\s*=/i.test(sql))).toBe(true);
   });
+
+  test("cascades to transaction_pairs on BOTH join columns, scoped to the user", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
+        return {
+          rows: [makeAccountRow({ account_id: "acc-del", item_id: "item-del" })],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await deleteItem(testUser, "item-del");
+
+    const pairDeletes = mockQuery.mock.calls.filter(
+      ([sql]) =>
+        typeof sql === "string" &&
+        /UPDATE\s+transaction_pairs\b/i.test(sql) &&
+        /is_deleted/i.test(sql),
+    );
+
+    // A pair joins `transactions` by id while this cascade only knows account
+    // ids, so each column resolves through a subquery rather than an id array.
+    const byColumn = (column: string) =>
+      pairDeletes.find(
+        ([sql]) =>
+          typeof sql === "string" &&
+          new RegExp(`WHERE\\s+${column}\\s+IN\\s*\\(SELECT`, "i").test(sql),
+      );
+
+    const pairA = byColumn("transaction_id_a");
+    const pairB = byColumn("transaction_id_b");
+    expect(pairA).toBeDefined();
+    expect(pairB).toBeDefined();
+
+    for (const call of [pairA, pairB]) {
+      const [sql, values] = call as [string, unknown[]];
+      // The subquery selects transaction ids for the item's accounts, and it
+      // must NOT exclude soft-deleted rows: the transactions this cascade
+      // travels through were soft-deleted earlier in the same transaction.
+      expect(sql).toMatch(/SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)\)/i);
+      expect(sql).not.toMatch(/is_deleted\s*=\s*FALSE/i);
+      // Scoped to the owner — a pair is never reachable across users.
+      expect(sql).toMatch(/AND\s+user_id\s*=\s*\$2/i);
+      // The `updated` bump is what lets a delta sync deliver the tombstone;
+      // without it the client keeps the stale pair until a cold load.
+      expect(sql).toMatch(/SET\s+is_deleted\s*=\s*TRUE,\s*updated\s*=\s*CURRENT_TIMESTAMP/i);
+      expect(values).toEqual([["acc-del"], "usr-1"]);
+    }
+  });
+
+  test("runs the pairs cascade AFTER the transactions soft-delete", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
+        return {
+          rows: [makeAccountRow({ account_id: "acc-del", item_id: "item-del" })],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await deleteItem(testUser, "item-del");
+
+    const sqls = mockQuery.mock.calls
+      .map(([sql]) => sql)
+      .filter((sql): sql is string => typeof sql === "string");
+    const transactionsDelete = sqls.findIndex(
+      (sql) => /UPDATE\s+transactions\b/i.test(sql) && /is_deleted/i.test(sql),
+    );
+    const firstPairDelete = sqls.findIndex((sql) => /UPDATE\s+transaction_pairs\b/i.test(sql));
+
+    expect(transactionsDelete).toBeGreaterThanOrEqual(0);
+    expect(firstPairDelete).toBeGreaterThanOrEqual(0);
+    // The transactions UPDATE holds an exclusive row lock until commit, which
+    // is what stops a concurrent pairTransactions (FOR SHARE existence check)
+    // from minting a pair behind this cascade. Reversed, that pair survives on
+    // soft-deleted transactions.
+    expect(transactionsDelete).toBeLessThan(firstPairDelete);
+  });
+
+  test("skips the transaction_pairs cascade when the item owns no accounts", async () => {
+    mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+
+    await deleteItem(testUser, "item-empty");
+
+    const pairDeletes = mockQuery.mock.calls.filter(
+      ([sql]) => typeof sql === "string" && /UPDATE\s+transaction_pairs\b/i.test(sql),
+    );
+    expect(pairDeletes).toHaveLength(0);
+  });
 });

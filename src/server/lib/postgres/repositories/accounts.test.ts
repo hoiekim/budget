@@ -335,4 +335,50 @@ describe("deleteAccounts", () => {
     expect(snapshotDeletes.some((sql) => /WHERE\s+account_id\s*=/i.test(sql))).toBe(true);
     expect(snapshotDeletes.some((sql) => /WHERE\s+holding_account_id\s*=/i.test(sql))).toBe(true);
   });
+
+  test("cascades to transaction_pairs on both join columns, once for all accounts", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    await deleteAccounts(testUser, ["acc-a", "acc-b"]);
+
+    const pairDeletes = mockQuery.mock.calls.filter(
+      ([sql]) => typeof sql === "string" && /UPDATE\s+transaction_pairs\b/i.test(sql),
+    );
+
+    // Hoisted out of the per-account loop: two statements total, not two per
+    // account, with every account id in one `= ANY($1)`.
+    expect(pairDeletes).toHaveLength(2);
+    for (const [sql, values] of pairDeletes as [string, unknown[]][]) {
+      expect(sql).toMatch(
+        /SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)\)/i,
+      );
+      expect(sql).toMatch(/AND\s+user_id\s*=\s*\$2/i);
+      // The `updated` bump is what lets a delta sync deliver the tombstone;
+      // without it the client keeps the stale pair until a cold load.
+      expect(sql).toMatch(/SET\s+is_deleted\s*=\s*TRUE,\s*updated\s*=\s*CURRENT_TIMESTAMP/i);
+      expect(values).toEqual([["acc-a", "acc-b"], "usr-1"]);
+    }
+    expect(
+      pairDeletes.some(([sql]) => /WHERE\s+transaction_id_a\s+IN\s*\(SELECT/i.test(sql as string)),
+    ).toBe(true);
+    expect(
+      pairDeletes.some(([sql]) => /WHERE\s+transaction_id_b\s+IN\s*\(SELECT/i.test(sql as string)),
+    ).toBe(true);
+  });
+
+  test("runs the pairs cascade AFTER the transactions soft-delete", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    await deleteAccounts(testUser, ["acc-del"]);
+
+    const sqls = mockQuery.mock.calls
+      .map(([sql]) => sql)
+      .filter((sql): sql is string => typeof sql === "string");
+    const transactionsDelete = sqls.findIndex(
+      (sql) => /UPDATE\s+transactions\b/i.test(sql) && /is_deleted/i.test(sql),
+    );
+    const firstPairDelete = sqls.findIndex((sql) => /UPDATE\s+transaction_pairs\b/i.test(sql));
+
+    expect(transactionsDelete).toBeGreaterThanOrEqual(0);
+    expect(firstPairDelete).toBeGreaterThanOrEqual(0);
+    expect(transactionsDelete).toBeLessThan(firstPairDelete);
+  });
 });
