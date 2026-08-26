@@ -10,13 +10,11 @@ import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
 
 /**
- * Typed fields `updateSection` writes (`models/section.ts`). `section_id` is
- * the table's `UUID PRIMARY KEY`, so a non-UUID reaches the `WHERE` clause and
- * raises `22P02` — required AND uuid-checked here. `capacities` is JSONB and
- * takes any shape; it is not listed.
+ * Typed fields `updateSection` writes (`models/section.ts`). `capacities` is
+ * JSONB and takes any shape; it is not listed.
  */
 const SECTION_BODY_SPEC: FieldSpec[] = [
-  { path: "section_id", type: "uuid", required: true },
+  { path: "section_id", type: "uuid" },
   { path: "name", type: "string", nullable: true },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },

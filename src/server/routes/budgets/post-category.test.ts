@@ -10,7 +10,7 @@ const db = {
 
 const mockQuery = mock(async (sql: string, _values?: unknown[]) => {
   const rows = (() => {
-    if (/^\s*UPDATE\s+budgets\b/i.test(sql)) {
+    if (/^\s*UPDATE\s+categories\b/i.test(sql)) {
       if (db.updateError) throw db.updateError;
       return db.updateReturns;
     }
@@ -41,7 +41,7 @@ const realAlarm = { ...(await import("server/lib/alarm")) };
 const mockSendAlarm = mock(async (_title: string, _detail: string, _key?: string) => undefined);
 mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm }));
 
-const { postBudgetRoute } = await import("./post-budget");
+const { postCategoryRoute } = await import("./post-category");
 
 afterAll(() => {
   mock.module("server/lib/alarm", () => realAlarm);
@@ -58,8 +58,8 @@ beforeEach(() => {
 const makeReq = (body: unknown) =>
   ({
     method: "POST",
-    path: "/budget",
-    url: "http://x/api/budget",
+    path: "/category",
+    url: "http://x/api/category",
     headers: {},
     query: {},
     body,
@@ -70,7 +70,7 @@ const makeReq = (body: unknown) =>
       destroy() {},
     },
     ip: "127.0.0.1",
-  }) as unknown as Parameters<typeof postBudgetRoute.execute>[0];
+  }) as unknown as Parameters<typeof postCategoryRoute.execute>[0];
 
 const fakeRes = () =>
   ({
@@ -83,18 +83,16 @@ const fakeRes = () =>
       return true;
     },
     end() {},
-  }) as unknown as Parameters<typeof postBudgetRoute.execute>[1];
+  }) as unknown as Parameters<typeof postCategoryRoute.execute>[1];
 
 const UUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 
-describe("post-budget typed body fields", () => {
-  // Stage a matching row AND arm the write to fail the way Postgres fails on a
-  // bad value, so a missing guard reaches the query and pages the alarm.
+describe("post-category typed body fields", () => {
   const rejects = async (body: unknown, expectedError: string) => {
-    db.updateReturns = [{ budget_id: UUID }];
+    db.updateReturns = [{ category_id: UUID }];
     db.updateError = new Error('invalid input syntax for type date: "hello"');
 
-    const result = await postBudgetRoute.execute(makeReq(body), fakeRes());
+    const result = await postCategoryRoute.execute(makeReq(body), fakeRes());
 
     expect(result?.status).toBe("failed");
     expect((result as { message?: string })?.message).toBe(expectedError);
@@ -102,12 +100,12 @@ describe("post-budget typed body fields", () => {
     expect(mockSendAlarm).not.toHaveBeenCalled();
   };
 
-  test("a non-UUID budget_id is refused before it reaches the WHERE clause", async () => {
-    await rejects({ budget_id: "not-a-uuid" }, "Field budget_id must be a uuid");
+  test("a non-UUID category_id is refused before it reaches the WHERE clause", async () => {
+    await rejects({ category_id: "not-a-uuid" }, "Field category_id must be a uuid");
   });
 
   test("a string in the roll_over boolean column is refused before SQL", async () => {
-    await rejects({ budget_id: UUID, roll_over: "yes" }, "Field roll_over must be a boolean");
+    await rejects({ category_id: UUID, roll_over: "yes" }, "Field roll_over must be a boolean");
   });
 
   test("a non-date roll_over_start_date is refused before it reaches the DATE column", async () => {
@@ -115,17 +113,17 @@ describe("post-budget typed body fields", () => {
       mockQuery.mockClear();
       mockSendAlarm.mockClear();
       await rejects(
-        { budget_id: UUID, roll_over_start_date: value },
+        { category_id: UUID, roll_over_start_date: value },
         "Field roll_over_start_date must be a date",
       );
     }
   });
 
   test("a well-formed body passes validation and reaches the repo", async () => {
-    db.updateReturns = [{ budget_id: UUID }];
-    const result = await postBudgetRoute.execute(
+    db.updateReturns = [{ category_id: UUID }];
+    const result = await postCategoryRoute.execute(
       makeReq({
-        budget_id: UUID,
+        category_id: UUID,
         name: "Groceries",
         roll_over: true,
         // What the client serializes, via `getDateTimeString`.

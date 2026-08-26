@@ -11,12 +11,10 @@ import { logger } from "server/lib/logger";
 
 /**
  * Typed fields `BudgetModel.fromJSON` copies into a row (`models/budget.ts`).
- * `budget_id` is the table's `UUID PRIMARY KEY`, so a non-UUID reaches the
- * `WHERE` clause and raises `22P02` — required AND uuid-checked here.
  * `capacities` is JSONB and takes any shape; it is not listed.
  */
 const BUDGET_BODY_SPEC: FieldSpec[] = [
-  { path: "budget_id", type: "uuid", required: true },
+  { path: "budget_id", type: "uuid" },
   { path: "name", type: "string", nullable: true },
   { path: "iso_currency_code", type: "string", nullable: true },
   { path: "roll_over", type: "boolean", nullable: true },

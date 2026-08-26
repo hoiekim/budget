@@ -234,21 +234,11 @@ describe("post-account edit path", () => {
   });
 });
 
-// A client type error must be answered as `status: "failed"` BEFORE any value
-// reaches SQL. Without the guard, `{ balances: { current: "abc" } }` travels
-// into a DECIMAL column and a non-UUID `label.budget_id` into a UUID column,
-// Postgres raises `22P02 invalid_text_representation` at the write, the repo
-// collapses it into an error result, the route throws, and `Route.execute`
-// answers 500 **and** calls `sendAlarm`. A client type error must not page, and
-// must not spend a slot of `alarm.ts`'s global per-window send ceiling that a
-// real fault needs.
 describe("post-account typed body fields", () => {
   const UUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 
   // Stage a matching row AND arm the write to fail the way Postgres fails on a
-  // bad value, so removing the guard flips the status to `error` and the message
-  // to the framework's — and, on the bodies carrying a value into a column,
-  // fires the query and pages the alarm. No assertion below is decorative.
+  // bad value, so a missing guard reaches the query and pages the alarm.
   const rejects = async (body: unknown, expectedError: string) => {
     db.updateReturns = [{ account_id: "acc-1" }];
     db.updateError = new Error('invalid input syntax for type numeric: "abc"');
@@ -257,9 +247,7 @@ describe("post-account typed body fields", () => {
 
     expect(result?.status).toBe("failed");
     expect((result as { message?: string })?.message).toBe(expectedError);
-    // The point of validating at the boundary: nothing reached Postgres…
     expect(mockQuery).not.toHaveBeenCalled();
-    // …so nothing could page.
     expect(mockSendAlarm).not.toHaveBeenCalled();
   };
 
@@ -299,7 +287,6 @@ describe("post-account typed body fields", () => {
       ),
       fakeRes(),
     );
-    // The guard has to reject bad input without rejecting good input.
     expect(result?.status).toBe("success");
     expect(findStatement(UPDATE_ACCOUNTS)).not.toBeNull();
     expect(mockSendAlarm).not.toHaveBeenCalled();
