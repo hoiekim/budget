@@ -15,6 +15,7 @@ import { getSquashedDateString, LocalDate } from "common";
 
 let snapshotRows: Record<string, unknown>[] = [];
 let securityRows: Record<string, unknown>[] = [];
+let accountRows: Record<string, unknown>[] = [];
 
 const mockQuery = mock(async (sql: string, _values?: unknown[]) => {
   if (/select[\s\S]*from\s+snapshots/i.test(sql)) {
@@ -22,6 +23,9 @@ const mockQuery = mock(async (sql: string, _values?: unknown[]) => {
   }
   if (/select[\s\S]*from\s+securities/i.test(sql)) {
     return { rows: securityRows, rowCount: securityRows.length };
+  }
+  if (/select[\s\S]*from\s+accounts/i.test(sql)) {
+    return { rows: accountRows, rowCount: accountRows.length };
   }
   // INSERT / UPDATE / upsert and anything else: report one affected row.
   return { rows: [{ ok: true }], rowCount: 1 };
@@ -47,6 +51,7 @@ beforeEach(() => {
   mockQuery.mockClear();
   snapshotRows = [];
   securityRows = [];
+  accountRows = [];
 });
 
 function makeReq(body: unknown, userId: string | undefined = "u-1") {
@@ -144,6 +149,34 @@ const holdingSnapshotRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// `getAccount` (the create-mode ownership gate) reads through
+// `accountsTable.queryOne`, which hydrates the row into an `AccountModel` — its
+// typeChecker requires every column present (null is fine, undefined is not).
+const accountRow = (overrides: Record<string, unknown> = {}) => ({
+  account_id: "acct-9",
+  user_id: "u-1",
+  item_id: "item-1",
+  institution_id: "ins-1",
+  name: "Brokerage",
+  type: "investment",
+  subtype: null,
+  balances_available: 0,
+  balances_current: 0,
+  balances_limit: 0,
+  balances_iso_currency_code: "USD",
+  custom_name: "",
+  hide: false,
+  archived: false,
+  label_budget_id: null,
+  graph_options_use_snapshots: false,
+  graph_options_use_holding_snapshots: false,
+  graph_options_use_transactions: false,
+  raw: null,
+  updated: null,
+  is_deleted: false,
+  ...overrides,
+});
+
 describe("post-holding-snapshot update mode", () => {
   test("rejects a snapshot_id the user does not own (ownership gate)", async () => {
     // getHoldingSnapshots returns the user's snapshots; the requested id is
@@ -196,12 +229,60 @@ describe("post-holding-snapshot update mode", () => {
     expect(upd!.values).toContain("snap-1");
     expect(upd!.values).toContain("u-1");
   });
+
+  // The date axis the sibling route guards: an unparseable string reaches
+  // `toISOString` outside the handler's try, so the client sees a 500 and the
+  // global alarm pages.
+  test("rejects an unparseable snapshot_date instead of throwing past the try", async () => {
+    for (const snapshot_date of ["garbage", "2026-13-45x"]) {
+      mockQuery.mockClear();
+      snapshotRows = [holdingSnapshotRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ snapshot_id: "snap-1", snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/not a valid date/i);
+      expect(findCall(/update\s+snapshots/i)).toBeNull();
+    }
+  });
+
+  test("rejects a non-string snapshot_date instead of dropping it from the patch", async () => {
+    for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
+      mockQuery.mockClear();
+      snapshotRows = [holdingSnapshotRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ snapshot_id: "snap-1", snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/must be a string/i);
+      expect(findCall(/update\s+snapshots/i)).toBeNull();
+    }
+  });
+
+  test("a valid snapshot_date still patches the row", async () => {
+    snapshotRows = [holdingSnapshotRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(findCall(/update\s+snapshots/i)!.values).toContain("2024-03-15");
+  });
 });
 
 describe("post-holding-snapshot create mode", () => {
   test("creates with an existing security and a deterministic snapshot_id", async () => {
     // searchSecurities finds the ticker locally → Polygon is never called.
     securityRows = [existingSecurityRow()]; // found locally → Polygon skipped
+    accountRows = [accountRow()];
 
     const result = await postHoldingSnapshotRoute.execute(
       makeReq({
@@ -222,6 +303,7 @@ describe("post-holding-snapshot create mode", () => {
 
   test("re-posting the same (account, security, date) reuses the snapshot_id", async () => {
     securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
 
     const body = {
       account_id: "acct-9",
@@ -233,6 +315,134 @@ describe("post-holding-snapshot create mode", () => {
     const second = await postHoldingSnapshotRoute.execute(makeReq(body), fakeRes());
 
     // Deterministic id means an in-place upsert, not a duplicate row.
+    const expectedDate = getSquashedDateString(new LocalDate("2024-03-15"));
+    expect(first?.body?.snapshot_id).toBe(`holding-acct-9-sec-1-${expectedDate}`);
     expect(second?.body?.snapshot_id).toBe(first?.body?.snapshot_id);
+  });
+
+  test("rejects an account_id the user does not own and writes nothing", async () => {
+    // The victim's account exists, but `getAccount` is user_id-scoped, so an
+    // attacker owning zero accounts gets no row back.
+    securityRows = [existingSecurityRow()];
+    accountRows = [];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({
+        account_id: "victim-account",
+        ticker_symbol: "VOO",
+        quantity: 999,
+        snapshot_date: "2024-03-15",
+      }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/not found or access denied/i);
+    // Neither table may be written: `snapshot_id` and `holding_id` are both
+    // minted from the caller-supplied account_id, so a collision on either is
+    // a cross-tenant write.
+    expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+    expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+  });
+
+  test("rejects a non-string account_id instead of minting ids from it", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    for (const account_id of [{ $ne: null }, 42, ["acct-9"]]) {
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id, ticker_symbol: "VOO", quantity: 1 }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/account_id/i);
+      expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+      expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+    }
+  });
+
+  test("the ownership lookup carries the caller's user_id and the requested account_id", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [];
+
+    await postHoldingSnapshotRoute.execute(
+      makeReq({
+        account_id: "victim-account",
+        ticker_symbol: "VOO",
+        quantity: 1,
+      }),
+      fakeRes(),
+    );
+
+    const lookup = findCall(/select[\s\S]*from\s+accounts/i);
+    expect(lookup).not.toBeNull();
+    expect(lookup!.values).toContain("u-1");
+    expect(lookup!.values).toContain("victim-account");
+  });
+
+  test("a create with no snapshot_date defaults to today, not to a fixed instant", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1 }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.snapshot_id).toBe(
+      `holding-acct-9-sec-1-${getSquashedDateString(new Date())}`,
+    );
+  });
+
+  test("rejects an unparseable snapshot_date instead of minting a NaN id", async () => {
+    for (const snapshot_date of ["garbage", "2026-13-45x"]) {
+      mockQuery.mockClear();
+      securityRows = [existingSecurityRow()];
+      accountRows = [accountRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1, snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/not a valid date/i);
+      expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+      expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+    }
+  });
+
+  // A number is epoch-milliseconds to `LocalDate`, so an unchecked cast writes
+  // a real 1970 snapshot into the user's graph rather than failing.
+  test("rejects a non-string snapshot_date instead of reading it as epoch ms", async () => {
+    for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
+      mockQuery.mockClear();
+      securityRows = [existingSecurityRow()];
+      accountRows = [accountRow()];
+
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1, snapshot_date }),
+        fakeRes(),
+      );
+
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/must be a string/i);
+      expect(result?.body?.snapshot_id).toBeUndefined();
+      expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+      expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+    }
+  });
+
+  test("a malformed snapshot_date fails before the ownership round trip", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1, snapshot_date: "garbage" }),
+      fakeRes(),
+    );
+
+    expect(findCall(/select[\s\S]*from\s+accounts/i)).toBeNull();
   });
 });

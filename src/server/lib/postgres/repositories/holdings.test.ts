@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { restoreLeaves, updateColumnsOf } from "test-helpers";
 
 const mockQuery = mock(async (_sql: string, _values?: unknown[]) => ({
   rows: [] as unknown[],
@@ -18,7 +18,7 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
-const { deleteHoldings, searchHoldingsByAccountId } = await import("./holdings");
+const { deleteHoldings, searchHoldingsByAccountId, upsertHoldings } = await import("./holdings");
 
 afterAll(restoreLeaves);
 
@@ -98,5 +98,72 @@ describe("searchHoldingsByAccountId — single batched query", () => {
     const [sql, values] = mockQuery.mock.calls[0];
     expect(String(sql)).toContain("user_id = $1");
     expect(values).toContain("usr-1");
+  });
+});
+
+describe("upsertHoldings conflict", () => {
+  const upsertOne = async () => {
+    await upsertHoldings(mockUser, [
+      {
+        holding_id: "acct-A-sec-1",
+        account_id: "acct-A",
+        security_id: "sec-1",
+        quantity: 999,
+        cost_basis: 1,
+        institution_price: 1,
+        institution_price_as_of: "2026-07-01",
+        institution_value: 999,
+        iso_currency_code: "USD",
+        unofficial_currency_code: null,
+      },
+    ]);
+    return mockQuery.mock.calls[0][0] as string;
+  };
+
+  test("never reassigns the row owner or the account", async () => {
+    const columns = updateColumnsOf(await upsertOne());
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns).not.toContain("user_id");
+    expect(columns).not.toContain("account_id");
+    expect(columns).not.toContain("holding_id");
+  });
+
+  test("still rewrites the position", async () => {
+    const columns = updateColumnsOf(await upsertOne());
+    for (const column of [
+      "security_id",
+      "institution_price",
+      "institution_price_as_of",
+      "institution_value",
+      "cost_basis",
+      "quantity",
+      "iso_currency_code",
+    ]) {
+      expect(columns).toContain(column);
+    }
+  });
+
+  test("inserts the owner on a first write", async () => {
+    const sql = await upsertOne();
+    expect(sql.split("DO UPDATE SET")[0]).toContain("user_id");
+  });
+
+  test("leaves a column the caller omitted alone rather than nulling it", async () => {
+    // `institution_price_as_of` is optional on Plaid's holding payload, so
+    // `HoldingModel.fromJSON` leaves it undefined and it never reaches the
+    // INSERT column list. A SET entry for it would resolve `EXCLUDED` to the
+    // column default and wipe the stored date.
+    await upsertHoldings(mockUser, [
+      {
+        holding_id: "acct-A-sec-1",
+        account_id: "acct-A",
+        security_id: "sec-1",
+        quantity: 999,
+      } as never,
+    ]);
+    const columns = updateColumnsOf(mockQuery.mock.calls[0][0] as string);
+    expect(columns).toContain("quantity");
+    expect(columns).not.toContain("institution_price_as_of");
+    expect(columns).not.toContain("cost_basis");
   });
 });

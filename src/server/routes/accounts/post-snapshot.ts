@@ -1,5 +1,12 @@
-import { JSONAccount, getSquashedDateString, JSONSnapshot, LocalDate } from "common";
-import { Route, upsertSnapshots, requireBodyObject, validationError } from "server";
+import { JSONAccount, getSquashedDateString, JSONSnapshot } from "common";
+import {
+  Route,
+  upsertSnapshots,
+  requireBodyObject,
+  optionalDateField,
+  validationError,
+  getAccount,
+} from "server";
 import { logger } from "server/lib/logger";
 
 export interface SnapshotPostResponse {
@@ -27,14 +34,28 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
     if (!bodyResult.success) return validationError(bodyResult.error!);
 
     const body = bodyResult.data as Record<string, unknown>;
-    if (!("snapshot" in body)) {
+    const snapshotData = body.snapshot;
+    if (!snapshotData || typeof snapshotData !== "object" || Array.isArray(snapshotData)) {
       return validationError("Request body must contain snapshot data");
     }
 
     // TODO: Snapshot can be holding or security snapshot as well
-    const account: JSONAccount = body.account as JSONAccount;
-    const snapshotData = body.snapshot as Record<string, unknown>;
-    const date = snapshotData.date ? new LocalDate(snapshotData.date as string) : new Date();
+    const account = body.account as JSONAccount | undefined;
+    if (!account || typeof account !== "object" || typeof account.account_id !== "string") {
+      return validationError("Request body must contain an account with an account_id");
+    }
+
+    if (!(await getAccount(user, account.account_id))) {
+      return { status: "failed", message: "Account not found or access denied." };
+    }
+
+    const parsedDate = optionalDateField(
+      snapshotData as Record<string, unknown>,
+      "date",
+      "snapshot.date",
+    );
+    if (!parsedDate.success) return validationError(parsedDate.error!);
+    const date = parsedDate.data ?? new Date();
     const snapshot: JSONSnapshot = {
       snapshot_id: `${account.account_id}-${getSquashedDateString(date)}`,
       date: date.toISOString(),

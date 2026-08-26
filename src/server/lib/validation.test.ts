@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { LocalDate } from "common";
 import type { ServerRequest } from "./route";
 import {
   requireQueryString,
@@ -6,6 +7,7 @@ import {
   requireBodyObject,
   requireStringField,
   requireNumberField,
+  optionalDateField,
   validationError,
 } from "./validation";
 
@@ -209,5 +211,49 @@ describe("validationError", () => {
     const result = validationError("Invalid input");
     expect(result.status).toBe("failed");
     expect(result.message).toBe("Invalid input");
+  });
+});
+
+describe("optionalDateField", () => {
+  it("should return undefined for an absent, null or empty value", () => {
+    for (const obj of [{}, { date: null }, { date: "" }]) {
+      const result = optionalDateField(obj as Record<string, unknown>, "date");
+      expect(result.success).toBe(true);
+      expect(result.data).toBeUndefined();
+    }
+  });
+
+  // `LocalDate` reads a bare YYYY-MM-DD as local midnight; the built-in `Date`
+  // reads it as UTC. Asserting the subclass is what distinguishes them — the
+  // test runner pins UTC, so no in-process clock comparison can.
+  it("should parse a valid date string as a LocalDate, not a bare Date", () => {
+    const result = optionalDateField({ date: "2024-03-15" }, "date");
+    expect(result.success).toBe(true);
+    expect(result.data).toBeInstanceOf(LocalDate);
+    expect(Number.isNaN(result.data!.getTime())).toBe(false);
+  });
+
+  it("should reject a non-string value rather than reading a number as epoch ms", () => {
+    for (const date of [20260701, { $ne: null }, ["2024-03-15"], true]) {
+      const result = optionalDateField({ date } as Record<string, unknown>, "date");
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("must be a string");
+      expect(result.data).toBeUndefined();
+    }
+  });
+
+  it("should reject an unparseable date string", () => {
+    for (const date of ["garbage", "2026-13-45x"]) {
+      const result = optionalDateField({ date }, "date");
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("is not a valid date");
+    }
+  });
+
+  it("should name the field in the error, or the label when one is given", () => {
+    expect(optionalDateField({ snapshot_date: 7 } as Record<string, unknown>, "snapshot_date").error)
+      .toBe("snapshot_date must be a string");
+    expect(optionalDateField({ date: 7 } as Record<string, unknown>, "date", "snapshot.date").error)
+      .toBe("snapshot.date must be a string");
   });
 });
