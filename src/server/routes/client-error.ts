@@ -1,6 +1,7 @@
 import { Route } from "server/lib/route";
 import { sendAlarm } from "server/lib/alarm";
 import { logger } from "server/lib/logger";
+import { clientErrorRateLimiter } from "server/lib/rate-limit";
 
 export type ClientErrorPostBody = {
   message?: string;
@@ -14,9 +15,11 @@ export type ClientErrorPostBody = {
  * Accepts frontend error reports sent via navigator.sendBeacon and forwards
  * them to the Discord alarm. Session-gated like every other route (it is absent
  * from `PUBLIC_PATH_METHODS` in start.ts), so errors thrown before login are
- * rejected with 401 and never reported.
+ * rejected with 401 and never reported. Rate-limited per IP on top of that.
  */
 export const postClientErrorRoute = new Route("POST", "/client-error", async (req) => {
+  clientErrorRateLimiter.consume(req.ip);
+
   const body = req.body as ClientErrorPostBody;
 
   const message = typeof body.message === "string" ? body.message : "(no message)";

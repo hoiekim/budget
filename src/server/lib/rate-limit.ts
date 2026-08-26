@@ -25,9 +25,12 @@ interface RateLimitRecord {
   resetAt: number;
 }
 
+/**
+ * One record per (bucket, IP). Buckets share this Map — and therefore the
+ * single cleanup timer below — but never share counters, so a limiter that
+ * fills up only blocks its own callers.
+ */
 const attempts = new Map<string, RateLimitRecord>();
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_ATTEMPTS = 5;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 /**
@@ -35,9 +38,9 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
  */
 const cleanupStaleRecords = () => {
   const now = Date.now();
-  for (const [ip, record] of attempts) {
+  for (const [key, record] of attempts) {
     if (now >= record.resetAt) {
-      attempts.delete(ip);
+      attempts.delete(key);
     }
   }
 };
@@ -63,39 +66,109 @@ export const stopRateLimitCleanup = () => {
   }
 };
 
+export interface RateLimiter {
+  /**
+   * Read-only check: true once the IP has consumed `maxAttempts` slots within
+   * the active window. Does NOT mutate state, so a caller can check without
+   * charging the quota.
+   */
+  isLimited(ip: string): boolean;
+  /**
+   * Consume one slot for the given IP. The caller decides which outcomes cost
+   * a slot: the login limiter charges only failed auth, a volume limiter
+   * charges every accepted request.
+   */
+  consume(ip: string): void;
+  /**
+   * Clear the IP's slots so earlier attempts don't accumulate against them for
+   * the rest of the window.
+   */
+  reset(ip: string): void;
+}
+
 /**
- * Read-only check: returns true if the IP has hit the failure cap within
- * the active window. Does NOT mutate state.
+ * Build a limiter over its own (bucket, IP) counters.
  *
- * Successful logins must not consume a slot — that's what failure-only
- * counting prevents. Counting successes would lock out anyone who
- * legitimately signs in from 5+ devices within 15 minutes.
+ * @param bucket Namespace for this limiter's counters. Must be unique per
+ *   limiter and must not contain `:` — the key is `${bucket}:${ip}`, so a
+ *   colon in the bucket lets two (bucket, IP) pairs collide onto one counter
+ *   once the IP carries colons of its own, as IPv6 addresses do.
  */
-export const isLoginRateLimited = (ip: string): boolean => {
-  const now = Date.now();
-  const record = attempts.get(ip);
-  return !!record && now < record.resetAt && record.count >= MAX_ATTEMPTS;
+export const createRateLimiter = (
+  bucket: string,
+  { maxAttempts, windowMs }: { maxAttempts: number; windowMs: number },
+): RateLimiter => {
+  const keyFor = (ip: string) => `${bucket}:${ip}`;
+
+  return {
+    isLimited: (ip) => {
+      const record = attempts.get(keyFor(ip));
+      return !!record && Date.now() < record.resetAt && record.count >= maxAttempts;
+    },
+    consume: (ip) => {
+      const key = keyFor(ip);
+      const now = Date.now();
+      const record = attempts.get(key);
+
+      if (record && now < record.resetAt) {
+        record.count++;
+      } else {
+        attempts.set(key, { count: 1, resetAt: now + windowMs });
+      }
+    },
+    reset: (ip) => {
+      attempts.delete(keyFor(ip));
+    },
+  };
 };
 
-/**
- * Record a failed login attempt for the given IP. Call only after auth
- * has actually failed.
- */
-export const recordLoginFailure = (ip: string): void => {
-  const now = Date.now();
-  const record = attempts.get(ip);
+export const loginRateLimiter = createRateLimiter("login", {
+  maxAttempts: 5,
+  windowMs: 15 * 60 * 1000,
+});
 
-  if (record && now < record.resetAt) {
-    record.count++;
-  } else {
-    attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-  }
-};
+// Kept under the alarm cooldown's own ceiling: `sendAlarm` lets this bucket
+// through once a minute, so a 15-minute window carries at most 15 alarms.
+export const clientErrorRateLimiter = createRateLimiter("client-error", {
+  maxAttempts: 12,
+  windowMs: 15 * 60 * 1000,
+});
+
+const PRE_SESSION_RATE_LIMITS: {
+  method: string;
+  path: string;
+  limiter: RateLimiter;
+  message: string;
+}[] = [
+  {
+    method: "POST",
+    path: "/login",
+    limiter: loginRateLimiter,
+    message: "Too many login attempts, try again later",
+  },
+  {
+    method: "POST",
+    path: "/client-error",
+    limiter: clientErrorRateLimiter,
+    message: "Too many client error reports, try again later",
+  },
+];
 
 /**
- * Clear the bucket for an IP on a successful login so a user's prior
- * failures don't accumulate against them indefinitely within the window.
+ * The message to shed a request with, or null to let it through.
+ *
+ * Consulted before the body is read and before the session is loaded, so a
+ * caller over its cap costs no parse, no session read and no session write.
+ * Read-only: the slot is charged by the route, which decides which outcomes
+ * cost one — failed auth for login, every accepted report for client-error.
  */
-export const resetLoginAttempts = (ip: string): void => {
-  attempts.delete(ip);
+export const preSessionShedMessage = (
+  method: string,
+  path: string,
+  ip: string,
+): string | null => {
+  const entry = PRE_SESSION_RATE_LIMITS.find(
+    (candidate) => candidate.method === method && candidate.path === path,
+  );
+  return entry && entry.limiter.isLimited(ip) ? entry.message : null;
 };
