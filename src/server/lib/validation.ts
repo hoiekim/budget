@@ -251,6 +251,18 @@ const matchesType = (value: unknown, type: FieldType): boolean => {
   }
 };
 
+const ARTICLE: Record<FieldType, string> = {
+  string: "a",
+  number: "a",
+  boolean: "a",
+  uuid: "a",
+  date: "a",
+  array: "an",
+};
+
+const typeError = ({ path, type }: FieldSpec): string =>
+  `Field ${path} must be ${ARTICLE[type]} ${type}`;
+
 /**
  * Check a request body's typed fields BEFORE any of them reach SQL.
  *
@@ -310,10 +322,10 @@ export function validateFields(obj: object, specs: FieldSpec[]): ValidationResul
     }
     if (isNull(value)) {
       if (spec.nullable) continue;
-      return { success: false, error: `Field ${spec.path} must be a ${spec.type}` };
+      return { success: false, error: typeError(spec) };
     }
     if (!matchesType(value, spec.type)) {
-      return { success: false, error: `Field ${spec.path} must be a ${spec.type}` };
+      return { success: false, error: typeError(spec) };
     }
   }
 

@@ -120,10 +120,10 @@ describe("post-category typed body fields", () => {
   });
 
   test("a non-array capacities is refused before it lands in the JSONB column", async () => {
-    for (const capacities of ["abc", 5, { a: 1 }]) {
+    for (const capacities of ["abc", 5, { a: 1 }, null]) {
       mockQuery.mockClear();
       mockSendAlarm.mockClear();
-      await rejects({ category_id: UUID, capacities }, "Field capacities must be a array");
+      await rejects({ category_id: UUID, capacities }, "Field capacities must be an array");
     }
   });
 

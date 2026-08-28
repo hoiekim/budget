@@ -400,19 +400,35 @@ describe("validateFields", () => {
     }
   });
 
-  const CAPACITIES_SPEC: FieldSpec[] = [{ path: "capacities", type: "array", nullable: true }];
+  const CAPACITIES_SPEC: FieldSpec[] = [{ path: "capacities", type: "array" }];
 
-  it("accepts an array, or explicit null, in a JSONB array column", () => {
-    for (const capacities of [[], [{ month: 1 }], null]) {
+  it("accepts an array in a JSONB array column", () => {
+    for (const capacities of [[], [{ month: 1 }]]) {
       expect(validateFields({ capacities }, CAPACITIES_SPEC).success).toBe(true);
     }
   });
 
-  it("rejects a JSONB array column given a shape the model's read-side check throws on", () => {
-    for (const capacities of ["abc", 5, true, { a: 1 }]) {
+  it("rejects a JSONB array column given a shape the client model cannot map over", () => {
+    // Explicit null belongs here, not with the nullable columns: the server's
+    // own `isNullableArray` takes it, but `assign` copies it over the client
+    // model's `[]` default and `BudgetFamily.fromJSON` calls `.map` on it.
+    for (const capacities of ["abc", 5, true, { a: 1 }, null]) {
       const result = validateFields({ capacities }, CAPACITIES_SPEC);
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Field capacities must be a array");
+      expect(result.error).toBe("Field capacities must be an array");
     }
+  });
+
+  it("uses the article the type name takes, which its spelling does not decide", () => {
+    expect(validateFields({ capacities: "abc" }, CAPACITIES_SPEC).error).toBe(
+      "Field capacities must be an array"
+    );
+    expect(validateFields({ hide: "true" }, ACCOUNT_SPEC).error).toBe(
+      "Field hide must be a boolean"
+    );
+    // Vowel-initial in spelling, consonant-initial when read aloud.
+    expect(validateFields({ label: { budget_id: "nope" } }, ACCOUNT_SPEC).error).toBe(
+      "Field label.budget_id must be a uuid"
+    );
   });
 });

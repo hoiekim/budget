@@ -17,7 +17,7 @@ const SECTION_BODY_SPEC: FieldSpec[] = [
   { path: "name", type: "string", nullable: true },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },
-  { path: "capacities", type: "array", nullable: true },
+  { path: "capacities", type: "array" },
 ];
 
 export const postSectionRoute = new Route("POST", "/section", async (req) => {

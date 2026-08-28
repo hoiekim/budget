@@ -17,7 +17,7 @@ const CATEGORY_BODY_SPEC: FieldSpec[] = [
   { path: "name", type: "string", nullable: true },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },
-  { path: "capacities", type: "array", nullable: true },
+  { path: "capacities", type: "array" },
 ];
 
 export const postCategoryRoute = new Route("POST", "/category", async (req) => {
