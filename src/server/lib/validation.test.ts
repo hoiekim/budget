@@ -387,8 +387,32 @@ describe("validateFields", () => {
 
   it("names the non-object holder, not the key being looked up, at every depth", () => {
     const deep: FieldSpec[] = [{ path: "a.b.c", type: "string" }];
-    const result = validateFields({ a: "str" }, deep);
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Field a must be an object");
+    for (const [body, error] of [
+      // Exits the walk mid-loop, where the holder is the previous segment.
+      [{ a: "str" }, "Field a must be an object"],
+      // Exits after the walk, where the holder is the last segment — the only
+      // fixture that separates it from any other index into `segments`.
+      [{ a: { b: "str" } }, "Field b must be an object"],
+    ] as const) {
+      const result = validateFields(body, deep);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(error);
+    }
+  });
+
+  const CAPACITIES_SPEC: FieldSpec[] = [{ path: "capacities", type: "array", nullable: true }];
+
+  it("accepts an array, or explicit null, in a JSONB array column", () => {
+    for (const capacities of [[], [{ month: 1 }], null]) {
+      expect(validateFields({ capacities }, CAPACITIES_SPEC).success).toBe(true);
+    }
+  });
+
+  it("rejects a JSONB array column given a shape the model's read-side check throws on", () => {
+    for (const capacities of ["abc", 5, true, { a: 1 }]) {
+      const result = validateFields({ capacities }, CAPACITIES_SPEC);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Field capacities must be a array");
+    }
   });
 });

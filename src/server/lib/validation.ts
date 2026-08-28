@@ -194,7 +194,7 @@ export function optionalDateField<T extends object>(
  * Field types a request body can be checked against, named after the column
  * type the value ends up in rather than the JS typeof.
  */
-export type FieldType = "string" | "number" | "boolean" | "uuid" | "date";
+export type FieldType = "string" | "number" | "boolean" | "uuid" | "date" | "array";
 
 export interface FieldSpec {
   /** Dot path into the body — `"balances.current"`, `"label.budget_id"`. */
@@ -244,6 +244,10 @@ const matchesType = (value: unknown, type: FieldType): boolean => {
       return isString(value) && UUID_RE.test(value);
     case "date":
       return isDateString(value);
+    case "array":
+      // A JSONB column takes any shape at the write, but the model's
+      // `isNullableArray` throws on every later read of the row.
+      return isArray(value);
   }
 };
 

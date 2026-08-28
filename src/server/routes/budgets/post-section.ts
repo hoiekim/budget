@@ -10,14 +10,14 @@ import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
 
 /**
- * Typed fields `updateSection` writes (`models/section.ts`). `capacities` is
- * JSONB and takes any shape; it is not listed.
+ * Typed fields `updateSection` writes (`models/section.ts`).
  */
 const SECTION_BODY_SPEC: FieldSpec[] = [
   { path: "section_id", type: "uuid" },
   { path: "name", type: "string", nullable: true },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },
+  { path: "capacities", type: "array", nullable: true },
 ];
 
 export const postSectionRoute = new Route("POST", "/section", async (req) => {

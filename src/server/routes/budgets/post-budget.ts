@@ -11,7 +11,6 @@ import { logger } from "server/lib/logger";
 
 /**
  * Typed fields `BudgetModel.fromJSON` copies into a row (`models/budget.ts`).
- * `capacities` is JSONB and takes any shape; it is not listed.
  */
 const BUDGET_BODY_SPEC: FieldSpec[] = [
   { path: "budget_id", type: "uuid" },
@@ -19,6 +18,7 @@ const BUDGET_BODY_SPEC: FieldSpec[] = [
   { path: "iso_currency_code", type: "string", nullable: true },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },
+  { path: "capacities", type: "array", nullable: true },
 ];
 
 export const postBudgetRoute = new Route("POST", "/budget", async (req) => {

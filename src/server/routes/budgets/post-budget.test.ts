@@ -121,6 +121,14 @@ describe("post-budget typed body fields", () => {
     }
   });
 
+  test("a non-array capacities is refused before it lands in the JSONB column", async () => {
+    for (const capacities of ["abc", 5, { a: 1 }]) {
+      mockQuery.mockClear();
+      mockSendAlarm.mockClear();
+      await rejects({ budget_id: UUID, capacities }, "Field capacities must be a array");
+    }
+  });
+
   test("a well-formed body passes validation and reaches the repo", async () => {
     db.updateReturns = [{ budget_id: UUID }];
     const result = await postBudgetRoute.execute(
@@ -130,6 +138,7 @@ describe("post-budget typed body fields", () => {
         roll_over: true,
         // What the client serializes, via `getDateTimeString`.
         roll_over_start_date: "2026-08-24T00:00:00",
+        capacities: [{ month: 100 }],
       }),
       fakeRes(),
     );
