@@ -119,20 +119,18 @@ describe("buildSortKey", () => {
     // checked rather than argued from `"investment"` not being a type.
     // Derived from `VALID_TYPES` rather than hand-copied so a seventh
     // type widens the product instead of leaving this green at the old
-    // one.
+    // one. The floor is what stops a degenerate import from shrinking
+    // the product and leaving an "exhaustive" claim that covers two keys.
+    expect(VALID_TYPES.length).toBeGreaterThanOrEqual(6);
     const subsets = 1 << VALID_TYPES.length;
-    const expected = 2 * subsets;
     const keys = new Set<string>();
-    let count = 0;
     for (let mask = 0; mask < subsets; mask++) {
       const types = VALID_TYPES.filter((_, i) => mask & (1 << i));
       for (const isInvestment of [false, true]) {
         keys.add(buildSortKey(isInvestment, types));
-        count++;
       }
     }
-    expect(count).toBe(expected);
-    expect(keys.size).toBe(expected);
+    expect(keys.size).toBe(2 * subsets);
   });
 });
 
@@ -295,7 +293,7 @@ describe("formatSortValue — split rows resolve their parent through the contex
   });
 });
 
-describe("orderRows — the ordering tail both views now share", () => {
+describe("orderRows — the ordering tail both views share", () => {
   // Ids deliberately ordered so a plain `investment_transaction_id`
   // comparison disagrees with every column ordering asserted below.
   const rows = (): TransactionRow[] => [
