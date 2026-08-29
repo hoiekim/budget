@@ -222,8 +222,14 @@ process.on("unhandledRejection", (reason) => {
   void reportCrashAlarm("Unhandled Promise Rejection", reason);
 });
 
+// A second uncaught exception during the delivery window would reach
+// `process.exit` and truncate the first crash's in-flight alarm POST.
+let crashing = false;
+
 process.on("uncaughtException", async (error) => {
   logger.error("Uncaught exception", {}, error);
+  if (crashing) return;
+  crashing = true;
   await deliverCrashAlarm("Uncaught Exception", error);
   try {
     await pool.end();

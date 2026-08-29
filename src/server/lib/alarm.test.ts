@@ -171,8 +171,12 @@ describe("sendAlarm", () => {
 });
 
 describe("single-shot lane", () => {
-  it("gives recurring sources 8 of the 10 slots and single-shot sources all 10", () => {
-    expect([recurringCeiling(), alarm.MAX_SENDS_PER_WINDOW]).toEqual([8, 10]);
+  it("gives recurring sources 8 of the 10 slots, single-shot sources all 10, and bounds crash delivery at 5s", () => {
+    expect([
+      recurringCeiling(),
+      alarm.MAX_SENDS_PER_WINDOW,
+      alarm.CRASH_ALARM_TIMEOUT_MS,
+    ]).toEqual([8, 10, 5_000]);
   });
 
   it("a recurring flood cannot consume the reserve — a crash alarm still gets through", async () => {
