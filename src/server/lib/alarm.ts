@@ -142,6 +142,15 @@ export const sendAlarm = async (
  */
 export const CRASH_ALARM_TIMEOUT_MS = 5_000;
 
+/**
+ * Max time the `uncaughtException` handler takes to reach `process.exit`,
+ * counted from entry. Exceeds `CRASH_ALARM_TIMEOUT_MS` so a normal delivery
+ * still completes first; it exists because the teardown that follows the alarm
+ * is unbounded — `pool.end()` never settles while a client is checked out
+ * against an unresponsive database, which would turn a crash into a wedge.
+ */
+export const CRASH_EXIT_DEADLINE_MS = 10_000;
+
 /** Render a thrown value as the alarm body: message plus a bounded stack. */
 export const formatCrashDetail = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);

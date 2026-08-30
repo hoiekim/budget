@@ -10,6 +10,7 @@ import {
   preSessionShedMessage,
   deliverCrashAlarm,
   reportCrashAlarm,
+  CRASH_EXIT_DEADLINE_MS,
   startRateLimitCleanup,
   stopRateLimitCleanup,
   pool,
@@ -230,6 +231,11 @@ process.on("uncaughtException", async (error) => {
   logger.error("Uncaught exception", {}, error);
   if (crashing) return;
   crashing = true;
+  // The guard makes this block the only path to `process.exit`, and the
+  // teardown below can outlast the deadline `deliverCrashAlarm` promises —
+  // `pool.end()` waits on checked-out clients that a dead database never
+  // returns. Exit on a deadline so a crash always yields an exit code.
+  setTimeout(() => process.exit(1), CRASH_EXIT_DEADLINE_MS).unref();
   await deliverCrashAlarm("Uncaught Exception", error);
   try {
     await pool.end();
