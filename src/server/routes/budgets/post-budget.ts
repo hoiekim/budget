@@ -11,10 +11,14 @@ import { logger } from "server/lib/logger";
 
 /**
  * Typed fields `BudgetModel.fromJSON` copies into a row (`models/budget.ts`).
+ * `name` is not nullable here even though the column is: the client's
+ * `BudgetFamily.name` is a plain `string` and `useBudgetCategorySelect` calls
+ * `.trim()` on it unguarded, so a null name renders every transaction row into
+ * a TypeError.
  */
 const BUDGET_BODY_SPEC: FieldSpec[] = [
   { path: "budget_id", type: "uuid" },
-  { path: "name", type: "string", nullable: true },
+  { path: "name", type: "string" },
   { path: "iso_currency_code", type: "string", nullable: true },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },

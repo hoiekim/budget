@@ -121,6 +121,10 @@ describe("post-budget typed body fields", () => {
     }
   });
 
+  test("an explicit null name is refused before it can break the client's select", async () => {
+    await rejects({ budget_id: UUID, name: null }, "Field name must be a string");
+  });
+
   test("a non-array capacities is refused before it lands in the JSONB column", async () => {
     for (const capacities of ["abc", 5, { a: 1 }, null]) {
       mockQuery.mockClear();
