@@ -4,8 +4,8 @@ import { useLocalStorageState } from "client";
 class Comparable<T> {
   A: T;
   B: T;
-  a: string | number | Date = 0;
-  b: string | number | Date = 0;
+  a: string | number = 0;
+  b: string | number = 0;
 
   constructor(a: T, b: T) {
     this.A = a;
@@ -21,8 +21,11 @@ class Comparable<T> {
       (typeof a === "string" && typeof b === "string") ||
       (a instanceof Date && b instanceof Date)
     ) {
-      this.a = a;
-      this.b = b;
+      // Compared with `===` below, so a `Date` has to become its instant: two
+      // dates on the same day are distinct objects, and `>` on them is false
+      // too, which reports `a < b` for a pair and for its reverse.
+      this.a = a instanceof Date ? a.getTime() : a;
+      this.b = b instanceof Date ? b.getTime() : b;
     } else {
       this.a = 0;
       this.b = 0;

@@ -88,12 +88,18 @@ const asTransaction = (e: Transaction | SplitTransaction, ctx: OrderingContext):
  * both branches of `filteredAndSorted` — the investment view and the
  * cash view render different header sets but overlap on `date` /
  * `amount`, and those must order rows the same way in both.
+ *
+ * Returns `unknown` because the generic tails resolve an arbitrary row
+ * property. Only a `string` / `number` / `Date` pair actually orders
+ * anything — `Comparable.format` compares a same-typed pair from that
+ * set and zeroes everything else, so a row falling outside it keeps its
+ * incoming position rather than throwing.
  */
 export const formatSortValue = (
   e: TransactionRow,
   key: TransactionSortKey,
   ctx: OrderingContext,
-): string | number | Date | unknown => {
+): unknown => {
   if (e instanceof InvestmentTransaction) {
     if (key === "date") {
       return new LocalDate(e.date);

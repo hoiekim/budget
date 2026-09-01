@@ -387,6 +387,30 @@ describe("applySortings — the comparator orderRows is built on", () => {
     );
     expect(idsOf(asc)).toEqual([...idsOf(desc)].reverse());
   });
+
+  test("an earlier entry's tiebreak survives both directions of the primary key", () => {
+    const rows = () => [
+      makeInvestment("i-A", "2026-06-30", -100),
+      makeInvestment("i-B", "2026-06-30", -900),
+      makeInvestment("i-C", "2026-06-30", -500),
+      makeInvestment("i-D", "2026-06-01", -700),
+    ];
+    const ctx = makeCtx();
+    const byDate = (direction: "ascending" | "descending") =>
+      idsOf(
+        applySortings(
+          rows(),
+          new Map([
+            ["amount", "descending"],
+            ["date", direction],
+          ]),
+          (e, key) => format(e, key as string, ctx),
+        ),
+      );
+
+    expect(byDate("descending")).toEqual(["i-A", "i-C", "i-B", "i-D"]);
+    expect(byDate("ascending")).toEqual(["i-D", "i-A", "i-C", "i-B"]);
+  });
 });
 
 describe("getSearchPool", () => {
