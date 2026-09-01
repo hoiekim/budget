@@ -8,8 +8,10 @@ import {
   requireStringField,
   requireNumberField,
   optionalDateField,
+  validateFields,
   validationError,
 } from "./validation";
+import type { FieldSpec } from "./validation";
 
 // Helper to create a mock ServerRequest with query params
 const mockRequest = (query: Record<string, unknown>, body?: unknown): ServerRequest =>
@@ -255,5 +257,178 @@ describe("optionalDateField", () => {
       .toBe("snapshot_date must be a string");
     expect(optionalDateField({ date: 7 } as Record<string, unknown>, "date", "snapshot.date").error)
       .toBe("snapshot.date must be a string");
+  });
+});
+
+describe("validateFields", () => {
+  const ACCOUNT_SPEC: FieldSpec[] = [
+    { path: "hide", type: "boolean", nullable: true },
+    { path: "label.budget_id", type: "uuid", nullable: true },
+    { path: "balances.current", type: "number", nullable: true },
+    { path: "balances.iso_currency_code", type: "string", nullable: true },
+  ];
+  const UUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+
+  it("accepts a well-formed partial body", () => {
+    const result = validateFields(
+      { hide: true, label: { budget_id: UUID }, balances: { current: -12.5 } },
+      ACCOUNT_SPEC
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a string in a numeric column and names the path", () => {
+    const result = validateFields({ balances: { current: "abc" } }, ACCOUNT_SPEC);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field balances.current must be a number");
+  });
+
+  it("rejects a non-UUID in a UUID column and names the path", () => {
+    const result = validateFields({ label: { budget_id: "not-a-uuid" } }, ACCOUNT_SPEC);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field label.budget_id must be a uuid");
+  });
+
+  it("accepts a UUID in either case", () => {
+    for (const id of [UUID, UUID.toUpperCase()]) {
+      expect(validateFields({ label: { budget_id: id } }, ACCOUNT_SPEC).success).toBe(true);
+    }
+  });
+
+  it("rejects NaN and Infinity, which no numeric column accepts", () => {
+    for (const value of [NaN, Infinity, -Infinity]) {
+      const result = validateFields({ balances: { current: value } }, ACCOUNT_SPEC);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Field balances.current must be a number");
+    }
+  });
+
+  it("rejects a boolean column given a string", () => {
+    const result = validateFields({ hide: "true" }, ACCOUNT_SPEC);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field hide must be a boolean");
+  });
+
+  it("skips absent optional fields — these bodies are partial updates", () => {
+    expect(validateFields({}, ACCOUNT_SPEC).success).toBe(true);
+    expect(validateFields({ balances: {} }, ACCOUNT_SPEC).success).toBe(true);
+  });
+
+  it("skips a missing parent object without inspecting its leaves", () => {
+    expect(validateFields({ label: undefined }, ACCOUNT_SPEC).success).toBe(true);
+    expect(validateFields({ label: null }, ACCOUNT_SPEC).success).toBe(true);
+  });
+
+  it("rejects a parent that is present but not an object", () => {
+    for (const label of ["abc", 5, [UUID]]) {
+      const result = validateFields({ label }, ACCOUNT_SPEC);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Field label must be an object");
+    }
+  });
+
+  it("accepts explicit null only where the column is nullable", () => {
+    expect(validateFields({ hide: null }, ACCOUNT_SPEC).success).toBe(true);
+    const strict: FieldSpec[] = [{ path: "hide", type: "boolean" }];
+    const result = validateFields({ hide: null }, strict);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field hide must be a boolean");
+  });
+
+  it("reports a required field that is absent or undefined", () => {
+    const strict: FieldSpec[] = [{ path: "budget_id", type: "uuid", required: true }];
+    for (const body of [{}, { budget_id: undefined }]) {
+      const result = validateFields(body, strict);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Missing required field: budget_id");
+    }
+  });
+
+  it("reports the FIRST failing spec, not the last", () => {
+    const result = validateFields(
+      { hide: "true", balances: { current: "abc" } },
+      ACCOUNT_SPEC
+    );
+    expect(result.error).toBe("Field hide must be a boolean");
+  });
+
+  const DATE_SPEC: FieldSpec[] = [{ path: "roll_over_start_date", type: "date", nullable: true }];
+
+  it("accepts the date shapes a DATE column takes", () => {
+    for (const roll_over_start_date of [
+      "2026-08-24",
+      // What the client actually serializes, via `getDateTimeString`.
+      "2026-08-24T00:00:00",
+      "2026-08-24T00:00:00.000Z",
+      "2024-02-29",
+    ]) {
+      const result = validateFields({ roll_over_start_date }, DATE_SPEC);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects a non-date string before it reaches the DATE column", () => {
+    for (const roll_over_start_date of [
+      "hello",
+      "",
+      "2026-13-45",
+      // Parses under `Date.parse` — rolls to March 2 — but Postgres answers
+      // `22008 date/time field value out of range`.
+      "2026-02-30",
+      "08/24/2026",
+      "2026-08-24Tnope",
+      20260824,
+    ]) {
+      const result = validateFields({ roll_over_start_date }, DATE_SPEC);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Field roll_over_start_date must be a date");
+    }
+  });
+
+  it("names the non-object holder, not the key being looked up, at every depth", () => {
+    const deep: FieldSpec[] = [{ path: "a.b.c", type: "string" }];
+    for (const [body, error] of [
+      // Exits the walk mid-loop, where the holder is the previous segment.
+      [{ a: "str" }, "Field a must be an object"],
+      // Exits after the walk, where the holder is the last segment — the only
+      // fixture that separates it from any other index into `segments`.
+      [{ a: { b: "str" } }, "Field b must be an object"],
+    ] as const) {
+      const result = validateFields(body, deep);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(error);
+    }
+  });
+
+  const CAPACITIES_SPEC: FieldSpec[] = [{ path: "capacities", type: "array" }];
+
+  it("accepts an array in a JSONB array column", () => {
+    for (const capacities of [[], [{ month: 1 }]]) {
+      expect(validateFields({ capacities }, CAPACITIES_SPEC).success).toBe(true);
+    }
+  });
+
+  it("rejects a JSONB array column given a shape the client model cannot map over", () => {
+    // Explicit null belongs here, not with the nullable columns: the server's
+    // own `isNullableArray` takes it, but `assign` copies it over the client
+    // model's `[]` default and `BudgetFamily.fromJSON` calls `.map` on it.
+    for (const capacities of ["abc", 5, true, { a: 1 }, null]) {
+      const result = validateFields({ capacities }, CAPACITIES_SPEC);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Field capacities must be an array");
+    }
+  });
+
+  it("uses the article the type name takes, which its spelling does not decide", () => {
+    expect(validateFields({ capacities: "abc" }, CAPACITIES_SPEC).error).toBe(
+      "Field capacities must be an array"
+    );
+    expect(validateFields({ hide: "true" }, ACCOUNT_SPEC).error).toBe(
+      "Field hide must be a boolean"
+    );
+    // Vowel-initial in spelling, consonant-initial when read aloud.
+    expect(validateFields({ label: { budget_id: "nope" } }, ACCOUNT_SPEC).error).toBe(
+      "Field label.budget_id must be a uuid"
+    );
   });
 });
