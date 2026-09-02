@@ -83,7 +83,7 @@ describe("Data.dictOf → clone → set round-trip (the useMutate flow)", () => 
   });
 });
 
-describe("Data.resolveTransferSides", () => {
+describe("TransactionDictionary.resolveTransferSides", () => {
   const half = (
     transaction_id: string,
     account_id: string,
@@ -115,14 +115,14 @@ describe("Data.resolveTransferSides", () => {
     transactions: [staleHalf("t-a", "acc-out", 10), staleHalf("t-b", "acc-in", -10)],
   });
 
-  const dataWith = (...transactions: Transaction[]) => {
+  const dictWith = (...transactions: Transaction[]) => {
     const dict = new TransactionDictionary();
     transactions.forEach((t) => dict.set(t.transaction_id, t));
-    return new Data({ transactions: dict });
+    return dict;
   };
 
   test("reads each half through the authoritative transactions dictionary", () => {
-    const [a, b] = dataWith(
+    const [a, b] = dictWith(
       half("t-a", "acc-out", 12.34, "new name", "new memo", "New City", "2026-05-02"),
       half("t-b", "acc-in", -12.34, "new name", "new memo", "New City", "2026-05-02"),
     ).resolveTransferSides(stalePair());
@@ -139,7 +139,7 @@ describe("Data.resolveTransferSides", () => {
   });
 
   test("falls back to the embedded copy for a half that is not loaded", () => {
-    const [a, b] = dataWith(
+    const [a, b] = dictWith(
       half("t-a", "acc-out", 12.34, "new name", "new memo", "New City", "2026-05-02"),
     ).resolveTransferSides(stalePair());
 
@@ -154,7 +154,7 @@ describe("Data.resolveTransferSides", () => {
   });
 
   test("preserves server order, so the sign-based side anchoring is unaffected", () => {
-    const resolved = new Data().resolveTransferSides(stalePair());
+    const resolved = new TransactionDictionary().resolveTransferSides(stalePair());
     expect(resolved.map((t) => t.transaction_id)).toEqual(["t-a", "t-b"]);
   });
 });

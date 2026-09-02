@@ -122,7 +122,20 @@ export class SecuritySnapshotDictionary extends Dictionary<
   SecuritySnapshotDictionary
 > {}
 
-export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {}
+export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {
+  /**
+   * The two halves a transfer pair should render, in server order.
+   *
+   * `TransferPair.transactions` is a denormalized copy taken when the pair
+   * row was last written, and nothing bumps `transaction_pairs.updated`
+   * when a referenced transaction changes — so a Plaid amount finalization
+   * or a memo edit leaves the pair's copy behind. Read through to the
+   * authoritative transactions instead, keeping the embedded copy only for
+   * a half that isn't loaded (outside the fetched window, or soft-deleted).
+   */
+  resolveTransferSides = (pair: TransferPair): TransferPair["transactions"] =>
+    pair.transactions.map((t) => this.get(t.transaction_id) ?? t);
+}
 
 /**
  * Pair-keyed dictionary of transfers. Keys are pair_id; values are the
@@ -257,19 +270,6 @@ export class Data {
   update = (init: Partial<Data>) => {
     assign(this, init);
   };
-
-  /**
-   * The two halves a transfer pair should render, in server order.
-   *
-   * `TransferPair.transactions` is a denormalized copy taken when the pair
-   * row was last written, and nothing bumps `transaction_pairs.updated`
-   * when a referenced transaction changes — so a Plaid amount finalization
-   * or a memo edit leaves the pair's copy behind. Read through to the
-   * authoritative transactions instead, keeping the embedded copy only for
-   * a half that isn't loaded (outside the fetched window, or soft-deleted).
-   */
-  resolveTransferSides = (pair: TransferPair): TransferPair["transactions"] =>
-    pair.transactions.map((t) => this.transactions.get(t.transaction_id) ?? t);
 
   /** Fetch a Model's dictionary from this `Data`. Overloads keep call
    *  sites precisely typed (`data.dictOf(Chart)` → `ChartDictionary`,

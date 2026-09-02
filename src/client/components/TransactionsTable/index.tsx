@@ -37,7 +37,7 @@ export const TransactionsTable = ({ transactions }: Props) => {
           return (
             <TransferRow
               key={`transfer_${pair.pair_id}`}
-              transactions={data.resolveTransferSides(pair)}
+              transactions={data.transactions.resolveTransferSides(pair)}
             />
           );
         }
