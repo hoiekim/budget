@@ -21,9 +21,7 @@ class Comparable<T> {
       (typeof a === "string" && typeof b === "string") ||
       (a instanceof Date && b instanceof Date)
     ) {
-      // Compared with `===` below, so a `Date` has to become its instant: two
-      // dates on the same day are distinct objects, and `>` on them is false
-      // too, which reports `a < b` for a pair and for its reverse.
+      // Compared with `===` below, so a `Date` has to become its instant.
       this.a = a instanceof Date ? a.getTime() : a;
       this.b = b instanceof Date ? b.getTime() : b;
     } else {
