@@ -130,8 +130,11 @@ export const BudgetsPage = () => {
     });
 
   const onClickAddBudget = async () => {
-    const { body } = await call.get<NewBudgetGetResponse>("/api/new-budget");
-    if (!body) return;
+    const { status, body, message } = await call.get<NewBudgetGetResponse>("/api/new-budget");
+    if (status !== "success" || !body) {
+      window.alert(message || "Failed to create budget.");
+      return;
+    }
 
     const { budget } = body;
     const { budget_id } = budget;

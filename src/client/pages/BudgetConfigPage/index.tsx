@@ -151,15 +151,16 @@ export const BudgetConfigPage = () => {
   };
 
   const onDelete = async () => {
+    let removed = false;
     try {
-      await remove(budgetLike);
+      removed = await remove(budgetLike);
     } catch (error: unknown) {
       console.error(error);
       window.alert(error instanceof Error ? error.message : `Failed to delete ${budgetLike.type}.`);
       return;
     }
 
-    finishEditing();
+    if (removed) finishEditing();
   };
 
   return (

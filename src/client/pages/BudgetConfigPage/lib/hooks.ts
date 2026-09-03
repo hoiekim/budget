@@ -233,7 +233,7 @@ export const useRemove = () => {
   const { transactions, categories } = data;
 
   const remove = async (deleted?: BudgetFamily) => {
-    if (!deleted) return;
+    if (!deleted) return false;
 
     const name = deleted.name || "Unnamed";
     const { id, type } = deleted;
@@ -270,7 +270,7 @@ export const useRemove = () => {
 
     if (shouldConfirm) {
       const confirm = window.confirm(`Do you want to delete ${type}: ${name}?`);
-      if (!confirm) return;
+      if (!confirm) return false;
     }
 
     const { status, message } = await call.delete(`/api/${type}` + queryString);
@@ -296,6 +296,7 @@ export const useRemove = () => {
       }
       return newData;
     });
+    return true;
   };
 
   return remove;
