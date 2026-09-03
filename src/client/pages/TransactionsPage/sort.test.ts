@@ -345,6 +345,20 @@ describe("orderRows — the ordering tail both views share", () => {
     expect(idsOf(searched)[0]).toBe("o-1");
   });
 
+  test("a search scores each row once, not once per comparison", () => {
+    const scoredRows: TransactionRow[] = [];
+    const counting = (_searchValue: string, row: TransactionRow) => {
+      scoredRows.push(row);
+      return 0;
+    };
+
+    const input = rows();
+    orderRows(input, new Map([["date", "descending"]]), makeCtx(), counting, "match");
+
+    expect(scoredRows).toHaveLength(input.length);
+    expect(new Set(scoredRows).size).toBe(input.length);
+  });
+
   test("a split keys its base order on its parent, so it stays with the parent", () => {
     const ctx = makeCtx();
     const parentA = new Transaction({ transaction_id: "txn-a", account_id: OTHER_ACCOUNT_ID });

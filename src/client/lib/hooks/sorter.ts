@@ -54,11 +54,11 @@ export interface Sorter<H = unknown> {
  * is the primary key and earlier ones survive as tiebreaks. Exported so
  * a caller's formatter can be tested against the real comparison.
  *
- * The `async` on the `forEach` callback is load-bearing by accident and
- * kept deliberately: it turns a throwing `formatter` into a discarded
- * rejected promise, so the remaining entries still run and the caller
- * gets a partially-sorted array instead of an exception. Dropping it
- * would surface those throws to the render.
+ * The `async` on the `forEach` callback is kept deliberately: it turns a
+ * throwing `formatter` into a rejected promise the global
+ * `unhandledrejection` handler reports, so the remaining entries still
+ * run and the caller gets a partially-sorted array instead of an
+ * exception reaching the render.
  */
 export const applySortings = <T, H>(
   array: T[],

@@ -223,9 +223,12 @@ export const orderRows = (
 
   if (!searchValue) return sorted;
 
+  const scores = new Map<TransactionRow, number>();
+  for (const row of sorted) scores.set(row, hit(searchValue, row));
+
   return sorted.sort((a, b) => {
-    const hitA = hit(searchValue, a);
-    const hitB = hit(searchValue, b);
+    const hitA = scores.get(a) ?? 0;
+    const hitB = scores.get(b) ?? 0;
     if (hitA < hitB) return 1;
     if (hitA > hitB) return -1;
     return 0;
