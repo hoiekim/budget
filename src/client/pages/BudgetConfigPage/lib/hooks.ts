@@ -47,8 +47,10 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
     while (!current.done) {
       const budgetLike = current.value;
       const { id, type } = budgetLike;
-      const { status } = await call.post(`/api/${type}`, budgetLike);
-      if (status !== "success") throw new Error(`Failed to update ${type}: ${id}`);
+      const { status, message } = await call.post(`/api/${type}`, budgetLike);
+      if (status !== "success") {
+        throw new Error(message || `Failed to update ${type}: ${id}`);
+      }
       current = iterator.next();
     }
 
@@ -271,28 +273,29 @@ export const useRemove = () => {
       if (!confirm) return;
     }
 
-    const { status } = await call.delete(`/api/${type}` + queryString);
-    if (status === "success") {
-      setData((oldData) => {
-        const newData = new Data(oldData);
-        const storeName = type === "budget" ? StoreName.budgets : type === "section" ? StoreName.sections : StoreName.categories;
-        indexedDb.remove(storeName, id).catch(console.error);
-        if (type === "budget") {
-          const newDictionary = new BudgetDictionary(newData.budgets);
-          newDictionary.delete(id);
-          newData.budgets = newDictionary;
-        } else if (type === "section") {
-          const newDictionary = new SectionDictionary(newData.sections);
-          newDictionary.delete(id);
-          newData.sections = newDictionary;
-        } else {
-          const newDictionary = new CategoryDictionary(newData.categories);
-          newDictionary.delete(id);
-          newData.categories = newDictionary;
-        }
-        return newData;
-      });
+    const { status, message } = await call.delete(`/api/${type}` + queryString);
+    if (status !== "success") {
+      throw new Error(message || `Failed to delete ${type}: ${id}`);
     }
+    setData((oldData) => {
+      const newData = new Data(oldData);
+      const storeName = type === "budget" ? StoreName.budgets : type === "section" ? StoreName.sections : StoreName.categories;
+      indexedDb.remove(storeName, id).catch(console.error);
+      if (type === "budget") {
+        const newDictionary = new BudgetDictionary(newData.budgets);
+        newDictionary.delete(id);
+        newData.budgets = newDictionary;
+      } else if (type === "section") {
+        const newDictionary = new SectionDictionary(newData.sections);
+        newDictionary.delete(id);
+        newData.sections = newDictionary;
+      } else {
+        const newDictionary = new CategoryDictionary(newData.categories);
+        newDictionary.delete(id);
+        newData.categories = newDictionary;
+      }
+      return newData;
+    });
   };
 
   return remove;

@@ -129,6 +129,11 @@ export const BudgetConfigPage = () => {
   const finishEditing = () => router.back();
 
   const onComplete = async () => {
+    if (budgetLike.type === "budget" && !nameInput?.trim()) {
+      window.alert("Budget name cannot be empty.");
+      return;
+    }
+
     try {
       await save(budgetLike, {
         name: nameInput,
@@ -138,6 +143,8 @@ export const BudgetConfigPage = () => {
       });
     } catch (error: unknown) {
       console.error(error);
+      window.alert(error instanceof Error ? error.message : `Failed to save ${budgetLike.type}.`);
+      return;
     }
 
     router.back();
@@ -148,6 +155,8 @@ export const BudgetConfigPage = () => {
       await remove(budgetLike);
     } catch (error: unknown) {
       console.error(error);
+      window.alert(error instanceof Error ? error.message : `Failed to delete ${budgetLike.type}.`);
+      return;
     }
 
     finishEditing();
