@@ -222,7 +222,7 @@ describe("polygon", () => {
         } as Response);
       });
 
-      await getLatestClosePriceOnOrBefore("AAPL", "2024-01-15", 3);
+      await getLatestClosePriceOnOrBefore("AAPL", "2024-01-15", null, 3);
       expect(seen.length).toBe(1);
       expect(seen[0]).toContain("/range/1/day/2024-01-12/2024-01-15");
     });
@@ -263,6 +263,85 @@ describe("polygon", () => {
       const result = await getLatestClosePriceOnOrBefore("VOO", "2024-01-15");
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.tradingDate).toBe("2024-01-15");
+    });
+  });
+
+  describe("crypto ticker namespace", () => {
+    const captureUrls = (price = 100) => {
+      const seen: string[] = [];
+      globalThis.fetch = mock((url: string) => {
+        seen.push(url);
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({ results: [{ c: price, t: Date.UTC(2024, 0, 15) }] }),
+        } as Response);
+      });
+      return seen;
+    };
+
+    it("getClosePrice requests X:{ticker}USD for a cryptocurrency security", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const seen = captureUrls();
+
+      await getClosePrice("BTC", new Date("2024-01-15"), "cryptocurrency");
+
+      expect(seen.length).toBe(1);
+      expect(seen[0]).toContain("/v2/aggs/ticker/X:BTCUSD/range/1/day/");
+    });
+
+    it("getClosePrice keeps the bare ticker for non-crypto types", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const seen = captureUrls();
+
+      await getClosePrice("BTC", new Date("2024-01-15"), "equity");
+      await getClosePrice("VOO", new Date("2024-01-15"), null);
+      await getClosePrice("AAPL", new Date("2024-01-15"));
+
+      expect(seen[0]).toContain("/v2/aggs/ticker/BTC/range/1/day/");
+      expect(seen[1]).toContain("/v2/aggs/ticker/VOO/range/1/day/");
+      expect(seen[2]).toContain("/v2/aggs/ticker/AAPL/range/1/day/");
+    });
+
+    it("does not double-prefix a ticker already in the crypto namespace", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const seen = captureUrls();
+
+      await getClosePrice("X:ETHUSD", new Date("2024-01-15"), "cryptocurrency");
+
+      expect(seen[0]).toContain("/v2/aggs/ticker/X:ETHUSD/range/1/day/");
+      expect(seen[0]).not.toContain("X:X:");
+    });
+
+    it("a crypto lookup is never satisfied by the equity cache entry for the same ticker string", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const prices = [34.17, 110312.56];
+      const seen: string[] = [];
+      globalThis.fetch = mock((url: string) => {
+        seen.push(url);
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ results: [{ c: prices[seen.length - 1] }] }),
+        } as Response);
+      });
+
+      const date = new Date("2024-01-15");
+      const equity = await getClosePrice("BTC", date, "equity");
+      const crypto = await getClosePrice("BTC", date, "cryptocurrency");
+
+      expect(seen.length).toBe(2);
+      expect(equity.success && equity.data).toBe(34.17);
+      expect(crypto.success && crypto.data).toBe(110312.56);
+    });
+
+    it("getLatestClosePriceOnOrBefore requests X:{ticker}USD for a cryptocurrency security", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const seen = captureUrls();
+
+      await getLatestClosePriceOnOrBefore("BTC", "2024-01-15", "cryptocurrency");
+
+      expect(seen.length).toBe(1);
+      expect(seen[0]).toContain("/v2/aggs/ticker/X:BTCUSD/range/1/day/");
     });
   });
 

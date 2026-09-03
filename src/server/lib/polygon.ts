@@ -56,8 +56,24 @@ export type PolygonResult<T> =
     };
 
 /**
+ * Polygon namespaces crypto separately from US equities: a bare `BTC`
+ * addresses the US-listed equity trading under that ticker, while Bitcoin
+ * lives at `X:BTCUSD`. Map cryptocurrency securities onto the `X:{BASE}USD`
+ * pair so their lookups never resolve to a same-ticker stock.
+ */
+export const toPolygonTicker = (
+  ticker_symbol: string,
+  securityType?: JSONSecurity["type"],
+): string => {
+  if (securityType !== "cryptocurrency") return ticker_symbol;
+  if (ticker_symbol.startsWith("X:")) return ticker_symbol;
+  return `X:${ticker_symbol}USD`;
+};
+
+/**
  * Simple in-memory cache for price data
- * Key format: `${ticker}:${dateString}`
+ * Key format: `${polygonTicker}:${dateString}` — the resolved polygon
+ * ticker, so an equity and a crypto sharing a ticker string cache apart.
  */
 const priceCache = new Map<string, { price: number; fetchedAt: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -107,6 +123,7 @@ const fetchWithRetry = async (url: string, maxRetries = 2, delayMs = 1000): Prom
 export const getClosePrice = async (
   ticker_symbol: string,
   date: Date,
+  securityType?: JSONSecurity["type"],
 ): Promise<PolygonResult<number>> => {
   if (!getApiKey()) {
     return {
@@ -116,8 +133,9 @@ export const getClosePrice = async (
     };
   }
 
+  const polygonTicker = toPolygonTicker(ticker_symbol, securityType);
   const dateString = getDateString(date);
-  const cacheKey = `${ticker_symbol}:${dateString}`;
+  const cacheKey = `${polygonTicker}:${dateString}`;
 
   // Check cache first
   const cached = priceCache.get(cacheKey);
@@ -127,7 +145,7 @@ export const getClosePrice = async (
 
   const from = dateString;
   const to = dateString;
-  const tickerParameter = `ticker/${ticker_symbol}`;
+  const tickerParameter = `ticker/${polygonTicker}`;
   const rangeParameter = `range/1/day/${from}/${to}`;
   const path = `${POLYGON_HOST}/v2/aggs/${tickerParameter}/${rangeParameter}?apiKey=${getApiKey()}`;
 
@@ -140,7 +158,7 @@ export const getClosePrice = async (
       return {
         success: false,
         error: "no_data",
-        message: `No price data available for ${ticker_symbol} on ${dateString}`,
+        message: `No price data available for ${polygonTicker} on ${dateString}`,
       };
     }
 
@@ -152,11 +170,11 @@ export const getClosePrice = async (
     return { success: true, data: price };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error(`Polygon API error for ${ticker_symbol}: ${message}`, { component: "polygon" });
+    logger.error(`Polygon API error for ${polygonTicker}: ${message}`, { component: "polygon" });
     return {
       success: false,
       error: "api_error",
-      message: `Failed to fetch price for ${ticker_symbol}: ${message}`,
+      message: `Failed to fetch price for ${polygonTicker}: ${message}`,
     };
   }
 };
@@ -216,11 +234,14 @@ export const getTickerDetail = async (
 export const getLatestClosePriceOnOrBefore = async (
   ticker_symbol: string,
   dateOrString: Date | string,
+  securityType?: JSONSecurity["type"],
   lookbackDays = 7,
 ): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
   if (!getApiKey()) {
     return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
   }
+
+  const polygonTicker = toPolygonTicker(ticker_symbol, securityType);
 
   // Compute `to` and `from` as YYYY-MM-DD purely from the string, avoiding
   // local-timezone shifts. (PST's `getDate()` on a UTC-midnight Date is one
@@ -233,7 +254,7 @@ export const getLatestClosePriceOnOrBefore = async (
   toAnchor.setUTCDate(toAnchor.getUTCDate() - lookbackDays);
   const from = toAnchor.toISOString().slice(0, 10);
 
-  const path = `${POLYGON_HOST}/v2/aggs/ticker/${ticker_symbol}/range/1/day/${from}/${to}?apiKey=${getApiKey()}`;
+  const path = `${POLYGON_HOST}/v2/aggs/ticker/${polygonTicker}/range/1/day/${from}/${to}?apiKey=${getApiKey()}`;
 
   try {
     const response = await polygonQueue.add(() => fetchWithRetry(path));
@@ -245,7 +266,7 @@ export const getLatestClosePriceOnOrBefore = async (
         message:
           typeof json.message === "string"
             ? json.message
-            : `Polygon plan does not include data for ${ticker_symbol} in [${from}, ${to}]`,
+            : `Polygon plan does not include data for ${polygonTicker} in [${from}, ${to}]`,
       };
     }
     const results = json.results as Array<{ c: number; t: number }> | undefined;
@@ -253,7 +274,7 @@ export const getLatestClosePriceOnOrBefore = async (
       return {
         success: false,
         error: "no_data",
-        message: `No price data for ${ticker_symbol} in [${from}, ${to}]`,
+        message: `No price data for ${polygonTicker} in [${from}, ${to}]`,
       };
     }
     const last = results[results.length - 1];
@@ -262,7 +283,7 @@ export const getLatestClosePriceOnOrBefore = async (
     return { success: true, data: { price: last.c, tradingDate } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error(`Polygon range fetch error for ${ticker_symbol}: ${message}`, {
+    logger.error(`Polygon range fetch error for ${polygonTicker}: ${message}`, {
       component: "polygon",
     });
     return { success: false, error: "api_error", message };

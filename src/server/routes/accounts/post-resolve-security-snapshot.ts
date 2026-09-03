@@ -116,7 +116,11 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
     }
 
     // Polygon fetch
-    const priceResult = await polygon.getLatestClosePriceOnOrBefore(ticker, effectiveDateStr);
+    const priceResult = await polygon.getLatestClosePriceOnOrBefore(
+      ticker,
+      effectiveDateStr,
+      security.type,
+    );
     if (!priceResult.success) {
       const message =
         priceResult.error === "no_api_key"
