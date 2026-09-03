@@ -3,13 +3,30 @@ import {
   updateTransactions,
   requireBodyObject,
   requireStringField,
+  validateFields,
   validationError,
   inferLabelConfidence,
   recordCategoryRejection,
   getPrevLabel,
 } from "server";
-import type { PartialTransaction, PrevLabel } from "server";
+import type { FieldSpec, PartialTransaction, PrevLabel } from "server";
 import { logger } from "server/lib/logger";
+
+/**
+ * Typed fields `TransactionModel.fromJSON` copies into a row
+ * (`models/transaction.ts`). `amount` and `date` are not nullable: `date` is
+ * a `DATE NOT NULL` column and the client's `JSONTransaction.amount` is a
+ * plain `number` that downstream arithmetic reads unguarded. The `label.*`
+ * fields accept explicit null — that is how the client clears a label.
+ */
+const TRANSACTION_BODY_SPEC: FieldSpec[] = [
+  { path: "amount", type: "number" },
+  { path: "date", type: "date" },
+  { path: "pending", type: "boolean", nullable: true },
+  { path: "label.budget_id", type: "uuid", nullable: true },
+  { path: "label.category_id", type: "uuid", nullable: true },
+  { path: "label.category_confidence", type: "number", nullable: true },
+];
 
 export interface TransactionPostResponse {
   transaction_id: string;
@@ -36,6 +53,11 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
     const txIdResult = requireStringField(bodyResult.data!, "transaction_id" as keyof object);
     if (!txIdResult.success) {
       return validationError(txIdResult.error!);
+    }
+
+    const fieldsResult = validateFields(bodyResult.data!, TRANSACTION_BODY_SPEC);
+    if (!fieldsResult.success) {
+      return validationError(fieldsResult.error!);
     }
 
     try {

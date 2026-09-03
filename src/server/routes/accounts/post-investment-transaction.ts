@@ -1,6 +1,29 @@
-import { Route, updateInvestmentTransactions, requireBodyObject, requireStringField, validationError } from "server";
-import type { PartialInvestmentTransaction } from "server";
+import {
+  Route,
+  updateInvestmentTransactions,
+  requireBodyObject,
+  requireStringField,
+  validateFields,
+  validationError,
+} from "server";
+import type { FieldSpec, PartialInvestmentTransaction } from "server";
 import { logger } from "server/lib/logger";
+
+/**
+ * Typed fields `InvTxModel.fromJSON` copies into a row
+ * (`models/investment_transaction.ts`). `label.budget_id` and
+ * `label.category_id` land in `UUID` columns on this table too, so they are
+ * guarded even though the numeric trio is the headline; explicit null is how
+ * the client clears a label.
+ */
+const INVESTMENT_TRANSACTION_BODY_SPEC: FieldSpec[] = [
+  { path: "amount", type: "number" },
+  { path: "quantity", type: "number" },
+  { path: "price", type: "number" },
+  { path: "date", type: "date" },
+  { path: "label.budget_id", type: "uuid", nullable: true },
+  { path: "label.category_id", type: "uuid", nullable: true },
+];
 
 export interface InvestmentTransactionPostResponse {
   investment_transaction_id: string;
@@ -25,6 +48,9 @@ export const postInvestmentTransactionRoute = new Route<InvestmentTransactionPos
 
     const idResult = requireStringField(body, "investment_transaction_id");
     if (!idResult.success) return validationError(idResult.error!);
+
+    const fieldsResult = validateFields(body, INVESTMENT_TRANSACTION_BODY_SPEC);
+    if (!fieldsResult.success) return validationError(fieldsResult.error!);
 
     try {
       const response = await updateInvestmentTransactions(user, [body as PartialInvestmentTransaction]);
