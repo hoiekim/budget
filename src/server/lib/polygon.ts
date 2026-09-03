@@ -234,9 +234,12 @@ export const getTickerDetail = async (
 export const getLatestClosePriceOnOrBefore = async (
   ticker_symbol: string,
   dateOrString: Date | string,
-  securityType?: JSONSecurity["type"],
-  lookbackDays = 7,
+  options: {
+    lookbackDays?: number;
+    securityType?: JSONSecurity["type"];
+  } = {},
 ): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
+  const { lookbackDays = 7, securityType } = options;
   if (!getApiKey()) {
     return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
   }

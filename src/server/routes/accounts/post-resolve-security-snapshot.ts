@@ -119,7 +119,7 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
     const priceResult = await polygon.getLatestClosePriceOnOrBefore(
       ticker,
       effectiveDateStr,
-      security.type,
+      { securityType: security.type },
     );
     if (!priceResult.success) {
       const message =

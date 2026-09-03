@@ -222,7 +222,7 @@ describe("polygon", () => {
         } as Response);
       });
 
-      await getLatestClosePriceOnOrBefore("AAPL", "2024-01-15", null, 3);
+      await getLatestClosePriceOnOrBefore("AAPL", "2024-01-15", { lookbackDays: 3 });
       expect(seen.length).toBe(1);
       expect(seen[0]).toContain("/range/1/day/2024-01-12/2024-01-15");
     });
@@ -338,7 +338,7 @@ describe("polygon", () => {
       process.env.POLYGON_API_KEY = "test-key";
       const seen = captureUrls();
 
-      await getLatestClosePriceOnOrBefore("BTC", "2024-01-15", "cryptocurrency");
+      await getLatestClosePriceOnOrBefore("BTC", "2024-01-15", { securityType: "cryptocurrency" });
 
       expect(seen.length).toBe(1);
       expect(seen[0]).toContain("/v2/aggs/ticker/X:BTCUSD/range/1/day/");
