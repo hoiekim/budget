@@ -29,7 +29,6 @@ export const BalanceChartRow = ({
 
   const date = viewDate.getEndDate();
   const today = new Date();
-  const interval = viewDate.getInterval();
 
   const accountAssets: StackData[] = [];
   const accountLiabilities: StackData[] = [];
@@ -60,9 +59,8 @@ export const BalanceChartRow = ({
   const budgetColumns = getBudgetColumns(
     budgets.toArray(),
     configuration.budget_ids,
-    budgetData.getRolledOver,
-    date,
-    interval,
+    budgetData.getSummary,
+    viewDate,
   );
   const column1: AnnotatedStack[] = [...accountAssets, ...budgetColumns.assets];
   const column2: AnnotatedStack[] = [...accountLiabilities, ...budgetColumns.liabilities];

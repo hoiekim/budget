@@ -1,22 +1,26 @@
 // Run with: bun test --preload ./scripts/test-preload.ts lib.test.ts
 import { describe, test, expect } from "bun:test";
 
-import { LocalDate, MAX_FLOAT } from "common";
+import { LocalDate, MAX_FLOAT, ViewDate } from "common";
 import { getBudgetColumns } from "./lib";
 import { Budget, Capacity } from "client";
 
 const DATE = new LocalDate("2026-03-15");
+const MONTH_VIEW = new ViewDate("month", DATE);
 
 const budget = (name: string, month: number, roll_over = false) =>
   new Budget({ name, roll_over, capacities: [new Capacity({ month })] });
+
+const summaries = (rolledOver: Record<string, number>) => (b: Budget) => ({
+  rolled_over_amount: rolledOver[b.id] ?? 0,
+});
 
 const columnsOf = (budgets: Budget[], rolledOver: Record<string, number> = {}) =>
   getBudgetColumns(
     budgets,
     budgets.map((b) => b.id),
-    (b) => rolledOver[b.id] ?? 0,
-    DATE,
-    "month",
+    summaries(rolledOver),
+    MONTH_VIEW,
   );
 
 const named = (stacks: { name: string }[]) => stacks.map((s) => s.name);
@@ -60,6 +64,19 @@ describe("getBudgetColumns — capacity shapes the picker already classifies", (
     const { assets, liabilities } = columnsOf([unlimited], {
       [unlimited.id]: -6 * MAX_FLOAT,
     });
+
+    expect(named(assets)).toEqual([]);
+    expect(named(liabilities)).toEqual([]);
+  });
+
+  test("an unlimited rollover budget is skipped even when its carry is finite", () => {
+    // A rollover window that has not opened yet carries 0, so the guard on the
+    // stacked amount has nothing to catch. Unlimited is a classification, not a
+    // magnitude — the budget reserves no finite amount at any carry, so the
+    // capacity guard has to hold independently of what the carry came out to.
+    const unlimited = budget("Transfers", MAX_FLOAT, true);
+
+    const { assets, liabilities } = columnsOf([unlimited], { [unlimited.id]: 0 });
 
     expect(named(assets)).toEqual([]);
     expect(named(liabilities)).toEqual([]);
@@ -139,9 +156,8 @@ describe("getBudgetColumns — capacity shapes the picker already classifies", (
     const yearly = getBudgetColumns(
       [expense, unlimited],
       [expense.id, unlimited.id],
-      () => 0,
-      DATE,
-      "year",
+      summaries({}),
+      new ViewDate("year", DATE),
     );
 
     expect(yearly.liabilities.map((s) => [s.name, s.amount])).toEqual([["Groceries", 4800]]);
@@ -160,13 +176,12 @@ describe("getBudgetColumns — capacity shapes the picker already classifies", (
       ],
     });
 
-    const before = getBudgetColumns([raised], [raised.id], () => 0, DATE, "month");
+    const before = getBudgetColumns([raised], [raised.id], summaries({}), MONTH_VIEW);
     const after = getBudgetColumns(
       [raised],
       [raised.id],
-      () => 0,
-      new LocalDate("2026-07-15"),
-      "month",
+      summaries({}),
+      new ViewDate("month", new LocalDate("2026-07-15")),
     );
 
     expect(before.liabilities[0].amount).toBe(400);
@@ -180,11 +195,62 @@ describe("getBudgetColumns — capacity shapes the picker already classifies", (
     const { liabilities } = getBudgetColumns(
       [selected, unselected],
       [selected.id],
-      () => 0,
-      DATE,
-      "month",
+      summaries({}),
+      MONTH_VIEW,
     );
 
     expect(named(liabilities)).toEqual(["Groceries"]);
+  });
+
+  test("a budget that was unlimited EARLIER in its rollover window is skipped on its carry", () => {
+    // Capacities supersede each other by `active_from` and the infinite toggle
+    // is per-version, so a budget can read a finite capacity today while the
+    // months it spent unlimited each contributed a sentinel to the carry the
+    // accrual loop built. Reading only the capacity at the view date lets that
+    // carry onto the chart, which is the reported symptom through a second door.
+    const versioned = new Budget({
+      name: "Transfers",
+      roll_over: true,
+      capacities: [
+        new Capacity({ month: MAX_FLOAT }),
+        new Capacity({ month: 400, active_from: new LocalDate("2026-06-01") }),
+      ],
+    });
+    const view = new ViewDate("month", new LocalDate("2026-07-15"));
+
+    const { assets, liabilities } = getBudgetColumns(
+      [versioned],
+      [versioned.id],
+      summaries({ [versioned.id]: -3 * MAX_FLOAT }),
+      view,
+    );
+
+    expect(versioned.getActiveAmount(view.getEndDate(), "month")).toBe(400);
+    expect(named(assets)).toEqual([]);
+    expect(named(liabilities)).toEqual([]);
+  });
+
+  test("the carry is read through the summary for the caller's view, not re-derived here", () => {
+    // A year view's carry is the value INTO the year, which is what the budget's
+    // bar and detail page show. Passing the year's end date to a bare rollover
+    // read instead puts eleven months of accrual between the chart's number and
+    // theirs, in the same column as capacities aggregated the other way.
+    const rolling = budget("Groceries", 400, true);
+    const yearView = new ViewDate("year", DATE);
+    const asked: ViewDate[] = [];
+
+    const { assets } = getBudgetColumns(
+      [rolling],
+      [rolling.id],
+      (_b, v) => {
+        asked.push(v);
+        return { rolled_over_amount: 120 };
+      },
+      yearView,
+    );
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toBe(yearView);
+    expect(assets[0].amount).toBe(120);
   });
 });
