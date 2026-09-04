@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
+import ts from "typescript";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
@@ -24,8 +25,7 @@ const SKIP_DIR = /^(?:node_modules|build|dist|coverage|\.git)$/;
 
 /**
  * Names that reach their reader by a route no static extraction can follow,
- * each with the reason. An entry is a claim someone checked, and the only way
- * a name is exempted — there is no path by which a variable absolves itself.
+ * each with the reason. Declaring a name here is the only way it is exempted.
  */
 const INDIRECTLY_READ: Record<string, string> = {};
 
@@ -46,129 +46,122 @@ const filesUnder = (roots: string[]): string[] =>
     return sourceFiles(dir, root !== ".");
   });
 
-const ENV_OBJECT = /(?:process|Bun)\.env\s*(?:\?\.)?\[\s*$/;
-const ASSIGNMENT = /^\s*(?:\?\?|\|\||&&|\+|-|\*|\/|%|\*\*)?=(?!=)/;
+const SCRIPT_KIND: Record<string, ts.ScriptKind> = {
+  ".ts": ts.ScriptKind.TS,
+  ".mts": ts.ScriptKind.TS,
+  ".cts": ts.ScriptKind.TS,
+  ".tsx": ts.ScriptKind.TSX,
+  ".js": ts.ScriptKind.JS,
+  ".mjs": ts.ScriptKind.JS,
+  ".cjs": ts.ScriptKind.JS,
+  ".jsx": ts.ScriptKind.JSX,
+};
 
-interface Scanned {
-  /** Comment bodies and string contents blanked to spaces. Text that merely
-   *  looks like a read is not one, and brace depth stays balanced. */
-  code: string;
-  /** `env["NAME"]` names, collected before blanking hides them. */
-  bracketReads: string[];
+/** `process.env` / `Bun.env`, in optional-chained form too. */
+const isEnvObject = (node: ts.Node): boolean =>
+  ts.isPropertyAccessExpression(node) &&
+  node.name.text === "env" &&
+  ts.isIdentifier(node.expression) &&
+  (node.expression.text === "process" || node.expression.text === "Bun");
+
+/**
+ * A variable the server assigns to itself is not a surface an operator
+ * supplies, so writes are excluded whatever their operator.
+ */
+const isWriteTarget = (access: ts.Node): boolean => {
+  const parent = access.parent;
+  if (ts.isDeleteExpression(parent)) return true;
+  if (ts.isPostfixUnaryExpression(parent)) return true;
+  if (ts.isPrefixUnaryExpression(parent)) {
+    return (
+      parent.operator === ts.SyntaxKind.PlusPlusToken ||
+      parent.operator === ts.SyntaxKind.MinusMinusToken
+    );
+  }
+  if (ts.isBinaryExpression(parent) && parent.left === access) {
+    const { kind } = parent.operatorToken;
+    return kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
+  }
+  return false;
+};
+
+interface Extraction {
+  /** Variable names this file reads off the env object. */
+  read: string[];
+  /** Sites that hand the env object somewhere the parser cannot follow. */
+  opaque: string[];
 }
 
-const scan = (source: string): Scanned => {
-  const out = source.split("");
-  const bracketReads: string[] = [];
-  let i = 0;
+/**
+ * Every read of the env object in one file, taken off the parsed syntax tree.
+ *
+ * Working from the tree rather than the text is what makes a name in a comment,
+ * a log string or a JSX text node impossible to mistake for a read. An access
+ * that reaches the env object under no statically known name — a spread, a
+ * computed key, an alias — is reported as opaque rather than dropped.
+ */
+const extract = (file: string): Extraction => {
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    SCRIPT_KIND[path.extname(file)] ?? ts.ScriptKind.TS
+  );
 
-  const blank = (from: number, to: number) => {
-    for (let j = from; j < to; j++) if (out[j] !== "\n") out[j] = " ";
+  const read: string[] = [];
+  const opaque: string[] = [];
+
+  const site = (node: ts.Node, reason: string) => {
+    const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+    opaque.push(`${path.relative(REPO_ROOT, file)}:${line + 1}: ${reason}`);
   };
 
-  while (i < source.length) {
-    const two = source.slice(i, i + 2);
-    if (two === "//") {
-      const end = source.indexOf("\n", i);
-      blank(i, end === -1 ? source.length : end);
-      i = end === -1 ? source.length : end;
-    } else if (two === "/*") {
-      const end = source.indexOf("*/", i + 2);
-      const stop = end === -1 ? source.length : end + 2;
-      blank(i, stop);
-      i = stop;
-    } else if (source[i] === '"' || source[i] === "'" || source[i] === "`") {
-      const quote = source[i];
-      let j = i + 1;
-      while (j < source.length && source[j] !== quote) {
-        if (source[j] === "\\") j += 1;
-        j += 1;
-      }
-      const body = source.slice(i + 1, j);
-      if (ENV_OBJECT.test(source.slice(0, i)) && !body.includes("\\")) {
-        const close = source.indexOf("]", j);
-        const isDelete = /delete\s+(?:process|Bun)\.env\s*(?:\?\.)?\[\s*$/.test(
-          source.slice(0, i)
-        );
-        if (close !== -1 && !isDelete && !ASSIGNMENT.test(source.slice(close + 1))) {
-          bracketReads.push(body);
+  const visit = (node: ts.Node) => {
+    if (isEnvObject(node)) {
+      const parent = node.parent;
+      if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
+        if (!isWriteTarget(parent)) read.push(parent.name.text);
+      } else if (ts.isElementAccessExpression(parent) && parent.expression === node) {
+        const key = parent.argumentExpression;
+        if (ts.isStringLiteralLike(key)) {
+          if (!isWriteTarget(parent)) read.push(key.text);
+        } else {
+          site(parent, "computed key");
         }
-      }
-      blank(i + 1, j);
-      i = j + 1;
-    } else {
-      i += 1;
-    }
-  }
-
-  return { code: out.join(""), bracketReads };
-};
-
-const DOT_READ = /(delete\s+)?(?:process|Bun)\.env\s*(?:\?\.|\.)\s*([A-Za-z_$][A-Za-z0-9_$]*)/g;
-
-/**
-  * `env.NAME` on the right-hand side. A variable the server assigns to itself is
-  * not a surface an operator supplies, so writes are excluded whatever their
-  * operator. The name is one whole-identifier capture and the assignment test
-  * runs outside the pattern, so no name can be reported as a partial match.
-  */
-const dotReads = (code: string): string[] => {
-  const names: string[] = [];
-  for (const match of code.matchAll(DOT_READ)) {
-    if (match[1]) continue;
-    if (ASSIGNMENT.test(code.slice(match.index + match[0].length))) continue;
-    names.push(match[2]);
-  }
-  return names;
-};
-
-/** `const { A, B = "fallback" } = env`, single- or multi-line. */
-const destructuredReads = (code: string): string[] => {
-  const names: string[] = [];
-  for (const match of code.matchAll(/\}\s*=\s*(?:process|Bun)\.env\b/g)) {
-    const close = code.indexOf("}", match.index);
-    let depth = 0;
-    let open = -1;
-    for (let i = close; i >= 0; i--) {
-      if (code[i] === "}") depth += 1;
-      else if (code[i] === "{") {
-        depth -= 1;
-        if (depth === 0) {
-          open = i;
-          break;
+      } else if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
+        if (ts.isObjectBindingPattern(parent.name)) {
+          for (const element of parent.name.elements) {
+            const key = element.propertyName ?? element.name;
+            if (element.dotDotDotToken) site(element, "rest binding");
+            else if (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) read.push(key.text);
+            else site(element, "computed binding");
+          }
+        } else {
+          site(parent, `bound to ${parent.name.getText(source)}`);
         }
+      } else {
+        site(node, `reached as ${ts.SyntaxKind[parent.kind]}`);
       }
     }
-    if (open === -1) continue;
-    for (const part of code.slice(open + 1, close).split(",")) {
-      names.push(part.split(/[=:]/)[0].trim());
-    }
-  }
-  return names;
-};
+    ts.forEachChild(node, visit);
+  };
 
-/**
- * `const env = process.env` hands the object to a name this file cannot follow.
- * Reporting it is the only honest option: skipping it would let an undocumented
- * read through, and guessing at the alias's members would invent evidence.
- */
-const aliases = (code: string): string[] =>
-  [...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:process|Bun)\.env\s*(?![.?[\w$])/g)]
-    .map((match) => match[1]);
+  visit(source);
+  return { read, opaque };
+};
 
 const collect = (roots: string[]) => {
   const read = new Set<string>();
-  const aliased: string[] = [];
+  const opaque: string[] = [];
   for (const file of filesUnder(roots)) {
-    const { code, bracketReads } = scan(readFileSync(file, "utf8"));
-    for (const name of [...dotReads(code), ...destructuredReads(code), ...bracketReads]) {
+    const extraction = extract(file);
+    for (const name of extraction.read) {
       if (/^[A-Z_][A-Z0-9_]*$/.test(name)) read.add(name);
     }
-    for (const alias of aliases(code)) {
-      aliased.push(`${path.relative(REPO_ROOT, file)}: ${alias}`);
-    }
+    opaque.push(...extraction.opaque);
   }
-  return { read, aliased };
+  return { read, opaque };
 };
 
 const documentedVariables = (): Set<string> =>
@@ -197,7 +190,7 @@ describe(".env.example", () => {
     expect(dead).toEqual([]);
   });
 
-  it("has no env alias it cannot follow", () => {
-    expect(collect(ALL_ROOTS).aliased).toEqual([]);
+  it("has no env access whose variable name it cannot resolve", () => {
+    expect(collect(ALL_ROOTS).opaque).toEqual([]);
   });
 });
