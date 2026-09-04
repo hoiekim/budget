@@ -150,7 +150,7 @@ describe("get-transfers", () => {
     expect(values).toEqual(["u-B"]);
   });
 
-  test("projects `updated` and `is_deleted: false` on active pairs (delta-delivery contract)", async () => {
+  test("projects `updated` on active pairs (delta-delivery contract)", async () => {
     const pairRow = {
       pair_id: "p-1",
       user_id: "u-1",
@@ -190,7 +190,6 @@ describe("get-transfers", () => {
 
     const result = await getTransfersRoute.execute(makeReq(), fakeRes());
     expect(result?.body?.[0].updated).toBe("2026-05-02T09:00:00Z");
-    expect(result?.body?.[0].is_deleted).toBe(false);
   });
 
   test("default (no include-deleted) excludes soft-deleted pairs at the SQL layer", async () => {
@@ -219,9 +218,9 @@ describe("get-transfers", () => {
     );
 
     expect(result?.status).toBe("success");
-    // Tombstone shape: pair_id + is_deleted + updated, no transactions.
+    // Tombstone shape: pair_id + status + updated, no transactions.
     expect(result?.body).toEqual([
-      { pair_id: "p-dead", status: "confirmed", transactions: [], updated: "2026-05-03T12:00:00Z", is_deleted: true },
+      { pair_id: "p-dead", status: "confirmed", transactions: [], updated: "2026-05-03T12:00:00Z" },
     ]);
     // A tombstone needs no transaction resolution — only the pairs SELECT runs.
     expect(mockQuery).toHaveBeenCalledTimes(1);
@@ -252,9 +251,9 @@ describe("get-transfers", () => {
     );
 
     expect(result?.status).toBe("success");
-    // Eviction signal carries status='rejected' + is_deleted:false, no txns.
+    // Eviction signal carries status='rejected', no txns.
     expect(result?.body).toEqual([
-      { pair_id: "p-rej", status: "rejected", transactions: [], updated: "2026-05-04T08:00:00Z", is_deleted: false },
+      { pair_id: "p-rej", status: "rejected", transactions: [], updated: "2026-05-04T08:00:00Z" },
     ]);
     // No transaction resolution for eviction signals.
     expect(mockQuery).toHaveBeenCalledTimes(1);
@@ -281,42 +280,76 @@ describe("get-transfers", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  test("updated-after=<cursor> narrows the pairs SELECT to rows whose `updated` moved", async () => {
-    // The dateRange primitive emits `updated >= $N` (inclusive with a
-    // 60s cursorForNextSync safety margin owned by the FE) — the intent
-    // is a delta cutoff, not a strict inequality.
+  const activePairRow = {
+    pair_id: "p-1",
+    user_id: "u-1",
+    transaction_id_a: "t-a",
+    transaction_id_b: "t-b",
+    status: "confirmed",
+    created_at: "2026-05-01T00:00:00Z",
+    updated: "2026-05-02T09:00:00Z",
+    is_deleted: false,
+  };
+
+  test("start-date narrows the pairs SELECT by `updated`", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransfersRoute.execute(
-      makeReq({ query: { "updated-after": "2026-08-17T00:00:00Z" } }),
+      makeReq({ query: { "start-date": "2026-05-02T00:00:00Z" } }),
       fakeRes(),
     );
     const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
-    expect(pairsSql).toMatch(/updated\s*>=\s*\$\d+/);
-    expect(pairsValues).toEqual(expect.arrayContaining(["2026-08-17T00:00:00Z"]));
+    expect(pairsSql).toMatch(/updated >= \$2/);
+    expect(pairsValues).toEqual(["u-1", "2026-05-02T00:00:00Z"]);
   });
 
-  test("omitted updated-after issues a full-set fetch — no `updated >=` clause on the pairs SELECT", async () => {
+  test("no start-date leaves the read unbounded (cold sync)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransfersRoute.execute(makeReq(), fakeRes());
-    const [pairsSql] = mockQuery.mock.calls[0];
-    expect(pairsSql).not.toMatch(/updated\s*>=/);
+    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    expect(pairsSql).not.toMatch(/updated >=/);
+    expect(pairsValues).toEqual(["u-1"]);
   });
 
-  test("updated-after + include-deleted composes: cursor filter AND tombstone delivery both apply", async () => {
-    // The two SQL guarantees the delta path relies on, verified at the
-    // wire boundary rather than through the model resolver: the pairs
-    // SELECT (a) filters by updated>=$cursor and (b) drops the
-    // soft-delete exclusion so eviction rows survive.
+  test("start-date composes with include-deleted — cursor filter plus tombstone delivery", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransfersRoute.execute(
-      makeReq({
-        query: { "updated-after": "2026-08-17T00:00:00Z", "include-deleted": "true" },
-      }),
+      makeReq({ query: { "start-date": "2026-05-02T00:00:00Z", "include-deleted": "true" } }),
       fakeRes(),
     );
     const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
-    expect(pairsSql).toMatch(/updated\s*>=\s*\$\d+/);
+    expect(pairsSql).toMatch(/updated >= \$2/);
     expect(pairsSql).not.toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
-    expect(pairsValues).toEqual(expect.arrayContaining(["2026-08-17T00:00:00Z"]));
+    expect(pairsValues).toEqual(["u-1", "2026-05-02T00:00:00Z"]);
+  });
+
+  test("include-deleted=true turns an active pair with unresolvable transactions into an eviction signal", async () => {
+    // The pair row is active and not rejected, but neither half comes back
+    // from the (soft-delete-excluding) transactions query. Omitting it is
+    // enough for a client that replaces wholesale; a delta reducer never
+    // revisits an id it isn't sent, so it has to be told explicitly.
+    mockQuery.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await getTransfersRoute.execute(
+      makeReq({ query: { "include-deleted": "true" } }),
+      fakeRes(),
+    );
+
+    expect(result?.body).toEqual([
+      {
+        pair_id: "p-1",
+        status: "confirmed",
+        transactions: [],
+        updated: "2026-05-02T09:00:00Z",
+      },
+    ]);
+  });
+
+  test("default (no include-deleted) still drops an unresolvable pair silently", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await getTransfersRoute.execute(makeReq(), fakeRes());
+    expect(result?.body).toEqual([]);
   });
 });

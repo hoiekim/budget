@@ -122,7 +122,20 @@ export class SecuritySnapshotDictionary extends Dictionary<
   SecuritySnapshotDictionary
 > {}
 
-export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {}
+export class TransactionDictionary extends Dictionary<Transaction, TransactionDictionary> {
+  /**
+   * The two halves a transfer pair should render, in server order.
+   *
+   * `TransferPair.transactions` is a denormalized copy taken when the pair
+   * row was last written, and nothing bumps `transaction_pairs.updated`
+   * when a referenced transaction changes — so a Plaid amount finalization
+   * or a memo edit leaves the pair's copy behind. Read through to the
+   * authoritative transactions instead, keeping the embedded copy only for
+   * a half that isn't loaded (outside the fetched window, or soft-deleted).
+   */
+  resolveTransferSides = (pair: TransferPair): TransferPair["transactions"] =>
+    pair.transactions.map((t) => this.get(t.transaction_id) ?? t);
+}
 
 /**
  * Pair-keyed dictionary of transfers. Keys are pair_id; values are the
@@ -171,6 +184,23 @@ export class TransferDictionary extends Dictionary<TransferPair, TransferDiction
       this.pivot.get(transaction_id)?.status === "confirmed",
   };
 
+  /**
+   * Retire `pair`'s claim on its halves. A transaction_id can only be
+   * claimed by one pair at a time, and a delta batch can hand us the
+   * replacement before the retirement: a Plaid removal cascade
+   * soft-deletes `(A, C)` while the same detection run inserts `(A, B)`,
+   * so the reducer runs `set("p-AB")` and then `delete("p-AC")`. Deleting
+   * unconditionally would strip `A` from the pivot even though it now
+   * points at the live pair, and `byTransactionId.get("A")` would answer
+   * undefined until a reload rebuilt the pivot from IDB. Only drop the
+   * entry that still points at the pair being retired.
+   */
+  private unclaim = (pair: TransferPair): void => {
+    pair.transactions.forEach((t) => {
+      if (this.pivot.get(t.transaction_id) === pair) this.pivot.delete(t.transaction_id);
+    });
+  };
+
   // Dictionary's `set` is an arrow-function field, not a prototype
   // method, so `super.set` from our own arrow field doesn't resolve
   // (TS2855). Call `Map.prototype.set` directly — same effect as
@@ -178,9 +208,7 @@ export class TransferDictionary extends Dictionary<TransferPair, TransferDiction
   // transfers (this is FE-only code).
   override set = (pair_id: string, pair: TransferPair): this => {
     const prev = Map.prototype.get.call(this, pair_id) as TransferPair | undefined;
-    if (prev) {
-      prev.transactions.forEach((t) => this.pivot.delete(t.transaction_id));
-    }
+    if (prev) this.unclaim(prev);
     pair.transactions.forEach((t) => this.pivot.set(t.transaction_id, pair));
     Map.prototype.set.call(this, pair_id, pair);
     return this;
@@ -188,9 +216,7 @@ export class TransferDictionary extends Dictionary<TransferPair, TransferDiction
 
   override delete = (pair_id: string): boolean => {
     const prev = Map.prototype.get.call(this, pair_id) as TransferPair | undefined;
-    if (prev) {
-      prev.transactions.forEach((t) => this.pivot.delete(t.transaction_id));
-    }
+    if (prev) this.unclaim(prev);
     return Map.prototype.delete.call(this, pair_id);
   };
 }
