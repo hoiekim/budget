@@ -227,8 +227,8 @@ export const orderRows = (
   for (const row of sorted) scores.set(row, hit(searchValue, row));
 
   return sorted.sort((a, b) => {
-    const hitA = scores.get(a) ?? 0;
-    const hitB = scores.get(b) ?? 0;
+    const hitA = scores.get(a)!;
+    const hitB = scores.get(b)!;
     if (hitA < hitB) return 1;
     if (hitA > hitB) return -1;
     return 0;

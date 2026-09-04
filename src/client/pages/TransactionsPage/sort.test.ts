@@ -425,6 +425,38 @@ describe("applySortings — the comparator orderRows is built on", () => {
     expect(byDate("descending")).toEqual(["i-A", "i-C", "i-B", "i-D"]);
     expect(byDate("ascending")).toEqual(["i-D", "i-A", "i-C", "i-B"]);
   });
+
+  test("the formatter resolves each element once per entry, not once per comparison", () => {
+    const rows = [
+      makeInvestment("o-1", "2026-02-03", -300),
+      makeInvestment("a-1", "2026-02-17", -100),
+      makeInvestment("D-1", "2026-02-04", -500),
+      makeInvestment("1-1", "2026-02-13", -200),
+    ];
+    const ctx = makeCtx();
+    const formattedPerKey = new Map<string, TransactionRow[]>();
+    const counting = (e: TransactionRow, key: string) => {
+      const seen = formattedPerKey.get(key) || [];
+      seen.push(e);
+      formattedPerKey.set(key, seen);
+      return format(e, key, ctx);
+    };
+
+    applySortings(
+      rows,
+      new Map([
+        ["amount", "descending"],
+        ["date", "descending"],
+      ]),
+      (e, key) => counting(e, key as string),
+    );
+
+    expect([...formattedPerKey.keys()].sort()).toEqual(["amount", "date"]);
+    for (const seen of formattedPerKey.values()) {
+      expect(seen).toHaveLength(rows.length);
+      expect(new Set(seen).size).toBe(rows.length);
+    }
+  });
 });
 
 describe("getSearchPool", () => {

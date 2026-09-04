@@ -54,11 +54,16 @@ export interface Sorter<H = unknown> {
  * is the primary key and earlier ones survive as tiebreaks. Exported so
  * a caller's formatter can be tested against the real comparison.
  *
+ * Each entry resolves its comparison key once per element before
+ * sorting, rather than once per comparison, so a formatter that
+ * allocates stays O(n) per entry.
+ *
  * The `async` on the `forEach` callback is kept deliberately: it turns a
  * throwing `formatter` into a rejected promise the global
  * `unhandledrejection` handler reports, so the remaining entries still
- * run and the caller gets a partially-sorted array instead of an
- * exception reaching the render.
+ * run instead of an exception reaching the render. The throw lands
+ * during key resolution, so that entry leaves the array in the order the
+ * previous entries left it.
  */
 export const applySortings = <T, H>(
   array: T[],
@@ -66,9 +71,12 @@ export const applySortings = <T, H>(
   formatter: Formatter<T, H>,
 ): T[] => {
   sortings.forEach(async (option, key) => {
+    const comparisonKeys = new Map<T, ReturnType<Formatter<T, H>>>();
+    for (const e of array) comparisonKeys.set(e, formatter(e, key));
+
     array.sort((a, b) => {
       const comparable = new Comparable(a, b);
-      comparable.format((e) => formatter(e, key));
+      comparable.format((e) => comparisonKeys.get(e));
       const aMinusB = comparable.a === comparable.b ? 0 : comparable.a > comparable.b ? 1 : -1;
       if (option === "ascending") return aMinusB;
       else return -aMinusB;
