@@ -32,16 +32,30 @@ mock.module("pg", () => ({
   default: { Pool: FakePool, types: { setTypeParser: () => {} } },
 }));
 
+// `mock.module` is process-global in Bun and `restoreLeaves` only restores the
+// `pg` / `bcrypt` leaves, so spread the real module rather than replacing it —
+// `alarm.test.ts` drives `resetAlarmState` — and put it back in `afterAll`
+// (the post-plaid-hook.test.ts pattern) so sibling files sharing the process
+// exercise the real `sendAlarm`.
+const realAlarm = { ...(await import("server/lib/alarm")) };
+
+const mockSendAlarm = mock(async (_title: string, _detail: string, _key?: string) => undefined);
+mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm }));
+
 const { postTransactionRoute } = await import("./post-transaction");
 const { postSplitTransactionRoute } = await import("./post-split-transaction");
 const { postInvestmentTransactionRoute } = await import("./post-investment-transaction");
 
-afterAll(restoreLeaves);
+afterAll(() => {
+  mock.module("server/lib/alarm", () => realAlarm);
+  restoreLeaves();
+});
 
 beforeEach(() => {
   // Clear the call log but keep the flag-driven implementation (mockReset would
   // wipe it, and re-setting an impl per test doesn't reliably stick in Bun).
   mockQuery.mockClear();
+  mockSendAlarm.mockClear();
   failQueries = false;
 });
 
@@ -91,6 +105,27 @@ const findUpdate = (table: string): { sql: string; values: unknown[] } | null =>
   return null;
 };
 
+// The validateFields specs pin the UUID-columned ids and label fields, so
+// fixtures carry real UUIDs rather than short shorthands that a UUID column
+// would reject in production anyway.
+const SPLIT_UUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+const CATEGORY_UUID = "9b2a44a0-1c23-4d56-8e9f-0a1b2c3d4e5f";
+const BUDGET_UUID = "7c1d33b0-2d34-4e67-9fa0-1b2c3d4e5f6a";
+
+/**
+ * A malformed typed field must be refused before any SQL and before the alarm
+ * path. `failQueries` is armed so a missing guard reaches the FakePool, throws
+ * the way Postgres throws on a bad value, and trips both assertions.
+ */
+const rejects = async (route: AnyRoute, body: unknown, expectedError: string) => {
+  failQueries = true;
+  const result = await route.execute(makeReq(route, body, "u-1"), fakeRes());
+  expect(result?.status).toBe("failed");
+  expect(result?.message).toBe(expectedError);
+  expect(mockQuery).not.toHaveBeenCalled();
+  expect(mockSendAlarm).not.toHaveBeenCalled();
+};
+
 const SENTINEL = Symbol("column-absent");
 /**
  * Pull the value bound to `column` in an UPDATE built by `buildUpdate`
@@ -123,7 +158,7 @@ describe("post-transaction route", () => {
 
   test("rejects a missing transaction_id", async () => {
     const result = await postTransactionRoute.execute(
-      makeReq(postTransactionRoute, { label: { category_id: "c-1" } }, "u-1"),
+      makeReq(postTransactionRoute, { label: { category_id: CATEGORY_UUID } }, "u-1"),
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
@@ -133,7 +168,7 @@ describe("post-transaction route", () => {
 
   test("set-category with confidence omitted → infers category_confidence = 1, scoped to user", async () => {
     const result = await postTransactionRoute.execute(
-      makeReq(postTransactionRoute, { transaction_id: "t-1", label: { category_id: "c-1" } }, "u-1"),
+      makeReq(postTransactionRoute, { transaction_id: "t-1", label: { category_id: CATEGORY_UUID } }, "u-1"),
       fakeRes(),
     );
     expect(result?.status).toBe("success");
@@ -142,7 +177,7 @@ describe("post-transaction route", () => {
     const upd = findUpdate("transactions");
     expect(upd).not.toBeNull();
     expect(boundValue(upd!, "label_category_confidence")).toBe(1);
-    expect(boundValue(upd!, "label_category_id")).toBe("c-1");
+    expect(boundValue(upd!, "label_category_id")).toBe(CATEGORY_UUID);
     // updateTransactions scopes the write to the session user (4th arg userId).
     expect(upd!.values).toContain("u-1");
     expect(upd!.values).toContain("t-1");
@@ -165,7 +200,7 @@ describe("post-transaction route", () => {
     const result = await postTransactionRoute.execute(
       makeReq(
         postTransactionRoute,
-        { transaction_id: "t-1", label: { category_id: "c-1", category_confidence: 0.42 } },
+        { transaction_id: "t-1", label: { category_id: CATEGORY_UUID, category_confidence: 0.42 } },
         "u-1",
       ),
       fakeRes(),
@@ -187,12 +222,96 @@ describe("post-transaction route", () => {
     const result = await postTransactionRoute.execute(req, fakeRes());
     expect(result?.status).toBe("error");
   });
+
+  test("a non-number amount is refused before it reaches the DECIMAL column", async () => {
+    await rejects(
+      postTransactionRoute,
+      { transaction_id: "t-1", amount: "abc" },
+      "Field amount must be a number",
+    );
+  });
+
+  test("a non-date date is refused before it reaches the DATE column", async () => {
+    for (const value of ["hello", "", "2026-13-45"]) {
+      mockQuery.mockClear();
+      mockSendAlarm.mockClear();
+      await rejects(
+        postTransactionRoute,
+        { transaction_id: "t-1", date: value },
+        "Field date must be a date",
+      );
+    }
+  });
+
+  test("a non-UUID label.budget_id is refused before it reaches the UUID column", async () => {
+    await rejects(
+      postTransactionRoute,
+      { transaction_id: "t-1", label: { budget_id: "nope" } },
+      "Field label.budget_id must be a uuid",
+    );
+  });
+
+  test("a non-UUID label.category_id is refused before it reaches the UUID column", async () => {
+    await rejects(
+      postTransactionRoute,
+      { transaction_id: "t-1", label: { category_id: "nope2" } },
+      "Field label.category_id must be a uuid",
+    );
+  });
+
+  test("a string label.category_confidence is refused before it reaches the FLOAT column", async () => {
+    await rejects(
+      postTransactionRoute,
+      { transaction_id: "t-1", label: { category_confidence: "high" } },
+      "Field label.category_confidence must be a number",
+    );
+  });
+
+  test("a well-formed manual-edit body passes validation and reaches the repo", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(
+        postTransactionRoute,
+        {
+          transaction_id: "t-1",
+          amount: 12.34,
+          // What the client sends from its `type="date"` input.
+          date: "2026-08-24",
+          label: { budget_id: BUDGET_UUID },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "amount")).toBe(12.34);
+    expect(boundValue(upd!, "label_budget_id")).toBe(BUDGET_UUID);
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("an explicit null label.budget_id (the client's clear flow) is accepted", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(
+        postTransactionRoute,
+        { transaction_id: "t-1", label: { budget_id: null, category_id: null } },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "label_budget_id")).toBeNull();
+  });
 });
 
 describe("post-split-transaction route", () => {
   test("rejects unauthenticated requests", async () => {
     const result = await postSplitTransactionRoute.execute(
-      makeReq(postSplitTransactionRoute, { split_transaction_id: "s-1" }),
+      makeReq(postSplitTransactionRoute, { split_transaction_id: SPLIT_UUID }),
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
@@ -210,7 +329,7 @@ describe("post-split-transaction route", () => {
 
   test("rejects a missing split_transaction_id", async () => {
     const result = await postSplitTransactionRoute.execute(
-      makeReq(postSplitTransactionRoute, { label: { category_id: "c-1" } }, "u-1"),
+      makeReq(postSplitTransactionRoute, { label: { category_id: CATEGORY_UUID } }, "u-1"),
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
@@ -222,25 +341,25 @@ describe("post-split-transaction route", () => {
     const result = await postSplitTransactionRoute.execute(
       makeReq(
         postSplitTransactionRoute,
-        { split_transaction_id: "s-1", label: { category_id: "c-1" } },
+        { split_transaction_id: SPLIT_UUID, label: { category_id: CATEGORY_UUID } },
         "u-1",
       ),
       fakeRes(),
     );
     expect(result?.status).toBe("success");
-    expect(result?.body).toEqual({ split_transaction_id: "s-1" });
+    expect(result?.body).toEqual({ split_transaction_id: SPLIT_UUID });
 
     const upd = findUpdate("split_transactions");
     expect(upd).not.toBeNull();
     expect(boundValue(upd!, "label_category_confidence")).toBe(1);
-    expect(boundValue(upd!, "label_category_id")).toBe("c-1");
+    expect(boundValue(upd!, "label_category_id")).toBe(CATEGORY_UUID);
   });
 
   test("clear-category (category_id: null) → infers category_confidence = 0", async () => {
     const result = await postSplitTransactionRoute.execute(
       makeReq(
         postSplitTransactionRoute,
-        { split_transaction_id: "s-1", label: { category_id: null } },
+        { split_transaction_id: SPLIT_UUID, label: { category_id: null } },
         "u-1",
       ),
       fakeRes(),
@@ -257,7 +376,7 @@ describe("post-split-transaction route", () => {
     const result = await postSplitTransactionRoute.execute(
       makeReq(
         postSplitTransactionRoute,
-        { split_transaction_id: "s-1", label: { category_id: "c-1", category_confidence: 0.7 } },
+        { split_transaction_id: SPLIT_UUID, label: { category_id: CATEGORY_UUID, category_confidence: 0.7 } },
         "u-1",
       ),
       fakeRes(),
@@ -272,7 +391,7 @@ describe("post-split-transaction route", () => {
     const result = await postSplitTransactionRoute.execute(
       makeReq(
         postSplitTransactionRoute,
-        { split_transaction_id: "s-1", label: { category_id: "c-1" } },
+        { split_transaction_id: SPLIT_UUID, label: { category_id: CATEGORY_UUID } },
         "u-1",
       ),
       fakeRes(),
@@ -288,7 +407,7 @@ describe("post-split-transaction route", () => {
     expect(whereUserId).not.toBeNull();
     expect(wherePk).not.toBeNull();
     expect(upd!.values[Number(whereUserId![1]) - 1]).toBe("u-1");
-    expect(upd!.values[Number(wherePk![1]) - 1]).toBe("s-1");
+    expect(upd!.values[Number(wherePk![1]) - 1]).toBe(SPLIT_UUID);
   });
 
   test("surfaces a DB error as a failed response", async () => {
@@ -300,12 +419,74 @@ describe("post-split-transaction route", () => {
     const result = await postSplitTransactionRoute.execute(
       makeReq(
         postSplitTransactionRoute,
-        { split_transaction_id: "s-1", label: { category_id: "c-1" } },
+        { split_transaction_id: SPLIT_UUID, label: { category_id: CATEGORY_UUID } },
         "u-1",
       ),
       fakeRes(),
     );
     expect(result?.status).toBe("error");
+  });
+
+  test("a non-UUID split_transaction_id is refused before it reaches the WHERE clause", async () => {
+    await rejects(
+      postSplitTransactionRoute,
+      { split_transaction_id: "not-a-uuid" },
+      "Field split_transaction_id must be a uuid",
+    );
+  });
+
+  test("a non-number amount is refused before it reaches the DECIMAL column", async () => {
+    await rejects(
+      postSplitTransactionRoute,
+      { split_transaction_id: SPLIT_UUID, amount: "abc" },
+      "Field amount must be a number",
+    );
+  });
+
+  test("a non-date date is refused before it reaches the DATE column", async () => {
+    for (const value of ["bad", "2026-02-30"]) {
+      mockQuery.mockClear();
+      mockSendAlarm.mockClear();
+      await rejects(
+        postSplitTransactionRoute,
+        { split_transaction_id: SPLIT_UUID, date: value },
+        "Field date must be a date",
+      );
+    }
+  });
+
+  test("a non-UUID label.budget_id is refused before it reaches the UUID column", async () => {
+    await rejects(
+      postSplitTransactionRoute,
+      { split_transaction_id: SPLIT_UUID, label: { budget_id: "nope" } },
+      "Field label.budget_id must be a uuid",
+    );
+  });
+
+  test("the add flow's whole-instance body passes validation and reaches the repo", async () => {
+    const result = await postSplitTransactionRoute.execute(
+      makeReq(
+        postSplitTransactionRoute,
+        {
+          split_transaction_id: SPLIT_UUID,
+          transaction_id: "t-1",
+          account_id: "a-1",
+          amount: 6.17,
+          // What the client serializes, via `getDateTimeString`.
+          date: "2026-08-24T00:00:00",
+          custom_name: "Unknown",
+          label: { budget_id: null, category_id: null, memo: null, category_confidence: null },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("split_transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "amount")).toBe(6.17);
+    expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 });
 
@@ -330,7 +511,7 @@ describe("post-investment-transaction route", () => {
 
   test("rejects a missing investment_transaction_id", async () => {
     const result = await postInvestmentTransactionRoute.execute(
-      makeReq(postInvestmentTransactionRoute, { label: { category_id: "c-1" } }, "u-1"),
+      makeReq(postInvestmentTransactionRoute, { label: { category_id: CATEGORY_UUID } }, "u-1"),
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
@@ -342,7 +523,7 @@ describe("post-investment-transaction route", () => {
     const result = await postInvestmentTransactionRoute.execute(
       makeReq(
         postInvestmentTransactionRoute,
-        { investment_transaction_id: "i-1", label: { category_id: "c-1" } },
+        { investment_transaction_id: "i-1", label: { category_id: CATEGORY_UUID } },
         "u-1",
       ),
       fakeRes(),
@@ -352,7 +533,7 @@ describe("post-investment-transaction route", () => {
 
     const upd = findUpdate("investment_transactions");
     expect(upd).not.toBeNull();
-    expect(boundValue(upd!, "label_category_id")).toBe("c-1");
+    expect(boundValue(upd!, "label_category_id")).toBe(CATEGORY_UUID);
     // The route does not call inferLabelConfidence, so no confidence column is
     // written — distinguishing it from the other two routes in the trio.
     expect(boundValue(upd!, "label_category_confidence")).toBe(SENTINEL);
@@ -367,12 +548,77 @@ describe("post-investment-transaction route", () => {
     failQueries = true;
     const req = makeReq(
       postInvestmentTransactionRoute,
-      { investment_transaction_id: "i-1", label: { category_id: "c-1" } },
+      { investment_transaction_id: "i-1", label: { category_id: CATEGORY_UUID } },
       "u-1",
     );
     // Unlike post-split-transaction, this route checks `result.status >= 400`
     // and rethrows; Route.execute converts that into an error response.
     const result = await postInvestmentTransactionRoute.execute(req, fakeRes());
     expect(result?.status).toBe("error");
+  });
+
+  test("a non-number amount is refused before it reaches the DECIMAL column", async () => {
+    await rejects(
+      postInvestmentTransactionRoute,
+      { investment_transaction_id: "i-1", amount: "abc" },
+      "Field amount must be a number",
+    );
+  });
+
+  test("a non-number quantity is refused before it reaches the DECIMAL column", async () => {
+    await rejects(
+      postInvestmentTransactionRoute,
+      { investment_transaction_id: "i-1", quantity: "many" },
+      "Field quantity must be a number",
+    );
+  });
+
+  test("a non-number price is refused before it reaches the DECIMAL column", async () => {
+    await rejects(
+      postInvestmentTransactionRoute,
+      { investment_transaction_id: "i-1", price: {} },
+      "Field price must be a number",
+    );
+  });
+
+  test("a non-date date is refused before it reaches the DATE column", async () => {
+    await rejects(
+      postInvestmentTransactionRoute,
+      { investment_transaction_id: "i-1", date: "2026-13-45" },
+      "Field date must be a date",
+    );
+  });
+
+  test("a non-UUID label.budget_id is refused before it reaches the UUID column", async () => {
+    await rejects(
+      postInvestmentTransactionRoute,
+      { investment_transaction_id: "i-1", label: { budget_id: "nope" } },
+      "Field label.budget_id must be a uuid",
+    );
+  });
+
+  test("a well-formed manual-edit body passes validation and reaches the repo", async () => {
+    const result = await postInvestmentTransactionRoute.execute(
+      makeReq(
+        postInvestmentTransactionRoute,
+        {
+          investment_transaction_id: "i-1",
+          amount: 100.5,
+          quantity: 2.5,
+          price: 40.2,
+          date: "2026-08-24",
+          label: { budget_id: BUDGET_UUID, category_id: null },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("investment_transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "quantity")).toBe(2.5);
+    expect(boundValue(upd!, "label_budget_id")).toBe(BUDGET_UUID);
+    expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 });
