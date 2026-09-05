@@ -23,7 +23,8 @@ import {
   TransactionsTable,
   parseTransactionsTypes,
 } from "client/components";
-import { useTransactionHit } from "./hooks";
+import { useOrderingContext, useTransactionHit } from "./hooks";
+import { buildSortKey, orderRows, TransactionRow } from "./sort";
 import {
   isAcceptableSuggestion,
   isInConfirmedTransfer,
@@ -44,19 +45,17 @@ export type TransactionsPageParams = {
 };
 
 export const TransactionsPage = () => {
-  const { data, calculations, viewDate, router, setData } = useAppContext();
+  const { data, viewDate, router, setData } = useAppContext();
   const {
     transactions,
     investmentTransactions,
     splitTransactions,
     accounts,
-    institutions,
     budgets,
     sections,
     categories,
     transfers,
   } = data;
-  const { transactionFamilies } = calculations;
 
   const [searchValue, setSearchValue] = useState("");
 
@@ -75,19 +74,17 @@ export const TransactionsPage = () => {
 
   const isInvestment = account?.type === AccountType.Investment;
 
-  const hit = useTransactionHit();
+  const orderingCtx = useOrderingContext();
+  const hit = useTransactionHit(orderingCtx);
 
-  // Stable storage key for the sort preferences — distinct per
-  // type-filter combination so e.g. an "expenses" sort doesn't collide
-  // with an "expenses,transfers" sort.
-  const sortKey = ["transactions", ...types].join("_");
+  const sortKey = buildSortKey(isInvestment, types);
 
-  const sorter = useSorter<
-    Transaction | InvestmentTransaction | SplitTransaction,
-    TransactionHeaders & InvestmentTransactionHeaders
-  >(sortKey, new Map([["date", "descending"]]));
+  const sorter = useSorter<TransactionHeaders & InvestmentTransactionHeaders>(
+    sortKey,
+    new Map([["date", "descending"]]),
+  );
 
-  const { sort } = sorter;
+  const { sortings } = sorter;
 
   const filteredAndSorted = useMemo(() => {
     // budget_id is checked inline (with the "account default" fallback)
@@ -113,8 +110,10 @@ export const TransactionsPage = () => {
 
     const matchesType = predicates.any(types);
 
+    let filtered: TransactionRow[];
+
     if (isInvestment) {
-      const filtered = investmentTransactions.filter((e) => {
+      filtered = investmentTransactions.filter((e) => {
         // Zero-amount rows are hidden by default — they're the Plaid-side
         // non-trade / fee-waiver / qty=0 corrections that shouldn't
         // surface in the tx list. But manual mints from `Add
@@ -137,16 +136,6 @@ export const TransactionsPage = () => {
         if (!matchesType(e)) return false;
         if (budget_id && effectiveBudgetId(e) !== budget_id) return false;
         return isSubset(e, filters);
-      });
-
-      return filtered.sort((a, b) => {
-        const scoreA = hit(searchValue, a);
-        const scoreB = hit(searchValue, b);
-        if (scoreA < scoreB) return 1;
-        if (scoreA > scoreB) return -1;
-        if (a.id < b.id) return 1;
-        if (a.id > b.id) return -1;
-        return 0;
       });
     } else {
       const filterTransaction = (e: Transaction | SplitTransaction) => {
@@ -195,65 +184,13 @@ export const TransactionsPage = () => {
         return true;
       };
 
-      const filtered = [
+      filtered = [
         ...transactions.filter(filterTransaction),
         ...splitTransactions.filter(filterTransaction),
-      ].sort((a, b) =>
-        a.transaction_id > b.transaction_id ? 1 : a.transaction_id === b.transaction_id ? 0 : -1,
-      );
-
-      const sortedByColumns = sort(filtered, (e, key) => {
-        if (e instanceof InvestmentTransaction) {
-          if (key === "date") {
-            return new LocalDate(e.date);
-          } else if (key === "account") {
-            const account = accounts.get(e.account_id);
-            return account?.custom_name || account?.name || "";
-          } else if (key === "institution") {
-            const account = accounts.get(e.account_id);
-            return institutions.get(account?.institution_id || "")?.name || "";
-          } else {
-            return e[key as keyof InvestmentTransaction] || e.id;
-          }
-        } else {
-          const t = e.toTransaction();
-          if (key === "date") {
-            return new LocalDate(t.authorized_date || t.date);
-          } else if (key === "merchant_name") {
-            return t.merchant_name || t.name || "";
-          } else if (key === "account") {
-            const account = accounts.get(t.account_id);
-            return account?.custom_name || account?.name || "";
-          } else if (key === "institution") {
-            const account = accounts.get(t.account_id);
-            return institutions.get(account?.institution_id || "")?.name || "";
-          } else if (key === "category") {
-            return categories.get(e.label.category_id || "")?.name || "";
-          } else if (key === "budget") {
-            const account = accounts.get(t.account_id);
-            const budget_id = e.label.budget_id || account?.label.budget_id;
-            return budgets.get(budget_id || "")?.name || "";
-          } else if (key === "location") {
-            const { city, region, country } = t.location;
-            return [city, region || country].filter((e) => e).join(", ");
-          } else if (key === "amount") {
-            return t.getRemainingAmount(transactionFamilies);
-          } else {
-            return t[key as keyof Transaction] || t.id;
-          }
-        }
-      });
-
-      if (!searchValue) return sortedByColumns;
-
-      return sortedByColumns.sort((a, b) => {
-        const hitA = hit(searchValue, a);
-        const hitB = hit(searchValue, b);
-        if (hitA < hitB) return 1;
-        if (hitA > hitB) return -1;
-        return 0;
-      });
+      ];
     }
+
+    return orderRows(filtered, sortings, orderingCtx, hit, searchValue);
   }, [
     isInvestment,
     transactions,
@@ -263,10 +200,7 @@ export const TransactionsPage = () => {
     viewDate,
     types,
     transfers,
-    budgets,
-    categories,
-    institutions,
-    sort,
+    sortings,
     account_id,
     budget_id,
     section_id,
@@ -274,7 +208,7 @@ export const TransactionsPage = () => {
     hit,
     searchValue,
     section,
-    transactionFamilies,
+    orderingCtx,
   ]);
 
   // Rows in the current view that carry an accepted-suggestion status —
@@ -429,6 +363,7 @@ export const TransactionsPage = () => {
       <TransactionsPageTitle
         filters={{ account, budget, section, category }}
         sorter={sorter}
+        sortKey={sortKey}
         onChangeSearchValue={setSearchValue}
       />
       {!!totalSuggestedCount && (

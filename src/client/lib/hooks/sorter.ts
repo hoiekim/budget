@@ -4,8 +4,8 @@ import { useLocalStorageState } from "client";
 class Comparable<T> {
   A: T;
   B: T;
-  a: string | number | Date = 0;
-  b: string | number | Date = 0;
+  a: string | number = 0;
+  b: string | number = 0;
 
   constructor(a: T, b: T) {
     this.A = a;
@@ -21,8 +21,9 @@ class Comparable<T> {
       (typeof a === "string" && typeof b === "string") ||
       (a instanceof Date && b instanceof Date)
     ) {
-      this.a = a;
-      this.b = b;
+      // Compared with `===` below, so a `Date` has to become its instant.
+      this.a = a instanceof Date ? a.getTime() : a;
+      this.b = b instanceof Date ? b.getTime() : b;
     } else {
       this.a = 0;
       this.b = 0;
@@ -38,8 +39,7 @@ type GetVisible<H> = (key: keyof H) => boolean;
 type ToggleVisible<H> = (key: keyof H) => void;
 type Formatter<T, H> = (e: T, key: keyof H) => string | number | Date | unknown;
 
-export interface Sorter<T = unknown, H = unknown> {
-  sort: (array: T[], formatter: Formatter<T, H>) => T[];
+export interface Sorter<H = unknown> {
   setSortBy: SetSortBy<H>;
   getArrow: GetArrow<H>;
   visibles: { [k in keyof H]?: boolean };
@@ -48,11 +48,49 @@ export interface Sorter<T = unknown, H = unknown> {
   sortings: Sortings<H>;
 }
 
-export const useSorter = <T, H>(
+/**
+ * Apply a sorting map to an array, in place. Each entry re-sorts the
+ * whole array, so — `Array.prototype.sort` being stable — the last entry
+ * is the primary key and earlier ones survive as tiebreaks. Exported so
+ * a caller's formatter can be tested against the real comparison.
+ *
+ * Each entry resolves its comparison key once per element before
+ * sorting, rather than once per comparison, so a formatter that
+ * allocates stays O(n) per entry.
+ *
+ * The `async` on the `forEach` callback is kept deliberately: it turns a
+ * throwing `formatter` into a rejected promise the global
+ * `unhandledrejection` handler reports, so the remaining entries still
+ * run instead of an exception reaching the render. The throw lands
+ * during key resolution, so that entry leaves the array in the order the
+ * previous entries left it.
+ */
+export const applySortings = <T, H>(
+  array: T[],
+  sortings: Sortings<H>,
+  formatter: Formatter<T, H>,
+): T[] => {
+  sortings.forEach(async (option, key) => {
+    const comparisonKeys = new Map<T, ReturnType<Formatter<T, H>>>();
+    for (const e of array) comparisonKeys.set(e, formatter(e, key));
+
+    array.sort((a, b) => {
+      const comparable = new Comparable(a, b);
+      comparable.format((e) => comparisonKeys.get(e));
+      const aMinusB = comparable.a === comparable.b ? 0 : comparable.a > comparable.b ? 1 : -1;
+      if (option === "ascending") return aMinusB;
+      else return -aMinusB;
+    });
+  });
+
+  return array;
+};
+
+export const useSorter = <H>(
   name: string,
   initialSortings?: Sortings<H>,
   initialVisibles?: Visibles<H>
-): Sorter<T, H> => {
+): Sorter<H> => {
   const [sortings, setSortings] = useLocalStorageState<Sortings<H>>(
     `map_${name}_sortings`,
     initialSortings || new Map()
@@ -63,24 +101,7 @@ export const useSorter = <T, H>(
     initialVisibles || {}
   );
 
-  const sort: Sorter<T, H>["sort"] = useCallback(
-    (array, formatter) => {
-      sortings.forEach(async (option, key) => {
-        array.sort((a, b) => {
-          const comparable = new Comparable(a, b);
-          comparable.format((e) => formatter(e, key));
-          const aMinusB = comparable.a === comparable.b ? 0 : comparable.a > comparable.b ? 1 : -1;
-          if (option === "ascending") return aMinusB;
-          else return -aMinusB;
-        });
-      });
-
-      return array;
-    },
-    [sortings]
-  );
-
-  const setSortBy: Sorter<T, H>["setSortBy"] = useCallback(
+  const setSortBy: Sorter<H>["setSortBy"] = useCallback(
     (key) => {
       setSortings((oldSortings) => {
         const newSortings = new Map(oldSortings);
@@ -98,7 +119,7 @@ export const useSorter = <T, H>(
     [setSortings]
   );
 
-  const getArrow: Sorter<T, H>["getArrow"] = useCallback(
+  const getArrow: Sorter<H>["getArrow"] = useCallback(
     (key) => {
       switch (sortings.get(key)) {
         case "ascending":
@@ -112,12 +133,12 @@ export const useSorter = <T, H>(
     [sortings]
   );
 
-  const getVisible: Sorter<T, H>["getVisible"] = useCallback((key) => !!visibles[key], [visibles]);
+  const getVisible: Sorter<H>["getVisible"] = useCallback((key) => !!visibles[key], [visibles]);
 
-  const toggleVisible: Sorter<T, H>["toggleVisible"] = useCallback(
+  const toggleVisible: Sorter<H>["toggleVisible"] = useCallback(
     (key) => setVisibles((oldVisibles) => ({ ...oldVisibles, [key]: !oldVisibles[key] })),
     [setVisibles]
   );
 
-  return { sort, setSortBy, getArrow, visibles, getVisible, toggleVisible, sortings };
+  return { setSortBy, getArrow, visibles, getVisible, toggleVisible, sortings };
 };
