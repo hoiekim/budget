@@ -9,3 +9,7 @@ node_modules
 # Pass environment at runtime: docker run --env-file .env ...
 .env
 .env.*
+
+# Re-included: the builder's tests read the template to check it against the
+# variables the server reads. Placeholders only; no stage copies it to runtime.
+!.env.example
