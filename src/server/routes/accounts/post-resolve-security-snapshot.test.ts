@@ -443,6 +443,22 @@ describe("POST /api/resolve-security-snapshot — Polygon outcomes", () => {
     expect(insertCalls).toHaveLength(1);
   });
 
+  test("cryptocurrency security is fetched from polygon's crypto namespace, never the bare equity ticker", async () => {
+    securitiesRows = [securityRow({ ticker_symbol: "BTC", type: "cryptocurrency" })];
+    setPolygonResponse({
+      results: [{ c: 110312.56, t: Date.UTC(2026, 4, 13, 12, 0, 0) }],
+    });
+    const result = await postResolveSecuritySnapshotRoute.execute(
+      makeReq({ security_id: "sec-1", date: "2026-05-14" }),
+      fakeRes(),
+    );
+    expect(result?.body?.resolved).toBe(true);
+    expect(result?.body?.source).toBe("polygon");
+    expect(result?.body?.snapshot?.security.close_price).toBe(110312.56);
+    expect(lastFetchUrl).toContain("/v2/aggs/ticker/X:BTCUSD/range/1/day/");
+    expect(lastFetchUrl).not.toContain("/v2/aggs/ticker/BTC/");
+  });
+
   test("when snapshotsTable.upsert rejects, the route still returns resolved:true", async () => {
     // upsertSnapshots wraps each upsert in its own try/catch, so a rejection
     // inside the table call is swallowed and the route returns the freshly

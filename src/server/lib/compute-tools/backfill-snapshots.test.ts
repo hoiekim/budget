@@ -191,6 +191,32 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     expect(polygonCalls()).toHaveLength(4);
   });
 
+  test("cryptocurrency security is fetched from polygon's crypto namespace, never the bare equity ticker", async () => {
+    securitiesRows = [
+      makeSecurityRow({
+        security_id: "sec-sol",
+        ticker_symbol: "SOL",
+        type: "cryptocurrency",
+      }),
+    ];
+
+    const now = new Date();
+    const fromDate = new Date(now.getFullYear(), now.getMonth() - 1, 15).toISOString();
+
+    const result = await backfillMonthlySecuritySnapshotsForward([
+      { security_id: "sec-sol", fromDate },
+    ]);
+
+    const urls = polygonCalls();
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(url).toContain("/v2/aggs/ticker/X:SOLUSD/range/1/day/");
+      expect(url).not.toContain("/v2/aggs/ticker/SOL/");
+    }
+    expect(result.filled).toBe(2);
+    expect(result.errors).toBe(0);
+  });
+
   test("skips months that already have a snapshot", async () => {
     securitiesRows = [makeSecurityRow({ security_id: "sec-b", ticker_symbol: "TKR-B" })];
 

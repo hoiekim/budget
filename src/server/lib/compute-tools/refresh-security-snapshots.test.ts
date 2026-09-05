@@ -169,6 +169,22 @@ describe("refreshActiveSecuritySnapshots", () => {
     expect(upsertCalls[0].values.some((v) => String(v) === "sec-1-20260610")).toBe(true);
   });
 
+  test("cryptocurrency security is fetched from polygon's crypto namespace, never the bare equity ticker", async () => {
+    holdingsRows = [{ security_id: "sec-btc" }];
+    securitiesRows = [
+      securityRow({ security_id: "sec-btc", ticker_symbol: "BTC", type: "cryptocurrency" }),
+    ];
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const url = String(mockFetch.mock.calls[0][0]);
+    expect(url).toContain("/v2/aggs/ticker/X:BTCUSD/range/1/day/");
+    expect(url).not.toContain("/v2/aggs/ticker/BTC/");
+    expect(upsertCalls).toHaveLength(1);
+    expect(r.refreshed).toBe(1);
+  });
+
   test("cash (type='cash') is skipped — no polygon call", async () => {
     holdingsRows = [{ security_id: "cash-1" }];
     securitiesRows = [
