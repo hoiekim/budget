@@ -1,6 +1,7 @@
+import { JSONBudget } from "common";
 import { Route, createBudget } from "server";
 
-export type NewBudgetGetResponse = { budget_id: string };
+export type NewBudgetGetResponse = { budget: JSONBudget };
 
 export const getNewBudgetRoute = new Route<NewBudgetGetResponse>(
   "GET",
@@ -18,6 +19,6 @@ export const getNewBudgetRoute = new Route<NewBudgetGetResponse>(
     if (!response) {
       return { status: "failed", message: "Failed to create budget." };
     }
-    return { status: "success", body: { budget_id: response.budget_id } };
+    return { status: "success", body: { budget: response } };
   }
 );

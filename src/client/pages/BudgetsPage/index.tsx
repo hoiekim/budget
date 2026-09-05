@@ -130,14 +130,18 @@ export const BudgetsPage = () => {
     });
 
   const onClickAddBudget = async () => {
-    const { body } = await call.get<NewBudgetGetResponse>("/api/new-budget");
-    if (!body) return;
+    const { status, body, message } = await call.get<NewBudgetGetResponse>("/api/new-budget");
+    if (status !== "success" || !body) {
+      window.alert(message || "Failed to create budget.");
+      return;
+    }
 
-    const { budget_id } = body;
+    const { budget } = body;
+    const { budget_id } = budget;
 
     setData((oldData) => {
       const newData = new Data(oldData);
-      const newBudget = new Budget({ budget_id });
+      const newBudget = new Budget(budget);
       indexedDb.save(newBudget).catch(console.error);
       const newBudgets = new BudgetDictionary(newData.budgets);
       newBudgets.set(budget_id, newBudget);
