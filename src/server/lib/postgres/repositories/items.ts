@@ -18,7 +18,7 @@ import {
 } from "../models";
 import { softDeleteTransactionPairsByAccounts } from "./transactions";
 import { pool, withTransaction } from "../client";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
@@ -86,7 +86,6 @@ export const getUserItem = async (
 export const upsertItems = async (
   user: MaskedUser,
   items: PartialItem[],
-  upsert: boolean = true,
   client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!items.length) return [];
@@ -95,15 +94,8 @@ export const upsertItems = async (
   for (const item of items) {
     try {
       const row = ItemModel.fromJSON(item, user.user_id);
-      if (upsert) {
-        await itemsTable.upsert(row, undefined, client);
-        results.push(successResult(item.item_id, 1));
-      } else {
-        delete row.item_id;
-        delete row.user_id;
-        const updated = await itemsTable.update(item.item_id, row, undefined, undefined, client);
-        results.push(updated ? successResult(item.item_id, 1) : noChangeResult(item.item_id));
-      }
+      await itemsTable.upsert(row, undefined, client);
+      results.push(successResult(item.item_id, 1));
     } catch (error) {
       logger.error("Failed to upsert item", { itemId: item.item_id }, error);
       results.push(errorResult(item.item_id));

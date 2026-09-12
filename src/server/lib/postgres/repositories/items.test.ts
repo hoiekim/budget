@@ -1,12 +1,13 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
+import type { QueryExecutor } from "../models";
 import { AccountType, AccountSubtype } from "plaid";
 
 const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
 
 mock.module("pg", () => pg);
 
-const { deleteItem } = await import("./items");
+const { deleteItem, upsertItems } = await import("./items");
 
 afterAll(restoreLeaves);
 
@@ -204,5 +205,31 @@ describe("deleteItem", () => {
       ([sql]) => typeof sql === "string" && /UPDATE\s+transaction_pairs\b/i.test(sql),
     );
     expect(pairDeletes).toHaveLength(0);
+  });
+});
+
+describe("upsertItems", () => {
+  beforeEach(() => {
+    resetQueryMocks();
+    mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
+  });
+
+  test("writes through the executor it is handed, leaving the pool untouched", async () => {
+    const clientQuery = mock(async () => ({ rows: [], rowCount: 1 }));
+
+    await upsertItems(testUser, [{ item_id: "item-1" }], {
+      query: clientQuery,
+    } as unknown as QueryExecutor);
+
+    expect(clientQuery.mock.calls).toHaveLength(1);
+    expect(mockQuery.mock.calls).toHaveLength(0);
+  });
+
+  test("the write is an upsert — an id the caller supplied never keys a bare UPDATE", async () => {
+    await upsertItems(testUser, [{ item_id: "item-1" }]);
+
+    const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
+    expect(sqls.filter((sql) => /ON CONFLICT/i.test(sql))).toHaveLength(1);
+    expect(sqls.filter((sql) => /^\s*UPDATE\s/i.test(sql))).toHaveLength(0);
   });
 });
