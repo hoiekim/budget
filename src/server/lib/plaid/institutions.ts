@@ -11,7 +11,7 @@ import { getClient } from "./util";
  */
 const institutionQueue = new Queue({ maxInflight: 4 });
 
-export const getInstitution = async (
+const getInstitution = async (
   user: MaskedUser,
   id: string,
 ): Promise<JSONInstitution | undefined> => {
