@@ -140,6 +140,12 @@ export const clientErrorRateLimiter = createRateLimiter("client-error", {
 // resource it protects — the process-wide Polygon rate gate — is consumed
 // per lookup regardless of where the lookup came from. A symbol already in
 // the securities table never reaches the gate and so is never charged.
+//
+// The ceiling sits deliberately above what the gate itself will pass. Each
+// novel lookup costs two of its slots, so a caller typing symbols by hand
+// meets the gate's retryable "busy" answer long before this cap. What this
+// stops is the caller who does not read that answer: a script parking a new
+// request every few seconds indefinitely.
 export const validateTickerRateLimiter = createRateLimiter("validate-ticker", {
   maxAttempts: 10,
   windowMs: 60 * 1000,

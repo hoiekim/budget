@@ -153,7 +153,7 @@ export function requireTickerSymbol<T extends object>(
   if (!TICKER_SYMBOL_PATTERN.test(normalized)) {
     return {
       success: false,
-      error: `Field ${String(field)} must be 1-16 characters of A-Z, 0-9, '.', '-' or ':'`,
+      error: "Ticker symbol must be 1-16 characters of A-Z, 0-9, '.', '-' or ':'",
     };
   }
 

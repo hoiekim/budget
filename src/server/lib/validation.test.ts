@@ -143,7 +143,7 @@ describe("requireTickerSymbol", () => {
     for (const ticker of ["AAPL?apiKey=x", "AAPL#frag", "A/B", "AA PL", "A%41"]) {
       const result = requireTickerSymbol({ ticker_symbol: ticker }, "ticker_symbol");
       expect(result.success).toBe(false);
-      expect(result.error).toMatch(/ticker_symbol/);
+      expect(result.error).toMatch(/Ticker symbol must be 1-16 characters/);
     }
   });
 
