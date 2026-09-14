@@ -6,7 +6,7 @@ interface Props {
 }
 
 const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
-  const { id, account_id, date, name, amount, iso_currency_code } = investmentTransaction;
+  const { id, account_id, date, name, amount, iso_currency_code, label } = investmentTransaction;
 
   const { data, router } = useAppContext();
   const { accounts } = data;
@@ -33,7 +33,11 @@ const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
         isoCurrency={iso_currency_code || ""}
         onClickInfo={onClickInfo}
       >
-        {name && <div className="smallText">{name}</div>}
+        {label.memo ? (
+          <div className="smallText">{label.memo}</div>
+        ) : (
+          name && <div className="smallText">{name}</div>
+        )}
         <div className="bigText">{account?.custom_name || account?.name}</div>
         <div className="smallText">
           {institution_id && <InstitutionSpan institution_id={institution_id} />}
