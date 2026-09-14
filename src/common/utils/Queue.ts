@@ -19,30 +19,56 @@
  * `capacity` and `maxInflight` may each be a static number or a getter;
  * getters are re-evaluated on every `add()` so env-driven caps can change
  * at runtime (tests do this).
+ *
+ * `maxWaitMs` bounds how long a task may sit waiting for a rate slot before
+ * `add()` rejects with `QueueWaitTimeoutError`. It bounds the rate gate only
+ * — a task already past that gate is never timed out, and the concurrency
+ * gate stays unbounded. Set it per queue, or per call via
+ * `add(task, { maxWaitMs })`; `<= 0` (or unset) waits indefinitely.
  */
 export interface QueueOptions {
   capacity?: number | (() => number);
   windowMs?: number;
   maxInflight?: number | (() => number);
+  maxWaitMs?: number;
+}
+
+export interface QueueAddOptions {
+  maxWaitMs?: number;
+}
+
+/**
+ * Thrown by `add()` when the rate gate could not produce a slot within
+ * `maxWaitMs`. Callers that shed rather than queue — a request someone is
+ * waiting on — should catch this and surface a retryable failure, leaving
+ * the slot to whoever can still use it.
+ */
+export class QueueWaitTimeoutError extends Error {
+  constructor(waitedMs: number) {
+    super(`No rate slot available within ${waitedMs}ms`);
+    this.name = "QueueWaitTimeoutError";
+  }
 }
 
 export class Queue {
   private readonly getCapacity: () => number;
   private readonly windowMs: number;
   private readonly getMaxInflight: () => number;
+  private readonly defaultMaxWaitMs: number;
   private readonly timestamps: number[] = [];
   private inflight = 0;
   private readonly inflightWaiters: Array<() => void> = [];
 
   constructor(options: QueueOptions) {
-    const { capacity = 0, windowMs = 60_000, maxInflight = 0 } = options;
+    const { capacity = 0, windowMs = 60_000, maxInflight = 0, maxWaitMs = 0 } = options;
     this.getCapacity = typeof capacity === "function" ? capacity : () => capacity;
     this.windowMs = windowMs;
     this.getMaxInflight = typeof maxInflight === "function" ? maxInflight : () => maxInflight;
+    this.defaultMaxWaitMs = maxWaitMs;
   }
 
-  async add<T>(task: () => Promise<T>): Promise<T> {
-    await this.waitForRateSlot();
+  async add<T>(task: () => Promise<T>, options: QueueAddOptions = {}): Promise<T> {
+    await this.waitForRateSlot(options.maxWaitMs ?? this.defaultMaxWaitMs);
     await this.acquireInflight();
     try {
       return await task();
@@ -51,9 +77,10 @@ export class Queue {
     }
   }
 
-  private async waitForRateSlot(): Promise<void> {
+  private async waitForRateSlot(maxWaitMs: number): Promise<void> {
     const cap = this.getCapacity();
     if (cap <= 0) return;
+    const deadline = maxWaitMs > 0 ? Date.now() + maxWaitMs : Infinity;
     while (true) {
       const now = Date.now();
       const cutoff = now - this.windowMs;
@@ -65,7 +92,9 @@ export class Queue {
         return;
       }
       const oldest = this.timestamps[0]!;
-      const sleepMs = Math.max(10, oldest + this.windowMs - now);
+      const freesAt = oldest + this.windowMs;
+      if (freesAt > deadline) throw new QueueWaitTimeoutError(maxWaitMs);
+      const sleepMs = Math.max(10, freesAt - now);
       await new Promise<void>((resolve) => setTimeout(resolve, sleepMs));
     }
   }

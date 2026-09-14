@@ -284,7 +284,7 @@ describe("polygon", () => {
       process.env.POLYGON_API_KEY = "test-key";
       const seen = captureUrls();
 
-      await getClosePrice("BTC", new Date("2024-01-15"), "cryptocurrency");
+      await getClosePrice("BTC", new Date("2024-01-15"), { securityType: "cryptocurrency" });
 
       expect(seen.length).toBe(1);
       expect(seen[0]).toContain("/v2/aggs/ticker/X:BTCUSD/range/1/day/");
@@ -294,8 +294,8 @@ describe("polygon", () => {
       process.env.POLYGON_API_KEY = "test-key";
       const seen = captureUrls();
 
-      await getClosePrice("BTC", new Date("2024-01-15"), "equity");
-      await getClosePrice("VOO", new Date("2024-01-15"), null);
+      await getClosePrice("BTC", new Date("2024-01-15"), { securityType: "equity" });
+      await getClosePrice("VOO", new Date("2024-01-15"), { securityType: null });
       await getClosePrice("AAPL", new Date("2024-01-15"));
 
       expect(seen[0]).toContain("/v2/aggs/ticker/BTC/range/1/day/");
@@ -307,7 +307,7 @@ describe("polygon", () => {
       process.env.POLYGON_API_KEY = "test-key";
       const seen = captureUrls();
 
-      await getClosePrice("X:ETHUSD", new Date("2024-01-15"), "cryptocurrency");
+      await getClosePrice("X:ETHUSD", new Date("2024-01-15"), { securityType: "cryptocurrency" });
 
       expect(seen[0]).toContain("/v2/aggs/ticker/X:ETHUSD/range/1/day/");
       expect(seen[0]).not.toContain("X:X:");
@@ -326,8 +326,8 @@ describe("polygon", () => {
       });
 
       const date = new Date("2024-01-15");
-      const equity = await getClosePrice("BTC", date, "equity");
-      const crypto = await getClosePrice("BTC", date, "cryptocurrency");
+      const equity = await getClosePrice("BTC", date, { securityType: "equity" });
+      const crypto = await getClosePrice("BTC", date, { securityType: "cryptocurrency" });
 
       expect(seen.length).toBe(2);
       expect(equity.success && equity.data).toBe(34.17);
@@ -418,6 +418,152 @@ describe("polygon", () => {
       // Cache hit shouldn't have routed through the gate (it's after the
       // cache check), so no measurable wait was introduced.
       expect(after - before).toBeLessThan(20);
+    });
+  });
+
+  describe("empty-result memo", () => {
+    const countingFetch = (json: unknown) => {
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(json) } as Response);
+      });
+      return () => calls;
+    };
+
+    it("getClosePrice does not re-fetch a symbol that just came back empty", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const calls = countingFetch({ results: [] });
+      const date = new Date("2024-01-15");
+
+      const first = await getClosePrice("NOSUCH", date);
+      const second = await getClosePrice("NOSUCH", date);
+
+      expect(calls()).toBe(1);
+      expect(first.success).toBe(false);
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.error).toBe("no_data");
+    });
+
+    it("getTickerDetail does not re-fetch a symbol that just came back empty", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const calls = countingFetch({});
+
+      await getTickerDetail("NOSUCH");
+      const second = await getTickerDetail("NOSUCH");
+
+      expect(calls()).toBe(1);
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.error).toBe("no_data");
+    });
+
+    it("getLatestClosePriceOnOrBefore does not re-fetch a range that just came back empty", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const calls = countingFetch({ results: [] });
+
+      await getLatestClosePriceOnOrBefore("NOSUCH", "2024-01-15");
+      const second = await getLatestClosePriceOnOrBefore("NOSUCH", "2024-01-15");
+
+      expect(calls()).toBe(1);
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.error).toBe("no_data");
+    });
+
+    it("memoizes per symbol, not globally", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const calls = countingFetch({ results: [] });
+      const date = new Date("2024-01-15");
+
+      await getClosePrice("NOSUCH", date);
+      await getClosePrice("ALSONOSUCH", date);
+
+      expect(calls()).toBe(2);
+    });
+
+    it("keeps the price and detail memos apart", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const calls = countingFetch({ results: [] });
+
+      await getClosePrice("NOSUCH", new Date("2024-01-15"));
+      await getTickerDetail("NOSUCH");
+
+      expect(calls()).toBe(2);
+    });
+
+    it("does not memoize an api_error, which may be transient", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.reject(new Error("malformed payload")),
+        } as unknown as Response);
+      });
+
+      const first = await getTickerDetail("AAPL");
+      const second = await getTickerDetail("AAPL");
+
+      expect(calls).toBe(2);
+      expect(first.success).toBe(false);
+      if (!first.success) expect(first.error).toBe("api_error");
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.error).toBe("api_error");
+    });
+  });
+
+  describe("ticker encoding", () => {
+    it("keeps the api key on its own query parameter when the symbol carries one", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const seen: string[] = [];
+      globalThis.fetch = mock((url: string) => {
+        seen.push(url);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
+      });
+
+      await getTickerDetail("AAPL?apiKey=stolen");
+
+      expect(seen.length).toBe(1);
+      expect(seen[0]).toBe(
+        "https://api.polygon.io/v3/reference/tickers/AAPL%3FapiKey%3Dstolen?apiKey=test-key",
+      );
+    });
+
+    it("leaves the crypto namespace colon intact", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      const seen: string[] = [];
+      globalThis.fetch = mock((url: string) => {
+        seen.push(url);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
+      });
+
+      await getTickerDetail("X:BTCUSD");
+
+      expect(seen[0]).toContain("/v3/reference/tickers/X:BTCUSD?apiKey=");
+    });
+  });
+
+  describe("foreground wait budget", () => {
+    it("sheds with rate_limited rather than parking on a saturated gate", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      process.env.POLYGON_RATE_LIMIT_PER_MIN = "1";
+      polygonQueue.reset();
+
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ results: [{ c: 10 }] }),
+        } as Response);
+      });
+
+      await getClosePrice("AAPL", new Date("2024-01-15"));
+      const shed = await getClosePrice("MSFT", new Date("2024-01-15"), { maxWaitMs: 10 });
+
+      expect(shed.success).toBe(false);
+      if (!shed.success) expect(shed.error).toBe("rate_limited");
+      expect(calls).toBe(1);
     });
   });
 });

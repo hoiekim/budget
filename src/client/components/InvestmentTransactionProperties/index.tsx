@@ -218,12 +218,11 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     await persistInvTxField({ subtype: value });
   };
   // Ticker → security_id resolution mirrors HoldingProperties'
-  // `POST /api/validate-ticker` flow. Body field is `ticker_symbol`
-  // (matches the route's requireStringField); response wraps the
-  // security under `body.security` when `body.valid === true`. On
-  // blur, if the ticker resolves, patch `security_id`; otherwise
-  // surface the server's validation message and leave the field
-  // untouched.
+  // `POST /api/validate-ticker` flow. Body field is `ticker_symbol`;
+  // response wraps the security under `body.security` when
+  // `body.valid === true`. On blur, if the ticker resolves, patch
+  // `security_id`; otherwise surface the server's validation message
+  // and leave the field untouched.
   const onBlurTicker = async () => {
     if (!isManual) return;
     const raw = tickerValue.trim();

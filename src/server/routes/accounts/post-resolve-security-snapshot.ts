@@ -18,7 +18,7 @@ export interface ResolveSecuritySnapshotResponse {
   snapshot?: JSONSecuritySnapshot;
   source?: "existing" | "polygon";
   /** When resolved=false, the underlying polygon error category. */
-  reason?: "no_api_key" | "api_error" | "no_data" | "plan_limit";
+  reason?: "no_api_key" | "api_error" | "no_data" | "plan_limit" | "rate_limited";
   message?: string;
 }
 
@@ -116,20 +116,21 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
     }
 
     // Polygon fetch
-    const priceResult = await polygon.getLatestClosePriceOnOrBefore(
-      ticker,
-      effectiveDateStr,
-      { securityType: security.type },
-    );
+    const priceResult = await polygon.getLatestClosePriceOnOrBefore(ticker, effectiveDateStr, {
+      securityType: security.type,
+      maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
+    });
     if (!priceResult.success) {
       const message =
         priceResult.error === "no_api_key"
           ? "Market data API is not configured"
-          : priceResult.error === "plan_limit"
-            ? `Polygon plan doesn't include this date range`
-            : priceResult.error === "no_data"
-              ? `No price data for ${ticker} on or before ${effectiveDateStr}`
-              : `Polygon error: ${priceResult.message}`;
+          : priceResult.error === "rate_limited"
+            ? priceResult.message
+            : priceResult.error === "plan_limit"
+              ? `Polygon plan doesn't include this date range`
+              : priceResult.error === "no_data"
+                ? `No price data for ${ticker} on or before ${effectiveDateStr}`
+                : `Polygon error: ${priceResult.message}`;
       return {
         status: "success",
         body: { resolved: false, reason: priceResult.error, message },

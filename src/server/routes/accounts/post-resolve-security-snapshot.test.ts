@@ -35,6 +35,7 @@ const mockFetch = mock(
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
 const { postResolveSecuritySnapshotRoute } = await import("./post-resolve-security-snapshot");
+const { clearPriceCache } = await import("server/lib/polygon");
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
@@ -67,6 +68,9 @@ const queryRouter = async (sql: string, _values?: unknown[]) => {
 };
 
 beforeEach(() => {
+  // Polygon memoizes an empty result, so a `no_data` staged by one test
+  // would answer the next one's lookup for the same ticker and date.
+  clearPriceCache();
   resetQueryMocks();
   mockQuery.mockImplementation(queryRouter);
   securitiesRows = [];

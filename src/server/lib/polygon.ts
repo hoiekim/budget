@@ -3,7 +3,14 @@
  * https://polygon.io/docs/stocks/getting-started
  */
 
-import { getDateString, getDateTimeString, getRandomId, JSONSecurity, Queue } from "common";
+import {
+  getDateString,
+  getDateTimeString,
+  getRandomId,
+  JSONSecurity,
+  Queue,
+  QueueWaitTimeoutError,
+} from "common";
 import { logger } from "./logger";
 
 const POLYGON_HOST = "https://api.polygon.io";
@@ -45,13 +52,26 @@ const getRateLimitPerMin = (): number => {
 export const polygonQueue = new Queue({ capacity: getRateLimitPerMin });
 
 /**
+ * Wait budget for a request a person is watching. The background backfill
+ * and refresh passes have no deadline and keep queueing, but a form that
+ * has been spinning for this long is better served by a retryable failure
+ * than by a slot it would hold away from everyone else.
+ */
+export const FOREGROUND_QUEUE_WAIT_MS = 5_000;
+
+interface FetchOptions {
+  /** Overrides the queue's default unbounded wait. See `FOREGROUND_QUEUE_WAIT_MS`. */
+  maxWaitMs?: number;
+}
+
+/**
  * Result types for Polygon API calls
  */
 export type PolygonResult<T> =
   | { success: true; data: T }
   | {
       success: false;
-      error: "no_api_key" | "api_error" | "no_data" | "plan_limit";
+      error: "no_api_key" | "api_error" | "no_data" | "plan_limit" | "rate_limited";
       message: string;
     };
 
@@ -78,13 +98,56 @@ export const toPolygonTicker = (
 const priceCache = new Map<string, { price: number; fetchedAt: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-// Periodically evict stale price cache entries to prevent unbounded growth.
+/**
+ * Lookups that came back empty, keyed by the same identity as the positive
+ * cache. Without it a symbol Polygon does not know is the one lookup that
+ * can never be served warm, so repeating it costs a rate slot every time
+ * while a valid symbol costs one only once. The TTL is short because an
+ * empty answer can turn into a real one within the day — a freshly listed
+ * symbol, or today's close once the session settles.
+ */
+const missCache = new Map<string, number>();
+const MISS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const isRecentMiss = (key: string): boolean => {
+  const missedAt = missCache.get(key);
+  if (missedAt === undefined) return false;
+  if (Date.now() - missedAt >= MISS_CACHE_TTL_MS) {
+    missCache.delete(key);
+    return false;
+  }
+  return true;
+};
+
+const rememberMiss = (key: string): void => {
+  missCache.set(key, Date.now());
+};
+
+// Periodically evict stale cache entries to prevent unbounded growth.
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of priceCache) {
     if (now - entry.fetchedAt >= CACHE_TTL_MS) priceCache.delete(key);
   }
+  for (const [key, missedAt] of missCache) {
+    if (now - missedAt >= MISS_CACHE_TTL_MS) missCache.delete(key);
+  }
 }, CACHE_TTL_MS).unref();
+
+/**
+ * Neutralize anything that could end the path or open a query string — the
+ * API key is appended after the ticker, so a raw `?` or `#` would truncate
+ * the URL and send the call out unauthenticated. `:` is left alone: it is a
+ * legal path character and carries Polygon's crypto namespace (`X:BTCUSD`).
+ */
+const encodeTicker = (ticker: string): string =>
+  encodeURIComponent(ticker).replace(/%3A/g, ":");
+
+const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
+  success: false,
+  error: "rate_limited",
+  message: `Market data is busy right now; retry the lookup for ${polygonTicker} in a moment.`,
+});
 
 /**
  * Fetch with retry logic for transient failures
@@ -123,8 +186,9 @@ const fetchWithRetry = async (url: string, maxRetries = 2, delayMs = 1000): Prom
 export const getClosePrice = async (
   ticker_symbol: string,
   date: Date,
-  securityType?: JSONSecurity["type"],
+  options: FetchOptions & { securityType?: JSONSecurity["type"] } = {},
 ): Promise<PolygonResult<number>> => {
+  const { securityType, maxWaitMs } = options;
   if (!getApiKey()) {
     return {
       success: false,
@@ -143,18 +207,28 @@ export const getClosePrice = async (
     return { success: true, data: cached.price };
   }
 
+  const missKey = `price:${cacheKey}`;
+  if (isRecentMiss(missKey)) {
+    return {
+      success: false,
+      error: "no_data",
+      message: `No price data available for ${polygonTicker} on ${dateString}`,
+    };
+  }
+
   const from = dateString;
   const to = dateString;
-  const tickerParameter = `ticker/${polygonTicker}`;
+  const tickerParameter = `ticker/${encodeTicker(polygonTicker)}`;
   const rangeParameter = `range/1/day/${from}/${to}`;
   const path = `${POLYGON_HOST}/v2/aggs/${tickerParameter}/${rangeParameter}?apiKey=${getApiKey()}`;
 
   try {
     // Queue gate sits AFTER cache check so warm reads don't consume a slot.
-    const response = await polygonQueue.add(() => fetchWithRetry(path));
+    const response = await polygonQueue.add(() => fetchWithRetry(path), { maxWaitMs });
     const json = await response.json();
 
     if (!json.results || json.results.length === 0) {
+      rememberMiss(missKey);
       return {
         success: false,
         error: "no_data",
@@ -169,6 +243,7 @@ export const getClosePrice = async (
 
     return { success: true, data: price };
   } catch (err) {
+    if (err instanceof QueueWaitTimeoutError) return rateLimitedResult(polygonTicker);
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`Polygon API error for ${polygonTicker}: ${message}`, { component: "polygon" });
     return {
@@ -181,6 +256,7 @@ export const getClosePrice = async (
 
 export const getTickerDetail = async (
   ticker_symbol: string,
+  options: FetchOptions = {},
 ): Promise<PolygonResult<{ ticker_symbol: string; name: string; currency_name: string }>> => {
   if (!getApiKey()) {
     return {
@@ -190,15 +266,29 @@ export const getTickerDetail = async (
     };
   }
 
-  const path = `${POLYGON_HOST}/v3/reference/tickers/${ticker_symbol}?apiKey=${getApiKey()}`;
+  // Successful details are cached by the securities table, which the callers
+  // read before they get here; only the empty answer needs memoizing.
+  const missKey = `detail:${ticker_symbol}`;
+  if (isRecentMiss(missKey)) {
+    return {
+      success: false,
+      error: "no_data",
+      message: `No ticker details found for ${ticker_symbol}`,
+    };
+  }
+
+  const path = `${POLYGON_HOST}/v3/reference/tickers/${encodeTicker(ticker_symbol)}?apiKey=${getApiKey()}`;
 
   try {
     // Same queue as getClosePrice — a backfill pass that uses both endpoints
     // stays under the per-minute cap across both methods.
-    const response = await polygonQueue.add(() => fetchWithRetry(path));
+    const response = await polygonQueue.add(() => fetchWithRetry(path), {
+      maxWaitMs: options.maxWaitMs,
+    });
     const json = await response.json();
 
     if (!json.results) {
+      rememberMiss(missKey);
       return {
         success: false,
         error: "no_data",
@@ -211,6 +301,7 @@ export const getTickerDetail = async (
 
     return { success: true, data: { ticker_symbol, name, currency_name } };
   } catch (err) {
+    if (err instanceof QueueWaitTimeoutError) return rateLimitedResult(ticker_symbol);
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`Polygon API error for ticker detail ${ticker_symbol}: ${message}`, {
       component: "polygon",
@@ -234,12 +325,12 @@ export const getTickerDetail = async (
 export const getLatestClosePriceOnOrBefore = async (
   ticker_symbol: string,
   dateOrString: Date | string,
-  options: {
+  options: FetchOptions & {
     lookbackDays?: number;
     securityType?: JSONSecurity["type"];
   } = {},
 ): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
-  const { lookbackDays = 7, securityType } = options;
+  const { lookbackDays = 7, securityType, maxWaitMs } = options;
   if (!getApiKey()) {
     return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
   }
@@ -257,10 +348,19 @@ export const getLatestClosePriceOnOrBefore = async (
   toAnchor.setUTCDate(toAnchor.getUTCDate() - lookbackDays);
   const from = toAnchor.toISOString().slice(0, 10);
 
-  const path = `${POLYGON_HOST}/v2/aggs/ticker/${polygonTicker}/range/1/day/${from}/${to}?apiKey=${getApiKey()}`;
+  const missKey = `range:${polygonTicker}:${from}:${to}`;
+  if (isRecentMiss(missKey)) {
+    return {
+      success: false,
+      error: "no_data",
+      message: `No price data for ${polygonTicker} in [${from}, ${to}]`,
+    };
+  }
+
+  const path = `${POLYGON_HOST}/v2/aggs/ticker/${encodeTicker(polygonTicker)}/range/1/day/${from}/${to}?apiKey=${getApiKey()}`;
 
   try {
-    const response = await polygonQueue.add(() => fetchWithRetry(path));
+    const response = await polygonQueue.add(() => fetchWithRetry(path), { maxWaitMs });
     const json = await response.json();
     if (json.status === "NOT_AUTHORIZED") {
       return {
@@ -274,6 +374,7 @@ export const getLatestClosePriceOnOrBefore = async (
     }
     const results = json.results as Array<{ c: number; t: number }> | undefined;
     if (!results || results.length === 0) {
+      rememberMiss(missKey);
       return {
         success: false,
         error: "no_data",
@@ -285,6 +386,7 @@ export const getLatestClosePriceOnOrBefore = async (
     const tradingDate = `${td.getUTCFullYear()}-${String(td.getUTCMonth() + 1).padStart(2, "0")}-${String(td.getUTCDate()).padStart(2, "0")}`;
     return { success: true, data: { price: last.c, tradingDate } };
   } catch (err) {
+    if (err instanceof QueueWaitTimeoutError) return rateLimitedResult(polygonTicker);
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`Polygon range fetch error for ${polygonTicker}: ${message}`, {
       component: "polygon",
@@ -340,8 +442,9 @@ export const getSecurityForSymbol = async (
 };
 
 /**
- * Clear the price cache (useful for testing)
+ * Clear both the price cache and the empty-result memo (useful for testing)
  */
 export const clearPriceCache = () => {
   priceCache.clear();
+  missCache.clear();
 };
