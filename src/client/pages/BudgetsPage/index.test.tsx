@@ -42,7 +42,18 @@ describe("BudgetsPage — Add Budget", () => {
     fetchStub = stubFetch([
       {
         path: "/api/new-budget",
-        response: { status: "success", body: { budget_id: "server-side-id" } },
+        response: {
+          status: "success",
+          body: {
+            budget: {
+              budget_id: "server-side-id",
+              name: "New Budget",
+              capacities: [],
+              roll_over: false,
+              iso_currency_code: "USD",
+            },
+          },
+        },
       },
     ]);
 
