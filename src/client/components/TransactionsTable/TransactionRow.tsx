@@ -249,7 +249,9 @@ const TransactionRow = ({ transaction }: Props) => {
         isoCurrency={iso_currency_code || ""}
         onClickInfo={onClickInfo}
       >
-        {!merchant_name && name ? (
+        {label.memo ? (
+          <div className="bigText">{label.memo}</div>
+        ) : !merchant_name && name ? (
           <div className="bigText">{name}</div>
         ) : (
           <>
