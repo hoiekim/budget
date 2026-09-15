@@ -19,7 +19,9 @@ const mockGetItem = mock(async (_accessToken: string) => ({
 const mockSyncPlaidTransactions = mock(
   async (_itemId: string) => ({ user_id: "u-1", added: 0, modified: 0, removed: 0 }) as unknown,
 );
-const mockUpdateItemStatus = mock(async (_itemId: string, _status: ItemStatus) => true as unknown);
+const mockUpdateItemStatus = mock(
+  async (_user: unknown, _itemId: string, _status: ItemStatus) => true as unknown,
+);
 const mockGetUserItem = mock(
   async (_itemId: string) =>
     ({
@@ -299,6 +301,7 @@ describe("post-plaid-hook — ITEM", () => {
       item_id: "item-9",
     });
     expect(mockUpdateItemStatus).toHaveBeenCalledWith(
+      { user_id: "u-1", username: "alice" },
       "item-9",
       ItemStatus.BAD,
       "PENDING_EXPIRATION",
@@ -316,6 +319,7 @@ describe("post-plaid-hook — ITEM", () => {
       error: { error_code: "ITEM_LOGIN_REQUIRED" },
     });
     expect(mockUpdateItemStatus).toHaveBeenCalledWith(
+      { user_id: "u-1", username: "alice" },
       "item-9",
       ItemStatus.BAD,
       "ITEM_LOGIN_REQUIRED",
@@ -335,6 +339,18 @@ describe("post-plaid-hook — ITEM", () => {
     expect(result).toBeNull();
     expect(mockUpdateItemStatus).not.toHaveBeenCalled();
     expect(mockLogger.warn).toHaveBeenCalled();
+  });
+
+  test("PENDING_EXPIRATION with no owner for the item → failed, no status write", async () => {
+    mockGetUserItem.mockImplementation(async () => null);
+    const { result } = await run({
+      webhook_type: "ITEM",
+      webhook_code: "PENDING_EXPIRATION",
+      item_id: "item-9",
+    });
+    expect(result).toMatchObject({ status: "failed" });
+    expect(mockUpdateItemStatus).not.toHaveBeenCalled();
+    expect(mockEmitToUser).not.toHaveBeenCalled();
   });
 
   test("PENDING_EXPIRATION with failed status update → failed, no alarm", async () => {

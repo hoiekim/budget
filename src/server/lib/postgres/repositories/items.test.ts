@@ -232,4 +232,16 @@ describe("upsertItems", () => {
     expect(sqls.filter((sql) => /ON CONFLICT/i.test(sql))).toHaveLength(1);
     expect(sqls.filter((sql) => /^\s*UPDATE\s/i.test(sql))).toHaveLength(0);
   });
+
+  test("a conflicting item_id rewrites the item's fields, never its owner", async () => {
+    await upsertItems(testUser, [{ item_id: "item-1", institution_id: "ins-1" }]);
+
+    const sql = String(mockQuery.mock.calls[0][0]);
+    const setClause = sql
+      .replace(/^[\s\S]*DO UPDATE SET\s+/i, "")
+      .replace(/\s+RETURNING[\s\S]*$/i, "");
+    expect(setClause).toBe(
+      "institution_id = EXCLUDED.institution_id, raw = EXCLUDED.raw, updated = CURRENT_TIMESTAMP",
+    );
+  });
 });
