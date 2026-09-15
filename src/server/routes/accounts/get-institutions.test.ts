@@ -11,15 +11,74 @@ const { pg, mockQuery, resetQueryMocks } = createFakePg();
 
 mock.module("pg", () => pg);
 
-const { getInstitutionsRoute } = await import("./get-institutions");
+// Plaid is the leaf the fallback path reaches. Spread the real module rather
+// than replacing it — every model in the graph imports enums from here — and
+// override only the client class the fallback constructs. `mock.module` is
+// process-global, so the real module goes back in `afterAll`.
+const REAL_PLAID = await import("plaid");
 
-afterAll(restoreLeaves);
+const plaidCalls: string[] = [];
+let inflight = 0;
+let peakInflight = 0;
+
+class FakePlaidApi {
+  async institutionsGetById({ institution_id }: { institution_id: string }) {
+    plaidCalls.push(institution_id);
+    inflight++;
+    peakInflight = Math.max(peakInflight, inflight);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return {
+        data: {
+          institution: {
+            institution_id,
+            name: `Plaid ${institution_id}`,
+            products: [],
+            country_codes: [],
+            url: null,
+            primary_color: null,
+            logo: null,
+            routing_numbers: [],
+            oauth: false,
+            status: null,
+          },
+        },
+      };
+    } finally {
+      inflight--;
+    }
+  }
+}
+
+const fakePlaid = { ...REAL_PLAID, PlaidApi: FakePlaidApi };
+mock.module("plaid", () => ({ ...fakePlaid, default: fakePlaid }));
+
+const { getInstitutionsRoute } = await import("./get-institutions");
+const { institutionFallbackRateLimiter } = await import("server/lib/rate-limit");
+
+const USER_ID = "u-1";
+
+/**
+ * The upsert of a fetched institution is deliberately off the response's
+ * latency path, so it can still be in flight when the route returns and would
+ * otherwise land in the next test's query log.
+ */
+const drainDeferredWrites = () => new Promise((resolve) => setTimeout(resolve, 25));
+
+afterAll(() => {
+  mock.module("plaid", () => REAL_PLAID);
+  restoreLeaves();
+});
 
 beforeEach(() => {
   resetQueryMocks();
+  plaidCalls.length = 0;
+  inflight = 0;
+  peakInflight = 0;
+  institutionFallbackRateLimiter.reset(USER_ID);
 });
 
-function makeReq(query: Record<string, string> = {}, userId: string | null = "u-1") {
+function makeReq(query: Record<string, string> = {}, userId: string | null = USER_ID) {
   return {
     method: "GET",
     path: "/institutions",
@@ -137,9 +196,106 @@ describe("get-institutions route", () => {
   });
 });
 
-// The Plaid-fallback path (a requested id not in the DB triggers a per-id
-// Plaid GET + upsert) has no unit test — Plaid is not mockable through the
-// barrel import from a spec at this depth without pulling in the whole
-// "server" module. The behaviour is covered end-to-end when a real sandbox
-// first resolves a new institution.
+describe("get-institutions Plaid-fallback bounds", () => {
+  const makeIds = (n: number, prefix = "ins_miss_") =>
+    Array.from({ length: n }, (_, i) => `${prefix}${i}`);
+
+  test("rejects a CSV carrying more ids than the per-request cap", async () => {
+    const result = await getInstitutionsRoute.execute(
+      makeReq({ ids: makeIds(101).join(",") }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/at most 100/i);
+    // Rejected before the SQL layer and before Plaid — the point of the cap is
+    // that an oversized list costs nothing downstream.
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(plaidCalls).toEqual([]);
+  });
+
+  test("accepts a CSV at exactly the cap", async () => {
+    const ids = makeIds(100, "ins_hit_");
+    mockQuery.mockResolvedValueOnce({
+      rows: ids.map(makeInstRow),
+      rowCount: ids.length,
+    });
+    const result = await getInstitutionsRoute.execute(makeReq({ ids: ids.join(",") }), fakeRes());
+    expect(result?.status).toBe("success");
+    expect((result?.body as unknown[]).length).toBe(100);
+    expect(plaidCalls).toEqual([]);
+  });
+
+  test("holds the Plaid fan-out to four round trips in flight", async () => {
+    const ids = makeIds(20);
+    const result = await getInstitutionsRoute.execute(makeReq({ ids: ids.join(",") }), fakeRes());
+    expect(result?.status).toBe("success");
+    expect(plaidCalls.length).toBe(20);
+    expect(peakInflight).toBeLessThanOrEqual(4);
+    await drainDeferredWrites();
+  });
+
+  test("charges one slot per Plaid round trip and stops at the per-user cap", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_stored")], rowCount: 1 });
+    const first = await getInstitutionsRoute.execute(
+      makeReq({ ids: ["ins_stored", ...makeIds(25)].join(",") }),
+      fakeRes(),
+    );
+    expect(first?.status).toBe("success");
+    expect(plaidCalls.length).toBe(20);
+    // The stored row is still served, plus the 20 the budget paid for.
+    expect((first?.body as unknown[]).length).toBe(21);
+    expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(0);
+    await drainDeferredWrites();
+
+    plaidCalls.length = 0;
+    resetQueryMocks();
+    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_stored")], rowCount: 1 });
+    const second = await getInstitutionsRoute.execute(
+      makeReq({ ids: ["ins_stored", ...makeIds(5, "ins_other_")].join(",") }),
+      fakeRes(),
+    );
+    // Exhausted budget degrades to the stored rows rather than shedding the
+    // whole request — the caller keeps the institutions it already had.
+    expect(plaidCalls).toEqual([]);
+    expect(second?.status).toBe("success");
+    expect(
+      (second?.body as { institution_id: string }[]).map((i) => i.institution_id),
+    ).toEqual(["ins_stored"]);
+  });
+
+  test("an id already in the table never charges the limiter", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeInstRow("ins_5"), makeInstRow("ins_56")],
+      rowCount: 2,
+    });
+    await getInstitutionsRoute.execute(makeReq({ ids: "ins_5,ins_56" }), fakeRes());
+    expect(plaidCalls).toEqual([]);
+    expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(20);
+  });
+
+  test("a repeated unresolvable id costs one round trip, not one per copy", async () => {
+    const repeated = Array.from({ length: 30 }, () => "ins_bogus").join(",");
+    const result = await getInstitutionsRoute.execute(makeReq({ ids: repeated }), fakeRes());
+    expect(result?.status).toBe("success");
+    expect(plaidCalls).toEqual(["ins_bogus"]);
+    expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(19);
+    await drainDeferredWrites();
+  });
+
+  test("resolved institutions are returned alongside the stored rows", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
+    const result = await getInstitutionsRoute.execute(
+      makeReq({ ids: "ins_5,ins_fresh" }),
+      fakeRes(),
+    );
+    const byId = (result?.body as { institution_id: string; name: string }[]).reduce(
+      (acc, i) => ({ ...acc, [i.institution_id]: i.name }),
+      {} as Record<string, string>,
+    );
+    expect(byId["ins_5"]).toBe("Bank ins_5");
+    expect(byId["ins_fresh"]).toBe("Plaid ins_fresh");
+    await drainDeferredWrites();
+  });
+});
+
 

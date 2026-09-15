@@ -74,11 +74,19 @@ export interface RateLimiter {
    */
   isLimited(ip: string): boolean;
   /**
-   * Consume one slot for the given IP. The caller decides which outcomes cost
-   * a slot: the login limiter charges only failed auth, a volume limiter
-   * charges every accepted request.
+   * Slots left in the active window, or the full quota once that window has
+   * expired. Read-only, like `isLimited`. A caller whose unit of cost is a
+   * downstream call rather than the request reads this first and does only as
+   * much work as it can pay for.
    */
-  consume(ip: string): void;
+  remaining(ip: string): number;
+  /**
+   * Consume slots for the given IP. The caller decides which outcomes cost
+   * a slot: the login limiter charges only failed auth, a volume limiter
+   * charges every accepted request. `slots` is how many units of the metered
+   * resource this one request is about to spend.
+   */
+  consume(ip: string, slots?: number): void;
   /**
    * Clear the IP's slots so earlier attempts don't accumulate against them for
    * the rest of the window.
@@ -105,15 +113,20 @@ export const createRateLimiter = (
       const record = attempts.get(keyFor(ip));
       return !!record && Date.now() < record.resetAt && record.count >= maxAttempts;
     },
-    consume: (ip) => {
+    remaining: (ip) => {
+      const record = attempts.get(keyFor(ip));
+      if (!record || Date.now() >= record.resetAt) return maxAttempts;
+      return Math.max(0, maxAttempts - record.count);
+    },
+    consume: (ip, slots = 1) => {
       const key = keyFor(ip);
       const now = Date.now();
       const record = attempts.get(key);
 
       if (record && now < record.resetAt) {
-        record.count++;
+        record.count += slots;
       } else {
-        attempts.set(key, { count: 1, resetAt: now + windowMs });
+        attempts.set(key, { count: slots, resetAt: now + windowMs });
       }
     },
     reset: (ip) => {
@@ -132,6 +145,20 @@ export const loginRateLimiter = createRateLimiter("login", {
 export const clientErrorRateLimiter = createRateLimiter("client-error", {
   maxAttempts: 12,
   windowMs: 15 * 60 * 1000,
+});
+
+// Keyed by user id rather than by IP: the route behind it is authenticated, and
+// the metered resource — Plaid's per-app rate limit — is shared by every user
+// of the deployment, so one caller's burst degrades everyone's sync and
+// account linking.
+//
+// The unit charged is the Plaid round trip, not the request, because a single
+// request can carry many unresolved ids. An id already in the institutions
+// table never reaches Plaid and so is never charged; what a legitimate sync
+// spends is one slot per newly connected institution.
+export const institutionFallbackRateLimiter = createRateLimiter("institution-fallback", {
+  maxAttempts: 20,
+  windowMs: 60 * 1000,
 });
 
 const PRE_SESSION_RATE_LIMITS: {

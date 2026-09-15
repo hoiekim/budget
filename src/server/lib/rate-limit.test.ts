@@ -153,6 +153,68 @@ describe("bucket isolation", () => {
   });
 });
 
+describe("remaining", () => {
+  test("reports the full quota before anything is consumed", () => {
+    const limiter = createRateLimiter("remaining-fresh", { maxAttempts: 3, windowMs: 60_000 });
+    expect(limiter.remaining("k")).toBe(3);
+  });
+
+  test("counts down with each consumed slot and floors at zero", () => {
+    const limiter = createRateLimiter("remaining-countdown", { maxAttempts: 3, windowMs: 60_000 });
+    limiter.consume("k");
+    expect(limiter.remaining("k")).toBe(2);
+    limiter.consume("k", 5);
+    expect(limiter.remaining("k")).toBe(0);
+    expect(limiter.isLimited("k")).toBe(true);
+  });
+
+  test("returns the full quota again once the window has expired", async () => {
+    const limiter = createRateLimiter("remaining-expiry", { maxAttempts: 2, windowMs: 20 });
+    limiter.consume("k", 2);
+    expect(limiter.remaining("k")).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(limiter.remaining("k")).toBe(2);
+  });
+
+  test("is read-only — reading it does not charge the quota", () => {
+    const limiter = createRateLimiter("remaining-readonly", { maxAttempts: 2, windowMs: 60_000 });
+    limiter.remaining("k");
+    limiter.remaining("k");
+    limiter.remaining("k");
+    expect(limiter.remaining("k")).toBe(2);
+    expect(limiter.isLimited("k")).toBe(false);
+  });
+
+  test("tracks each key separately", () => {
+    const limiter = createRateLimiter("remaining-per-key", { maxAttempts: 4, windowMs: 60_000 });
+    limiter.consume("a", 3);
+    expect(limiter.remaining("a")).toBe(1);
+    expect(limiter.remaining("b")).toBe(4);
+  });
+});
+
+describe("consume with a slot count", () => {
+  test("a multi-slot charge crosses the threshold in one call", () => {
+    const limiter = createRateLimiter("slots-threshold", { maxAttempts: 5, windowMs: 60_000 });
+    limiter.consume("k", 5);
+    expect(limiter.isLimited("k")).toBe(true);
+  });
+
+  test("a multi-slot charge on a fresh key opens the window at that count", () => {
+    const limiter = createRateLimiter("slots-fresh-window", { maxAttempts: 5, windowMs: 60_000 });
+    limiter.consume("k", 4);
+    expect(limiter.remaining("k")).toBe(1);
+  });
+
+  test("defaults to one slot so existing callers are unchanged", () => {
+    const limiter = createRateLimiter("slots-default", { maxAttempts: 3, windowMs: 60_000 });
+    limiter.consume("k");
+    limiter.consume("k");
+    expect(limiter.remaining("k")).toBe(1);
+    expect(limiter.isLimited("k")).toBe(false);
+  });
+});
+
 describe("preSessionShedMessage", () => {
   test("sheds POST /login once the IP is over the login cap", () => {
     const ip = nextIp();
