@@ -112,17 +112,35 @@ const saveDictionary = async <T>(storeName: StoreName, data: Dictionary<T>) => {
   await indexedDbAccessor.saveMany(storeName, entries);
 };
 
+type DictionaryCtor<T, M> = new (entries?: Iterable<readonly [string, M]>) => T;
+
+/**
+ * Rehydrate a stored JSON blob into a typed Dictionary subclass. Split
+ * out of `loadDictionary` so a unit test can exercise the subclass-
+ * preservation path (and TransferDictionary's pivot rebuild) without a
+ * synthetic IndexedDB accessor.
+ */
+export const hydrateDictionary = <T extends Dictionary<M>, M>(
+  data: { [key: string]: unknown },
+  Dict: DictionaryCtor<T, M>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model: new (json: any) => M,
+): T => {
+  const entries: [string, M][] = Object.entries(data).map(([key, value]) => [
+    key,
+    new model(value),
+  ]);
+  return new Dict(entries);
+};
+
 const loadDictionary = async <T extends Dictionary<M>, M>(
   storeName: StoreName,
+  Dict: DictionaryCtor<T, M>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   model: new (json: any) => M,
 ) => {
   const data = await indexedDbAccessor.load<JSON>(storeName);
-  const dict = new Dictionary() as T;
-  Object.entries(data).forEach(([key, value]) => {
-    dict.set(key, new model(value));
-  });
-  return dict;
+  return hydrateDictionary(data, Dict, model);
 };
 
 export const saveInstitutions = async (data: InstitutionDictionary) => {
@@ -130,7 +148,7 @@ export const saveInstitutions = async (data: InstitutionDictionary) => {
 };
 
 export const loadInstitutions = () => {
-  return loadDictionary<InstitutionDictionary, Institution>(StoreName.institutions, Institution);
+  return loadDictionary(StoreName.institutions, InstitutionDictionary, Institution);
 };
 
 export const saveAccounts = async (data: AccountDictionary) => {
@@ -138,7 +156,7 @@ export const saveAccounts = async (data: AccountDictionary) => {
 };
 
 export const loadAccounts = () => {
-  return loadDictionary<AccountDictionary, Account>(StoreName.accounts, Account);
+  return loadDictionary(StoreName.accounts, AccountDictionary, Account);
 };
 
 export const saveSecurities = async (data: SecurityDictionary) => {
@@ -146,7 +164,7 @@ export const saveSecurities = async (data: SecurityDictionary) => {
 };
 
 export const loadSecurities = () => {
-  return loadDictionary<SecurityDictionary, Security>(StoreName.securities, Security);
+  return loadDictionary(StoreName.securities, SecurityDictionary, Security);
 };
 
 export const saveHoldings = async (data: HoldingDictionary) => {
@@ -154,7 +172,7 @@ export const saveHoldings = async (data: HoldingDictionary) => {
 };
 
 export const loadHoldings = () => {
-  return loadDictionary<HoldingDictionary, Holding>(StoreName.holdings, Holding);
+  return loadDictionary(StoreName.holdings, HoldingDictionary, Holding);
 };
 
 export const saveTransactions = async (data: TransactionDictionary) => {
@@ -162,7 +180,7 @@ export const saveTransactions = async (data: TransactionDictionary) => {
 };
 
 export const loadTransactions = () => {
-  return loadDictionary<TransactionDictionary, Transaction>(StoreName.transactions, Transaction);
+  return loadDictionary(StoreName.transactions, TransactionDictionary, Transaction);
 };
 
 export const saveSplitTransactions = async (data: SplitTransactionDictionary) => {
@@ -198,8 +216,9 @@ export const saveTransfer = (pair: TransferPair) => {
 };
 
 export const loadSplitTransactions = () => {
-  return loadDictionary<SplitTransactionDictionary, SplitTransaction>(
+  return loadDictionary(
     StoreName.splitTransactions,
+    SplitTransactionDictionary,
     SplitTransaction,
   );
 };
@@ -209,8 +228,9 @@ export const saveInvestmentTransactions = async (data: InvestmentTransactionDict
 };
 
 export const loadInvestmentTransactions = () => {
-  return loadDictionary<InvestmentTransactionDictionary, InvestmentTransaction>(
+  return loadDictionary(
     StoreName.investmentTransactions,
+    InvestmentTransactionDictionary,
     InvestmentTransaction,
   );
 };
@@ -220,7 +240,7 @@ export const saveBudgets = async (data: BudgetDictionary) => {
 };
 
 export const loadBudgets = () => {
-  return loadDictionary<BudgetDictionary, Budget>(StoreName.budgets, Budget);
+  return loadDictionary(StoreName.budgets, BudgetDictionary, Budget);
 };
 
 export const saveSections = async (data: SectionDictionary) => {
@@ -228,7 +248,7 @@ export const saveSections = async (data: SectionDictionary) => {
 };
 
 export const loadSections = () => {
-  return loadDictionary<SectionDictionary, Section>(StoreName.sections, Section);
+  return loadDictionary(StoreName.sections, SectionDictionary, Section);
 };
 
 export const saveCategories = async (data: CategoryDictionary) => {
@@ -236,7 +256,7 @@ export const saveCategories = async (data: CategoryDictionary) => {
 };
 
 export const loadCategories = () => {
-  return loadDictionary<CategoryDictionary, Category>(StoreName.categories, Category);
+  return loadDictionary(StoreName.categories, CategoryDictionary, Category);
 };
 
 export const saveItems = async (data: ItemDictionary) => {
@@ -244,7 +264,7 @@ export const saveItems = async (data: ItemDictionary) => {
 };
 
 export const loadItems = () => {
-  return loadDictionary<ItemDictionary, Item>(StoreName.items, Item);
+  return loadDictionary(StoreName.items, ItemDictionary, Item);
 };
 
 export const saveCharts = async (data: ChartDictionary) => {
@@ -252,7 +272,7 @@ export const saveCharts = async (data: ChartDictionary) => {
 };
 
 export const loadCharts = () => {
-  return loadDictionary<ChartDictionary, Chart>(StoreName.charts, Chart);
+  return loadDictionary(StoreName.charts, ChartDictionary, Chart);
 };
 
 export const saveAccountSnapshots = async (data: AccountSnapshotDictionary) => {
@@ -260,8 +280,9 @@ export const saveAccountSnapshots = async (data: AccountSnapshotDictionary) => {
 };
 
 export const loadAccountSnapshots = () => {
-  return loadDictionary<AccountSnapshotDictionary, AccountSnapshot>(
+  return loadDictionary(
     StoreName.accountSnapshots,
+    AccountSnapshotDictionary,
     AccountSnapshot,
   );
 };
@@ -271,8 +292,9 @@ export const saveHoldingSnapshots = async (data: HoldingSnapshotDictionary) => {
 };
 
 export const loadHoldingSnapshots = () => {
-  return loadDictionary<HoldingSnapshotDictionary, HoldingSnapshot>(
+  return loadDictionary(
     StoreName.holdingSnapshots,
+    HoldingSnapshotDictionary,
     HoldingSnapshot,
   );
 };
@@ -282,8 +304,9 @@ export const saveSecuritySnapshots = async (data: SecuritySnapshotDictionary) =>
 };
 
 export const loadSecuritySnapshots = () => {
-  return loadDictionary<SecuritySnapshotDictionary, SecuritySnapshot>(
+  return loadDictionary(
     StoreName.securitySnapshots,
+    SecuritySnapshotDictionary,
     SecuritySnapshot,
   );
 };
