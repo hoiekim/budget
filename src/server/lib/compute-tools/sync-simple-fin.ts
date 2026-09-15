@@ -125,7 +125,7 @@ export const syncSimpleFinData = async (item_id: string) => {
     await deleteInvestmentTransactions(user, removedInvestmentTransactionIds, client);
 
     const updated = getDateString();
-    await upsertItems(user, [{ ...item, updated }], true, client);
+    await upsertItems(user, [{ ...item, updated }], client);
   });
 
   return { accounts, transactions, investmentTransactions };

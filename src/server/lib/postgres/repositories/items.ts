@@ -11,14 +11,24 @@ import {
   holdingsTable,
   ITEM_ID,
   USER_ID,
+  ACCESS_TOKEN,
   INSTITUTION_ID,
+  AVAILABLE_PRODUCTS,
+  CURSOR,
+  STATUS,
+  STATUS_REASON,
+  PROVIDER,
+  LAST_SYNC_STATUS,
+  LAST_SYNC_AT,
+  LAST_SYNC_ERROR,
+  RAW,
   ACCOUNT_ID,
   HOLDING_ACCOUNT_ID,
   QueryExecutor,
 } from "../models";
 import { softDeleteTransactionPairsByAccounts } from "./transactions";
 import { pool, withTransaction } from "../client";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
@@ -83,10 +93,26 @@ export const getUserItem = async (
   };
 };
 
+/** Columns an item conflict may rewrite. `Table.upsert` otherwise defaults to
+ *  every supplied key, which lets a colliding `item_id` reassign the row's
+ *  owner. */
+const ITEM_UPDATE_COLUMNS = [
+  ACCESS_TOKEN,
+  INSTITUTION_ID,
+  AVAILABLE_PRODUCTS,
+  CURSOR,
+  STATUS,
+  STATUS_REASON,
+  PROVIDER,
+  LAST_SYNC_STATUS,
+  LAST_SYNC_AT,
+  LAST_SYNC_ERROR,
+  RAW,
+];
+
 export const upsertItems = async (
   user: MaskedUser,
   items: PartialItem[],
-  upsert: boolean = true,
   client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!items.length) return [];
@@ -95,15 +121,8 @@ export const upsertItems = async (
   for (const item of items) {
     try {
       const row = ItemModel.fromJSON(item, user.user_id);
-      if (upsert) {
-        await itemsTable.upsert(row, undefined, client);
-        results.push(successResult(item.item_id, 1));
-      } else {
-        delete row.item_id;
-        delete row.user_id;
-        const updated = await itemsTable.update(item.item_id, row, undefined, undefined, client);
-        results.push(updated ? successResult(item.item_id, 1) : noChangeResult(item.item_id));
-      }
+      await itemsTable.upsert(row, ITEM_UPDATE_COLUMNS, client);
+      results.push(successResult(item.item_id, 1));
     } catch (error) {
       logger.error("Failed to upsert item", { itemId: item.item_id }, error);
       results.push(errorResult(item.item_id));
@@ -112,20 +131,18 @@ export const upsertItems = async (
   return results;
 };
 
-export const updateItemCursor = async (item_id: string, cursor: string): Promise<boolean> => {
-  const updated = await itemsTable.update(item_id, { cursor });
-  return updated !== null;
-};
-
 export const updateItemStatus = async (
+  user: MaskedUser,
   item_id: string,
   status: string,
   status_reason?: string,
 ): Promise<boolean> => {
-  const updated = await itemsTable.update(item_id, {
-    status,
-    status_reason: status_reason ?? null,
-  });
+  const updated = await itemsTable.update(
+    item_id,
+    { status, status_reason: status_reason ?? null },
+    undefined,
+    user.user_id,
+  );
   return updated !== null;
 };
 

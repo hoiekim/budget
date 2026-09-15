@@ -69,7 +69,7 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
           logger.error("Failed to get transactions data", { itemId: item_id }, plaidError || error);
         }
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-          updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
+          updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
             logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
         }
@@ -182,7 +182,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
             plaidError || error,
           );
           if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-            updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
+            updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
               logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
             });
           }
