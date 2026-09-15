@@ -12,6 +12,8 @@ import {
   getAccount,
   getHoldingSnapshots,
   polygon,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
   backfillMonthlySecuritySnapshotsForward,
 } from "server";
 import { logger } from "server/lib/logger";
@@ -30,9 +32,17 @@ export interface HoldingSnapshotPostResponse {
  */
 const resolveSecurityId = async (
   upperTicker: string,
+  user_id: string,
 ): Promise<{ ok: true; security_id: string } | { ok: false; message: string }> => {
   const securities = await searchSecurities({ ticker_symbol: upperTicker });
   if (securities.length > 0) return { ok: true, security_id: securities[0].security_id };
+
+  // Past the local short-circuit this reaches the same process-wide gate as
+  // /validate-ticker, on the same per-user budget.
+  if (polygonLookupRateLimiter.isLimited(user_id)) {
+    return { ok: false, message: POLYGON_LOOKUP_SHED_MESSAGE };
+  }
+  polygonLookupRateLimiter.consume(user_id);
 
   const detailResult = await polygon.getTickerDetail(upperTicker, {
     maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
@@ -108,7 +118,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
       if (typeof body.ticker_symbol === "string" && body.ticker_symbol.trim()) {
         const patchTicker = requireTickerSymbol(body, "ticker_symbol");
         if (!patchTicker.success) return validationError(patchTicker.error!);
-        const resolved = await resolveSecurityId(patchTicker.data!);
+        const resolved = await resolveSecurityId(patchTicker.data!, user.user_id);
         if (!resolved.ok) return { status: "failed", message: resolved.message };
         new_security_id = resolved.security_id;
         patch.holding_security_id = new_security_id;
@@ -195,7 +205,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const date: Date = parsedDate.data ?? new Date();
     const dateString = getSquashedDateString(date);
 
-    const resolved = await resolveSecurityId(tickerResult.data!);
+    const resolved = await resolveSecurityId(tickerResult.data!, user.user_id);
     if (!resolved.ok) return { status: "failed", message: resolved.message };
     const security_id = resolved.security_id;
 

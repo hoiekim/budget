@@ -64,6 +64,12 @@ interface FetchOptions {
   maxWaitMs?: number;
 }
 
+export interface TickerDetail {
+  ticker_symbol: string;
+  name: string;
+  currency_name: string;
+}
+
 /**
  * Result types for Polygon API calls
  */
@@ -123,6 +129,14 @@ const rememberMiss = (key: string): void => {
   missCache.set(key, Date.now());
 };
 
+/**
+ * Ticker details that resolved. The securities table is the durable cache,
+ * but a caller can ask for a detail without ever saving one — the Add Holding
+ * form checks a symbol with `save: false` — so without this a repeated check
+ * of a symbol that *is* valid costs a rate slot every time.
+ */
+const detailCache = new Map<string, { detail: TickerDetail; fetchedAt: number }>();
+
 // Periodically evict stale cache entries to prevent unbounded growth.
 setInterval(() => {
   const now = Date.now();
@@ -131,6 +145,9 @@ setInterval(() => {
   }
   for (const [key, missedAt] of missCache) {
     if (now - missedAt >= MISS_CACHE_TTL_MS) missCache.delete(key);
+  }
+  for (const [key, entry] of detailCache) {
+    if (now - entry.fetchedAt >= CACHE_TTL_MS) detailCache.delete(key);
   }
 }, CACHE_TTL_MS).unref();
 
@@ -148,6 +165,41 @@ const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
   error: "rate_limited",
   message: `Market data is busy right now; retry the lookup for ${polygonTicker} in a moment.`,
 });
+
+/**
+ * Polygon reports a refused call in the body rather than in the shape: a 429
+ * or a plan rejection carries an error envelope and no `results`, which
+ * absence alone cannot tell apart from a symbol that genuinely has no data.
+ * Memoizing one of those answers "no such symbol" for the whole TTL, process
+ * wide, for a symbol that exists. Returns the failure to surface, or
+ * undefined when the empty answer is real and may be memoized — a 404 is how
+ * Polygon says it does not carry the symbol, so it stays on that side.
+ */
+const upstreamRefusal = (
+  response: Response,
+  json: { status?: unknown; message?: unknown; error?: unknown },
+  subject: string,
+): PolygonResult<never> | undefined => {
+  if (json.status === "NOT_AUTHORIZED") {
+    return {
+      success: false,
+      error: "plan_limit",
+      message:
+        typeof json.message === "string"
+          ? json.message
+          : `Polygon plan does not include data for ${subject}`,
+    };
+  }
+  if ((response.ok || response.status === 404) && json.status !== "ERROR") return undefined;
+  return {
+    success: false,
+    error: "api_error",
+    message:
+      typeof json.error === "string"
+        ? json.error
+        : `Polygon refused the lookup for ${subject} (HTTP ${response.status})`,
+  };
+};
 
 /**
  * Fetch with retry logic for transient failures
@@ -227,6 +279,9 @@ export const getClosePrice = async (
     const response = await polygonQueue.add(() => fetchWithRetry(path), { maxWaitMs });
     const json = await response.json();
 
+    const refusal = upstreamRefusal(response, json, polygonTicker);
+    if (refusal) return refusal;
+
     if (!json.results || json.results.length === 0) {
       rememberMiss(missKey);
       return {
@@ -257,7 +312,7 @@ export const getClosePrice = async (
 export const getTickerDetail = async (
   ticker_symbol: string,
   options: FetchOptions = {},
-): Promise<PolygonResult<{ ticker_symbol: string; name: string; currency_name: string }>> => {
+): Promise<PolygonResult<TickerDetail>> => {
   if (!getApiKey()) {
     return {
       success: false,
@@ -266,8 +321,11 @@ export const getTickerDetail = async (
     };
   }
 
-  // Successful details are cached by the securities table, which the callers
-  // read before they get here; only the empty answer needs memoizing.
+  const cached = detailCache.get(ticker_symbol);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return { success: true, data: cached.detail };
+  }
+
   const missKey = `detail:${ticker_symbol}`;
   if (isRecentMiss(missKey)) {
     return {
@@ -287,6 +345,9 @@ export const getTickerDetail = async (
     });
     const json = await response.json();
 
+    const refusal = upstreamRefusal(response, json, ticker_symbol);
+    if (refusal) return refusal;
+
     if (!json.results) {
       rememberMiss(missKey);
       return {
@@ -296,10 +357,14 @@ export const getTickerDetail = async (
       };
     }
 
-    const name = json.results.name as string;
-    const currency_name = json.results.currency_name as string;
+    const detail: TickerDetail = {
+      ticker_symbol,
+      name: json.results.name as string,
+      currency_name: json.results.currency_name as string,
+    };
+    detailCache.set(ticker_symbol, { detail, fetchedAt: Date.now() });
 
-    return { success: true, data: { ticker_symbol, name, currency_name } };
+    return { success: true, data: detail };
   } catch (err) {
     if (err instanceof QueueWaitTimeoutError) return rateLimitedResult(ticker_symbol);
     const message = err instanceof Error ? err.message : String(err);
@@ -362,16 +427,8 @@ export const getLatestClosePriceOnOrBefore = async (
   try {
     const response = await polygonQueue.add(() => fetchWithRetry(path), { maxWaitMs });
     const json = await response.json();
-    if (json.status === "NOT_AUTHORIZED") {
-      return {
-        success: false,
-        error: "plan_limit",
-        message:
-          typeof json.message === "string"
-            ? json.message
-            : `Polygon plan does not include data for ${polygonTicker} in [${from}, ${to}]`,
-      };
-    }
+    const refusal = upstreamRefusal(response, json, `${polygonTicker} in [${from}, ${to}]`);
+    if (refusal) return refusal;
     const results = json.results as Array<{ c: number; t: number }> | undefined;
     if (!results || results.length === 0) {
       rememberMiss(missKey);
@@ -442,9 +499,11 @@ export const getSecurityForSymbol = async (
 };
 
 /**
- * Clear both the price cache and the empty-result memo (useful for testing)
+ * Clear the price cache, the ticker-detail cache and the empty-result memo
+ * (useful for testing)
  */
 export const clearPriceCache = () => {
   priceCache.clear();
+  detailCache.clear();
   missCache.clear();
 };

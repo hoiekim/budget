@@ -26,7 +26,7 @@ const mockFetch = mock(
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
 const { postValidateTickerRoute } = await import("./post-validate-ticker");
-const { validateTickerRateLimiter } = await import("server/lib/rate-limit");
+const { polygonLookupRateLimiter } = await import("server/lib/rate-limit");
 const { clearPriceCache, polygonQueue } = await import("server/lib/polygon");
 
 afterAll(() => {
@@ -165,7 +165,7 @@ describe("POST /api/validate-ticker — per-user cap on the shared Polygon gate"
     }
 
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(validateTickerRateLimiter.isLimited(userId)).toBe(false);
+    expect(polygonLookupRateLimiter.isLimited(userId)).toBe(false);
   });
 
   test("sheds the 11th novel lookup in a minute as a failure, not as an invalid ticker", async () => {
@@ -187,11 +187,11 @@ describe("POST /api/validate-ticker — per-user cap on the shared Polygon gate"
     const bystander = nextUser();
 
     for (let i = 0; i < 11; i++) await post({ ticker_symbol: `NOPE${i}` }, { userId: noisy });
-    expect(validateTickerRateLimiter.isLimited(noisy)).toBe(true);
+    expect(polygonLookupRateLimiter.isLimited(noisy)).toBe(true);
 
     const result = await post({ ticker_symbol: "MSFT" }, { userId: bystander });
     expect(result?.status).toBe("success");
-    expect(validateTickerRateLimiter.isLimited(bystander)).toBe(false);
+    expect(polygonLookupRateLimiter.isLimited(bystander)).toBe(false);
   });
 
   test("a repeated unknown symbol costs one Polygon call, not one per submission", async () => {

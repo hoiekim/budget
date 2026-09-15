@@ -6,7 +6,8 @@ import {
   validationError,
   searchSecurities,
   upsertSecurities,
-  validateTickerRateLimiter,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
   polygon,
 } from "server";
 import { logger } from "server/lib/logger";
@@ -54,10 +55,10 @@ export const postValidateTickerRoute = new Route<ValidateTickerResponse>(
     // Only lookups that get past the local short-circuit can reach Polygon's
     // process-wide rate gate, which the price-refresh passes and every other
     // signed-in caller share. Those are the ones a single caller is capped on.
-    if (validateTickerRateLimiter.isLimited(user.user_id)) {
-      return { status: "failed", message: "Too many ticker lookups, try again in a minute." };
+    if (polygonLookupRateLimiter.isLimited(user.user_id)) {
+      return { status: "failed", message: POLYGON_LOOKUP_SHED_MESSAGE };
     }
-    validateTickerRateLimiter.consume(user.user_id);
+    polygonLookupRateLimiter.consume(user.user_id);
 
     // Validate against Polygon API
     const [detailResult, priceResult] = await Promise.all([

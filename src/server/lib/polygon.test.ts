@@ -510,6 +510,113 @@ describe("polygon", () => {
       expect(second.success).toBe(false);
       if (!second.success) expect(second.error).toBe("api_error");
     });
+
+    it("does not memoize a 429 error envelope as a missing price", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        if (calls === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 429,
+            json: () =>
+              Promise.resolve({ status: "ERROR", error: "exceeded maximum requests" }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ results: [{ c: 402.5 }] }),
+        } as Response);
+      });
+      const date = new Date("2024-01-15");
+
+      const first = await getClosePrice("AAPL", date);
+      const second = await getClosePrice("AAPL", date);
+
+      expect(calls).toBe(2);
+      expect(first.success).toBe(false);
+      if (!first.success) expect(first.error).toBe("api_error");
+      expect(second.success).toBe(true);
+      if (second.success) expect(second.data).toBe(402.5);
+    });
+
+    it("does not memoize a plan rejection as a missing ticker", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        if (calls === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 403,
+            json: () => Promise.resolve({ status: "NOT_AUTHORIZED" }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ results: { name: "Microsoft Corp.", currency_name: "usd" } }),
+        } as Response);
+      });
+
+      const first = await getTickerDetail("MSFT");
+      const second = await getTickerDetail("MSFT");
+
+      expect(calls).toBe(2);
+      expect(first.success).toBe(false);
+      if (!first.success) expect(first.error).toBe("plan_limit");
+      expect(second.success).toBe(true);
+      if (second.success) expect(second.data.name).toBe("Microsoft Corp.");
+    });
+
+    it("memoizes a 404, which is Polygon saying it does not carry the symbol", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: () => Promise.resolve({ status: "NOT_FOUND" }),
+        } as Response);
+      });
+
+      const first = await getTickerDetail("NOSUCH");
+      const second = await getTickerDetail("NOSUCH");
+
+      expect(calls).toBe(1);
+      expect(first.success).toBe(false);
+      if (!first.success) expect(first.error).toBe("no_data");
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.error).toBe("no_data");
+    });
+  });
+
+  describe("ticker-detail cache", () => {
+    it("serves a repeated detail lookup without spending a second call", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ results: { name: "Apple Inc.", currency_name: "usd" } }),
+        } as Response);
+      });
+
+      const first = await getTickerDetail("AAPL");
+      const second = await getTickerDetail("AAPL");
+
+      expect(calls).toBe(1);
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      if (second.success) expect(second.data.name).toBe("Apple Inc.");
+    });
   });
 
   describe("ticker encoding", () => {

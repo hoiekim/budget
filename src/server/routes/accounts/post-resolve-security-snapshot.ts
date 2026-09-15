@@ -10,6 +10,8 @@ import {
   getSecuritySnapshots,
   upsertSnapshots,
   polygon,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
   logger,
 } from "server";
 
@@ -114,6 +116,18 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
         };
       }
     }
+
+    // Past the snapshot short-circuit this reaches the same process-wide gate
+    // as /validate-ticker, on the same per-user budget. A walking `date` mints
+    // a fresh lookup every call, so the cap is what keeps one caller from
+    // holding the gate against the background refresh passes.
+    if (polygonLookupRateLimiter.isLimited(user.user_id)) {
+      return {
+        status: "success",
+        body: { resolved: false, reason: "rate_limited", message: POLYGON_LOOKUP_SHED_MESSAGE },
+      };
+    }
+    polygonLookupRateLimiter.consume(user.user_id);
 
     // Polygon fetch
     const priceResult = await polygon.getLatestClosePriceOnOrBefore(ticker, effectiveDateStr, {
