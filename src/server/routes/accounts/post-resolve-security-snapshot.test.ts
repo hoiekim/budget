@@ -35,6 +35,8 @@ const mockFetch = mock(
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
 const { postResolveSecuritySnapshotRoute } = await import("./post-resolve-security-snapshot");
+const { clearPriceCache } = await import("server/lib/polygon");
+const { polygonLookupRateLimiter } = await import("server/lib/rate-limit");
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
@@ -67,6 +69,9 @@ const queryRouter = async (sql: string, _values?: unknown[]) => {
 };
 
 beforeEach(() => {
+  // Polygon memoizes an empty result, so a `no_data` staged by one test
+  // would answer the next one's lookup for the same ticker and date.
+  clearPriceCache();
   resetQueryMocks();
   mockQuery.mockImplementation(queryRouter);
   securitiesRows = [];
@@ -495,5 +500,58 @@ describe("POST /api/resolve-security-snapshot — future-date clamping", () => {
         (c[1] as unknown[] | undefined)?.includes(todayStr),
     );
     expect(snapshotSelects).toHaveLength(1);
+  });
+});
+
+describe("POST /api/resolve-security-snapshot — per-user cap on the shared Polygon gate", () => {
+  test("a walking date cannot spend the gate past the caller's share", async () => {
+    // A user id no other suite uses: the limiter's bucket is process-global.
+    const userId = "u-resolve-cap";
+    securitiesRows = [securityRow()];
+
+    for (let i = 1; i <= 10; i++) {
+      const result = await postResolveSecuritySnapshotRoute.execute(
+        makeReq(
+          { security_id: "sec-1", date: `2024-01-${String(i).padStart(2, "0")}` },
+          { userId },
+        ),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("success");
+      expect(result?.body?.resolved).toBe(false);
+      expect(result?.body?.reason).toBe("no_data");
+    }
+
+    const shed = await postResolveSecuritySnapshotRoute.execute(
+      makeReq({ security_id: "sec-1", date: "2024-01-11" }, { userId }),
+      fakeRes(),
+    );
+
+    // Retryable, and it never claims the security has no price — the truth is
+    // a server-side cap, not a missing snapshot.
+    expect(shed?.body?.resolved).toBe(false);
+    expect(shed?.body?.reason).toBe("rate_limited");
+    expect(shed?.body?.message).toMatch(/too many/i);
+    // The shed request spends no slot on the shared gate.
+    expect(mockFetch).toHaveBeenCalledTimes(10);
+  });
+
+  test("a snapshot the DB can already answer is never charged", async () => {
+    const userId = "u-resolve-warm";
+    securitiesRows = [securityRow()];
+    snapshotsRows = [
+      snapshotRow({ snapshot_id: "snap-warm", snapshot_date: "2026-05-12", close_price: 100 }),
+    ];
+
+    for (let i = 0; i < 20; i++) {
+      const result = await postResolveSecuritySnapshotRoute.execute(
+        makeReq({ security_id: "sec-1", date: "2026-05-14" }, { userId }),
+        fakeRes(),
+      );
+      expect(result?.body?.source).toBe("existing");
+    }
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(polygonLookupRateLimiter.isLimited(userId)).toBe(false);
   });
 });

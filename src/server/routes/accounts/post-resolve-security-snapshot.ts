@@ -10,6 +10,8 @@ import {
   getSecuritySnapshots,
   upsertSnapshots,
   polygon,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
   logger,
 } from "server";
 
@@ -18,7 +20,7 @@ export interface ResolveSecuritySnapshotResponse {
   snapshot?: JSONSecuritySnapshot;
   source?: "existing" | "polygon";
   /** When resolved=false, the underlying polygon error category. */
-  reason?: "no_api_key" | "api_error" | "no_data" | "plan_limit";
+  reason?: "no_api_key" | "api_error" | "no_data" | "plan_limit" | "rate_limited";
   message?: string;
 }
 
@@ -115,21 +117,34 @@ export const postResolveSecuritySnapshotRoute = new Route<ResolveSecuritySnapsho
       }
     }
 
+    // Past the snapshot short-circuit this reaches the same process-wide gate
+    // as /validate-ticker, on the same per-user budget. A walking `date` mints
+    // a fresh lookup every call, so the cap is what keeps one caller from
+    // holding the gate against the background refresh passes.
+    if (polygonLookupRateLimiter.isLimited(user.user_id)) {
+      return {
+        status: "success",
+        body: { resolved: false, reason: "rate_limited", message: POLYGON_LOOKUP_SHED_MESSAGE },
+      };
+    }
+    polygonLookupRateLimiter.consume(user.user_id);
+
     // Polygon fetch
-    const priceResult = await polygon.getLatestClosePriceOnOrBefore(
-      ticker,
-      effectiveDateStr,
-      { securityType: security.type },
-    );
+    const priceResult = await polygon.getLatestClosePriceOnOrBefore(ticker, effectiveDateStr, {
+      securityType: security.type,
+      maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
+    });
     if (!priceResult.success) {
       const message =
         priceResult.error === "no_api_key"
           ? "Market data API is not configured"
-          : priceResult.error === "plan_limit"
-            ? `Polygon plan doesn't include this date range`
-            : priceResult.error === "no_data"
-              ? `No price data for ${ticker} on or before ${effectiveDateStr}`
-              : `Polygon error: ${priceResult.message}`;
+          : priceResult.error === "rate_limited"
+            ? priceResult.message
+            : priceResult.error === "plan_limit"
+              ? `Polygon plan doesn't include this date range`
+              : priceResult.error === "no_data"
+                ? `No price data for ${ticker} on or before ${effectiveDateStr}`
+                : `Polygon error: ${priceResult.message}`;
       return {
         status: "success",
         body: { resolved: false, reason: priceResult.error, message },

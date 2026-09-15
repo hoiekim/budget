@@ -1,5 +1,15 @@
 import { JSONSecurity, getRandomId, getDateTimeString } from "common";
-import { Route, requireBodyObject, validationError, searchSecurities, upsertSecurities, polygon } from "server";
+import {
+  Route,
+  requireBodyObject,
+  requireTickerSymbol,
+  validationError,
+  searchSecurities,
+  upsertSecurities,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
+  polygon,
+} from "server";
 import { logger } from "server/lib/logger";
 
 export interface ValidateTickerResponse {
@@ -29,13 +39,9 @@ export const postValidateTickerRoute = new Route<ValidateTickerResponse>(
     if (!bodyResult.success) return validationError(bodyResult.error!);
 
     const body = bodyResult.data as Record<string, unknown>;
-    const ticker_symbol = body.ticker_symbol as string | undefined;
-
-    if (!ticker_symbol || typeof ticker_symbol !== "string") {
-      return validationError("ticker_symbol is required");
-    }
-
-    const upperTicker = ticker_symbol.trim().toUpperCase();
+    const tickerResult = requireTickerSymbol(body, "ticker_symbol");
+    if (!tickerResult.success) return validationError(tickerResult.error!);
+    const upperTicker = tickerResult.data!;
 
     // Check if we already have this security in the DB
     const existing = await searchSecurities({ ticker_symbol: upperTicker });
@@ -46,13 +52,28 @@ export const postValidateTickerRoute = new Route<ValidateTickerResponse>(
       };
     }
 
+    // Only lookups that get past the local short-circuit can reach Polygon's
+    // process-wide rate gate, which the price-refresh passes and every other
+    // signed-in caller share. Those are the ones a single caller is capped on.
+    if (polygonLookupRateLimiter.isLimited(user.user_id)) {
+      return { status: "failed", message: POLYGON_LOOKUP_SHED_MESSAGE };
+    }
+    polygonLookupRateLimiter.consume(user.user_id);
+
     // Validate against Polygon API
     const [detailResult, priceResult] = await Promise.all([
-      polygon.getTickerDetail(upperTicker),
-      polygon.getClosePrice(upperTicker, new Date()),
+      polygon.getTickerDetail(upperTicker, { maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS }),
+      polygon.getClosePrice(upperTicker, new Date(), {
+        maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
+      }),
     ]);
 
     if (!detailResult.success) {
+      // A shed lookup says nothing about the symbol, so it must not come back
+      // as `valid: false` — the form would label a good ticker invalid.
+      if (detailResult.error === "rate_limited") {
+        return { status: "failed", message: detailResult.message };
+      }
       return {
         status: "success",
         body: {
