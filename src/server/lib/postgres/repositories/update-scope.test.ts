@@ -24,20 +24,27 @@ const SCAN_ROOT = path.resolve(import.meta.dir, "../../..");
 
 /**
  * Writes whose key cannot reach them from a request body, each with the reason
- * it needs no owner predicate. Declaring a site here is the only way it is
+ * it needs no owner predicate. Declaring a write here is the only way it is
  * exempted, and an entry matching no call site fails the suite — a licence
  * cannot outlive the write it was granted for.
+ *
+ * The key carries the receiver as well as the function, because a licence is
+ * granted to a statement and not to a name. Keyed on the function alone it
+ * would blanket every unscoped `.update` that function later grows, including
+ * ones on other tables: a write on a client-supplied key added beside an
+ * exempted one would inherit a reason written about a different table.
  */
 const SERVER_KEYED: Record<string, string> = {
-  "lib/postgres/repositories/users.ts::updateUser":
-    "the primary key IS user_id, so the owner predicate would be the same equality twice",
-  "lib/postgres/repositories/session.ts::touch":
+  "lib/postgres/repositories/session.ts::touch::sessionsTable":
     "sessions is keyed on session_id and has no user_id column — its owner lives in user_user_id",
-  "lib/postgres/repositories/items.ts::updateItemSyncStatus":
+  "lib/postgres/repositories/items.ts::updateItemSyncStatus::itemsTable":
     "the scheduled sync loop walks every item server-side; item_id never crosses a request boundary",
-  "lib/postgres/repositories/api_keys.ts::verifyApiKey":
+  "lib/postgres/repositories/api_keys.ts::verifyApiKey::apiKeysTable":
     "key_id is read back from the server's own key_hash lookup, not supplied by the caller",
 };
+
+/** The write a licence is granted to: which statement, on which table. */
+const exemptionKey = (call: UpdateCall): string => `${call.site}::${call.receiver}`;
 
 /**
  * Receivers that own an unrelated `update` method. Every `.update` in the scan
@@ -210,7 +217,8 @@ describe("server updates carry the owner predicate", () => {
 
   it("reaches every write it claims to police", () => {
     const sites = serverCalls.map((c) => c.site);
-    for (const exempted of Object.keys(SERVER_KEYED)) expect(sites).toContain(exempted);
+    const exemptedWrites = serverCalls.map(exemptionKey);
+    for (const exempted of Object.keys(SERVER_KEYED)) expect(exemptedWrites).toContain(exempted);
     const receivers = serverCalls.map((c) => `${c.file}::${c.receiver}`);
     for (const declared of Object.keys(NOT_A_TABLE)) expect(receivers).toContain(declared);
     // The route layer is where a client-supplied key arrives, so a scan that
@@ -223,7 +231,7 @@ describe("server updates carry the owner predicate", () => {
   it("leaves no write keyed on a client-supplied id unscoped", () => {
     const unscoped = serverCalls
       .filter(isTableWrite)
-      .filter((c) => !c.scoped && !(c.site in SERVER_KEYED))
+      .filter((c) => !c.scoped && !(exemptionKey(c) in SERVER_KEYED))
       .map((c) => `${c.site}:${c.line} receiver=${c.receiver} owner=${c.owner}`);
     expect(unscoped).toEqual([]);
   });

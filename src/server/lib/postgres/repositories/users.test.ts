@@ -11,7 +11,7 @@ mock.module("bcrypt", () => ({
 
 // Dynamic-import after the leaf-dep mocks register, so the source
 // resolves pg/bcrypt to their FakePool / fake bcrypt.
-const { writeUser, searchUser, updateUser, getUserById, deleteUser } = await import("./users");
+const { writeUser, searchUser, getUserById, deleteUser } = await import("./users");
 
 afterAll(restoreLeaves);
 
@@ -98,33 +98,6 @@ describe("searchUser", () => {
     const result = await searchUser({});
     expect(result).toBeUndefined();
     expect(mockQuery).not.toHaveBeenCalled();
-  });
-});
-
-describe("updateUser", () => {
-  test("returns true when update succeeds", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "usr-123" }], rowCount: 1 });
-    const result = await updateUser({ user_id: "usr-123", username: "newname" });
-    expect(result).toBe(true);
-  });
-
-  test("returns false when no rows updated", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const result = await updateUser({ user_id: "usr-123", username: "newname" });
-    expect(result).toBe(false);
-  });
-
-  test("returns false when no updates provided (empty object)", async () => {
-    const result = await updateUser({ user_id: "usr-123" });
-    expect(result).toBe(false);
-    expect(mockQuery).not.toHaveBeenCalled();
-  });
-
-  test("hashes password when included in update", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: "usr-123" }], rowCount: 1 });
-    await updateUser({ user_id: "usr-123", password: "newpassword" });
-    const values = mockQuery.mock.calls[0][1] as string[];
-    expect(values).not.toContain("newpassword");
   });
 });
 

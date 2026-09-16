@@ -37,7 +37,7 @@ Use direct SQL for: complex joins or aggregations, performance-critical bulk ope
 
 ## Repository Pattern
 
-Higher-level helpers live in `src/server/lib/postgres/repositories/` and wrap the table singletons (e.g. `searchUser`, `writeUser`, `updateUser`, `getUserById`, `deleteUser`). Import them from the `server` alias:
+Higher-level helpers live in `src/server/lib/postgres/repositories/` and wrap the table singletons (e.g. `searchUser`, `writeUser`, `getUserById`, `deleteUser`). Import them from the `server` alias:
 
 ```typescript
 import { searchUser, writeUser } from "server";
