@@ -48,14 +48,17 @@ const resolveSecurityId = async (
     maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
   });
   if (!detailResult.success) {
+    // Asking the caller to check the symbol is only the right answer when
+    // Polygon actually came back empty on it. Every other failure is about
+    // the lookup, not the ticker, and carries its own message.
     return {
       ok: false,
       message:
         detailResult.error === "no_api_key"
           ? "Market data API is not configured. Contact your administrator."
-          : detailResult.error === "rate_limited"
-            ? detailResult.message
-            : `Ticker symbol "${upperTicker}" could not be validated. Please check the symbol and try again.`,
+          : detailResult.error === "no_data"
+            ? `Ticker symbol "${upperTicker}" could not be validated. Please check the symbol and try again.`
+            : detailResult.message,
     };
   }
   const { name, currency_name } = detailResult.data;

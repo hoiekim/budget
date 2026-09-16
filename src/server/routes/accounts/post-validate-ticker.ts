@@ -69,20 +69,22 @@ export const postValidateTickerRoute = new Route<ValidateTickerResponse>(
     ]);
 
     if (!detailResult.success) {
-      // A shed lookup says nothing about the symbol, so it must not come back
-      // as `valid: false` — the form would label a good ticker invalid.
-      if (detailResult.error === "rate_limited") {
-        return { status: "failed", message: detailResult.message };
-      }
-      return {
-        status: "success",
-        body: {
-          valid: false,
+      // Only an empty answer from Polygon is a verdict on the symbol. A shed
+      // lookup, an unconfigured key, a plan that does not carry the data and
+      // an upstream refusal all say nothing about it, so none of them may come
+      // back as `valid: false` — the form would label a good ticker invalid.
+      if (detailResult.error !== "no_data") {
+        return {
+          status: "failed",
           message:
             detailResult.error === "no_api_key"
               ? "Market data API is not configured. Contact your administrator."
-              : `Ticker "${upperTicker}" not found or invalid.`,
-        },
+              : detailResult.message,
+        };
+      }
+      return {
+        status: "success",
+        body: { valid: false, message: `Ticker "${upperTicker}" not found or invalid.` },
       };
     }
 

@@ -190,3 +190,34 @@ describe("post-holding-snapshot — per-user cap on the shared Polygon gate", ()
     expect(mockFetch).toHaveBeenCalledTimes(10);
   });
 });
+
+describe("post-holding-snapshot \u2014 upstream failures do not blame the symbol", () => {
+  test("a plan rejection reports the plan, not an unverifiable ticker", async () => {
+    const userId = "u-holding-plan-limit";
+    accountRow = {
+      ...Object.fromEntries(ACCOUNT_NULLABLE.map((k) => [k, null])),
+      account_id: "a-1",
+      user_id: userId,
+      item_id: "item-1",
+      institution_id: "ins-1",
+      type: "investment",
+    };
+    mockFetch.mockImplementation(
+      async () =>
+        ({
+          ok: false,
+          status: 403,
+          json: async () => ({ status: "NOT_AUTHORIZED", message: "not entitled" }),
+        }) as unknown as Response,
+    );
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "a-1", ticker_symbol: "PLANX", quantity: 1 }, userId),
+      fakeRes(),
+    );
+
+    expect(result!.status).toBe("failed");
+    expect(result!.message).not.toMatch(/check the symbol/i);
+    expect(result!.message).toMatch(/not entitled/i);
+  });
+});

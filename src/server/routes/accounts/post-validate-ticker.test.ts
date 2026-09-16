@@ -213,6 +213,27 @@ describe("POST /api/validate-ticker — outcomes", () => {
     expect(result?.body?.message).toMatch(/not found or invalid/i);
   });
 
+  test("an upstream refusal fails rather than calling the symbol invalid", async () => {
+    // A plan rejection is persistent: a free-tier key that has spent its
+    // allowance would otherwise tell every caller that every symbol is bad.
+    for (const [status, json] of [
+      [403, { status: "NOT_AUTHORIZED", message: "not entitled to this data" }],
+      [200, { status: "ERROR", error: "upstream is unhappy" }],
+    ] as const) {
+      clearPriceCache();
+      mockFetch.mockImplementation(
+        async () =>
+          ({ ok: status === 200, status, json: async () => json }) as unknown as Response,
+      );
+
+      const result = await post({ ticker_symbol: "MSFT", save: false });
+
+      expect(result?.status).toBe("failed");
+      expect(result?.body?.valid).toBeUndefined();
+      expect(result?.message).not.toMatch(/not found or invalid/i);
+    }
+  });
+
   test("returns the security for a symbol Polygon knows", async () => {
     mockFetch.mockImplementation(
       async (...args: unknown[]) =>

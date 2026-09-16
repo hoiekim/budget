@@ -572,6 +572,37 @@ describe("polygon", () => {
       if (second.success) expect(second.data.name).toBe("Microsoft Corp.");
     });
 
+    it("does not memoize an error envelope that arrived on a 200", async () => {
+      process.env.POLYGON_API_KEY = "test-key";
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        if (calls === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({ status: "ERROR", error: "invalid date range requested" }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ results: [{ c: 402.5 }] }),
+        } as Response);
+      });
+      const date = new Date("2024-01-15");
+
+      const first = await getClosePrice("AAPL", date);
+      const second = await getClosePrice("AAPL", date);
+
+      expect(calls).toBe(2);
+      expect(first.success).toBe(false);
+      if (!first.success) expect(first.error).toBe("api_error");
+      expect(second.success).toBe(true);
+      if (second.success) expect(second.data).toBe(402.5);
+    });
+
     it("memoizes a 404, which is Polygon saying it does not carry the symbol", async () => {
       process.env.POLYGON_API_KEY = "test-key";
       let calls = 0;
