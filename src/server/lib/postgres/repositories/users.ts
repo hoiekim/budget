@@ -1,9 +1,7 @@
 import bcrypt from "bcrypt";
-import { DeepPartial } from "common";
 import { MaskedUser, User, usersTable, USER_ID } from "../models";
 
 export type IndexUserInput = Omit<User, "user_id"> & { user_id?: string };
-export type PartialUser = { user_id: string } & DeepPartial<User>;
 
 export const maskUser = (user: User): MaskedUser => {
   const { user_id, username } = user;
@@ -31,20 +29,6 @@ export const searchUser = async (user: Partial<MaskedUser>): Promise<User | unde
 
   const model = await usersTable.queryOne(filters);
   return model?.toUser();
-};
-
-export const updateUser = async (user: PartialUser): Promise<boolean> => {
-  if (!user) return false;
-  const { user_id, username, password } = user;
-
-  const updates: Record<string, unknown> = {};
-  if (username !== undefined) updates.username = username;
-  if (password !== undefined) updates.password = await bcrypt.hash(password, 10);
-
-  if (Object.keys(updates).length === 0) return false;
-
-  const model = await usersTable.update(user_id, updates);
-  return model !== null;
 };
 
 export const getUserById = async (user_id: string): Promise<User | undefined> => {

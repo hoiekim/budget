@@ -81,20 +81,6 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
   });
 });
 
-// Real-time collaboration: a Plaid webhook lands out-of-band from any
-// user tab, so mutations here don't ride the normal per-user-request emit
-// path in start.ts. Resolve the item's owner from `item_id` and fan the
-// resulting `<table>-updated` events out to that user's open tabs so the UI
-// picks up the auto-imported data without a page reload.
-const emitToItemOwner = async (item_id: string, domains: TableName[]) => {
-  const userItem = await getUserItem(item_id);
-  if (!userItem) {
-    logger.warn("Plaid webhook emit skipped — no user for item", { itemId: item_id });
-    return;
-  }
-  for (const domain of domains) emitToUser(userItem.user.user_id, domain);
-};
-
 const syncAndLog = async (item_id: string) => {
   const response = await syncPlaidTransactions(item_id);
   if (!response) return { status: "failed" as const };
@@ -123,9 +109,19 @@ const refreshItemProducts = async (item_id: string) => {
   return { status: "success" as const };
 };
 
+// `item_id` arrives in the webhook body, so the status write is scoped to the
+// owner resolved from it rather than keyed on the id alone. The same lookup
+// addresses the emit: a webhook lands out-of-band from any user tab, so this
+// mutation doesn't ride the per-user-request emit path in start.ts.
 const markBadItem = async (item_id: string, reason: string) => {
-  const response = await updateItemStatus(item_id, ItemStatus.BAD, reason);
-  if (!response) return { status: "failed" as const };
-  await emitToItemOwner(item_id, [TableName.Accounts]);
+  const userItem = await getUserItem(item_id);
+  if (!userItem) {
+    logger.warn("Plaid webhook status update skipped — no user for item", { itemId: item_id });
+    return { status: "failed" as const };
+  }
+  const { user } = userItem;
+  const updated = await updateItemStatus(user, item_id, ItemStatus.BAD, reason);
+  if (!updated) return { status: "failed" as const };
+  emitToUser(user.user_id, TableName.Accounts);
   return { status: "success" as const };
 };

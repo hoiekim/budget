@@ -35,7 +35,7 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
         logger.error("Failed to get accounts data", { itemId: item_id }, plaidError || error);
       }
       if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-        updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
+        updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
           logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
         });
       }
@@ -106,7 +106,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
         logger.error("Failed to get holdings data", { itemId: item_id }, plaidError || error);
         if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-          updateItemStatus(item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
+          updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
             logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
           });
         }

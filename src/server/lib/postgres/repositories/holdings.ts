@@ -15,14 +15,8 @@ import {
   ISO_CURRENCY_CODE,
   RAW,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
-
-export type PartialHolding = {
-  holding_id?: string;
-  account_id: string;
-  security_id: string;
-} & Partial<JSONHolding>;
 
 export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
   const models = await holdingsTable.query({ [USER_ID]: user.user_id });
@@ -89,30 +83,6 @@ export const upsertHoldings = async (
     } catch (error) {
       const holdingId = holding.holding_id || `${holding.account_id}-${holding.security_id}`;
       logger.error("Failed to upsert holding", { holdingId }, error);
-      results.push(errorResult(holdingId));
-    }
-  }
-  return results;
-};
-
-export const updateHoldings = async (
-  user: MaskedUser,
-  holdings: PartialHolding[],
-): Promise<UpsertResult[]> => {
-  if (!holdings.length) return [];
-  const results: UpsertResult[] = [];
-
-  for (const holding of holdings) {
-    const holdingId = holding.holding_id || `${holding.account_id}-${holding.security_id}`;
-    try {
-      const row = HoldingModel.fromJSON(holding, user.user_id);
-      delete row.holding_id;
-      delete row.user_id;
-
-      const updated = await holdingsTable.update(holdingId, row);
-      results.push(updated ? successResult(holdingId, 1) : noChangeResult(holdingId));
-    } catch (error) {
-      logger.error("Failed to update holding", { holdingId }, error);
       results.push(errorResult(holdingId));
     }
   }
