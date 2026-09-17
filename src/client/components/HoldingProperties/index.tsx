@@ -280,7 +280,10 @@ export const HoldingProperties = () => {
       }
     } else {
       setTickerStatus("invalid");
-      setTickerMessage("Validation failed — check the ticker symbol");
+      // The route rejects with a message of its own when the lookup was shed
+      // rather than answered; showing the generic line instead would blame
+      // the symbol for a server-side cap.
+      setTickerMessage(r?.message ?? "Validation failed — check the ticker symbol");
     }
   };
 

@@ -132,7 +132,9 @@ export const backfillMonthlySecuritySnapshotsForward = async (
       // future/in-progress price with today's date.
       const dayInMonth =
         cursor === nowYearMonth ? getDateString(getYesterday()) : `${cursor}-15`;
-      const fetchResult = await polygon.getClosePrice(ticker_symbol, new Date(dayInMonth), meta.type);
+      const fetchResult = await polygon.getClosePrice(ticker_symbol, new Date(dayInMonth), {
+        securityType: meta.type,
+      });
 
       if (!fetchResult.success) {
         if (fetchResult.error === "no_data") result.empty++;

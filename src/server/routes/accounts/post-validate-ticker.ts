@@ -1,5 +1,15 @@
 import { JSONSecurity, getRandomId, getDateTimeString } from "common";
-import { Route, requireBodyObject, validationError, searchSecurities, upsertSecurities, polygon } from "server";
+import {
+  Route,
+  requireBodyObject,
+  requireTickerSymbol,
+  validationError,
+  searchSecurities,
+  upsertSecurities,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
+  polygon,
+} from "server";
 import { logger } from "server/lib/logger";
 
 export interface ValidateTickerResponse {
@@ -29,13 +39,9 @@ export const postValidateTickerRoute = new Route<ValidateTickerResponse>(
     if (!bodyResult.success) return validationError(bodyResult.error!);
 
     const body = bodyResult.data as Record<string, unknown>;
-    const ticker_symbol = body.ticker_symbol as string | undefined;
-
-    if (!ticker_symbol || typeof ticker_symbol !== "string") {
-      return validationError("ticker_symbol is required");
-    }
-
-    const upperTicker = ticker_symbol.trim().toUpperCase();
+    const tickerResult = requireTickerSymbol(body, "ticker_symbol");
+    if (!tickerResult.success) return validationError(tickerResult.error!);
+    const upperTicker = tickerResult.data!;
 
     // Check if we already have this security in the DB
     const existing = await searchSecurities({ ticker_symbol: upperTicker });
@@ -46,22 +52,39 @@ export const postValidateTickerRoute = new Route<ValidateTickerResponse>(
       };
     }
 
+    // Only lookups that get past the local short-circuit can reach Polygon's
+    // process-wide rate gate, which the price-refresh passes and every other
+    // signed-in caller share. Those are the ones a single caller is capped on.
+    if (polygonLookupRateLimiter.isLimited(user.user_id)) {
+      return { status: "failed", message: POLYGON_LOOKUP_SHED_MESSAGE };
+    }
+    polygonLookupRateLimiter.consume(user.user_id);
+
     // Validate against Polygon API
     const [detailResult, priceResult] = await Promise.all([
-      polygon.getTickerDetail(upperTicker),
-      polygon.getClosePrice(upperTicker, new Date()),
+      polygon.getTickerDetail(upperTicker, { maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS }),
+      polygon.getClosePrice(upperTicker, new Date(), {
+        maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
+      }),
     ]);
 
     if (!detailResult.success) {
-      return {
-        status: "success",
-        body: {
-          valid: false,
+      // Only an empty answer from Polygon is a verdict on the symbol. A shed
+      // lookup, an unconfigured key, a plan that does not carry the data and
+      // an upstream refusal all say nothing about it, so none of them may come
+      // back as `valid: false` — the form would label a good ticker invalid.
+      if (detailResult.error !== "no_data") {
+        return {
+          status: "failed",
           message:
             detailResult.error === "no_api_key"
               ? "Market data API is not configured. Contact your administrator."
-              : `Ticker "${upperTicker}" not found or invalid.`,
-        },
+              : detailResult.message,
+        };
+      }
+      return {
+        status: "success",
+        body: { valid: false, message: `Ticker "${upperTicker}" not found or invalid.` },
       };
     }
 

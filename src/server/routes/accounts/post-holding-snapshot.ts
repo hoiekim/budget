@@ -2,6 +2,7 @@ import { getRandomId, getSquashedDateString, JSONHolding, JSONSecurity } from "c
 import {
   Route,
   requireBodyObject,
+  requireTickerSymbol,
   optionalDateField,
   validationError,
   upsertHoldingSnapshots,
@@ -11,6 +12,8 @@ import {
   getAccount,
   getHoldingSnapshots,
   polygon,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
   backfillMonthlySecuritySnapshotsForward,
 } from "server";
 import { logger } from "server/lib/logger";
@@ -22,26 +25,40 @@ export interface HoldingSnapshotPostResponse {
 }
 
 /**
- * Resolve a ticker symbol to a security_id, creating the security via
- * Polygon's ticker-detail API if it does not yet exist locally. Price is
- * intentionally not required so future-dated snapshots do not falsely
- * reject valid tickers (matches the validate-ticker route's leniency).
+ * Resolve an already-validated ticker symbol to a security_id, creating the
+ * security via Polygon's ticker-detail API if it does not yet exist locally.
+ * Price is intentionally not required so future-dated snapshots do not
+ * falsely reject valid tickers (matches the validate-ticker route's leniency).
  */
 const resolveSecurityId = async (
-  rawTicker: string,
+  upperTicker: string,
+  user_id: string,
 ): Promise<{ ok: true; security_id: string } | { ok: false; message: string }> => {
-  const upperTicker = rawTicker.toUpperCase();
   const securities = await searchSecurities({ ticker_symbol: upperTicker });
   if (securities.length > 0) return { ok: true, security_id: securities[0].security_id };
 
-  const detailResult = await polygon.getTickerDetail(upperTicker);
+  // Past the local short-circuit this reaches the same process-wide gate as
+  // /validate-ticker, on the same per-user budget.
+  if (polygonLookupRateLimiter.isLimited(user_id)) {
+    return { ok: false, message: POLYGON_LOOKUP_SHED_MESSAGE };
+  }
+  polygonLookupRateLimiter.consume(user_id);
+
+  const detailResult = await polygon.getTickerDetail(upperTicker, {
+    maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
+  });
   if (!detailResult.success) {
+    // Asking the caller to check the symbol is only the right answer when
+    // Polygon actually came back empty on it. Every other failure is about
+    // the lookup, not the ticker, and carries its own message.
     return {
       ok: false,
       message:
         detailResult.error === "no_api_key"
           ? "Market data API is not configured. Contact your administrator."
-          : `Ticker symbol "${rawTicker}" could not be validated. Please check the symbol and try again.`,
+          : detailResult.error === "no_data"
+            ? `Ticker symbol "${upperTicker}" could not be validated. Please check the symbol and try again.`
+            : detailResult.message,
     };
   }
   const { name, currency_name } = detailResult.data;
@@ -102,7 +119,9 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
       let new_security_id: string | undefined;
 
       if (typeof body.ticker_symbol === "string" && body.ticker_symbol.trim()) {
-        const resolved = await resolveSecurityId(body.ticker_symbol.trim());
+        const patchTicker = requireTickerSymbol(body, "ticker_symbol");
+        if (!patchTicker.success) return validationError(patchTicker.error!);
+        const resolved = await resolveSecurityId(patchTicker.data!, user.user_id);
         if (!resolved.ok) return { status: "failed", message: resolved.message };
         new_security_id = resolved.security_id;
         patch.holding_security_id = new_security_id;
@@ -167,12 +186,12 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
 
     // ── Create mode ─────────────────────────────────────────────────────────
     const account_id = body.account_id as string | undefined;
-    const ticker_symbol = body.ticker_symbol as string | undefined;
     const quantity = body.quantity as number | undefined;
 
     if (!account_id) return validationError("account_id is required");
     if (typeof account_id !== "string") return validationError("account_id must be a string");
-    if (!ticker_symbol) return validationError("ticker_symbol is required");
+    const tickerResult = requireTickerSymbol(body, "ticker_symbol");
+    if (!tickerResult.success) return validationError(tickerResult.error!);
     if (quantity === undefined || quantity === null) return validationError("quantity is required");
 
     const parsedDate = optionalDateField(body, "snapshot_date");
@@ -189,7 +208,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const date: Date = parsedDate.data ?? new Date();
     const dateString = getSquashedDateString(date);
 
-    const resolved = await resolveSecurityId(ticker_symbol);
+    const resolved = await resolveSecurityId(tickerResult.data!, user.user_id);
     if (!resolved.ok) return { status: "failed", message: resolved.message };
     const security_id = resolved.security_id;
 

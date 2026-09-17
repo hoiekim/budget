@@ -26,7 +26,7 @@ interface RateLimitRecord {
 }
 
 /**
- * One record per (bucket, IP). Buckets share this Map — and therefore the
+ * One record per (bucket, key). Buckets share this Map — and therefore the
  * single cleanup timer below — but never share counters, so a limiter that
  * fills up only blocks its own callers.
  */
@@ -68,45 +68,47 @@ export const stopRateLimitCleanup = () => {
 
 export interface RateLimiter {
   /**
-   * Read-only check: true once the IP has consumed `maxAttempts` slots within
-   * the active window. Does NOT mutate state, so a caller can check without
-   * charging the quota.
+   * Read-only check: true once the subject has consumed `maxAttempts` slots
+   * within the active window. Does NOT mutate state, so a caller can check
+   * without charging the quota.
    */
-  isLimited(ip: string): boolean;
+  isLimited(subject: string): boolean;
   /**
-   * Consume one slot for the given IP. The caller decides which outcomes cost
-   * a slot: the login limiter charges only failed auth, a volume limiter
+   * Consume one slot for the given subject. The caller decides which outcomes
+   * cost a slot: the login limiter charges only failed auth, a volume limiter
    * charges every accepted request.
    */
-  consume(ip: string): void;
+  consume(subject: string): void;
   /**
-   * Clear the IP's slots so earlier attempts don't accumulate against them for
-   * the rest of the window.
+   * Clear the subject's slots so earlier attempts don't accumulate against
+   * them for the rest of the window.
    */
-  reset(ip: string): void;
+  reset(subject: string): void;
 }
 
 /**
- * Build a limiter over its own (bucket, IP) counters.
+ * Build a limiter over its own (bucket, subject) counters. A pre-session
+ * limiter has only the client IP to go on; a limiter behind authentication
+ * passes the user id, which survives the caller changing address.
  *
  * @param bucket Namespace for this limiter's counters. Must be unique per
- *   limiter and must not contain `:` — the key is `${bucket}:${ip}`, so a
- *   colon in the bucket lets two (bucket, IP) pairs collide onto one counter
- *   once the IP carries colons of its own, as IPv6 addresses do.
+ *   limiter and must not contain `:` — the key is `${bucket}:${subject}`, so
+ *   a colon in the bucket lets two (bucket, subject) pairs collide onto one
+ *   counter once the subject carries colons of its own, as IPv6 addresses do.
  */
 export const createRateLimiter = (
   bucket: string,
   { maxAttempts, windowMs }: { maxAttempts: number; windowMs: number },
 ): RateLimiter => {
-  const keyFor = (ip: string) => `${bucket}:${ip}`;
+  const keyFor = (subject: string) => `${bucket}:${subject}`;
 
   return {
-    isLimited: (ip) => {
-      const record = attempts.get(keyFor(ip));
+    isLimited: (subject) => {
+      const record = attempts.get(keyFor(subject));
       return !!record && Date.now() < record.resetAt && record.count >= maxAttempts;
     },
-    consume: (ip) => {
-      const key = keyFor(ip);
+    consume: (subject) => {
+      const key = keyFor(subject);
       const now = Date.now();
       const record = attempts.get(key);
 
@@ -116,8 +118,8 @@ export const createRateLimiter = (
         attempts.set(key, { count: 1, resetAt: now + windowMs });
       }
     },
-    reset: (ip) => {
-      attempts.delete(keyFor(ip));
+    reset: (subject) => {
+      attempts.delete(keyFor(subject));
     },
   };
 };
@@ -133,6 +135,30 @@ export const clientErrorRateLimiter = createRateLimiter("client-error", {
   maxAttempts: 12,
   windowMs: 15 * 60 * 1000,
 });
+
+// Keyed by user id, not IP: the routes are authenticated, and the shared
+// resource it protects — the process-wide Polygon rate gate — is consumed
+// per lookup regardless of where the lookup came from. One bucket spans
+// every route that can reach that gate on caller-supplied input, so the
+// ceiling cannot be lifted by moving to a different endpoint.
+//
+// It counts lookups that get past the local short-circuit, which includes
+// the ones the in-process memo then answers for free. That is deliberate:
+// the memo is a best-effort cache with a short TTL, so pricing against it
+// would make the ceiling depend on what a previous caller happened to warm.
+//
+// The ceiling sits deliberately above what the gate itself will pass. Each
+// novel lookup costs up to two of its slots, so a caller typing symbols by
+// hand meets the gate's retryable "busy" answer long before this cap. What
+// this stops is the caller who does not read that answer: a script parking a
+// new request every few seconds indefinitely.
+export const polygonLookupRateLimiter = createRateLimiter("polygon-lookup", {
+  maxAttempts: 10,
+  windowMs: 60 * 1000,
+});
+
+export const POLYGON_LOOKUP_SHED_MESSAGE =
+  "Too many ticker lookups, try again in a minute.";
 
 const PRE_SESSION_RATE_LIMITS: {
   method: string;

@@ -130,6 +130,37 @@ export function requireStringField<T extends object>(
 }
 
 /**
+ * Polygon addresses US equities by bare symbol (`AAPL`, `BRK.B`, `RDS-A`)
+ * and crypto pairs by namespace prefix (`X:BTCUSD`), so the dot, hyphen and
+ * colon all belong in a legitimate symbol. Nothing else does, and anything
+ * else is a request that can only miss — each miss costs a slot in the
+ * process-wide Polygon rate gate.
+ */
+const TICKER_SYMBOL_PATTERN = /^[A-Z0-9.:-]{1,16}$/;
+
+/**
+ * Validate a ticker-symbol field and return it normalized — trimmed and
+ * upper-cased, which is the form every caller persists and looks up by.
+ */
+export function requireTickerSymbol<T extends object>(
+  obj: T,
+  field: keyof T
+): ValidationResult<string> {
+  const stringResult = requireStringField(obj, field);
+  if (!stringResult.success) return stringResult;
+
+  const normalized = stringResult.data!.trim().toUpperCase();
+  if (!TICKER_SYMBOL_PATTERN.test(normalized)) {
+    return {
+      success: false,
+      error: "Ticker symbol must be 1-16 characters of A-Z, 0-9, '.', '-' or ':'",
+    };
+  }
+
+  return { success: true, data: normalized };
+}
+
+/**
  * Validate that a required number field exists in an object.
  */
 export function requireNumberField<T extends object>(

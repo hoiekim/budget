@@ -6,6 +6,7 @@ import {
   optionalQueryString,
   requireBodyObject,
   requireStringField,
+  requireTickerSymbol,
   requireNumberField,
   optionalDateField,
   validateFields,
@@ -120,6 +121,51 @@ describe("requireStringField", () => {
     const result = requireStringField(obj, "name" as keyof typeof obj);
     expect(result.success).toBe(false);
     expect(result.error).toContain("string");
+  });
+});
+
+describe("requireTickerSymbol", () => {
+  it("normalizes case and surrounding whitespace", () => {
+    const result = requireTickerSymbol({ ticker_symbol: "  aapl " }, "ticker_symbol");
+    expect(result.success).toBe(true);
+    expect(result.data).toBe("AAPL");
+  });
+
+  it("accepts the punctuation real symbols carry", () => {
+    for (const ticker of ["BRK.B", "RDS-A", "X:BTCUSD", "VOO"]) {
+      const result = requireTickerSymbol({ ticker_symbol: ticker }, "ticker_symbol");
+      expect(result.success).toBe(true);
+      expect(result.data).toBe(ticker);
+    }
+  });
+
+  it("rejects characters that would reshape the outbound URL", () => {
+    for (const ticker of ["AAPL?apiKey=x", "AAPL#frag", "A/B", "AA PL", "A%41"]) {
+      const result = requireTickerSymbol({ ticker_symbol: ticker }, "ticker_symbol");
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Ticker symbol must be 1-16 characters/);
+    }
+  });
+
+  it("rejects an empty or whitespace-only symbol", () => {
+    expect(requireTickerSymbol({ ticker_symbol: "" }, "ticker_symbol").success).toBe(false);
+    expect(requireTickerSymbol({ ticker_symbol: "   " }, "ticker_symbol").success).toBe(false);
+  });
+
+  it("rejects a symbol longer than 16 characters", () => {
+    expect(requireTickerSymbol({ ticker_symbol: "A".repeat(16) }, "ticker_symbol").success).toBe(
+      true,
+    );
+    expect(requireTickerSymbol({ ticker_symbol: "A".repeat(17) }, "ticker_symbol").success).toBe(
+      false,
+    );
+  });
+
+  it("rejects a missing or non-string field", () => {
+    expect(requireTickerSymbol({} as { ticker_symbol?: string }, "ticker_symbol").success).toBe(
+      false,
+    );
+    expect(requireTickerSymbol({ ticker_symbol: 42 }, "ticker_symbol").success).toBe(false);
   });
 });
 
