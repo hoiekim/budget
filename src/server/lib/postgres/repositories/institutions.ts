@@ -24,19 +24,19 @@ export const upsertInstitutions = async (
   client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!institutions.length) return [];
-  const results: UpsertResult[] = [];
 
-  for (const institution of institutions) {
-    try {
-      const row = InstitutionModel.fromJSON(institution);
-      await institutionsTable.upsert(row, undefined, client);
-      results.push(successResult(institution.institution_id, 1));
-    } catch (error) {
-      logger.error("Failed to upsert institution", { institutionId: institution.institution_id }, error);
-      results.push(errorResult(institution.institution_id));
-    }
+  const rows = institutions.map((institution) => InstitutionModel.fromJSON(institution));
+
+  try {
+    const upserted = await institutionsTable.upsertMany(rows, undefined, client);
+    const written = new Set(upserted.map((row) => row[INSTITUTION_ID]));
+    return institutions.map((institution) =>
+      successResult(institution.institution_id, written.has(institution.institution_id) ? 1 : 0),
+    );
+  } catch (error) {
+    logger.error("Failed to upsert institutions", { count: institutions.length }, error);
+    return institutions.map((institution) => errorResult(institution.institution_id));
   }
-  return results;
 };
 
 /**

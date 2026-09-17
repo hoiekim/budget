@@ -3,12 +3,8 @@ import { MaskedUser, logger } from "server";
 import { JSONInstitution, Queue } from "common";
 import { getClient } from "./util";
 
-/**
- * Plaid addresses institutions one id at a time, so resolving a set costs one
- * round trip each. Plaid meters those against a single app-level credential
- * shared by every user, so the gate is process-wide rather than per request —
- * bounding a request in isolation would still let concurrent requests stack.
- */
+// Process-wide rather than per request: Plaid meters these calls against one
+// app-level credential shared by every user of the deployment.
 const institutionQueue = new Queue({ maxInflight: 4 });
 
 const getInstitution = async (
@@ -56,9 +52,8 @@ const getInstitution = async (
 };
 
 /**
- * Resolve a set of institution ids through the shared concurrency gate.
- * Ids Plaid cannot resolve are absent from the result rather than failing the
- * batch — the caller renders whatever resolved.
+ * Resolve a set of institution ids through the shared concurrency gate. Ids
+ * Plaid cannot resolve are absent from the result rather than failing the batch.
  */
 export const getInstitutionsByIds = async (
   user: MaskedUser,

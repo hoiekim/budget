@@ -230,8 +230,17 @@ describe("get-institutions Plaid-fallback bounds", () => {
     const result = await getInstitutionsRoute.execute(makeReq({ ids: ids.join(",") }), fakeRes());
     expect(result?.status).toBe("success");
     expect(plaidCalls.length).toBe(20);
-    expect(peakInflight).toBeLessThanOrEqual(4);
+    expect(peakInflight).toBe(4);
     await drainDeferredWrites();
+  });
+
+  test("persists the fan-out's rows in one DB round trip, not one per row", async () => {
+    const ids = makeIds(20);
+    await getInstitutionsRoute.execute(makeReq({ ids: ids.join(",") }), fakeRes());
+    await drainDeferredWrites();
+    // One batched IN lookup plus one batched upsert. Upserting per fetched row
+    // makes this 21.
+    expect(mockQuery.mock.calls.length).toBe(2);
   });
 
   test("charges one slot per Plaid round trip and stops at the per-user cap", async () => {

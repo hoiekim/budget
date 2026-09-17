@@ -12,12 +12,8 @@ import { logger } from "server/lib/logger";
 
 export type InstitutionsGetResponse = JSONInstitution[];
 
-/**
- * Upper bound on how many ids one request may carry. The client sends one id
- * per institution the user has connected, so this sits far above any real
- * request; what it stops is a caller sizing the id list itself, since the
- * request's cost downstream is linear in that list.
- */
+// The request's downstream cost is linear in the id list, and the caller
+// chooses its length.
 const MAX_REQUESTED_IDS = 100;
 
 /**
@@ -26,21 +22,15 @@ const MAX_REQUESTED_IDS = 100;
  * match the request; callers index by `institution_id`. Sibling to
  * `searchAccountsById` / `searchTransactionsById` — same `queryByIds` shape.
  *
- * A `Plaid-fallback` fires for any requested id that is NOT in the DB (the
- * user just connected a new institution and its row hasn't been persisted
- * yet). Plaid's `getInstitution` is per-id, so the fallback is a fan-out over
- * the misses, not a re-batch — Plaid has no matching endpoint.
+ * A `Plaid-fallback` fires for any requested id that is NOT in the DB. Plaid
+ * has no batch endpoint for institutions, so the fallback is a fan-out over the
+ * misses; `institutions` is a global table with no owner column, so any string
+ * the caller invents reaches it. Bounded on three axes: ids per request, Plaid
+ * round trips per user per minute, and round trips in flight process-wide.
  *
- * `institutions` is a global table with no owner column, so whether an id is a
- * miss depends only on the id, never on the caller. That makes the fallback
- * reachable by any string the caller invents, and it is bounded on three axes:
- * ids per request, Plaid round trips per user per minute, and round trips in
- * flight process-wide.
- *
- * **Partial-success on Plaid miss**: a fallback failure silently omits that
- * one id from the response (200 with the other ids resolved). A fresh
- * institution the FE just connected shouldn't blank every other institution's
- * logo/name on the same render pass.
+ * A fallback failure omits that one id rather than failing the response — one
+ * unresolvable institution shouldn't blank every other institution's logo and
+ * name on the same render pass.
  */
 export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
   "GET",
@@ -67,9 +57,8 @@ export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
       );
     }
 
-    // Dedupe before the miss set is built, not only inside the repo: a
-    // repeated unresolvable id would otherwise cost one Plaid round trip per
-    // copy of it.
+    // Before the miss set, not only inside the repo: a repeated unresolvable id
+    // costs one Plaid round trip per copy otherwise.
     const requested = Array.from(new Set(parsed));
     if (requested.length === 0) return { status: "success", body: [] };
 
@@ -85,14 +74,14 @@ export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
     const fetchable = missing.slice(0, budget);
     if (fetchable.length < missing.length) {
       logger.warn("Institution Plaid-fallback capped by the per-user rate limit", {
+        userId: user.user_id,
         missing: missing.length,
         allowed: fetchable.length,
       });
     }
     if (fetchable.length === 0) {
       // Shedding the whole request would blank every institution the user does
-      // have, so the cap degrades to the stored rows the same way a Plaid
-      // failure does.
+      // have, over a cap it did nothing to earn.
       return { status: "success", body: stored };
     }
 
@@ -100,8 +89,8 @@ export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
     const fetched = await plaid.getInstitutionsByIds(user, fetchable);
 
     if (fetched.length > 0) {
-      // Off the latency path: the response doesn't depend on the row landing,
-      // only the next request's DB hit does.
+      // Off the latency path: only the next request's DB hit depends on the
+      // row landing.
       upsertInstitutions(fetched).catch((error) =>
         logger.error("Failed to upsert institutions", { count: fetched.length }, error),
       );

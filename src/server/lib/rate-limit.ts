@@ -173,15 +173,9 @@ export const polygonLookupRateLimiter = createRateLimiter("polygon-lookup", {
 export const POLYGON_LOOKUP_SHED_MESSAGE =
   "Too many ticker lookups, try again in a minute.";
 
-// Keyed by user id rather than by IP: the route behind it is authenticated, and
-// the metered resource — Plaid's per-app rate limit — is shared by every user
-// of the deployment, so one caller's burst degrades everyone's sync and
-// account linking.
-//
-// The unit charged is the Plaid round trip, not the request, because a single
-// request can carry many unresolved ids. An id already in the institutions
-// table never reaches Plaid and so is never charged; what a legitimate sync
-// spends is one slot per newly connected institution.
+// Keyed by user id, not IP: the route behind it is authenticated. The unit
+// charged is the Plaid round trip, not the request — one request can carry many
+// unresolved ids.
 export const institutionFallbackRateLimiter = createRateLimiter("institution-fallback", {
   maxAttempts: 20,
   windowMs: 60 * 1000,

@@ -238,6 +238,52 @@ export function buildUpsert(
   return { sql, values };
 }
 
+export function buildUpsertMany(
+  tableName: string,
+  primaryKey: string,
+  rows: QueryData[],
+  options: UpsertOptions = {},
+): PreparedQuery | null {
+  if (!rows.length) return null;
+  const { updateColumns = [], returning = [primaryKey] } = options;
+
+  // Every tuple of a multi-row INSERT has to name the same columns, and a
+  // column present in one row but absent from another would be inserted as its
+  // default and then propagated by `EXCLUDED.col`, clearing the stored value.
+  // Callers group rows that share a defined-column set; the first row names it.
+  const columns = Object.keys(rows[0]).filter((key) => !isUndefined(rows[0][key]));
+
+  const values: ParamValue[] = [];
+  let paramIndex = 1;
+  const tuples = rows.map((row) => {
+    const placeholders = ["CURRENT_TIMESTAMP"];
+    for (const column of columns) {
+      placeholders.push(`$${paramIndex}`);
+      values.push(prepareParamValue(row[column] as ParamValue));
+      paramIndex++;
+    }
+    return `(${placeholders.join(", ")})`;
+  });
+
+  let sql = `INSERT INTO ${tableName} (${["updated", ...columns].join(", ")}) VALUES ${tuples.join(", ")}`;
+
+  if (updateColumns.length > 0) {
+    const updateClauses = updateColumns
+      .filter((col) => col !== primaryKey)
+      .map((col) => `${col} = EXCLUDED.${col}`);
+    updateClauses.push("updated = CURRENT_TIMESTAMP");
+    sql += ` ON CONFLICT (${primaryKey}) DO UPDATE SET ${updateClauses.join(", ")}`;
+  } else {
+    sql += ` ON CONFLICT (${primaryKey}) DO NOTHING`;
+  }
+
+  if (returning.length > 0) {
+    sql += ` RETURNING ${returning.join(", ")}`;
+  }
+
+  return { sql, values };
+}
+
 export function buildSelect(
   tableName: string,
   columns: string[] | "*",
