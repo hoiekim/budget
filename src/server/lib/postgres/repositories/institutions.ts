@@ -34,7 +34,8 @@ export const upsertInstitutions = async (
       successResult(institution.institution_id, written.has(institution.institution_id) ? 1 : 0),
     );
   } catch (error) {
-    logger.error("Failed to upsert institutions", { count: institutions.length }, error);
+    const institutionIds = institutions.map((institution) => institution.institution_id);
+    logger.error("Failed to upsert institutions", { institutionIds }, error);
     return institutions.map((institution) => errorResult(institution.institution_id));
   }
 };
