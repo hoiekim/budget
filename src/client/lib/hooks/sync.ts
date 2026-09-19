@@ -439,7 +439,10 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   const response = await call
     .get<InstitutionsGetResponse>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
     .catch(console.error);
-  if (!response || response.status === "error") {
+  // Any non-success envelope, not just "error": a "failed" one — expired
+  // session, or an id list over the route's cap — would otherwise overwrite
+  // Data.institutions and the IndexedDB mirror with an empty dictionary.
+  if (!response || response.status !== "success") {
     result.networkFailed = true;
     return result;
   }

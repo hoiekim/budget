@@ -74,3 +74,37 @@ describe("Table.upsert conflict clause", () => {
     expect(updateColumnsOf(emittedSql())).toContain("note");
   });
 });
+
+describe("Table.upsertMany", () => {
+  test("a repeated primary key collapses to one tuple, last write winning", async () => {
+    // Postgres rejects a statement whose `ON CONFLICT DO UPDATE` would touch the
+    // same row twice (21000), so a caller handing over two rows for one id —
+    // a SimpleFin item with two accounts at one organization does exactly that —
+    // has to arrive as a single tuple, not two.
+    await widgetsTable.upsertMany([
+      { widget_id: "w-1", label: "first" },
+      { widget_id: "w-1", label: "second" },
+    ]);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery.mock.calls[0][1]).toEqual(["w-1", "second"]);
+  });
+
+  test("rows are grouped by defined-column set, one statement per group", async () => {
+    // A column present in one row and absent from another would insert as its
+    // default and then be propagated by `EXCLUDED.col` over the stored value.
+    await widgetsTable.upsertMany([
+      { widget_id: "w-1", label: "a", note: "keep" },
+      { widget_id: "w-2", label: "b" },
+    ]);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+
+    const [withNote, withoutNote] = mockQuery.mock.calls.map((call) => call[0] as string);
+    expect(updateColumnsOf(withNote)).toContain("note");
+    expect(updateColumnsOf(withNote)).toContain("label");
+    expect(mockQuery.mock.calls[0][1]).toEqual(["w-1", "a", "keep"]);
+
+    expect(withoutNote).not.toContain("note");
+    expect(updateColumnsOf(withoutNote)).toContain("label");
+    expect(mockQuery.mock.calls[1][1]).toEqual(["w-2", "b"]);
+  });
+});

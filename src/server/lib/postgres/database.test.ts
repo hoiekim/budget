@@ -7,6 +7,7 @@ import {
   buildInsert,
   buildUpdate,
   buildUpsert,
+  buildUpsertMany,
   buildSoftDelete,
   buildSelect,
   buildSelectWithFilters,
@@ -275,6 +276,31 @@ describe("buildUpsert", () => {
       { returning: ["id", "updated"] },
     );
     expect(sql.endsWith("RETURNING id, updated")).toBe(true);
+  });
+});
+
+describe("buildUpsertMany", () => {
+  it("emits one statement carrying a tuple per row", () => {
+    const query = buildUpsertMany(
+      "accounts",
+      "id",
+      [
+        { id: "a1", name: "Checking" },
+        { id: "a2", name: "Savings" },
+      ],
+      { updateColumns: ["name"] },
+    );
+    expect(query!.sql).toBe(
+      "INSERT INTO accounts (updated, id, name) VALUES" +
+        " (CURRENT_TIMESTAMP, $1, $2), (CURRENT_TIMESTAMP, $3, $4)" +
+        " ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated = CURRENT_TIMESTAMP" +
+        " RETURNING id",
+    );
+    expect(query!.values).toEqual(["a1", "Checking", "a2", "Savings"]);
+  });
+
+  it("returns null for an empty row list", () => {
+    expect(buildUpsertMany("accounts", "id", [])).toBe(null);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   buildInsert,
   buildUpdate,
   buildUpsert,
+  buildUpsertMany,
   buildSoftDelete,
   AdditionalWhere,
   ParamValue,
@@ -223,6 +224,51 @@ export abstract class Table<
     const executor = client ?? pool;
     const result = await executor.query(sql, values);
     return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
+  /**
+   * Upsert many rows in one round trip per distinct defined-column set, rather
+   * than one per row. Rows sharing the last occurrence of a primary key win:
+   * Postgres rejects a statement whose `ON CONFLICT DO UPDATE` would touch the
+   * same row twice.
+   */
+  async upsertMany(
+    rows: QueryData[],
+    updateColumns?: string[],
+    client?: QueryExecutor,
+  ): Promise<Record<string, unknown>[]> {
+    this._assertSimplePrimaryKey("upsertMany");
+    if (!rows.length) return [];
+
+    const deduped = new Map<unknown, QueryData>();
+    for (const row of rows) deduped.set(row[this.primaryKey], row);
+
+    const groups = new Map<string, QueryData[]>();
+    for (const row of deduped.values()) {
+      const defined = Object.keys(row)
+        .filter((key) => !isUndefined(row[key]))
+        .sort();
+      const signature = defined.join(",");
+      const group = groups.get(signature);
+      if (group) group.push(row);
+      else groups.set(signature, [row]);
+    }
+
+    const executor = client ?? pool;
+    const upserted: Record<string, unknown>[] = [];
+
+    for (const [signature, group] of groups) {
+      const writable = signature.split(",").filter((col) => col !== this.primaryKey);
+      const query = buildUpsertMany(this.name, this.primaryKey, group, {
+        updateColumns: updateColumns ? updateColumns.filter((c) => writable.includes(c)) : writable,
+        returning: ["*"],
+      });
+      if (!query) continue;
+      const result = await executor.query(query.sql, query.values);
+      upserted.push(...result.rows);
+    }
+
+    return upserted;
   }
 
   async softDelete(primaryKeyValue: ParamValue, userId?: ParamValue): Promise<boolean> {
