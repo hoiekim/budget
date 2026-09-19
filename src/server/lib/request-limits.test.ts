@@ -11,11 +11,10 @@ import { MAX_REQUEST_BODY_SIZE } from "./request-limits";
  * body before the handler runs, or the value buys nothing — the cost this
  * guards against is the read and the parse, not the response code.
  *
- * The second is whether the running server still asks for it. That one is the
- * regression on record: the express-era cap was deleted by a migration that
- * touched no test, because no test named the server's own configuration. A
- * behavioural test that stands up its own server cannot see that deletion, so
- * the wiring is asserted against the source that configures the real one.
+ * The second is whether the running server still asks for it. A behavioural
+ * test that stands up its own server cannot see a line missing from the real
+ * one's configuration, so the wiring is asserted against the source that
+ * configures it.
  */
 
 const body = (bytes: number) => "a".repeat(bytes);
