@@ -16,6 +16,7 @@ import {
   pool,
   getClientIp,
   SECURITY_HEADERS,
+  MAX_REQUEST_BODY_SIZE,
   emitToUser,
   mutationEmitDomain,
 } from "server";
@@ -428,6 +429,7 @@ async function handleApiRequest(
 
 const server = Bun.serve({
   port: process.env.PORT || 3005,
+  maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
 
   async fetch(request, server): Promise<Response> {
     const url = new URL(request.url);
