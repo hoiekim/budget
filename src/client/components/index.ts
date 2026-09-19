@@ -6,6 +6,7 @@ export * from "./Placeholder";
 export * from "./AddButton";
 export * from "./DeleteButton";
 export * from "./DatePickerModal";
+export * from "./TransferPairModal";
 export * from "./HoldingProperties";
 export * from "./InvestmentTransactionProperties";
 export * from "./ErrorBoundary";

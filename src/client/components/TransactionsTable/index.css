@@ -89,6 +89,13 @@ div.TransactionRow .transferControls > .transferChip {
   background-color: var(--surface);
 }
 
+/* The chip sets its own background, which outranks the global
+   `button:not(:disabled):hover` rule on specificity, so the hover cue has to
+   be restated at the chip's own selector. */
+div.TransactionRow .transferControls > .transferChip:hover {
+  background-color: var(--surfaceRaised);
+}
+
 div.TransactionRow button.confirmButton {
   width: 100%;
   height: 24px;
