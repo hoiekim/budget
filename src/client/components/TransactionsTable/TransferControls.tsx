@@ -1,5 +1,5 @@
-import { CheckIcon } from "client/components";
 import { useState } from "react";
+import { TransferPairModal } from "client/components";
 
 interface Props {
   onConfirm: () => Promise<void>;
@@ -7,35 +7,28 @@ interface Props {
 }
 
 /**
- * Suggested-transfer affordance shown in place of the budget/category controls
- * when a transaction row belongs to a pair with status "suggested". Confirm
- * promotes the pair to "confirmed"; Reject soft-deletes it. Both buttons are
- * disabled while their request is in flight so a double-click can't fire the
- * mutation twice.
+ * Suggested-transfer affordance shown in place of the budget/category
+ * controls when a transaction row belongs to a pair with status
+ * "suggested".
+ *
+ * The chip carries no outcome of its own — it opens `TransferPairModal`,
+ * where confirm and reject are named, symmetric buttons.
  */
 const TransferControls = ({ onConfirm, onReject }: Props) => {
-  const [busy, setBusy] = useState(false);
-
-  const run = (action: () => Promise<void>) => async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await action();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
     <div className="transferControls">
-      <span className="transferChip suggested clickable" onClick={run(onReject)}>
-        Transfer?
-      </span>
-      <div className="confirmButtonBox">
-        <button className="confirmButton" disabled={busy} onClick={run(onConfirm)}>
-          <CheckIcon size={20} />
-        </button>
-      </div>
+      <button className="transferChip suggested" onClick={() => setIsModalOpen(true)}>
+        Transfer
+      </button>
+      {isModalOpen && (
+        <TransferPairModal
+          onConfirm={onConfirm}
+          onReject={onReject}
+          onClose={() => setIsModalOpen(false)}
+        />
+      )}
     </div>
   );
 };
