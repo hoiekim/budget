@@ -279,6 +279,7 @@ async function handleApiRequest(
   url: URL,
   apiPath: string,
   log: RequestLogContext,
+  socketIp: string | undefined,
   setIdleTimeout: (seconds: number) => void,
 ): Promise<Response> {
   // Parse request headers as a plain record
@@ -287,7 +288,7 @@ async function handleApiRequest(
     headers[key] = value;
   });
 
-  const ip = getClientIp(headers, undefined);
+  const ip = getClientIp(headers, socketIp);
   log.ip = ip;
 
   const shedMessage = preSessionShedMessage(request.method, apiPath, ip);
@@ -450,8 +451,13 @@ const server = Bun.serve({
 
     const startTime = performance.now();
     const log: RequestLogContext = { method: request.method, path: fullPath };
-    const response = await handleApiRequest(request, url, apiPath, log, (seconds) =>
-      server.timeout(request, seconds),
+    const response = await handleApiRequest(
+      request,
+      url,
+      apiPath,
+      log,
+      server.requestIP(request)?.address,
+      (seconds) => server.timeout(request, seconds),
     );
 
     // /health is polled constantly by uptime checks and carries no debugging

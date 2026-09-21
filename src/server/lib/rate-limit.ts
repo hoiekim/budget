@@ -2,10 +2,14 @@
  * Resolve the real client IP from request headers.
  * Prefers X-Real-IP (set by nginx from $remote_addr, cannot be spoofed by the
  * client), then the leftmost X-Forwarded-For entry, then the socket IP fallback.
+ *
+ * `socketIp` is required, not optional: it is the only tier present on every
+ * deployment, so leaving it off silently collapses every header-less caller
+ * onto the single `"unknown"` key.
  */
 export const getClientIp = (
   headers: Record<string, string | string[] | undefined>,
-  ipFallback?: string,
+  socketIp: string | undefined,
 ): string => {
   const xRealIp = headers["x-real-ip"];
   const xForwardedFor = headers["x-forwarded-for"];
@@ -15,7 +19,7 @@ export const getClientIp = (
   return (
     (typeof xRealIp === "string" ? xRealIp : undefined) ??
     forwarded ??
-    ipFallback ??
+    socketIp ??
     "unknown"
   );
 };

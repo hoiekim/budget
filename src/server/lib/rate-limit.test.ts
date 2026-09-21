@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   createRateLimiter,
+  getClientIp,
   loginRateLimiter,
   clientErrorRateLimiter,
   preSessionShedMessage
@@ -253,5 +254,72 @@ describe("preSessionShedMessage", () => {
     expect(preSessionShedMessage("GET", "/login", ip)).toBeNull();
     expect(preSessionShedMessage("POST", "/logout", ip)).toBeNull();
     expect(preSessionShedMessage("POST", "/transactions", ip)).toBeNull();
+  });
+});
+
+describe("getClientIp tier precedence", () => {
+  test("falls back to the socket address when neither proxy header is set", () => {
+    expect(getClientIp({}, "10.0.0.7")).toBe("10.0.0.7");
+  });
+
+  test("X-Real-IP wins over both the forwarded chain and the socket", () => {
+    const headers = { "x-real-ip": "203.0.113.9", "x-forwarded-for": "203.0.113.8" };
+    expect(getClientIp(headers, "10.0.0.7")).toBe("203.0.113.9");
+  });
+
+  test("the leftmost X-Forwarded-For entry wins over the socket", () => {
+    const headers = { "x-forwarded-for": "203.0.113.8, 10.0.0.1, 10.0.0.2" };
+    expect(getClientIp(headers, "10.0.0.7")).toBe("203.0.113.8");
+  });
+
+  test("an array-valued X-Forwarded-For takes its first entry", () => {
+    const headers = { "x-forwarded-for": ["203.0.113.8", "10.0.0.1"] };
+    expect(getClientIp(headers, "10.0.0.7")).toBe("203.0.113.8");
+  });
+
+  test("a non-string X-Real-IP is skipped rather than stringified", () => {
+    const headers = { "x-real-ip": ["203.0.113.9"] };
+    expect(getClientIp(headers, "10.0.0.7")).toBe("10.0.0.7");
+  });
+
+  test("'unknown' is reached only when every tier is absent", () => {
+    expect(getClientIp({}, undefined)).toBe("unknown");
+  });
+});
+
+describe("getClientIp keys the pre-session limiters per socket", () => {
+  const nextSocket = () => `192.0.2.${++ipCounter}`;
+
+  test("two header-less clients on different sockets resolve to different keys", () => {
+    const a = getClientIp({}, nextSocket());
+    const b = getClientIp({}, nextSocket());
+
+    expect(a).not.toBe(b);
+    expect(a).not.toBe("unknown");
+    expect(b).not.toBe("unknown");
+  });
+
+  test("five failed logins from one socket do not shed POST /login for another", () => {
+    const attacker = getClientIp({}, nextSocket());
+    const victim = getClientIp({}, nextSocket());
+
+    for (let i = 0; i < 5; i++) loginRateLimiter.consume(attacker);
+
+    expect(preSessionShedMessage("POST", "/login", attacker)).toBe(
+      "Too many login attempts, try again later",
+    );
+    expect(preSessionShedMessage("POST", "/login", victim)).toBeNull();
+  });
+
+  test("a successful login from one socket does not clear another's counter", () => {
+    const attacker = getClientIp({}, nextSocket());
+    const bystander = getClientIp({}, nextSocket());
+
+    for (let i = 0; i < 5; i++) loginRateLimiter.consume(attacker);
+    loginRateLimiter.reset(bystander);
+
+    expect(preSessionShedMessage("POST", "/login", attacker)).toBe(
+      "Too many login attempts, try again later",
+    );
   });
 });
