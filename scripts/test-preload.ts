@@ -52,6 +52,12 @@ for (const [name, value] of nativeNetworkGlobals) {
   (globalThis as Record<string, unknown>)[name] = value;
 }
 
+// A test that replaces `globalThis.fetch` does so for every file that runs
+// after it, and there is no unmock API. Exposing the real one lets a file that
+// needs the network — rather than a stub of it — install it for its own
+// duration, the way `__REAL_PG` lets one opt back out of a leaked `pg` mock.
+(globalThis as Record<string, unknown>).__REAL_FETCH = globalThis.fetch;
+
 // Capture real leaf-dep exports for tests' afterAll restoration. `require`
 // runs at statement-order (vs ESM `import` which hoists), so the DOM
 // registration above lands first — `common`-side modules consumed by these
