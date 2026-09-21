@@ -9,6 +9,7 @@ import {
   TransferDictionary,
 } from "client";
 import type { TransferPair } from "server";
+import type { FetchStubRoute } from "test-render";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import TransactionRow from "./TransactionRow";
 
@@ -146,9 +147,11 @@ const buildSuggestedPair = () => {
   return { data, transaction };
 };
 
-const renderSuggestedRow = () => {
+const renderSuggestedRow = (route: Partial<FetchStubRoute> = {}) => {
   const { data, transaction } = buildSuggestedPair();
-  const stub = stubFetch([{ path: "/api/transfers", response: { status: "success" } }]);
+  const stub = stubFetch([
+    { path: "/api/transfers", response: { status: "success" }, ...route },
+  ]);
   restoreFetch = stub.restore;
   const rendered = render(transaction, data);
   return { ...rendered, calls: stub.calls };
@@ -157,6 +160,18 @@ const renderSuggestedRow = () => {
 const chip = () => screen.getByRole("button", { name: "Transfer" });
 const openDialog = () => act(() => void fireEvent.click(chip()));
 const dialog = () => document.querySelector("div.TransferPairModal");
+const actionButton = (name: "Confirm" | "Reject") =>
+  screen.getByRole("button", { name }) as HTMLButtonElement;
+const closeButton = () =>
+  screen.getByRole("button", { name: "Close transfer suggestion" }) as HTMLButtonElement;
+
+/** Capture `window.alert` for one test; restored by the returned undo. */
+const captureAlerts = () => {
+  const messages: string[] = [];
+  const original = window.alert;
+  window.alert = (message?: unknown) => void messages.push(String(message));
+  return { messages, restore: () => { window.alert = original; } };
+};
 
 describe("TransactionRow — suggested transfer pair", () => {
   it("shows the chip, and the chip alone, until it is clicked", () => {
@@ -210,5 +225,85 @@ describe("TransactionRow — suggested transfer pair", () => {
     expect(calls.requests[0].method).toBe("POST");
     expect(calls.requests[0].url).toBe("/api/transfers/pair");
     expect(dialog()).toBeNull();
+  });
+
+  it("keeps the dialog open and surfaces the message when a reject is refused", async () => {
+    const alerts = captureAlerts();
+    try {
+      renderSuggestedRow({ response: { status: "failed", message: "pair already rejected" } });
+      openDialog();
+
+      await act(async () => {
+        fireEvent.click(actionButton("Reject"));
+      });
+
+      expect(dialog()).not.toBeNull();
+      expect(alerts.messages).toEqual(["pair already rejected"]);
+    } finally {
+      alerts.restore();
+    }
+  });
+
+  it("wraps Tab at the panel edges instead of walking into the page behind it", () => {
+    renderSuggestedRow();
+    openDialog();
+
+    act(() => {
+      actionButton("Reject").focus();
+      fireEvent.keyDown(actionButton("Reject"), { key: "Tab" });
+    });
+    expect(document.activeElement).toBe(closeButton());
+
+    act(() => {
+      fireEvent.keyDown(closeButton(), { key: "Tab", shiftKey: true });
+    });
+    expect(document.activeElement).toBe(actionButton("Reject"));
+  });
+
+  it("disables both actions while the write is in flight", async () => {
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    renderSuggestedRow({ hold });
+    openDialog();
+
+    await act(async () => {
+      fireEvent.click(actionButton("Reject"));
+    });
+
+    expect(actionButton("Confirm").disabled).toBe(true);
+    expect(actionButton("Reject").disabled).toBe(true);
+
+    await act(async () => {
+      release();
+      await hold;
+    });
+  });
+
+  it("keeps the in-flight guard alive across a dismissal, so the reopened dialog cannot double-write", async () => {
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const { calls } = renderSuggestedRow({ hold });
+    openDialog();
+
+    await act(async () => {
+      fireEvent.click(actionButton("Reject"));
+    });
+    // Dismiss mid-flight, then reopen: the chip is still on the row because
+    // `data.transfers` has not changed.
+    act(() => void fireEvent.keyDown(window, { key: "Escape" }));
+    expect(dialog()).toBeNull();
+    openDialog();
+
+    expect(actionButton("Confirm").disabled).toBe(true);
+    await act(async () => {
+      fireEvent.click(actionButton("Confirm"));
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].method).toBe("DELETE");
+
+    await act(async () => {
+      release();
+      await hold;
+    });
   });
 });

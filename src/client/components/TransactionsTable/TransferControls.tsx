@@ -2,8 +2,8 @@ import { useState } from "react";
 import { TransferPairModal } from "client/components";
 
 interface Props {
-  onConfirm: () => Promise<void>;
-  onReject: () => Promise<void>;
+  onConfirm: () => Promise<boolean>;
+  onReject: () => Promise<boolean>;
 }
 
 /**
@@ -16,6 +16,22 @@ interface Props {
  */
 const TransferControls = ({ onConfirm, onReject }: Props) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // The in-flight guard lives here, not in the dialog: every dismissal path
+  // unmounts the dialog, and a guard that dies with it lets the reopened
+  // dialog issue a second, conflicting write for the same pair.
+  const [busy, setBusy] = useState(false);
+
+  // Only a landed write closes the dialog. The actions resolve on refusal
+  // too, so closing on completion would read as success on a failed reject.
+  const run = (action: () => Promise<boolean>) => async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (await action()) setIsModalOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="transferControls">
@@ -24,8 +40,9 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
       </button>
       {isModalOpen && (
         <TransferPairModal
-          onConfirm={onConfirm}
-          onReject={onReject}
+          busy={busy}
+          onConfirm={run(onConfirm)}
+          onReject={run(onReject)}
           onClose={() => setIsModalOpen(false)}
         />
       )}
