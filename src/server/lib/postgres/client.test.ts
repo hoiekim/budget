@@ -85,4 +85,24 @@ describe("lazy pool Proxy", () => {
     void pool.ending;
     expect(ctorCalls.mock.calls.length).toBe(before + 1);
   });
+
+  // A file that touches the pool under real `pg` caches a real Pool, and the
+  // next file registers its mock without resetting anything. Without this,
+  // that file's queries reach a real socket.
+  test("a later mock displaces a pool cached against the previous binding", () => {
+    resetPool();
+    void pool.ending;
+    expect(Object.getPrototypeOf(pool)).toBe(FakePool.prototype);
+
+    class SecondPool {
+      ending = true;
+    }
+    mock.module("pg", () => ({
+      Pool: SecondPool,
+      types: { setTypeParser: () => {}, builtins: {}, getTypeParser: () => null },
+      default: { Pool: SecondPool, types: { setTypeParser: () => {} } },
+    }));
+
+    expect(Object.getPrototypeOf(pool)).toBe(SecondPool.prototype);
+  });
 });

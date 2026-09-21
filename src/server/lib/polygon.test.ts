@@ -1,4 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
+import { restoreFetch } from "test-helpers";
 import {
   getClosePrice,
   getLatestClosePriceOnOrBefore,
@@ -7,10 +8,9 @@ import {
   polygonQueue,
 } from "./polygon";
 
-// Store original env and fetch
+// Store original env
 const originalEnv = process.env.POLYGON_API_KEY;
 const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
-const originalFetch = globalThis.fetch;
 
 describe("polygon", () => {
   beforeEach(() => {
@@ -29,7 +29,7 @@ describe("polygon", () => {
     } else {
       process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
     }
-    globalThis.fetch = originalFetch;
+    restoreFetch();
   });
 
   describe("getClosePrice", () => {

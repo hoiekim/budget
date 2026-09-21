@@ -9,9 +9,9 @@
 //   1. polygon doesn't short-circuit `no_api_key`.
 //   2. The rate-limit queue runs at capacity=0 (no throttling).
 //
-// The fetch override + env writes are process-global; `afterAll`
-// restores the originals so this file doesn't leak into other suites.
-const originalFetch = globalThis.fetch;
+// The fetch override + env writes are process-global; `afterAll` puts
+// `fetch` back via `restoreLeaves` and the env vars back from the
+// snapshots below, so this file doesn't leak into other suites.
 const originalApiKey = process.env.POLYGON_API_KEY;
 const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
@@ -36,7 +36,6 @@ globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 const { refreshActiveSecuritySnapshots } = await import("./refresh-security-snapshots");
 
 afterAll(() => {
-  globalThis.fetch = originalFetch;
   if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
   else process.env.POLYGON_API_KEY = originalApiKey;
   if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
