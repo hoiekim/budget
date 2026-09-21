@@ -1,11 +1,13 @@
-import { KeyboardEvent, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { CloseIcon } from "client/components";
 import "./index.css";
 
 interface Props {
-  onConfirm: () => Promise<void>;
-  onReject: () => Promise<void>;
+  /** A write is open for this pair. Both actions are inert while set. */
+  busy: boolean;
+  onConfirm: () => void;
+  onReject: () => void;
   onClose: () => void;
 }
 
@@ -23,21 +25,12 @@ const FOCUSABLE =
  *
  *     This transaction pair is auto-detected as a transfer
  *     [Confirm]  [Reject]
+ *
+ * Presentational: `busy` and the decision to close on a landed write both
+ * belong to the owner, which outlives this component's dismissal.
  */
-export const TransferPairModal = ({ onConfirm, onReject, onClose }: Props) => {
-  const [busy, setBusy] = useState(false);
+export const TransferPairModal = ({ busy, onConfirm, onReject, onClose }: Props) => {
   const panelRef = useRef<HTMLDivElement>(null);
-
-  const run = (action: () => Promise<void>) => async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await action();
-      onClose();
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // Escape closes the modal — matches DatePickerModal's dismissal shape.
   useEffect(() => {
@@ -126,10 +119,10 @@ export const TransferPairModal = ({ onConfirm, onReject, onClose }: Props) => {
         </div>
         <div className="message">This transaction pair is auto-detected as a transfer</div>
         <div className="actions">
-          <button className="confirmButton" disabled={busy} onClick={run(onConfirm)}>
+          <button className="confirmButton" disabled={busy} onClick={onConfirm}>
             Confirm
           </button>
-          <button className="rejectButton" disabled={busy} onClick={run(onReject)}>
+          <button className="rejectButton" disabled={busy} onClick={onReject}>
             Reject
           </button>
         </div>
