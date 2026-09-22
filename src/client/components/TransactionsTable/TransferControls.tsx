@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { TransferPairModal } from "client/components";
 
 interface Props {
@@ -18,17 +18,23 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   // The in-flight guard lives here, not in the dialog: every dismissal path
   // unmounts the dialog, and a guard that dies with it lets the reopened
-  // dialog issue a second, conflicting write for the same pair.
+  // dialog issue a second, conflicting write for the same pair. The ref is
+  // what refuses a click, because `setBusy` lands on the next render and the
+  // dialog's buttons stay clickable to keep the pressed one focusable; `busy`
+  // only drives the rendered state.
+  const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
 
   // Only a landed write closes the dialog. The actions resolve on refusal
   // too, so closing on completion would read as success on a failed reject.
   const run = (action: () => Promise<boolean>) => async () => {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       if (await action()) setIsModalOpen(false);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
