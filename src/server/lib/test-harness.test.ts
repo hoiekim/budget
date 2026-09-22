@@ -24,6 +24,7 @@ const SRC = path.join(import.meta.dir, "../..");
 const TEST_FILE = /\.test\.[cm]?[jt]sx?$/;
 const SKIP_DIR = /^(?:node_modules|build|dist|coverage)$/;
 const RESTORERS = ["restoreFetch", "restoreLeaves"];
+const STUB_HELPERS = ["stubFetch"];
 const TEARDOWN = ["afterAll", "afterEach"];
 
 const testFiles = (dir: string): string[] =>
@@ -33,14 +34,16 @@ const testFiles = (dir: string): string[] =>
     return TEST_FILE.test(entry) ? [full] : [];
   });
 
-const parse = (file: string): ts.SourceFile =>
+const parseSource = (fileName: string, text: string): ts.SourceFile =>
   ts.createSourceFile(
-    file,
-    readFileSync(file, "utf8"),
+    fileName,
+    text,
     ts.ScriptTarget.Latest,
     true,
-    file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    fileName.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+
+const parse = (file: string): ts.SourceFile => parseSource(file, readFileSync(file, "utf8"));
 
 const some = (root: ts.Node, predicate: (node: ts.Node) => boolean): boolean => {
   let found = false;
@@ -53,28 +56,43 @@ const some = (root: ts.Node, predicate: (node: ts.Node) => boolean): boolean => 
   return found;
 };
 
-/** `globalThis.fetch = …` / `global.fetch = …`, anywhere in the file. */
-const stubsFetch = (source: ts.SourceFile): boolean =>
-  some(
-    source,
-    (node) =>
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isPropertyAccessExpression(node.left) &&
-      node.left.name.text === "fetch" &&
-      ["globalThis", "global"].includes(node.left.expression.getText(source)),
-  );
+/** `globalThis.fetch = …` / `global.fetch = …`. */
+const assignsFetch = (node: ts.Node, source: ts.SourceFile): boolean =>
+  ts.isBinaryExpression(node) &&
+  node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+  ts.isPropertyAccessExpression(node.left) &&
+  node.left.name.text === "fetch" &&
+  ["globalThis", "global"].includes(node.left.expression.getText(source));
 
-/** A teardown hook whose callback reaches one of the snapshot restorers. */
+/**
+ * A call to a helper that installs the stub on the file's behalf. Such a file
+ * names neither `globalThis` nor `fetch` anywhere, so the assignment predicate
+ * cannot see it — and the helper is the easiest stub site to reach, which would
+ * leave the invariant enforced everywhere except where it is most used.
+ */
+const callsStubHelper = (node: ts.Node, source: ts.SourceFile): boolean =>
+  ts.isCallExpression(node) && STUB_HELPERS.includes(node.expression.getText(source));
+
+/** Anything that leaves a stub installed past the statement that made it. */
+const stubsFetch = (source: ts.SourceFile): boolean =>
+  some(source, (node) => assignsFetch(node, source) || callsStubHelper(node, source));
+
+/**
+ * A snapshot restorer, or the `restore` handle a stub helper hands back — the
+ * helper's own body is what reaches the snapshot in that case.
+ */
+const isRestorer = (node: ts.Node): boolean =>
+  (ts.isIdentifier(node) && RESTORERS.includes(node.text)) ||
+  (ts.isPropertyAccessExpression(node) && node.name.text === "restore");
+
+/** A teardown hook whose callback reaches a restorer. */
 const restoresFetch = (source: ts.SourceFile): boolean =>
   some(
     source,
     (node) =>
       ts.isCallExpression(node) &&
       TEARDOWN.includes(node.expression.getText(source)) &&
-      node.arguments.some((argument) =>
-        some(argument, (inner) => ts.isIdentifier(inner) && RESTORERS.includes(inner.text)),
-      ),
+      node.arguments.some((argument) => some(argument, isRestorer)),
   );
 
 describe("globalThis.fetch stubs", () => {
@@ -98,6 +116,22 @@ describe("globalThis.fetch stubs", () => {
     restoreFetch();
 
     expect(globalThis.fetch).toBe((globalThis as { __REAL_FETCH: typeof fetch }).__REAL_FETCH);
+  });
+
+  test("the scan sees a stub installed through a helper, and its restore", () => {
+    const offends = (body: string): boolean => {
+      const source = parseSource("fixture.test.tsx", body);
+      return stubsFetch(source) && !restoresFetch(source);
+    };
+
+    expect(offends(`let s: unknown;\nit("x", () => { s = stubFetch([]); });`)).toBe(true);
+    expect(
+      offends(
+        `let s: { restore: () => void } | undefined;\n` +
+          `afterEach(() => { s?.restore(); });\n` +
+          `it("x", () => { s = stubFetch([]); });`,
+      ),
+    ).toBe(false);
   });
 
   test("restoreLeaves covers fetch alongside the module leaves", () => {

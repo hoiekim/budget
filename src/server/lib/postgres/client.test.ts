@@ -24,11 +24,14 @@ class FakePool {
   }
 }
 
-mock.module("pg", () => ({
-  Pool: FakePool,
-  types: { setTypeParser: () => {}, builtins: {}, getTypeParser: () => null },
-  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
-}));
+const mockPg = (Pool: unknown) =>
+  mock.module("pg", () => ({
+    Pool,
+    types: { setTypeParser: () => {}, builtins: {}, getTypeParser: () => null },
+    default: { Pool, types: { setTypeParser: () => {} } },
+  }));
+
+mockPg(FakePool);
 
 const { pool, resetPool } = await import("./client");
 
@@ -97,12 +100,10 @@ describe("lazy pool Proxy", () => {
     class SecondPool {
       ending = true;
     }
-    mock.module("pg", () => ({
-      Pool: SecondPool,
-      types: { setTypeParser: () => {}, builtins: {}, getTypeParser: () => null },
-      default: { Pool: SecondPool, types: { setTypeParser: () => {} } },
-    }));
+    mockPg(SecondPool);
+    const displaced = Object.getPrototypeOf(pool);
+    mockPg(FakePool);
 
-    expect(Object.getPrototypeOf(pool)).toBe(SecondPool.prototype);
+    expect(displaced).toBe(SecondPool.prototype);
   });
 });

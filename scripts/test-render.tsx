@@ -42,6 +42,7 @@ import {
   Status,
 } from "client";
 import { ViewDate } from "common";
+import { restoreFetch } from "test-helpers";
 
 /**
  * Clear the DOM's persistent stores. happy-dom registers one `localStorage` and
@@ -152,13 +153,15 @@ export interface FetchCalls {
  * test body, or an assertion that throws mid-test leaves every later test
  * file in the process talking to this stub.
  *
+ * `restore` reinstalls the preload's snapshot rather than the value this call
+ * found on the way in, which would be whatever the previous file left behind.
+ *
  * An unmatched path throws, so a page can never reach the real network from a
  * test. `client/lib/call` catches that throw and turns it into an error
  * `ApiResponse`, so the symptom is the page taking its failure branch —
  * `calls.requests` is what tells you which path went unstubbed.
  */
 export const stubFetch = (routes: FetchStubRoute[]) => {
-  const original = globalThis.fetch;
   const calls: FetchCalls = { requests: [] };
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -172,5 +175,5 @@ export const stubFetch = (routes: FetchStubRoute[]) => {
     });
   }) as typeof globalThis.fetch;
 
-  return { calls, restore: () => { globalThis.fetch = original; } };
+  return { calls, restore: restoreFetch };
 };
