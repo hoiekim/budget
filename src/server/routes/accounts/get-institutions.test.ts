@@ -2,7 +2,8 @@
 // uses one IN query, not N per-id lookups; (2) Plaid-fallback fires for
 // misses only; (3) empty / "Unknown" filter (the sentinel a fresh manual
 // account carries) short-circuits; (4) dedupe protects the SQL layer even
-// without the FE dedupe.
+// without the FE dedupe; (5) a Plaid failure omits its own id rather than
+// failing the batch.
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
@@ -18,6 +19,7 @@ mock.module("pg", () => pg);
 const REAL_PLAID = await import("plaid");
 
 const plaidCalls: string[] = [];
+const unresolvableIds = new Set<string>();
 let inflight = 0;
 let peakInflight = 0;
 
@@ -28,6 +30,9 @@ class FakePlaidApi {
     peakInflight = Math.max(peakInflight, inflight);
     try {
       await new Promise((resolve) => setTimeout(resolve, 5));
+      if (unresolvableIds.has(institution_id)) {
+        throw new Error(`Plaid has no institution ${institution_id}`);
+      }
       return {
         data: {
           institution: {
@@ -55,8 +60,13 @@ mock.module("plaid", () => ({ ...fakePlaid, default: fakePlaid }));
 
 const { getInstitutionsRoute } = await import("./get-institutions");
 const { institutionFallbackRateLimiter } = await import("server/lib/rate-limit");
+const { getInstitutionsByIds } = await import("server/lib/plaid/institutions");
 
 const USER_ID = "u-1";
+
+const plaidUser = { user_id: USER_ID, username: "test" } as Parameters<
+  typeof getInstitutionsByIds
+>[0];
 
 /**
  * The upsert of a fetched institution is deliberately off the response's
@@ -73,6 +83,7 @@ afterAll(() => {
 beforeEach(() => {
   resetQueryMocks();
   plaidCalls.length = 0;
+  unresolvableIds.clear();
   inflight = 0;
   peakInflight = 0;
   institutionFallbackRateLimiter.reset(USER_ID);
@@ -307,4 +318,71 @@ describe("get-institutions Plaid-fallback bounds", () => {
   });
 });
 
+// The partial-failure guarantee both `getInstitutionsByIds` and this route
+// document: an id Plaid cannot resolve drops out of the result instead of
+// failing the batch, so one dead institution does not blank every other
+// institution's logo and name on the same render pass. Every case here fails
+// if the `catch` in `getInstitution` rethrows or its `.filter()` is dropped.
+describe("get-institutions partial Plaid failure", () => {
+  test("one unresolvable id drops out and its siblings come back whole", async () => {
+    unresolvableIds.add("ins_dead");
 
+    const fetched = await getInstitutionsByIds(plaidUser, [
+      "ins_live_a",
+      "ins_dead",
+      "ins_live_b",
+    ]);
+
+    // Contents, not length: a length check passes when the wrong element was
+    // dropped, and reading `name` proves the survivor is the full institution
+    // rather than a null-field placeholder standing in for the failure.
+    expect(fetched.map((i) => [i?.institution_id, i?.name])).toEqual([
+      ["ins_live_a", "Plaid ins_live_a"],
+      ["ins_live_b", "Plaid ins_live_b"],
+    ]);
+    // The failure did not cancel its siblings' round trips.
+    expect(plaidCalls.sort()).toEqual(["ins_dead", "ins_live_a", "ins_live_b"]);
+  });
+
+  test("every id failing resolves to an empty array rather than rejecting", async () => {
+    unresolvableIds.add("ins_dead_a");
+    unresolvableIds.add("ins_dead_b");
+
+    // The vacuous case an `every(...)` over the survivors would pass on.
+    // `toStrictEqual`, not `toEqual`: bun reads `[undefined, undefined]` as
+    // equal to `[]`, so the loose matcher passes on an unfiltered result.
+    expect(await getInstitutionsByIds(plaidUser, ["ins_dead_a", "ins_dead_b"])).toStrictEqual([]);
+  });
+
+  test("the route serves the stored rows and the resolvable misses around a failure", async () => {
+    unresolvableIds.add("ins_dead");
+    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
+
+    const result = await getInstitutionsRoute.execute(
+      makeReq({ ids: "ins_5,ins_live,ins_dead" }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(
+      (result?.body as { institution_id: string; name: string }[]).map((i) => [
+        i?.institution_id,
+        i?.name,
+      ]),
+    ).toEqual([
+      ["ins_5", "Bank ins_5"],
+      ["ins_live", "Plaid ins_live"],
+    ]);
+    await drainDeferredWrites();
+  });
+
+  test("a failure still charges its slot, so the limiter cannot be drained for free", async () => {
+    unresolvableIds.add("ins_dead");
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await getInstitutionsRoute.execute(makeReq({ ids: "ins_dead,ins_live" }), fakeRes());
+
+    expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(18);
+    await drainDeferredWrites();
+  });
+});
