@@ -293,6 +293,28 @@ describe("TransactionRow — suggested transfer pair", () => {
     });
   });
 
+  it("refuses a second click landing in the same flush as the first", async () => {
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const { calls } = renderSuggestedRow({ hold });
+    openDialog();
+
+    // `setBusy` lands on the next render, so two clicks dispatched before that
+    // render both read `busy === false`. The buttons are only `aria-disabled`,
+    // so nothing stops the second click from reaching a handler.
+    await act(async () => {
+      fireEvent.click(actionButton("Reject"));
+      fireEvent.click(actionButton("Reject"));
+    });
+
+    expect(calls.requests).toHaveLength(1);
+
+    await act(async () => {
+      release();
+      await hold;
+    });
+  });
+
   it("keeps the in-flight guard alive across a dismissal, so the reopened dialog cannot double-write", async () => {
     let release: () => void = () => {};
     const hold = new Promise<void>((resolve) => (release = resolve));
@@ -321,3 +343,4 @@ describe("TransactionRow — suggested transfer pair", () => {
     });
   });
 });
+
