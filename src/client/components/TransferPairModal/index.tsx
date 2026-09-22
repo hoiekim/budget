@@ -118,11 +118,15 @@ export const TransferPairModal = ({ busy, onConfirm, onReject, onClose }: Props)
           </button>
         </div>
         <div className="message">This transaction pair is auto-detected as a transfer</div>
+        {/* `aria-disabled`, not `disabled`: an element disabled while focused is
+            blurred to the body, and this overlay is portalled last in `<body>`,
+            so the next Tab would start above a dialog still declaring
+            `aria-modal`. The owner's in-flight check is what refuses the click. */}
         <div className="actions">
-          <button className="confirmButton" disabled={busy} onClick={onConfirm}>
+          <button className="confirmButton" aria-disabled={busy} onClick={onConfirm}>
             Confirm
           </button>
-          <button className="rejectButton" disabled={busy} onClick={onReject}>
+          <button className="rejectButton" aria-disabled={busy} onClick={onReject}>
             Reject
           </button>
         </div>

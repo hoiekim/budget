@@ -164,6 +164,7 @@ const actionButton = (name: "Confirm" | "Reject") =>
   screen.getByRole("button", { name }) as HTMLButtonElement;
 const closeButton = () =>
   screen.getByRole("button", { name: "Close transfer suggestion" }) as HTMLButtonElement;
+const isInert = (button: HTMLButtonElement) => button.getAttribute("aria-disabled") === "true";
 
 /** Capture `window.alert` for one test; restored by the returned undo. */
 const captureAlerts = () => {
@@ -227,22 +228,24 @@ describe("TransactionRow — suggested transfer pair", () => {
     expect(dialog()).toBeNull();
   });
 
-  it("keeps the dialog open and surfaces the message when a reject is refused", async () => {
-    const alerts = captureAlerts();
-    try {
-      renderSuggestedRow({ response: { status: "failed", message: "pair already rejected" } });
-      openDialog();
+  for (const action of ["Confirm", "Reject"] as const) {
+    it(`keeps the dialog open and surfaces the message when a ${action.toLowerCase()} is refused`, async () => {
+      const alerts = captureAlerts();
+      try {
+        renderSuggestedRow({ response: { status: "failed", message: "pair already rejected" } });
+        openDialog();
 
-      await act(async () => {
-        fireEvent.click(actionButton("Reject"));
-      });
+        await act(async () => {
+          fireEvent.click(actionButton(action));
+        });
 
-      expect(dialog()).not.toBeNull();
-      expect(alerts.messages).toEqual(["pair already rejected"]);
-    } finally {
-      alerts.restore();
-    }
-  });
+        expect(dialog()).not.toBeNull();
+        expect(alerts.messages).toEqual(["pair already rejected"]);
+      } finally {
+        alerts.restore();
+      }
+    });
+  }
 
   it("wraps Tab at the panel edges instead of walking into the page behind it", () => {
     renderSuggestedRow();
@@ -260,18 +263,29 @@ describe("TransactionRow — suggested transfer pair", () => {
     expect(document.activeElement).toBe(actionButton("Reject"));
   });
 
-  it("disables both actions while the write is in flight", async () => {
+  it("marks both actions inert while the write is in flight, without unfocusing them", async () => {
     let release: () => void = () => {};
     const hold = new Promise<void>((resolve) => (release = resolve));
-    renderSuggestedRow({ hold });
+    const { calls } = renderSuggestedRow({ hold });
     openDialog();
 
     await act(async () => {
       fireEvent.click(actionButton("Reject"));
     });
 
-    expect(actionButton("Confirm").disabled).toBe(true);
-    expect(actionButton("Reject").disabled).toBe(true);
+    expect(isInert(actionButton("Confirm"))).toBe(true);
+    expect(isInert(actionButton("Reject"))).toBe(true);
+    // Native `disabled` would blur the button the user just pressed out of the
+    // dialog, so the retry target has to stay focusable and the click has to be
+    // refused by the owner instead.
+    expect(actionButton("Confirm").disabled).toBe(false);
+    expect(actionButton("Reject").disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(actionButton("Confirm"));
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].method).toBe("DELETE");
 
     await act(async () => {
       release();
@@ -294,7 +308,7 @@ describe("TransactionRow — suggested transfer pair", () => {
     expect(dialog()).toBeNull();
     openDialog();
 
-    expect(actionButton("Confirm").disabled).toBe(true);
+    expect(isInert(actionButton("Confirm"))).toBe(true);
     await act(async () => {
       fireEvent.click(actionButton("Confirm"));
     });
