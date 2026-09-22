@@ -58,20 +58,30 @@ div.TransferPairModal > div.panel > div.actions > button {
   background-color: var(--panel);
 }
 
-div.TransferPairModal > div.panel > div.actions > button.confirmButton:not(:disabled) {
+div.TransferPairModal > div.panel > div.actions > button.confirmButton:not([aria-disabled="true"]) {
   color: var(--green);
 }
 
-div.TransferPairModal > div.panel > div.actions > button.confirmButton:not(:disabled):hover {
+div.TransferPairModal > div.panel > div.actions > button.confirmButton:not([aria-disabled="true"]):hover {
   color: var(--textBright);
   background-color: var(--darkGreen);
 }
 
-div.TransferPairModal > div.panel > div.actions > button.rejectButton:not(:disabled) {
+div.TransferPairModal > div.panel > div.actions > button.rejectButton:not([aria-disabled="true"]) {
   color: var(--red);
 }
 
-div.TransferPairModal > div.panel > div.actions > button.rejectButton:not(:disabled):hover {
+div.TransferPairModal > div.panel > div.actions > button.rejectButton:not([aria-disabled="true"]):hover {
   color: var(--textBright);
   background-color: var(--darkRed);
+}
+
+/* The global `button:disabled` look, restated for the attribute — an
+ * `aria-disabled` button is still enabled to CSS, so it would otherwise keep
+ * the pointer cursor and the `button:not(:disabled):hover` background. */
+div.TransferPairModal > div.panel > div.actions > button[aria-disabled="true"] {
+  background-color: var(--bg);
+  color: var(--surfaceRaised);
+  border: var(--surfaceRaised) solid 0.5px;
+  cursor: default;
 }
