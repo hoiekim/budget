@@ -65,45 +65,101 @@ const assignsFetch = (node: ts.Node, source: ts.SourceFile): boolean =>
   ["globalThis", "global"].includes(node.left.expression.getText(source));
 
 /**
+ * The names a stub helper answers to in this file. An import may rename it, and
+ * a call through the alias installs the same stub, so matching the exported
+ * name alone would leave that spelling invisible.
+ */
+const stubHelperNames = (source: ts.SourceFile): string[] => {
+  const names = [...STUB_HELPERS];
+  source.forEachChild((node) => {
+    const bindings = ts.isImportDeclaration(node) && node.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) return;
+    for (const element of bindings.elements) {
+      const imported = element.propertyName?.text || element.name.text;
+      if (STUB_HELPERS.includes(imported)) names.push(element.name.text);
+    }
+  });
+  return names;
+};
+
+/**
  * A call to a helper that installs the stub on the file's behalf. Such a file
  * names neither `globalThis` nor `fetch` anywhere, so the assignment predicate
  * cannot see it — and the helper is the easiest stub site to reach, which would
  * leave the invariant enforced everywhere except where it is most used.
  */
-const callsStubHelper = (node: ts.Node, source: ts.SourceFile): boolean =>
-  ts.isCallExpression(node) && STUB_HELPERS.includes(node.expression.getText(source));
+const callsStubHelper = (node: ts.Node, helpers: string[]): boolean =>
+  ts.isCallExpression(node) &&
+  ts.isIdentifier(node.expression) &&
+  helpers.includes(node.expression.text);
 
 /** Anything that leaves a stub installed past the statement that made it. */
-const stubsFetch = (source: ts.SourceFile): boolean =>
-  some(source, (node) => assignsFetch(node, source) || callsStubHelper(node, source));
+const stubsFetch = (source: ts.SourceFile, helpers: string[]): boolean =>
+  some(source, (node) => assignsFetch(node, source) || callsStubHelper(node, helpers));
+
+/** The identifiers this file assigns a stub helper's return value to. */
+const stubHandles = (source: ts.SourceFile, helpers: string[]): string[] => {
+  const names: string[] = [];
+  const visit = (node: ts.Node) => {
+    const target =
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left) &&
+      callsStubHelper(node.right, helpers)
+        ? node.left
+        : ts.isVariableDeclaration(node) &&
+            ts.isIdentifier(node.name) &&
+            node.initializer &&
+            callsStubHelper(node.initializer, helpers)
+          ? node.name
+          : undefined;
+    if (target) names.push(target.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return names;
+};
 
 /**
  * A snapshot restorer, or the `restore` handle a stub helper hands back — the
- * helper's own body is what reaches the snapshot in that case.
+ * helper's own body is what reaches the snapshot in that case. The receiver has
+ * to be a handle this file took from such a call: `mock.restore()` is bun's own
+ * idiom for resetting module mocks, reads as the right thing to write next to a
+ * stub, and leaves `globalThis.fetch` exactly where it was.
  */
-const isRestorer = (node: ts.Node): boolean =>
-  (ts.isIdentifier(node) && RESTORERS.includes(node.text)) ||
-  (ts.isPropertyAccessExpression(node) && node.name.text === "restore");
+const isRestorer =
+  (handles: string[]) =>
+  (node: ts.Node): boolean =>
+    (ts.isIdentifier(node) && RESTORERS.includes(node.text)) ||
+    (ts.isPropertyAccessExpression(node) &&
+      node.name.text === "restore" &&
+      ts.isIdentifier(node.expression) &&
+      handles.includes(node.expression.text));
 
 /** A teardown hook whose callback reaches a restorer. */
-const restoresFetch = (source: ts.SourceFile): boolean =>
+const restoresFetch = (source: ts.SourceFile, handles: string[]): boolean =>
   some(
     source,
     (node) =>
       ts.isCallExpression(node) &&
       TEARDOWN.includes(node.expression.getText(source)) &&
-      node.arguments.some((argument) => some(argument, isRestorer)),
+      node.arguments.some((argument) => some(argument, isRestorer(handles))),
   );
+
+/** A file that installs a stub and leaves it installed for the next one. */
+const leaksFetch = (source: ts.SourceFile): boolean => {
+  const helpers = stubHelperNames(source);
+  return stubsFetch(source, helpers) && !restoresFetch(source, stubHandles(source, helpers));
+};
+
+const offends = (body: string): boolean => leaksFetch(parseSource("fixture.test.tsx", body));
 
 describe("globalThis.fetch stubs", () => {
   afterAll(restoreFetch);
 
   test("every test file that stubs it restores it in a teardown hook", () => {
     const offenders = testFiles(SRC)
-      .filter((file) => {
-        const source = parse(file);
-        return stubsFetch(source) && !restoresFetch(source);
-      })
+      .filter((file) => leaksFetch(parse(file)))
       .map((file) => path.relative(SRC, file));
 
     expect(offenders).toEqual([]);
@@ -119,11 +175,6 @@ describe("globalThis.fetch stubs", () => {
   });
 
   test("the scan sees a stub installed through a helper, and its restore", () => {
-    const offends = (body: string): boolean => {
-      const source = parseSource("fixture.test.tsx", body);
-      return stubsFetch(source) && !restoresFetch(source);
-    };
-
     expect(offends(`let s: unknown;\nit("x", () => { s = stubFetch([]); });`)).toBe(true);
     expect(
       offends(
@@ -132,6 +183,37 @@ describe("globalThis.fetch stubs", () => {
           `it("x", () => { s = stubFetch([]); });`,
       ),
     ).toBe(false);
+  });
+
+  test("the scan follows a helper imported under another name", () => {
+    const stub = `import { stubFetch as installStub } from "test-render";\n`;
+
+    expect(offends(`${stub}let s: unknown;\nit("x", () => { s = installStub([]); });`)).toBe(true);
+    expect(
+      offends(
+        stub +
+          `let s: { restore: () => void } | undefined;\n` +
+          `afterEach(() => { s?.restore(); });\n` +
+          `it("x", () => { s = installStub([]); });`,
+      ),
+    ).toBe(false);
+  });
+
+  test("a teardown that only resets module mocks does not count as a restore", () => {
+    const assign = `it("x", () => { globalThis.fetch = (async () => new Response("")) as never; });`;
+
+    expect(offends(`afterEach(() => { mock.restore(); });\n${assign}`)).toBe(true);
+    expect(offends(`afterEach(() => { restoreFetch(); });\n${assign}`)).toBe(false);
+  });
+
+  test("a restore handle has to come from a stub helper call", () => {
+    expect(
+      offends(
+        `const other = buildThing();\n` +
+          `afterEach(() => { other.restore(); });\n` +
+          `it("x", () => { stubFetch([]); });`,
+      ),
+    ).toBe(true);
   });
 
   test("restoreLeaves covers fetch alongside the module leaves", () => {
