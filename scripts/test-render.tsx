@@ -139,6 +139,10 @@ export interface FetchStubRoute {
   path: string;
   /** Parsed by `client/lib/call` as the `ApiResponse` JSON body. */
   response: unknown;
+  /** Awaited before the response is handed back. A promise left pending
+   *  holds the request open, which is how a test reads a component's
+   *  in-flight state off the live DOM instead of inferring it. */
+  hold?: Promise<unknown>;
 }
 
 /** Requests a page made, in call order. */
@@ -166,6 +170,7 @@ export const stubFetch = (routes: FetchStubRoute[]) => {
     calls.requests.push({ url, method: init?.method || "GET" });
     const route = routes.find((r) => url.includes(r.path));
     if (!route) throw new Error(`test-render: no fetch stub for ${init?.method || "GET"} ${url}`);
+    if (route.hold) await route.hold;
     return new Response(JSON.stringify(route.response), {
       status: 200,
       headers: { "Content-Type": "application/json" },

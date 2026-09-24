@@ -2,25 +2,32 @@ import { useCallback } from "react";
 import type { TransferPair } from "server";
 import { call, Data, TransferDictionary, indexedDb, StoreName, useAppContext } from "client";
 
+/**
+ * Every action answers whether the server write landed. `call` turns an
+ * offline tap or a parse failure into an `ApiResponse` rather than a
+ * rejection, so an `await` that returns is not on its own evidence of
+ * success — a caller that dismisses UI on completion needs this answer to
+ * tell the two apart.
+ */
 export interface TransferActions {
   /** Confirm a suggested pair: status flips to "confirmed". */
-  confirm: (pair_id: string) => Promise<void>;
+  confirm: (pair_id: string) => Promise<boolean>;
   /** Reject a suggested pair: server flips it to `status='rejected'`
    *  (the row persists as the engine's per-pair denylist signal so the
    *  same pair isn't re-suggested on future runs). FE removes it from
    *  the local transfers dictionary. */
-  reject: (pair_id: string) => Promise<void>;
+  reject: (pair_id: string) => Promise<boolean>;
   /** Unpair a confirmed pair (same route as reject — flips the row to
    *  status='rejected', not soft-delete — semantically named for the
    *  "mark as non-transfer" affordance). */
-  unpair: (pair_id: string) => Promise<void>;
+  unpair: (pair_id: string) => Promise<boolean>;
   /** Manually pair two transactions as a confirmed transfer. Used by
    *  the "Mark as Transfer" affordance for cases where (a) the user
    *  accidentally unpaired and wants to undo later, or (b) the
    *  detect-transfers heuristic missed the pair. Lands directly as
    *  `status="confirmed"` — manual pairing is user intent, not a
    *  suggestion. */
-  pair: (transaction_id_a: string, transaction_id_b: string) => Promise<void>;
+  pair: (transaction_id_a: string, transaction_id_b: string) => Promise<boolean>;
 }
 
 /**
@@ -43,7 +50,7 @@ export const useTransfers = (): TransferActions => {
         // already has another active confirmed pair. Surface the message
         // so the user knows the click didn't silently succeed.
         if (response.message) window.alert(response.message);
-        return;
+        return false;
       }
       setData((oldData) => {
         const prev = oldData.transfers.get(pair_id);
@@ -59,6 +66,7 @@ export const useTransfers = (): TransferActions => {
         newData.transfers.set(pair_id, updatedPair);
         return newData;
       });
+      return true;
     },
     [setData],
   );
@@ -66,7 +74,13 @@ export const useTransfers = (): TransferActions => {
   const reject = useCallback(
     async (pair_id: string) => {
       const response = await call.delete(`/api/transfers?id=${encodeURIComponent(pair_id)}`);
-      if (response.status !== "success") return;
+      if (response.status !== "success") {
+        // Reject is the destructive half, so a refusal has to be visible:
+        // an expired session answers `status:"failed"` here, and the
+        // caller's dismissal is the only other feedback this path gives.
+        if (response.message) window.alert(response.message);
+        return false;
+      }
       setData((oldData) => {
         if (!oldData.transfers.has(pair_id)) return oldData;
         const newData = new Data(oldData);
@@ -75,6 +89,7 @@ export const useTransfers = (): TransferActions => {
         indexedDb.remove(StoreName.transfers, pair_id).catch(console.error);
         return newData;
       });
+      return true;
     },
     [setData],
   );
@@ -88,7 +103,7 @@ export const useTransfers = (): TransferActions => {
       });
       if (response.status !== "success" || !response.body) {
         if (response.message) window.alert(response.message);
-        return;
+        return false;
       }
       const { pair_id } = response.body;
       setData((oldData) => {
@@ -106,6 +121,7 @@ export const useTransfers = (): TransferActions => {
         newData.transfers.set(pair_id, newPair);
         return newData;
       });
+      return true;
     },
     [setData],
   );
