@@ -48,13 +48,26 @@ const config: PoolConfig = {
 // A's FakePool. Production never calls `resetPool()` — the cached
 // real Pool stays for the process lifetime.
 //
+// The cache also drops itself whenever the `Pool` binding moves, because
+// an explicit reset only covers the files that run in the order their
+// authors imagined: a file that touches the pool while real `pg` is
+// installed caches a real Pool, and the next file's `mock.module("pg")`
+// cannot displace it — its queries reach a real socket. Comparing the
+// constructor is what makes a file's own mock authoritative regardless
+// of what ran before it. Production never re-points `Pool`, so the
+// comparison holds and the pool is built once.
+//
 // The traps below all forward to `_pool`. `set`/`deleteProperty`/`has`
 // are required (not just `get`) because pg's own Pool methods do
 // `this.ending = true`, `this._clients = filtered`, etc. — the default
 // Proxy `set` would write to the empty target, leaving `_pool` stale.
 let _pool: Pool | null = null;
+let _poolCtor: typeof Pool | null = null;
 const getPool = (): Pool => {
-  if (!_pool) _pool = new Pool(config);
+  if (!_pool || _poolCtor !== Pool) {
+    _pool = new Pool(config);
+    _poolCtor = Pool;
+  }
   return _pool;
 };
 export const resetPool = (): void => {

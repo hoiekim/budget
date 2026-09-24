@@ -2,6 +2,7 @@ import { describe, test, expect, afterAll, beforeAll } from "bun:test";
 import { readFileSync } from "fs";
 import path from "path";
 import ts from "typescript";
+import { restoreFetch } from "test-helpers";
 import { MAX_REQUEST_BODY_SIZE } from "./request-limits";
 
 /**
@@ -23,12 +24,8 @@ describe("MAX_REQUEST_BODY_SIZE — enforcement", () => {
   let handlerEntered = false;
 
   // Whichever files ran first may have left a stubbed `fetch` behind; this one
-  // needs the real network stack to reach the server below. Scoped to this
-  // block so the next file inherits whatever it would have inherited anyway.
-  const inheritedFetch = globalThis.fetch;
-  beforeAll(() => {
-    globalThis.fetch = (globalThis as { __REAL_FETCH?: typeof fetch }).__REAL_FETCH ?? inheritedFetch;
-  });
+  // needs the real network stack to reach the server below.
+  beforeAll(restoreFetch);
 
   const server = Bun.serve({
     port: 0,
@@ -40,7 +37,7 @@ describe("MAX_REQUEST_BODY_SIZE — enforcement", () => {
   });
 
   afterAll(() => {
-    globalThis.fetch = inheritedFetch;
+    restoreFetch();
     server.stop(true);
   });
 

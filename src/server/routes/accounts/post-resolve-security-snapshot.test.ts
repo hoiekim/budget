@@ -9,9 +9,8 @@
 // code with `globalThis.fetch` mocked + `POLYGON_API_KEY` set in
 // process.env before the bundle imports. `POLYGON_RATE_LIMIT_PER_MIN=0`
 // disables the rate gate so tests don't wait on token refills. All
-// process-global state (env vars + globalThis.fetch) is snapshotted and
-// restored in afterAll so sibling tests in the unified process aren't
-// affected.
+// process-global state (env vars + `globalThis.fetch`) is restored in
+// afterAll so sibling tests in the unified process aren't affected.
 process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
@@ -19,7 +18,6 @@ import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
 import type { JSONSecurity } from "common";
 
-const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.POLYGON_API_KEY;
 const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
@@ -39,7 +37,6 @@ const { clearPriceCache } = await import("server/lib/polygon");
 const { polygonLookupRateLimiter } = await import("server/lib/rate-limit");
 
 afterAll(() => {
-  globalThis.fetch = originalFetch;
   if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
   else process.env.POLYGON_API_KEY = originalApiKey;
   if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
