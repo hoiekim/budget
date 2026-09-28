@@ -7,7 +7,6 @@ process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
 
-const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.POLYGON_API_KEY;
 const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
@@ -24,7 +23,6 @@ globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 const { postHoldingSnapshotRoute } = await import("./post-holding-snapshot");
 
 afterAll(() => {
-  globalThis.fetch = originalFetch;
   if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
   else process.env.POLYGON_API_KEY = originalApiKey;
   if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;

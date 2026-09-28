@@ -6,10 +6,11 @@
  * Why restore: bun's `mock.module()` is process-global and has no
  * `unmock` API — once a file mocks `"pg"` with a FakePool, every
  * subsequent file in the same `bun test` process sees the mock unless
- * it's explicitly re-mocked back to real. `restoreLeaves()` re-mocks
- * each leaf to the snapshot the preload captured (`globalThis.__REAL_*`)
- * before any test file ran, so the next file starts from a known
- * baseline.
+ * it's explicitly re-mocked back to real. A bare `globalThis.fetch =`
+ * has the same blast radius and no unmock API either. `restoreLeaves()`
+ * puts each of them back to the snapshot the preload captured
+ * (`globalThis.__REAL_*`) before any test file ran, so the next file
+ * starts from a known baseline.
  *
  * Usage pattern:
  *
@@ -26,11 +27,12 @@ import { resetPool } from "server/lib/postgres/client";
 interface RealLeaves {
   __REAL_PG: Record<string, unknown> & { default: unknown };
   __REAL_BCRYPT: Record<string, unknown> & { default: unknown };
+  __REAL_FETCH: typeof fetch;
 }
 
 const realLeaves = (): RealLeaves => {
   const g = globalThis as unknown as Partial<RealLeaves>;
-  if (!g.__REAL_PG || !g.__REAL_BCRYPT) {
+  if (!g.__REAL_PG || !g.__REAL_BCRYPT || !g.__REAL_FETCH) {
     throw new Error(
       "test-helpers: real leaf snapshots missing on globalThis. " +
         "Run tests via `bun test` (which preloads `scripts/test-preload.ts`).",
@@ -40,16 +42,32 @@ const realLeaves = (): RealLeaves => {
 };
 
 /**
+ * Put `globalThis.fetch` back to the runtime's own, for a file that
+ * stubbed it.
+ *
+ * Restore from the preload's snapshot rather than from a value the file
+ * read on the way in: `const original = globalThis.fetch` captures
+ * whatever the PREVIOUS file left behind, so one file's leak survives
+ * every well-behaved restore after it. The snapshot is the only value
+ * known to predate every test file.
+ */
+export const restoreFetch = (): void => {
+  globalThis.fetch = realLeaves().__REAL_FETCH;
+};
+
+/**
  * Re-mock the standard set of leaf deps (`pg`, `bcrypt`) back to the
- * real module exports captured by the preload, and invalidate the
- * lazy Pool cache in `postgres/client.ts` so the next file's first
- * pool use rebuilds against that file's mock (or real pg if it
- * doesn't mock anything). Pass directly to `afterAll(restoreLeaves)`.
+ * real module exports captured by the preload, put `globalThis.fetch`
+ * back with them, and invalidate the lazy Pool cache in
+ * `postgres/client.ts` so the next file's first pool use rebuilds
+ * against that file's mock (or real pg if it doesn't mock anything).
+ * Pass directly to `afterAll(restoreLeaves)`.
  */
 export const restoreLeaves = (): void => {
   const { __REAL_PG, __REAL_BCRYPT } = realLeaves();
   mock.module("pg", () => __REAL_PG);
   mock.module("bcrypt", () => __REAL_BCRYPT);
+  restoreFetch();
   resetPool();
 };
 

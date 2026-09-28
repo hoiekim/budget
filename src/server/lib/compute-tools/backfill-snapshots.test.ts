@@ -13,9 +13,9 @@
 // (also inlined in the bundle) never collides across tests.
 //
 // index.ts) so this file's `globalThis.fetch` override and env-var
-// writes would otherwise leak to every subsequent test file. `afterAll`
-// below snapshots and restores the originals.
-const originalFetch = globalThis.fetch;
+// writes would otherwise leak to every subsequent test file.
+// `restoreLeaves` puts `fetch` back; the env originals are snapshotted
+// below and restored alongside it.
 const originalApiKey = process.env.POLYGON_API_KEY;
 const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
@@ -40,7 +40,6 @@ const { backfillMonthlySecuritySnapshotsForward } = await import("./backfill\-sn
 afterAll(restoreLeaves);
 
 afterAll(() => {
-  globalThis.fetch = originalFetch;
   if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
   else process.env.POLYGON_API_KEY = originalApiKey;
   if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
