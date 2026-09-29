@@ -1,0 +1,87 @@
+div.TransferPairModal {
+  position: fixed;
+  inset: 0;
+  /* Same layer as DatePickerModal: above the header's fixed viewController
+   * (800) and the Router page panels (500–520). */
+  z-index: 1000;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+div.TransferPairModal > div.panel {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding-bottom: 15px;
+  width: calc(100% - 20px);
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  overflow: hidden;
+  height: fit-content;
+}
+
+div.TransferPairModal > div.panel > div.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 10px;
+}
+
+div.TransferPairModal > div.panel > div.header > button.closeButton {
+  background-color: transparent;
+  font-size: 18px;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+div.TransferPairModal > div.panel > div.message {
+  padding: 0 15px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+div.TransferPairModal > div.panel > div.actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 15px;
+}
+
+div.TransferPairModal > div.panel > div.actions > button {
+  flex: 1;
+  height: 32px;
+  background-color: var(--panel);
+}
+
+div.TransferPairModal > div.panel > div.actions > button.confirmButton:not([aria-disabled="true"]) {
+  color: var(--green);
+}
+
+div.TransferPairModal > div.panel > div.actions > button.confirmButton:not([aria-disabled="true"]):hover {
+  color: var(--textBright);
+  background-color: var(--darkGreen);
+}
+
+div.TransferPairModal > div.panel > div.actions > button.rejectButton:not([aria-disabled="true"]) {
+  color: var(--red);
+}
+
+div.TransferPairModal > div.panel > div.actions > button.rejectButton:not([aria-disabled="true"]):hover {
+  color: var(--textBright);
+  background-color: var(--darkRed);
+}
+
+/* The global `button:disabled` look, restated for the attribute — an
+ * `aria-disabled` button is still enabled to CSS, so it would otherwise keep
+ * the pointer cursor and the `button:not(:disabled):hover` background. */
+div.TransferPairModal > div.panel > div.actions > button[aria-disabled="true"] {
+  background-color: var(--bg);
+  color: var(--surfaceRaised);
+  border: var(--surfaceRaised) solid 0.5px;
+  cursor: default;
+}
