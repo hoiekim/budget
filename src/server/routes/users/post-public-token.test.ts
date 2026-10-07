@@ -116,6 +116,18 @@ describe("post-public-token", () => {
     expect(result?.message).toMatch(/wrong type of public_token/);
   });
 
+  test("provider=plaid with valid input but Plaid unconfigured → not-configured failure", async () => {
+    // Test env has no PLAID_* vars, so plaid.isPlaidConfigured is false.
+    // Validation runs first (see the wrong-type tests above); the config
+    // guard fires only for well-formed requests.
+    const result = await postPublicTokenRoute.execute(
+      makeReq({ provider: "plaid" }, { public_token: "t", institution_id: "ins_1" }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/Plaid integration is not configured/);
+  });
+
   test("provider=manual with existing MANUAL item → 'Manual item already exists' failure", async () => {
     // searchItems calls pool.query (via itemsTable.query). Returning a row
     // shaped like a MANUAL item makes the route's .find() succeed and
