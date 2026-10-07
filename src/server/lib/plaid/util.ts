@@ -14,6 +14,10 @@ if (!isPlaidConfigured) {
 }
 
 export const getClient = (user?: MaskedUser) => {
+  if (!isPlaidConfigured) {
+    throw new Error("Plaid is not configured — refusing to make Plaid API calls");
+  }
+
   const isDemo = user?.username === "demo";
   const { production, development, sandbox } = PlaidEnvironments;
 
@@ -50,6 +54,10 @@ export const getClient = (user?: MaskedUser) => {
  * Webhooks are only sent from production, so we always need production credentials.
  */
 export const getProductionClient = () => {
+  if (!isPlaidConfigured) {
+    throw new Error("Plaid is not configured — refusing to make Plaid API calls");
+  }
+
   const { production } = PlaidEnvironments;
 
   if (!PLAID_SECRET_PRODUCTION) {

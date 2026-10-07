@@ -62,6 +62,10 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
         };
       }
 
+      if (!plaid.isPlaidConfigured) {
+        return { status: "failed", message: "Plaid integration is not configured" };
+      }
+
       const item = await exchangePlaidToken(user, public_token, institution_id);
       await upsertItems(user, [item]);
 

@@ -12,6 +12,14 @@ const { pg, mockQuery, resetQueryMocks } = createFakePg();
 
 mock.module("pg", () => pg);
 
+// These tests exercise the Plaid fallback, so pretend Plaid is configured
+// (the real flag is false in the test env — no PLAID_* vars).
+const realPlaidUtil = { ...(await import("server/lib/plaid/util")) };
+mock.module("server/lib/plaid/util", () => ({
+  ...realPlaidUtil,
+  isPlaidConfigured: true,
+}));
+
 // Plaid is the leaf the fallback path reaches. Spread the real module rather
 // than replacing it — every model in the graph imports enums from here — and
 // override only the client class the fallback constructs. `mock.module` is
@@ -77,6 +85,7 @@ const drainDeferredWrites = () => new Promise((resolve) => setTimeout(resolve, 2
 
 afterAll(() => {
   mock.module("plaid", () => REAL_PLAID);
+  mock.module("server/lib/plaid/util", () => realPlaidUtil);
   restoreLeaves();
 });
 

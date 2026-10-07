@@ -1,6 +1,7 @@
 import { ItemProvider, ONE_HOUR } from "common";
 import { getAllItems, logger, updateItemSyncStatus } from "server";
 import { sendAlarm } from "server/lib/alarm";
+import { isPlaidConfigured } from "server/lib/plaid/util";
 import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 import { runAutoSuggestions } from "./auto-suggest";
@@ -19,8 +20,12 @@ const runSync = async () => {
   logger.info("Scheduled sync started");
   try {
     const items = await getAllItems();
+    if (!isPlaidConfigured) {
+      logger.info("Plaid is not configured — skipping Plaid sync for all items");
+    }
     for (const { item_id, provider } of items) {
       if (provider === ItemProvider.PLAID) {
+        if (!isPlaidConfigured) continue;
         let accountsCount = 0;
         let transactionsCount = 0;
         let syncError: string | undefined;

@@ -20,6 +20,14 @@ interface PlaidWebhookBody {
 }
 
 export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, res) => {
+  // Without Plaid credentials there is nothing legitimate to verify —
+  // reject before touching the Plaid API at all.
+  if (!plaid.isPlaidConfigured) {
+    logger.warn("[Plaid Webhook] Plaid not configured — rejecting webhook");
+    res.status(401);
+    return { status: "failed", message: "Webhook verification failed" };
+  }
+
   // Verify webhook signature from Plaid
   const signedJwt = req.headers["plaid-verification"] as string | undefined;
   const rawBody = (req as { rawBody?: string }).rawBody;
