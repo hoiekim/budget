@@ -16,6 +16,7 @@ const realDetectTransfers = { ...(await import("./detect-transfers")) };
 const realRefreshSecuritySnapshots = {
   ...(await import("./refresh-security-snapshots")),
 };
+const realPlaidUtil = { ...(await import("server/lib/plaid/util")) };
 
 const mockGetAllItems = mock(async () => [] as { item_id: string; provider: ItemProvider }[]);
 const mockUpdateItemSyncStatus = mock(async () => {});
@@ -62,6 +63,13 @@ mock.module("./sync-plaid", () => ({
   ...realSyncPlaid,
   syncPlaidAccounts: mockSyncPlaidAccounts,
   syncPlaidTransactions: mockSyncPlaidTransactions,
+}));
+
+// These tests exercise the Plaid sync orchestration with mocked sync fns;
+// pretend Plaid is configured (the real flag is false in the test env).
+mock.module("server/lib/plaid/util", () => ({
+  ...realPlaidUtil,
+  isPlaidConfigured: true,
 }));
 
 mock.module("./sync-simple-fin", () => ({
@@ -138,6 +146,7 @@ afterAll(() => {
     "./refresh-security-snapshots",
     () => realRefreshSecuritySnapshots
   );
+  mock.module("server/lib/plaid/util", () => realPlaidUtil);
   restoreLeaves();
 });
 

@@ -42,6 +42,9 @@ mock.module("server", () => ({
   ...realServer,
   plaid: {
     ...realServer.plaid,
+    // Tests exercise the configured path; the real `isPlaidConfigured` is
+    // false in the test env (no PLAID_* vars).
+    isPlaidConfigured: true,
     verifyWebhook: mockVerifyWebhook,
     getItem: mockGetItem,
   },

@@ -54,6 +54,10 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
 
       return { status: "success", body: { item } };
     } else if (provider === ItemProvider.PLAID) {
+      if (!plaid.isPlaidConfigured) {
+        return { status: "failed", message: "Plaid integration is not configured" };
+      }
+
       const { public_token, institution_id } = req.body;
       if (typeof public_token !== "string" || typeof institution_id !== "string") {
         return {
