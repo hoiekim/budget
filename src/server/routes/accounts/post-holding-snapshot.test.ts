@@ -9,6 +9,7 @@ import { createFakePg, restoreLeaves } from "test-helpers";
 
 const originalApiKey = process.env.POLYGON_API_KEY;
 const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
+const originalYahooRateLimit = process.env.YAHOO_RATE_LIMIT_PER_MIN;
 
 const { pg, mockQuery, resetQueryMocks } = createFakePg();
 
@@ -21,12 +22,16 @@ const mockFetch = mock(
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
 const { postHoldingSnapshotRoute } = await import("./post-holding-snapshot");
+const { clearPriceCache, polygonQueue } = await import("server/lib/polygon");
+const { clearYahooCache, yahooQueue } = await import("server/lib/yahoo");
 
 afterAll(() => {
   if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
   else process.env.POLYGON_API_KEY = originalApiKey;
   if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
   else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
+  if (originalYahooRateLimit === undefined) delete process.env.YAHOO_RATE_LIMIT_PER_MIN;
+  else process.env.YAHOO_RATE_LIMIT_PER_MIN = originalYahooRateLimit;
   restoreLeaves();
 });
 
@@ -66,6 +71,11 @@ beforeEach(() => {
   resetQueryMocks();
   mockQuery.mockImplementation(queryRouter);
   accountRow = null;
+  clearPriceCache();
+  clearYahooCache();
+  polygonQueue.reset();
+  yahooQueue.reset();
+  process.env.YAHOO_RATE_LIMIT_PER_MIN = "0";
   mockFetch.mockReset();
   mockFetch.mockImplementation(
     async () => ({ ok: true, status: 200, json: async () => ({}) }) as unknown as Response,
@@ -184,8 +194,10 @@ describe("post-holding-snapshot — per-user cap on the shared Polygon gate", ()
 
     expect(shed!.status).toBe("failed");
     expect(shed!.message).toMatch(/too many/i);
-    // The shed request spends no slot on the shared gate.
-    expect(mockFetch).toHaveBeenCalledTimes(10);
+    // The shed request spends no slot on the shared gate. Each unknown
+    // ticker costs two fetches — the Polygon miss plus the Yahoo fallback
+    // miss — so ten tickers cost twenty.
+    expect(mockFetch).toHaveBeenCalledTimes(20);
   });
 });
 

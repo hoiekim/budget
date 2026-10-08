@@ -3,7 +3,7 @@ import {
   pool,
   upsertSnapshots,
   searchSecuritiesById,
-  polygon,
+  marketData,
   logger,
   SECURITY_ID,
   SNAPSHOT_TYPE,
@@ -111,7 +111,7 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
     // or before today. The returned `tradingDate` is the actual market
     // day the price is anchored to — naturally falls back to Friday on
     // weekends, the day before a holiday, etc.
-    const fetchResult = await polygon.getLatestClosePriceOnOrBefore(ticker_symbol, today, {
+    const fetchResult = await marketData.getLatestClosePriceOnOrBeforeWithFallback(ticker_symbol, today, {
       securityType: type,
     });
     if (!fetchResult.success) {

@@ -12,6 +12,7 @@ import {
   getAccount,
   getHoldingSnapshots,
   polygon,
+  marketData,
   polygonLookupRateLimiter,
   POLYGON_LOOKUP_SHED_MESSAGE,
   backfillMonthlySecuritySnapshotsForward,
@@ -44,7 +45,9 @@ const resolveSecurityId = async (
   }
   polygonLookupRateLimiter.consume(user_id);
 
-  const detailResult = await polygon.getTickerDetail(upperTicker, {
+  // Resolve via Polygon, falling back to Yahoo for symbols Polygon does not
+  // carry (e.g. mutual funds).
+  const detailResult = await marketData.getTickerDetailWithFallback(upperTicker, {
     maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
   });
   if (!detailResult.success) {
