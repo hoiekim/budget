@@ -97,6 +97,12 @@ const getBalanceDataFromTransactions = (
  * understates a position that has since appreciated, and is the floor worth
  * showing for a month no snapshot covers. {@link getBalanceData} prefers
  * either snapshot tier wherever one does.
+ *
+ * Cash and securities are both tracked because an account holds both, and a
+ * purchase moves money between them rather than into the account. Counting
+ * only one side reports the same dollar twice on the way in, or loses it on
+ * the way out: a liquidation that credits no cash reads as a zeroed account
+ * for that month and every month after it.
  */
 const addInvestmentCostBasis = (
   balanceData: BalanceData,
@@ -130,16 +136,26 @@ const addInvestmentCostBasis = (
     for (const t of accountTransactions) {
       if (t.type === InvestmentTransactionType.Cash) {
         cash -= t.amount;
-      } else if (!isSweep(t)) {
+      } else {
         const securityId = t.security_id ?? "";
         positions.set(securityId, foldCostBasis(positions.get(securityId) ?? EMPTY_POSITION, t));
+        // Both legs, or the money is counted twice on the way in and lost on
+        // the way out: a purchase spends cash the account already held, and a
+        // sale returns it. This is also what makes a broker's sweep come out
+        // right without having to recognise one — the sweep buy spends
+        // exactly the cash its own deposit row brought in. Types that move no
+        // shares, a fee or a dividend, move only this leg, which is what they
+        // do. Floored because the cash a purchase spent may have arrived
+        // before the fetched window, and an account that bought with money
+        // this never saw does not thereby hold a negative balance.
+        cash = Math.max(0, cash - t.amount);
       }
+
       const invested = Array.from(positions.values()).reduce((sum, p) => sum + p.totalCost, 0);
       const monthEnd = new ViewDate("month", new LocalDate(t.date)).getEndDate();
-      // Floored: an account rolled over into another leaves the withdrawal
-      // here while the deposit lands somewhere this never sees, and a sale
-      // whose purchase predates the fetched window takes out what never
-      // went in. Neither means the account owes money.
+      // Floored for the same reason one step down: an account rolled over
+      // into another leaves the withdrawal here while the deposit lands
+      // somewhere this never sees.
       monthlyTotals.set(monthEnd.getTime(), Math.max(0, invested + cash));
     }
 
@@ -154,23 +170,6 @@ const addInvestmentCostBasis = (
 };
 
 const EMPTY_POSITION: CostBasisPosition = { totalCost: 0, totalQuantity: 0 };
-
-/**
- * Whether a transaction is a cash sweep rather than a position of its own.
- *
- * Plaid reports a broker's sweep as `type: buy` priced at 1 — the same money
- * the matching `type: cash` row already reports, counted a second time as a
- * basis if taken at face value. `holdings.ts` and `benchmark.ts` both exclude
- * the shape on the same signal; a real security quoted at exactly 1 is the
- * cost all three accept for it.
- *
- * It does not make the pair exact in every shape: a broker that sweeps cash
- * out to buy an equity still reports the purchase with no matching debit, and
- * nothing in a transaction says whether the money funding it was already
- * counted. Which is the standing reason this tier ranks below both snapshot
- * tiers rather than beside them.
- */
-const isSweep = (t: InvestmentTransaction) => t.price === 1;
 
 const getBalanceDataFromSnapshots = (
   accounts: AccountDictionary,

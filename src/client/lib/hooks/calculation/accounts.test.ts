@@ -205,27 +205,29 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-04")).toBeCloseTo(100, 2);
   });
 
-  // A rollover leaves the withdrawal here and the deposit on an account this
-  // never sees, so sales can exceed every purchase in the window.
-  test("selling more than the window ever bought floors at zero, never negative", () => {
-    const balanceData = balancesFor(0, [
+  // Shares bought before the fetched window are sold inside it, so the sale
+  // takes out more basis than the window ever recorded. The basis bottoms out
+  // at nothing rather than going negative, and the proceeds are still real
+  // money the account now holds.
+  test("a sale larger than the window's purchases keeps its proceeds and no negative basis", () => {
+    const balanceData = balancesFor(500, [
       contribution("2022-01-15", 10),
       contribution("2022-02-15", 10, -50),
     ]);
     expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
-    expect(at(balanceData, "2022-02")).toBe(0);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(500, 2);
   });
 
-  // A profitable partial sale takes out half the shares, so it takes out half
-  // the basis — not the whole of it, which is what subtracting the proceeds
-  // from the cost would do while the position is still held.
+  // Half the shares go, so half the basis goes — $50 of the $100, not the
+  // $150 of proceeds, which would wipe out a position still half held. The
+  // proceeds land as cash, so the account reads $50 of shares plus $150.
   test("a partial sale removes basis in proportion to shares, not proceeds", () => {
-    const balanceData = balancesFor(150, [
+    const balanceData = balancesFor(300, [
       contribution("2022-01-15", 10),
       contribution("2022-03-15", 30, -5),
     ]);
     expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
-    expect(at(balanceData, "2022-03")).toBeCloseTo(50, 2);
+    expect(at(balanceData, "2022-03")).toBeCloseTo(200, 2);
   });
 
   // Cash carries its value in `amount`, not in shares, so a share-count
@@ -293,10 +295,10 @@ describe("investment balance history from transactions", () => {
         subtype: InvestmentTransactionSubtype.Contribution,
       }),
       // Half of sec1 goes: $50 of basis at sec1's own average, not $150 at
-      // the pooled one.
+      // the pooled one. $200 of proceeds land as cash either way.
       contribution("2022-02-15", 40, -5),
     ]);
-    expect(at(balanceData, "2022-02")).toBeCloseTo(550, 2);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(750, 2);
   });
 
   // Cash can run past every purchase on its own, with no position to clamp.
@@ -321,10 +323,10 @@ describe("investment balance history from transactions", () => {
   test("transactions replay in date order whatever order they arrive in", () => {
     const buy = contribution("2022-01-15", 10, 10);
     const sell = contribution("2022-03-15", 30, -5);
-    const inOrder = at(balancesFor(150, [buy, sell]), "2022-03");
-    const reversed = at(balancesFor(150, [sell, buy]), "2022-03");
-    expect(inOrder).toBeCloseTo(50, 2);
-    expect(reversed).toBeCloseTo(50, 2);
+    const inOrder = at(balancesFor(300, [buy, sell]), "2022-03");
+    const reversed = at(balancesFor(300, [sell, buy]), "2022-03");
+    expect(inOrder).toBeCloseTo(200, 2);
+    expect(reversed).toBeCloseTo(200, 2);
   });
 
   test("a transaction dated in the future claims no month", () => {
@@ -334,6 +336,46 @@ describe("investment balance history from transactions", () => {
     ]);
     expect(at(balanceData, "2099-01")).toBeUndefined();
     expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+  });
+
+  // A fee is money leaving the account, not a position being opened. Folding
+  // it as a buy leaves the account reporting what it held before paying.
+  test("a fee leaves the account rather than opening a position", () => {
+    const deposit = new InvestmentTransaction({
+      investment_transaction_id: "cash-in",
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2022-01-10",
+      name: "Deposit",
+      quantity: 0,
+      amount: -1000,
+      price: 0,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Deposit,
+    });
+    const fee = new InvestmentTransaction({
+      investment_transaction_id: "fee",
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2022-01-20",
+      name: "Account fee",
+      quantity: 0,
+      amount: 100,
+      price: 0,
+      type: InvestmentTransactionType.Fee,
+      subtype: InvestmentTransactionSubtype.AccountFee,
+    });
+    expect(at(balancesFor(900, [deposit, fee]), "2022-01")).toBeCloseTo(900, 2);
+  });
+
+  // A month takes the state after everything in it, so a later row in the
+  // same month has to win over an earlier one.
+  test("a month reads the state after its last transaction, not its first", () => {
+    const balanceData = balancesFor(300, [
+      contribution("2022-01-05", 10),
+      contribution("2022-01-25", 20, 10),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(300, 2);
   });
 
   // The snapshot tier normally writes the live balance over the current
