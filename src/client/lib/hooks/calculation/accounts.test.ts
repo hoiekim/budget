@@ -368,6 +368,92 @@ describe("investment balance history from transactions", () => {
     expect(at(balancesFor(900, [deposit, fee]), "2022-01")).toBeCloseTo(900, 2);
   });
 
+  // Not every provider carries the two legs of a trade in two rows, and not
+  // every provider signs them the way Plaid does: one mints a single row per
+  // movement, as a buy of one unit priced at the whole amount, signed
+  // positive when the money arrives. Reading the cash leg's direction off
+  // that sign hands such an account a credit for every withdrawal, which
+  // flatlines the balance at gross all-time inflow.
+  const singleRowMovement = (date: string, amount: number) =>
+    new InvestmentTransaction({
+      investment_transaction_id: `single-${date}`,
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date,
+      name: "Movement",
+      quantity: 1,
+      amount,
+      price: amount,
+      type: InvestmentTransactionType.Buy,
+      subtype: InvestmentTransactionSubtype.Buy,
+    });
+
+  test("a provider that carries both legs in one row is not charged twice", () => {
+    const balanceData = balancesFor(700, [
+      singleRowMovement("2022-01-10", 1000),
+      singleRowMovement("2022-02-10", -500),
+      singleRowMovement("2022-03-10", 200),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(1000, 2);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(500, 2);
+    expect(at(balanceData, "2022-03")).toBeCloseTo(700, 2);
+  });
+
+  test("a withdrawal of money this never saw does not bury the deposits after it", () => {
+    const withdrawal = new InvestmentTransaction({
+      investment_transaction_id: "cash-out",
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2022-01-05",
+      name: "Withdrawal",
+      quantity: 0,
+      amount: 1000,
+      price: 0,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Withdrawal,
+    });
+    const deposit = new InvestmentTransaction({
+      investment_transaction_id: "cash-in",
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2022-02-10",
+      name: "Deposit",
+      quantity: 0,
+      amount: -600,
+      price: 0,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Deposit,
+    });
+    const balanceData = balancesFor(600, [withdrawal, deposit]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(0, 2);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(600, 2);
+  });
+
+  // Rows sharing a date keep the order they arrived in, so the fold has to
+  // land on the same total either way round.
+  test("a buy and a sale on one day read the same in either arrival order", () => {
+    const sameDay = (id: string, quantity: number) =>
+      new InvestmentTransaction({
+        investment_transaction_id: id,
+        account_id: ACCOUNT_ID,
+        security_id: "sec1",
+        date: "2022-01-10",
+        name: "Same day",
+        quantity,
+        amount: 10 * quantity,
+        price: 10,
+        type: quantity >= 0 ? InvestmentTransactionType.Buy : InvestmentTransactionType.Sell,
+        subtype:
+          quantity >= 0 ? InvestmentTransactionSubtype.Buy : InvestmentTransactionSubtype.Sell,
+      });
+    const buy = sameDay("same-buy", 10);
+    const sale = sameDay("same-sale", -5);
+    // Ten shares bought at $10 and half of them sold at cost: $50 of basis
+    // left holding $50 of proceeds, whichever row the fold reaches first.
+    expect(at(balancesFor(150, [buy, sale]), "2022-01")).toBeCloseTo(100, 2);
+    expect(at(balancesFor(150, [sale, buy]), "2022-01")).toBeCloseTo(100, 2);
+  });
+
   // A month takes the state after everything in it, so a later row in the
   // same month has to win over an earlier one.
   test("a month reads the state after its last transaction, not its first", () => {

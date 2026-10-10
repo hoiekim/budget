@@ -134,21 +134,32 @@ const addInvestmentCostBasis = (
     const monthlyTotals = new Map<number, number>();
 
     for (const t of accountTransactions) {
-      if (t.type === InvestmentTransactionType.Cash) {
-        cash -= t.amount;
-      } else {
+      const { type, amount } = t;
+      if (type === InvestmentTransactionType.Buy || type === InvestmentTransactionType.Sell) {
         const securityId = t.security_id ?? "";
         positions.set(securityId, foldCostBasis(positions.get(securityId) ?? EMPTY_POSITION, t));
         // Both legs, or the money is counted twice on the way in and lost on
         // the way out: a purchase spends cash the account already held, and a
         // sale returns it. This is also what makes a broker's sweep come out
         // right without having to recognise one — the sweep buy spends
-        // exactly the cash its own deposit row brought in. Types that move no
-        // shares, a fee or a dividend, move only this leg, which is what they
-        // do. Floored because the cash a purchase spent may have arrived
-        // before the fetched window, and an account that bought with money
-        // this never saw does not thereby hold a negative balance.
-        cash = Math.max(0, cash - t.amount);
+        // exactly the cash its own deposit row brought in.
+        //
+        // The direction comes from the type, never from the sign of `amount`:
+        // a purchase can only spend cash and a sale can only return it, so a
+        // provider that signs its rows the other way round cannot mint cash
+        // the account never held. Floored because the cash a purchase spent
+        // may have arrived before the fetched window, and an account that
+        // bought with money this never saw does not thereby hold a negative
+        // balance.
+        cash =
+          type === InvestmentTransactionType.Buy
+            ? Math.max(0, cash - Math.max(0, amount))
+            : cash + Math.max(0, -amount);
+      } else {
+        // Everything else moves money without moving shares — a fee, a
+        // dividend, a deposit, a withdrawal, an in-kind transfer carrying its
+        // value in `amount`. Floored for the same reason the purchase leg is.
+        cash = Math.max(0, cash - amount);
       }
 
       const invested = Array.from(positions.values()).reduce((sum, p) => sum + p.totalCost, 0);
