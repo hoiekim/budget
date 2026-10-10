@@ -253,6 +253,89 @@ describe("investment balance history from transactions", () => {
     expect(at(balancesFor(110, [withFee]), "2022-01")).toBeCloseTo(110, 2);
   });
 
+  // A broker's sweep is the same money the cash row already reports, so
+  // counting its `price: 1` buy as a position doubles the account.
+  test("a cash sweep is not a second position on top of the cash it holds", () => {
+    const deposit = new InvestmentTransaction({
+      investment_transaction_id: "cash-in",
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2022-01-10",
+      name: "Deposit",
+      quantity: 0,
+      amount: -1000,
+      price: 0,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Deposit,
+    });
+    const sweep = contribution("2022-01-11", 1, 1000);
+    expect(at(balancesFor(1000, [deposit, sweep]), "2022-01")).toBeCloseTo(1000, 2);
+  });
+
+  // Each security carries its own average cost. Pooling them lets one
+  // security's sale draw down basis built by shares it never touched — the
+  // prices here differ precisely so the pooled average would not match.
+  test("two securities keep separate average costs", () => {
+    const balanceData = balancesFor(600, [
+      // sec1: 10 shares at $10 = $100.
+      contribution("2022-01-15", 10, 10),
+      // sec2: 10 shares at $50 = $500. Pooled, the average would be $30.
+      new InvestmentTransaction({
+        investment_transaction_id: "other-buy",
+        account_id: ACCOUNT_ID,
+        security_id: "sec2",
+        date: "2022-01-16",
+        name: "Contributions",
+        quantity: 10,
+        amount: 500,
+        price: 50,
+        type: InvestmentTransactionType.Buy,
+        subtype: InvestmentTransactionSubtype.Contribution,
+      }),
+      // Half of sec1 goes: $50 of basis at sec1's own average, not $150 at
+      // the pooled one.
+      contribution("2022-02-15", 40, -5),
+    ]);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(550, 2);
+  });
+
+  // Cash can run past every purchase on its own, with no position to clamp.
+  test("a withdrawal exceeding every deposit floors the account at zero", () => {
+    const out = new InvestmentTransaction({
+      investment_transaction_id: "cash-out",
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2022-02-10",
+      name: "Withdrawal",
+      quantity: 0,
+      amount: 1000,
+      price: 0,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Withdrawal,
+    });
+    expect(at(balancesFor(0, [out]), "2022-02")).toBe(0);
+  });
+
+  // A dictionary yields insertion order, which is whatever the API returned.
+  // Average cost is path-dependent, so the replay has to be chronological.
+  test("transactions replay in date order whatever order they arrive in", () => {
+    const buy = contribution("2022-01-15", 10, 10);
+    const sell = contribution("2022-03-15", 30, -5);
+    const inOrder = at(balancesFor(150, [buy, sell]), "2022-03");
+    const reversed = at(balancesFor(150, [sell, buy]), "2022-03");
+    expect(inOrder).toBeCloseTo(50, 2);
+    expect(reversed).toBeCloseTo(50, 2);
+  });
+
+  test("a transaction dated in the future claims no month", () => {
+    const balanceData = balancesFor(100, [
+      contribution("2022-01-15", 10),
+      contribution("2099-01-15", 10),
+    ]);
+    expect(at(balanceData, "2099-01")).toBeUndefined();
+    expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+  });
+
   // The snapshot tier normally writes the live balance over the current
   // month, so this guard only carries weight once a user turns that tier off
   // — and then it is the only thing between "right now" and a cost basis.

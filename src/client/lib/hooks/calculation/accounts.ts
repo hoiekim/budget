@@ -130,7 +130,7 @@ const addInvestmentCostBasis = (
     for (const t of accountTransactions) {
       if (t.type === InvestmentTransactionType.Cash) {
         cash -= t.amount;
-      } else {
+      } else if (!isSweep(t)) {
         const securityId = t.security_id ?? "";
         positions.set(securityId, foldCostBasis(positions.get(securityId) ?? EMPTY_POSITION, t));
       }
@@ -154,6 +154,23 @@ const addInvestmentCostBasis = (
 };
 
 const EMPTY_POSITION: CostBasisPosition = { totalCost: 0, totalQuantity: 0 };
+
+/**
+ * Whether a transaction is a cash sweep rather than a position of its own.
+ *
+ * Plaid reports a broker's sweep as `type: buy` priced at 1 — the same money
+ * the matching `type: cash` row already reports, counted a second time as a
+ * basis if taken at face value. `holdings.ts` and `benchmark.ts` both exclude
+ * the shape on the same signal; a real security quoted at exactly 1 is the
+ * cost all three accept for it.
+ *
+ * It does not make the pair exact in every shape: a broker that sweeps cash
+ * out to buy an equity still reports the purchase with no matching debit, and
+ * nothing in a transaction says whether the money funding it was already
+ * counted. Which is the standing reason this tier ranks below both snapshot
+ * tiers rather than beside them.
+ */
+const isSweep = (t: InvestmentTransaction) => t.price === 1;
 
 const getBalanceDataFromSnapshots = (
   accounts: AccountDictionary,

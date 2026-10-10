@@ -300,6 +300,55 @@ describe("getPriceForHolding", () => {
 });
 
 describe("inferCostBasis", () => {
+  // Average cost divides by the shares held, so a sale arriving with no
+  // position behind it — its buy predating the fetched window — divides by
+  // zero. The NaN survives every later buy and spreads to the whole chart.
+  test("a sale with no position behind it leaves later buys intact, not NaN", () => {
+    const transactions = new InvestmentTransactionDictionary();
+    transactions.set(
+      "tx1",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Sell, 100, -5, "2026-01-10"),
+    );
+    transactions.set(
+      "tx2",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 10, 10, "2026-01-12"),
+    );
+
+    const result = inferCostBasis({
+      accountId: "acc1",
+      securityId: "sec1",
+      investmentTransactions: transactions,
+      asOfDate: new Date("2026-01-20"),
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.costBasis).toBe(100);
+    expect(result!.totalQuantity).toBe(10);
+  });
+
+  // A sale can only take out basis the position actually holds; the rest
+  // belongs to shares bought before the window and never recorded.
+  test("a sale larger than the position takes it to zero, not below", () => {
+    const transactions = new InvestmentTransactionDictionary();
+    transactions.set(
+      "tx1",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 100, 5, "2026-01-10"),
+    );
+    transactions.set(
+      "tx2",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Sell, 100, -50, "2026-01-15"),
+    );
+
+    const result = inferCostBasis({
+      accountId: "acc1",
+      securityId: "sec1",
+      investmentTransactions: transactions,
+      asOfDate: new Date("2026-01-20"),
+    });
+
+    expect(result).toBeNull();
+  });
+
   test("should calculate cost basis from buy transactions", () => {
     const transactions = new InvestmentTransactionDictionary();
     transactions.set(
