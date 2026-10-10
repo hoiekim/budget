@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
-import { restoreFetch } from "test-helpers";
+import { restoreFetch, restoreEnv } from "test-helpers";
 import { getDateString } from "common";
 import {
   getClosePrice,
@@ -10,7 +10,6 @@ import {
   yahooQueue,
 } from "./yahoo";
 
-const originalRateLimit = process.env.YAHOO_RATE_LIMIT_PER_MIN;
 
 const ts = (y: number, m: number, d: number) => Math.floor(Date.UTC(y, m - 1, d) / 1000);
 
@@ -61,11 +60,7 @@ describe("yahoo", () => {
   });
 
   afterEach(() => {
-    if (originalRateLimit === undefined) {
-      delete process.env.YAHOO_RATE_LIMIT_PER_MIN;
-    } else {
-      process.env.YAHOO_RATE_LIMIT_PER_MIN = originalRateLimit;
-    }
+    restoreEnv();
     restoreFetch();
   });
 

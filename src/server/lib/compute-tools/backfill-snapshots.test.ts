@@ -14,10 +14,8 @@
 //
 // index.ts) so this file's `globalThis.fetch` override and env-var
 // writes would otherwise leak to every subsequent test file.
-// `restoreLeaves` puts `fetch` back; the env originals are snapshotted
+// `restoreLeaves` puts `fetch` and the env back from the preload's snapshots
 // below and restored alongside it.
-const originalApiKey = process.env.POLYGON_API_KEY;
-const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
 process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
@@ -38,13 +36,6 @@ globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 const { backfillMonthlySecuritySnapshotsForward } = await import("./backfill\-snapshots");
 
 afterAll(restoreLeaves);
-
-afterAll(() => {
-  if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
-  else process.env.POLYGON_API_KEY = originalApiKey;
-  if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
-  else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
-});
 
 /**
  * Per-test routing for SQL. The repositories layer fires:

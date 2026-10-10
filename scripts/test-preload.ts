@@ -58,6 +58,22 @@ for (const [name, value] of nativeNetworkGlobals) {
 // duration, the way `__REAL_PG` lets one opt back out of a leaked `pg` mock.
 (globalThis as Record<string, unknown>).__REAL_FETCH = globalThis.fetch;
 
+// Market-data env a test file sets for its own duration. Snapshotted here for
+// the same reason `fetch` is: a file that captures its own "original" captures
+// whatever the previous file left behind, so one leak survives every restore
+// after it. Restoring has to DELETE a name that was unset — assigning
+// `undefined` to `process.env` stores the string "undefined", which reads as a
+// real API key and sends the suite to the live upstream.
+// Named one by one rather than looped: a computed key reaches the env object
+// under no statically known name, which `env-example.test.ts` reports as an
+// unfollowable access because it blinds the scan that keeps `.env.example`
+// honest.
+(globalThis as Record<string, unknown>).__REAL_ENV = {
+  POLYGON_API_KEY: process.env.POLYGON_API_KEY,
+  POLYGON_RATE_LIMIT_PER_MIN: process.env.POLYGON_RATE_LIMIT_PER_MIN,
+  YAHOO_RATE_LIMIT_PER_MIN: process.env.YAHOO_RATE_LIMIT_PER_MIN,
+};
+
 // Capture real leaf-dep exports for tests' afterAll restoration. `require`
 // runs at statement-order (vs ESM `import` which hoists), so the DOM
 // registration above lands first — `common`-side modules consumed by these

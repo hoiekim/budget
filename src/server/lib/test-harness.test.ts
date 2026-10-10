@@ -2,7 +2,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
 import ts from "typescript";
-import { restoreFetch, restoreLeaves } from "test-helpers";
+import { restoreFetch, restoreLeaves, restoreEnv } from "test-helpers";
 
 /**
  * `globalThis.fetch` carries bun's `mock.module` hazard without its
@@ -23,9 +23,10 @@ import { restoreFetch, restoreLeaves } from "test-helpers";
 const SRC = path.join(import.meta.dir, "../..");
 const TEST_FILE = /\.test\.[cm]?[jt]sx?$/;
 const SKIP_DIR = /^(?:node_modules|build|dist|coverage)$/;
-const RESTORERS = ["restoreFetch", "restoreLeaves"];
+const RESTORERS = ["restoreFetch", "restoreLeaves", "restoreEnv"];
 const STUB_HELPERS = ["stubFetch"];
 const TEARDOWN = ["afterAll", "afterEach"];
+const MARKET_DATA_ENV = /^(?:POLYGON|YAHOO)_/;
 
 const testFiles = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {
@@ -152,6 +153,51 @@ const leaksFetch = (source: ts.SourceFile): boolean => {
   return stubsFetch(source, helpers) && !restoresFetch(source, stubHandles(source, helpers));
 };
 
+/**
+ * A write to the market-data env, which decides whether the market-data code
+ * reaches the live upstream or short-circuits.
+ *
+ * It is the write that matters, not the read: a file that sets an API key and
+ * does not put it back leaves every file after it taking the network branch,
+ * and a fire-and-forget backfill started under that key outlives its own file
+ * and lands its calls in whatever stub is installed when they resolve.
+ */
+const assignsMarketDataEnv = (node: ts.Node, source: ts.SourceFile): boolean => {
+  if (!ts.isBinaryExpression(node)) return false;
+  if (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return false;
+  const target = node.left;
+  if (!ts.isPropertyAccessExpression(target)) return false;
+  if (target.expression.getText(source) !== "process.env") return false;
+  return MARKET_DATA_ENV.test(target.name.text);
+};
+
+/**
+ * A teardown hook that writes the env back by hand instead of calling a
+ * restorer.
+ *
+ * This is the shape both leaks took. A hand-rolled restore puts back a value
+ * the file read on the way in, and a file that sets the env at module scope
+ * reads its own value back — so the "original" it restores is the one it just
+ * installed, and the restore is a no-op that looks thorough.
+ */
+const restoresEnvByHand = (source: ts.SourceFile): boolean =>
+  some(
+    source,
+    (node) =>
+      ts.isCallExpression(node) &&
+      TEARDOWN.includes(node.expression.getText(source)) &&
+      node.arguments.some((argument) =>
+        some(argument, (inner) => assignsMarketDataEnv(inner, source)),
+      ),
+  );
+
+/** A file that sets market-data env and does not hand it back to the snapshot. */
+const leaksEnv = (source: ts.SourceFile): boolean =>
+  some(source, (node) => assignsMarketDataEnv(node, source)) &&
+  (!restoresFetch(source, []) || restoresEnvByHand(source));
+
+const offendsEnv = (body: string): boolean => leaksEnv(parseSource("fixture.test.ts", body));
+
 const offends = (body: string): boolean => leaksFetch(parseSource("fixture.test.tsx", body));
 
 describe("globalThis.fetch stubs", () => {
@@ -223,5 +269,64 @@ describe("globalThis.fetch stubs", () => {
     restoreLeaves();
 
     expect(globalThis.fetch).toBe((globalThis as { __REAL_FETCH: typeof fetch }).__REAL_FETCH);
+  });
+});
+
+// A file restoring from a value it read on the way in restores whatever the
+// PREVIOUS file left behind, so one leak survives every well-behaved restore
+// after it. The snapshot the preload takes is the only value known to predate
+// every test file.
+describe("market-data env", () => {
+  afterAll(restoreEnv);
+
+  test("every test file that sets it restores it in a teardown hook", () => {
+    const offenders = testFiles(SRC)
+      .filter((file) => leaksEnv(parse(file)))
+      .map((file) => path.relative(SRC, file));
+
+    expect(offenders).toEqual([]);
+  });
+
+  test("restoreEnv deletes a name the preload found unset", () => {
+    const snapshot = (globalThis as { __REAL_ENV: Record<string, string | undefined> })
+      .__REAL_ENV;
+    if (snapshot.POLYGON_API_KEY !== undefined) return;
+
+    process.env.POLYGON_API_KEY = "test-key";
+    restoreEnv();
+
+    // Not `toBeUndefined` alone: assigning `undefined` to process.env stores
+    // the string "undefined", which is truthy and reads as a real key.
+    expect("POLYGON_API_KEY" in process.env).toBe(false);
+  });
+
+  test("restoreEnv reinstalls the snapshot rather than the inherited value", () => {
+    const snapshot = (globalThis as { __REAL_ENV: Record<string, string | undefined> })
+      .__REAL_ENV;
+
+    process.env.POLYGON_RATE_LIMIT_PER_MIN = "999";
+    restoreEnv();
+
+    expect(process.env.POLYGON_RATE_LIMIT_PER_MIN).toBe(snapshot.POLYGON_RATE_LIMIT_PER_MIN);
+  });
+
+  test("the scan sees a bare set, and a set paired with a teardown restore", () => {
+    expect(offendsEnv(`it("x", () => { process.env.POLYGON_API_KEY = "k"; });`)).toBe(true);
+    expect(
+      offendsEnv(
+        `afterAll(restoreLeaves);\n` + `it("x", () => { process.env.POLYGON_API_KEY = "k"; });`,
+      ),
+    ).toBe(false);
+    expect(offendsEnv(`it("x", () => { process.env.OTHER_THING = "k"; });`)).toBe(false);
+  });
+
+  test("the scan rejects a hand-rolled restore, which can put back a leaked value", () => {
+    expect(
+      offendsEnv(
+        `const original = process.env.POLYGON_API_KEY;\n` +
+          `afterAll(() => { process.env.POLYGON_API_KEY = original; });\n` +
+          `it("x", () => { process.env.POLYGON_API_KEY = "k"; });`,
+      ),
+    ).toBe(true);
   });
 });

@@ -18,8 +18,6 @@ import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
 import type { JSONSecurity } from "common";
 
-const originalApiKey = process.env.POLYGON_API_KEY;
-const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
 const { pg, mockQuery, resetQueryMocks } = createFakePg();
 
@@ -37,10 +35,6 @@ const { clearPriceCache } = await import("server/lib/polygon");
 const { polygonLookupRateLimiter } = await import("server/lib/rate-limit");
 
 afterAll(() => {
-  if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
-  else process.env.POLYGON_API_KEY = originalApiKey;
-  if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
-  else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
   restoreLeaves();
 });
 
