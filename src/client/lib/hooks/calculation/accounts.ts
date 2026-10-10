@@ -144,17 +144,25 @@ const addInvestmentCostBasis = (
         // right without having to recognise one — the sweep buy spends
         // exactly the cash its own deposit row brought in.
         //
-        // The direction comes from the type, never from the sign of `amount`:
-        // a purchase can only spend cash and a sale can only return it, so a
-        // provider that signs its rows the other way round cannot mint cash
-        // the account never held. Floored because the cash a purchase spent
-        // may have arrived before the fetched window, and an account that
-        // bought with money this never saw does not thereby hold a negative
-        // balance.
+        // Direction comes from the type, because the sign of `amount` does
+        // not carry it: one provider signs a movement positive when the money
+        // arrives, and a manually entered row stores `quantity * price` with
+        // both entered positive, so its sale is indistinguishable from its
+        // purchase by sign alone. A sale therefore returns the size of its
+        // amount whatever the sign — proceeds are booked nowhere else.
+        //
+        // A purchase spends only what it positively cost. A negative cost
+        // belongs to the provider that packs both legs into one row, where it
+        // means money leaving; the fold above has already taken that out of
+        // the basis, and spending it here as well would remove it twice.
+        //
+        // Floored because the cash a purchase spent may have arrived before
+        // the fetched window, and an account that bought with money this
+        // never saw does not thereby hold a negative balance.
         cash =
           type === InvestmentTransactionType.Buy
             ? Math.max(0, cash - Math.max(0, amount))
-            : cash + Math.max(0, -amount);
+            : cash + Math.abs(amount);
       } else {
         // Everything else moves money without moving shares — a fee, a
         // dividend, a deposit, a withdrawal, an in-kind transfer carrying its

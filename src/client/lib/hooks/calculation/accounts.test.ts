@@ -429,29 +429,41 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-02")).toBeCloseTo(600, 2);
   });
 
-  // Rows sharing a date keep the order they arrived in, so the fold has to
-  // land on the same total either way round.
-  test("a buy and a sale on one day read the same in either arrival order", () => {
-    const sameDay = (id: string, quantity: number) =>
-      new InvestmentTransaction({
-        investment_transaction_id: id,
-        account_id: ACCOUNT_ID,
-        security_id: "sec1",
-        date: "2022-01-10",
-        name: "Same day",
-        quantity,
-        amount: 10 * quantity,
-        price: 10,
-        type: quantity >= 0 ? InvestmentTransactionType.Buy : InvestmentTransactionType.Sell,
-        subtype:
-          quantity >= 0 ? InvestmentTransactionSubtype.Buy : InvestmentTransactionSubtype.Sell,
-      });
-    const buy = sameDay("same-buy", 10);
-    const sale = sameDay("same-sale", -5);
-    // Ten shares bought at $10 and half of them sold at cost: $50 of basis
-    // left holding $50 of proceeds, whichever row the fold reaches first.
-    expect(at(balancesFor(150, [buy, sale]), "2022-01")).toBeCloseTo(100, 2);
-    expect(at(balancesFor(150, [sale, buy]), "2022-01")).toBeCloseTo(100, 2);
+  // A hand-entered row stores `quantity * price` with both entered positive,
+  // so its sale is indistinguishable from its purchase by the sign of
+  // `amount` alone. Reading proceeds off that sign credits a sale nothing,
+  // which reads the account empty from the month it liquidates onward.
+  const manual = (id: string, date: string, price: number, quantity: number, sell = false) =>
+    new InvestmentTransaction({
+      investment_transaction_id: id,
+      account_id: ACCOUNT_ID,
+      security_id: "sec1",
+      date,
+      name: "Manual",
+      quantity,
+      amount: price * quantity,
+      price,
+      type: sell ? InvestmentTransactionType.Sell : InvestmentTransactionType.Buy,
+      subtype: sell ? InvestmentTransactionSubtype.Sell : InvestmentTransactionSubtype.Buy,
+    });
+
+  test("a sale returns its proceeds even when its amount is stored unsigned", () => {
+    const balanceData = balancesFor(200, [
+      manual("m-buy", "2022-01-10", 10, 10),
+      manual("m-sell", "2022-02-10", 30, 5, true),
+    ]);
+    // $100 of basis, then half the shares leave at triple: $50 of basis left
+    // holding $150 of proceeds.
+    expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(200, 2);
+  });
+
+  test("liquidating the whole position does not read the account empty", () => {
+    const balanceData = balancesFor(300, [
+      manual("m-buy2", "2022-01-10", 10, 10),
+      manual("m-all", "2022-02-10", 30, 10, true),
+    ]);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(300, 2);
   });
 
   // A month takes the state after everything in it, so a later row in the
