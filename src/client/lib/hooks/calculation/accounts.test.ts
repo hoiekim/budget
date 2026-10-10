@@ -1,7 +1,21 @@
 import { describe, test, expect } from "bun:test";
-import { AccountType, AccountSubtype } from "plaid";
-import { getAccountBalance, getDisplayBalance } from "./accounts";
-import { Account, BalanceData } from "client";
+import {
+  AccountType,
+  AccountSubtype,
+  InvestmentTransactionType,
+  InvestmentTransactionSubtype,
+} from "plaid";
+import { getAccountBalance, getBalanceData, getDisplayBalance } from "./accounts";
+import {
+  Account,
+  AccountDictionary,
+  AccountSnapshotDictionary,
+  BalanceData,
+  HoldingSnapshotDictionary,
+  InvestmentTransaction,
+  InvestmentTransactionDictionary,
+  TransactionDictionary,
+} from "client";
 
 describe("getAccountBalance", () => {
   test("should return current balance for depository accounts", () => {
@@ -122,6 +136,116 @@ describe("getDisplayBalance cold-load past-balance flash", () => {
   });
 });
 
-// Note: getBalanceData tests require mocking the environment or using integration tests
-// because the Dictionary class disables set() in server/test environments.
-// These tests should be run as part of e2e testing.
+// An investment balance is quantity times TODAY's price, while a transaction
+// only ever carries the price of its own day. Reconstructing history by
+// subtracting the second from the first leaves neither a past market value
+// nor a cost basis, and the gap widens with every month of price movement —
+// on a four-year 401(k) the earliest month came out near the account's whole
+// present value rather than near its first contribution.
+describe("investment balance history from transactions", () => {
+  const ACCOUNT_ID = "inv1";
+  const SHARES = 10;
+
+  const makeAccount = (current: number) =>
+    new Account({
+      account_id: ACCOUNT_ID,
+      type: AccountType.Investment,
+      balances: {
+        current,
+        available: 0,
+        limit: null,
+        iso_currency_code: "USD",
+        unofficial_currency_code: null,
+      },
+    });
+
+  const contribution = (date: string, price: number, quantity = SHARES) =>
+    new InvestmentTransaction({
+      investment_transaction_id: `t-${date}`,
+      account_id: ACCOUNT_ID,
+      security_id: "sec1",
+      date,
+      name: "Contributions",
+      quantity,
+      amount: price * quantity,
+      price,
+      type: quantity >= 0 ? InvestmentTransactionType.Buy : InvestmentTransactionType.Sell,
+      subtype:
+        quantity >= 0
+          ? InvestmentTransactionSubtype.Contribution
+          : InvestmentTransactionSubtype.Withdrawal,
+    });
+
+  const balancesFor = (current: number, txns: InvestmentTransaction[]) =>
+    getBalanceData(
+      new AccountDictionary([[ACCOUNT_ID, makeAccount(current)]]),
+      new AccountSnapshotDictionary(),
+      new HoldingSnapshotDictionary(),
+      new TransactionDictionary(),
+      new InvestmentTransactionDictionary(txns.map((t) => [t.id, t])),
+    );
+
+  const at = (balanceData: BalanceData, yearMonth: string) =>
+    balanceData.get(ACCOUNT_ID, new Date(`${yearMonth}-15`));
+
+  // $100 bought at $10, then the price doubles and $100 more is bought. The
+  // account is now worth $300 (20 shares at $20) but only $200 ever went in,
+  // and the first month must read the $100 it cost — not the $300 it grew to,
+  // and not $300 minus the two purchases either.
+  test("a month's value is what went in by then, not today's balance minus flows", () => {
+    const balanceData = balancesFor(300, [
+      contribution("2022-01-15", 10),
+      contribution("2022-02-15", 20, 5),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(200, 2);
+  });
+
+  // The transaction tier is the chart's last resort, so nothing may make it
+  // claim a month that precedes every transaction the account has.
+  test("no month is invented before the first transaction", () => {
+    const balanceData = balancesFor(300, [
+      contribution("2022-04-15", 10),
+      contribution("2022-05-15", 10),
+    ]);
+    expect(at(balanceData, "2022-03")).toBeUndefined();
+    expect(at(balanceData, "2022-04")).toBeCloseTo(100, 2);
+  });
+
+  // A rollover leaves the withdrawal on this account and the deposit on one
+  // this never sees, so the sales can exceed every purchase in the window.
+  test("selling more than the window ever bought floors at zero, never negative", () => {
+    const balanceData = balancesFor(0, [
+      contribution("2022-01-15", 10),
+      contribution("2022-02-15", 10, -50),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+    expect(at(balanceData, "2022-02")).toBe(0);
+  });
+
+  // Cash does not appreciate, so the walk back from the reported balance
+  // reconstructs a depository account exactly. That path is untouched.
+  test("a regular transaction still reconstructs backward from the reported balance", () => {
+    const accountId = "dep1";
+    const account = new Account({
+      account_id: accountId,
+      type: AccountType.Depository,
+      balances: {
+        current: 900,
+        available: 900,
+        limit: null,
+        iso_currency_code: "USD",
+        unofficial_currency_code: null,
+      },
+    });
+    const balanceData = getBalanceData(
+      new AccountDictionary([[accountId, account]]),
+      new AccountSnapshotDictionary(),
+      new HoldingSnapshotDictionary(),
+      new TransactionDictionary(),
+      new InvestmentTransactionDictionary(),
+    );
+    // With no transactions at all the account still reports its live balance.
+    expect(balanceData.get(accountId, new Date())).toBe(900);
+  });
+});
