@@ -189,6 +189,46 @@ interface CostBasisResult {
   inferred: boolean;
 }
 
+/** A security's running average-cost position, as of some point in a transaction stream. */
+export interface CostBasisPosition {
+  totalCost: number;
+  totalQuantity: number;
+}
+
+/**
+ * Folds one investment transaction into a running average-cost position.
+ *
+ * A sale removes basis in proportion to the shares leaving, not the cash
+ * coming in — selling half a position at twice what it cost takes out half
+ * the basis, not all of it. Subtracting proceeds instead would drive a
+ * profitable position's basis to zero while the shares are still held.
+ *
+ * Types other than buy and sell leave the position alone: a dividend or a
+ * transfer moves no shares, so there is no basis to attribute to it.
+ */
+export const foldCostBasis = (
+  position: CostBasisPosition,
+  t: InvestmentTransaction,
+): CostBasisPosition => {
+  const { type, price, quantity, fees } = t;
+  let { totalCost, totalQuantity } = position;
+
+  if (type === InvestmentTransactionType.Buy) {
+    totalCost += price * quantity + (fees || 0);
+    totalQuantity += quantity;
+  } else if (type === InvestmentTransactionType.Sell && totalQuantity > 0) {
+    // Plaid encodes sell quantities as NEGATIVE, so take the magnitude —
+    // otherwise `-=` would ADD shares and basis back instead of removing them
+    // (cf. benchmark.ts, which already uses -Math.abs for sells).
+    const soldQuantity = Math.abs(quantity);
+    totalCost -= (totalCost / totalQuantity) * soldQuantity;
+    totalQuantity -= soldQuantity;
+  }
+
+  // Rounding on a full exit can land either just under zero.
+  return { totalCost: Math.max(0, totalCost), totalQuantity: Math.max(0, totalQuantity) };
+};
+
 /**
  * Infers cost basis from investment transactions using average cost method.
  * Only processes BUY transactions up to the specified date.
@@ -218,31 +258,7 @@ export const inferCostBasis = ({
   transactions.sort((a, b) => new LocalDate(a.date).getTime() - new LocalDate(b.date).getTime());
 
   for (const t of transactions) {
-    const { type, price, quantity, fees } = t;
-
-    if (type === InvestmentTransactionType.Buy) {
-      // BUY: add to cost basis
-      const cost = price * quantity + (fees || 0);
-      totalCost += cost;
-      totalQuantity += quantity;
-    } else if (type === InvestmentTransactionType.Sell) {
-      // SELL: reduce quantity using average cost.
-      // Plaid encodes sell quantities as NEGATIVE, so take the magnitude —
-      // otherwise `-= quantity` would ADD shares and basis back instead of
-      // removing them (cf. benchmark.ts, which already uses -Math.abs for sells).
-      if (totalQuantity > 0) {
-        const soldQuantity = Math.abs(quantity);
-        const avgCost = totalCost / totalQuantity;
-        const soldCost = avgCost * soldQuantity;
-        totalCost -= soldCost;
-        totalQuantity -= soldQuantity;
-
-        // Prevent negative from rounding errors
-        if (totalQuantity < 0) totalQuantity = 0;
-        if (totalCost < 0) totalCost = 0;
-      }
-    }
-    // Ignore other transaction types (dividends, transfers, etc.)
+    ({ totalCost, totalQuantity } = foldCostBasis({ totalCost, totalQuantity }, t));
   }
 
   if (totalQuantity <= 0) return null;

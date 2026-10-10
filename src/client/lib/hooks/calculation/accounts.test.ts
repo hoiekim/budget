@@ -5,6 +5,7 @@ import {
   InvestmentTransactionType,
   InvestmentTransactionSubtype,
 } from "plaid";
+import { getYearMonthString } from "common";
 import { getAccountBalance, getBalanceData, getDisplayBalance } from "./accounts";
 import {
   Account,
@@ -14,6 +15,7 @@ import {
   HoldingSnapshotDictionary,
   InvestmentTransaction,
   InvestmentTransactionDictionary,
+  Transaction,
   TransactionDictionary,
 } from "client";
 
@@ -136,12 +138,8 @@ describe("getDisplayBalance cold-load past-balance flash", () => {
   });
 });
 
-// An investment balance is quantity times TODAY's price, while a transaction
-// only ever carries the price of its own day. Reconstructing history by
-// subtracting the second from the first leaves neither a past market value
-// nor a cost basis, and the gap widens with every month of price movement —
-// on a four-year 401(k) the earliest month came out near the account's whole
-// present value rather than near its first contribution.
+// An investment balance is quantity times today's price; a transaction only
+// carries the price of its own day. Neither stands in for the other.
 describe("investment balance history from transactions", () => {
   const ACCOUNT_ID = "inv1";
   const SHARES = 10;
@@ -188,10 +186,7 @@ describe("investment balance history from transactions", () => {
   const at = (balanceData: BalanceData, yearMonth: string) =>
     balanceData.get(ACCOUNT_ID, new Date(`${yearMonth}-15`));
 
-  // $100 bought at $10, then the price doubles and $100 more is bought. The
-  // account is now worth $300 (20 shares at $20) but only $200 ever went in,
-  // and the first month must read the $100 it cost — not the $300 it grew to,
-  // and not $300 minus the two purchases either.
+  // 20 shares now worth $300, but only $200 ever went in to buy them.
   test("a month's value is what went in by then, not today's balance minus flows", () => {
     const balanceData = balancesFor(300, [
       contribution("2022-01-15", 10),
@@ -201,8 +196,6 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-02")).toBeCloseTo(200, 2);
   });
 
-  // The transaction tier is the chart's last resort, so nothing may make it
-  // claim a month that precedes every transaction the account has.
   test("no month is invented before the first transaction", () => {
     const balanceData = balancesFor(300, [
       contribution("2022-04-15", 10),
@@ -212,8 +205,8 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-04")).toBeCloseTo(100, 2);
   });
 
-  // A rollover leaves the withdrawal on this account and the deposit on one
-  // this never sees, so the sales can exceed every purchase in the window.
+  // A rollover leaves the withdrawal here and the deposit on an account this
+  // never sees, so sales can exceed every purchase in the window.
   test("selling more than the window ever bought floors at zero, never negative", () => {
     const balanceData = balancesFor(0, [
       contribution("2022-01-15", 10),
@@ -223,29 +216,123 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-02")).toBe(0);
   });
 
-  // Cash does not appreciate, so the walk back from the reported balance
-  // reconstructs a depository account exactly. That path is untouched.
-  test("a regular transaction still reconstructs backward from the reported balance", () => {
-    const accountId = "dep1";
-    const account = new Account({
-      account_id: accountId,
-      type: AccountType.Depository,
-      balances: {
-        current: 900,
-        available: 900,
-        limit: null,
-        iso_currency_code: "USD",
-        unofficial_currency_code: null,
-      },
+  // A profitable partial sale takes out half the shares, so it takes out half
+  // the basis — not the whole of it, which is what subtracting the proceeds
+  // from the cost would do while the position is still held.
+  test("a partial sale removes basis in proportion to shares, not proceeds", () => {
+    const balanceData = balancesFor(150, [
+      contribution("2022-01-15", 10),
+      contribution("2022-03-15", 30, -5),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+    expect(at(balanceData, "2022-03")).toBeCloseTo(50, 2);
+  });
+
+  // Cash carries its value in `amount`, not in shares, so a share-count
+  // reading drops it entirely and an account holding only cash reads zero.
+  test("a cash transaction counts by its amount, which no share count carries", () => {
+    const deposit = new InvestmentTransaction({
+      investment_transaction_id: "cash-in",
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2022-01-15",
+      name: "Deposit",
+      quantity: 0,
+      // Plaid signs `amount` positive when cash LEAVES, so an arrival is negative.
+      amount: -1000,
+      price: 0,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Deposit,
     });
+    expect(at(balancesFor(1000, [deposit]), "2022-01")).toBeCloseTo(1000, 2);
+  });
+
+  test("fees paid to acquire a position count toward what it cost", () => {
+    const withFee = contribution("2022-01-15", 10);
+    withFee.fees = 10;
+    expect(at(balancesFor(110, [withFee]), "2022-01")).toBeCloseTo(110, 2);
+  });
+
+  // The snapshot tier normally writes the live balance over the current
+  // month, so this guard only carries weight once a user turns that tier off
+  // — and then it is the only thing between "right now" and a cost basis.
+  test("the current month keeps the live balance even with the snapshot tier off", () => {
+    const thisMonth = getYearMonthString(new Date());
+    const account = makeAccount(5000);
+    account.graphOptions = {
+      useSnapshots: false,
+      useHoldingSnapshots: false,
+      useTransactions: true,
+    };
+    // The 1st, not the 15th: a date later in the current month is a future
+    // transaction on most days of the month and gets filtered out before it
+    // can reach the guard under test.
+    const bought = contribution(`${thisMonth}-01`, 10);
     const balanceData = getBalanceData(
-      new AccountDictionary([[accountId, account]]),
+      new AccountDictionary([[ACCOUNT_ID, account]]),
       new AccountSnapshotDictionary(),
       new HoldingSnapshotDictionary(),
       new TransactionDictionary(),
-      new InvestmentTransactionDictionary(),
+      new InvestmentTransactionDictionary([[bought.id, bought]]),
     );
-    // With no transactions at all the account still reports its live balance.
-    expect(balanceData.get(accountId, new Date())).toBe(900);
+    // The position cost 100; the account is actually worth 5000 today.
+    expect(balanceData.get(ACCOUNT_ID, new Date())).toBe(5000);
+  });
+
+  // Cash does not appreciate, so the walk back from the reported balance
+  // reconstructs a depository account exactly. That path is untouched.
+  describe("the depository path is unchanged", () => {
+    const DEPOSITORY_ID = "dep1";
+
+    const depositoryBalances = (txns: Transaction[]) =>
+      getBalanceData(
+        new AccountDictionary([
+          [
+            DEPOSITORY_ID,
+            new Account({
+              account_id: DEPOSITORY_ID,
+              type: AccountType.Depository,
+              balances: {
+                current: 900,
+                available: 900,
+                limit: null,
+                iso_currency_code: "USD",
+                unofficial_currency_code: null,
+              },
+            }),
+          ],
+        ]),
+        new AccountSnapshotDictionary(),
+        new HoldingSnapshotDictionary(),
+        new TransactionDictionary(txns.map((t) => [t.id, t])),
+        new InvestmentTransactionDictionary(),
+      );
+
+    const spend = (date: string, amount: number, authorized_date: string | null = null) =>
+      new Transaction({
+        transaction_id: `s-${date}`,
+        account_id: DEPOSITORY_ID,
+        date,
+        authorized_date,
+        amount,
+        name: "Purchase",
+      });
+
+    // $100 spent in March against a $900 balance today: February held $1000,
+    // March holds what is left. The spend is keyed to the month BEFORE its
+    // own, which is what makes the backward walk land on end-of-month values.
+    test("a spend raises every month before it by what was spent", () => {
+      const balanceData = depositoryBalances([spend("2022-03-10", 100)]);
+      expect(balanceData.get(DEPOSITORY_ID, new Date("2022-02-15"))).toBeCloseTo(1000, 2);
+      expect(balanceData.get(DEPOSITORY_ID, new Date("2022-03-15"))).toBeCloseTo(900, 2);
+    });
+
+    // `authorized_date` is when the money actually moved; `date` can post days
+    // later and fall in the next month entirely.
+    test("authorized_date wins over the posting date when both are present", () => {
+      const balanceData = depositoryBalances([spend("2022-04-02", 100, "2022-03-28")]);
+      expect(balanceData.get(DEPOSITORY_ID, new Date("2022-02-15"))).toBeCloseTo(1000, 2);
+      expect(balanceData.get(DEPOSITORY_ID, new Date("2022-03-15"))).toBeCloseTo(900, 2);
+    });
   });
 });

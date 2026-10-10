@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { InvestmentTransactionType } from "plaid";
 import { getYearMonthString, LocalDate, ViewDate } from "common";
 import {
   Account,
@@ -9,11 +10,13 @@ import {
   GraphInput,
   HoldingSnapshot,
   HoldingSnapshotDictionary,
+  InvestmentTransaction,
   InvestmentTransactionDictionary,
   Transaction,
   TransactionDictionary,
   useAppContext,
 } from "client";
+import { CostBasisPosition, foldCostBasis } from "./holdings";
 
 export const getAccountBalance = (account: Account) => {
   // Use `current` for all account types. For investment accounts, Plaid's
@@ -82,19 +85,18 @@ const getBalanceDataFromTransactions = (
 /**
  * Layers each investment account's running cost basis onto `balanceData`.
  *
- * The walk above anchors at `balances.current` and subtracts each transaction
- * going back, which reconstructs a cash balance exactly because cash does not
- * appreciate. An investment balance does: `balances.current` is quantity times
- * *today's* price, while a transaction only ever carries the price of its own
- * day. Subtracting one from the other leaves neither a past market value nor a
- * cost basis, and the gap widens with every month of price movement — far
- * enough back it approaches the whole unrealized gain.
+ * The walk above reconstructs a cash balance exactly, because cash does not
+ * appreciate and every change to it is a transaction. An investment balance
+ * is quantity times *today's* price while a transaction carries only the
+ * price of its own day, so that walk cannot run on one: subtracting the
+ * second from the first yields neither figure.
  *
- * So these accumulate forward from zero instead: a month's value is what the
- * transactions through that month actually cost, never a function of a price
- * quoted years later. It understates a position that has since appreciated,
- * which is the honest floor to show when no snapshot exists for that month —
- * and {@link getBalanceData} prefers either snapshot tier wherever one does.
+ * These accumulate forward from zero instead, through the same average-cost
+ * rule {@link foldCostBasis} applies to a holding's own basis. A month reads
+ * what the transactions through it cost, never a price quoted later — which
+ * understates a position that has since appreciated, and is the floor worth
+ * showing for a month no snapshot covers. {@link getBalanceData} prefers
+ * either snapshot tier wherever one does.
  */
 const addInvestmentCostBasis = (
   balanceData: BalanceData,
@@ -102,37 +104,56 @@ const addInvestmentCostBasis = (
   investmentTransactions: InvestmentTransactionDictionary,
   today: Date,
 ) => {
-  const monthlyCostByAccount = new Map<string, Map<number, number>>();
+  const byAccount = new Map<string, InvestmentTransaction[]>();
 
   investmentTransactions.forEach((t) => {
-    const { account_id, date, price, quantity } = t;
-    if (!accounts.has(account_id)) return;
-    const transactionDate = new LocalDate(date);
-    if (today < transactionDate) return;
-    const monthEnd = new ViewDate("month", transactionDate).getEndDate();
-    const byMonth = monthlyCostByAccount.get(account_id) ?? new Map<number, number>();
-    const key = monthEnd.getTime();
-    byMonth.set(key, (byMonth.get(key) ?? 0) + price * quantity);
-    monthlyCostByAccount.set(account_id, byMonth);
+    if (!accounts.has(t.account_id)) return;
+    if (today < new LocalDate(t.date)) return;
+    const forAccount = byAccount.get(t.account_id) ?? [];
+    forAccount.push(t);
+    byAccount.set(t.account_id, forAccount);
   });
 
-  for (const [accountId, byMonth] of monthlyCostByAccount) {
-    const months = Array.from(byMonth.keys()).sort((a, b) => a - b);
-    let runningCost = 0;
-    for (const month of months) {
-      // Floored: a position cannot cost less than nothing to hold. A sale
-      // whose matching purchase is outside the fetched window takes more out
-      // than went in, and an account rolled over into another leaves the
-      // withdrawal here while the deposit lands somewhere this never sees.
-      runningCost = Math.max(0, runningCost + byMonth.get(month)!);
+  for (const [accountId, accountTransactions] of byAccount) {
+    accountTransactions.sort(
+      (a, b) => new LocalDate(a.date).getTime() - new LocalDate(b.date).getTime(),
+    );
+
+    // Average cost is per security — netting one security's sale against
+    // another's basis would charge the sale to shares it never touched.
+    const positions = new Map<string, CostBasisPosition>();
+    // Cash carries its value in `amount`, not in shares, so it accumulates
+    // separately. Plaid signs `amount` positive when cash leaves the account.
+    let cash = 0;
+    const monthlyTotals = new Map<number, number>();
+
+    for (const t of accountTransactions) {
+      if (t.type === InvestmentTransactionType.Cash) {
+        cash -= t.amount;
+      } else {
+        const securityId = t.security_id ?? "";
+        positions.set(securityId, foldCostBasis(positions.get(securityId) ?? EMPTY_POSITION, t));
+      }
+      const invested = Array.from(positions.values()).reduce((sum, p) => sum + p.totalCost, 0);
+      const monthEnd = new ViewDate("month", new LocalDate(t.date)).getEndDate();
+      // Floored: an account rolled over into another leaves the withdrawal
+      // here while the deposit lands somewhere this never sees, and a sale
+      // whose purchase predates the fetched window takes out what never
+      // went in. Neither means the account owes money.
+      monthlyTotals.set(monthEnd.getTime(), Math.max(0, invested + cash));
+    }
+
+    for (const [month, total] of monthlyTotals) {
       const date = new Date(month);
       // `today`'s own month keeps the reported balance: it is the live market
       // value, which beats a cost basis for the one month we can observe.
       if (getYearMonthString(date) === getYearMonthString(today)) continue;
-      balanceData.set(accountId, date, runningCost);
+      balanceData.set(accountId, date, total);
     }
   }
 };
+
+const EMPTY_POSITION: CostBasisPosition = { totalCost: 0, totalQuantity: 0 };
 
 const getBalanceDataFromSnapshots = (
   accounts: AccountDictionary,
