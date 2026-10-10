@@ -9,7 +9,6 @@ import {
   GraphInput,
   HoldingSnapshot,
   HoldingSnapshotDictionary,
-  InvestmentTransaction,
   InvestmentTransactionDictionary,
   Transaction,
   TransactionDictionary,
@@ -51,24 +50,16 @@ const getBalanceDataFromTransactions = (
   accounts.forEach((a) => balanceData.set(a.id, today, getAccountBalance(a)));
 
   // first aggregates transactions to sum amounts for each period
-  const translate = (t: Transaction | InvestmentTransaction) => {
-    const isInvestment = t instanceof InvestmentTransaction;
-    const authorized_date = !isInvestment ? t.authorized_date : undefined;
-    const { account_id, date, amount } = t;
+  const translate = (t: Transaction) => {
+    const { account_id, authorized_date, date, amount } = t;
     if (!accounts.has(account_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     if (today < transactionDate) return;
     const previousMonthDate = new ViewDate("month", transactionDate).previous().getEndDate();
-    if (isInvestment) {
-      const { price, quantity } = t as InvestmentTransaction;
-      balanceData.add(account_id, previousMonthDate, -(price * quantity));
-    } else {
-      balanceData.add(account_id, previousMonthDate, amount);
-    }
+    balanceData.add(account_id, previousMonthDate, amount);
   };
 
   transactions.forEach(translate);
-  investmentTransactions.forEach(translate);
 
   // then incrementally adds them up
   for (const [accountId] of accounts) {
@@ -83,7 +74,64 @@ const getBalanceDataFromTransactions = (
     }
   }
 
+  addInvestmentCostBasis(balanceData, accounts, investmentTransactions, today);
+
   return balanceData;
+};
+
+/**
+ * Layers each investment account's running cost basis onto `balanceData`.
+ *
+ * The walk above anchors at `balances.current` and subtracts each transaction
+ * going back, which reconstructs a cash balance exactly because cash does not
+ * appreciate. An investment balance does: `balances.current` is quantity times
+ * *today's* price, while a transaction only ever carries the price of its own
+ * day. Subtracting one from the other leaves neither a past market value nor a
+ * cost basis, and the gap widens with every month of price movement — far
+ * enough back it approaches the whole unrealized gain.
+ *
+ * So these accumulate forward from zero instead: a month's value is what the
+ * transactions through that month actually cost, never a function of a price
+ * quoted years later. It understates a position that has since appreciated,
+ * which is the honest floor to show when no snapshot exists for that month —
+ * and {@link getBalanceData} prefers either snapshot tier wherever one does.
+ */
+const addInvestmentCostBasis = (
+  balanceData: BalanceData,
+  accounts: AccountDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+  today: Date,
+) => {
+  const monthlyCostByAccount = new Map<string, Map<number, number>>();
+
+  investmentTransactions.forEach((t) => {
+    const { account_id, date, price, quantity } = t;
+    if (!accounts.has(account_id)) return;
+    const transactionDate = new LocalDate(date);
+    if (today < transactionDate) return;
+    const monthEnd = new ViewDate("month", transactionDate).getEndDate();
+    const byMonth = monthlyCostByAccount.get(account_id) ?? new Map<number, number>();
+    const key = monthEnd.getTime();
+    byMonth.set(key, (byMonth.get(key) ?? 0) + price * quantity);
+    monthlyCostByAccount.set(account_id, byMonth);
+  });
+
+  for (const [accountId, byMonth] of monthlyCostByAccount) {
+    const months = Array.from(byMonth.keys()).sort((a, b) => a - b);
+    let runningCost = 0;
+    for (const month of months) {
+      // Floored: a position cannot cost less than nothing to hold. A sale
+      // whose matching purchase is outside the fetched window takes more out
+      // than went in, and an account rolled over into another leaves the
+      // withdrawal here while the deposit lands somewhere this never sees.
+      runningCost = Math.max(0, runningCost + byMonth.get(month)!);
+      const date = new Date(month);
+      // `today`'s own month keeps the reported balance: it is the live market
+      // value, which beats a cost basis for the one month we can observe.
+      if (getYearMonthString(date) === getYearMonthString(today)) continue;
+      balanceData.set(accountId, date, runningCost);
+    }
+  }
 };
 
 const getBalanceDataFromSnapshots = (
