@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent } from "@testing-library/react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import { Account, Data, InvestmentTransaction, PATH } from "client";
@@ -7,15 +7,6 @@ import { InvestmentTransactionProperties } from ".";
 
 let stub: ReturnType<typeof stubFetch> | undefined;
 let unwrapFetch: (() => void) | undefined;
-
-beforeEach(() => {
-  // happy-dom provides no `indexedDB`, and the component's data layer reaches
-  // for it on render. The accessor already copes, but the unhandled reference
-  // is noise in every run of this file.
-  if (!("indexedDB" in globalThis)) {
-    (globalThis as Record<string, unknown>).indexedDB = undefined;
-  }
-});
 
 afterEach(() => {
   // The body recorder wraps whatever the stub installed, so it comes off
