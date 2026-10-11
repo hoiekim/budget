@@ -9,7 +9,6 @@ import {
 import { clearPriceCache as clearPolygonCache, polygonQueue } from "./polygon";
 import { clearYahooCache, yahooQueue } from "./yahoo";
 
-
 // Yahoo bar timestamp derived from the local date string, the same way the
 // implementation matches bars — keeps the test green outside UTC.
 const yahooBarTs = (date: Date) => {

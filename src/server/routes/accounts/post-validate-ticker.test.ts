@@ -12,7 +12,6 @@ process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
 
-
 const { pg, mockQuery, resetQueryMocks } = createFakePg();
 
 mock.module("pg", () => pg);

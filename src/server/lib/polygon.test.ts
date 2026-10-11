@@ -8,8 +8,6 @@ import {
   polygonQueue,
 } from "./polygon";
 
-// Store original env
-
 describe("polygon", () => {
   beforeEach(() => {
     clearPriceCache();

@@ -177,13 +177,28 @@ const extract = (file: string): Extraction => {
   return { read, opaque };
 };
 
+/**
+ * Files whose reads SNAPSHOT a variable rather than consume it.
+ *
+ * The test preload records the market-data env so `restoreEnv` can put it back
+ * between test files. That is a read of the name and no evidence that anything
+ * still uses the variable, so counting it would keep an entry documented
+ * forever after its last real consumer was deleted. Its accesses still count
+ * for the opaque direction, which is about whether a name can be resolved at
+ * all.
+ */
+const SNAPSHOT_ONLY = ["scripts/test-preload.ts"];
+
 const collect = (roots: string[]) => {
   const read = new Set<string>();
   const opaque: string[] = [];
   for (const file of filesUnder(roots)) {
     const extraction = extract(file);
-    for (const name of extraction.read) {
-      if (/^[A-Z_][A-Z0-9_]*$/.test(name)) read.add(name);
+    const relative = path.relative(REPO_ROOT, file);
+    if (!SNAPSHOT_ONLY.includes(relative)) {
+      for (const name of extraction.read) {
+        if (/^[A-Z_][A-Z0-9_]*$/.test(name)) read.add(name);
+      }
     }
     opaque.push(...extraction.opaque);
   }

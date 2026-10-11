@@ -18,7 +18,6 @@ import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
 import type { JSONSecurity } from "common";
 
-
 const { pg, mockQuery, resetQueryMocks } = createFakePg();
 
 mock.module("pg", () => pg);

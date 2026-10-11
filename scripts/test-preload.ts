@@ -64,10 +64,8 @@ for (const [name, value] of nativeNetworkGlobals) {
 // after it. Restoring has to DELETE a name that was unset — assigning
 // `undefined` to `process.env` stores the string "undefined", which reads as a
 // real API key and sends the suite to the live upstream.
-// Named one by one rather than looped: a computed key reaches the env object
-// under no statically known name, which `env-example.test.ts` reports as an
-// unfollowable access because it blinds the scan that keeps `.env.example`
-// honest.
+// Named one by one rather than looped: `env-example.test.ts` cannot resolve a
+// computed key, and an env access it cannot follow is a hole in that scan.
 (globalThis as Record<string, unknown>).__REAL_ENV = {
   POLYGON_API_KEY: process.env.POLYGON_API_KEY,
   POLYGON_RATE_LIMIT_PER_MIN: process.env.POLYGON_RATE_LIMIT_PER_MIN,

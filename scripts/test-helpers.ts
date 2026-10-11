@@ -57,14 +57,6 @@ export const restoreFetch = (): void => {
 };
 
 /**
- * Re-mock the standard set of leaf deps (`pg`, `bcrypt`) back to the
- * real module exports captured by the preload, put `globalThis.fetch`
- * back with them, and invalidate the lazy Pool cache in
- * `postgres/client.ts` so the next file's first pool use rebuilds
- * against that file's mock (or real pg if it doesn't mock anything).
- * Pass directly to `afterAll(restoreLeaves)`.
- */
-/**
  * Put the market-data env back to the preload's snapshot.
  *
  * Deletes a name that was unset rather than assigning `undefined` to it:
@@ -86,6 +78,14 @@ export const restoreEnv = (): void => {
   else process.env.YAHOO_RATE_LIMIT_PER_MIN = snapshot.YAHOO_RATE_LIMIT_PER_MIN;
 };
 
+/**
+ * Re-mock the standard set of leaf deps (`pg`, `bcrypt`) back to the
+ * real module exports captured by the preload, put `globalThis.fetch`
+ * back with the market-data env, and invalidate the lazy Pool cache in
+ * `postgres/client.ts` so the next file's first pool use rebuilds
+ * against that file's mock (or real pg if it doesn't mock anything).
+ * Pass directly to `afterAll(restoreLeaves)`.
+ */
 export const restoreLeaves = (): void => {
   const { __REAL_PG, __REAL_BCRYPT } = realLeaves();
   mock.module("pg", () => __REAL_PG);

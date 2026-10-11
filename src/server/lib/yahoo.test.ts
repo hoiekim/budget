@@ -10,7 +10,6 @@ import {
   yahooQueue,
 } from "./yahoo";
 
-
 const ts = (y: number, m: number, d: number) => Math.floor(Date.UTC(y, m - 1, d) / 1000);
 
 const chartOk = (opts: {

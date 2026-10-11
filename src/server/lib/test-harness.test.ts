@@ -23,10 +23,18 @@ import { restoreFetch, restoreLeaves, restoreEnv } from "test-helpers";
 const SRC = path.join(import.meta.dir, "../..");
 const TEST_FILE = /\.test\.[cm]?[jt]sx?$/;
 const SKIP_DIR = /^(?:node_modules|build|dist|coverage)$/;
-const RESTORERS = ["restoreFetch", "restoreLeaves", "restoreEnv"];
+// Per global, not pooled: a restorer puts back the one global it names, so a
+// file whose teardown calls only `restoreEnv` has restored no `fetch` and a
+// file whose teardown calls only `restoreFetch` has restored no env. Pooling
+// them lets either scan accept the other's restorer and report a leak clean.
+const FETCH_RESTORERS = ["restoreFetch", "restoreLeaves"];
+const ENV_RESTORERS = ["restoreEnv", "restoreLeaves"];
 const STUB_HELPERS = ["stubFetch"];
 const TEARDOWN = ["afterAll", "afterEach"];
-const MARKET_DATA_ENV = /^(?:POLYGON|YAHOO)_/;
+// The names `restoreEnv` actually puts back. A prefix pattern would also match
+// a knob added later that the snapshot does not carry, and a file setting that
+// knob would read clean while leaking it.
+const MARKET_DATA_ENV = ["POLYGON_API_KEY", "POLYGON_RATE_LIMIT_PER_MIN", "YAHOO_RATE_LIMIT_PER_MIN"];
 
 const testFiles = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {
@@ -129,23 +137,33 @@ const stubHandles = (source: ts.SourceFile, helpers: string[]): string[] => {
  * stub, and leaves `globalThis.fetch` exactly where it was.
  */
 const isRestorer =
-  (handles: string[]) =>
+  (restorers: string[], handles: string[]) =>
   (node: ts.Node): boolean =>
-    (ts.isIdentifier(node) && RESTORERS.includes(node.text)) ||
+    (ts.isIdentifier(node) && restorers.includes(node.text)) ||
     (ts.isPropertyAccessExpression(node) &&
       node.name.text === "restore" &&
       ts.isIdentifier(node.expression) &&
       handles.includes(node.expression.text));
 
-/** A teardown hook whose callback reaches a restorer. */
-const restoresFetch = (source: ts.SourceFile, handles: string[]): boolean =>
+/** A teardown hook whose callback reaches one of `restorers`. */
+const restoresIn = (
+  source: ts.SourceFile,
+  restorers: string[],
+  handles: string[],
+): boolean =>
   some(
     source,
     (node) =>
       ts.isCallExpression(node) &&
       TEARDOWN.includes(node.expression.getText(source)) &&
-      node.arguments.some((argument) => some(argument, isRestorer(handles))),
+      node.arguments.some((argument) => some(argument, isRestorer(restorers, handles))),
   );
+
+const restoresFetch = (source: ts.SourceFile, handles: string[]): boolean =>
+  restoresIn(source, FETCH_RESTORERS, handles);
+
+const restoresEnv = (source: ts.SourceFile): boolean =>
+  restoresIn(source, ENV_RESTORERS, []);
 
 /** A file that installs a stub and leaves it installed for the next one. */
 const leaksFetch = (source: ts.SourceFile): boolean => {
@@ -168,17 +186,17 @@ const assignsMarketDataEnv = (node: ts.Node, source: ts.SourceFile): boolean => 
   const target = node.left;
   if (!ts.isPropertyAccessExpression(target)) return false;
   if (target.expression.getText(source) !== "process.env") return false;
-  return MARKET_DATA_ENV.test(target.name.text);
+  return MARKET_DATA_ENV.includes(target.name.text);
 };
 
 /**
  * A teardown hook that writes the env back by hand instead of calling a
  * restorer.
  *
- * This is the shape both leaks took. A hand-rolled restore puts back a value
- * the file read on the way in, and a file that sets the env at module scope
- * reads its own value back — so the "original" it restores is the one it just
- * installed, and the restore is a no-op that looks thorough.
+ * A hand-rolled restore puts back a value the file read on the way in, and a
+ * file that sets the env at module scope reads its own value back — so the
+ * "original" it restores is the one it just installed, and the restore is a
+ * no-op that looks thorough.
  */
 const restoresEnvByHand = (source: ts.SourceFile): boolean =>
   some(
@@ -194,7 +212,7 @@ const restoresEnvByHand = (source: ts.SourceFile): boolean =>
 /** A file that sets market-data env and does not hand it back to the snapshot. */
 const leaksEnv = (source: ts.SourceFile): boolean =>
   some(source, (node) => assignsMarketDataEnv(node, source)) &&
-  (!restoresFetch(source, []) || restoresEnvByHand(source));
+  (!restoresEnv(source) || restoresEnvByHand(source));
 
 const offendsEnv = (body: string): boolean => leaksEnv(parseSource("fixture.test.ts", body));
 
@@ -229,6 +247,14 @@ describe("globalThis.fetch stubs", () => {
           `it("x", () => { s = stubFetch([]); });`,
       ),
     ).toBe(false);
+  });
+
+  test("a teardown that restores only the env has not restored fetch", () => {
+    expect(
+      offends(
+        `afterEach(() => { restoreEnv(); });\n` + `it("x", () => { stubFetch([]); });`,
+      ),
+    ).toBe(true);
   });
 
   test("the scan follows a helper imported under another name", () => {
@@ -272,10 +298,6 @@ describe("globalThis.fetch stubs", () => {
   });
 });
 
-// A file restoring from a value it read on the way in restores whatever the
-// PREVIOUS file left behind, so one leak survives every well-behaved restore
-// after it. The snapshot the preload takes is the only value known to predate
-// every test file.
 describe("market-data env", () => {
   afterAll(restoreEnv);
 
@@ -287,27 +309,43 @@ describe("market-data env", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("restoreEnv deletes a name the preload found unset", () => {
-    const snapshot = (globalThis as { __REAL_ENV: Record<string, string | undefined> })
-      .__REAL_ENV;
-    if (snapshot.POLYGON_API_KEY !== undefined) return;
+  // Driven off a substituted snapshot rather than the ambient one: the real
+  // snapshot carries whatever the developer's own environment holds, and
+  // `.env.example` ships POLYGON_API_KEY uncommented, so a test that only
+  // asserts the delete branch when that name happens to be unset is silently
+  // vacuous on exactly the machines most likely to run it.
+  const withSnapshot = (snapshot: Record<string, string | undefined>, body: () => void) => {
+    const target = globalThis as { __REAL_ENV: Record<string, string | undefined> };
+    const real = target.__REAL_ENV;
+    target.__REAL_ENV = snapshot;
+    try {
+      body();
+    } finally {
+      target.__REAL_ENV = real;
+      restoreEnv();
+    }
+  };
 
-    process.env.POLYGON_API_KEY = "test-key";
-    restoreEnv();
+  test("restoreEnv deletes a name the snapshot found unset", () => {
+    withSnapshot({ POLYGON_API_KEY: undefined }, () => {
+      process.env.POLYGON_API_KEY = "test-key";
 
-    // Not `toBeUndefined` alone: assigning `undefined` to process.env stores
-    // the string "undefined", which is truthy and reads as a real key.
-    expect("POLYGON_API_KEY" in process.env).toBe(false);
+      restoreEnv();
+
+      // Not `toBeUndefined` alone: assigning `undefined` to process.env stores
+      // the string "undefined", which is truthy and reads as a real key.
+      expect("POLYGON_API_KEY" in process.env).toBe(false);
+    });
   });
 
   test("restoreEnv reinstalls the snapshot rather than the inherited value", () => {
-    const snapshot = (globalThis as { __REAL_ENV: Record<string, string | undefined> })
-      .__REAL_ENV;
+    withSnapshot({ POLYGON_RATE_LIMIT_PER_MIN: "7" }, () => {
+      process.env.POLYGON_RATE_LIMIT_PER_MIN = "999";
 
-    process.env.POLYGON_RATE_LIMIT_PER_MIN = "999";
-    restoreEnv();
+      restoreEnv();
 
-    expect(process.env.POLYGON_RATE_LIMIT_PER_MIN).toBe(snapshot.POLYGON_RATE_LIMIT_PER_MIN);
+      expect(process.env.POLYGON_RATE_LIMIT_PER_MIN).toBe("7");
+    });
   });
 
   test("the scan sees a bare set, and a set paired with a teardown restore", () => {
@@ -318,6 +356,15 @@ describe("market-data env", () => {
       ),
     ).toBe(false);
     expect(offendsEnv(`it("x", () => { process.env.OTHER_THING = "k"; });`)).toBe(false);
+  });
+
+  test("a teardown that restores only fetch has not restored the env", () => {
+    expect(
+      offendsEnv(
+        `afterEach(() => { restoreFetch(); });\n` +
+          `it("x", () => { process.env.POLYGON_API_KEY = "k"; });`,
+      ),
+    ).toBe(true);
   });
 
   test("the scan rejects a hand-rolled restore, which can put back a leaked value", () => {
