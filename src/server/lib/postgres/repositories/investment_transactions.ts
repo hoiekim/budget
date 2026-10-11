@@ -86,16 +86,10 @@ export const upsertInvestmentTransactions = async (
 };
 
 /**
- * Drop `source` from an update.
- *
- * It records which writer produced the row, and nothing resets it: the
- * provider translators omit it, so a row relabelled `manual` by one request
- * stays relabelled. Normalization is scoped by it, so a relabelled provider
- * row would start being rewritten — and one provider signs a movement
- * positive when the money arrives, which would turn its withdrawals into
- * deposits.
- *
- * The route's field spec cannot carry this: `validateFields` checks the
+ * Drop `source` from an update: nothing resets it, so a row relabelled
+ * `manual` stays relabelled and starts being reconciled — and one provider
+ * signs a movement positive when money arrives, turning its withdrawals into
+ * deposits. The route's spec cannot express this; `validateFields` checks the
  * fields it names rather than rejecting the ones it does not.
  */
 const withoutProvenance = (patch: PartialInvestmentTransaction): PartialInvestmentTransaction => {
@@ -171,11 +165,7 @@ export const createManualInvestmentTransaction = async (
     price?: number | null;
     iso_currency_code?: string | null;
     quantity?: number | null;
-    /**
-     * Which way the shares move. The caller reconciles the row it is asking
-     * for — it is the only party that knows what the user meant — and this
-     * is stored as sent, the same way an update is.
-     */
+    /** Stored as sent: the caller reconciles the row it is asking for. */
     type?: ShareMovingType | null;
     /** YYYY-MM-DD. Defaults to today when omitted. */
     date?: string | null;

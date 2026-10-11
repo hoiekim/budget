@@ -155,14 +155,11 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     setTickerValue(security?.ticker_symbol ?? "");
   }, [investment_transaction_id, name, date, quantity, price, security?.ticker_symbol]);
 
-  // What the last write actually stored. Props cannot serve here: the effect
-  // that would refresh them is flushed on a macrotask, and the queue below
-  // advances on a microtask, so a queued write always reads values from
-  // before the edit ahead of it — deterministically, not as a race.
-  //
-  // Safe as a second reference only because of those two rules together: the
-  // queue guarantees one write in flight, and this is updated from a patch
-  // the server accepted, so it never holds a value that was not stored.
+  // What the last write stored. Props cannot serve: their effect is flushed on
+  // a macrotask while the queue below advances on a microtask, so a queued
+  // write always reads values from before the edit ahead of it. Safe as a
+  // second reference only because the queue allows one write at a time and
+  // this is set from a patch the server accepted.
   const typeRef = useRef({
     type: type ?? InvestmentTransactionType.Buy,
     quantity: quantity ?? 0,
@@ -214,15 +211,14 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
   // still shows a nonzero amount. Autoderive here + render `Amount`
   // as a read-only span so the two can't diverge.
   //
-  // `type`, `quantity`, `price` and `amount` are reconciled together on the
-  // way out, because each describes the same movement and a reader cannot
-  // repair them once they disagree. Direction comes from whichever field was
-  // just edited — knowable here and nowhere downstream, since the server
-  // receives only the changed columns.
-  // Shape edits run one at a time. A second edit begun while the first is
-  // still open would otherwise reconcile against the values the first had
-  // already replaced, and write a row whose fields disagree — or, where the
-  // two agree, write nothing at all and discard the edit silently.
+  // The four fields describe one movement and a reader cannot repair them once
+  // they disagree, so they are reconciled on the way out. Direction comes from
+  // whichever field was just edited — knowable here and nowhere downstream,
+  // since the server receives only the changed columns.
+
+  // One at a time: a second edit begun while the first is open would otherwise
+  // reconcile against values it had already replaced, writing a row whose
+  // fields disagree — or, where they agree, discarding the edit silently.
   const shapeWrites = useRef<Promise<unknown>>(Promise.resolve());
 
   const persistShapeChange = (intent: IntentField, edited: Partial<ShareMovement>) => {
