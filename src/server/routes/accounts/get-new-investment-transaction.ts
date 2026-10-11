@@ -1,4 +1,4 @@
-import { AccountType } from "plaid";
+import { AccountType, InvestmentTransactionType } from "plaid";
 import {
   Route,
   createManualInvestmentTransaction,
@@ -81,6 +81,17 @@ export const getNewInvestmentTransactionRoute = new Route<NewInvestmentTransacti
     // might be a "sell N units" reconciliation).
     const quantityRaw = req.query?.quantity ? Number(req.query.quantity) : NaN;
     const quantity = Number.isFinite(quantityRaw) ? quantityRaw : undefined;
+    // The caller reconciles the row it is asking for, so a negative quantity
+    // arrives already named as a sale rather than being renamed here. Only
+    // the two types that move shares are accepted: the mint creates a share
+    // movement, and the others are reached by editing the row afterwards.
+    const typeRaw = req.query?.type ? String(req.query.type) : "";
+    const type =
+      typeRaw === InvestmentTransactionType.Sell
+        ? InvestmentTransactionType.Sell
+        : typeRaw === InvestmentTransactionType.Buy
+          ? InvestmentTransactionType.Buy
+          : undefined;
     // `date` is prefilled by the divergence-reconciliation flow with
     // the earliest holdings-snapshot date that shows the surplus, so
     // the mint explains the phantom shares from THAT date forward
@@ -98,6 +109,7 @@ export const getNewInvestmentTransactionRoute = new Route<NewInvestmentTransacti
       price,
       iso_currency_code,
       quantity,
+      type,
       date,
     });
     if (!created) {

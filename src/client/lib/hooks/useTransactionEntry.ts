@@ -27,6 +27,54 @@ import { useAppContext } from "./context";
  * holding-level context (`security_id`, `price`) when available; defaults
  * fall through to the server-side createManual* helpers.
  */
+/**
+ * The query a mint is asked with, and the row the caller will show for it.
+ *
+ * Pure and exported so the reconciliation it carries is reachable by a test:
+ * the type is decided here, once, and sent — the mint stores what it is
+ * given, and the optimistic copy below is built from the same values, so the
+ * two cannot describe different rows.
+ */
+export const mintInvestmentTransactionRequest = (input: {
+  account_id: string;
+  security_id?: string | null;
+  price?: number | null;
+  iso_currency_code?: string | null;
+  quantity?: number | null;
+  date?: string | null;
+}) => {
+  const params: Record<string, string> = { account_id: input.account_id };
+  if (input.security_id) params.security_id = input.security_id;
+  if (input.price !== undefined && input.price !== null && input.price >= 0) {
+    params.price = String(input.price);
+  }
+  if (input.iso_currency_code) params.iso_currency_code = input.iso_currency_code;
+
+  // Rounded to numeric(15,6): subtracting two snapshot quantities in floating
+  // point leaves noise like 0.6232000000000539.
+  const quantity =
+    input.quantity !== undefined && input.quantity !== null && Number.isFinite(input.quantity)
+      ? Math.round(input.quantity * 1e6) / 1e6
+      : 0;
+  if (input.quantity !== undefined && input.quantity !== null && Number.isFinite(input.quantity)) {
+    params.quantity = String(quantity);
+  }
+  if (input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date)) params.date = input.date;
+
+  const canonical = normalizeShareMovement(
+    {
+      type: InvestmentTransactionType.Buy,
+      quantity,
+      price: input.price ?? 0,
+      amount: Math.round(quantity * (input.price ?? 0) * 100) / 100,
+    },
+    "quantity",
+  );
+  params.type = canonical.type;
+
+  return { params, canonical };
+};
+
 export const useTransactionEntry = () => {
   const { setData, router } = useAppContext();
 
@@ -95,24 +143,7 @@ export const useTransactionEntry = () => {
        *  Server ignores anything else, falling back to today. */
       date?: string | null;
     }): Promise<string | null> => {
-      const params: Record<string, string> = { account_id: input.account_id };
-      if (input.security_id) params.security_id = input.security_id;
-      if (input.price !== undefined && input.price !== null && input.price >= 0) {
-        params.price = String(input.price);
-      }
-      if (input.iso_currency_code) params.iso_currency_code = input.iso_currency_code;
-      if (
-        input.quantity !== undefined &&
-        input.quantity !== null &&
-        Number.isFinite(input.quantity)
-      ) {
-        // Round to numeric(15,6) precision — FP subtraction of two snap
-        // quantities leaves noise like 0.6232000000000539 otherwise.
-        params.quantity = (Math.round(input.quantity * 1e6) / 1e6).toString();
-      }
-      if (input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-        params.date = input.date;
-      }
+      const { params, canonical } = mintInvestmentTransactionRequest(input);
 
       const response = await call.get<NewInvestmentTransactionGetResponse>(
         "/api/new-investment-transaction?" + new URLSearchParams(params).toString(),
@@ -122,34 +153,21 @@ export const useTransactionEntry = () => {
         return null;
       }
       const { investment_transaction_id, name } = response.body;
-      const shellQty =
-        input.quantity !== undefined && input.quantity !== null && Number.isFinite(input.quantity)
-          ? Math.round(input.quantity * 1e6) / 1e6
-          : 0;
-      const shellPrice = input.price ?? 0;
       const shell = new InvestmentTransaction({
         investment_transaction_id,
         account_id: input.account_id,
         security_id: input.security_id ?? null,
         date: input.date ?? new Date().toISOString().split("T")[0],
         name,
-        // Reconciled the same way the mint reconciles it, so the optimistic
-        // shell is not a differently-shaped row than the one being stored —
-        // a negative quantity means a sale, and the shell has to say so too.
-        // The amount also keeps the shell out of TransactionsPage's
-        // zero-amount filter.
-        ...normalizeShareMovement(
-          {
-            type: InvestmentTransactionType.Buy,
-            quantity: shellQty,
-            price: shellPrice,
-            amount: Math.round(shellQty * shellPrice * 100) / 100,
-          },
-          "quantity",
-        ),
+        // The same values the mint was asked for, so the shell cannot be a
+        // differently-shaped row than the record. The amount also keeps it
+        // out of the transaction list's zero-amount filter.
+        ...canonical,
         iso_currency_code: input.iso_currency_code ?? null,
         subtype:
-          shellQty < 0 ? InvestmentTransactionSubtype.Sell : InvestmentTransactionSubtype.Buy,
+          canonical.type === InvestmentTransactionType.Sell
+            ? InvestmentTransactionSubtype.Sell
+            : InvestmentTransactionSubtype.Buy,
         source: "manual",
       });
       setData((oldData) => {

@@ -66,31 +66,32 @@ beforeEach(() => {
   }));
 });
 
-// The mint has no client to normalize for it, and it is where the shape this
-// change exists for is produced: the reconciliation action supplies a negative
-// quantity while the mint names a type, so the quantity is the only signal
-// carrying direction.
+// The mint stores the row it is asked for. Reconciling the four shape fields
+// is the caller's job — it is the only party that knows which field the user
+// touched — so the type arrives named rather than being worked out twice, once
+// here and once for the caller's own optimistic copy.
 describe("createManualInvestmentTransaction", () => {
-  test("a negative quantity is minted as a sale, not a purchase of negative shares", async () => {
+  test("the caller's type is stored, so a sale is not minted as a purchase", async () => {
     await createManualInvestmentTransaction(mockUser, {
       account_id: "acc-1",
       quantity: -5,
       price: 30,
+      type: InvestmentTransactionType.Sell,
     });
 
     const row = written("INSERT");
     expect(row.type).toBe(InvestmentTransactionType.Sell);
     expect(row.subtype).toBe(InvestmentTransactionSubtype.Sell);
     expect(Number(row.quantity)).toBe(-5);
-    expect(Number(row.price)).toBe(30);
     expect(Number(row.amount)).toBeCloseTo(-150, 2);
   });
 
-  test("a positive quantity is still minted as a purchase", async () => {
+  test("a purchase is stored as one", async () => {
     await createManualInvestmentTransaction(mockUser, {
       account_id: "acc-1",
       quantity: 4,
       price: 25,
+      type: InvestmentTransactionType.Buy,
     });
 
     const row = written("INSERT");
@@ -99,15 +100,16 @@ describe("createManualInvestmentTransaction", () => {
     expect(Number(row.amount)).toBeCloseTo(100, 2);
   });
 
-  test("a negative price is minted as a magnitude", async () => {
+  // The account-level mint names no type, and a row has to start somewhere.
+  test("a caller naming no type gets a purchase", async () => {
     await createManualInvestmentTransaction(mockUser, {
       account_id: "acc-1",
       quantity: 2,
-      price: -30,
+      price: 30,
     });
 
     const row = written("INSERT");
-    expect(Number(row.price)).toBe(30);
+    expect(row.type).toBe(InvestmentTransactionType.Buy);
     expect(Number(row.amount)).toBeCloseTo(60, 2);
   });
 });

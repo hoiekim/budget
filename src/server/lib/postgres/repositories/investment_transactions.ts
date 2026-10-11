@@ -13,7 +13,6 @@ import {
   QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
-import { normalizeShareMovement } from "common";
 import { logger } from "../../logger";
 
 export interface SearchInvestmentTransactionsOptions {
@@ -172,6 +171,12 @@ export const createManualInvestmentTransaction = async (
     price?: number | null;
     iso_currency_code?: string | null;
     quantity?: number | null;
+    /**
+     * Which way the shares move. The caller reconciles the row it is asking
+     * for — it is the only party that knows what the user meant — and this
+     * is stored as sent, the same way an update is.
+     */
+    type?: InvestmentTransactionType | null;
     /** YYYY-MM-DD. Defaults to today when omitted. */
     date?: string | null;
   },
@@ -187,19 +192,8 @@ export const createManualInvestmentTransaction = async (
   // land the row in DB but invisible in the tx list. Deriving here keeps
   // the row visible without requiring the FE to re-POST the amount after
   // the shell insert.
-  // The caller varies `quantity` and never names a type — the reconciliation
-  // action mints a negative one to mean "sell N units" — so the quantity is
-  // what carries the direction here, and the type below is only a starting
-  // point for it to correct.
-  const canonical = normalizeShareMovement(
-    {
-      type: InvestmentTransactionType.Buy,
-      quantity,
-      price,
-      amount: Math.round(quantity * price * 100) / 100,
-    },
-    "quantity",
-  );
+  const amount = Math.round(quantity * price * 100) / 100;
+  const type = input.type ?? InvestmentTransactionType.Buy;
   const row = InvTxModel.fromJSON(
     {
       investment_transaction_id,
@@ -207,13 +201,13 @@ export const createManualInvestmentTransaction = async (
       security_id: input.security_id ?? null,
       date: input.date ?? new Date().toISOString().split("T")[0],
       name: `Unknown_${index}`,
-      amount: canonical.amount,
-      quantity: canonical.quantity,
-      price: canonical.price,
+      amount,
+      quantity,
+      price,
       iso_currency_code: input.iso_currency_code ?? null,
-      type: canonical.type,
+      type,
       subtype:
-        canonical.type === InvestmentTransactionType.Sell
+        type === InvestmentTransactionType.Sell
           ? InvestmentTransactionSubtype.Sell
           : InvestmentTransactionSubtype.Buy,
       source: "manual",
