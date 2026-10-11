@@ -15,25 +15,11 @@ import {
 import { useAppContext } from "./context";
 
 /**
- * Shared entry-point for the "Add Transaction" and "Add Investment
- * Transaction" mint flows on `AccountProperties` and `HoldingProperties`:
- *
- *   GET  /api/new-*transaction?... → mint shell on server (source='manual')
- *   optimistic shell inserted into data.transactions / .investmentTransactions
- *   indexedDb.save(shell)
- *   router.go(PATH.TRANSACTION_DETAIL, { params: { <id> } })
- *
- * Callers pass account-level context (`account_id`, `iso_currency_code`) and
- * holding-level context (`security_id`, `price`) when available; defaults
- * fall through to the server-side createManual* helpers.
- */
-/**
  * The query a mint is asked with, and the row the caller will show for it.
  *
- * Pure and exported so the reconciliation it carries is reachable by a test:
- * the type is decided here, once, and sent — the mint stores what it is
- * given, and the optimistic copy below is built from the same values, so the
- * two cannot describe different rows.
+ * The type is decided here, once, and sent: the mint stores what it is
+ * given, and the copy shown immediately is built from the same return, so
+ * neither has to work the direction out for itself.
  */
 export const mintInvestmentTransactionRequest = (input: {
   account_id: string;
@@ -75,6 +61,19 @@ export const mintInvestmentTransactionRequest = (input: {
   return { params, canonical };
 };
 
+/**
+ * Shared entry-point for the "Add Transaction" and "Add Investment
+ * Transaction" mint flows on `AccountProperties` and `HoldingProperties`:
+ *
+ *   GET  /api/new-*transaction?... → mint shell on server (source='manual')
+ *   optimistic shell inserted into data.transactions / .investmentTransactions
+ *   indexedDb.save(shell)
+ *   router.go(PATH.TRANSACTION_DETAIL, { params: { <id> } })
+ *
+ * Callers pass account-level context (`account_id`, `iso_currency_code`) and
+ * holding-level context (`security_id`, `price`) when available; defaults
+ * fall through to the server-side createManual* helpers.
+ */
 export const useTransactionEntry = () => {
   const { setData, router } = useAppContext();
 

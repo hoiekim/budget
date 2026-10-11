@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
-import { JSONInvestmentTransaction } from "common";
+import { JSONInvestmentTransaction, type ShareMovingType } from "common";
 import { pool } from "../client";
 import {
   MaskedUser,
@@ -176,7 +176,7 @@ export const createManualInvestmentTransaction = async (
      * for — it is the only party that knows what the user meant — and this
      * is stored as sent, the same way an update is.
      */
-    type?: InvestmentTransactionType | null;
+    type?: ShareMovingType | null;
     /** YYYY-MM-DD. Defaults to today when omitted. */
     date?: string | null;
   },

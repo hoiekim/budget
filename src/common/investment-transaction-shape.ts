@@ -106,8 +106,7 @@ export const normalizeShareMovement = (
 /**
  * The fields a single edit should write, given the row it started from.
  *
- * Pure, and shared rather than living inside the editor, so the decision it
- * makes is reachable by a test without a rendered component.
+ * Pure, and shared rather than living inside the editor.
  *
  * Only what moved is returned. A field the writer did not touch, and that
  * reconciliation agrees with, is left out so a concurrent edit of it is not
