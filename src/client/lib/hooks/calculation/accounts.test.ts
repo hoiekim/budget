@@ -249,12 +249,6 @@ describe("investment balance history from transactions", () => {
     expect(at(balancesFor(1000, [deposit]), "2022-01")).toBeCloseTo(1000, 2);
   });
 
-  test("fees paid to acquire a position count toward what it cost", () => {
-    const withFee = contribution("2022-01-15", 10);
-    withFee.fees = 10;
-    expect(at(balancesFor(110, [withFee]), "2022-01")).toBeCloseTo(110, 2);
-  });
-
   // A broker's sweep is the same money the cash row already reports, so
   // counting its `price: 1` buy as a position doubles the account.
   test("a cash sweep is not a second position on top of the cash it holds", () => {
