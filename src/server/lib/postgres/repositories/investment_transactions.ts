@@ -13,6 +13,12 @@ import {
   QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import {
+  isNormalizableRow,
+  intentOf,
+  normalizeShareMovement,
+  type ShareMovement,
+} from "./normalize-investment-transaction";
 import { logger } from "../../logger";
 
 export interface SearchInvestmentTransactionsOptions {
@@ -85,6 +91,43 @@ export const upsertInvestmentTransactions = async (
   return results;
 };
 
+/**
+ * Rewrite a hand-entered purchase or sale into canonical form before it is
+ * stored, taking the direction from whichever field this write supplied.
+ *
+ * Only fields whose value actually changes are added to the patch. The write
+ * stays as narrow as the caller made it, so a column nobody touched is not
+ * rewritten with a value read a moment earlier — which would turn a
+ * concurrent edit of that column into a lost update.
+ */
+const normalizePatch = (
+  patch: PartialInvestmentTransaction,
+  existing: JSONInvestmentTransaction | undefined,
+): PartialInvestmentTransaction => {
+  if (!existing) return patch;
+
+  const type = patch.type ?? existing.type;
+  if (!isNormalizableRow(existing.source, type)) return patch;
+
+  const merged: ShareMovement = {
+    type,
+    subtype: patch.subtype ?? existing.subtype ?? null,
+    quantity: patch.quantity ?? existing.quantity ?? 0,
+    price: patch.price ?? existing.price ?? 0,
+    amount: patch.amount ?? existing.amount ?? 0,
+  };
+
+  const canonical = normalizeShareMovement(merged, intentOf(Object.keys(patch)));
+
+  const result: PartialInvestmentTransaction = { ...patch };
+  if (canonical.type !== merged.type) result.type = canonical.type;
+  if (canonical.subtype !== merged.subtype) result.subtype = canonical.subtype;
+  if (canonical.quantity !== merged.quantity) result.quantity = canonical.quantity;
+  if (canonical.price !== merged.price) result.price = canonical.price;
+  if (canonical.amount !== merged.amount) result.amount = canonical.amount;
+  return result;
+};
+
 export const updateInvestmentTransactions = async (
   user: MaskedUser,
   transactions: PartialInvestmentTransaction[],
@@ -92,9 +135,24 @@ export const updateInvestmentTransactions = async (
   if (!transactions.length) return [];
   const results: UpsertResult[] = [];
 
+  // One read for the whole batch, not one per transaction: a patch names
+  // only the fields the editor just wrote, and the canonical form of a share
+  // movement is a property of the merged row, so the stored values have to
+  // be in hand before any of them can be rewritten.
+  const existingById = new Map<string, JSONInvestmentTransaction>();
+  const ids = transactions.map((t) => t.investment_transaction_id).filter(Boolean);
+  if (ids.length) {
+    const stored = await investmentTransactionsTable.query(
+      { [USER_ID]: user.user_id },
+      { inFilters: { [INVESTMENT_TRANSACTION_ID]: ids } },
+    );
+    for (const model of stored) existingById.set(model.investment_transaction_id, model.toJSON());
+  }
+
   for (const tx of transactions) {
     try {
-      const row = InvTxModel.fromJSON(tx, user.user_id);
+      const normalized = normalizePatch(tx, existingById.get(tx.investment_transaction_id));
+      const row = InvTxModel.fromJSON(normalized, user.user_id);
       delete row.investment_transaction_id;
       delete row.user_id;
 
@@ -168,7 +226,20 @@ export const createManualInvestmentTransaction = async (
   // the row visible without requiring the FE to re-POST the amount after
   // the shell insert. Rounded to cents to match the client-side
   // `roundToCents` used in InvestmentTransactionProperties.
-  const amount = Math.round(quantity * price * 100) / 100;
+  // The caller varies `quantity` and never names a type — the reconciliation
+  // action mints a negative one to mean "sell N units" — so the quantity is
+  // what carries the direction here, and the type below is only a starting
+  // point for it to correct.
+  const canonical = normalizeShareMovement(
+    {
+      type: InvestmentTransactionType.Buy,
+      subtype: InvestmentTransactionSubtype.Buy,
+      quantity,
+      price,
+      amount: Math.round(quantity * price * 100) / 100,
+    },
+    "quantity",
+  );
   const row = InvTxModel.fromJSON(
     {
       investment_transaction_id,
@@ -176,12 +247,12 @@ export const createManualInvestmentTransaction = async (
       security_id: input.security_id ?? null,
       date: input.date ?? new Date().toISOString().split("T")[0],
       name: `Unknown_${index}`,
-      amount,
-      quantity,
-      price,
+      amount: canonical.amount,
+      quantity: canonical.quantity,
+      price: canonical.price,
       iso_currency_code: input.iso_currency_code ?? null,
-      type: InvestmentTransactionType.Buy,
-      subtype: InvestmentTransactionSubtype.Buy,
+      type: canonical.type,
+      subtype: canonical.subtype ?? InvestmentTransactionSubtype.Buy,
       source: "manual",
     },
     user.user_id,
