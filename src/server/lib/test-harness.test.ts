@@ -31,10 +31,14 @@ const FETCH_RESTORERS = ["restoreFetch", "restoreLeaves"];
 const ENV_RESTORERS = ["restoreEnv", "restoreLeaves"];
 const STUB_HELPERS = ["stubFetch"];
 const TEARDOWN = ["afterAll", "afterEach"];
-// The names `restoreEnv` actually puts back. A prefix pattern would also match
-// a knob added later that the snapshot does not carry, and a file setting that
-// knob would read clean while leaking it.
-const MARKET_DATA_ENV = ["POLYGON_API_KEY", "POLYGON_RATE_LIMIT_PER_MIN", "YAHOO_RATE_LIMIT_PER_MIN"];
+// Derived from the snapshot rather than written out again: the detector and
+// the restorer have to name the same set, and three hand-kept copies drift
+// silently — a name missing here leaks past the scan, a name missing from
+// `restoreEnv` leaks past the restore. A prefix pattern would not do either,
+// since it matches knobs the snapshot does not carry.
+const MARKET_DATA_ENV = Object.keys(
+  (globalThis as { __REAL_ENV: Record<string, string | undefined> }).__REAL_ENV,
+);
 
 const testFiles = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {
@@ -42,6 +46,30 @@ const testFiles = (dir: string): string[] =>
     if (statSync(full).isDirectory()) return SKIP_DIR.test(entry) ? [] : testFiles(full);
     return TEST_FILE.test(entry) ? [full] : [];
   });
+
+const productionFiles = (dir: string): string[] =>
+  readdirSync(dir).flatMap((entry) => {
+    const full = path.join(dir, entry);
+    if (statSync(full).isDirectory()) return SKIP_DIR.test(entry) ? [] : productionFiles(full);
+    return /\.[cm]?[jt]sx?$/.test(entry) && !TEST_FILE.test(entry) ? [full] : [];
+  });
+
+/** Every `process.env.X` read in a file whose name looks like a market-data knob. */
+const marketDataReads = (source: ts.SourceFile): string[] => {
+  const names: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.expression.getText(source) === "process.env" &&
+      /^(?:POLYGON|YAHOO)_/.test(node.name.text)
+    ) {
+      names.push(node.name.text);
+    }
+    node.forEachChild(visit);
+  };
+  visit(source);
+  return names;
+};
 
 const parseSource = (fileName: string, text: string): ts.SourceFile =>
   ts.createSourceFile(
@@ -346,6 +374,30 @@ describe("market-data env", () => {
 
       expect(process.env.POLYGON_RATE_LIMIT_PER_MIN).toBe("7");
     });
+  });
+
+  // Closes the other half of the drift: the detector now derives its names
+  // from the snapshot, so this asserts the restorer covers that same set.
+  test("restoreEnv puts back every name the snapshot carries", () => {
+    const sentinel = Object.fromEntries(MARKET_DATA_ENV.map((name) => [name, `snap-${name}`]));
+
+    withSnapshot(sentinel, () => {
+      for (const name of MARKET_DATA_ENV) process.env[name] = "clobbered";
+
+      restoreEnv();
+
+      for (const name of MARKET_DATA_ENV) expect(process.env[name]).toBe(`snap-${name}`);
+    });
+  });
+
+  // The snapshot is now the single source of truth for which names the scan
+  // watches, so a knob the product reads but nobody snapshotted would narrow
+  // the guard silently rather than widen it.
+  test("the snapshot carries every market-data name the product reads", () => {
+    const read = new Set(productionFiles(SRC).flatMap((file) => marketDataReads(parse(file))));
+    const unsnapshotted = [...read].filter((name) => !MARKET_DATA_ENV.includes(name)).sort();
+
+    expect(unsnapshotted).toEqual([]);
   });
 
   test("the scan sees a bare set, and a set paired with a teardown restore", () => {
