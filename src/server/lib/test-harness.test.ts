@@ -2,6 +2,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
 import ts from "typescript";
+import { envReads } from "../../../scripts/env-scan";
 import { restoreFetch, restoreLeaves, restoreEnv } from "test-helpers";
 
 /**
@@ -29,13 +30,18 @@ const SKIP_DIR = /^(?:node_modules|build|dist|coverage)$/;
 // them lets either scan accept the other's restorer and report a leak clean.
 const FETCH_RESTORERS = ["restoreFetch", "restoreLeaves"];
 const ENV_RESTORERS = ["restoreEnv", "restoreLeaves"];
+// Same trees the sibling env scan walks, so a knob added outside `src` is
+// still seen. The shared extractor refuses an access it cannot resolve rather
+// than dropping it, which is what keeps this from passing on a read shape it
+// does not know.
+const ENV_SCAN_ROOTS = ["src", "scripts", "vite.config.ts", "eslint.config.js", "healthcheck.js"];
 const STUB_HELPERS = ["stubFetch"];
 const TEARDOWN = ["afterAll", "afterEach"];
-// Derived from the snapshot rather than written out again: the detector and
-// the restorer have to name the same set, and three hand-kept copies drift
-// silently — a name missing here leaks past the scan, a name missing from
-// `restoreEnv` leaks past the restore. A prefix pattern would not do either,
-// since it matches knobs the snapshot does not carry.
+// The detector and the restorer have to name the same set: a name missing
+// from this list leaks past the scan, and one missing from `restoreEnv` leaks
+// past the restore. Deriving it from the snapshot leaves one copy to keep. A
+// prefix pattern would not do, since it matches knobs the snapshot does not
+// carry.
 const MARKET_DATA_ENV = Object.keys(
   (globalThis as { __REAL_ENV: Record<string, string | undefined> }).__REAL_ENV,
 );
@@ -46,30 +52,6 @@ const testFiles = (dir: string): string[] =>
     if (statSync(full).isDirectory()) return SKIP_DIR.test(entry) ? [] : testFiles(full);
     return TEST_FILE.test(entry) ? [full] : [];
   });
-
-const productionFiles = (dir: string): string[] =>
-  readdirSync(dir).flatMap((entry) => {
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) return SKIP_DIR.test(entry) ? [] : productionFiles(full);
-    return /\.[cm]?[jt]sx?$/.test(entry) && !TEST_FILE.test(entry) ? [full] : [];
-  });
-
-/** Every `process.env.X` read in a file whose name looks like a market-data knob. */
-const marketDataReads = (source: ts.SourceFile): string[] => {
-  const names: string[] = [];
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isPropertyAccessExpression(node) &&
-      node.expression.getText(source) === "process.env" &&
-      /^(?:POLYGON|YAHOO)_/.test(node.name.text)
-    ) {
-      names.push(node.name.text);
-    }
-    node.forEachChild(visit);
-  };
-  visit(source);
-  return names;
-};
 
 const parseSource = (fileName: string, text: string): ts.SourceFile =>
   ts.createSourceFile(
@@ -366,18 +348,8 @@ describe("market-data env", () => {
     });
   });
 
-  test("restoreEnv reinstalls the snapshot rather than the inherited value", () => {
-    withSnapshot({ POLYGON_RATE_LIMIT_PER_MIN: "7" }, () => {
-      process.env.POLYGON_RATE_LIMIT_PER_MIN = "999";
-
-      restoreEnv();
-
-      expect(process.env.POLYGON_RATE_LIMIT_PER_MIN).toBe("7");
-    });
-  });
-
-  // Closes the other half of the drift: the detector now derives its names
-  // from the snapshot, so this asserts the restorer covers that same set.
+  // The detector derives its names from the snapshot; these assert the
+  // restorer covers that same set, in both of its branches.
   test("restoreEnv puts back every name the snapshot carries", () => {
     const sentinel = Object.fromEntries(MARKET_DATA_ENV.map((name) => [name, `snap-${name}`]));
 
@@ -390,14 +362,28 @@ describe("market-data env", () => {
     });
   });
 
-  // The snapshot is now the single source of truth for which names the scan
+  // The snapshot is the single source of truth for which names the scan
   // watches, so a knob the product reads but nobody snapshotted would narrow
   // the guard silently rather than widen it.
   test("the snapshot carries every market-data name the product reads", () => {
-    const read = new Set(productionFiles(SRC).flatMap((file) => marketDataReads(parse(file))));
-    const unsnapshotted = [...read].filter((name) => !MARKET_DATA_ENV.includes(name)).sort();
+    const { read } = envReads(ENV_SCAN_ROOTS);
+    const unsnapshotted = [...read]
+      .filter((name) => /^(?:POLYGON|YAHOO)_/.test(name) && !MARKET_DATA_ENV.includes(name))
+      .sort();
 
     expect(unsnapshotted).toEqual([]);
+  });
+
+  test("restoreEnv deletes every name the snapshot found unset", () => {
+    const unset = Object.fromEntries(MARKET_DATA_ENV.map((name) => [name, undefined]));
+
+    withSnapshot(unset, () => {
+      for (const name of MARKET_DATA_ENV) process.env[name] = "leaked";
+
+      restoreEnv();
+
+      for (const name of MARKET_DATA_ENV) expect(name in process.env).toBe(false);
+    });
   });
 
   test("the scan sees a bare set, and a set paired with a teardown restore", () => {
