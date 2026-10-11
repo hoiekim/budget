@@ -18,12 +18,6 @@ export const SOURCE_FILE = /\.(?:[mc]?[jt]sx?)$/;
 export const TEST_FILE = /\.test\.[mc]?[jt]sx?$/;
 export const SKIP_DIR = /^(?:node_modules|build|dist|coverage|\.git)$/;
 
-/**
- * Names that reach their reader by a route no static extraction can follow,
- * each with the reason. Declaring a name here is the only way it is exempted.
- */
-const INDIRECTLY_READ: Record<string, string> = {};
-
 const sourceFiles = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {
     const full = path.join(dir, entry);

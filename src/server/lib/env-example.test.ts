@@ -59,6 +59,12 @@ const documentedVariables = (): Set<string> =>
     ].map((match) => match[1])
   );
 
+/**
+ * Names that reach their reader by a route no static extraction can follow,
+ * each with the reason. Declaring a name here is the only way it is exempted.
+ */
+const INDIRECTLY_READ: Record<string, string> = {};
+
 describe(".env.example", () => {
   it("documents every variable the server reads", () => {
     const documented = documentedVariables();
