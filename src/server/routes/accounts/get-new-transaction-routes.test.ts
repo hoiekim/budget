@@ -432,6 +432,11 @@ describe("get-new-investment-transaction route", () => {
     const insert = findInsert("investment_transactions");
     expect(insert!.values).toContain("sell");
     expect(insert!.values).not.toContain("buy");
+    // The sign crosses this hop too, and a row whose type and quantity point
+    // opposite ways is read in opposite directions downstream — the benchmark
+    // takes polarity from the type, the holdings walker from the quantity.
+    expect(insert!.values).toContain(-5);
+    expect(insert!.values).toContain(-150);
   });
 
   test("a caller naming no type gets a purchase", async () => {
@@ -449,20 +454,22 @@ describe("get-new-investment-transaction route", () => {
     expect(insert!.values).not.toContain("sell");
   });
 
-  // Only the two types that move shares are accepted. The mint creates a
-  // share movement; the rest are reached by editing the row afterwards.
-  test("a type the mint cannot coherently store is not taken from the query", async () => {
+  // The mint creates a share movement, so only the two types that move
+  // shares are taken from the query; the rest are reached by editing the row
+  // afterwards. `cash` is one the editor really offers, so this covers the
+  // reachable case rather than an unrecognised string.
+  test("a share-neutral type is not taken from the query", async () => {
     accountRow = plaidInvestAccount();
     await getNewInvestmentTransactionRoute.execute(
       makeReq(
         getNewInvestmentTransactionRoute,
-        { account_id: "acc-plaid-invest", quantity: "2", price: "30", type: "dividend" },
+        { account_id: "acc-plaid-invest", quantity: "2", price: "30", type: "cash" },
         "u-1",
       ),
       fakeRes(),
     );
     const insert = findInsert("investment_transactions");
-    expect(insert!.values).not.toContain("dividend");
+    expect(insert!.values).not.toContain("cash");
     expect(insert!.values).toContain("buy");
   });
 
