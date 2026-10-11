@@ -1,9 +1,9 @@
-import { ChangeEventHandler, useEffect, useState } from "react";
+import { ChangeEventHandler, useEffect, useRef, useState } from "react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import {
   currencyCodeToSymbol,
   LocalDate,
-  normalizeShareMovement,
+  shapePatchFor,
   numberToCommaString,
   toTitleCase,
   type IntentField,
@@ -197,32 +197,43 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
   // just edited, which is knowable here and nowhere downstream: the server
   // receives only the changed columns, so it would have to infer the intent
   // that these three handlers simply have.
-  const persistShapeChange = async (
-    intent: IntentField,
-    edited: Partial<ShareMovement>,
-  ): Promise<boolean> => {
-    const current: ShareMovement = {
+  // Props lag a save by a round trip, so a second shape edit started before
+  // the first one lands would reconcile against the values it replaced and
+  // write a row whose fields disagree — the shape this exists to prevent.
+  // The applied values are tracked here and the props re-seed it whenever a
+  // fetch delivers something newer.
+  const stored: ShareMovement = {
+    type: type ?? InvestmentTransactionType.Buy,
+    quantity: quantity ?? 0,
+    price: price ?? 0,
+    amount: amount ?? 0,
+  };
+  const appliedRef = useRef<ShareMovement>(stored);
+  useEffect(() => {
+    appliedRef.current = {
       type: type ?? InvestmentTransactionType.Buy,
       quantity: quantity ?? 0,
       price: price ?? 0,
       amount: amount ?? 0,
-      ...edited,
     };
-    const canonical = normalizeShareMovement(current, intent);
+  }, [type, quantity, price, amount]);
 
-    // Only what moved. A field the user did not touch, and that normalization
-    // agrees with, is left out so a concurrent edit of it is not overwritten.
-    const patch: Partial<InvestmentTransaction> = {};
-    if (canonical.type !== type) patch.type = canonical.type;
-    if (canonical.quantity !== quantity) patch.quantity = canonical.quantity;
-    if (canonical.price !== price) patch.price = canonical.price;
-    if (canonical.amount !== amount) patch.amount = canonical.amount;
+  const persistShapeChange = async (
+    intent: IntentField,
+    edited: Partial<ShareMovement>,
+  ): Promise<boolean> => {
+    const patch = shapePatchFor(appliedRef.current, intent, edited);
     if (!Object.keys(patch).length) return true;
 
-    const saved = await persistInvTxField(patch);
+    // Recorded before awaiting: the next edit's handler can run while this
+    // request is still open, and it has to see these values rather than the
+    // ones this call started from.
+    appliedRef.current = { ...appliedRef.current, ...patch };
+
+    const saved = await persistInvTxField(patch as Partial<InvestmentTransaction>);
     if (saved) {
-      setQuantityValue(String(canonical.quantity));
-      setPriceValue(String(canonical.price));
+      if (patch.quantity !== undefined) setQuantityValue(String(patch.quantity));
+      if (patch.price !== undefined) setPriceValue(String(patch.price));
     }
     return saved;
   };

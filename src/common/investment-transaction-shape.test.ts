@@ -1,9 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType } from "plaid";
 import {
   isCanonical,
-  intentOf,
+  movesShares,
   normalizeShareMovement,
+  shapePatchFor,
   isNormalizableRow,
   type ShareMovement,
   type IntentField,
@@ -11,7 +12,6 @@ import {
 
 const row = (o: Partial<ShareMovement>): ShareMovement => ({
   type: InvestmentTransactionType.Buy,
-  subtype: InvestmentTransactionSubtype.Buy,
   quantity: 0,
   price: 0,
   amount: 0,
@@ -19,7 +19,11 @@ const row = (o: Partial<ShareMovement>): ShareMovement => ({
 });
 
 const SIGNS = [-1, 0, 1];
-const TYPES = [InvestmentTransactionType.Buy, InvestmentTransactionType.Sell];
+// Every type the editor's dropdown offers, not only the two this reconciles.
+// Enumerating the inputs the rule expects rather than the ones the UI can
+// produce is how a pick of Cash came to be stored as a sale.
+const TYPES = Object.values(InvestmentTransactionType);
+const SHARE_TYPES = [InvestmentTransactionType.Buy, InvestmentTransactionType.Sell];
 const INTENTS: IntentField[] = ["quantity", "type", "price"];
 
 describe("normalizing a hand-entered share movement", () => {
@@ -30,13 +34,23 @@ describe("normalizing a hand-entered share movement", () => {
   test("every combination a manual write can produce comes out canonical", () => {
     const offenders: string[] = [];
 
-    for (const type of TYPES) {
+    for (const type of SHARE_TYPES) {
       for (const qSign of SIGNS) {
         for (const pSign of SIGNS) {
           for (const intent of INTENTS) {
             const input = row({ type, quantity: qSign * 5, price: pSign * 30, amount: -999 });
             const result = normalizeShareMovement(input, intent);
-            if (!isCanonical(result)) {
+            // The direction the edit meant, not merely a self-consistent one:
+            // both {buy, +5} and {sell, -5} agree with themselves.
+            const meant =
+              intent === "type"
+                ? type === InvestmentTransactionType.Buy
+                : intent === "quantity"
+                  ? qSign >= 0
+                  : qSign !== 0
+                    ? qSign > 0
+                    : type === InvestmentTransactionType.Buy;
+            if (!isCanonical(result, meant)) {
               offenders.push(`${type} q=${input.quantity} p=${input.price} intent=${intent}`);
             }
           }
@@ -50,7 +64,7 @@ describe("normalizing a hand-entered share movement", () => {
   test("normalizing an already-canonical row changes nothing", () => {
     const unstable: string[] = [];
 
-    for (const type of TYPES) {
+    for (const type of SHARE_TYPES) {
       for (const qSign of SIGNS) {
         for (const pSign of SIGNS) {
           for (const intent of INTENTS) {
@@ -121,12 +135,24 @@ describe("normalizing a hand-entered share movement", () => {
     }
   });
 
-  test("the intent is the most specific field the write supplied", () => {
-    expect(intentOf(["type"])).toBe("type");
-    expect(intentOf(["quantity", "amount"])).toBe("quantity");
-    expect(intentOf(["price", "amount"])).toBe("price");
-    // A write naming both has chosen a direction outright.
-    expect(intentOf(["type", "quantity"])).toBe("type");
+  // The dropdown offers six types and this rule speaks for two. A caller
+  // handing it one of the other four gets a sale, which is why the caller
+  // has to ask `movesShares` first rather than this silently coping.
+  test("only a purchase and a sale are types this rule can speak for", () => {
+    const covered = TYPES.filter((type) => movesShares(type));
+    expect(covered).toEqual(SHARE_TYPES);
+    expect(TYPES.filter((type) => !movesShares(type))).toHaveLength(4);
+  });
+
+  // A price edit must not move direction. Both readings agree on an already
+  // canonical row, so the fixture has to start uncanonical to see it.
+  test("a price edit keeps the direction the quantity already had", () => {
+    const result = normalizeShareMovement(
+      row({ type: InvestmentTransactionType.Sell, quantity: 5, price: 30, amount: -150 }),
+      "price",
+    );
+    expect(result.type).toBe(InvestmentTransactionType.Buy);
+    expect(result.quantity).toBe(5);
   });
 });
 
@@ -157,5 +183,65 @@ describe("which rows are rewritten at all", () => {
     ]) {
       expect(isNormalizableRow("manual", type)).toBe(false);
     }
+  });
+});
+
+// The editor's whole decision, reachable without rendering it. The gate here
+// is what keeps a picked type from being replaced by a sale.
+describe("the patch a single edit writes", () => {
+  const canonicalBuy: ShareMovement = {
+    type: InvestmentTransactionType.Buy,
+    quantity: 5,
+    price: 30,
+    amount: 150,
+  };
+
+  test("picking a type that moves no shares stores that type, not a sale", () => {
+    for (const type of TYPES.filter((t) => !movesShares(t))) {
+      const patch = shapePatchFor(canonicalBuy, "type", { type });
+      expect(patch.type).toBe(type);
+      expect(patch).not.toHaveProperty("quantity");
+    }
+  });
+
+  test("editing a number on a row that moves no shares leaves its type alone", () => {
+    const cashRow: ShareMovement = {
+      type: InvestmentTransactionType.Fee,
+      quantity: 1,
+      price: 25,
+      amount: 25,
+    };
+
+    const patch = shapePatchFor(cashRow, "price", { price: 40 });
+    expect(patch).not.toHaveProperty("type");
+    expect(patch.price).toBe(40);
+  });
+
+  test("picking Sell corrects the quantity and the amount with it", () => {
+    const patch = shapePatchFor(canonicalBuy, "type", {
+      type: InvestmentTransactionType.Sell,
+    });
+    expect(patch.type).toBe(InvestmentTransactionType.Sell);
+    expect(patch.quantity).toBe(-5);
+    expect(patch.amount).toBeCloseTo(-150, 2);
+  });
+
+  test("a negative quantity is stored as a sale", () => {
+    const patch = shapePatchFor(canonicalBuy, "quantity", { quantity: -4 });
+    expect(patch.type).toBe(InvestmentTransactionType.Sell);
+    expect(patch.quantity).toBe(-4);
+    expect(patch.amount).toBeCloseTo(-120, 2);
+  });
+
+  test("a field the edit agrees with is not written", () => {
+    const patch = shapePatchFor(canonicalBuy, "price", { price: 40 });
+    expect(patch).not.toHaveProperty("type");
+    expect(patch).not.toHaveProperty("quantity");
+    expect(patch.price).toBe(40);
+    expect(patch.amount).toBeCloseTo(200, 2);
+  });
+
+  test("an edit that changes nothing writes nothing", () => {
+    expect(shapePatchFor(canonicalBuy, "price", { price: 30 })).toEqual({});
   });
 });

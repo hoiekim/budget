@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import type { NewTransactionGetResponse, NewInvestmentTransactionGetResponse } from "server";
+import { normalizeShareMovement } from "common";
 import {
   Data,
   InvestmentTransaction,
@@ -132,15 +133,23 @@ export const useTransactionEntry = () => {
         security_id: input.security_id ?? null,
         date: input.date ?? new Date().toISOString().split("T")[0],
         name,
-        // Mirror the server-side derivation so the optimistic shell
-        // isn't filtered out of TransactionsPage's zero-amount guard.
-        // Rounded to cents.
-        amount: Math.round(shellQty * shellPrice * 100) / 100,
-        quantity: shellQty,
-        price: shellPrice,
+        // Reconciled the same way the mint reconciles it, so the optimistic
+        // shell is not a differently-shaped row than the one being stored —
+        // a negative quantity means a sale, and the shell has to say so too.
+        // The amount also keeps the shell out of TransactionsPage's
+        // zero-amount filter.
+        ...normalizeShareMovement(
+          {
+            type: InvestmentTransactionType.Buy,
+            quantity: shellQty,
+            price: shellPrice,
+            amount: Math.round(shellQty * shellPrice * 100) / 100,
+          },
+          "quantity",
+        ),
         iso_currency_code: input.iso_currency_code ?? null,
-        type: InvestmentTransactionType.Buy,
-        subtype: InvestmentTransactionSubtype.Buy,
+        subtype:
+          shellQty < 0 ? InvestmentTransactionSubtype.Sell : InvestmentTransactionSubtype.Buy,
         source: "manual",
       });
       setData((oldData) => {
