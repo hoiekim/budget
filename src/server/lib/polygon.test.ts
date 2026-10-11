@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
-import { restoreFetch } from "test-helpers";
+import { restoreFetch, restoreEnv } from "test-helpers";
 import {
   getClosePrice,
   getLatestClosePriceOnOrBefore,
@@ -7,10 +7,6 @@ import {
   clearPriceCache,
   polygonQueue,
 } from "./polygon";
-
-// Store original env
-const originalEnv = process.env.POLYGON_API_KEY;
-const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
 describe("polygon", () => {
   beforeEach(() => {
@@ -23,12 +19,7 @@ describe("polygon", () => {
   });
 
   afterEach(() => {
-    process.env.POLYGON_API_KEY = originalEnv;
-    if (originalRateLimit === undefined) {
-      delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
-    } else {
-      process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
-    }
+    restoreEnv();
     restoreFetch();
   });
 

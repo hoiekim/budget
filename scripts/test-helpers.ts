@@ -28,11 +28,12 @@ interface RealLeaves {
   __REAL_PG: Record<string, unknown> & { default: unknown };
   __REAL_BCRYPT: Record<string, unknown> & { default: unknown };
   __REAL_FETCH: typeof fetch;
+  __REAL_ENV: Record<string, string | undefined>;
 }
 
 const realLeaves = (): RealLeaves => {
   const g = globalThis as unknown as Partial<RealLeaves>;
-  if (!g.__REAL_PG || !g.__REAL_BCRYPT || !g.__REAL_FETCH) {
+  if (!g.__REAL_PG || !g.__REAL_BCRYPT || !g.__REAL_FETCH || !g.__REAL_ENV) {
     throw new Error(
       "test-helpers: real leaf snapshots missing on globalThis. " +
         "Run tests via `bun test` (which preloads `scripts/test-preload.ts`).",
@@ -56,9 +57,31 @@ export const restoreFetch = (): void => {
 };
 
 /**
+ * Put the market-data env back to the preload's snapshot.
+ *
+ * Deletes a name that was unset rather than assigning `undefined` to it:
+ * `process.env.X = undefined` stores the STRING "undefined", which is truthy,
+ * so `getApiKey()` reads it as a real key and the next file's fire-and-forget
+ * backfill goes to the live upstream instead of short-circuiting.
+ */
+export const restoreEnv = (): void => {
+  const snapshot = realLeaves().__REAL_ENV;
+  // Written out one name at a time for the same reason the snapshot is: a
+  // computed key is an env access the `.env.example` scan cannot follow.
+  if (snapshot.POLYGON_API_KEY === undefined) delete process.env.POLYGON_API_KEY;
+  else process.env.POLYGON_API_KEY = snapshot.POLYGON_API_KEY;
+  if (snapshot.POLYGON_RATE_LIMIT_PER_MIN === undefined)
+    delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
+  else process.env.POLYGON_RATE_LIMIT_PER_MIN = snapshot.POLYGON_RATE_LIMIT_PER_MIN;
+  if (snapshot.YAHOO_RATE_LIMIT_PER_MIN === undefined)
+    delete process.env.YAHOO_RATE_LIMIT_PER_MIN;
+  else process.env.YAHOO_RATE_LIMIT_PER_MIN = snapshot.YAHOO_RATE_LIMIT_PER_MIN;
+};
+
+/**
  * Re-mock the standard set of leaf deps (`pg`, `bcrypt`) back to the
  * real module exports captured by the preload, put `globalThis.fetch`
- * back with them, and invalidate the lazy Pool cache in
+ * back with the market-data env, and invalidate the lazy Pool cache in
  * `postgres/client.ts` so the next file's first pool use rebuilds
  * against that file's mock (or real pg if it doesn't mock anything).
  * Pass directly to `afterAll(restoreLeaves)`.
@@ -68,6 +91,7 @@ export const restoreLeaves = (): void => {
   mock.module("pg", () => __REAL_PG);
   mock.module("bcrypt", () => __REAL_BCRYPT);
   restoreFetch();
+  restoreEnv();
   resetPool();
 };
 

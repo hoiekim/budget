@@ -38,6 +38,13 @@ const { postHoldingSnapshotRoute } = await import("./post\-holding\-snapshot");
 afterAll(restoreLeaves);
 
 beforeEach(() => {
+  // The create path starts a monthly backfill it does not await, so this file
+  // cannot await it either. With no API key every month short-circuits before
+  // reaching `fetch`, and the chain finishes in microtasks instead of
+  // outliving the file and recording its calls against whatever stub the next
+  // file installs. Stated here rather than inherited from the ambient env,
+  // which a leak from an earlier file can make truthy.
+  process.env.POLYGON_API_KEY = "";
   clearQueryMocks();
   snapshotRows = [];
   securityRows = [];

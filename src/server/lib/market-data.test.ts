@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
-import { restoreFetch } from "test-helpers";
+import { restoreFetch, restoreEnv } from "test-helpers";
 import { getDateString } from "common";
 import {
   getTickerDetailWithFallback,
@@ -8,10 +8,6 @@ import {
 } from "./market-data";
 import { clearPriceCache as clearPolygonCache, polygonQueue } from "./polygon";
 import { clearYahooCache, yahooQueue } from "./yahoo";
-
-const originalPolyKey = process.env.POLYGON_API_KEY;
-const originalPolyRate = process.env.POLYGON_RATE_LIMIT_PER_MIN;
-const originalYahooRate = process.env.YAHOO_RATE_LIMIT_PER_MIN;
 
 // Yahoo bar timestamp derived from the local date string, the same way the
 // implementation matches bars — keeps the test green outside UTC.
@@ -63,13 +59,8 @@ describe("market-data fallback", () => {
   });
 
   afterEach(() => {
-    if (originalPolyKey === undefined) delete process.env.POLYGON_API_KEY;
-    else process.env.POLYGON_API_KEY = originalPolyKey;
-    if (originalPolyRate === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
-    else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalPolyRate;
-    if (originalYahooRate === undefined) delete process.env.YAHOO_RATE_LIMIT_PER_MIN;
-    else process.env.YAHOO_RATE_LIMIT_PER_MIN = originalYahooRate;
     restoreFetch();
+    restoreEnv();
   });
 
   it("returns the Polygon result without touching Yahoo when Polygon succeeds", async () => {
