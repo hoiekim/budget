@@ -432,9 +432,10 @@ describe("get-new-investment-transaction route", () => {
     const insert = findInsert("investment_transactions");
     expect(insert!.values).toContain("sell");
     expect(insert!.values).not.toContain("buy");
-    // The sign crosses this hop too, and a row whose type and quantity point
-    // opposite ways is read in opposite directions downstream — the benchmark
-    // takes polarity from the type, the holdings walker from the quantity.
+    // The sign crosses this hop too. A sale of positive shares is a row the
+    // canonical form rejects outright, and nothing downstream repairs it —
+    // the readers take the magnitude and supply their own sign, so they do
+    // not disagree about it, they agree on a value the row never meant.
     expect(insert!.values).toContain(-5);
     expect(insert!.values).toContain(-150);
   });
