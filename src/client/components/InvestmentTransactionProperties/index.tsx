@@ -155,9 +155,14 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     setTickerValue(security?.ticker_symbol ?? "");
   }, [investment_transaction_id, name, date, quantity, price, security?.ticker_symbol]);
 
-  // Read inside a queued write, which runs after the props of the edit before
-  // it have landed. Written only by the effect below, so it never holds a
-  // value that was not stored.
+  // What the last write actually stored. Props cannot serve here: the effect
+  // that would refresh them is flushed on a macrotask, and the queue below
+  // advances on a microtask, so a queued write always reads values from
+  // before the edit ahead of it — deterministically, not as a race.
+  //
+  // Safe as a second reference only because of those two rules together: the
+  // queue guarantees one write in flight, and this is updated from a patch
+  // the server accepted, so it never holds a value that was not stored.
   const typeRef = useRef({
     type: type ?? InvestmentTransactionType.Buy,
     quantity: quantity ?? 0,
@@ -216,11 +221,8 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
   // receives only the changed columns.
   // Shape edits run one at a time. A second edit begun while the first is
   // still open would otherwise reconcile against the values the first had
-  // already replaced, and write a row whose fields disagree — the shape this
-  // exists to prevent. Queuing rather than caching the applied values keeps
-  // props the only account of what is stored: a cache has to be reverted when
-  // a save fails and re-seeded when a fetch lands, and getting either wrong
-  // writes a row that was never stored anywhere.
+  // already replaced, and write a row whose fields disagree — or, where the
+  // two agree, write nothing at all and discard the edit silently.
   const shapeWrites = useRef<Promise<unknown>>(Promise.resolve());
 
   const persistShapeChange = (intent: IntentField, edited: Partial<ShareMovement>) => {
@@ -240,6 +242,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
 
       const saved = await persistInvTxField(patch as Partial<InvestmentTransaction>);
       if (saved) {
+        typeRef.current = { ...typeRef.current, ...patch };
         if (patch.quantity !== undefined) setQuantityValue(String(patch.quantity));
         if (patch.price !== undefined) setPriceValue(String(patch.price));
       }

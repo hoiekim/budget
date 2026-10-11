@@ -104,15 +104,6 @@ export const normalizeShareMovement = (
 };
 
 /**
- * Only a hand-entered purchase or sale is rewritten.
- *
- * Every provider writes rows this already describes correctly, and one of
- * them signs a movement the other way round on purpose — normalizing those
- * would turn its withdrawals into deposits. A type that moves no shares is
- * left alone because its value does not live in `price * quantity`, so there
- * is nothing here to make consistent.
- */
-/**
  * The fields a single edit should write, given the row it started from.
  *
  * Pure, and shared rather than living inside the editor, so the decision it
