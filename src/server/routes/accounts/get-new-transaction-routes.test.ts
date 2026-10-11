@@ -414,6 +414,84 @@ describe("get-new-investment-transaction route", () => {
     expect(findInsert("investment_transactions")).toBeNull();
   });
 
+  // The shape of a minted row is decided by the caller and carried here. This
+  // route is the only hop between the two, so without these the whole
+  // arrangement can be reverted — discarding `type` outright — with nothing
+  // failing.
+  test("the caller's type reaches the INSERT, so a reconciliation sale is stored as one", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "-5", price: "30", type: "sell" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    const insert = findInsert("investment_transactions");
+    expect(insert!.values).toContain("sell");
+    expect(insert!.values).not.toContain("buy");
+    // The sign crosses this hop too. A sale of positive shares is a row the
+    // canonical form rejects outright, and nothing downstream repairs it —
+    // the readers take the magnitude and supply their own sign, so they do
+    // not disagree about it, they agree on a value the row never meant.
+    expect(insert!.values).toContain(-5);
+    expect(insert!.values).toContain(-150);
+  });
+
+  test("a caller naming no type gets a purchase", async () => {
+    accountRow = plaidInvestAccount();
+    await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "2", price: "30" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    const insert = findInsert("investment_transactions");
+    expect(insert!.values).toContain("buy");
+    expect(insert!.values).not.toContain("sell");
+  });
+
+  // The mint creates a share movement, so only the two types that move
+  // shares are taken from the query; the rest are reached by editing the row
+  // afterwards. `cash` is one the editor really offers, so this covers the
+  // reachable case rather than an unrecognised string.
+  test("a share-neutral type is not taken from the query", async () => {
+    accountRow = plaidInvestAccount();
+    await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "2", price: "30", type: "cash" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    const insert = findInsert("investment_transactions");
+    expect(insert!.values).not.toContain("cash");
+    expect(insert!.values).toContain("buy");
+  });
+
+  // A unit price has no direction, and nothing downstream re-clamps it: this
+  // gate is the only thing standing between a query string and a stored row
+  // whose amount contradicts its own quantity.
+  test("a negative price is refused rather than stored", async () => {
+    accountRow = plaidInvestAccount();
+    await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "2", price: "-30" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    const insert = findInsert("investment_transactions");
+    const numbers = insert!.values.filter((v): v is number => typeof v === "number");
+    expect(numbers.some((n) => n < 0)).toBe(false);
+  });
+
   test("happy path with security_id: INSERT sets security_id + source='manual' on a Plaid brokerage", async () => {
     accountRow = plaidInvestAccount();
     securityRow = someSecurity();

@@ -1,6 +1,14 @@
-import { ChangeEventHandler, useEffect, useState } from "react";
+import { ChangeEventHandler, useEffect, useRef, useState } from "react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
-import { currencyCodeToSymbol, LocalDate, numberToCommaString, toTitleCase } from "common";
+import {
+  currencyCodeToSymbol,
+  LocalDate,
+  shapePatchFor,
+  numberToCommaString,
+  toTitleCase,
+  type IntentField,
+  type ShareMovement,
+} from "common";
 import {
   Data,
   InvestmentTransaction,
@@ -147,6 +155,26 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     setTickerValue(security?.ticker_symbol ?? "");
   }, [investment_transaction_id, name, date, quantity, price, security?.ticker_symbol]);
 
+  // What the last write stored. Props cannot serve: their effect is flushed on
+  // a macrotask while the queue below advances on a microtask, so a queued
+  // write always reads values from before the edit ahead of it. Safe as a
+  // second reference only because the queue allows one write at a time and
+  // this is set from a patch the server accepted.
+  const typeRef = useRef({
+    type: type ?? InvestmentTransactionType.Buy,
+    quantity: quantity ?? 0,
+    price: price ?? 0,
+    amount: amount ?? 0,
+  });
+  useEffect(() => {
+    typeRef.current = {
+      type: type ?? InvestmentTransactionType.Buy,
+      quantity: quantity ?? 0,
+      price: price ?? 0,
+      amount: amount ?? 0,
+    };
+  }, [type, quantity, price, amount]);
+
   const persistInvTxField = async (patch: Partial<InvestmentTransaction>) => {
     const r = await call.post("/api/investment-transaction", {
       investment_transaction_id,
@@ -181,11 +209,44 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
   // MWR / benchmark calc reads `price * quantity` (not `amount`), so
   // an amount-only entry gets a $0 MWR contribution while the row
   // still shows a nonzero amount. Autoderive here + render `Amount`
-  // as a read-only span so the two can't diverge. Sign convention
-  // follows the raw multiplication (users typically enter positive
-  // qty + price; a Sell subtype means the CALC layer flips sign, not
-  // the amount value we store).
-  const roundToCents = (n: number) => Math.round(n * 100) / 100;
+  // as a read-only span so the two can't diverge.
+  //
+  // The four fields describe one movement and a reader cannot repair them once
+  // they disagree, so they are reconciled on the way out. Direction comes from
+  // whichever field was just edited — knowable here and nowhere downstream,
+  // since the server receives only the changed columns.
+
+  // One at a time: a second edit begun while the first is open would otherwise
+  // reconcile against values it had already replaced, writing a row whose
+  // fields disagree — or, where they agree, discarding the edit silently.
+  const shapeWrites = useRef<Promise<unknown>>(Promise.resolve());
+
+  const persistShapeChange = (intent: IntentField, edited: Partial<ShareMovement>) => {
+    const queued = shapeWrites.current.then(async () => {
+      const patch = shapePatchFor(
+        source,
+        {
+          type: typeRef.current.type,
+          quantity: typeRef.current.quantity,
+          price: typeRef.current.price,
+          amount: typeRef.current.amount,
+        },
+        intent,
+        edited,
+      );
+      if (!Object.keys(patch).length) return true;
+
+      const saved = await persistInvTxField(patch as Partial<InvestmentTransaction>);
+      if (saved) {
+        typeRef.current = { ...typeRef.current, ...patch };
+        if (patch.quantity !== undefined) setQuantityValue(String(patch.quantity));
+        if (patch.price !== undefined) setPriceValue(String(patch.price));
+      }
+      return saved;
+    });
+    shapeWrites.current = queued.catch(() => undefined);
+    return queued;
+  };
 
   const onBlurQuantity = async () => {
     if (!isManual) return;
@@ -194,8 +255,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       setQuantityValue(String(quantity ?? 0));
       return;
     }
-    const derivedAmount = roundToCents(parsed * (price ?? 0));
-    await persistInvTxField({ quantity: parsed, amount: derivedAmount });
+    await persistShapeChange("quantity", { quantity: parsed });
   };
   const onBlurPrice = async () => {
     if (!isManual) return;
@@ -204,13 +264,12 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       setPriceValue(String(price ?? 0));
       return;
     }
-    const derivedAmount = roundToCents((quantity ?? 0) * parsed);
-    await persistInvTxField({ price: parsed, amount: derivedAmount });
+    await persistShapeChange("price", { price: parsed });
   };
   const onChangeType: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     if (!isManual) return;
     const value = e.target.value as InvestmentTransactionType;
-    await persistInvTxField({ type: value });
+    await persistShapeChange("type", { type: value });
   };
   const onChangeSubtype: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     if (!isManual) return;

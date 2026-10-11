@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
-import { JSONInvestmentTransaction } from "common";
+import { JSONInvestmentTransaction, type ShareMovingType } from "common";
 import { pool } from "../client";
 import {
   MaskedUser,
@@ -85,6 +85,19 @@ export const upsertInvestmentTransactions = async (
   return results;
 };
 
+/**
+ * Drop `source` from an update: nothing resets it, so a row relabelled
+ * `manual` stays relabelled and starts being reconciled — and one provider
+ * signs a movement positive when money arrives, turning its withdrawals into
+ * deposits. The route's spec cannot express this; `validateFields` checks the
+ * fields it names rather than rejecting the ones it does not.
+ */
+const withoutProvenance = (patch: PartialInvestmentTransaction): PartialInvestmentTransaction => {
+  if (!("source" in patch)) return patch;
+  const { source: _source, ...rest } = patch;
+  return rest as PartialInvestmentTransaction;
+};
+
 export const updateInvestmentTransactions = async (
   user: MaskedUser,
   transactions: PartialInvestmentTransaction[],
@@ -94,7 +107,7 @@ export const updateInvestmentTransactions = async (
 
   for (const tx of transactions) {
     try {
-      const row = InvTxModel.fromJSON(tx, user.user_id);
+      const row = InvTxModel.fromJSON(withoutProvenance(tx), user.user_id);
       delete row.investment_transaction_id;
       delete row.user_id;
 
@@ -152,6 +165,8 @@ export const createManualInvestmentTransaction = async (
     price?: number | null;
     iso_currency_code?: string | null;
     quantity?: number | null;
+    /** Stored as sent: the caller reconciles the row it is asking for. */
+    type?: ShareMovingType | null;
     /** YYYY-MM-DD. Defaults to today when omitted. */
     date?: string | null;
   },
@@ -166,9 +181,9 @@ export const createManualInvestmentTransaction = async (
   // prefills only quantity (the divergence "N missing units" action) would
   // land the row in DB but invisible in the tx list. Deriving here keeps
   // the row visible without requiring the FE to re-POST the amount after
-  // the shell insert. Rounded to cents to match the client-side
-  // `roundToCents` used in InvestmentTransactionProperties.
+  // the shell insert.
   const amount = Math.round(quantity * price * 100) / 100;
+  const type = input.type ?? InvestmentTransactionType.Buy;
   const row = InvTxModel.fromJSON(
     {
       investment_transaction_id,
@@ -180,8 +195,11 @@ export const createManualInvestmentTransaction = async (
       quantity,
       price,
       iso_currency_code: input.iso_currency_code ?? null,
-      type: InvestmentTransactionType.Buy,
-      subtype: InvestmentTransactionSubtype.Buy,
+      type,
+      subtype:
+        type === InvestmentTransactionType.Sell
+          ? InvestmentTransactionSubtype.Sell
+          : InvestmentTransactionSubtype.Buy,
       source: "manual",
     },
     user.user_id,

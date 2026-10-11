@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import type { NewTransactionGetResponse, NewInvestmentTransactionGetResponse } from "server";
+import { normalizeShareMovement } from "common";
 import {
   Data,
   InvestmentTransaction,
@@ -12,6 +13,53 @@ import {
   indexedDb,
 } from "client";
 import { useAppContext } from "./context";
+
+/**
+ * The query a mint is asked with, and the row the caller will show for it.
+ *
+ * The type is decided here, once, and sent: the mint stores what it is
+ * given, and the copy shown immediately is built from the same return, so
+ * neither has to work the direction out for itself.
+ */
+export const mintInvestmentTransactionRequest = (input: {
+  account_id: string;
+  security_id?: string | null;
+  price?: number | null;
+  iso_currency_code?: string | null;
+  quantity?: number | null;
+  date?: string | null;
+}) => {
+  const params: Record<string, string> = { account_id: input.account_id };
+  if (input.security_id) params.security_id = input.security_id;
+  if (input.price !== undefined && input.price !== null && input.price >= 0) {
+    params.price = String(input.price);
+  }
+  if (input.iso_currency_code) params.iso_currency_code = input.iso_currency_code;
+
+  // Rounded to numeric(15,6): subtracting two snapshot quantities in floating
+  // point leaves noise like 0.6232000000000539.
+  const quantity =
+    input.quantity !== undefined && input.quantity !== null && Number.isFinite(input.quantity)
+      ? Math.round(input.quantity * 1e6) / 1e6
+      : 0;
+  if (input.quantity !== undefined && input.quantity !== null && Number.isFinite(input.quantity)) {
+    params.quantity = String(quantity);
+  }
+  if (input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date)) params.date = input.date;
+
+  const canonical = normalizeShareMovement(
+    {
+      type: InvestmentTransactionType.Buy,
+      quantity,
+      price: input.price ?? 0,
+      amount: Math.round(quantity * (input.price ?? 0) * 100) / 100,
+    },
+    "quantity",
+  );
+  params.type = canonical.type;
+
+  return { params, canonical };
+};
 
 /**
  * Shared entry-point for the "Add Transaction" and "Add Investment
@@ -94,24 +142,7 @@ export const useTransactionEntry = () => {
        *  Server ignores anything else, falling back to today. */
       date?: string | null;
     }): Promise<string | null> => {
-      const params: Record<string, string> = { account_id: input.account_id };
-      if (input.security_id) params.security_id = input.security_id;
-      if (input.price !== undefined && input.price !== null && input.price >= 0) {
-        params.price = String(input.price);
-      }
-      if (input.iso_currency_code) params.iso_currency_code = input.iso_currency_code;
-      if (
-        input.quantity !== undefined &&
-        input.quantity !== null &&
-        Number.isFinite(input.quantity)
-      ) {
-        // Round to numeric(15,6) precision — FP subtraction of two snap
-        // quantities leaves noise like 0.6232000000000539 otherwise.
-        params.quantity = (Math.round(input.quantity * 1e6) / 1e6).toString();
-      }
-      if (input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-        params.date = input.date;
-      }
+      const { params, canonical } = mintInvestmentTransactionRequest(input);
 
       const response = await call.get<NewInvestmentTransactionGetResponse>(
         "/api/new-investment-transaction?" + new URLSearchParams(params).toString(),
@@ -121,26 +152,21 @@ export const useTransactionEntry = () => {
         return null;
       }
       const { investment_transaction_id, name } = response.body;
-      const shellQty =
-        input.quantity !== undefined && input.quantity !== null && Number.isFinite(input.quantity)
-          ? Math.round(input.quantity * 1e6) / 1e6
-          : 0;
-      const shellPrice = input.price ?? 0;
       const shell = new InvestmentTransaction({
         investment_transaction_id,
         account_id: input.account_id,
         security_id: input.security_id ?? null,
         date: input.date ?? new Date().toISOString().split("T")[0],
         name,
-        // Mirror the server-side derivation so the optimistic shell
-        // isn't filtered out of TransactionsPage's zero-amount guard.
-        // Rounded to cents.
-        amount: Math.round(shellQty * shellPrice * 100) / 100,
-        quantity: shellQty,
-        price: shellPrice,
+        // The same values the mint was asked for, so the shell cannot be a
+        // differently-shaped row than the record. The amount also keeps it
+        // out of the transaction list's zero-amount filter.
+        ...canonical,
         iso_currency_code: input.iso_currency_code ?? null,
-        type: InvestmentTransactionType.Buy,
-        subtype: InvestmentTransactionSubtype.Buy,
+        subtype:
+          canonical.type === InvestmentTransactionType.Sell
+            ? InvestmentTransactionSubtype.Sell
+            : InvestmentTransactionSubtype.Buy,
         source: "manual",
       });
       setData((oldData) => {
