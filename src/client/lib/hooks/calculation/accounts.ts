@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { InvestmentTransactionType } from "plaid";
 import { getYearMonthString, LocalDate, ViewDate } from "common";
 import {
   Account,
@@ -15,6 +16,7 @@ import {
   TransactionDictionary,
   useAppContext,
 } from "client";
+import { CostBasisPosition, foldCostBasis } from "./holdings";
 
 export const getAccountBalance = (account: Account) => {
   // Use `current` for all account types. For investment accounts, Plaid's
@@ -51,24 +53,16 @@ const getBalanceDataFromTransactions = (
   accounts.forEach((a) => balanceData.set(a.id, today, getAccountBalance(a)));
 
   // first aggregates transactions to sum amounts for each period
-  const translate = (t: Transaction | InvestmentTransaction) => {
-    const isInvestment = t instanceof InvestmentTransaction;
-    const authorized_date = !isInvestment ? t.authorized_date : undefined;
-    const { account_id, date, amount } = t;
+  const translate = (t: Transaction) => {
+    const { account_id, authorized_date, date, amount } = t;
     if (!accounts.has(account_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     if (today < transactionDate) return;
     const previousMonthDate = new ViewDate("month", transactionDate).previous().getEndDate();
-    if (isInvestment) {
-      const { price, quantity } = t as InvestmentTransaction;
-      balanceData.add(account_id, previousMonthDate, -(price * quantity));
-    } else {
-      balanceData.add(account_id, previousMonthDate, amount);
-    }
+    balanceData.add(account_id, previousMonthDate, amount);
   };
 
   transactions.forEach(translate);
-  investmentTransactions.forEach(translate);
 
   // then incrementally adds them up
   for (const [accountId] of accounts) {
@@ -83,8 +77,119 @@ const getBalanceDataFromTransactions = (
     }
   }
 
+  addInvestmentCostBasis(balanceData, accounts, investmentTransactions, today);
+
   return balanceData;
 };
+
+/**
+ * Layers each investment account's running cost basis onto `balanceData`.
+ *
+ * The walk above reconstructs a cash balance exactly, because cash does not
+ * appreciate and every change to it is a transaction. An investment balance
+ * is quantity times *today's* price while a transaction carries only the
+ * price of its own day, so that walk cannot run on one: subtracting the
+ * second from the first yields neither figure.
+ *
+ * These accumulate forward from zero instead, through the same average-cost
+ * rule {@link foldCostBasis} applies to a holding's own basis. A month reads
+ * what the transactions through it cost, never a price quoted later — which
+ * understates a position that has since appreciated, and is the floor worth
+ * showing for a month no snapshot covers. {@link getBalanceData} prefers
+ * either snapshot tier wherever one does.
+ *
+ * Cash and securities are both tracked because an account holds both, and a
+ * purchase moves money between them rather than into the account. Counting
+ * only one side reports the same dollar twice on the way in, or loses it on
+ * the way out: a liquidation that credits no cash reads as a zeroed account
+ * for that month and every month after it.
+ */
+const addInvestmentCostBasis = (
+  balanceData: BalanceData,
+  accounts: AccountDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+  today: Date,
+) => {
+  const byAccount = new Map<string, InvestmentTransaction[]>();
+
+  investmentTransactions.forEach((t) => {
+    if (!accounts.has(t.account_id)) return;
+    if (today < new LocalDate(t.date)) return;
+    const forAccount = byAccount.get(t.account_id) ?? [];
+    forAccount.push(t);
+    byAccount.set(t.account_id, forAccount);
+  });
+
+  for (const [accountId, accountTransactions] of byAccount) {
+    accountTransactions.sort(
+      (a, b) => new LocalDate(a.date).getTime() - new LocalDate(b.date).getTime(),
+    );
+
+    // Average cost is per security — netting one security's sale against
+    // another's basis would charge the sale to shares it never touched.
+    const positions = new Map<string, CostBasisPosition>();
+    // Cash carries its value in `amount`, not in shares, so it accumulates
+    // separately. Plaid signs `amount` positive when cash leaves the account.
+    let cash = 0;
+    const monthlyTotals = new Map<number, number>();
+
+    for (const t of accountTransactions) {
+      const { type, amount } = t;
+      if (type === InvestmentTransactionType.Buy || type === InvestmentTransactionType.Sell) {
+        const securityId = t.security_id ?? "";
+        positions.set(securityId, foldCostBasis(positions.get(securityId) ?? EMPTY_POSITION, t));
+        // Both legs, or the money is counted twice on the way in and lost on
+        // the way out: a purchase spends cash the account already held, and a
+        // sale returns it. This is also what makes a broker's sweep come out
+        // right without having to recognise one — the sweep buy spends
+        // exactly the cash its own deposit row brought in.
+        //
+        // Direction comes from the type, because the sign of `amount` does
+        // not carry it: one provider signs a movement positive when the money
+        // arrives, and a manually entered row stores `quantity * price` with
+        // both entered positive, so its sale is indistinguishable from its
+        // purchase by sign alone. A sale therefore returns the size of its
+        // amount whatever the sign — proceeds are booked nowhere else.
+        //
+        // A purchase spends only what it positively cost: the fold above has
+        // already taken a negative cost out of the basis, so spending it here
+        // as well would remove it twice. That is the lesser of two wrong
+        // answers rather than a right one — a row whose type, quantity, price
+        // and amount disagree has to be reconciled where it is written.
+        //
+        // Floored because the cash a purchase spent may have arrived before
+        // the fetched window, and an account that bought with money this
+        // never saw does not thereby hold a negative balance.
+        cash =
+          type === InvestmentTransactionType.Buy
+            ? Math.max(0, cash - Math.max(0, amount))
+            : cash + Math.abs(amount);
+      } else {
+        // Everything else moves money without moving shares — a fee, a
+        // dividend, a deposit, a withdrawal, an in-kind transfer carrying its
+        // value in `amount`. Floored for the same reason the purchase leg is.
+        cash = Math.max(0, cash - amount);
+      }
+
+      const invested = Array.from(positions.values()).reduce((sum, p) => sum + p.totalCost, 0);
+      const monthEnd = new ViewDate("month", new LocalDate(t.date)).getEndDate();
+      // Floored for the same reason one step down: an account rolled over
+      // into another leaves the withdrawal here while the deposit lands
+      // somewhere this never sees.
+      monthlyTotals.set(monthEnd.getTime(), Math.max(0, invested + cash));
+    }
+
+    for (const [month, total] of monthlyTotals) {
+      const date = new Date(month);
+      // `today`'s own month keeps the reported balance: it is the live market
+      // value, which beats a cost basis for the one month we can observe.
+      if (getYearMonthString(date) === getYearMonthString(today)) continue;
+      balanceData.set(accountId, date, total);
+    }
+  }
+};
+
+const EMPTY_POSITION: CostBasisPosition = { totalCost: 0, totalQuantity: 0 };
 
 const getBalanceDataFromSnapshots = (
   accounts: AccountDictionary,
