@@ -151,16 +151,11 @@ const addInvestmentCostBasis = (
         // purchase by sign alone. A sale therefore returns the size of its
         // amount whatever the sign — proceeds are booked nowhere else.
         //
-        // A purchase spends only what it positively cost. A negative cost
-        // means money leaving, and the fold above has already taken it out of
-        // the basis, so spending it here as well would remove it twice.
-        //
-        // That is the lesser of two wrong answers rather than a right one: a
-        // purchase whose cost is negative is a sale, and nothing here turns it
-        // back into one, so the proceeds go uncredited. More than one writer
-        // emits that row and no reader can repair it — a row whose type,
-        // quantity, price and amount disagree has to be reconciled where it is
-        // written.
+        // A purchase spends only what it positively cost: the fold above has
+        // already taken a negative cost out of the basis, so spending it here
+        // as well would remove it twice. That is the lesser of two wrong
+        // answers rather than a right one — a row whose type, quantity, price
+        // and amount disagree has to be reconciled where it is written.
         //
         // Floored because the cash a purchase spent may have arrived before
         // the fetched window, and an account that bought with money this
