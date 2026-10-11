@@ -7,7 +7,7 @@ import {
   isNormalizableRow,
   type ShareMovement,
   type IntentField,
-} from "./normalize-investment-transaction";
+} from "./investment-transaction-shape";
 
 const row = (o: Partial<ShareMovement>): ShareMovement => ({
   type: InvestmentTransactionType.Buy,

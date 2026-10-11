@@ -1,6 +1,14 @@
 import { ChangeEventHandler, useEffect, useState } from "react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
-import { currencyCodeToSymbol, LocalDate, numberToCommaString, toTitleCase } from "common";
+import {
+  currencyCodeToSymbol,
+  LocalDate,
+  normalizeShareMovement,
+  numberToCommaString,
+  toTitleCase,
+  type IntentField,
+  type ShareMovement,
+} from "common";
 import {
   Data,
   InvestmentTransaction,
@@ -181,11 +189,43 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
   // MWR / benchmark calc reads `price * quantity` (not `amount`), so
   // an amount-only entry gets a $0 MWR contribution while the row
   // still shows a nonzero amount. Autoderive here + render `Amount`
-  // as a read-only span so the two can't diverge. Sign convention
-  // follows the raw multiplication (users typically enter positive
-  // qty + price; a Sell subtype means the CALC layer flips sign, not
-  // the amount value we store).
-  const roundToCents = (n: number) => Math.round(n * 100) / 100;
+  // as a read-only span so the two can't diverge.
+  //
+  // `type`, `quantity`, `price` and `amount` are reconciled together on the
+  // way out, because each describes the same movement and a reader cannot
+  // repair them once they disagree. Direction comes from whichever field was
+  // just edited, which is knowable here and nowhere downstream: the server
+  // receives only the changed columns, so it would have to infer the intent
+  // that these three handlers simply have.
+  const persistShapeChange = async (
+    intent: IntentField,
+    edited: Partial<ShareMovement>,
+  ): Promise<boolean> => {
+    const current: ShareMovement = {
+      type: type ?? InvestmentTransactionType.Buy,
+      quantity: quantity ?? 0,
+      price: price ?? 0,
+      amount: amount ?? 0,
+      ...edited,
+    };
+    const canonical = normalizeShareMovement(current, intent);
+
+    // Only what moved. A field the user did not touch, and that normalization
+    // agrees with, is left out so a concurrent edit of it is not overwritten.
+    const patch: Partial<InvestmentTransaction> = {};
+    if (canonical.type !== type) patch.type = canonical.type;
+    if (canonical.quantity !== quantity) patch.quantity = canonical.quantity;
+    if (canonical.price !== price) patch.price = canonical.price;
+    if (canonical.amount !== amount) patch.amount = canonical.amount;
+    if (!Object.keys(patch).length) return true;
+
+    const saved = await persistInvTxField(patch);
+    if (saved) {
+      setQuantityValue(String(canonical.quantity));
+      setPriceValue(String(canonical.price));
+    }
+    return saved;
+  };
 
   const onBlurQuantity = async () => {
     if (!isManual) return;
@@ -194,8 +234,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       setQuantityValue(String(quantity ?? 0));
       return;
     }
-    const derivedAmount = roundToCents(parsed * (price ?? 0));
-    await persistInvTxField({ quantity: parsed, amount: derivedAmount });
+    await persistShapeChange("quantity", { quantity: parsed });
   };
   const onBlurPrice = async () => {
     if (!isManual) return;
@@ -204,13 +243,12 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
       setPriceValue(String(price ?? 0));
       return;
     }
-    const derivedAmount = roundToCents((quantity ?? 0) * parsed);
-    await persistInvTxField({ price: parsed, amount: derivedAmount });
+    await persistShapeChange("price", { price: parsed });
   };
   const onChangeType: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     if (!isManual) return;
     const value = e.target.value as InvestmentTransactionType;
-    await persistInvTxField({ type: value });
+    await persistShapeChange("type", { type: value });
   };
   const onChangeSubtype: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     if (!isManual) return;

@@ -13,12 +13,7 @@ import {
   QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
-import {
-  isNormalizableRow,
-  intentOf,
-  normalizeShareMovement,
-  type ShareMovement,
-} from "./normalize-investment-transaction";
+import { normalizeShareMovement } from "common";
 import { logger } from "../../logger";
 
 export interface SearchInvestmentTransactionsOptions {
@@ -92,40 +87,22 @@ export const upsertInvestmentTransactions = async (
 };
 
 /**
- * Rewrite a hand-entered purchase or sale into canonical form before it is
- * stored, taking the direction from whichever field this write supplied.
+ * Drop `source` from an update.
  *
- * Only fields whose value actually changes are added to the patch. The write
- * stays as narrow as the caller made it, so a column nobody touched is not
- * rewritten with a value read a moment earlier — which would turn a
- * concurrent edit of that column into a lost update.
+ * It records which writer produced the row, and nothing resets it: the
+ * provider translators omit it, so a row relabelled `manual` by one request
+ * stays relabelled. Normalization is scoped by it, so a relabelled provider
+ * row would start being rewritten — and one provider signs a movement
+ * positive when the money arrives, which would turn its withdrawals into
+ * deposits.
+ *
+ * The route's field spec cannot carry this: `validateFields` checks the
+ * fields it names rather than rejecting the ones it does not.
  */
-const normalizePatch = (
-  patch: PartialInvestmentTransaction,
-  existing: JSONInvestmentTransaction | undefined,
-): PartialInvestmentTransaction => {
-  if (!existing) return patch;
-
-  const type = patch.type ?? existing.type;
-  if (!isNormalizableRow(existing.source, type)) return patch;
-
-  const merged: ShareMovement = {
-    type,
-    subtype: patch.subtype ?? existing.subtype ?? null,
-    quantity: patch.quantity ?? existing.quantity ?? 0,
-    price: patch.price ?? existing.price ?? 0,
-    amount: patch.amount ?? existing.amount ?? 0,
-  };
-
-  const canonical = normalizeShareMovement(merged, intentOf(Object.keys(patch)));
-
-  const result: PartialInvestmentTransaction = { ...patch };
-  if (canonical.type !== merged.type) result.type = canonical.type;
-  if (canonical.subtype !== merged.subtype) result.subtype = canonical.subtype;
-  if (canonical.quantity !== merged.quantity) result.quantity = canonical.quantity;
-  if (canonical.price !== merged.price) result.price = canonical.price;
-  if (canonical.amount !== merged.amount) result.amount = canonical.amount;
-  return result;
+const withoutProvenance = (patch: PartialInvestmentTransaction): PartialInvestmentTransaction => {
+  if (!("source" in patch)) return patch;
+  const { source: _source, ...rest } = patch;
+  return rest as PartialInvestmentTransaction;
 };
 
 export const updateInvestmentTransactions = async (
@@ -135,24 +112,9 @@ export const updateInvestmentTransactions = async (
   if (!transactions.length) return [];
   const results: UpsertResult[] = [];
 
-  // One read for the whole batch, not one per transaction: a patch names
-  // only the fields the editor just wrote, and the canonical form of a share
-  // movement is a property of the merged row, so the stored values have to
-  // be in hand before any of them can be rewritten.
-  const existingById = new Map<string, JSONInvestmentTransaction>();
-  const ids = transactions.map((t) => t.investment_transaction_id).filter(Boolean);
-  if (ids.length) {
-    const stored = await investmentTransactionsTable.query(
-      { [USER_ID]: user.user_id },
-      { inFilters: { [INVESTMENT_TRANSACTION_ID]: ids } },
-    );
-    for (const model of stored) existingById.set(model.investment_transaction_id, model.toJSON());
-  }
-
   for (const tx of transactions) {
     try {
-      const normalized = normalizePatch(tx, existingById.get(tx.investment_transaction_id));
-      const row = InvTxModel.fromJSON(normalized, user.user_id);
+      const row = InvTxModel.fromJSON(withoutProvenance(tx), user.user_id);
       delete row.investment_transaction_id;
       delete row.user_id;
 
@@ -233,7 +195,6 @@ export const createManualInvestmentTransaction = async (
   const canonical = normalizeShareMovement(
     {
       type: InvestmentTransactionType.Buy,
-      subtype: InvestmentTransactionSubtype.Buy,
       quantity,
       price,
       amount: Math.round(quantity * price * 100) / 100,
@@ -252,7 +213,10 @@ export const createManualInvestmentTransaction = async (
       price: canonical.price,
       iso_currency_code: input.iso_currency_code ?? null,
       type: canonical.type,
-      subtype: canonical.subtype ?? InvestmentTransactionSubtype.Buy,
+      subtype:
+        canonical.type === InvestmentTransactionType.Sell
+          ? InvestmentTransactionSubtype.Sell
+          : InvestmentTransactionSubtype.Buy,
       source: "manual",
     },
     user.user_id,

@@ -1,4 +1,4 @@
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType } from "plaid";
 
 /**
  * The fields a share movement is described by, and the only ones this
@@ -7,7 +7,6 @@ import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
  */
 export interface ShareMovement {
   type: InvestmentTransactionType;
-  subtype?: InvestmentTransactionSubtype | null;
   quantity: number;
   price: number;
   amount: number;
@@ -20,6 +19,11 @@ export interface ShareMovement {
  *   quantity signed, positive when shares arrive
  *   type     buy when shares arrive, sell when they leave
  *   amount   price * quantity, so cash moves opposite to the shares
+ *
+ * `subtype` is deliberately not part of it. The editor offers the provider's
+ * whole vocabulary — `sell short` and `buy to cover` are real choices a user
+ * can make — so deriving one from the direction would quietly replace what
+ * they picked.
  *
  * This is the convention every provider already writes and every reader
  * already assumes. The editor does not enforce it: it persists one field
@@ -61,10 +65,7 @@ export const intentOf = (patched: Iterable<string>): IntentField => {
  * Returns the whole canonical row; the caller decides which fields actually
  * changed, so an untouched column is never rewritten with its own value.
  */
-export const normalizeShareMovement = (
-  row: ShareMovement,
-  intent: IntentField,
-): ShareMovement & { subtype: InvestmentTransactionSubtype } => {
+export const normalizeShareMovement = (row: ShareMovement, intent: IntentField): ShareMovement => {
   const price = Math.abs(row.price);
   const shares = Math.abs(row.quantity);
 
@@ -84,7 +85,6 @@ export const normalizeShareMovement = (
 
   return {
     type: sharesArrive ? InvestmentTransactionType.Buy : InvestmentTransactionType.Sell,
-    subtype: sharesArrive ? InvestmentTransactionSubtype.Buy : InvestmentTransactionSubtype.Sell,
     quantity,
     price,
     amount: Math.round(price * quantity * 100) / 100,
