@@ -155,6 +155,24 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     setTickerValue(security?.ticker_symbol ?? "");
   }, [investment_transaction_id, name, date, quantity, price, security?.ticker_symbol]);
 
+  // Read inside a queued write, which runs after the props of the edit before
+  // it have landed. Written only by the effect below, so it never holds a
+  // value that was not stored.
+  const typeRef = useRef({
+    type: type ?? InvestmentTransactionType.Buy,
+    quantity: quantity ?? 0,
+    price: price ?? 0,
+    amount: amount ?? 0,
+  });
+  useEffect(() => {
+    typeRef.current = {
+      type: type ?? InvestmentTransactionType.Buy,
+      quantity: quantity ?? 0,
+      price: price ?? 0,
+      amount: amount ?? 0,
+    };
+  }, [type, quantity, price, amount]);
+
   const persistInvTxField = async (patch: Partial<InvestmentTransaction>) => {
     const r = await call.post("/api/investment-transaction", {
       investment_transaction_id,
@@ -194,48 +212,41 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
   // `type`, `quantity`, `price` and `amount` are reconciled together on the
   // way out, because each describes the same movement and a reader cannot
   // repair them once they disagree. Direction comes from whichever field was
-  // just edited, which is knowable here and nowhere downstream: the server
-  // receives only the changed columns, so it would have to infer the intent
-  // that these three handlers simply have.
-  // Props lag a save by a round trip, so a second shape edit started before
-  // the first one lands would reconcile against the values it replaced and
-  // write a row whose fields disagree — the shape this exists to prevent.
-  // The applied values are tracked here and the props re-seed it whenever a
-  // fetch delivers something newer.
-  const stored: ShareMovement = {
-    type: type ?? InvestmentTransactionType.Buy,
-    quantity: quantity ?? 0,
-    price: price ?? 0,
-    amount: amount ?? 0,
-  };
-  const appliedRef = useRef<ShareMovement>(stored);
-  useEffect(() => {
-    appliedRef.current = {
-      type: type ?? InvestmentTransactionType.Buy,
-      quantity: quantity ?? 0,
-      price: price ?? 0,
-      amount: amount ?? 0,
-    };
-  }, [type, quantity, price, amount]);
+  // just edited — knowable here and nowhere downstream, since the server
+  // receives only the changed columns.
+  // Shape edits run one at a time. A second edit begun while the first is
+  // still open would otherwise reconcile against the values the first had
+  // already replaced, and write a row whose fields disagree — the shape this
+  // exists to prevent. Queuing rather than caching the applied values keeps
+  // props the only account of what is stored: a cache has to be reverted when
+  // a save fails and re-seeded when a fetch lands, and getting either wrong
+  // writes a row that was never stored anywhere.
+  const shapeWrites = useRef<Promise<unknown>>(Promise.resolve());
 
-  const persistShapeChange = async (
-    intent: IntentField,
-    edited: Partial<ShareMovement>,
-  ): Promise<boolean> => {
-    const patch = shapePatchFor(appliedRef.current, intent, edited);
-    if (!Object.keys(patch).length) return true;
+  const persistShapeChange = (intent: IntentField, edited: Partial<ShareMovement>) => {
+    const queued = shapeWrites.current.then(async () => {
+      const patch = shapePatchFor(
+        source,
+        {
+          type: typeRef.current.type,
+          quantity: typeRef.current.quantity,
+          price: typeRef.current.price,
+          amount: typeRef.current.amount,
+        },
+        intent,
+        edited,
+      );
+      if (!Object.keys(patch).length) return true;
 
-    // Recorded before awaiting: the next edit's handler can run while this
-    // request is still open, and it has to see these values rather than the
-    // ones this call started from.
-    appliedRef.current = { ...appliedRef.current, ...patch };
-
-    const saved = await persistInvTxField(patch as Partial<InvestmentTransaction>);
-    if (saved) {
-      if (patch.quantity !== undefined) setQuantityValue(String(patch.quantity));
-      if (patch.price !== undefined) setPriceValue(String(patch.price));
-    }
-    return saved;
+      const saved = await persistInvTxField(patch as Partial<InvestmentTransaction>);
+      if (saved) {
+        if (patch.quantity !== undefined) setQuantityValue(String(patch.quantity));
+        if (patch.price !== undefined) setPriceValue(String(patch.price));
+      }
+      return saved;
+    });
+    shapeWrites.current = queued.catch(() => undefined);
+    return queued;
   };
 
   const onBlurQuantity = async () => {

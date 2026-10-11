@@ -14,6 +14,14 @@ export interface ShareMovement {
   amount: number;
 }
 
+export const movesShares = (type: unknown): type is ShareMovingType =>
+  type === InvestmentTransactionType.Buy || type === InvestmentTransactionType.Sell;
+
+export const isNormalizableRow = <T extends { type: InvestmentTransactionType }>(
+  source: string | null | undefined,
+  row: T,
+): row is T & { type: ShareMovingType } => source === "manual" && movesShares(row.type);
+
 /**
  * Canonical form for a hand-entered share movement:
  *
@@ -37,8 +45,7 @@ export interface ShareMovement {
 export const isCanonical = (row: ShareMovement, sharesArrive?: boolean): boolean => {
   if (row.price < 0) return false;
   // `sharesArrive` pins WHICH direction, not merely that the fields agree on
-  // one. Without it both {buy, +5} and {sell, -5} satisfy every clause below,
-  // so an oracle built on it cannot see a direction flip at all.
+  // one: both {buy, +5} and {sell, -5} satisfy every clause below.
   if (sharesArrive !== undefined && row.quantity !== 0) {
     if (sharesArrive !== row.quantity > 0) return false;
   }
@@ -105,33 +112,29 @@ export const normalizeShareMovement = (
  * left alone because its value does not live in `price * quantity`, so there
  * is nothing here to make consistent.
  */
-export const movesShares = (type: unknown): boolean =>
-  type === InvestmentTransactionType.Buy || type === InvestmentTransactionType.Sell;
-
-export const isNormalizableRow = (source: string | null | undefined, type: unknown): boolean =>
-  source === "manual" && movesShares(type);
-
 /**
  * The fields a single edit should write, given the row it started from.
  *
- * Pure, and shared with the editor rather than living inside it, so the
- * decision this makes is reachable by a test without a rendered component —
- * the gate below is the whole reason a pick of Cash is stored as Cash.
+ * Pure, and shared rather than living inside the editor, so the decision it
+ * makes is reachable by a test without a rendered component.
  *
  * Only what moved is returned. A field the writer did not touch, and that
  * reconciliation agrees with, is left out so a concurrent edit of it is not
  * overwritten.
  */
 export const shapePatchFor = (
+  source: string | null | undefined,
   current: ShareMovement,
   intent: IntentField,
   edited: Partial<ShareMovement>,
 ): Partial<ShareMovement> => {
   const merged = { ...current, ...edited };
 
-  // Four of the six types the editor offers move no shares, so they have no
-  // direction to reconcile and their value does not live in price * quantity.
-  if (!movesShares(merged.type)) {
+  // Both halves of the invariant are asserted here rather than split between
+  // this and the caller's own guards: four of the six types the editor offers
+  // move no shares, and a provider row is never reconciled at all because one
+  // provider signs a movement the other way round on purpose.
+  if (!isNormalizableRow(source, merged)) {
     const patch: Partial<ShareMovement> = { ...edited };
     if (intent !== "type") {
       patch.amount = Math.round(merged.quantity * merged.price * 100) / 100;
@@ -139,10 +142,7 @@ export const shapePatchFor = (
     return patch;
   }
 
-  const canonical = normalizeShareMovement(
-    { ...merged, type: merged.type as ShareMovingType },
-    intent,
-  );
+  const canonical = normalizeShareMovement({ ...merged, type: merged.type }, intent);
   const patch: Partial<ShareMovement> = {};
   if (canonical.type !== current.type) patch.type = canonical.type;
   if (canonical.quantity !== current.quantity) patch.quantity = canonical.quantity;

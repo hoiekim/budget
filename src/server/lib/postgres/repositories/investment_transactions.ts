@@ -186,8 +186,7 @@ export const createManualInvestmentTransaction = async (
   // prefills only quantity (the divergence "N missing units" action) would
   // land the row in DB but invisible in the tx list. Deriving here keeps
   // the row visible without requiring the FE to re-POST the amount after
-  // the shell insert. Rounded to cents to match the client-side
-  // `roundToCents` used in InvestmentTransactionProperties.
+  // the shell insert.
   // The caller varies `quantity` and never names a type — the reconciliation
   // action mints a negative one to mean "sell N units" — so the quantity is
   // what carries the direction here, and the type below is only a starting
