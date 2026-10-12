@@ -51,10 +51,10 @@ const REFRESH_SKIP_WINDOW_HOURS = 22;
  * security (no polygon calls) and bounds the polygon load to roughly
  * one call per security per day in the limit.
  *
- * Plaid-tracked securities go through `upsertSecuritiesWithSnapshots`
- * during sync, which writes a `getSquashedDateString()`-keyed snapshot
- * with `updated = CURRENT_TIMESTAMP` — those rows are early-outed here
- * by the same cadence gate.
+ * Provider-synced securities go through `upsertSecuritiesWithSnapshots`
+ * during sync, which writes a snapshot with `updated = CURRENT_TIMESTAMP`
+ * (Plaid's dated by `close_price_as_of`, in this job's id format) — those
+ * rows are early-outed here by the same cadence gate.
  *
  * Cash-equivalents (`type='cash'` or `ticker_symbol` starting with
  * `CUR:`) are skipped — polygon does not price them.
