@@ -11,8 +11,8 @@ interface Props {
   /** ISO 4217 code, or `""` for unknown. */
   isoCurrency: string;
   /** `"auto"` prepends "+ " when `amount < 0`; `"none"` renders the
-   *  absolute value with no sign prefix (transfer bundles). Defaults
-   *  to `"auto"`. */
+   *  absolute value with no sign prefix (transfer bundles, investment
+   *  trades). Defaults to `"auto"`. */
   amountSign?: "auto" | "none";
   /** Extra class on the `.amount` cell (e.g. `"transferAmount"`). */
   amountClassName?: string;

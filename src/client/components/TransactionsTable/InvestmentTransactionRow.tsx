@@ -1,12 +1,13 @@
 import { InvestmentTransaction, PATH, useAppContext } from "client";
 import { InstitutionSpan, TransactionRowInfo } from "client/components";
+import { movesShares } from "common";
 
 interface Props {
   investmentTransaction: InvestmentTransaction;
 }
 
 const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
-  const { id, account_id, date, name, amount, iso_currency_code, label } = investmentTransaction;
+  const { id, account_id, date, name, amount, iso_currency_code, label, type } = investmentTransaction;
 
   const { data, router } = useAppContext();
   const { accounts } = data;
@@ -31,6 +32,9 @@ const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
         date={date}
         amount={amount}
         isoCurrency={iso_currency_code || ""}
+        // A trade swaps cash for shares inside the account, so it is neither
+        // money in nor money out.
+        amountSign={movesShares(type) ? "none" : "auto"}
         onClickInfo={onClickInfo}
       >
         {label.memo ? (
