@@ -5,6 +5,7 @@ import {
   TransferDictionary,
 } from "client";
 import type { TransactionsPageType } from "client/components";
+import { movesShares } from "common";
 
 /**
  * Per-row predicate context. Holds the cross-row state every predicate
@@ -154,9 +155,10 @@ const isInvestment = (e: AnyRow): e is InvestmentTransaction =>
  *  - `deposits` / `expenses`: sign filters. For Transaction / SplitTransaction
  *    a confirmed-transfer row (whole or split) is excluded — `getBudgetData`
  *    skips it, so it carries no budget meaning and must not surface under an
- *    income/expense view. InvestmentTransaction has no transfer semantics so
- *    it's a pure sign check. Suggested transfers still count toward budget
- *    totals until confirmed, so they stay.
+ *    income/expense view. An InvestmentTransaction is a sign check, except a
+ *    buy or sell, which swaps cash for shares inside the account and so is
+ *    neither. Suggested transfers still count toward budget totals until
+ *    confirmed, so they stay.
  *  - `unsorted`: "needs user action" — no user-confirmed category AND not
  *    part of a confirmed transfer. A confirmed transfer is "done" from
  *    the user's POV regardless of category state. Not applicable to
@@ -184,11 +186,11 @@ export class TypePredicates {
 
   deposits: Predicate = (e) =>
     isInvestment(e)
-      ? e.amount < 0
+      ? !movesShares(e.type) && e.amount < 0
       : !isInConfirmedTransfer(e, this.context) && e.amount < 0;
   expenses: Predicate = (e) =>
     isInvestment(e)
-      ? e.amount > 0
+      ? !movesShares(e.type) && e.amount > 0
       : !isInConfirmedTransfer(e, this.context) && e.amount > 0;
   unsorted: Predicate = (e) =>
     !isInvestment(e) &&

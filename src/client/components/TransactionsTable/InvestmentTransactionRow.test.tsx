@@ -42,15 +42,24 @@ describe("InvestmentTransactionRow — amount sign", () => {
     expect(amount).toBe("$ 10,250.00");
   });
 
-  it("shows a buy without a sign", () => {
+  it("shows a buy without a sign, whichever way its amount is signed", () => {
     const amount = render({
       type: InvestmentTransactionType.Buy,
       subtype: InvestmentTransactionSubtype.Contribution,
       quantity: 4,
       price: 250,
-      amount: 1000,
+      amount: -1000,
     });
     expect(amount).toBe("$ 1,000.00");
+  });
+
+  it("keeps the incoming sign on a cancellation", () => {
+    const amount = render({
+      type: InvestmentTransactionType.Cancel,
+      subtype: InvestmentTransactionSubtype.Cancel,
+      amount: -1000,
+    });
+    expect(amount).toBe("+ $ 1,000.00");
   });
 
   it("keeps the incoming sign on cash arriving in the account", () => {
