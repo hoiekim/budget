@@ -98,9 +98,21 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
 };
 
 /**
- * Upsert incoming securities and write a price snapshot for each, dated the
- * trading day its close is for (`close_price_as_of`).
- * `security_id` is treated as identity — two rows can share a ticker
+ * Which date a security's price snapshot is filed under.
+ * - `closePriceAsOf`: the trading day the provider says its close is for. Plaid's
+ *   `close_price_as_of` is often the previous trading day.
+ * - `syncTime`: the moment of the sync, for providers whose `close_price_as_of`
+ *   isn't a price date (SimpleFIN fills it with the holding's creation time).
+ * Crypto always uses `syncTime`: it trades around the clock, so its price is
+ * current as of the sync, whatever date the provider attaches to it.
+ */
+export type PriceSnapshotDate = "closePriceAsOf" | "syncTime";
+
+const PRICE_DATE = /^\d{4}-\d{2}-\d{2}/;
+
+/**
+ * Upsert incoming securities and write a price snapshot for each, dated per
+ * `priceDate`. `security_id` is treated as identity — two rows can share a ticker
  * (user-minted + provider-synced), and `HoldingsComposition` folds them
  * by ticker on read. Returns the set of successfully-upserted
  * `security_id`s so callers can drop holdings whose security was
@@ -108,6 +120,7 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
  */
 export const upsertSecuritiesWithSnapshots = async (
   securities: JSONSecurity[],
+  priceDate: PriceSnapshotDate = "syncTime",
 ): Promise<Set<string>> => {
   const newSecurities: JSONSecurity[] = [];
   const snapshots: JSONSecuritySnapshot[] = [];
@@ -118,18 +131,21 @@ export const upsertSecuritiesWithSnapshots = async (
     if (!ticker_symbol) continue;
     if (!close_price || !close_price_as_of) continue;
 
-    // The provider's close is for `close_price_as_of`, often the previous
-    // trading day, not for the moment of the sync. Noon UTC keeps every
-    // server timezone on the same calendar date, matching the daily refresh.
-    const priceDate = new Date(`${close_price_as_of.slice(0, 10)}T12:00:00Z`);
-    if (Number.isNaN(priceDate.getTime())) continue;
-
     const newSecurity: JSONSecurity = { ...s };
-    const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString(priceDate)}`;
-    snapshots.push({
-      snapshot: { snapshot_id, date: priceDate.toISOString() },
-      security: newSecurity,
-    });
+    let snapshot: JSONSecuritySnapshot["snapshot"];
+    if (priceDate === "closePriceAsOf" && s.type !== "cryptocurrency") {
+      // Built from the date string itself, in the daily refresh's format, so no
+      // server timezone can move the row to a neighbouring day.
+      const day = PRICE_DATE.exec(close_price_as_of)?.[0];
+      if (!day) continue;
+      snapshot = { snapshot_id: `${newSecurity.security_id}-${day.replaceAll("-", "")}`, date: `${day}T12:00:00.000Z` };
+    } else {
+      snapshot = {
+        snapshot_id: `${newSecurity.security_id}-${getSquashedDateString()}`,
+        date: new Date().toISOString(),
+      };
+    }
+    snapshots.push({ snapshot, security: newSecurity });
 
     newSecurities.push(newSecurity);
     upsertedIds.add(newSecurity.security_id);

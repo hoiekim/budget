@@ -348,7 +348,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       // Securities first so holdings never reference a not-yet-written
       // securities row within the same sync.
-      await upsertSecuritiesWithSnapshots(securities);
+      await upsertSecuritiesWithSnapshots(securities, "closePriceAsOf");
       await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
 
       return accounts;
