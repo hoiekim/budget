@@ -279,10 +279,18 @@ describe("TypePredicates.any — investment branch", () => {
   const mkInv = (amount: number): InvestmentTransaction =>
     new InvestmentTransaction({
       account_id: investAccount,
-      type: InvestmentTransactionType.Buy,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Deposit,
+      amount,
+      date: "2026-02-15",
+    });
+  const mkTrade = (type: InvestmentTransactionType, amount: number): InvestmentTransaction =>
+    new InvestmentTransaction({
+      account_id: investAccount,
+      type,
       subtype: InvestmentTransactionSubtype.Buy,
-      quantity: 1,
-      price: amount,
+      quantity: amount / 25,
+      price: 25,
       amount,
       date: "2026-02-15",
     });
@@ -302,6 +310,17 @@ describe("TypePredicates.any — investment branch", () => {
     expect(investMatch(mkInv(50), ["expenses"])).toBe(true);
     expect(investMatch(mkInv(50), ["deposits"])).toBe(false);
     expect(investMatch(mkInv(-50), ["deposits"])).toBe(true);
+  });
+  test("a buy or sell is neither a deposit nor an expense, whichever way its amount is signed", () => {
+    const trades = [InvestmentTransactionType.Buy, InvestmentTransactionType.Sell].flatMap((type) =>
+      [50, -50].map((amount) => mkTrade(type, amount)),
+    );
+    const matches = trades.map((t) => [
+      investMatch(t, ["deposits"]),
+      investMatch(t, ["expenses"]),
+      investMatch(t, []),
+    ]);
+    expect(matches).toEqual(trades.map(() => [false, false, true]));
   });
   test("mixed (sign + non-sign): sign rules; non-sign always false", () => {
     expect(investMatch(mkInv(50), ["expenses", "transfers"])).toBe(true);
