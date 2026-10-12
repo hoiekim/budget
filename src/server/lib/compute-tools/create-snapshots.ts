@@ -98,7 +98,8 @@ export const upsertAndDeleteHoldingsWithSnapshots = async (
 };
 
 /**
- * Upsert incoming securities and write today's snapshot for each.
+ * Upsert incoming securities and write a price snapshot for each, dated the
+ * trading day its close is for (`close_price_as_of`).
  * `security_id` is treated as identity — two rows can share a ticker
  * (user-minted + provider-synced), and `HoldingsComposition` folds them
  * by ticker on read. Returns the set of successfully-upserted
@@ -117,10 +118,16 @@ export const upsertSecuritiesWithSnapshots = async (
     if (!ticker_symbol) continue;
     if (!close_price || !close_price_as_of) continue;
 
+    // The provider's close is for `close_price_as_of`, often the previous
+    // trading day, not for the moment of the sync. Noon UTC keeps every
+    // server timezone on the same calendar date, matching the daily refresh.
+    const priceDate = new Date(`${close_price_as_of.slice(0, 10)}T12:00:00Z`);
+    if (Number.isNaN(priceDate.getTime())) continue;
+
     const newSecurity: JSONSecurity = { ...s };
-    const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString()}`;
+    const snapshot_id = `${newSecurity.security_id}-${getSquashedDateString(priceDate)}`;
     snapshots.push({
-      snapshot: { snapshot_id, date: new Date().toISOString() },
+      snapshot: { snapshot_id, date: priceDate.toISOString() },
       security: newSecurity,
     });
 

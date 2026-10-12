@@ -89,3 +89,36 @@ describe("upsertSecuritiesWithSnapshots — identity-not-ticker semantics", () =
     expect(result.has("existing-old-id")).toBe(false);
   });
 });
+
+describe("upsertSecuritiesWithSnapshots — price snapshot date", () => {
+  const snapshotWrites = () =>
+    mockQuery.mock.calls
+      .map(([sql, params]) => ({ sql: sql as string, params: (params ?? []) as unknown[] }))
+      .filter(({ sql }) => /INSERT INTO snapshots/i.test(sql));
+
+  test("keys the snapshot on close_price_as_of, the trading day the close is for", async () => {
+    await upsertSecuritiesWithSnapshots([
+      mkSecurity({ security_id: "sec-a", close_price_as_of: "2026-07-06" }),
+    ]);
+    const params = snapshotWrites().flatMap((w) => w.params);
+    expect(params).toContain("sec-a-20260706");
+    expect(params).toContain("2026-07-06T12:00:00.000Z");
+  });
+
+  test("ignores a time of day on close_price_as_of", async () => {
+    await upsertSecuritiesWithSnapshots([
+      mkSecurity({ security_id: "sec-b", close_price_as_of: "2026-07-02T23:59:59Z" }),
+    ]);
+    const params = snapshotWrites().flatMap((w) => w.params);
+    expect(params).toContain("sec-b-20260702");
+  });
+
+  test("skips a security whose close_price_as_of is not a date", async () => {
+    const result = await upsertSecuritiesWithSnapshots([
+      mkSecurity({ security_id: "bad-date", close_price_as_of: "yesterday" }),
+      mkSecurity({ security_id: "ok" }),
+    ]);
+    expect(result.has("bad-date")).toBe(false);
+    expect(result.has("ok")).toBe(true);
+  });
+});
