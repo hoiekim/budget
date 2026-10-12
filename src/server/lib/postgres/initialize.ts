@@ -26,7 +26,7 @@ import {
   rejectedCategoriesTable,
 } from "./models";
 
-export const version = "6";
+export const version = "7";
 export const index = "budget" + (version ? `-${version}` : "");
 
 const tables: Table<unknown, Schema>[] = [
