@@ -482,11 +482,15 @@ describe("getSearchPool", () => {
     ctx.securities.set("sec-1", new Security({ security_id: "sec-1", ticker_symbol: "IDXF", name: "Index Fund" }));
     const trade = makeInvestment("i-1", "2026-02-17", 100, "Buy (contribution)");
     trade.security_id = "sec-1";
+    const sell = makeInvestment("i-3", "2026-02-17", -100, "Sell (rollover)");
+    sell.type = InvestmentTransactionType.Sell;
+    sell.security_id = "sec-1";
     const cash = makeInvestment("i-2", "2026-02-17", -100, "Contribution");
     cash.type = InvestmentTransactionType.Cash;
     cash.security_id = "sec-1";
 
     expect(getSearchPool(trade, ctx).slice(0, 3)).toEqual(["Buy (contribution)", "IDXF", "Index Fund"]);
+    expect(getSearchPool(sell, ctx).slice(0, 3)).toEqual(["Sell (rollover)", "IDXF", "Index Fund"]);
     expect(getSearchPool(cash, ctx)).not.toContain("IDXF");
   });
 
