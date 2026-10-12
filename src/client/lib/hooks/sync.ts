@@ -50,56 +50,12 @@ import {
   TransferDictionary,
   globalData,
 } from "client";
-
-// Cursor key: ISO timestamp of the last successful sync's start, minus a
-// safety margin. Next sync's delta fetch sends this as `start-date`, so
-// the server returns only rows whose `updated >= cursor`. Cleared by
-// `clean()`.
-const LAST_SYNCED_CURSOR_KEY = "budget:lastSyncedCursor";
-// Old localStorage key (pre-delta-sync). Removed on first load below
-// so returning users don't carry the dead key forever.
-const LEGACY_LAST_SYNCED_AT_KEY = "budget:lastSyncedAt";
-
-const dropLegacyKeys = () => {
-  try {
-    window.localStorage.removeItem(LEGACY_LAST_SYNCED_AT_KEY);
-  } catch {
-    // no-op
-  }
-};
-
-const readLastSyncedCursor = (): string | null => {
-  try {
-    const raw = window.localStorage.getItem(LAST_SYNCED_CURSOR_KEY);
-    if (!raw) return null;
-    const t = Date.parse(raw);
-    if (!Number.isFinite(t)) return null;
-    // Future timestamps (clock skew between sessions) → treat as
-    // missing so the next sync widens to a full fetch.
-    if (t > Date.now()) return null;
-    return raw;
-  } catch {
-    return null;
-  }
-};
-
-const writeLastSyncedCursor = (cursor: string) => {
-  try {
-    window.localStorage.setItem(LAST_SYNCED_CURSOR_KEY, cursor);
-  } catch {
-    // localStorage can throw in private-mode iOS / over quota. Best
-    // effort; next sync without a cursor falls through to the cold
-    // path, which is correct but slower.
-  }
-};
-
-const removeLastSyncedCursor = () => {
-  try {
-    window.localStorage.removeItem(LAST_SYNCED_CURSOR_KEY);
-  } catch {
-    // no-op
-  }
-};
+import {
+  dropLegacyKeys,
+  readLastSyncedCursor,
+  removeLastSyncedCursor,
+  writeLastSyncedCursor,
+} from "./sync-cursor";
 
 // FE wall-clock minus a safety margin is the next-sync cursor. Sub-row
 // `updated` timestamps aren't on every JSON wire type today, so per-row
