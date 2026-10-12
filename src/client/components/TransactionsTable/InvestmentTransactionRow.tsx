@@ -1,20 +1,21 @@
 import { InvestmentTransaction, PATH, useAppContext } from "client";
-import { InstitutionSpan, TransactionRowInfo } from "client/components";
+import { RightArrowIcon, TransactionRowInfo } from "client/components";
 import { movesShares } from "common";
+import { InvestmentTransactionType } from "plaid";
 
 interface Props {
   investmentTransaction: InvestmentTransaction;
 }
 
 const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
-  const { id, account_id, date, name, amount, iso_currency_code, label, type } = investmentTransaction;
+  const { id, account_id, security_id, date, name, amount, iso_currency_code, label, type } =
+    investmentTransaction;
 
   const { data, router } = useAppContext();
-  const { accounts } = data;
+  const { accounts, securities } = data;
   const { go } = router;
 
   const account = accounts.get(account_id);
-  const institution_id = account?.institution_id;
 
   const onClickInfo = () => {
     const params = new URLSearchParams(router.params);
@@ -26,26 +27,45 @@ const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
     go(PATH.TRANSACTION_DETAIL, { params });
   };
 
+  if (movesShares(type)) {
+    const security = security_id ? securities.get(security_id) : undefined;
+    const holding = security?.ticker_symbol || security?.name || "Shares";
+    const isBuy = type === InvestmentTransactionType.Buy;
+    const [from, to] = isBuy ? ["Cash", holding] : [holding, "Cash"];
+    return (
+      <div className="TransactionRow">
+        <TransactionRowInfo
+          date={date}
+          amount={amount}
+          isoCurrency={iso_currency_code || ""}
+          // A trade swaps cash for shares inside the account, so it is neither
+          // money in nor money out.
+          amountSign="none"
+          onClickInfo={onClickInfo}
+        >
+          <div className="bigText">{isBuy ? "Buy" : "Sell"}</div>
+          <div className="smallText">
+            {from}
+            &nbsp;
+            <RightArrowIcon size={8} />
+            &nbsp;
+            {to}
+          </div>
+        </TransactionRowInfo>
+      </div>
+    );
+  }
+
   return (
     <div className="TransactionRow">
       <TransactionRowInfo
         date={date}
         amount={amount}
         isoCurrency={iso_currency_code || ""}
-        // A trade swaps cash for shares inside the account, so it is neither
-        // money in nor money out.
-        amountSign={movesShares(type) ? "none" : "auto"}
         onClickInfo={onClickInfo}
       >
-        {label.memo ? (
-          <div className="smallText">{label.memo}</div>
-        ) : (
-          name && <div className="smallText">{name}</div>
-        )}
-        <div className="bigText">{account?.custom_name || account?.name}</div>
-        <div className="smallText">
-          {institution_id && <InstitutionSpan institution_id={institution_id} />}
-        </div>
+        <div className="bigText">{label.memo || name}</div>
+        <div className="smallText">{account?.custom_name || account?.name}</div>
       </TransactionRowInfo>
     </div>
   );
