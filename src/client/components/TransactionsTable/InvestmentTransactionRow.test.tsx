@@ -128,6 +128,11 @@ describe("InvestmentTransactionRow — trade layout", () => {
     expect(row.detail).toBe("Cash Stable Value Fund");
   });
 
+  it("names the holding \"Shares\" when the security is unknown", () => {
+    const row = renderRow(sell);
+    expect([row.title, row.detail]).toEqual(["Sell", "Shares Cash"]);
+  });
+
   it("titles a cash row with its name over the account, like a regular transaction", () => {
     const row = renderRow({
       type: InvestmentTransactionType.Cash,

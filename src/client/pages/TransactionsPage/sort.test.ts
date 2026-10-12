@@ -15,7 +15,7 @@ import { Account } from "../../lib/models/Account";
 import { Budget } from "../../lib/models/Budget";
 import { Category } from "../../lib/models/Category";
 import { Section } from "../../lib/models/Section";
-import { Institution } from "../../lib/models/miscellaneous";
+import { Institution, Security } from "../../lib/models/miscellaneous";
 import { Transaction } from "../../lib/models/Transaction";
 import { SplitTransaction } from "../../lib/models/SplitTransaction";
 import { InvestmentTransaction } from "../../lib/models/InvestmentTransaction";
@@ -25,6 +25,7 @@ import {
   CategoryDictionary,
   InstitutionDictionary,
   SectionDictionary,
+  SecurityDictionary,
   TransactionDictionary,
 } from "../../lib/models/Data";
 import { TransactionFamilies } from "../../lib/models/Calculations";
@@ -80,6 +81,7 @@ const makeCtx = (): OrderingContext => {
     budgets,
     sections,
     categories,
+    securities: new SecurityDictionary(),
     transactions: new TransactionDictionary(),
     transactionFamilies: new TransactionFamilies(),
   };
@@ -473,6 +475,19 @@ describe("getSearchPool", () => {
     expect(pool).toContain("Household");
     expect(pool).toContain("Utilities");
     expect(pool).toContain("Electricity");
+  });
+
+  test("a buy or sell contributes the ticker and name of the security its row shows", () => {
+    const ctx = makeCtx();
+    ctx.securities.set("sec-1", new Security({ security_id: "sec-1", ticker_symbol: "IDXF", name: "Index Fund" }));
+    const trade = makeInvestment("i-1", "2026-02-17", 100, "Buy (contribution)");
+    trade.security_id = "sec-1";
+    const cash = makeInvestment("i-2", "2026-02-17", -100, "Contribution");
+    cash.type = InvestmentTransactionType.Cash;
+    cash.security_id = "sec-1";
+
+    expect(getSearchPool(trade, ctx).slice(0, 3)).toEqual(["Buy (contribution)", "IDXF", "Index Fund"]);
+    expect(getSearchPool(cash, ctx)).not.toContain("IDXF");
   });
 
   test("a SplitTransaction contributes its parent's name and merchant name", () => {
