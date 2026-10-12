@@ -5,6 +5,7 @@ import {
   InstitutionDictionary,
   InvestmentTransaction,
   SectionDictionary,
+  SecurityDictionary,
   SplitTransaction,
   Transaction,
   TransactionDictionary,
@@ -17,7 +18,7 @@ import type {
   TransactionHeaders,
   TransactionsPageType,
 } from "client/components";
-import { LocalDate } from "common";
+import { LocalDate, movesShares } from "common";
 
 export type TransactionRow = Transaction | SplitTransaction | InvestmentTransaction;
 export type TransactionHeaderSet = TransactionHeaders & InvestmentTransactionHeaders;
@@ -35,6 +36,7 @@ export interface OrderingContext {
   budgets: BudgetDictionary;
   sections: SectionDictionary;
   categories: CategoryDictionary;
+  securities: SecurityDictionary;
   transactions: TransactionDictionary;
   transactionFamilies: TransactionFamilies;
 }
@@ -145,7 +147,8 @@ export const formatSortValue = (
 
 /**
  * The strings a row is searched against. Every row type the page mixes
- * contributes: an `InvestmentTransaction` through its own `name`, a
+ * contributes: an `InvestmentTransaction` through its own `name` and, for a
+ * buy or sell, the ticker and name of the security its row shows, a
  * `SplitTransaction` through its parent's name / merchant name, plus —
  * for all three — the account, institution and label names the row's
  * account context resolves to. Some of those (budget, section,
@@ -159,6 +162,9 @@ export const getSearchPool = (e: TransactionRow, ctx: OrderingContext): string[]
 
   if (e instanceof InvestmentTransaction) {
     if (e.name) searchPool.push(e.name);
+    const security = movesShares(e.type) && e.security_id ? ctx.securities.get(e.security_id) : undefined;
+    if (security?.ticker_symbol) searchPool.push(security.ticker_symbol);
+    if (security?.name) searchPool.push(security.name);
   } else {
     const t = asTransaction(e, ctx);
     if (t.name) searchPool.push(t.name);

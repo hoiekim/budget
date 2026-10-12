@@ -21,7 +21,7 @@ interface Props {
   onClickInfo?: () => void;
   /** Contents of the middle `.merchant_name` cell — each row type
    *  arranges its own bigText/smallText stack (merchant + account,
-   *  name + account + institution, "Transfer" + from→to, …). */
+   *  "Transfer" + from→to, "Buy" + cash→holding, …). */
   children: ReactNode;
 }
 
