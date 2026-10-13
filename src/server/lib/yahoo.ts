@@ -96,7 +96,10 @@ interface YahooChartResult {
     regularMarketPrice?: number;
   };
   timestamp?: number[];
-  indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+  indicators?: {
+    quote?: Array<{ close?: Array<number | null> }>;
+    adjclose?: Array<{ adjclose?: Array<number | null> }>;
+  };
 }
 
 interface YahooChartResponse {
@@ -117,7 +120,7 @@ const rateLimitedResult = (ticker: string): PolygonResult<never> => ({
  * Yahoo's "no such symbol" — the only answer that may be memoized as a miss.
  * 429 is a refusal, not a verdict on the symbol.
  */
-const fetchChart = async (
+export const fetchChart = async (
   yahooTicker: string,
   query: string,
   maxWaitMs?: number,
@@ -160,7 +163,7 @@ const fetchChart = async (
   return { success: true, data: result };
 };
 
-const dateStringOfTimestamp = (t: number): string => {
+export const dateStringOfTimestamp = (t: number): string => {
   const d = new Date(t * 1000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 };

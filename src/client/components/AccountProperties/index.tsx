@@ -140,6 +140,12 @@ export const AccountProperties = ({ account }: Props) => {
     router.go(PATH.SNAPSHOTS, { params });
   };
 
+  const onClickImportPlanStatement = () => {
+    const params = new URLSearchParams();
+    params.append("account_id", account_id);
+    router.go(PATH.PLAN_STATEMENT_IMPORT, { params });
+  };
+
   const latestViewDate = new ViewDate(viewDate.getInterval());
   const isBalanceInputDisabled =
     !isManualAccount && viewDate.getEndDate() >= latestViewDate.getEndDate();
@@ -265,6 +271,11 @@ export const AccountProperties = ({ account }: Props) => {
             {type === AccountType.Investment && (
               <ButtonRow onClick={onClickAddInvestmentTransaction}>
                 Add&nbsp;Investment&nbsp;Transaction
+              </ButtonRow>
+            )}
+            {isManualAccount && type === AccountType.Investment && (
+              <ButtonRow onClick={onClickImportPlanStatement}>
+                Import&nbsp;Plan&nbsp;Statement
               </ButtonRow>
             )}
           </Property>

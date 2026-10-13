@@ -1121,6 +1121,7 @@ export const useSync = () => {
           case TableName.Sessions:
           case TableName.ApiKeys:
           case TableName.RejectedCategories:
+          case TableName.PlanFundMappings:
             return;
           default: {
             // Exhaustiveness guard: adding a new `TableName` value that

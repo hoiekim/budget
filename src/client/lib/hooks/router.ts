@@ -13,6 +13,7 @@ export enum PATH {
   ACCOUNT_DETAIL = "account-detail",
   HOLDING_DETAIL = "holding-detail",
   SNAPSHOTS = "snapshots",
+  PLAN_STATEMENT_IMPORT = "plan-statement-import",
   TRANSACTIONS = "transactions",
   TRANSACTION_DETAIL = "transaction-detail",
   CONFIG = "config",
@@ -50,6 +51,7 @@ const getHighLevelPage = (path: string): PATH | undefined => {
     case PATH.ACCOUNT_DETAIL:
     case PATH.HOLDING_DETAIL:
     case PATH.SNAPSHOTS:
+    case PATH.PLAN_STATEMENT_IMPORT:
       return PATH.ACCOUNTS;
     case PATH.TRANSACTIONS:
     case PATH.TRANSACTION_DETAIL:

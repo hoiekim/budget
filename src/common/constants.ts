@@ -29,6 +29,7 @@ export enum TableName {
   Charts = "charts",
   ApiKeys = "api_keys",
   RejectedCategories = "rejected_categories",
+  PlanFundMappings = "plan_fund_mappings",
 }
 
 export const USERS = TableName.Users;
@@ -49,5 +50,6 @@ export const SNAPSHOTS = TableName.Snapshots;
 export const CHARTS = TableName.Charts;
 export const API_KEYS = TableName.ApiKeys;
 export const REJECTED_CATEGORIES = TableName.RejectedCategories;
+export const PLAN_FUND_MAPPINGS = TableName.PlanFundMappings;
 
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";

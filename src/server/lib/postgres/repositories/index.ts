@@ -15,3 +15,4 @@ export * from "./charts";
 export * from "./transfers";
 export * from "./api_keys";
 export * from "./rejected-categories";
+export * from "./plan_fund_mappings";
