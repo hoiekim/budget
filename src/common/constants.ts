@@ -52,4 +52,10 @@ export const API_KEYS = TableName.ApiKeys;
 export const REJECTED_CATEGORIES = TableName.RejectedCategories;
 export const PLAN_FUND_MAPPINGS = TableName.PlanFundMappings;
 
+/**
+ * Id prefix of holding snapshots derived from a holding's transactions. Any
+ * other holding snapshot id is a position someone entered.
+ */
+export const DERIVED_HOLDING_SNAPSHOT_PREFIX = "derived-holding-";
+
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";

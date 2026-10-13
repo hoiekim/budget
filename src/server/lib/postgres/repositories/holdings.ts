@@ -91,20 +91,20 @@ export const upsertHoldings = async (
 };
 
 /**
- * The holdings rows for some of an account's securities, read on `client` so a
- * transaction sees its own writes.
+ * The holdings rows for some of an account's securities. With `forUpdate`,
+ * locked on `client` until its transaction ends.
  */
 export const getHoldingsForSecurities = async (
   user: MaskedUser,
   account_id: string,
   security_ids: string[],
-  client?: QueryExecutor,
+  options: { client?: QueryExecutor; forUpdate?: boolean } = {},
 ): Promise<JSONHolding[]> => {
   if (!security_ids.length) return [];
   const models = await holdingsTable.query(
     { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id },
-    { inFilters: { [SECURITY_ID]: security_ids } },
-    client,
+    { inFilters: { [SECURITY_ID]: security_ids }, orderBy: HOLDING_ID, forUpdate: options.forUpdate },
+    options.client,
   );
   return models.map((m) => m.toJSON());
 };

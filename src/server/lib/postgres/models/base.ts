@@ -139,6 +139,7 @@ export abstract class Table<
       orderBy: options.orderBy,
       limit: options.limit,
       offset: options.offset,
+      forUpdate: options.forUpdate,
     });
     const result = await (client ?? pool).query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));

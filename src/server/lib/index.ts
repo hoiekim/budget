@@ -8,6 +8,7 @@ export * as yahoo from "./yahoo";
 export * as marketData from "./market-data";
 export * from "./daily-closes";
 export * from "./postgres";
+export * from "./holding-positions";
 export * from "./object";
 export * from "./compute-tools";
 export * from "./plan-statement";

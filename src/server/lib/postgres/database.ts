@@ -350,6 +350,8 @@ export interface SearchFilters {
   orderBy?: string;
   limit?: number;
   offset?: number;
+  /** Lock the selected rows until the transaction ends. Pair with `orderBy` so concurrent lockers queue rather than deadlock. */
+  forUpdate?: boolean;
 }
 
 export function buildSelectWithFilters(
@@ -367,6 +369,7 @@ export function buildSelectWithFilters(
     orderBy,
     limit,
     offset,
+    forUpdate,
   } = options;
 
   const conditions: string[] = [];
@@ -442,6 +445,8 @@ export function buildSelectWithFilters(
     sql += ` OFFSET $${paramIndex}`;
     values.push(offset);
   }
+
+  if (forUpdate) sql += " FOR UPDATE";
 
   return { sql, values };
 }

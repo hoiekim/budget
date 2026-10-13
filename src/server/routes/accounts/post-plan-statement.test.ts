@@ -10,7 +10,7 @@ const db = {
   /** Live rows on the holding, as the refresh reads them inside the transaction. */
   live: [] as Row[],
   /** Holding snapshots already stored on the holding. */
-  snapshots: [] as { id: string; date: string; quantity: number }[],
+  snapshots: [] as { id: string; date: string; quantity: number; price?: number; cost?: number; value?: number }[],
   /** The holding's current holdings row, if any. */
   holdings: [] as Row[],
   /** Make the holdings write fail, as a deadlock victim would. */
@@ -114,7 +114,7 @@ const respond = async (sql: string): Promise<Row[]> => {
   }
   if (/FROM holdings\b/i.test(sql)) return db.holdings;
   if (/FROM snapshots\b/i.test(sql)) {
-    return db.snapshots.map(({ id, date, quantity }) => ({
+    return db.snapshots.map(({ id, date, quantity, price = 25, cost = quantity * 25, value = quantity * price }) => ({
       snapshot_id: id,
       user_id: "usr-1",
       snapshot_date: `${date}T12:00:00.000Z`,
@@ -128,9 +128,9 @@ const respond = async (sql: string): Promise<Row[]> => {
       close_price: null,
       holding_account_id: "acct-1",
       holding_security_id: "sec-index",
-      institution_price: 25,
-      institution_value: quantity * 25,
-      cost_basis: quantity * 25,
+      institution_price: price,
+      institution_value: value,
+      cost_basis: cost,
       quantity,
       updated: null,
       is_deleted: false,
@@ -173,8 +173,14 @@ const { pg, mockQuery, mockClientQuery, clearQueryMocks } = createFakePg(async (
 mock.module("pg", () => pg);
 
 const { postPlanStatementPreviewRoute, postPlanStatementImportRoute } = await import("./post-plan-statement");
-const { getRowIds, parsePlanStatement, polygonLookupRateLimiter, clearDailyClosesCache, peekDailyCloses } =
-  await import("server");
+const {
+  getRowIds,
+  parsePlanStatement,
+  polygonLookupRateLimiter,
+  clearDailyClosesCache,
+  peekDailyCloses,
+  planHoldingPositions,
+} = await import("server");
 
 afterAll(restoreLeaves);
 
@@ -361,16 +367,18 @@ describe("POST /plan-statement/import", () => {
 
     const calls = clientCalls();
     const commit = calls.findIndex((c) => c.sql === "COMMIT");
-    // The holding's rows and snapshots are read on the transaction, not the pool.
-    for (const read of [/FROM investment_transactions\b.*\bsecurity_id IN/is, /FROM snapshots\b/i, /FROM holdings\b/i]) {
-      const at = calls.findIndex((c) => read.test(c.sql));
-      expect(at).toBeGreaterThan(0);
-      expect(at).toBeLessThan(commit);
-    }
+    // Locked on the transaction in one order: transactions, snapshots by date and id, holdings.
+    const reads = [
+      /FROM investment_transactions\b.*\bsecurity_id IN.*ORDER BY investment_transaction_id FOR UPDATE$/is,
+      /FROM snapshots\b.*ORDER BY snapshot_date, snapshot_id FOR UPDATE$/is,
+      /FROM holdings\b.*ORDER BY holding_id FOR UPDATE$/is,
+    ].map((read) => calls.findIndex((c) => read.test(c.sql)));
+    expect(reads.every((at) => at > 0 && at < commit)).toBe(true);
+    expect(reads).toEqual([...reads].sort((a, b) => a - b));
     const snapshotInserts = calls.filter((c) => c.sql.includes("INSERT INTO snapshots"));
     expect(snapshotInserts).toHaveLength(1);
     const values = snapshotInserts[0].values;
-    expect(values).toContain("plan-holding-acct-1-sec-index-20260210");
+    expect(values.some((v) => typeof v === "string" && /^derived-holding-acct-1-sec-index-20260210-[0-9a-f]{12}$/.test(v))).toBe(true);
     expect(values).toContain("2026-02-10T12:00:00Z");
     expect(values).toContain("2026-03-02T12:00:00Z");
     // The hand-entered February buy counts toward March's position.
@@ -402,7 +410,7 @@ describe("POST /plan-statement/import", () => {
     expect(calls.find((c) => c.sql.includes("INSERT INTO holdings"))!.values).toContain(120);
   });
 
-  test("replacing writes the transactions' figures over the entered position", async () => {
+  test("replacing retires the entered position and uses the transactions' figures", async () => {
     db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
     db.snapshots = [enteredSnapshot("2026-01-15", 100)];
     await postPlanStatementImportRoute.callback(
@@ -410,26 +418,56 @@ describe("POST /plan-statement/import", () => {
       {} as never, () => {},
     );
     const calls = clientCalls();
-    const snapshotValues = calls.find((c) => c.sql.includes("INSERT INTO snapshots"))!.values;
-    const entered = snapshotValues.indexOf("holding-acct-1-sec-index-20260115");
-    expect(entered).toBeGreaterThanOrEqual(0);
-    expect(snapshotValues).not.toContain(120);
+    const retire = calls.find((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql));
+    expect(retire?.values).toContain("holding-acct-1-sec-index-20260115");
+    expect(calls.find((c) => c.sql.includes("INSERT INTO snapshots"))!.values).not.toContain(120);
     expect(calls.find((c) => c.sql.includes("INSERT INTO holdings"))!.values).toContain(20);
+  });
+
+  test("an entered position the statement's own rows explain isn't a gap", async () => {
+    db.snapshots = [enteredSnapshot("2026-03-02", 20)];
+    const preview = await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", importBody()), {} as never, () => {});
+    const fund = (preview as { body: { funds: { positionGaps?: unknown }[] } }).body.funds[0];
+    expect(fund.positionGaps).toBeUndefined();
+  });
+
+  test("retires a derived snapshot whose day no longer gets one", async () => {
+    db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
+    const old = planHoldingPositions({
+      account_id: "acct-1",
+      security_id: "sec-index",
+      movements: [{ date: "2026-02-20", type: "buy", quantity: 5, amount: 250, price: 50 } as never],
+      stored: [],
+      throughMonth: "2026-02",
+      replace: false,
+    }).writes[0];
+    db.snapshots = [{ id: old.snapshot_id, date: "2026-02-20", quantity: 5, price: 50, cost: 250, value: 250 }];
+    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
+    const calls = clientCalls();
+    const retire = calls.findIndex((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql));
+    expect(retire).toBeGreaterThan(0);
+    expect(calls[retire].values).toContain(old.snapshot_id);
+    expect(retire).toBeLessThan(calls.findIndex((c) => c.sql === "COMMIT"));
   });
 
   test("writes nothing for a holding whose snapshots and row are already right", async () => {
     db.live = [liveRow("plan-x", "2026-03-02", 20, 500)];
     const thisMonth = new Date().toISOString().slice(0, 7);
-    const months: string[] = [];
-    for (let m = "2026-04"; m <= thisMonth; ) {
-      months.push(m);
-      const [y, mo] = m.split("-").map(Number);
-      m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
-    }
-    db.snapshots = ["2026-03-02", ...months.map((m) => `${m}-01`)].map((date) => ({
-      id: `plan-holding-acct-1-sec-index-${date.replaceAll("-", "")}`,
-      date,
-      quantity: 20,
+    const expected = planHoldingPositions({
+      account_id: "acct-1",
+      security_id: "sec-index",
+      movements: [{ date: "2026-03-02", type: "buy", quantity: 20, amount: 500, price: 25 } as never],
+      stored: [],
+      throughMonth: thisMonth,
+      replace: false,
+    });
+    db.snapshots = expected.writes.map((w) => ({
+      id: w.snapshot_id,
+      date: w.snapshot_date.slice(0, 10),
+      quantity: w.quantity!,
+      price: w.institution_price!,
+      cost: w.cost_basis!,
+      value: w.institution_value!,
     }));
     db.holdings = [
       {
@@ -438,7 +476,7 @@ describe("POST /plan-statement/import", () => {
         account_id: "acct-1",
         security_id: "sec-index",
         institution_price: 25,
-        institution_price_as_of: `${thisMonth}-01`,
+        institution_price_as_of: expected.final!.date,
         institution_value: 500,
         cost_basis: 500,
         quantity: 20,
@@ -449,7 +487,7 @@ describe("POST /plan-statement/import", () => {
       },
     ];
     await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
-    expect(writes().some((sql) => /INSERT INTO (snapshots|holdings)/.test(sql))).toBe(false);
+    expect(writes().some((sql) => /INSERT INTO (snapshots|holdings)|UPDATE snapshots SET is_deleted/.test(sql))).toBe(false);
   });
 
   test("a failing holdings write fails the import instead of committing", async () => {

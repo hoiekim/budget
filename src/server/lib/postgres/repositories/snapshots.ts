@@ -296,18 +296,26 @@ export const upsertHoldingSnapshots = async (
   return results;
 };
 
-/** Live holding snapshots for some of an account's securities, read on `client`. */
+/**
+ * Live holding snapshots for some of an account's securities, in date order.
+ * With `forUpdate`, locked on `client` until its transaction ends.
+ */
 export const getHoldingSnapshotsForSecurities = async (
   user: MaskedUser,
   account_id: string,
   security_ids: string[],
-  client?: QueryExecutor,
+  options: { client?: QueryExecutor; forUpdate?: boolean } = {},
 ): Promise<HoldingSnapshot[]> => {
   if (!security_ids.length) return [];
   const snapshots = await snapshotsTable.query(
     { [SNAPSHOT_TYPE]: "holding", [HOLDING_ACCOUNT_ID]: account_id },
-    { user_id: user.user_id, inFilters: { [HOLDING_SECURITY_ID]: security_ids }, orderBy: SNAPSHOT_DATE },
-    client,
+    {
+      user_id: user.user_id,
+      inFilters: { [HOLDING_SECURITY_ID]: security_ids },
+      orderBy: `${SNAPSHOT_DATE}, ${SNAPSHOT_ID}`,
+      forUpdate: options.forUpdate,
+    },
+    options.client,
   );
   return snapshots.map((s) => ({
     snapshot_id: s.snapshot_id,

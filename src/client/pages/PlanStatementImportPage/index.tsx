@@ -52,13 +52,13 @@ const formatUnits = (n: number) => Number(n.toFixed(4)).toString();
 const describeGaps = (gaps: PositionGap[], replacing: boolean) => {
   const shown = gaps
     .slice(0, 3)
-    .map((g) => `${formatUnits(g.stored)} units on ${g.date} (transactions explain ${formatUnits(g.explained)})`)
+    .map((g) => `${formatUnits(g.stored)} units on ${g.date} (${formatUnits(g.explained)} expected from earlier rows)`)
     .join("; ");
   const more = gaps.length > 3 ? ` and ${gaps.length - 3} more` : "";
   const outcome = replacing
-    ? "They'll be replaced with the transactions' figures."
-    : "They're kept, and the statement's rows are added to them.";
-  return `This holding has entered positions the transactions don't explain: ${shown}${more}. ${outcome}`;
+    ? "They'll be removed, and the holding will follow the transactions alone."
+    : "They're kept, and later transactions apply on top of them.";
+  return `This holding has entered positions that earlier transactions and entries don't explain: ${shown}${more}. ${outcome}`;
 };
 
 const describeRow = (row: PlannedRow) =>

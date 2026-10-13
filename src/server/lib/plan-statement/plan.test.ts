@@ -7,12 +7,8 @@ import {
   classifyRow,
   closeOnOrBefore,
   FundMapping,
-  getMonthOpeningPositions,
-  getDailyPositions,
   getRowIds,
   PlanInput,
-  planHolding,
-  StoredHoldingSnapshot,
 } from "./plan";
 
 const row = (over: Partial<StatementRow>): StatementRow => ({
@@ -359,6 +355,29 @@ describe("buildImportPlan", () => {
     expect(skipped.transactions.filter((t) => t.transaction.type === "buy")).toHaveLength(2);
   });
 
+  test("the band counts the rows this statement already wrote, so one new row can still be checked", () => {
+    const bars: DailyClose[] = [
+      { date: "2026-03-02", close: 50, adjustedClose: 40 },
+      { date: "2026-03-16", close: 52, adjustedClose: 42 },
+    ];
+    const rows = [
+      row({ investment: "EXAMPLE TRUST", date: "2026-03-02", amount: 80, shares: 4 }),
+      row({ investment: "EXAMPLE TRUST", date: "2026-03-16", amount: 84, shares: 4 }),
+    ];
+    const [importedId] = getRowIds("acct-1", rows);
+    const plan = buildImportPlan(
+      input({
+        rows,
+        mappings: new Map([["EXAMPLE TRUST", TRUST]]),
+        closes: new Map([["EXAMPLE TRUST", bars]]),
+        existingIds: new Set([importedId]),
+      }),
+    );
+    expect(plan.rows.map((r) => r.status)).toEqual(["imported", "new"]);
+    expect(plan.funds[0].restatement).toMatchObject({ ok: true });
+    expect(plan.blockers).toEqual([]);
+  });
+
   test("a decision can't override a row the rules already classify", () => {
     const rows = [row({})];
     const [id] = getRowIds("acct-1", rows);
@@ -377,148 +396,5 @@ describe("buildImportPlan", () => {
   test("an unmapped fund whose rows are all imported or skipped doesn't block", () => {
     const rows = [row({ investment: "UNMAPPED FUND", label: "Transfers", amount: 0, shares: 0 })];
     expect(buildImportPlan(input({ rows })).blockers).toEqual([]);
-  });
-});
-
-describe("getDailyPositions", () => {
-  const tx = (date: string, type: string, quantity: number, amount: number, price: number) =>
-    ({ date, type, quantity, amount, price }) as Parameters<typeof getDailyPositions>[0][number];
-
-  test("walks buys and sells in date order with average cost, ignoring cash rows", () => {
-    const positions = getDailyPositions([
-      tx("2026-03-16", "sell", -5, -300, 60),
-      tx("2026-03-02", "buy", 10, 500, 50),
-      tx("2026-03-02", "cash", 0, -500, 0),
-      tx("2026-03-30", "buy", 2, 130, 65),
-    ]);
-    expect(Array.from(positions.keys())).toEqual(["2026-03-02", "2026-03-16", "2026-03-30"]);
-    expect(positions.get("2026-03-02")).toEqual({ quantity: 10, costBasis: 500, price: 50 });
-    // Selling half removes half the basis, not the proceeds.
-    expect(positions.get("2026-03-16")).toEqual({ quantity: 5, costBasis: 250, price: 60 });
-    expect(positions.get("2026-03-30")).toEqual({ quantity: 7, costBasis: 380, price: 65 });
-  });
-
-  test("every month after the first movement gets the position it opened with, through the given month", () => {
-    const positions = getDailyPositions([
-      tx("2026-01-20", "buy", 10, 500, 50),
-      tx("2026-03-05", "buy", 2, 110, 55),
-    ]);
-    expect(getMonthOpeningPositions(positions, "2026-05")).toEqual([
-      { date: "2026-02-01", position: { quantity: 10, costBasis: 500, price: 50 } },
-      { date: "2026-03-01", position: { quantity: 10, costBasis: 500, price: 50 } },
-      { date: "2026-04-01", position: { quantity: 12, costBasis: 610, price: 55 } },
-      { date: "2026-05-01", position: { quantity: 12, costBasis: 610, price: 55 } },
-    ]);
-  });
-
-  test("a closed position opens later months at zero, so an earlier run's figure doesn't survive", () => {
-    const positions = getDailyPositions([tx("2026-01-20", "buy", 1, 50, 50), tx("2026-01-25", "sell", -1, -55, 55)]);
-    expect(getMonthOpeningPositions(positions, "2026-03").map((o) => [o.date, o.position.quantity])).toEqual([
-      ["2026-02-01", 0],
-      ["2026-03-01", 0],
-    ]);
-  });
-
-  test("a movement on the 1st is that day's snapshot, not an opening one", () => {
-    const positions = getDailyPositions([tx("2026-01-20", "buy", 1, 50, 50), tx("2026-02-01", "buy", 1, 50, 50)]);
-    expect(getMonthOpeningPositions(positions, "2026-02")).toEqual([]);
-  });
-
-  test("two movements on one day report the end-of-day position", () => {
-    const positions = getDailyPositions([tx("2026-03-02", "buy", 1, 50, 50), tx("2026-03-02", "buy", 2, 100, 50)]);
-    expect(positions.get("2026-03-02")?.quantity).toBe(3);
-  });
-});
-
-describe("planHolding", () => {
-  const tx = (date: string, type: string, quantity: number, amount: number, price: number) =>
-    ({ date, type, quantity, amount, price }) as Parameters<typeof planHolding>[0]["movements"][number];
-  const plan = (over: Partial<Parameters<typeof planHolding>[0]>) =>
-    planHolding({ account_id: "acct-1", security_id: "sec-1", movements: [], stored: [], throughMonth: "2027-01", replace: false, ...over });
-  const asStored = (writes: ReturnType<typeof planHolding>["writes"]): StoredHoldingSnapshot[] =>
-    writes.map((w) => ({
-      snapshot_id: w.snapshot_id,
-      date: w.snapshot_date.slice(0, 10),
-      quantity: w.quantity!,
-      cost_basis: w.cost_basis ?? null,
-      institution_price: w.institution_price ?? null,
-    }));
-  const statement = [
-    tx("2026-10-06", "buy", 10, 500, 50),
-    tx("2026-11-03", "buy", 2, 104, 52),
-    // Another writer's row, in a month the statement never touches.
-    tx("2026-12-18", "buy", 0.5, 27, 54),
-  ];
-
-  test("a snapshot on each movement day and each month's 1st, under the derived prefix, at noon UTC", () => {
-    const { writes, gaps, latest } = plan({ movements: statement });
-    expect(gaps).toEqual([]);
-    expect(writes.map((s) => [s.snapshot_id, s.snapshot_date, s.quantity])).toEqual([
-      ["plan-holding-acct-1-sec-1-20261006", "2026-10-06T12:00:00Z", 10],
-      ["plan-holding-acct-1-sec-1-20261101", "2026-11-01T12:00:00Z", 10],
-      ["plan-holding-acct-1-sec-1-20261103", "2026-11-03T12:00:00Z", 12],
-      ["plan-holding-acct-1-sec-1-20261201", "2026-12-01T12:00:00Z", 12],
-      ["plan-holding-acct-1-sec-1-20261218", "2026-12-18T12:00:00Z", 12.5],
-      ["plan-holding-acct-1-sec-1-20270101", "2027-01-01T12:00:00Z", 12.5],
-    ]);
-    expect(writes[4]).toMatchObject({ cost_basis: 631, institution_price: 54, institution_value: 12.5 * 54 });
-    expect(latest).toEqual({ date: "2027-01-01", position: { quantity: 12.5, costBasis: 631, price: 54 } });
-  });
-
-  test("writes only what changed, and retires derived snapshots no longer produced", () => {
-    const first = plan({ movements: statement });
-    expect(plan({ movements: statement, stored: asStored(first.writes) }).writes).toEqual([]);
-
-    // The November row is gone: its day's snapshot is retired, later figures move.
-    const without = [statement[0], statement[2]];
-    const second = plan({ movements: without, stored: asStored(first.writes) });
-    expect(second.stale).toEqual(["plan-holding-acct-1-sec-1-20261103"]);
-    expect(second.writes.map((w) => [w.snapshot_id, w.quantity])).toEqual([
-      ["plan-holding-acct-1-sec-1-20261201", 10],
-      ["plan-holding-acct-1-sec-1-20261218", 10.5],
-      ["plan-holding-acct-1-sec-1-20270101", 10.5],
-    ]);
-  });
-
-  const entered: StoredHoldingSnapshot = {
-    snapshot_id: "holding-acct-1-sec-1-20261001",
-    date: "2026-10-01",
-    quantity: 100,
-    cost_basis: 300,
-    institution_price: 48,
-  };
-
-  test("an entered position the transactions don't explain is reported and kept, with the movements added to it", () => {
-    const { gaps, writes, latest } = plan({ movements: statement, stored: [entered] });
-    expect(gaps).toEqual([{ date: "2026-10-01", stored: 100, explained: 0 }]);
-    expect(writes.some((w) => w.snapshot_id === entered.snapshot_id)).toBe(false);
-    expect(writes.find((w) => w.snapshot_id.endsWith("20261103"))).toMatchObject({ quantity: 112, cost_basis: 904 });
-    expect(latest!.position.quantity).toBe(112.5);
-  });
-
-  test("replacing rewrites the entered snapshot to the transactions' figures", () => {
-    const { gaps, writes, latest } = plan({ movements: statement, stored: [entered], replace: true });
-    expect(gaps).toEqual([{ date: "2026-10-01", stored: 100, explained: 0 }]);
-    expect(writes.find((w) => w.snapshot_id === entered.snapshot_id)).toMatchObject({ quantity: 0 });
-    expect(latest!.position.quantity).toBe(12.5);
-  });
-
-  test("an entered position the transactions do explain is no gap and isn't rewritten", () => {
-    const matching = { ...entered, date: "2026-11-05", snapshot_id: "holding-acct-1-sec-1-20261105", quantity: 12, cost_basis: 604 };
-    const { gaps, writes } = plan({ movements: statement, stored: [matching] });
-    expect(gaps).toEqual([]);
-    expect(writes.some((w) => w.snapshot_id === matching.snapshot_id)).toBe(false);
-  });
-
-  test("every month from the first movement through the given month has a snapshot", () => {
-    const { writes } = plan({ movements: [tx("2026-01-20", "buy", 1, 50, 50)], throughMonth: "2026-06" });
-    expect(Array.from(new Set(writes.map((s) => s.snapshot_date.slice(0, 7))))).toEqual([
-      "2026-01",
-      "2026-02",
-      "2026-03",
-      "2026-04",
-      "2026-05",
-      "2026-06",
-    ]);
   });
 });

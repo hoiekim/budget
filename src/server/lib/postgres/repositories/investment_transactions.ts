@@ -10,6 +10,7 @@ import {
   ACCOUNT_ID,
   USER_ID,
   DATE,
+  SECURITY_ID,
   QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
@@ -42,6 +43,29 @@ export const getInvestmentTransactions = async (
       limit: options.limit,
       offset: options.offset,
     },
+  );
+  return models.map((m) => m.toJSON());
+};
+
+/**
+ * Live investment transactions on some of an account's securities. With
+ * `forUpdate`, locked on `client` until its transaction ends.
+ */
+export const getInvestmentTransactionsForSecurities = async (
+  user: MaskedUser,
+  account_id: string,
+  security_ids: string[],
+  options: { client?: QueryExecutor; forUpdate?: boolean } = {},
+): Promise<JSONInvestmentTransaction[]> => {
+  if (!security_ids.length) return [];
+  const models = await investmentTransactionsTable.query(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id },
+    {
+      inFilters: { [SECURITY_ID]: security_ids },
+      orderBy: INVESTMENT_TRANSACTION_ID,
+      forUpdate: options.forUpdate,
+    },
+    options.client,
   );
   return models.map((m) => m.toJSON());
 };
