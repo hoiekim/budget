@@ -57,15 +57,24 @@ const parseRequest = (req: ServerRequest): ParsedRequest => {
     }
   }
 
+  const replacePositions: string[] = [];
+  if (body.replacePositions !== undefined) {
+    if (!Array.isArray(body.replacePositions) || body.replacePositions.some((f) => typeof f !== "string")) {
+      return { ok: false, message: "replacePositions must be an array of fund names" };
+    }
+    replacePositions.push(...(body.replacePositions as string[]));
+  }
+
   return {
     ok: true,
-    request: { account_id: accountResult.data!, csv: csvResult.data!, mappings, decisions },
+    request: { account_id: accountResult.data!, csv: csvResult.data!, mappings, decisions, replacePositions },
   };
 };
 
 /**
  * POST /plan-statement/preview
- * Body: { account_id, csv, mappings?: [{ investment, security_id, restated }], decisions?: { [row id]: decision } }
+ * Body: { account_id, csv, mappings?: [{ investment, security_id, restated }],
+ *         decisions?: { [row id]: decision }, replacePositions?: [investment] }
  * Reads a plan statement against the account without writing anything.
  */
 export const postPlanStatementPreviewRoute = new Route<PlanStatementPreview>(

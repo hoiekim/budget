@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
 import { restoreFetch, restoreEnv } from "test-helpers";
 import {
   adjustForDividends,
@@ -211,5 +211,36 @@ describe("getDailyCloses", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(peekDailyCloses("XPUB", "2026-03-02", "2026-03-02")).toMatchObject({ success: true });
+  });
+
+  it("a busy gate isn't remembered as a failure, so the next ask can try again", async () => {
+    mockFetch((url) => (url.includes("polygon.io") ? { body: { status: "OK" } } : { status: 429, body: {} }));
+    expect(await getDailyCloses("XBUSY", "2026-03-02", "2026-03-02")).toMatchObject({ error: "rate_limited" });
+    expect(peekDailyCloses("XBUSY", "2026-03-02", "2026-03-02")).toBeUndefined();
+  });
+
+  it("one wait budget covers both Polygon calls", async () => {
+    mockFetch((url) => ({
+      body: url.includes("/v2/aggs/") ? { status: "OK", results: [{ c: 100, t: polygonTs(2026, 3, 2) }] } : { status: "OK", results: [] },
+    }));
+    const slowFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return slowFetch(url);
+    }) as unknown as typeof fetch;
+    const waits: (number | undefined)[] = [];
+    const add = polygonQueue.add.bind(polygonQueue);
+    const spy = spyOn(polygonQueue, "add").mockImplementation((task, options) => {
+      waits.push(options?.maxWaitMs);
+      return add(task, options);
+    });
+    try {
+      await getDailyCloses("XPUB", "2026-03-02", "2026-03-02", { maxWaitMs: 1000 });
+    } finally {
+      spy.mockRestore();
+    }
+    // The dividends call gets what's left after the bars call, not a fresh budget.
+    expect(waits[0]).toBeGreaterThan(990);
+    expect(waits[1]).toBeLessThan(750);
   });
 });

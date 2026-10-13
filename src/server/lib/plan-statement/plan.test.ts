@@ -6,12 +6,13 @@ import {
   checkRestatement,
   classifyRow,
   closeOnOrBefore,
-  buildHoldingSnapshots,
   FundMapping,
   getMonthOpeningPositions,
   getDailyPositions,
   getRowIds,
   PlanInput,
+  planHolding,
+  StoredHoldingSnapshot,
 } from "./plan";
 
 const row = (over: Partial<StatementRow>): StatementRow => ({
@@ -126,27 +127,64 @@ describe("checkRestatement", () => {
     expect(result.spread!).toBeLessThan(0.0239);
   });
 
-  test("small rows whose rounded shares move the unit price past the band on their own still pass", () => {
-    // $2.10 at 0.041 and 0.040 shares: 51.22 and 52.50 a unit, 2.5% apart as
-    // printed, but both are 51.85 within their ±0.0005-share rounding.
+  const flat: DailyClose[] = [
+    { date: "2026-03-02", close: 50, adjustedClose: 42 },
+    { date: "2026-03-16", close: 52, adjustedClose: 42 },
+  ];
+
+  test("small rows whose rounding alone moves the unit price past the band aren't measured", () => {
+    // $2.10 at 0.041 and 0.040 units print 2.5% apart; each row's rounding is
+    // over 1%, so neither is measured and the two precise rows decide.
     const result = checkRestatement(
       [
         row({ date: "2026-03-02", amount: -2.1, shares: -0.041, shareRounding: 0.0005 }),
         row({ date: "2026-03-02", amount: -2.1, shares: -0.04, shareRounding: 0.0005 }),
-        row({ date: "2026-03-16", amount: 103.7, shares: 2, shareRounding: 0.0005 }),
+        row({ date: "2026-03-02", amount: 103.7, shares: 2, shareRounding: 0.0005 }),
+        row({ date: "2026-03-16", amount: 207.4, shares: 4, shareRounding: 0.0005 }),
       ],
-      [
-        { date: "2026-03-02", close: 50, adjustedClose: 42 },
-        { date: "2026-03-16", close: 52, adjustedClose: 42 },
-      ],
+      flat,
       "XPUB",
     );
     expect(result.ok).toBe(true);
   });
 
-  test("a row whose shares are too coarse to price anything isn't measured", () => {
-    const result = checkRestatement([row({ shares: 0.0004, shareRounding: 0.0005 })], [{ date: "2026-03-02", close: 50, adjustedClose: 40 }], "XPUB");
-    expect(result).toMatchObject({ ok: false, message: "No row carries a unit price precise enough to check" });
+  test("whole-share figures can't confirm a restatement, even with 12% drift hidden in them", () => {
+    const rows = [
+      row({ date: "2026-03-02", amount: 420, shares: 10, shareRounding: 0.5 }),
+      row({ date: "2026-03-02", amount: 453.6, shares: 10, shareRounding: 0.5 }),
+      row({ date: "2026-03-16", amount: 470.4, shares: 10, shareRounding: 0.5 }),
+    ];
+    expect(checkRestatement(rows, flat, "XPUB")).toMatchObject({
+      ok: false,
+      message: "Too few rows give shares precisely enough to check the restatement (0 of 3)",
+    });
+    // The same rows printed to three decimals are measured, and refused for the drift.
+    const precise = checkRestatement(rows.map((r) => ({ ...r, shareRounding: 0.0005 })), flat, "XPUB");
+    expect(precise.ok).toBe(false);
+    expect(precise.spread!).toBeGreaterThan(0.11);
+  });
+
+  test("a row whose dollar amount is too small to price precisely isn't measured", () => {
+    const result = checkRestatement(
+      [
+        row({ date: "2026-03-02", amount: 1.5, shares: 0.033, shareRounding: 0.0000005 }),
+        row({ date: "2026-03-02", amount: 103.7, shares: 2, shareRounding: 0.0005 }),
+        row({ date: "2026-03-16", amount: 207.4, shares: 4, shareRounding: 0.0005 }),
+      ],
+      flat,
+      "XPUB",
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("one measurable row confirms nothing", () => {
+    const result = checkRestatement(
+      [row({ date: "2026-03-02", amount: 103.7, shares: 2, shareRounding: 0.0005 })],
+      flat,
+      "XPUB",
+    );
+    expect(result).toMatchObject({ ok: false, spread: null });
+    expect(result.message).toContain("Too few rows");
   });
 
   test("a row with no close near its date refuses", () => {
@@ -392,36 +430,95 @@ describe("getDailyPositions", () => {
   });
 });
 
-describe("buildHoldingSnapshots", () => {
+describe("planHolding", () => {
   const tx = (date: string, type: string, quantity: number, amount: number, price: number) =>
-    ({ date, type, quantity, amount, price }) as Parameters<typeof buildHoldingSnapshots>[2][number];
+    ({ date, type, quantity, amount, price }) as Parameters<typeof planHolding>[0]["movements"][number];
+  const plan = (over: Partial<Parameters<typeof planHolding>[0]>) =>
+    planHolding({ account_id: "acct-1", security_id: "sec-1", movements: [], stored: [], throughMonth: "2027-01", replace: false, ...over });
+  const asStored = (writes: ReturnType<typeof planHolding>["writes"]): StoredHoldingSnapshot[] =>
+    writes.map((w) => ({
+      snapshot_id: w.snapshot_id,
+      date: w.snapshot_date.slice(0, 10),
+      quantity: w.quantity!,
+      cost_basis: w.cost_basis ?? null,
+      institution_price: w.institution_price ?? null,
+    }));
+  const statement = [
+    tx("2026-10-06", "buy", 10, 500, 50),
+    tx("2026-11-03", "buy", 2, 104, 52),
+    // Another writer's row, in a month the statement never touches.
+    tx("2026-12-18", "buy", 0.5, 27, 54),
+  ];
 
-  test("one snapshot per movement day and per month opening, stamped at noon UTC under the app's ids", () => {
-    const snapshots = buildHoldingSnapshots(
-      "acct-1",
-      "sec-1",
-      [
-        tx("2026-10-06", "buy", 10, 500, 50),
-        tx("2026-11-03", "buy", 2, 104, 52),
-        // Another writer's row, in a month the statement never touches.
-        tx("2026-12-18", "buy", 0.5, 27, 54),
-      ],
-      "2027-01",
-    );
-    expect(snapshots.map((s) => [s.snapshot_id, s.snapshot_date, s.quantity])).toEqual([
-      ["holding-acct-1-sec-1-20261006", "2026-10-06T12:00:00Z", 10],
-      ["holding-acct-1-sec-1-20261101", "2026-11-01T12:00:00Z", 10],
-      ["holding-acct-1-sec-1-20261103", "2026-11-03T12:00:00Z", 12],
-      ["holding-acct-1-sec-1-20261201", "2026-12-01T12:00:00Z", 12],
-      ["holding-acct-1-sec-1-20261218", "2026-12-18T12:00:00Z", 12.5],
-      ["holding-acct-1-sec-1-20270101", "2027-01-01T12:00:00Z", 12.5],
+  test("a snapshot on each movement day and each month's 1st, under the derived prefix, at noon UTC", () => {
+    const { writes, gaps, latest } = plan({ movements: statement });
+    expect(gaps).toEqual([]);
+    expect(writes.map((s) => [s.snapshot_id, s.snapshot_date, s.quantity])).toEqual([
+      ["plan-holding-acct-1-sec-1-20261006", "2026-10-06T12:00:00Z", 10],
+      ["plan-holding-acct-1-sec-1-20261101", "2026-11-01T12:00:00Z", 10],
+      ["plan-holding-acct-1-sec-1-20261103", "2026-11-03T12:00:00Z", 12],
+      ["plan-holding-acct-1-sec-1-20261201", "2026-12-01T12:00:00Z", 12],
+      ["plan-holding-acct-1-sec-1-20261218", "2026-12-18T12:00:00Z", 12.5],
+      ["plan-holding-acct-1-sec-1-20270101", "2027-01-01T12:00:00Z", 12.5],
     ]);
-    expect(snapshots[4]).toMatchObject({ cost_basis: 631, institution_price: 54, institution_value: 12.5 * 54 });
+    expect(writes[4]).toMatchObject({ cost_basis: 631, institution_price: 54, institution_value: 12.5 * 54 });
+    expect(latest).toEqual({ date: "2027-01-01", position: { quantity: 12.5, costBasis: 631, price: 54 } });
+  });
+
+  test("writes only what changed, and retires derived snapshots no longer produced", () => {
+    const first = plan({ movements: statement });
+    expect(plan({ movements: statement, stored: asStored(first.writes) }).writes).toEqual([]);
+
+    // The November row is gone: its day's snapshot is retired, later figures move.
+    const without = [statement[0], statement[2]];
+    const second = plan({ movements: without, stored: asStored(first.writes) });
+    expect(second.stale).toEqual(["plan-holding-acct-1-sec-1-20261103"]);
+    expect(second.writes.map((w) => [w.snapshot_id, w.quantity])).toEqual([
+      ["plan-holding-acct-1-sec-1-20261201", 10],
+      ["plan-holding-acct-1-sec-1-20261218", 10.5],
+      ["plan-holding-acct-1-sec-1-20270101", 10.5],
+    ]);
+  });
+
+  const entered: StoredHoldingSnapshot = {
+    snapshot_id: "holding-acct-1-sec-1-20261001",
+    date: "2026-10-01",
+    quantity: 100,
+    cost_basis: 300,
+    institution_price: 48,
+  };
+
+  test("an entered position the transactions don't explain is reported and kept, with the movements added to it", () => {
+    const { gaps, writes, latest } = plan({ movements: statement, stored: [entered] });
+    expect(gaps).toEqual([{ date: "2026-10-01", stored: 100, explained: 0 }]);
+    expect(writes.some((w) => w.snapshot_id === entered.snapshot_id)).toBe(false);
+    expect(writes.find((w) => w.snapshot_id.endsWith("20261103"))).toMatchObject({ quantity: 112, cost_basis: 904 });
+    expect(latest!.position.quantity).toBe(112.5);
+  });
+
+  test("replacing rewrites the entered snapshot to the transactions' figures", () => {
+    const { gaps, writes, latest } = plan({ movements: statement, stored: [entered], replace: true });
+    expect(gaps).toEqual([{ date: "2026-10-01", stored: 100, explained: 0 }]);
+    expect(writes.find((w) => w.snapshot_id === entered.snapshot_id)).toMatchObject({ quantity: 0 });
+    expect(latest!.position.quantity).toBe(12.5);
+  });
+
+  test("an entered position the transactions do explain is no gap and isn't rewritten", () => {
+    const matching = { ...entered, date: "2026-11-05", snapshot_id: "holding-acct-1-sec-1-20261105", quantity: 12, cost_basis: 604 };
+    const { gaps, writes } = plan({ movements: statement, stored: [matching] });
+    expect(gaps).toEqual([]);
+    expect(writes.some((w) => w.snapshot_id === matching.snapshot_id)).toBe(false);
   });
 
   test("every month from the first movement through the given month has a snapshot", () => {
-    const snapshots = buildHoldingSnapshots("a", "s", [tx("2026-01-20", "buy", 1, 50, 50)], "2026-06");
-    const months = new Set(snapshots.map((s) => s.snapshot_date.slice(0, 7)));
-    expect(Array.from(months)).toEqual(["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]);
+    const { writes } = plan({ movements: [tx("2026-01-20", "buy", 1, 50, 50)], throughMonth: "2026-06" });
+    expect(Array.from(new Set(writes.map((s) => s.snapshot_date.slice(0, 7))))).toEqual([
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+    ]);
   });
 });

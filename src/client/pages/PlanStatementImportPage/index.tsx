@@ -17,6 +17,7 @@ import type {
   Decision,
   ImportKind,
   PlannedRow,
+  PositionGap,
   PlanStatementImportResult,
   PlanStatementPreview,
   ValidateTickerResponse,
@@ -42,6 +43,24 @@ interface FundEdit {
 
 const formatAmount = (n: number) => `$ ${numberToCommaString(n)}`;
 
+const formatUnits = (n: number) => Number(n.toFixed(4)).toString();
+
+/**
+ * The positions someone entered that the statement's transactions don't
+ * explain, and what happens to them by default.
+ */
+const describeGaps = (gaps: PositionGap[], replacing: boolean) => {
+  const shown = gaps
+    .slice(0, 3)
+    .map((g) => `${formatUnits(g.stored)} units on ${g.date} (transactions explain ${formatUnits(g.explained)})`)
+    .join("; ");
+  const more = gaps.length > 3 ? ` and ${gaps.length - 3} more` : "";
+  const outcome = replacing
+    ? "They'll be replaced with the transactions' figures."
+    : "They're kept, and the statement's rows are added to them.";
+  return `This holding has entered positions the transactions don't explain: ${shown}${more}. ${outcome}`;
+};
+
 const describeRow = (row: PlannedRow) =>
   `${row.date} · ${row.investment} · ${row.label} · ${formatAmount(row.amount)} · ${row.shares} sh`;
 
@@ -54,37 +73,52 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const [fileName, setFileName] = useState("");
   const [edits, setEdits] = useState<Record<string, FundEdit>>({});
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [replacePositions, setReplacePositions] = useState<string[]>([]);
   const [preview, setPreview] = useState<PlanStatementPreview | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
   // Previews can overlap while closes load; only the latest one may land.
   const previewSeq = useRef(0);
-
-  const requestBody = (
-    nextCsv: string,
-    nextEdits: Record<string, FundEdit>,
-    nextDecisions: Record<string, Decision>,
-  ) => ({
-    account_id: accountId,
-    csv: nextCsv,
-    mappings: Object.entries(nextEdits)
-      .filter(([, e]) => e.security_id)
-      .map(([investment, e]) => ({ investment, security_id: e.security_id, restated: e.restated })),
-    decisions: nextDecisions,
+  // The form as of the latest edit. Handlers that await (a ticker lookup) read
+  // it afterwards instead of the values they started with, so an edit made in
+  // the meantime isn't written back over.
+  const form = useRef({
+    csv: null as string | null,
+    edits: {} as Record<string, FundEdit>,
+    decisions: {} as Record<string, Decision>,
+    replacePositions: [] as string[],
   });
 
-  const runPreview = async (
-    nextCsv: string,
-    nextEdits: Record<string, FundEdit>,
-    nextDecisions: Record<string, Decision>,
-  ) => {
+  const changeEdits = (change: (current: Record<string, FundEdit>) => Record<string, FundEdit>) => {
+    form.current.edits = change(form.current.edits);
+    setEdits(form.current.edits);
+  };
+
+  const updateEdit = (investment: string, patch: Partial<FundEdit>) =>
+    changeEdits((current) => ({
+      ...current,
+      [investment]: { ...(current[investment] ?? { ticker: "", security_id: null, restated: false }), ...patch },
+    }));
+
+  const requestBody = () => {
+    const { csv, edits, decisions, replacePositions } = form.current;
+    return {
+      account_id: accountId,
+      csv,
+      mappings: Object.entries(edits)
+        .filter(([, e]) => e.security_id)
+        .map(([investment, e]) => ({ investment, security_id: e.security_id, restated: e.restated })),
+      decisions,
+      replacePositions,
+    };
+  };
+
+  const runPreview = async () => {
+    if (!form.current.csv) return;
     const seq = ++previewSeq.current;
     setBusy(true);
-    const r = await call.post<PlanStatementPreview>(
-      "/api/plan-statement/preview",
-      requestBody(nextCsv, nextEdits, nextDecisions),
-    );
+    const r = await call.post<PlanStatementPreview>("/api/plan-statement/preview", requestBody());
     if (seq !== previewSeq.current) return;
     setBusy(false);
     if (r.status !== "success" || !r.body) {
@@ -97,7 +131,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     // Funds the account already maps come back with their mapping; seed the
     // ones not yet edited so their ticker shows and later previews send them.
     const funds = r.body.funds;
-    setEdits((current) => {
+    changeEdits((current) => {
       const seeded = { ...current };
       for (const fund of funds) {
         if (seeded[fund.investment] || !fund.mapping) continue;
@@ -115,60 +149,58 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
+    form.current = { ...form.current, csv: text, decisions: {}, replacePositions: [] };
     setFileName(file.name);
     setCsv(text);
     setResult("");
     setDecisions({});
-    await runPreview(text, edits, {});
-  };
-
-  const updateEdit = (investment: string, patch: Partial<FundEdit>) => {
-    const current = edits[investment] ?? { ticker: "", security_id: null, restated: false };
-    const next = { ...edits, [investment]: { ...current, ...patch } };
-    setEdits(next);
-    return next;
+    setReplacePositions([]);
+    await runPreview();
   };
 
   const onBlurTicker = (investment: string) => async () => {
-    const edit = edits[investment];
-    const ticker = edit?.ticker.trim().toUpperCase() ?? "";
-    if (!ticker || !csv) return;
+    const before = form.current.edits[investment];
+    const ticker = before?.ticker.trim().toUpperCase() ?? "";
+    if (!ticker || !form.current.csv) return;
     const r = await call.post<ValidateTickerResponse>("/api/validate-ticker", { ticker_symbol: ticker });
+    // The user may have typed another ticker while this one was checked.
+    if ((form.current.edits[investment]?.ticker.trim().toUpperCase() ?? "") !== ticker) return;
     if (r.status === "success" && r.body?.valid && r.body.security) {
-      if (r.body.security.security_id === edit?.security_id) return;
-      const next = updateEdit(investment, {
-        ticker,
-        security_id: r.body.security.security_id,
-        error: undefined,
-      });
-      await runPreview(csv, next, decisions);
+      if (r.body.security.security_id === form.current.edits[investment]?.security_id) return;
+      updateEdit(investment, { ticker, security_id: r.body.security.security_id, error: undefined });
+      await runPreview();
     } else {
       updateEdit(investment, { error: r.body?.message ?? r.message ?? "Invalid ticker" });
     }
   };
 
   const onToggleRestated = (investment: string) => async () => {
-    if (!csv) return;
-    const next = updateEdit(investment, { restated: !edits[investment]?.restated });
-    if (next[investment].security_id) await runPreview(csv, next, decisions);
+    updateEdit(investment, { restated: !form.current.edits[investment]?.restated });
+    if (form.current.edits[investment]?.security_id) await runPreview();
+  };
+
+  const onToggleReplacePositions = (investment: string) => async () => {
+    const current = form.current.replacePositions;
+    form.current.replacePositions = current.includes(investment)
+      ? current.filter((f) => f !== investment)
+      : [...current, investment];
+    setReplacePositions(form.current.replacePositions);
+    await runPreview();
   };
 
   const onChangeDecision = (id: string): ChangeEventHandler<HTMLSelectElement> => async (e) => {
-    if (!csv) return;
-    const next = { ...decisions };
+    const next = { ...form.current.decisions };
     if (e.target.value) next[id] = e.target.value as Decision;
     else delete next[id];
+    form.current.decisions = next;
     setDecisions(next);
-    await runPreview(csv, edits, next);
+    await runPreview();
   };
 
   const onClickImport = async () => {
-    if (!csv || !preview) return;
+    if (!form.current.csv || !preview) return;
     setBusy(true);
-    const r = await call.post<PlanStatementImportResult>(
-      "/api/plan-statement/import",
-      requestBody(csv, edits, decisions),
-    );
+    const r = await call.post<PlanStatementImportResult>("/api/plan-statement/import", requestBody());
     setBusy(false);
     if (r.status !== "success" || !r.body) {
       setError(r.message ?? "Import failed");
@@ -177,7 +209,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     const { written } = r.body;
     setResult(`Imported ${written} transaction${written === 1 ? "" : "s"}.`);
     sync();
-    await runPreview(csv, edits, decisions);
+    await runPreview();
   };
 
   const newRows = preview?.rows.filter((r) => r.status === "new") ?? [];
@@ -242,8 +274,21 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                         : fund.restatement.message}
                     </Row>
                   )}
+                  {fund.positionGaps && fund.positionGaps.length > 0 && (
+                    <>
+                      <Row className="formError">
+                        {describeGaps(fund.positionGaps, replacePositions.includes(fund.investment))}
+                      </Row>
+                      <KeyValue name="Replace&nbsp;with&nbsp;statement&#8209;derived&nbsp;positions">
+                        <ToggleInput
+                          checked={replacePositions.includes(fund.investment)}
+                          onChange={onToggleReplacePositions(fund.investment)}
+                        />
+                      </KeyValue>
+                    </>
+                  )}
                   {fund.restatement?.retryable && csv && (
-                    <ButtonRow disabled={busy} onClick={() => runPreview(csv, edits, decisions)}>
+                    <ButtonRow disabled={busy} onClick={runPreview}>
                       Retry
                     </ButtonRow>
                   )}

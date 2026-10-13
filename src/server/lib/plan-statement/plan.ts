@@ -190,14 +190,25 @@ export interface RestatementCheck {
 
 const DEFAULT_SHARE_ROUNDING = 0.0005;
 const AMOUNT_ROUNDING = 0.005;
+/**
+ * The most a single row's rounding may move its unit price and still be
+ * measured. Past it the row can't confirm anything against a 1.5% band, and
+ * an uncapped allowance would let coarse figures (whole shares, say) pass
+ * drift the check can't see.
+ */
+const MAX_ROW_ALLOWANCE = 0.0025;
+/** One measured row gives no spread at all, so it confirms nothing. */
+const MIN_MEASURED_ROWS = 2;
 
 /**
  * Restating is only sound while the trust's unit price stays a fixed multiple
  * of the public fund's dividend-adjusted close, so the rows about to be written
- * are measured against it. A statement gives shares to a few decimals, which
- * on a small row moves the implied unit price by more than the band, so each
- * row counts as the range of ratios its rounded figures allow, and the check
- * asks whether one multiple fits all of them within the band.
+ * are measured against it, with the rows already imported from it. A
+ * statement gives shares to a few decimals, so each row counts as the range
+ * of ratios its rounded figures allow, and the check asks whether one
+ * multiple fits all of them within the band. Rows whose rounding alone moves
+ * the unit price more than `MAX_ROW_ALLOWANCE` aren't measured, and fewer
+ * than two measured rows is a refusal, not a pass.
  */
 export const checkRestatement = (
   rows: Pick<StatementRow, "date" | "amount" | "shares" | "shareRounding">[],
@@ -213,12 +224,18 @@ export const checkRestatement = (
     const units = Math.abs(row.shares);
     const dollars = Math.abs(row.amount);
     const rounding = row.shareRounding ?? DEFAULT_SHARE_ROUNDING;
-    if (units <= rounding || dollars <= AMOUNT_ROUNDING) continue;
+    if (!units || !dollars || rounding / units + AMOUNT_ROUNDING / dollars > MAX_ROW_ALLOWANCE) continue;
     highestLow = Math.max(highestLow, (dollars - AMOUNT_ROUNDING) / (units + rounding) / bar.adjustedClose);
     lowestHigh = Math.min(lowestHigh, (dollars + AMOUNT_ROUNDING) / (units - rounding) / bar.adjustedClose);
     measured++;
   }
-  if (!measured) return { ok: false, spread: null, message: "No row carries a unit price precise enough to check" };
+  if (measured < MIN_MEASURED_ROWS) {
+    return {
+      ok: false,
+      spread: null,
+      message: `Too few rows give shares precisely enough to check the restatement (${measured} of ${rows.length})`,
+    };
+  }
   const spread = Math.max(0, highestLow / lowestHigh - 1);
   if (spread > MAX_RESTATEMENT_SPREAD) {
     return {
@@ -277,6 +294,10 @@ export interface FundSummary {
   mapping: FundMapping | null;
   newRows: number;
   restatement?: RestatementCheck;
+  /** Entered positions on the mapped holding that the transactions, after this import, don't explain. */
+  positionGaps?: PositionGap[];
+  /** Whether those positions are being replaced with the transactions' figures rather than kept. */
+  replacePositions?: boolean;
 }
 
 export interface ImportPlan {
@@ -333,6 +354,12 @@ export const buildImportPlan = (input: PlanInput): ImportPlan => {
   const funds: FundSummary[] = fundNames.map((investment) => {
     const mapping = mappings.get(investment) ?? null;
     const toWrite = rows.filter((r, i) => r.investment === investment && planned[i].status === "new");
+    // The rows written now, and the ones this statement already wrote.
+    const measured = rows.filter(
+      (r, i) =>
+        r.investment === investment &&
+        (planned[i].status === "new" || (planned[i].status === "imported" && classifyRow(r).status === "write")),
+    );
     const summary: FundSummary = { investment, mapping, newRows: toWrite.length };
     if (mapping?.restated && toWrite.length) {
       const ticker = mapping.ticker_symbol ?? "";
@@ -341,7 +368,7 @@ export const buildImportPlan = (input: PlanInput): ImportPlan => {
       summary.restatement = !ticker
         ? { ok: false, spread: null, message: "A restated fund needs a security with a ticker" }
         : bars?.length
-          ? checkRestatement(toWrite, bars, ticker)
+          ? checkRestatement(measured, bars, ticker)
           : {
               ok: false,
               spread: null,
@@ -491,23 +518,146 @@ export const getMonthOpeningPositions = (
 const squash = (date: string) => date.replaceAll("-", "");
 
 /**
- * The holding snapshots a holding should have, derived from every live share
- * movement on it, whoever wrote it: one on each day that moved shares, and one
- * on the 1st of each month since the first movement. Ids follow
- * the Add Holding form's `holding-<account>-<security>-<YYYYMMDD>`.
+ * Snapshots this import derives carry their own id prefix, so a later run can
+ * tell them from snapshots someone entered (the Add Holding form writes
+ * `holding-<account>-<security>-<YYYYMMDD>`) and rewrite only its own.
  */
-export const buildHoldingSnapshots = (
-  account_id: string,
-  security_id: string,
-  transactions: Pick<JSONInvestmentTransaction, "date" | "type" | "quantity" | "amount" | "price">[],
-  throughMonth: string,
-): HoldingSnapshot[] => {
-  const positions = getDailyPositions(transactions);
-  return Array.from(positions, ([date, position]) => ({ date, position }))
-    .concat(getMonthOpeningPositions(positions, throughMonth))
-    .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .map(({ date, position }) => ({
-      snapshot_id: `holding-${account_id}-${security_id}-${squash(date)}`,
+export const DERIVED_SNAPSHOT_PREFIX = "plan-holding-";
+
+const QUANTITY_EPSILON = 1e-6;
+const MONEY_EPSILON = 0.005;
+
+export interface StoredHoldingSnapshot {
+  snapshot_id: string;
+  /** YYYY-MM-DD */
+  date: string;
+  quantity: number;
+  cost_basis: number | null;
+  institution_price: number | null;
+}
+
+/** A position someone entered that the transactions don't account for. */
+export interface PositionGap {
+  date: string;
+  stored: number;
+  explained: number;
+}
+
+export interface HoldingPlan {
+  gaps: PositionGap[];
+  /** Snapshots whose stored values differ from what they should be, or that don't exist yet. */
+  writes: HoldingSnapshot[];
+  /** Derived snapshots on days that no longer get one. */
+  stale: string[];
+  /** The holding's position at its latest snapshot, for the holdings row. */
+  latest: { date: string; position: Position } | null;
+}
+
+const positionOn = (positions: Map<string, Position>, dates: string[], date: string): Position | undefined => {
+  let found: Position | undefined;
+  for (const d of dates) {
+    if (d > date) break;
+    found = positions.get(d);
+  }
+  return found;
+};
+
+/**
+ * What a holding's snapshots should be, from every live share movement on it.
+ *
+ * A snapshot someone entered (an Add Holding position, an edited quantity) may
+ * hold shares no transaction explains. Each one that does is reported as a
+ * gap. By default the gap is kept: the entered snapshot stands, and from its
+ * date on the derived position is its quantity plus the movements since, so
+ * the import adds to it rather than replacing it. With `replace`, entered
+ * snapshots are rewritten to the transactions' figures.
+ *
+ * Derived snapshots go on every day that moved shares or has an entered
+ * snapshot, and on the 1st of every month after that through `throughMonth`.
+ * Only snapshots whose values change are written.
+ */
+export const planHolding = (input: {
+  account_id: string;
+  security_id: string;
+  movements: Pick<JSONInvestmentTransaction, "date" | "type" | "quantity" | "amount" | "price">[];
+  stored: StoredHoldingSnapshot[];
+  throughMonth: string;
+  replace: boolean;
+}): HoldingPlan => {
+  const { account_id, security_id, stored, throughMonth, replace } = input;
+  const explained = getDailyPositions(input.movements);
+  const explainedDates = Array.from(explained.keys()).sort();
+  const at = (date: string) => positionOn(explained, explainedDates, date) ?? { quantity: 0, costBasis: 0, price: 0 };
+
+  const entered = stored
+    .filter((s) => !s.snapshot_id.startsWith(DERIVED_SNAPSHOT_PREFIX))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const enteredByDate = new Map(entered.map((s) => [s.date, s]));
+
+  const gaps: PositionGap[] = [];
+  for (const s of entered) {
+    const quantity = at(s.date).quantity;
+    if (Math.abs(s.quantity - quantity) > QUANTITY_EPSILON) {
+      gaps.push({ date: s.date, stored: s.quantity, explained: quantity });
+    }
+  }
+
+  // Prices in date order from both sources, so a day after an entered snapshot
+  // and before any movement still has one.
+  const prices = [
+    ...Array.from(explained, ([date, p]) => ({ date, price: p.price })),
+    ...entered.filter((s) => (s.institution_price ?? 0) > 0).map((s) => ({ date: s.date, price: s.institution_price! })),
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const priceOn = (date: string) => {
+    let price = 0;
+    for (const p of prices) {
+      if (p.date > date) break;
+      price = p.price;
+    }
+    return price;
+  };
+
+  const points = new Map<string, Position>();
+  const pointDates = Array.from(new Set([...explainedDates, ...entered.map((s) => s.date)])).sort();
+  let offset = { quantity: 0, costBasis: 0 };
+  for (const date of pointDates) {
+    const base = at(date);
+    const own = enteredByDate.get(date);
+    if (own && !replace) {
+      offset = {
+        quantity: own.quantity - base.quantity,
+        costBasis: own.cost_basis != null ? own.cost_basis - base.costBasis : 0,
+      };
+    }
+    points.set(date, {
+      quantity: base.quantity + offset.quantity,
+      costBasis: Math.max(0, base.costBasis + offset.costBasis),
+      price: priceOn(date),
+    });
+  }
+
+  const wanted = Array.from(points, ([date, position]) => ({ date, position }))
+    .concat(getMonthOpeningPositions(points, throughMonth))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  const storedById = new Map(stored.map((s) => [s.snapshot_id, s]));
+  const produced = new Set<string>();
+  const writes: HoldingSnapshot[] = [];
+  for (const { date, position } of wanted) {
+    const own = enteredByDate.get(date);
+    if (own && !replace) continue;
+    const snapshot_id = own ? own.snapshot_id : `${DERIVED_SNAPSHOT_PREFIX}${account_id}-${security_id}-${squash(date)}`;
+    produced.add(snapshot_id);
+    const current = storedById.get(snapshot_id);
+    const unchanged =
+      current &&
+      current.date === date &&
+      Math.abs(current.quantity - position.quantity) <= QUANTITY_EPSILON &&
+      Math.abs((current.cost_basis ?? 0) - position.costBasis) <= MONEY_EPSILON &&
+      Math.abs((current.institution_price ?? 0) - position.price) <= QUANTITY_EPSILON;
+    if (unchanged) continue;
+    writes.push({
+      snapshot_id,
       // Noon UTC is the same calendar day in every US time zone; midnight
       // reads as the previous day, and so the previous month, west of UTC.
       snapshot_date: `${date}T12:00:00Z`,
@@ -517,5 +667,12 @@ export const buildHoldingSnapshots = (
       cost_basis: position.costBasis,
       institution_price: position.price,
       institution_value: position.quantity * position.price,
-    }));
+    });
+  }
+
+  const stale = stored
+    .filter((s) => s.snapshot_id.startsWith(DERIVED_SNAPSHOT_PREFIX) && !produced.has(s.snapshot_id))
+    .map((s) => s.snapshot_id);
+
+  return { gaps, writes, stale, latest: wanted.length ? wanted[wanted.length - 1] : null };
 };

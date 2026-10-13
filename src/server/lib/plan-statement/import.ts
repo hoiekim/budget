@@ -1,5 +1,5 @@
 import { AccountType, InvestmentTransactionType } from "plaid";
-import { ItemProvider, JSONAccount, JSONHolding } from "common";
+import { ItemProvider, JSONAccount, JSONInvestmentTransaction } from "common";
 import {
   MaskedUser,
   InvTxModel,
@@ -11,12 +11,14 @@ import {
   QueryExecutor,
   getAccount,
   getItem,
-  getHoldingSnapshots,
+  getHoldingsForSecurities,
+  getHoldingSnapshotsForSecurities,
   getPlanFundMappings,
   savePlanFundMappings,
   searchSecuritiesById,
+  softDeleteHoldingSnapshots,
+  upsertHoldingOrThrow,
   upsertHoldingSnapshotsBatch,
-  upsertHoldings,
   withTransaction,
   backfillMonthlySecuritySnapshotsForward,
   getDailyCloses,
@@ -30,14 +32,15 @@ import {
 import type { DailyClose } from "../daily-closes";
 import { parsePlanStatement, StatementRow } from "./parse";
 import {
-  buildHoldingSnapshots,
   buildImportPlan,
   Decision,
   FundMapping,
+  HoldingPlan,
   ImportPlan,
   PlanInput,
   PlannedTransaction,
   getRowIds,
+  planHolding,
 } from "./plan";
 
 export interface PlanFundMappingRequest {
@@ -51,6 +54,8 @@ export interface PlanStatementRequest {
   csv: string;
   mappings: PlanFundMappingRequest[];
   decisions: Record<string, Decision>;
+  /** Funds whose entered positions the user chose to replace with the transactions' figures. */
+  replacePositions: string[];
 }
 
 export interface PlanStatementPreview extends ImportPlan {
@@ -179,7 +184,82 @@ const prepare = async (user: MaskedUser, request: PlanStatementRequest): Promise
   );
 
   const plan = buildImportPlan(input);
+
+  // Gaps are measured against the transactions as they'll be once this
+  // statement's rows are written.
+  const replaced = new Set(request.replacePositions);
+  const pending = plan.transactions.map((t) => t.transaction);
+  const holdingPlans = await planHoldings(user, account.account_id, statementHoldings(plan, mappings, replaced), pending);
+  for (const fund of plan.funds) {
+    const holding = fund.mapping && holdingPlans.get(fund.mapping.security_id);
+    if (!holding?.gaps.length) continue;
+    fund.positionGaps = holding.gaps;
+    fund.replacePositions = replaced.has(fund.investment);
+  }
+
   return { ok: true, account, mappings, preview: { ...plan, parseErrors: parsed.errors } };
+};
+
+/** Each mapped holding the statement touches, and whether to replace its entered positions. */
+const statementHoldings = (plan: ImportPlan, mappings: Map<string, FundMapping>, replaced: Set<string>) => {
+  const holdings = new Map<string, boolean>();
+  for (const fund of plan.funds) {
+    const mapping = mappings.get(fund.investment);
+    if (!mapping) continue;
+    holdings.set(mapping.security_id, (holdings.get(mapping.security_id) ?? false) || replaced.has(fund.investment));
+  }
+  return holdings;
+};
+
+/**
+ * Plans each holding from its live share movements (plus `pending`, rows not
+ * yet written) and its stored snapshots, read on `client` when one is given.
+ */
+const planHoldings = async (
+  user: MaskedUser,
+  account_id: string,
+  holdings: Map<string, boolean>,
+  pending: Partial<JSONInvestmentTransaction>[] = [],
+  client?: QueryExecutor,
+): Promise<Map<string, HoldingPlan>> => {
+  const security_ids = Array.from(holdings.keys());
+  if (!security_ids.length) return new Map();
+  const [live, stored] = await Promise.all([
+    investmentTransactionsTable.query(
+      { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id },
+      { inFilters: { [SECURITY_ID]: security_ids } },
+      client,
+    ),
+    getHoldingSnapshotsForSecurities(user, account_id, security_ids, client),
+  ]);
+  const movements = [...live.map((m) => m.toJSON()), ...pending].filter(
+    (t) => t.type === InvestmentTransactionType.Buy || t.type === InvestmentTransactionType.Sell,
+  ) as JSONInvestmentTransaction[];
+  const throughMonth = new Date().toISOString().slice(0, 7);
+
+  const plans = new Map<string, HoldingPlan>();
+  for (const [security_id, replace] of holdings) {
+    plans.set(
+      security_id,
+      planHolding({
+        account_id,
+        security_id,
+        movements: movements.filter((t) => t.security_id === security_id),
+        stored: stored
+          .filter((s) => s.holding_security_id === security_id)
+          .map((s) => ({
+            snapshot_id: s.snapshot_id,
+            date: s.snapshot_date.slice(0, 10),
+            quantity: s.quantity ?? 0,
+            cost_basis: s.cost_basis ?? null,
+            institution_price: s.institution_price ?? null,
+          })),
+        throughMonth,
+        replace,
+      }),
+    );
+  }
+  return plans;
 };
 
 export const previewPlanStatement = async (
@@ -200,48 +280,53 @@ const toRow = (user: MaskedUser, planned: PlannedTransaction) => {
 };
 
 /**
- * Rewrites each holding's snapshots and its current-holdings row from every
- * live share movement on it, whoever wrote it, so a run converges on the
- * totals rather than adding to what an earlier run left. The holdings row is
- * left alone when a later snapshot already exists.
+ * Writes each holding's planned snapshots, then its holdings row: the order
+ * account deletion and the reinvestment job take the same rows in. Every
+ * write throws, so a failure aborts the transaction instead of committing
+ * part of it.
  */
 const refreshHoldings = async (
   user: MaskedUser,
   account_id: string,
-  security_ids: string[],
+  holdings: Map<string, boolean>,
   client: QueryExecutor,
 ) => {
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  for (const security_id of security_ids) {
-    const live = await investmentTransactionsTable.query(
-      { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id, [SECURITY_ID]: security_id },
-      {},
+  const plans = await planHoldings(user, account_id, holdings, [], client);
+  const writes = Array.from(plans.values()).flatMap((p) => p.writes);
+  const stale = Array.from(plans.values()).flatMap((p) => p.stale);
+  await upsertHoldingSnapshotsBatch(user, writes, client);
+  await softDeleteHoldingSnapshots(user, stale, client);
+
+  const current = new Map(
+    (await getHoldingsForSecurities(user, account_id, Array.from(plans.keys()), client)).map((h) => [h.security_id, h]),
+  );
+  for (const [security_id, plan] of plans) {
+    if (!plan.latest) continue;
+    const { date, position } = plan.latest;
+    const existing = current.get(security_id);
+    const unchanged =
+      existing &&
+      Math.abs(existing.quantity - position.quantity) <= 1e-6 &&
+      Math.abs((existing.cost_basis ?? 0) - position.costBasis) <= 0.005 &&
+      Math.abs(existing.institution_price - position.price) <= 1e-6 &&
+      String(existing.institution_price_as_of ?? "").slice(0, 10) === date;
+    if (unchanged) continue;
+    await upsertHoldingOrThrow(
+      user,
+      {
+        holding_id: `${account_id}-${security_id}`,
+        account_id,
+        security_id,
+        quantity: position.quantity,
+        cost_basis: position.costBasis,
+        institution_price: position.price,
+        institution_price_as_of: date,
+        institution_value: position.quantity * position.price,
+        iso_currency_code: null,
+        unofficial_currency_code: null,
+      },
       client,
     );
-    const movements = live
-      .map((m) => m.toJSON())
-      .filter((t) => t.type === InvestmentTransactionType.Buy || t.type === InvestmentTransactionType.Sell);
-    const snapshots = buildHoldingSnapshots(account_id, security_id, movements, thisMonth);
-    if (!snapshots.length) continue;
-    await upsertHoldingSnapshotsBatch(user, snapshots, client);
-
-    const latest = snapshots[snapshots.length - 1];
-    const latestDate = latest.snapshot_date.slice(0, 10);
-    const existing = await getHoldingSnapshots(user, { account_id, security_id }, client);
-    if (existing.some((s) => s.snapshot_date.slice(0, 10) > latestDate)) continue;
-    const holding: JSONHolding = {
-      holding_id: `${account_id}-${security_id}`,
-      account_id,
-      security_id,
-      quantity: latest.quantity ?? 0,
-      cost_basis: latest.cost_basis ?? null,
-      institution_price: latest.institution_price ?? 0,
-      institution_price_as_of: latestDate,
-      institution_value: latest.institution_value ?? 0,
-      iso_currency_code: null,
-      unofficial_currency_code: null,
-    };
-    await upsertHoldings(user, [holding], client);
   }
 };
 
@@ -264,7 +349,7 @@ export const importPlanStatement = async (
   const usedMappings = Array.from(mappings)
     .filter(([investment]) => statementFunds.has(investment))
     .map(([investment, m]) => ({ investment, security_id: m.security_id, restated: m.restated }));
-  const security_ids = Array.from(new Set(usedMappings.map((m) => m.security_id)));
+  const holdings = statementHoldings(preview, mappings, new Set(request.replacePositions));
   const rows = preview.transactions.map((t) => toRow(user, t));
 
   await withTransaction(async (client) => {
@@ -272,7 +357,7 @@ export const importPlanStatement = async (
       await investmentTransactionsTable.upsertMany(rows.slice(i, i + INSERT_CHUNK_ROWS), [], client);
     }
     await savePlanFundMappings(user, account_id, usedMappings, client);
-    await refreshHoldings(user, account_id, security_ids, client);
+    await refreshHoldings(user, account_id, holdings, client);
   });
 
   const firstDates = new Map<string, string>();

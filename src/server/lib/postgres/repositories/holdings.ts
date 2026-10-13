@@ -70,7 +70,6 @@ const HOLDING_UPDATE_COLUMNS = [
 export const upsertHoldings = async (
   user: MaskedUser,
   holdings: JSONHolding[],
-  client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!holdings.length) return [];
   const results: UpsertResult[] = [];
@@ -80,7 +79,7 @@ export const upsertHoldings = async (
       const row = HoldingModel.fromJSON(holding, user.user_id);
       const holdingId =
         (row.holding_id as string) || `${holding.account_id}-${holding.security_id}`;
-      await holdingsTable.upsert(row, HOLDING_UPDATE_COLUMNS, client);
+      await holdingsTable.upsert(row, HOLDING_UPDATE_COLUMNS);
       results.push(successResult(holdingId, 1));
     } catch (error) {
       const holdingId = holding.holding_id || `${holding.account_id}-${holding.security_id}`;
@@ -89,6 +88,38 @@ export const upsertHoldings = async (
     }
   }
   return results;
+};
+
+/**
+ * The holdings rows for some of an account's securities, read on `client` so a
+ * transaction sees its own writes.
+ */
+export const getHoldingsForSecurities = async (
+  user: MaskedUser,
+  account_id: string,
+  security_ids: string[],
+  client?: QueryExecutor,
+): Promise<JSONHolding[]> => {
+  if (!security_ids.length) return [];
+  const models = await holdingsTable.query(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id },
+    { inFilters: { [SECURITY_ID]: security_ids } },
+    client,
+  );
+  return models.map((m) => m.toJSON());
+};
+
+/**
+ * One holdings row, throwing on failure. Inside a transaction a swallowed
+ * error leaves Postgres aborted, and the COMMIT that follows rolls back
+ * without raising, so the caller would report a write that never happened.
+ */
+export const upsertHoldingOrThrow = async (
+  user: MaskedUser,
+  holding: JSONHolding,
+  client?: QueryExecutor,
+): Promise<void> => {
+  await holdingsTable.upsert(HoldingModel.fromJSON(holding, user.user_id), HOLDING_UPDATE_COLUMNS, client);
 };
 
 export const deleteHoldings = async (
