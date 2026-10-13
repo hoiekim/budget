@@ -14,6 +14,7 @@ import {
   QUANTITY,
   ISO_CURRENCY_CODE,
   RAW,
+  QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
@@ -69,6 +70,7 @@ const HOLDING_UPDATE_COLUMNS = [
 export const upsertHoldings = async (
   user: MaskedUser,
   holdings: JSONHolding[],
+  client?: QueryExecutor,
 ): Promise<UpsertResult[]> => {
   if (!holdings.length) return [];
   const results: UpsertResult[] = [];
@@ -78,7 +80,7 @@ export const upsertHoldings = async (
       const row = HoldingModel.fromJSON(holding, user.user_id);
       const holdingId =
         (row.holding_id as string) || `${holding.account_id}-${holding.security_id}`;
-      await holdingsTable.upsert(row, HOLDING_UPDATE_COLUMNS);
+      await holdingsTable.upsert(row, HOLDING_UPDATE_COLUMNS, client);
       results.push(successResult(holdingId, 1));
     } catch (error) {
       const holdingId = holding.holding_id || `${holding.account_id}-${holding.security_id}`;

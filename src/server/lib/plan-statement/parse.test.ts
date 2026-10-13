@@ -16,9 +16,9 @@ describe("parsePlanStatement", () => {
     const { rows, errors } = parsePlanStatement(STATEMENT);
     expect(errors).toEqual([]);
     expect(rows).toEqual([
-      { line: 7, date: "2026-09-15", investment: "EXAMPLE TRUST", label: "Transfers", amount: 0, shares: 0 },
-      { line: 6, date: "2026-09-30", investment: "EXAMPLE INDEX FUND", label: "Advisor Fee", amount: -12.3, shares: -0.098 },
-      { line: 5, date: "2026-09-30", investment: "EXAMPLE INDEX FUND", label: "Contributions", amount: 1234.56, shares: 9.876 },
+      { line: 7, date: "2026-09-15", investment: "EXAMPLE TRUST", label: "Transfers", amount: 0, shares: 0, shareRounding: 0.0005 },
+      { line: 6, date: "2026-09-30", investment: "EXAMPLE INDEX FUND", label: "Advisor Fee", amount: -12.3, shares: -0.098, shareRounding: 0.0005 },
+      { line: 5, date: "2026-09-30", investment: "EXAMPLE INDEX FUND", label: "Contributions", amount: 1234.56, shares: 9.876, shareRounding: 0.0005 },
     ]);
   });
 
@@ -43,6 +43,11 @@ describe("parsePlanStatement", () => {
     const { rows, errors } = parsePlanStatement("Run Date,Action,Symbol\n01/02/2026,BUY,ABC");
     expect(rows).toEqual([]);
     expect(errors[0]).toContain("header");
+  });
+
+  test("records how finely each row gives its shares", () => {
+    const text = ["Date,Investment,Transaction Type,Amount,Shares/Unit", "01/05/2026,F,Contributions,10,2.5", "01/06/2026,F,Contributions,10,3"].join("\n");
+    expect(parsePlanStatement(text).rows.map((r) => r.shareRounding)).toEqual([0.05, 0.5]);
   });
 
   test("reads parenthesised negatives and a byte-order mark", () => {

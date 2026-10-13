@@ -6,8 +6,9 @@ import {
   checkRestatement,
   classifyRow,
   closeOnOrBefore,
+  buildHoldingSnapshots,
   FundMapping,
-  getCarryForwardPositions,
+  getMonthOpeningPositions,
   getDailyPositions,
   getRowIds,
   PlanInput,
@@ -52,6 +53,10 @@ describe("classifyRow", () => {
     ["Realized Gain/Loss", 12, 0, { status: "decide" }],
     ["Loan Repayment", 40, 0.8, { status: "decide" }],
     ["Contributions", 100, 0, { status: "decide" }],
+    ["Contributions", -100, -2, { status: "decide" }],
+    ["Contributions", 100, -2, { status: "decide" }],
+    ["Advisor Fee", 4, 0.08, { status: "decide" }],
+    ["Dividend", -3, -0.05, { status: "decide" }],
   ])("%s %d / %d shares", (label, amount, shares, expected) => {
     expect(classifyRow({ label, amount, shares })).toMatchObject(expected);
   });
@@ -116,7 +121,32 @@ describe("checkRestatement", () => {
       "XPUB",
     );
     expect(result.ok).toBe(false);
-    expect(result.spread).toBeCloseTo(0.02381, 4);
+    // 2.38% apart nominally; the rounding allowance narrows it only slightly.
+    expect(result.spread!).toBeGreaterThan(0.023);
+    expect(result.spread!).toBeLessThan(0.0239);
+  });
+
+  test("small rows whose rounded shares move the unit price past the band on their own still pass", () => {
+    // $2.10 at 0.041 and 0.040 shares: 51.22 and 52.50 a unit, 2.5% apart as
+    // printed, but both are 51.85 within their ±0.0005-share rounding.
+    const result = checkRestatement(
+      [
+        row({ date: "2026-03-02", amount: -2.1, shares: -0.041, shareRounding: 0.0005 }),
+        row({ date: "2026-03-02", amount: -2.1, shares: -0.04, shareRounding: 0.0005 }),
+        row({ date: "2026-03-16", amount: 103.7, shares: 2, shareRounding: 0.0005 }),
+      ],
+      [
+        { date: "2026-03-02", close: 50, adjustedClose: 42 },
+        { date: "2026-03-16", close: 52, adjustedClose: 42 },
+      ],
+      "XPUB",
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("a row whose shares are too coarse to price anything isn't measured", () => {
+    const result = checkRestatement([row({ shares: 0.0004, shareRounding: 0.0005 })], [{ date: "2026-03-02", close: 50, adjustedClose: 40 }], "XPUB");
+    expect(result).toMatchObject({ ok: false, message: "No row carries a unit price precise enough to check" });
   });
 
   test("a row with no close near its date refuses", () => {
@@ -212,10 +242,15 @@ describe("buildImportPlan", () => {
       input({
         rows: [row({ investment: "EXAMPLE TRUST" })],
         mappings: new Map([["EXAMPLE TRUST", TRUST]]),
-        closeErrors: new Map([["EXAMPLE TRUST", "Market data is busy right now"]]),
+        closeErrors: new Map([["EXAMPLE TRUST", { message: "Market data is busy right now", retryable: true }]]),
       }),
     );
-    expect(plan.funds[0].restatement).toEqual({ ok: false, spread: null, message: "Market data is busy right now" });
+    expect(plan.funds[0].restatement).toEqual({
+      ok: false,
+      spread: null,
+      message: "Market data is busy right now",
+      retryable: true,
+    });
     expect(plan.blockers).toEqual(["EXAMPLE TRUST can't be restated: Market data is busy right now"]);
   });
 
@@ -248,6 +283,42 @@ describe("buildImportPlan", () => {
     const skipped = buildImportPlan(input({ rows, decisions: { [id]: "skip" } }));
     expect(skipped.rows[0]).toMatchObject({ status: "skip", needsDecision: true });
     expect(skipped.transactions).toEqual([]);
+  });
+
+  test("a reversed contribution is left to the user, who can't book it as a contribution", () => {
+    const rows = [row({ amount: -100, shares: -2 })];
+    const plan = buildImportPlan(input({ rows }));
+    expect(plan.rows[0]).toMatchObject({ status: "decide", needsDecision: true });
+    expect(plan.rows[0].allowedDecisions).toEqual(["fee", "withdrawal_out", "withdrawal_kept", "skip"]);
+
+    const id = plan.rows[0].id;
+    const forced = buildImportPlan(input({ rows, decisions: { [id]: "contribution" } }));
+    expect(forced.rows[0].status).toBe("decide");
+    expect(forced.transactions).toEqual([]);
+  });
+
+  test("an amount and shares of opposite signs can only be skipped", () => {
+    const plan = buildImportPlan(input({ rows: [row({ amount: 100, shares: -2 })] }));
+    expect(plan.rows[0].allowedDecisions).toEqual(["skip"]);
+  });
+
+  test("the band measures only the rows being written, so a skipped row with shares doesn't block", () => {
+    const bars: DailyClose[] = [
+      { date: "2026-03-02", close: 50, adjustedClose: 40 },
+      { date: "2026-03-16", close: 52, adjustedClose: 42 },
+    ];
+    const rows = [
+      row({ investment: "EXAMPLE TRUST", date: "2026-03-02", amount: 80, shares: 4 }),
+      row({ investment: "EXAMPLE TRUST", date: "2026-03-16", amount: 84, shares: 4 }),
+      row({ investment: "EXAMPLE TRUST", date: "2026-03-16", label: "Realized Gain/Loss", amount: 3.1, shares: 0.5 }),
+    ];
+    const base = { rows, mappings: new Map([["EXAMPLE TRUST", TRUST]]), closes: new Map([["EXAMPLE TRUST", bars]]) };
+    const undecided = buildImportPlan(input(base));
+    const gainId = undecided.rows[2].id;
+    const skipped = buildImportPlan(input({ ...base, decisions: { [gainId]: "skip" } }));
+    expect(skipped.blockers).toEqual([]);
+    expect(skipped.funds[0].restatement).toMatchObject({ ok: true });
+    expect(skipped.transactions.filter((t) => t.transaction.type === "buy")).toHaveLength(2);
   });
 
   test("a decision can't override a row the rules already classify", () => {
@@ -289,25 +360,68 @@ describe("getDailyPositions", () => {
     expect(positions.get("2026-03-30")).toEqual({ quantity: 7, costBasis: 380, price: 65 });
   });
 
-  test("months with no movement get the position they opened with, through the given month", () => {
+  test("every month after the first movement gets the position it opened with, through the given month", () => {
     const positions = getDailyPositions([
       tx("2026-01-20", "buy", 10, 500, 50),
       tx("2026-03-05", "buy", 2, 110, 55),
     ]);
-    expect(getCarryForwardPositions(positions, "2026-05")).toEqual([
+    expect(getMonthOpeningPositions(positions, "2026-05")).toEqual([
       { date: "2026-02-01", position: { quantity: 10, costBasis: 500, price: 50 } },
+      { date: "2026-03-01", position: { quantity: 10, costBasis: 500, price: 50 } },
       { date: "2026-04-01", position: { quantity: 12, costBasis: 610, price: 55 } },
       { date: "2026-05-01", position: { quantity: 12, costBasis: 610, price: 55 } },
     ]);
   });
 
-  test("a sold-out holding isn't carried forward", () => {
+  test("a closed position opens later months at zero, so an earlier run's figure doesn't survive", () => {
     const positions = getDailyPositions([tx("2026-01-20", "buy", 1, 50, 50), tx("2026-01-25", "sell", -1, -55, 55)]);
-    expect(getCarryForwardPositions(positions, "2026-03")).toEqual([]);
+    expect(getMonthOpeningPositions(positions, "2026-03").map((o) => [o.date, o.position.quantity])).toEqual([
+      ["2026-02-01", 0],
+      ["2026-03-01", 0],
+    ]);
+  });
+
+  test("a movement on the 1st is that day's snapshot, not an opening one", () => {
+    const positions = getDailyPositions([tx("2026-01-20", "buy", 1, 50, 50), tx("2026-02-01", "buy", 1, 50, 50)]);
+    expect(getMonthOpeningPositions(positions, "2026-02")).toEqual([]);
   });
 
   test("two movements on one day report the end-of-day position", () => {
     const positions = getDailyPositions([tx("2026-03-02", "buy", 1, 50, 50), tx("2026-03-02", "buy", 2, 100, 50)]);
     expect(positions.get("2026-03-02")?.quantity).toBe(3);
+  });
+});
+
+describe("buildHoldingSnapshots", () => {
+  const tx = (date: string, type: string, quantity: number, amount: number, price: number) =>
+    ({ date, type, quantity, amount, price }) as Parameters<typeof buildHoldingSnapshots>[2][number];
+
+  test("one snapshot per movement day and per month opening, stamped at noon UTC under the app's ids", () => {
+    const snapshots = buildHoldingSnapshots(
+      "acct-1",
+      "sec-1",
+      [
+        tx("2026-10-06", "buy", 10, 500, 50),
+        tx("2026-11-03", "buy", 2, 104, 52),
+        // Another writer's row, in a month the statement never touches.
+        tx("2026-12-18", "buy", 0.5, 27, 54),
+      ],
+      "2027-01",
+    );
+    expect(snapshots.map((s) => [s.snapshot_id, s.snapshot_date, s.quantity])).toEqual([
+      ["holding-acct-1-sec-1-20261006", "2026-10-06T12:00:00Z", 10],
+      ["holding-acct-1-sec-1-20261101", "2026-11-01T12:00:00Z", 10],
+      ["holding-acct-1-sec-1-20261103", "2026-11-03T12:00:00Z", 12],
+      ["holding-acct-1-sec-1-20261201", "2026-12-01T12:00:00Z", 12],
+      ["holding-acct-1-sec-1-20261218", "2026-12-18T12:00:00Z", 12.5],
+      ["holding-acct-1-sec-1-20270101", "2027-01-01T12:00:00Z", 12.5],
+    ]);
+    expect(snapshots[4]).toMatchObject({ cost_basis: 631, institution_price: 54, institution_value: 12.5 * 54 });
+  });
+
+  test("every month from the first movement through the given month has a snapshot", () => {
+    const snapshots = buildHoldingSnapshots("a", "s", [tx("2026-01-20", "buy", 1, 50, 50)], "2026-06");
+    const months = new Set(snapshots.map((s) => s.snapshot_date.slice(0, 7)));
+    expect(Array.from(months)).toEqual(["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]);
   });
 });

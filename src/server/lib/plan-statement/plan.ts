@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { InvestmentTransactionSubtype, InvestmentTransactionType } from "plaid";
 import { JSONInvestmentTransaction } from "common";
 import type { DailyClose } from "../daily-closes";
+import type { HoldingSnapshot } from "../postgres/repositories";
 import type { StatementRow } from "./parse";
 
 export type ImportKind =
@@ -103,8 +104,35 @@ export const classifyRow = (row: Pick<StatementRow, "label" | "amount" | "shares
   if (row.shares === 0 || row.amount === 0) {
     return { status: "decide", reason: "The row is missing its amount or its shares" };
   }
+  if (!fitsKind(kind, row)) {
+    return { status: "decide", reason: `The figures point the other way from a ${KIND_LABELS[kind]}` };
+  }
   return { status: "write", kind };
 };
+
+export const KIND_LABELS: Record<ImportKind, string> = {
+  contribution: "contribution",
+  dividend: "dividend reinvestment",
+  fee: "fee",
+  withdrawal_out: "withdrawal",
+  withdrawal_kept: "withdrawal",
+  rollover_in: "rollover",
+};
+
+/**
+ * Whether a row's figures move the way a kind does: both positive when shares
+ * arrive, both negative when they leave. A row that disagrees (a reversed
+ * contribution, a fee refund, or an amount and shares of opposite signs) is not
+ * written as that kind with its signs dropped.
+ */
+export const fitsKind = (kind: ImportKind, row: Pick<StatementRow, "amount" | "shares">): boolean =>
+  KIND_SPECS[kind].sharesArrive ? row.amount > 0 && row.shares > 0 : row.amount < 0 && row.shares < 0;
+
+/** The choices a decision row offers: the kinds its figures fit, and skipping it. */
+export const allowedDecisions = (row: Pick<StatementRow, "amount" | "shares">): Decision[] => [
+  ...(Object.keys(KIND_SPECS) as ImportKind[]).filter((kind) => fitsKind(kind, row)),
+  "skip",
+];
 
 /**
  * Deterministic ids, so importing an overlapping statement recognises the rows
@@ -148,31 +176,50 @@ export const closeOnOrBefore = (bars: DailyClose[], date: string): DailyClose | 
 
 export interface RestatementCheck {
   ok: boolean;
-  /** (max - min) / min of the trust's unit price over the public fund's adjusted close. */
+  /**
+   * How far apart the trust's unit price over the public fund's adjusted close
+   * must be across the rows, after allowing each row the rounding in its own
+   * figures: the smallest the highest ratio can be over the largest the lowest
+   * can be, minus one.
+   */
   spread: number | null;
   message?: string;
+  /** The closes couldn't be fetched yet; the same request may succeed shortly. */
+  retryable?: boolean;
 }
+
+const DEFAULT_SHARE_ROUNDING = 0.0005;
+const AMOUNT_ROUNDING = 0.005;
 
 /**
  * Restating is only sound while the trust's unit price stays a fixed multiple
- * of the public fund's dividend-adjusted close, so every row with a unit price
- * is measured against it.
+ * of the public fund's dividend-adjusted close, so the rows about to be written
+ * are measured against it. A statement gives shares to a few decimals, which
+ * on a small row moves the implied unit price by more than the band, so each
+ * row counts as the range of ratios its rounded figures allow, and the check
+ * asks whether one multiple fits all of them within the band.
  */
 export const checkRestatement = (
-  rows: Pick<StatementRow, "date" | "amount" | "shares">[],
+  rows: Pick<StatementRow, "date" | "amount" | "shares" | "shareRounding">[],
   bars: DailyClose[],
   ticker: string,
 ): RestatementCheck => {
-  const ratios: number[] = [];
+  let highestLow = 0;
+  let lowestHigh = Infinity;
+  let measured = 0;
   for (const row of rows) {
     const bar = closeOnOrBefore(bars, row.date);
     if (!bar) return { ok: false, spread: null, message: `No ${ticker} close on or just before ${row.date}` };
-    if (row.amount === 0 || row.shares === 0) continue;
-    ratios.push(Math.abs(row.amount / row.shares) / bar.adjustedClose);
+    const units = Math.abs(row.shares);
+    const dollars = Math.abs(row.amount);
+    const rounding = row.shareRounding ?? DEFAULT_SHARE_ROUNDING;
+    if (units <= rounding || dollars <= AMOUNT_ROUNDING) continue;
+    highestLow = Math.max(highestLow, (dollars - AMOUNT_ROUNDING) / (units + rounding) / bar.adjustedClose);
+    lowestHigh = Math.min(lowestHigh, (dollars + AMOUNT_ROUNDING) / (units - rounding) / bar.adjustedClose);
+    measured++;
   }
-  if (!ratios.length) return { ok: false, spread: null, message: "No row carries a unit price to check" };
-  const min = Math.min(...ratios);
-  const spread = (Math.max(...ratios) - min) / min;
+  if (!measured) return { ok: false, spread: null, message: "No row carries a unit price precise enough to check" };
+  const spread = Math.max(0, highestLow / lowestHigh - 1);
   if (spread > MAX_RESTATEMENT_SPREAD) {
     return {
       ok: false,
@@ -221,6 +268,8 @@ export interface PlannedRow {
   reason?: string;
   /** The rules left this row to the user, whether or not they've decided yet. */
   needsDecision?: boolean;
+  /** On a row that needs a decision: the choices its figures allow. */
+  allowedDecisions?: Decision[];
 }
 
 export interface FundSummary {
@@ -247,7 +296,7 @@ export interface PlanInput {
   /** Daily closes per restated fund, keyed by the statement's fund name. */
   closes: Map<string, DailyClose[]>;
   /** Why a restated fund's closes couldn't be fetched, keyed the same way. */
-  closeErrors?: Map<string, string>;
+  closeErrors?: Map<string, { message: string; retryable?: boolean }>;
   /** Ids already in the account, deleted ones included, so a removed row isn't brought back. */
   existingIds: Set<string>;
 }
@@ -266,10 +315,12 @@ export const buildImportPlan = (input: PlanInput): ImportPlan => {
     if (existingIds.has(id)) return { ...base, status: "imported", needsDecision };
     if (classification.status === "write") return { ...base, status: "new", kind: classification.kind };
     if (classification.status === "skip") return { ...base, status: "skip", reason: classification.reason };
+    const allowed = allowedDecisions(row);
+    const decided = { ...base, needsDecision, allowedDecisions: allowed };
     const decision = decisions[id];
-    if (decision === "skip") return { ...base, status: "skip", reason: "Skipped by you", needsDecision };
-    if (decision && decision in KIND_SPECS) return { ...base, status: "new", kind: decision, needsDecision };
-    return { ...base, status: "decide", reason: classification.reason, needsDecision };
+    if (decision === "skip") return { ...decided, status: "skip", reason: "Skipped by you" };
+    if (decision && allowed.includes(decision)) return { ...decided, status: "new", kind: decision as ImportKind };
+    return { ...decided, status: "decide", reason: classification.reason };
   });
 
   const blockers: string[] = [];
@@ -281,23 +332,21 @@ export const buildImportPlan = (input: PlanInput): ImportPlan => {
   const fundNames = Array.from(new Set(rows.map((r) => r.investment)));
   const funds: FundSummary[] = fundNames.map((investment) => {
     const mapping = mappings.get(investment) ?? null;
-    const newRows = planned.filter((r) => r.investment === investment && r.status === "new").length;
-    const summary: FundSummary = { investment, mapping, newRows };
-    if (mapping?.restated) {
+    const toWrite = rows.filter((r, i) => r.investment === investment && planned[i].status === "new");
+    const summary: FundSummary = { investment, mapping, newRows: toWrite.length };
+    if (mapping?.restated && toWrite.length) {
       const ticker = mapping.ticker_symbol ?? "";
       const bars = closes.get(investment);
+      const closeError = input.closeErrors?.get(investment);
       summary.restatement = !ticker
         ? { ok: false, spread: null, message: "A restated fund needs a security with a ticker" }
         : bars?.length
-          ? checkRestatement(
-              rows.filter((r) => r.investment === investment),
-              bars,
-              ticker,
-            )
+          ? checkRestatement(toWrite, bars, ticker)
           : {
               ok: false,
               spread: null,
-              message: input.closeErrors?.get(investment) ?? `No ${ticker} closes for the statement's dates`,
+              message: closeError?.message ?? `No ${ticker} closes for the statement's dates`,
+              retryable: closeError?.retryable,
             };
     }
     return summary;
@@ -416,23 +465,57 @@ const addMonth = (yearMonth: string) => {
 /**
  * Holdings are valued from the latest snapshot in each calendar month, with no
  * carry-forward, so a month with no share movement would show the holding as
- * gone. Each such month from the first movement through `throughMonth` gets the
- * position it opened with, dated the 1st.
+ * gone. Every month after the first movement through `throughMonth` gets the
+ * position it opened with, dated the 1st, including months that also moved
+ * shares and months after the position closed. Writing all of them, rather
+ * than only the empty months, means a later run that adds a movement rewrites
+ * every 1st it affects instead of leaving an earlier run's figure behind.
  */
-export const getCarryForwardPositions = (
+export const getMonthOpeningPositions = (
   positions: Map<string, Position>,
   throughMonth: string,
 ): { date: string; position: Position }[] => {
   const dates = Array.from(positions.keys()).sort();
   if (!dates.length) return [];
-  const monthsWithMovement = new Set(dates.map((d) => d.slice(0, 7)));
-  const filled: { date: string; position: Position }[] = [];
+  const opening: { date: string; position: Position }[] = [];
   let i = 0;
   let last: Position | undefined;
-  for (let month = dates[0].slice(0, 7); month <= throughMonth; month = addMonth(month)) {
+  for (let month = addMonth(dates[0].slice(0, 7)); month <= throughMonth; month = addMonth(month)) {
     const first = `${month}-01`;
     while (i < dates.length && dates[i] < first) last = positions.get(dates[i++]);
-    if (!monthsWithMovement.has(month) && last && last.quantity > 0) filled.push({ date: first, position: last });
+    if (last && !positions.has(first)) opening.push({ date: first, position: last });
   }
-  return filled;
+  return opening;
+};
+
+const squash = (date: string) => date.replaceAll("-", "");
+
+/**
+ * The holding snapshots a holding should have, derived from every live share
+ * movement on it, whoever wrote it: one on each day that moved shares, and one
+ * on the 1st of each month since the first movement. Ids follow
+ * the Add Holding form's `holding-<account>-<security>-<YYYYMMDD>`.
+ */
+export const buildHoldingSnapshots = (
+  account_id: string,
+  security_id: string,
+  transactions: Pick<JSONInvestmentTransaction, "date" | "type" | "quantity" | "amount" | "price">[],
+  throughMonth: string,
+): HoldingSnapshot[] => {
+  const positions = getDailyPositions(transactions);
+  return Array.from(positions, ([date, position]) => ({ date, position }))
+    .concat(getMonthOpeningPositions(positions, throughMonth))
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .map(({ date, position }) => ({
+      snapshot_id: `holding-${account_id}-${security_id}-${squash(date)}`,
+      // Noon UTC is the same calendar day in every US time zone; midnight
+      // reads as the previous day, and so the previous month, west of UTC.
+      snapshot_date: `${date}T12:00:00Z`,
+      holding_account_id: account_id,
+      holding_security_id: security_id,
+      quantity: position.quantity,
+      cost_basis: position.costBasis,
+      institution_price: position.price,
+      institution_value: position.quantity * position.price,
+    }));
 };

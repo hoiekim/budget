@@ -24,6 +24,7 @@ import {
   INSTITUTION_VALUE,
   COST_BASIS,
   QUANTITY,
+  QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { searchSecuritiesById } from "./securities";
@@ -225,6 +226,7 @@ export const getSecuritySnapshots = async (
 export const getHoldingSnapshots = async (
   user: MaskedUser,
   options: { account_id?: string; security_id?: string; startDate?: string; endDate?: string } = {},
+  client?: QueryExecutor,
 ): Promise<HoldingSnapshot[]> => {
   const filters: Record<string, unknown> = { [SNAPSHOT_TYPE]: "holding" };
   if (options.account_id) filters.holding_account_id = options.account_id;
@@ -237,7 +239,7 @@ export const getHoldingSnapshots = async (
         ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
         : undefined,
     orderBy: SNAPSHOT_DATE,
-  });
+  }, client);
 
   return snapshots.map((s) => ({
     snapshot_id: s.snapshot_id,
@@ -293,6 +295,29 @@ export const upsertHoldingSnapshots = async (
     }
   }
   return results;
+};
+
+/** One statement for many holding snapshots, with the same conflict columns as the per-row upsert. */
+export const upsertHoldingSnapshotsBatch = async (
+  user: MaskedUser,
+  snapshots: HoldingSnapshot[],
+  client?: QueryExecutor,
+): Promise<void> => {
+  if (!snapshots.length) return;
+  const rows = snapshots.map((snapshot) => ({
+    [SNAPSHOT_ID]: snapshot.snapshot_id,
+    [USER_ID]: user.user_id,
+    [SNAPSHOT_DATE]: snapshot.snapshot_date,
+    [SNAPSHOT_TYPE]: "holding",
+    [IS_DELETED]: false,
+    holding_account_id: snapshot.holding_account_id,
+    holding_security_id: snapshot.holding_security_id,
+    institution_price: snapshot.institution_price,
+    institution_value: snapshot.institution_value,
+    cost_basis: snapshot.cost_basis,
+    quantity: snapshot.quantity,
+  }));
+  await snapshotsTable.upsertMany(rows, HOLDING_SNAPSHOT_UPDATE_COLUMNS, client);
 };
 
 /** Columns an account-balance conflict may rewrite. `Table.upsert` otherwise

@@ -34,22 +34,37 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const POLYGON_HOST = "https://api.polygon.io";
 
 /**
- * Per symbol, the bars from the earliest date asked for through the day of
- * the fetch, so any later range inside it is served without a call. The rate
- * gate is shared with the price refresh and the backfill, which can hold it
- * for minutes, so a repeated preview should not have to queue behind them.
+ * Per symbol, the bars from the start of the earliest year asked for through
+ * the day of the fetch. Any later range inside it is served without a call,
+ * and starting on a year boundary means a request can't force a fresh fetch
+ * by asking from a day earlier. The rate gate is shared with the price refresh
+ * and the backfill, which can hold it for minutes.
  */
 const cache = new Map<string, { from: string; to: string; bars: DailyClose[]; fetchedAt: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000;
+
+/** Failed fetches, briefly, so an unknown symbol doesn't spend calls on every retry. */
+const failures = new Map<string, { result: PolygonResult<never>; failedAt: number }>();
+const FAILURE_TTL_MS = 5 * 60 * 1000;
+
+/** Fetches with no deadline still running, so a caller can wait for one instead of queueing another. */
+const loading = new Map<string, Promise<PolygonResult<DailyClose[]>>>();
 
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of cache) {
     if (now - entry.fetchedAt >= CACHE_TTL_MS) cache.delete(key);
   }
+  for (const [key, entry] of failures) {
+    if (now - entry.failedAt >= FAILURE_TTL_MS) failures.delete(key);
+  }
 }, CACHE_TTL_MS).unref();
 
-export const clearDailyClosesCache = () => cache.clear();
+export const clearDailyClosesCache = () => {
+  cache.clear();
+  failures.clear();
+  loading.clear();
+};
 
 const toDateString = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
@@ -102,12 +117,15 @@ const getPolygonDailyCloses = async (
   if (!apiKey) return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
   const ticker = polygon.toPolygonTicker(ticker_symbol, options.securityType);
   const encoded = polygon.encodeTicker(ticker);
+  // One budget across both calls, so a caller's wait covers the whole fetch.
+  const deadline = options.maxWaitMs ? Date.now() + options.maxWaitMs : undefined;
+  const remaining = () => (deadline === undefined ? undefined : Math.max(1, deadline - Date.now()));
 
   try {
     const aggs = await getPolygonJson(
       `${POLYGON_HOST}/v2/aggs/ticker/${encoded}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=50000&apiKey=${apiKey}`,
       `${ticker} in [${from}, ${to}]`,
-      options.maxWaitMs,
+      remaining(),
     );
     if (aggs.refusal) return aggs.refusal;
     const results = (aggs.json.results ?? []) as { c: number; t: number }[];
@@ -121,7 +139,7 @@ const getPolygonDailyCloses = async (
     const divs = await getPolygonJson(
       `${POLYGON_HOST}/v3/reference/dividends?ticker=${encodeURIComponent(ticker)}&ex_dividend_date.gte=${from}&ex_dividend_date.lte=${to}&limit=1000&apiKey=${apiKey}`,
       `${ticker} dividends`,
-      options.maxWaitMs,
+      remaining(),
     );
     if (divs.refusal) return divs.refusal;
     const dividends = ((divs.json.results ?? []) as { ex_dividend_date?: string; cash_amount?: number }[])
@@ -176,6 +194,78 @@ const getYahooDailyCloses = async (
   return { success: true, data: bars };
 };
 
+const keyOf = (ticker_symbol: string, securityType?: JSONSecurity["type"]) => `${ticker_symbol}:${securityType ?? ""}`;
+const yearStart = (date: string) => `${date.slice(0, 4)}-01-01`;
+const today = () => new Date().toISOString().slice(0, 10);
+
+const inRange = (
+  bars: DailyClose[],
+  ticker_symbol: string,
+  from: string,
+  to: string,
+): PolygonResult<DailyClose[]> => {
+  const within = bars.filter((b) => b.date >= from && b.date <= to);
+  if (within.length) return { success: true, data: within };
+  return { success: false, error: "no_data", message: `No daily closes for ${ticker_symbol} between ${from} and ${to}` };
+};
+
+export type DailyClosesPeek = PolygonResult<DailyClose[]> | "loading" | undefined;
+
+/**
+ * What a call would answer without reaching the rate gate: cached bars, a
+ * recent failure, `"loading"` while a fetch for the symbol is still running,
+ * or `undefined` when a call is needed.
+ */
+export const peekDailyCloses = (
+  ticker_symbol: string,
+  from: string,
+  to: string,
+  securityType?: JSONSecurity["type"],
+): DailyClosesPeek => {
+  const key = keyOf(ticker_symbol, securityType);
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS && cached.from <= from && cached.to >= to) {
+    return inRange(cached.bars, ticker_symbol, from, to);
+  }
+  const failed = failures.get(`${key}:${yearStart(from)}`);
+  if (failed && Date.now() - failed.failedAt < FAILURE_TTL_MS) return failed.result;
+  if (loading.has(key)) return "loading";
+  return undefined;
+};
+
+const fetchWindow = async (
+  ticker_symbol: string,
+  from: string,
+  options: Options,
+): Promise<PolygonResult<DailyClose[]>> => {
+  const key = keyOf(ticker_symbol, options.securityType);
+  const windowFrom = yearStart(from);
+  const to = today();
+  let result = await getPolygonDailyCloses(ticker_symbol, windowFrom, to, options);
+  if (!result.success && result.error === "no_data") {
+    result = await getYahooDailyCloses(ticker_symbol, windowFrom, to, options);
+  }
+  if (result.success) {
+    cache.set(key, { from: windowFrom, to, bars: result.data, fetchedAt: Date.now() });
+  } else if (result.error !== "rate_limited") {
+    failures.set(`${key}:${windowFrom}`, { result, failedAt: Date.now() });
+  }
+  return result;
+};
+
+/**
+ * Starts a fetch with no deadline, if none is running for the symbol, so the
+ * cache is warm when the caller asks again. Its result is only cached.
+ */
+export const warmDailyCloses = (ticker_symbol: string, from: string, securityType?: JSONSecurity["type"]) => {
+  const key = keyOf(ticker_symbol, securityType);
+  if (loading.has(key)) return;
+  const pending = fetchWindow(ticker_symbol, from, { securityType })
+    .catch((err) => polygonFailure(err, ticker_symbol))
+    .finally(() => loading.delete(key));
+  loading.set(key, pending);
+};
+
 /** `from` and `to` are YYYY-MM-DD and inclusive. Bars come back oldest first. */
 export const getDailyCloses = async (
   ticker_symbol: string,
@@ -183,24 +273,9 @@ export const getDailyCloses = async (
   to: string,
   options: Options = {},
 ): Promise<PolygonResult<DailyClose[]>> => {
-  const key = `${ticker_symbol}:${options.securityType ?? ""}`;
-  const inRange = (bars: DailyClose[]) => bars.filter((b) => b.date >= from && b.date <= to);
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS && cached.from <= from && cached.to >= to) {
-    return { success: true, data: inRange(cached.bars) };
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const fetchTo = to > today ? to : today;
-  let result = await getPolygonDailyCloses(ticker_symbol, from, fetchTo, options);
-  if (!result.success && result.error === "no_data") {
-    result = await getYahooDailyCloses(ticker_symbol, from, fetchTo, options);
-  }
-  if (!result.success) return result;
-  cache.set(key, { from, to: fetchTo, bars: result.data, fetchedAt: Date.now() });
-  const bars = inRange(result.data);
-  if (!bars.length) {
-    return { success: false, error: "no_data", message: `No daily closes for ${ticker_symbol} between ${from} and ${to}` };
-  }
-  return { success: true, data: bars };
+  const peek = peekDailyCloses(ticker_symbol, from, to, options.securityType);
+  if (peek === "loading") return polygon.rateLimitedResult(ticker_symbol);
+  if (peek) return peek;
+  const result = await fetchWindow(ticker_symbol, from, options);
+  return result.success ? inRange(result.data, ticker_symbol, from, to) : result;
 };

@@ -1,36 +1,42 @@
-import { AccountType } from "plaid";
-import { ItemProvider, JSONAccount, JSONHolding, getSquashedDateString } from "common";
+import { AccountType, InvestmentTransactionType } from "plaid";
+import { ItemProvider, JSONAccount, JSONHolding } from "common";
 import {
   MaskedUser,
   InvTxModel,
   investmentTransactionsTable,
   INVESTMENT_TRANSACTION_ID,
   USER_ID,
+  ACCOUNT_ID,
+  SECURITY_ID,
+  QueryExecutor,
   getAccount,
   getItem,
-  getInvestmentTransactions,
   getHoldingSnapshots,
   getPlanFundMappings,
   savePlanFundMappings,
   searchSecuritiesById,
-  upsertHoldingSnapshots,
+  upsertHoldingSnapshotsBatch,
   upsertHoldings,
   withTransaction,
   backfillMonthlySecuritySnapshotsForward,
   getDailyCloses,
+  peekDailyCloses,
+  warmDailyCloses,
+  polygon,
+  polygonLookupRateLimiter,
+  POLYGON_LOOKUP_SHED_MESSAGE,
   logger,
 } from "server";
 import type { DailyClose } from "../daily-closes";
-import type { HoldingSnapshot } from "../postgres/repositories";
-import { parsePlanStatement } from "./parse";
+import { parsePlanStatement, StatementRow } from "./parse";
 import {
+  buildHoldingSnapshots,
   buildImportPlan,
   Decision,
   FundMapping,
   ImportPlan,
+  PlanInput,
   PlannedTransaction,
-  getCarryForwardPositions,
-  getDailyPositions,
   getRowIds,
 } from "./plan";
 
@@ -65,12 +71,10 @@ type Prepared =
 const CLOSES_LEAD_DAYS = 10;
 
 /**
- * A restated fund's closes take two calls through a gate of five a minute that
- * the benchmark lookups on the same screen also draw from, so the usual
- * five-second foreground budget fails most first previews. The result is
- * cached, so only the first preview of a fund waits.
+ * Rows per INSERT. Each row binds 14 parameters and Postgres takes at most
+ * 65,535 in one statement.
  */
-const CLOSES_QUEUE_WAIT_MS = 60_000;
+const INSERT_CHUNK_ROWS = 1000;
 
 const shiftDate = (date: string, days: number) => {
   const d = new Date(`${date}T00:00:00Z`);
@@ -85,6 +89,37 @@ const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<stri
     { inFilters: { [INVESTMENT_TRANSACTION_ID]: ids }, excludeDeleted: false },
   );
   return new Set(models.map((m) => m.investment_transaction_id));
+};
+
+/**
+ * The closes for one restated fund. A call that would reach the shared market
+ * data gate is charged to the same per-user budget the ticker lookups use. It
+ * waits only as long as any other request a person is watching; past that the
+ * fetch carries on in the background and the fund comes back as still loading,
+ * for the page to retry.
+ */
+const getRestatementCloses = async (
+  user: MaskedUser,
+  ticker: string,
+  rows: StatementRow[],
+): Promise<{ bars: DailyClose[] } | { message: string; retryable?: boolean }> => {
+  const from = shiftDate(rows[0].date, -CLOSES_LEAD_DAYS);
+  const to = rows[rows.length - 1].date;
+  const stillLoading = { message: `Prices for ${ticker} are still loading. Retry in a minute.`, retryable: true };
+
+  const peek = peekDailyCloses(ticker, from, to);
+  if (peek === "loading") return stillLoading;
+  if (peek) return peek.success ? { bars: peek.data } : { message: peek.message };
+
+  if (polygonLookupRateLimiter.isLimited(user.user_id)) return { message: POLYGON_LOOKUP_SHED_MESSAGE };
+  polygonLookupRateLimiter.consume(user.user_id);
+  const result = await getDailyCloses(ticker, from, to, { maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS });
+  if (result.success) return { bars: result.data };
+  if (result.error === "rate_limited") {
+    warmDailyCloses(ticker, from);
+    return stillLoading;
+  }
+  return { message: result.message };
 };
 
 const prepare = async (user: MaskedUser, request: PlanStatementRequest): Promise<Prepared> => {
@@ -121,37 +156,29 @@ const prepare = async (user: MaskedUser, request: PlanStatementRequest): Promise
     });
   }
 
-  const closes = new Map<string, DailyClose[]>();
-  const closeErrors = new Map<string, string>();
-  await Promise.all(
-    Array.from(mappings).map(async ([investment, mapping]) => {
-      if (!mapping.restated || !mapping.ticker_symbol) return;
-      const dates = parsed.rows.filter((r) => r.investment === investment).map((r) => r.date);
-      if (!dates.length) return;
-      const result = await getDailyCloses(
-        mapping.ticker_symbol,
-        shiftDate(dates[0], -CLOSES_LEAD_DAYS),
-        dates[dates.length - 1],
-        { maxWaitMs: CLOSES_QUEUE_WAIT_MS },
-      );
-      if (result.success) closes.set(investment, result.data);
-      else closeErrors.set(investment, result.message);
-    }),
-  );
-
-  const existingIds = await getExistingIds(user, getRowIds(account.account_id, parsed.rows));
-
-  const plan = buildImportPlan({
+  const input: PlanInput = {
     account_id: account.account_id,
     iso_currency_code: account.balances.iso_currency_code || "USD",
     rows: parsed.rows,
     mappings,
     decisions: request.decisions,
-    closes,
-    closeErrors,
-    existingIds,
-  });
+    closes: new Map(),
+    closeErrors: new Map(),
+    existingIds: await getExistingIds(user, getRowIds(account.account_id, parsed.rows)),
+  };
 
+  // Closes are fetched only for restated funds with rows still to write.
+  const needed = buildImportPlan(input).funds.filter((f) => f.mapping?.restated && f.mapping.ticker_symbol && f.newRows);
+  await Promise.all(
+    needed.map(async ({ investment, mapping }) => {
+      const rows = parsed.rows.filter((r) => r.investment === investment);
+      const result = await getRestatementCloses(user, mapping!.ticker_symbol!, rows);
+      if ("bars" in result) input.closes.set(investment, result.bars);
+      else input.closeErrors!.set(investment, result);
+    }),
+  );
+
+  const plan = buildImportPlan(input);
   return { ok: true, account, mappings, preview: { ...plan, parseErrors: parsed.errors } };
 };
 
@@ -173,47 +200,34 @@ const toRow = (user: MaskedUser, planned: PlannedTransaction) => {
 };
 
 /**
- * Writes a holding snapshot for each day the statement moved shares and for
- * each month since with no movement, then the current-holdings row, through
- * the same repository calls the Add Holding form uses. Positions come from
- * every live transaction on the holding, not only the statement's, so rows
- * written by anything else are counted. The holdings row is left alone when a
- * later snapshot already exists.
+ * Rewrites each holding's snapshots and its current-holdings row from every
+ * live share movement on it, whoever wrote it, so a run converges on the
+ * totals rather than adding to what an earlier run left. The holdings row is
+ * left alone when a later snapshot already exists.
  */
 const refreshHoldings = async (
   user: MaskedUser,
   account_id: string,
-  statementDates: Map<string, Set<string>>,
+  security_ids: string[],
+  client: QueryExecutor,
 ) => {
-  if (!statementDates.size) return;
-  const transactions = await getInvestmentTransactions(user, { account_id });
   const thisMonth = new Date().toISOString().slice(0, 7);
-
-  for (const [security_id, dates] of statementDates) {
-    const positions = getDailyPositions(transactions.filter((t) => t.security_id === security_id));
-    const dated = Array.from(dates)
-      .filter((date) => positions.has(date))
-      .map((date) => ({ date, position: positions.get(date)! }))
-      .concat(getCarryForwardPositions(positions, thisMonth))
-      .sort((a, b) => (a.date < b.date ? -1 : 1));
-    const snapshots: HoldingSnapshot[] = dated.map(({ date, position }) => ({
-      snapshot_id: `holding-${account_id}-${security_id}-${getSquashedDateString(new Date(`${date}T12:00:00Z`))}`,
-      // Noon UTC is the same calendar day in every US time zone; midnight
-      // reads as the previous day, and so the previous month, west of UTC.
-      snapshot_date: `${date}T12:00:00Z`,
-      holding_account_id: account_id,
-      holding_security_id: security_id,
-      quantity: position.quantity,
-      cost_basis: position.costBasis,
-      institution_price: position.price,
-      institution_value: position.quantity * position.price,
-    }));
+  for (const security_id of security_ids) {
+    const live = await investmentTransactionsTable.query(
+      { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id, [SECURITY_ID]: security_id },
+      {},
+      client,
+    );
+    const movements = live
+      .map((m) => m.toJSON())
+      .filter((t) => t.type === InvestmentTransactionType.Buy || t.type === InvestmentTransactionType.Sell);
+    const snapshots = buildHoldingSnapshots(account_id, security_id, movements, thisMonth);
     if (!snapshots.length) continue;
-    await upsertHoldingSnapshots(user, snapshots);
+    await upsertHoldingSnapshotsBatch(user, snapshots, client);
 
     const latest = snapshots[snapshots.length - 1];
-    const latestDate = dated[dated.length - 1].date;
-    const existing = await getHoldingSnapshots(user, { account_id, security_id });
+    const latestDate = latest.snapshot_date.slice(0, 10);
+    const existing = await getHoldingSnapshots(user, { account_id, security_id }, client);
     if (existing.some((s) => s.snapshot_date.slice(0, 10) > latestDate)) continue;
     const holding: JSONHolding = {
       holding_id: `${account_id}-${security_id}`,
@@ -227,7 +241,7 @@ const refreshHoldings = async (
       iso_currency_code: null,
       unofficial_currency_code: null,
     };
-    await upsertHoldings(user, [holding]);
+    await upsertHoldings(user, [holding], client);
   }
 };
 
@@ -250,26 +264,16 @@ export const importPlanStatement = async (
   const usedMappings = Array.from(mappings)
     .filter(([investment]) => statementFunds.has(investment))
     .map(([investment, m]) => ({ investment, security_id: m.security_id, restated: m.restated }));
+  const security_ids = Array.from(new Set(usedMappings.map((m) => m.security_id)));
+  const rows = preview.transactions.map((t) => toRow(user, t));
 
   await withTransaction(async (client) => {
-    await investmentTransactionsTable.upsertMany(
-      preview.transactions.map((t) => toRow(user, t)),
-      [],
-      client,
-    );
+    for (let i = 0; i < rows.length; i += INSERT_CHUNK_ROWS) {
+      await investmentTransactionsTable.upsertMany(rows.slice(i, i + INSERT_CHUNK_ROWS), [], client);
+    }
     await savePlanFundMappings(user, account_id, usedMappings, client);
+    await refreshHoldings(user, account_id, security_ids, client);
   });
-
-  const statementDates = new Map<string, Set<string>>();
-  for (const row of preview.rows) {
-    if (row.status !== "new" && row.status !== "imported") continue;
-    const security_id = mappings.get(row.investment)?.security_id;
-    if (!security_id) continue;
-    const dates = statementDates.get(security_id) ?? new Set<string>();
-    dates.add(row.date);
-    statementDates.set(security_id, dates);
-  }
-  await refreshHoldings(user, account_id, statementDates);
 
   const firstDates = new Map<string, string>();
   for (const t of preview.transactions) {

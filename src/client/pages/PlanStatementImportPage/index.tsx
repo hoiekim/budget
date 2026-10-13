@@ -1,4 +1,4 @@
-import { ChangeEventHandler, Fragment, useState } from "react";
+import { ChangeEventHandler, Fragment, useRef, useState } from "react";
 import { numberToCommaString } from "common";
 import {
   call,
@@ -58,6 +58,8 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
+  // Previews can overlap while closes load; only the latest one may land.
+  const previewSeq = useRef(0);
 
   const requestBody = (
     nextCsv: string,
@@ -77,11 +79,13 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     nextEdits: Record<string, FundEdit>,
     nextDecisions: Record<string, Decision>,
   ) => {
+    const seq = ++previewSeq.current;
     setBusy(true);
     const r = await call.post<PlanStatementPreview>(
       "/api/plan-statement/preview",
       requestBody(nextCsv, nextEdits, nextDecisions),
     );
+    if (seq !== previewSeq.current) return;
     setBusy(false);
     if (r.status !== "success" || !r.body) {
       setPreview(null);
@@ -90,18 +94,21 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     }
     setError("");
     setPreview(r.body);
-    // Funds the account already maps come back with their mapping; seed those
-    // so their ticker shows and later previews keep sending them.
-    const seeded = { ...nextEdits };
-    for (const fund of r.body.funds) {
-      if (seeded[fund.investment] || !fund.mapping) continue;
-      seeded[fund.investment] = {
-        ticker: fund.mapping.ticker_symbol ?? "",
-        security_id: fund.mapping.security_id,
-        restated: fund.mapping.restated,
-      };
-    }
-    setEdits(seeded);
+    // Funds the account already maps come back with their mapping; seed the
+    // ones not yet edited so their ticker shows and later previews send them.
+    const funds = r.body.funds;
+    setEdits((current) => {
+      const seeded = { ...current };
+      for (const fund of funds) {
+        if (seeded[fund.investment] || !fund.mapping) continue;
+        seeded[fund.investment] = {
+          ticker: fund.mapping.ticker_symbol ?? "",
+          security_id: fund.mapping.security_id,
+          restated: fund.mapping.restated,
+        };
+      }
+      return seeded;
+    });
   };
 
   const onChangeFile: ChangeEventHandler<HTMLInputElement> = async (e) => {
@@ -235,6 +242,11 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                         : fund.restatement.message}
                     </Row>
                   )}
+                  {fund.restatement?.retryable && csv && (
+                    <ButtonRow disabled={busy} onClick={() => runPreview(csv, edits, decisions)}>
+                      Retry
+                    </ButtonRow>
+                  )}
                 </Fragment>
               );
             })}
@@ -250,9 +262,9 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                     <KeyValue name="Treat&nbsp;as">
                       <select value={decisions[row.id] ?? ""} onChange={onChangeDecision(row.id)}>
                         <option value="">Choose</option>
-                        {Object.entries(DECISION_LABELS).map(([value, label]) => (
+                        {(row.allowedDecisions ?? ["skip"]).map((value) => (
                           <option key={value} value={value}>
-                            {label}
+                            {DECISION_LABELS[value]}
                           </option>
                         ))}
                       </select>

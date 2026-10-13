@@ -7,6 +7,11 @@ export interface StatementRow {
   label: string;
   amount: number;
   shares: number;
+  /**
+   * Half a unit in the last decimal place the file gave the shares to, so the
+   * true figure lies within `shares ± shareRounding`. 0.0005 for "9.876".
+   */
+  shareRounding?: number;
 }
 
 export interface ParsedStatement {
@@ -43,6 +48,11 @@ const splitCsvLine = (line: string): string[] => {
 
 const isHeader = (fields: string[]) =>
   HEADER.every((name, i) => fields[i]?.toLowerCase() === name);
+
+const halfLastDecimal = (raw: string): number => {
+  const decimals = /\.(\d+)/.exec(raw)?.[1].length ?? 0;
+  return 0.5 * 10 ** -decimals;
+};
 
 /** "1,234.56", "-12.3", "(12.30)" → number; anything else → NaN. */
 const parseNumber = (raw: string): number => {
@@ -99,7 +109,7 @@ export const parsePlanStatement = (text: string): ParsedStatement => {
       errors.push(`Line ${line} could not be read.`);
       continue;
     }
-    rows.push({ line, date, investment, label, amount, shares });
+    rows.push({ line, date, investment, label, amount, shares, shareRounding: halfLastDecimal(sharesRaw) });
   }
 
   rows.sort((a, b) => (a.date === b.date ? b.line - a.line : a.date < b.date ? -1 : 1));
