@@ -151,7 +151,7 @@ export class SnapshotModel extends Model<JSONSnapshotData, SnapshotSchema> imple
         security_id: this.holding_security_id ?? "",
         institution_price: this.institution_price ?? 0,
         institution_value: this.institution_value ?? 0,
-        cost_basis: this.cost_basis ?? 0,
+        cost_basis: this.cost_basis,
         quantity: this.quantity ?? 0,
       },
     } as JSONHoldingSnapshot;

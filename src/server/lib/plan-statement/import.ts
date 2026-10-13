@@ -11,6 +11,7 @@ import {
   getPlanFundMappings,
   savePlanFundMappings,
   searchSecuritiesById,
+  lockHoldingPositions,
   previewHoldingPositions,
   refreshHoldingPositions,
   withTransaction,
@@ -251,6 +252,9 @@ export const importPlanStatement = async (
   const rows = preview.transactions.map((t) => toRow(user, t));
 
   await withTransaction(async (client) => {
+    // Before the rows go in, so another writer of this account's holdings
+    // that's waiting sees them once this commits.
+    await lockHoldingPositions(client, user, account_id);
     for (let i = 0; i < rows.length; i += INSERT_CHUNK_ROWS) {
       await investmentTransactionsTable.upsertMany(rows.slice(i, i + INSERT_CHUNK_ROWS), [], client);
     }

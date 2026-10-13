@@ -1,5 +1,7 @@
 import {
   Route,
+  getInvestmentTransaction,
+  refreshManagedHoldingPositions,
   updateInvestmentTransactions,
   requireBodyObject,
   requireStringField,
@@ -24,6 +26,9 @@ const INVESTMENT_TRANSACTION_BODY_SPEC: FieldSpec[] = [
   { path: "label.budget_id", type: "uuid", nullable: true },
   { path: "label.category_id", type: "uuid", nullable: true },
 ];
+
+/** Fields whose change can move a holding's position. */
+const POSITION_FIELDS = ["security_id", "date", "type", "quantity", "amount", "price"];
 
 export interface InvestmentTransactionPostResponse {
   investment_transaction_id: string;
@@ -53,10 +58,17 @@ export const postInvestmentTransactionRoute = new Route<InvestmentTransactionPos
     if (!fieldsResult.success) return validationError(fieldsResult.error!);
 
     try {
+      const before = await getInvestmentTransaction(user, idResult.data!);
       const response = await updateInvestmentTransactions(user, [body as PartialInvestmentTransaction]);
       const result = response[0];
       if (!result || result.status >= 400) {
         throw new Error("Database responded with an error.");
+      }
+      if (before && POSITION_FIELDS.some((field) => field in body)) {
+        const security_ids = [before.security_id, body.security_id].filter((id): id is string => typeof id === "string");
+        await refreshManagedHoldingPositions(user, before.account_id, Array.from(new Set(security_ids))).catch(
+          (error) => logger.error("Failed to refresh holding positions after an edit", { investment_transaction_id: idResult.data }, error),
+        );
       }
       const investment_transaction_id = result.update._id || "";
       return { status: "success", body: { investment_transaction_id } };

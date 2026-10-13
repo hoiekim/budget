@@ -60,7 +60,7 @@ export interface HoldingSnapshot {
   holding_security_id: string;
   institution_price?: number;
   institution_value?: number;
-  cost_basis?: number;
+  cost_basis?: number | null;
   quantity?: number;
 }
 
@@ -356,7 +356,7 @@ export const upsertHoldingSnapshotsBatch = async (
     holding_security_id: snapshot.holding_security_id,
     institution_price: snapshot.institution_price,
     institution_value: snapshot.institution_value,
-    cost_basis: snapshot.cost_basis,
+    cost_basis: snapshot.cost_basis ?? null,
     quantity: snapshot.quantity,
   }));
   await snapshotsTable.upsertMany(rows, HOLDING_SNAPSHOT_UPDATE_COLUMNS, client);

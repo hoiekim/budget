@@ -216,7 +216,9 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const decisionRows = preview?.rows.filter((r) => r.needsDecision && r.status !== "imported") ?? [];
   const importedCount = preview?.rows.filter((r) => r.status === "imported").length ?? 0;
   const skippedCount = preview?.rows.filter((r) => r.status === "skip").length ?? 0;
-  const canImport = !!preview && !busy && !preview.blockers.length && newRows.length > 0;
+  // Replacing entered positions is worth applying even when nothing is new.
+  const replacing = !!preview?.funds.some((f) => f.replacePositions && f.positionGaps?.length);
+  const canImport = !!preview && !busy && !preview.blockers.length && (newRows.length > 0 || replacing);
 
   return (
     <Properties className="PlanStatementImportPage">
@@ -338,7 +340,13 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
             ))}
             {result && <Row className="fundNote">{result}</Row>}
             <ButtonRow disabled={!canImport} onClick={onClickImport}>
-              Import&nbsp;{newRows.length}&nbsp;row{newRows.length === 1 ? "" : "s"}
+              {newRows.length || !replacing ? (
+                <>
+                  Import&nbsp;{newRows.length}&nbsp;row{newRows.length === 1 ? "" : "s"}
+                </>
+              ) : (
+                <>Replace&nbsp;positions</>
+              )}
             </ButtonRow>
           </Property>
 

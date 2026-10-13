@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   derivedSnapshotId,
+  enteredResetPoints,
+  isEnteredSnapshot,
   isUnchangedDerived,
+  positionBefore,
   Movement,
   planHoldingPositions,
   StoredHoldingSnapshot,
@@ -21,15 +24,24 @@ const plan = (over: Partial<Parameters<typeof planHoldingPositions>[0]>) =>
     ...over,
   });
 
+/** Rounds the way Postgres `numeric(p, s)` does: half away from zero, on the decimal digits. */
+const pgRound = (n: number, scale: number) => {
+  const [whole, fraction = ""] = Math.abs(n).toString().split(".");
+  const digits = (fraction + "0".repeat(scale + 1)).slice(0, scale + 1);
+  let scaled = BigInt(whole + digits.slice(0, scale));
+  if (Number(digits[scale]) >= 5) scaled += 1n;
+  return (Math.sign(n) || 1) * Number(scaled) / 10 ** scale;
+};
+
 /** What the database holds after `writes` land, read back the way the engine reads it. */
 const asStored = (writes: ReturnType<typeof planHoldingPositions>["writes"]): StoredHoldingSnapshot[] =>
   writes.map((w) => ({
     snapshot_id: w.snapshot_id,
     date: w.snapshot_date.slice(0, 10),
-    quantity: Number(w.quantity!.toFixed(6)),
-    cost_basis: Number(w.cost_basis!.toFixed(2)),
-    institution_price: Number(w.institution_price!.toFixed(6)),
-    institution_value: Number(w.institution_value!.toFixed(2)),
+    quantity: pgRound(w.quantity!, 6),
+    cost_basis: w.cost_basis === null || w.cost_basis === undefined ? null : pgRound(w.cost_basis, 2),
+    institution_price: pgRound(w.institution_price!, 6),
+    institution_value: pgRound(w.institution_value!, 2),
   }));
 
 const entered = (date: string, quantity: number, over: Partial<StoredHoldingSnapshot> = {}): StoredHoldingSnapshot => ({
@@ -193,6 +205,176 @@ describe("planHoldingPositions", () => {
     expect(result.gaps).toEqual([]);
     expect(result.retire).toEqual([stale[0].snapshot_id]);
     expect(quantities(result)).toContainEqual(["2026-11-03", 17]);
+  });
+});
+
+describe("planHoldingPositions, round 4", () => {
+  test("a derived snapshot moved to another date stays where it was moved", () => {
+    const first = plan({ movements: statement.slice(0, 2), throughMonth: "2027-01" });
+    const stored = asStored(first.writes);
+    const december = stored.find((s) => s.date === "2026-12-01")!;
+    december.date = "2026-12-15";
+
+    const next = plan({ movements: statement.slice(0, 2), stored, throughMonth: "2027-01" });
+    expect(next.writes.some((w) => w.snapshot_id === december.snapshot_id)).toBe(false);
+    expect(next.retire).not.toContain(december.snapshot_id);
+    // December's 1st still gets an opening, under an id of its own.
+    const opening = next.writes.find((w) => w.snapshot_date.startsWith("2026-12-01"));
+    expect(opening).toBeDefined();
+    expect(opening!.snapshot_id).not.toBe(december.snapshot_id);
+    // And it's recognised as the engine's own afterwards.
+    const settled = plan({ movements: statement.slice(0, 2), stored: [...stored, ...asStored(next.writes)], throughMonth: "2027-01" });
+    expect(settled.writes).toEqual([]);
+  });
+
+  test("an entered position with no cost leaves the cost unknown through fees", () => {
+    const result = plan({
+      stored: [entered("2026-01-02", 100, { cost_basis: null })],
+      movements: [tx("2026-02-27", "sell", -0.2, -9.6, 48), tx("2026-03-31", "sell", -0.2, -9.6, 48)],
+      throughMonth: "2026-04",
+    });
+    expect(result.writes.length).toBeGreaterThan(0);
+    expect(result.writes.every((w) => w.cost_basis === null)).toBe(true);
+    expect(result.final!.position).toMatchObject({ quantity: 99.6, costBasis: null });
+    // Unknown cost still reads back as the engine's own.
+    expect(plan({ ...{ stored: [entered("2026-01-02", 100, { cost_basis: null }), ...asStored(result.writes)] }, movements: [tx("2026-02-27", "sell", -0.2, -9.6, 48), tx("2026-03-31", "sell", -0.2, -9.6, 48)], throughMonth: "2026-04" }).writes).toEqual([]);
+  });
+
+  test("a buy on top of an unknown cost doesn't make one up", () => {
+    const result = plan({
+      stored: [entered("2026-01-02", 100, { cost_basis: null })],
+      movements: [tx("2026-02-01", "buy", 10, 500, 50)],
+      throughMonth: "2026-02",
+    });
+    expect(result.final!.position).toMatchObject({ quantity: 110, costBasis: null });
+  });
+
+  test("an entry with no cost that the transactions already explain keeps their cost", () => {
+    const result = plan({
+      stored: [entered("2026-02-02", 10, { cost_basis: null })],
+      movements: [tx("2026-02-01", "buy", 10, 500, 50), tx("2026-03-01", "buy", 2, 104, 52)],
+      throughMonth: "2026-03",
+    });
+    expect(result.final!.position).toMatchObject({ quantity: 12, costBasis: 604 });
+  });
+
+  test("a later entry with a cost makes the cost known again", () => {
+    const result = plan({
+      stored: [entered("2026-01-02", 100, { cost_basis: null }), entered("2026-03-02", 50, { cost_basis: 150 })],
+      movements: [tx("2026-04-01", "buy", 10, 500, 50)],
+      throughMonth: "2026-04",
+    });
+    expect(result.final!.position).toMatchObject({ quantity: 60, costBasis: 650 });
+  });
+
+  test("a cost the database rounds differently from JavaScript still reads back as the engine's own", () => {
+    // 1.005 is just under 1.005 in binary: toFixed(2) gives 1.00, Postgres gives 1.01.
+    const movements = [tx("2026-10-06", "buy", 1, 1.005, 1.005)];
+    const first = plan({ movements, throughMonth: "2026-11" });
+    const stored = asStored(first.writes);
+    expect(plan({ movements, stored, throughMonth: "2026-11" })).toMatchObject({ writes: [], gaps: [] });
+    // Still the engine's own, so an earlier movement moves it rather than being reset by it.
+    const later = plan({ movements: [tx("2026-10-01", "buy", 2, 2, 1), ...movements], stored, throughMonth: "2026-11" });
+    expect(later.gaps).toEqual([]);
+    expect(later.final!.position.quantity).toBe(3);
+  });
+
+  test("never writes onto an id that a row someone edited holds, whichever variant", () => {
+    const movements = [tx("2026-10-06", "buy", 10, 500, 50)];
+    const position = { quantity: 10, costBasis: 500, price: 50 };
+    // Edited rows holding every id the 10-06 snapshot could take, each moved to another date.
+    const held = [0, 1, 2, 3].map((variant, i) => ({
+      snapshot_id: derivedSnapshotId("acct-1", "sec-1", "2026-10-06", position, variant),
+      date: `2026-09-0${i + 1}`,
+      // Empty, so the 10-06 buy lands on exactly the position those ids hash.
+      quantity: 0,
+      cost_basis: 0,
+      institution_price: 50,
+      institution_value: 0,
+    }));
+    const result = plan({ movements, stored: held, throughMonth: "2026-10" });
+    expect(result.final).toEqual({ date: "2026-10-06", position });
+    const heldIds = new Set(held.map((h) => h.snapshot_id));
+    expect(result.writes.some((w) => heldIds.has(w.snapshot_id))).toBe(false);
+    expect(result.retire).toEqual([]);
+  });
+
+  test("replace writes a derived snapshot on a movement day an entered snapshot shared", () => {
+    const own = entered("2026-10-06", 100);
+    const result = plan({ movements: statement, stored: [own], replace: true });
+    expect(result.retire).toContain(own.snapshot_id);
+    expect(quantities(result)).toContainEqual(["2026-10-06", 10]);
+  });
+
+  test("a movement with no price keeps the last known price", () => {
+    const result = plan({
+      movements: [tx("2026-10-06", "buy", 10, 500, 50), tx("2026-10-20", "buy", 1, 0, 0)],
+      throughMonth: "2026-10",
+    });
+    expect(result.writes.find((w) => w.snapshot_date.startsWith("2026-10-20"))).toMatchObject({
+      quantity: 11,
+      institution_price: 50,
+      institution_value: 550,
+    });
+  });
+});
+
+describe("positionBefore", () => {
+  const before = (date: string, stored: StoredHoldingSnapshot[] = [], movements = statement) =>
+    positionBefore({ account_id: "acct-1", security_id: "sec-1", movements, stored, date });
+
+  test("counts only days before the date: a movement on the date itself isn't held yet", () => {
+    expect(before("2026-11-03")).toEqual({ quantity: 10, costBasis: 500 });
+    expect(before("2026-11-04")).toEqual({ quantity: 12, costBasis: 604 });
+  });
+
+  test("an entered snapshot resets at the end of its day", () => {
+    const stored = [entered("2026-10-20", 100, { cost_basis: 300 })];
+    expect(before("2026-10-20", stored)).toEqual({ quantity: 10, costBasis: 500 });
+    expect(before("2026-10-21", stored)).toEqual({ quantity: 100, costBasis: 300 });
+    expect(before("2026-11-04", stored)).toEqual({ quantity: 102, costBasis: 404 });
+  });
+
+  test("sales draw on the entered shares, capped at what's held", () => {
+    const stored = [entered("2026-01-02", 100)];
+    const sells = [tx("2026-02-01", "sell", -30, -1440, 48), tx("2026-03-01", "sell", -500, -24000, 48)];
+    expect(before("2026-02-02", stored, sells).quantity).toBe(70);
+    expect(before("2026-03-02", stored, sells).quantity).toBe(0);
+  });
+
+  test("agrees with what the engine writes for the day before", () => {
+    const stored = [entered("2026-01-02", 100), entered("2026-03-02", 50)];
+    const movements = [tx("2026-02-10", "buy", 10, 500, 50), tx("2026-04-10", "sell", -5, -250, 50)];
+    const planned = plan({ stored, movements, throughMonth: "2026-04" });
+    const april9 = planned.writes.filter((w) => w.snapshot_date < "2026-04-10").at(-1)!;
+    expect(positionBefore({ account_id: "acct-1", security_id: "sec-1", movements, stored, date: "2026-04-10" }).quantity).toBe(
+      april9.quantity!,
+    );
+  });
+});
+
+describe("isEnteredSnapshot", () => {
+  test("a derived snapshot left as written isn't entered; the same row edited, or moved to another date, is", () => {
+    const written = asStored(plan({ movements: statement.slice(0, 1), throughMonth: "2026-10" }).writes)[0];
+    expect(isEnteredSnapshot("acct-1", "sec-1", written, [written])).toBe(false);
+    const edited = { ...written, quantity: 11, institution_value: 11 * written.institution_price! };
+    expect(isEnteredSnapshot("acct-1", "sec-1", edited, [edited])).toBe(true);
+    const moved = { ...written, date: "2026-10-09" };
+    expect(isEnteredSnapshot("acct-1", "sec-1", moved, [moved])).toBe(true);
+  });
+
+  test("an Add Holding snapshot is entered", () => {
+    const own = entered("2026-01-02", 100);
+    expect(isEnteredSnapshot("acct-1", "sec-1", own, [own])).toBe(true);
+  });
+
+  test("two entered snapshots on one day: the later id is the one the walk resets to", () => {
+    const a = entered("2026-01-02", 100, { snapshot_id: "holding-a" });
+    const b = entered("2026-01-02", 80, { snapshot_id: "holding-b" });
+    expect(isEnteredSnapshot("acct-1", "sec-1", a, [b, a])).toBe(false);
+    expect(isEnteredSnapshot("acct-1", "sec-1", b, [b, a])).toBe(true);
+    expect(enteredResetPoints("acct-1", "sec-1", [b, a]).get("2026-01-02")).toBe(b);
+    expect(positionBefore({ account_id: "acct-1", security_id: "sec-1", movements: [], stored: [a, b], date: "2026-01-03" }).quantity).toBe(80);
   });
 });
 

@@ -490,6 +490,57 @@ describe("POST /plan-statement/import", () => {
     expect(writes().some((sql) => /INSERT INTO (snapshots|holdings)|UPDATE snapshots SET is_deleted/.test(sql))).toBe(false);
   });
 
+  test("takes the account's holding-positions lock before inserting anything", async () => {
+    db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
+    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
+    const sql = clientCalls().map((c) => c.sql);
+    expect(sql[0]).toBe("BEGIN");
+    expect(sql[1]).toContain("pg_advisory_xact_lock(hashtext($1 || ':' || $2 || ':holdings'))");
+    expect(clientCalls()[1].values).toEqual(["usr-1", "acct-1"]);
+    // The engine takes it again before its own reads; it's re-entrant within a transaction.
+    const firstRead = sql.findIndex((q) => /FROM investment_transactions\b.*FOR UPDATE$/is.test(q));
+    expect(sql.slice(2, firstRead).some((q) => q.includes("pg_advisory_xact_lock"))).toBe(true);
+    expect(sql.findIndex((q) => q.includes("INSERT INTO investment_transactions"))).toBeGreaterThan(1);
+  });
+
+  test("replacing a fund with no movements zeroes its holdings row", async () => {
+    db.snapshots = [enteredSnapshot("2026-01-15", 100)];
+    db.holdings = [
+      {
+        holding_id: "acct-1-sec-index",
+        user_id: "usr-1",
+        account_id: "acct-1",
+        security_id: "sec-index",
+        institution_price: 25,
+        institution_price_as_of: "2026-01-15",
+        institution_value: 250,
+        cost_basis: 250,
+        quantity: 100,
+        iso_currency_code: null,
+        raw: null,
+        updated: null,
+        is_deleted: false,
+      },
+    ];
+    const skippedOnly = [
+      "Date,Investment,Transaction Type,Amount,Shares/Unit",
+      "03/02/2026,EXAMPLE INDEX FUND,Change in Market Value,3.10,0",
+    ].join("\n");
+    const res = await postPlanStatementImportRoute.callback(
+      makeReq("/plan-statement/import", { ...importBody({ replacePositions: ["EXAMPLE INDEX FUND"] }), csv: skippedOnly }),
+      {} as never, () => {},
+    );
+    expect(res).toMatchObject({ status: "success", body: { written: 0 } });
+    const calls = clientCalls();
+    expect(calls.find((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql))?.values).toContain(
+      "holding-acct-1-sec-index-20260115",
+    );
+    const holding = calls.find((c) => c.sql.includes("INSERT INTO holdings"));
+    expect(holding).toBeDefined();
+    expect(holding!.values).toContain(0);
+    expect(holding!.values).not.toContain(100);
+  });
+
   test("a failing holdings write fails the import instead of committing", async () => {
     db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
     db.failHoldings = true;

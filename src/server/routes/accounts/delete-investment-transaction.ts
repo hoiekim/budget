@@ -2,9 +2,11 @@ import {
   Route,
   deleteInvestmentTransactions,
   getInvestmentTransaction,
+  refreshManagedHoldingPositions,
   requireQueryString,
   validationError,
 } from "server";
+import { logger } from "server/lib/logger";
 
 /**
  * Soft-delete a single manual investment transaction. Wired to
@@ -39,6 +41,11 @@ export const deleteInvestmentTransactionRoute = new Route(
 
     const { deleted } = await deleteInvestmentTransactions(user, [investment_transaction_id]);
     if (!deleted) return { status: "failed", message: "Failed to delete investment transaction." };
+    if (tx.security_id) {
+      await refreshManagedHoldingPositions(user, tx.account_id, [tx.security_id]).catch((error) =>
+        logger.error("Failed to refresh holding positions after a delete", { investment_transaction_id }, error),
+      );
+    }
     return { status: "success", body: { investment_transaction_id } };
   },
 );
