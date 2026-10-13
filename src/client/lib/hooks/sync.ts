@@ -101,6 +101,22 @@ const removeLastSyncedCursor = () => {
   }
 };
 
+/**
+ * What a finished sync does with the delta cursor. A failed fetch or save keeps
+ * it so the next sync re-fetches the same delta. A failed cold-path purge
+ * clears it: hard-deleted rows never arrive as tombstones, so only another cold
+ * sync can evict what the failed purge left behind.
+ */
+export const cursorUpdateAfterSync = (outcome: {
+  purgeFailed: boolean;
+  fetchFailed: boolean;
+  idbFailed: boolean;
+}): "advance" | "clear" | "keep" => {
+  if (outcome.purgeFailed) return "clear";
+  if (outcome.fetchFailed || outcome.idbFailed) return "keep";
+  return "advance";
+};
+
 // FE wall-clock minus a safety margin is the next-sync cursor. Sub-row
 // `updated` timestamps aren't on every JSON wire type today, so per-row
 // max(updated) can't drive the cursor without widening common/models.
@@ -890,9 +906,9 @@ export const useSync = () => {
         return false;
       });
 
-      if (!fetchFailed && !idbFailed) {
-        writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
-      }
+      const cursorUpdate = cursorUpdateAfterSync({ purgeFailed, fetchFailed, idbFailed });
+      if (cursorUpdate === "advance") writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
+      else if (cursorUpdate === "clear") removeLastSyncedCursor();
     } catch (err) {
       console.error(err);
       setData((oldData) => {
