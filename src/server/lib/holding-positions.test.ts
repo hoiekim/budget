@@ -225,6 +225,18 @@ describe("planHoldingPositions, round 4", () => {
     // And it's recognised as the engine's own afterwards.
     const settled = plan({ movements: statement.slice(0, 2), stored: [...stored, ...asStored(next.writes)], throughMonth: "2027-01" });
     expect(settled.writes).toEqual([]);
+
+    // A later movement before December: the alternate-id opening is the
+    // engine's own, so it's retired and rewritten, and the gap is the moved row's.
+    const variantRow = asStored(next.writes).find((s) => s.date === "2026-12-01")!;
+    const moved = plan({
+      movements: [...statement.slice(0, 2), tx("2026-11-20", "buy", 1, 51, 51)],
+      stored: [...stored, ...asStored(next.writes)],
+      throughMonth: "2027-01",
+    });
+    expect(moved.retire).toContain(variantRow.snapshot_id);
+    expect(moved.writes.some((w) => w.snapshot_date.startsWith("2026-12-01"))).toBe(true);
+    expect(moved.gaps).toEqual([{ date: "2026-12-15", stored: 12, explained: 13 }]);
   });
 
   test("an entered position with no cost leaves the cost unknown through fees", () => {

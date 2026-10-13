@@ -452,10 +452,10 @@ export const refreshHoldingPositions = async (
   const current = new Map(holdings.map((h) => [h.security_id, h]));
   for (const [security_id, plan] of plans) {
     const existing = current.get(security_id);
-    // Replacing a holding with no movements leaves it with nothing: zero.
+    // No movement or entry left (all replaced, or all deleted): the holding is empty.
     const final =
       plan.final ??
-      (replace.has(security_id) && existing
+      (existing
         ? { date: new Date().toISOString().slice(0, 10), position: { quantity: 0, costBasis: 0, price: existing.institution_price } }
         : null);
     if (!final) continue;

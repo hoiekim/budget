@@ -1,4 +1,4 @@
-import { getYearMonthString, LocalDate } from "common";
+import { DERIVED_HOLDING_SNAPSHOT_PREFIX, getYearMonthString, LocalDate } from "common";
 import { InvestmentTransactionType } from "plaid";
 import { HoldingValueSummary, HoldingsValueData } from "../../models/Calculations";
 import {
@@ -347,7 +347,12 @@ export const getHoldingsValueData = ({
       let finalCostBasis: number | null = isCash ? value : cost_basis;
       let costBasisInferred = false;
 
-      if (!isCash && (cost_basis === null || cost_basis === 0) && quantity !== 0) {
+      // A derived snapshot's cost already comes from every movement and entry
+      // on the holding; null there means the cost is unknown, and replaying
+      // buys alone would price only some of its shares.
+      const isDerived = snapshot.snapshot.snapshot_id.startsWith(DERIVED_HOLDING_SNAPSHOT_PREFIX);
+
+      if (!isCash && !isDerived && (cost_basis === null || cost_basis === 0) && quantity !== 0) {
         const inferred = inferCostBasis({
           accountId: account_id,
           securityId: security_id,

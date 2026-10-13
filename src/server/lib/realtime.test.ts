@@ -7,6 +7,7 @@ import {
   emitToUser,
   getEventsSince,
   mutationEmitDomain,
+  mutationSideEffectDomains,
   closeAllSubscribers,
   resetRingBufferForTests,
   bufferedEventCount,
@@ -111,6 +112,22 @@ describe("realtime", () => {
     expect(healthy.sent).toEqual([{ event: "charts-updated", payload: {} }]);
     // throwing was closed (drop-on-failure branch)
     expect(throwing.closed).toBe(true);
+  });
+
+  it("an investment transaction write or an import also emits holding snapshots", () => {
+    expect(mutationEmitDomain("POST", "/plan-statement/import")).toBe(TableName.InvestmentTransactions);
+    for (const [method, path] of [
+      ["POST", "/investment-transaction"],
+      ["DELETE", "/investment-transaction"],
+      ["POST", "/plan-statement/import"],
+    ]) {
+      expect(mutationSideEffectDomains(method, path)).toEqual([TableName.Snapshots]);
+    }
+    // A preview writes nothing, and reads never emit.
+    expect(mutationEmitDomain("POST", "/plan-statement/preview")).toBeNull();
+    expect(mutationSideEffectDomains("POST", "/plan-statement/preview")).toEqual([]);
+    expect(mutationSideEffectDomains("GET", "/investment-transaction")).toEqual([]);
+    expect(mutationSideEffectDomains("POST", "/transaction")).toEqual([]);
   });
 
   it("mutationEmitDomain maps POST/DELETE writes to their table", () => {

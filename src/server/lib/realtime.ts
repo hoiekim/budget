@@ -142,6 +142,7 @@ const MUTATION_DOMAINS: Record<string, EmitDomain> = {
   "/new-split-transaction": TableName.SplitTransactions,
   "/investment-transaction": TableName.InvestmentTransactions,
   "/new-investment-transaction": TableName.InvestmentTransactions,
+  "/plan-statement/import": TableName.InvestmentTransactions,
   "/account": TableName.Accounts,
   "/public-token": TableName.Accounts,
   "/item": TableName.Accounts,
@@ -170,6 +171,20 @@ export const mutationEmitDomain = (method: string, path: string): EmitDomain | n
   if (!isMutating) return null;
   return MUTATION_DOMAINS[path] ?? null;
 };
+
+/**
+ * Tables a path's write also changes as a side effect, beyond its own domain:
+ * an investment transaction write can rewrite the holding's derived
+ * snapshots. The tab that made the write patched only its own domain, so
+ * these are emitted without its tab id and every tab refetches them.
+ */
+const SIDE_EFFECT_DOMAINS: Record<string, EmitDomain[]> = {
+  "/investment-transaction": [TableName.Snapshots],
+  "/plan-statement/import": [TableName.Snapshots],
+};
+
+export const mutationSideEffectDomains = (method: string, path: string): EmitDomain[] =>
+  mutationEmitDomain(method, path) ? (SIDE_EFFECT_DOMAINS[path] ?? []) : [];
 
 export interface EmitPayload {
   /** Opaque tag the originating tab attached via `X-Tab-Id` header — the

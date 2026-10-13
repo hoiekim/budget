@@ -541,6 +541,48 @@ describe("POST /plan-statement/import", () => {
     expect(holding!.values).not.toContain(100);
   });
 
+  test("a holdings row with an unknown cost is rewritten once the cost is known", async () => {
+    db.live = [liveRow("plan-x", "2026-03-02", 20, 500)];
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const expected = planHoldingPositions({
+      account_id: "acct-1",
+      security_id: "sec-index",
+      movements: [{ date: "2026-03-02", type: "buy", quantity: 20, amount: 500, price: 25 } as never],
+      stored: [],
+      throughMonth: thisMonth,
+      replace: false,
+    });
+    db.snapshots = expected.writes.map((w) => ({
+      id: w.snapshot_id,
+      date: w.snapshot_date.slice(0, 10),
+      quantity: w.quantity!,
+      price: w.institution_price!,
+      cost: w.cost_basis!,
+      value: w.institution_value!,
+    }));
+    db.holdings = [
+      {
+        holding_id: "acct-1-sec-index",
+        user_id: "usr-1",
+        account_id: "acct-1",
+        security_id: "sec-index",
+        institution_price: 25,
+        institution_price_as_of: expected.final!.date,
+        institution_value: 500,
+        cost_basis: null,
+        quantity: 20,
+        iso_currency_code: null,
+        raw: null,
+        updated: null,
+        is_deleted: false,
+      },
+    ];
+    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
+    const holding = clientCalls().find((c) => c.sql.includes("INSERT INTO holdings"));
+    expect(holding).toBeDefined();
+    expect(holding!.values).toContain(500);
+  });
+
   test("a failing holdings write fails the import instead of committing", async () => {
     db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
     db.failHoldings = true;
