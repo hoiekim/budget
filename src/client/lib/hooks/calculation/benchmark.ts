@@ -929,7 +929,7 @@ export const rowAtIn = (history: PriceRow[], date: string): PriceRow | null => {
  */
 export const buildBenchmarkPriceAt = (
   securitySnapshots: SecuritySnapshotDictionary,
-  vooHistory: PriceRow[] | null,
+  vooHistory: PriceRow[],
   ticker = BENCHMARK_TICKER,
 ) => {
   // Every row with the ticker reads as one series: one row's closes can be
@@ -950,7 +950,7 @@ export const buildBenchmarkPriceAt = (
   );
   return (date: string): number | null => {
     const snapshot = rowAtIn(snapshots, date);
-    const history = rowAtIn(vooHistory ?? [], date);
+    const history = rowAtIn(vooHistory, date);
     if (!snapshot || !history) return (snapshot ?? history)?.close ?? null;
     return history.date > snapshot.date ? history.close : snapshot.close;
   };
