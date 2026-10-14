@@ -14,6 +14,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const isCalendarDate = (v: unknown): v is string =>
+  typeof v === "string" && DATE_PATTERN.test(v) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
 
 const parseRequest = (req: ServerRequest): ParsedRequest => {
   const bodyResult = requireBodyObject(req);
@@ -60,9 +62,7 @@ const parseRequest = (req: ServerRequest): ParsedRequest => {
   for (const h of body.holdings as unknown[]) {
     const { security_id, date, quantity, cost_basis, price } = isObject(h) ? h : {};
     if (!isNonEmptyString(security_id)) return { ok: false, message: "each holding needs a security_id" };
-    if (typeof date !== "string" || !DATE_PATTERN.test(date)) {
-      return { ok: false, message: "each holding needs a YYYY-MM-DD date" };
-    }
+    if (!isCalendarDate(date)) return { ok: false, message: "each holding needs a YYYY-MM-DD date" };
     if (!isFiniteNumber(quantity) || !isFiniteNumber(price) || (cost_basis !== null && !isFiniteNumber(cost_basis))) {
       return { ok: false, message: "each holding needs a quantity, a price and a cost basis or null" };
     }

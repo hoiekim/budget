@@ -307,7 +307,8 @@ describe("POST /plan-statement/import", () => {
     ["a figure that isn't a number", [shareLeg(ROW_ID, { quantity: "20" })]],
     ["a subtype no statement kind writes", [shareLeg(ROW_ID, { subtype: "stock split" })]],
     ["a calendar-invalid date", [shareLeg(ROW_ID, { date: "2026-02-30" })]],
-    ["a name past the column's length", [shareLeg(ROW_ID, { name: "n".repeat(256) })]],
+    ["a cash leg with a share subtype", [{ transaction: { ...cashLeg().transaction, subtype: "dividend reinvestment" } }]],
+    ["a currency past the column's length", [shareLeg(ROW_ID, { iso_currency_code: "DOLLARS-USD" })]],
   ])("refuses %s and writes nothing", async (_, transactions) => {
     expect(await importStatement(importBody({ transactions }))).toMatchObject({ status: "failed" });
     expect(writes()).toEqual([]);
@@ -325,6 +326,12 @@ describe("POST /plan-statement/import", () => {
     { account_id: "acct-1", transactions: [], mappings: [{ investment: "", security_id: "s", restated: false }], holdings: [] },
     { account_id: "acct-1", transactions: [], mappings: [], holdings: [{ security_id: "s", date: "2026-03-02", quantity: 1 }] },
     { account_id: "acct-1", transactions: [], mappings: [], holdings: [], replace: [1] },
+    {
+      account_id: "acct-1",
+      transactions: [],
+      mappings: [],
+      holdings: [{ security_id: "s", date: "2026-02-30", quantity: 1, cost_basis: null, price: 1 }],
+    },
   ])("rejects a malformed body %#", async (body) => {
     expect(await importStatement(body)).toMatchObject({ status: "failed" });
     expect(writes()).toEqual([]);

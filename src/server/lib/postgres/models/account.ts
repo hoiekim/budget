@@ -191,17 +191,13 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
       if (!isUndefined(a.graphOptions.useTransactions))
         r.graph_options_use_transactions = a.graphOptions.useTransactions;
     }
-    if (Array.isArray(a.plan_fund_mappings)) {
-      r.plan_fund_mappings = Object.fromEntries(
-        a.plan_fund_mappings.map(({ investment, security_id, restated }) => [investment, { security_id, restated }]),
-      );
-    }
     const {
       custom_name: _custom_name,
       hide: _hide,
       archived: _archived,
       label: _label,
       graphOptions: _graphOptions,
+      // Written only by the plan-statement import, straight to the column.
       plan_fund_mappings: _planFundMappings,
       ...providerData
     } = a;

@@ -164,9 +164,6 @@ export const updateAccounts = async (
       // the only surface that can create or reparent.
       delete row.institution_id;
       delete row.item_id;
-      // The plan-statement import is the only writer of fund mappings; an edit
-      // body echoing the account back mustn't overwrite them.
-      delete row.plan_fund_mappings;
 
       // Soft-deleted rows keep their primary key but are invisible to every
       // read. Updating one would report a change no user can see; excluding

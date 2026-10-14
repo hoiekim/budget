@@ -37,7 +37,6 @@ const CASH_SUBTYPES = new Set<string>(
   Object.values(KIND_SPECS).flatMap((spec) => (spec.cash ? [spec.cash.subtype] : [])),
 );
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_NAME_LENGTH = 255;
 const MAX_CURRENCY_LENGTH = 10;
 
 const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<string>> => {
@@ -79,7 +78,7 @@ const toRow = (
       typeof t.security_id === "string";
   if (!typeFits) return { problem: `${id} has the wrong type, subtype or security` };
   if (![t.amount, t.quantity, t.price].every(isFiniteNumber)) return { problem: `${id} has a figure that isn't a number` };
-  if (typeof t.name !== "string" || t.name.length > MAX_NAME_LENGTH) return { problem: `${id} has an unreadable name` };
+  if (typeof t.name !== "string") return { problem: `${id} has an unreadable name` };
   const currency = t.iso_currency_code ?? null;
   if (currency !== null && (typeof currency !== "string" || currency.length > MAX_CURRENCY_LENGTH)) {
     return { problem: `${id} has an unreadable currency` };
