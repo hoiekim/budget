@@ -21,8 +21,14 @@ afterAll(restoreLeaves);
  *   upsert sets every supplied column on conflict, `user_id` included, so a
  *   colliding key reassigns another user's row; the allowlist has to leave
  *   `user_id` out, provably, unless the row written is a literal with no
- *   `user_id` key, which no conflict can set.
+ *   `user_id` key, which no conflict can set. This proves only that the owner
+ *   can't be reassigned: the statement has no owner predicate, so a colliding
+ *   key still overwrites the other row's allowlisted columns, and keeping keys
+ *   from colliding stays with the caller.
  * - `none`: no owner slot at all, so only a licence below clears the call.
+ *
+ * `insert` is left out: a colliding key fails it rather than writing the
+ * existing row. Writes through raw SQL are outside this scan altogether.
  *
  * Arity cannot express any of these, because a slot can be filled with
  * `undefined` and still be absent. So the scan reads the argument rather than
@@ -51,15 +57,30 @@ const isDeclaredTable = (v: unknown): v is DeclaredTable =>
   !!v && typeof v === "object" && "schema" in v && "primaryKey" in v && "name" in v;
 
 /**
- * Tables with no owner to scope to, by their exported name: no `user_id`
- * column (shared reference data, sessions), or `user_id` as the primary key,
- * where the row is the owner. Derived from the models barrel, so a table added
- * later is classified without anyone listing it.
+ * Each table's owner column, by its exported name: `user_id`, or a column
+ * ending in `_user_id` (sessions keep theirs in `user_user_id`). A table with
+ * neither is shared data with no owner to scope to. When the owner column is
+ * the primary key, as on users, the row is the owner, and a write is scoped by
+ * its key. Derived from the models barrel, so a table added later is
+ * classified without anyone listing it.
  */
-const OWNERLESS_TABLES = new Set(
+const TABLE_OWNERS = new Map(
   Object.entries(models)
-    .filter(([, v]) => isDeclaredTable(v) && (!(models.USER_ID in v.schema) || v.primaryKey === models.USER_ID))
-    .map(([exportName]) => exportName),
+    .filter((entry): entry is [string, DeclaredTable] => isDeclaredTable(entry[1]))
+    .map(([exportName, table]) => {
+      const columns = Object.keys(table.schema);
+      const owner = columns.includes(models.USER_ID)
+        ? models.USER_ID
+        : (columns.find((column) => column.endsWith(`_${models.USER_ID}`)) ?? null);
+      return [exportName, { owner, keyIsOwner: owner !== null && table.primaryKey === owner }] as const;
+    }),
+);
+
+/** Model constants whose value is the owner column, whatever they are called. */
+const OWNER_COLUMN_CONSTANTS = new Set(
+  Object.entries(models)
+    .filter(([, value]) => value === models.USER_ID)
+    .map(([name]) => name),
 );
 
 /**
@@ -92,11 +113,20 @@ const SERVER_KEYED: Record<string, string> = {
     "called only by the Plaid and SimpleFin syncs, with transaction_ids the provider issued for the user's own linked item",
   "lib/postgres/repositories/investment_transactions.ts::upsertInvestmentTransactions::investmentTransactionsTable.upsert":
     "called only by the Plaid and SimpleFin syncs, with investment_transaction_ids the provider issued for the user's own linked item",
+  "lib/postgres/repositories/session.ts::purgeSessions::sessionsTable.deleteByCondition":
+    "deletes expired sessions by cookie expiry on a server timer; no caller-supplied key",
+  "lib/postgres/repositories/session.ts::set::sessionsTable.upsert":
+    "session_id is the server-issued id from the signed session cookie, never a request field",
+  "lib/postgres/repositories/session.ts::destroy::sessionsTable.hardDelete":
+    "session_id is the server-issued id from the signed session cookie, never a request field",
+  "lib/postgres/repositories/session.ts::touch::sessionsTable.update":
+    "session_id is the server-issued id from the signed session cookie, never a request field",
+  "lib/postgres/repositories/users.ts::writeUser::usersTable.upsert":
+    "seeds the admin and demo users at boot; no route writes a user",
   "lib/postgres/repositories/securities.ts::deleteSecurities::snapshotsTable.hardDeleteByColumn":
     "removes a global security's price snapshots by security_id; those rows carry no user_id, and security_id is never client-supplied here",
 };
 
-/** The write a licence is granted to: which statement, on which table, by which verb. */
 const exemptionKey = (call: WriteCall): string => `${call.site}::${call.receiver}.${call.verb}`;
 
 /**
@@ -143,51 +173,104 @@ const isOwnerExpression = (node: ts.Expression | undefined): boolean => {
   return false;
 };
 
-/** `user_id` as a key or a column name: the `USER_ID` constant or the literal. */
 const namesOwnerColumn = (node: ts.Node): boolean =>
-  (ts.isIdentifier(node) && node.text === "USER_ID") ||
-  (ts.isStringLiteralLike(node) && node.text === "user_id") ||
-  (ts.isIdentifier(node) && node.text === "user_id");
+  (ts.isIdentifier(node) && (OWNER_COLUMN_CONSTANTS.has(node.text) || node.text === models.USER_ID)) ||
+  (ts.isStringLiteralLike(node) && node.text === models.USER_ID);
 
-/** An object literal with a `user_id` key, computed or plain, holding the owner. */
+/**
+ * An object literal with a `user_id` key, computed or plain, holding the owner.
+ * A spread is refused: it can carry its own `user_id` and overwrite the owner.
+ */
 const isOwnerFilter = (node: ts.Expression | undefined): boolean =>
   !!node &&
   ts.isObjectLiteralExpression(node) &&
+  !node.properties.some(ts.isSpreadAssignment) &&
   node.properties.some((property) => {
     if (!ts.isPropertyAssignment(property)) return false;
     const key = ts.isComputedPropertyName(property.name) ? property.name.expression : property.name;
     return namesOwnerColumn(key) && isOwnerExpression(property.initializer);
   });
 
+/** Every name the file binds, with how many times: declarations, parameters, destructuring. */
+const fileBindings = (source: ts.SourceFile): Map<string, number> => {
+  const counts = new Map<string, number>();
+  const visit = (node: ts.Node): void => {
+    const name =
+      ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node) ||
+      ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)
+        ? node.name
+        : undefined;
+    if (name && ts.isIdentifier(name)) counts.set(name.text, (counts.get(name.text) ?? 0) + 1);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return counts;
+};
+
+const MUTATING_METHODS = new Set(["push", "unshift", "splice", "fill", "copyWithin", "sort", "reverse"]);
+
+/** Whether the file mutates the array a name holds, by a mutating method or an element assignment. */
+const isMutated = (source: ts.SourceFile, name: string): boolean => {
+  let mutated = false;
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === name &&
+      MUTATING_METHODS.has(node.expression.name.text)
+    ) {
+      mutated = true;
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      (ts.isElementAccessExpression(node.left) || ts.isPropertyAccessExpression(node.left)) &&
+      ts.isIdentifier(node.left.expression) &&
+      node.left.expression.text === name
+    ) {
+      mutated = true;
+    }
+    if (!mutated) ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return mutated;
+};
+
 /**
  * An allowlist the scan can read in full and that leaves `user_id` out: an
- * array literal of names, inline or bound to a `const` in the same file. A
- * computed list (`Object.keys(row).filter(…)`), a spread, or a name bound
- * elsewhere is not readable, so it isn't vouched for.
+ * array literal, inline or held by a module-level `const` that nothing else in
+ * the file binds under the same name or mutates. Each entry is a string other
+ * than `user_id`, or an imported column constant whose value isn't `user_id`;
+ * a name the file declares itself could hold anything. A computed list
+ * (`Object.keys(row).filter(…)`) or a spread is not readable, so it isn't
+ * vouched for.
  */
 const isOwnerSafeAllowlist = (node: ts.Expression | undefined, source: ts.SourceFile): boolean => {
   if (!node) return false;
-  let list: ts.Expression = node;
+  const bindings = fileBindings(source);
+  let list: ts.Expression | undefined = node;
   if (ts.isIdentifier(node)) {
-    let bound: ts.Expression | undefined;
-    const find = (n: ts.Node): void => {
-      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === node.text && n.initializer) {
-        bound = n.initializer;
+    if (bindings.get(node.text) !== 1 || isMutated(source, node.text)) return false;
+    list = undefined;
+    for (const statement of source.statements) {
+      if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.name.text === node.text) list = declaration.initializer;
       }
-      if (!bound) ts.forEachChild(n, find);
-    };
-    find(source);
-    if (!bound) return false;
-    list = bound;
+    }
+    if (!list) return false;
   }
   while (ts.isAsExpression(list) || ts.isSatisfiesExpression(list)) list = list.expression;
   return (
     ts.isArrayLiteralExpression(list) &&
-    list.elements.every((e) => (ts.isIdentifier(e) || ts.isStringLiteralLike(e)) && !namesOwnerColumn(e))
+    list.elements.every(
+      (e) =>
+        (ts.isStringLiteralLike(e) || (ts.isIdentifier(e) && !bindings.has(e.text))) && !namesOwnerColumn(e),
+    )
   );
 };
 
-/** A row literal that carries no `user_id` key, computed or plain. */
 const isOwnerlessRow = (node: ts.Expression | undefined): boolean =>
   !!node &&
   ts.isObjectLiteralExpression(node) &&
@@ -199,7 +282,16 @@ const isOwnerlessRow = (node: ts.Expression | undefined): boolean =>
     return !namesOwnerColumn(key);
   });
 
-const isScoped = (rule: OwnerRule, call: ts.CallExpression, source: ts.SourceFile): boolean => {
+/** Writes whose first argument is the row's primary key. */
+const KEYED_VERBS = new Set(["update", "softDelete", "hardDelete"]);
+
+const isScoped = (
+  rule: OwnerRule,
+  call: ts.CallExpression,
+  source: ts.SourceFile,
+  keyIsOwner: boolean,
+): boolean => {
+  if (keyIsOwner) return KEYED_VERBS.has(verbOf(call)) && isOwnerExpression(call.arguments[0]);
   const argument = rule.kind === "none" ? undefined : call.arguments[rule.index];
   switch (rule.kind) {
     case "argument":
@@ -237,7 +329,6 @@ const enclosingName = (node: ts.Node): string => {
   return "<module>";
 };
 
-/** The verb and the expression a write call is made on, however the member is reached. */
 const writeTarget = (node: ts.CallExpression): { verb: string; receiver: ts.Expression } | undefined => {
   const callee = node.expression;
   if (ts.isPropertyAccessExpression(callee) && Object.hasOwn(WRITE_VERBS, callee.name.text)) {
@@ -256,6 +347,11 @@ const writeTarget = (node: ts.CallExpression): { verb: string; receiver: ts.Expr
 /** Every write call in the file, classified. Nothing is filtered out here: a
  *  receiver this scan cannot vouch for answers for its owner like any other,
  *  and is cleared only by a `NOT_A_TABLE` entry or an owner-less table. */
+const verbOf = (call: ts.CallExpression): string => writeTarget(call)?.verb ?? "";
+
+/** The table export a receiver names: the identifier itself, or the member a namespace reaches. */
+const receiverTableName = (receiver: string): string => receiver.replace(/^.*[.\[]["']?/, "").replace(/["'\]]$/, "");
+
 const collectWriteCalls = (source: ts.SourceFile, fileName: string): WriteCall[] => {
   const calls: WriteCall[] = [];
 
@@ -264,15 +360,17 @@ const collectWriteCalls = (source: ts.SourceFile, fileName: string): WriteCall[]
     if (target) {
       const call = node as ts.CallExpression;
       const rule = WRITE_VERBS[target.verb];
-      const argument = rule.kind === "none" ? undefined : call.arguments[rule.index];
+      const receiver = target.receiver.getText(source);
+      const keyIsOwner = TABLE_OWNERS.get(receiverTableName(receiver))?.keyIsOwner ?? false;
+      const argument = keyIsOwner ? call.arguments[0] : rule.kind === "none" ? undefined : call.arguments[rule.index];
       calls.push({
         file: fileName,
         site: `${fileName}::${enclosingName(call)}`,
-        receiver: target.receiver.getText(source),
+        receiver,
         verb: target.verb,
         owner: argument ? argument.getText(source).replace(/\s+/g, " ") : "<omitted>",
         line: source.getLineAndCharacterOfPosition(call.getStart(source)).line + 1,
-        scoped: isScoped(rule, call, source),
+        scoped: isScoped(rule, call, source, keyIsOwner),
       });
     }
     ts.forEachChild(node, visit);
@@ -298,12 +396,10 @@ const serverCalls = sourceFiles(SCAN_ROOT).flatMap((full) => {
   return collectWriteCalls(parse(relative, readFileSync(full, "utf8")), relative);
 });
 
-/** The table export a receiver names: the identifier itself, or the member a namespace reaches. */
-const receiverTableName = (receiver: string): string => receiver.replace(/^.*[.\[]["']?/, "").replace(/["'\]]$/, "");
-
-/** A write that needs an owner: on a table with one, through a receiver that is a table at all. */
+/** A receiver that names no table export is treated as owned, so an alias fails closed. */
 const isOwnedTableWrite = (call: WriteCall): boolean =>
-  !(`${call.file}::${call.receiver}` in NOT_A_TABLE) && !OWNERLESS_TABLES.has(receiverTableName(call.receiver));
+  !(`${call.file}::${call.receiver}` in NOT_A_TABLE) &&
+  TABLE_OWNERS.get(receiverTableName(call.receiver))?.owner !== null;
 
 describe("server writes carry the owner", () => {
   it("vouches only for an owner it can read as one", () => {
@@ -341,6 +437,25 @@ describe("server writes carry the owner", () => {
         const upsertOwnerlessRow = async () => { await fooTable.upsert({ [SNAPSHOT_ID]: id, close_price }); };
         const upsertOwnedRow = async () => { await fooTable.upsert({ [SNAPSHOT_ID]: id, [USER_ID]: owner }); };
         const hardDelete = async () => { await fooTable.hardDelete(id); };
+        const keyOwnerScoped = async () => { await usersTable.update(user.user_id, row); };
+        const keyOwnerOther = async () => { await usersTable.update(targetId, row); };
+        const keyOwnerUpsert = async () => { await usersTable.upsert(row); };
+        const upsertShorthandOwner = async () => { await fooTable.upsert({ id, user_id }); };
+        const upsertStringOwnerList = async () => { await fooTable.upsert(row, ["amount", "user_id"]); };
+        const filterSpread = async () => {
+          await fooTable.bulkSoftDelete(ids, { [USER_ID]: user.user_id, ...extra });
+        };
+        const SHADOWED_COLUMNS = [AMOUNT];
+        const shadowing = async () => {
+          const SHADOWED_COLUMNS = [USER_ID];
+          await fooTable.upsert(row, SHADOWED_COLUMNS);
+        };
+        const PUSHED_COLUMNS = [AMOUNT];
+        PUSHED_COLUMNS.push(USER_ID);
+        const pushed = async () => { await fooTable.upsert(row, PUSHED_COLUMNS); };
+        const LOCAL_OWNER = "user_id";
+        const ALIASED_COLUMNS = [LOCAL_OWNER];
+        const aliased = async () => { await fooTable.upsert(row, ALIASED_COLUMNS); };
       `,
     );
 
@@ -371,15 +486,27 @@ describe("server writes carry the owner", () => {
       "fixture.ts::upsertOwnerlessRow fooTable.upsert owner=<omitted> scoped=true",
       "fixture.ts::upsertOwnedRow fooTable.upsert owner=<omitted> scoped=false",
       "fixture.ts::hardDelete fooTable.hardDelete owner=<omitted> scoped=false",
+      "fixture.ts::keyOwnerScoped usersTable.update owner=user.user_id scoped=true",
+      "fixture.ts::keyOwnerOther usersTable.update owner=targetId scoped=false",
+      "fixture.ts::keyOwnerUpsert usersTable.upsert owner=row scoped=false",
+      "fixture.ts::upsertShorthandOwner fooTable.upsert owner=<omitted> scoped=false",
+      'fixture.ts::upsertStringOwnerList fooTable.upsert owner=["amount", "user_id"] scoped=false',
+      "fixture.ts::filterSpread fooTable.bulkSoftDelete owner={ [USER_ID]: user.user_id, ...extra } scoped=false",
+      "fixture.ts::shadowing fooTable.upsert owner=SHADOWED_COLUMNS scoped=false",
+      "fixture.ts::pushed fooTable.upsert owner=PUSHED_COLUMNS scoped=false",
+      "fixture.ts::aliased fooTable.upsert owner=ALIASED_COLUMNS scoped=false",
     ]);
   });
 
-  it("knows which tables have no owner to scope to", () => {
-    expect([...OWNERLESS_TABLES].sort()).toEqual(
-      expect.arrayContaining(["institutionsTable", "securitiesTable", "sessionsTable", "usersTable"]),
-    );
-    expect(OWNERLESS_TABLES.has("transactionsTable")).toBe(false);
-    expect(OWNERLESS_TABLES.has("splitTransactionsTable")).toBe(false);
+  it("reads each table's owner column from the models", () => {
+    const names = ["institutionsTable", "securitiesTable", "sessionsTable", "usersTable", "transactionsTable"];
+    expect(Object.fromEntries(names.map((name) => [name, TABLE_OWNERS.get(name)]))).toEqual({
+      institutionsTable: { owner: null, keyIsOwner: false },
+      securitiesTable: { owner: null, keyIsOwner: false },
+      sessionsTable: { owner: "user_user_id", keyIsOwner: false },
+      usersTable: { owner: "user_id", keyIsOwner: true },
+      transactionsTable: { owner: "user_id", keyIsOwner: false },
+    });
   });
 
   it("reaches every write it claims to police", () => {
