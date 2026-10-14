@@ -17,6 +17,9 @@ process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+import { BENCHMARK_HISTORY_THROUGH } from "common/constants";
 import { createFakePg, restoreLeaves } from "test-helpers";
 
 const { pg, mockQuery, resetQueryMocks } = createFakePg();
@@ -45,6 +48,7 @@ afterAll(restoreLeaves);
 let holdingsRows: Array<{ security_id: string }> = [];
 let securitiesRows: Array<Record<string, unknown>> = [];
 let recentBySecurity = new Set<string>();
+let latestSnapshotDate: Record<string, string> = {};
 const upsertCalls: Array<{ sql: string; values: unknown[] }> = [];
 const securityInserts: Array<Record<string, unknown>> = [];
 
@@ -56,7 +60,9 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
   }
 
   if (/SELECT\s+\*\s+FROM\s+securities\s+WHERE\s+ticker_symbol/i.test(sql)) {
-    const rows = securitiesRows.filter((r) => r.ticker_symbol === params[0]);
+    const rows = securitiesRows
+      .filter((r) => r.ticker_symbol === params[0])
+      .sort((a, b) => String(b.updated ?? "").localeCompare(String(a.updated ?? "")));
     return { rows, rowCount: rows.length };
   }
 
@@ -77,6 +83,10 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
     const wantId = params[0];
     const row = securitiesRows.find((r) => r.security_id === wantId);
     return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+  }
+
+  if (/MAX\(snapshot_date\)/i.test(sql)) {
+    return { rows: [{ date: latestSnapshotDate[params[0] as string] ?? null }], rowCount: 1 };
   }
 
   // Cadence-gate probe — `… updated > NOW() - INTERVAL 'N hours' …`.
@@ -114,6 +124,7 @@ beforeEach(() => {
   holdingsRows = [];
   securitiesRows = [];
   recentBySecurity = new Set([BENCHMARK_SECURITY_ID]);
+  latestSnapshotDate = {};
   upsertCalls.length = 0;
   securityInserts.length = 0;
 });
@@ -367,5 +378,76 @@ describe("refreshActiveSecuritySnapshots", () => {
     await refreshActiveSecuritySnapshots();
 
     expect(securityInserts).toEqual([expect.objectContaining({ security_id: BENCHMARK_SECURITY_ID })]);
+  });
+  test("of several rows with the benchmark's ticker, the most recently updated is used", async () => {
+    recentBySecurity = new Set();
+    securitiesRows = [
+      securityRow({ security_id: "older-voo", ticker_symbol: "VOO", type: "etf", updated: "2026-01-01T00:00:00Z" }),
+      securityRow({ security_id: "newer-voo", ticker_symbol: "VOO", type: "etf", updated: "2026-10-01T00:00:00Z" }),
+    ];
+
+    await refreshActiveSecuritySnapshots();
+
+    const written = upsertCalls.flatMap((c) => c.values.map(String));
+    expect(written).toContain("newer-voo-20260610");
+    expect(written).not.toContain("older-voo-20260610");
+  });
+
+  test("the benchmark gets every trading day since its last snapshot, from one range request", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    setPolygonResponse({
+      results: [6, 7, 8].map((day) => ({ c: 700 + day, t: Date.UTC(2026, 9, day) })),
+    });
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).toContain("/v2/aggs/ticker/VOO/range/1/day/2026-10-06/");
+    const written = upsertCalls.flatMap((c) => c.values.map(String));
+    for (const day of ["20261006", "20261007", "20261008"]) expect(written).toContain(`${BENCHMARK_SECURITY_ID}-${day}`);
+    expect(r).toEqual({ refreshed: 1, fresh: 0, cash: 0, empty: 0, errors: 0 });
+  });
+
+  test("a benchmark with no snapshot is filled from the day after the static history ends", async () => {
+    recentBySecurity = new Set();
+
+    await refreshActiveSecuritySnapshots();
+
+    const dayAfter = new Date(`${BENCHMARK_HISTORY_THROUGH}T12:00:00Z`);
+    dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+    expect(String(mockFetch.mock.calls[0][0])).toContain(`/range/1/day/${dayAfter.toISOString().slice(0, 10)}/`);
+  });
+
+  test("a failed range request still writes the benchmark's latest close", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    setPolygonResponse({ status: "NOT_AUTHORIZED", message: "out of plan" });
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(upsertCalls.flatMap((c) => c.values.map(String))).toContain(`${BENCHMARK_SECURITY_ID}-20260610`);
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("a held security other than the benchmark asks only for its latest close", async () => {
+    holdingsRows = [{ security_id: "sec-1" }];
+    securitiesRows = [securityRow({ security_id: "sec-1", ticker_symbol: "AAPL" })];
+    latestSnapshotDate = { "sec-1": "2026-01-05" };
+
+    await refreshActiveSecuritySnapshots();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockQuery.mock.calls.some((c) => /MAX\(snapshot_date\)/i.test(String(c[0])) && (c[1] as unknown[])?.[0] === "sec-1")).toBe(false);
+    expect(String(mockFetch.mock.calls[0][0])).not.toContain("/range/1/day/2026-01-06/");
+  });
+
+  test("the static history ends on the date the job fills from", () => {
+    const csv = readFileSync(
+      resolve(import.meta.dir, "../../../client/public/static-data/voo_price_history.csv"),
+      "utf8",
+    ).trim();
+    expect(csv.slice(csv.lastIndexOf("\n") + 1).split(",")[0]).toBe(BENCHMARK_HISTORY_THROUGH);
   });
 });

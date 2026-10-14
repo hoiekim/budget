@@ -1,6 +1,7 @@
 import { getDateString, getSquashedDateString, JSONSecurity, JSONSecuritySnapshot } from "common";
 import {
   pool,
+  polygon,
   upsertSnapshots,
   upsertSecurities,
   searchSecurities,
@@ -12,6 +13,7 @@ import {
   UPDATED,
 } from "server";
 import {
+  BENCHMARK_HISTORY_THROUGH,
   BENCHMARK_TICKER,
   HOLDINGS,
   SNAPSHOTS,
@@ -83,6 +85,93 @@ const getBenchmarkSecurityId = async (): Promise<string | null> => {
   return written && written.status < 400 ? BENCHMARK_SECURITY_ID : null;
 };
 
+interface Close {
+  price: number;
+  tradingDate: string;
+}
+
+const securitySnapshotOf = (security: JSONSecurity, { price, tradingDate }: Close): JSONSecuritySnapshot => {
+  const tradingDateObj = new Date(`${tradingDate}T12:00:00Z`);
+  return {
+    snapshot: {
+      snapshot_id: `${security.security_id}-${getSquashedDateString(tradingDateObj)}`,
+      date: tradingDateObj.toISOString(),
+    },
+    security: {
+      security_id: security.security_id,
+      ticker_symbol: security.ticker_symbol,
+      close_price: price,
+      close_price_as_of: getDateString(tradingDateObj),
+      // The rest of JSONSecurity is left null — the snapshot row only
+      // carries security_id + close_price; the canonical securities row
+      // is untouched.
+      name: null,
+      iso_currency_code: null,
+      isin: null,
+      cusip: null,
+      sedol: null,
+      institution_security_id: null,
+      institution_id: null,
+      proxy_security_id: null,
+      is_cash_equivalent: null,
+      type: null,
+      update_datetime: null,
+      unofficial_currency_code: null,
+      market_identifier_code: null,
+      sector: null,
+      industry: null,
+      option_contract: null,
+      fixed_income: null,
+    },
+  };
+};
+
+const dayAfter = (date: string) => {
+  const next = new Date(`${date}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
+};
+
+/** The date of a security's latest live price snapshot, YYYY-MM-DD. */
+const getLatestSnapshotDate = async (security_id: string): Promise<string | null> => {
+  const latest = await pool.query<{ date: string | null }>(
+    `SELECT to_char(MAX(snapshot_date) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date
+     FROM ${SNAPSHOTS}
+     WHERE ${SECURITY_ID} = $1
+       AND ${SNAPSHOT_TYPE} = 'security'
+       AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+    [security_id],
+  );
+  return latest.rows[0]?.date ?? null;
+};
+
+/**
+ * The closes to write for a security: the latest trading day's. The
+ * benchmark also gets every trading day since its last snapshot, or since
+ * the static history's last row when it has none, so a window can start on
+ * any day. Those come from one range request; if it fails, only the latest
+ * close is written.
+ */
+const getClosesToWrite = async (
+  security: JSONSecurity,
+  benchmark: string | null,
+  today: Date,
+): Promise<polygon.PolygonResult<Close[]>> => {
+  const ticker = security.ticker_symbol!;
+  const latest = async (): Promise<polygon.PolygonResult<Close[]>> => {
+    const fetched = await marketData.getLatestClosePriceOnOrBeforeWithFallback(ticker, today, {
+      securityType: security.type,
+    });
+    return fetched.success ? { success: true, data: [fetched.data] } : fetched;
+  };
+  if (security.security_id !== benchmark) return latest();
+  const from = dayAfter((await getLatestSnapshotDate(security.security_id)) ?? BENCHMARK_HISTORY_THROUGH);
+  const to = getDateString(today);
+  if (from > to) return latest();
+  const range = await polygon.getDailyCloses(ticker, from, to, { securityType: security.type });
+  return range.success ? range : latest();
+};
+
 /**
  * For every security currently referenced by a non-deleted holding row,
  * and for the benchmark (`BENCHMARK_TICKER`), ensure a `security_snapshot`
@@ -129,7 +218,7 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
   const today = new Date();
 
   for (const security of securities) {
-    const { security_id, ticker_symbol, type } = security;
+    const { security_id, ticker_symbol } = security;
     if (!ticker_symbol) continue;
     if (isCash(security)) {
       result.cash++;
@@ -155,63 +244,23 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
       continue;
     }
 
-    // Cache miss → ask polygon for the latest trading day's close at
-    // or before today. The returned `tradingDate` is the actual market
-    // day the price is anchored to — naturally falls back to Friday on
-    // weekends, the day before a holiday, etc.
-    const fetchResult = await marketData.getLatestClosePriceOnOrBeforeWithFallback(ticker_symbol, today, {
-      securityType: type,
-    });
-    if (!fetchResult.success) {
-      if (fetchResult.error === "no_data") result.empty++;
+    const closes = await getClosesToWrite(security, benchmark, today);
+    if (!closes.success) {
+      if (closes.error === "no_data") result.empty++;
       else result.errors++;
       continue;
     }
-    const { price, tradingDate } = fetchResult.data;
-
-    const tradingDateObj = new Date(`${tradingDate}T12:00:00Z`);
-    const snapshot: JSONSecuritySnapshot = {
-      snapshot: {
-        snapshot_id: `${security_id}-${getSquashedDateString(tradingDateObj)}`,
-        date: tradingDateObj.toISOString(),
-      },
-      security: {
-        security_id,
-        ticker_symbol,
-        close_price: price,
-        close_price_as_of: getDateString(tradingDateObj),
-        // The rest of JSONSecurity is left null — the snapshot row only
-        // carries security_id + close_price; the canonical securities row
-        // is untouched.
-        name: null,
-        iso_currency_code: null,
-        isin: null,
-        cusip: null,
-        sedol: null,
-        institution_security_id: null,
-        institution_id: null,
-        proxy_security_id: null,
-        is_cash_equivalent: null,
-        type: null,
-        update_datetime: null,
-        unofficial_currency_code: null,
-        market_identifier_code: null,
-        sector: null,
-        industry: null,
-        option_contract: null,
-        fixed_income: null,
-      },
-    };
 
     // `upsertSnapshots` catches per-snapshot errors internally and
     // returns one `UpsertResult { status }` per row instead of throwing.
     // A 4xx / 5xx status means the row didn't land.
-    const [upsertResult] = await upsertSnapshots([snapshot]);
-    if (!upsertResult || upsertResult.status >= 400) {
+    const upserted = await upsertSnapshots(closes.data.map((close) => securitySnapshotOf(security, close)));
+    const failed = upserted.filter((r) => !r || r.status >= 400);
+    if (failed.length > 0 || upserted.length === 0) {
       logger.error("refreshActiveSecuritySnapshots: upsert failed", {
         security_id,
-        tradingDate,
-        status: upsertResult?.status,
+        tradingDates: closes.data.map((c) => c.tradingDate),
+        statuses: failed.map((r) => r?.status),
       });
       result.errors++;
     } else {

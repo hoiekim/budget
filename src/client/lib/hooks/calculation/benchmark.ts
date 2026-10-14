@@ -949,8 +949,7 @@ export const priceAtIn = (history: PriceRow[], date: string): number | null => {
  * which always includes the benchmark) first, static CSV history (`vooHistory`) for the long
  * historical tail. Returns null when neither source has a price ≤ date.
  *
- * Shared by `PerformanceBenchmark` (window TWR) and the Holdings
- * Composition S&P 500 benchmark column.
+ * Used by `PerformanceBenchmark` for the window TWR.
  */
 export const buildBenchmarkPriceAt = (
   securitySnapshots: SecuritySnapshotDictionary,
