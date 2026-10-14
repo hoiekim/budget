@@ -171,7 +171,10 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     const twr = computeTWR({ flows, valueAt: valueAtAll, windowStart, windowEnd });
 
     // Benchmark TWR from security_snapshots and the static CSV, whichever close is dated nearer.
-    const benchmarkPriceAt = buildBenchmarkPriceAt(securitySnapshots, vooHistory, BENCHMARK_TICKER);
+    // Until the CSV loads it shows as loading, not as a snapshot-only figure that changes on arrival.
+    const benchmarkPriceAt = vooHistory
+      ? buildBenchmarkPriceAt(securitySnapshots, vooHistory, BENCHMARK_TICKER)
+      : () => null;
     let benchmark: ReturnType<typeof computeBenchmarkTWR> | null = null;
     const benchPriceStart = benchmarkPriceAt(windowStart);
     const benchPriceEnd = benchmarkPriceAt(windowEnd);

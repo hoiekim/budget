@@ -899,24 +899,24 @@ export interface PriceRow {
 }
 
 /**
- * Latest row ≤ `date` in a date-sorted (ascending) price series; null when
- * the series is empty or every entry postdates `date`.
+ * Latest row ≤ `date` in a date-sorted (ascending) price series, by binary
+ * search; null when the series is empty or every entry postdates `date`.
  */
-const rowAtIn = (history: PriceRow[], date: string): PriceRow | null => {
+export const rowAtIn = (history: PriceRow[], date: string): PriceRow | null => {
+  let low = 0;
+  let high = history.length - 1;
   let best: PriceRow | null = null;
-  for (const r of history) {
-    if (r.date <= date) best = r;
-    else break;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (history[mid].date <= date) {
+      best = history[mid];
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
   }
   return best;
 };
-
-/**
- * Latest close ≤ `date` in a date-sorted (ascending) price series. Mirrors
- * the snapshot `priceAt` walk; returns null when the series is empty or
- * every entry postdates `date`.
- */
-export const priceAtIn = (history: PriceRow[], date: string): number | null => rowAtIn(history, date)?.close ?? null;
 
 /**
  * Benchmark price lookup over two sources: `security_snapshots` (provider
