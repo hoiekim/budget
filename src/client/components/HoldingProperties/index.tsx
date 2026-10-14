@@ -112,8 +112,8 @@ export const HoldingProperties = () => {
       );
       const snapTicker =
         (
-          securityMatch?.security.ticker_symbol ??
-          data.securities.get(summary.security_id)?.ticker_symbol
+          data.securities.get(summary.security_id)?.ticker_symbol ||
+          securityMatch?.security.ticker_symbol
         )?.toUpperCase() ?? null;
       const isCash = summary.isCash;
       const snapBucket = isCash
@@ -170,8 +170,8 @@ export const HoldingProperties = () => {
         const security = data.securities.get(sid);
         securities.set(sid, {
           security_id: sid,
-          ticker_symbol: match?.security.ticker_symbol ?? security?.ticker_symbol ?? null,
-          name: match?.security.name?.trim() || security?.name?.trim() || null,
+          ticker_symbol: security?.ticker_symbol || match?.security.ticker_symbol || null,
+          name: security?.name?.trim() || match?.security.name?.trim() || null,
         });
       }
       if (!name) name = securities.get(sid)?.name ?? null;

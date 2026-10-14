@@ -119,19 +119,19 @@ export const HoldingsComposition = ({ accounts }: Props) => {
           isCash,
         } = summary;
 
-        let name: string | null = null;
-        let ticker: string | null = null;
-
+        // The security's own row is re-sent on every sync; a price snapshot's embedded copy can
+        // be stale or missing (a just-created or unquotable security), so it is only a fallback.
+        let snapshotName: string | null = null;
+        let snapshotTicker: string | null = null;
         securitySnapshots.forEach((snap) => {
           if (snap.security.security_id === security_id) {
-            name = snap.security.name?.trim() || null;
-            ticker = snap.security.ticker_symbol ?? null;
+            snapshotName = snap.security.name?.trim() || null;
+            snapshotTicker = snap.security.ticker_symbol ?? null;
           }
         });
-        // A security with no price snapshot yet (e.g. just created) still has its own row.
         const security = securities.get(security_id);
-        name ??= security?.name?.trim() || null;
-        ticker ??= security?.ticker_symbol ?? null;
+        const name = security?.name?.trim() || snapshotName;
+        const ticker = security?.ticker_symbol || snapshotTicker;
 
         return {
           holdingId,
