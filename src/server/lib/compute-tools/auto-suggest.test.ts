@@ -149,6 +149,17 @@ describe("runAutoSuggestions", () => {
   // Tests below use signal rows whose accepted/count_matched values
   // produce known quality = accepted / (count_matched × 107).
 
+  test("the category and section joins are scoped to the user, so a label naming another user's category joins nothing", async () => {
+    userRows = [userRow({ user_id: "user-1" })];
+    unlabeledByUser.set("user-1", [txRow({ transaction_id: "txn-1", user_id: "user-1", merchant_name: "Coffee Shop" })]);
+    await runAutoSuggestions();
+    const signalSql = String(mockQuery.mock.calls.find((c) => isSignalSql(c[0] as string))?.[0]).replace(/\s+/g, " ");
+    expect(signalSql).toContain(
+      "JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1",
+    );
+    expect(signalSql).toContain("JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1");
+  });
+
   test("skips when count_matched < 3 (sample-size floor)", async () => {
     userRows = [userRow({ user_id: "user-1" })];
     unlabeledByUser.set("user-1", [

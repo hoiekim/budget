@@ -513,8 +513,10 @@ const getFeatureSignal = async (
            AND ${SCORE_EXPR("t")} > $12
        ) AS rejected
      FROM winning w
-     JOIN categories ON categories.category_id = w.label_category_id
-     JOIN sections ON sections.section_id = categories.section_id
+     -- Scoped to the user: a label can name another user's category, and joining it unscoped
+     -- would read that user's section.
+     JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1
+     JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1
      LIMIT 1`,
     params,
   );
