@@ -1412,6 +1412,27 @@ describe("buildBenchmarkPriceAt", () => {
     expect(priceAt("2020-06-01")).toBe(100); // CSV fallback (no snapshot ≤ date)
     expect(priceAt("2019-01-01")).toBeNull(); // predates everything
   });
+  test("every row with the ticker reads as one series", () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("filled-1", mkSecuritySnap("benchmark-VOO", 300, "2026-11-02", "VOO"));
+    ss.set("filled-2", mkSecuritySnap("benchmark-VOO", 310, "2026-12-01", "VOO"));
+    ss.set("provider-1", mkSecuritySnap("provider-voo", 320, "2027-03-01", "VOO"));
+    ss.set("other", mkSecuritySnap("sec-other", 999, "2026-11-15", "OTHER"));
+    const csv: PriceRow[] = [{ date: "2026-10-13", close: 290 }];
+    const priceAt = buildBenchmarkPriceAt(ss, csv, "VOO");
+    expect([priceAt("2026-11-10"), priceAt("2026-12-15"), priceAt("2027-03-02"), priceAt("2026-10-20")]).toEqual([
+      300, 310, 320, 290,
+    ]);
+  });
+  test("a date two rows share takes the close of the row with the freshest series", () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("provider-old", mkSecuritySnap("provider-voo", 305, "2026-12-01", "VOO"));
+    ss.set("filled-same", mkSecuritySnap("benchmark-VOO", 310, "2026-12-01", "VOO"));
+    ss.set("filled-new", mkSecuritySnap("benchmark-VOO", 315, "2027-01-04", "VOO"));
+    ss.set("provider-older", mkSecuritySnap("provider-voo", 280, "2026-11-01", "VOO"));
+    const priceAt = buildBenchmarkPriceAt(ss, [], "VOO");
+    expect([priceAt("2026-11-15"), priceAt("2026-12-01")]).toEqual([280, 310]);
+  });
   test("no snapshot for ticker → CSV only", () => {
     const ss = new SecuritySnapshotDictionary();
     const csv: PriceRow[] = [{ date: "2024-01-01", close: 100 }];

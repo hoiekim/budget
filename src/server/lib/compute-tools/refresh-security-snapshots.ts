@@ -126,10 +126,10 @@ const securitySnapshotOf = (security: JSONSecurity, { price, tradingDate }: Clos
   };
 };
 
-const dayAfter = (date: string) => {
-  const next = new Date(`${date}T12:00:00Z`);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
+const shiftDay = (date: string, days: number) => {
+  const shifted = new Date(`${date}T12:00:00Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
 };
 
 /** The date of a security's latest live price snapshot, YYYY-MM-DD. */
@@ -147,10 +147,14 @@ const getLatestSnapshotDate = async (security_id: string): Promise<string | null
 
 /**
  * The closes to write for a security: the latest trading day's. The
- * benchmark also gets every trading day since its last snapshot, or since
- * the static history's last row when it has none, so a window can start on
- * any day. Those come from one range request; if it fails, only the latest
- * close is written.
+ * benchmark also gets every settled trading day since its last snapshot, or
+ * since the static history's last row when it has none, so a window can
+ * start on any day. Those come from one range request ending yesterday,
+ * since Polygon refuses a range that lies wholly in today. When there is
+ * nothing to fill, the range is empty (a weekend), or it reaches past the
+ * plan's history, only the latest close is written. A failure that may pass
+ * (a server or network error) writes nothing, so the next pass asks for the
+ * whole range again.
  */
 const getClosesToWrite = async (
   security: JSONSecurity,
@@ -165,11 +169,12 @@ const getClosesToWrite = async (
     return fetched.success ? { success: true, data: [fetched.data] } : fetched;
   };
   if (security.security_id !== benchmark) return latest();
-  const from = dayAfter((await getLatestSnapshotDate(security.security_id)) ?? BENCHMARK_HISTORY_THROUGH);
-  const to = getDateString(today);
+  const from = shiftDay((await getLatestSnapshotDate(security.security_id)) ?? BENCHMARK_HISTORY_THROUGH, 1);
+  const to = shiftDay(getDateString(today), -1);
   if (from > to) return latest();
   const range = await polygon.getDailyCloses(ticker, from, to, { securityType: security.type });
-  return range.success ? range : latest();
+  const settled = range.success || range.error === "no_data" || range.error === "plan_limit";
+  return range.success || !settled ? range : latest();
 };
 
 /**
@@ -193,7 +198,7 @@ const getClosesToWrite = async (
  * Cash-equivalents (`type='cash'` or `ticker_symbol` starting with
  * `CUR:`) are skipped — polygon does not price them.
  */
-export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecuritySnapshotsResult> => {
+export const refreshActiveSecuritySnapshots = async (now = new Date()): Promise<RefreshSecuritySnapshotsResult> => {
   const result: RefreshSecuritySnapshotsResult = {
     refreshed: 0,
     fresh: 0,
@@ -215,7 +220,7 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
   if (security_ids.length === 0) return result;
 
   const securities = await searchSecuritiesById(security_ids);
-  const today = new Date();
+  const today = now;
 
   for (const security of securities) {
     const { security_id, ticker_symbol } = security;

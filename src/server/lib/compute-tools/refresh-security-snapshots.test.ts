@@ -35,6 +35,8 @@ const mockFetch = mock(
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
 const { refreshActiveSecuritySnapshots, BENCHMARK_SECURITY_ID } = await import("./refresh-security-snapshots");
+const { clearPriceCache } = await import("server/lib/polygon");
+const { clearYahooCache } = await import("server/lib/yahoo");
 
 afterAll(restoreLeaves);
 
@@ -111,7 +113,12 @@ const setPolygonResponse = (body: unknown, status = 200) => {
   );
 };
 
+/** A fixed pass time for the range tests, a week after the static history ends. */
+const NOW = new Date("2026-10-20T20:00:00Z");
+
 beforeEach(() => {
+  clearPriceCache();
+  clearYahooCache();
   resetQueryMocks();
   mockQuery.mockImplementation(queryRouter);
   mockFetch.mockReset();
@@ -400,10 +407,12 @@ describe("refreshActiveSecuritySnapshots", () => {
       results: [6, 7, 8].map((day) => ({ c: 700 + day, t: Date.UTC(2026, 9, day) })),
     });
 
-    const r = await refreshActiveSecuritySnapshots();
+    const r = await refreshActiveSecuritySnapshots(NOW);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(String(mockFetch.mock.calls[0][0])).toContain("/v2/aggs/ticker/VOO/range/1/day/2026-10-06/");
+    expect(String(mockFetch.mock.calls[0][0])).toContain(
+      `/v2/aggs/ticker/VOO/range/1/day/2026-10-06/2026-10-19?`,
+    );
     const written = upsertCalls.flatMap((c) => c.values.map(String));
     for (const day of ["20261006", "20261007", "20261008"]) expect(written).toContain(`${BENCHMARK_SECURITY_ID}-${day}`);
     expect(r).toEqual({ refreshed: 1, fresh: 0, cash: 0, empty: 0, errors: 0 });
@@ -412,19 +421,56 @@ describe("refreshActiveSecuritySnapshots", () => {
   test("a benchmark with no snapshot is filled from the day after the static history ends", async () => {
     recentBySecurity = new Set();
 
-    await refreshActiveSecuritySnapshots();
+    await refreshActiveSecuritySnapshots(NOW);
 
     const dayAfter = new Date(`${BENCHMARK_HISTORY_THROUGH}T12:00:00Z`);
     dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
-    expect(String(mockFetch.mock.calls[0][0])).toContain(`/range/1/day/${dayAfter.toISOString().slice(0, 10)}/`);
+    expect(String(mockFetch.mock.calls[0][0])).toContain(
+      `/range/1/day/${dayAfter.toISOString().slice(0, 10)}/2026-10-19?`,
+    );
   });
 
-  test("a failed range request still writes the benchmark's latest close", async () => {
+  test("a benchmark already filled through yesterday asks only for its latest close", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-19" };
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).not.toContain("/range/1/day/2026-10-20/");
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("an empty range still writes the benchmark's latest close", async () => {
     recentBySecurity = new Set();
     latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    setPolygonResponse({ results: [] });
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(upsertCalls.flatMap((c) => c.values.map(String))).toContain(`${BENCHMARK_SECURITY_ID}-20260610`);
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("a range the server fails on writes nothing, so the next pass asks for the whole range again", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    mockFetch.mockImplementation(async () => new Response("unavailable", { status: 503 }));
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    expect(mockFetch.mock.calls.every((c) => String(c[0]).includes("/range/1/day/2026-10-06/2026-10-19?"))).toBe(true);
+    expect(upsertCalls).toHaveLength(0);
+    expect(r.errors).toBe(1);
+  });
+
+  test("a range past the plan's history writes the latest close", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2024-01-05" };
     setPolygonResponse({ status: "NOT_AUTHORIZED", message: "out of plan" });
 
-    const r = await refreshActiveSecuritySnapshots();
+    const r = await refreshActiveSecuritySnapshots(NOW);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(upsertCalls.flatMap((c) => c.values.map(String))).toContain(`${BENCHMARK_SECURITY_ID}-20260610`);

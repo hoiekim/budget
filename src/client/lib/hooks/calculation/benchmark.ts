@@ -867,38 +867,9 @@ export const buildPriceAt = (
 ) => buildPriceIndex(securitySnapshots, investmentTransactions).priceAt;
 
 /**
- * Snapshot-only price lookup for the benchmark side. Returns null when
- * no snapshot ≤ date exists — caller is expected to chain to the static
- * CSV fallback. (Distinct from `buildPriceAt`,
- * which is txn-only and serves the user's MWR.)
- */
-export const buildSnapshotPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
-  const bySec = new Map<string, Array<{ date: string; price: number }>>();
-  securitySnapshots.forEach((snap) => {
-    const close = snap.security.close_price;
-    if (close == null) return;
-    const arr = bySec.get(snap.security.security_id) ?? [];
-    arr.push({ date: snap.snapshot.date.slice(0, 10), price: close });
-    bySec.set(snap.security.security_id, arr);
-  });
-  bySec.forEach((arr) => arr.sort((a, b) => (a.date < b.date ? -1 : 1)));
-
-  return (securityId: string, date: string): number | null => {
-    const arr = bySec.get(securityId);
-    if (!arr || arr.length === 0) return null;
-    let best: number | null = null;
-    for (const entry of arr) {
-      if (entry.date <= date) best = entry.price;
-      else break;
-    }
-    return best;
-  };
-};
-
-/**
  * Find the security_id for a benchmark ticker (e.g. VOO) from the user's
  * security_snapshots. Returns null if the ticker has no security row.
- * Used to route snapshot lookups to the correct security_id.
+ * Decides whose close wins on a date two rows with the ticker share.
  */
 export const findBenchmarkSecurityId = (
   securitySnapshots: SecuritySnapshotDictionary,
@@ -946,8 +917,8 @@ export const priceAtIn = (history: PriceRow[], date: string): number | null => {
 /**
  * Benchmark price lookup with the standard fallback chain:
  * `security_snapshots` (provider daily closes, and the hourly refresh,
- * which always includes the benchmark) first, static CSV history (`vooHistory`) for the long
- * historical tail. Returns null when neither source has a price ≤ date.
+ * which always includes the benchmark) first, static CSV history
+ * (`vooHistory`) for the long historical tail. Returns null when neither source has a price ≤ date.
  *
  * Used by `PerformanceBenchmark` for the window TWR.
  */
@@ -956,19 +927,23 @@ export const buildBenchmarkPriceAt = (
   vooHistory: PriceRow[] | null,
   ticker = BENCHMARK_TICKER,
 ) => {
-  const benchmarkSecurityId = findBenchmarkSecurityId(securitySnapshots, ticker);
-  const snapPriceAt = buildSnapshotPriceAt(securitySnapshots);
-  return (date: string): number | null => {
-    if (benchmarkSecurityId) {
-      const snap = snapPriceAt(benchmarkSecurityId, date);
-      if (snap != null) return snap;
-    }
-    if (vooHistory && vooHistory.length > 0) {
-      const csv = priceAtIn(vooHistory, date);
-      if (csv != null) return csv;
-    }
-    return null;
-  };
+  // Every row with the ticker reads as one series: one row's closes can be
+  // the server's and another's a provider's. A date both have takes the
+  // close of the row with the freshest series.
+  const preferred = findBenchmarkSecurityId(securitySnapshots, ticker);
+  const byDate = new Map<string, { close: number; preferred: boolean }>();
+  securitySnapshots.forEach((snap) => {
+    const close = snap.security.close_price;
+    if (snap.security.ticker_symbol !== ticker || close == null) return;
+    const date = snap.snapshot.date.slice(0, 10);
+    const isPreferred = snap.security.security_id === preferred;
+    const existing = byDate.get(date);
+    if (!existing || (isPreferred && !existing.preferred)) byDate.set(date, { close, preferred: isPreferred });
+  });
+  const snapshots: PriceRow[] = Array.from(byDate, ([date, { close }]) => ({ date, close })).sort((a, b) =>
+    a.date < b.date ? -1 : 1,
+  );
+  return (date: string): number | null => priceAtIn(snapshots, date) ?? priceAtIn(vooHistory ?? [], date);
 };
 
 export interface HoldingBenchmarkResult {
