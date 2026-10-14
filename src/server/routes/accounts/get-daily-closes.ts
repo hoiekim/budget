@@ -1,10 +1,7 @@
 import { Route, requireQueryString, requireTickerSymbol, validationError, getRestatementCloses } from "server";
+import { isCalendarDate } from "common";
 import type { RestatementCloses } from "common";
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-const isCalendarDate = (date: string) =>
-  DATE_PATTERN.test(date) && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
 
 /**
  * GET /daily-closes?ticker=&from=YYYY-MM-DD&to=YYYY-MM-DD

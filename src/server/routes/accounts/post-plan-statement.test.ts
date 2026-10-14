@@ -307,12 +307,22 @@ describe("POST /plan-statement/import", () => {
     ["a figure that isn't a number", [shareLeg(ROW_ID, { quantity: "20" })]],
     ["a subtype no statement kind writes", [shareLeg(ROW_ID, { subtype: "stock split" })]],
     ["a calendar-invalid date", [shareLeg(ROW_ID, { date: "2026-02-30" })]],
+    ["a month past December", [shareLeg(ROW_ID, { date: "2026-13-01" })]],
     ["a cash leg with a share subtype", [{ transaction: { ...cashLeg().transaction, subtype: "dividend reinvestment" } }]],
     ["a currency past the column's length", [shareLeg(ROW_ID, { iso_currency_code: "DOLLARS-USD" })]],
   ])("refuses %s and writes nothing", async (_, transactions) => {
     expect(await importStatement(importBody({ transactions }))).toMatchObject({ status: "failed" });
     expect(writes()).toEqual([]);
   });
+
+  test.each(["2026-02-30", "2026-13-01", "2026-00-10", "2026-03-32"])(
+    "refuses a holding dated %s as a request error and writes nothing",
+    async (date) => {
+      const res = await importStatement(importBody({ holdings: [{ ...HOLDINGS[0], date }] }));
+      expect(res).toMatchObject({ status: "failed", message: "each holding needs a YYYY-MM-DD date" });
+      expect(writes()).toEqual([]);
+    },
+  );
 
   test("refuses a security that doesn't exist", async () => {
     const res = await importStatement(importBody({ transactions: [shareLeg(ROW_ID, { security_id: "sec-gone" })] }));
@@ -326,12 +336,7 @@ describe("POST /plan-statement/import", () => {
     { account_id: "acct-1", transactions: [], mappings: [{ investment: "", security_id: "s", restated: false }], holdings: [] },
     { account_id: "acct-1", transactions: [], mappings: [], holdings: [{ security_id: "s", date: "2026-03-02", quantity: 1 }] },
     { account_id: "acct-1", transactions: [], mappings: [], holdings: [], replace: [1] },
-    {
-      account_id: "acct-1",
-      transactions: [],
-      mappings: [],
-      holdings: [{ security_id: "s", date: "2026-02-30", quantity: 1, cost_basis: null, price: 1 }],
-    },
+
   ])("rejects a malformed body %#", async (body) => {
     expect(await importStatement(body)).toMatchObject({ status: "failed" });
     expect(writes()).toEqual([]);
@@ -368,6 +373,8 @@ describe("GET /daily-closes", () => {
     for (const query of [
       { ...RANGE, ticker: "bad ticker!" },
       { ...RANGE, from: "2026-02-30" },
+      { ...RANGE, from: "2026-13-01" },
+      { ...RANGE, to: "2026-00-10" },
       { ...RANGE, from: "2026-03-05" },
       { ticker: "XIDX", from: "2026-02-20" },
     ]) {

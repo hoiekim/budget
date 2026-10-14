@@ -1,4 +1,5 @@
 import {
+  isCalendarDate,
   PlanFundMapping,
   PlannedTransaction,
   PlanStatementHolding,
@@ -13,9 +14,6 @@ type ParsedRequest = { ok: true; request: PlanStatementImportRequest } | { ok: f
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const isCalendarDate = (v: unknown): v is string =>
-  typeof v === "string" && DATE_PATTERN.test(v) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
 
 const parseRequest = (req: ServerRequest): ParsedRequest => {
   const bodyResult = requireBodyObject(req);
@@ -33,9 +31,7 @@ const parseRequest = (req: ServerRequest): ParsedRequest => {
     }
     const t = planned.transaction;
     if (!isNonEmptyString(t.investment_transaction_id)) return { ok: false, message: "each transaction needs an id" };
-    if (typeof t.date !== "string" || !DATE_PATTERN.test(t.date)) {
-      return { ok: false, message: "each transaction needs a YYYY-MM-DD date" };
-    }
+    if (!isCalendarDate(t.date)) return { ok: false, message: "each transaction needs a YYYY-MM-DD date" };
     if (planned.restated_from !== undefined && !isObject(planned.restated_from)) {
       return { ok: false, message: "restated_from must be an object" };
     }

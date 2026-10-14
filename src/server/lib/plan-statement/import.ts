@@ -2,6 +2,7 @@ import { AccountType, InvestmentTransactionType } from "plaid";
 import {
   ItemProvider,
   JSONHolding,
+  isCalendarDate,
   KIND_SPECS,
   PLAN_STATEMENT_ID_PATTERN,
   PlannedTransaction,
@@ -36,7 +37,6 @@ const SHARE_SUBTYPES = new Set<string>(Object.values(KIND_SPECS).map((spec) => s
 const CASH_SUBTYPES = new Set<string>(
   Object.values(KIND_SPECS).flatMap((spec) => (spec.cash ? [spec.cash.subtype] : [])),
 );
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CURRENCY_LENGTH = 10;
 
 const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<string>> => {
@@ -47,11 +47,6 @@ const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<stri
   );
   return new Set(models.map((m) => m.investment_transaction_id));
 };
-
-const isCalendarDate = (date: unknown): date is string =>
-  typeof date === "string" &&
-  DATE_PATTERN.test(date) &&
-  new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
 
 const isFiniteNumber = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 

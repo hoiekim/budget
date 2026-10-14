@@ -8,6 +8,7 @@ import {
   LocalDate,
   ViewDate,
   IsDate,
+  isCalendarDate,
 } from "./date";
 
 describe("getDateString", () => {
@@ -283,5 +284,16 @@ describe("IsDate", () => {
     expect(checker.within("year").from(new Date(2024, 0, 1))).toBe(true);
     expect(checker.within("year").from(new Date(2024, 11, 31))).toBe(true);
     expect(checker.within("year").from(new Date(2023, 5, 15))).toBe(false);
+  });
+});
+
+describe("isCalendarDate", () => {
+  it("accepts a day that exists, leap days included", () => {
+    expect(["2026-03-02", "2024-02-29", "2026-12-31"].map(isCalendarDate)).toEqual([true, true, true]);
+  });
+
+  it("refuses impossible days and other shapes without throwing", () => {
+    const bad = ["2026-02-30", "2025-02-29", "2026-13-01", "2026-00-10", "2026-03-32", "2026-3-2", "20260302", "", null, 20260302];
+    expect(bad.map((v) => isCalendarDate(v))).toEqual(bad.map(() => false));
   });
 });
