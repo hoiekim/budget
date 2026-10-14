@@ -899,25 +899,31 @@ export interface PriceRow {
 }
 
 /**
- * Latest close ≤ `date` in a date-sorted (ascending) price series. Mirrors
- * the snapshot `priceAt` walk; returns null when the series is empty or
- * every entry postdates `date`.
+ * Latest row ≤ `date` in a date-sorted (ascending) price series; null when
+ * the series is empty or every entry postdates `date`.
  */
-export const priceAtIn = (history: PriceRow[], date: string): number | null => {
-  if (history.length === 0) return null;
-  let best: number | null = null;
+const rowAtIn = (history: PriceRow[], date: string): PriceRow | null => {
+  let best: PriceRow | null = null;
   for (const r of history) {
-    if (r.date <= date) best = r.close;
+    if (r.date <= date) best = r;
     else break;
   }
   return best;
 };
 
 /**
- * Benchmark price lookup with the standard fallback chain:
- * `security_snapshots` (provider daily closes, and the hourly refresh,
- * which always includes the benchmark) first, static CSV history
- * (`vooHistory`) for the long historical tail. Returns null when neither source has a price ≤ date.
+ * Latest close ≤ `date` in a date-sorted (ascending) price series. Mirrors
+ * the snapshot `priceAt` walk; returns null when the series is empty or
+ * every entry postdates `date`.
+ */
+export const priceAtIn = (history: PriceRow[], date: string): number | null => rowAtIn(history, date)?.close ?? null;
+
+/**
+ * Benchmark price lookup over two sources: `security_snapshots` (provider
+ * daily closes, and the hourly refresh, which always includes the
+ * benchmark) and the static CSV history (`vooHistory`). Each date takes the
+ * close dated nearest it, on or before it; a snapshot wins a tie. Returns
+ * null when neither source has a price ≤ date.
  *
  * Used by `PerformanceBenchmark` for the window TWR.
  */
@@ -942,7 +948,12 @@ export const buildBenchmarkPriceAt = (
   const snapshots: PriceRow[] = Array.from(byDate, ([date, { close }]) => ({ date, close })).sort((a, b) =>
     a.date < b.date ? -1 : 1,
   );
-  return (date: string): number | null => priceAtIn(snapshots, date) ?? priceAtIn(vooHistory ?? [], date);
+  return (date: string): number | null => {
+    const snapshot = rowAtIn(snapshots, date);
+    const history = rowAtIn(vooHistory ?? [], date);
+    if (!snapshot || !history) return (snapshot ?? history)?.close ?? null;
+    return history.date > snapshot.date ? history.close : snapshot.close;
+  };
 };
 
 export interface HoldingBenchmarkResult {
