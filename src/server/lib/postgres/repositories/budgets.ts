@@ -163,7 +163,6 @@ export const createCategory = async (
   user: MaskedUser,
   data: Partial<JSONCategory>,
 ): Promise<JSONCategory | null> => {
-  // As in createSection: the section has to be the caller's, and one that isn't answers as absent.
   if (!data.section_id) return null;
   const section = await sectionsTable.queryOne({ [SECTION_ID]: data.section_id, [USER_ID]: user.user_id });
   if (!section) return null;

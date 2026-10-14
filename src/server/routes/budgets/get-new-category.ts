@@ -1,5 +1,5 @@
 import { JSONCategory } from "common";
-import { Route, createCategory, requireQueryString, validationError } from "server";
+import { Route, createCategory, requireQueryString, validateFields, validationError } from "server";
 
 export type NewCategoryGetResponse = { category: JSONCategory };
 
@@ -17,6 +17,8 @@ export const getNewCategoryRoute = new Route<NewCategoryGetResponse>(
 
     const parentResult = requireQueryString(req, "parent");
     if (!parentResult.success) return validationError(parentResult.error!);
+    const parentShape = validateFields({ parent: parentResult.data }, [{ path: "parent", type: "uuid" }]);
+    if (!parentShape.success) return validationError(parentShape.error!);
 
     const response = await createCategory(user, { section_id: parentResult.data! });
 

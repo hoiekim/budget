@@ -1,5 +1,5 @@
 import { JSONSection } from "common";
-import { Route, createSection, requireQueryString, validationError } from "server";
+import { Route, createSection, requireQueryString, validateFields, validationError } from "server";
 
 export type NewSectionGetResponse = { section: JSONSection };
 
@@ -17,6 +17,8 @@ export const getNewSectionRoute = new Route<NewSectionGetResponse>(
 
     const parentResult = requireQueryString(req, "parent");
     if (!parentResult.success) return validationError(parentResult.error!);
+    const parentShape = validateFields({ parent: parentResult.data }, [{ path: "parent", type: "uuid" }]);
+    if (!parentShape.success) return validationError(parentShape.error!);
 
     const response = await createSection(user, { budget_id: parentResult.data! });
 

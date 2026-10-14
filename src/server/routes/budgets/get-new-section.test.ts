@@ -10,12 +10,12 @@ const db = {
 };
 
 const mockQuery = mock(async (sql: string, values: unknown[] = []) => {
-  // The parent lookup filters on the budget's id and its owner, as the WHERE does.
+  // The parent lookup answers like its WHERE: by id, and by owner only when the query filters on one.
   const rows = /^\s*INSERT\s+INTO\s+sections\b/i.test(sql)
     ? db.insertReturns
     : /FROM\s+budgets\b/i.test(sql)
       ? [...db.parents]
-          .filter(([id, owner]) => values.includes(id) && values.includes(owner))
+          .filter(([id, owner]) => values.includes(id) && (!/\buser_id\s*=/i.test(sql) || values.includes(owner)))
           .map(([id, owner]) => ({
             budget_id: id,
             user_id: owner, iso_currency_code: "USD",
@@ -206,5 +206,15 @@ describe("get-new-section parent ownership", () => {
     const result = await getNewSectionRoute.execute(makeReq({ user_id: USER_ID, username: "u" }), fakeRes());
     expect(result).toEqual({ status: "failed", message: "Failed to create section." });
     expect(inserts()).toHaveLength(0);
+  });
+
+  test("a parent that isn't a UUID is refused as a bad request, before any query", async () => {
+    const result = await getNewSectionRoute.execute(
+      makeReq({ user_id: USER_ID, username: "u" }, { parent: "not-a-uuid" }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/parent/);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
