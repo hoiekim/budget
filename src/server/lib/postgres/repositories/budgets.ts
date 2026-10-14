@@ -103,6 +103,11 @@ export const createSection = async (
   user: MaskedUser,
   data: Partial<JSONSection>,
 ): Promise<JSONSection | null> => {
+  // The foreign key proves only that the budget exists; it has to be the caller's. A budget that
+  // isn't theirs gets the same answer as one that doesn't exist, so the answer reveals neither.
+  if (!data.budget_id) return null;
+  const budget = await budgetsTable.queryOne({ [BUDGET_ID]: data.budget_id, [USER_ID]: user.user_id });
+  if (!budget) return null;
   const row = SectionModel.fromJSON(
     {
       budget_id: data.budget_id,
@@ -158,6 +163,10 @@ export const createCategory = async (
   user: MaskedUser,
   data: Partial<JSONCategory>,
 ): Promise<JSONCategory | null> => {
+  // As in createSection: the section has to be the caller's, and one that isn't answers as absent.
+  if (!data.section_id) return null;
+  const section = await sectionsTable.queryOne({ [SECTION_ID]: data.section_id, [USER_ID]: user.user_id });
+  if (!section) return null;
   const row = CategoryModel.fromJSON(
     {
       section_id: data.section_id,

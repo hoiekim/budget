@@ -5,10 +5,28 @@ type Row = Record<string, unknown>;
 
 const db = {
   insertReturns: [] as Row[],
+  /** Each existing budget's owner, by id. */
+  parents: new Map<string, string>(),
 };
 
-const mockQuery = mock(async (sql: string, _values?: unknown[]) => {
-  const rows = /^\s*INSERT\s+INTO\s+sections\b/i.test(sql) ? db.insertReturns : [];
+const mockQuery = mock(async (sql: string, values: unknown[] = []) => {
+  // The parent lookup filters on the budget's id and its owner, as the WHERE does.
+  const rows = /^\s*INSERT\s+INTO\s+sections\b/i.test(sql)
+    ? db.insertReturns
+    : /FROM\s+budgets\b/i.test(sql)
+      ? [...db.parents]
+          .filter(([id, owner]) => values.includes(id) && values.includes(owner))
+          .map(([id, owner]) => ({
+            budget_id: id,
+            user_id: owner, iso_currency_code: "USD",
+            name: "parent",
+            roll_over: false,
+            roll_over_start_date: null,
+            capacities: [],
+            updated: "2026-10-01T00:00:00.000Z",
+            is_deleted: false,
+          }))
+      : [];
   return { rows: rows as unknown[], rowCount: rows.length as number | null };
 });
 
@@ -33,6 +51,7 @@ afterAll(() => {
 beforeEach(() => {
   mockQuery.mockClear();
   db.insertReturns = [];
+  db.parents = new Map([[BUDGET_ID, USER_ID]]);
 });
 
 const USER_ID = "11111111-1111-1111-1111-111111111111";
@@ -132,7 +151,7 @@ describe("get-new-section response body", () => {
 
     await getNewSectionRoute.execute(makeReq({ user_id: USER_ID, username: "test" }), fakeRes());
 
-    const [, values] = mockQuery.mock.calls[0];
+    const [, values] = mockQuery.mock.calls.find(([sql]) => /^\s*INSERT\s+INTO\s+sections\b/i.test(String(sql)))!;
     expect(values).toContain("New Section");
     expect(values).toContain(false);
     expect(values).toContain(BUDGET_ID);
@@ -166,5 +185,26 @@ describe("get-new-section response body", () => {
 
     expect(result?.status).toBe("failed");
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("get-new-section parent ownership", () => {
+  const OTHER_USER = "22222222-2222-2222-2222-222222222222";
+  const inserts = () => mockQuery.mock.calls.filter(([sql]) => /^\s*INSERT\s+INTO\s+sections\b/i.test(String(sql)));
+
+  test("a budget that exists but belongs to another user is refused before any insert", async () => {
+    db.parents = new Map([[BUDGET_ID, OTHER_USER]]);
+    db.insertReturns = [insertedRow()];
+    const result = await getNewSectionRoute.execute(makeReq({ user_id: USER_ID, username: "u" }), fakeRes());
+    expect(result).toEqual({ status: "failed", message: "Failed to create section." });
+    expect(inserts()).toHaveLength(0);
+  });
+
+  test("a budget that doesn't exist gets the same answer, so the two can't be told apart", async () => {
+    db.parents = new Map();
+    db.insertReturns = [insertedRow()];
+    const result = await getNewSectionRoute.execute(makeReq({ user_id: USER_ID, username: "u" }), fakeRes());
+    expect(result).toEqual({ status: "failed", message: "Failed to create section." });
+    expect(inserts()).toHaveLength(0);
   });
 });
