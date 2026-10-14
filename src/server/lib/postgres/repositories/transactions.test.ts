@@ -338,6 +338,18 @@ describe("updateTransactions", () => {
     expect(updateCall()).toBeUndefined();
   });
 
+  test("a label naming a budget or category that doesn't exist is refused, with no update", async () => {
+    const txs = [
+      { transaction_id: "tx-8", label: { category_id: "no-such-cat" } },
+      { transaction_id: "tx-9", label: { budget_id: "no-such-budget" } },
+    ] as Parameters<typeof updateTransactions>[1];
+    expect(await updateTransactions(testUser, txs)).toEqual([
+      { update: { _id: "tx-8" }, status: 422 },
+      { update: { _id: "tx-9" }, status: 422 },
+    ]);
+    expect(updateCall()).toBeUndefined();
+  });
+
   test("a label naming the caller's own budget and category is written", async () => {
     const tx = { transaction_id: "tx-5", label: { budget_id: "bud-1", category_id: "cat-1" } } as Parameters<
       typeof updateTransactions

@@ -138,7 +138,6 @@ export const updateTransactions = async (
   if (!transactions.length) return [];
   const results: UpsertResult[] = [];
 
-  // A label may only name the caller's own budget and category.
   const labelIds = (key: "budget_id" | "category_id") =>
     transactions.map((tx) => tx.label?.[key]).filter((id): id is string => typeof id === "string" && !!id);
   const owned = await getOwnedLabelIds(user, {
@@ -156,7 +155,6 @@ export const updateTransactions = async (
       const row = TransactionModel.fromJSON(tx, user.user_id);
       delete row.transaction_id;
       delete row.user_id;
-      // A transaction stays on its account; an update never moves it to another.
       delete row.account_id;
 
       const updated = await transactionsTable.update(tx.transaction_id, row, undefined, user.user_id);
