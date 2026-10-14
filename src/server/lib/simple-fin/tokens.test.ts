@@ -41,10 +41,12 @@ describe("validateSimpleFinUrl", () => {
       "https://[::]/x",
       "https://[fc00::1]/x",
       "https://[fdab::1]/x",
+      "https://[fc12::1]/x",
       "https://[fe80::1]/x",
       "https://[febf::1]/x",
       "https://[::ffff:169.254.169.254]/x",
       "https://[::ffff:127.0.0.1]/x",
+      "https://[::ffff:192.168.1.1]/x",
       "http://bridge.example.com/x",
     ];
     expect(refused.filter((url) => verdict(url) !== "refused")).toEqual([]);
