@@ -92,7 +92,8 @@ export const getSankeyData = (
     const category = category_id && categories.get(category_id);
     const categorySection = category ? sections.get(category.section_id) : undefined;
     // A section row has exactly one outgoing link, so it must point at the section's own
-    // budget even when the row's label names another one, as the Budgets page attributes it.
+    // budget even when the row's label names another one. Unlike the Budgets page, this
+    // also applies to an unconfirmed (suggested) category, which the chart draws by category.
     const budget_id =
       categorySection?.budget_id ||
       t.label.budget_id ||

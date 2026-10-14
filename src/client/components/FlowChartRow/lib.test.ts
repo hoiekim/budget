@@ -201,19 +201,20 @@ describe("getSankeyData — split re-labeling", () => {
 });
 
 describe("getSankeyData — a section links only to its own budget", () => {
-  const run = (amounts: { labelBudget: "A" | "B"; amount: number }[]) => {
+  type Row = { labelBudget?: "A" | "B"; category?: "A" | "B"; confidence?: number; amount: number };
+  const run = (rows: Row[]) => {
     const w = makeWorld();
     const transactions = new TransactionDictionary();
-    amounts.forEach(({ labelBudget, amount }, i) => {
+    rows.forEach(({ labelBudget, category = "A", confidence = 1, amount }, i) => {
       const tx = new Transaction({
         account_id: w.account.id,
         transaction_id: `tx-${i}`,
         amount,
         date: DATE,
         label: {
-          budget_id: labelBudget === "A" ? w.budgetA.id : w.budgetB.id,
-          category_id: w.categoryA.id,
-          category_confidence: 1,
+          budget_id: labelBudget && (labelBudget === "A" ? w.budgetA.id : w.budgetB.id),
+          category_id: category === "A" ? w.categoryA.id : w.categoryB.id,
+          category_confidence: confidence,
         },
       });
       transactions.set(tx.id, tx);
@@ -264,6 +265,17 @@ describe("getSankeyData — a section links only to its own budget", () => {
     ]);
     expect(linkedAmounts(graphData[1], graphData[0])).toEqual([
       { id: w.budgetA.id, amount: 100, linked: 100 },
+    ]);
+  });
+
+  test("an unconfirmed suggestion from another budget flows through the suggested section's budget", () => {
+    // The account's fallback budget is A; the suggested category belongs to B.
+    const { w, graphData } = run([{ category: "B", confidence: 0.99, amount: 50 }]);
+    expect(graphData[4].map(({ id, next, amount }) => ({ id, next, amount }))).toEqual([
+      { id: w.sectionB.id, next: w.budgetB.id, amount: 50 },
+    ]);
+    expect(linkedAmounts(graphData[3], graphData[4])).toEqual([
+      { id: w.budgetB.id, amount: 50, linked: 50 },
     ]);
   });
 });

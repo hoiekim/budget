@@ -83,7 +83,8 @@ export const ChartAccountsPage = () => {
 
   // Synthetic "Others" toggle (Flow chart only) for transactions whose
   // effective budget_id is the UNSORTED_BUDGET_ID sentinel — i.e. no
-  // label on the transaction and no fallback label on the account.
+  // category, no budget label on the transaction and no fallback label
+  // on the account.
   // Italic name signals this row is a system-reserved sentinel, not a
   // user-created budget. Without it, a user who whitelists any real
   // budget would silently lose unsorted transactions with no escape
