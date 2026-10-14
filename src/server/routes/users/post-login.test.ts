@@ -193,10 +193,10 @@ describe("post-login rate-limiter wiring", () => {
   let ipCounter = 0;
   const nextIp = () => `192.0.2.${++ipCounter}`;
 
-  const attemptLogin = async (ip: string, password: string) => {
-    mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+  const attemptLogin = async (ip: string, password: string, username = "alice") => {
+    mockQuery.mockResolvedValueOnce({ rows: [userRow({ username, user_id: `u-${username}` })], rowCount: 1 });
     return postLoginRoute.execute(
-      makeReq({ username: "alice", password }, { ip }),
+      makeReq({ username, password }, { ip }),
       fakeRes(),
     );
   };
@@ -215,17 +215,16 @@ describe("post-login rate-limiter wiring", () => {
     expect(loginRateLimiter.isLimited(ip)).toBe(true);
   });
 
-  test("a successful login clears the IP's prior failures", async () => {
+  test("a successful login as one account doesn't clear the guesses made against another", async () => {
     const ip = nextIp();
-    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password");
+    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password", "admin");
 
-    const success = await attemptLogin(ip, REAL_PASSWORD);
+    const success = await attemptLogin(ip, REAL_PASSWORD, "alice");
     expect(success?.status).toBe("success");
-
-    // Without the reset, these 4 land on top of the earlier 4 and cross the
-    // cap of 5. With it, the IP is back to a clean window.
-    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password");
     expect(loginRateLimiter.isLimited(ip)).toBe(false);
+
+    await attemptLogin(ip, "wrong-password", "admin");
+    expect(loginRateLimiter.isLimited(ip)).toBe(true);
   });
 
   test("a successful login never charges a slot on its own", async () => {

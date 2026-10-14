@@ -44,30 +44,6 @@ describe("loginRateLimiter.consume / lockout threshold", () => {
   });
 });
 
-describe("successful-login behavior", () => {
-  test("a successful login resets the counter so subsequent logins are not blocked", () => {
-    const ip = nextIp();
-    // 4 failed attempts under the cap, then a success clears the bucket.
-    for (let i = 0; i < 4; i++) loginRateLimiter.consume(ip);
-    loginRateLimiter.reset(ip);
-    // Should now tolerate another 5 failures before locking out.
-    for (let i = 0; i < 5; i++) loginRateLimiter.consume(ip);
-    expect(loginRateLimiter.isLimited(ip)).toBe(true);
-  });
-
-  test("simulating 6 successful logins in a row — the bug repro — never blocks", () => {
-    // In the buggy code each "success" was implicitly a check-and-bump:
-    // 5 bumps → the 6th request was 429'd. With failure-only counting,
-    // successes simply don't touch the counter, so this loop never blocks.
-    const ip = nextIp();
-    for (let i = 0; i < 6; i++) {
-      expect(loginRateLimiter.isLimited(ip)).toBe(false);
-      // Success path: reset is the only state change.
-      loginRateLimiter.reset(ip);
-    }
-  });
-});
-
 describe("loginRateLimiter.reset", () => {
   test("clears a locked-out IP", () => {
     const ip = nextIp();
@@ -311,7 +287,7 @@ describe("getClientIp keys the pre-session limiters per socket", () => {
     expect(preSessionShedMessage("POST", "/login", victim)).toBeNull();
   });
 
-  test("a successful login from one socket does not clear another's counter", () => {
+  test("resetting one socket's counter leaves another's alone", () => {
     const attacker = getClientIp({}, nextSocket());
     const bystander = getClientIp({}, nextSocket());
 

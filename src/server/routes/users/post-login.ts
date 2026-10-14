@@ -34,9 +34,6 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
     : await bcrypt.compare(passwordResult.data!, DUMMY_HASH).then(() => false);
 
   if (pwMatches && user) {
-    // Successful auth: clear any prior failures so they don't accumulate
-    // against the user within the window.
-    loginRateLimiter.reset(req.ip);
     const maskedUser = maskUser(user);
     await new Promise<void>((resolve, reject) => {
       req.session.regenerate((err) => {
@@ -48,7 +45,8 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
     return { status: "success", body: maskedUser };
   }
 
-  // Only auth failures count toward the rate limit.
+  // Only failures count. A success leaves the IP's counter alone too: clearing it would let
+  // one valid login erase the guesses made against other accounts.
   loginRateLimiter.consume(req.ip);
 
   // Return the same generic message regardless of whether the username exists
