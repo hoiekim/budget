@@ -245,4 +245,28 @@ describe("post-login rate-limiter wiring", () => {
     const bystander = nextIp();
     expect(loginRateLimiter.isLimited(bystander)).toBe(false);
   });
+
+  test("a burst of concurrent wrong passwords gets five guesses, and the rest are refused", async () => {
+    const ip = nextIp();
+    const attempts = Array.from({ length: 40 }, () => {
+      mockQuery.mockResolvedValueOnce({ rows: [userRow({ username: "admin", user_id: "u-admin" })], rowCount: 1 });
+      const res = fakeRes();
+      return postLoginRoute
+        .execute(makeReq({ username: "admin", password: "wrong-password" }, { ip }), res)
+        .then((result) => ({ message: result?.message, status: (res as { statusCode: number }).statusCode }));
+    });
+    const results = await Promise.all(attempts);
+
+    const guessed = results.filter((r) => r.message === "Invalid username or password.");
+    const refused = results.filter((r) => r.status === 429 && r.message === "Too many login attempts, try again later");
+    expect([guessed.length, refused.length]).toEqual([5, 35]);
+  });
+
+  test("a lookup that fails doesn't charge the IP", async () => {
+    const ip = nextIp();
+    mockQuery.mockRejectedValueOnce(new Error("db down"));
+    const result = await postLoginRoute.execute(makeReq({ username: "alice", password: REAL_PASSWORD }, { ip }), fakeRes());
+    expect(result?.status).toBe("error");
+    expect(loginRateLimiter.remaining(ip)).toBe(5);
+  });
 });

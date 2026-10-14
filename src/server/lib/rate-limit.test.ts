@@ -44,6 +44,25 @@ describe("loginRateLimiter.consume / lockout threshold", () => {
   });
 });
 
+describe("loginRateLimiter.refund", () => {
+  test("gives back slots in the active window, never below zero", () => {
+    const ip = nextIp();
+    for (let i = 0; i < 5; i++) loginRateLimiter.consume(ip);
+    loginRateLimiter.refund(ip);
+    expect([loginRateLimiter.isLimited(ip), loginRateLimiter.remaining(ip)]).toEqual([false, 1]);
+    loginRateLimiter.refund(ip, 10);
+    expect(loginRateLimiter.remaining(ip)).toBe(5);
+    loginRateLimiter.consume(ip);
+    expect(loginRateLimiter.remaining(ip)).toBe(4);
+  });
+
+  test("is a no-op for a subject with no slots", () => {
+    const ip = nextIp();
+    loginRateLimiter.refund(ip);
+    expect(loginRateLimiter.remaining(ip)).toBe(5);
+  });
+});
+
 describe("loginRateLimiter.reset", () => {
   test("clears a locked-out IP", () => {
     const ip = nextIp();
