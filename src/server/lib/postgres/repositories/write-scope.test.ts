@@ -213,7 +213,11 @@ const isProvablyNotOwner = (node: ts.Node, source: ts.SourceFile): boolean => {
   if (namesOwnerColumn(node, source)) return false;
   if (ts.isStringLiteralLike(node)) return true;
   if (ts.isIdentifier(node)) return !fileBindings(source).has(node.text);
-  return ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression);
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    !fileBindings(source).has(node.expression.text)
+  );
 };
 
 /**
@@ -324,8 +328,10 @@ const isScoped = (
   source: ts.SourceFile,
   table: { owner: string | null; keyIsOwner: boolean } | undefined,
 ): boolean => {
-  if (table?.keyIsOwner) return KEYED_VERBS.has(verbOf(call)) && isOwnerExpression(call.arguments[0]);
-  if (table && table.owner !== models.USER_ID) return false;
+  // A receiver that names no table could be an alias of any of them, users and sessions included.
+  if (!table) return false;
+  if (table.keyIsOwner) return KEYED_VERBS.has(verbOf(call)) && isOwnerExpression(call.arguments[0]);
+  if (table.owner !== models.USER_ID) return false;
   const argument = rule.kind === "none" ? undefined : call.arguments[rule.index];
   switch (rule.kind) {
     case "argument":
@@ -445,73 +451,79 @@ describe("server writes carry the owner", () => {
       `
         import { USER_ID as OWNER_COLUMN } from "server";
         import * as m from "server";
-        const omitted = async () => { await fooTable.update(id, row); };
+        const omitted = async () => { await chartsTable.update(id, row); };
         const filledWithUndefined = async () => {
-          await fooTable.update(id, row, undefined, undefined, client);
+          await chartsTable.update(id, row, undefined, undefined, client);
         };
         const filledWithNullableLocal = async () => {
           const owner: string | undefined = undefined;
-          await fooTable.update(id, row, undefined, owner);
+          await chartsTable.update(id, row, undefined, owner);
         };
-        const throughNamespace = async () => { await tables.fooTable.update(id, row); };
-        const throughElementAccess = async () => { await tables["fooTable"]["update"](id, row); };
-        const scoped = async () => { await fooTable.update(id, row, undefined, user.user_id); };
+        const throughNamespace = async () => { await tables.chartsTable.update(id, row); };
+        const throughElementAccess = async () => { await tables["chartsTable"]["update"](id, row); };
+        const scoped = async () => { await chartsTable.update(id, row, undefined, user.user_id); };
         const scopedByParameter = async (userId: string) => {
-          await fooTable.update(id, row, undefined, userId);
+          await chartsTable.update(id, row, undefined, userId);
         };
         const hashing = (plaintext: string) => createHash("sha256").update(plaintext).digest("hex");
-        const softDeleteScoped = async () => { await fooTable.softDelete(id, user.user_id); };
-        const softDeleteBare = async () => { await fooTable.softDelete(id); };
-        const filterScoped = async () => { await fooTable.bulkSoftDelete(ids, { [USER_ID]: user_id }); };
-        const filterOtherKey = async () => { await fooTable.bulkSoftDelete(ids, { [ACCOUNT_ID]: user_id }); };
-        const filterOmitted = async () => { await fooTable.bulkSoftDelete(ids); };
-        const byColumnScoped = async () => { await fooTable.bulkSoftDeleteByColumn(ACCOUNT_ID, ids, user_id); };
+        const softDeleteScoped = async () => { await chartsTable.softDelete(id, user.user_id); };
+        const softDeleteBare = async () => { await chartsTable.softDelete(id); };
+        const filterScoped = async () => { await chartsTable.bulkSoftDelete(ids, { [USER_ID]: user_id }); };
+        const filterOtherKey = async () => { await chartsTable.bulkSoftDelete(ids, { [ACCOUNT_ID]: user_id }); };
+        const filterOmitted = async () => { await chartsTable.bulkSoftDelete(ids); };
+        const byColumnScoped = async () => { await chartsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, ids, user_id); };
         const FOO_COLUMNS = [AMOUNT, NAME] as const;
-        const upsertAllowlisted = async () => { await fooTable.upsert(row, FOO_COLUMNS); };
-        const upsertInlineAllowlist = async () => { await fooTable.upsertMany(rows, [AMOUNT], client); };
+        const upsertAllowlisted = async () => { await chartsTable.upsert(row, FOO_COLUMNS); };
+        const upsertInlineAllowlist = async () => { await chartsTable.upsertMany(rows, [AMOUNT], client); };
         const OWNING_COLUMNS = [AMOUNT, USER_ID];
-        const upsertListWithOwner = async () => { await fooTable.upsert(row, OWNING_COLUMNS); };
-        const upsertComputed = async () => { await fooTable.upsert(row, Object.keys(row)); };
-        const upsertBare = async () => { await fooTable.upsert(row, undefined, client); };
-        const upsertOwnerlessRow = async () => { await fooTable.upsert({ [SNAPSHOT_ID]: id, close_price }); };
-        const upsertOwnedRow = async () => { await fooTable.upsert({ [SNAPSHOT_ID]: id, [USER_ID]: owner }); };
-        const hardDelete = async () => { await fooTable.hardDelete(id); };
+        const upsertListWithOwner = async () => { await chartsTable.upsert(row, OWNING_COLUMNS); };
+        const upsertComputed = async () => { await chartsTable.upsert(row, Object.keys(row)); };
+        const upsertBare = async () => { await chartsTable.upsert(row, undefined, client); };
+        const upsertOwnerlessRow = async () => { await chartsTable.upsert({ [SNAPSHOT_ID]: id, close_price }); };
+        const upsertOwnedRow = async () => { await chartsTable.upsert({ [SNAPSHOT_ID]: id, [USER_ID]: owner }); };
+        const hardDelete = async () => { await chartsTable.hardDelete(id); };
         const keyOwnerScoped = async () => { await usersTable.update(user.user_id, row); };
         const keyOwnerOther = async () => { await usersTable.update(targetId, row); };
         const keyOwnerUpsert = async () => { await usersTable.upsert(row); };
-        const upsertShorthandOwner = async () => { await fooTable.upsert({ id, user_id }); };
-        const upsertStringOwnerList = async () => { await fooTable.upsert(row, ["amount", "user_id"]); };
+        const upsertShorthandOwner = async () => { await chartsTable.upsert({ id, user_id }); };
+        const upsertStringOwnerList = async () => { await chartsTable.upsert(row, ["amount", "user_id"]); };
         const filterSpread = async () => {
-          await fooTable.bulkSoftDelete(ids, { [USER_ID]: user.user_id, ...extra });
+          await chartsTable.bulkSoftDelete(ids, { [USER_ID]: user.user_id, ...extra });
         };
         const SHADOWED_COLUMNS = [AMOUNT];
         const shadowing = async () => {
           const SHADOWED_COLUMNS = [USER_ID];
-          await fooTable.upsert(row, SHADOWED_COLUMNS);
+          await chartsTable.upsert(row, SHADOWED_COLUMNS);
         };
         const PUSHED_COLUMNS = [AMOUNT];
         PUSHED_COLUMNS.push(USER_ID);
-        const pushed = async () => { await fooTable.upsert(row, PUSHED_COLUMNS); };
+        const pushed = async () => { await chartsTable.upsert(row, PUSHED_COLUMNS); };
         const LOCAL_OWNER = "user_id";
         const ALIASED_COLUMNS = [LOCAL_OWNER];
-        const aliased = async () => { await fooTable.upsert(row, ALIASED_COLUMNS); };
+        const aliased = async () => { await chartsTable.upsert(row, ALIASED_COLUMNS); };
         let LET_COLUMNS = [AMOUNT];
-        const letList = async () => { await fooTable.upsert(row, LET_COLUMNS); };
+        const letList = async () => { await chartsTable.upsert(row, LET_COLUMNS); };
         const ASSIGNED_COLUMNS = [AMOUNT];
         ASSIGNED_COLUMNS[0] = USER_ID;
-        const elementAssigned = async () => { await fooTable.upsert(row, ASSIGNED_COLUMNS); };
+        const elementAssigned = async () => { await chartsTable.upsert(row, ASSIGNED_COLUMNS); };
         const ALIAS_PUSHED_COLUMNS = [AMOUNT];
         const alias = ALIAS_PUSHED_COLUMNS;
-        const aliasPushed = async () => { await fooTable.upsert(row, ALIAS_PUSHED_COLUMNS); };
+        const aliasPushed = async () => { await chartsTable.upsert(row, ALIAS_PUSHED_COLUMNS); };
         const ASSIGN_COLUMNS = [AMOUNT];
         Object.assign(ASSIGN_COLUMNS, [USER_ID]);
-        const objectAssigned = async () => { await fooTable.upsert(row, ASSIGN_COLUMNS); };
-        const importAliasInList = async () => { await fooTable.upsert(row, [AMOUNT, OWNER_COLUMN]); };
-        const namespaceRowKey = async () => { await fooTable.upsert({ [SNAPSHOT_ID]: id, [m.USER_ID]: owner }); };
+        const objectAssigned = async () => { await chartsTable.upsert(row, ASSIGN_COLUMNS); };
+        const importAliasInList = async () => { await chartsTable.upsert(row, [AMOUNT, OWNER_COLUMN]); };
+        const namespaceRowKey = async () => { await chartsTable.upsert({ [SNAPSHOT_ID]: id, [m.USER_ID]: owner }); };
         const LOCAL_COLUMN = "user_id";
-        const localAliasRowKey = async () => { await fooTable.upsert({ [SNAPSHOT_ID]: id, [LOCAL_COLUMN]: owner }); };
+        const localAliasRowKey = async () => { await chartsTable.upsert({ [SNAPSHOT_ID]: id, [LOCAL_COLUMN]: owner }); };
         const sessionOwnerRow = async () => { await sessionsTable.upsert({ [SESSION_ID]: sid, [USER_USER_ID]: uid }); };
         const sessionOwnerArgument = async () => { await sessionsTable.update(sid, row, undefined, user_id); };
+        const COLS = { OWNER: "user_id" };
+        const localObjectMember = async () => { await chartsTable.upsert(row, [AMOUNT, COLS.OWNER]); };
+        const aliasedTable = async () => {
+          const accounts = usersTable;
+          await accounts.update(user.user_id, row, undefined, user.user_id);
+        };
       `,
     );
 
@@ -520,46 +532,48 @@ describe("server writes carry the owner", () => {
         (c) => `${c.site} ${c.receiver}.${c.verb} owner=${c.owner} scoped=${c.scoped}`,
       ),
     ).toEqual([
-      "fixture.ts::omitted fooTable.update owner=<omitted> scoped=false",
-      "fixture.ts::filledWithUndefined fooTable.update owner=undefined scoped=false",
-      "fixture.ts::filledWithNullableLocal fooTable.update owner=owner scoped=false",
-      "fixture.ts::throughNamespace tables.fooTable.update owner=<omitted> scoped=false",
-      'fixture.ts::throughElementAccess tables["fooTable"].update owner=<omitted> scoped=false',
-      "fixture.ts::scoped fooTable.update owner=user.user_id scoped=true",
-      "fixture.ts::scopedByParameter fooTable.update owner=userId scoped=true",
+      "fixture.ts::omitted chartsTable.update owner=<omitted> scoped=false",
+      "fixture.ts::filledWithUndefined chartsTable.update owner=undefined scoped=false",
+      "fixture.ts::filledWithNullableLocal chartsTable.update owner=owner scoped=false",
+      "fixture.ts::throughNamespace tables.chartsTable.update owner=<omitted> scoped=false",
+      'fixture.ts::throughElementAccess tables["chartsTable"].update owner=<omitted> scoped=false',
+      "fixture.ts::scoped chartsTable.update owner=user.user_id scoped=true",
+      "fixture.ts::scopedByParameter chartsTable.update owner=userId scoped=true",
       'fixture.ts::hashing createHash("sha256").update owner=<omitted> scoped=false',
-      "fixture.ts::softDeleteScoped fooTable.softDelete owner=user.user_id scoped=true",
-      "fixture.ts::softDeleteBare fooTable.softDelete owner=<omitted> scoped=false",
-      "fixture.ts::filterScoped fooTable.bulkSoftDelete owner={ [USER_ID]: user_id } scoped=true",
-      "fixture.ts::filterOtherKey fooTable.bulkSoftDelete owner={ [ACCOUNT_ID]: user_id } scoped=false",
-      "fixture.ts::filterOmitted fooTable.bulkSoftDelete owner=<omitted> scoped=false",
-      "fixture.ts::byColumnScoped fooTable.bulkSoftDeleteByColumn owner=user_id scoped=true",
-      "fixture.ts::upsertAllowlisted fooTable.upsert owner=FOO_COLUMNS scoped=true",
-      "fixture.ts::upsertInlineAllowlist fooTable.upsertMany owner=[AMOUNT] scoped=true",
-      "fixture.ts::upsertListWithOwner fooTable.upsert owner=OWNING_COLUMNS scoped=false",
-      "fixture.ts::upsertComputed fooTable.upsert owner=Object.keys(row) scoped=false",
-      "fixture.ts::upsertBare fooTable.upsert owner=undefined scoped=false",
-      "fixture.ts::upsertOwnerlessRow fooTable.upsert owner=<omitted> scoped=true",
-      "fixture.ts::upsertOwnedRow fooTable.upsert owner=<omitted> scoped=false",
-      "fixture.ts::hardDelete fooTable.hardDelete owner=<omitted> scoped=false",
+      "fixture.ts::softDeleteScoped chartsTable.softDelete owner=user.user_id scoped=true",
+      "fixture.ts::softDeleteBare chartsTable.softDelete owner=<omitted> scoped=false",
+      "fixture.ts::filterScoped chartsTable.bulkSoftDelete owner={ [USER_ID]: user_id } scoped=true",
+      "fixture.ts::filterOtherKey chartsTable.bulkSoftDelete owner={ [ACCOUNT_ID]: user_id } scoped=false",
+      "fixture.ts::filterOmitted chartsTable.bulkSoftDelete owner=<omitted> scoped=false",
+      "fixture.ts::byColumnScoped chartsTable.bulkSoftDeleteByColumn owner=user_id scoped=true",
+      "fixture.ts::upsertAllowlisted chartsTable.upsert owner=FOO_COLUMNS scoped=true",
+      "fixture.ts::upsertInlineAllowlist chartsTable.upsertMany owner=[AMOUNT] scoped=true",
+      "fixture.ts::upsertListWithOwner chartsTable.upsert owner=OWNING_COLUMNS scoped=false",
+      "fixture.ts::upsertComputed chartsTable.upsert owner=Object.keys(row) scoped=false",
+      "fixture.ts::upsertBare chartsTable.upsert owner=undefined scoped=false",
+      "fixture.ts::upsertOwnerlessRow chartsTable.upsert owner=<omitted> scoped=true",
+      "fixture.ts::upsertOwnedRow chartsTable.upsert owner=<omitted> scoped=false",
+      "fixture.ts::hardDelete chartsTable.hardDelete owner=<omitted> scoped=false",
       "fixture.ts::keyOwnerScoped usersTable.update owner=user.user_id scoped=true",
       "fixture.ts::keyOwnerOther usersTable.update owner=targetId scoped=false",
       "fixture.ts::keyOwnerUpsert usersTable.upsert owner=row scoped=false",
-      "fixture.ts::upsertShorthandOwner fooTable.upsert owner=<omitted> scoped=false",
-      'fixture.ts::upsertStringOwnerList fooTable.upsert owner=["amount", "user_id"] scoped=false',
-      "fixture.ts::filterSpread fooTable.bulkSoftDelete owner={ [USER_ID]: user.user_id, ...extra } scoped=false",
-      "fixture.ts::shadowing fooTable.upsert owner=SHADOWED_COLUMNS scoped=false",
-      "fixture.ts::pushed fooTable.upsert owner=PUSHED_COLUMNS scoped=false",
-      "fixture.ts::aliased fooTable.upsert owner=ALIASED_COLUMNS scoped=false",
-      "fixture.ts::letList fooTable.upsert owner=LET_COLUMNS scoped=false",
-      "fixture.ts::elementAssigned fooTable.upsert owner=ASSIGNED_COLUMNS scoped=false",
-      "fixture.ts::aliasPushed fooTable.upsert owner=ALIAS_PUSHED_COLUMNS scoped=false",
-      "fixture.ts::objectAssigned fooTable.upsert owner=ASSIGN_COLUMNS scoped=false",
-      "fixture.ts::importAliasInList fooTable.upsert owner=[AMOUNT, OWNER_COLUMN] scoped=false",
-      "fixture.ts::namespaceRowKey fooTable.upsert owner=<omitted> scoped=false",
-      "fixture.ts::localAliasRowKey fooTable.upsert owner=<omitted> scoped=false",
+      "fixture.ts::upsertShorthandOwner chartsTable.upsert owner=<omitted> scoped=false",
+      'fixture.ts::upsertStringOwnerList chartsTable.upsert owner=["amount", "user_id"] scoped=false',
+      "fixture.ts::filterSpread chartsTable.bulkSoftDelete owner={ [USER_ID]: user.user_id, ...extra } scoped=false",
+      "fixture.ts::shadowing chartsTable.upsert owner=SHADOWED_COLUMNS scoped=false",
+      "fixture.ts::pushed chartsTable.upsert owner=PUSHED_COLUMNS scoped=false",
+      "fixture.ts::aliased chartsTable.upsert owner=ALIASED_COLUMNS scoped=false",
+      "fixture.ts::letList chartsTable.upsert owner=LET_COLUMNS scoped=false",
+      "fixture.ts::elementAssigned chartsTable.upsert owner=ASSIGNED_COLUMNS scoped=false",
+      "fixture.ts::aliasPushed chartsTable.upsert owner=ALIAS_PUSHED_COLUMNS scoped=false",
+      "fixture.ts::objectAssigned chartsTable.upsert owner=ASSIGN_COLUMNS scoped=false",
+      "fixture.ts::importAliasInList chartsTable.upsert owner=[AMOUNT, OWNER_COLUMN] scoped=false",
+      "fixture.ts::namespaceRowKey chartsTable.upsert owner=<omitted> scoped=false",
+      "fixture.ts::localAliasRowKey chartsTable.upsert owner=<omitted> scoped=false",
       "fixture.ts::sessionOwnerRow sessionsTable.upsert owner=<omitted> scoped=false",
       "fixture.ts::sessionOwnerArgument sessionsTable.update owner=user_id scoped=false",
+      "fixture.ts::localObjectMember chartsTable.upsert owner=[AMOUNT, COLS.OWNER] scoped=false",
+      "fixture.ts::aliasedTable accounts.update owner=user.user_id scoped=false",
     ]);
   });
 
