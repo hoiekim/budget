@@ -11,7 +11,7 @@ const realServer = { ...(await import("server")) };
 const realAlarm = { ...(await import("server/lib/alarm")) };
 const realLogger = { ...(await import("server/lib/logger")) };
 
-const mockVerifyWebhook = mock(async (_rawBody: string, _jwt?: string) => true);
+const mockVerifyWebhook = mock(async (_rawBody: string, _jwt?: string): Promise<string> => "valid");
 const mockGetItem = mock(async (_accessToken: string) => ({
   consented_products: [] as string[],
   products: [] as string[],
@@ -76,7 +76,7 @@ afterAll(() => {
 
 beforeEach(() => {
   mockVerifyWebhook.mockReset();
-  mockVerifyWebhook.mockImplementation(async () => true);
+  mockVerifyWebhook.mockImplementation(async () => "valid");
   mockGetItem.mockReset();
   mockGetItem.mockImplementation(async () => ({
     consented_products: [],
@@ -109,7 +109,6 @@ beforeEach(() => {
 interface ReqOpts {
   rawBody?: string | undefined;
   signedJwt?: string;
-  ip?: string;
 }
 
 function makeReq(
@@ -126,7 +125,7 @@ function makeReq(
     query: {},
     body,
     rawBody: opts.rawBody,
-    ip: opts.ip ?? "127.0.0.1",
+    ip: "127.0.0.1",
   } as unknown as Parameters<typeof postPlaidHookRoute.execute>[0];
 }
 
@@ -168,7 +167,7 @@ describe("post-plaid-hook — auth boundary", () => {
   });
 
   test("invalid signature → 401 and no dispatch to sync", async () => {
-    mockVerifyWebhook.mockImplementation(async () => false);
+    mockVerifyWebhook.mockImplementation(async () => "invalid");
     const { result, res } = await run({
       webhook_type: "TRANSACTIONS",
       webhook_code: "SYNC_UPDATES_AVAILABLE",
@@ -469,23 +468,26 @@ describe("post-plaid-hook — INVESTMENTS_TRANSACTIONS", () => {
   });
 });
 
-describe("post-plaid-hook — charging the caller's IP", () => {
-  const { plaidHookRateLimiter } = realServer;
+describe("post-plaid-hook — answers Plaid can act on", () => {
   const body = { webhook_type: "ITEM", webhook_code: "WEBHOOK_UPDATE_ACKNOWLEDGED", item_id: "i" };
+  const status = (res: unknown) => (res as { statusCode: number }).statusCode;
 
-  test("a request that fails verification costs a slot", async () => {
-    mockVerifyWebhook.mockImplementation(async () => false);
-    await run(body, { ip: "198.51.100.41" });
-    expect(plaidHookRateLimiter.remaining("198.51.100.41")).toBe(19);
+  test("a webhook that couldn't be verified yet gets a 503 Plaid retries, not a 401 it treats as final", async () => {
+    mockVerifyWebhook.mockImplementation(async () => "unverifiable");
+    const { result, res } = await run(body);
+    expect(status(res)).toBe(503);
+    expect(result).toMatchObject({ status: "failed" });
   });
 
-  test("a request with no raw body costs a slot", async () => {
-    await run(body, { ip: "198.51.100.42", rawBody: undefined });
-    expect(plaidHookRateLimiter.remaining("198.51.100.42")).toBe(19);
+  test("an invalid webhook gets a 401", async () => {
+    mockVerifyWebhook.mockImplementation(async () => "invalid");
+    const { res } = await run(body);
+    expect(status(res)).toBe(401);
   });
 
-  test("a verified webhook costs nothing, however many arrive", async () => {
-    for (let i = 0; i < 25; i++) await run(body, { ip: "198.51.100.43" });
-    expect(plaidHookRateLimiter.remaining("198.51.100.43")).toBe(20);
+  test("a valid webhook is handled", async () => {
+    const { result, res } = await run(body);
+    expect(status(res)).toBe(200);
+    expect(result).toMatchObject({ status: "success" });
   });
 });

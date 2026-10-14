@@ -1,90 +1,52 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
 import type * as jose from "jose";
-import { MISSING_KEY_CACHE_TTL, createVerificationKeyLookup, verifyWebhook } from "./webhook";
+import { UNKNOWN_KEY_CACHE_TTL, createVerificationKeyLookup, verifyWebhook } from "./webhook";
 import { plaidKeyFetchRateLimiter } from "../rate-limit";
 
 const base64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-/** A JWT naming `kid`, signature irrelevant: verification stops at the key lookup. */
+/** A JWT naming `kid`, signature irrelevant: these tests stop at or before the key lookup. */
 const jwtWithKid = (kid: string) =>
   `${base64url({ alg: "ES256", typ: "JWT", kid })}.${base64url({ iat: 0 })}.signature`;
-/** Key fetches made so far in the current window: each one spends a slot of the process-wide cap. */
-const fetchesMade = () => 10 - plaidKeyFetchRateLimiter.remaining("global");
+const body = JSON.stringify({ webhook_type: "TRANSACTIONS" });
+/** Every test passes its own lookup, so none of them can reach Plaid whatever the environment holds. */
+const neverCalled = async (): Promise<never> => {
+  throw new Error("no lookup expected");
+};
 
 describe("Plaid Webhook Verification", () => {
   it("should reject missing Plaid-Verification header", async () => {
-    const body = JSON.stringify({ webhook_type: "TRANSACTIONS" });
-    const result = await verifyWebhook(body, undefined);
-    expect(result).toBe(false);
+    expect(await verifyWebhook(body, undefined, neverCalled)).toBe("invalid");
   });
 
   it("should reject empty Plaid-Verification header", async () => {
-    const body = JSON.stringify({ webhook_type: "TRANSACTIONS" });
-    const result = await verifyWebhook(body, "");
-    expect(result).toBe(false);
+    expect(await verifyWebhook(body, "", neverCalled)).toBe("invalid");
   });
 
   it("should reject malformed JWT", async () => {
-    const body = JSON.stringify({ webhook_type: "TRANSACTIONS" });
-    const result = await verifyWebhook(body, "not.a.valid.jwt");
-    expect(result).toBe(false);
+    expect(await verifyWebhook(body, "not.a.valid.jwt", neverCalled)).toBe("invalid");
   });
 
   it("should reject JWT without key_id", async () => {
     // JWT with no kid in header: {"alg":"ES256","typ":"JWT"}
     const noKidJwt = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature";
-    const body = JSON.stringify({ webhook_type: "TRANSACTIONS" });
-    const result = await verifyWebhook(body, noKidJwt);
-    expect(result).toBe(false);
+    expect(await verifyWebhook(body, noKidJwt, neverCalled)).toBe("invalid");
   });
 
-  // Note: Full integration tests with real Plaid signatures would require
-  // a test webhook from Plaid or mocking the key fetch. These unit tests
-  // verify the rejection of invalid inputs.
-});
-
-// Plaid isn't configured in the test environment, so every fetch fails the way
-// an unknown key_id does: these exercise the miss path end to end.
-describe("Plaid webhook verification key lookups", () => {
-  const body = JSON.stringify({ webhook_type: "TRANSACTIONS" });
-  beforeEach(() => plaidKeyFetchRateLimiter.reset("global"));
-
-  it("asks for a key_id that didn't resolve only once, then remembers the miss", async () => {
-    const jwt = jwtWithKid(`unknown-${crypto.randomUUID()}`);
-    expect(await verifyWebhook(body, jwt)).toBe(false);
-    expect(await verifyWebhook(body, jwt)).toBe(false);
-    expect(fetchesMade()).toBe(1);
+  it("a key_id Plaid says doesn't exist is invalid", async () => {
+    expect(await verifyWebhook(body, jwtWithKid("k"), async () => "unknown")).toBe("invalid");
   });
 
-  it("shares one fetch between concurrent requests for the same key_id", async () => {
-    const jwt = jwtWithKid(`unknown-${crypto.randomUUID()}`);
-    expect(await Promise.all([verifyWebhook(body, jwt), verifyWebhook(body, jwt), verifyWebhook(body, jwt)])).toEqual([
-      false,
-      false,
-      false,
-    ]);
-    expect(fetchesMade()).toBe(1);
-  });
-
-  it("asks again for a different key_id", async () => {
-    await verifyWebhook(body, jwtWithKid(`unknown-${crypto.randomUUID()}`));
-    await verifyWebhook(body, jwtWithKid(`unknown-${crypto.randomUUID()}`));
-    expect(fetchesMade()).toBe(2);
-  });
-
-  it("stops fetching once the process-wide cap is reached", async () => {
-    for (let i = 0; i < 10; i++) await verifyWebhook(body, jwtWithKid(`unknown-${crypto.randomUUID()}`));
-    const refused = jwtWithKid(`unknown-${crypto.randomUUID()}`);
-    expect(await verifyWebhook(body, refused)).toBe(false);
-    // A key_id refused at the cap was never asked for, so it isn't remembered as a miss:
-    // once the window clears, it costs a fetch like any new one.
-    plaidKeyFetchRateLimiter.reset("global");
-    await verifyWebhook(body, refused);
-    expect(fetchesMade()).toBe(1);
+  it("a key that can't be fetched just now leaves the webhook unverifiable, not invalid", async () => {
+    expect(await verifyWebhook(body, jwtWithKid("k"), async () => "unavailable")).toBe("unverifiable");
   });
 });
 
 describe("createVerificationKeyLookup", () => {
   const KEY = { kty: "EC", crv: "P-256", x: "x", y: "y" } as jose.JWK;
+  const unknownKeyError = () =>
+    Object.assign(new Error("Request failed with status code 400"), {
+      response: { data: { error_code: "INVALID_WEBHOOK_VERIFICATION_KEY_ID" } },
+    });
   let calls: string[] = [];
   /** A fetcher whose answers the test settles by hand, so concurrent lookups really overlap. */
   const deferredFetcher = () => {
@@ -95,6 +57,12 @@ describe("createVerificationKeyLookup", () => {
         pending.push({ resolve, reject });
       });
     return { fetchKey, pending };
+  };
+  /** A fetcher that answers at once: a key for `good-*`, unknown for anything else. */
+  const instantFetcher = async (keyId: string) => {
+    calls.push(keyId);
+    if (keyId.startsWith("good-")) return KEY;
+    throw unknownKeyError();
   };
 
   beforeEach(() => {
@@ -112,21 +80,59 @@ describe("createVerificationKeyLookup", () => {
     expect(calls).toEqual(["k1"]);
   });
 
-  it("remembers a failed fetch for the miss TTL, then asks again", async () => {
-    const { fetchKey, pending } = deferredFetcher();
-    const lookup = createVerificationKeyLookup(fetchKey);
+  it("keeps a key for an hour, then fetches it again", async () => {
+    const lookup = createVerificationKeyLookup(instantFetcher);
     const start = Date.now();
     setSystemTime(start);
-    const first = lookup("k2");
-    pending[0].reject(new Error("unknown key"));
-    expect(await first).toBeNull();
-    expect(await lookup("k2")).toBeNull();
-    expect(calls).toEqual(["k2"]);
+    expect(await lookup("good-1")).toEqual(KEY);
+    setSystemTime(start + UNKNOWN_KEY_CACHE_TTL + 1);
+    expect(await lookup("good-1")).toEqual(KEY);
+    expect(calls).toEqual(["good-1"]);
+    setSystemTime(start + 60 * 60 * 1000 + 1);
+    expect(await lookup("good-1")).toEqual(KEY);
+    expect(calls).toEqual(["good-1", "good-1"]);
+  });
 
-    setSystemTime(start + MISSING_KEY_CACHE_TTL + 1);
+  it("remembers a key_id Plaid says doesn't exist for five minutes, then asks again", async () => {
+    const lookup = createVerificationKeyLookup(instantFetcher);
+    const start = Date.now();
+    setSystemTime(start);
+    expect(await lookup("bogus")).toBe("unknown");
+    expect(await lookup("bogus")).toBe("unknown");
+    expect(calls).toEqual(["bogus"]);
+    setSystemTime(start + UNKNOWN_KEY_CACHE_TTL + 1);
+    expect(await lookup("bogus")).toBe("unknown");
+    expect(calls).toEqual(["bogus", "bogus"]);
+  });
+
+  it("doesn't remember any other fetch error, so the next webhook asks again", async () => {
+    const { fetchKey, pending } = deferredFetcher();
+    const lookup = createVerificationKeyLookup(fetchKey);
+    const first = lookup("k2");
+    pending[0].reject(Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }));
+    expect(await first).toBe("unavailable");
     const retry = lookup("k2");
     pending[1].resolve(KEY);
     expect(await retry).toEqual(KEY);
     expect(calls).toEqual(["k2", "k2"]);
+  });
+
+  it("caps fetches of new key_ids, but a key that has verified before is fetched past the cap", async () => {
+    const lookup = createVerificationKeyLookup(instantFetcher);
+    const start = Date.now();
+    setSystemTime(start);
+    expect(await lookup("good-2")).toEqual(KEY);
+    for (let i = 0; i < 9; i++) await lookup(`bogus-${i}`);
+    expect(await lookup("bogus-over")).toBe("unavailable");
+    expect(calls).not.toContain("bogus-over");
+    // Cached answers come back whatever the cap says, a key and an unknown key_id alike.
+    expect(await lookup("good-2")).toEqual(KEY);
+    expect(await lookup("bogus-0")).toBe("unknown");
+    expect(calls.filter((id) => id === "good-2" || id === "bogus-0")).toHaveLength(2);
+
+    setSystemTime(start + 60 * 60 * 1000 + 1);
+    plaidKeyFetchRateLimiter.consume("global", 10);
+    expect(await lookup("good-2")).toEqual(KEY);
+    expect(calls.filter((id) => id === "good-2")).toHaveLength(2);
   });
 });

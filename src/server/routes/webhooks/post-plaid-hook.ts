@@ -9,7 +9,6 @@ import {
   validationError,
   plaid,
   emitToUser,
-  plaidHookRateLimiter,
 } from "server";
 import { logger } from "server/lib/logger";
 
@@ -25,7 +24,6 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
   // reject before touching the Plaid API at all.
   if (!plaid.isPlaidConfigured) {
     logger.warn("[Plaid Webhook] Plaid not configured — rejecting webhook");
-    plaidHookRateLimiter.consume(req.ip);
     res.status(401);
     return { status: "failed", message: "Webhook verification failed" };
   }
@@ -36,15 +34,18 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
 
   if (!rawBody) {
     logger.error("[Plaid Webhook] Raw body not available for verification");
-    plaidHookRateLimiter.consume(req.ip);
     res.status(401);
     return { status: "failed", message: "Webhook verification failed" };
   }
 
-  const isValid = await plaid.verifyWebhook(rawBody, signedJwt);
-  if (!isValid) {
-    // Only requests that fail verification count, so Plaid's own webhooks never do.
-    plaidHookRateLimiter.consume(req.ip);
+  const verification = await plaid.verifyWebhook(rawBody, signedJwt);
+  if (verification === "unverifiable") {
+    // Plaid retries a 5xx but treats a 401 as final, so a webhook that couldn't be checked yet
+    // must not be refused as invalid.
+    res.status(503);
+    return { status: "failed", message: "Webhook verification unavailable, retry later" };
+  }
+  if (verification === "invalid") {
     res.status(401);
     return { status: "failed", message: "Invalid webhook signature" };
   }

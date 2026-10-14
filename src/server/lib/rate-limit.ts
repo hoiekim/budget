@@ -185,17 +185,10 @@ export const institutionFallbackRateLimiter = createRateLimiter("institution-fal
   windowMs: 60 * 1000,
 });
 
-// Keyed by IP: the route is public. Only requests that fail verification are
-// charged, so Plaid's own webhooks, which verify, never count against the cap.
-export const plaidHookRateLimiter = createRateLimiter("plaid-hook", {
-  maxAttempts: 20,
-  windowMs: 15 * 60 * 1000,
-});
-
 // One bucket for the whole process, not per caller: what it protects is the
 // production Plaid credential's quota, which a caller rotating addresses would
-// otherwise spend freely. Real verification keys are cached for an hour, so
-// genuine webhooks need about one fetch per key per hour.
+// otherwise spend freely. Only key_ids that have never verified are charged; a
+// key Plaid signs with skips the cap when its hour-long cache expires.
 export const plaidKeyFetchRateLimiter = createRateLimiter("plaid-key-fetch", {
   maxAttempts: 10,
   windowMs: 60 * 1000,
@@ -219,12 +212,6 @@ const PRE_SESSION_RATE_LIMITS: {
     limiter: clientErrorRateLimiter,
     message: "Too many client error reports, try again later",
   },
-  {
-    method: "POST",
-    path: "/plaid-hook",
-    limiter: plaidHookRateLimiter,
-    message: "Too many webhook requests, try again later",
-  },
 ];
 
 /**
@@ -233,8 +220,7 @@ const PRE_SESSION_RATE_LIMITS: {
  * Consulted before the body is read and before the session is loaded, so a
  * caller over its cap costs no parse, no session read and no session write.
  * Read-only: the slot is charged by the route, which decides which outcomes
- * cost one — failed auth for login, every accepted report for client-error,
- * failed verification for plaid-hook.
+ * cost one — failed auth for login, every accepted report for client-error.
  */
 export const preSessionShedMessage = (
   method: string,
