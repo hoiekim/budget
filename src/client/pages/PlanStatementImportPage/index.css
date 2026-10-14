@@ -11,11 +11,6 @@ div.PlanStatementImportPage label.fileInput > span {
   text-decoration: underline;
 }
 
-div.PlanStatementImportPage .row.fundName {
-  font-weight: bold;
-  padding-top: 8px;
-}
-
 div.PlanStatementImportPage .row.fundNote {
   color: var(--textMuted);
   font-size: 12px;

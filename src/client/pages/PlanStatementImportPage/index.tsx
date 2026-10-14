@@ -244,13 +244,15 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
 
       {preview && (
         <>
-          <PropertyLabel>Funds</PropertyLabel>
-          <Property>
-            {preview.funds.map((fund) => {
-              const edit = edits[fund.investment];
-              return (
-                <Fragment key={fund.investment}>
-                  <Row className="fundName">{fund.investment}</Row>
+          {preview.funds.map((fund, i, { length }) => {
+            const edit = edits[fund.investment];
+            return (
+              <Fragment key={fund.investment}>
+                <PropertyLabel>{length > 1 ? `Fund ${i + 1}` : "Fund"}</PropertyLabel>
+                <Property>
+                  <KeyValue name="Name">
+                    <span>{fund.investment}</span>
+                  </KeyValue>
                   <KeyValue name="Ticker">
                     <input
                       type="text"
@@ -294,10 +296,10 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                       Retry
                     </ButtonRow>
                   )}
-                </Fragment>
-              );
-            })}
-          </Property>
+                </Property>
+              </Fragment>
+            );
+          })}
 
           {decisionRows.length > 0 && (
             <>
