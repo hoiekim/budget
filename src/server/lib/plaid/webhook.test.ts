@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setSystemTime, spyOn } from "bun:test";
 import type * as jose from "jose";
 import { UNKNOWN_KEY_CACHE_TTL, createVerificationKeyLookup, verifyWebhook } from "./webhook";
 import { plaidKeyFetchRateLimiter } from "../rate-limit";
+import { logger } from "../logger";
 
 const base64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 /** A JWT naming `kid`, signature irrelevant: these tests stop at or before the key lookup. */
@@ -181,5 +182,24 @@ describe("createVerificationKeyLookup", () => {
     expect(await lookup("good-lru-0")).toBe("unavailable");
     expect(await lookup("good-lru-1")).toEqual(KEY);
     expect(await lookup("good-lru-100")).toEqual(KEY);
+  });
+
+  it("warns about a full cap at most once a minute, not once per refusal", async () => {
+    const warn = spyOn(logger, "warn");
+    try {
+      const lookup = createVerificationKeyLookup(instantFetcher);
+      const start = Date.now();
+      setSystemTime(start);
+      plaidKeyFetchRateLimiter.consume("global", 10);
+      for (let i = 0; i < 3; i++) await lookup(`bogus-warn-${i}`);
+      const capWarnings = () => warn.mock.calls.filter(([message]) => String(message).includes("over the cap")).length;
+      expect(capWarnings()).toBe(1);
+      setSystemTime(start + 61 * 1000);
+      plaidKeyFetchRateLimiter.consume("global", 10);
+      for (let i = 0; i < 3; i++) await lookup(`bogus-warn-later-${i}`);
+      expect(capWarnings()).toBe(2);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

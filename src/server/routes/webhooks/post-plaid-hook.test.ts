@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterAll, afterEach, setSystemTime } from "bun:test";
 import { restoreLeaves } from "test-helpers";
 import { ItemStatus } from "common";
 
@@ -517,14 +517,61 @@ describe("post-plaid-hook — answers Plaid can act on", () => {
       expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
     });
 
-    test("an item's priority attempts are capped, after which it stays at 503", async () => {
+    afterEach(() => setSystemTime());
+
+    test("an item gets six priority attempts an hour, each retried, and the seventh isn't", async () => {
       mockVerifyWebhook.mockImplementation(async () => "unverifiable");
       const item = realItemBody("item-priority-capped");
-      for (let i = 0; i < 6; i++) await run(item, { rawBody: JSON.stringify(item) });
+      const start = Date.now();
+      setSystemTime(start);
+      const attemptsPerRun: number[] = [];
+      for (let i = 0; i < 7; i++) {
+        mockVerifyWebhook.mockClear();
+        const { res } = await run(item, { rawBody: JSON.stringify(item) });
+        expect(status(res)).toBe(503);
+        attemptsPerRun.push(mockVerifyWebhook.mock.calls.length);
+      }
+      expect(attemptsPerRun).toEqual([2, 2, 2, 2, 2, 2, 1]);
+
+      setSystemTime(start + 59 * 60 * 1000);
       mockVerifyWebhook.mockClear();
+      await run(item, { rawBody: JSON.stringify(item) });
+      expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
+
+      setSystemTime(start + 61 * 60 * 1000);
+      mockVerifyWebhook.mockClear();
+      await run(item, { rawBody: JSON.stringify(item) });
+      expect(mockVerifyWebhook).toHaveBeenCalledTimes(2);
+    });
+
+    test("an item id that isn't item-shaped never reaches the database, and gets a 503, not a 500", async () => {
+      mockVerifyWebhook.mockImplementation(capFullUnlessPriority);
+      for (const item_id of ["a\u0000b", "x".repeat(101), "a b", ""]) {
+        const item = realItemBody(item_id);
+        const { res } = await run(item, { rawBody: JSON.stringify(item) });
+        expect(status(res)).toBe(503);
+      }
+      expect(mockGetUserItem).not.toHaveBeenCalled();
+    });
+
+    test("an item lookup that fails counts as no item: 503, not 500", async () => {
+      mockVerifyWebhook.mockImplementation(capFullUnlessPriority);
+      mockGetUserItem.mockImplementation(async () => {
+        throw new Error("db down");
+      });
+      const item = realItemBody("item-lookup-fails");
       const { res } = await run(item, { rawBody: JSON.stringify(item) });
       expect(status(res)).toBe(503);
       expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    test("an invalid webhook is never retried with priority", async () => {
+      mockVerifyWebhook.mockImplementation(async () => "invalid");
+      const item = realItemBody("item-invalid");
+      const { res } = await run(item, { rawBody: JSON.stringify(item) });
+      expect(status(res)).toBe(401);
+      expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
+      expect(mockGetUserItem).not.toHaveBeenCalled();
     });
   });
 });

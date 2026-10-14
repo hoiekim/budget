@@ -41,7 +41,7 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
 
   let verification = await plaid.verifyWebhook(rawBody, signedJwt);
   if (verification === "unverifiable") {
-    const itemId = await claimedRealItem(rawBody);
+    const itemId = await claimedRealItem(req.body);
     if (itemId && !plaidItemKeyFetchRateLimiter.isLimited(itemId)) {
       plaidItemKeyFetchRateLimiter.consume(itemId);
       verification = await plaid.verifyWebhook(rawBody, signedJwt, { priority: true });
@@ -148,18 +148,23 @@ const markBadItem = async (item_id: string, reason: string) => {
   return { status: "success" as const };
 };
 
+/** Item ids as Plaid, SimpleFin and manual items write them. */
+const ITEM_ID_SHAPE = /^[A-Za-z0-9_-]{1,100}$/;
+
 /**
  * The item id an unverified body claims, when that item exists. Read only to
  * decide whether a key fetch may pass the process-wide cap, never trusted as
- * the webhook's content, which is read again after verification.
+ * the webhook's content, which is read again after verification. An id that
+ * isn't item-shaped never reaches the database, and a lookup that fails counts
+ * as no item.
  */
-const claimedRealItem = async (rawBody: string): Promise<string | null> => {
-  let itemId: unknown;
+const claimedRealItem = async (body: unknown): Promise<string | null> => {
+  const itemId = (body as { item_id?: unknown } | null)?.item_id;
+  if (typeof itemId !== "string" || !ITEM_ID_SHAPE.test(itemId)) return null;
   try {
-    itemId = (JSON.parse(rawBody) as { item_id?: unknown })?.item_id;
-  } catch {
+    return (await getUserItem(itemId)) ? itemId : null;
+  } catch (error) {
+    logger.warn("[Plaid Webhook] Item lookup for key priority failed", {}, error);
     return null;
   }
-  if (typeof itemId !== "string" || !itemId) return null;
-  return (await getUserItem(itemId)) ? itemId : null;
 };
