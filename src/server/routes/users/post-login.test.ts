@@ -175,14 +175,17 @@ describe("post-login auth outcomes", () => {
 
   test("session.regenerate callback error → Route layer surfaces error envelope", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+    const ip = "198.51.100.7";
     const req = makeReq(
       { username: "alice", password: REAL_PASSWORD },
-      { regenerateErr: new Error("boom") },
+      { regenerateErr: new Error("boom"), ip },
     );
     const res = fakeRes();
     const result = await postLoginRoute.execute(req, res);
     expect(result?.status).toBe("error");
     expect((res as { statusCode: number }).statusCode).toBe(500);
+    // The password was right, so the attempt keeps no slot even though the session couldn't start.
+    expect(loginRateLimiter.remaining(ip)).toBe(5);
   });
 });
 
