@@ -7,6 +7,7 @@ const KEY_CACHE_TTL = 1000 * 60 * 60; // 1 hour
 export const UNKNOWN_KEY_CACHE_TTL = 1000 * 60 * 5;
 const KEY_FETCH_BUCKET = "global";
 const KNOWN_KEY_LIMIT = 100;
+const SATURATION_WARN_INTERVAL = 60 * 1000;
 
 /**
  * What verifying a webhook concluded. `unverifiable` means the answer couldn't
@@ -18,6 +19,12 @@ export type WebhookVerification = "valid" | "invalid" | "unverifiable";
 
 /** A key, Plaid's word that no such key exists, or no answer yet. */
 export type KeyLookupResult = jose.JWK | "unknown" | "unavailable";
+
+/**
+ * `priority` lets an uncached fetch past the process-wide cap. The caller
+ * grants it only when the webhook names a real item, and bounds it per item.
+ */
+export type KeyLookup = (keyId: string, options?: { priority?: boolean }) => Promise<KeyLookupResult>;
 
 /** Plaid's answer for a key_id it has never issued. */
 const isUnknownKeyError = (error: unknown): boolean =>
@@ -31,15 +38,16 @@ const isUnknownKeyError = (error: unknown): boolean =>
  * - A key_id Plaid says doesn't exist is cached as unknown for five minutes.
  *   Any other fetch error is not cached, so the next webhook asks again.
  * - Concurrent lookups of one key_id share a fetch.
- * - Fetches of key_ids that have never verified are capped process-wide by
- *   `plaidKeyFetchRateLimiter`; over the cap the answer is `unavailable`. A
- *   key_id that has verified before skips the cap when its cache expires, so a
- *   flood of made-up key_ids can't block the keys Plaid actually signs with.
+ * - Fetches of key_ids that haven't verified since the process started are
+ *   capped process-wide by `plaidKeyFetchRateLimiter`; over the cap the answer
+ *   is `unavailable` unless the caller grants `priority`. A key_id that has
+ *   verified skips the cap when its cache expires.
  */
-export const createVerificationKeyLookup = (fetchKey: (keyId: string) => Promise<jose.JWK>) => {
+export const createVerificationKeyLookup = (fetchKey: (keyId: string) => Promise<jose.JWK>): KeyLookup => {
   const keyCache = new Map<string, { key: jose.JWK | "unknown"; fetchedAt: number }>();
   const inflightKeys = new Map<string, Promise<KeyLookupResult>>();
   const knownKeyIds = new Set<string>();
+  let lastSaturationWarning = 0;
   const ttlOf = (entry: { key: jose.JWK | "unknown" }) =>
     entry.key === "unknown" ? UNKNOWN_KEY_CACHE_TTL : KEY_CACHE_TTL;
 
@@ -73,15 +81,22 @@ export const createVerificationKeyLookup = (fetchKey: (keyId: string) => Promise
     }
   };
 
-  return async (keyId: string): Promise<KeyLookupResult> => {
+  return async (keyId, options = {}) => {
     const cached = keyCache.get(keyId);
     if (cached && Date.now() - cached.fetchedAt < ttlOf(cached)) return cached.key;
 
     const inflight = inflightKeys.get(keyId);
     if (inflight) return inflight;
 
-    if (!knownKeyIds.has(keyId)) {
-      if (plaidKeyFetchRateLimiter.isLimited(KEY_FETCH_BUCKET)) return "unavailable";
+    if (!knownKeyIds.has(keyId) && !options.priority) {
+      if (plaidKeyFetchRateLimiter.isLimited(KEY_FETCH_BUCKET)) {
+        // At most one line a minute, so a flood shows up without writing a line per request.
+        if (Date.now() - lastSaturationWarning >= SATURATION_WARN_INTERVAL) {
+          lastSaturationWarning = Date.now();
+          logger.warn("Verification key fetches over the cap; answering unavailable", { component: "plaid.webhook" });
+        }
+        return "unavailable";
+      }
       plaidKeyFetchRateLimiter.consume(KEY_FETCH_BUCKET);
     }
 
@@ -107,12 +122,14 @@ const getVerificationKey = createVerificationKeyLookup(
  *
  * @param body - The raw request body as a string
  * @param signedJwt - The Plaid-Verification header value
+ * @param options - `priority` is passed to the key lookup (see `KeyLookup`)
  * @param lookupKey - Where verification keys come from; tests pass their own
  */
 export const verifyWebhook = async (
   body: string,
   signedJwt: string | undefined,
-  lookupKey: (keyId: string) => Promise<KeyLookupResult> = getVerificationKey,
+  options: { priority?: boolean } = {},
+  lookupKey: KeyLookup = getVerificationKey,
 ): Promise<WebhookVerification> => {
   if (!signedJwt) {
     logger.warn("Missing Plaid-Verification header", { component: "plaid.webhook" });
@@ -129,7 +146,7 @@ export const verifyWebhook = async (
       return "invalid";
     }
 
-    const publicKey = await lookupKey(keyId);
+    const publicKey = await lookupKey(keyId, options);
     if (publicKey === "unavailable") return "unverifiable";
     if (publicKey === "unknown") return "invalid";
 

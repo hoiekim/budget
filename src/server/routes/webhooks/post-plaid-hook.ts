@@ -9,6 +9,7 @@ import {
   validationError,
   plaid,
   emitToUser,
+  plaidItemKeyFetchRateLimiter,
 } from "server";
 import { logger } from "server/lib/logger";
 
@@ -38,7 +39,14 @@ export const postPlaidHookRoute = new Route("POST", "/plaid-hook", async (req, r
     return { status: "failed", message: "Webhook verification failed" };
   }
 
-  const verification = await plaid.verifyWebhook(rawBody, signedJwt);
+  let verification = await plaid.verifyWebhook(rawBody, signedJwt);
+  if (verification === "unverifiable") {
+    const itemId = await claimedRealItem(rawBody);
+    if (itemId && !plaidItemKeyFetchRateLimiter.isLimited(itemId)) {
+      plaidItemKeyFetchRateLimiter.consume(itemId);
+      verification = await plaid.verifyWebhook(rawBody, signedJwt, { priority: true });
+    }
+  }
   if (verification === "unverifiable") {
     // Plaid retries a 5xx but treats a 401 as final, so a webhook that couldn't be checked yet
     // must not be refused as invalid.
@@ -138,4 +146,20 @@ const markBadItem = async (item_id: string, reason: string) => {
   if (!updated) return { status: "failed" as const };
   emitToUser(user.user_id, TableName.Accounts);
   return { status: "success" as const };
+};
+
+/**
+ * The item id an unverified body claims, when that item exists. Read only to
+ * decide whether a key fetch may pass the process-wide cap, never trusted as
+ * the webhook's content, which is read again after verification.
+ */
+const claimedRealItem = async (rawBody: string): Promise<string | null> => {
+  let itemId: unknown;
+  try {
+    itemId = (JSON.parse(rawBody) as { item_id?: unknown })?.item_id;
+  } catch {
+    return null;
+  }
+  if (typeof itemId !== "string" || !itemId) return null;
+  return (await getUserItem(itemId)) ? itemId : null;
 };

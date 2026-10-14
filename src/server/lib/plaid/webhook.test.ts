@@ -15,29 +15,38 @@ const neverCalled = async (): Promise<never> => {
 
 describe("Plaid Webhook Verification", () => {
   it("should reject missing Plaid-Verification header", async () => {
-    expect(await verifyWebhook(body, undefined, neverCalled)).toBe("invalid");
+    expect(await verifyWebhook(body, undefined, {}, neverCalled)).toBe("invalid");
   });
 
   it("should reject empty Plaid-Verification header", async () => {
-    expect(await verifyWebhook(body, "", neverCalled)).toBe("invalid");
+    expect(await verifyWebhook(body, "", {}, neverCalled)).toBe("invalid");
   });
 
   it("should reject malformed JWT", async () => {
-    expect(await verifyWebhook(body, "not.a.valid.jwt", neverCalled)).toBe("invalid");
+    expect(await verifyWebhook(body, "not.a.valid.jwt", {}, neverCalled)).toBe("invalid");
   });
 
   it("should reject JWT without key_id", async () => {
     // JWT with no kid in header: {"alg":"ES256","typ":"JWT"}
     const noKidJwt = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature";
-    expect(await verifyWebhook(body, noKidJwt, neverCalled)).toBe("invalid");
+    expect(await verifyWebhook(body, noKidJwt, {}, neverCalled)).toBe("invalid");
   });
 
   it("a key_id Plaid says doesn't exist is invalid", async () => {
-    expect(await verifyWebhook(body, jwtWithKid("k"), async () => "unknown")).toBe("invalid");
+    expect(await verifyWebhook(body, jwtWithKid("k"), {}, async () => "unknown")).toBe("invalid");
+  });
+
+  it("passes priority through to the key lookup", async () => {
+    const seen: unknown[] = [];
+    await verifyWebhook(body, jwtWithKid("k"), { priority: true }, async (_keyId, options) => {
+      seen.push(options);
+      return "unknown";
+    });
+    expect(seen).toEqual([{ priority: true }]);
   });
 
   it("a key that can't be fetched just now leaves the webhook unverifiable, not invalid", async () => {
-    expect(await verifyWebhook(body, jwtWithKid("k"), async () => "unavailable")).toBe("unverifiable");
+    expect(await verifyWebhook(body, jwtWithKid("k"), {}, async () => "unavailable")).toBe("unverifiable");
   });
 });
 
@@ -88,6 +97,9 @@ describe("createVerificationKeyLookup", () => {
     setSystemTime(start + UNKNOWN_KEY_CACHE_TTL + 1);
     expect(await lookup("good-1")).toEqual(KEY);
     expect(calls).toEqual(["good-1"]);
+    setSystemTime(start + 60 * 60 * 1000 - 1);
+    expect(await lookup("good-1")).toEqual(KEY);
+    expect(calls).toEqual(["good-1"]);
     setSystemTime(start + 60 * 60 * 1000 + 1);
     expect(await lookup("good-1")).toEqual(KEY);
     expect(calls).toEqual(["good-1", "good-1"]);
@@ -98,9 +110,10 @@ describe("createVerificationKeyLookup", () => {
     const start = Date.now();
     setSystemTime(start);
     expect(await lookup("bogus")).toBe("unknown");
+    setSystemTime(start + 5 * 60 * 1000 - 1);
     expect(await lookup("bogus")).toBe("unknown");
     expect(calls).toEqual(["bogus"]);
-    setSystemTime(start + UNKNOWN_KEY_CACHE_TTL + 1);
+    setSystemTime(start + 5 * 60 * 1000 + 1);
     expect(await lookup("bogus")).toBe("unknown");
     expect(calls).toEqual(["bogus", "bogus"]);
   });
@@ -134,5 +147,39 @@ describe("createVerificationKeyLookup", () => {
     plaidKeyFetchRateLimiter.consume("global", 10);
     expect(await lookup("good-2")).toEqual(KEY);
     expect(calls.filter((id) => id === "good-2")).toHaveLength(2);
+  });
+
+  it("lets a priority lookup fetch past a full cap", async () => {
+    const lookup = createVerificationKeyLookup(instantFetcher);
+    plaidKeyFetchRateLimiter.consume("global", 10);
+    expect(await lookup("good-3")).toBe("unavailable");
+    expect(await lookup("good-3", { priority: true })).toEqual(KEY);
+    expect(calls).toEqual(["good-3"]);
+  });
+
+  it("charges the cap once for lookups that overlap", async () => {
+    const { fetchKey, pending } = deferredFetcher();
+    const lookup = createVerificationKeyLookup(fetchKey);
+    plaidKeyFetchRateLimiter.consume("global", 9);
+    const lookups = [lookup("k4"), lookup("k4"), lookup("k4")];
+    pending[0].resolve(KEY);
+    expect(await Promise.all(lookups)).toEqual([KEY, KEY, KEY]);
+    expect(calls).toEqual(["k4"]);
+  });
+
+  it("remembers the last 100 key_ids that verified, dropping the oldest", async () => {
+    const lookup = createVerificationKeyLookup(instantFetcher);
+    const start = Date.now();
+    setSystemTime(start);
+    for (let i = 0; i <= 100; i++) {
+      plaidKeyFetchRateLimiter.reset("global");
+      await lookup(`good-lru-${i}`);
+    }
+    setSystemTime(start + 60 * 60 * 1000 + 1);
+    plaidKeyFetchRateLimiter.reset("global");
+    plaidKeyFetchRateLimiter.consume("global", 10);
+    expect(await lookup("good-lru-0")).toBe("unavailable");
+    expect(await lookup("good-lru-1")).toEqual(KEY);
+    expect(await lookup("good-lru-100")).toEqual(KEY);
   });
 });

@@ -11,7 +11,9 @@ const realServer = { ...(await import("server")) };
 const realAlarm = { ...(await import("server/lib/alarm")) };
 const realLogger = { ...(await import("server/lib/logger")) };
 
-const mockVerifyWebhook = mock(async (_rawBody: string, _jwt?: string): Promise<string> => "valid");
+const mockVerifyWebhook = mock(
+  async (_rawBody: string, _jwt?: string, _options?: { priority?: boolean }): Promise<string> => "valid",
+);
 const mockGetItem = mock(async (_accessToken: string) => ({
   consented_products: [] as string[],
   products: [] as string[],
@@ -489,5 +491,40 @@ describe("post-plaid-hook — answers Plaid can act on", () => {
     const { result, res } = await run(body);
     expect(status(res)).toBe(200);
     expect(result).toMatchObject({ status: "success" });
+  });
+
+  describe("when the key fetch cap is full", () => {
+    const realItemBody = (item_id: string) => ({ webhook_type: "ITEM", webhook_code: "WEBHOOK_UPDATE_ACKNOWLEDGED", item_id });
+    const capFullUnlessPriority = async (_raw: string, _jwt?: string, options?: { priority?: boolean }) =>
+      options?.priority ? "valid" : "unverifiable";
+
+    test("a webhook naming a real item is verified again with priority and handled", async () => {
+      mockVerifyWebhook.mockImplementation(capFullUnlessPriority);
+      const item = realItemBody("item-priority-1");
+      const { result, res } = await run(item, { rawBody: JSON.stringify(item) });
+      expect(status(res)).toBe(200);
+      expect(result).toMatchObject({ status: "success" });
+      expect(mockVerifyWebhook.mock.calls.map((c) => c[2])).toEqual([undefined, { priority: true }]);
+      expect(mockGetUserItem).toHaveBeenCalledWith("item-priority-1");
+    });
+
+    test("a webhook naming an item that doesn't exist stays at 503, with no priority attempt", async () => {
+      mockVerifyWebhook.mockImplementation(capFullUnlessPriority);
+      mockGetUserItem.mockImplementation(async () => null);
+      const item = realItemBody("item-missing");
+      const { res } = await run(item, { rawBody: JSON.stringify(item) });
+      expect(status(res)).toBe(503);
+      expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    test("an item's priority attempts are capped, after which it stays at 503", async () => {
+      mockVerifyWebhook.mockImplementation(async () => "unverifiable");
+      const item = realItemBody("item-priority-capped");
+      for (let i = 0; i < 6; i++) await run(item, { rawBody: JSON.stringify(item) });
+      mockVerifyWebhook.mockClear();
+      const { res } = await run(item, { rawBody: JSON.stringify(item) });
+      expect(status(res)).toBe(503);
+      expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
+    });
   });
 });

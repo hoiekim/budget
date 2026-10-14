@@ -187,11 +187,19 @@ export const institutionFallbackRateLimiter = createRateLimiter("institution-fal
 
 // One bucket for the whole process, not per caller: what it protects is the
 // production Plaid credential's quota, which a caller rotating addresses would
-// otherwise spend freely. Only key_ids that have never verified are charged; a
-// key Plaid signs with skips the cap when its hour-long cache expires.
+// otherwise spend freely. Only key_ids that haven't verified since start are
+// charged; a key Plaid signs with skips the cap when its hour-long cache expires.
 export const plaidKeyFetchRateLimiter = createRateLimiter("plaid-key-fetch", {
   maxAttempts: 10,
   windowMs: 60 * 1000,
+});
+
+// Keyed by item id. When the cap above is full, a webhook naming a real item may
+// still fetch its key, so a flood of made-up key_ids can't hold genuine webhooks
+// off; this bounds what anyone who knows an item id can spend that way.
+export const plaidItemKeyFetchRateLimiter = createRateLimiter("plaid-item-key-fetch", {
+  maxAttempts: 6,
+  windowMs: 60 * 60 * 1000,
 });
 
 const PRE_SESSION_RATE_LIMITS: {
