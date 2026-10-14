@@ -114,20 +114,16 @@ describe("realtime", () => {
     expect(throwing.closed).toBe(true);
   });
 
-  it("an investment transaction write or an import also emits holding snapshots", () => {
+  it("an import also emits the account and holding snapshot domains", () => {
     expect(mutationEmitDomain("POST", "/plan-statement/import")).toBe(TableName.InvestmentTransactions);
-    for (const [method, path] of [
-      ["POST", "/investment-transaction"],
-      ["DELETE", "/investment-transaction"],
-      ["POST", "/plan-statement/import"],
-    ]) {
-      expect(mutationSideEffectDomains(method, path)).toEqual([TableName.Snapshots]);
-    }
-    // A preview writes nothing, and reads never emit.
-    expect(mutationEmitDomain("POST", "/plan-statement/preview")).toBeNull();
-    expect(mutationSideEffectDomains("POST", "/plan-statement/preview")).toEqual([]);
-    expect(mutationSideEffectDomains("GET", "/investment-transaction")).toEqual([]);
-    expect(mutationSideEffectDomains("POST", "/transaction")).toEqual([]);
+    expect(mutationSideEffectDomains("POST", "/plan-statement/import")).toEqual([
+      TableName.Accounts,
+      TableName.Snapshots,
+    ]);
+    // An ordinary investment transaction write changes nothing beyond its own table.
+    expect(mutationSideEffectDomains("POST", "/investment-transaction")).toEqual([]);
+    expect(mutationSideEffectDomains("DELETE", "/investment-transaction")).toEqual([]);
+    expect(mutationSideEffectDomains("GET", "/plan-statement/import")).toEqual([]);
   });
 
   it("mutationEmitDomain maps POST/DELETE writes to their table", () => {

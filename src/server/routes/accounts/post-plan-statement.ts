@@ -1,22 +1,19 @@
 import {
-  Route,
-  requireBodyObject,
-  requireStringField,
-  validationError,
-  previewPlanStatement,
-  importPlanStatement,
-  DECISIONS,
-} from "server";
-import type {
-  Decision,
-  PlanFundMappingRequest,
+  PlanFundMapping,
+  PlannedTransaction,
+  PlanStatementHolding,
+  PlanStatementImportRequest,
   PlanStatementImportResult,
-  PlanStatementPreview,
-  PlanStatementRequest,
-  ServerRequest,
-} from "server";
+} from "common";
+import { Route, requireBodyObject, requireStringField, validationError, importPlanStatement } from "server";
+import type { ServerRequest } from "server";
 
-type ParsedRequest = { ok: true; request: PlanStatementRequest } | { ok: false; message: string };
+type ParsedRequest = { ok: true; request: PlanStatementImportRequest } | { ok: false; message: string };
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const parseRequest = (req: ServerRequest): ParsedRequest => {
   const bodyResult = requireBodyObject(req);
@@ -25,76 +22,63 @@ const parseRequest = (req: ServerRequest): ParsedRequest => {
 
   const accountResult = requireStringField(body, "account_id");
   if (!accountResult.success) return { ok: false, message: accountResult.error! };
-  const csvResult = requireStringField(body, "csv");
-  if (!csvResult.success) return { ok: false, message: csvResult.error! };
 
-  const mappings: PlanFundMappingRequest[] = [];
-  if (body.mappings !== undefined) {
-    if (!Array.isArray(body.mappings)) return { ok: false, message: "mappings must be an array" };
-    for (const m of body.mappings as unknown[]) {
-      const { investment, security_id, restated } = (m ?? {}) as Record<string, unknown>;
-      if (typeof investment !== "string" || !investment) {
-        return { ok: false, message: "each mapping needs an investment" };
-      }
-      if (typeof security_id !== "string" || !security_id) {
-        return { ok: false, message: "each mapping needs a security_id" };
-      }
-      if (typeof restated !== "boolean") return { ok: false, message: "mapping restated must be a boolean" };
-      mappings.push({ investment, security_id, restated });
+  if (!Array.isArray(body.transactions)) return { ok: false, message: "transactions must be an array" };
+  const transactions: PlannedTransaction[] = [];
+  for (const planned of body.transactions as unknown[]) {
+    if (!isObject(planned) || !isObject(planned.transaction)) {
+      return { ok: false, message: "each transaction needs a transaction object" };
     }
+    const t = planned.transaction;
+    if (!isNonEmptyString(t.investment_transaction_id)) return { ok: false, message: "each transaction needs an id" };
+    if (typeof t.date !== "string" || !DATE_PATTERN.test(t.date)) {
+      return { ok: false, message: "each transaction needs a YYYY-MM-DD date" };
+    }
+    if (planned.restated_from !== undefined && !isObject(planned.restated_from)) {
+      return { ok: false, message: "restated_from must be an object" };
+    }
+    transactions.push(planned as unknown as PlannedTransaction);
   }
 
-  const decisions: Record<string, Decision> = {};
-  if (body.decisions !== undefined) {
-    if (typeof body.decisions !== "object" || body.decisions === null || Array.isArray(body.decisions)) {
-      return { ok: false, message: "decisions must be an object" };
-    }
-    for (const [id, decision] of Object.entries(body.decisions)) {
-      if (!DECISIONS.includes(decision as Decision)) {
-        return { ok: false, message: `unknown decision for ${id}` };
-      }
-      decisions[id] = decision as Decision;
-    }
+  if (!Array.isArray(body.mappings)) return { ok: false, message: "mappings must be an array" };
+  const mappings: PlanFundMapping[] = [];
+  for (const m of body.mappings as unknown[]) {
+    const { investment, security_id, restated } = isObject(m) ? m : {};
+    if (!isNonEmptyString(investment)) return { ok: false, message: "each mapping needs an investment" };
+    if (!isNonEmptyString(security_id)) return { ok: false, message: "each mapping needs a security_id" };
+    if (typeof restated !== "boolean") return { ok: false, message: "mapping restated must be a boolean" };
+    mappings.push({ investment, security_id, restated });
   }
 
-  const replacePositions: string[] = [];
-  if (body.replacePositions !== undefined) {
-    if (!Array.isArray(body.replacePositions) || body.replacePositions.some((f) => typeof f !== "string")) {
-      return { ok: false, message: "replacePositions must be an array of fund names" };
-    }
-    replacePositions.push(...(body.replacePositions as string[]));
+  const replace = body.replace ?? [];
+  if (!Array.isArray(replace) || !replace.every(isNonEmptyString)) {
+    return { ok: false, message: "replace must be an array of security ids" };
   }
 
-  return {
-    ok: true,
-    request: { account_id: accountResult.data!, csv: csvResult.data!, mappings, decisions, replacePositions },
-  };
+  if (!Array.isArray(body.holdings)) return { ok: false, message: "holdings must be an array" };
+  const holdings: PlanStatementHolding[] = [];
+  for (const h of body.holdings as unknown[]) {
+    const { security_id, date, quantity, cost_basis, price } = isObject(h) ? h : {};
+    if (!isNonEmptyString(security_id)) return { ok: false, message: "each holding needs a security_id" };
+    if (typeof date !== "string" || !DATE_PATTERN.test(date)) {
+      return { ok: false, message: "each holding needs a YYYY-MM-DD date" };
+    }
+    if (!isFiniteNumber(quantity) || !isFiniteNumber(price) || (cost_basis !== null && !isFiniteNumber(cost_basis))) {
+      return { ok: false, message: "each holding needs a quantity, a price and a cost basis or null" };
+    }
+    holdings.push({ security_id, date, quantity, cost_basis, price });
+  }
+
+  return { ok: true, request: { account_id: accountResult.data!, transactions, mappings, replace, holdings } };
 };
 
 /**
- * POST /plan-statement/preview
- * Body: { account_id, csv, mappings?: [{ investment, security_id, restated }],
- *         decisions?: { [row id]: decision }, replacePositions?: [investment] }
- * Reads a plan statement against the account without writing anything.
- */
-export const postPlanStatementPreviewRoute = new Route<PlanStatementPreview>(
-  "POST",
-  "/plan-statement/preview",
-  async (req) => {
-    const { user } = req.session;
-    if (!user) return { status: "failed", message: "Request user is not authenticated." };
-    const parsed = parseRequest(req);
-    if (!parsed.ok) return validationError(parsed.message);
-    const result = await previewPlanStatement(user, parsed.request);
-    if (!result.ok) return { status: "failed", message: result.message };
-    return { status: "success", body: result.preview };
-  },
-);
-
-/**
  * POST /plan-statement/import
- * Same body as the preview. Writes the rows the preview lists as new, and
- * saves the fund mappings so the next statement doesn't ask again.
+ * Body: { account_id, transactions: [{ transaction, restated_from? }],
+ *         mappings: [{ investment, security_id, restated }], replace?: [security_id],
+ *         holdings: [{ security_id, date, quantity, cost_basis, price }] }
+ * Stores the rows the import page planned from a plan statement. Rows already
+ * in the account, deleted ones included, are left as they are.
  */
 export const postPlanStatementImportRoute = new Route<PlanStatementImportResult>(
   "POST",

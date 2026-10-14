@@ -1,6 +1,7 @@
 import {
   getBalanceData,
   getHoldingsValueData,
+  withDerivedHoldingSnapshots,
   ScreenType,
   useMemoryState,
   Calculations,
@@ -52,6 +53,7 @@ export const useData = () => {
 
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
+        const allHoldingSnapshots = withDerivedHoldingSnapshots(holdingSnapshots, investmentTransactions);
 
         // Balance data intentionally does NOT receive `transfers`:
         // per-account historical balance must reflect the actual
@@ -62,7 +64,7 @@ export const useData = () => {
         const balanceData = getBalanceData(
           accounts,
           accountSnapshots,
-          holdingSnapshots,
+          allHoldingSnapshots,
           transactions,
           investmentTransactions,
         );
@@ -81,7 +83,7 @@ export const useData = () => {
         const capacityData = getCapacityData(budgets, sections, categories);
 
         const holdingsValueData = getHoldingsValueData({
-          holdingSnapshots,
+          holdingSnapshots: allHoldingSnapshots,
           securitySnapshots,
           securities,
           investmentTransactions,
@@ -93,6 +95,7 @@ export const useData = () => {
           budgetData,
           capacityData,
           holdingsValueData,
+          holdingSnapshots: allHoldingSnapshots,
         });
 
         newCalculations.status.isInit = true;

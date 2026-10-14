@@ -1,12 +1,14 @@
 import { AccountType, AccountSubtype } from "plaid";
 import {
   JSONAccount,
+  PlanFundMapping,
   isString,
   isUndefined,
   isNullableString,
   isNullableNumber,
   isNullableBoolean,
   isNullableObject,
+  isOptionalNullableObject,
 } from "common";
 import {
   ACCOUNT_ID,
@@ -27,6 +29,7 @@ import {
   GRAPH_OPTIONS_USE_SNAPSHOTS,
   GRAPH_OPTIONS_USE_HOLDING_SNAPSHOTS,
   GRAPH_OPTIONS_USE_TRANSACTIONS,
+  PLAN_FUND_MAPPINGS,
   RAW,
   UPDATED,
   IS_DELETED,
@@ -57,6 +60,7 @@ const accountSchema = {
   [GRAPH_OPTIONS_USE_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
   [GRAPH_OPTIONS_USE_HOLDING_SNAPSHOTS]: "BOOLEAN DEFAULT TRUE",
   [GRAPH_OPTIONS_USE_TRANSACTIONS]: "BOOLEAN DEFAULT TRUE",
+  [PLAN_FUND_MAPPINGS]: "JSONB",
   [RAW]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
@@ -84,6 +88,8 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
   declare graph_options_use_snapshots: boolean;
   declare graph_options_use_holding_snapshots: boolean;
   declare graph_options_use_transactions: boolean;
+  /** Keyed by the statement's fund name; an object rather than an array so the driver writes it as JSON. */
+  declare plan_fund_mappings: Record<string, Omit<PlanFundMapping, "investment">> | null;
   declare raw: object | null;
   declare updated: string | null;
   declare is_deleted: boolean;
@@ -107,6 +113,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
     graph_options_use_snapshots: isNullableBoolean,
     graph_options_use_holding_snapshots: isNullableBoolean,
     graph_options_use_transactions: isNullableBoolean,
+    plan_fund_mappings: isOptionalNullableObject,
     raw: isNullableObject,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
@@ -142,6 +149,15 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
         useHoldingSnapshots: this.graph_options_use_holding_snapshots ?? true,
         useTransactions: this.graph_options_use_transactions,
       },
+      ...(this.plan_fund_mappings
+        ? {
+            plan_fund_mappings: Object.entries(this.plan_fund_mappings).map(([investment, m]) => ({
+              investment,
+              security_id: m.security_id,
+              restated: m.restated,
+            })),
+          }
+        : {}),
     };
   }
 
@@ -175,12 +191,18 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
       if (!isUndefined(a.graphOptions.useTransactions))
         r.graph_options_use_transactions = a.graphOptions.useTransactions;
     }
+    if (!isUndefined(a.plan_fund_mappings)) {
+      r.plan_fund_mappings = Object.fromEntries(
+        a.plan_fund_mappings.map(({ investment, security_id, restated }) => [investment, { security_id, restated }]),
+      );
+    }
     const {
       custom_name: _custom_name,
       hide: _hide,
       archived: _archived,
       label: _label,
       graphOptions: _graphOptions,
+      plan_fund_mappings: _planFundMappings,
       ...providerData
     } = a;
     r.raw = providerData;

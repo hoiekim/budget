@@ -29,7 +29,6 @@ export enum TableName {
   Charts = "charts",
   ApiKeys = "api_keys",
   RejectedCategories = "rejected_categories",
-  PlanFundMappings = "plan_fund_mappings",
 }
 
 export const USERS = TableName.Users;
@@ -50,12 +49,15 @@ export const SNAPSHOTS = TableName.Snapshots;
 export const CHARTS = TableName.Charts;
 export const API_KEYS = TableName.ApiKeys;
 export const REJECTED_CATEGORIES = TableName.RejectedCategories;
-export const PLAN_FUND_MAPPINGS = TableName.PlanFundMappings;
 
 /**
- * Id prefix of holding snapshots derived from a holding's transactions. Any
- * other holding snapshot id is a position someone entered.
+ * Id prefix of the holding snapshots the client derives from a holding's
+ * transactions. They exist only in memory; every stored holding snapshot is a
+ * position someone entered.
  */
 export const DERIVED_HOLDING_SNAPSHOT_PREFIX = "derived-holding-";
+
+/** Id prefix of investment transactions imported from a plan statement. */
+export const PLAN_STATEMENT_ID_PREFIX = "plan-";
 
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";

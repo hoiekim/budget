@@ -1,8 +1,24 @@
-import { ChangeEventHandler, Fragment, useRef, useState } from "react";
-import { numberToCommaString } from "common";
+import { ChangeEventHandler, Fragment, useMemo, useRef, useState } from "react";
+import {
+  Decision,
+  EnteredPosition,
+  FundMapping,
+  ImportKind,
+  Movement,
+  PlannedRow,
+  PlanStatementImportResult,
+  PositionGap,
+  RestatementCloses,
+  closesRange,
+  getYearMonthString,
+  numberToCommaString,
+  parsePlanStatement,
+  previewPlanStatement,
+} from "common";
 import {
   call,
   PATH,
+  SecurityDictionary,
   useAppContext,
   useSync,
   ButtonRow,
@@ -13,15 +29,7 @@ import {
   Row,
   ToggleInput,
 } from "client";
-import type {
-  Decision,
-  ImportKind,
-  PlannedRow,
-  PositionGap,
-  PlanStatementImportResult,
-  PlanStatementPreview,
-  ValidateTickerResponse,
-} from "server";
+import type { ValidateTickerResponse } from "server";
 import "./index.css";
 
 const DECISION_LABELS: Record<Decision, string> = {
@@ -64,6 +72,13 @@ const describeGaps = (gaps: PositionGap[], replacing: boolean) => {
 const describeRow = (row: PlannedRow) =>
   `${row.date} · ${row.investment} · ${row.label} · ${formatAmount(row.amount)} · ${row.shares} sh`;
 
+/** Closes are kept per fund and ticker, so changing a fund's ticker asks for the new one's. */
+const closesKey = (investment: string, ticker: string) => `${investment}\0${ticker}`;
+
+/** The mapped security's ticker, or what the user typed before it resolved. */
+const tickerOf = (edit: FundEdit, securities: SecurityDictionary) =>
+  (edit.security_id && securities.get(edit.security_id)?.ticker_symbol) || edit.ticker.trim().toUpperCase();
+
 const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const { data } = useAppContext();
   const { sync } = useSync();
@@ -74,25 +89,21 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const [edits, setEdits] = useState<Record<string, FundEdit>>({});
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [replacePositions, setReplacePositions] = useState<string[]>([]);
-  const [preview, setPreview] = useState<PlanStatementPreview | null>(null);
-  const [error, setError] = useState("");
+  const [closes, setCloses] = useState<Record<string, RestatementCloses>>({});
+  const [loadingCloses, setLoadingCloses] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [result, setResult] = useState("");
-  // Previews can overlap while closes load; only the latest one may land.
-  const previewSeq = useRef(0);
-  // The form as of the latest edit. Handlers that await (a ticker lookup) read
-  // it afterwards instead of the values they started with, so an edit made in
-  // the meantime isn't written back over.
-  const form = useRef({
-    csv: null as string | null,
-    edits: {} as Record<string, FundEdit>,
-    decisions: {} as Record<string, Decision>,
-    replacePositions: [] as string[],
-  });
+  // The edits as of the latest change. Handlers that await (a ticker lookup)
+  // read it afterwards instead of the values they started with, so an edit
+  // made in the meantime isn't written back over.
+  const latestEdits = useRef<Record<string, FundEdit>>({});
+  const closesRef = useRef<Record<string, RestatementCloses>>({});
+  const loadingRef = useRef(new Set<string>());
 
   const changeEdits = (change: (current: Record<string, FundEdit>) => Record<string, FundEdit>) => {
-    form.current.edits = change(form.current.edits);
-    setEdits(form.current.edits);
+    latestEdits.current = change(latestEdits.current);
+    setEdits(latestEdits.current);
   };
 
   const updateEdit = (investment: string, patch: Partial<FundEdit>) =>
@@ -101,124 +112,173 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       [investment]: { ...(current[investment] ?? { ticker: "", security_id: null, restated: false }), ...patch },
     }));
 
-  const requestBody = () => {
-    const { csv, edits, decisions, replacePositions } = form.current;
-    return {
-      account_id: accountId,
-      csv,
-      mappings: Object.entries(edits)
-        .filter(([, e]) => e.security_id)
-        .map(([investment, e]) => ({ investment, security_id: e.security_id, restated: e.restated })),
-      decisions,
-      replacePositions,
-    };
+  /** Asks for the closes of each restated fund that doesn't have them yet; `retry` asks again after a failure. */
+  const requestCloses = async (text: string, fundEdits: Record<string, FundEdit>, retry = false) => {
+    const rows = parsePlanStatement(text).rows;
+    const wanted = Object.entries(fundEdits).flatMap(([investment, edit]) => {
+      const dates = rows.filter((r) => r.investment === investment).map((r) => r.date);
+      const ticker = tickerOf(edit, data.securities);
+      if (!edit.restated || !edit.security_id || !ticker || !dates.length) return [];
+      const key = closesKey(investment, ticker);
+      const known = closesRef.current[key];
+      if (loadingRef.current.has(key) || (known && !(retry && !("bars" in known)))) return [];
+      return [{ key, ticker, ...closesRange(dates) }];
+    });
+    if (!wanted.length) return;
+    for (const { key } of wanted) loadingRef.current.add(key);
+    setLoadingCloses(Array.from(loadingRef.current));
+    await Promise.all(
+      wanted.map(async ({ key, ticker, from, to }) => {
+        const params = new URLSearchParams({ ticker, from, to });
+        const r = await call.get<RestatementCloses>(`/api/daily-closes?${params}`);
+        const answer: RestatementCloses =
+          r.status === "success" && r.body ? r.body : { message: r.message ?? `Couldn't load ${ticker} prices` };
+        closesRef.current = { ...closesRef.current, [key]: answer };
+        loadingRef.current.delete(key);
+        setCloses(closesRef.current);
+        setLoadingCloses(Array.from(loadingRef.current));
+      }),
+    );
   };
 
-  const runPreview = async () => {
-    if (!form.current.csv) return;
-    const seq = ++previewSeq.current;
-    setBusy(true);
-    const r = await call.post<PlanStatementPreview>("/api/plan-statement/preview", requestBody());
-    if (seq !== previewSeq.current) return;
-    setBusy(false);
-    if (r.status !== "success" || !r.body) {
-      setPreview(null);
-      setError(r.message ?? "Failed to read the statement");
-      return;
-    }
-    setError("");
-    setPreview(r.body);
-    // Funds the account already maps come back with their mapping; seed the
-    // ones not yet edited so their ticker shows and later previews send them.
-    const funds = r.body.funds;
-    changeEdits((current) => {
-      const seeded = { ...current };
-      for (const fund of funds) {
-        if (seeded[fund.investment] || !fund.mapping) continue;
-        seeded[fund.investment] = {
-          ticker: fund.mapping.ticker_symbol ?? "",
-          security_id: fund.mapping.security_id,
-          restated: fund.mapping.restated,
-        };
+  const preview = useMemo(() => {
+    if (!csv) return null;
+    const mappings = new Map<string, FundMapping>();
+    const fundCloses = new Map<string, RestatementCloses>();
+    for (const [investment, edit] of Object.entries(edits)) {
+      if (!edit.security_id) continue;
+      const ticker = tickerOf(edit, data.securities);
+      mappings.set(investment, { security_id: edit.security_id, restated: edit.restated, ticker_symbol: ticker || null });
+      const loaded = closes[closesKey(investment, ticker)];
+      if (loaded) fundCloses.set(investment, loaded);
+      else if (edit.restated && ticker) {
+        fundCloses.set(investment, { message: `Prices for ${ticker} are loading…` });
       }
-      return seeded;
+    }
+    const existingIds = new Set<string>();
+    data.investmentTransactions.forEach((t) => {
+      if (t.account_id === accountId) existingIds.add(t.investment_transaction_id);
     });
-  };
+    const holding = (security_id: string) => {
+      const movements: Movement[] = [];
+      data.investmentTransactions.forEach((t) => {
+        if (t.account_id === accountId && t.security_id === security_id) movements.push(t);
+      });
+      const entered: EnteredPosition[] = [];
+      data.holdingSnapshots.forEach(({ snapshot, holding }) => {
+        if (holding.account_id !== accountId || holding.security_id !== security_id) return;
+        entered.push({
+          snapshot_id: snapshot.snapshot_id,
+          date: snapshot.date.slice(0, 10),
+          quantity: holding.quantity,
+          cost_basis: holding.cost_basis ?? null,
+          institution_price: holding.institution_price ?? null,
+        });
+      });
+      return { movements, entered };
+    };
+    return previewPlanStatement({
+      account_id: accountId,
+      iso_currency_code: account?.balances.iso_currency_code || "USD",
+      csv,
+      mappings,
+      decisions,
+      closes: fundCloses,
+      existingIds,
+      replace: new Set(replacePositions),
+      holding,
+      throughMonth: getYearMonthString(new Date()),
+    });
+  }, [csv, edits, decisions, replacePositions, closes, data.investmentTransactions, data.holdingSnapshots, data.securities, accountId, account]);
+
+  const plan = preview && "error" in preview ? null : preview;
+  const planError = preview && "error" in preview ? preview.error : "";
 
   const onChangeFile: ChangeEventHandler<HTMLInputElement> = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
-    form.current = { ...form.current, csv: text, decisions: {}, replacePositions: [] };
+    const funds = new Set(parsePlanStatement(text).rows.map((r) => r.investment));
+    // Funds this account already maps open with their mapping.
+    const seeded: Record<string, FundEdit> = {};
+    for (const m of account?.plan_fund_mappings ?? []) {
+      if (!funds.has(m.investment)) continue;
+      const ticker = data.securities.get(m.security_id)?.ticker_symbol ?? "";
+      seeded[m.investment] = { ticker, security_id: m.security_id, restated: m.restated };
+    }
+    changeEdits(() => seeded);
     setFileName(file.name);
     setCsv(text);
     setResult("");
+    setError("");
     setDecisions({});
     setReplacePositions([]);
-    await runPreview();
+    await requestCloses(text, seeded);
   };
 
   const onBlurTicker = (investment: string) => async () => {
-    const before = form.current.edits[investment];
+    const before = latestEdits.current[investment];
     const ticker = before?.ticker.trim().toUpperCase() ?? "";
-    if (!ticker || !form.current.csv) return;
+    if (!ticker || !csv) return;
     const r = await call.post<ValidateTickerResponse>("/api/validate-ticker", { ticker_symbol: ticker });
     // The user may have typed another ticker while this one was checked.
-    if ((form.current.edits[investment]?.ticker.trim().toUpperCase() ?? "") !== ticker) return;
+    if ((latestEdits.current[investment]?.ticker.trim().toUpperCase() ?? "") !== ticker) return;
     if (r.status === "success" && r.body?.valid && r.body.security) {
-      if (r.body.security.security_id === form.current.edits[investment]?.security_id) return;
+      if (r.body.security.security_id === latestEdits.current[investment]?.security_id) return;
       updateEdit(investment, { ticker, security_id: r.body.security.security_id, error: undefined });
-      await runPreview();
+      await requestCloses(csv, latestEdits.current);
     } else {
       updateEdit(investment, { error: r.body?.message ?? r.message ?? "Invalid ticker" });
     }
   };
 
   const onToggleRestated = (investment: string) => async () => {
-    updateEdit(investment, { restated: !form.current.edits[investment]?.restated });
-    if (form.current.edits[investment]?.security_id) await runPreview();
+    updateEdit(investment, { restated: !latestEdits.current[investment]?.restated });
+    if (csv) await requestCloses(csv, latestEdits.current);
   };
 
-  const onToggleReplacePositions = (investment: string) => async () => {
-    const current = form.current.replacePositions;
-    form.current.replacePositions = current.includes(investment)
-      ? current.filter((f) => f !== investment)
-      : [...current, investment];
-    setReplacePositions(form.current.replacePositions);
-    await runPreview();
+  const onClickRetry = async () => {
+    if (csv) await requestCloses(csv, latestEdits.current, true);
   };
 
-  const onChangeDecision = (id: string): ChangeEventHandler<HTMLSelectElement> => async (e) => {
-    const next = { ...form.current.decisions };
-    if (e.target.value) next[id] = e.target.value as Decision;
-    else delete next[id];
-    form.current.decisions = next;
-    setDecisions(next);
-    await runPreview();
+  const onToggleReplacePositions = (investment: string) => () =>
+    setReplacePositions((current) =>
+      current.includes(investment) ? current.filter((f) => f !== investment) : [...current, investment],
+    );
+
+  const onChangeDecision = (id: string): ChangeEventHandler<HTMLSelectElement> => (e) => {
+    const value = e.target.value as Decision | "";
+    setDecisions((current) => {
+      const next = { ...current };
+      if (value) next[id] = value;
+      else delete next[id];
+      return next;
+    });
   };
 
   const onClickImport = async () => {
-    if (!form.current.csv || !preview) return;
+    if (!plan?.request) return;
     setBusy(true);
-    const r = await call.post<PlanStatementImportResult>("/api/plan-statement/import", requestBody());
+    const r = await call.post<PlanStatementImportResult>("/api/plan-statement/import", plan.request);
     setBusy(false);
     if (r.status !== "success" || !r.body) {
       setError(r.message ?? "Import failed");
       return;
     }
     const { written } = r.body;
+    setError("");
     setResult(`Imported ${written} transaction${written === 1 ? "" : "s"}.`);
+    setReplacePositions([]);
     sync();
-    await runPreview();
   };
 
-  const newRows = preview?.rows.filter((r) => r.status === "new") ?? [];
-  const decisionRows = preview?.rows.filter((r) => r.needsDecision && r.status !== "imported") ?? [];
-  const importedCount = preview?.rows.filter((r) => r.status === "imported").length ?? 0;
-  const skippedCount = preview?.rows.filter((r) => r.status === "skip").length ?? 0;
+  const newRows = plan?.rows.filter((r) => r.status === "new") ?? [];
+  const decisionRows = plan?.rows.filter((r) => r.needsDecision && r.status !== "imported") ?? [];
+  const importedCount = plan?.rows.filter((r) => r.status === "imported").length ?? 0;
+  const skippedCount = plan?.rows.filter((r) => r.status === "skip").length ?? 0;
   // Replacing entered positions is worth applying even when nothing is new.
-  const replacing = !!preview?.funds.some((f) => f.replacePositions && f.positionGaps?.length);
-  const canImport = !!preview && !busy && !preview.blockers.length && (newRows.length > 0 || replacing);
+  const replacing = !!plan?.funds.some((f) => f.replacePositions && f.positionGaps?.length);
+  const canImport = !!plan?.request && !busy && (newRows.length > 0 || replacing);
 
   return (
     <Properties className="PlanStatementImportPage">
@@ -233,18 +293,18 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
             <input type="file" accept=".csv,text/csv" onChange={onChangeFile} />
           </label>
         </KeyValue>
-        {busy && <Row className="fundNote">Reading the statement…</Row>}
-        {error && <Row className="formError">{error}</Row>}
-        {preview?.parseErrors.map((e) => (
+        {busy && <Row className="fundNote">Importing…</Row>}
+        {(error || planError) && <Row className="formError">{error || planError}</Row>}
+        {plan?.parseErrors.map((e) => (
           <Row key={e} className="formError">
             {e}
           </Row>
         ))}
       </Property>
 
-      {preview && (
+      {plan && (
         <>
-          {preview.funds.map((fund, i, { length }) => {
+          {plan.funds.map((fund, i, { length }) => {
             const edit = edits[fund.investment];
             return (
               <Fragment key={fund.investment}>
@@ -263,18 +323,13 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                     />
                   </KeyValue>
                   <KeyValue name="Restated&nbsp;from&nbsp;a&nbsp;trust">
-                    <ToggleInput
-                      checked={!!edit?.restated}
-                      onChange={onToggleRestated(fund.investment)}
-                    />
+                    <ToggleInput checked={!!edit?.restated} onChange={onToggleRestated(fund.investment)} />
                   </KeyValue>
                   {edit?.error && <Row className="formError">{edit.error}</Row>}
                   {fund.restatement && (
                     <Row className={fund.restatement.ok ? "fundNote" : "formError"}>
                       {fund.restatement.ok
-                        ? `Tracks ${fund.mapping?.ticker_symbol} within ${(
-                            (fund.restatement.spread ?? 0) * 100
-                          ).toFixed(2)}%`
+                        ? `Tracks ${fund.mapping?.ticker_symbol} within ${((fund.restatement.spread ?? 0) * 100).toFixed(2)}%`
                         : fund.restatement.message}
                     </Row>
                   )}
@@ -291,8 +346,8 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                       </KeyValue>
                     </>
                   )}
-                  {fund.restatement?.retryable && csv && (
-                    <ButtonRow disabled={busy} onClick={runPreview}>
+                  {fund.restatement?.retryable && (
+                    <ButtonRow disabled={loadingCloses.length > 0} onClick={onClickRetry}>
                       Retry
                     </ButtonRow>
                   )}
@@ -335,7 +390,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
             <KeyValue name="Skipped">
               <span>{skippedCount}</span>
             </KeyValue>
-            {preview.blockers.map((b) => (
+            {plan.blockers.map((b) => (
               <Row key={b} className="formError">
                 {b}
               </Row>

@@ -339,28 +339,6 @@ export const softDeleteHoldingSnapshots = async (
   await snapshotsTable.bulkSoftDelete(snapshot_ids, { [USER_ID]: user.user_id }, client);
 };
 
-/** One statement for many holding snapshots, with the same conflict columns as the per-row upsert. */
-export const upsertHoldingSnapshotsBatch = async (
-  user: MaskedUser,
-  snapshots: HoldingSnapshot[],
-  client?: QueryExecutor,
-): Promise<void> => {
-  if (!snapshots.length) return;
-  const rows = snapshots.map((snapshot) => ({
-    [SNAPSHOT_ID]: snapshot.snapshot_id,
-    [USER_ID]: user.user_id,
-    [SNAPSHOT_DATE]: snapshot.snapshot_date,
-    [SNAPSHOT_TYPE]: "holding",
-    [IS_DELETED]: false,
-    holding_account_id: snapshot.holding_account_id,
-    holding_security_id: snapshot.holding_security_id,
-    institution_price: snapshot.institution_price,
-    institution_value: snapshot.institution_value,
-    cost_basis: snapshot.cost_basis ?? null,
-    quantity: snapshot.quantity,
-  }));
-  await snapshotsTable.upsertMany(rows, HOLDING_SNAPSHOT_UPDATE_COLUMNS, client);
-};
 
 /** Columns an account-balance conflict may rewrite. `Table.upsert` otherwise
  *  defaults to every supplied key, which lets a colliding `snapshot_id` reassign

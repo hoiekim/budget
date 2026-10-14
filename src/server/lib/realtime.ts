@@ -174,13 +174,12 @@ export const mutationEmitDomain = (method: string, path: string): EmitDomain | n
 
 /**
  * Tables a path's write also changes as a side effect, beyond its own domain:
- * an investment transaction write can rewrite the holding's derived
- * snapshots. The tab that made the write patched only its own domain, so
- * these are emitted without its tab id and every tab refetches them.
+ * a plan-statement import also saves the account's fund mappings and holdings
+ * rows, and can retire entered holding snapshots. These are emitted without
+ * the writing tab's id, so every tab refetches them.
  */
 const SIDE_EFFECT_DOMAINS: Record<string, EmitDomain[]> = {
-  "/investment-transaction": [TableName.Snapshots],
-  "/plan-statement/import": [TableName.Snapshots],
+  "/plan-statement/import": [TableName.Accounts, TableName.Snapshots],
 };
 
 export const mutationSideEffectDomains = (method: string, path: string): EmitDomain[] =>

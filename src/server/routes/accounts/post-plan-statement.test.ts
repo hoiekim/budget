@@ -1,49 +1,20 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreEnv, restoreLeaves, updateColumnsOf } from "test-helpers";
+import { createFakePg, restoreEnv, restoreLeaves } from "test-helpers";
 
 type Row = Record<string, unknown>;
 
 const db = {
   provider: "manual" as string,
   accountType: "investment" as string,
+  /** Ids already in the account; every one is soft-deleted. */
   existingIds: [] as string[],
-  /** Live rows on the holding, as the refresh reads them inside the transaction. */
-  live: [] as Row[],
-  /** Holding snapshots already stored on the holding. */
-  snapshots: [] as { id: string; date: string; quantity: number; price?: number; cost?: number; value?: number }[],
-  /** The holding's current holdings row, if any. */
-  holdings: [] as Row[],
+  /** Fund mappings already saved on the account. */
+  savedMappings: null as Row | null,
+  /** Entered holding snapshots on the security. */
+  snapshotIds: [] as string[],
   /** Make the holdings write fail, as a deadlock victim would. */
   failHoldings: false,
 };
-
-const enteredSnapshot = (date: string, quantity: number) => ({
-  id: `holding-acct-1-sec-index-${date.replaceAll("-", "")}`,
-  date,
-  quantity,
-});
-
-const liveRow = (id: string, date: string, quantity: number, amount: number): Row => ({
-  investment_transaction_id: id,
-  user_id: "usr-1",
-  account_id: "acct-1",
-  security_id: "sec-index",
-  date,
-  name: null,
-  amount,
-  quantity,
-  price: amount / quantity,
-  iso_currency_code: "USD",
-  type: "buy",
-  subtype: "buy",
-  label_budget_id: null,
-  label_category_id: null,
-  label_memo: null,
-  raw: null,
-  updated: null,
-  is_deleted: false,
-  source: "manual",
-});
 
 const ACCOUNT: Row = {
   account_id: "acct-1",
@@ -64,13 +35,14 @@ const ACCOUNT: Row = {
   graph_options_use_snapshots: true,
   graph_options_use_holding_snapshots: true,
   graph_options_use_transactions: true,
+  plan_fund_mappings: null,
   raw: null,
   updated: null,
   is_deleted: false,
 };
 
-const respond = async (sql: string): Promise<Row[]> => {
-  if (/FROM accounts\b/i.test(sql)) return [{ ...ACCOUNT, type: db.accountType }];
+const respond = async (sql: string, values: unknown[] = []): Promise<Row[]> => {
+  if (/FROM accounts\b/i.test(sql)) return [{ ...ACCOUNT, type: db.accountType, plan_fund_mappings: db.savedMappings }];
   if (/FROM items\b/i.test(sql)) {
     return [
       {
@@ -93,9 +65,11 @@ const respond = async (sql: string): Promise<Row[]> => {
     ];
   }
   if (/FROM securities\b/i.test(sql)) {
-    return [
-      {
-        security_id: "sec-index",
+    return values
+      .flat()
+      .filter((id) => id === "sec-index" || id === "sec-bond")
+      .map((security_id) => ({
+        security_id,
         name: "Index",
         ticker_symbol: "XIDX",
         type: null,
@@ -106,18 +80,16 @@ const respond = async (sql: string): Promise<Row[]> => {
         cusip: null,
         raw: null,
         updated: null,
-      },
-    ];
+      }));
   }
   if (/^\s*INSERT INTO holdings/i.test(sql) && db.failHoldings) {
     throw Object.assign(new Error("deadlock detected"), { code: "40P01" });
   }
-  if (/FROM holdings\b/i.test(sql)) return db.holdings;
   if (/FROM snapshots\b/i.test(sql)) {
-    return db.snapshots.map(({ id, date, quantity, price = 25, cost = quantity * 25, value = quantity * price }) => ({
-      snapshot_id: id,
+    return db.snapshotIds.map((snapshot_id) => ({
+      snapshot_id,
       user_id: "usr-1",
-      snapshot_date: `${date}T12:00:00.000Z`,
+      snapshot_date: "2026-01-02T12:00:00.000Z",
       snapshot_type: "holding",
       account_id: null,
       balances_available: null,
@@ -128,18 +100,15 @@ const respond = async (sql: string): Promise<Row[]> => {
       close_price: null,
       holding_account_id: "acct-1",
       holding_security_id: "sec-index",
-      institution_price: price,
-      institution_value: value,
-      cost_basis: cost,
-      quantity,
+      institution_price: 25,
+      institution_value: 250,
+      cost_basis: null,
+      quantity: 10,
       updated: null,
       is_deleted: false,
     }));
   }
-  if (/FROM investment_transactions\b.*\bsecurity_id IN/is.test(sql)) return db.live;
   if (/FROM investment_transactions\b.*investment_transaction_id IN/is.test(sql)) {
-    // Every existing row here is soft-deleted, as Postgres would filter it.
-    if (/is_deleted = FALSE/.test(sql)) return [];
     return db.existingIds.map((id) => ({
       investment_transaction_id: id,
       user_id: "usr-1",
@@ -165,43 +134,83 @@ const respond = async (sql: string): Promise<Row[]> => {
   return [];
 };
 
-const { pg, mockQuery, mockClientQuery, clearQueryMocks } = createFakePg(async (sql: string) => {
-  const rows = await respond(sql);
+const { pg, mockQuery, mockClientQuery, clearQueryMocks } = createFakePg(async (sql: string, values?: unknown[]) => {
+  const rows = await respond(sql, values);
   return { rows: rows as unknown[], rowCount: rows.length };
 });
 
 mock.module("pg", () => pg);
 
-const { postPlanStatementPreviewRoute, postPlanStatementImportRoute } = await import("./post-plan-statement");
-const {
-  getRowIds,
-  parsePlanStatement,
-  polygonLookupRateLimiter,
-  clearDailyClosesCache,
-  peekDailyCloses,
-  planHoldingPositions,
-} = await import("server");
+const { postPlanStatementImportRoute } = await import("./post-plan-statement");
+const { getDailyClosesRoute } = await import("./get-daily-closes");
+const { polygonLookupRateLimiter, clearDailyClosesCache, peekDailyCloses } = await import("server");
 
 afterAll(restoreLeaves);
 
-const CSV = [
-  "Plan name:,EXAMPLE PLAN",
-  "Date,Investment,Transaction Type,Amount,Shares/Unit",
-  '03/02/2026,EXAMPLE INDEX FUND,Contributions,"1,000.00","20.000"',
-].join("\n");
+const ROW_ID = `plan-${"a".repeat(32)}`;
+
+const shareLeg = (id = ROW_ID, extra: Row = {}) => ({
+  transaction: {
+    investment_transaction_id: id,
+    account_id: "acct-1",
+    security_id: "sec-index",
+    date: "2026-03-02",
+    name: "Buy (contribution)",
+    amount: 1000,
+    quantity: 20,
+    price: 50,
+    iso_currency_code: "USD",
+    type: "buy",
+    subtype: "contribution",
+    source: "manual",
+    ...extra,
+  },
+});
+
+const cashLeg = (id = `${ROW_ID}-cash`) => ({
+  transaction: {
+    investment_transaction_id: id,
+    account_id: "acct-1",
+    security_id: null,
+    date: "2026-03-02",
+    name: "Contribution",
+    amount: -1000,
+    quantity: 0,
+    price: 0,
+    iso_currency_code: "USD",
+    type: "cash",
+    subtype: "contribution",
+    source: "manual",
+  },
+});
 
 const MAPPINGS = [{ investment: "EXAMPLE INDEX FUND", security_id: "sec-index", restated: false }];
+const HOLDINGS = [{ security_id: "sec-index", date: "2026-03-02", quantity: 2, cost_basis: 100, price: 50 }];
 
-const makeReq = (path: string, body: unknown, userId: string | null = "usr-1") =>
+const importBody = (extra: Record<string, unknown> = {}) => ({
+  account_id: "acct-1",
+  transactions: [shareLeg(), cashLeg()],
+  mappings: MAPPINGS,
+  holdings: HOLDINGS,
+  ...extra,
+});
+
+const makeReq = (method: string, path: string, body: unknown, query: Row = {}, userId: string | null = "usr-1") =>
   ({
-    method: "POST",
+    method,
     path,
     url: `http://x/api${path}`,
     body,
-    query: {},
+    query,
     headers: {},
     session: userId ? { user: { user_id: userId, username: "tester" } } : {},
   }) as never;
+
+const importStatement = (body: unknown, userId: string | null = "usr-1") =>
+  postPlanStatementImportRoute.callback(makeReq("POST", "/plan-statement/import", body, {}, userId), {} as never, () => {});
+
+const clientCalls = () =>
+  mockClientQuery.mock.calls.map(([sql, values]) => ({ sql: String(sql), values: (values ?? []) as unknown[] }));
 
 const writes = () =>
   [...mockQuery.mock.calls, ...mockClientQuery.mock.calls]
@@ -213,75 +222,150 @@ beforeEach(() => {
   db.provider = "manual";
   db.accountType = "investment";
   db.existingIds = [];
-  db.live = [];
-  db.snapshots = [];
-  db.holdings = [];
+  db.savedMappings = null;
+  db.snapshotIds = [];
   db.failHoldings = false;
 });
 
-describe("POST /plan-statement/preview", () => {
-  test("lists the rows it would write and writes nothing", async () => {
-    const res = await postPlanStatementPreviewRoute.callback(
-      makeReq("/plan-statement/preview", { account_id: "acct-1", csv: CSV, mappings: MAPPINGS }),
-      {} as never, () => {},
-    );
-    expect(res).toMatchObject({ status: "success" });
-    const body = (res as { body: { rows: { status: string }[]; blockers: string[] } }).body;
-    expect(body.rows.map((r) => r.status)).toEqual(["new"]);
-    expect(body.blockers).toEqual([]);
-    expect(writes()).toEqual([]);
+describe("POST /plan-statement/import", () => {
+  test("stores the planned rows, the mappings and the holdings row in one transaction", async () => {
+    const res = await importStatement(importBody());
+    expect(res).toMatchObject({ status: "success", body: { written: 2, alreadyImported: 0 } });
+
+    const calls = clientCalls();
+    const sql = calls.map((c) => c.sql);
+    expect(sql[0]).toBe("BEGIN");
+    expect(sql[sql.length - 1]).toBe("COMMIT");
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO investment_transactions"))!;
+    expect(insert.values).toContain(ROW_ID);
+    expect(insert.values).toContain(`${ROW_ID}-cash`);
+    // The rows are new, so the insert updates nothing on a conflict.
+    expect(insert.sql).toMatch(/ON CONFLICT \(investment_transaction_id\) DO NOTHING/);
+    const mapping = calls.find((c) => /^UPDATE accounts SET/.test(c.sql))!;
+    expect(JSON.stringify(mapping.values)).toContain('"EXAMPLE INDEX FUND":{"security_id":"sec-index","restated":false}');
+    const holding = calls.find((c) => c.sql.includes("INSERT INTO holdings"))!;
+    expect(holding.values).toEqual(expect.arrayContaining(["acct-1-sec-index", 2, 100, 50]));
   });
 
-  test("a soft-deleted row counts as already imported, so a removed row isn't brought back", async () => {
-    db.existingIds = getRowIds("acct-1", parsePlanStatement(CSV).rows);
-    const res = await postPlanStatementPreviewRoute.callback(
-      makeReq("/plan-statement/preview", { account_id: "acct-1", csv: CSV, mappings: MAPPINGS }),
-      {} as never, () => {},
-    );
-    const body = (res as { body: { rows: { status: string }[] } }).body;
-    expect(body.rows.map((r) => r.status)).toEqual(["imported"]);
+  test("a row already in the account, deleted ones included, is left as it is", async () => {
+    db.existingIds = [ROW_ID, `${ROW_ID}-cash`];
+    const res = await importStatement(importBody());
+    expect(res).toMatchObject({ status: "success", body: { written: 0, alreadyImported: 2 } });
+    expect(writes().some((sql) => sql.includes("INSERT INTO investment_transactions"))).toBe(false);
+  });
+
+  test("keeps the account's other saved mappings", async () => {
+    db.savedMappings = { "EXAMPLE BOND FUND": { security_id: "sec-bond", restated: true } };
+    await importStatement(importBody());
+    const mapping = clientCalls().find((c) => /^UPDATE accounts SET/.test(c.sql))!;
+    const saved = JSON.stringify(mapping.values);
+    expect(saved).toContain('"EXAMPLE BOND FUND":{"security_id":"sec-bond","restated":true}');
+    expect(saved).toContain('"EXAMPLE INDEX FUND":{"security_id":"sec-index","restated":false}');
+  });
+
+  test("replacing retires the security's entered positions", async () => {
+    db.snapshotIds = ["holding-acct-1-sec-index-20260102"];
+    await importStatement(importBody({ replace: ["sec-index"] }));
+    const retire = clientCalls().find((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql));
+    expect(retire?.values).toEqual(expect.arrayContaining(["holding-acct-1-sec-index-20260102", "usr-1"]));
+  });
+
+  test("without replace, entered positions are left alone", async () => {
+    db.snapshotIds = ["holding-acct-1-sec-index-20260102"];
+    await importStatement(importBody());
+    expect(writes().some((sql) => /UPDATE snapshots SET is_deleted/.test(sql))).toBe(false);
   });
 
   test("refuses an account that isn't a manual investment account", async () => {
     db.provider = "plaid";
-    const res = await postPlanStatementPreviewRoute.callback(
-      makeReq("/plan-statement/preview", { account_id: "acct-1", csv: CSV }),
-      {} as never, () => {},
-    );
-    expect(res).toMatchObject({ status: "failed" });
-    expect((res as { message: string }).message).toContain("manual investment account");
+    expect(await importStatement(importBody())).toMatchObject({ status: "failed" });
+    db.provider = "manual";
+    db.accountType = "depository";
+    expect(await importStatement(importBody())).toMatchObject({ status: "failed" });
+    expect(writes()).toEqual([]);
   });
 
   test.each([
-    [{ account_id: "acct-1" }, "csv"],
-    [{ account_id: "acct-1", csv: CSV, mappings: [{ investment: "X", security_id: "s", restated: "yes" }] }, "restated"],
-    [{ account_id: "acct-1", csv: CSV, decisions: { "plan-1": "sell everything" } }, "unknown decision"],
-  ])("rejects a malformed body %#", async (body, fragment) => {
-    const res = await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", body), {} as never, () => {});
-    expect(res).toMatchObject({ status: "failed" });
-    expect(JSON.stringify(res)).toContain(fragment);
+    ["an id that isn't a plan statement row's", [shareLeg("manual-123")]],
+    ["a row for another account", [shareLeg(ROW_ID, { account_id: "acct-2" })]],
+    ["a share row typed as cash", [shareLeg(ROW_ID, { type: "cash" })]],
+    ["a cash leg with a security", [{ transaction: { ...cashLeg().transaction, security_id: "sec-index" } }]],
+    ["a figure that isn't a number", [shareLeg(ROW_ID, { quantity: "20" })]],
+  ])("refuses %s and writes nothing", async (_, transactions) => {
+    expect(await importStatement(importBody({ transactions }))).toMatchObject({ status: "failed" });
+    expect(writes()).toEqual([]);
   });
 
-  test("a restated fund's price lookup is charged to the user's lookup budget once", async () => {
+  test("refuses a security that doesn't exist", async () => {
+    const res = await importStatement(importBody({ transactions: [shareLeg(ROW_ID, { security_id: "sec-gone" })] }));
+    expect(res).toMatchObject({ status: "failed", message: "Security sec-gone not found." });
+    expect(writes()).toEqual([]);
+  });
+
+  test.each([
+    { account_id: "acct-1" },
+    { account_id: "acct-1", transactions: "x", mappings: [], holdings: [] },
+    { account_id: "acct-1", transactions: [], mappings: [{ investment: "", security_id: "s", restated: false }], holdings: [] },
+    { account_id: "acct-1", transactions: [], mappings: [], holdings: [{ security_id: "s", date: "2026-03-02", quantity: 1 }] },
+    { account_id: "acct-1", transactions: [], mappings: [], holdings: [], replace: [1] },
+  ])("rejects a malformed body %#", async (body) => {
+    expect(await importStatement(body)).toMatchObject({ status: "failed" });
+    expect(writes()).toEqual([]);
+  });
+
+  test("a failing holdings write fails the import instead of committing", async () => {
+    db.failHoldings = true;
+    await expect(importStatement(importBody())).rejects.toThrow("deadlock detected");
+    const sql = clientCalls().map((c) => c.sql);
+    expect(sql).toContain("ROLLBACK");
+    expect(sql).not.toContain("COMMIT");
+  });
+
+  test("a long statement is inserted in chunks Postgres can bind", async () => {
+    const transactions = Array.from({ length: 2200 }, (_, i) => shareLeg(`plan-${i.toString(16).padStart(32, "0")}`));
+    const res = await importStatement(importBody({ transactions }));
+    expect(res).toMatchObject({ status: "success", body: { written: 2200 } });
+    const inserts = mockClientQuery.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO investment_transactions"));
+    expect(inserts).toHaveLength(3);
+    for (const [, values] of inserts) expect((values as unknown[]).length).toBeLessThan(65_535);
+  });
+
+  test("requires a signed-in user", async () => {
+    expect(await importStatement(importBody(), null)).toMatchObject({ status: "failed" });
+  });
+});
+
+describe("GET /daily-closes", () => {
+  const getCloses = (query: Row) =>
+    getDailyClosesRoute.callback(makeReq("GET", "/daily-closes", undefined, query), {} as never, () => {});
+  const RANGE = { ticker: "XIDX", from: "2026-02-20", to: "2026-03-02" };
+
+  test("rejects a bad ticker or range", async () => {
+    for (const query of [
+      { ...RANGE, ticker: "bad ticker!" },
+      { ...RANGE, from: "2026-02-30" },
+      { ...RANGE, from: "2026-03-05" },
+      { ticker: "XIDX", from: "2026-02-20" },
+    ]) {
+      expect(await getCloses(query)).toMatchObject({ status: "failed" });
+    }
+  });
+
+  test("a lookup is charged to the user's lookup budget once", async () => {
     process.env.POLYGON_API_KEY = "";
     clearDailyClosesCache();
     polygonLookupRateLimiter.reset("usr-1");
-    const body = {
-      account_id: "acct-1",
-      csv: CSV,
-      mappings: [{ investment: "EXAMPLE INDEX FUND", security_id: "sec-index", restated: true }],
-    };
     try {
-      const first = await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", body), {} as never, () => {});
+      const first = await getCloses(RANGE);
       expect(JSON.stringify(first)).toContain("Polygon API key not configured");
       expect(polygonLookupRateLimiter.remaining("usr-1")).toBe(9);
       // The failure is remembered, so asking again reaches no gate and costs nothing.
-      await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", body), {} as never, () => {});
+      await getCloses(RANGE);
       expect(polygonLookupRateLimiter.remaining("usr-1")).toBe(9);
 
       clearDailyClosesCache();
       polygonLookupRateLimiter.consume("usr-1", 9);
-      const shed = await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", body), {} as never, () => {});
+      const shed = await getCloses(RANGE);
       expect(JSON.stringify(shed)).toContain("Too many ticker lookups");
     } finally {
       restoreEnv();
@@ -290,7 +374,7 @@ describe("POST /plan-statement/preview", () => {
     }
   });
 
-  test("a restated fund whose prices are still queued comes back retryable and keeps loading in the background", async () => {
+  test("closes still queued come back retryable and keep loading in the background", async () => {
     process.env.POLYGON_API_KEY = "test-key";
     process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
     process.env.YAHOO_RATE_LIMIT_PER_MIN = "0";
@@ -309,15 +393,12 @@ describe("POST /plan-statement/preview", () => {
         : ({ ok: false, status: 429, json: async () => ({}) } as Response);
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    const body = {
-      account_id: "acct-1",
-      csv: CSV,
-      mappings: [{ investment: "EXAMPLE INDEX FUND", security_id: "sec-index", restated: true }],
-    };
     try {
-      const res = await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", body), {} as never, () => {});
-      const fund = (res as { body: { funds: { restatement?: { retryable?: boolean; message?: string } }[] } }).body.funds[0];
-      expect(fund.restatement).toMatchObject({ retryable: true, message: "Prices for XIDX are still loading. Retry in a minute." });
+      const res = await getCloses(RANGE);
+      expect(res).toMatchObject({
+        status: "success",
+        body: { retryable: true, message: "Prices for XIDX are still loading. Retry in a minute." },
+      });
       expect(peekDailyCloses("XIDX", "2026-02-20", "2026-03-02")).toBe("loading");
       release();
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -331,289 +412,11 @@ describe("POST /plan-statement/preview", () => {
   });
 
   test("requires a signed-in user", async () => {
-    const res = await postPlanStatementPreviewRoute.callback(
-      makeReq("/plan-statement/preview", { account_id: "acct-1", csv: CSV }, null),
-      {} as never, () => {},
+    const res = await getDailyClosesRoute.callback(
+      makeReq("GET", "/daily-closes", undefined, RANGE, null),
+      {} as never,
+      () => {},
     );
     expect(res).toMatchObject({ status: "failed" });
-  });
-});
-
-describe("POST /plan-statement/import", () => {
-  test("inserts the new rows without overwriting any, and saves the mapping, in one transaction", async () => {
-    const res = await postPlanStatementImportRoute.callback(
-      makeReq("/plan-statement/import", { account_id: "acct-1", csv: CSV, mappings: MAPPINGS }),
-      {} as never, () => {},
-    );
-    expect(res).toMatchObject({ status: "success", body: { written: 2, alreadyImported: 0 } });
-
-    const clientSql = mockClientQuery.mock.calls.map(([sql]) => String(sql));
-    expect(clientSql[0]).toBe("BEGIN");
-    expect(clientSql.at(-1)).toBe("COMMIT");
-    const insert = clientSql.find((sql) => sql.includes("INSERT INTO investment_transactions"))!;
-    expect(insert).toContain("ON CONFLICT (investment_transaction_id) DO NOTHING");
-    const mapping = clientSql.find((sql) => sql.includes("INSERT INTO plan_fund_mappings"))!;
-    expect(updateColumnsOf(mapping).sort()).toEqual(["is_deleted", "restated", "security_id", "updated"]);
-  });
-
-  const importBody = (extra: Record<string, unknown> = {}) => ({ account_id: "acct-1", csv: CSV, mappings: MAPPINGS, ...extra });
-  const clientCalls = () =>
-    mockClientQuery.mock.calls.map(([sql, values]) => ({ sql: String(sql), values: (values ?? []) as unknown[] }));
-
-  test("rewrites the holding from every live row, read and written inside the same transaction", async () => {
-    db.live = [liveRow("hand-entered", "2026-02-10", 4, 200), liveRow("plan-x", "2026-03-02", 20, 1000)];
-    const res = await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
-    expect(res).toMatchObject({ status: "success" });
-
-    const calls = clientCalls();
-    const commit = calls.findIndex((c) => c.sql === "COMMIT");
-    // Locked on the transaction in one order: transactions, snapshots by date and id, holdings.
-    const reads = [
-      /FROM investment_transactions\b.*\bsecurity_id IN.*ORDER BY investment_transaction_id FOR UPDATE$/is,
-      /FROM snapshots\b.*ORDER BY snapshot_date, snapshot_id FOR UPDATE$/is,
-      /FROM holdings\b.*ORDER BY holding_id FOR UPDATE$/is,
-    ].map((read) => calls.findIndex((c) => read.test(c.sql)));
-    expect(reads.every((at) => at > 0 && at < commit)).toBe(true);
-    expect(reads).toEqual([...reads].sort((a, b) => a - b));
-    const snapshotInserts = calls.filter((c) => c.sql.includes("INSERT INTO snapshots"));
-    expect(snapshotInserts).toHaveLength(1);
-    const values = snapshotInserts[0].values;
-    expect(values.some((v) => typeof v === "string" && /^derived-holding-acct-1-sec-index-20260210-[0-9a-f]{12}$/.test(v))).toBe(true);
-    expect(values).toContain("2026-02-10T12:00:00Z");
-    expect(values).toContain("2026-03-02T12:00:00Z");
-    // The hand-entered February buy counts toward March's position.
-    expect(values).toContain(24);
-
-    // Snapshots first, then the holdings row: the order account deletion takes them in.
-    const holding = calls.findIndex((c) => c.sql.includes("INSERT INTO holdings"));
-    expect(holding).toBeGreaterThan(calls.indexOf(snapshotInserts[0]));
-    expect(holding).toBeLessThan(commit);
-    expect(calls[holding].values).toContain(24);
-    expect(mockQuery.mock.calls.some(([sql]) => /INSERT INTO (snapshots|holdings)/.test(String(sql)))).toBe(false);
-  });
-
-  test("an entered position the transactions don't explain is disclosed and kept by default", async () => {
-    db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
-    db.snapshots = [enteredSnapshot("2026-01-15", 100)];
-
-    const preview = await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", importBody()), {} as never, () => {});
-    const fund = (preview as { body: { funds: { positionGaps?: unknown; replacePositions?: boolean }[] } }).body.funds[0];
-    expect(fund.positionGaps).toEqual([{ date: "2026-01-15", stored: 100, explained: 0 }]);
-    expect(fund.replacePositions).toBe(false);
-
-    clearQueryMocks();
-    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
-    const calls = clientCalls();
-    const snapshotValues = calls.find((c) => c.sql.includes("INSERT INTO snapshots"))!.values;
-    expect(snapshotValues).not.toContain("holding-acct-1-sec-index-20260115");
-    expect(snapshotValues).toContain(120);
-    expect(calls.find((c) => c.sql.includes("INSERT INTO holdings"))!.values).toContain(120);
-  });
-
-  test("replacing retires the entered position and uses the transactions' figures", async () => {
-    db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
-    db.snapshots = [enteredSnapshot("2026-01-15", 100)];
-    await postPlanStatementImportRoute.callback(
-      makeReq("/plan-statement/import", importBody({ replacePositions: ["EXAMPLE INDEX FUND"] })),
-      {} as never, () => {},
-    );
-    const calls = clientCalls();
-    const retire = calls.find((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql));
-    expect(retire?.values).toContain("holding-acct-1-sec-index-20260115");
-    expect(calls.find((c) => c.sql.includes("INSERT INTO snapshots"))!.values).not.toContain(120);
-    expect(calls.find((c) => c.sql.includes("INSERT INTO holdings"))!.values).toContain(20);
-  });
-
-  test("an entered position the statement's own rows explain isn't a gap", async () => {
-    db.snapshots = [enteredSnapshot("2026-03-02", 20)];
-    const preview = await postPlanStatementPreviewRoute.callback(makeReq("/plan-statement/preview", importBody()), {} as never, () => {});
-    const fund = (preview as { body: { funds: { positionGaps?: unknown }[] } }).body.funds[0];
-    expect(fund.positionGaps).toBeUndefined();
-  });
-
-  test("retires a derived snapshot whose day no longer gets one", async () => {
-    db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
-    const old = planHoldingPositions({
-      account_id: "acct-1",
-      security_id: "sec-index",
-      movements: [{ date: "2026-02-20", type: "buy", quantity: 5, amount: 250, price: 50 } as never],
-      stored: [],
-      throughMonth: "2026-02",
-      replace: false,
-    }).writes[0];
-    db.snapshots = [{ id: old.snapshot_id, date: "2026-02-20", quantity: 5, price: 50, cost: 250, value: 250 }];
-    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
-    const calls = clientCalls();
-    const retire = calls.findIndex((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql));
-    expect(retire).toBeGreaterThan(0);
-    expect(calls[retire].values).toContain(old.snapshot_id);
-    expect(retire).toBeLessThan(calls.findIndex((c) => c.sql === "COMMIT"));
-  });
-
-  test("writes nothing for a holding whose snapshots and row are already right", async () => {
-    db.live = [liveRow("plan-x", "2026-03-02", 20, 500)];
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    const expected = planHoldingPositions({
-      account_id: "acct-1",
-      security_id: "sec-index",
-      movements: [{ date: "2026-03-02", type: "buy", quantity: 20, amount: 500, price: 25 } as never],
-      stored: [],
-      throughMonth: thisMonth,
-      replace: false,
-    });
-    db.snapshots = expected.writes.map((w) => ({
-      id: w.snapshot_id,
-      date: w.snapshot_date.slice(0, 10),
-      quantity: w.quantity!,
-      price: w.institution_price!,
-      cost: w.cost_basis!,
-      value: w.institution_value!,
-    }));
-    db.holdings = [
-      {
-        holding_id: "acct-1-sec-index",
-        user_id: "usr-1",
-        account_id: "acct-1",
-        security_id: "sec-index",
-        institution_price: 25,
-        institution_price_as_of: expected.final!.date,
-        institution_value: 500,
-        cost_basis: 500,
-        quantity: 20,
-        iso_currency_code: null,
-        raw: null,
-        updated: null,
-        is_deleted: false,
-      },
-    ];
-    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
-    expect(writes().some((sql) => /INSERT INTO (snapshots|holdings)|UPDATE snapshots SET is_deleted/.test(sql))).toBe(false);
-  });
-
-  test("takes the account's holding-positions lock before inserting anything", async () => {
-    db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
-    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
-    const sql = clientCalls().map((c) => c.sql);
-    expect(sql[0]).toBe("BEGIN");
-    expect(sql[1]).toContain("pg_advisory_xact_lock(hashtext($1 || ':' || $2 || ':holdings'))");
-    expect(clientCalls()[1].values).toEqual(["usr-1", "acct-1"]);
-    // The engine takes it again before its own reads; it's re-entrant within a transaction.
-    const firstRead = sql.findIndex((q) => /FROM investment_transactions\b.*FOR UPDATE$/is.test(q));
-    expect(sql.slice(2, firstRead).some((q) => q.includes("pg_advisory_xact_lock"))).toBe(true);
-    expect(sql.findIndex((q) => q.includes("INSERT INTO investment_transactions"))).toBeGreaterThan(1);
-  });
-
-  test("replacing a fund with no movements zeroes its holdings row", async () => {
-    db.snapshots = [enteredSnapshot("2026-01-15", 100)];
-    db.holdings = [
-      {
-        holding_id: "acct-1-sec-index",
-        user_id: "usr-1",
-        account_id: "acct-1",
-        security_id: "sec-index",
-        institution_price: 25,
-        institution_price_as_of: "2026-01-15",
-        institution_value: 250,
-        cost_basis: 250,
-        quantity: 100,
-        iso_currency_code: null,
-        raw: null,
-        updated: null,
-        is_deleted: false,
-      },
-    ];
-    const skippedOnly = [
-      "Date,Investment,Transaction Type,Amount,Shares/Unit",
-      "03/02/2026,EXAMPLE INDEX FUND,Change in Market Value,3.10,0",
-    ].join("\n");
-    const res = await postPlanStatementImportRoute.callback(
-      makeReq("/plan-statement/import", { ...importBody({ replacePositions: ["EXAMPLE INDEX FUND"] }), csv: skippedOnly }),
-      {} as never, () => {},
-    );
-    expect(res).toMatchObject({ status: "success", body: { written: 0 } });
-    const calls = clientCalls();
-    expect(calls.find((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql))?.values).toContain(
-      "holding-acct-1-sec-index-20260115",
-    );
-    const holding = calls.find((c) => c.sql.includes("INSERT INTO holdings"));
-    expect(holding).toBeDefined();
-    expect(holding!.values).toContain(0);
-    expect(holding!.values).not.toContain(100);
-  });
-
-  test("a holdings row with an unknown cost is rewritten once the cost is known", async () => {
-    db.live = [liveRow("plan-x", "2026-03-02", 20, 500)];
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    const expected = planHoldingPositions({
-      account_id: "acct-1",
-      security_id: "sec-index",
-      movements: [{ date: "2026-03-02", type: "buy", quantity: 20, amount: 500, price: 25 } as never],
-      stored: [],
-      throughMonth: thisMonth,
-      replace: false,
-    });
-    db.snapshots = expected.writes.map((w) => ({
-      id: w.snapshot_id,
-      date: w.snapshot_date.slice(0, 10),
-      quantity: w.quantity!,
-      price: w.institution_price!,
-      cost: w.cost_basis!,
-      value: w.institution_value!,
-    }));
-    db.holdings = [
-      {
-        holding_id: "acct-1-sec-index",
-        user_id: "usr-1",
-        account_id: "acct-1",
-        security_id: "sec-index",
-        institution_price: 25,
-        institution_price_as_of: expected.final!.date,
-        institution_value: 500,
-        cost_basis: null,
-        quantity: 20,
-        iso_currency_code: null,
-        raw: null,
-        updated: null,
-        is_deleted: false,
-      },
-    ];
-    await postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {});
-    const holding = clientCalls().find((c) => c.sql.includes("INSERT INTO holdings"));
-    expect(holding).toBeDefined();
-    expect(holding!.values).toContain(500);
-  });
-
-  test("a failing holdings write fails the import instead of committing", async () => {
-    db.live = [liveRow("plan-x", "2026-03-02", 20, 1000)];
-    db.failHoldings = true;
-    await expect(
-      postPlanStatementImportRoute.callback(makeReq("/plan-statement/import", importBody()), {} as never, () => {}),
-    ).rejects.toThrow("deadlock detected");
-    const sql = clientCalls().map((c) => c.sql);
-    expect(sql).toContain("ROLLBACK");
-    expect(sql).not.toContain("COMMIT");
-  });
-
-  test("a long statement is inserted in chunks Postgres can bind", async () => {
-    const lines = ["Date,Investment,Transaction Type,Amount,Shares/Unit"];
-    for (let i = 0; i < 1100; i++) lines.push(`03/02/2026,EXAMPLE INDEX FUND,Contributions,${100 + i},2`);
-    const res = await postPlanStatementImportRoute.callback(
-      makeReq("/plan-statement/import", { account_id: "acct-1", csv: lines.join("\n"), mappings: MAPPINGS }),
-      {} as never, () => {},
-    );
-    expect(res).toMatchObject({ status: "success", body: { written: 2200 } });
-    const inserts = mockClientQuery.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO investment_transactions"));
-    expect(inserts).toHaveLength(3);
-    for (const [, values] of inserts) expect((values as unknown[]).length).toBeLessThan(65_535);
-  });
-
-  test("an import with a blocker writes nothing", async () => {
-    const res = await postPlanStatementImportRoute.callback(
-      makeReq("/plan-statement/import", { account_id: "acct-1", csv: CSV }),
-      {} as never, () => {},
-    );
-    expect(res).toMatchObject({ status: "failed" });
-    expect((res as { message: string }).message).toContain("Map EXAMPLE INDEX FUND to a security");
-    expect(writes()).toEqual([]);
   });
 });

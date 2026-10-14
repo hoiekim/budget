@@ -4,7 +4,14 @@ import {
   AccountBaseVerificationStatusEnum,
   AccountBalance,
 } from "plaid";
-import { getRandomId, assign, JSONAccount, AccountLabel, AccountGraphOptions } from "common";
+import {
+  getRandomId,
+  assign,
+  JSONAccount,
+  AccountLabel,
+  AccountGraphOptions,
+  PlanFundMapping,
+} from "common";
 
 export class Account implements JSONAccount {
   get id() {
@@ -58,6 +65,8 @@ export class Account implements JSONAccount {
     useHoldingSnapshots: true,
     useTransactions: true,
   };
+  /** How each fund in this account's plan statements maps to a security. */
+  plan_fund_mappings?: PlanFundMapping[];
 
   constructor(init?: Partial<Account>) {
     assign(this, init);

@@ -56,8 +56,9 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
   const accountIds = accounts.map((a) => a.account_id);
   // Stable string key for memo deps so array identity doesn't matter.
   const accountIdsKey = accountIds.slice().sort().join(",");
-  const { data, setData, viewDate } = useAppContext();
-  const { investmentTransactions, holdingSnapshots, securitySnapshots } = data;
+  const { data, setData, viewDate, calculations } = useAppContext();
+  const { investmentTransactions, securitySnapshots } = data;
+  const { holdingSnapshots } = calculations;
 
   const [windowKey, setWindowKey] = useState<WindowKey>("1Y");
   const [displayMode, setDisplayMode] = useState<"pct" | "dollar">("pct");

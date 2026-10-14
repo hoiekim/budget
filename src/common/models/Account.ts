@@ -91,6 +91,20 @@ export interface JSONAccount extends PlaidAccount {
    * Graph display preferences for the account.
    */
   graphOptions: AccountGraphOptions;
+  /** How each fund in this account's plan statements maps to a security. */
+  plan_fund_mappings?: PlanFundMapping[];
+}
+
+export interface PlanFundMapping {
+  /** The fund name exactly as the plan statement's `Investment` column spells it. */
+  investment: string;
+  security_id: string;
+  /**
+   * The plan holds a collective-trust version of this security's public fund,
+   * so its rows are written as the public fund's shares rather than the trust's
+   * units.
+   */
+  restated: boolean;
 }
 
 /**

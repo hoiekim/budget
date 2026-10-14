@@ -1,9 +1,16 @@
-import { createHash } from "crypto";
 import { InvestmentTransactionSubtype, InvestmentTransactionType } from "plaid";
-import { JSONInvestmentTransaction } from "common";
-import type { DailyClose } from "../daily-closes";
+import type { JSONInvestmentTransaction } from "../models";
 import type { PositionGap } from "../holding-positions";
+import { hash128 } from "../utils/hash";
+import { PLAN_STATEMENT_ID_PREFIX } from "../constants";
 import type { StatementRow } from "./parse";
+
+export interface DailyClose {
+  /** YYYY-MM-DD, the trading day the bar belongs to. */
+  date: string;
+  close: number;
+  adjustedClose: number;
+}
 
 export type ImportKind =
   | "contribution"
@@ -152,12 +159,14 @@ export const getRowIds = (account_id: string, rows: StatementRow[]): string[] =>
     ].join("\0");
     const occurrence = seen.get(fingerprint) ?? 0;
     seen.set(fingerprint, occurrence + 1);
-    const hash = createHash("sha256").update(`${fingerprint}\0${occurrence}`).digest("hex");
-    return `plan-${hash.slice(0, 32)}`;
+    return `${PLAN_STATEMENT_ID_PREFIX}${hash128(`${fingerprint}\0${occurrence}`)}`;
   });
 };
 
 export const getCashLegId = (id: string) => `${id}-cash`;
+
+/** A planned row's id: a share movement's, or its cash leg's. */
+export const PLAN_STATEMENT_ID_PATTERN = /^plan-[0-9a-f]{32}(-cash)?$/;
 
 /** A statement date can fall on a weekend or market holiday. */
 const MAX_CLOSE_LOOKBACK_DAYS = 7;

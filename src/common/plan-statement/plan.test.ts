@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { DailyClose } from "../daily-closes";
+import type { DailyClose } from "./plan";
 import type { StatementRow } from "./parse";
 import {
   buildImportPlan,

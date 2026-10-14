@@ -6,18 +6,13 @@
  * the fallback for symbols Polygon has no bars for, chiefly mutual funds.
  */
 
-import { JSONSecurity, QueueWaitTimeoutError } from "common";
+import { DailyClose, JSONSecurity, QueueWaitTimeoutError } from "common";
 import { logger } from "./logger";
 import * as polygon from "./polygon";
 import type { PolygonResult } from "./polygon";
 import * as yahoo from "./yahoo";
 
-export interface DailyClose {
-  /** YYYY-MM-DD, the trading day the bar belongs to. */
-  date: string;
-  close: number;
-  adjustedClose: number;
-}
+export type { DailyClose };
 
 export interface Dividend {
   /** YYYY-MM-DD */
