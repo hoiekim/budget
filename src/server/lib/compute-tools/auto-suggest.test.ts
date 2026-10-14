@@ -154,10 +154,13 @@ describe("runAutoSuggestions", () => {
     unlabeledByUser.set("user-1", [txRow({ transaction_id: "txn-1", user_id: "user-1", merchant_name: "Coffee Shop" })]);
     await runAutoSuggestions();
     const signalSql = String(mockQuery.mock.calls.find((c) => isSignalSql(c[0] as string))?.[0]).replace(/\s+/g, " ");
+    // Anchored on what follows each join, so a clause appended after the scope can't widen it.
     expect(signalSql).toContain(
-      "JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1",
+      "JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1 JOIN sections",
     );
-    expect(signalSql).toContain("JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1");
+    expect(signalSql).toContain(
+      "JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1 LIMIT 1",
+    );
   });
 
   test("skips when count_matched < 3 (sample-size floor)", async () => {

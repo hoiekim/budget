@@ -161,8 +161,11 @@ describe("runTransferDetection", () => {
     const candidateSql = String(
       [...mockQuery.mock.calls, ...mockClientQuery.mock.calls].find((c) => /JOIN\s+transactions\s+t2/i.test(String(c[0])))?.[0],
     ).replace(/\s+/g, " ");
-    expect(candidateSql).toContain("JOIN accounts a1 ON a1.account_id = t1.account_id AND a1.user_id = t1.user_id");
-    expect(candidateSql).toContain("JOIN accounts a2 ON a2.account_id = t2.account_id AND a2.user_id = t2.user_id");
+    // Anchored on what follows each join, so a clause appended after the scope can't widen it.
+    expect(candidateSql).toContain(
+      "JOIN accounts a1 ON a1.account_id = t1.account_id AND a1.user_id = t1.user_id JOIN accounts a2",
+    );
+    expect(candidateSql).toContain("JOIN accounts a2 ON a2.account_id = t2.account_id AND a2.user_id = t2.user_id WHERE");
   });
 
   test("prevents a single transaction from being paired twice in one run", async () => {
