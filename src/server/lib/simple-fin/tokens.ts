@@ -38,22 +38,24 @@ const BLOCKED_HOSTNAMES = new Set([
 ]);
 
 /**
- * Validate that a decoded SimpleFin setup URL is safe to fetch.
+ * Validate that a SimpleFin URL — the setup URL a token decodes to, or the
+ * access URL the claim returns — is safe to fetch.
  * Prevents SSRF by rejecting non-HTTPS URLs and private/internal destinations.
  *
+ * @param label Names the URL in the error: "setup token" or "access URL".
  * @throws {Error} if the URL is invalid or targets a private/internal host
  */
-const validateSetupUrl = (rawUrl: string): URL => {
+export const validateSimpleFinUrl = (rawUrl: string, label: string): URL => {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
   } catch {
-    throw new Error("Invalid SimpleFin setup token: URL is malformed");
+    throw new Error(`Invalid SimpleFin ${label}: URL is malformed`);
   }
 
   if (parsed.protocol !== "https:") {
     throw new Error(
-      `Invalid SimpleFin setup token: URL must use HTTPS (got ${parsed.protocol})`
+      `Invalid SimpleFin ${label}: URL must use HTTPS (got ${parsed.protocol})`
     );
   }
 
@@ -61,7 +63,7 @@ const validateSetupUrl = (rawUrl: string): URL => {
 
   if (BLOCKED_HOSTNAMES.has(hostname)) {
     throw new Error(
-      `Invalid SimpleFin setup token: hostname '${hostname}' is not allowed`
+      `Invalid SimpleFin ${label}: hostname '${hostname}' is not allowed`
     );
   }
 
@@ -69,7 +71,7 @@ const validateSetupUrl = (rawUrl: string): URL => {
   for (const pattern of PRIVATE_IP_PATTERNS) {
     if (pattern.test(hostname)) {
       throw new Error(
-        `Invalid SimpleFin setup token: IP address '${hostname}' is in a private/reserved range`
+        `Invalid SimpleFin ${label}: IP address '${hostname}' is in a private/reserved range`
       );
     }
   }
@@ -77,11 +79,22 @@ const validateSetupUrl = (rawUrl: string): URL => {
   return parsed;
 };
 
+/**
+ * Claims the access URL a setup token points to. A redirect is refused rather
+ * than followed, since its target would skip the allowlist; a refused claim's
+ * body (such as "Forbidden") is returned for the caller to report.
+ */
 export const exchangeSetupToken = async (setupToken: SetupToken): Promise<AccessUrl> => {
   const rawUrl = Buffer.from(setupToken, "base64").toString();
-  const setupUrl = validateSetupUrl(rawUrl); // throws on invalid/private URL
-  const response = await fetch(setupUrl.toString(), { method: "POST", headers: { "Content-Length": "0" } });
-  return await response.text();
+  const setupUrl = validateSimpleFinUrl(rawUrl, "setup token");
+  const response = await fetch(setupUrl.toString(), {
+    method: "POST",
+    headers: { "Content-Length": "0" },
+    redirect: "error",
+  });
+  const body = await response.text();
+  if (response.ok) validateSimpleFinUrl(body, "access URL");
+  return body;
 };
 
 interface SimpleFinCredentials {
@@ -90,6 +103,7 @@ interface SimpleFinCredentials {
 }
 
 export const decodeAccessUrl = (accessUrl: AccessUrl): SimpleFinCredentials => {
+  validateSimpleFinUrl(accessUrl, "access URL");
   const [scheme, rest] = accessUrl.split("://");
   const [auth, rest2] = rest.split("@");
   const url = `${scheme}://${rest2}`;
