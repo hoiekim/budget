@@ -1436,6 +1436,26 @@ describe("buildBenchmarkPriceAt", () => {
     const priceAt = buildBenchmarkPriceAt(ss, [], "VOO");
     expect(["2026-11-15", "2026-12-01", "2026-12-15"].map((date) => priceAt(date))).toEqual([280, 310, 312]);
   });
+  test("each date takes the close dated nearest it, from either source", () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("monthly", mkSecuritySnap(VOO, 553.33, "2025-01-31", "VOO"));
+    ss.set("same-day", mkSecuritySnap(VOO, 560, "2025-03-03", "VOO"));
+    ss.set("after-history", mkSecuritySnap(VOO, 715.2, "2026-10-20", "VOO"));
+    const csv: PriceRow[] = [
+      { date: "2025-01-30", close: 551 },
+      { date: "2025-02-26", close: 546.75 },
+      { date: "2025-03-03", close: 559 },
+      { date: "2026-10-13", close: 710 },
+    ];
+    const priceAt = buildBenchmarkPriceAt(ss, csv, "VOO");
+    expect(["2025-01-31", "2025-02-26", "2025-03-03", "2026-10-21", "2026-10-15"].map((date) => priceAt(date))).toEqual([
+      553.33, // the snapshot is a day nearer than the history's row
+      546.75, // the history's close on the day beats a snapshot weeks older
+      560, // a tie goes to the snapshot
+      715.2, // past the history's end
+      710, // the history's last close is nearer than any snapshot
+    ]);
+  });
   test("no snapshot for ticker → CSV only", () => {
     const ss = new SecuritySnapshotDictionary();
     const csv: PriceRow[] = [{ date: "2024-01-01", close: 100 }];

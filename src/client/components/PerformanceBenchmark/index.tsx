@@ -170,7 +170,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     // asset-side flows + valuations as the MWR (see computeTWR).
     const twr = computeTWR({ flows, valueAt: valueAtAll, windowStart, windowEnd });
 
-    // Benchmark TWR fallback chain: security_snapshots → static CSV.
+    // Benchmark TWR from security_snapshots and the static CSV, whichever close is dated nearer.
     const benchmarkPriceAt = buildBenchmarkPriceAt(securitySnapshots, vooHistory, BENCHMARK_TICKER);
     let benchmark: ReturnType<typeof computeBenchmarkTWR> | null = null;
     const benchPriceStart = benchmarkPriceAt(windowStart);
