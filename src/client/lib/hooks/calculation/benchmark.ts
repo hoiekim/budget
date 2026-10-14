@@ -1,5 +1,6 @@
 import { InvestmentTransactionType } from "plaid";
 import { InvestmentTransactionDictionary, HoldingSnapshotDictionary, SecuritySnapshotDictionary } from "../../models/Data";
+import { BENCHMARK_TICKER } from "common/constants";
 
 /**
  * Investment-performance benchmarking math — money-weighted return (IRR) of
@@ -743,9 +744,7 @@ export const earliestDataDate = (params: {
  * **Why both sources:**
  *   - `price_at_windowEnd` needs the **exact date** market price.
  *     security_snapshots give that for any date Plaid has synced (≈
- *     last year), and the resolve-security-snapshot endpoint backfills
- *     anything older via Polygon (results land in snapshots → fed
- *     here on the next render).
+ *     last year) or the hourly price refresh has written.
  *   - `investment_transactions` cover historical dates Plaid's
  *     snapshot history doesn't reach (the user transacted before they
  *     hooked up the integration). Each buy/sell's per-share execution
@@ -869,8 +868,8 @@ export const buildPriceAt = (
 
 /**
  * Snapshot-only price lookup for the benchmark side. Returns null when
- * no snapshot ≤ date exists — caller is expected to chain to a Polygon
- * resolve and/or a static CSV fallback. (Distinct from `buildPriceAt`,
+ * no snapshot ≤ date exists — caller is expected to chain to the static
+ * CSV fallback. (Distinct from `buildPriceAt`,
  * which is txn-only and serves the user's MWR.)
  */
 export const buildSnapshotPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
@@ -899,8 +898,7 @@ export const buildSnapshotPriceAt = (securitySnapshots: SecuritySnapshotDictiona
 /**
  * Find the security_id for a benchmark ticker (e.g. VOO) from the user's
  * security_snapshots. Returns null if the ticker has no security row.
- * Used to route resolve-snapshot calls and snapshot lookups to the
- * correct security_id.
+ * Used to route snapshot lookups to the correct security_id.
  */
 export const findBenchmarkSecurityId = (
   securitySnapshots: SecuritySnapshotDictionary,
@@ -947,8 +945,8 @@ export const priceAtIn = (history: PriceRow[], date: string): number | null => {
 
 /**
  * Benchmark price lookup with the standard fallback chain:
- * `security_snapshots` (Plaid daily close, including Polygon-resolved
- * backfills) first, static CSV history (`vooHistory`) for the long
+ * `security_snapshots` (provider daily closes, and the hourly refresh,
+ * which always includes the benchmark) first, static CSV history (`vooHistory`) for the long
  * historical tail. Returns null when neither source has a price ≤ date.
  *
  * Shared by `PerformanceBenchmark` (window TWR) and the Holdings
@@ -957,7 +955,7 @@ export const priceAtIn = (history: PriceRow[], date: string): number | null => {
 export const buildBenchmarkPriceAt = (
   securitySnapshots: SecuritySnapshotDictionary,
   vooHistory: PriceRow[] | null,
-  ticker = "VOO",
+  ticker = BENCHMARK_TICKER,
 ) => {
   const benchmarkSecurityId = findBenchmarkSecurityId(securitySnapshots, ticker);
   const snapPriceAt = buildSnapshotPriceAt(securitySnapshots);

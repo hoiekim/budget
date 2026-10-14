@@ -31,7 +31,7 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
-const { refreshActiveSecuritySnapshots } = await import("./refresh-security-snapshots");
+const { refreshActiveSecuritySnapshots, BENCHMARK_SECURITY_ID } = await import("./refresh-security-snapshots");
 
 afterAll(restoreLeaves);
 
@@ -40,16 +40,37 @@ afterAll(restoreLeaves);
 //   - securitiesRows → per-id securities row (one queryOne per id in searchSecuritiesById)
 //   - recentBySecurity → cadence-gate set; security_ids in the set are
 //     treated as having a snapshot whose `updated` is within the window.
+//     It starts with the benchmark's own row, so a test that isn't about
+//     the benchmark sees it as fresh and makes no call for it.
 let holdingsRows: Array<{ security_id: string }> = [];
 let securitiesRows: Array<Record<string, unknown>> = [];
 let recentBySecurity = new Set<string>();
 const upsertCalls: Array<{ sql: string; values: unknown[] }> = [];
+const securityInserts: Array<Record<string, unknown>> = [];
 
 const queryRouter = async (sql: string, values?: unknown[]) => {
   const params = (values ?? []) as unknown[];
 
   if (/SELECT\s+DISTINCT\s+security_id\s+FROM\s+holdings/i.test(sql)) {
     return { rows: holdingsRows, rowCount: holdingsRows.length };
+  }
+
+  if (/SELECT\s+\*\s+FROM\s+securities\s+WHERE\s+ticker_symbol/i.test(sql)) {
+    const rows = securitiesRows.filter((r) => r.ticker_symbol === params[0]);
+    return { rows, rowCount: rows.length };
+  }
+
+  if (/INSERT\s+INTO\s+securities/i.test(sql)) {
+    // `updated` is CURRENT_TIMESTAMP, not a parameter.
+    const columns = /\(([^)]*)\)\s*VALUES/i
+      .exec(sql)![1]
+      .split(",")
+      .map((c) => c.trim())
+      .filter((c) => c !== "updated");
+    const row = Object.fromEntries(columns.map((c, i) => [c, params[i]]));
+    securityInserts.push(row);
+    securitiesRows = [...securitiesRows, securityRow(row)];
+    return { rows: [row], rowCount: 1 };
   }
 
   if (/SELECT\s+\*\s+FROM\s+securities/i.test(sql)) {
@@ -92,8 +113,9 @@ beforeEach(() => {
   );
   holdingsRows = [];
   securitiesRows = [];
-  recentBySecurity = new Set();
+  recentBySecurity = new Set([BENCHMARK_SECURITY_ID]);
   upsertCalls.length = 0;
+  securityInserts.length = 0;
 });
 
 const securityRow = (overrides: Record<string, unknown> = {}) => ({
@@ -125,9 +147,9 @@ const securityRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("refreshActiveSecuritySnapshots", () => {
-  test("no holdings → no polygon calls, all counters 0", async () => {
+  test("no holdings → no polygon calls; only the benchmark is looked at", async () => {
     const r = await refreshActiveSecuritySnapshots();
-    expect(r).toEqual({ refreshed: 0, fresh: 0, cash: 0, empty: 0, errors: 0 });
+    expect(r).toEqual({ refreshed: 0, fresh: 1, cash: 0, empty: 0, errors: 0 });
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -139,7 +161,8 @@ describe("refreshActiveSecuritySnapshots", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(upsertCalls).toHaveLength(1);
     expect(r.refreshed).toBe(1);
-    expect(r.fresh).toBe(0);
+    // The benchmark.
+    expect(r.fresh).toBe(1);
     expect(r.cash).toBe(0);
     // The upserted row's snapshot_id derives from polygon's returned
     // tradingDate (Date.UTC(2026, 5, 10) → 2026-06-10 → 20260610),
@@ -284,7 +307,7 @@ describe("refreshActiveSecuritySnapshots", () => {
     securitiesRows = [securityRow({ security_id: "sec-no-ticker", ticker_symbol: null })];
     const r = await refreshActiveSecuritySnapshots();
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(r).toEqual({ refreshed: 0, fresh: 0, cash: 0, empty: 0, errors: 0 });
+    expect(r).toEqual({ refreshed: 0, fresh: 1, cash: 0, empty: 0, errors: 0 });
   });
 
   test("cadence gate is per-security: skipping sec-a does not skip sec-b", async () => {
@@ -296,8 +319,53 @@ describe("refreshActiveSecuritySnapshots", () => {
     recentBySecurity.add("sec-a");
 
     const r = await refreshActiveSecuritySnapshots();
-    expect(r.fresh).toBe(1);
+    // sec-a and the benchmark.
+    expect(r.fresh).toBe(2);
     expect(r.refreshed).toBe(1);
     expect(upsertCalls).toHaveLength(1);
+  });
+  test("the benchmark is refreshed though no one holds it, on a security row written for it", async () => {
+    recentBySecurity = new Set();
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(securityInserts).toEqual([
+      expect.objectContaining({ security_id: BENCHMARK_SECURITY_ID, ticker_symbol: "VOO", type: "etf" }),
+    ]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).toContain("/v2/aggs/ticker/VOO/");
+    expect(upsertCalls.some((c) => c.values.some((v) => String(v) === `${BENCHMARK_SECURITY_ID}-20260610`))).toBe(true);
+    expect(r).toEqual({ refreshed: 1, fresh: 0, cash: 0, empty: 0, errors: 0 });
+  });
+
+  test("an existing row for the benchmark's ticker is used, not a new one", async () => {
+    recentBySecurity = new Set();
+    securitiesRows = [securityRow({ security_id: "provider-voo", ticker_symbol: "VOO", type: "etf" })];
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(securityInserts).toHaveLength(0);
+    expect(upsertCalls.some((c) => c.values.some((v) => String(v) === "provider-voo-20260610"))).toBe(true);
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("a held benchmark is refreshed once, not twice", async () => {
+    recentBySecurity = new Set();
+    holdingsRows = [{ security_id: "provider-voo" }];
+    securitiesRows = [securityRow({ security_id: "provider-voo", ticker_symbol: "VOO", type: "etf" })];
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("a cash row carrying the benchmark's ticker isn't taken for it", async () => {
+    recentBySecurity = new Set();
+    securitiesRows = [securityRow({ security_id: "cash-voo", ticker_symbol: "VOO", type: "cash" })];
+
+    await refreshActiveSecuritySnapshots();
+
+    expect(securityInserts).toEqual([expect.objectContaining({ security_id: BENCHMARK_SECURITY_ID })]);
   });
 });

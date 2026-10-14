@@ -383,9 +383,8 @@ export const getTickerDetail = async (
  * Resolve the closest trading-day close price at or before `date`. Walks
  * Polygon's daily aggregates over a 7-day window ending at `date` and
  * returns the latest entry — that's the actual trading-day price for
- * non-trading-day inputs (weekends, holidays). Used by the benchmark
- * snapshot resolver so a window-start like "2023-05-13 (Saturday)"
- * resolves to Friday's close instead of returning `no_data`.
+ * non-trading-day inputs (weekends, holidays), so a Saturday resolves to
+ * Friday's close instead of returning `no_data`.
  */
 export const getLatestClosePriceOnOrBefore = async (
   ticker_symbol: string,

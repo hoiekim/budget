@@ -1,7 +1,9 @@
-import { getDateString, getSquashedDateString, JSONSecuritySnapshot } from "common";
+import { getDateString, getSquashedDateString, JSONSecurity, JSONSecuritySnapshot } from "common";
 import {
   pool,
   upsertSnapshots,
+  upsertSecurities,
+  searchSecurities,
   searchSecuritiesById,
   marketData,
   logger,
@@ -10,6 +12,7 @@ import {
   UPDATED,
 } from "server";
 import {
+  BENCHMARK_TICKER,
   HOLDINGS,
   SNAPSHOTS,
 } from "common/constants";
@@ -38,11 +41,53 @@ export interface RefreshSecuritySnapshotsResult {
  */
 const REFRESH_SKIP_WINDOW_HOURS = 22;
 
+/** The id of the benchmark's security row when no provider has written one. */
+export const BENCHMARK_SECURITY_ID = `benchmark-${BENCHMARK_TICKER}`;
+
+const isCash = (security: Pick<JSONSecurity, "ticker_symbol" | "type">) =>
+  security.type === "cash" || !!security.ticker_symbol?.startsWith("CUR:");
+
+/**
+ * The benchmark's security row: the latest one with its ticker, or one
+ * written for it when there is none, so its prices sync to every user
+ * whether or not anyone holds it.
+ */
+const getBenchmarkSecurityId = async (): Promise<string | null> => {
+  const existing = (await searchSecurities({ ticker_symbol: BENCHMARK_TICKER })).find((s) => !isCash(s));
+  if (existing) return existing.security_id;
+  const [written] = await upsertSecurities([
+    {
+      security_id: BENCHMARK_SECURITY_ID,
+      ticker_symbol: BENCHMARK_TICKER,
+      name: "Vanguard S&P 500 ETF",
+      iso_currency_code: "USD",
+      type: "etf",
+      close_price: null,
+      close_price_as_of: null,
+      isin: null,
+      cusip: null,
+      sedol: null,
+      institution_security_id: null,
+      institution_id: null,
+      proxy_security_id: null,
+      is_cash_equivalent: null,
+      update_datetime: null,
+      unofficial_currency_code: null,
+      market_identifier_code: null,
+      sector: null,
+      industry: null,
+      option_contract: null,
+      fixed_income: null,
+    },
+  ]);
+  return written && written.status < 400 ? BENCHMARK_SECURITY_ID : null;
+};
+
 /**
  * For every security currently referenced by a non-deleted holding row,
- * ensure a `security_snapshot` exists for the latest trading day that
- * polygon can serve. Designed to ride the existing hourly `scheduledSync`
- * loop.
+ * and for the benchmark (`BENCHMARK_TICKER`), ensure a `security_snapshot`
+ * exists for the latest trading day that polygon can serve. Designed to
+ * ride the existing hourly `scheduledSync` loop.
  *
  * Per-security cadence is enforced by a cheap pre-flight SELECT against
  * `snapshots.updated` — if any security_snapshot for this security was
@@ -74,7 +119,10 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
      WHERE (is_deleted IS NULL OR is_deleted = FALSE)
        AND ${SECURITY_ID} IS NOT NULL`,
   );
-  const security_ids = rows.rows.map((r) => r.security_id).filter(Boolean);
+  const benchmark = await getBenchmarkSecurityId();
+  const security_ids = [...new Set([...rows.rows.map((r) => r.security_id), benchmark])].filter(
+    (id): id is string => !!id,
+  );
   if (security_ids.length === 0) return result;
 
   const securities = await searchSecuritiesById(security_ids);
@@ -83,7 +131,7 @@ export const refreshActiveSecuritySnapshots = async (): Promise<RefreshSecurityS
   for (const security of securities) {
     const { security_id, ticker_symbol, type } = security;
     if (!ticker_symbol) continue;
-    if (type === "cash" || ticker_symbol.startsWith("CUR:")) {
+    if (isCash(security)) {
       result.cash++;
       continue;
     }
