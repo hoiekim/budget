@@ -191,7 +191,7 @@ export class AccountModel extends Model<JSONAccount, AccountSchema> implements A
       if (!isUndefined(a.graphOptions.useTransactions))
         r.graph_options_use_transactions = a.graphOptions.useTransactions;
     }
-    if (!isUndefined(a.plan_fund_mappings)) {
+    if (Array.isArray(a.plan_fund_mappings)) {
       r.plan_fund_mappings = Object.fromEntries(
         a.plan_fund_mappings.map(({ investment, security_id, restated }) => [investment, { security_id, restated }]),
       );

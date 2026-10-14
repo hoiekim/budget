@@ -109,6 +109,8 @@ const respond = async (sql: string, values: unknown[] = []): Promise<Row[]> => {
     }));
   }
   if (/FROM investment_transactions\b.*investment_transaction_id IN/is.test(sql)) {
+    // Every existing row here is soft-deleted, so a read that filters deleted rows finds none.
+    if (/is_deleted/.test(sql)) return [];
     return db.existingIds.map((id) => ({
       investment_transaction_id: id,
       user_id: "usr-1",
@@ -254,6 +256,18 @@ describe("POST /plan-statement/import", () => {
     expect(writes().some((sql) => sql.includes("INSERT INTO investment_transactions"))).toBe(false);
   });
 
+  test("stores only the checked fields of a row, as a manual row", async () => {
+    const leg = shareLeg(ROW_ID, { source: "plaid", label_memo: "x-memo", label: { budget_id: "x-budget" }, raw: { x: 1 } });
+    await importStatement(importBody({ transactions: [{ ...leg, restated_from: { investment: "T", units: 2, unit_price: 50, x: 9 } }] }));
+    const insert = clientCalls().find((c) => c.sql.includes("INSERT INTO investment_transactions"))!;
+    const stored = JSON.stringify(insert.values);
+    expect(insert.values).toContain("manual");
+    expect(insert.values).not.toContain("plaid");
+    expect(stored).not.toContain("x-memo");
+    expect(stored).not.toContain("x-budget");
+    expect(stored).toContain('{"restated_from":{"investment":"T","units":2,"unit_price":50}}');
+  });
+
   test("keeps the account's other saved mappings", async () => {
     db.savedMappings = { "EXAMPLE BOND FUND": { security_id: "sec-bond", restated: true } };
     await importStatement(importBody());
@@ -291,6 +305,9 @@ describe("POST /plan-statement/import", () => {
     ["a share row typed as cash", [shareLeg(ROW_ID, { type: "cash" })]],
     ["a cash leg with a security", [{ transaction: { ...cashLeg().transaction, security_id: "sec-index" } }]],
     ["a figure that isn't a number", [shareLeg(ROW_ID, { quantity: "20" })]],
+    ["a subtype no statement kind writes", [shareLeg(ROW_ID, { subtype: "stock split" })]],
+    ["a calendar-invalid date", [shareLeg(ROW_ID, { date: "2026-02-30" })]],
+    ["a name past the column's length", [shareLeg(ROW_ID, { name: "n".repeat(256) })]],
   ])("refuses %s and writes nothing", async (_, transactions) => {
     expect(await importStatement(importBody({ transactions }))).toMatchObject({ status: "failed" });
     expect(writes()).toEqual([]);

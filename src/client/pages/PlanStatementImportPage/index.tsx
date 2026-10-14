@@ -265,9 +265,13 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       setError(r.message ?? "Import failed");
       return;
     }
-    const { written } = r.body;
+    const { written, alreadyImported } = r.body;
     setError("");
-    setResult(`Imported ${written} transaction${written === 1 ? "" : "s"}.`);
+    // The page only knows live rows, so a row deleted earlier can read as new until the server skips it.
+    const skipped = alreadyImported
+      ? ` ${alreadyImported} already in the account, deleted ones included, ${alreadyImported === 1 ? "was" : "were"} left as ${alreadyImported === 1 ? "it was" : "they were"}.`
+      : "";
+    setResult(`Imported ${written} transaction${written === 1 ? "" : "s"}.${skipped}`);
     setReplacePositions([]);
     sync();
   };

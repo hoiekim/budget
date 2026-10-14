@@ -53,7 +53,11 @@ export const useData = () => {
 
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
-        const allHoldingSnapshots = withDerivedHoldingSnapshots(holdingSnapshots, investmentTransactions);
+        // The walk needs a holding's whole history; while a cold sync is still
+        // streaming it in, a partial walk would understate the position.
+        const allHoldingSnapshots = data.status.isColdSync
+          ? holdingSnapshots
+          : withDerivedHoldingSnapshots(holdingSnapshots, investmentTransactions);
 
         // Balance data intentionally does NOT receive `transfers`:
         // per-account historical balance must reflect the actual

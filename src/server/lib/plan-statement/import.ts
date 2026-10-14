@@ -2,6 +2,7 @@ import { AccountType, InvestmentTransactionType } from "plaid";
 import {
   ItemProvider,
   JSONHolding,
+  KIND_SPECS,
   PLAN_STATEMENT_ID_PATTERN,
   PlannedTransaction,
   PlanStatementImportRequest,
@@ -31,7 +32,13 @@ import {
  */
 const INSERT_CHUNK_ROWS = 1000;
 
-const SHARE_TYPES = [InvestmentTransactionType.Buy, InvestmentTransactionType.Sell];
+const SHARE_SUBTYPES = new Set<string>(Object.values(KIND_SPECS).map((spec) => spec.subtype));
+const CASH_SUBTYPES = new Set<string>(
+  Object.values(KIND_SPECS).flatMap((spec) => (spec.cash ? [spec.cash.subtype] : [])),
+);
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_NAME_LENGTH = 255;
+const MAX_CURRENCY_LENGTH = 10;
 
 const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<string>> => {
   if (!ids.length) return new Set();
@@ -42,35 +49,65 @@ const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<stri
   return new Set(models.map((m) => m.investment_transaction_id));
 };
 
-/** Why a planned row can't be stored in this account, or null when it can. */
-const rowProblem = (account_id: string, planned: PlannedTransaction): string | null => {
+const isCalendarDate = (date: unknown): date is string =>
+  typeof date === "string" &&
+  DATE_PATTERN.test(date) &&
+  new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+
+const isFiniteNumber = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+
+/**
+ * The row to store for a planned one, built from its checked fields alone, or
+ * why it can't be stored in this account. Anything else the client sent is
+ * dropped, and every row is a manual one.
+ */
+const toRow = (
+  user: MaskedUser,
+  account_id: string,
+  planned: PlannedTransaction,
+): { row: ReturnType<typeof InvTxModel.fromJSON> } | { problem: string } => {
   const t = planned.transaction;
   const id = t.investment_transaction_id;
-  if (!PLAN_STATEMENT_ID_PATTERN.test(id)) return `${id} is not a plan statement row id`;
-  if (t.account_id !== account_id) return `${id} belongs to another account`;
+  if (!PLAN_STATEMENT_ID_PATTERN.test(id)) return { problem: `${id} is not a plan statement row id` };
+  if (t.account_id !== account_id) return { problem: `${id} belongs to another account` };
+  if (!isCalendarDate(t.date)) return { problem: `${id} has no valid date` };
   const isCashLeg = id.endsWith("-cash");
-  if (isCashLeg ? t.type !== InvestmentTransactionType.Cash : !SHARE_TYPES.includes(t.type!)) {
-    return `${id} has the wrong type`;
-  }
-  if (isCashLeg ? t.security_id !== null : typeof t.security_id !== "string") {
-    return `${id} has the wrong security`;
-  }
-  for (const n of [t.amount, t.quantity, t.price]) {
-    if (typeof n !== "number" || !Number.isFinite(n)) return `${id} has a figure that isn't a number`;
+  const typeFits = isCashLeg
+    ? t.type === InvestmentTransactionType.Cash && CASH_SUBTYPES.has(t.subtype ?? "") && t.security_id === null
+    : (t.type === InvestmentTransactionType.Buy || t.type === InvestmentTransactionType.Sell) &&
+      SHARE_SUBTYPES.has(t.subtype ?? "") &&
+      typeof t.security_id === "string";
+  if (!typeFits) return { problem: `${id} has the wrong type, subtype or security` };
+  if (![t.amount, t.quantity, t.price].every(isFiniteNumber)) return { problem: `${id} has a figure that isn't a number` };
+  if (typeof t.name !== "string" || t.name.length > MAX_NAME_LENGTH) return { problem: `${id} has an unreadable name` };
+  const currency = t.iso_currency_code ?? null;
+  if (currency !== null && (typeof currency !== "string" || currency.length > MAX_CURRENCY_LENGTH)) {
+    return { problem: `${id} has an unreadable currency` };
   }
   const r = planned.restated_from;
-  if (r && (typeof r.investment !== "string" || !Number.isFinite(r.units) || !Number.isFinite(r.unit_price))) {
-    return `${id} has an unreadable restatement`;
+  if (r && (typeof r.investment !== "string" || !isFiniteNumber(r.units) || !isFiniteNumber(r.unit_price))) {
+    return { problem: `${id} has an unreadable restatement` };
   }
-  return null;
-};
 
-const toRow = (user: MaskedUser, planned: PlannedTransaction) => {
-  const row = InvTxModel.fromJSON(planned.transaction, user.user_id);
-  if (planned.restated_from) {
-    row.raw = { ...((row.raw as object | null) ?? {}), restated_from: planned.restated_from };
-  }
-  return row;
+  const row = InvTxModel.fromJSON(
+    {
+      investment_transaction_id: id,
+      account_id,
+      security_id: t.security_id,
+      date: t.date,
+      name: t.name,
+      amount: t.amount,
+      quantity: t.quantity,
+      price: t.price,
+      iso_currency_code: currency,
+      type: t.type,
+      subtype: t.subtype,
+      source: "manual",
+    },
+    user.user_id,
+  );
+  row.raw = r ? { restated_from: { investment: r.investment, units: r.units, unit_price: r.unit_price } } : null;
+  return { row };
 };
 
 export const importPlanStatement = async (
@@ -85,9 +122,11 @@ export const importPlanStatement = async (
   }
   const account_id = account.account_id;
 
+  const built = new Map<string, ReturnType<typeof InvTxModel.fromJSON>>();
   for (const planned of request.transactions) {
-    const problem = rowProblem(account_id, planned);
-    if (problem) return { ok: false, message: problem };
+    const result = toRow(user, account_id, planned);
+    if ("problem" in result) return { ok: false, message: result.problem };
+    built.set(planned.transaction.investment_transaction_id, result.row);
   }
 
   const security_ids = new Set<string>([
@@ -104,9 +143,7 @@ export const importPlanStatement = async (
     user,
     request.transactions.map((t) => t.transaction.investment_transaction_id),
   );
-  const rows = request.transactions
-    .filter((t) => !existing.has(t.transaction.investment_transaction_id))
-    .map((t) => toRow(user, t));
+  const rows = Array.from(built).filter(([id]) => !existing.has(id)).map(([, row]) => row);
 
   const mappings = new Map((account.plan_fund_mappings ?? []).map((m) => [m.investment, m]));
   for (const m of request.mappings) mappings.set(m.investment, m);

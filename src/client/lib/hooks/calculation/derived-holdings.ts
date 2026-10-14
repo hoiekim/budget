@@ -24,6 +24,36 @@ export const withDerivedHoldingSnapshots = (
   investmentTransactions: InvestmentTransactionDictionary,
   today = new Date(),
 ): HoldingSnapshotDictionary => {
+  const throughMonth = getYearMonthString(today);
+  if (
+    last &&
+    last.holdingSnapshots === holdingSnapshots &&
+    last.investmentTransactions === investmentTransactions &&
+    last.throughMonth === throughMonth
+  ) {
+    return last.result;
+  }
+  const result = deriveHoldingSnapshots(holdingSnapshots, investmentTransactions, throughMonth);
+  last = { holdingSnapshots, investmentTransactions, throughMonth, result };
+  return result;
+};
+
+/**
+ * The last answer, so a recalculation that changed neither input (a budget or
+ * label edit) keeps the same dictionary and the memos reading it don't rerun.
+ */
+let last: {
+  holdingSnapshots: HoldingSnapshotDictionary;
+  investmentTransactions: InvestmentTransactionDictionary;
+  throughMonth: string;
+  result: HoldingSnapshotDictionary;
+} | null = null;
+
+const deriveHoldingSnapshots = (
+  holdingSnapshots: HoldingSnapshotDictionary,
+  investmentTransactions: InvestmentTransactionDictionary,
+  throughMonth: string,
+): HoldingSnapshotDictionary => {
   const movementsByHolding = new Map<string, Movement[]>();
   const derivedHoldings = new Set<string>();
   investmentTransactions.forEach((t) => {
@@ -51,7 +81,6 @@ export const withDerivedHoldingSnapshots = (
     enteredByHolding.set(key, entered);
   });
 
-  const throughMonth = getYearMonthString(today);
   const result = new HoldingSnapshotDictionary(holdingSnapshots);
   for (const key of derivedHoldings) {
     const [account_id, security_id] = key.split("\0");
@@ -70,8 +99,9 @@ export const withDerivedHoldingSnapshots = (
         new HoldingSnapshot({
           // Noon UTC is the same calendar day in every US time zone.
           snapshot: new Snapshot({ snapshot_id, date: `${date}T12:00:00.000Z` }),
+          // The holding's id is the one its stored snapshots carry, so a month with an
+          // entered snapshot and a derived position counts the holding once.
           holding: new Holding({
-            holding_id: `${account_id}-${security_id}`,
             account_id,
             security_id,
             quantity: position.quantity,

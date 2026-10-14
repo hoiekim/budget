@@ -141,9 +141,10 @@ describe("derivePositions", () => {
     expect(result.positions.find((p) => p.date === "2026-10-20")?.position).toMatchObject({ quantity: 11, price: 50 });
   });
 
-  test("same-day movements apply in id order, so a sale before a buy can't sell what isn't held yet", () => {
-    const movements = [tx("2026-10-06", "buy", 10, 500, 50, "b"), tx("2026-10-06", "sell", -10, -500, 50, "a")];
-    expect(last(derive({ movements, throughMonth: "2026-10" })).quantity).toBe(10);
+  test("on one day, buys apply before sells whatever their ids, so a same-day fee isn't dropped", () => {
+    // A rollover arriving and a fee leaving on the statement's first day; the fee's id sorts first.
+    const movements = [tx("2026-10-06", "buy", 100, 5000, 50, "b"), tx("2026-10-06", "sell", -0.5, -25, 50, "a")];
+    expect(last(derive({ movements, throughMonth: "2026-10" })).quantity).toBe(99.5);
   });
 });
 

@@ -54,6 +54,9 @@ const QUANTITY_EPSILON = 1e-6;
 
 const byDate = <T extends { date: string }>(a: T, b: T) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 const byId = (a = "", b = "") => (a < b ? -1 : a > b ? 1 : 0);
+/** Within a day, shares arrive before any leave, so a same-day sale isn't capped at what came earlier. */
+const buysFirst = (a: Movement, b: Movement) =>
+  Number(a.type !== InvestmentTransactionType.Buy) - Number(b.type !== InvestmentTransactionType.Buy);
 
 const addMonth = (yearMonth: string) => {
   const [y, m] = yearMonth.split("-").map(Number);
@@ -90,7 +93,8 @@ interface Walk {
 }
 
 /**
- * Every buy and sell in date order (same-day movements by id), each entered
+ * Every buy and sell in date order (within a day, buys before sells, then by
+ * id), each entered
  * position a reset point at the end of its day unless `replace`, stopping
  * before `before` when given.
  */
@@ -104,7 +108,7 @@ const walkPositions = (input: {
   const movements = input.movements
     .filter((m) => m.type === InvestmentTransactionType.Buy || m.type === InvestmentTransactionType.Sell)
     .map((m) => ({ ...m, date: m.date.slice(0, 10) }))
-    .sort((a, b) => byDate(a, b) || byId(a.investment_transaction_id, b.investment_transaction_id));
+    .sort((a, b) => byDate(a, b) || buysFirst(a, b) || byId(a.investment_transaction_id, b.investment_transaction_id));
   const enteredByDate = enteredResetPoints(input.entered);
 
   const dates = Array.from(new Set([...movements.map((m) => m.date), ...enteredByDate.keys()]))

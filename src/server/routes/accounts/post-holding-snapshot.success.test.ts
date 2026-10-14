@@ -298,6 +298,30 @@ describe("post-holding-snapshot create mode", () => {
     expect(result?.body?.snapshot_id).toBe(`holding-acct-9-sec-1-${expectedDate}`);
   });
 
+  test("a security named by id is used as given, without a ticker lookup", async () => {
+    securityRows = [existingSecurityRow({ security_id: "sec-mapped" })];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", security_id: "sec-mapped", quantity: 3, snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+
+    const expectedDate = getSquashedDateString(new LocalDate("2024-03-15"));
+    expect(result?.body).toMatchObject({ security_id: "sec-mapped", snapshot_id: `holding-acct-9-sec-mapped-${expectedDate}` });
+    expect(findCall(/from\s+securities[\s\S]*ticker_symbol/i)).toBeNull();
+  });
+
+  test("a security id that doesn't exist is refused", async () => {
+    accountRows = [accountRow()];
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", security_id: "sec-gone", quantity: 3, snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+    expect(result).toMatchObject({ status: "failed", message: "Security not found." });
+    expect(findCall(/^\s*INSERT INTO snapshots/i)).toBeNull();
+  });
+
   test("re-posting the same (account, security, date) reuses the snapshot_id", async () => {
     securityRows = [existingSecurityRow()];
     accountRows = [accountRow()];

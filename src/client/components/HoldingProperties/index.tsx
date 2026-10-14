@@ -486,7 +486,7 @@ export const HoldingProperties = () => {
       const body = isDerivedHoldingSnapshot(snap)
         ? {
             account_id: snap.holding.account_id,
-            ticker_symbol: data.securities.get(snap.holding.security_id)?.ticker_symbol ?? "",
+            security_id: snap.holding.security_id,
             quantity: snap.holding.quantity,
             cost_basis: snap.holding.cost_basis ?? undefined,
             institution_price: snap.holding.institution_price,
@@ -545,7 +545,7 @@ export const HoldingProperties = () => {
         return newData;
       });
     },
-    [setData, data.securities],
+    [setData],
   );
 
   const onBlurQuantity = (snap: HoldingSnapshot, raw: string) => async () => {

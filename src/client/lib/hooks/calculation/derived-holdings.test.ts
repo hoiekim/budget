@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { InvestmentTransactionType } from "plaid";
-import { HoldingSnapshotDictionary, InvestmentTransactionDictionary } from "../../models/Data";
+import { Account } from "../../models/Account";
+import {
+  AccountDictionary,
+  AccountSnapshotDictionary,
+  HoldingSnapshotDictionary,
+  InvestmentTransactionDictionary,
+  TransactionDictionary,
+} from "../../models/Data";
 import { InvestmentTransaction } from "../../models/InvestmentTransaction";
 import { Holding } from "../../models/miscellaneous";
 import { HoldingSnapshot, Snapshot } from "../../models/Snapshot";
+import { getBalanceData } from "./accounts";
 import { isDerivedHoldingSnapshot, withDerivedHoldingSnapshots } from "./derived-holdings";
 
 const TODAY = new Date(2026, 3, 20);
@@ -92,5 +100,28 @@ describe("withDerivedHoldingSnapshots", () => {
     );
     const securities = new Set(Array.from(result.values()).map((s) => s.holding.security_id));
     expect(securities).toEqual(new Set(["sec-1"]));
+  });
+
+  test("a month with an entered snapshot and a derived position counts the holding once", () => {
+    const stored = snapshots(enteredSnapshot("2026-03-05", 100));
+    const imported = transactions(
+      buy(`plan-${"a".repeat(32)}`, "2026-02-10", 10, 500),
+      buy(`plan-${"b".repeat(32)}`, "2026-03-15", 2, 100),
+    );
+    const merged = withDerivedHoldingSnapshots(stored, imported, TODAY);
+    const derivedMarch = merged.get("derived-holding-acct-1-sec-1-20260315")!;
+    expect(derivedMarch.holding.holding_id).toBe(stored.get("holding-acct-1-sec-1-20260305")!.holding.holding_id);
+
+    const accounts = new AccountDictionary();
+    accounts.set("acct-1", new Account({ account_id: "acct-1", type: "investment" } as never));
+    const balance = getBalanceData(accounts, new AccountSnapshotDictionary(), merged, new TransactionDictionary(), imported);
+    // March holds the latest position, 102 units at 50, not the entered 100 added on top.
+    expect(balance.get("acct-1").get(new Date(2026, 2, 15))).toBe(102 * 50);
+  });
+
+  test("an unchanged recalculation returns the same dictionary", () => {
+    const stored = snapshots();
+    const imported = transactions(buy(`plan-${"a".repeat(32)}`, "2026-02-10", 10, 500));
+    expect(withDerivedHoldingSnapshots(stored, imported, TODAY)).toBe(withDerivedHoldingSnapshots(stored, imported, TODAY));
   });
 });

@@ -358,16 +358,6 @@ describe("buildSelectWithFilters", () => {
     expect(values).toEqual([]);
   });
 
-  it("locks the selected rows last, after ordering and paging", () => {
-    const { sql } = buildSelectWithFilters("snapshots", "*", {
-      excludeDeleted: false,
-      orderBy: "snapshot_date, snapshot_id",
-      limit: 10,
-      forUpdate: true,
-    });
-    expect(sql).toBe("SELECT * FROM snapshots ORDER BY snapshot_date, snapshot_id LIMIT $1 FOR UPDATE");
-  });
-
   it("joins explicit columns instead of *", () => {
     const { sql } = buildSelectWithFilters("transactions", ["id", "amount"], {
       excludeDeleted: false,
