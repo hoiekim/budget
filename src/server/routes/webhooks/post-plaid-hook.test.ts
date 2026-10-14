@@ -109,6 +109,7 @@ beforeEach(() => {
 interface ReqOpts {
   rawBody?: string | undefined;
   signedJwt?: string;
+  ip?: string;
 }
 
 function makeReq(
@@ -125,7 +126,7 @@ function makeReq(
     query: {},
     body,
     rawBody: opts.rawBody,
-    ip: "127.0.0.1",
+    ip: opts.ip ?? "127.0.0.1",
   } as unknown as Parameters<typeof postPlaidHookRoute.execute>[0];
 }
 
@@ -465,5 +466,26 @@ describe("post-plaid-hook — INVESTMENTS_TRANSACTIONS", () => {
     expect(result).toBeNull();
     expect(mockSyncPlaidTransactions).not.toHaveBeenCalled();
     expect(mockLogger.warn).toHaveBeenCalled();
+  });
+});
+
+describe("post-plaid-hook — charging the caller's IP", () => {
+  const { plaidHookRateLimiter } = realServer;
+  const body = { webhook_type: "ITEM", webhook_code: "WEBHOOK_UPDATE_ACKNOWLEDGED", item_id: "i" };
+
+  test("a request that fails verification costs a slot", async () => {
+    mockVerifyWebhook.mockImplementation(async () => false);
+    await run(body, { ip: "198.51.100.41" });
+    expect(plaidHookRateLimiter.remaining("198.51.100.41")).toBe(19);
+  });
+
+  test("a request with no raw body costs a slot", async () => {
+    await run(body, { ip: "198.51.100.42", rawBody: undefined });
+    expect(plaidHookRateLimiter.remaining("198.51.100.42")).toBe(19);
+  });
+
+  test("a verified webhook costs nothing, however many arrive", async () => {
+    for (let i = 0; i < 25; i++) await run(body, { ip: "198.51.100.43" });
+    expect(plaidHookRateLimiter.remaining("198.51.100.43")).toBe(20);
   });
 });

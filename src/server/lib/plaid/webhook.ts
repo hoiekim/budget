@@ -1,18 +1,14 @@
 import * as jose from "jose";
 import { getProductionClient } from "./util";
 import { logger } from "../logger";
+import { plaidKeyFetchRateLimiter } from "../rate-limit";
 
-// Cache for verification keys (keyed by key_id)
-const keyCache = new Map<string, { key: jose.JWK; fetchedAt: number }>();
 const KEY_CACHE_TTL = 1000 * 60 * 60; // 1 hour
+// Short, so a transient Plaid error delays a genuine new key by at most one webhook, which Plaid retries.
+export const MISSING_KEY_CACHE_TTL = 1000 * 60 * 5;
+const ttlOf = (entry: { key: jose.JWK | null }) => (entry.key ? KEY_CACHE_TTL : MISSING_KEY_CACHE_TTL);
 
-// Periodically evict stale key cache entries to prevent unbounded growth.
-setInterval(() => {
-  const now = Date.now();
-  for (const [keyId, entry] of keyCache) {
-    if (now - entry.fetchedAt >= KEY_CACHE_TTL) keyCache.delete(keyId);
-  }
-}, KEY_CACHE_TTL).unref();
+const KEY_FETCH_BUCKET = "global";
 
 /**
  * Verify a Plaid webhook request.
@@ -83,28 +79,60 @@ export const verifyWebhook = async (
 };
 
 /**
- * Get a Plaid webhook verification key.
- * Uses caching to avoid repeated API calls.
+ * Builds a verification-key lookup around `fetchKey`. Every answer is cached,
+ * a key for an hour and a key_id that couldn't be fetched for five minutes, so
+ * a key_id costs one fetch per TTL rather than one per request. Concurrent
+ * requests for the same key_id share one fetch, and uncached fetches are capped
+ * process-wide by `plaidKeyFetchRateLimiter`.
  */
-const getVerificationKey = async (keyId: string): Promise<jose.JWK | null> => {
-  // Check cache first
-  const cached = keyCache.get(keyId);
-  if (cached && Date.now() - cached.fetchedAt < KEY_CACHE_TTL) {
-    return cached.key;
-  }
+export const createVerificationKeyLookup = (fetchKey: (keyId: string) => Promise<jose.JWK>) => {
+  /** Verification keys by key_id; `null` remembers a key_id that couldn't be fetched. */
+  const keyCache = new Map<string, { key: jose.JWK | null; fetchedAt: number }>();
+  const inflightKeys = new Map<string, Promise<jose.JWK | null>>();
 
-  try {
-    // Webhooks only come from production - always use production client
-    const client = getProductionClient();
-    const response = await client.webhookVerificationKeyGet({ key_id: keyId });
-    const key = response.data.key as jose.JWK;
+  // Periodically evict stale key cache entries to prevent unbounded growth.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [keyId, entry] of keyCache) {
+      if (now - entry.fetchedAt >= ttlOf(entry)) keyCache.delete(keyId);
+    }
+  }, MISSING_KEY_CACHE_TTL).unref();
 
-    // Cache the key
-    keyCache.set(keyId, { key, fetchedAt: Date.now() });
+  const fetchAndCache = async (keyId: string): Promise<jose.JWK | null> => {
+    try {
+      const key = await fetchKey(keyId);
+      keyCache.set(keyId, { key, fetchedAt: Date.now() });
+      return key;
+    } catch (error) {
+      logger.error("Failed to fetch verification key", { component: "plaid.webhook" }, error);
+      keyCache.set(keyId, { key: null, fetchedAt: Date.now() });
+      return null;
+    }
+  };
 
-    return key;
-  } catch (error) {
-    logger.error("Failed to fetch verification key", { component: "plaid.webhook" }, error);
-    return null;
-  }
+  return async (keyId: string): Promise<jose.JWK | null> => {
+    const cached = keyCache.get(keyId);
+    if (cached && Date.now() - cached.fetchedAt < ttlOf(cached)) return cached.key;
+
+    const inflight = inflightKeys.get(keyId);
+    if (inflight) return inflight;
+
+    if (plaidKeyFetchRateLimiter.isLimited(KEY_FETCH_BUCKET)) {
+      logger.warn("Verification key fetches over the cap; not fetching", { component: "plaid.webhook" });
+      return null;
+    }
+    plaidKeyFetchRateLimiter.consume(KEY_FETCH_BUCKET);
+
+    const fetching = fetchAndCache(keyId);
+    inflightKeys.set(keyId, fetching);
+    // Removed once settled, never before it is registered, even when the fetch fails synchronously.
+    void fetching.finally(() => inflightKeys.delete(keyId));
+    return fetching;
+  };
 };
+
+// Webhooks only come from production - always use production client
+const getVerificationKey = createVerificationKeyLookup(
+  async (keyId) =>
+    (await getProductionClient().webhookVerificationKeyGet({ key_id: keyId })).data.key as jose.JWK,
+);
