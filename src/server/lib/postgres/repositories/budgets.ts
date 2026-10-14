@@ -9,6 +9,7 @@ import {
   categoriesTable,
   BUDGET_ID,
   SECTION_ID,
+  CATEGORY_ID,
   USER_ID,
 } from "../models";
 import { withTransaction } from "../client";
@@ -90,6 +91,36 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string): Promise
     const deleted = await budgetsTable.bulkSoftDelete([budget_id], { [USER_ID]: user.user_id }, client);
     return deleted > 0;
   });
+};
+
+/**
+ * Of the given budget and category ids, the ones the user owns: one query per
+ * table, however many ids. Deleted ones count: deleting a budget leaves the
+ * labels that name it in place. A label naming anything outside these points
+ * at another user's row, or at nothing.
+ */
+export const getOwnedLabelIds = async (
+  user: MaskedUser,
+  ids: { budget_ids: string[]; category_ids: string[] },
+): Promise<{ budget_ids: Set<string>; category_ids: Set<string> }> => {
+  const [budgets, categories] = await Promise.all([
+    ids.budget_ids.length
+      ? budgetsTable.query(
+          { [USER_ID]: user.user_id },
+          { inFilters: { [BUDGET_ID]: ids.budget_ids }, excludeDeleted: false },
+        )
+      : [],
+    ids.category_ids.length
+      ? categoriesTable.query(
+          { [USER_ID]: user.user_id },
+          { inFilters: { [CATEGORY_ID]: ids.category_ids }, excludeDeleted: false },
+        )
+      : [],
+  ]);
+  return {
+    budget_ids: new Set(budgets.map((b) => b.budget_id)),
+    category_ids: new Set(categories.map((c) => c.category_id)),
+  };
 };
 
 export const getSections = async (user: MaskedUser, budget_id?: string): Promise<JSONSection[]> => {
