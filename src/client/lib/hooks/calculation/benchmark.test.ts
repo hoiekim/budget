@@ -14,7 +14,7 @@ import {
   buildPriceAt,
   buildPriceIndex,
   computeEffectiveWindowStart,
-  priceAtIn,
+  rowAtIn,
   buildBenchmarkPriceAt,
   computeHoldingBenchmark,
   type PriceRow,
@@ -1111,21 +1111,27 @@ describe("extractCashFlows securityIds filter", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-describe("priceAtIn", () => {
+describe("rowAtIn", () => {
   const history: PriceRow[] = [
     { date: "2024-01-01", close: 100 },
     { date: "2025-01-01", close: 200 },
     { date: "2026-01-01", close: 400 },
+    { date: "2026-06-01", close: 500 },
   ];
-  test("returns latest close ≤ date", () => {
-    expect(priceAtIn(history, "2025-06-01")).toBe(200);
-    expect(priceAtIn(history, "2026-01-01")).toBe(400);
+  test("returns the latest row ≤ date", () => {
+    expect(
+      ["2024-01-01", "2024-06-01", "2025-06-01", "2026-01-01", "2026-03-01", "2026-06-01", "2027-01-01"].map(
+        (date) => rowAtIn(history, date)?.close,
+      ),
+    ).toEqual([100, 100, 200, 400, 400, 500, 500]);
+    expect(rowAtIn(history.slice(0, 3), "2025-12-31")).toEqual({ date: "2025-01-01", close: 200 });
   });
   test("null before history starts; empty history null", () => {
-    expect(priceAtIn(history, "2023-12-31")).toBeNull();
-    expect(priceAtIn([], "2025-01-01")).toBeNull();
+    expect(rowAtIn(history, "2023-12-31")).toBeNull();
+    expect(rowAtIn([], "2025-01-01")).toBeNull();
   });
 });
+
 
 describe("buildPriceIndex — sourceDate + earliestOnOrAfter", () => {
   // Snapshots on 2024-06-01/2024-07-01, a buy on 2024-06-15. Merged index.
