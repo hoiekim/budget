@@ -200,6 +200,74 @@ describe("getSankeyData — split re-labeling", () => {
   });
 });
 
+describe("getSankeyData — a section links only to its own budget", () => {
+  const run = (amounts: { labelBudget: "A" | "B"; amount: number }[]) => {
+    const w = makeWorld();
+    const transactions = new TransactionDictionary();
+    amounts.forEach(({ labelBudget, amount }, i) => {
+      const tx = new Transaction({
+        account_id: w.account.id,
+        transaction_id: `tx-${i}`,
+        amount,
+        date: DATE,
+        label: {
+          budget_id: labelBudget === "A" ? w.budgetA.id : w.budgetB.id,
+          category_id: w.categoryA.id,
+          category_confidence: 1,
+        },
+      });
+      transactions.set(tx.id, tx);
+    });
+    const { graphData } = getSankeyData(
+      [w.account],
+      transactions,
+      emptyInvestments,
+      new SplitTransactionDictionary(),
+      w.budgets,
+      w.sections,
+      w.categories,
+      viewDate,
+      noTransfers,
+    );
+    return { w, graphData };
+  };
+
+  const linkedAmounts = (budgetColumn: SankeyColumn, sectionColumn: SankeyColumn) =>
+    budgetColumn.map((budget) => ({
+      id: budget.id,
+      amount: budget.amount,
+      linked: sectionColumn
+        .filter((section) => section.next === budget.id)
+        .reduce((sum, section) => sum + section.amount, 0),
+    }));
+
+  test("an expense labeled with another budget still flows through its category's budget", () => {
+    const { w, graphData } = run([
+      { labelBudget: "A", amount: 80 },
+      { labelBudget: "B", amount: 20 },
+    ]);
+    expect(graphData[4].map(({ id, next, amount }) => ({ id, next, amount }))).toEqual([
+      { id: w.sectionA.id, next: w.budgetA.id, amount: 100 },
+    ]);
+    expect(linkedAmounts(graphData[3], graphData[4])).toEqual([
+      { id: w.budgetA.id, amount: 100, linked: 100 },
+    ]);
+  });
+
+  test("an income labeled with another budget still flows through its category's budget", () => {
+    const { w, graphData } = run([
+      { labelBudget: "A", amount: -80 },
+      { labelBudget: "B", amount: -20 },
+    ]);
+    expect(graphData[0].map(({ id, next, amount }) => ({ id, next, amount }))).toEqual([
+      { id: w.sectionA.id, next: w.budgetA.id, amount: 100 },
+    ]);
+    expect(linkedAmounts(graphData[1], graphData[0])).toEqual([
+      { id: w.budgetA.id, amount: 100, linked: 100 },
+    ]);
+  });
+});
+
 const INV_ACCT = "inv-acc-1";
 const invViewDate = new ViewDate("month", new LocalDate("2026-02-15")); // Feb 2026
 const invAccount = new Account({ account_id: INV_ACCT, name: "Brokerage" });
