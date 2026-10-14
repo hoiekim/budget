@@ -500,12 +500,14 @@ describe("post-plaid-hook — answers Plaid can act on", () => {
 
     test("a webhook naming a real item is verified again with priority and handled", async () => {
       mockVerifyWebhook.mockImplementation(capFullUnlessPriority);
-      const item = realItemBody("item-priority-1");
+      // Shaped like Plaid's own sample item ids: 37 mixed-case letters and digits.
+      const plaidShaped = "M5eVJqLnv3tbzdngLDp9FL5OlDNxlNhlE55op";
+      const item = realItemBody(plaidShaped);
       const { result, res } = await run(item, { rawBody: JSON.stringify(item) });
       expect(status(res)).toBe(200);
       expect(result).toMatchObject({ status: "success" });
       expect(mockVerifyWebhook.mock.calls.map((c) => c[2])).toEqual([undefined, { priority: true }]);
-      expect(mockGetUserItem).toHaveBeenCalledWith("item-priority-1");
+      expect(mockGetUserItem).toHaveBeenCalledWith(plaidShaped);
     });
 
     test("a webhook naming an item that doesn't exist stays at 503, with no priority attempt", async () => {

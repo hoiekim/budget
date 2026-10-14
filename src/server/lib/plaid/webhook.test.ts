@@ -194,6 +194,9 @@ describe("createVerificationKeyLookup", () => {
       for (let i = 0; i < 3; i++) await lookup(`bogus-warn-${i}`);
       const capWarnings = () => warn.mock.calls.filter(([message]) => String(message).includes("over the cap")).length;
       expect(capWarnings()).toBe(1);
+      setSystemTime(start + 59 * 1000);
+      await lookup("bogus-warn-59s");
+      expect(capWarnings()).toBe(1);
       setSystemTime(start + 61 * 1000);
       plaidKeyFetchRateLimiter.consume("global", 10);
       for (let i = 0; i < 3; i++) await lookup(`bogus-warn-later-${i}`);
