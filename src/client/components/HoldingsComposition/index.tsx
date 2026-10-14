@@ -69,7 +69,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
 
   const { calculations, router, viewDate, data } = useAppContext();
   const { holdingsValueData, balanceData, holdingSnapshots } = calculations;
-  const { items, securitySnapshots, investmentTransactions } = data;
+  const { items, securities, securitySnapshots, investmentTransactions } = data;
 
   // "Add Holding" and manual-account visibility only apply when a single
   // manual account is shown; multi-account aggregation has no single target.
@@ -128,6 +128,10 @@ export const HoldingsComposition = ({ accounts }: Props) => {
             ticker = snap.security.ticker_symbol ?? null;
           }
         });
+        // A security with no price snapshot yet (e.g. just created) still has its own row.
+        const security = securities.get(security_id);
+        name ??= security?.name?.trim() || null;
+        ticker ??= security?.ticker_symbol ?? null;
 
         return {
           holdingId,
@@ -144,7 +148,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
         };
       })
       .filter((r): r is PerSecurityRow => r !== null);
-  }, [accounts, holdingsValueData, viewEndDate, securitySnapshots]);
+  }, [accounts, holdingsValueData, viewEndDate, securitySnapshots, securities]);
 
   // Second pass: bucket per-security rows by ticker. Cash → `__CASH__`
   // (regardless of any ticker on the underlying security). Real ticker
