@@ -52,9 +52,10 @@ export const getSankeyData = (
   // for FlowCharts that predate this feature). Non-empty = only
   // transactions whose effective budget_id is in the list contribute.
   // Effective budget_id mirrors the assignment at the top of
-  // `processTransaction`: `t.label.budget_id || account.label.budget_id
-  // || "Unknown"`. The `"Unknown"` sentinel can appear in the whitelist
-  // if the user explicitly toggles "Unsorted" on.
+  // `processTransaction`: the category's section's budget, else
+  // `t.label.budget_id || account.label.budget_id || "Unknown"`. The
+  // `"Unknown"` sentinel can appear in the whitelist if the user
+  // explicitly toggles "Unsorted" on.
   budget_ids: string[] = [],
 ): SankeyData => {
   const incomeBudgets = new Map<string, SankeyRow>();
@@ -87,12 +88,20 @@ export const getSankeyData = (
     if (!viewDate.has(transactionDate)) return;
     const account = accounts.find((a) => a.id === t.account_id);
     if (!account) return;
-    const budget_id = t.label.budget_id || account.label.budget_id || UNSORTED_BUDGET_ID;
+    const category_id = t.label.category_id;
+    const category = category_id && categories.get(category_id);
+    const categorySection = category ? sections.get(category.section_id) : undefined;
+    // A section row has exactly one outgoing link, so it must point at the section's own
+    // budget even when the row's label names another one. Unlike the Budgets page, this
+    // also applies to an unconfirmed (suggested) category, which the chart draws by category.
+    const budget_id =
+      categorySection?.budget_id ||
+      t.label.budget_id ||
+      account.label.budget_id ||
+      UNSORTED_BUDGET_ID;
     if (budget_ids.length > 0 && !budget_ids.includes(budget_id)) return;
     const budget = budgets.get(budget_id);
     const budgetName = budget?.name || "Others";
-    const category_id = t.label.category_id;
-    const category = category_id && categories.get(category_id);
     const section_id = (category && category.section_id) || `${budget_id}_Unknown`;
     const section = sections.get(section_id);
     // Investment transactions are internal household moves between
