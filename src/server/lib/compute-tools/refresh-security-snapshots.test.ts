@@ -20,6 +20,7 @@ import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { BENCHMARK_HISTORY_THROUGH } from "common/constants";
+import { getDateString } from "common";
 import { createFakePg, restoreLeaves } from "test-helpers";
 
 const { pg, mockQuery, resetQueryMocks } = createFakePg();
@@ -113,8 +114,14 @@ const setPolygonResponse = (body: unknown, status = 200) => {
   );
 };
 
-/** A fixed pass time for the range tests, a week after the static history ends. */
-const NOW = new Date("2026-10-20T20:00:00Z");
+/** A fixed pass time for the range tests, about a week after the static history ends. */
+const NOW = new Date("2026-10-20T12:00:00Z");
+/** The pass's date as the job reads it (local time), and the days around it. */
+const passDay = (offset: number) => {
+  const date = new Date(`${getDateString(NOW)}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+};
 
 beforeEach(() => {
   clearPriceCache();
@@ -411,7 +418,7 @@ describe("refreshActiveSecuritySnapshots", () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(String(mockFetch.mock.calls[0][0])).toContain(
-      `/v2/aggs/ticker/VOO/range/1/day/2026-10-06/2026-10-19?`,
+      `/v2/aggs/ticker/VOO/range/1/day/2026-10-06/${passDay(-1)}?`,
     );
     const written = upsertCalls.flatMap((c) => c.values.map(String));
     for (const day of ["20261006", "20261007", "20261008"]) expect(written).toContain(`${BENCHMARK_SECURITY_ID}-${day}`);
@@ -426,19 +433,28 @@ describe("refreshActiveSecuritySnapshots", () => {
     const dayAfter = new Date(`${BENCHMARK_HISTORY_THROUGH}T12:00:00Z`);
     dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
     expect(String(mockFetch.mock.calls[0][0])).toContain(
-      `/range/1/day/${dayAfter.toISOString().slice(0, 10)}/2026-10-19?`,
+      `/range/1/day/${dayAfter.toISOString().slice(0, 10)}/${passDay(-1)}?`,
     );
   });
 
   test("a benchmark already filled through yesterday asks only for its latest close", async () => {
     recentBySecurity = new Set();
-    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-19" };
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: passDay(-1) };
 
     const r = await refreshActiveSecuritySnapshots(NOW);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(String(mockFetch.mock.calls[0][0])).not.toContain("/range/1/day/2026-10-20/");
+    expect(String(mockFetch.mock.calls[0][0])).toContain(`/range/1/day/${passDay(-7)}/${passDay(0)}?`);
     expect(r.refreshed).toBe(1);
+  });
+
+  test("a single settled day to fill is asked for as a one-day range", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: passDay(-2) };
+
+    await refreshActiveSecuritySnapshots(NOW);
+
+    expect(String(mockFetch.mock.calls[0][0])).toContain(`/range/1/day/${passDay(-1)}/${passDay(-1)}?`);
   });
 
   test("an empty range still writes the benchmark's latest close", async () => {
@@ -460,14 +476,14 @@ describe("refreshActiveSecuritySnapshots", () => {
 
     const r = await refreshActiveSecuritySnapshots(NOW);
 
-    expect(mockFetch.mock.calls.every((c) => String(c[0]).includes("/range/1/day/2026-10-06/2026-10-19?"))).toBe(true);
+    expect(mockFetch.mock.calls.every((c) => String(c[0]).includes(`/range/1/day/2026-10-06/${passDay(-1)}?`))).toBe(true);
     expect(upsertCalls).toHaveLength(0);
     expect(r.errors).toBe(1);
   });
 
-  test("a range past the plan's history writes the latest close", async () => {
+  test("a range Polygon refuses for the plan writes the latest close", async () => {
     recentBySecurity = new Set();
-    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2024-01-05" };
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
     setPolygonResponse({ status: "NOT_AUTHORIZED", message: "out of plan" });
 
     const r = await refreshActiveSecuritySnapshots(NOW);

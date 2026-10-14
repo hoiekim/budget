@@ -150,10 +150,12 @@ const getLatestSnapshotDate = async (security_id: string): Promise<string | null
  * benchmark also gets every settled trading day since its last snapshot, or
  * since the static history's last row when it has none, so a window can
  * start on any day. Those come from one range request ending yesterday,
- * since Polygon refuses a range that lies wholly in today. When there is
- * nothing to fill, the range is empty (a weekend), or it reaches past the
- * plan's history, only the latest close is written. A failure that may pass
- * (a server or network error) writes nothing, so the next pass asks for the
+ * since Polygon refuses a range that lies wholly in its current day. A range
+ * reaching back past the plan's history comes back with the bars the plan
+ * covers. When there is nothing to fill, the range is empty (a weekend), or
+ * Polygon refuses it for the plan (the server's date running ahead of
+ * Polygon's), only the latest close is written. A failure that may pass (a
+ * server or network error) writes nothing, so the next pass asks for the
  * whole range again.
  */
 const getClosesToWrite = async (
