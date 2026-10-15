@@ -53,10 +53,13 @@ export const getClient = (user?: MaskedUser) => {
  * Used for operations that require production credentials (e.g., webhook verification).
  * Webhooks are only sent from production, so we always need production credentials.
  */
+let productionClient: PlaidApi | undefined;
+
 export const getProductionClient = () => {
   if (!isPlaidConfigured) {
     throw new Error("Plaid is not configured — refusing to make Plaid API calls");
   }
+  if (productionClient) return productionClient;
 
   const { production } = PlaidEnvironments;
 
@@ -73,7 +76,8 @@ export const getProductionClient = () => {
       },
     },
   });
-  return new PlaidApi(config);
+  productionClient = new PlaidApi(config);
+  return productionClient;
 };
 
 export const ignorable_error_codes = new Set(["NO_INVESTMENT_ACCOUNTS"]);
