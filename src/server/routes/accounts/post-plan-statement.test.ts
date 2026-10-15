@@ -6,7 +6,7 @@ type Row = Record<string, unknown>;
 const db = {
   provider: "manual" as string,
   accountType: "investment" as string,
-  /** Ids already in the account; every one is soft-deleted. */
+  /** Ids already in the account and soft-deleted. */
   existingIds: [] as string[],
   /** Fund mappings already saved on the account. */
   savedMappings: null as Row | null,
@@ -14,6 +14,8 @@ const db = {
   snapshotIds: [] as string[],
   /** Make the holdings write fail, as a deadlock victim would. */
   failHoldings: false,
+  /** Ids already in the account and live. */
+  liveIds: [] as string[],
 };
 
 const ACCOUNT: Row = {
@@ -109,32 +111,34 @@ const respond = async (sql: string, values: unknown[] = []): Promise<Row[]> => {
     }));
   }
   if (/FROM investment_transactions\b.*investment_transaction_id IN/is.test(sql)) {
-    // Every existing row here is soft-deleted, so a read that filters deleted rows finds none.
-    if (/is_deleted/.test(sql)) return [];
-    return db.existingIds.map((id) => ({
-      investment_transaction_id: id,
-      user_id: "usr-1",
-      account_id: "acct-1",
-      security_id: null,
-      date: "2026-03-02",
-      name: null,
-      amount: 0,
-      quantity: 0,
-      price: 0,
-      iso_currency_code: null,
-      type: "cash",
-      subtype: null,
-      label_budget_id: null,
-      label_category_id: null,
-      label_memo: null,
-      raw: null,
-      updated: null,
-      is_deleted: true,
-      source: "manual",
-    }));
+    const live = db.liveIds.map((id) => ({ ...existingRow(id), is_deleted: false }));
+    if (/is_deleted/.test(sql)) return live;
+    return [...db.existingIds.map(existingRow), ...live];
   }
   return [];
 };
+
+const existingRow = (id: string): Row => ({
+  investment_transaction_id: id,
+  user_id: "usr-1",
+  account_id: "acct-1",
+  security_id: null,
+  date: "2026-03-02",
+  name: null,
+  amount: 0,
+  quantity: 0,
+  price: 0,
+  iso_currency_code: null,
+  type: "cash",
+  subtype: null,
+  label_budget_id: null,
+  label_category_id: null,
+  label_memo: null,
+  raw: null,
+  updated: null,
+  is_deleted: true,
+  source: "manual",
+});
 
 const { pg, mockQuery, mockClientQuery, clearQueryMocks } = createFakePg(async (sql: string, values?: unknown[]) => {
   const rows = await respond(sql, values);
@@ -227,6 +231,7 @@ beforeEach(() => {
   db.savedMappings = null;
   db.snapshotIds = [];
   db.failHoldings = false;
+  db.liveIds = [];
 });
 
 describe("POST /plan-statement/import", () => {
@@ -249,11 +254,18 @@ describe("POST /plan-statement/import", () => {
     expect(holding.values).toEqual(expect.arrayContaining(["acct-1-sec-index", 2, 100, 50]));
   });
 
-  test("a row already in the account, deleted ones included, is left as it is", async () => {
-    db.existingIds = [ROW_ID, `${ROW_ID}-cash`];
+  test("a row already in the account is left as it is", async () => {
+    db.liveIds = [ROW_ID, `${ROW_ID}-cash`];
     const res = await importStatement(importBody());
     expect(res).toMatchObject({ status: "success", body: { written: 0, alreadyImported: 2 } });
     expect(writes().some((sql) => sql.includes("INSERT INTO investment_transactions"))).toBe(false);
+  });
+
+  test("a planned row someone deleted writes nothing and is named, so the page plans around it", async () => {
+    db.existingIds = [`${ROW_ID}-cash`];
+    const res = await importStatement(importBody());
+    expect(res).toEqual({ status: "success", body: { written: 0, alreadyImported: 0, deleted: [`${ROW_ID}-cash`] } });
+    expect(writes()).toEqual([]);
   });
 
   test("stores only the checked fields of a row, as a manual row", async () => {
@@ -266,6 +278,32 @@ describe("POST /plan-statement/import", () => {
     expect(stored).not.toContain("x-memo");
     expect(stored).not.toContain("x-budget");
     expect(stored).toContain('{"restated_from":{"investment":"T","units":2,"unit_price":50}}');
+  });
+
+  test("stores what a reinvestment was inferred from on its share leg", async () => {
+    const leg = shareLeg(ROW_ID, { subtype: "dividend reinvestment", name: "Buy (dividend reinvestment)" });
+    const reinvested_distribution = { ex_date: "2026-03-02", cash_amount_per_share: 0.5, shares_held: 40, x: 9 };
+    const res = await importStatement(importBody({ transactions: [{ ...leg, reinvested_distribution }] }));
+    expect(res).toMatchObject({ status: "success" });
+    const insert = clientCalls().find((c) => c.sql.includes("INSERT INTO investment_transactions"))!;
+    expect(JSON.stringify(insert.values)).toContain(
+      '{"reinvested_distribution":{"ex_date":"2026-03-02","cash_amount_per_share":0.5,"shares_held":40}}',
+    );
+  });
+
+  test("refuses a reinvestment record on a cash leg, or dated off its row", async () => {
+    const record = { ex_date: "2026-03-02", cash_amount_per_share: 0.5, shares_held: 40 };
+    for (const transactions of [
+      [{ ...cashLeg(), reinvested_distribution: record }],
+      [{ ...shareLeg(), reinvested_distribution: { ...record, ex_date: "2026-03-03" } }],
+      [{ ...shareLeg(), reinvested_distribution: { ...record, shares_held: "40" } }],
+      [{ ...shareLeg(), reinvested_distribution: "2026-03-02" }],
+    ]) {
+      clearQueryMocks();
+      const res = await importStatement(importBody({ transactions }));
+      expect(res).toMatchObject({ status: "failed", message: expect.stringContaining("unreadable reinvestment") });
+      expect(writes()).toEqual([]);
+    }
   });
 
   test("keeps the account's other saved mappings", async () => {

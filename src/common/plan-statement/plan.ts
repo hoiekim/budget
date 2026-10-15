@@ -4,6 +4,7 @@ import type { PositionGap } from "../holding-positions";
 import { hash128 } from "../utils/hash";
 import { PLAN_STATEMENT_ID_PREFIX } from "../constants";
 import type { StatementRow } from "./parse";
+import type { ReinvestedDistribution } from "./reinvest";
 
 export interface DailyClose {
   /** YYYY-MM-DD, the trading day the bar belongs to. */
@@ -165,8 +166,8 @@ export const getRowIds = (account_id: string, rows: StatementRow[]): string[] =>
 
 export const getCashLegId = (id: string) => `${id}-cash`;
 
-/** A planned row's id: a share movement's, or its cash leg's. */
-export const PLAN_STATEMENT_ID_PATTERN = /^plan-[0-9a-f]{32}(-cash)?$/;
+/** A planned row's id: a statement row's or an inferred dividend's share movement, or its cash leg. */
+export const PLAN_STATEMENT_ID_PATTERN = /^plan-(dividend-)?[0-9a-f]{32}(-cash)?$/;
 
 /** A statement date can fall on a weekend or market holiday. */
 const MAX_CLOSE_LOOKBACK_DAYS = 7;
@@ -277,6 +278,7 @@ export interface PlannedTransaction {
     date: string;
   };
   restated_from?: RestatedFrom;
+  reinvested_distribution?: ReinvestedDistribution;
 }
 
 export type RowStatus = "new" | "imported" | "skip" | "decide";

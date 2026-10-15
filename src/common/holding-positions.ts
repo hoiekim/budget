@@ -1,7 +1,7 @@
 /**
  * The one derivation of a holding's positions from its transactions, shared by
- * the client (which values holdings from it) and the server's reinvestment job
- * (which needs the shares held on an ex-date).
+ * the holding values and the plan-statement import (which needs the shares
+ * held on an ex-date).
  *
  * Positions are walked in date order over every live buy and sell. Each
  * entered holding snapshot is a reset point: the position becomes its quantity
@@ -156,6 +156,7 @@ export const positionBefore = (input: {
   movements: Movement[];
   entered: EnteredPosition[];
   date: string;
+  replace?: boolean;
 }): { quantity: number; costBasis: number | null } => {
   const { running } = walkPositions({ ...input, before: input.date });
   return { quantity: running.quantity, costBasis: running.costBasis === null ? null : Math.max(0, running.costBasis) };

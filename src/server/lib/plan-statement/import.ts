@@ -8,6 +8,8 @@ import {
   PlannedTransaction,
   PlanStatementImportRequest,
   PlanStatementImportResult,
+  REINVESTED_DISTRIBUTION,
+  RESTATED_FROM,
 } from "common";
 import {
   MaskedUser,
@@ -39,13 +41,19 @@ const CASH_SUBTYPES = new Set<string>(
 );
 const MAX_CURRENCY_LENGTH = 10;
 
-const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<string>> => {
-  if (!ids.length) return new Set();
+/** Which of the ids are already in the account: live, or deleted by someone. */
+const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<{ live: Set<string>; deleted: string[] }> => {
+  const existing = { live: new Set<string>(), deleted: [] as string[] };
+  if (!ids.length) return existing;
   const models = await investmentTransactionsTable.query(
     { [USER_ID]: user.user_id },
     { inFilters: { [INVESTMENT_TRANSACTION_ID]: ids }, excludeDeleted: false },
   );
-  return new Set(models.map((m) => m.investment_transaction_id));
+  for (const m of models) {
+    if (m.is_deleted) existing.deleted.push(m.investment_transaction_id);
+    else existing.live.add(m.investment_transaction_id);
+  }
+  return existing;
 };
 
 const isFiniteNumber = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
@@ -82,6 +90,16 @@ const toRow = (
   if (r && (typeof r.investment !== "string" || !isFiniteNumber(r.units) || !isFiniteNumber(r.unit_price))) {
     return { problem: `${id} has an unreadable restatement` };
   }
+  const d = planned.reinvested_distribution;
+  if (
+    d &&
+    (isCashLeg ||
+      !isCalendarDate(d.ex_date) ||
+      d.ex_date !== t.date ||
+      ![d.cash_amount_per_share, d.shares_held].every(isFiniteNumber))
+  ) {
+    return { problem: `${id} has an unreadable reinvestment` };
+  }
 
   const row = InvTxModel.fromJSON(
     {
@@ -100,7 +118,17 @@ const toRow = (
     },
     user.user_id,
   );
-  row.raw = r ? { restated_from: { investment: r.investment, units: r.units, unit_price: r.unit_price } } : null;
+  row.raw = r
+    ? { [RESTATED_FROM]: { investment: r.investment, units: r.units, unit_price: r.unit_price } }
+    : d
+      ? {
+          [REINVESTED_DISTRIBUTION]: {
+            ex_date: d.ex_date,
+            cash_amount_per_share: d.cash_amount_per_share,
+            shares_held: d.shares_held,
+          },
+        }
+      : null;
   return { row };
 };
 
@@ -137,7 +165,12 @@ export const importPlanStatement = async (
     user,
     request.transactions.map((t) => t.transaction.investment_transaction_id),
   );
-  const rows = Array.from(built).filter(([id]) => !existing.has(id)).map(([, row]) => row);
+  // The page holds only live rows, so it planned these as new: the shares and payouts it
+  // derived from them are wrong. It plans again around them before anything is written.
+  if (existing.deleted.length) {
+    return { ok: true, result: { written: 0, alreadyImported: 0, deleted: existing.deleted } };
+  }
+  const rows = Array.from(built).filter(([id]) => !existing.live.has(id)).map(([, row]) => row);
 
   const mappings = new Map((account.plan_fund_mappings ?? []).map((m) => [m.investment, m]));
   for (const m of request.mappings) mappings.set(m.investment, m);
@@ -192,5 +225,5 @@ export const importPlanStatement = async (
     Array.from(firstDates).map(([security_id, fromDate]) => ({ security_id, fromDate })),
   ).catch((error) => logger.error("backfillMonthlySecuritySnapshotsForward failed (plan statement)", { account_id }, error));
 
-  return { ok: true, result: { written: rows.length, alreadyImported: existing.size } };
+  return { ok: true, result: { written: rows.length, alreadyImported: existing.live.size } };
 };

@@ -60,4 +60,17 @@ export const DERIVED_HOLDING_SNAPSHOT_PREFIX = "derived-holding-";
 /** Id prefix of investment transactions imported from a plan statement. */
 export const PLAN_STATEMENT_ID_PREFIX = "plan-";
 
+/**
+ * Key on an investment transaction's `raw` marking a row restated from a
+ * collective trust into shares of the public fund it tracks. Its value keeps
+ * the statement's own `{ investment, units, unit_price }`.
+ */
+export const RESTATED_FROM = "restated_from";
+
+/**
+ * Key on the `raw` of a reinvestment the plan-statement import inferred for a
+ * restated holding, recording `{ ex_date, cash_amount_per_share, shares_held }`.
+ */
+export const REINVESTED_DISTRIBUTION = "reinvested_distribution";
+
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";

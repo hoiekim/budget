@@ -1,7 +1,9 @@
 import { describe, it, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
 import { restoreFetch, restoreEnv } from "test-helpers";
+import { distributionsFromCloses } from "common";
 import {
   adjustForDividends,
+  splitAdjust,
   clearDailyClosesCache,
   getDailyCloses,
   peekDailyCloses,
@@ -63,6 +65,45 @@ describe("adjustForDividends", () => {
     expect(adjusted[0].adjustedClose).toBeCloseTo(49, 10);
     expect(adjusted[1].adjustedClose).toBe(49);
   });
+
+  it("splitAdjust divides a dividend by every split after its ex-date only", () => {
+    const splits = [
+      { date: "2026-03-10", ratio: 2 },
+      { date: "2026-09-10", ratio: 10 },
+    ];
+    expect(
+      splitAdjust(
+        [
+          { exDate: "2026-03-01", cashAmount: 4 },
+          { exDate: "2026-06-01", cashAmount: 4 },
+          { exDate: "2026-09-10", cashAmount: 4 },
+        ],
+        splits,
+      ),
+    ).toEqual([
+      { exDate: "2026-03-01", cashAmount: 0.2 },
+      { exDate: "2026-06-01", cashAmount: 0.4 },
+      { exDate: "2026-09-10", cashAmount: 4 },
+    ]);
+  });
+
+  it("carries the dividends the import reads back out of the two series", () => {
+    const bars = [
+      { date: "2026-03-02", close: 100 },
+      { date: "2026-03-03", close: 102 },
+      { date: "2026-03-04", close: 99 },
+      { date: "2026-06-01", close: 104 },
+      { date: "2026-06-02", close: 103.2 },
+    ];
+    const dividends = [
+      { exDate: "2026-03-04", cashAmount: 2.04 },
+      { exDate: "2026-06-02", cashAmount: 0.8125 },
+    ];
+    expect(distributionsFromCloses(adjustForDividends(bars, dividends))).toEqual([
+      { ex_date: "2026-03-04", cash_amount: 2.04, close: 99 },
+      { ex_date: "2026-06-02", cash_amount: 0.8125, close: 103.2 },
+    ]);
+  });
 });
 
 describe("getDailyCloses", () => {
@@ -109,6 +150,45 @@ describe("getDailyCloses", () => {
     // From the start of the year through today, whatever day in it was asked for.
     expect(urls[0]).toContain(`/v2/aggs/ticker/XPUB/range/1/day/2026-01-01/${new Date().toISOString().slice(0, 10)}?adjusted=true`);
     expect(urls[1]).toContain("/v3/reference/dividends?ticker=XPUB&ex_dividend_date.gte=2026-01-01");
+  });
+
+  it("restates a dividend declared before a later split per today's share", async () => {
+    const fetchMock = mockFetch((url) => {
+      if (url.includes("/v2/aggs/")) {
+        return {
+          body: {
+            status: "OK",
+            results: [
+              { c: 10, t: polygonTs(2026, 3, 2) },
+              { c: 9.9, t: polygonTs(2026, 3, 3) },
+            ],
+          },
+        };
+      }
+      if (url.includes("/v3/reference/splits")) {
+        return { body: { status: "OK", results: [{ execution_date: "2026-06-10", split_from: 1, split_to: 10 }] } };
+      }
+      return { body: { status: "OK", results: [{ ex_dividend_date: "2026-03-03", cash_amount: 1 }] } };
+    });
+    const result = await getDailyCloses("XPUB", "2026-03-02", "2026-03-03");
+    expect(result.success && result.data[0].adjustedClose).toBeCloseTo(9.9, 10);
+    expect(fetchMock.mock.calls.map(([url]) => url)[2]).toContain("/v3/reference/splits?ticker=XPUB&execution_date.gte=2026-01-01");
+  });
+
+  it("a refused splits call fails the fetch instead of using unadjusted dividends", async () => {
+    mockFetch((url) => {
+      if (url.includes("/v2/aggs/")) {
+        const results = [
+          { c: 10, t: polygonTs(2026, 3, 2) },
+          { c: 9.9, t: polygonTs(2026, 3, 3) },
+        ];
+        return { body: { status: "OK", results } };
+      }
+      if (url.includes("/v3/reference/splits")) return { status: 429, body: { status: "ERROR", error: "rate limit" } };
+      return { body: { status: "OK", results: [{ ex_dividend_date: "2026-03-03", cash_amount: 1 }] } };
+    });
+    const result = await getDailyCloses("XPUB", "2026-03-02", "2026-03-03");
+    expect(result.success).toBe(false);
   });
 
   it("falls back to Yahoo's own adjusted series when Polygon has no bars", async () => {
@@ -219,9 +299,13 @@ describe("getDailyCloses", () => {
     expect(peekDailyCloses("XBUSY", "2026-03-02", "2026-03-02")).toBeUndefined();
   });
 
-  it("one wait budget covers both Polygon calls", async () => {
+  it("one wait budget covers every Polygon call", async () => {
     mockFetch((url) => ({
-      body: url.includes("/v2/aggs/") ? { status: "OK", results: [{ c: 100, t: polygonTs(2026, 3, 2) }] } : { status: "OK", results: [] },
+      body: url.includes("/v2/aggs/")
+        ? { status: "OK", results: [{ c: 100, t: polygonTs(2026, 3, 2) }] }
+        : url.includes("/v3/reference/dividends")
+          ? { status: "OK", results: [{ ex_dividend_date: "2026-03-02", cash_amount: 1 }] }
+          : { status: "OK", results: [] },
     }));
     const slowFetch = globalThis.fetch;
     globalThis.fetch = (async (url: string) => {
@@ -239,8 +323,9 @@ describe("getDailyCloses", () => {
     } finally {
       spy.mockRestore();
     }
-    // The dividends call gets what's left after the bars call, not a fresh budget.
+    // Each later call gets what's left after the ones before it, not a fresh budget.
     expect(waits[0]).toBeGreaterThan(990);
     expect(waits[1]).toBeLessThan(750);
+    expect(waits[2]).toBeLessThan(450);
   });
 });

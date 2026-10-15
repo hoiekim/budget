@@ -70,11 +70,13 @@ const parseRequest = (req: ServerRequest): ParsedRequest => {
 
 /**
  * POST /plan-statement/import
- * Body: { account_id, transactions: [{ transaction, restated_from? }],
+ * Body: { account_id, transactions: [{ transaction, restated_from?, reinvested_distribution? }],
  *         mappings: [{ investment, security_id, restated }], replace?: [security_id],
  *         holdings: [{ security_id, date, quantity, cost_basis, price }] }
  * Stores the rows the import page planned from a plan statement. Rows already
- * in the account, deleted ones included, are left as they are.
+ * in the account are left as they are. When any planned row was deleted from
+ * the account, nothing is stored and their ids come back as `deleted`, for the
+ * page to plan again around them.
  */
 export const postPlanStatementImportRoute = new Route<PlanStatementImportResult>(
   "POST",
