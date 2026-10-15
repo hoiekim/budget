@@ -166,8 +166,8 @@ export const getRowIds = (account_id: string, rows: StatementRow[]): string[] =>
 
 export const getCashLegId = (id: string) => `${id}-cash`;
 
-/** A planned row's id: a share movement's, or its cash leg's. */
-export const PLAN_STATEMENT_ID_PATTERN = /^plan-[0-9a-f]{32}(-cash)?$/;
+/** A planned row's id: a statement row's or an inferred dividend's share movement, or its cash leg. */
+export const PLAN_STATEMENT_ID_PATTERN = /^plan-(dividend-)?[0-9a-f]{32}(-cash)?$/;
 
 /** A statement date can fall on a weekend or market holiday. */
 const MAX_CLOSE_LOOKBACK_DAYS = 7;

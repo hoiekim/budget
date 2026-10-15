@@ -3,7 +3,7 @@ import type { JSONInvestmentTransaction, PlanFundMapping } from "../models";
 import { derivePositions, EnteredPosition, isDerivedPositionTransactionId, Movement } from "../holding-positions";
 import { parsePlanStatement, StatementRow } from "./parse";
 import { buildImportPlan, DailyClose, Decision, FundMapping, ImportPlan, PlannedTransaction } from "./plan";
-import { getReinvestmentId, INFERRED_REINVESTMENT_NAME, planReinvestments } from "./reinvest";
+import { getReinvestmentId, INFERRED_DIVIDEND_ID_PREFIX, planReinvestments } from "./reinvest";
 
 /** A holding's position after the import, for its holdings row. */
 export interface PlanStatementHolding {
@@ -46,7 +46,7 @@ export interface PlannedReinvestment {
   topUp: boolean;
 }
 
-export type HeldMovement = Movement & Partial<Pick<JSONInvestmentTransaction, "subtype" | "name">>;
+export type HeldMovement = Movement & Partial<Pick<JSONInvestmentTransaction, "subtype">>;
 
 export interface PlanStatementPreview extends ImportPlan {
   /** Lines of the file that could not be read. */
@@ -290,5 +290,7 @@ const replacedSecurities = (mappings: Map<string, FundMapping>, replace: Set<str
  */
 const reportsDividends = (movements: HeldMovement[]) =>
   movements.some(
-    (m) => m.subtype === InvestmentTransactionSubtype.DividendReinvestment && m.name !== INFERRED_REINVESTMENT_NAME,
+    (m) =>
+      m.subtype === InvestmentTransactionSubtype.DividendReinvestment &&
+      !(m.investment_transaction_id ?? "").startsWith(INFERRED_DIVIDEND_ID_PREFIX),
   );

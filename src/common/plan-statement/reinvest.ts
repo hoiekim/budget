@@ -55,12 +55,14 @@ export const distributionsFromCloses = (bars: DailyClose[]): Distribution[] => {
   return distributions;
 };
 
-/** Names an inferred reinvestment apart from a dividend a statement reports. */
 export const INFERRED_REINVESTMENT_NAME = "Buy (inferred dividend reinvestment)";
+
+/** Every inferred reinvestment's id, and its cash leg's, starts with it, which tells it from a reported dividend. */
+export const INFERRED_DIVIDEND_ID_PREFIX = `${PLAN_STATEMENT_ID_PREFIX}dividend-`;
 
 /** One id per holding and ex-date, so a later import recognises the reinvestment it already wrote. */
 export const getReinvestmentId = (account_id: string, security_id: string, ex_date: string) =>
-  `${PLAN_STATEMENT_ID_PREFIX}${hash128([account_id, security_id, ex_date, REINVESTED_DISTRIBUTION].join("\0"))}`;
+  `${INFERRED_DIVIDEND_ID_PREFIX}${hash128([account_id, security_id, ex_date, REINVESTED_DISTRIBUTION].join("\0"))}`;
 
 export interface ReinvestmentInput {
   account_id: string;
@@ -89,7 +91,7 @@ export interface ReinvestmentInput {
 
 /** A top-up's id names the rows that owe it, so importing the same rows again doesn't add it twice. */
 const getTopUpId = (account_id: string, security_id: string, ex_date: string, importKey: string) =>
-  `${PLAN_STATEMENT_ID_PREFIX}${hash128([account_id, security_id, ex_date, REINVESTED_DISTRIBUTION, importKey].join("\0"))}`;
+  `${INFERRED_DIVIDEND_ID_PREFIX}${hash128([account_id, security_id, ex_date, REINVESTED_DISTRIBUTION, importKey].join("\0"))}`;
 
 /**
  * The reinvested distributions a holding restated from a collective trust is
@@ -112,7 +114,8 @@ export const planReinvestments = (input: ReinvestmentInput): PlannedTransaction[
   const previous = input.movements.filter((m) => !writing.has(m.investment_transaction_id ?? ""));
   const added = input.movements.filter((m) => writing.has(m.investment_transaction_id ?? ""));
   const addedKey = () => [...added, ...planned].map((m) => m.investment_transaction_id ?? "").sort()[0] ?? "";
-  const heldOn = (movements: Movement[], date: string) => positionBefore({ movements, entered, replace, date }).quantity;
+  const heldOn = (movements: Movement[], date: string, replacing = replace) =>
+    positionBefore({ movements, entered, replace: replacing, date }).quantity;
 
   const add = (id: string, ex_date: string, shares_held: number, cash_amount: number, close: number) => {
     const amount = round(shares_held * cash_amount, 2);
@@ -173,7 +176,8 @@ export const planReinvestments = (input: ReinvestmentInput): PlannedTransaction[
     if (!input.liveIds.has(id)) continue;
     const topUpId = getTopUpId(account_id, security_id, ex_date, addedKey());
     if (input.existingIds.has(topUpId)) continue;
-    const shares = heldOn([...input.movements, ...planned], ex_date) - heldOn(previous, ex_date);
+    // The written reinvestment was priced on the entered positions this import may now replace.
+    const shares = heldOn([...input.movements, ...planned], ex_date) - heldOn(previous, ex_date, false);
     add(topUpId, ex_date, round(shares, 6), cash_amount, close);
   }
   return transactions;

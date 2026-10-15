@@ -157,7 +157,7 @@ describe("planReinvestments", () => {
       getReinvestmentId("acct-2", "sec-fund", "2026-03-04"),
     ]);
     expect(ids.size).toBe(4);
-    for (const id of ids) expect(id).toMatch(/^plan-[0-9a-f]{32}$/);
+    for (const id of ids) expect(id).toMatch(/^plan-dividend-[0-9a-f]{32}$/);
   });
 
   describe("top-ups for rows dated before a written reinvestment", () => {
@@ -222,6 +222,20 @@ describe("planReinvestments", () => {
         existingIds: new Set([june]),
       });
       expect(other[1].transaction.investment_transaction_id).not.toBe(topUp.transaction.investment_transaction_id);
+    });
+
+    test("compare against the position the written reinvestment was priced on, even when replacing it", () => {
+      // The 03-04 reinvestment paid on 10 entered shares; this import replaces them with 4 bought on 03-03.
+      const enteredTen: EnteredPosition[] = [
+        { snapshot_id: "s1", date: "2026-03-01", quantity: 10, cost_basis: null, institution_price: 100 },
+      ];
+      const replacing = buys({
+        ...over,
+        movements: [written, backDated],
+        entered: enteredTen,
+        replace: true,
+      });
+      expect(replacing).toEqual([]);
     });
 
     test("aren't added twice when the same rows are imported again", () => {

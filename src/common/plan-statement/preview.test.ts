@@ -10,7 +10,7 @@ import {
   PlanStatementPreview,
   restatementClosesRange,
 } from "./preview";
-import { getReinvestmentId, INFERRED_REINVESTMENT_NAME } from "./reinvest";
+import { getReinvestmentId } from "./reinvest";
 
 const CSV = [
   "Plan name:,EXAMPLE PLAN",
@@ -173,16 +173,15 @@ describe("previewPlanStatement", () => {
       expect(preview({ csv, mappings: restated, closes }).reinvestments).toEqual([]);
     });
 
-    test("aren't inferred when an earlier import wrote reported dividends, but an inferred one or a top-up doesn't stop them", () => {
+    test("aren't inferred when an earlier import wrote reported dividends, but an inferred one, even renamed, doesn't stop them", () => {
       const reported = {
         ...buyOf("2026-01-15", 0.1),
-        investment_transaction_id: "plan-reported",
+        investment_transaction_id: `plan-${"a".repeat(32)}`,
         subtype: "dividend reinvestment",
-        name: "Buy (dividend reinvestment)",
       };
       expect(preview({ mappings: restated, closes }, { movements: [reported] }).reinvestments).toEqual([]);
-      const inferred = { ...reported, name: INFERRED_REINVESTMENT_NAME };
-      expect(preview({ mappings: restated, closes }, { movements: [inferred] }).reinvestments).toHaveLength(1);
+      const renamed = { ...reported, investment_transaction_id: `plan-dividend-${"b".repeat(32)}`, name: "My dividend" };
+      expect(preview({ mappings: restated, closes }, { movements: [renamed] }).reinvestments).toHaveLength(1);
     });
 
     test("count an entered position, unless the transactions replace it", () => {
@@ -369,6 +368,7 @@ describe("previewPlanStatement", () => {
       const B = statement(["2026-01-09", "2026-02-24"]);
       const importInOrder = (csvs: string[]) => {
         const account: Movement[] = [];
+        let topUps = 0;
         for (const csv of csvs) {
           const result = preview(
             {
@@ -382,16 +382,19 @@ describe("previewPlanStatement", () => {
             { movements: account },
           );
           account.push(...result.request!.transactions.map((t) => t.transaction as Movement));
+          topUps += result.reinvestments.filter((r) => r.topUp).length;
         }
         const shares = account.reduce((sum, m) => sum + (m.type === "buy" ? m.quantity : 0), 0);
         const dividends = account
           .filter((m) => (m as HeldMovement).subtype === "dividend")
           .reduce((sum, m) => sum - m.amount, 0);
-        return { shares, dividends: Math.round(dividends * 100) / 100 };
+        return { shares, dividends: Math.round(dividends * 100) / 100, topUps };
       };
       const inOrder = importInOrder([A, B]);
       expect(inOrder.dividends).toBe(25.1);
+      expect(inOrder.topUps).toBe(0);
       const outOfOrder = importInOrder([B, A, B]);
+      expect(outOfOrder.topUps).toBe(2);
       expect(outOfOrder.dividends).toBe(inOrder.dividends);
       expect(outOfOrder.shares).toBeCloseTo(inOrder.shares, 6);
     });
