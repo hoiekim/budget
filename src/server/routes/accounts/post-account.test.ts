@@ -200,6 +200,19 @@ describe("post-account edit path", () => {
     expect(update!.values).not.toContain("other-users-item");
   });
 
+  test("never writes plan_fund_mappings — the plan-statement import is their only writer", async () => {
+    for (const plan_fund_mappings of [null, [null], [{ investment: "FUND", security_id: "sec-x", restated: false }]]) {
+      clearQueryMocks();
+      db.updateReturns = [{ account_id: "acc-1" }];
+      const res = await postAccountRoute.execute(
+        makeReq({ account_id: "acc-1", custom_name: "renamed", plan_fund_mappings }, "u-1"),
+        fakeRes(),
+      );
+      expect(res).toMatchObject({ status: "success" });
+      expect(findStatement(UPDATE_ACCOUNTS)!.sql).not.toMatch(/\bplan_fund_mappings\b/i);
+    }
+  });
+
   test("scopes the UPDATE to the requesting user's user_id", async () => {
     db.updateReturns = [{ account_id: "acc-1" }];
     await postAccountRoute.execute(

@@ -9,6 +9,7 @@ import {
   upsertHoldings,
   searchSecurities,
   upsertSecurities,
+  getSecurity,
   getAccount,
   getHoldingSnapshots,
   polygon,
@@ -193,8 +194,14 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
 
     if (!account_id) return validationError("account_id is required");
     if (typeof account_id !== "string") return validationError("account_id must be a string");
-    const tickerResult = requireTickerSymbol(body, "ticker_symbol");
-    if (!tickerResult.success) return validationError(tickerResult.error!);
+    // A known security can be named by id, so a ticker two security rows share
+    // can't send the snapshot to the other one.
+    const given_security_id = body.security_id;
+    if (given_security_id !== undefined && typeof given_security_id !== "string") {
+      return validationError("security_id must be a string");
+    }
+    const tickerResult = given_security_id ? null : requireTickerSymbol(body, "ticker_symbol");
+    if (tickerResult && !tickerResult.success) return validationError(tickerResult.error!);
     if (quantity === undefined || quantity === null) return validationError("quantity is required");
 
     const parsedDate = optionalDateField(body, "snapshot_date");
@@ -211,9 +218,15 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const date: Date = parsedDate.data ?? new Date();
     const dateString = getSquashedDateString(date);
 
-    const resolved = await resolveSecurityId(tickerResult.data!, user.user_id);
-    if (!resolved.ok) return { status: "failed", message: resolved.message };
-    const security_id = resolved.security_id;
+    let security_id: string;
+    if (given_security_id) {
+      if (!(await getSecurity(given_security_id))) return { status: "failed", message: "Security not found." };
+      security_id = given_security_id;
+    } else {
+      const resolved = await resolveSecurityId(tickerResult!.data!, user.user_id);
+      if (!resolved.ok) return { status: "failed", message: resolved.message };
+      security_id = resolved.security_id;
+    }
 
     // Deterministic snapshot ID so a duplicate (account, security, date) tuple
     // updates in place rather than producing duplicate rows.

@@ -125,6 +125,7 @@ export abstract class Table<
   async query(
     filters: Record<string, ParamValue | unknown> = {},
     options: Omit<SearchFilters, "filters"> = {},
+    client?: QueryExecutor,
   ): Promise<TModel[]> {
     const { sql, values } = buildSelectWithFilters(this.name, "*", {
       filters,
@@ -139,7 +140,7 @@ export abstract class Table<
       limit: options.limit,
       offset: options.offset,
     });
-    const result = await pool.query(sql, values);
+    const result = await (client ?? pool).query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
   }
 

@@ -68,8 +68,8 @@ export const HoldingsComposition = ({ accounts }: Props) => {
   const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
 
   const { calculations, router, viewDate, data } = useAppContext();
-  const { holdingsValueData, balanceData } = calculations;
-  const { items, securitySnapshots, holdingSnapshots, investmentTransactions } = data;
+  const { holdingsValueData, balanceData, holdingSnapshots } = calculations;
+  const { items, securitySnapshots, investmentTransactions } = data;
 
   // "Add Holding" and manual-account visibility only apply when a single
   // manual account is shown; multi-account aggregation has no single target.

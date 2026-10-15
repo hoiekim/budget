@@ -24,6 +24,7 @@ import {
   INSTITUTION_VALUE,
   COST_BASIS,
   QUANTITY,
+  QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { searchSecuritiesById } from "./securities";
@@ -59,7 +60,7 @@ export interface HoldingSnapshot {
   holding_security_id: string;
   institution_price?: number;
   institution_value?: number;
-  cost_basis?: number;
+  cost_basis?: number | null;
   quantity?: number;
 }
 
@@ -294,6 +295,49 @@ export const upsertHoldingSnapshots = async (
   }
   return results;
 };
+
+/**
+ * Live holding snapshots for some of an account's securities, in date order,
+ * read on `client` when given.
+ */
+export const getHoldingSnapshotsForSecurities = async (
+  user: MaskedUser,
+  account_id: string,
+  security_ids: string[],
+  options: { client?: QueryExecutor } = {},
+): Promise<HoldingSnapshot[]> => {
+  if (!security_ids.length) return [];
+  const snapshots = await snapshotsTable.query(
+    { [SNAPSHOT_TYPE]: "holding", [HOLDING_ACCOUNT_ID]: account_id },
+    {
+      user_id: user.user_id,
+      inFilters: { [HOLDING_SECURITY_ID]: security_ids },
+      orderBy: `${SNAPSHOT_DATE}, ${SNAPSHOT_ID}`,
+    },
+    options.client,
+  );
+  return snapshots.map((s) => ({
+    snapshot_id: s.snapshot_id,
+    snapshot_date: String(s.snapshot_date),
+    holding_account_id: s.holding_account_id as string,
+    holding_security_id: s.holding_security_id as string,
+    institution_price: s.institution_price != null ? Number(s.institution_price) : undefined,
+    institution_value: s.institution_value != null ? Number(s.institution_value) : undefined,
+    cost_basis: s.cost_basis != null ? Number(s.cost_basis) : undefined,
+    quantity: s.quantity != null ? Number(s.quantity) : undefined,
+  }));
+};
+
+/** Soft-deletes the caller's holding snapshots by id, so clients receive the tombstones. */
+export const softDeleteHoldingSnapshots = async (
+  user: MaskedUser,
+  snapshot_ids: string[],
+  client?: QueryExecutor,
+): Promise<void> => {
+  if (!snapshot_ids.length) return;
+  await snapshotsTable.bulkSoftDelete(snapshot_ids, { [USER_ID]: user.user_id }, client);
+};
+
 
 /** Columns an account-balance conflict may rewrite. `Table.upsert` otherwise
  *  defaults to every supplied key, which lets a colliding `snapshot_id` reassign

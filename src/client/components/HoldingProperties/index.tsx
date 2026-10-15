@@ -29,6 +29,7 @@ import {
   Row,
   KeyValue,
   indexedDb,
+  isDerivedHoldingSnapshot,
 } from "client";
 import { CASH_TICKER } from "../HoldingsComposition";
 import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
@@ -124,7 +125,7 @@ export const HoldingProperties = () => {
     // editable form. One section per security_id; the freshest snapshot
     // wins when multiple exist on the same date.
     const latestPerSecurity = new Map<string, HoldingSnapshot>();
-    data.holdingSnapshots.forEach((snap) => {
+    calculations.holdingSnapshots.forEach((snap) => {
       if (snap.holding.account_id !== accountId) return;
       if (!bucketSecurityIds.has(snap.holding.security_id)) return;
       const snapDate = new Date(snap.snapshot.date);
@@ -140,7 +141,7 @@ export const HoldingProperties = () => {
     );
   }, [
     accountId,
-    data.holdingSnapshots,
+    calculations.holdingSnapshots,
     data.securitySnapshots,
     holdingsValueData,
     isNew,
@@ -321,7 +322,7 @@ export const HoldingProperties = () => {
   const divergence = useHoldingDivergence(
     accountId ? [accountId] : [],
     {
-      holdingSnapshots: data.holdingSnapshots,
+      holdingSnapshots: calculations.holdingSnapshots,
       investmentTransactions: data.investmentTransactions,
       securitySnapshots: data.securitySnapshots,
     },
@@ -339,7 +340,7 @@ export const HoldingProperties = () => {
   const divergenceNow = useHoldingDivergence(
     accountId ? [accountId] : [],
     {
-      holdingSnapshots: data.holdingSnapshots,
+      holdingSnapshots: calculations.holdingSnapshots,
       investmentTransactions: data.investmentTransactions,
       securitySnapshots: data.securitySnapshots,
     },
@@ -370,7 +371,7 @@ export const HoldingProperties = () => {
   const reconcileDate = useMemo(() => {
     if (!primarySecurityId || !accountId) return undefined;
     const snaps: { date: string; qty: number }[] = [];
-    data.holdingSnapshots.forEach((snap) => {
+    calculations.holdingSnapshots.forEach((snap) => {
       if (snap.holding.account_id !== accountId) return;
       if (snap.holding.security_id !== primarySecurityId) return;
       snaps.push({
@@ -386,7 +387,7 @@ export const HoldingProperties = () => {
     // possible on floating-point rounding across the array).
     const jump = snaps.find((s) => s.qty >= currentOwned - Math.abs(currentOwned) * 1e-6);
     return jump?.date ?? snaps[0].date;
-  }, [data.holdingSnapshots, accountId, primarySecurityId]);
+  }, [calculations.holdingSnapshots, accountId, primarySecurityId]);
   const onClickAddDivergentTransaction = () => {
     if (!accountId) return;
     // Price the mint at its own historical date via the shared
@@ -480,12 +481,21 @@ export const HoldingProperties = () => {
   /** Patch a single underlying snapshot (per-snapshot two-row section). */
   const updateSnapshot = useCallback(
     async (snap: HoldingSnapshot, patch: Record<string, unknown>) => {
-      const r = await call
-        .post<HoldingSnapshotPostResponse>("/api/snapshots/holding", {
-          snapshot_id: snap.snapshot.snapshot_id,
-          ...patch,
-        })
-        .catch(console.error);
+      // A derived position exists only in memory, so an edit saves it as a
+      // position the user entered, with every figure it showed.
+      const body = isDerivedHoldingSnapshot(snap)
+        ? {
+            account_id: snap.holding.account_id,
+            security_id: snap.holding.security_id,
+            quantity: snap.holding.quantity,
+            cost_basis: snap.holding.cost_basis ?? undefined,
+            institution_price: snap.holding.institution_price,
+            institution_value: snap.holding.institution_value,
+            snapshot_date: snap.snapshot.date.slice(0, 10),
+            ...patch,
+          }
+        : { snapshot_id: snap.snapshot.snapshot_id, ...patch };
+      const r = await call.post<HoldingSnapshotPostResponse>("/api/snapshots/holding", body).catch(console.error);
       if (r?.status !== "success" || !r.body) {
         setSnapEdits((prev) => ({
           ...prev,
@@ -801,7 +811,7 @@ export const HoldingProperties = () => {
                 )}
               </KeyValue>
               {edit.error && <Row className="formError">{edit.error}</Row>}
-              {!isReadOnly && (
+              {!isReadOnly && !isDerivedHoldingSnapshot(snap) && (
                 <Row className="button">
                   <DeleteButton
                     confirmMessage="Remove this holding snapshot?"

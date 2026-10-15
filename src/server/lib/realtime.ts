@@ -142,6 +142,7 @@ const MUTATION_DOMAINS: Record<string, EmitDomain> = {
   "/new-split-transaction": TableName.SplitTransactions,
   "/investment-transaction": TableName.InvestmentTransactions,
   "/new-investment-transaction": TableName.InvestmentTransactions,
+  "/plan-statement/import": TableName.InvestmentTransactions,
   "/account": TableName.Accounts,
   "/public-token": TableName.Accounts,
   "/item": TableName.Accounts,
@@ -170,6 +171,19 @@ export const mutationEmitDomain = (method: string, path: string): EmitDomain | n
   if (!isMutating) return null;
   return MUTATION_DOMAINS[path] ?? null;
 };
+
+/**
+ * Tables a path's write also changes as a side effect, beyond its own domain:
+ * a plan-statement import also saves the account's fund mappings and holdings
+ * rows, and can retire entered holding snapshots. These are emitted without
+ * the writing tab's id, so every tab refetches them.
+ */
+const SIDE_EFFECT_DOMAINS: Record<string, EmitDomain[]> = {
+  "/plan-statement/import": [TableName.Accounts, TableName.Snapshots],
+};
+
+export const mutationSideEffectDomains = (method: string, path: string): EmitDomain[] =>
+  mutationEmitDomain(method, path) ? (SIDE_EFFECT_DOMAINS[path] ?? []) : [];
 
 export interface EmitPayload {
   /** Opaque tag the originating tab attached via `X-Tab-Id` header — the

@@ -1,0 +1,124 @@
+import { describe, expect, test } from "bun:test";
+import type { EnteredPosition, Movement } from "../holding-positions";
+import { FundMapping, getRowIds } from "./plan";
+import { parsePlanStatement } from "./parse";
+import { previewPlanStatement, PreviewInput, PlanStatementPreview } from "./preview";
+
+const CSV = [
+  "Plan name:,EXAMPLE PLAN",
+  "Date,Investment,Transaction Type,Amount,Shares/Unit",
+  '03/02/2026,EXAMPLE INDEX FUND,Contributions,"100.00","2.000"',
+  '04/01/2026,EXAMPLE INDEX FUND,Contributions,"100.00","2.000"',
+].join("\n");
+
+const MAPPING: FundMapping = { security_id: "sec-index", restated: false, ticker_symbol: "XIDX" };
+
+const input = (over: Partial<PreviewInput> = {}, held: { movements?: Movement[]; entered?: EnteredPosition[] } = {}) =>
+  ({
+    account_id: "acct-1",
+    iso_currency_code: "USD",
+    csv: CSV,
+    mappings: new Map([["EXAMPLE INDEX FUND", MAPPING]]),
+    decisions: {},
+    closes: new Map(),
+    existingIds: new Set<string>(),
+    replace: new Set<string>(),
+    holding: () => ({ movements: held.movements ?? [], entered: held.entered ?? [] }),
+    throughMonth: "2026-04",
+    ...over,
+  }) as PreviewInput;
+
+const preview = (over: Partial<PreviewInput> = {}, held = {}) => previewPlanStatement(input(over, held)) as PlanStatementPreview;
+
+const entered = (date: string, quantity: number): EnteredPosition => ({
+  snapshot_id: `holding-acct-1-sec-index-${date.replaceAll("-", "")}`,
+  date,
+  quantity,
+  cost_basis: null,
+  institution_price: 50,
+});
+
+describe("previewPlanStatement", () => {
+  test("plans the rows and the request that imports them", () => {
+    const result = preview();
+    expect(result.rows.map((r) => r.status)).toEqual(["new", "new"]);
+    expect(result.request?.transactions).toHaveLength(4);
+    expect(result.request?.mappings).toEqual([{ investment: "EXAMPLE INDEX FUND", security_id: "sec-index", restated: false }]);
+    expect(result.request?.replace).toEqual([]);
+    expect(result.request?.holdings).toEqual([
+      { security_id: "sec-index", date: "2026-04-01", quantity: 4, cost_basis: 200, price: 50 },
+    ]);
+  });
+
+  test("saves only the mappings of the statement's own funds", () => {
+    const mappings = new Map([
+      ["EXAMPLE INDEX FUND", MAPPING],
+      ["ANOTHER FUND", { security_id: "sec-other", restated: false, ticker_symbol: "OTHR" }],
+    ]);
+    expect(preview({ mappings }).request?.mappings.map((m) => m.investment)).toEqual(["EXAMPLE INDEX FUND"]);
+  });
+
+  test("a row already in the account is listed as imported and not sent again", () => {
+    const [first] = getRowIds("acct-1", parsePlanStatement(CSV).rows);
+    const result = preview({ existingIds: new Set([first]) });
+    expect(result.rows.map((r) => r.status)).toEqual(["imported", "new"]);
+    expect(result.request?.transactions.map((t) => t.transaction.investment_transaction_id)).not.toContain(first);
+  });
+
+  test("an entered position the transactions don't explain is disclosed and kept by default", () => {
+    const result = preview({}, { entered: [entered("2026-01-02", 100)] });
+    expect(result.funds[0].positionGaps).toEqual([{ date: "2026-01-02", stored: 100, explained: 0 }]);
+    expect(result.funds[0].replacePositions).toBe(false);
+    expect(result.request?.replace).toEqual([]);
+    expect(result.request?.holdings[0].quantity).toBe(104);
+  });
+
+  test("replacing sends the security to retire and holds only the transactions' shares", () => {
+    const result = preview({ replace: new Set(["EXAMPLE INDEX FUND"]) }, { entered: [entered("2026-01-02", 100)] });
+    expect(result.funds[0].replacePositions).toBe(true);
+    expect(result.request?.replace).toEqual(["sec-index"]);
+    expect(result.request?.holdings[0].quantity).toBe(4);
+  });
+
+  test("an entered position the statement's own rows explain isn't a gap", () => {
+    expect(preview({}, { entered: [entered("2026-03-02", 2)] }).funds[0].positionGaps).toBeUndefined();
+  });
+
+  test("the account's other transactions on the holding count toward its position", () => {
+    const movements = [{ date: "2026-02-01", type: "buy", quantity: 5, amount: 250, price: 50 } as Movement];
+    expect(preview({}, { movements }).request?.holdings[0].quantity).toBe(9);
+  });
+
+  test("a blocker leaves no request to send", () => {
+    const result = preview({ mappings: new Map() });
+    expect(result.blockers).toEqual(["Map EXAMPLE INDEX FUND to a security"]);
+    expect(result.request).toBeNull();
+  });
+
+  test("a restated fund is priced from the public fund's closes", () => {
+    const mappings = new Map([["EXAMPLE INDEX FUND", { ...MAPPING, restated: true }]]);
+    const bars = [
+      { date: "2026-03-02", close: 100, adjustedClose: 100 },
+      { date: "2026-04-01", close: 100, adjustedClose: 100 },
+    ];
+    const result = preview({ mappings, closes: new Map([["EXAMPLE INDEX FUND", { bars }]]) });
+    expect(result.funds[0].restatement).toMatchObject({ ok: true });
+    const [buy] = result.request!.transactions;
+    expect(buy.transaction).toMatchObject({ price: 100, quantity: 1 });
+    expect(buy.restated_from).toEqual({ investment: "EXAMPLE INDEX FUND", units: 2, unit_price: 50 });
+  });
+
+  test("closes still loading block a restated fund and say it can be retried", () => {
+    const mappings = new Map([["EXAMPLE INDEX FUND", { ...MAPPING, restated: true }]]);
+    const loading = { message: "Prices for XIDX are still loading. Retry in a minute.", retryable: true };
+    const result = preview({ mappings, closes: new Map([["EXAMPLE INDEX FUND", loading]]) });
+    expect(result.funds[0].restatement).toMatchObject({ ok: false, retryable: true });
+    expect(result.request).toBeNull();
+  });
+
+  test("a file with no statement rows is an error, not a preview", () => {
+    expect(previewPlanStatement(input({ csv: "no header here" }))).toEqual({
+      error: 'No "Date,Investment,Transaction Type,Amount,Shares/Unit" header found.',
+    });
+  });
+});

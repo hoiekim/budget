@@ -4,3 +4,5 @@ export * from "./types";
 export * from "./transfers";
 export * from "./constants";
 export * from "./investment-transaction-shape";
+export * from "./holding-positions";
+export * from "./plan-statement";

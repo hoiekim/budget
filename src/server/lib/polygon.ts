@@ -157,10 +157,10 @@ setInterval(() => {
  * the URL and send the call out unauthenticated. `:` is left alone: it is a
  * legal path character and carries Polygon's crypto namespace (`X:BTCUSD`).
  */
-const encodeTicker = (ticker: string): string =>
+export const encodeTicker = (ticker: string): string =>
   encodeURIComponent(ticker).replace(/%3A/g, ":");
 
-const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
+export const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
   success: false,
   error: "rate_limited",
   message: `Market data is busy right now; retry the lookup for ${polygonTicker} in a moment.`,
@@ -175,7 +175,7 @@ const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
  * undefined when the empty answer is real and may be memoized — a 404 is how
  * Polygon says it does not carry the symbol, so it stays on that side.
  */
-const upstreamRefusal = (
+export const upstreamRefusal = (
   response: Response,
   json: { status?: unknown; message?: unknown; error?: unknown },
   subject: string,
@@ -204,7 +204,7 @@ const upstreamRefusal = (
 /**
  * Fetch with retry logic for transient failures
  */
-const fetchWithRetry = async (url: string, maxRetries = 2, delayMs = 1000): Promise<Response> => {
+export const fetchWithRetry = async (url: string, maxRetries = 2, delayMs = 1000): Promise<Response> => {
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

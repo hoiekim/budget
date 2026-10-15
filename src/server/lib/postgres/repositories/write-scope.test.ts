@@ -604,7 +604,15 @@ describe("server writes carry the owner", () => {
     // reads the wrong argument can't pass by rejecting everything into licences.
     const scopedVerbs = new Set(serverCalls.filter((c) => c.scoped).map((c) => c.verb));
     expect([...scopedVerbs].sort()).toEqual(
-      ["bulkSoftDelete", "bulkSoftDeleteByColumn", "bulkSoftDeleteByRelatedColumn", "softDelete", "update", "upsert"].sort(),
+      [
+        "bulkSoftDelete",
+        "bulkSoftDeleteByColumn",
+        "bulkSoftDeleteByRelatedColumn",
+        "softDelete",
+        "update",
+        "upsert",
+        "upsertMany",
+      ].sort(),
     );
   });
 

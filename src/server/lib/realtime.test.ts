@@ -7,6 +7,7 @@ import {
   emitToUser,
   getEventsSince,
   mutationEmitDomain,
+  mutationSideEffectDomains,
   closeAllSubscribers,
   resetRingBufferForTests,
   bufferedEventCount,
@@ -111,6 +112,18 @@ describe("realtime", () => {
     expect(healthy.sent).toEqual([{ event: "charts-updated", payload: {} }]);
     // throwing was closed (drop-on-failure branch)
     expect(throwing.closed).toBe(true);
+  });
+
+  it("an import also emits the account and holding snapshot domains", () => {
+    expect(mutationEmitDomain("POST", "/plan-statement/import")).toBe(TableName.InvestmentTransactions);
+    expect(mutationSideEffectDomains("POST", "/plan-statement/import")).toEqual([
+      TableName.Accounts,
+      TableName.Snapshots,
+    ]);
+    // An ordinary investment transaction write changes nothing beyond its own table.
+    expect(mutationSideEffectDomains("POST", "/investment-transaction")).toEqual([]);
+    expect(mutationSideEffectDomains("DELETE", "/investment-transaction")).toEqual([]);
+    expect(mutationSideEffectDomains("GET", "/plan-statement/import")).toEqual([]);
   });
 
   it("mutationEmitDomain maps POST/DELETE writes to their table", () => {

@@ -14,6 +14,7 @@ import {
   QUANTITY,
   ISO_CURRENCY_CODE,
   RAW,
+  QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
@@ -87,6 +88,19 @@ export const upsertHoldings = async (
     }
   }
   return results;
+};
+
+/**
+ * One holdings row, throwing on failure. Inside a transaction a swallowed
+ * error leaves Postgres aborted, and the COMMIT that follows rolls back
+ * without raising, so the caller would report a write that never happened.
+ */
+export const upsertHoldingOrThrow = async (
+  user: MaskedUser,
+  holding: JSONHolding,
+  client?: QueryExecutor,
+): Promise<void> => {
+  await holdingsTable.upsert(HoldingModel.fromJSON(holding, user.user_id), HOLDING_UPDATE_COLUMNS, client);
 };
 
 export const deleteHoldings = async (

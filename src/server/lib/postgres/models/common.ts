@@ -124,4 +124,6 @@ export const LAST_USED_AT = "last_used_at";
 export const REVOKED_AT = "revoked_at";
 export const EXPIRES_AT = "expires_at";
 
+export const PLAN_FUND_MAPPINGS = "plan_fund_mappings";
+
 export const NULL = "NULL";

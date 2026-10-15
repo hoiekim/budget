@@ -19,6 +19,7 @@ import {
   MAX_REQUEST_BODY_SIZE,
   emitToUser,
   mutationEmitDomain,
+  mutationSideEffectDomains,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -403,6 +404,9 @@ async function handleApiRequest(
     const tabHeader = headers["x-tab-id"];
     const originTabId = Array.isArray(tabHeader) ? tabHeader[0] : tabHeader;
     emitToUser(session.user.user_id, emitDomain, originTabId ? { originTabId } : {});
+    for (const domain of mutationSideEffectDomains(request.method, apiPath)) {
+      emitToUser(session.user.user_id, domain, {});
+    }
   }
 
   // Apply JSON result if the handler returned one and didn't stream

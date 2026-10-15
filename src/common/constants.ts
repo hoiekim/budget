@@ -50,4 +50,14 @@ export const CHARTS = TableName.Charts;
 export const API_KEYS = TableName.ApiKeys;
 export const REJECTED_CATEGORIES = TableName.RejectedCategories;
 
+/**
+ * Id prefix of the holding snapshots the client derives from a holding's
+ * transactions. They exist only in memory; every stored holding snapshot is a
+ * position someone entered.
+ */
+export const DERIVED_HOLDING_SNAPSHOT_PREFIX = "derived-holding-";
+
+/** Id prefix of investment transactions imported from a plan statement. */
+export const PLAN_STATEMENT_ID_PREFIX = "plan-";
+
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";

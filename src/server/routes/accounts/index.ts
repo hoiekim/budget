@@ -21,6 +21,8 @@ export * from "./post-investment-transaction";
 export * from "./post-account";
 export * from "./post-snapshot";
 export * from "./post-holding-snapshot";
+export * from "./post-plan-statement";
+export * from "./get-daily-closes";
 export * from "./post-validate-ticker";
 export * from "./post-resolve-security-snapshot";
 export * from "./post-suggest-category";
