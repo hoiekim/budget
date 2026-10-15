@@ -240,6 +240,19 @@ describe("previewPlanStatement", () => {
       expect(nothingHeld.retryCloses).toBe(false);
     });
 
+    test("only the ex-dates inside the statement's period, even for shares held before it", () => {
+      const earlier = [
+        { date: "2026-02-02", close: 50, adjustedClose: 49 },
+        { date: "2026-02-03", close: 50, adjustedClose: 49.5 },
+        ...bars,
+      ];
+      const result = preview(
+        { mappings: restated, closes: new Map([["EXAMPLE INDEX FUND", { bars: earlier }]]) },
+        { movements: [buyOf("2026-01-15", 2)] },
+      );
+      expect(result.reinvestments.map((r) => r.ex_date)).toEqual(["2026-03-16"]);
+    });
+
     test("a reinvestment found deleted isn't planned again", () => {
       const deleted = preview({ mappings: restated, closes, deletedIds: new Set([exId]) });
       expect(deleted.reinvestments).toEqual([]);

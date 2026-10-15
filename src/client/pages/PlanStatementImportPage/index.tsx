@@ -97,6 +97,8 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState("");
+  /** Rows the last import attempt found deleted from the account, now planned around. */
+  const [refusedRows, setRefusedRows] = useState(0);
   // The edits as of the latest change. Handlers that await (a ticker lookup)
   // read it afterwards instead of the values they started with, so an edit
   // made in the meantime isn't written back over.
@@ -127,20 +129,11 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     return others;
   };
 
-  /**
-   * The closes a restated fund needs, through the statement's last day. They span the holding's
-   * earlier rows too, so a dividend between two statements is still found.
-   */
+  /** The closes a restated fund needs: the statement's whole period, whose ex-dates are inferred. */
   const closesRequest = (rows: StatementRow[], investment: string, edit: FundEdit) => {
     const ticker = tickerOf(edit, data.securities);
     if (!edit.restated || !edit.security_id || !ticker || !rows.length) return null;
-    const dates = rows.filter((r) => r.investment === investment).map((r) => r.date);
-    data.investmentTransactions.forEach((t) => {
-      if (t.account_id === accountId && t.security_id === edit.security_id) dates.push(t.date.slice(0, 10));
-    });
-    if (!dates.length) return null;
-    dates.push(rows[rows.length - 1].date);
-    const { from, to } = closesRange(dates);
+    const { from, to } = closesRange([rows[0].date, rows[rows.length - 1].date]);
     return { key: closesKey(investment, ticker, from, to), ticker, from, to };
   };
 
@@ -181,7 +174,6 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       const ticker = tickerOf(edit, data.securities);
       mappings.set(investment, { security_id: edit.security_id, restated: edit.restated, ticker_symbol: ticker || null });
       const request = closesRequest(rows, investment, edit);
-      // A range the account's rows moved since the request has no answer yet, so it offers Retry too.
       if (request) {
         fundCloses.set(investment, closes[request.key] ?? { message: `Prices for ${ticker} are loading…`, retryable: true });
       }
@@ -242,6 +234,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     setFileName(file.name);
     setCsv(text);
     setResult("");
+    setRefusedRows(0);
     setError("");
     setDecisions({});
     setReplacePositions([]);
@@ -302,16 +295,14 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     if (deleted?.length) {
       // The page holds only live rows, so it planned these as new; it plans again around them.
       setDeletedIds((current) => new Set([...current, ...deleted]));
-      const rows = new Set(deleted.map((id) => id.replace(/-cash$/, ""))).size;
-      setResult(
-        `${rows} row${rows === 1 ? " was" : "s were"} deleted from the account earlier and stay${rows === 1 ? "s" : ""} deleted. ` +
-          "The preview now leaves them out. Check it and import again.",
-      );
+      setRefusedRows(new Set(deleted.map((id) => id.replace(/-cash$/, ""))).size);
+      setResult("");
       return;
     }
     const skipped = alreadyImported
       ? ` ${alreadyImported} already in the account ${alreadyImported === 1 ? "was" : "were"} left as ${alreadyImported === 1 ? "it was" : "they were"}.`
       : "";
+    setRefusedRows(0);
     setResult(`Imported ${written} transaction${written === 1 ? "" : "s"}.${skipped}`);
     setReplacePositions([]);
     sync();
@@ -453,6 +444,14 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
               </ButtonRow>
             )}
             {result && <Row className="fundNote">{result}</Row>}
+            {refusedRows > 0 && (
+              <Row className="fundNote">
+                {refusedRows === 1 ? "1 row was" : `${refusedRows} rows were`} deleted from the account earlier and{" "}
+                {refusedRows === 1 ? "stays" : "stay"} deleted, so the preview now leaves{" "}
+                {refusedRows === 1 ? "it" : "them"} out.{" "}
+                {writing ? "Check it and import again." : "Nothing else is left to import."}
+              </Row>
+            )}
             <ButtonRow disabled={!canImport} onClick={onClickImport}>
               {writing || !replacing ? (
                 <>

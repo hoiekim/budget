@@ -65,33 +65,35 @@ export interface ReinvestmentInput {
   iso_currency_code: string;
   /** The public fund's daily closes, as traded and dividend-adjusted. */
   bars: DailyClose[];
-  /** YYYY-MM-DD, the statement's last day. Later ex-dates wait for a statement that covers them. */
+  /** YYYY-MM-DD, the statement's first and last days. Only the ex-dates it covers are inferred. */
+  from: string;
   through: string;
   /** The holding's live movements, with the rows this import writes. */
   movements: Movement[];
   entered: EnteredPosition[];
   /** Whether the holding's entered positions are being replaced by its transactions. */
   replace: boolean;
-  /** Live transaction ids in the account. */
+  /** Ids already in the account: live, or found deleted by an earlier import attempt. */
   existingIds: Set<string>;
 }
 
 /**
  * The reinvested distributions a holding restated from a collective trust is
  * owed: the trust keeps its payouts in its unit price, while the public fund
- * pays them out. On each ex-date through the statement's last day, the shares
+ * pays them out. On each ex-date the statement covers, the shares
  * held at the start of the day × cash per share buys shares at that day's
  * close, as a dividend and its reinvestment. An ex-date already written is
  * left as it is; earlier reinvestments count toward the shares held on later ones.
  */
 export const planReinvestments = (input: ReinvestmentInput): PlannedTransaction[] => {
-  const { account_id, security_id, iso_currency_code, through, entered, replace, existingIds } = input;
+  const { account_id, security_id, iso_currency_code, from, through, entered, replace, existingIds } = input;
   const spec = KIND_SPECS.dividend;
   const planned: Movement[] = [];
   const transactions: PlannedTransaction[] = [];
 
   for (const { ex_date, cash_amount, close } of distributionsFromCloses(input.bars)) {
     if (ex_date > through) break;
+    if (ex_date < from) continue;
     const id = getReinvestmentId(account_id, security_id, ex_date);
     if (existingIds.has(id)) continue;
     const held = positionBefore({ movements: [...input.movements, ...planned], entered, replace, date: ex_date });

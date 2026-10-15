@@ -121,6 +121,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
   });
 
   const asMovement = (t: PlannedTransaction) => t.transaction as HeldMovement & { security_id?: string | null };
+  const from = parsed.rows[0].date;
   const through = parsed.rows[parsed.rows.length - 1].date;
   const replacing = replacedSecurities(input.mappings, input.replace);
   const reinvestments: PlannedReinvestment[] = [];
@@ -145,6 +146,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
         security_id,
         iso_currency_code: input.iso_currency_code,
         bars: bars!,
+        from,
         through,
         movements,
         entered: held.entered,
