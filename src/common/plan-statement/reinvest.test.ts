@@ -34,6 +34,11 @@ describe("distributionsFromCloses", () => {
     ]);
   });
 
+  test("a typical quarterly payout of a third of a percent is read", () => {
+    const bars = barsWith(CLOSES, { "2026-03-04": 0.33 });
+    expect(distributionsFromCloses(bars)).toEqual([{ ex_date: "2026-03-04", cash_amount: 0.33, close: 99 }]);
+  });
+
   test("a series with no payouts, or one rounded to a few digits, has none", () => {
     expect(distributionsFromCloses(barsWith(CLOSES))).toEqual([]);
     const rounded = barsWith(CLOSES, { "2026-03-04": 1.5 }).map((b) => ({
@@ -113,6 +118,7 @@ describe("planReinvestments", () => {
 
   test("an ex-date after the statement's last day waits for a statement that covers it", () => {
     expect(buys({ through: "2026-06-01" }).map((t) => t.transaction.date)).toEqual(["2026-03-04"]);
+    expect(buys({ through: "2026-06-02" }).map((t) => t.transaction.date)).toEqual(["2026-03-04", "2026-06-02"]);
   });
 
   test("an ex-date already written is left alone, and its shares count toward the next", () => {

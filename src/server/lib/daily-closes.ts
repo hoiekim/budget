@@ -88,6 +88,16 @@ export const adjustForDividends = (
   return adjusted.reverse();
 };
 
+/**
+ * Polygon's bars are adjusted for every split since, but its dividends are as
+ * declared, so a dividend is restated per today's share by each later split.
+ */
+export const splitAdjust = (dividends: Dividend[], splits: { date: string; ratio: number }[]): Dividend[] =>
+  dividends.map((d) => ({
+    exDate: d.exDate,
+    cashAmount: splits.reduce((amount, s) => (s.date > d.exDate ? amount / s.ratio : amount), d.cashAmount),
+  }));
+
 const polygonFailure = (err: unknown, ticker: string): PolygonResult<never> => {
   if (err instanceof QueueWaitTimeoutError) return polygon.rateLimitedResult(ticker);
   const message = err instanceof Error ? err.message : String(err);
@@ -137,11 +147,22 @@ const getPolygonDailyCloses = async (
       remaining(),
     );
     if (divs.refusal) return divs.refusal;
-    const dividends = ((divs.json.results ?? []) as { ex_dividend_date?: string; cash_amount?: number }[])
+    const declared = ((divs.json.results ?? []) as { ex_dividend_date?: string; cash_amount?: number }[])
       .filter((d) => typeof d.ex_dividend_date === "string" && typeof d.cash_amount === "number")
       .map((d) => ({ exDate: d.ex_dividend_date!, cashAmount: d.cash_amount! }));
+    if (!declared.length) return { success: true, data: adjustForDividends(bars, declared) };
 
-    return { success: true, data: adjustForDividends(bars, dividends) };
+    const splitsResponse = await getPolygonJson(
+      `${POLYGON_HOST}/v3/reference/splits?ticker=${encodeURIComponent(ticker)}&execution_date.gte=${from}&limit=1000&apiKey=${apiKey}`,
+      `${ticker} splits`,
+      remaining(),
+    );
+    if (splitsResponse.refusal) return splitsResponse.refusal;
+    const splits = ((splitsResponse.json.results ?? []) as { execution_date?: string; split_from?: number; split_to?: number }[])
+      .filter((s) => typeof s.execution_date === "string" && (s.split_from ?? 0) > 0 && (s.split_to ?? 0) > 0)
+      .map((s) => ({ date: s.execution_date!, ratio: s.split_to! / s.split_from! }));
+
+    return { success: true, data: adjustForDividends(bars, splitAdjust(declared, splits)) };
   } catch (err) {
     return polygonFailure(err, ticker);
   }

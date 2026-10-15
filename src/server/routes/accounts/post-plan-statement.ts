@@ -70,7 +70,7 @@ const parseRequest = (req: ServerRequest): ParsedRequest => {
 
 /**
  * POST /plan-statement/import
- * Body: { account_id, transactions: [{ transaction, restated_from? }],
+ * Body: { account_id, transactions: [{ transaction, restated_from?, reinvested_distribution? }],
  *         mappings: [{ investment, security_id, restated }], replace?: [security_id],
  *         holdings: [{ security_id, date, quantity, cost_basis, price }] }
  * Stores the rows the import page planned from a plan statement. Rows already

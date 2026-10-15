@@ -100,7 +100,14 @@ export const planReinvestments = (input: ReinvestmentInput): PlannedTransaction[
     if (amount <= 0) continue;
     const quantity = amount / close;
 
-    planned.push({ investment_transaction_id: id, date: ex_date, type: InvestmentTransactionType.Buy, quantity, amount, price: close });
+    planned.push({
+      investment_transaction_id: id,
+      date: ex_date,
+      type: InvestmentTransactionType.Buy,
+      quantity,
+      amount,
+      price: close,
+    });
     transactions.push(
       {
         transaction: {

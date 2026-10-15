@@ -112,6 +112,18 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       [investment]: { ...(current[investment] ?? { ticker: "", security_id: null, restated: false }), ...patch },
     }));
 
+  /** The account's restated funds the statement has no rows for, whose holdings are still owed its period's payouts. */
+  const otherRestated = (text: string): Record<string, FundEdit> => {
+    const funds = new Set(parsePlanStatement(text).rows.map((r) => r.investment));
+    const others: Record<string, FundEdit> = {};
+    for (const m of account?.plan_fund_mappings ?? []) {
+      if (!m.restated || funds.has(m.investment)) continue;
+      const ticker = data.securities.get(m.security_id)?.ticker_symbol ?? "";
+      others[m.investment] = { ticker, security_id: m.security_id, restated: true };
+    }
+    return others;
+  };
+
   /**
    * Asks for the closes of each restated fund that doesn't have them yet; `retry` asks again after a failure.
    * They span the holding's earlier rows too, so a dividend between two statements is still found.
@@ -119,14 +131,15 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const requestCloses = async (text: string, fundEdits: Record<string, FundEdit>, retry = false) => {
     const rows = parsePlanStatement(text).rows;
     const last = rows[rows.length - 1]?.date;
-    const wanted = Object.entries(fundEdits).flatMap(([investment, edit]) => {
+    const wanted = Object.entries({ ...otherRestated(text), ...fundEdits }).flatMap(([investment, edit]) => {
       const dates = rows.filter((r) => r.investment === investment).map((r) => r.date);
       const ticker = tickerOf(edit, data.securities);
-      if (!edit.restated || !edit.security_id || !ticker || !dates.length) return [];
-      dates.push(last);
+      if (!edit.restated || !edit.security_id || !ticker) return [];
       data.investmentTransactions.forEach((t) => {
         if (t.account_id === accountId && t.security_id === edit.security_id) dates.push(t.date.slice(0, 10));
       });
+      if (!dates.length) return [];
+      dates.push(last);
       const key = closesKey(investment, ticker);
       const known = closesRef.current[key];
       if (loadingRef.current.has(key) || (known && !(retry && !("bars" in known)))) return [];
@@ -153,7 +166,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     if (!csv) return null;
     const mappings = new Map<string, FundMapping>();
     const fundCloses = new Map<string, RestatementCloses>();
-    for (const [investment, edit] of Object.entries(edits)) {
+    for (const [investment, edit] of Object.entries({ ...otherRestated(csv), ...edits })) {
       if (!edit.security_id) continue;
       const ticker = tickerOf(edit, data.securities);
       mappings.set(investment, { security_id: edit.security_id, restated: edit.restated, ticker_symbol: ticker || null });

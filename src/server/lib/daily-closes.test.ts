@@ -3,6 +3,7 @@ import { restoreFetch, restoreEnv } from "test-helpers";
 import { distributionsFromCloses } from "common";
 import {
   adjustForDividends,
+  splitAdjust,
   clearDailyClosesCache,
   getDailyCloses,
   peekDailyCloses,
@@ -63,6 +64,27 @@ describe("adjustForDividends", () => {
     const adjusted = adjustForDividends(bars, [{ exDate: "2026-03-07", cashAmount: 1 }]);
     expect(adjusted[0].adjustedClose).toBeCloseTo(49, 10);
     expect(adjusted[1].adjustedClose).toBe(49);
+  });
+
+  it("splitAdjust divides a dividend by every split after its ex-date only", () => {
+    const splits = [
+      { date: "2026-03-10", ratio: 2 },
+      { date: "2026-09-10", ratio: 10 },
+    ];
+    expect(
+      splitAdjust(
+        [
+          { exDate: "2026-03-01", cashAmount: 4 },
+          { exDate: "2026-06-01", cashAmount: 4 },
+          { exDate: "2026-09-10", cashAmount: 4 },
+        ],
+        splits,
+      ),
+    ).toEqual([
+      { exDate: "2026-03-01", cashAmount: 0.2 },
+      { exDate: "2026-06-01", cashAmount: 0.4 },
+      { exDate: "2026-09-10", cashAmount: 4 },
+    ]);
   });
 
   it("carries the dividends the import reads back out of the two series", () => {
@@ -128,6 +150,29 @@ describe("getDailyCloses", () => {
     // From the start of the year through today, whatever day in it was asked for.
     expect(urls[0]).toContain(`/v2/aggs/ticker/XPUB/range/1/day/2026-01-01/${new Date().toISOString().slice(0, 10)}?adjusted=true`);
     expect(urls[1]).toContain("/v3/reference/dividends?ticker=XPUB&ex_dividend_date.gte=2026-01-01");
+  });
+
+  it("restates a dividend declared before a later split per today's share", async () => {
+    const fetchMock = mockFetch((url) => {
+      if (url.includes("/v2/aggs/")) {
+        return {
+          body: {
+            status: "OK",
+            results: [
+              { c: 10, t: polygonTs(2026, 3, 2) },
+              { c: 9.9, t: polygonTs(2026, 3, 3) },
+            ],
+          },
+        };
+      }
+      if (url.includes("/v3/reference/splits")) {
+        return { body: { status: "OK", results: [{ execution_date: "2026-06-10", split_from: 1, split_to: 10 }] } };
+      }
+      return { body: { status: "OK", results: [{ ex_dividend_date: "2026-03-03", cash_amount: 1 }] } };
+    });
+    const result = await getDailyCloses("XPUB", "2026-03-02", "2026-03-03");
+    expect(result.success && result.data[0].adjustedClose).toBeCloseTo(9.9, 10);
+    expect(fetchMock.mock.calls.map(([url]) => url)[2]).toContain("/v3/reference/splits?ticker=XPUB&execution_date.gte=2026-01-01");
   });
 
   it("falls back to Yahoo's own adjusted series when Polygon has no bars", async () => {

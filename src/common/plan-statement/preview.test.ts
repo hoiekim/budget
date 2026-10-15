@@ -165,6 +165,47 @@ describe("previewPlanStatement", () => {
       expect(preview({ mappings: restated, closes }, { movements: [inferred] }).reinvestments).toHaveLength(1);
     });
 
+    test("count an entered position, unless the transactions replace it", () => {
+      const held = { entered: [entered("2026-01-02", 10)] };
+      expect(preview({ mappings: restated, closes }, held).reinvestments[0].amount).toBe(6);
+      const replacing = preview({ mappings: restated, closes, replace: new Set(["EXAMPLE INDEX FUND"]) }, held);
+      expect(replacing.reinvestments[0].amount).toBe(1);
+    });
+
+    test("are planned once for two funds restated into one security", () => {
+      const csv = [
+        CSV,
+        '03/02/2026,EXAMPLE INDEX FUND B,Contributions,"100.00","2.000"',
+        '04/01/2026,EXAMPLE INDEX FUND B,Contributions,"100.00","2.000"',
+      ].join("\n");
+      const twoFunds = new Map([...restated, ["EXAMPLE INDEX FUND B", { ...MAPPING, restated: true }]]);
+      const twoCloses = new Map([...closes, ["EXAMPLE INDEX FUND B", { bars }]]);
+      const result = preview({ csv, mappings: twoFunds, closes: twoCloses });
+      expect(result.reinvestments).toEqual([
+        { investment: "EXAMPLE INDEX FUND / EXAMPLE INDEX FUND B", ex_date: "2026-03-16", amount: 2, quantity: 2 / 49 },
+      ]);
+      const ids = result.request!.transactions.map((t) => t.transaction.investment_transaction_id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(result.request!.holdings).toHaveLength(1);
+      expect(result.request!.holdings[0].quantity).toBeCloseTo(8 + 2 / 49, 10);
+    });
+
+    test("cover the account's restated fund that the statement has no rows for", () => {
+      const other = new Map([
+        ["EXAMPLE INDEX FUND", MAPPING],
+        ["EXAMPLE TRUST", { security_id: "sec-trust", restated: true, ticker_symbol: "XTR" }],
+      ]);
+      const result = preview(
+        { mappings: other, closes: new Map([["EXAMPLE TRUST", { bars }]]) },
+        { movements: [buyOf("2026-01-15", 3)] },
+      );
+      expect(result.reinvestments).toEqual([
+        { investment: "EXAMPLE TRUST", ex_date: "2026-03-16", amount: 1.5, quantity: 1.5 / 49 },
+      ]);
+      expect(result.request!.holdings.find((h) => h.security_id === "sec-trust")?.quantity).toBeCloseTo(3 + 1.5 / 49, 10);
+      expect(result.request!.mappings.map((m) => m.investment)).toEqual(["EXAMPLE INDEX FUND"]);
+    });
+
     test("an ex-date already in the account isn't sent again", () => {
       const result = preview({ mappings: restated, closes, existingIds: new Set([exId]) });
       expect(result.reinvestments).toEqual([]);

@@ -285,6 +285,7 @@ describe("POST /plan-statement/import", () => {
       [{ ...cashLeg(), reinvested_distribution: record }],
       [{ ...shareLeg(), reinvested_distribution: { ...record, ex_date: "2026-03-03" } }],
       [{ ...shareLeg(), reinvested_distribution: { ...record, shares_held: "40" } }],
+      [{ ...shareLeg(), reinvested_distribution: "2026-03-02" }],
     ]) {
       clearQueryMocks();
       const res = await importStatement(importBody({ transactions }));
