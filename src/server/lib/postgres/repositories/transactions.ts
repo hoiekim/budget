@@ -17,7 +17,8 @@ import {
   UPDATED,
   QueryExecutor,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult, noChangeResult, refusedResult } from "../database";
+import { getOwnedLabelIds } from "./budgets";
 import { logger } from "../../logger";
 
 export interface SearchTransactionsOptions {
@@ -137,11 +138,24 @@ export const updateTransactions = async (
   if (!transactions.length) return [];
   const results: UpsertResult[] = [];
 
+  const labelIds = (key: "budget_id" | "category_id") =>
+    transactions.map((tx) => tx.label?.[key]).filter((id): id is string => typeof id === "string" && !!id);
+  const owned = await getOwnedLabelIds(user, {
+    budget_ids: labelIds("budget_id"),
+    category_ids: labelIds("category_id"),
+  });
+
   for (const tx of transactions) {
+    const { budget_id, category_id } = tx.label ?? {};
+    if ((budget_id && !owned.budget_ids.has(budget_id)) || (category_id && !owned.category_ids.has(category_id))) {
+      results.push(refusedResult(tx.transaction_id));
+      continue;
+    }
     try {
       const row = TransactionModel.fromJSON(tx, user.user_id);
       delete row.transaction_id;
       delete row.user_id;
+      delete row.account_id;
 
       const updated = await transactionsTable.update(tx.transaction_id, row, undefined, user.user_id);
       results.push(

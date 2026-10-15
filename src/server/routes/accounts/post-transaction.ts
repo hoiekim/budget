@@ -78,6 +78,9 @@ export const postTransactionRoute = new Route<TransactionPostResponse>(
 
       const response = await updateTransactions(user, [transaction]);
       const result = response[0];
+      if (result?.status === 422) {
+        return { status: "failed", message: "Failed to update transaction." };
+      }
       if (!result || result.status >= 400) {
         throw new Error("Database responded with an error.");
       }

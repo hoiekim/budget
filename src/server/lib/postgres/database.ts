@@ -482,6 +482,14 @@ export function errorResult(id: string): UpsertResult {
   };
 }
 
+/** The write was refused because the request named a row the caller can't use. */
+export function refusedResult(id: string): UpsertResult {
+  return {
+    update: { _id: id },
+    status: 422,
+  };
+}
+
 export function noChangeResult(id: string): UpsertResult {
   return {
     update: { _id: id },

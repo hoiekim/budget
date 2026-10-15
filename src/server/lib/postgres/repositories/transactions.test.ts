@@ -246,34 +246,137 @@ describe("upsertTransactions", () => {
 });
 
 describe("updateTransactions", () => {
+  const OWNER = testUser.user_id;
+  const budgetRow = (budget_id: string, user_id = OWNER) => ({
+    budget_id,
+    user_id,
+    name: "b",
+    iso_currency_code: "USD",
+    roll_over: false,
+    roll_over_start_date: null,
+    capacities: [],
+    updated: "2026-10-01T00:00:00.000Z",
+    is_deleted: false,
+  });
+  const categoryRow = (category_id: string, user_id = OWNER) => ({
+    category_id,
+    user_id,
+    section_id: "sec-1",
+    name: "c",
+    roll_over: false,
+    roll_over_start_date: null,
+    capacities: [],
+    updated: "2026-10-01T00:00:00.000Z",
+    is_deleted: false,
+  });
+  /** Each budget's and category's owner, by id; the lookups answer like their WHERE. */
+  let budgets = new Map<string, string>();
+  let categories = new Map<string, string>();
+  let deleted = new Set<string>();
+  const matching = (rows: Map<string, string>, sql: string, values: unknown[]) =>
+    [...rows].filter(
+      ([id, owner]) =>
+        values.includes(id) &&
+        (!/\buser_id\s*=/i.test(sql) || values.includes(owner)) &&
+        (!/\bis_deleted\b/i.test(sql) || !deleted.has(id)),
+    );
+  const route = async (sql: string, values: unknown[] = []) => {
+    if (/FROM\s+budgets\b/i.test(sql)) {
+      const rows = matching(budgets, sql, values).map(([id, owner]) => budgetRow(id, owner));
+      return { rows, rowCount: rows.length };
+    }
+    if (/FROM\s+categories\b/i.test(sql)) {
+      const rows = matching(categories, sql, values).map(([id, owner]) => categoryRow(id, owner));
+      return { rows, rowCount: rows.length };
+    }
+    return { rows: [{ transaction_id: "tx" }], rowCount: 1 };
+  };
+  const updateCall = () => mockQuery.mock.calls.find((c) => typeof c[0] === "string" && c[0].includes("UPDATE"));
+
+  beforeEach(() => {
+    budgets = new Map([["bud-1", OWNER], ["someone-elses-budget", "usr-2"]]);
+    categories = new Map([["cat-1", OWNER], ["cat-2", OWNER], ["someone-elses-cat", "usr-2"]]);
+    deleted = new Set();
+    mockQuery.mockImplementation(route);
+  });
+
   test("preserves caller-supplied category_confidence as-is (repo is pass-through)", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-2" }], rowCount: 1 });
     const tx = {
       transaction_id: "tx-2",
       label: { category_id: "cat-2", category_confidence: 0.0 },
     } as Parameters<typeof updateTransactions>[1][0];
     await updateTransactions(testUser, [tx]);
-    const updateCall = mockQuery.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
-    );
-    const values = updateCall![1] as unknown[];
+    const values = updateCall()![1] as unknown[];
     expect(values).toContain(0.0);
     expect(values).not.toContain(1.0);
   });
 
   test("does not inject confidence when caller omits it (repo no longer infers)", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
     const tx = {
       transaction_id: "tx-1",
       label: { category_id: "cat-1" },
     } as Parameters<typeof updateTransactions>[1][0];
     await updateTransactions(testUser, [tx]);
-    const updateCall = mockQuery.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].includes("UPDATE"),
-    );
-    const values = updateCall![1] as unknown[];
+    const values = updateCall()![1] as unknown[];
     expect(values).not.toContain(1.0);
     expect(values).toContain("cat-1");
   });
+
+  test("a label naming a category the caller doesn't own is refused, with no update", async () => {
+    const tx = { transaction_id: "tx-3", label: { category_id: "someone-elses-cat" } } as Parameters<
+      typeof updateTransactions
+    >[1][0];
+    expect(await updateTransactions(testUser, [tx])).toEqual([{ update: { _id: "tx-3" }, status: 422 }]);
+    expect(updateCall()).toBeUndefined();
+  });
+
+  test("a label naming a budget the caller doesn't own is refused, with no update", async () => {
+    const tx = { transaction_id: "tx-4", label: { budget_id: "someone-elses-budget" } } as Parameters<
+      typeof updateTransactions
+    >[1][0];
+    expect(await updateTransactions(testUser, [tx])).toEqual([{ update: { _id: "tx-4" }, status: 422 }]);
+    expect(updateCall()).toBeUndefined();
+  });
+
+  test("a label naming a budget or category that doesn't exist is refused, with no update", async () => {
+    const txs = [
+      { transaction_id: "tx-8", label: { category_id: "no-such-cat" } },
+      { transaction_id: "tx-9", label: { budget_id: "no-such-budget" } },
+    ] as Parameters<typeof updateTransactions>[1];
+    expect(await updateTransactions(testUser, txs)).toEqual([
+      { update: { _id: "tx-8" }, status: 422 },
+      { update: { _id: "tx-9" }, status: 422 },
+    ]);
+    expect(updateCall()).toBeUndefined();
+  });
+
+  test("a label naming the caller's own budget and category is written", async () => {
+    const tx = { transaction_id: "tx-5", label: { budget_id: "bud-1", category_id: "cat-1" } } as Parameters<
+      typeof updateTransactions
+    >[1][0];
+    expect((await updateTransactions(testUser, [tx]))[0].status).toBe(200);
+    expect(updateCall()![1]).toEqual(expect.arrayContaining(["bud-1", "cat-1"]));
+  });
+
+  test("a label naming the caller's own deleted budget and category is still written", async () => {
+    deleted = new Set(["bud-1", "cat-1"]);
+    const tx = { transaction_id: "tx-7", label: { budget_id: "bud-1", category_id: "cat-1" } } as Parameters<
+      typeof updateTransactions
+    >[1][0];
+    expect((await updateTransactions(testUser, [tx]))[0].status).toBe(200);
+    expect(updateCall()![1]).toEqual(expect.arrayContaining(["bud-1", "cat-1"]));
+  });
+
+  test("an update never moves a transaction to another account", async () => {
+    const tx = { transaction_id: "tx-6", account_id: "someone-elses-account", name: "renamed" } as Parameters<
+      typeof updateTransactions
+    >[1][0];
+    await updateTransactions(testUser, [tx]);
+    const [sql, values] = updateCall()! as [string, unknown[]];
+    expect(sql).not.toMatch(/\baccount_id\s*=/);
+    expect(values).not.toContain("someone-elses-account");
+    expect(values).toContain("renamed");
+  });
 });
+
 

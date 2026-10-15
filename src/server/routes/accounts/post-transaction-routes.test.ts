@@ -15,8 +15,25 @@ import { createFakePg, restoreLeaves } from "test-helpers";
 // mock inside a test does not reliably replace the `beforeEach` default, so the
 // default impl itself branches on this flag — flip it to simulate a DB error.
 let failQueries = false;
-const { pg, mockQuery, clearQueryMocks } = createFakePg(async (_sql: string, _values?: unknown[]) => {
+const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, values: unknown[] = []) => {
   if (failQueries) throw new Error("db down");
+  // The label-ownership lookups answer like their WHERE: by id, and by owner only when the query
+  // filters on one. u-1 owns BUDGET_UUID and CATEGORY_UUID; SPLIT_UUID is a category u-2 owns.
+  const found = (id: string, owner: string) =>
+    values.includes(id) && (!/\buser_id\s*=/i.test(sql) || values.includes(owner));
+  const familyRow = { name: "x", roll_over: false, roll_over_start_date: null, capacities: [], updated: "2026-10-01T00:00:00.000Z", is_deleted: false };
+  if (/FROM\s+budgets\b/i.test(sql) && found(BUDGET_UUID, "u-1")) {
+    return { rows: [{ ...familyRow, user_id: "u-1", budget_id: BUDGET_UUID, iso_currency_code: "USD" }] as unknown[], rowCount: 1 };
+  }
+  if (/FROM\s+categories\b/i.test(sql)) {
+    const rows = [
+      [CATEGORY_UUID, "u-1"],
+      [SPLIT_UUID, "u-2"],
+    ]
+      .filter(([id, owner]) => found(id, owner))
+      .map(([category_id, user_id]) => ({ ...familyRow, user_id, category_id, section_id: "s-1" }));
+    return { rows: rows as unknown[], rowCount: rows.length };
+  }
   return { rows: [] as unknown[], rowCount: 0 as number | null };
 });
 
@@ -154,6 +171,16 @@ describe("post-transaction route", () => {
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/transaction_id/i);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test("a label naming another user's category is refused before any write, without an alarm", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(postTransactionRoute, { transaction_id: "t-1", label: { category_id: SPLIT_UUID } }, "u-1"),
+      fakeRes(),
+    );
+    expect(result).toEqual({ status: "failed", message: "Failed to update transaction." });
+    expect(findUpdate("transactions")).toBeNull();
+    expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 
   test("set-category with confidence omitted → infers category_confidence = 1, scoped to user", async () => {
