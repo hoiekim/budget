@@ -1,6 +1,6 @@
 import { InvestmentTransactionSubtype } from "plaid";
 import type { JSONInvestmentTransaction, PlanFundMapping } from "../models";
-import { derivePositions, EnteredPosition, Movement } from "../holding-positions";
+import { derivePositions, EnteredPosition, isDerivedPositionTransactionId, Movement } from "../holding-positions";
 import { parsePlanStatement, StatementRow } from "./parse";
 import { buildImportPlan, DailyClose, Decision, FundMapping, ImportPlan, PlannedTransaction } from "./plan";
 import { getReinvestmentId, planReinvestments } from "./reinvest";
@@ -70,8 +70,8 @@ export interface PreviewInput {
   deletedIds: Set<string>;
   /** Funds whose entered positions are replaced by the transactions' figures. */
   replace: Set<string>;
-  /** YYYY-MM-DD of every live transaction in the account. */
-  accountDates: string[];
+  /** The account's live transactions. */
+  accountRows: AccountRow[];
   /** A mapped holding's live transactions and entered positions, as the client holds them. */
   holding: (security_id: string) => { movements: HeldMovement[]; entered: EnteredPosition[] };
   /** YYYY-MM */
@@ -87,16 +87,28 @@ const shiftDate = (date: string, days: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+export type AccountRow = Pick<JSONInvestmentTransaction, "investment_transaction_id" | "date">;
+
 /**
- * The ex-dates a statement infers payouts for: after the account's last row before the statement,
- * through the statement's last row. A payout between two back-to-back statements falls to the later
- * one, and one an earlier import covered isn't planned again.
+ * The ex-dates a statement infers payouts for: after the latest plan-statement row before it (where
+ * an earlier import's period ended), through its own last row. A payout between two statements falls
+ * to the later one, and one an earlier import covered isn't planned again.
  */
-export const inferencePeriod = (rows: Pick<StatementRow, "date">[], accountDates: string[]) => {
+export const inferencePeriod = (rows: Pick<StatementRow, "date">[], accountRows: AccountRow[]) => {
   const first = rows[0].date;
   let after: string | null = null;
-  for (const date of accountDates) if (date < first && (after === null || date > after)) after = date;
+  for (const { investment_transaction_id, date } of accountRows) {
+    if (!isDerivedPositionTransactionId(investment_transaction_id)) continue;
+    const day = date.slice(0, 10);
+    if (day < first && (after === null || day > after)) after = day;
+  }
   return { after, through: rows[rows.length - 1].date };
+};
+
+/** The closes a restated fund needs: the statement's rows and the period whose payouts it infers. */
+export const restatementClosesRange = (rows: Pick<StatementRow, "date">[], accountRows: AccountRow[]) => {
+  const { after, through } = inferencePeriod(rows, accountRows);
+  return closesRange([rows[0].date, through, ...(after ? [after] : [])]);
 };
 
 /** The range of closes a restated fund's rows need. */
@@ -135,7 +147,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
   });
 
   const asMovement = (t: PlannedTransaction) => t.transaction as HeldMovement & { security_id?: string | null };
-  const { after, through } = inferencePeriod(parsed.rows, input.accountDates);
+  const { after, through } = inferencePeriod(parsed.rows, input.accountRows);
   const replacing = replacedSecurities(input.mappings, input.replace);
   const reinvestments: PlannedReinvestment[] = [];
   const reinvested = new Set<string>();

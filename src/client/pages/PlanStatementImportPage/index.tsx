@@ -1,5 +1,6 @@
 import { ChangeEventHandler, Fragment, useMemo, useRef, useState } from "react";
 import {
+  AccountRow,
   Decision,
   EnteredPosition,
   FundMapping,
@@ -10,8 +11,7 @@ import {
   PositionGap,
   RestatementCloses,
   StatementRow,
-  closesRange,
-  inferencePeriod,
+  restatementClosesRange,
   getYearMonthString,
   numberToCommaString,
   parsePlanStatement,
@@ -130,20 +130,18 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     return others;
   };
 
-  const accountDates = () => {
-    const dates: string[] = [];
+  const accountRows = () => {
+    const rows: AccountRow[] = [];
     data.investmentTransactions.forEach((t) => {
-      if (t.account_id === accountId) dates.push(t.date.slice(0, 10));
+      if (t.account_id === accountId) rows.push(t);
     });
-    return dates;
+    return rows;
   };
 
-  /** The closes a restated fund needs: the statement's rows, and the period whose payouts it infers. */
   const closesRequest = (rows: StatementRow[], investment: string, edit: FundEdit) => {
     const ticker = tickerOf(edit, data.securities);
     if (!edit.restated || !edit.security_id || !ticker || !rows.length) return null;
-    const { after, through } = inferencePeriod(rows, accountDates());
-    const { from, to } = closesRange([rows[0].date, through, ...(after ? [after] : [])]);
+    const { from, to } = restatementClosesRange(rows, accountRows());
     return { key: closesKey(investment, ticker, from, to), ticker, from, to };
   };
 
@@ -219,7 +217,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       closes: fundCloses,
       existingIds,
       deletedIds,
-      accountDates: accountDates(),
+      accountRows: accountRows(),
       replace: new Set(replacePositions),
       holding,
       throughMonth: getYearMonthString(new Date()),

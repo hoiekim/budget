@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import type { EnteredPosition, Movement } from "../holding-positions";
 import { FundMapping, getRowIds } from "./plan";
 import { parsePlanStatement } from "./parse";
-import { inferencePeriod, previewPlanStatement, PreviewInput, PlanStatementPreview } from "./preview";
+import {
+  inferencePeriod,
+  previewPlanStatement,
+  PreviewInput,
+  PlanStatementPreview,
+  restatementClosesRange,
+} from "./preview";
 import { getReinvestmentId } from "./reinvest";
 
 const CSV = [
@@ -24,7 +30,7 @@ const input = (over: Partial<PreviewInput> = {}, held: { movements?: Movement[];
     closes: new Map(),
     existingIds: new Set<string>(),
     deletedIds: new Set<string>(),
-    accountDates: [],
+    accountRows: [],
     replace: new Set<string>(),
     holding: () => ({ movements: held.movements ?? [], entered: held.entered ?? [] }),
     throughMonth: "2026-04",
@@ -32,6 +38,12 @@ const input = (over: Partial<PreviewInput> = {}, held: { movements?: Movement[];
   }) as PreviewInput;
 
 const preview = (over: Partial<PreviewInput> = {}, held = {}) => previewPlanStatement(input(over, held)) as PlanStatementPreview;
+
+let planRows = 0;
+const planRow = (date: string) => ({
+  investment_transaction_id: `plan-${String(++planRows).padStart(32, "0")}`,
+  date,
+});
 
 const buyOf = (date: string, quantity: number, price = 50): Movement => ({
   date,
@@ -254,20 +266,35 @@ describe("previewPlanStatement", () => {
         {
           mappings: restated,
           closes: new Map([["EXAMPLE INDEX FUND", { bars: earlier }]]),
-          accountDates: ["2026-01-10", "2026-01-15", "2026-03-02", "2026-04-01"],
+          // A manual row after the 02-03 payout doesn't mark where an earlier import's period ended.
+          accountRows: [
+            planRow("2026-01-10"),
+            planRow("2026-01-15"),
+            { investment_transaction_id: "manual-1", date: "2026-02-10" },
+          ],
         },
         { movements: [buyOf("2026-01-10", 2), buyOf("2026-01-15", 2)] },
       );
       expect(result.reinvestments.map((r) => r.ex_date)).toEqual(["2026-02-03", "2026-03-16"]);
     });
 
-    test("inferencePeriod starts after the account's latest row before the statement", () => {
+    test("inferencePeriod starts after the latest plan-statement row before the statement", () => {
       const rows = parsePlanStatement(CSV).rows;
       expect(inferencePeriod(rows, [])).toEqual({ after: null, through: "2026-04-01" });
-      expect(inferencePeriod(rows, ["2026-01-10", "2026-02-20", "2026-03-02", "2026-05-01"])).toEqual({
-        after: "2026-02-20",
-        through: "2026-04-01",
-      });
+      const accountRows = [
+        planRow("2026-01-10"),
+        planRow("2026-02-20T00:00:00.000Z"),
+        { investment_transaction_id: "manual-1", date: "2026-02-25" },
+        planRow("2026-03-02"),
+        planRow("2026-05-01"),
+      ];
+      expect(inferencePeriod(rows, accountRows)).toEqual({ after: "2026-02-20", through: "2026-04-01" });
+    });
+
+    test("restatementClosesRange spans that period and the statement's rows", () => {
+      const rows = parsePlanStatement(CSV).rows;
+      expect(restatementClosesRange(rows, [])).toEqual({ from: "2026-02-20", to: "2026-04-01" });
+      expect(restatementClosesRange(rows, [planRow("2026-01-09")])).toEqual({ from: "2025-12-30", to: "2026-04-01" });
     });
 
     test("a reinvestment found deleted isn't planned again", () => {
