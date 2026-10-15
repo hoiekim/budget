@@ -265,7 +265,7 @@ describe("previewPlanStatement", () => {
       expect(nothingHeld.retryCloses).toBe(false);
     });
 
-    test("cover the payouts since the account's last earlier row, so back-to-back statements miss none", () => {
+    test("cover the payouts since the latest earlier plan-statement row, so statements imported in order miss none", () => {
       // Payouts on 01-14, before the last earlier row, and on 02-03, between it and the statement's first row.
       const earlier = [
         { date: "2026-01-13", close: 50, adjustedClose: 48.5 },

@@ -124,7 +124,7 @@ describe("planReinvestments", () => {
     expect(buys({ through: "2026-06-02" }).map((t) => t.transaction.date)).toEqual(["2026-03-04", "2026-06-02"]);
   });
 
-  test("an ex-date on or before the account's last earlier row was an earlier import's to infer", () => {
+  test("an ex-date on or before the latest earlier plan-statement row was an earlier import's to infer", () => {
     expect(buys({ after: "2026-03-04" }).map((t) => t.transaction.date)).toEqual(["2026-06-02"]);
     expect(buys({ after: "2026-03-03" }).map((t) => t.transaction.date)).toEqual(["2026-03-04", "2026-06-02"]);
   });

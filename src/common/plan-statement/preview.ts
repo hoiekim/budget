@@ -93,8 +93,8 @@ export type AccountRow = Pick<JSONInvestmentTransaction, "investment_transaction
 
 /**
  * The ex-dates a statement infers payouts for: after the latest plan-statement row before it (where
- * an earlier import's period ended), through its own last row. A payout between two statements falls
- * to the later one, and one an earlier import covered isn't planned again.
+ * an earlier import's period ended), through its own last row. A payout between two statements
+ * imported in order falls to the later one, and one an earlier import covered isn't planned again.
  */
 export const inferencePeriod = (rows: Pick<StatementRow, "date">[], accountRows: AccountRow[]) => {
   const first = rows[0].date;
