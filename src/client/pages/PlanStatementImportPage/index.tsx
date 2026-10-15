@@ -11,6 +11,7 @@ import {
   RestatementCloses,
   StatementRow,
   closesRange,
+  inferencePeriod,
   getYearMonthString,
   numberToCommaString,
   parsePlanStatement,
@@ -129,11 +130,20 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     return others;
   };
 
-  /** The closes a restated fund needs: the statement's whole period, whose ex-dates are inferred. */
+  const accountDates = () => {
+    const dates: string[] = [];
+    data.investmentTransactions.forEach((t) => {
+      if (t.account_id === accountId) dates.push(t.date.slice(0, 10));
+    });
+    return dates;
+  };
+
+  /** The closes a restated fund needs: the statement's rows, and the period whose payouts it infers. */
   const closesRequest = (rows: StatementRow[], investment: string, edit: FundEdit) => {
     const ticker = tickerOf(edit, data.securities);
     if (!edit.restated || !edit.security_id || !ticker || !rows.length) return null;
-    const { from, to } = closesRange([rows[0].date, rows[rows.length - 1].date]);
+    const { after, through } = inferencePeriod(rows, accountDates());
+    const { from, to } = closesRange([rows[0].date, through, ...(after ? [after] : [])]);
     return { key: closesKey(investment, ticker, from, to), ticker, from, to };
   };
 
@@ -209,6 +219,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       closes: fundCloses,
       existingIds,
       deletedIds,
+      accountDates: accountDates(),
       replace: new Set(replacePositions),
       holding,
       throughMonth: getYearMonthString(new Date()),

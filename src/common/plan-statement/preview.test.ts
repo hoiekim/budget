@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { EnteredPosition, Movement } from "../holding-positions";
 import { FundMapping, getRowIds } from "./plan";
 import { parsePlanStatement } from "./parse";
-import { previewPlanStatement, PreviewInput, PlanStatementPreview } from "./preview";
+import { inferencePeriod, previewPlanStatement, PreviewInput, PlanStatementPreview } from "./preview";
 import { getReinvestmentId } from "./reinvest";
 
 const CSV = [
@@ -24,6 +24,7 @@ const input = (over: Partial<PreviewInput> = {}, held: { movements?: Movement[];
     closes: new Map(),
     existingIds: new Set<string>(),
     deletedIds: new Set<string>(),
+    accountDates: [],
     replace: new Set<string>(),
     holding: () => ({ movements: held.movements ?? [], entered: held.entered ?? [] }),
     throughMonth: "2026-04",
@@ -240,17 +241,33 @@ describe("previewPlanStatement", () => {
       expect(nothingHeld.retryCloses).toBe(false);
     });
 
-    test("only the ex-dates inside the statement's period, even for shares held before it", () => {
+    test("cover the payouts since the account's last earlier row, so back-to-back statements miss none", () => {
+      // Payouts on 01-14, before the last earlier row, and on 02-03, between it and the statement's first row.
       const earlier = [
+        { date: "2026-01-13", close: 50, adjustedClose: 48.5 },
+        { date: "2026-01-14", close: 50, adjustedClose: 49 },
         { date: "2026-02-02", close: 50, adjustedClose: 49 },
         { date: "2026-02-03", close: 50, adjustedClose: 49.5 },
         ...bars,
       ];
       const result = preview(
-        { mappings: restated, closes: new Map([["EXAMPLE INDEX FUND", { bars: earlier }]]) },
-        { movements: [buyOf("2026-01-15", 2)] },
+        {
+          mappings: restated,
+          closes: new Map([["EXAMPLE INDEX FUND", { bars: earlier }]]),
+          accountDates: ["2026-01-10", "2026-01-15", "2026-03-02", "2026-04-01"],
+        },
+        { movements: [buyOf("2026-01-10", 2), buyOf("2026-01-15", 2)] },
       );
-      expect(result.reinvestments.map((r) => r.ex_date)).toEqual(["2026-03-16"]);
+      expect(result.reinvestments.map((r) => r.ex_date)).toEqual(["2026-02-03", "2026-03-16"]);
+    });
+
+    test("inferencePeriod starts after the account's latest row before the statement", () => {
+      const rows = parsePlanStatement(CSV).rows;
+      expect(inferencePeriod(rows, [])).toEqual({ after: null, through: "2026-04-01" });
+      expect(inferencePeriod(rows, ["2026-01-10", "2026-02-20", "2026-03-02", "2026-05-01"])).toEqual({
+        after: "2026-02-20",
+        through: "2026-04-01",
+      });
     });
 
     test("a reinvestment found deleted isn't planned again", () => {

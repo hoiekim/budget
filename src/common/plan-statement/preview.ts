@@ -1,7 +1,7 @@
 import { InvestmentTransactionSubtype } from "plaid";
 import type { JSONInvestmentTransaction, PlanFundMapping } from "../models";
 import { derivePositions, EnteredPosition, Movement } from "../holding-positions";
-import { parsePlanStatement } from "./parse";
+import { parsePlanStatement, StatementRow } from "./parse";
 import { buildImportPlan, DailyClose, Decision, FundMapping, ImportPlan, PlannedTransaction } from "./plan";
 import { getReinvestmentId, planReinvestments } from "./reinvest";
 
@@ -70,6 +70,8 @@ export interface PreviewInput {
   deletedIds: Set<string>;
   /** Funds whose entered positions are replaced by the transactions' figures. */
   replace: Set<string>;
+  /** YYYY-MM-DD of every live transaction in the account. */
+  accountDates: string[];
   /** A mapped holding's live transactions and entered positions, as the client holds them. */
   holding: (security_id: string) => { movements: HeldMovement[]; entered: EnteredPosition[] };
   /** YYYY-MM */
@@ -83,6 +85,18 @@ const shiftDate = (date: string, days: number) => {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+};
+
+/**
+ * The ex-dates a statement infers payouts for: after the account's last row before the statement,
+ * through the statement's last row. A payout between two back-to-back statements falls to the later
+ * one, and one an earlier import covered isn't planned again.
+ */
+export const inferencePeriod = (rows: Pick<StatementRow, "date">[], accountDates: string[]) => {
+  const first = rows[0].date;
+  let after: string | null = null;
+  for (const date of accountDates) if (date < first && (after === null || date > after)) after = date;
+  return { after, through: rows[rows.length - 1].date };
 };
 
 /** The range of closes a restated fund's rows need. */
@@ -121,8 +135,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
   });
 
   const asMovement = (t: PlannedTransaction) => t.transaction as HeldMovement & { security_id?: string | null };
-  const from = parsed.rows[0].date;
-  const through = parsed.rows[parsed.rows.length - 1].date;
+  const { after, through } = inferencePeriod(parsed.rows, input.accountDates);
   const replacing = replacedSecurities(input.mappings, input.replace);
   const reinvestments: PlannedReinvestment[] = [];
   const reinvested = new Set<string>();
@@ -146,7 +159,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
         security_id,
         iso_currency_code: input.iso_currency_code,
         bars: bars!,
-        from,
+        after,
         through,
         movements,
         entered: held.entered,

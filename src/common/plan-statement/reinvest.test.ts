@@ -68,7 +68,7 @@ const input = (over: Partial<ReinvestmentInput> = {}): ReinvestmentInput => ({
   security_id: "sec-fund",
   iso_currency_code: "USD",
   bars: barsWith(CLOSES, { "2026-03-04": 1.5, "2026-06-02": 0.75 }),
-  from: "2026-03-02",
+  after: null,
   through: "2026-06-30",
   movements: [buy("2026-03-02", 10)],
   entered: [],
@@ -122,9 +122,9 @@ describe("planReinvestments", () => {
     expect(buys({ through: "2026-06-02" }).map((t) => t.transaction.date)).toEqual(["2026-03-04", "2026-06-02"]);
   });
 
-  test("an ex-date before the statement's first day is left to the statement that covers it", () => {
-    expect(buys({ from: "2026-03-05" }).map((t) => t.transaction.date)).toEqual(["2026-06-02"]);
-    expect(buys({ from: "2026-03-04" }).map((t) => t.transaction.date)).toEqual(["2026-03-04", "2026-06-02"]);
+  test("an ex-date on or before the account's last earlier row was an earlier import's to infer", () => {
+    expect(buys({ after: "2026-03-04" }).map((t) => t.transaction.date)).toEqual(["2026-06-02"]);
+    expect(buys({ after: "2026-03-03" }).map((t) => t.transaction.date)).toEqual(["2026-03-04", "2026-06-02"]);
   });
 
   test("an ex-date already written is left alone, and its shares count toward the next", () => {
