@@ -3,13 +3,14 @@ import type { EnteredPosition, Movement } from "../holding-positions";
 import { FundMapping, getRowIds } from "./plan";
 import { parsePlanStatement } from "./parse";
 import {
+  HeldMovement,
   inferencePeriod,
   previewPlanStatement,
   PreviewInput,
   PlanStatementPreview,
   restatementClosesRange,
 } from "./preview";
-import { getReinvestmentId } from "./reinvest";
+import { getReinvestmentId, INFERRED_REINVESTMENT_NAME } from "./reinvest";
 
 const CSV = [
   "Plan name:,EXAMPLE PLAN",
@@ -154,7 +155,7 @@ describe("previewPlanStatement", () => {
     test("are sent with the rows, listed, and held", () => {
       const result = preview({ mappings: restated, closes });
       expect(result.reinvestments).toEqual([
-        { investment: "EXAMPLE INDEX FUND", ex_date: "2026-03-16", amount: 1, quantity: 1 / 49 },
+        { investment: "EXAMPLE INDEX FUND", ex_date: "2026-03-16", amount: 1, quantity: 1 / 49, topUp: false },
       ]);
       const ids = result.request!.transactions.map((t) => t.transaction.investment_transaction_id);
       expect(ids).toEqual(expect.arrayContaining([exId, `${exId}-cash`]));
@@ -172,10 +173,15 @@ describe("previewPlanStatement", () => {
       expect(preview({ csv, mappings: restated, closes }).reinvestments).toEqual([]);
     });
 
-    test("aren't inferred when an earlier import wrote reported dividends, but an inferred one doesn't stop them", () => {
-      const reported = { ...buyOf("2026-01-15", 0.1), investment_transaction_id: "plan-reported", subtype: "dividend reinvestment" };
+    test("aren't inferred when an earlier import wrote reported dividends, but an inferred one or a top-up doesn't stop them", () => {
+      const reported = {
+        ...buyOf("2026-01-15", 0.1),
+        investment_transaction_id: "plan-reported",
+        subtype: "dividend reinvestment",
+        name: "Buy (dividend reinvestment)",
+      };
       expect(preview({ mappings: restated, closes }, { movements: [reported] }).reinvestments).toEqual([]);
-      const inferred = { ...reported, investment_transaction_id: getReinvestmentId("acct-1", "sec-index", "2026-01-15") };
+      const inferred = { ...reported, name: INFERRED_REINVESTMENT_NAME };
       expect(preview({ mappings: restated, closes }, { movements: [inferred] }).reinvestments).toHaveLength(1);
     });
 
@@ -196,7 +202,13 @@ describe("previewPlanStatement", () => {
       const twoCloses = new Map([...closes, ["EXAMPLE INDEX FUND B", { bars }]]);
       const result = preview({ csv, mappings: twoFunds, closes: twoCloses });
       expect(result.reinvestments).toEqual([
-        { investment: "EXAMPLE INDEX FUND / EXAMPLE INDEX FUND B", ex_date: "2026-03-16", amount: 2, quantity: 2 / 49 },
+        {
+          investment: "EXAMPLE INDEX FUND / EXAMPLE INDEX FUND B",
+          ex_date: "2026-03-16",
+          amount: 2,
+          quantity: 2 / 49,
+          topUp: false,
+        },
       ]);
       const ids = result.request!.transactions.map((t) => t.transaction.investment_transaction_id);
       expect(new Set(ids).size).toBe(ids.length);
@@ -214,7 +226,7 @@ describe("previewPlanStatement", () => {
         { movements: [buyOf("2026-01-15", 3)] },
       );
       expect(result.reinvestments).toEqual([
-        { investment: "EXAMPLE TRUST", ex_date: "2026-03-16", amount: 1.5, quantity: 1.5 / 49 },
+        { investment: "EXAMPLE TRUST", ex_date: "2026-03-16", amount: 1.5, quantity: 1.5 / 49, topUp: false },
       ]);
       expect(result.request!.holdings.find((h) => h.security_id === "sec-trust")?.quantity).toBeCloseTo(3 + 1.5 / 49, 10);
       expect(result.request!.mappings.map((m) => m.investment)).toEqual(["EXAMPLE INDEX FUND"]);
@@ -295,6 +307,8 @@ describe("previewPlanStatement", () => {
       const rows = parsePlanStatement(CSV).rows;
       expect(restatementClosesRange(rows, [])).toEqual({ from: "2026-02-20", to: "2026-04-01" });
       expect(restatementClosesRange(rows, [planRow("2026-01-09")])).toEqual({ from: "2025-12-30", to: "2026-04-01" });
+      // A later statement's rows, whose reinvestments this one's rows may need to top up.
+      expect(restatementClosesRange(rows, [planRow("2026-06-15")])).toEqual({ from: "2026-02-20", to: "2026-06-15" });
     });
 
     test("a reinvestment found deleted isn't planned again", () => {
@@ -324,8 +338,62 @@ describe("previewPlanStatement", () => {
     });
 
     test("an ex-date already in the account isn't sent again", () => {
-      const result = preview({ mappings: restated, closes, existingIds: new Set([exId]) });
+      const rowIds = getRowIds("acct-1", parsePlanStatement(CSV).rows);
+      const result = preview({ mappings: restated, closes, existingIds: new Set([...rowIds, exId]) });
       expect(result.reinvestments).toEqual([]);
+    });
+
+    test("statements imported out of order end as if imported in order", () => {
+      // Payouts of $0.50 go ex 12-22 and 02-10; units track 0.5 × the adjusted close.
+      const flat = [
+        ["2025-11-03", 0.9801],
+        ["2025-12-17", 0.9801],
+        ["2025-12-19", 0.9801],
+        ["2025-12-22", 0.99],
+        ["2026-01-09", 0.99],
+        ["2026-02-09", 0.99],
+        ["2026-02-10", 1],
+        ["2026-02-24", 1],
+      ] as const;
+      const trustBars = flat.map(([date, factor]) => ({ date, close: 50, adjustedClose: 50 * factor }));
+      const statement = (dates: string[]) =>
+        [
+          "Date,Investment,Transaction Type,Amount,Shares/Unit",
+          ...dates.map((date) => {
+            const adjusted = trustBars.find((b) => b.date === date)!.adjustedClose;
+            const [y, m, d] = date.split("-");
+            return `${m}/${d}/${y},EXAMPLE INDEX FUND,Contributions,"500.00","${(1000 / adjusted).toFixed(4)}"`;
+          }),
+        ].join("\n");
+      const A = statement(["2025-11-03", "2025-12-17"]);
+      const B = statement(["2026-01-09", "2026-02-24"]);
+      const importInOrder = (csvs: string[]) => {
+        const account: Movement[] = [];
+        for (const csv of csvs) {
+          const result = preview(
+            {
+              csv,
+              mappings: restated,
+              closes: new Map([["EXAMPLE INDEX FUND", { bars: trustBars }]]),
+              existingIds: new Set(account.map((m) => m.investment_transaction_id!)),
+              accountRows: account.map((m) => ({ investment_transaction_id: m.investment_transaction_id!, date: m.date })),
+              throughMonth: "2026-03",
+            },
+            { movements: account },
+          );
+          account.push(...result.request!.transactions.map((t) => t.transaction as Movement));
+        }
+        const shares = account.reduce((sum, m) => sum + (m.type === "buy" ? m.quantity : 0), 0);
+        const dividends = account
+          .filter((m) => (m as HeldMovement).subtype === "dividend")
+          .reduce((sum, m) => sum - m.amount, 0);
+        return { shares, dividends: Math.round(dividends * 100) / 100 };
+      };
+      const inOrder = importInOrder([A, B]);
+      expect(inOrder.dividends).toBe(25.1);
+      const outOfOrder = importInOrder([B, A, B]);
+      expect(outOfOrder.dividends).toBe(inOrder.dividends);
+      expect(outOfOrder.shares).toBeCloseTo(inOrder.shares, 6);
     });
 
     test("a blocker leaves nothing inferred, even on shares already held", () => {

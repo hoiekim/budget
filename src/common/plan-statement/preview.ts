@@ -3,7 +3,7 @@ import type { JSONInvestmentTransaction, PlanFundMapping } from "../models";
 import { derivePositions, EnteredPosition, isDerivedPositionTransactionId, Movement } from "../holding-positions";
 import { parsePlanStatement, StatementRow } from "./parse";
 import { buildImportPlan, DailyClose, Decision, FundMapping, ImportPlan, PlannedTransaction } from "./plan";
-import { getReinvestmentId, planReinvestments } from "./reinvest";
+import { getReinvestmentId, INFERRED_REINVESTMENT_NAME, planReinvestments } from "./reinvest";
 
 /** A holding's position after the import, for its holdings row. */
 export interface PlanStatementHolding {
@@ -42,9 +42,11 @@ export interface PlannedReinvestment {
   ex_date: string;
   amount: number;
   quantity: number;
+  /** Pays a written reinvestment's payout on the shares this statement's earlier rows add. */
+  topUp: boolean;
 }
 
-export type HeldMovement = Movement & Partial<Pick<JSONInvestmentTransaction, "subtype">>;
+export type HeldMovement = Movement & Partial<Pick<JSONInvestmentTransaction, "subtype" | "name">>;
 
 export interface PlanStatementPreview extends ImportPlan {
   /** Lines of the file that could not be read. */
@@ -105,10 +107,17 @@ export const inferencePeriod = (rows: Pick<StatementRow, "date">[], accountRows:
   return { after, through: rows[rows.length - 1].date };
 };
 
-/** The closes a restated fund needs: the statement's rows and the period whose payouts it infers. */
+/**
+ * The closes a restated fund needs: the statement's rows, the period whose payouts it infers, and
+ * the account's later plan-statement rows, whose reinvestments may need a top-up.
+ */
 export const restatementClosesRange = (rows: Pick<StatementRow, "date">[], accountRows: AccountRow[]) => {
   const { after, through } = inferencePeriod(rows, accountRows);
-  return closesRange([rows[0].date, through, ...(after ? [after] : [])]);
+  const later = accountRows
+    .filter((r) => isDerivedPositionTransactionId(r.investment_transaction_id))
+    .map((r) => r.date.slice(0, 10))
+    .filter((date) => date > through);
+  return closesRange([rows[0].date, through, ...(after ? [after] : []), ...later]);
 };
 
 /** The range of closes a restated fund's rows need. */
@@ -154,6 +163,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
   let retryCloses = false;
   if (!plan.blockers.length) {
     const written = plan.transactions.map(asMovement);
+    const writing = new Set(written.map((t) => t.investment_transaction_id!));
     const owed = Array.from(restatedHoldings(input.mappings, closes, closeErrors), ([security_id, holding]) => {
       const held = input.holding(security_id);
       const movements = [...held.movements, ...written.filter((t) => t.security_id === security_id)];
@@ -165,7 +175,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
       retryCloses = true;
     }
     for (const { security_id, held, movements, investments, bars } of plan.blockers.length ? [] : owed) {
-      if (reportsDividends(input.account_id, security_id, movements)) continue;
+      if (reportsDividends(movements)) continue;
       const planned = planReinvestments({
         account_id: input.account_id,
         security_id,
@@ -175,7 +185,9 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
         through,
         movements,
         entered: held.entered,
+        writing,
         replace: replacing.has(security_id),
+        liveIds: input.existingIds,
         existingIds: known,
       });
       plan.transactions.push(...planned);
@@ -187,6 +199,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
           ex_date: transaction.date,
           amount: transaction.amount!,
           quantity: transaction.quantity!,
+          topUp: transaction.investment_transaction_id !== getReinvestmentId(input.account_id, security_id, transaction.date),
         });
       }
     }
@@ -275,9 +288,7 @@ const replacedSecurities = (mappings: Map<string, FundMapping>, replace: Set<str
  * Whether the plan reports this holding's dividends itself, as rows the
  * statement or an earlier import wrote, so inferring them would count them twice.
  */
-const reportsDividends = (account_id: string, security_id: string, movements: HeldMovement[]) =>
+const reportsDividends = (movements: HeldMovement[]) =>
   movements.some(
-    (m) =>
-      m.subtype === InvestmentTransactionSubtype.DividendReinvestment &&
-      m.investment_transaction_id !== getReinvestmentId(account_id, security_id, m.date.slice(0, 10)),
+    (m) => m.subtype === InvestmentTransactionSubtype.DividendReinvestment && m.name !== INFERRED_REINVESTMENT_NAME,
   );

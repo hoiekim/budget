@@ -55,6 +55,9 @@ export const distributionsFromCloses = (bars: DailyClose[]): Distribution[] => {
   return distributions;
 };
 
+/** Names an inferred reinvestment apart from a dividend a statement reports. */
+export const INFERRED_REINVESTMENT_NAME = "Buy (inferred dividend reinvestment)";
+
 /** One id per holding and ex-date, so a later import recognises the reinvestment it already wrote. */
 export const getReinvestmentId = (account_id: string, security_id: string, ex_date: string) =>
   `${PLAN_STATEMENT_ID_PREFIX}${hash128([account_id, security_id, ex_date, REINVESTED_DISTRIBUTION].join("\0"))}`;
@@ -66,45 +69,55 @@ export interface ReinvestmentInput {
   /** The public fund's daily closes, as traded and dividend-adjusted. */
   bars: DailyClose[];
   /**
-   * YYYY-MM-DD: ex-dates after `after` (the account's last row before the statement, or null for none)
-   * through the statement's last row are inferred.
+   * YYYY-MM-DD: ex-dates after `after` (the latest plan-statement row before the statement, or null for
+   * none) through the statement's last row are inferred.
    */
   after: string | null;
   through: string;
   /** The holding's live movements, with the rows this import writes. */
   movements: Movement[];
+  /** Ids of the statement rows this import writes. */
+  writing: Set<string>;
   entered: EnteredPosition[];
   /** Whether the holding's entered positions are being replaced by its transactions. */
   replace: boolean;
+  /** Live ids in the account. */
+  liveIds: Set<string>;
   /** Ids already in the account: live, or found deleted by an earlier import attempt. */
   existingIds: Set<string>;
 }
 
+/** A top-up's id names the rows that owe it, so importing the same rows again doesn't add it twice. */
+const getTopUpId = (account_id: string, security_id: string, ex_date: string, importKey: string) =>
+  `${PLAN_STATEMENT_ID_PREFIX}${hash128([account_id, security_id, ex_date, REINVESTED_DISTRIBUTION, importKey].join("\0"))}`;
+
 /**
  * The reinvested distributions a holding restated from a collective trust is
  * owed: the trust keeps its payouts in its unit price, while the public fund
- * pays them out. On each ex-date in the statement's period, the shares
- * held at the start of the day × cash per share buys shares at that day's
- * close, as a dividend and its reinvestment. An ex-date already written is
- * left as it is; earlier reinvestments count toward the shares held on later ones.
+ * pays them out. On each ex-date in the statement's period, the shares held at
+ * the start of the day × cash per share buys shares at that day's close, as a
+ * dividend and its reinvestment. Earlier reinvestments count toward the shares
+ * held on later ones.
+ *
+ * An ex-date already written is left as it is. When this import's rows, or the
+ * reinvestments it plans, are dated before a written one (a statement imported
+ * after a later one), that reinvestment didn't count their shares, so a top-up
+ * pays the payout on just the shares this import adds.
  */
 export const planReinvestments = (input: ReinvestmentInput): PlannedTransaction[] => {
-  const { account_id, security_id, iso_currency_code, after, through, entered, replace, existingIds } = input;
+  const { account_id, security_id, iso_currency_code, after, through, writing, entered, replace } = input;
   const spec = KIND_SPECS.dividend;
   const planned: Movement[] = [];
   const transactions: PlannedTransaction[] = [];
+  const previous = input.movements.filter((m) => !writing.has(m.investment_transaction_id ?? ""));
+  const added = input.movements.filter((m) => writing.has(m.investment_transaction_id ?? ""));
+  const addedKey = () => [...added, ...planned].map((m) => m.investment_transaction_id ?? "").sort()[0] ?? "";
+  const heldOn = (movements: Movement[], date: string) => positionBefore({ movements, entered, replace, date }).quantity;
 
-  for (const { ex_date, cash_amount, close } of distributionsFromCloses(input.bars)) {
-    if (ex_date > through) break;
-    if (after !== null && ex_date <= after) continue;
-    const id = getReinvestmentId(account_id, security_id, ex_date);
-    if (existingIds.has(id)) continue;
-    const held = positionBefore({ movements: [...input.movements, ...planned], entered, replace, date: ex_date });
-    const shares_held = round(held.quantity, 6);
+  const add = (id: string, ex_date: string, shares_held: number, cash_amount: number, close: number) => {
     const amount = round(shares_held * cash_amount, 2);
-    if (amount <= 0) continue;
+    if (amount <= 0) return;
     const quantity = amount / close;
-
     planned.push({
       investment_transaction_id: id,
       date: ex_date,
@@ -120,7 +133,7 @@ export const planReinvestments = (input: ReinvestmentInput): PlannedTransaction[
           account_id,
           security_id,
           date: ex_date,
-          name: spec.name,
+          name: INFERRED_REINVESTMENT_NAME,
           amount,
           quantity,
           price: close,
@@ -148,6 +161,20 @@ export const planReinvestments = (input: ReinvestmentInput): PlannedTransaction[
         },
       },
     );
+  };
+
+  for (const { ex_date, cash_amount, close } of distributionsFromCloses(input.bars)) {
+    const id = getReinvestmentId(account_id, security_id, ex_date);
+    const inPeriod = (after === null || ex_date > after) && ex_date <= through;
+    if (inPeriod && !input.existingIds.has(id)) {
+      add(id, ex_date, round(heldOn([...input.movements, ...planned], ex_date), 6), cash_amount, close);
+      continue;
+    }
+    if (!input.liveIds.has(id)) continue;
+    const topUpId = getTopUpId(account_id, security_id, ex_date, addedKey());
+    if (input.existingIds.has(topUpId)) continue;
+    const shares = heldOn([...input.movements, ...planned], ex_date) - heldOn(previous, ex_date);
+    add(topUpId, ex_date, round(shares, 6), cash_amount, close);
   }
   return transactions;
 };

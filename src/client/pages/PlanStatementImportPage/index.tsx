@@ -497,6 +497,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                 {reinvestments.map((r) => (
                   <Row key={`${r.investment}-${r.ex_date}`} className="statementRow">
                     {r.ex_date} · {r.investment} · {formatAmount(r.amount)} · {formatUnits(r.quantity)} sh
+                    {r.topUp && " · top-up for rows dated before it"}
                   </Row>
                 ))}
               </Property>

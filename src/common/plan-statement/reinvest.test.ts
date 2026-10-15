@@ -73,6 +73,8 @@ const input = (over: Partial<ReinvestmentInput> = {}): ReinvestmentInput => ({
   movements: [buy("2026-03-02", 10)],
   entered: [],
   replace: false,
+  writing: new Set(),
+  liveIds: new Set(),
   existingIds: new Set(),
   ...over,
 });
@@ -156,5 +158,76 @@ describe("planReinvestments", () => {
     ]);
     expect(ids.size).toBe(4);
     for (const id of ids) expect(id).toMatch(/^plan-[0-9a-f]{32}$/);
+  });
+
+  describe("top-ups for rows dated before a written reinvestment", () => {
+    const writtenId = getReinvestmentId("acct-1", "sec-fund", "2026-03-04");
+    // The 03-04 reinvestment was written on 10 shares; this import adds 4 shares bought on 03-03.
+    const written = buy("2026-03-04", 15 / 99, 99, writtenId);
+    const backDated = buy("2026-03-03", 4, 100, "plan-new-row");
+    const over = {
+      through: "2026-03-31",
+      movements: [buy("2026-03-02", 10, 100, "plan-old-row"), written, backDated],
+      writing: new Set(["plan-new-row"]),
+      liveIds: new Set([writtenId]),
+      existingIds: new Set([writtenId]),
+    };
+
+    test("pay the payout on just the shares the earlier rows add", () => {
+      const [topUp] = buys(over);
+      expect(topUp.transaction.investment_transaction_id).not.toBe(writtenId);
+      expect(topUp.transaction).toMatchObject({ date: "2026-03-04", amount: 6, price: 99 });
+      expect(topUp.reinvested_distribution).toEqual({ ex_date: "2026-03-04", cash_amount_per_share: 1.5, shares_held: 4 });
+    });
+
+    test("reach written reinvestments after the statement too, compounding through them", () => {
+      // 06-02 lies after the statement and isn't written, so it's a later statement's to infer.
+      expect(buys({ ...over, through: "2026-03-03" }).map((t) => t.transaction.date)).toEqual(["2026-03-04"]);
+      const june = getReinvestmentId("acct-1", "sec-fund", "2026-06-02");
+      const withJune = buys({
+        ...over,
+        through: "2026-03-03",
+        movements: [...over.movements, buy("2026-06-02", 0.07, 108, june)],
+        liveIds: new Set([writtenId, june]),
+        existingIds: new Set([writtenId, june]),
+      });
+      expect(withJune.map((t) => t.transaction.date)).toEqual(["2026-03-04", "2026-06-02"]);
+      expect(withJune[1].reinvested_distribution?.shares_held).toBeCloseTo(4 + 6 / 99, 6);
+    });
+
+    test("aren't owed for a written reinvestment before the earlier rows, or one someone deleted", () => {
+      const after = [...over.movements.slice(0, 2), buy("2026-03-05", 4, 100, "plan-new-row")];
+      expect(buys({ ...over, movements: after })).toEqual([]);
+      expect(buys({ ...over, liveIds: new Set() })).toEqual([]);
+    });
+
+    test("are owed for this import's own earlier reinvestments too, under an id naming them", () => {
+      // Nothing new from the statement, but 03-04 is now inferred before the written 06-02.
+      const june = getReinvestmentId("acct-1", "sec-fund", "2026-06-02");
+      const reimport = (through: string) =>
+        buys({
+          through,
+          movements: [buy("2026-03-02", 10, 100, "plan-old-row"), buy("2026-06-02", 0.07, 108, june)],
+          liveIds: new Set([june]),
+          existingIds: new Set([june]),
+        });
+      const [, topUp] = reimport("2026-03-31");
+      expect(topUp.transaction.date).toBe("2026-06-02");
+      expect(topUp.reinvested_distribution?.shares_held).toBeCloseTo(15 / 99, 6);
+      const other = buys({
+        through: "2026-03-31",
+        bars: barsWith(CLOSES, { "2026-03-03": 1, "2026-06-02": 0.75 }),
+        movements: [buy("2026-03-02", 10, 100, "plan-old-row"), buy("2026-06-02", 0.07, 108, june)],
+        liveIds: new Set([june]),
+        existingIds: new Set([june]),
+      });
+      expect(other[1].transaction.investment_transaction_id).not.toBe(topUp.transaction.investment_transaction_id);
+    });
+
+    test("aren't added twice when the same rows are imported again", () => {
+      const [topUp] = buys(over);
+      const again = buys({ ...over, existingIds: new Set([writtenId, topUp.transaction.investment_transaction_id]) });
+      expect(again).toEqual([]);
+    });
   });
 });
