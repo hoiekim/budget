@@ -23,6 +23,7 @@ const input = (over: Partial<PreviewInput> = {}, held: { movements?: Movement[];
     decisions: {},
     closes: new Map(),
     existingIds: new Set<string>(),
+    deletedIds: new Set<string>(),
     replace: new Set<string>(),
     holding: () => ({ movements: held.movements ?? [], entered: held.entered ?? [] }),
     throughMonth: "2026-04",
@@ -206,6 +207,48 @@ describe("previewPlanStatement", () => {
       expect(result.request!.mappings.map((m) => m.investment)).toEqual(["EXAMPLE INDEX FUND"]);
     });
 
+    test("Replace on either fund of one security applies to the holding as a whole", () => {
+      const csv = [
+        CSV,
+        '03/02/2026,EXAMPLE INDEX FUND B,Contributions,"100.00","2.000"',
+        '04/01/2026,EXAMPLE INDEX FUND B,Contributions,"100.00","2.000"',
+      ].join("\n");
+      const twoFunds = new Map([...restated, ["EXAMPLE INDEX FUND B", { ...MAPPING, restated: true }]]);
+      const twoCloses = new Map([...closes, ["EXAMPLE INDEX FUND B", { bars }]]);
+      const held = { entered: [entered("2026-01-02", 10)] };
+      for (const fund of ["EXAMPLE INDEX FUND", "EXAMPLE INDEX FUND B"]) {
+        const result = preview({ csv, mappings: twoFunds, closes: twoCloses, replace: new Set([fund]) }, held);
+        expect(result.reinvestments[0].amount).toBe(2);
+        expect(result.request!.replace).toEqual(["sec-index"]);
+        expect(result.request!.holdings[0].quantity).toBeCloseTo(8 + 2 / 49, 10);
+        expect(result.funds.map((f) => f.replacePositions)).toEqual([true, true]);
+      }
+    });
+
+    test("a restated holding whose prices haven't loaded blocks the import, and says it can be retried", () => {
+      const other = new Map([
+        ["EXAMPLE INDEX FUND", MAPPING],
+        ["EXAMPLE TRUST", { security_id: "sec-trust", restated: true, ticker_symbol: "XTR" }],
+      ]);
+      const loading = new Map([["EXAMPLE TRUST", { message: "Prices for XTR are loading…" }]]);
+      const result = preview({ mappings: other, closes: loading }, { movements: [buyOf("2026-01-15", 3)] });
+      expect(result.blockers).toEqual(["EXAMPLE TRUST: Prices for XTR are loading…"]);
+      expect(result.retryCloses).toBe(true);
+      expect(result.request).toBeNull();
+      const nothingHeld = preview({ mappings: other, closes: loading });
+      expect(nothingHeld.blockers).toEqual([]);
+      expect(nothingHeld.retryCloses).toBe(false);
+    });
+
+    test("wait for the account's deleted rows, and never plan a deleted one again", () => {
+      const loadingDeleted = preview({ mappings: restated, closes, deletedIds: null });
+      expect(loadingDeleted.blockers).toEqual(["Checking the account's deleted rows…"]);
+      expect(preview({ closes, deletedIds: null }).blockers).toEqual([]);
+      const deleted = preview({ mappings: restated, closes, deletedIds: new Set([exId]) });
+      expect(deleted.reinvestments).toEqual([]);
+      expect(deleted.request!.holdings[0].quantity).toBe(4);
+    });
+
     test("an ex-date already in the account isn't sent again", () => {
       const result = preview({ mappings: restated, closes, existingIds: new Set([exId]) });
       expect(result.reinvestments).toEqual([]);
@@ -213,8 +256,8 @@ describe("previewPlanStatement", () => {
 
     test("a blocker leaves nothing inferred, even on shares already held", () => {
       const csv = `${CSV}\n04/02/2026,EXAMPLE INDEX FUND,Transfers,"5.00","0.100"`;
-      const result = preview({ mappings: restated, closes, csv }, { movements: [buyOf("2026-01-15", 2)] });
-      expect(result.blockers).not.toEqual([]);
+      const result = preview({ mappings: restated, closes, csv, deletedIds: null }, { movements: [buyOf("2026-01-15", 2)] });
+      expect(result.blockers).toEqual(["1 row needs a decision"]);
       expect(result.reinvestments).toEqual([]);
     });
   });

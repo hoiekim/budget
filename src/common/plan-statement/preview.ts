@@ -48,6 +48,8 @@ export interface PlanStatementPreview extends ImportPlan {
   /** Lines of the file that could not be read. */
   parseErrors: string[];
   reinvestments: PlannedReinvestment[];
+  /** A restated holding's prices are what blocks the import, so asking again may clear it. */
+  retryCloses: boolean;
   /** The request that imports this preview, when nothing blocks it. */
   request: PlanStatementImportRequest | null;
 }
@@ -62,6 +64,8 @@ export interface PreviewInput {
   closes: Map<string, RestatementCloses>;
   /** Live transaction ids in the account. */
   existingIds: Set<string>;
+  /** The account's deleted plan-statement rows; null while they load. */
+  deletedIds: Set<string> | null;
   /** Funds whose entered positions are replaced by the transactions' figures. */
   replace: Set<string>;
   /** A mapped holding's live transactions and entered positions, as the client holds them. */
@@ -115,24 +119,36 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
 
   const asMovement = (t: PlannedTransaction) => t.transaction as HeldMovement & { security_id?: string | null };
   const through = parsed.rows[parsed.rows.length - 1].date;
+  const replacing = replacedSecurities(input.mappings, input.replace);
   const reinvestments: PlannedReinvestment[] = [];
   const reinvested = new Set<string>();
+  let retryCloses = false;
   if (!plan.blockers.length) {
     const written = plan.transactions.map(asMovement);
-    for (const [security_id, { investments, bars, replace }] of restatedHoldings(input.mappings, closes, input.replace)) {
+    const owed = Array.from(restatedHoldings(input.mappings, closes, closeErrors), ([security_id, holding]) => {
       const held = input.holding(security_id);
       const movements = [...held.movements, ...written.filter((t) => t.security_id === security_id)];
+      return { security_id, held, movements, ...holding };
+    }).filter(({ movements }) => movements.length > 0);
+    for (const { investments, bars, message } of owed) {
+      if (bars) continue;
+      plan.blockers.push(`${investments.join(" / ")}: ${message}`);
+      retryCloses = true;
+    }
+    if (owed.length && !input.deletedIds) plan.blockers.push("Checking the account's deleted rows…");
+    const known = new Set([...input.existingIds, ...(input.deletedIds ?? [])]);
+    for (const { security_id, held, movements, investments, bars } of plan.blockers.length ? [] : owed) {
       if (reportsDividends(input.account_id, security_id, movements)) continue;
       const planned = planReinvestments({
         account_id: input.account_id,
         security_id,
         iso_currency_code: input.iso_currency_code,
-        bars,
+        bars: bars!,
         through,
         movements,
         entered: held.entered,
-        replace,
-        existingIds: input.existingIds,
+        replace: replacing.has(security_id),
+        existingIds: known,
       });
       plan.transactions.push(...planned);
       for (const { transaction } of planned) {
@@ -174,12 +190,11 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
   for (const fund of plan.funds) {
     if (!fund.mapping) continue;
     const { security_id } = fund.mapping;
-    const replacing = input.replace.has(fund.investment);
-    const { gaps, positions } = positionOf(security_id, replacing);
+    const { gaps, positions } = positionOf(security_id, replacing.has(security_id));
     if (gaps.length) {
       fund.positionGaps = gaps;
-      fund.replacePositions = replacing;
-      if (replacing && !replace.includes(security_id)) replace.push(security_id);
+      fund.replacePositions = replacing.has(security_id);
+      if (fund.replacePositions && !replace.includes(security_id)) replace.push(security_id);
     }
     pushHolding(security_id, positions);
   }
@@ -198,7 +213,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
         holdings,
       };
 
-  return { ...plan, parseErrors: parsed.errors, reinvestments, request };
+  return { ...plan, parseErrors: parsed.errors, reinvestments, retryCloses, request };
 };
 
 /**
@@ -210,19 +225,23 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
 const restatedHoldings = (
   mappings: Map<string, FundMapping>,
   closes: Map<string, DailyClose[]>,
-  replacing: Set<string>,
+  closeErrors: Map<string, { message: string }>,
 ) => {
-  const holdings = new Map<string, { investments: string[]; bars: DailyClose[]; replace: boolean }>();
+  const holdings = new Map<string, { investments: string[]; bars: DailyClose[] | null; message: string }>();
   for (const [investment, mapping] of mappings) {
-    const bars = closes.get(investment);
-    if (!mapping.restated || !bars) continue;
-    const holding = holdings.get(mapping.security_id) ?? { investments: [], bars, replace: false };
+    if (!mapping.restated) continue;
+    const holding = holdings.get(mapping.security_id) ?? { investments: [], bars: null, message: "" };
     holding.investments.push(investment);
-    holding.replace ||= replacing.has(investment);
+    holding.bars ??= closes.get(investment) ?? null;
+    holding.message ||= closeErrors.get(investment)?.message ?? `No ${mapping.ticker_symbol ?? "ticker"} prices`;
     holdings.set(mapping.security_id, holding);
   }
   return holdings;
 };
+
+/** Securities whose entered positions are replaced, which any fund mapped to them can ask for. */
+const replacedSecurities = (mappings: Map<string, FundMapping>, replace: Set<string>) =>
+  new Set(Array.from(mappings).flatMap(([investment, m]) => (replace.has(investment) ? [m.security_id] : [])));
 
 /**
  * Whether the plan reports this holding's dividends itself, as rows the

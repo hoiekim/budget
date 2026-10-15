@@ -9,6 +9,7 @@ import {
   PlanStatementImportResult,
   PositionGap,
   RestatementCloses,
+  StatementRow,
   closesRange,
   getYearMonthString,
   numberToCommaString,
@@ -29,7 +30,7 @@ import {
   Row,
   ToggleInput,
 } from "client";
-import type { ValidateTickerResponse } from "server";
+import type { PlanStatementDeletedIds, ValidateTickerResponse } from "server";
 import "./index.css";
 
 const DECISION_LABELS: Record<Decision, string> = {
@@ -72,8 +73,9 @@ const describeGaps = (gaps: PositionGap[], replacing: boolean) => {
 const describeRow = (row: PlannedRow) =>
   `${row.date} · ${row.investment} · ${row.label} · ${formatAmount(row.amount)} · ${row.shares} sh`;
 
-/** Closes are kept per fund and ticker, so changing a fund's ticker asks for the new one's. */
-const closesKey = (investment: string, ticker: string) => `${investment}\0${ticker}`;
+/** Closes are kept per fund, ticker and range, so a new ticker or another statement asks again. */
+const closesKey = (investment: string, ticker: string, from: string, to: string) =>
+  [investment, ticker, from, to].join("\0");
 
 /** The mapped security's ticker, or what the user typed before it resolved. */
 const tickerOf = (edit: FundEdit, securities: SecurityDictionary) =>
@@ -90,6 +92,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [replacePositions, setReplacePositions] = useState<string[]>([]);
   const [closes, setCloses] = useState<Record<string, RestatementCloses>>({});
+  const [deletedIds, setDeletedIds] = useState<Set<string> | null>(null);
   const [loadingCloses, setLoadingCloses] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -125,25 +128,31 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   };
 
   /**
-   * Asks for the closes of each restated fund that doesn't have them yet; `retry` asks again after a failure.
-   * They span the holding's earlier rows too, so a dividend between two statements is still found.
+   * The closes a restated fund needs, through the statement's last day. They span the holding's
+   * earlier rows too, so a dividend between two statements is still found.
    */
+  const closesRequest = (rows: StatementRow[], investment: string, edit: FundEdit) => {
+    const ticker = tickerOf(edit, data.securities);
+    if (!edit.restated || !edit.security_id || !ticker || !rows.length) return null;
+    const dates = rows.filter((r) => r.investment === investment).map((r) => r.date);
+    data.investmentTransactions.forEach((t) => {
+      if (t.account_id === accountId && t.security_id === edit.security_id) dates.push(t.date.slice(0, 10));
+    });
+    if (!dates.length) return null;
+    dates.push(rows[rows.length - 1].date);
+    const { from, to } = closesRange(dates);
+    return { key: closesKey(investment, ticker, from, to), ticker, from, to };
+  };
+
+  /** Asks for the closes of each restated fund that doesn't have them yet; `retry` asks again after a failure. */
   const requestCloses = async (text: string, fundEdits: Record<string, FundEdit>, retry = false) => {
     const rows = parsePlanStatement(text).rows;
-    const last = rows[rows.length - 1]?.date;
     const wanted = Object.entries({ ...otherRestated(text), ...fundEdits }).flatMap(([investment, edit]) => {
-      const dates = rows.filter((r) => r.investment === investment).map((r) => r.date);
-      const ticker = tickerOf(edit, data.securities);
-      if (!edit.restated || !edit.security_id || !ticker) return [];
-      data.investmentTransactions.forEach((t) => {
-        if (t.account_id === accountId && t.security_id === edit.security_id) dates.push(t.date.slice(0, 10));
-      });
-      if (!dates.length) return [];
-      dates.push(last);
-      const key = closesKey(investment, ticker);
-      const known = closesRef.current[key];
-      if (loadingRef.current.has(key) || (known && !(retry && !("bars" in known)))) return [];
-      return [{ key, ticker, ...closesRange(dates) }];
+      const request = closesRequest(rows, investment, edit);
+      if (!request) return [];
+      const known = closesRef.current[request.key];
+      if (loadingRef.current.has(request.key) || (known && !(retry && !("bars" in known)))) return [];
+      return [request];
     });
     if (!wanted.length) return;
     for (const { key } of wanted) loadingRef.current.add(key);
@@ -164,17 +173,15 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
 
   const preview = useMemo(() => {
     if (!csv) return null;
+    const rows = parsePlanStatement(csv).rows;
     const mappings = new Map<string, FundMapping>();
     const fundCloses = new Map<string, RestatementCloses>();
     for (const [investment, edit] of Object.entries({ ...otherRestated(csv), ...edits })) {
       if (!edit.security_id) continue;
       const ticker = tickerOf(edit, data.securities);
       mappings.set(investment, { security_id: edit.security_id, restated: edit.restated, ticker_symbol: ticker || null });
-      const loaded = closes[closesKey(investment, ticker)];
-      if (loaded) fundCloses.set(investment, loaded);
-      else if (edit.restated && ticker) {
-        fundCloses.set(investment, { message: `Prices for ${ticker} are loading…` });
-      }
+      const request = closesRequest(rows, investment, edit);
+      if (request) fundCloses.set(investment, closes[request.key] ?? { message: `Prices for ${ticker} are loading…` });
     }
     const existingIds = new Set<string>();
     data.investmentTransactions.forEach((t) => {
@@ -206,11 +213,12 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       decisions,
       closes: fundCloses,
       existingIds,
+      deletedIds,
       replace: new Set(replacePositions),
       holding,
       throughMonth: getYearMonthString(new Date()),
     });
-  }, [csv, edits, decisions, replacePositions, closes, data.investmentTransactions, data.holdingSnapshots, data.securities, accountId, account]);
+  }, [csv, edits, decisions, replacePositions, closes, deletedIds, data.investmentTransactions, data.holdingSnapshots, data.securities, accountId, account]);
 
   const plan = preview && "error" in preview ? null : preview;
   const planError = preview && "error" in preview ? preview.error : "";
@@ -234,7 +242,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     setError("");
     setDecisions({});
     setReplacePositions([]);
-    await requestCloses(text, seeded);
+    await Promise.all([requestCloses(text, seeded), requestDeletedIds()]);
   };
 
   const onBlurTicker = (investment: string) => async () => {
@@ -258,8 +266,19 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     if (csv) await requestCloses(csv, latestEdits.current);
   };
 
+  /** The account's deleted plan-statement rows, which the client doesn't otherwise hold. */
+  const requestDeletedIds = async () => {
+    setDeletedIds(null);
+    const params = new URLSearchParams({ account_id: accountId });
+    const r = await call.get<PlanStatementDeletedIds>(`/api/plan-statement/deleted-ids?${params}`);
+    if (r.status === "success" && r.body) setDeletedIds(new Set(r.body.ids));
+    else setError(r.message ?? "Couldn't check the account's deleted rows");
+  };
+
   const onClickRetry = async () => {
-    if (csv) await requestCloses(csv, latestEdits.current, true);
+    if (!csv) return;
+    setError("");
+    await Promise.all([requestCloses(csv, latestEdits.current, true), deletedIds ? null : requestDeletedIds()]);
   };
 
   const onToggleReplacePositions = (investment: string) => () =>
@@ -363,7 +382,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                   {fund.positionGaps && fund.positionGaps.length > 0 && (
                     <>
                       <Row className="formError">
-                        {describeGaps(fund.positionGaps, replacePositions.includes(fund.investment))}
+                        {describeGaps(fund.positionGaps, !!fund.replacePositions)}
                       </Row>
                       <KeyValue name="Replace&nbsp;with&nbsp;statement&#8209;derived&nbsp;positions">
                         <ToggleInput
@@ -427,6 +446,11 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                 {b}
               </Row>
             ))}
+            {(plan.retryCloses || (!deletedIds && !!error)) && (
+              <ButtonRow disabled={loadingCloses.length > 0} onClick={onClickRetry}>
+                Retry
+              </ButtonRow>
+            )}
             {result && <Row className="fundNote">{result}</Row>}
             <ButtonRow disabled={!canImport} onClick={onClickImport}>
               {writing || !replacing ? (

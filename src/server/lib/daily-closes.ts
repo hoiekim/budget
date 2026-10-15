@@ -122,7 +122,7 @@ const getPolygonDailyCloses = async (
   if (!apiKey) return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
   const ticker = polygon.toPolygonTicker(ticker_symbol, options.securityType);
   const encoded = polygon.encodeTicker(ticker);
-  // One budget across both calls, so a caller's wait covers the whole fetch.
+  // One budget across every call, so a caller's wait covers the whole fetch.
   const deadline = options.maxWaitMs ? Date.now() + options.maxWaitMs : undefined;
   const remaining = () => (deadline === undefined ? undefined : Math.max(1, deadline - Date.now()));
 

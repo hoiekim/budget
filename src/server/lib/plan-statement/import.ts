@@ -18,6 +18,8 @@ import {
   investmentTransactionsTable,
   INVESTMENT_TRANSACTION_ID,
   USER_ID,
+  ACCOUNT_ID,
+  IS_DELETED,
   getAccount,
   getItem,
   getHoldingSnapshotsForSecurities,
@@ -48,6 +50,18 @@ const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<stri
     { inFilters: { [INVESTMENT_TRANSACTION_ID]: ids }, excludeDeleted: false },
   );
   return new Set(models.map((m) => m.investment_transaction_id));
+};
+
+/**
+ * The account's plan-statement rows someone deleted. The client holds only live
+ * rows, and planning needs these so a removed reinvestment isn't planned again.
+ */
+export const getDeletedPlanStatementIds = async (user: MaskedUser, account_id: string): Promise<string[]> => {
+  const models = await investmentTransactionsTable.query(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id, [IS_DELETED]: true },
+    { excludeDeleted: false },
+  );
+  return models.map((m) => m.investment_transaction_id).filter((id) => PLAN_STATEMENT_ID_PATTERN.test(id));
 };
 
 const isFiniteNumber = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);

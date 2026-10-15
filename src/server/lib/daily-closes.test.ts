@@ -175,6 +175,22 @@ describe("getDailyCloses", () => {
     expect(fetchMock.mock.calls.map(([url]) => url)[2]).toContain("/v3/reference/splits?ticker=XPUB&execution_date.gte=2026-01-01");
   });
 
+  it("a refused splits call fails the fetch instead of using unadjusted dividends", async () => {
+    mockFetch((url) => {
+      if (url.includes("/v2/aggs/")) {
+        const results = [
+          { c: 10, t: polygonTs(2026, 3, 2) },
+          { c: 9.9, t: polygonTs(2026, 3, 3) },
+        ];
+        return { body: { status: "OK", results } };
+      }
+      if (url.includes("/v3/reference/splits")) return { status: 429, body: { status: "ERROR", error: "rate limit" } };
+      return { body: { status: "OK", results: [{ ex_dividend_date: "2026-03-03", cash_amount: 1 }] } };
+    });
+    const result = await getDailyCloses("XPUB", "2026-03-02", "2026-03-03");
+    expect(result.success).toBe(false);
+  });
+
   it("falls back to Yahoo's own adjusted series when Polygon has no bars", async () => {
     const fetchMock = mockFetch((url) => {
       if (url.includes("polygon.io")) return { body: { status: "OK", resultsCount: 0 } };
@@ -283,9 +299,13 @@ describe("getDailyCloses", () => {
     expect(peekDailyCloses("XBUSY", "2026-03-02", "2026-03-02")).toBeUndefined();
   });
 
-  it("one wait budget covers both Polygon calls", async () => {
+  it("one wait budget covers every Polygon call", async () => {
     mockFetch((url) => ({
-      body: url.includes("/v2/aggs/") ? { status: "OK", results: [{ c: 100, t: polygonTs(2026, 3, 2) }] } : { status: "OK", results: [] },
+      body: url.includes("/v2/aggs/")
+        ? { status: "OK", results: [{ c: 100, t: polygonTs(2026, 3, 2) }] }
+        : url.includes("/v3/reference/dividends")
+          ? { status: "OK", results: [{ ex_dividend_date: "2026-03-02", cash_amount: 1 }] }
+          : { status: "OK", results: [] },
     }));
     const slowFetch = globalThis.fetch;
     globalThis.fetch = (async (url: string) => {
@@ -303,8 +323,9 @@ describe("getDailyCloses", () => {
     } finally {
       spy.mockRestore();
     }
-    // The dividends call gets what's left after the bars call, not a fresh budget.
+    // Each later call gets what's left after the ones before it, not a fresh budget.
     expect(waits[0]).toBeGreaterThan(990);
     expect(waits[1]).toBeLessThan(750);
+    expect(waits[2]).toBeLessThan(450);
   });
 });
