@@ -4,6 +4,7 @@ import type { PositionGap } from "../holding-positions";
 import { hash128 } from "../utils/hash";
 import { PLAN_STATEMENT_ID_PREFIX } from "../constants";
 import type { StatementRow } from "./parse";
+import type { ReinvestedDistribution } from "./reinvest";
 
 export interface DailyClose {
   /** YYYY-MM-DD, the trading day the bar belongs to. */
@@ -277,6 +278,7 @@ export interface PlannedTransaction {
     date: string;
   };
   restated_from?: RestatedFrom;
+  reinvested_distribution?: ReinvestedDistribution;
 }
 
 export type RowStatus = "new" | "imported" | "skip" | "decide";

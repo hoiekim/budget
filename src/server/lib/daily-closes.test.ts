@@ -1,5 +1,6 @@
 import { describe, it, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
 import { restoreFetch, restoreEnv } from "test-helpers";
+import { distributionsFromCloses } from "common";
 import {
   adjustForDividends,
   clearDailyClosesCache,
@@ -62,6 +63,24 @@ describe("adjustForDividends", () => {
     const adjusted = adjustForDividends(bars, [{ exDate: "2026-03-07", cashAmount: 1 }]);
     expect(adjusted[0].adjustedClose).toBeCloseTo(49, 10);
     expect(adjusted[1].adjustedClose).toBe(49);
+  });
+
+  it("carries the dividends the import reads back out of the two series", () => {
+    const bars = [
+      { date: "2026-03-02", close: 100 },
+      { date: "2026-03-03", close: 102 },
+      { date: "2026-03-04", close: 99 },
+      { date: "2026-06-01", close: 104 },
+      { date: "2026-06-02", close: 103.2 },
+    ];
+    const dividends = [
+      { exDate: "2026-03-04", cashAmount: 2.04 },
+      { exDate: "2026-06-02", cashAmount: 0.8125 },
+    ];
+    expect(distributionsFromCloses(adjustForDividends(bars, dividends))).toEqual([
+      { ex_date: "2026-03-04", cash_amount: 2.04, close: 99 },
+      { ex_date: "2026-06-02", cash_amount: 0.8125, close: 103.2 },
+    ]);
   });
 });
 

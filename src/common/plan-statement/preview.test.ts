@@ -3,6 +3,7 @@ import type { EnteredPosition, Movement } from "../holding-positions";
 import { FundMapping, getRowIds } from "./plan";
 import { parsePlanStatement } from "./parse";
 import { previewPlanStatement, PreviewInput, PlanStatementPreview } from "./preview";
+import { getReinvestmentId } from "./reinvest";
 
 const CSV = [
   "Plan name:,EXAMPLE PLAN",
@@ -29,6 +30,14 @@ const input = (over: Partial<PreviewInput> = {}, held: { movements?: Movement[];
   }) as PreviewInput;
 
 const preview = (over: Partial<PreviewInput> = {}, held = {}) => previewPlanStatement(input(over, held)) as PlanStatementPreview;
+
+const buyOf = (date: string, quantity: number, price = 50): Movement => ({
+  date,
+  type: "buy",
+  quantity,
+  amount: quantity * price,
+  price,
+});
 
 const entered = (date: string, quantity: number): EnteredPosition => ({
   snapshot_id: `holding-acct-1-sec-index-${date.replaceAll("-", "")}`,
@@ -114,6 +123,59 @@ describe("previewPlanStatement", () => {
     const result = preview({ mappings, closes: new Map([["EXAMPLE INDEX FUND", loading]]) });
     expect(result.funds[0].restatement).toMatchObject({ ok: false, retryable: true });
     expect(result.request).toBeNull();
+  });
+
+  describe("inferred dividends on a restated fund", () => {
+    const restated = new Map([["EXAMPLE INDEX FUND", { ...MAPPING, restated: true }]]);
+    // A $0.50 payout going ex on 2026-03-16, between the statement's two rows.
+    const bars = [
+      { date: "2026-03-02", close: 50, adjustedClose: 49.5 },
+      { date: "2026-03-13", close: 50, adjustedClose: 49.5 },
+      { date: "2026-03-16", close: 49, adjustedClose: 49 },
+      { date: "2026-04-01", close: 50, adjustedClose: 50 },
+    ];
+    const closes = new Map([["EXAMPLE INDEX FUND", { bars }]]);
+    const exId = getReinvestmentId("acct-1", "sec-index", "2026-03-16");
+
+    test("are sent with the rows, listed, and held", () => {
+      const result = preview({ mappings: restated, closes });
+      expect(result.reinvestments).toEqual([
+        { investment: "EXAMPLE INDEX FUND", ex_date: "2026-03-16", amount: 1, quantity: 1 / 49 },
+      ]);
+      const ids = result.request!.transactions.map((t) => t.transaction.investment_transaction_id);
+      expect(ids).toEqual(expect.arrayContaining([exId, `${exId}-cash`]));
+      expect(result.request!.holdings[0].quantity).toBeCloseTo(4 + 1 / 49, 10);
+    });
+
+    test("aren't inferred for a fund that isn't restated", () => {
+      const result = preview({ closes });
+      expect(result.reinvestments).toEqual([]);
+      expect(result.request!.transactions.map((t) => t.transaction.investment_transaction_id)).not.toContain(exId);
+    });
+
+    test("aren't inferred when the statement reports the fund's dividends itself", () => {
+      const csv = `${CSV}\n'03/16/2026,EXAMPLE INDEX FUND,Dividend,"2.00","0.0404"'`.replace(/'/g, "");
+      expect(preview({ csv, mappings: restated, closes }).reinvestments).toEqual([]);
+    });
+
+    test("aren't inferred when an earlier import wrote reported dividends, but an inferred one doesn't stop them", () => {
+      const reported = { ...buyOf("2026-01-15", 0.1), investment_transaction_id: "plan-reported", subtype: "dividend reinvestment" };
+      expect(preview({ mappings: restated, closes }, { movements: [reported] }).reinvestments).toEqual([]);
+      const inferred = { ...reported, investment_transaction_id: getReinvestmentId("acct-1", "sec-index", "2026-01-15") };
+      expect(preview({ mappings: restated, closes }, { movements: [inferred] }).reinvestments).toHaveLength(1);
+    });
+
+    test("an ex-date already in the account isn't sent again", () => {
+      const result = preview({ mappings: restated, closes, existingIds: new Set([exId]) });
+      expect(result.reinvestments).toEqual([]);
+    });
+
+    test("a blocker leaves nothing inferred, even on shares already held", () => {
+      const csv = `${CSV}\n04/02/2026,EXAMPLE INDEX FUND,Transfers,"5.00","0.100"`;
+      const result = preview({ mappings: restated, closes, csv }, { movements: [buyOf("2026-01-15", 2)] });
+      expect(result.blockers).not.toEqual([]);
+      expect(result.reinvestments).toEqual([]);
+    });
   });
 
   test("a file with no statement rows is an error, not a preview", () => {

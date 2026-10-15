@@ -8,6 +8,8 @@ import {
   PlannedTransaction,
   PlanStatementImportRequest,
   PlanStatementImportResult,
+  REINVESTED_DISTRIBUTION,
+  RESTATED_FROM,
 } from "common";
 import {
   MaskedUser,
@@ -82,6 +84,16 @@ const toRow = (
   if (r && (typeof r.investment !== "string" || !isFiniteNumber(r.units) || !isFiniteNumber(r.unit_price))) {
     return { problem: `${id} has an unreadable restatement` };
   }
+  const d = planned.reinvested_distribution;
+  if (
+    d &&
+    (isCashLeg ||
+      !isCalendarDate(d.ex_date) ||
+      d.ex_date !== t.date ||
+      ![d.cash_amount_per_share, d.shares_held].every(isFiniteNumber))
+  ) {
+    return { problem: `${id} has an unreadable reinvestment` };
+  }
 
   const row = InvTxModel.fromJSON(
     {
@@ -100,7 +112,17 @@ const toRow = (
     },
     user.user_id,
   );
-  row.raw = r ? { restated_from: { investment: r.investment, units: r.units, unit_price: r.unit_price } } : null;
+  row.raw = r
+    ? { [RESTATED_FROM]: { investment: r.investment, units: r.units, unit_price: r.unit_price } }
+    : d
+      ? {
+          [REINVESTED_DISTRIBUTION]: {
+            ex_date: d.ex_date,
+            cash_amount_per_share: d.cash_amount_per_share,
+            shares_held: d.shares_held,
+          },
+        }
+      : null;
   return { row };
 };
 

@@ -3,8 +3,8 @@ import {
   Decision,
   EnteredPosition,
   FundMapping,
+  HeldMovement,
   ImportKind,
-  Movement,
   PlannedRow,
   PlanStatementImportResult,
   PositionGap,
@@ -112,13 +112,21 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       [investment]: { ...(current[investment] ?? { ticker: "", security_id: null, restated: false }), ...patch },
     }));
 
-  /** Asks for the closes of each restated fund that doesn't have them yet; `retry` asks again after a failure. */
+  /**
+   * Asks for the closes of each restated fund that doesn't have them yet; `retry` asks again after a failure.
+   * They span the holding's earlier rows too, so a dividend between two statements is still found.
+   */
   const requestCloses = async (text: string, fundEdits: Record<string, FundEdit>, retry = false) => {
     const rows = parsePlanStatement(text).rows;
+    const last = rows[rows.length - 1]?.date;
     const wanted = Object.entries(fundEdits).flatMap(([investment, edit]) => {
       const dates = rows.filter((r) => r.investment === investment).map((r) => r.date);
       const ticker = tickerOf(edit, data.securities);
       if (!edit.restated || !edit.security_id || !ticker || !dates.length) return [];
+      dates.push(last);
+      data.investmentTransactions.forEach((t) => {
+        if (t.account_id === accountId && t.security_id === edit.security_id) dates.push(t.date.slice(0, 10));
+      });
       const key = closesKey(investment, ticker);
       const known = closesRef.current[key];
       if (loadingRef.current.has(key) || (known && !(retry && !("bars" in known)))) return [];
@@ -160,7 +168,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       if (t.account_id === accountId) existingIds.add(t.investment_transaction_id);
     });
     const holding = (security_id: string) => {
-      const movements: Movement[] = [];
+      const movements: HeldMovement[] = [];
       data.investmentTransactions.forEach((t) => {
         if (t.account_id === accountId && t.security_id === security_id) movements.push(t);
       });
@@ -277,12 +285,14 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   };
 
   const newRows = plan?.rows.filter((r) => r.status === "new") ?? [];
+  const reinvestments = plan?.reinvestments ?? [];
+  const writing = newRows.length + reinvestments.length;
   const decisionRows = plan?.rows.filter((r) => r.needsDecision && r.status !== "imported") ?? [];
   const importedCount = plan?.rows.filter((r) => r.status === "imported").length ?? 0;
   const skippedCount = plan?.rows.filter((r) => r.status === "skip").length ?? 0;
   // Replacing entered positions is worth applying even when nothing is new.
   const replacing = !!plan?.funds.some((f) => f.replacePositions && f.positionGaps?.length);
-  const canImport = !!plan?.request && !busy && (newRows.length > 0 || replacing);
+  const canImport = !!plan?.request && !busy && (writing > 0 || replacing);
 
   return (
     <Properties className="PlanStatementImportPage">
@@ -394,6 +404,11 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
             <KeyValue name="Skipped">
               <span>{skippedCount}</span>
             </KeyValue>
+            {reinvestments.length > 0 && (
+              <KeyValue name="Inferred&nbsp;dividends">
+                <span>{reinvestments.length}</span>
+              </KeyValue>
+            )}
             {plan.blockers.map((b) => (
               <Row key={b} className="formError">
                 {b}
@@ -401,9 +416,9 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
             ))}
             {result && <Row className="fundNote">{result}</Row>}
             <ButtonRow disabled={!canImport} onClick={onClickImport}>
-              {newRows.length || !replacing ? (
+              {writing || !replacing ? (
                 <>
-                  Import&nbsp;{newRows.length}&nbsp;row{newRows.length === 1 ? "" : "s"}
+                  Import&nbsp;{writing}&nbsp;row{writing === 1 ? "" : "s"}
                 </>
               ) : (
                 <>Replace&nbsp;positions</>
@@ -419,6 +434,23 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                   <Row key={row.id} className="statementRow">
                     {row.date} · {row.investment} · {DECISION_LABELS[row.kind as ImportKind]} ·{" "}
                     {formatAmount(Math.abs(row.amount))}
+                  </Row>
+                ))}
+              </Property>
+            </>
+          )}
+
+          {reinvestments.length > 0 && (
+            <>
+              <PropertyLabel>Inferred&nbsp;dividends</PropertyLabel>
+              <Property>
+                <Row className="fundNote">
+                  The trust keeps its payouts in its unit price, so each payout of the public fund is added as a
+                  dividend reinvested at that day&apos;s close.
+                </Row>
+                {reinvestments.map((r) => (
+                  <Row key={`${r.investment}-${r.ex_date}`} className="statementRow">
+                    {r.ex_date} · {r.investment} · {formatAmount(r.amount)} · {formatUnits(r.quantity)} sh
                   </Row>
                 ))}
               </Property>

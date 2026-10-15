@@ -1,7 +1,9 @@
-import type { PlanFundMapping } from "../models";
+import { InvestmentTransactionSubtype } from "plaid";
+import type { JSONInvestmentTransaction, PlanFundMapping } from "../models";
 import { derivePositions, EnteredPosition, Movement } from "../holding-positions";
 import { parsePlanStatement } from "./parse";
 import { buildImportPlan, DailyClose, Decision, FundMapping, ImportPlan, PlannedTransaction } from "./plan";
+import { getReinvestmentId, planReinvestments } from "./reinvest";
 
 /** A holding's position after the import, for its holdings row. */
 export interface PlanStatementHolding {
@@ -32,9 +34,20 @@ export interface PlanStatementImportResult {
 
 export type RestatementCloses = { bars: DailyClose[] } | { message: string; retryable?: boolean };
 
+/** A dividend reinvestment the import infers for a restated holding. */
+export interface PlannedReinvestment {
+  investment: string;
+  ex_date: string;
+  amount: number;
+  quantity: number;
+}
+
+export type HeldMovement = Movement & Partial<Pick<JSONInvestmentTransaction, "subtype">>;
+
 export interface PlanStatementPreview extends ImportPlan {
   /** Lines of the file that could not be read. */
   parseErrors: string[];
+  reinvestments: PlannedReinvestment[];
   /** The request that imports this preview, when nothing blocks it. */
   request: PlanStatementImportRequest | null;
 }
@@ -51,7 +64,7 @@ export interface PreviewInput {
   /** Funds whose entered positions are replaced by the transactions' figures. */
   replace: Set<string>;
   /** A mapped holding's live transactions and entered positions, as the client holds them. */
-  holding: (security_id: string) => { movements: Movement[]; entered: EnteredPosition[] };
+  holding: (security_id: string) => { movements: HeldMovement[]; entered: EnteredPosition[] };
   /** YYYY-MM */
   throughMonth: string;
 }
@@ -99,7 +112,43 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
     existingIds: input.existingIds,
   });
 
-  const pending = plan.transactions.map((t) => t.transaction as Movement & { security_id?: string | null });
+  const asMovement = (t: PlannedTransaction) => t.transaction as HeldMovement & { security_id?: string | null };
+  const through = parsed.rows[parsed.rows.length - 1].date;
+  const reinvestments: PlannedReinvestment[] = [];
+  if (!plan.blockers.length) {
+    const written = plan.transactions.map(asMovement);
+    for (const fund of plan.funds) {
+      const bars = closes.get(fund.investment);
+      if (!fund.mapping?.restated || !bars) continue;
+      const { security_id } = fund.mapping;
+      const held = input.holding(security_id);
+      const movements = [...held.movements, ...written.filter((t) => t.security_id === security_id)];
+      if (reportsDividends(input.account_id, security_id, movements)) continue;
+      const planned = planReinvestments({
+        account_id: input.account_id,
+        security_id,
+        iso_currency_code: input.iso_currency_code,
+        bars,
+        through,
+        movements,
+        entered: held.entered,
+        replace: input.replace.has(fund.investment),
+        existingIds: input.existingIds,
+      });
+      plan.transactions.push(...planned);
+      for (const { transaction } of planned) {
+        if (transaction.security_id !== security_id) continue;
+        reinvestments.push({
+          investment: fund.investment,
+          ex_date: transaction.date,
+          amount: transaction.amount!,
+          quantity: transaction.quantity!,
+        });
+      }
+    }
+  }
+
+  const pending = plan.transactions.map(asMovement);
   const holdings: PlanStatementHolding[] = [];
   const replace: string[] = [];
   for (const fund of plan.funds) {
@@ -143,5 +192,16 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
         holdings,
       };
 
-  return { ...plan, parseErrors: parsed.errors, request };
+  return { ...plan, parseErrors: parsed.errors, reinvestments, request };
 };
+
+/**
+ * Whether the plan reports this holding's dividends itself, as rows the
+ * statement or an earlier import wrote, so inferring them would count them twice.
+ */
+const reportsDividends = (account_id: string, security_id: string, movements: HeldMovement[]) =>
+  movements.some(
+    (m) =>
+      m.subtype === InvestmentTransactionSubtype.DividendReinvestment &&
+      m.investment_transaction_id !== getReinvestmentId(account_id, security_id, m.date.slice(0, 10)),
+  );

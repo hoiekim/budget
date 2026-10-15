@@ -268,6 +268,31 @@ describe("POST /plan-statement/import", () => {
     expect(stored).toContain('{"restated_from":{"investment":"T","units":2,"unit_price":50}}');
   });
 
+  test("stores what a reinvestment was inferred from on its share leg", async () => {
+    const leg = shareLeg(ROW_ID, { subtype: "dividend reinvestment", name: "Buy (dividend reinvestment)" });
+    const reinvested_distribution = { ex_date: "2026-03-02", cash_amount_per_share: 0.5, shares_held: 40, x: 9 };
+    const res = await importStatement(importBody({ transactions: [{ ...leg, reinvested_distribution }] }));
+    expect(res).toMatchObject({ status: "success" });
+    const insert = clientCalls().find((c) => c.sql.includes("INSERT INTO investment_transactions"))!;
+    expect(JSON.stringify(insert.values)).toContain(
+      '{"reinvested_distribution":{"ex_date":"2026-03-02","cash_amount_per_share":0.5,"shares_held":40}}',
+    );
+  });
+
+  test("refuses a reinvestment record on a cash leg, or dated off its row", async () => {
+    const record = { ex_date: "2026-03-02", cash_amount_per_share: 0.5, shares_held: 40 };
+    for (const transactions of [
+      [{ ...cashLeg(), reinvested_distribution: record }],
+      [{ ...shareLeg(), reinvested_distribution: { ...record, ex_date: "2026-03-03" } }],
+      [{ ...shareLeg(), reinvested_distribution: { ...record, shares_held: "40" } }],
+    ]) {
+      clearQueryMocks();
+      const res = await importStatement(importBody({ transactions }));
+      expect(res).toMatchObject({ status: "failed", message: expect.stringContaining("unreadable reinvestment") });
+      expect(writes()).toEqual([]);
+    }
+  });
+
   test("keeps the account's other saved mappings", async () => {
     db.savedMappings = { "EXAMPLE BOND FUND": { security_id: "sec-bond", restated: true } };
     await importStatement(importBody());
