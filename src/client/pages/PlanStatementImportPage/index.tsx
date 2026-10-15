@@ -30,7 +30,7 @@ import {
   Row,
   ToggleInput,
 } from "client";
-import type { PlanStatementDeletedIds, ValidateTickerResponse } from "server";
+import type { ValidateTickerResponse } from "server";
 import "./index.css";
 
 const DECISION_LABELS: Record<Decision, string> = {
@@ -92,7 +92,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [replacePositions, setReplacePositions] = useState<string[]>([]);
   const [closes, setCloses] = useState<Record<string, RestatementCloses>>({});
-  const [deletedIds, setDeletedIds] = useState<Set<string> | null>(null);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [loadingCloses, setLoadingCloses] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -181,7 +181,10 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       const ticker = tickerOf(edit, data.securities);
       mappings.set(investment, { security_id: edit.security_id, restated: edit.restated, ticker_symbol: ticker || null });
       const request = closesRequest(rows, investment, edit);
-      if (request) fundCloses.set(investment, closes[request.key] ?? { message: `Prices for ${ticker} are loading…` });
+      // A range the account's rows moved since the request has no answer yet, so it offers Retry too.
+      if (request) {
+        fundCloses.set(investment, closes[request.key] ?? { message: `Prices for ${ticker} are loading…`, retryable: true });
+      }
     }
     const existingIds = new Set<string>();
     data.investmentTransactions.forEach((t) => {
@@ -242,7 +245,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     setError("");
     setDecisions({});
     setReplacePositions([]);
-    await Promise.all([requestCloses(text, seeded), requestDeletedIds()]);
+    await requestCloses(text, seeded);
   };
 
   const onBlurTicker = (investment: string) => async () => {
@@ -266,19 +269,8 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
     if (csv) await requestCloses(csv, latestEdits.current);
   };
 
-  /** The account's deleted plan-statement rows, which the client doesn't otherwise hold. */
-  const requestDeletedIds = async () => {
-    setDeletedIds(null);
-    const params = new URLSearchParams({ account_id: accountId });
-    const r = await call.get<PlanStatementDeletedIds>(`/api/plan-statement/deleted-ids?${params}`);
-    if (r.status === "success" && r.body) setDeletedIds(new Set(r.body.ids));
-    else setError(r.message ?? "Couldn't check the account's deleted rows");
-  };
-
   const onClickRetry = async () => {
-    if (!csv) return;
-    setError("");
-    await Promise.all([requestCloses(csv, latestEdits.current, true), deletedIds ? null : requestDeletedIds()]);
+    if (csv) await requestCloses(csv, latestEdits.current, true);
   };
 
   const onToggleReplacePositions = (investment: string) => () =>
@@ -305,11 +297,20 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
       setError(r.message ?? "Import failed");
       return;
     }
-    const { written, alreadyImported } = r.body;
+    const { written, alreadyImported, deleted } = r.body;
     setError("");
-    // The page only knows live rows, so a row deleted earlier can read as new until the server skips it.
+    if (deleted?.length) {
+      // The page holds only live rows, so it planned these as new; it plans again around them.
+      setDeletedIds((current) => new Set([...current, ...deleted]));
+      const rows = new Set(deleted.map((id) => id.replace(/-cash$/, ""))).size;
+      setResult(
+        `${rows} row${rows === 1 ? " was" : "s were"} deleted from the account earlier and stay${rows === 1 ? "s" : ""} deleted. ` +
+          "The preview now leaves them out. Check it and import again.",
+      );
+      return;
+    }
     const skipped = alreadyImported
-      ? ` ${alreadyImported} already in the account, deleted ones included, ${alreadyImported === 1 ? "was" : "were"} left as ${alreadyImported === 1 ? "it was" : "they were"}.`
+      ? ` ${alreadyImported} already in the account ${alreadyImported === 1 ? "was" : "were"} left as ${alreadyImported === 1 ? "it was" : "they were"}.`
       : "";
     setResult(`Imported ${written} transaction${written === 1 ? "" : "s"}.${skipped}`);
     setReplacePositions([]);
@@ -446,7 +447,7 @@ const PlanStatementImporter = ({ accountId }: { accountId: string }) => {
                 {b}
               </Row>
             ))}
-            {(plan.retryCloses || (!deletedIds && !!error)) && (
+            {plan.retryCloses && (
               <ButtonRow disabled={loadingCloses.length > 0} onClick={onClickRetry}>
                 Retry
               </ButtonRow>

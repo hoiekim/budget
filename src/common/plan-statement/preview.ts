@@ -28,8 +28,10 @@ export interface PlanStatementImportRequest {
 
 export interface PlanStatementImportResult {
   written: number;
-  /** Rows already in the account, deleted ones included, which are left as they are. */
+  /** Rows already in the account, which are left as they are. */
   alreadyImported: number;
+  /** Planned rows someone deleted from the account. Nothing was written; the page plans around them. */
+  deleted?: string[];
 }
 
 export type RestatementCloses = { bars: DailyClose[] } | { message: string; retryable?: boolean };
@@ -64,8 +66,8 @@ export interface PreviewInput {
   closes: Map<string, RestatementCloses>;
   /** Live transaction ids in the account. */
   existingIds: Set<string>;
-  /** The account's deleted plan-statement rows; null while they load. */
-  deletedIds: Set<string> | null;
+  /** Rows the import found deleted from the account, which are planned around like live ones. */
+  deletedIds: Set<string>;
   /** Funds whose entered positions are replaced by the transactions' figures. */
   replace: Set<string>;
   /** A mapped holding's live transactions and entered positions, as the client holds them. */
@@ -106,6 +108,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
     else closeErrors.set(investment, result);
   }
 
+  const known = new Set([...input.existingIds, ...input.deletedIds]);
   const plan = buildImportPlan({
     account_id: input.account_id,
     iso_currency_code: input.iso_currency_code,
@@ -114,7 +117,7 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
     decisions: input.decisions,
     closes,
     closeErrors,
-    existingIds: input.existingIds,
+    existingIds: known,
   });
 
   const asMovement = (t: PlannedTransaction) => t.transaction as HeldMovement & { security_id?: string | null };
@@ -135,8 +138,6 @@ export const previewPlanStatement = (input: PreviewInput): PlanStatementPreview 
       plan.blockers.push(`${investments.join(" / ")}: ${message}`);
       retryCloses = true;
     }
-    if (owed.length && !input.deletedIds) plan.blockers.push("Checking the account's deleted rows…");
-    const known = new Set([...input.existingIds, ...(input.deletedIds ?? [])]);
     for (const { security_id, held, movements, investments, bars } of plan.blockers.length ? [] : owed) {
       if (reportsDividends(input.account_id, security_id, movements)) continue;
       const planned = planReinvestments({

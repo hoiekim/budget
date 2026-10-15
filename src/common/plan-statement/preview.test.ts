@@ -240,13 +240,30 @@ describe("previewPlanStatement", () => {
       expect(nothingHeld.retryCloses).toBe(false);
     });
 
-    test("wait for the account's deleted rows, and never plan a deleted one again", () => {
-      const loadingDeleted = preview({ mappings: restated, closes, deletedIds: null });
-      expect(loadingDeleted.blockers).toEqual(["Checking the account's deleted rows…"]);
-      expect(preview({ closes, deletedIds: null }).blockers).toEqual([]);
+    test("a reinvestment found deleted isn't planned again", () => {
       const deleted = preview({ mappings: restated, closes, deletedIds: new Set([exId]) });
       expect(deleted.reinvestments).toEqual([]);
       expect(deleted.request!.holdings[0].quantity).toBe(4);
+    });
+
+    test("a statement row found deleted stays out, and its shares earn nothing", () => {
+      const [first] = getRowIds("acct-1", parsePlanStatement(CSV).rows);
+      const result = preview({ mappings: restated, closes, deletedIds: new Set([first]) });
+      expect(result.rows.map((r) => r.status)).toEqual(["imported", "new"]);
+      expect(result.request!.transactions.map((t) => t.transaction.investment_transaction_id)).not.toContain(first);
+      expect(result.reinvestments).toEqual([]);
+      expect(result.request!.holdings[0].quantity).toBe(2);
+    });
+
+    test("one holding's missing prices stop inference for every holding", () => {
+      const both = new Map([
+        ...restated,
+        ["EXAMPLE TRUST", { security_id: "sec-trust", restated: true, ticker_symbol: "XTR" }],
+      ]);
+      const someCloses = new Map([...closes, ["EXAMPLE TRUST", { message: "Prices for XTR are loading…" }]]);
+      const result = preview({ mappings: both, closes: someCloses }, { movements: [buyOf("2026-01-15", 3)] });
+      expect(result.blockers).toEqual(["EXAMPLE TRUST: Prices for XTR are loading…"]);
+      expect(result.reinvestments).toEqual([]);
     });
 
     test("an ex-date already in the account isn't sent again", () => {
@@ -256,7 +273,13 @@ describe("previewPlanStatement", () => {
 
     test("a blocker leaves nothing inferred, even on shares already held", () => {
       const csv = `${CSV}\n04/02/2026,EXAMPLE INDEX FUND,Transfers,"5.00","0.100"`;
-      const result = preview({ mappings: restated, closes, csv, deletedIds: null }, { movements: [buyOf("2026-01-15", 2)] });
+      const withTrust = new Map([
+        ...restated,
+        ["EXAMPLE TRUST", { security_id: "sec-trust", restated: true, ticker_symbol: "XTR" }],
+      ]);
+      const someCloses = new Map([...closes, ["EXAMPLE TRUST", { message: "Prices for XTR are loading…" }]]);
+      const result = preview({ mappings: withTrust, closes: someCloses, csv }, { movements: [buyOf("2026-01-15", 2)] });
+      // The statement's own blocker stands alone; held holdings' prices are only checked once nothing else blocks.
       expect(result.blockers).toEqual(["1 row needs a decision"]);
       expect(result.reinvestments).toEqual([]);
     });

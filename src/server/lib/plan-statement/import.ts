@@ -18,8 +18,6 @@ import {
   investmentTransactionsTable,
   INVESTMENT_TRANSACTION_ID,
   USER_ID,
-  ACCOUNT_ID,
-  IS_DELETED,
   getAccount,
   getItem,
   getHoldingSnapshotsForSecurities,
@@ -43,25 +41,19 @@ const CASH_SUBTYPES = new Set<string>(
 );
 const MAX_CURRENCY_LENGTH = 10;
 
-const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<Set<string>> => {
-  if (!ids.length) return new Set();
+/** Which of the ids are already in the account: live, or deleted by someone. */
+const getExistingIds = async (user: MaskedUser, ids: string[]): Promise<{ live: Set<string>; deleted: string[] }> => {
+  const existing = { live: new Set<string>(), deleted: [] as string[] };
+  if (!ids.length) return existing;
   const models = await investmentTransactionsTable.query(
     { [USER_ID]: user.user_id },
     { inFilters: { [INVESTMENT_TRANSACTION_ID]: ids }, excludeDeleted: false },
   );
-  return new Set(models.map((m) => m.investment_transaction_id));
-};
-
-/**
- * The account's plan-statement rows someone deleted. The client holds only live
- * rows, and planning needs these so a removed reinvestment isn't planned again.
- */
-export const getDeletedPlanStatementIds = async (user: MaskedUser, account_id: string): Promise<string[]> => {
-  const models = await investmentTransactionsTable.query(
-    { [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id, [IS_DELETED]: true },
-    { excludeDeleted: false },
-  );
-  return models.map((m) => m.investment_transaction_id).filter((id) => PLAN_STATEMENT_ID_PATTERN.test(id));
+  for (const m of models) {
+    if (m.is_deleted) existing.deleted.push(m.investment_transaction_id);
+    else existing.live.add(m.investment_transaction_id);
+  }
+  return existing;
 };
 
 const isFiniteNumber = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
@@ -173,7 +165,12 @@ export const importPlanStatement = async (
     user,
     request.transactions.map((t) => t.transaction.investment_transaction_id),
   );
-  const rows = Array.from(built).filter(([id]) => !existing.has(id)).map(([, row]) => row);
+  // The page holds only live rows, so it planned these as new: the shares and payouts it
+  // derived from them are wrong. It plans again around them before anything is written.
+  if (existing.deleted.length) {
+    return { ok: true, result: { written: 0, alreadyImported: 0, deleted: existing.deleted } };
+  }
+  const rows = Array.from(built).filter(([id]) => !existing.live.has(id)).map(([, row]) => row);
 
   const mappings = new Map((account.plan_fund_mappings ?? []).map((m) => [m.investment, m]));
   for (const m of request.mappings) mappings.set(m.investment, m);
@@ -228,5 +225,5 @@ export const importPlanStatement = async (
     Array.from(firstDates).map(([security_id, fromDate]) => ({ security_id, fromDate })),
   ).catch((error) => logger.error("backfillMonthlySecuritySnapshotsForward failed (plan statement)", { account_id }, error));
 
-  return { ok: true, result: { written: rows.length, alreadyImported: existing.size } };
+  return { ok: true, result: { written: rows.length, alreadyImported: existing.live.size } };
 };

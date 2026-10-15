@@ -6,7 +6,7 @@ type Row = Record<string, unknown>;
 const db = {
   provider: "manual" as string,
   accountType: "investment" as string,
-  /** Ids already in the account; every one is soft-deleted. */
+  /** Ids already in the account and soft-deleted. */
   existingIds: [] as string[],
   /** Fund mappings already saved on the account. */
   savedMappings: null as Row | null,
@@ -14,8 +14,8 @@ const db = {
   snapshotIds: [] as string[],
   /** Make the holdings write fail, as a deadlock victim would. */
   failHoldings: false,
-  /** Ids the account-wide deleted-row read returns. */
-  deletedIds: [] as string[],
+  /** Ids already in the account and live. */
+  liveIds: [] as string[],
 };
 
 const ACCOUNT: Row = {
@@ -110,16 +110,15 @@ const respond = async (sql: string, values: unknown[] = []): Promise<Row[]> => {
       is_deleted: false,
     }));
   }
-  if (/FROM investment_transactions\b.*is_deleted = \$3/is.test(sql)) return db.deletedIds.map(deletedRow);
   if (/FROM investment_transactions\b.*investment_transaction_id IN/is.test(sql)) {
-    // Every existing row here is soft-deleted, so a read that filters deleted rows finds none.
-    if (/is_deleted/.test(sql)) return [];
-    return db.existingIds.map(deletedRow);
+    const live = db.liveIds.map((id) => ({ ...existingRow(id), is_deleted: false }));
+    if (/is_deleted/.test(sql)) return live;
+    return [...db.existingIds.map(existingRow), ...live];
   }
   return [];
 };
 
-const deletedRow = (id: string): Row => ({
+const existingRow = (id: string): Row => ({
   investment_transaction_id: id,
   user_id: "usr-1",
   account_id: "acct-1",
@@ -150,7 +149,6 @@ mock.module("pg", () => pg);
 
 const { postPlanStatementImportRoute } = await import("./post-plan-statement");
 const { getDailyClosesRoute } = await import("./get-daily-closes");
-const { getPlanStatementDeletedIdsRoute } = await import("./get-plan-statement-deleted-ids");
 const { polygonLookupRateLimiter, clearDailyClosesCache, peekDailyCloses } = await import("server");
 
 afterAll(restoreLeaves);
@@ -233,7 +231,7 @@ beforeEach(() => {
   db.savedMappings = null;
   db.snapshotIds = [];
   db.failHoldings = false;
-  db.deletedIds = [];
+  db.liveIds = [];
 });
 
 describe("POST /plan-statement/import", () => {
@@ -256,11 +254,18 @@ describe("POST /plan-statement/import", () => {
     expect(holding.values).toEqual(expect.arrayContaining(["acct-1-sec-index", 2, 100, 50]));
   });
 
-  test("a row already in the account, deleted ones included, is left as it is", async () => {
-    db.existingIds = [ROW_ID, `${ROW_ID}-cash`];
+  test("a row already in the account is left as it is", async () => {
+    db.liveIds = [ROW_ID, `${ROW_ID}-cash`];
     const res = await importStatement(importBody());
     expect(res).toMatchObject({ status: "success", body: { written: 0, alreadyImported: 2 } });
     expect(writes().some((sql) => sql.includes("INSERT INTO investment_transactions"))).toBe(false);
+  });
+
+  test("a planned row someone deleted writes nothing and is named, so the page plans around it", async () => {
+    db.existingIds = [`${ROW_ID}-cash`];
+    const res = await importStatement(importBody());
+    expect(res).toEqual({ status: "success", body: { written: 0, alreadyImported: 0, deleted: [`${ROW_ID}-cash`] } });
+    expect(writes()).toEqual([]);
   });
 
   test("stores only the checked fields of a row, as a manual row", async () => {
@@ -394,31 +399,6 @@ describe("POST /plan-statement/import", () => {
 
   test("requires a signed-in user", async () => {
     expect(await importStatement(importBody(), null)).toMatchObject({ status: "failed" });
-  });
-});
-
-describe("GET /plan-statement/deleted-ids", () => {
-  const getDeleted = (query: Row, userId: string | null = "usr-1") =>
-    getPlanStatementDeletedIdsRoute.callback(
-      makeReq("GET", "/plan-statement/deleted-ids", undefined, query, userId),
-      {} as never,
-      () => {},
-    );
-
-  test("returns the account's deleted plan-statement rows, read for this user and account", async () => {
-    db.deletedIds = [ROW_ID, `${ROW_ID}-cash`, "manual-abc"];
-    const res = await getDeleted({ account_id: "acct-1" });
-    expect(res).toEqual({ status: "success", body: { ids: [ROW_ID, `${ROW_ID}-cash`] } });
-    const read = mockQuery.mock.calls
-      .map(([sql, values]) => ({ sql: String(sql), values }))
-      .find((c) => c.sql.includes("FROM investment_transactions"))!;
-    expect(read.sql).toMatch(/user_id = \$1 AND account_id = \$2 AND is_deleted = \$3/);
-    expect(read.values).toEqual(["usr-1", "acct-1", true]);
-  });
-
-  test("needs an account and a signed-in user", async () => {
-    expect(await getDeleted({})).toMatchObject({ status: "failed" });
-    expect(await getDeleted({ account_id: "acct-1" }, null)).toMatchObject({ status: "failed" });
   });
 });
 
