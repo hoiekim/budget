@@ -75,27 +75,6 @@ export const searchSplitTransactions = async (
   return models.map((m) => m.toJSON());
 };
 
-export const upsertSplitTransactions = async (
-  user: MaskedUser,
-  transactions: JSONSplitTransaction[],
-): Promise<UpsertResult[]> => {
-  if (!transactions.length) return [];
-  const results: UpsertResult[] = [];
-
-  for (const tx of transactions) {
-    try {
-      const row = SplitTransactionModel.fromJSON(tx, user.user_id);
-      const result = await splitTransactionsTable.upsert(row);
-      const id = result ? (result.split_transaction_id as string) : tx.split_transaction_id;
-      results.push(successResult(id, 1));
-    } catch (error) {
-      logger.error("Failed to upsert split transaction", { splitTransactionId: tx.split_transaction_id }, error);
-      results.push(errorResult(tx.split_transaction_id || "unknown"));
-    }
-  }
-  return results;
-};
-
 export const updateSplitTransactions = async (
   user: MaskedUser,
   transactions: PartialSplitTransaction[],
