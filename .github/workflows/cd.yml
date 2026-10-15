@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
 
+# Serialize deploys: rapid pushes to main cancel the older run instead of
+# colliding on the server-side deploy lock (409 "already running").
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   docker-push:
     runs-on: ubuntu-latest
