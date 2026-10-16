@@ -164,9 +164,12 @@ export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/rec
       ),
     );
   }
-  // A single transaction has no interval to measure — default to
-  // monthly; the cadence is informational and the detection job's
-  // auto-attach matches on merchant_key + direction regardless.
+  // A single transaction has no interval to measure, so default to
+  // monthly. The detection job's auto-attach (selectConfirmedAttachments)
+  // takes later charges on the same merchant_key and direction mainly by
+  // amount (within ±25% of the latest member, at any interval); the
+  // cadence only places a repriced charge on schedule. A wrong default
+  // costs at most a manual add after a price change.
   let cadence: RecurringCadence = "monthly";
   if (intervals.length > 0) {
     intervals.sort((a, b) => a - b);
