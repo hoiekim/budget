@@ -46,7 +46,8 @@ const buildWorld = ({ ticker = "abcd", snapshotTicker }: { ticker?: string; snap
       } as never),
     );
   }
-  data.holdingSnapshots.set(
+  const calculations = new Calculations();
+  calculations.holdingSnapshots.set(
     `holding_${SECURITY_ID}`,
     new HoldingSnapshot({
       snapshot: { snapshot_id: `holding_${SECURITY_ID}`, date: "2026-01-09" },
@@ -62,7 +63,6 @@ const buildWorld = ({ ticker = "abcd", snapshotTicker }: { ticker?: string; snap
     } as never),
   );
   const context = buildContext({ data });
-  const calculations = new Calculations();
   calculations.holdingsValueData.set(
     `${ACCOUNT_ID}_${SECURITY_ID}`,
     context.viewDate.getEndDate(),
