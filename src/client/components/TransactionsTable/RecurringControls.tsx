@@ -12,7 +12,7 @@ interface Props {
  * controls when a transaction row belongs to a recurring with status
  * "suggested" — mirrors `TransferControls` for suggested transfer pairs.
  *
- * The amber "Recurring" chip opens `RecurringModal`, where confirm and
+ * The "Recurring" chip opens `RecurringModal`, where confirm and
  * dismiss are named buttons (dismissing writes the denylist, so it must
  * not be one click away). The checkmark confirms immediately, like the
  * quick-accept on suggested category labels.

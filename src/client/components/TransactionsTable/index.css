@@ -140,10 +140,10 @@ div.TransactionRow .transferAmountIcon {
   color: var(--textSoftLight);
 }
 
-/* Recurring chips mirror the transfer chip: a "Recurring" label in place
-   of the budget/category controls. Suggested recurrings get the amber
-   tint plus inline Confirm/Dismiss; confirmed ones render the neutral
-   chip, matching the confirmed-transfer treatment. */
+/* Recurring chips mirror the transfer chip: a neutral "Recurring" label
+   in place of the budget/category controls. Suggested ones are a button
+   (opens the confirm/dismiss modal) with a quick-confirm checkmark;
+   confirmed ones render the static chip. */
 div.TransactionRow > .budgetCategoryActions > .recurringControls {
   display: flex;
   align-items: center;
@@ -165,16 +165,11 @@ div.TransactionRow .recurringControls > .recurringChip {
   background-color: var(--surface);
 }
 
-div.TransactionRow .recurringControls > button.recurringChip.suggested {
-  background-color: color-mix(in srgb, var(--amber) 25%, var(--surface));
-  color: var(--amber);
-}
-
 /* The chip sets its own background, which outranks the global
    `button:not(:disabled):hover` rule on specificity, so the hover cue has to
    be restated at the chip's own selector — same as .transferChip. */
-div.TransactionRow .recurringControls > button.recurringChip.suggested:hover {
-  background-color: color-mix(in srgb, var(--amber) 35%, var(--surface));
+div.TransactionRow .recurringControls > .recurringChip:hover {
+  background-color: var(--surfaceRaised);
 }
 
 /* Quick-confirm checkmark next to the chip — mirrors the suggested
