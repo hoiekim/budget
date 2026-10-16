@@ -92,8 +92,15 @@ export interface RateLimiter {
    */
   consume(subject: string, slots?: number): void;
   /**
-   * Clear the subject's slots so earlier attempts don't accumulate against
-   * them for the rest of the window.
+   * Give back slots consumed in the active window, never below zero. A caller
+   * that charges a slot before its outcome is known, so concurrent requests
+   * can't all pass the check, refunds it once the outcome turns out free.
+   */
+  refund(subject: string, slots?: number): void;
+  /**
+   * Forget the subject's slots: a seam for isolating tests. Clearing a counter
+   * on success is unsafe when one subject covers several accounts, as an IP
+   * does: one valid login would erase the failures charged against the rest.
    */
   reset(subject: string): void;
 }
@@ -134,6 +141,10 @@ export const createRateLimiter = (
       } else {
         attempts.set(key, { count: slots, resetAt: now + windowMs });
       }
+    },
+    refund: (subject, slots = 1) => {
+      const record = attempts.get(keyFor(subject));
+      if (record && Date.now() < record.resetAt) record.count = Math.max(0, record.count - slots);
     },
     reset: (subject) => {
       attempts.delete(keyFor(subject));

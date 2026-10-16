@@ -175,14 +175,17 @@ describe("post-login auth outcomes", () => {
 
   test("session.regenerate callback error → Route layer surfaces error envelope", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+    const ip = "198.51.100.7";
     const req = makeReq(
       { username: "alice", password: REAL_PASSWORD },
-      { regenerateErr: new Error("boom") },
+      { regenerateErr: new Error("boom"), ip },
     );
     const res = fakeRes();
     const result = await postLoginRoute.execute(req, res);
     expect(result?.status).toBe("error");
     expect((res as { statusCode: number }).statusCode).toBe(500);
+    // The password was right, so the attempt keeps no slot even though the session couldn't start.
+    expect(loginRateLimiter.remaining(ip)).toBe(5);
   });
 });
 
@@ -193,10 +196,10 @@ describe("post-login rate-limiter wiring", () => {
   let ipCounter = 0;
   const nextIp = () => `192.0.2.${++ipCounter}`;
 
-  const attemptLogin = async (ip: string, password: string) => {
-    mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+  const attemptLogin = async (ip: string, password: string, username = "alice") => {
+    mockQuery.mockResolvedValueOnce({ rows: [userRow({ username, user_id: `u-${username}` })], rowCount: 1 });
     return postLoginRoute.execute(
-      makeReq({ username: "alice", password }, { ip }),
+      makeReq({ username, password }, { ip }),
       fakeRes(),
     );
   };
@@ -215,17 +218,16 @@ describe("post-login rate-limiter wiring", () => {
     expect(loginRateLimiter.isLimited(ip)).toBe(true);
   });
 
-  test("a successful login clears the IP's prior failures", async () => {
+  test("a successful login as one account doesn't clear the guesses made against another", async () => {
     const ip = nextIp();
-    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password");
+    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password", "admin");
 
-    const success = await attemptLogin(ip, REAL_PASSWORD);
+    const success = await attemptLogin(ip, REAL_PASSWORD, "alice");
     expect(success?.status).toBe("success");
-
-    // Without the reset, these 4 land on top of the earlier 4 and cross the
-    // cap of 5. With it, the IP is back to a clean window.
-    for (let i = 0; i < 4; i++) await attemptLogin(ip, "wrong-password");
     expect(loginRateLimiter.isLimited(ip)).toBe(false);
+
+    await attemptLogin(ip, "wrong-password", "admin");
+    expect(loginRateLimiter.isLimited(ip)).toBe(true);
   });
 
   test("a successful login never charges a slot on its own", async () => {
@@ -245,5 +247,29 @@ describe("post-login rate-limiter wiring", () => {
 
     const bystander = nextIp();
     expect(loginRateLimiter.isLimited(bystander)).toBe(false);
+  });
+
+  test("a burst of concurrent wrong passwords gets five guesses, and the rest are refused", async () => {
+    const ip = nextIp();
+    const attempts = Array.from({ length: 40 }, () => {
+      mockQuery.mockResolvedValueOnce({ rows: [userRow({ username: "admin", user_id: "u-admin" })], rowCount: 1 });
+      const res = fakeRes();
+      return postLoginRoute
+        .execute(makeReq({ username: "admin", password: "wrong-password" }, { ip }), res)
+        .then((result) => ({ message: result?.message, status: (res as { statusCode: number }).statusCode }));
+    });
+    const results = await Promise.all(attempts);
+
+    const guessed = results.filter((r) => r.message === "Invalid username or password.");
+    const refused = results.filter((r) => r.status === 429 && r.message === "Too many login attempts, try again later");
+    expect([guessed.length, refused.length]).toEqual([5, 35]);
+  });
+
+  test("a lookup that fails doesn't charge the IP", async () => {
+    const ip = nextIp();
+    mockQuery.mockRejectedValueOnce(new Error("db down"));
+    const result = await postLoginRoute.execute(makeReq({ username: "alice", password: REAL_PASSWORD }, { ip }), fakeRes());
+    expect(result?.status).toBe("error");
+    expect(loginRateLimiter.remaining(ip)).toBe(5);
   });
 });
