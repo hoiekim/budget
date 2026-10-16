@@ -153,8 +153,8 @@ const TransactionsNavigator = ({ children }: NavigatorProps) => {
   const { router } = useAppContext();
   const { path, params, go } = router;
   const classNames = ["navigator"];
-  const { TRANSACTIONS, TRANSACTION_DETAIL } = PATH;
-  const seleted = [TRANSACTION_DETAIL, TRANSACTIONS].includes(path);
+  const { TRANSACTIONS, TRANSACTION_DETAIL, RECURRING } = PATH;
+  const seleted = [TRANSACTION_DETAIL, TRANSACTIONS, RECURRING].includes(path);
   if (seleted) classNames.push("selected");
   const onClickLink: MouseEventHandler<HTMLAnchorElement> = (e) => {
     e.preventDefault();

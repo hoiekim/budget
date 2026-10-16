@@ -8,6 +8,7 @@ export * from "./HoldingDetailPage";
 export * from "./SnapshotsPage";
 export * from "./PlanStatementImportPage";
 export * from "./TransactionsPage";
+export * from "./RecurringPage";
 export * from "./TransactionDetailPage";
 export * from "./ConfigPage";
 export * from "./ConnectionDetailPage";

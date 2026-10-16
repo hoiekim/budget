@@ -1,0 +1,111 @@
+div.RecurringPage {
+  position: relative;
+  padding-bottom: 20px;
+}
+
+div.RecurringPage > div.billList {
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+div.RecurringPage div.billRow {
+  background-color: var(--surface);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+div.RecurringPage button.billSummary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  background: none;
+  border: none;
+  color: var(--textBright);
+  text-align: left;
+  cursor: pointer;
+}
+
+div.RecurringPage button.billSummary:active {
+  background-color: var(--hover);
+}
+
+div.RecurringPage div.billMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+div.RecurringPage div.billMerchant {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--textBrighter);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+div.RecurringPage div.billMeta {
+  font-size: 13px;
+  color: var(--textDim);
+}
+
+div.RecurringPage div.billSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+div.RecurringPage div.billAmount {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--textBrighter);
+}
+
+div.RecurringPage div.billChevron {
+  color: var(--textDim);
+  display: flex;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+div.RecurringPage div.billRow.expanded div.billChevron {
+  transform: rotate(180deg);
+}
+
+div.RecurringPage div.billOccurrences {
+  border-top: 1px solid var(--divider);
+  padding: 4px 0;
+}
+
+div.RecurringPage button.occurrenceRow {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px 10px 24px;
+  background: none;
+  border: none;
+  color: var(--textBright);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+div.RecurringPage button.occurrenceRow:active {
+  background-color: var(--hover);
+}
+
+div.RecurringPage span.occurrenceDate {
+  color: var(--textDim);
+}
+
+div.RecurringPage span.occurrenceAmount {
+  font-weight: 500;
+}

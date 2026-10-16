@@ -16,6 +16,7 @@ export enum PATH {
   PLAN_STATEMENT_IMPORT = "plan-statement-import",
   TRANSACTIONS = "transactions",
   TRANSACTION_DETAIL = "transaction-detail",
+  RECURRING = "recurring",
   CONFIG = "config",
   CONNECTION_DETAIL = "connection-detail",
   API_KEY_DETAIL = "api-key-detail",
@@ -55,6 +56,7 @@ const getHighLevelPage = (path: string): PATH | undefined => {
       return PATH.ACCOUNTS;
     case PATH.TRANSACTIONS:
     case PATH.TRANSACTION_DETAIL:
+    case PATH.RECURRING:
       return PATH.TRANSACTIONS;
     case PATH.DASHBOARD:
     case PATH.CHART_DETAIL:

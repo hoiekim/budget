@@ -382,6 +382,17 @@ export const TransactionsPage = () => {
         </div>
       )}
       <TransactionsTable transactions={filteredAndSorted} />
+      <div className="recurringBillsLink">
+        <a
+          href={PATH.RECURRING}
+          onClick={(e) => {
+            e.preventDefault();
+            router.go(PATH.RECURRING);
+          }}
+        >
+          View recurring bills
+        </a>
+      </div>
     </div>
   );
 };
