@@ -12,9 +12,10 @@ import {
   Section,
   Transaction,
   TransactionLabel,
+  TransferDictionary,
 } from "client";
 import { getNextRecurringDate, LocalDate, type JSONTransaction } from "common";
-import type { Recurring } from "server";
+import type { Recurring, TransferPair } from "server";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { TransactionProperties } from ".";
 
@@ -28,7 +29,9 @@ afterEach(() => {
 });
 
 const ACCOUNT_ID = "account-1";
+const SAVINGS_ID = "account-2";
 const RECURRING_ID = "recurring-1";
+const PAIR_ID = "pair-1";
 const MEMBER_DATES = ["2026-03-02", "2026-02-02", "2026-04-02"];
 
 const buildTransaction = (
@@ -75,6 +78,9 @@ interface SetupOptions {
   others?: Recurring[];
   /** Body the stubbed `/api/recurrings` answers with. */
   responseBody?: unknown;
+  /** Make tx-0 ($30 out of Checking) half of a suggested transfer pair with a
+   *  Savings deposit the next day. */
+  suggestedTransfer?: boolean;
 }
 
 // One budget with two categories, for the default-label selects.
@@ -83,7 +89,13 @@ const section = new Section({ budget_id: budget.id, name: "Bills" });
 const subscriptions = new Category({ section_id: section.id, name: "Subscriptions" });
 const streaming = new Category({ section_id: section.id, name: "Streaming" });
 
-const setup = ({ status, label, others = [], responseBody }: SetupOptions = {}) => {
+const setup = ({
+  status,
+  label,
+  others = [],
+  responseBody,
+  suggestedTransfer,
+}: SetupOptions = {}) => {
   const data = new Data();
   data.accounts.set(ACCOUNT_ID, new Account({ account_id: ACCOUNT_ID, name: "Checking" }));
   data.budgets.set(budget.id, budget);
@@ -100,6 +112,22 @@ const setup = ({ status, label, others = [], responseBody }: SetupOptions = {}) 
     ]);
   }
   data.recurrings = new RecurringDictionary(recurrings);
+  if (suggestedTransfer) {
+    data.accounts.set(SAVINGS_ID, new Account({ account_id: SAVINGS_ID, name: "Savings" }));
+    const partner = buildTransaction("tx-partner", "2026-03-03", {
+      account_id: SAVINGS_ID,
+      amount: -30,
+      merchant_name: "",
+      name: "Transfer from Checking",
+    });
+    data.transactions.set(partner.transaction_id, partner);
+    const pair: TransferPair = {
+      pair_id: PAIR_ID,
+      status: "suggested",
+      transactions: [members[0], partner] as unknown as JSONTransaction[],
+    };
+    data.transfers = new TransferDictionary([[PAIR_ID, pair]]);
+  }
 
   // `setData` is a `useState` setter in the app; keep what the page stores
   // so a test can re-render with it.
@@ -109,6 +137,7 @@ const setup = ({ status, label, others = [], responseBody }: SetupOptions = {}) 
   };
   fetchStub = stubFetch([
     { path: "/api/recurrings", response: { status: "success", body: responseBody } },
+    { path: "/api/transfers", response: { status: "success" } },
   ]);
   const { router } = buildRouter(PATH.TRANSACTION_DETAIL);
   const render = () => (
@@ -120,23 +149,25 @@ const setup = ({ status, label, others = [], responseBody }: SetupOptions = {}) 
   return { store, calls: fetchStub.calls, rerender: () => act(() => rerender(render())) };
 };
 
-/** The `.property` box under the "Recurring" section label. */
-const recurringSection = () => {
+/** The `.property` box under the section label `label`. */
+const sectionOf = (label: string) => {
   const labels = Array.from(document.querySelectorAll(".propertyLabel"));
-  return labels.find((l) => l.textContent === "Recurring")?.nextElementSibling ?? null;
+  return labels.find((l) => l.textContent === label)?.nextElementSibling ?? null;
 };
 
-/** Key/value row named `name` inside the Recurring section. */
-const rowOf = (name: string) => {
-  const rows = Array.from(recurringSection()?.querySelectorAll(".row.keyValue") ?? []);
+const recurringSection = () => sectionOf("Recurring");
+
+/** Key/value row named `name` inside the `section` section. */
+const rowOf = (name: string, section = "Recurring") => {
+  const rows = Array.from(sectionOf(section)?.querySelectorAll(".row.keyValue") ?? []);
   return rows.find(
     (r) => r.querySelector(".propertyName")?.textContent?.replace(/ /g, " ") === name,
   );
 };
 
 /** Value cell text of the key/value row named `name`. */
-const valueOf = (name: string) =>
-  rowOf(name)?.lastElementChild?.textContent?.replace(/ /g, " ") ?? null;
+const valueOf = (name: string, section = "Recurring") =>
+  rowOf(name, section)?.lastElementChild?.textContent?.replace(/ /g, " ") ?? null;
 
 const nameInput = () => rowOf("Name")?.querySelector("input") as HTMLInputElement | undefined;
 
@@ -434,5 +465,70 @@ describe("TransactionProperties — recurring default label", () => {
     for (const id of ["tx-0", "tx-1", "tx-2"]) {
       expect(store.data.transactions.get(id)?.label.category_id).toBe(subscriptions.id);
     }
+  });
+});
+
+describe("TransactionProperties — suggested transfer", () => {
+  const transferValueOf = (name: string) => valueOf(name, "Transfer");
+
+  it("shows the partner transaction instead of the Mark as Transfer picker", () => {
+    setup({ suggestedTransfer: true });
+
+    expect(transferValueOf("Status")).toBe("Suggested");
+    expect(transferValueOf("Paired With")).toBe("Savings");
+    expect(transferValueOf("Date")).toBe("March 3, 2026");
+    expect(transferValueOf("Amount")).toBe("+ $ 30.00");
+    expect(button(/^Confirm.Transfer$/)).not.toBeNull();
+    expect(button(/^Reject.Suggestion$/)).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Mark.as.Transfer$/ })).toBeNull();
+  });
+
+  it("Confirm posts the pair and the suggestion actions go away", async () => {
+    const { store, calls, rerender } = setup({ suggestedTransfer: true });
+
+    await act(async () => {
+      fireEvent.click(button(/^Confirm.Transfer$/));
+    });
+
+    expect(calls.requests).toEqual([{ url: "/api/transfers/pair", method: "POST" }]);
+    expect(store.data.transfers.get(PAIR_ID)?.status).toBe("confirmed");
+    rerender();
+    expect(transferValueOf("Status")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Confirm.Transfer$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Reject.Suggestion$/ })).toBeNull();
+  });
+
+  it("Reject issues a DELETE and brings back Mark as Transfer", async () => {
+    const { store, calls, rerender } = setup({ suggestedTransfer: true });
+
+    await act(async () => {
+      fireEvent.click(button(/^Reject.Suggestion$/));
+    });
+
+    expect(calls.requests).toEqual([{ url: `/api/transfers?id=${PAIR_ID}`, method: "DELETE" }]);
+    expect(store.data.transfers.has(PAIR_ID)).toBe(false);
+    rerender();
+    expect(transferValueOf("Status")).toBeNull();
+    expect(button(/Mark.as.Transfer$/)).not.toBeNull();
+  });
+
+  it("disables both actions while a write is in flight", async () => {
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    setup({ suggestedTransfer: true });
+    fetchStub!.restore();
+    fetchStub = stubFetch([{ path: "/api/transfers", response: { status: "success" }, hold }]);
+
+    await act(async () => {
+      fireEvent.click(button(/^Reject.Suggestion$/));
+    });
+
+    expect((button(/^Rejecting…$/) as HTMLButtonElement).disabled).toBe(true);
+    expect((button(/^Confirm.Transfer$/) as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      release();
+      await hold;
+    });
   });
 });

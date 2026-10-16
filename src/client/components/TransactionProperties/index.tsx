@@ -485,6 +485,29 @@ export const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
+  // A suggested pair is settled from here the way a suggested recurring is:
+  // show the other half, then Confirm / Reject. Confirmed pairs never reach
+  // this component — `TransactionDetailPage` renders `TransferProperties`.
+  const existingTransfer = transfers.byTransactionId.get(transaction_id);
+  const suggestedTransfer = existingTransfer?.status === "suggested" ? existingTransfer : undefined;
+  const suggestedPartner = suggestedTransfer
+    ? data.transactions
+        .resolveTransferSides(suggestedTransfer)
+        .find((t) => t.transaction_id !== transaction_id)
+    : undefined;
+  const suggestedPartnerAccount = suggestedPartner && accounts.get(suggestedPartner.account_id);
+
+  const [transferAction, setTransferAction] = useState<"confirm" | "reject" | null>(null);
+  const onClickTransferAction = async (action: "confirm" | "reject") => {
+    if (!suggestedTransfer || transferAction) return;
+    setTransferAction(action);
+    try {
+      await transferActions[action](suggestedTransfer.pair_id);
+    } finally {
+      setTransferAction(null);
+    }
+  };
+
   return (
     <Properties className="TransactionProperties">
       <PropertyLabel>Transaction&nbsp;Details</PropertyLabel>
@@ -617,13 +640,69 @@ export const TransactionProperties = ({ transaction }: Props) => {
       </Property>
       <PropertyLabel>Transfer</PropertyLabel>
       <Property>
-        {!showPartnerPicker && (
+        {suggestedTransfer && (
+          <>
+            <KeyValue name="Status">
+              <span>Suggested</span>
+            </KeyValue>
+            {suggestedPartner && (
+              <>
+                <KeyValue name="Paired&nbsp;With">
+                  <span>
+                    {suggestedPartnerAccount?.custom_name ||
+                      suggestedPartnerAccount?.name ||
+                      suggestedPartner.account_id}
+                  </span>
+                </KeyValue>
+                {suggestedPartnerAccount && (
+                  <KeyValue name="Institution">
+                    <InstitutionSpan institution_id={suggestedPartnerAccount.institution_id} />
+                  </KeyValue>
+                )}
+                <KeyValue name="Date">
+                  <span>
+                    {new LocalDate(
+                      suggestedPartner.authorized_date || suggestedPartner.date,
+                    ).toLocaleString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                </KeyValue>
+                <KeyValue name="Amount">
+                  <span>
+                    {suggestedPartner.amount < 0 && <>+&nbsp;</>}
+                    {currencyCodeToSymbol(
+                      suggestedPartner.iso_currency_code || iso_currency_code || "",
+                    )}
+                    &nbsp;
+                    {numberToCommaString(Math.abs(suggestedPartner.amount))}
+                  </span>
+                </KeyValue>
+              </>
+            )}
+            <ButtonRow
+              disabled={!!transferAction}
+              onClick={() => onClickTransferAction("confirm")}
+            >
+              {transferAction === "confirm" ? "Confirming…" : <>Confirm&nbsp;Transfer</>}
+            </ButtonRow>
+            <ButtonRow
+              disabled={!!transferAction}
+              onClick={() => onClickTransferAction("reject")}
+            >
+              {transferAction === "reject" ? "Rejecting…" : <>Reject&nbsp;Suggestion</>}
+            </ButtonRow>
+          </>
+        )}
+        {!suggestedTransfer && !showPartnerPicker && (
           <ButtonRow onClick={() => setShowPartnerPicker(true)}>
             <TransferArrowIcon size={12} />
             &nbsp;Mark&nbsp;as&nbsp;Transfer
           </ButtonRow>
         )}
-        {showPartnerPicker && (
+        {!suggestedTransfer && showPartnerPicker && (
           <>
             <KeyValue name="Pair&nbsp;with"></KeyValue>
             {partnerCandidates.length === 0 && (
