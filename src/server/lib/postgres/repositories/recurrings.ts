@@ -44,6 +44,9 @@ export interface GetRecurringsOptions {
   /** Delta cursor. When set, only recurrings whose `updated >= startDate`
    *  are returned. Backed by the `(user_id, updated)` composite index. */
   startDate?: string;
+  /** Restrict to these recurrings — how a write route reads back the row
+   *  it just changed so the writing tab can apply it without a refetch. */
+  recurringIds?: string[];
 }
 
 export type RecurringResult =
@@ -69,6 +72,7 @@ export const getRecurrings = async (
     {
       orderBy: RECURRING_ID,
       excludeDeleted: !options.includeDeleted,
+      inFilters: options.recurringIds ? { [RECURRING_ID]: options.recurringIds } : undefined,
       dateRange: options.startDate
         ? { column: UPDATED, start: options.startDate }
         : undefined,
@@ -186,10 +190,35 @@ export const dismissRecurring = async (
   return { ok: true };
 };
 
+/**
+ * Rename a recurring. The name is display-only (grouping runs on
+ * `merchant_key`), and detection never rewrites an existing row's name, so
+ * the user's choice sticks.
+ */
+export const renameRecurring = async (
+  user: MaskedUser,
+  recurring_id: string,
+  merchant_name: string,
+): Promise<RecurringConfirmResult> => {
+  const result = await recurringsTable.update(
+    recurring_id,
+    { [MERCHANT_NAME]: merchant_name },
+    undefined,
+    user.user_id,
+  );
+  if (!result) {
+    return { ok: false, error: "Recurring not found." };
+  }
+  return { ok: true };
+};
+
 export interface CreateRecurringInput {
   transaction_ids: string[];
   merchant_key: string;
   merchant_name: string;
+  /** The caller named the recurring explicitly, so the name also replaces
+   *  an existing row's when the create lands on one. */
+  name_is_custom?: boolean;
   cadence: RecurringCadence;
   is_income: boolean;
 }
@@ -207,7 +236,8 @@ export interface CreateRecurringInput {
  *     A transaction may appear in at most one active recurring.
  *   - ALLOW re-creating a previously-dismissed merchant group — the
  *     ON CONFLICT branch un-dismisses (mirrors pairTransactions'
- *     un-reject).
+ *     un-reject). Landing on a still-suggested row confirms it too:
+ *     either way the user has just said this merchant recurs.
  */
 export const createRecurring = async (
   user: MaskedUser,
@@ -278,9 +308,10 @@ export const createRecurring = async (
          (${RECURRING_ID}, ${USER_ID}, ${MERCHANT_KEY}, ${MERCHANT_NAME}, ${CADENCE}, ${IS_INCOME}, ${STATUS}, ${TRANSACTION_IDS})
        VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7)
        ON CONFLICT (${USER_ID}, ${MERCHANT_KEY}, ${IS_INCOME}) DO UPDATE SET
-         ${STATUS} = CASE
-           WHEN ${RECURRINGS}.${STATUS} = 'dismissed' THEN 'confirmed'
-           ELSE ${RECURRINGS}.${STATUS}
+         ${STATUS} = 'confirmed',
+         ${MERCHANT_NAME} = CASE
+           WHEN $8::boolean THEN EXCLUDED.${MERCHANT_NAME}
+           ELSE ${RECURRINGS}.${MERCHANT_NAME}
          END,
          ${TRANSACTION_IDS} = (
            SELECT ARRAY(SELECT DISTINCT UNNEST(${RECURRINGS}.${TRANSACTION_IDS} || EXCLUDED.${TRANSACTION_IDS}))
@@ -296,6 +327,7 @@ export const createRecurring = async (
         input.cadence,
         input.is_income,
         uniqueIds,
+        !!input.name_is_custom,
       ],
     );
 

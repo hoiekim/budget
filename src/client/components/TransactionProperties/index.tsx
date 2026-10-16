@@ -4,7 +4,6 @@ import {
   getNextRecurringDate,
   LocalDate,
   numberToCommaString,
-  RECURRING_CADENCE_LABELS,
   TRANSFER_DATE_WINDOW_DAYS as PARTNER_DATE_WINDOW_DAYS,
 } from "common";
 import { NewSplitTransactionGetResponse } from "server";
@@ -306,21 +305,33 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const [pendingRecurringId, setPendingRecurringId] = useState<string | null>(null);
   const existingRecurring = recurrings.byTransactionId.get(transaction_id);
   const isIncomeTx = amount < 0;
-  // Existing recurrings of the same direction, excluding dismissed and
-  // the one this transaction already belongs to.
+  // Confirmed recurrings of the same direction that this transaction could
+  // join. Suggested ones are left out: joining one would leave the
+  // transaction in a recurring the user never confirmed. Each shows its
+  // latest charge as the amount that recurs.
   const recurringCandidates = useMemo(() => {
-    const list: { recurring_id: string; merchant_name: string; status: string }[] = [];
+    const list: { recurring_id: string; merchant_name: string; amount: string }[] = [];
     recurrings.forEach((r) => {
       if (r.is_income !== isIncomeTx) return;
-      if (r.status === "dismissed") return;
+      if (r.status !== "confirmed") return;
       if (r.recurring_id === existingRecurring?.recurring_id) return;
+      const latest = r.transactions.reduce<(typeof r.transactions)[number] | undefined>(
+        (found, t) =>
+          !found || (t.authorized_date || t.date) > (found.authorized_date || found.date)
+            ? t
+            : found,
+        undefined,
+      );
+      const symbol = currencyCodeToSymbol(latest?.iso_currency_code || "");
       list.push({
         recurring_id: r.recurring_id,
         merchant_name: r.merchant_name,
-        status: r.status,
+        amount: latest
+          ? `${r.is_income ? "+\u00a0" : ""}${symbol}\u00a0${numberToCommaString(Math.abs(latest.amount))}`
+          : "",
       });
     });
-    return list;
+    return list.sort((a, b) => a.merchant_name.localeCompare(b.merchant_name));
   }, [recurrings, isIncomeTx, existingRecurring]);
 
   const onClickCreateRecurring = async () => {
@@ -346,26 +357,42 @@ export const TransactionProperties = ({ transaction }: Props) => {
 
   // Summary of the recurring this transaction belongs to, derived from its
   // member transactions. Dates follow the rest of the UI (authorized date
-  // first) so "From" / "Latest" match what the transactions list shows.
+  // first) so "From" matches what the transactions list shows.
   const recurringSummary = useMemo(() => {
     if (!existingRecurring?.transactions.length) return null;
     const members = existingRecurring.transactions;
     const dates = members
       .map((t) => (t.authorized_date || t.date).slice(0, 10))
       .sort();
-    const first = new LocalDate(dates[0]);
     const latest = new LocalDate(dates[dates.length - 1]);
     const total = members.reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const currency = members.find((t) => t.iso_currency_code)?.iso_currency_code;
     return {
-      first,
-      latest,
-      count: members.length,
+      first: new LocalDate(dates[0]),
       total,
       currencySymbol: currencyCodeToSymbol(currency || iso_currency_code || ""),
       next: getNextRecurringDate(latest, existingRecurring.cadence),
     };
   }, [existingRecurring, iso_currency_code]);
+
+  // Editable recurring name, saved on blur like the memo above.
+  const [recurringNameValue, setRecurringNameValue] = useState(
+    existingRecurring?.merchant_name ?? "",
+  );
+  useEffect(() => {
+    setRecurringNameValue(existingRecurring?.merchant_name ?? "");
+  }, [existingRecurring?.recurring_id, existingRecurring?.merchant_name]);
+
+  const onBlurRecurringName = async () => {
+    if (!existingRecurring) return;
+    const trimmed = recurringNameValue.trim();
+    if (!trimmed || trimmed === existingRecurring.merchant_name) {
+      setRecurringNameValue(existingRecurring.merchant_name);
+      return;
+    }
+    const ok = await recurringActions.rename(existingRecurring.recurring_id, trimmed);
+    if (!ok) setRecurringNameValue(existingRecurring.merchant_name);
+  };
 
   // Confirm / dismiss from the detail page. Dismissing a confirmed recurring
   // is how it's cancelled: the server keeps it as `status='dismissed'` so the
@@ -632,13 +659,16 @@ export const TransactionProperties = ({ transaction }: Props) => {
         {existingRecurring ? (
           <>
             <KeyValue name="Name">
-              <span>{existingRecurring.merchant_name}</span>
-            </KeyValue>
-            <KeyValue name="Status">
-              <span>{existingRecurring.status === "suggested" ? "Suggested" : "Confirmed"}</span>
-            </KeyValue>
-            <KeyValue name="Interval">
-              <span>{RECURRING_CADENCE_LABELS[existingRecurring.cadence]}</span>
+              <input
+                type="text"
+                value={recurringNameValue}
+                placeholder="Recurring name"
+                onChange={(e) => setRecurringNameValue(e.target.value)}
+                onBlur={onBlurRecurringName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
             </KeyValue>
             {recurringSummary && (
               <>
@@ -649,18 +679,6 @@ export const TransactionProperties = ({ transaction }: Props) => {
                       year: "numeric",
                     })}
                   </span>
-                </KeyValue>
-                <KeyValue name="Latest">
-                  <span>
-                    {recurringSummary.latest.toLocaleString("en-US", {
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
-                </KeyValue>
-                <KeyValue name="Occurrences">
-                  <span>{recurringSummary.count}</span>
                 </KeyValue>
                 <KeyValue name="Total&nbsp;Amount">
                   <span>
@@ -759,12 +777,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
                             }
                           }}
                         >
-                          <div className="partnerCandidateInfo">
-                            <div className="merchant_name">
-                              <div className="bigText">{candidate.merchant_name}</div>
-                              <div className="smallText">{candidate.status}</div>
+                          <div className="recurringCandidateInfo">
+                            <div className="recurringCandidateName">{candidate.merchant_name}</div>
+                            <div className="recurringCandidateAmount">
+                              {candidate.amount}
+                              {isPending && <>&nbsp;…</>}
                             </div>
-                            <div className="amount">{isPending && <>…</>}</div>
                           </div>
                         </Row>
                       );

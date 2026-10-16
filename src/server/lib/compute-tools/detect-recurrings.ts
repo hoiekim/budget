@@ -349,13 +349,14 @@ export const runRecurringDetection = async (): Promise<void> => {
             // Refresh membership when the detected set changed (new
             // charges arrived, or deleted ones fell out of candidacy).
             // No UPDATE when identical — avoids `updated` churn that
-            // would spam delta syncs with no-op bumps.
+            // would spam delta syncs with no-op bumps. The name is left
+            // alone: the user may have renamed the suggestion.
             if (!sameIdSet(row.transaction_ids, group.transaction_ids)) {
               await client.query(
                 `UPDATE ${RECURRINGS}
-                 SET ${TRANSACTION_IDS} = $2, ${MERCHANT_NAME} = $3, ${CADENCE} = $4, ${UPDATED} = CURRENT_TIMESTAMP
+                 SET ${TRANSACTION_IDS} = $2, ${CADENCE} = $3, ${UPDATED} = CURRENT_TIMESTAMP
                  WHERE ${RECURRING_ID} = $1`,
-                [row.recurring_id, group.transaction_ids, group.merchant_name, group.cadence],
+                [row.recurring_id, group.transaction_ids, group.cadence],
               );
             }
             continue;

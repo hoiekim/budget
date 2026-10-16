@@ -1,17 +1,6 @@
 import type { RecurringCadence } from "./models";
 import { getDateString } from "./utils";
 
-/** Display label for each cadence ("biweekly" / "semiannual" read poorly
- *  when just capitalized). */
-export const RECURRING_CADENCE_LABELS: Record<RecurringCadence, string> = {
-  weekly: "Weekly",
-  biweekly: "Every 2 weeks",
-  monthly: "Monthly",
-  quarterly: "Quarterly",
-  semiannual: "Every 6 months",
-  annual: "Yearly",
-};
-
 /**
  * One period of each cadence as calendar arithmetic. Deliberately not the
  * fractional day counts in `detect-recurrings.ts` — those are detection

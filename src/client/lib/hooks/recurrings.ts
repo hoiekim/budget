@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { Recurring } from "server";
+import type { Recurring, RecurringPostResponse } from "server";
 import { call, Data, RecurringDictionary, indexedDb, StoreName, useAppContext } from "client";
 
 /**
@@ -27,6 +27,9 @@ export interface RecurringActions {
   /** Add transactions to an existing recurring (the detail page's "add to
    *  recurring" affordance). Returns true when the server write landed. */
   addTo: (recurring_id: string, transaction_ids: string[]) => Promise<boolean>;
+  /** Rename a recurring. The name is display-only, so it applies locally
+   *  as soon as the server accepts it. */
+  rename: (recurring_id: string, merchant_name: string) => Promise<boolean>;
 }
 
 /**
@@ -90,9 +93,25 @@ export const useRecurrings = (): RecurringActions => {
     [setData],
   );
 
+  // Create and add answer with the recurring as the server now has it. The
+  // writing tab filters its own realtime event out, so applying that answer
+  // is the only way this tab sees its write before the next sync.
+  const apply = useCallback(
+    (recurring: Recurring) => {
+      indexedDb.saveRecurring(recurring).catch(console.error);
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        newData.recurrings = new RecurringDictionary(oldData.recurrings);
+        newData.recurrings.set(recurring.recurring_id, recurring);
+        return newData;
+      });
+    },
+    [setData],
+  );
+
   const create = useCallback(
     async (transaction_ids: string[], merchant_name?: string) => {
-      const response = await call.post<{ recurring_id: string }>("/api/recurrings", {
+      const response = await call.post<RecurringPostResponse>("/api/recurrings", {
         transaction_ids,
         ...(merchant_name ? { merchant_name } : {}),
       });
@@ -100,19 +119,16 @@ export const useRecurrings = (): RecurringActions => {
         if (response.message) window.alert(response.message);
         return null;
       }
-      const { recurring_id } = response.body;
-      // The new recurring arrives via the realtime `recurrings-updated`
-      // event's refetch (or the next sync); no optimistic entry here —
-      // unlike transfers' `pair`, we can't mint the full Recurring
-      // (merchant_key/cadence/is_income are server-derived).
+      const { recurring_id, recurring } = response.body;
+      if (recurring) apply(recurring);
       return recurring_id;
     },
-    [setData],
+    [apply],
   );
 
   const addTo = useCallback(
     async (recurring_id: string, transaction_ids: string[]) => {
-      const response = await call.post("/api/recurrings", {
+      const response = await call.post<RecurringPostResponse>("/api/recurrings", {
         recurring_id,
         transaction_ids,
       });
@@ -120,12 +136,34 @@ export const useRecurrings = (): RecurringActions => {
         if (response.message) window.alert(response.message);
         return false;
       }
-      // The updated member set arrives via the realtime
-      // `recurrings-updated` event's refetch (or the next sync).
+      const recurring = response.body?.recurring;
+      if (recurring) apply(recurring);
       return true;
     },
-    [],
+    [apply],
   );
 
-  return { confirm, dismiss, create, addTo };
+  const rename = useCallback(
+    async (recurring_id: string, merchant_name: string) => {
+      const response = await call.post("/api/recurrings", { recurring_id, merchant_name });
+      if (response.status !== "success") {
+        if (response.message) window.alert(response.message);
+        return false;
+      }
+      setData((oldData) => {
+        const prev = oldData.recurrings.get(recurring_id);
+        if (!prev) return oldData;
+        const updated: Recurring = { ...prev, merchant_name };
+        indexedDb.saveRecurring(updated).catch(console.error);
+        const newData = new Data(oldData);
+        newData.recurrings = new RecurringDictionary(oldData.recurrings);
+        newData.recurrings.set(recurring_id, updated);
+        return newData;
+      });
+      return true;
+    },
+    [setData],
+  );
+
+  return { confirm, dismiss, create, addTo, rename };
 };
