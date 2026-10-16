@@ -130,14 +130,16 @@ export const postRecurringRoute = new Route("POST", "/recurrings", async (req) =
       : null;
   const nameCounts = new Map<string, number>();
   let merchant_name = customName ?? txns[0]!.merchant_name ?? txns[0]!.name;
-  let best = 0;
-  for (const t of txns) {
-    const n = t.merchant_name || t.name;
-    const count = (nameCounts.get(n) || 0) + 1;
-    nameCounts.set(n, count);
-    if (count > best) {
-      best = count;
-      merchant_name = n;
+  if (!customName) {
+    let best = 0;
+    for (const t of txns) {
+      const n = t.merchant_name || t.name;
+      const count = (nameCounts.get(n) || 0) + 1;
+      nameCounts.set(n, count);
+      if (count > best) {
+        best = count;
+        merchant_name = n;
+      }
     }
   }
 

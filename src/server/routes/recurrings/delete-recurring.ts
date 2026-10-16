@@ -16,7 +16,10 @@ export const dismissRecurringRoute = new Route("DELETE", "/recurrings", async (r
   const idResult = requireQueryString(req, "id");
   if (!idResult.success) return validationError(idResult.error!);
 
-  await dismissRecurring(user, idResult.data!);
+  const result = await dismissRecurring(user, idResult.data!);
+  if (!result.ok) {
+    return { status: "failed", message: result.error };
+  }
 
   return { status: "success" };
 });

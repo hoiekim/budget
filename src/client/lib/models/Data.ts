@@ -316,8 +316,8 @@ export class Data {
   transfers = new TransferDictionary();
 
   /** All recurrings (suggested + confirmed), keyed by recurring_id.
-   *  Read by the Recurring page and the Transactions table's recurring
-   *  filter. Populated by `useSync`'s `fetchRecurrings()` on cold/warm
+   *  Read by the Transactions table's recurring filter and row chips.
+   *  Populated by `useSync`'s `fetchRecurrings()` on cold/warm
    *  load, mutated in-place via `useRecurrings()` action methods. */
   recurrings = new RecurringDictionary();
 
