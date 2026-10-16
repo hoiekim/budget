@@ -3,70 +3,49 @@ div.RecurringPage {
   padding-bottom: 20px;
 }
 
-div.RecurringPage > div.billList {
-  padding: 0 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-div.RecurringPage div.billRow {
-  background-color: var(--surface);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-div.RecurringPage div.billSummary {
-  width: 100%;
+/* The summary line interposes `.billSummary` between `.TransactionRow` and
+   `.transactionInfo` to make room for the expand chevron, so the scaffold
+   geometry the TransactionsTable stylesheet scopes to the direct-child
+   nesting is re-applied here at the same values. */
+div.RecurringPage div.TransactionRow > div.billSummary {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px;
-  background: none;
-  border: none;
-  color: var(--textBright);
-  text-align: left;
   cursor: pointer;
 }
 
-div.RecurringPage div.billSummary:active {
-  background-color: var(--hover);
-}
-
-div.RecurringPage div.billMain {
+div.RecurringPage div.TransactionRow > div.billSummary > div.transactionInfo {
+  display: flex;
+  justify-content: space-between;
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
-div.RecurringPage div.billMerchant {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--textBrighter);
+div.RecurringPage div.TransactionRow > div.billSummary > div.transactionInfo > .authorized_date {
+  width: 50px;
+}
+
+div.RecurringPage
+  div.TransactionRow
+  > div.billSummary
+  > div.transactionInfo
+  > .merchant_name {
+  width: calc(100% - 140px);
+}
+
+div.RecurringPage
+  div.TransactionRow
+  > div.billSummary
+  > div.transactionInfo
+  > .merchant_name
+  > div {
+  text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-div.RecurringPage div.billMeta {
-  font-size: 13px;
-  color: var(--textDim);
-}
-
-div.RecurringPage div.billSide {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-div.RecurringPage div.billAmount {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--textBrighter);
+div.RecurringPage div.TransactionRow > div.billSummary > div.transactionInfo > .amount {
+  width: 90px;
+  text-align: right;
 }
 
 div.RecurringPage div.billChevron {
@@ -76,37 +55,16 @@ div.RecurringPage div.billChevron {
   transition: transform 0.2s ease;
 }
 
-div.RecurringPage div.billRow.expanded div.billChevron {
+div.RecurringPage div.billChevron.expanded {
   transform: rotate(180deg);
 }
 
-div.RecurringPage div.billOccurrences {
-  border-top: 1px solid var(--divider);
-  padding: 4px 0;
-}
-
-div.RecurringPage div.occurrenceRow {
-  width: 100%;
+/* Occurrence rows are direct `.transactionInfo` children of the row (only the
+   summary line interposes `.billSummary`), so they pick up the scaffold
+   geometry unmodified; the indent sets them apart from the summary line. */
+div.RecurringPage div.TransactionRow > div.transactionInfo {
+  padding-left: 50px;
+  padding-top: 4px;
+  padding-bottom: 4px;
   cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px 10px 24px;
-  background: none;
-  border: none;
-  color: var(--textBright);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-div.RecurringPage div.occurrenceRow:active {
-  background-color: var(--hover);
-}
-
-div.RecurringPage span.occurrenceDate {
-  color: var(--textDim);
-}
-
-div.RecurringPage span.occurrenceAmount {
-  font-weight: 500;
 }

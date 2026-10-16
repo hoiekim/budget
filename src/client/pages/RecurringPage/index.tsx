@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { currencyCodeToSymbol, LocalDate, numberToCommaString } from "common";
+import { KeyboardEvent, useMemo, useState } from "react";
+import { LocalDate } from "common";
 import {
   CADENCE_LABELS,
   PATH,
@@ -8,7 +8,12 @@ import {
   detectRecurringBills,
   useAppContext,
 } from "client";
-import { ChevronDownIcon, PageTitle, Placeholder } from "client/components";
+import {
+  ChevronDownIcon,
+  PageTitle,
+  Placeholder,
+  TransactionRowInfo,
+} from "client/components";
 import "./index.css";
 
 const formatShortDate = (dateString: string) =>
@@ -16,13 +21,6 @@ const formatShortDate = (dateString: string) =>
     month: "short",
     day: "numeric",
   });
-
-const formatAmount = (amount: number, isoCurrencyCode: string | null) => (
-  <>
-    {currencyCodeToSymbol(isoCurrencyCode || "")}&nbsp;
-    {numberToCommaString(amount)}
-  </>
-);
 
 interface BillRowProps {
   bill: RecurringBill;
@@ -32,43 +30,66 @@ interface BillRowProps {
   getTransaction: (transactionId: string) => Transaction | undefined;
 }
 
+/**
+ * One detected bill, rendered on the shared transaction-row scaffold
+ * (`div.TransactionRow` + `TransactionRowInfo` — the same primitives the
+ * TransactionsPage list is built from) so it reads as part of the
+ * transactions family rather than a one-off card layout. The summary line
+ * interposes a `.billSummary` wrapper for the expand chevron; the page CSS
+ * re-applies the scaffold geometry to that nesting.
+ */
 const BillRow = ({ bill, expanded, onToggle, onOpenTransaction, getTransaction }: BillRowProps) => {
-  const rowClasses = ["billRow", expanded ? "expanded" : ""].filter(Boolean).join(" ");
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onToggle();
+    }
+  };
+
   return (
-    <div className={rowClasses}>
-      <div className="billSummary" onClick={onToggle} aria-expanded={expanded}>
-        <div className="billMain">
-          <div className="billMerchant">{bill.merchant}</div>
-          <div className="billMeta">
-            {CADENCE_LABELS[bill.cadence]} · {bill.occurrences} charges
+    <div className="TransactionRow">
+      <div
+        className="billSummary"
+        onClick={onToggle}
+        onKeyDown={onKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`${bill.merchant}, ${CADENCE_LABELS[bill.cadence]}`}
+      >
+        <TransactionRowInfo
+          date={bill.nextExpectedDate}
+          amount={bill.amount}
+          isoCurrency={bill.isoCurrencyCode || ""}
+          amountSign="none"
+        >
+          <div className="bigText">{bill.merchant}</div>
+          <div className="smallText">
+            {CADENCE_LABELS[bill.cadence]} · {bill.occurrences} charges · Last{" "}
+            {formatShortDate(bill.lastDate)}
           </div>
-          <div className="billMeta">Last charged {formatShortDate(bill.lastDate)}</div>
-        </div>
-        <div className="billSide">
-          <div className="billAmount">{formatAmount(bill.amount, bill.isoCurrencyCode)}</div>
-          <div className="billMeta">Next {formatShortDate(bill.nextExpectedDate)}</div>
-        </div>
-        <div className="billChevron">
+        </TransactionRowInfo>
+        <div className={`billChevron${expanded ? " expanded" : ""}`}>
           <ChevronDownIcon size={14} />
         </div>
       </div>
-      {expanded && (
-        <div className="billOccurrences">
-          {bill.transactionIds.map((id) => {
-            const t = getTransaction(id);
-            if (!t) return null;
-            const date = t.authorized_date || t.date;
-            return (
-              <div key={id} className="occurrenceRow" onClick={() => onOpenTransaction(id)}>
-                <span className="occurrenceDate">{formatShortDate(date)}</span>
-                <span className="occurrenceAmount">
-                  {formatAmount(t.amount, t.iso_currency_code || t.unofficial_currency_code)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {expanded &&
+        bill.transactionIds.map((id) => {
+          const t = getTransaction(id);
+          if (!t) return null;
+          return (
+            <TransactionRowInfo
+              key={id}
+              date={t.authorized_date || t.date}
+              amount={t.amount}
+              isoCurrency={t.iso_currency_code || t.unofficial_currency_code || ""}
+              amountSign="none"
+              onClickInfo={() => onOpenTransaction(id)}
+            >
+              <div className="bigText">{t.merchant_name || t.name}</div>
+            </TransactionRowInfo>
+          );
+        })}
     </div>
   );
 };
@@ -80,6 +101,9 @@ const BillRow = ({ bill, expanded, onToggle, onOpenTransaction, getTransaction }
  * pipeline owns fetching and caching, and this page simply recomputes the
  * memoized derivation whenever the underlying dictionaries change. No new
  * fetch, no new store, no server work.
+ *
+ * Reached from the Transactions page via the "View recurring bills" link
+ * under the table; grouped under the Transactions nav tab.
  */
 export const RecurringPage = () => {
   const { data, router } = useAppContext();
@@ -131,7 +155,7 @@ export const RecurringPage = () => {
           charged you at least 3 times on a regular schedule.
         </Placeholder>
       ) : (
-        <div className="billList">
+        <>
           {bills.map((bill) => (
             <BillRow
               key={`${bill.merchant}-${bill.cadence}`}
@@ -142,7 +166,7 @@ export const RecurringPage = () => {
               getTransaction={(id) => transactions.get(id)}
             />
           ))}
-        </div>
+        </>
       )}
     </div>
   );
