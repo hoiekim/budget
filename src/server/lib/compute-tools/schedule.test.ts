@@ -13,6 +13,7 @@ const realSyncPlaid = { ...(await import("./sync-plaid")) };
 const realSyncSimpleFin = { ...(await import("./sync-simple-fin")) };
 const realAutoSuggest = { ...(await import("./auto-suggest")) };
 const realDetectTransfers = { ...(await import("./detect-transfers")) };
+const realDetectRecurrings = { ...(await import("./detect-recurrings")) };
 const realRefreshSecuritySnapshots = {
   ...(await import("./refresh-security-snapshots")),
 };
@@ -39,6 +40,7 @@ const mockSyncSimpleFinData = mock(
 );
 const mockRunAutoSuggestions = mock(async () => {});
 const mockRunTransferDetection = mock(async () => {});
+const mockRunRecurringDetection = mock(async () => {});
 const mockRefreshActiveSecuritySnapshots = mock(async () => ({
   refreshed: 0,
   fresh: 0,
@@ -87,6 +89,11 @@ mock.module("./detect-transfers", () => ({
   runTransferDetection: mockRunTransferDetection,
 }));
 
+mock.module("./detect-recurrings", () => ({
+  ...realDetectRecurrings,
+  runRecurringDetection: mockRunRecurringDetection,
+}));
+
 mock.module("./refresh-security-snapshots", () => ({
   ...realRefreshSecuritySnapshots,
   refreshActiveSecuritySnapshots: mockRefreshActiveSecuritySnapshots,
@@ -119,6 +126,8 @@ beforeEach(() => {
   mockRunAutoSuggestions.mockImplementation(async () => {});
   mockRunTransferDetection.mockReset();
   mockRunTransferDetection.mockImplementation(async () => {});
+  mockRunRecurringDetection.mockReset();
+  mockRunRecurringDetection.mockImplementation(async () => {});
   mockRefreshActiveSecuritySnapshots.mockReset();
   mockRefreshActiveSecuritySnapshots.mockImplementation(async () => ({
     refreshed: 0,
@@ -247,7 +256,7 @@ describe("scheduledSync / runSync", () => {
     });
   });
 
-  it("runs auto-suggestions, transfer detection, and security-snapshot refresh after provider sync", async () => {
+  it("runs auto-suggestions, transfer detection, recurring detection, and security-snapshot refresh after provider sync", async () => {
     mockGetAllItems.mockResolvedValueOnce([]);
 
     scheduledSync();
@@ -255,6 +264,7 @@ describe("scheduledSync / runSync", () => {
 
     expect(mockRunAutoSuggestions).toHaveBeenCalledTimes(1);
     expect(mockRunTransferDetection).toHaveBeenCalledTimes(1);
+    expect(mockRunRecurringDetection).toHaveBeenCalledTimes(1);
     expect(mockRefreshActiveSecuritySnapshots).toHaveBeenCalledTimes(1);
   });
 

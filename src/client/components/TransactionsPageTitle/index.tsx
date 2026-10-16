@@ -23,6 +23,7 @@ export type TransactionsPageType =
   | "unsorted"
   | "suggested"
   | "transfers"
+  | "recurring"
   | "manual";
 
 interface TransactionsPageFilters {
@@ -45,6 +46,7 @@ const TYPE_LABELS: Record<TransactionsPageType, string> = {
   deposits: "Deposits",
   expenses: "Expenses",
   transfers: "Transfers",
+  recurring: "Recurring",
   manual: "Manual",
 };
 

@@ -3,6 +3,7 @@ import {
   SplitTransaction,
   InvestmentTransaction,
   TransferDictionary,
+  RecurringDictionary,
 } from "client";
 import type { TransactionsPageType } from "client/components";
 import { movesShares } from "common";
@@ -15,6 +16,7 @@ import { movesShares } from "common";
  */
 export interface FilterContext {
   transfers: TransferDictionary;
+  recurrings: RecurringDictionary;
 }
 
 /**
@@ -137,6 +139,18 @@ const isTransferHalf = (
 ): boolean =>
   isWholeTransaction(e) && ctx.transfers.byTransactionId.has(e.transaction_id);
 
+/**
+ * Whole Transaction that IS a member of a recurring (suggested or
+ * confirmed). Render-classification helper for the `recurring` filter —
+ * same whole-transaction guard as `isTransferHalf`: splits inherit their
+ * parent's transaction_id and must not leak in.
+ */
+const isRecurringMember = (
+  e: Transaction | SplitTransaction,
+  ctx: FilterContext,
+): boolean =>
+  isWholeTransaction(e) && ctx.recurrings.byTransactionId.has(e.transaction_id);
+
 type AnyRow = Transaction | SplitTransaction | InvestmentTransaction;
 
 export type Predicate = (e: AnyRow) => boolean;
@@ -201,6 +215,12 @@ export class TypePredicates {
     !isInConfirmedTransfer(e, this.context) &&
     (isSuggestedLabel(e) || isSuggestedTransferHalf(e, this.context));
   transfers: Predicate = (e) => !isInvestment(e) && isTransferHalf(e, this.context);
+  /**
+   * Member of any recurring (suggested or confirmed). Users auditing
+   * recurrings want to see both states — mirrors the `transfers` filter.
+   * Not applicable to InvestmentTransaction.
+   */
+  recurring: Predicate = (e) => !isInvestment(e) && isRecurringMember(e, this.context);
   /**
    * User-created row (cash or investment) — `source === "manual"`. Filed via
    * the manual-mint routes; distinguishes hand-entered rows from synced Plaid

@@ -21,12 +21,12 @@ div.TransactionsPage > div.acceptAllSuggestions > button.acceptAllSuggestionsBut
 /* Recurring-bills entry link: rendered under the TransactionsTable as the
    in-app route to the RecurringPage (PATH.RECURRING). Side margin mirrors
    the acceptAllSuggestions block above so it reads as page chrome. */
-div.TransactionsPage > div.recurringBillsLink {
+div.TransactionsPage > div.recurringsLink {
   padding: 10px;
   text-align: center;
 }
 
-div.TransactionsPage > div.recurringBillsLink > a {
+div.TransactionsPage > div.recurringsLink > a {
   color: var(--textDim);
   font-size: 14px;
 }

@@ -55,6 +55,7 @@ export const TransactionsPage = () => {
     sections,
     categories,
     transfers,
+    recurrings,
   } = data;
 
   const [searchValue, setSearchValue] = useState("");
@@ -102,7 +103,7 @@ export const TransactionsPage = () => {
       filters.label.category_id = category_id;
     }
 
-    const filterCtx = { transfers };
+    const filterCtx = { transfers, recurrings };
     const predicates = new TypePredicates(filterCtx);
 
     const effectiveBudgetId = (e: Transaction | SplitTransaction | InvestmentTransaction) =>
@@ -200,6 +201,7 @@ export const TransactionsPage = () => {
     viewDate,
     types,
     transfers,
+    recurrings,
     sortings,
     account_id,
     budget_id,
@@ -218,7 +220,7 @@ export const TransactionsPage = () => {
   // guard the Transfers-view button would count and mutate rows that were
   // already accepted.
   const suggestedInView = useMemo(
-    () => filteredAndSorted.filter((e) => isAcceptableSuggestion(e, { transfers })),
+    () => filteredAndSorted.filter((e) => isAcceptableSuggestion(e, { transfers, recurrings })),
     [filteredAndSorted, transfers],
   );
   // Suggested transfer pairs whose halves intersect the current view.
@@ -382,7 +384,7 @@ export const TransactionsPage = () => {
         </div>
       )}
       <TransactionsTable transactions={filteredAndSorted} />
-      <div className="recurringBillsLink">
+      <div className="recurringsLink">
         <a
           href={PATH.RECURRING}
           onClick={(e) => {
@@ -390,7 +392,7 @@ export const TransactionsPage = () => {
             router.go(PATH.RECURRING);
           }}
         >
-          View recurring bills
+          View recurring
         </a>
       </div>
     </div>

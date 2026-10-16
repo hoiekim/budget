@@ -4,6 +4,7 @@ export * from "./calculation";
 export * from "./router";
 export * from "./sync";
 export * from "./transfers";
+export * from "./recurrings";
 export * from "./sorter";
 export * from "./reorder";
 export * from "./useVooHistory";
