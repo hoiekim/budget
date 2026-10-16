@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import {
   Account,
+  ContextType,
   Data,
   PATH,
   RecurringDictionary,
@@ -182,6 +183,17 @@ describe("TransactionRow — suggested transfer pair", () => {
     expect(container.querySelector(".transferChip")).not.toBeNull();
     expect(container.querySelector(".labelControls")).toBeNull();
     expect(dialog()).toBeNull();
+  });
+
+  it("lays the chip and checkmark out in the label controls' slots", () => {
+    const { container } = renderSuggestedRow();
+    const actions = container.querySelector(".budgetCategoryActions")!;
+
+    expect(actions.querySelector(":scope > .transferChip.suggested")).not.toBeNull();
+    expect(actions.lastElementChild?.className).toBe("confirmButtonBox");
+    expect(
+      actions.lastElementChild?.contains(screen.getByRole("button", { name: "Confirm transfer" })),
+    ).toBe(true);
   });
 
   it("opens the dialog on a chip click and writes nothing", () => {
@@ -463,13 +475,55 @@ describe("TransactionRow — recurring", () => {
     expect(calls.requests[0].method).toBe("DELETE");
   });
 
-  it("confirmed: shows the neutral chip with no actions", () => {
+  it("suggested: chip and checkmark take the label controls' slots", () => {
+    const { container } = renderRecurringRow("suggested");
+    const actions = container.querySelector(".budgetCategoryActions")!;
+    // Direct children, so the chip shares `.labelControls`' box and the
+    // checkmark sits in the fixed `.confirmButtonBox` slot — the chip's
+    // width can't depend on whether the checkmark is there.
+    expect(actions.querySelector(":scope > .recurringChip.suggested")).not.toBeNull();
+    expect(actions.lastElementChild?.className).toBe("confirmButtonBox");
+    expect(actions.lastElementChild?.contains(quickConfirm())).toBe(true);
+  });
+
+  it("confirmed: shows the label controls, with a neutral chip beside the title", () => {
     const { container } = renderRecurringRow("confirmed");
-    const chip = container.querySelector(".recurringChip");
-    expect(chip).not.toBeNull();
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+    expect(container.querySelector(".budgetCategoryActions .recurringChip")).toBeNull();
+    const chip = container.querySelector(".merchant_name .titleLine .recurringChip");
+    expect(chip?.textContent).toBe("Recurring");
     expect(chip?.classList.contains("suggested")).toBe(false);
-    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    // The title itself stays the merchant name — the chip is a sibling.
+    expect(rowTitle(container)).toBe("Netflix");
+    expect(screen.queryByRole("button", { name: "Confirm recurring" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Recurring" })).toBeNull();
+  });
+
+  it("confirming from the checkmark swaps the chip for the label controls", async () => {
+    const { data, transaction } = buildRecurring("suggested");
+    // `setData` is a `useState` setter in the app; keep what the row stores
+    // and re-render with it, as the app's state update would.
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const stub = stubFetch([{ path: "/api/recurrings", response: { status: "success" } }]);
+    restoreFetch = stub.restore;
+    const { router } = buildRouter(PATH.TRANSACTIONS);
+    const { container, rerenderWithContext } = renderWithContext(
+      <TransactionRow transaction={transaction} />,
+      buildContext({ data, setData, router }),
+    );
+
+    await act(async () => {
+      fireEvent.click(quickConfirm());
+    });
+    act(() => rerenderWithContext(buildContext({ data: store.data, setData, router })));
+
+    expect(store.data.recurrings.get(RECURRING_ID)?.status).toBe("confirmed");
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+    expect(container.querySelector(".budgetCategoryActions .recurringChip")).toBeNull();
+    expect(container.querySelector(".titleLine .recurringChip")).not.toBeNull();
   });
 
   it("suggested transfer pair takes precedence over suggested recurring", () => {

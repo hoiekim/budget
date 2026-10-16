@@ -1,8 +1,10 @@
 import { ChangeEventHandler, useMemo, useState, useEffect } from "react";
 import {
   currencyCodeToSymbol,
+  getNextRecurringDate,
   LocalDate,
   numberToCommaString,
+  RECURRING_CADENCE_LABELS,
   TRANSFER_DATE_WINDOW_DAYS as PARTNER_DATE_WINDOW_DAYS,
 } from "common";
 import { NewSplitTransactionGetResponse } from "server";
@@ -342,6 +344,43 @@ export const TransactionProperties = ({ transaction }: Props) => {
     }
   };
 
+  // Summary of the recurring this transaction belongs to, derived from its
+  // member transactions. Dates follow the rest of the UI (authorized date
+  // first) so "From" / "Latest" match what the transactions list shows.
+  const recurringSummary = useMemo(() => {
+    if (!existingRecurring?.transactions.length) return null;
+    const members = existingRecurring.transactions;
+    const dates = members
+      .map((t) => (t.authorized_date || t.date).slice(0, 10))
+      .sort();
+    const first = new LocalDate(dates[0]);
+    const latest = new LocalDate(dates[dates.length - 1]);
+    const total = members.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const currency = members.find((t) => t.iso_currency_code)?.iso_currency_code;
+    return {
+      first,
+      latest,
+      count: members.length,
+      total,
+      currencySymbol: currencyCodeToSymbol(currency || iso_currency_code || ""),
+      next: getNextRecurringDate(latest, existingRecurring.cadence),
+    };
+  }, [existingRecurring, iso_currency_code]);
+
+  // Confirm / dismiss from the detail page. Dismissing a confirmed recurring
+  // is how it's cancelled: the server keeps it as `status='dismissed'` so the
+  // engine stops re-suggesting it, and "Mark as Recurring" un-dismisses it.
+  const [recurringAction, setRecurringAction] = useState<"confirm" | "dismiss" | null>(null);
+  const onClickRecurringAction = async (action: "confirm" | "dismiss") => {
+    if (!existingRecurring || recurringAction) return;
+    setRecurringAction(action);
+    try {
+      await recurringActions[action](existingRecurring.recurring_id);
+    } finally {
+      setRecurringAction(null);
+    }
+  };
+
   const txAmount = transaction.amount;
   const txDateMs = new LocalDate(authorized_date || date).getTime();
   const partnerCandidates = useMemo(() => {
@@ -591,11 +630,82 @@ export const TransactionProperties = ({ transaction }: Props) => {
       <PropertyLabel>Recurring</PropertyLabel>
       <Property>
         {existingRecurring ? (
-          <KeyValue name="Recurring">
-            <span>
-              {existingRecurring.merchant_name} · {existingRecurring.status}
-            </span>
-          </KeyValue>
+          <>
+            <KeyValue name="Name">
+              <span>{existingRecurring.merchant_name}</span>
+            </KeyValue>
+            <KeyValue name="Status">
+              <span>{existingRecurring.status === "suggested" ? "Suggested" : "Confirmed"}</span>
+            </KeyValue>
+            <KeyValue name="Interval">
+              <span>{RECURRING_CADENCE_LABELS[existingRecurring.cadence]}</span>
+            </KeyValue>
+            {recurringSummary && (
+              <>
+                <KeyValue name="From">
+                  <span>
+                    {recurringSummary.first.toLocaleString("en-US", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </span>
+                </KeyValue>
+                <KeyValue name="Latest">
+                  <span>
+                    {recurringSummary.latest.toLocaleString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                </KeyValue>
+                <KeyValue name="Occurrences">
+                  <span>{recurringSummary.count}</span>
+                </KeyValue>
+                <KeyValue name="Total&nbsp;Amount">
+                  <span>
+                    {existingRecurring.is_income && <>+&nbsp;</>}
+                    {recurringSummary.currencySymbol}&nbsp;
+                    {numberToCommaString(recurringSummary.total)}
+                  </span>
+                </KeyValue>
+                {recurringSummary.next && (
+                  <KeyValue name="Next&nbsp;Due">
+                    <span>
+                      {recurringSummary.next.toLocaleString("en-US", {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </KeyValue>
+                )}
+              </>
+            )}
+            {existingRecurring.status === "suggested" ? (
+              <>
+                <ButtonRow
+                  disabled={!!recurringAction}
+                  onClick={() => onClickRecurringAction("confirm")}
+                >
+                  {recurringAction === "confirm" ? "Confirming…" : <>Confirm&nbsp;Recurring</>}
+                </ButtonRow>
+                <ButtonRow
+                  disabled={!!recurringAction}
+                  onClick={() => onClickRecurringAction("dismiss")}
+                >
+                  {recurringAction === "dismiss" ? "Dismissing…" : <>Dismiss&nbsp;Suggestion</>}
+                </ButtonRow>
+              </>
+            ) : (
+              <ButtonRow
+                disabled={!!recurringAction}
+                onClick={() => onClickRecurringAction("dismiss")}
+              >
+                {recurringAction === "dismiss" ? "Removing…" : <>Mark&nbsp;as&nbsp;Non-Recurring</>}
+              </ButtonRow>
+            )}
+          </>
         ) : (
           <>
             {!showRecurringPicker && (
