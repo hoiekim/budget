@@ -22,6 +22,7 @@ export enum TableName {
   InvestmentTransactions = "investment_transactions",
   SplitTransactions = "split_transactions",
   TransactionPairs = "transaction_pairs",
+  Recurrings = "recurrings",
   Budgets = "budgets",
   Sections = "sections",
   Categories = "categories",
@@ -42,6 +43,7 @@ export const TRANSACTIONS = TableName.Transactions;
 export const INVESTMENT_TRANSACTIONS = TableName.InvestmentTransactions;
 export const SPLIT_TRANSACTIONS = TableName.SplitTransactions;
 export const TRANSACTION_PAIRS = TableName.TransactionPairs;
+export const RECURRINGS = TableName.Recurrings;
 export const BUDGETS = TableName.Budgets;
 export const SECTIONS = TableName.Sections;
 export const CATEGORIES = TableName.Categories;

@@ -140,6 +140,57 @@ div.TransactionRow .transferAmountIcon {
   color: var(--textSoftLight);
 }
 
+/* Recurring chips mirror the transfer chip: a neutral "Recurring" label
+   in place of the budget/category controls. Suggested ones are a button
+   (opens the confirm/dismiss modal) with a quick-confirm checkmark;
+   confirmed ones render the static chip. */
+div.TransactionRow > .budgetCategoryActions > .recurringControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  width: 100%;
+}
+
+div.TransactionRow .recurringControls > .recurringChip {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 24px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  background-color: var(--surface);
+}
+
+/* The chip sets its own background, which outranks the global
+   `button:not(:disabled):hover` rule on specificity, so the hover cue has to
+   be restated at the chip's own selector — same as .transferChip. */
+div.TransactionRow .recurringControls > .recurringChip:hover {
+  background-color: var(--surfaceRaised);
+}
+
+/* Quick-confirm checkmark next to the chip — mirrors the suggested
+   category label's confirmButton. */
+div.TransactionRow .recurringControls > .recurringQuickConfirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 32px;
+  border-radius: 12px;
+  color: var(--darkGreen);
+  background-color: inherit;
+}
+
+div.TransactionRow .recurringControls > .recurringQuickConfirm:hover {
+  color: var(--textBright);
+  background-color: var(--darkGreen);
+}
+
+
 div.TransactionRow .transferPairArrow {
   display: inline-flex;
   align-items: center;
@@ -158,4 +209,22 @@ div.TransactionsHead > div {
 
 div.TransactionsHead > .hiddenColumn > button {
   text-decoration: line-through;
+}
+
+/* Quick-confirm checkmark next to the transfer chip — mirrors the
+   suggested category label's confirmButton. */
+div.TransactionRow .transferControls > .transferQuickConfirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 32px;
+  border-radius: 12px;
+  color: var(--darkGreen);
+  background-color: inherit;
+}
+
+div.TransactionRow .transferControls > .transferQuickConfirm:hover {
+  color: var(--textBright);
+  background-color: var(--darkGreen);
 }

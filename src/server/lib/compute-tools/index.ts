@@ -3,6 +3,7 @@ export * from "./sync-simple-fin";
 export * from "./schedule";
 export * from "./auto-suggest";
 export * from "./detect-transfers";
+export * from "./detect-recurrings";
 export * from "./cash-holding";
 export * from "./backfill-snapshots";
 export * from "./refresh-security-snapshots";

@@ -75,6 +75,27 @@ export interface JSONTransferPair {
   updated?: string | null;
 }
 
+export type RecurringStatus = "suggested" | "confirmed" | "dismissed";
+
+export type RecurringCadence =
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "quarterly"
+  | "semiannual"
+  | "annual";
+
+export interface JSONRecurring {
+  recurring_id: string;
+  merchant_key: string;
+  merchant_name: string;
+  cadence: RecurringCadence;
+  is_income: boolean;
+  status: RecurringStatus;
+  transaction_ids: string[];
+  updated?: string | null;
+}
+
 export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
   /**
    * Represents relations by pair of budget_id and category_id

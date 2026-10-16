@@ -12,7 +12,7 @@ import { Category } from "./Category";
 import { Item } from "./Item";
 import { Chart } from "./Chart";
 import { AccountSnapshot, HoldingSnapshot, SecuritySnapshot } from "./Snapshot";
-import type { TransferPair } from "server";
+import type { TransferPair, Recurring } from "server";
 import type { MutableModel } from "client/lib/hooks/useMutate";
 import type { StoredModel } from "client/lib/indexed-db/service";
 
@@ -221,6 +221,58 @@ export class TransferDictionary extends Dictionary<TransferPair, TransferDiction
   };
 }
 
+/**
+ * Dictionary of server-detected recurrings (suggested + confirmed), keyed
+ * by recurring_id, with a transaction_id → recurring pivot. Mirrors
+ * TransferDictionary: a transaction belongs to at most one active
+ * recurring, so the pivot answers "which recurring claims this
+ * transaction?" in O(1) for the Transactions table's recurring filter and
+ * row affordances.
+ */
+export class RecurringDictionary extends Dictionary<Recurring, RecurringDictionary> {
+  private pivot = new Map<string, Recurring>();
+
+  constructor(init?: Iterable<readonly [string, Recurring]> | null) {
+    super(init as Iterable<readonly [string, Recurring]> | undefined);
+    this.forEach((recurring) => {
+      recurring.transactions.forEach((t) => this.pivot.set(t.transaction_id, recurring));
+    });
+  }
+
+  byTransactionId = {
+    get: (transaction_id: string): Recurring | undefined => this.pivot.get(transaction_id),
+    has: (transaction_id: string): boolean => this.pivot.has(transaction_id),
+    hasSuggested: (transaction_id: string): boolean =>
+      this.pivot.get(transaction_id)?.status === "suggested",
+    hasConfirmed: (transaction_id: string): boolean =>
+      this.pivot.get(transaction_id)?.status === "confirmed",
+  };
+
+  private unclaim = (recurring: Recurring): void => {
+    recurring.transactions.forEach((t) => {
+      if (this.pivot.get(t.transaction_id) === recurring)
+        this.pivot.delete(t.transaction_id);
+    });
+  };
+
+  // Same arrow-field `set`/`delete` pattern as TransferDictionary (see the
+  // comment there): Dictionary's `set` is an arrow-function field, so
+  // `super.set` doesn't resolve from ours — call Map.prototype directly.
+  override set = (recurring_id: string, recurring: Recurring): this => {
+    const prev = Map.prototype.get.call(this, recurring_id) as Recurring | undefined;
+    if (prev) this.unclaim(prev);
+    recurring.transactions.forEach((t) => this.pivot.set(t.transaction_id, recurring));
+    Map.prototype.set.call(this, recurring_id, recurring);
+    return this;
+  };
+
+  override delete = (recurring_id: string): boolean => {
+    const prev = Map.prototype.get.call(this, recurring_id) as Recurring | undefined;
+    if (prev) this.unclaim(prev);
+    return Map.prototype.delete.call(this, recurring_id);
+  };
+}
+
 export const getBudgetClass = (type: BudgetFamilyType): typeof BudgetFamily => {
   return type === "budget" ? Budget : type === "section" ? Section : Category;
 };
@@ -262,6 +314,12 @@ export class Data {
    *  Populated by `useSync`'s `fetchTransfers()` on cold/warm load,
    *  mutated in-place via `useTransfers()` action methods. */
   transfers = new TransferDictionary();
+
+  /** All recurrings (suggested + confirmed), keyed by recurring_id.
+   *  Read by the Transactions table's recurring filter and row chips.
+   *  Populated by `useSync`'s `fetchRecurrings()` on cold/warm
+   *  load, mutated in-place via `useRecurrings()` action methods. */
+  recurrings = new RecurringDictionary();
 
   constructor(init?: Partial<Data>) {
     assign(this, init);

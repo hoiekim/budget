@@ -2,6 +2,7 @@ import { ChangeEventHandler, MouseEventHandler } from "react";
 import {
   useAppContext,
   useBudgetCategorySelect,
+  useRecurrings,
   useTransfers,
   call,
   PATH,
@@ -16,6 +17,7 @@ import {
 import { CheckIcon, TransactionRowInfo } from "client/components";
 import { ApiResponse } from "server";
 import TransferControls from "./TransferControls";
+import RecurringControls from "./RecurringControls";
 
 interface Props {
   transaction: Transaction | SplitTransaction;
@@ -24,7 +26,8 @@ interface Props {
 const TransactionRow = ({ transaction }: Props) => {
   const { data, calculations, setData, router } = useAppContext();
   const transferActions = useTransfers();
-  const { transfers } = data;
+  const recurringActions = useRecurrings();
+  const { transfers, recurrings } = data;
   const { transactionFamilies } = calculations;
   const { id, transaction_id, amount, label } = transaction;
   const parentTransaction = data.transactions.get(transaction_id)!;
@@ -69,6 +72,19 @@ const TransactionRow = ({ transaction }: Props) => {
     : transfers.byTransactionId.get(transaction_id);
   const suggestedPairId =
     pendingTransferPair?.status === "suggested" ? pendingTransferPair.pair_id : undefined;
+
+  // A row whose parent transaction belongs to a recurring shows the
+  // recurring affordance instead of the budget/category controls —
+  // mirrors the suggested-transfer-pair treatment above. A suggested
+  // transfer pair takes precedence when a row is in both (transfer state
+  // wins, matching the filter predicates). Split rows never carry the
+  // affordance — detection groups whole transactions.
+  const recurring = isSplitTransaction
+    ? undefined
+    : recurrings.byTransactionId.get(transaction_id);
+  const suggestedRecurringId =
+    recurring?.status === "suggested" ? recurring.recurring_id : undefined;
+  const isConfirmedRecurring = recurring?.status === "confirmed";
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -269,6 +285,16 @@ const TransactionRow = ({ transaction }: Props) => {
             onConfirm={() => transferActions.confirm(suggestedPairId)}
             onReject={() => transferActions.reject(suggestedPairId)}
           />
+        ) : suggestedRecurringId ? (
+          <RecurringControls
+            merchantName={recurring?.merchant_name ?? ""}
+            onConfirm={() => recurringActions.confirm(suggestedRecurringId)}
+            onDismiss={() => recurringActions.dismiss(suggestedRecurringId)}
+          />
+        ) : isConfirmedRecurring ? (
+          <div className="recurringControls">
+            <span className="recurringChip">Recurring</span>
+          </div>
         ) : (
           <>
             <div className="labelControls">

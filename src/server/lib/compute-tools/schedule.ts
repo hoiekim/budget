@@ -6,6 +6,7 @@ import { syncPlaidAccounts, syncPlaidTransactions } from "./sync-plaid";
 import { syncSimpleFinData } from "./sync-simple-fin";
 import { runAutoSuggestions } from "./auto-suggest";
 import { runTransferDetection } from "./detect-transfers";
+import { runRecurringDetection } from "./detect-recurrings";
 import { refreshActiveSecuritySnapshots } from "./refresh-security-snapshots";
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
@@ -98,6 +99,9 @@ const runSync = async () => {
     });
     await runTransferDetection().catch((error) => {
       logger.error("Transfer-detection job failed", {}, error);
+    });
+    await runRecurringDetection().catch((error) => {
+      logger.error("Recurring-detection job failed", {}, error);
     });
     await refreshActiveSecuritySnapshots()
       .then((r) =>

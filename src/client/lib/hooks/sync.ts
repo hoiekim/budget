@@ -9,6 +9,7 @@ import {
   SnapshotsGetResponse,
   SecuritiesGetResponse,
   TransfersGetResponse,
+  RecurringsGetResponse,
   InstitutionsGetResponse,
 } from "server";
 import {
@@ -48,6 +49,7 @@ import {
   SecurityDictionary,
   Security,
   TransferDictionary,
+  RecurringDictionary,
   globalData,
 } from "client";
 
@@ -346,6 +348,61 @@ const fetchTransfers = async (
   return result;
 };
 
+interface FetchRecurringsResult {
+  recurrings: RecurringDictionary;
+  /** Recurring ids the server sent as eviction signals — caller must
+   *  `delete` from the context dictionary AND `indexedDb.remove(...)`
+   *  per id. */
+  tombstoneRecurringIds: Set<string>;
+  networkFailed: boolean;
+}
+
+/**
+ * Delta fetch of recurrings. Same contract as `fetchTransfers`: consumers
+ * resolve transaction_id lookups via `recurrings.byTransactionId`, and
+ * `useRecurrings` mutates `data.recurrings` in-place via `setData` (no
+ * re-fetch on mutation).
+ *
+ * A recurring leaves the view by being soft-deleted, dismissed, or losing
+ * all of its transactions; the server collapses all three into the same
+ * wire shape — a recurring with no `transactions` — so the reducer here
+ * has one predicate rather than a mirror of the server's visibility rules.
+ * Cursor null = full fetch (cold).
+ */
+const fetchRecurrings = async (
+  cursor: string | null,
+  includeDeleted: boolean,
+): Promise<FetchRecurringsResult> => {
+  const result: FetchRecurringsResult = {
+    recurrings: new RecurringDictionary(),
+    tombstoneRecurringIds: new Set(),
+    networkFailed: false,
+  };
+
+  const params = new URLSearchParams();
+  if (cursor) params.append("start-date", cursor);
+  // Same eviction-signal rationale as fetchTransfers: only meaningful when
+  // there is a cache to reconcile.
+  if (includeDeleted) params.append("include-deleted", "true");
+  const path = `/api/recurrings?${params.toString()}`;
+  const response = await call.get<RecurringsGetResponse>(path).catch(console.error);
+  if (!response || response.status === "error") {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
+
+  for (const recurring of response.body) {
+    if (!recurring.transactions.length) {
+      result.tombstoneRecurringIds.add(recurring.recurring_id);
+      continue;
+    }
+    result.recurrings.set(recurring.recurring_id, recurring);
+  }
+
+  return result;
+};
+
 interface FetchSnapshotsResult {
   accountSnapshots: AccountSnapshotDictionary;
   holdingSnapshots: HoldingSnapshotDictionary;
@@ -611,6 +668,7 @@ export const useSync = () => {
       const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
       const securitiesPromise = fetchSecurities();
       const transfersPromise = fetchTransfers(cursor, isWarm || purgeFailed);
+      const recurringsPromise = fetchRecurrings(cursor, isWarm || purgeFailed);
 
       const [
         accountsResult,
@@ -619,6 +677,7 @@ export const useSync = () => {
         stage1Institutions,
         stage1Securities,
         stage1Transfers,
+        stage1Recurrings,
       ] = await Promise.all([
         accountsPromise,
         budgetsPromise,
@@ -626,6 +685,7 @@ export const useSync = () => {
         institutionsPromise,
         securitiesPromise,
         transfersPromise,
+        recurringsPromise,
       ]);
 
       if (accountsResult.networkFailed) {
@@ -649,6 +709,7 @@ export const useSync = () => {
       const { institutions } = stage1Institutions;
       const { securities } = stage1Securities;
       const { transfers, tombstonePairIds: tombstoneTransferPairIds } = stage1Transfers;
+      const { recurrings, tombstoneRecurringIds } = stage1Recurrings;
 
       // On a cold load, paint Stage 1 immediately so the navigation +
       // summary widgets render before the historical fetches finish.
@@ -666,6 +727,7 @@ export const useSync = () => {
           institutions,
           securities,
           transfers,
+          recurrings,
         });
         stage1.status.isInit = true;
         stage1.status.isLoading = true;
@@ -778,6 +840,12 @@ export const useSync = () => {
         transfers.forEach((p, id) => next.transfers.set(id, p));
         tombstoneTransferPairIds.forEach((id) => next.transfers.delete(id));
 
+        // Apply recurrings delta the same way. On cold the delta IS the
+        // whole set, so the merge over Stage 1's paint is a no-op overlay.
+        next.recurrings = new RecurringDictionary(oldData.recurrings);
+        recurrings.forEach((r, id) => next.recurrings.set(id, r));
+        tombstoneRecurringIds.forEach((id) => next.recurrings.delete(id));
+
         // Apply transactions delta: clone the existing dict, set
         // added/modified, delete tombstoned ids.
         next.transactions = new TransactionDictionary(oldData.transactions);
@@ -844,6 +912,7 @@ export const useSync = () => {
         stage1Institutions.networkFailed ||
         stage1Securities.networkFailed ||
         stage1Transfers.networkFailed ||
+        stage1Recurrings.networkFailed ||
         transactionsResult.networkFailed ||
         splitTransactionsResult.networkFailed ||
         snapshotsResult.networkFailed;
@@ -864,6 +933,7 @@ export const useSync = () => {
         indexedDb.saveInstitutions(institutions),
         indexedDb.saveSecurities(securities),
         indexedDb.saveTransfers(transfers),
+        indexedDb.saveRecurrings(recurrings),
         indexedDb.saveTransactions(transactionsResult.transactions),
         indexedDb.saveInvestmentTransactions(transactionsResult.investmentTransactions),
         indexedDb.saveSplitTransactions(splitTransactionsResult.splitTransactions),
@@ -891,6 +961,9 @@ export const useSync = () => {
       });
       tombstoneTransferPairIds.forEach((id) => {
         idbSaves.push(indexedDb.remove(StoreName.transfers, id));
+      });
+      tombstoneRecurringIds.forEach((id) => {
+        idbSaves.push(indexedDb.remove(StoreName.recurrings, id));
       });
 
       // `allSettled` rather than `all`: a partial IDB failure
@@ -1091,6 +1164,27 @@ export const useSync = () => {
             await Promise.allSettled([
               indexedDb.saveTransfers(r.transfers),
               ...[...r.tombstonePairIds].map((id) => indexedDb.remove(StoreName.transfers, id)),
+            ]);
+            return;
+          }
+          case TableName.Recurrings: {
+            // Same merge-with-evictions contract as TransactionPairs: a
+            // dismissed recurring has to leave the screen even for a user
+            // whose cursor is missing.
+            const r = await fetchRecurrings(cursor, true);
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.recurrings = new RecurringDictionary(oldData.recurrings);
+              r.recurrings.forEach((rec, id) => next.recurrings.set(id, rec));
+              r.tombstoneRecurringIds.forEach((id) => next.recurrings.delete(id));
+              return next;
+            });
+            await Promise.allSettled([
+              indexedDb.saveRecurrings(r.recurrings),
+              ...[...r.tombstoneRecurringIds].map((id) =>
+                indexedDb.remove(StoreName.recurrings, id),
+              ),
             ]);
             return;
           }

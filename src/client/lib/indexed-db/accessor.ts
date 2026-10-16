@@ -23,6 +23,10 @@ export enum StoreName {
   // on each mutation so warm paths paint with the most recent pair
   // state instead of "no pairs until /api/transfers settles".
   transfers = "transfers",
+  // Recurrings (suggested + confirmed) keyed by recurring_id. Loaded
+  // into `data.recurrings` on warm boot, saved on cold-sync settle and
+  // on each mutation so warm paths paint with the most recent state.
+  recurrings = "recurrings",
   // calculations
   balanceData = "balanceData",
   budgetData = "budgetData",

@@ -159,6 +159,7 @@ const MUTATION_DOMAINS: Record<string, EmitDomain> = {
   "/new-chart": TableName.Charts,
   "/transfers/pair": TableName.TransactionPairs,
   "/transfers": TableName.TransactionPairs,
+  "/recurrings": TableName.Recurrings,
 };
 
 /**
