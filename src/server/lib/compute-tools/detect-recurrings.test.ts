@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   normalizeMerchantName,
   detectRecurringGroups,
+  selectConfirmedAttachments,
+  ConfirmedRecurringSnapshot,
   RecurringCandidate,
 } from "./detect-recurrings";
 
@@ -161,5 +163,202 @@ describe("detectRecurringGroups", () => {
     const ids = groups[0]!.transaction_ids;
     expect(ids[0]).toBe("Netflix-2");
     expect(ids[2]).toBe("Netflix-0");
+  });
+});
+
+describe("selectConfirmedAttachments", () => {
+  /** A confirmed monthly Netflix bill whose members are `members`. */
+  const netflix = (
+    members: RecurringCandidate[],
+    overrides: Partial<ConfirmedRecurringSnapshot> = {},
+  ): ConfirmedRecurringSnapshot => ({
+    merchant_key: "netflix",
+    is_income: false,
+    cadence: "monthly",
+    members,
+    ...overrides,
+  });
+
+  const charge = (id: string, date: string, amount = 15.99, merchant = "Netflix") =>
+    txn({ transaction_id: id, date, amount, merchant_name: merchant, name: merchant });
+
+  const history = [
+    charge("jul", "2026-07-15"),
+    charge("aug", "2026-08-15"),
+    charge("sep", "2026-09-15"),
+  ];
+
+  const claimedBy = (...recurrings: ConfirmedRecurringSnapshot[]) =>
+    new Set(recurrings.flatMap((r) => r.members.map((m) => m.transaction_id)));
+
+  /** Feed charges in one per run, as the hourly job sees them settle. */
+  const runIncrementally = (
+    recurring: ConfirmedRecurringSnapshot,
+    charges: RecurringCandidate[],
+  ): string[] => {
+    const members = [...recurring.members];
+    const pool: RecurringCandidate[] = [];
+    for (const c of charges) {
+      pool.push(c);
+      const current = { ...recurring, members };
+      const picked = selectConfirmedAttachments(current, pool, claimedBy(current));
+      members.push(...pool.filter((p) => picked.includes(p.transaction_id)));
+    }
+    return members
+      .map((m) => m.transaction_id)
+      .filter((id) => !recurring.members.some((m) => m.transaction_id === id));
+  };
+
+  test("attaches the next on-schedule charge", () => {
+    const recurring = netflix(history);
+    const candidates = [...history, charge("oct", "2026-10-15")];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["oct"]);
+  });
+
+  test("attaches a late charge, and the on-time one after it", () => {
+    const recurring = netflix(history);
+    const candidates = [
+      charge("oct-late", "2026-10-27"),
+      charge("nov", "2026-11-15"),
+    ];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["oct-late", "nov"]);
+  });
+
+  test("attaches the charge after a skipped cycle", () => {
+    const recurring = netflix(history);
+    const candidates = [charge("nov", "2026-11-15")];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["nov"]);
+  });
+
+  test("attaches a price change once the new price repeats", () => {
+    const recurring = netflix(history);
+    const repriced = [
+      charge("oct", "2026-10-15", 22.99), // +44%, past the ±25% band
+      charge("nov", "2026-11-15", 22.99),
+    ];
+    // Alone, the repriced charge is indistinguishable from a one-off.
+    expect(
+      selectConfirmedAttachments(recurring, repriced.slice(0, 1), claimedBy(recurring)),
+    ).toEqual([]);
+    expect(
+      selectConfirmedAttachments(recurring, repriced, claimedBy(recurring)),
+    ).toEqual(["oct", "nov"]);
+    // Charge by charge, the first new price lands a cycle late, then the
+    // ±25% rule tracks the new price.
+    expect(
+      runIncrementally(recurring, [...repriced, charge("dec", "2026-12-15", 22.99)]),
+    ).toEqual(["oct", "nov", "dec"]);
+  });
+
+  test("leaves a repriced charge that's also late for a manual add", () => {
+    const recurring = netflix(history);
+    const candidates = [
+      charge("oct-late", "2026-10-27", 22.99),
+      charge("nov-late", "2026-11-27", 22.99),
+    ];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual([]);
+  });
+
+  test("leaves a price jump past 2× for a manual add", () => {
+    const recurring = netflix(history);
+    const candidates = [
+      charge("oct", "2026-10-15", 39.99),
+      charge("nov", "2026-11-15", 39.99),
+    ];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual([]);
+  });
+
+  test("skips one-off purchases at the same merchant", () => {
+    const icloud = (id: string, date: string, amount = 2.99) =>
+      charge(id, date, amount, "APPLE.COM");
+    const recurring = netflix(
+      [icloud("aug", "2026-08-15"), icloud("sep", "2026-09-15")],
+      { merchant_key: "apple" },
+    );
+    const candidates = [
+      icloud("app", "2026-10-02", 49.99), // mid-cycle, far off the price
+      icloud("movie", "2026-10-14", 5.49), // on the billing date, never repeats
+      icloud("oct", "2026-10-15"),
+      icloud("app-again", "2026-11-03", 49.99), // repeats, but 17× the bill
+    ];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["oct"]);
+  });
+
+  test("a same-priced purchase mid-cycle doesn't block the next charge", () => {
+    const prime = (id: string, date: string, amount = 14.99) =>
+      charge(id, date, amount, "Amazon Prime");
+    const recurring = netflix([prime("sep", "2026-09-01")], {
+      merchant_key: "amazon prime",
+    });
+    const candidates = [prime("order", "2026-09-20", 13), prime("oct", "2026-10-01")];
+    // The light gate lets the same-priced order in, but never at the
+    // expense of the real charge.
+    expect(
+      runIncrementally(recurring, candidates),
+    ).toEqual(["order", "oct"]);
+  });
+
+  test("a single-transaction manual recurring collects later charges", () => {
+    // POST /recurrings with one transaction: cadence is only the monthly
+    // default, and here the bill is actually weekly.
+    const gym = (id: string, date: string) => charge(id, date, 25, "Gym");
+    const recurring = netflix([gym("w0", "2026-09-01")], { merchant_key: "gym" });
+    const candidates = [
+      gym("w1", "2026-09-08"),
+      gym("w2", "2026-09-15"),
+      gym("w3", "2026-09-22"),
+    ];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["w1", "w2", "w3"]);
+  });
+
+  test("only takes unclaimed same-merchant, same-direction charges after the latest member", () => {
+    const recurring = netflix(history);
+    const other = netflix([charge("elsewhere", "2026-10-20")], {
+      merchant_key: "something else",
+    });
+    const candidates = [
+      ...history,
+      charge("before", "2026-09-01"),
+      charge("same-day", "2026-09-15"),
+      charge("refund", "2026-10-01", -15.99),
+      charge("hulu", "2026-10-15", 15.99, "Hulu"),
+      charge("elsewhere", "2026-10-20"),
+      charge("noisy", "2026-10-15", 15.99, "NETFLIX.COM"),
+    ];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring, other)),
+    ).toEqual(["noisy"]);
+  });
+
+  test("matches income by direction", () => {
+    const pay = (id: string, date: string, amount = -3000) =>
+      charge(id, date, amount, "Employer Inc");
+    const recurring = netflix([pay("sep", "2026-09-30")], {
+      merchant_key: "employer inc",
+      is_income: true,
+    });
+    const candidates = [pay("expense", "2026-10-15", 3000), pay("oct", "2026-10-31")];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["oct"]);
+  });
+
+  test("attaches nothing without a live member to measure from", () => {
+    const candidates = [charge("oct", "2026-10-15")];
+    expect(selectConfirmedAttachments(netflix([]), candidates, new Set())).toEqual([]);
   });
 });

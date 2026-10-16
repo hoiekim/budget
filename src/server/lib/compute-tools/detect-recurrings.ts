@@ -31,6 +31,14 @@ const AMOUNT_TOLERANCE_RATIO = 0.25;
  * excluded — the surface is "what recurs now", not history.
  */
 const LAPSED_CADENCE_MULTIPLE = 2;
+/**
+ * How far a confirmed recurring's next charge may move from its latest
+ * amount and still count as the same bill at a new price ($10 → $20 or
+ * $5). Wider starts admitting unrelated purchases at store-like merchants;
+ * a bigger jump (an intro price ending) takes one manual "add to
+ * recurring", after which the ±25% rule tracks the new price.
+ */
+const REPRICE_MAX_FACTOR = 2;
 
 const CADENCE_SPECS: {
   cadence: RecurringCadence;
@@ -106,6 +114,13 @@ const daysBetween = (a: string, b: string): number =>
       86_400_000,
   );
 
+const isValidDate = (date: string): boolean =>
+  !Number.isNaN(new Date(date + "T00:00:00").getTime());
+
+/** Is `amount` within `ratio` of `reference`, by magnitude? */
+const amountWithin = (amount: number, reference: number, ratio: number): boolean =>
+  Math.abs(Math.abs(amount) - Math.abs(reference)) <= Math.abs(reference) * ratio;
+
 const mostCommon = (values: string[]): string => {
   const counts = new Map<string, number>();
   let best = values[0]!;
@@ -144,7 +159,7 @@ export const detectRecurringGroups = (
     if (!t.amount) continue;
     const key = normalizeMerchantName(t.merchant_name || t.name || "");
     if (!key) continue;
-    if (Number.isNaN(new Date(t.date + "T00:00:00").getTime())) continue;
+    if (!isValidDate(t.date)) continue;
     // Direction split: the same merchant can bill and pay (marketplace
     // payouts vs. purchases) — those are different recurrings.
     const groupKey = `${key}::${t.amount < 0 ? "in" : "out"}`;
@@ -199,6 +214,104 @@ export const detectRecurringGroups = (
   return result;
 };
 
+export interface ConfirmedRecurringSnapshot {
+  merchant_key: string;
+  is_income: boolean;
+  cadence: RecurringCadence;
+  /** The recurring's live member transactions, any order. */
+  members: Pick<RecurringCandidate, "transaction_id" | "amount" | "date">[];
+}
+
+/**
+ * Pick the new charges a confirmed recurring collects this run. Pure: the
+ * caller resolves the members and `claimed`, the transaction ids already in
+ * any active recurring (this one included).
+ *
+ * Eligible: same merchant_key and direction as the recurring, not claimed,
+ * dated after the latest member. Unlike detection, the merchant's whole
+ * history doesn't have to qualify (the user already said this recurs), so
+ * one late charge, a price change or a stray purchase can't stop collection.
+ *
+ * Eligible candidates are walked oldest first against the most recent
+ * member, and each one attached becomes the new most recent (as it will be
+ * next run). A candidate attaches when either:
+ *   - its amount is within ±25% of the most recent member's. Timing isn't
+ *     checked, so a late charge, one after a skipped cycle, and the next
+ *     charge of a one-transaction manual recurring (whose cadence is just a
+ *     default) all attach. A same-priced one-off gets in too; a "not
+ *     mid-cycle" rule would instead let it push the real charge out.
+ *   - or it's the same bill at a new price: a whole number of periods (±
+ *     the cadence's tolerance) after the most recent member, within 2× of
+ *     its amount, and repeated by a later candidate one period on at ±25%.
+ *     The repeat keeps one-off purchases at a subscription merchant (Apple,
+ *     Amazon) out, since a stray purchase on the billing date rarely recurs
+ *     a period later at the same price. The cost is a one-cycle lag: the
+ *     first charge at a new price attaches when the second arrives.
+ * Anything else (a repriced charge that's also late, a jump past 2×) waits
+ * for a manual "add to recurring".
+ *
+ * Returns transaction_ids, oldest first.
+ */
+export const selectConfirmedAttachments = (
+  recurring: ConfirmedRecurringSnapshot,
+  candidates: RecurringCandidate[],
+  claimed: ReadonlySet<string>,
+): string[] => {
+  const spec = CADENCE_SPECS.find((s) => s.cadence === recurring.cadence);
+  const members = recurring.members
+    .filter((m) => m.amount && isValidDate(m.date))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  let mostRecent = members[members.length - 1];
+  if (!spec || !mostRecent) return [];
+
+  const latestDate = mostRecent.date;
+  const eligible = candidates
+    .filter(
+      (c) =>
+        !!c.amount &&
+        (c.amount < 0) === recurring.is_income &&
+        !claimed.has(c.transaction_id) &&
+        isValidDate(c.date) &&
+        c.date > latestDate &&
+        normalizeMerchantName(c.merchant_name || c.name || "") ===
+          recurring.merchant_key,
+    )
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  const periodsLater = (from: string, to: string): number | null => {
+    const gap = daysBetween(from, to);
+    const periods = Math.round(gap / spec.days);
+    if (periods < 1) return null;
+    return Math.abs(gap - periods * spec.days) <= spec.toleranceDays
+      ? periods
+      : null;
+  };
+
+  const attached: string[] = [];
+  for (let i = 0; i < eligible.length; i++) {
+    const c = eligible[i]!;
+    const sameBill = amountWithin(c.amount, mostRecent.amount, AMOUNT_TOLERANCE_RATIO);
+    const factor = Math.abs(c.amount) / Math.abs(mostRecent.amount);
+    const repriced =
+      !sameBill &&
+      factor <= REPRICE_MAX_FACTOR &&
+      factor >= 1 / REPRICE_MAX_FACTOR &&
+      periodsLater(mostRecent.date, c.date) !== null &&
+      eligible
+        .slice(i + 1)
+        .some(
+          (next) =>
+            periodsLater(c.date, next.date) === 1 &&
+            amountWithin(next.amount, c.amount, AMOUNT_TOLERANCE_RATIO),
+        );
+    if (sameBill || repriced) {
+      attached.push(c.transaction_id);
+      mostRecent = c;
+    }
+  }
+  return attached;
+};
+
 const fetchCandidates = async (
   userId: string,
   executor: QueryExecutor,
@@ -242,6 +355,32 @@ const fetchCandidates = async (
   }));
 };
 
+/**
+ * Resolve recurring members straight from transactions rather than from
+ * the candidate list: a member added by hand can sit outside candidacy
+ * (hidden account, later paired as a transfer) and still marks how far the
+ * recurring has collected.
+ */
+const fetchMembers = async (
+  userId: string,
+  transactionIds: string[],
+  executor: QueryExecutor,
+): Promise<ConfirmedRecurringSnapshot["members"]> => {
+  const result = await executor.query(
+    `SELECT t.transaction_id, t.amount, t.date::text AS date
+     FROM transactions t
+     WHERE t.user_id = $1
+       AND t.transaction_id = ANY($2::text[])
+       AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)`,
+    [userId, transactionIds],
+  );
+  return result.rows.map((row) => ({
+    transaction_id: row.transaction_id as string,
+    amount: Number(row.amount),
+    date: (row.date as string).slice(0, 10),
+  }));
+};
+
 const sameIdSet = (a: string[], b: string[]): boolean => {
   if (a.length !== b.length) return false;
   const setB = new Set(b);
@@ -262,14 +401,17 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
  *        - dismissed → skip (the denylist: the user said "no" to this
  *          merchant group, not "these transactions can never recur")
  *        - suggested → refresh transaction_ids when the set changed
- *        - confirmed → append newly-detected transaction_ids (this is how
- *          a confirmed recurring picks up each new charge over time)
+ *        - confirmed → left to step 4
+ *   4. For each confirmed recurring, whether or not its merchant still
+ *      forms a group, append the new charges `selectConfirmedAttachments`
+ *      picks. This is how a confirmed recurring collects each new charge.
  */
 export const runRecurringDetection = async (): Promise<void> => {
   logger.info("Recurring-detection job started");
 
   let totalUsers = 0;
   let totalSuggested = 0;
+  let totalAttached = 0;
 
   try {
     const users = await usersTable.query({});
@@ -361,12 +503,42 @@ export const runRecurringDetection = async (): Promise<void> => {
             }
             continue;
           }
+        }
 
-          // Confirmed: append newly-detected members. This is the
-          // recurring lifecycle — each new charge joins its bill.
-          const known = new Set(row.transaction_ids);
-          const fresh = group.transaction_ids.filter((id) => !known.has(id));
-          if (fresh.length > 0) {
+        // Confirmed: attach each new charge. Runs per row rather than per
+        // group, so a merchant whose history no longer qualifies (one late
+        // charge, a price change, a stray purchase), or a manual recurring
+        // that never did, keeps collecting. Groups never touch a confirmed
+        // row's merchant_key, so `existing` is still current here.
+        let userAttached = 0;
+        const confirmed = existing.filter((r) => r.status === "confirmed");
+        if (confirmed.length > 0) {
+          const claimed = new Set(
+            existing
+              .filter((r) => r.status !== "dismissed")
+              .flatMap((r) => r.transaction_ids),
+          );
+          const members = await fetchMembers(
+            userId,
+            confirmed.flatMap((r) => r.transaction_ids),
+            executor,
+          );
+          const memberById = new Map(members.map((m) => [m.transaction_id, m]));
+          for (const row of confirmed) {
+            const fresh = selectConfirmedAttachments(
+              {
+                merchant_key: row.merchant_key,
+                is_income: row.is_income,
+                cadence: row.cadence,
+                members: row.transaction_ids.flatMap((id) => {
+                  const member = memberById.get(id);
+                  return member ? [member] : [];
+                }),
+              },
+              candidates,
+              claimed,
+            );
+            if (fresh.length === 0) continue;
             await client.query(
               `UPDATE ${RECURRINGS}
                SET ${TRANSACTION_IDS} = ${TRANSACTION_IDS} || $2::text[],
@@ -376,16 +548,20 @@ export const runRecurringDetection = async (): Promise<void> => {
             );
             // New charges take the recurring's default label.
             await labelConfirmedRecurring(client, userId, row.recurring_id, fresh);
+            for (const id of fresh) claimed.add(id);
+            userAttached += fresh.length;
           }
         }
 
         await client.query("COMMIT");
         totalUsers++;
         totalSuggested += userSuggested;
-        if (userSuggested > 0) {
-          logger.info("Suggested recurrings for user", {
+        totalAttached += userAttached;
+        if (userSuggested > 0 || userAttached > 0) {
+          logger.info("Updated recurrings for user", {
             userId,
             suggested: userSuggested,
+            attached: userAttached,
             groupsDetected: groups.length,
           });
         }
@@ -403,5 +579,6 @@ export const runRecurringDetection = async (): Promise<void> => {
   logger.info("Recurring-detection job completed", {
     usersProcessed: totalUsers,
     recurringsSuggested: totalSuggested,
+    chargesAttached: totalAttached,
   });
 };
