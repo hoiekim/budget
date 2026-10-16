@@ -74,3 +74,9 @@ export const RESTATED_FROM = "restated_from";
 export const REINVESTED_DISTRIBUTION = "reinvested_distribution";
 
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";
+
+/** The index fund the Investment Performance widget compares returns against. */
+export const BENCHMARK_TICKER = "VOO";
+
+/** The last row of the benchmark's static daily history (`voo_price_history.csv`). */
+export const BENCHMARK_HISTORY_THROUGH = "2026-10-13";

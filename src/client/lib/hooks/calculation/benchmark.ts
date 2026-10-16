@@ -1,5 +1,6 @@
 import { InvestmentTransactionType } from "plaid";
 import { InvestmentTransactionDictionary, HoldingSnapshotDictionary, SecuritySnapshotDictionary } from "../../models/Data";
+import { BENCHMARK_TICKER } from "common/constants";
 
 /**
  * Investment-performance benchmarking math — money-weighted return (IRR) of
@@ -743,9 +744,7 @@ export const earliestDataDate = (params: {
  * **Why both sources:**
  *   - `price_at_windowEnd` needs the **exact date** market price.
  *     security_snapshots give that for any date Plaid has synced (≈
- *     last year), and the resolve-security-snapshot endpoint backfills
- *     anything older via Polygon (results land in snapshots → fed
- *     here on the next render).
+ *     last year) or the hourly price refresh has written.
  *   - `investment_transactions` cover historical dates Plaid's
  *     snapshot history doesn't reach (the user transacted before they
  *     hooked up the integration). Each buy/sell's per-share execution
@@ -868,49 +867,18 @@ export const buildPriceAt = (
 ) => buildPriceIndex(securitySnapshots, investmentTransactions).priceAt;
 
 /**
- * Snapshot-only price lookup for the benchmark side. Returns null when
- * no snapshot ≤ date exists — caller is expected to chain to a Polygon
- * resolve and/or a static CSV fallback. (Distinct from `buildPriceAt`,
- * which is txn-only and serves the user's MWR.)
- */
-export const buildSnapshotPriceAt = (securitySnapshots: SecuritySnapshotDictionary) => {
-  const bySec = new Map<string, Array<{ date: string; price: number }>>();
-  securitySnapshots.forEach((snap) => {
-    const close = snap.security.close_price;
-    if (close == null) return;
-    const arr = bySec.get(snap.security.security_id) ?? [];
-    arr.push({ date: snap.snapshot.date.slice(0, 10), price: close });
-    bySec.set(snap.security.security_id, arr);
-  });
-  bySec.forEach((arr) => arr.sort((a, b) => (a.date < b.date ? -1 : 1)));
-
-  return (securityId: string, date: string): number | null => {
-    const arr = bySec.get(securityId);
-    if (!arr || arr.length === 0) return null;
-    let best: number | null = null;
-    for (const entry of arr) {
-      if (entry.date <= date) best = entry.price;
-      else break;
-    }
-    return best;
-  };
-};
-
-/**
  * Find the security_id for a benchmark ticker (e.g. VOO) from the user's
  * security_snapshots. Returns null if the ticker has no security row.
- * Used to route resolve-snapshot calls and snapshot lookups to the
- * correct security_id.
+ * Decides whose close wins on a date two rows with the ticker share.
  */
 export const findBenchmarkSecurityId = (
   securitySnapshots: SecuritySnapshotDictionary,
   ticker: string,
 ): string | null => {
-  // Two rows can share a ticker (user-minted + provider-synced). Pick
-  // the security_id whose snapshot chain has the freshest close so
-  // benchmark math uses the most-updated series. Falls back to first-
-  // iterating for ties on missing date (rare — snapshots always carry
-  // a date).
+  // Two rows can share a ticker (user-minted, provider-synced, or written
+  // for the benchmark). Pick the security_id whose snapshot chain has the
+  // freshest close. Falls back to first-iterating for ties on missing date
+  // (rare — snapshots always carry a date).
   let found: string | null = null;
   let foundDate: string | null = null;
   securitySnapshots.forEach((snap) => {
@@ -947,31 +915,34 @@ export const priceAtIn = (history: PriceRow[], date: string): number | null => {
 
 /**
  * Benchmark price lookup with the standard fallback chain:
- * `security_snapshots` (Plaid daily close, including Polygon-resolved
- * backfills) first, static CSV history (`vooHistory`) for the long
- * historical tail. Returns null when neither source has a price ≤ date.
+ * `security_snapshots` (provider daily closes, and the hourly refresh,
+ * which always includes the benchmark) first, static CSV history
+ * (`vooHistory`) for the long historical tail. Returns null when neither source has a price ≤ date.
  *
- * Shared by `PerformanceBenchmark` (window TWR) and the Holdings
- * Composition S&P 500 benchmark column.
+ * Used by `PerformanceBenchmark` for the window TWR.
  */
 export const buildBenchmarkPriceAt = (
   securitySnapshots: SecuritySnapshotDictionary,
   vooHistory: PriceRow[] | null,
-  ticker = "VOO",
+  ticker = BENCHMARK_TICKER,
 ) => {
-  const benchmarkSecurityId = findBenchmarkSecurityId(securitySnapshots, ticker);
-  const snapPriceAt = buildSnapshotPriceAt(securitySnapshots);
-  return (date: string): number | null => {
-    if (benchmarkSecurityId) {
-      const snap = snapPriceAt(benchmarkSecurityId, date);
-      if (snap != null) return snap;
-    }
-    if (vooHistory && vooHistory.length > 0) {
-      const csv = priceAtIn(vooHistory, date);
-      if (csv != null) return csv;
-    }
-    return null;
-  };
+  // Every row with the ticker reads as one series: one row's closes can be
+  // the server's and another's a provider's. A date both have takes the
+  // close of the row with the freshest series.
+  const preferred = findBenchmarkSecurityId(securitySnapshots, ticker);
+  const byDate = new Map<string, { close: number; preferred: boolean }>();
+  securitySnapshots.forEach((snap) => {
+    const close = snap.security.close_price;
+    if (snap.security.ticker_symbol !== ticker || close == null) return;
+    const date = snap.snapshot.date.slice(0, 10);
+    const isPreferred = snap.security.security_id === preferred;
+    const existing = byDate.get(date);
+    if (!existing || (isPreferred && !existing.preferred)) byDate.set(date, { close, preferred: isPreferred });
+  });
+  const snapshots: PriceRow[] = Array.from(byDate, ([date, { close }]) => ({ date, close })).sort((a, b) =>
+    a.date < b.date ? -1 : 1,
+  );
+  return (date: string): number | null => priceAtIn(snapshots, date) ?? priceAtIn(vooHistory ?? [], date);
 };
 
 export interface HoldingBenchmarkResult {
