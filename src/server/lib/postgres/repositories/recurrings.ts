@@ -1,11 +1,13 @@
 import {
   JSONTransaction,
+  JSONRecurringLabel,
   RecurringStatus,
   RecurringCadence,
 } from "common";
 import { pool } from "../client";
 import {
   MaskedUser,
+  QueryExecutor,
   transactionsTable,
   recurringsTable,
   USER_ID,
@@ -19,6 +21,9 @@ import {
   TRANSACTION_ID,
   IS_DELETED,
   UPDATED,
+  LABEL_BUDGET_ID,
+  LABEL_CATEGORY_ID,
+  LABEL_CATEGORY_CONFIDENCE,
 } from "../models";
 import { TRANSACTIONS, RECURRINGS } from "common/constants";
 
@@ -30,6 +35,10 @@ export interface Recurring {
   is_income: boolean;
   status: RecurringStatus;
   transactions: JSONTransaction[];
+  /** Default budget/category its transactions take while it's confirmed.
+   *  Optional on the client: recurrings cached before this field existed
+   *  come back from IndexedDB without it. */
+  label?: JSONRecurringLabel;
   /** Bumped on every mutation (confirm/dismiss/create/auto-attach). Lets
    *  the FE reduce over a delta by `updated` instead of replacing its
    *  cache wholesale — same role `updated` plays on transaction_pairs. */
@@ -96,6 +105,7 @@ export const getRecurrings = async (
     is_income: r.is_income,
     status: r.status,
     transactions: [],
+    label: { budget_id: r.label_budget_id, category_id: r.label_category_id },
     updated: r.updated,
   });
 
@@ -138,6 +148,7 @@ export const getRecurrings = async (
       is_income: r.is_income,
       status: r.status,
       transactions,
+      label: { budget_id: r.label_budget_id, category_id: r.label_category_id },
       updated: r.updated,
     });
   }
@@ -145,25 +156,218 @@ export const getRecurrings = async (
   return [...active, ...evictions];
 };
 
+const EMPTY_LABEL: JSONRecurringLabel = { budget_id: null, category_id: null };
+
+const isEmptyLabel = (label: JSONRecurringLabel) => !label.budget_id && !label.category_id;
+
+const lockRecurrings = (client: QueryExecutor, userId: string) =>
+  client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))`, [userId]);
+
 /**
- * Confirm a suggested recurring: status flips to "confirmed". Confirmed
- * recurrings auto-attach future matching charges on subsequent detection
- * runs.
+ * Give `transactionIds` a recurring's default label. A transaction the user
+ * confirmed with a label other than `previous` — the default it was
+ * following before this change — is an exception and keeps its own label.
+ * Unlabeled, suggested, and default-following transactions take the new one.
+ * An empty default relabels nothing.
+ */
+export const applyRecurringLabel = async (
+  executor: QueryExecutor,
+  userId: string,
+  label: JSONRecurringLabel,
+  transactionIds: string[],
+  previous: JSONRecurringLabel = EMPTY_LABEL,
+): Promise<void> => {
+  if (isEmptyLabel(label) || transactionIds.length === 0) return;
+  // A budget-only default leaves the category open — unlabeled, so the
+  // suggestion engine can still propose one.
+  const confidence = label.category_id ? 1 : null;
+  await executor.query(
+    `UPDATE ${TRANSACTIONS}
+     SET ${LABEL_BUDGET_ID} = $3::uuid,
+         ${LABEL_CATEGORY_ID} = $4::uuid,
+         ${LABEL_CATEGORY_CONFIDENCE} = $5::float,
+         ${UPDATED} = CURRENT_TIMESTAMP
+     WHERE ${USER_ID} = $1
+       AND ${TRANSACTION_ID} = ANY($2::text[])
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+       AND (
+         COALESCE(${LABEL_CATEGORY_CONFIDENCE}, 0) < 1
+         OR (${LABEL_BUDGET_ID} IS NOT DISTINCT FROM $6::uuid
+             AND ${LABEL_CATEGORY_ID} IS NOT DISTINCT FROM $7::uuid)
+       )
+       AND (
+         ${LABEL_BUDGET_ID} IS DISTINCT FROM $3::uuid
+         OR ${LABEL_CATEGORY_ID} IS DISTINCT FROM $4::uuid
+         OR ${LABEL_CATEGORY_CONFIDENCE} IS DISTINCT FROM $5::float
+       )`,
+    [
+      userId,
+      transactionIds,
+      label.budget_id,
+      label.category_id,
+      confidence,
+      previous.budget_id,
+      previous.category_id,
+    ],
+  );
+};
+
+/**
+ * The label the user has confirmed most often on these transactions (most
+ * recent wins a tie) — what a recurring starts with as its default when it
+ * is confirmed without one.
+ */
+const seedRecurringLabel = async (
+  executor: QueryExecutor,
+  userId: string,
+  transactionIds: string[],
+): Promise<JSONRecurringLabel> => {
+  if (transactionIds.length === 0) return EMPTY_LABEL;
+  const result = await executor.query<JSONRecurringLabel>(
+    `SELECT ${LABEL_BUDGET_ID} AS budget_id, ${LABEL_CATEGORY_ID} AS category_id
+     FROM ${TRANSACTIONS}
+     WHERE ${USER_ID} = $1
+       AND ${TRANSACTION_ID} = ANY($2::text[])
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+       AND ${LABEL_CATEGORY_CONFIDENCE} = 1
+       AND ${LABEL_CATEGORY_ID} IS NOT NULL
+     GROUP BY ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}
+     ORDER BY COUNT(*) DESC, MAX(date) DESC
+     LIMIT 1`,
+    [userId, transactionIds],
+  );
+  const row = result.rows[0];
+  return row ? { budget_id: row.budget_id, category_id: row.category_id } : EMPTY_LABEL;
+};
+
+/**
+ * Bring a confirmed recurring's transactions in line with its default
+ * label: seed the default from the members when it has none, then apply it
+ * to `transactionIds` (every member when omitted). Runs inside the caller's
+ * DB transaction, under the recurrings advisory lock.
+ */
+export const labelConfirmedRecurring = async (
+  executor: QueryExecutor,
+  userId: string,
+  recurring_id: string,
+  transactionIds?: string[],
+): Promise<void> => {
+  const found = await executor.query<{
+    label_budget_id: string | null;
+    label_category_id: string | null;
+    transaction_ids: string[];
+  }>(
+    `SELECT ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}, ${TRANSACTION_IDS} FROM ${RECURRINGS}
+     WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2 AND ${STATUS} = 'confirmed'`,
+    [userId, recurring_id],
+  );
+  const row = found.rows[0];
+  if (!row) return;
+  let label: JSONRecurringLabel = {
+    budget_id: row.label_budget_id,
+    category_id: row.label_category_id,
+  };
+  if (isEmptyLabel(label)) {
+    label = await seedRecurringLabel(executor, userId, row.transaction_ids);
+    if (isEmptyLabel(label)) return;
+    await executor.query(
+      `UPDATE ${RECURRINGS}
+       SET ${LABEL_BUDGET_ID} = $3::uuid, ${LABEL_CATEGORY_ID} = $4::uuid, ${UPDATED} = CURRENT_TIMESTAMP
+       WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2`,
+      [userId, recurring_id, label.budget_id, label.category_id],
+    );
+  }
+  await applyRecurringLabel(executor, userId, label, transactionIds ?? row.transaction_ids);
+};
+
+/**
+ * Confirm a suggested recurring: status flips to "confirmed" and its
+ * transactions take its default label (seeded from them if it has none).
+ * Confirmed recurrings auto-attach future matching charges on subsequent
+ * detection runs.
  */
 export const confirmRecurring = async (
   user: MaskedUser,
   recurring_id: string,
 ): Promise<RecurringConfirmResult> => {
-  const result = await recurringsTable.update(
-    recurring_id,
-    { [STATUS]: "confirmed" as RecurringStatus },
-    undefined,
-    user.user_id,
-  );
-  if (!result) {
-    return { ok: false, error: "Recurring not found." };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await lockRecurrings(client, user.user_id);
+    const updated = await client.query(
+      `UPDATE ${RECURRINGS}
+       SET ${STATUS} = 'confirmed', ${UPDATED} = CURRENT_TIMESTAMP
+       WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+       RETURNING ${RECURRING_ID}`,
+      [user.user_id, recurring_id],
+    );
+    if ((updated.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: "Recurring not found." };
+    }
+    await labelConfirmedRecurring(client, user.user_id, recurring_id);
+    await client.query("COMMIT");
+    return { ok: true };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
-  return { ok: true };
+};
+
+/**
+ * Set a recurring's default label. While it's confirmed its transactions
+ * follow the change, except ones the user labeled differently from the old
+ * default. A suggested recurring just keeps the label for when it's
+ * confirmed.
+ */
+export const setRecurringLabel = async (
+  user: MaskedUser,
+  recurring_id: string,
+  label: JSONRecurringLabel,
+): Promise<RecurringConfirmResult> => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await lockRecurrings(client, user.user_id);
+    const found = await client.query<{
+      label_budget_id: string | null;
+      label_category_id: string | null;
+      status: RecurringStatus;
+      transaction_ids: string[];
+    }>(
+      `SELECT ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}, ${STATUS}, ${TRANSACTION_IDS} FROM ${RECURRINGS}
+       WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+      [user.user_id, recurring_id],
+    );
+    const row = found.rows[0];
+    if (!row) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: "Recurring not found." };
+    }
+    await client.query(
+      `UPDATE ${RECURRINGS}
+       SET ${LABEL_BUDGET_ID} = $3::uuid, ${LABEL_CATEGORY_ID} = $4::uuid, ${UPDATED} = CURRENT_TIMESTAMP
+       WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2`,
+      [user.user_id, recurring_id, label.budget_id, label.category_id],
+    );
+    if (row.status === "confirmed") {
+      await applyRecurringLabel(client, user.user_id, label, row.transaction_ids, {
+        budget_id: row.label_budget_id,
+        category_id: row.label_category_id,
+      });
+    }
+    await client.query("COMMIT");
+    return { ok: true };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 /**
@@ -330,9 +534,11 @@ export const createRecurring = async (
         !!input.name_is_custom,
       ],
     );
+    const created_id = result.rows[0].recurring_id;
+    await labelConfirmedRecurring(client, user.user_id, created_id);
 
     await client.query("COMMIT");
-    return { ok: true, recurring_id: result.rows[0].recurring_id };
+    return { ok: true, recurring_id: created_id };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;
@@ -455,6 +661,7 @@ export const addToRecurring = async (
        WHERE ${RECURRING_ID} = $1 AND ${USER_ID} = $3`,
       [recurring_id, uniqueIds, user.user_id],
     );
+    await labelConfirmedRecurring(client, user.user_id, recurring_id, uniqueIds);
 
     await client.query("COMMIT");
     return { ok: true, recurring_id };

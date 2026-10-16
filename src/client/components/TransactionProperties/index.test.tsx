@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import {
   Account,
+  Budget,
+  Category,
   Context,
   ContextType,
   Data,
   PATH,
   RecurringDictionary,
+  Section,
   Transaction,
   TransactionLabel,
 } from "client";
@@ -66,20 +69,35 @@ interface SetupOptions {
   /** Status of the recurring the viewed transaction (tx-0) belongs to; omit
    *  for a transaction in no recurring. */
   status?: "suggested" | "confirmed";
+  /** That recurring's default label. */
+  label?: Recurring["label"];
   /** Other recurrings already in `data`. */
   others?: Recurring[];
   /** Body the stubbed `/api/recurrings` answers with. */
   responseBody?: unknown;
 }
 
-const setup = ({ status, others = [], responseBody }: SetupOptions = {}) => {
+// One budget with two categories, for the default-label selects.
+const budget = new Budget({ name: "Living" });
+const section = new Section({ budget_id: budget.id, name: "Bills" });
+const subscriptions = new Category({ section_id: section.id, name: "Subscriptions" });
+const streaming = new Category({ section_id: section.id, name: "Streaming" });
+
+const setup = ({ status, label, others = [], responseBody }: SetupOptions = {}) => {
   const data = new Data();
   data.accounts.set(ACCOUNT_ID, new Account({ account_id: ACCOUNT_ID, name: "Checking" }));
+  data.budgets.set(budget.id, budget);
+  data.sections.set(section.id, section);
+  data.categories.set(subscriptions.id, subscriptions);
+  data.categories.set(streaming.id, streaming);
   const members = MEMBER_DATES.map((date, i) => buildTransaction(`tx-${i}`, date));
   members.forEach((t) => data.transactions.set(t.transaction_id, t));
   const recurrings = others.map((r): [string, Recurring] => [r.recurring_id, r]);
   if (status) {
-    recurrings.push([RECURRING_ID, buildRecurring(RECURRING_ID, "Nvidia", status, members)]);
+    recurrings.push([
+      RECURRING_ID,
+      { ...buildRecurring(RECURRING_ID, "Nvidia", status, members), label },
+    ]);
   }
   data.recurrings = new RecurringDictionary(recurrings);
 
@@ -133,7 +151,14 @@ describe("TransactionProperties — recurring section", () => {
   it("shows the name, first month, total, and next due date", () => {
     setup({ status: "suggested" });
 
-    expect(rowNames()).toEqual(["Name", "From", "Total Amount", "Next Due"]);
+    expect(rowNames()).toEqual([
+      "Name",
+      "Default Budget",
+      "Default Category",
+      "From",
+      "Total Amount",
+      "Next Due",
+    ]);
     expect(nameInput()?.value).toBe("Nvidia");
     expect(valueOf("From")).toBe("February 2026");
     expect(valueOf("Total Amount")).toBe("$ 90.00");
@@ -319,5 +344,95 @@ describe("TransactionProperties — marking as recurring", () => {
     expect(store.data.recurrings.byTransactionId.get("tx-0")?.recurring_id).toBe("r-spotify");
     rerender();
     expect(nameInput()?.value).toBe("Spotify");
+  });
+});
+
+describe("TransactionProperties — recurring default label", () => {
+  const select = (name: string) => rowOf(name)?.querySelector("select") as HTMLSelectElement;
+
+  /** The members as the server answers after relabeling them. */
+  const relabeled = (budget_id: string, category_id: string) =>
+    MEMBER_DATES.map((date, i) =>
+      buildTransaction(`tx-${i}`, date, {
+        label: new TransactionLabel({ budget_id, category_id, category_confidence: 1 }),
+      }),
+    ) as unknown as JSONTransaction[];
+
+  it("shows the recurring's default budget and category", () => {
+    setup({
+      status: "confirmed",
+      label: { budget_id: budget.id, category_id: subscriptions.id },
+    });
+
+    expect(select("Default Budget").value).toBe(budget.id);
+    expect(select("Default Category").value).toBe(subscriptions.id);
+  });
+
+  it("saves a new default and applies the relabeled transactions the server returns", async () => {
+    const answer: Recurring = {
+      ...buildRecurring(RECURRING_ID, "Nvidia", "confirmed", []),
+      transactions: relabeled(budget.id, streaming.id),
+      label: { budget_id: budget.id, category_id: streaming.id },
+    };
+    const { store, calls } = setup({
+      status: "confirmed",
+      label: { budget_id: budget.id, category_id: subscriptions.id },
+      responseBody: { recurring_id: RECURRING_ID, recurring: answer },
+    });
+
+    await act(async () => {
+      fireEvent.change(select("Default Category"), { target: { value: streaming.id } });
+    });
+
+    expect(calls.requests).toEqual([{ url: "/api/recurrings", method: "POST" }]);
+    expect(store.data.recurrings.get(RECURRING_ID)?.label?.category_id).toBe(streaming.id);
+    expect(store.data.transactions.get("tx-2")?.label.category_id).toBe(streaming.id);
+    expect(store.data.transactions.get("tx-2")?.label.category_confidence).toBe(1);
+  });
+
+  it("puts the select back when the server refuses the change", async () => {
+    const { calls } = setup({
+      status: "confirmed",
+      label: { budget_id: budget.id, category_id: subscriptions.id },
+    });
+    fetchStub!.restore();
+    fetchStub = stubFetch([
+      { path: "/api/recurrings", response: { status: "failed", message: "nope" } },
+    ]);
+    const original = window.alert;
+    window.alert = () => {};
+    try {
+      await act(async () => {
+        fireEvent.change(select("Default Category"), { target: { value: streaming.id } });
+      });
+    } finally {
+      window.alert = original;
+    }
+
+    expect(calls.requests).toEqual([]);
+    expect(fetchStub.calls.requests).toHaveLength(1);
+    expect(select("Default Category").value).toBe(subscriptions.id);
+  });
+
+  it("confirming applies the labels the server gave the transactions", async () => {
+    const answer: Recurring = {
+      ...buildRecurring(RECURRING_ID, "Nvidia", "confirmed", []),
+      transactions: relabeled(budget.id, subscriptions.id),
+      label: { budget_id: budget.id, category_id: subscriptions.id },
+    };
+    const { store } = setup({
+      status: "suggested",
+      responseBody: { recurring_id: RECURRING_ID, recurring: answer },
+    });
+
+    await act(async () => {
+      fireEvent.click(button(/^Confirm.Recurring$/));
+    });
+
+    expect(store.data.recurrings.get(RECURRING_ID)?.status).toBe("confirmed");
+    expect(store.data.recurrings.get(RECURRING_ID)?.label?.category_id).toBe(subscriptions.id);
+    for (const id of ["tx-0", "tx-1", "tx-2"]) {
+      expect(store.data.transactions.get(id)?.label.category_id).toBe(subscriptions.id);
+    }
   });
 });

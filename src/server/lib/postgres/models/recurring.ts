@@ -17,6 +17,8 @@ import {
   IS_INCOME,
   STATUS,
   TRANSACTION_IDS,
+  LABEL_BUDGET_ID,
+  LABEL_CATEGORY_ID,
   CREATED_AT,
   UPDATED,
   IS_DELETED,
@@ -34,6 +36,8 @@ const recurringSchema = {
   [IS_INCOME]: "BOOLEAN NOT NULL",
   [STATUS]: "VARCHAR(20) NOT NULL",
   [TRANSACTION_IDS]: "TEXT[] NOT NULL DEFAULT '{}'",
+  [LABEL_BUDGET_ID]: "UUID",
+  [LABEL_CATEGORY_ID]: "UUID",
   [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
@@ -54,6 +58,8 @@ export class RecurringModel
   declare is_income: boolean;
   declare status: RecurringStatus;
   declare transaction_ids: string[];
+  declare label_budget_id: string | null;
+  declare label_category_id: string | null;
   declare created_at: string | null;
   declare updated: string | null;
   declare is_deleted: boolean;
@@ -67,6 +73,8 @@ export class RecurringModel
     is_income: isBoolean,
     status: isString,
     transaction_ids: isStringArray,
+    label_budget_id: isNullableString,
+    label_category_id: isNullableString,
     created_at: isNullableString,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
@@ -85,6 +93,7 @@ export class RecurringModel
       is_income: this.is_income,
       status: this.status,
       transaction_ids: this.transaction_ids,
+      label: { budget_id: this.label_budget_id, category_id: this.label_category_id },
       updated: this.updated,
     };
   }

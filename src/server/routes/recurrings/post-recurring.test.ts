@@ -78,6 +78,8 @@ const recurringRow = (overrides: Record<string, unknown> = {}) => ({
   is_income: false,
   status: "confirmed",
   transaction_ids: ["t-1"],
+  label_budget_id: null,
+  label_category_id: null,
   created_at: "2026-10-02T00:00:00Z",
   updated: "2026-10-02T00:00:00Z",
   is_deleted: false,
@@ -136,6 +138,11 @@ describe("post-recurring — create", () => {
     mockClientQuery.mockResolvedValueOnce({ rows: [{ transaction_id: "t-1" }], rowCount: 1 }); // existence
     mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
     mockClientQuery.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // upsert
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ label_budget_id: null, label_category_id: null, transaction_ids: ["t-1"] }],
+      rowCount: 1,
+    }); // recurring's default label
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // seed: no labeled members
     mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
     mockQuery.mockResolvedValueOnce({
       rows: [recurringRow({ merchant_name: "My Netflix" })],
@@ -161,5 +168,142 @@ describe("post-recurring — create", () => {
     const readBack = mockQuery.mock.calls[1];
     expect(readBack[0] as string).toMatch(/FROM recurrings/);
     expect(readBack[1] as unknown[]).toContain("r-1");
+  });
+});
+
+const B1 = "00000000-0000-0000-0000-0000000000b1";
+const C1 = "00000000-0000-0000-0000-0000000000c1";
+const B2 = "00000000-0000-0000-0000-0000000000b2";
+const C2 = "00000000-0000-0000-0000-0000000000c2";
+
+const clientSql = () => mockClientQuery.mock.calls.map((c) => c[0] as string);
+const relabelCall = () =>
+  mockClientQuery.mock.calls.find((c) => /UPDATE transactions/.test(c[0] as string));
+
+describe("post-recurring — confirm", () => {
+  test("confirms, seeds the default from the members, relabels them, and answers with the recurring", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // status
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ label_budget_id: null, label_category_id: null, transaction_ids: ["t-1", "t-2"] }],
+      rowCount: 1,
+    }); // recurring's default label
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ budget_id: B1, category_id: C1 }],
+      rowCount: 1,
+    }); // seed
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // store seeded default
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 }); // relabel members
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockQuery.mockResolvedValueOnce({
+      rows: [recurringRow({ transaction_ids: ["t-1"], label_budget_id: B1, label_category_id: C1 })],
+      rowCount: 1,
+    }); // read-back recurring
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 }); // read-back members
+
+    const result = await postRecurringRoute.execute(makeReq({ recurring_id: "r-1" }), fakeRes());
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.recurring?.label).toEqual({ budget_id: B1, category_id: C1 });
+    expect(clientSql()[0]).toBe("BEGIN");
+    expect(clientSql().at(-1)).toBe("COMMIT");
+    expect(clientSql()[2]).toMatch(/SET status = 'confirmed'/);
+    const [sql, values] = relabelCall()!;
+    expect(sql as string).toMatch(/COALESCE\(label_category_confidence, 0\) < 1/);
+    // Every member, the seeded default, confidence 1, no previous default.
+    expect(values).toEqual(["u-1", ["t-1", "t-2"], B1, C1, 1, null, null]);
+  });
+
+  test("relabels nothing when no member has a confirmed label to seed from", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // status
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ label_budget_id: null, label_category_id: null, transaction_ids: ["t-1"] }],
+      rowCount: 1,
+    }); // recurring's default label
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // seed: nothing
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockQuery.mockResolvedValueOnce({ rows: [recurringRow()], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 });
+
+    const result = await postRecurringRoute.execute(makeReq({ recurring_id: "r-1" }), fakeRes());
+
+    expect(result?.status).toBe("success");
+    expect(relabelCall()).toBeUndefined();
+  });
+});
+
+describe("post-recurring — default label", () => {
+  const stageLabel = (status: "confirmed" | "suggested") => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [
+        { label_budget_id: B1, label_category_id: C1, status, transaction_ids: ["t-1", "t-2"] },
+      ],
+      rowCount: 1,
+    }); // current default
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // store new default
+    if (status === "confirmed") mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 });
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockQuery.mockResolvedValueOnce({
+      rows: [recurringRow({ status, label_budget_id: B2, label_category_id: C2 })],
+      rowCount: 1,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 });
+  };
+
+  test("confirmed: stores it and relabels members that followed the old default", async () => {
+    stageLabel("confirmed");
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", label: { budget_id: B2, category_id: C2 } }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.recurring?.label).toEqual({ budget_id: B2, category_id: C2 });
+    const store = mockClientQuery.mock.calls.find((c) =>
+      /UPDATE recurrings\s+SET label_budget_id/.test(c[0] as string),
+    )!;
+    expect(store[1]).toEqual(["u-1", "r-1", B2, C2]);
+    // The old default rides along so members that followed it move too.
+    expect(relabelCall()![1]).toEqual(["u-1", ["t-1", "t-2"], B2, C2, 1, B1, C1]);
+  });
+
+  test("suggested: stores it without relabeling until it's confirmed", async () => {
+    stageLabel("suggested");
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", label: { budget_id: B2, category_id: C2 } }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(relabelCall()).toBeUndefined();
+  });
+
+  test("a budget-only default leaves the category unconfirmed", async () => {
+    stageLabel("confirmed");
+
+    await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", label: { budget_id: B2, category_id: null } }),
+      fakeRes(),
+    );
+
+    expect(relabelCall()![1]).toEqual(["u-1", ["t-1", "t-2"], B2, null, null, B1, C1]);
+  });
+
+  test("refuses ids that aren't UUIDs before touching the database", async () => {
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", label: { budget_id: "nope", category_id: null } }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockClientQuery).not.toHaveBeenCalled();
   });
 });

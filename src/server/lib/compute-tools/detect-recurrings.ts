@@ -1,5 +1,5 @@
 import { RecurringCadence } from "common";
-import { pool, logger, usersTable } from "server";
+import { pool, logger, usersTable, labelConfirmedRecurring } from "server";
 import type { PoolClient } from "pg";
 import {
   recurringsTable,
@@ -374,6 +374,8 @@ export const runRecurringDetection = async (): Promise<void> => {
                WHERE ${RECURRING_ID} = $1`,
               [row.recurring_id, fresh],
             );
+            // New charges take the recurring's default label.
+            await labelConfirmedRecurring(client, userId, row.recurring_id, fresh);
           }
         }
 

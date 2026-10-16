@@ -375,6 +375,49 @@ export const TransactionProperties = ({ transaction }: Props) => {
     };
   }, [existingRecurring, iso_currency_code]);
 
+  // The recurring's default label, edited with the same selects as the
+  // transaction's own. The server relabels the recurring's transactions to
+  // follow it, apart from ones labeled differently (exceptions).
+  const recurringDefaultLabel = useMemo(
+    () =>
+      new TransactionLabel({
+        budget_id: existingRecurring?.label?.budget_id ?? null,
+        category_id: existingRecurring?.label?.category_id ?? null,
+      }),
+    [existingRecurring?.label?.budget_id, existingRecurring?.label?.category_id],
+  );
+  const recurringSelect = useBudgetCategorySelect(
+    recurringDefaultLabel,
+    undefined,
+    `recurring_${existingRecurring?.recurring_id ?? ""}`,
+  );
+
+  const saveRecurringLabel = async (budget_id: string, category_id: string) => {
+    if (!existingRecurring) return;
+    const previousBudget = recurringSelect.selectedBudgetIdLabel;
+    const previousCategory = recurringSelect.selectedCategoryIdLabel;
+    recurringSelect.setSelectedBudgetIdLabel(budget_id);
+    recurringSelect.setSelectedCategoryIdLabel(category_id);
+    const ok = await recurringActions.setLabel(existingRecurring.recurring_id, {
+      budget_id: budget_id || null,
+      category_id: category_id || null,
+    });
+    if (!ok) {
+      recurringSelect.setSelectedBudgetIdLabel(previousBudget);
+      recurringSelect.setSelectedCategoryIdLabel(previousCategory);
+    }
+  };
+
+  const onChangeRecurringBudget: ChangeEventHandler<HTMLSelectElement> = (e) => {
+    if (e.target.value === recurringSelect.selectedBudgetIdLabel) return;
+    void saveRecurringLabel(e.target.value, "");
+  };
+
+  const onChangeRecurringCategory: ChangeEventHandler<HTMLSelectElement> = (e) => {
+    if (e.target.value === recurringSelect.selectedCategoryIdLabel) return;
+    void saveRecurringLabel(recurringSelect.selectedBudgetIdLabel, e.target.value);
+  };
+
   // Editable recurring name, saved on blur like the memo above.
   const [recurringNameValue, setRecurringNameValue] = useState(
     existingRecurring?.merchant_name ?? "",
@@ -669,6 +712,28 @@ export const TransactionProperties = ({ transaction }: Props) => {
                   if (e.key === "Enter") e.currentTarget.blur();
                 }}
               />
+            </KeyValue>
+            <KeyValue name="Default&nbsp;Budget">
+              <div>
+                <select
+                  value={recurringSelect.selectedBudgetIdLabel}
+                  onChange={onChangeRecurringBudget}
+                >
+                  <option value="">Select Budget</option>
+                  {recurringSelect.budgetOptions}
+                </select>
+              </div>
+            </KeyValue>
+            <KeyValue name="Default&nbsp;Category">
+              <div>
+                <select
+                  value={recurringSelect.selectedCategoryIdLabel}
+                  onChange={onChangeRecurringCategory}
+                >
+                  <option value="">Select Category</option>
+                  {recurringSelect.categoryOptions}
+                </select>
+              </div>
             </KeyValue>
             {recurringSummary && (
               <>

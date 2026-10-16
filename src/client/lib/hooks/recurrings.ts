@@ -1,6 +1,16 @@
 import { useCallback } from "react";
+import type { JSONRecurringLabel } from "common";
 import type { Recurring, RecurringPostResponse } from "server";
-import { call, Data, RecurringDictionary, indexedDb, StoreName, useAppContext } from "client";
+import {
+  call,
+  Data,
+  RecurringDictionary,
+  Transaction,
+  TransactionDictionary,
+  indexedDb,
+  StoreName,
+  useAppContext,
+} from "client";
 
 /**
  * Every action answers whether the server write landed. `call` turns an
@@ -10,8 +20,10 @@ import { call, Data, RecurringDictionary, indexedDb, StoreName, useAppContext } 
  * tell the two apart.
  */
 export interface RecurringActions {
-  /** Confirm a suggested recurring: status flips to "confirmed". Confirmed
-   *  recurrings auto-attach future matching charges on detection runs. */
+  /** Confirm a suggested recurring: status flips to "confirmed" and its
+   *  transactions take its default label (seeded from their own labels when
+   *  it has none). Confirmed recurrings auto-attach future matching charges
+   *  on detection runs. */
   confirm: (recurring_id: string) => Promise<boolean>;
   /** Dismiss a suggested recurring: server flips it to `status='dismissed'`
    *  (the row persists as the engine's per-merchant denylist signal so the
@@ -30,6 +42,10 @@ export interface RecurringActions {
   /** Rename a recurring. The name is display-only, so it applies locally
    *  as soon as the server accepts it. */
   rename: (recurring_id: string, merchant_name: string) => Promise<boolean>;
+  /** Set a recurring's default budget/category. While it's confirmed, its
+   *  transactions follow, except ones labeled differently from the old
+   *  default. */
+  setLabel: (recurring_id: string, label: JSONRecurringLabel) => Promise<boolean>;
 }
 
 /**
@@ -42,12 +58,56 @@ export interface RecurringActions {
 export const useRecurrings = (): RecurringActions => {
   const { setData } = useAppContext();
 
+  // Writes that can relabel transactions answer with the recurring as the
+  // server now has it, members' labels included. The writing tab filters its
+  // own realtime event out, so applying that answer is the only way this tab
+  // sees its write before the next sync.
+  const apply = useCallback(
+    (recurring: Recurring) => {
+      indexedDb.saveRecurring(recurring).catch(console.error);
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        newData.recurrings = new RecurringDictionary(oldData.recurrings);
+        newData.recurrings.set(recurring.recurring_id, recurring);
+        let transactions: TransactionDictionary | undefined;
+        recurring.transactions.forEach(({ transaction_id, label }) => {
+          const existing = oldData.transactions.get(transaction_id);
+          if (!existing || !label) return;
+          if (
+            existing.label.budget_id === label.budget_id &&
+            existing.label.category_id === label.category_id &&
+            existing.label.category_confidence === label.category_confidence
+          ) {
+            return;
+          }
+          const updated = new Transaction(existing);
+          updated.label.budget_id = label.budget_id;
+          updated.label.category_id = label.category_id;
+          updated.label.category_confidence = label.category_confidence;
+          indexedDb.save(updated).catch(console.error);
+          transactions ??= new TransactionDictionary(oldData.transactions);
+          transactions.set(transaction_id, updated);
+        });
+        if (transactions) newData.transactions = transactions;
+        return newData;
+      });
+    },
+    [setData],
+  );
+
   const confirm = useCallback(
     async (recurring_id: string) => {
-      const response = await call.post("/api/recurrings", { recurring_id });
+      const response = await call.post<RecurringPostResponse>("/api/recurrings", {
+        recurring_id,
+      });
       if (response.status !== "success") {
         if (response.message) window.alert(response.message);
         return false;
+      }
+      const recurring = response.body?.recurring;
+      if (recurring) {
+        apply(recurring);
+        return true;
       }
       setData((oldData) => {
         const prev = oldData.recurrings.get(recurring_id);
@@ -65,7 +125,7 @@ export const useRecurrings = (): RecurringActions => {
       });
       return true;
     },
-    [setData],
+    [apply, setData],
   );
 
   const dismiss = useCallback(
@@ -89,22 +149,6 @@ export const useRecurrings = (): RecurringActions => {
         return newData;
       });
       return true;
-    },
-    [setData],
-  );
-
-  // Create and add answer with the recurring as the server now has it. The
-  // writing tab filters its own realtime event out, so applying that answer
-  // is the only way this tab sees its write before the next sync.
-  const apply = useCallback(
-    (recurring: Recurring) => {
-      indexedDb.saveRecurring(recurring).catch(console.error);
-      setData((oldData) => {
-        const newData = new Data(oldData);
-        newData.recurrings = new RecurringDictionary(oldData.recurrings);
-        newData.recurrings.set(recurring.recurring_id, recurring);
-        return newData;
-      });
     },
     [setData],
   );
@@ -165,5 +209,22 @@ export const useRecurrings = (): RecurringActions => {
     [setData],
   );
 
-  return { confirm, dismiss, create, addTo, rename };
+  const setLabel = useCallback(
+    async (recurring_id: string, label: JSONRecurringLabel) => {
+      const response = await call.post<RecurringPostResponse>("/api/recurrings", {
+        recurring_id,
+        label,
+      });
+      if (response.status !== "success") {
+        if (response.message) window.alert(response.message);
+        return false;
+      }
+      const recurring = response.body?.recurring;
+      if (recurring) apply(recurring);
+      return true;
+    },
+    [apply],
+  );
+
+  return { confirm, dismiss, create, addTo, rename, setLabel };
 };

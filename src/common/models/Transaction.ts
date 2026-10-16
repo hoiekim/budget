@@ -85,6 +85,13 @@ export type RecurringCadence =
   | "semiannual"
   | "annual";
 
+/** A recurring's default budget/category. Its transactions take this label
+ *  while it's confirmed, except ones the user labeled differently. */
+export interface JSONRecurringLabel {
+  budget_id: string | null;
+  category_id: string | null;
+}
+
 export interface JSONRecurring {
   recurring_id: string;
   merchant_key: string;
@@ -93,6 +100,7 @@ export interface JSONRecurring {
   is_income: boolean;
   status: RecurringStatus;
   transaction_ids: string[];
+  label: JSONRecurringLabel;
   updated?: string | null;
 }
 
