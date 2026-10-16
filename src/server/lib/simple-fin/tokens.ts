@@ -26,11 +26,24 @@ const PRIVATE_IP_PATTERNS = [
   /^192\.168\./,        // Private network (192.168.0.0/16)
   /^169\.254\./,        // Link-local / AWS metadata (169.254.0.0/16)
   /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,  // Shared address space (100.64.0.0/10)
-  /^::1$/,              // IPv6 loopback
-  /^fc00:/,             // IPv6 ULA
-  /^fd[0-9a-f]{2}:/,   // IPv6 ULA
-  /^fe80:/,             // IPv6 link-local
+  /^::1?$/,             // IPv6 loopback and unspecified
+  /^f[cd][0-9a-f]{2}:/, // IPv6 unique local (fc00::/7)
+  /^fe[89ab][0-9a-f]:/, // IPv6 link-local (fe80::/10)
 ];
+
+/**
+ * The host as the patterns read it: an IPv6 literal without its brackets, a
+ * name without the trailing dot DNS treats as the same name, and an
+ * IPv4-mapped IPv6 address (`::ffff:a9fe:a9fe`, as `URL` writes it) as the
+ * dotted IPv4 address it maps.
+ */
+const normalizeHost = (hostname: string): string => {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (!mapped) return host;
+  const [high, low] = [parseInt(mapped[1], 16), parseInt(mapped[2], 16)];
+  return [high >> 8, high & 255, low >> 8, low & 255].join(".");
+};
 
 const BLOCKED_HOSTNAMES = new Set([
   "localhost",
@@ -38,30 +51,32 @@ const BLOCKED_HOSTNAMES = new Set([
 ]);
 
 /**
- * Validate that a decoded SimpleFin setup URL is safe to fetch.
+ * Validate that a SimpleFin URL — the setup URL a token decodes to, or the
+ * access URL the claim returns — is safe to fetch.
  * Prevents SSRF by rejecting non-HTTPS URLs and private/internal destinations.
  *
+ * @param label Names the URL in the error: "setup token" or "access URL".
  * @throws {Error} if the URL is invalid or targets a private/internal host
  */
-const validateSetupUrl = (rawUrl: string): URL => {
+export const validateSimpleFinUrl = (rawUrl: string, label: string): URL => {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
   } catch {
-    throw new Error("Invalid SimpleFin setup token: URL is malformed");
+    throw new Error(`Invalid SimpleFin ${label}: URL is malformed`);
   }
 
   if (parsed.protocol !== "https:") {
     throw new Error(
-      `Invalid SimpleFin setup token: URL must use HTTPS (got ${parsed.protocol})`
+      `Invalid SimpleFin ${label}: URL must use HTTPS (got ${parsed.protocol})`
     );
   }
 
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = normalizeHost(parsed.hostname);
 
   if (BLOCKED_HOSTNAMES.has(hostname)) {
     throw new Error(
-      `Invalid SimpleFin setup token: hostname '${hostname}' is not allowed`
+      `Invalid SimpleFin ${label}: hostname '${hostname}' is not allowed`
     );
   }
 
@@ -69,7 +84,7 @@ const validateSetupUrl = (rawUrl: string): URL => {
   for (const pattern of PRIVATE_IP_PATTERNS) {
     if (pattern.test(hostname)) {
       throw new Error(
-        `Invalid SimpleFin setup token: IP address '${hostname}' is in a private/reserved range`
+        `Invalid SimpleFin ${label}: IP address '${hostname}' is in a private/reserved range`
       );
     }
   }
@@ -77,11 +92,22 @@ const validateSetupUrl = (rawUrl: string): URL => {
   return parsed;
 };
 
+/**
+ * Claims the access URL a setup token points to. A redirect is refused rather
+ * than followed, since its target would skip the allowlist; a refused claim's
+ * body (such as "Forbidden") is returned for the caller to report.
+ */
 export const exchangeSetupToken = async (setupToken: SetupToken): Promise<AccessUrl> => {
   const rawUrl = Buffer.from(setupToken, "base64").toString();
-  const setupUrl = validateSetupUrl(rawUrl); // throws on invalid/private URL
-  const response = await fetch(setupUrl.toString(), { method: "POST", headers: { "Content-Length": "0" } });
-  return await response.text();
+  const setupUrl = validateSimpleFinUrl(rawUrl, "setup token");
+  const response = await fetch(setupUrl.toString(), {
+    method: "POST",
+    headers: { "Content-Length": "0" },
+    redirect: "error",
+  });
+  const body = await response.text();
+  if (response.ok) validateSimpleFinUrl(body, "access URL");
+  return body;
 };
 
 interface SimpleFinCredentials {
@@ -90,10 +116,12 @@ interface SimpleFinCredentials {
 }
 
 export const decodeAccessUrl = (accessUrl: AccessUrl): SimpleFinCredentials => {
-  const [scheme, rest] = accessUrl.split("://");
-  const [auth, rest2] = rest.split("@");
-  const url = `${scheme}://${rest2}`;
-  const [username, password] = auth.split(":");
+  // Both halves come from the parsed URL the allowlist approved, never from splitting the raw
+  // string: an extra "@" would otherwise check one host and fetch another.
+  const parsed = validateSimpleFinUrl(accessUrl, "access URL");
+  const username = decodeURIComponent(parsed.username);
+  const password = decodeURIComponent(parsed.password);
   const credentials = Buffer.from(`${username}:${password}`).toString("base64");
+  const url = `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`;
   return { url, credentials };
 };
