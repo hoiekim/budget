@@ -4,11 +4,12 @@ import {
   Account,
   Data,
   PATH,
+  RecurringDictionary,
   Transaction,
   TransactionLabel,
   TransferDictionary,
 } from "client";
-import type { TransferPair } from "server";
+import type { Recurring, TransferPair } from "server";
 import type { FetchStubRoute } from "test-render";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import TransactionRow from "./TransactionRow";
@@ -344,3 +345,115 @@ describe("TransactionRow — suggested transfer pair", () => {
   });
 });
 
+const RECURRING_ID = "recurring-1";
+
+const buildRecurring = (status: "suggested" | "confirmed") => {
+  const data = buildData();
+  const transaction = buildTransaction({ merchant_name: "Netflix" });
+  data.transactions.set(transaction.transaction_id, transaction);
+  const recurring: Recurring = {
+    recurring_id: RECURRING_ID,
+    merchant_key: "netflix",
+    merchant_name: "Netflix",
+    cadence: "monthly",
+    is_income: false,
+    status,
+    transactions: [
+      {
+        transaction_id: transaction.transaction_id,
+        account_id: ACCOUNT_ID,
+        amount: 15.99,
+        date: "2026-10-15",
+        merchant_name: "Netflix",
+        name: "Netflix",
+        pending: false,
+      } as never,
+    ],
+  };
+  data.recurrings = new RecurringDictionary([[RECURRING_ID, recurring]]);
+  return { data, transaction };
+};
+
+const renderRecurringRow = (
+  status: "suggested" | "confirmed",
+  route: Partial<FetchStubRoute> = {},
+) => {
+  const { data, transaction } = buildRecurring(status);
+  const stub = stubFetch([
+    { path: "/api/recurrings", response: { status: "success" }, ...route },
+  ]);
+  restoreFetch = stub.restore;
+  const rendered = render(transaction, data);
+  return { ...rendered, calls: stub.calls };
+};
+
+describe("TransactionRow — recurring", () => {
+  it("suggested: shows the Recurring chip with Confirm and Dismiss", () => {
+    const { container } = renderRecurringRow("suggested");
+    expect(container.querySelector(".recurringChip.suggested")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Confirm" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Dismiss" }),
+    ).not.toBeNull();
+    // Budget/category controls are replaced, like suggested transfers.
+    expect(container.querySelector(".labelControls")).toBeNull();
+  });
+
+  it("suggested: Confirm posts to /api/recurrings", async () => {
+    const { calls } = renderRecurringRow("suggested");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].url).toBe("/api/recurrings");
+    expect(calls.requests[0].method).toBe("POST");
+  });
+
+  it("suggested: Dismiss issues a DELETE", async () => {
+    const { calls } = renderRecurringRow("suggested");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].url).toBe(
+      `/api/recurrings?id=${RECURRING_ID}`,
+    );
+    expect(calls.requests[0].method).toBe("DELETE");
+  });
+
+  it("confirmed: shows the neutral chip with no actions", () => {
+    const { container } = renderRecurringRow("confirmed");
+    const chip = container.querySelector(".recurringChip");
+    expect(chip).not.toBeNull();
+    expect(chip?.classList.contains("suggested")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+  });
+
+  it("suggested transfer pair takes precedence over suggested recurring", () => {
+    const { data, transaction } = buildRecurring("suggested");
+    // Also put the transaction in a suggested transfer pair.
+    const sibling = buildTransaction({
+      transaction_id: "tx-sibling",
+      amount: -15.99,
+      name: "TRANSFER",
+      merchant_name: null,
+    });
+    data.transactions.set(sibling.transaction_id, sibling);
+    const pair: TransferPair = {
+      pair_id: "pair-1",
+      status: "suggested",
+      transactions: [transaction, sibling],
+    };
+    data.transfers = new TransferDictionary([["pair-1", pair]]);
+    const stub = stubFetch([
+      { path: "/api/transfers", response: { status: "success" } },
+    ]);
+    restoreFetch = stub.restore;
+    const { container } = render(transaction, data);
+    expect(container.querySelector(".transferChip")).not.toBeNull();
+    expect(container.querySelector(".recurringChip")).toBeNull();
+  });
+});

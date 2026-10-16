@@ -140,6 +140,55 @@ div.TransactionRow .transferAmountIcon {
   color: var(--textSoftLight);
 }
 
+/* Recurring chips mirror the transfer chip: a "Recurring" label in place
+   of the budget/category controls. Suggested recurrings get the amber
+   tint plus inline Confirm/Dismiss; confirmed ones render the neutral
+   chip, matching the confirmed-transfer treatment. */
+div.TransactionRow > .budgetCategoryActions > .recurringControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  width: 100%;
+}
+
+div.TransactionRow .recurringControls > .recurringChip {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 24px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  background-color: var(--surface);
+}
+
+div.TransactionRow .recurringControls > .recurringChip.suggested {
+  background-color: color-mix(in srgb, var(--amber) 25%, var(--surface));
+  color: var(--amber);
+}
+
+div.TransactionRow .recurringControls > .recurringConfirm,
+div.TransactionRow .recurringControls > .recurringDismiss {
+  height: 24px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+div.TransactionRow .recurringControls > .recurringConfirm {
+  background-color: var(--darkGreen);
+  color: var(--textBright);
+}
+
+div.TransactionRow .recurringControls > .recurringDismiss {
+  background-color: var(--surface);
+}
+
+
 div.TransactionRow .transferPairArrow {
   display: inline-flex;
   align-items: center;
