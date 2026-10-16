@@ -16,7 +16,7 @@ div.RecurringPage div.billRow {
   overflow: hidden;
 }
 
-div.RecurringPage button.billSummary {
+div.RecurringPage div.billSummary {
   width: 100%;
   display: flex;
   align-items: center;
@@ -29,7 +29,7 @@ div.RecurringPage button.billSummary {
   cursor: pointer;
 }
 
-div.RecurringPage button.billSummary:active {
+div.RecurringPage div.billSummary:active {
   background-color: var(--hover);
 }
 
@@ -85,8 +85,9 @@ div.RecurringPage div.billOccurrences {
   padding: 4px 0;
 }
 
-div.RecurringPage button.occurrenceRow {
+div.RecurringPage div.occurrenceRow {
   width: 100%;
+  cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -98,7 +99,7 @@ div.RecurringPage button.occurrenceRow {
   cursor: pointer;
 }
 
-div.RecurringPage button.occurrenceRow:active {
+div.RecurringPage div.occurrenceRow:active {
   background-color: var(--hover);
 }
 

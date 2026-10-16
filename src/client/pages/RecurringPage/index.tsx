@@ -36,7 +36,7 @@ const BillRow = ({ bill, expanded, onToggle, onOpenTransaction, getTransaction }
   const rowClasses = ["billRow", expanded ? "expanded" : ""].filter(Boolean).join(" ");
   return (
     <div className={rowClasses}>
-      <button className="billSummary" onClick={onToggle} aria-expanded={expanded}>
+      <div className="billSummary" onClick={onToggle} aria-expanded={expanded}>
         <div className="billMain">
           <div className="billMerchant">{bill.merchant}</div>
           <div className="billMeta">
@@ -51,7 +51,7 @@ const BillRow = ({ bill, expanded, onToggle, onOpenTransaction, getTransaction }
         <div className="billChevron">
           <ChevronDownIcon size={14} />
         </div>
-      </button>
+      </div>
       {expanded && (
         <div className="billOccurrences">
           {bill.transactionIds.map((id) => {
@@ -59,16 +59,12 @@ const BillRow = ({ bill, expanded, onToggle, onOpenTransaction, getTransaction }
             if (!t) return null;
             const date = t.authorized_date || t.date;
             return (
-              <button
-                key={id}
-                className="occurrenceRow"
-                onClick={() => onOpenTransaction(id)}
-              >
+              <div key={id} className="occurrenceRow" onClick={() => onOpenTransaction(id)}>
                 <span className="occurrenceDate">{formatShortDate(date)}</span>
                 <span className="occurrenceAmount">
                   {formatAmount(t.amount, t.iso_currency_code || t.unofficial_currency_code)}
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
