@@ -1,18 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Account,
   useAppContext,
-  call,
-  Data,
-  SecuritySnapshot,
-  SecuritySnapshotDictionary,
-  indexedDb,
   useVooHistory,
   PropertyLabel,
   Property,
 } from "client";
-import type { ResolveSecuritySnapshotResponse } from "server/routes/accounts/post-resolve-security-snapshot";
 import {
   extractCashFlows,
   computeMWR,
@@ -22,12 +16,11 @@ import {
   valueAt,
   computeQtyDivergence,
   buildPriceIndex,
-  buildSnapshotPriceAt,
   buildBenchmarkPriceAt,
-  findBenchmarkSecurityId,
   earliestDataDate,
   computeEffectiveWindowStart,
 } from "client/lib/hooks/calculation/benchmark";
+import { BENCHMARK_TICKER } from "common/constants";
 import "./index.css";
 
 interface Props {
@@ -36,7 +29,6 @@ interface Props {
 
 type WindowKey = "1Y" | "3Y" | "All";
 const WINDOW_OPTIONS: WindowKey[] = ["1Y", "3Y", "All"];
-const BENCHMARK_TICKER = "VOO";
 
 const toDateString = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -56,7 +48,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
   const accountIds = accounts.map((a) => a.account_id);
   // Stable string key for memo deps so array identity doesn't matter.
   const accountIdsKey = accountIds.slice().sort().join(",");
-  const { data, setData, viewDate, calculations } = useAppContext();
+  const { data, viewDate, calculations } = useAppContext();
   const { investmentTransactions, securitySnapshots } = data;
   const { holdingSnapshots } = calculations;
 
@@ -72,10 +64,6 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     }
   };
   const vooHistory = useVooHistory();
-  // Already-attempted (security_id, date) keys for Polygon resolve so
-  // retries don't loop on no_data/plan_limit and window-toggle re-renders
-  // don't refetch.
-  const attemptedResolveRef = useRef<Set<string>>(new Set());
 
   const computed = useMemo(() => {
     const ids = accountIdsKey.split(",").filter(Boolean);
@@ -116,8 +104,7 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
 
     // User-MWR price index — merges security_snapshots (daily institutional
     // close from Plaid) with the user's own investment_transactions.
-    // Snapshot wins for boundary dates that have one — including anything
-    // Polygon has backfilled via resolve-security-snapshot. Txn fills the
+    // Snapshot wins for boundary dates that have one. Txn fills the
     // long historical tail predating Plaid's sync. `buildPriceIndex`
     // additionally exposes `priceEntryAt` + `earliestOnOrAfter` for the
     // window-anchor honesty computation below.
@@ -183,11 +170,11 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     // asset-side flows + valuations as the MWR (see computeTWR).
     const twr = computeTWR({ flows, valueAt: valueAtAll, windowStart, windowEnd });
 
-    // Benchmark TWR fallback chain: security_snapshots → static CSV.
-    // (Polygon resolve fires async in a separate useEffect and merges
-    // results back into security_snapshots, where they'll feed the next
-    // render of this memo.)
-    const benchmarkPriceAt = buildBenchmarkPriceAt(securitySnapshots, vooHistory, BENCHMARK_TICKER);
+    // Benchmark TWR from security_snapshots and the static CSV, whichever close is dated nearer.
+    // Until the CSV loads it shows as loading, not as a snapshot-only figure that changes on arrival.
+    const benchmarkPriceAt = vooHistory
+      ? buildBenchmarkPriceAt(securitySnapshots, vooHistory, BENCHMARK_TICKER)
+      : () => null;
     let benchmark: ReturnType<typeof computeBenchmarkTWR> | null = null;
     const benchPriceStart = benchmarkPriceAt(windowStart);
     const benchPriceEnd = benchmarkPriceAt(windowEnd);
@@ -295,48 +282,6 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     viewDate,
     vooHistory,
   ]);
-
-  // Async tier of the benchmark fallback chain: when security_snapshots
-  // are missing a price for windowStart or windowEnd, fire a Polygon
-  // resolve and merge the returned snapshot into AppContext. Subsequent
-  // renders pick it up via the memo's `securitySnapshots` dep. The static
-  // CSV already renders the sync fallback, so this just upgrades the
-  // snapshot store; it doesn't block first paint.
-  useEffect(() => {
-    if (!computed) return;
-    const vooSecurityId = findBenchmarkSecurityId(securitySnapshots, BENCHMARK_TICKER);
-    if (!vooSecurityId) return;
-    const snapPriceAt = buildSnapshotPriceAt(securitySnapshots);
-    const candidates = [computed.windowStart, computed.windowEnd];
-    for (const date of candidates) {
-      if (snapPriceAt(vooSecurityId, date) != null) continue;
-      const key = `${vooSecurityId}:${date}`;
-      if (attemptedResolveRef.current.has(key)) continue;
-      attemptedResolveRef.current.add(key);
-      call
-        .post<ResolveSecuritySnapshotResponse>("/api/resolve-security-snapshot", {
-          security_id: vooSecurityId,
-          date,
-        })
-        .then((response) => {
-          if (response.status !== "success" || !response.body) return;
-          const resolved = response.body.snapshot;
-          if (!resolved) return; // plan_limit / no_data — CSV already covered it
-          const snap = new SecuritySnapshot(resolved);
-          indexedDb.save(snap).catch(console.error);
-          setData((oldData) => {
-            const newData = new Data(oldData);
-            const newSS = new SecuritySnapshotDictionary(newData.securitySnapshots);
-            newSS.set(snap.snapshot.snapshot_id, snap);
-            newData.securitySnapshots = newSS;
-            return newData;
-          });
-        })
-        .catch((err) => {
-          console.warn("resolve-security-snapshot failed", err);
-        });
-    }
-  }, [computed, securitySnapshots, setData]);
 
   if (!computed) return null;
   const {

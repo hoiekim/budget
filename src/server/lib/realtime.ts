@@ -148,7 +148,6 @@ const MUTATION_DOMAINS: Record<string, EmitDomain> = {
   "/item": TableName.Accounts,
   "/snapshot": TableName.Snapshots,
   "/snapshots/holding": TableName.Snapshots,
-  "/resolve-security-snapshot": TableName.Snapshots,
   "/budget": TableName.Budgets,
   "/new-budget": TableName.Budgets,
   "/section": TableName.Sections,

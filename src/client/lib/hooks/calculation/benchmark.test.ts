@@ -14,7 +14,7 @@ import {
   buildPriceAt,
   buildPriceIndex,
   computeEffectiveWindowStart,
-  priceAtIn,
+  rowAtIn,
   buildBenchmarkPriceAt,
   computeHoldingBenchmark,
   type PriceRow,
@@ -1111,21 +1111,27 @@ describe("extractCashFlows securityIds filter", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-describe("priceAtIn", () => {
+describe("rowAtIn", () => {
   const history: PriceRow[] = [
     { date: "2024-01-01", close: 100 },
     { date: "2025-01-01", close: 200 },
     { date: "2026-01-01", close: 400 },
+    { date: "2026-06-01", close: 500 },
   ];
-  test("returns latest close ≤ date", () => {
-    expect(priceAtIn(history, "2025-06-01")).toBe(200);
-    expect(priceAtIn(history, "2026-01-01")).toBe(400);
+  test("returns the latest row ≤ date", () => {
+    expect(
+      ["2024-01-01", "2024-06-01", "2025-06-01", "2026-01-01", "2026-03-01", "2026-06-01", "2027-01-01"].map(
+        (date) => rowAtIn(history, date)?.close,
+      ),
+    ).toEqual([100, 100, 200, 400, 400, 500, 500]);
+    expect(rowAtIn(history.slice(0, 3), "2025-12-31")).toEqual({ date: "2025-01-01", close: 200 });
   });
   test("null before history starts; empty history null", () => {
-    expect(priceAtIn(history, "2023-12-31")).toBeNull();
-    expect(priceAtIn([], "2025-01-01")).toBeNull();
+    expect(rowAtIn(history, "2023-12-31")).toBeNull();
+    expect(rowAtIn([], "2025-01-01")).toBeNull();
   });
 });
+
 
 describe("buildPriceIndex — sourceDate + earliestOnOrAfter", () => {
   // Snapshots on 2024-06-01/2024-07-01, a buy on 2024-06-15. Merged index.
@@ -1411,6 +1417,50 @@ describe("buildBenchmarkPriceAt", () => {
     expect(priceAt("2025-07-01")).toBe(300); // snapshot
     expect(priceAt("2020-06-01")).toBe(100); // CSV fallback (no snapshot ≤ date)
     expect(priceAt("2019-01-01")).toBeNull(); // predates everything
+  });
+  test("every row with the ticker reads as one series", () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("filled-1", mkSecuritySnap("benchmark-VOO", 300, "2026-11-02", "VOO"));
+    ss.set("filled-2", mkSecuritySnap("benchmark-VOO", 310, "2026-12-01", "VOO"));
+    ss.set("provider-1", mkSecuritySnap("provider-voo", 320, "2027-03-01", "VOO"));
+    ss.set("other", mkSecuritySnap("sec-other", 999, "2026-11-15", "OTHER"));
+    const csv: PriceRow[] = [{ date: "2026-10-13", close: 290 }];
+    const priceAt = buildBenchmarkPriceAt(ss, csv, "VOO");
+    expect(
+      ["2026-11-10", "2026-11-20", "2026-12-15", "2027-03-02", "2026-10-20"].map((date) => priceAt(date)),
+    ).toEqual([300, 300, 310, 320, 290]);
+  });
+  test("a date two rows share takes the close of the row with the freshest series", () => {
+    const ss = new SecuritySnapshotDictionary();
+    // The freshest row's close is inserted after the other's on one shared date and before it on the other.
+    ss.set("provider-a", mkSecuritySnap("provider-voo", 305, "2026-12-01", "VOO"));
+    ss.set("filled-a", mkSecuritySnap("benchmark-VOO", 310, "2026-12-01", "VOO"));
+    ss.set("filled-b", mkSecuritySnap("benchmark-VOO", 312, "2026-12-15", "VOO"));
+    ss.set("provider-b", mkSecuritySnap("provider-voo", 307, "2026-12-15", "VOO"));
+    ss.set("filled-new", mkSecuritySnap("benchmark-VOO", 315, "2027-01-04", "VOO"));
+    ss.set("provider-older", mkSecuritySnap("provider-voo", 280, "2026-11-01", "VOO"));
+    const priceAt = buildBenchmarkPriceAt(ss, [], "VOO");
+    expect(["2026-11-15", "2026-12-01", "2026-12-15"].map((date) => priceAt(date))).toEqual([280, 310, 312]);
+  });
+  test("each date takes the close dated nearest it, from either source", () => {
+    const ss = new SecuritySnapshotDictionary();
+    ss.set("monthly", mkSecuritySnap(VOO, 553.33, "2025-01-31", "VOO"));
+    ss.set("same-day", mkSecuritySnap(VOO, 560, "2025-03-03", "VOO"));
+    ss.set("after-history", mkSecuritySnap(VOO, 715.2, "2026-10-20", "VOO"));
+    const csv: PriceRow[] = [
+      { date: "2025-01-30", close: 551 },
+      { date: "2025-02-26", close: 546.75 },
+      { date: "2025-03-03", close: 559 },
+      { date: "2026-10-13", close: 710 },
+    ];
+    const priceAt = buildBenchmarkPriceAt(ss, csv, "VOO");
+    expect(["2025-01-31", "2025-02-26", "2025-03-03", "2026-10-21", "2026-10-15"].map((date) => priceAt(date))).toEqual([
+      553.33, // the snapshot is a day nearer than the history's row
+      546.75, // the history's close on the day beats a snapshot weeks older
+      560, // a tie goes to the snapshot
+      715.2, // past the history's end
+      710, // the history's last close is nearer than any snapshot
+    ]);
   });
   test("no snapshot for ticker → CSV only", () => {
     const ss = new SecuritySnapshotDictionary();
