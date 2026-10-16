@@ -229,6 +229,19 @@ describe("TransactionRow — suggested transfer pair", () => {
     expect(dialog()).toBeNull();
   });
 
+  it("quick-confirm checkmark posts without opening the dialog", async () => {
+    const { calls } = renderSuggestedRow();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    });
+
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].method).toBe("POST");
+    expect(calls.requests[0].url).toBe("/api/transfers/pair");
+    expect(dialog()).toBeNull();
+  });
+
   for (const action of ["Confirm", "Reject"] as const) {
     it(`keeps the dialog open and surfaces the message when a ${action.toLowerCase()} is refused`, async () => {
       const alerts = captureAlerts();
@@ -387,34 +400,61 @@ const renderRecurringRow = (
   return { ...rendered, calls: stub.calls };
 };
 
+const recurringChip = () => screen.getByRole("button", { name: "Recurring" });
+const openRecurringDialog = () => act(() => void fireEvent.click(recurringChip()));
+const recurringDialog = () => document.querySelector("div.RecurringModal");
+const quickConfirm = () => screen.getByRole("button", { name: "Confirm recurring" });
+
 describe("TransactionRow — recurring", () => {
-  it("suggested: shows the Recurring chip with Confirm and Dismiss", () => {
+  it("suggested: shows the chip and quick-confirm, and no modal until clicked", () => {
     const { container } = renderRecurringRow("suggested");
     expect(container.querySelector(".recurringChip.suggested")).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Confirm" }),
-    ).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Dismiss" }),
-    ).not.toBeNull();
+    expect(quickConfirm()).not.toBeNull();
     // Budget/category controls are replaced, like suggested transfers.
     expect(container.querySelector(".labelControls")).toBeNull();
+    expect(recurringDialog()).toBeNull();
   });
 
-  it("suggested: Confirm posts to /api/recurrings", async () => {
+  it("suggested: chip opens the modal with named Confirm/Dismiss", () => {
+    renderRecurringRow("suggested");
+    openRecurringDialog();
+    expect(recurringDialog()).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Confirm", hidden: false }),
+    ).not.toBeNull();
+  });
+
+  it("suggested: quick-confirm posts to /api/recurrings without a modal", async () => {
     const { calls } = renderRecurringRow("suggested");
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+      fireEvent.click(quickConfirm());
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].url).toBe("/api/recurrings");
+    expect(calls.requests[0].method).toBe("POST");
+    expect(recurringDialog()).toBeNull();
+  });
+
+  it("suggested: modal Confirm posts to /api/recurrings", async () => {
+    const { calls } = renderRecurringRow("suggested");
+    openRecurringDialog();
+    await act(async () => {
+      fireEvent.click(
+        recurringDialog()!.querySelector("button.confirmButton") as HTMLElement,
+      );
     });
     expect(calls.requests).toHaveLength(1);
     expect(calls.requests[0].url).toBe("/api/recurrings");
     expect(calls.requests[0].method).toBe("POST");
   });
 
-  it("suggested: Dismiss issues a DELETE", async () => {
+  it("suggested: modal Dismiss issues a DELETE", async () => {
     const { calls } = renderRecurringRow("suggested");
+    openRecurringDialog();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+      fireEvent.click(
+        recurringDialog()!.querySelector("button.rejectButton") as HTMLElement,
+      );
     });
     expect(calls.requests).toHaveLength(1);
     expect(calls.requests[0].url).toBe(

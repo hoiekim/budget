@@ -197,7 +197,9 @@ export interface CreateRecurringInput {
 /**
  * Manually create a recurring from explicit transaction ids (the "mark as
  * recurring" affordance), or un-dismiss a previously-dismissed merchant
- * group. Wrapped in a single DB transaction with a per-user advisory lock
+ * group. A single transaction is allowed — the user is asserting the
+ * pattern, and the detection job's auto-attach will pick up future
+ * matches. Wrapped in a single DB transaction with a per-user advisory lock
  * so concurrent creates can't put one transaction in two active recurrings.
  *
  * Invariants enforced:
@@ -212,10 +214,10 @@ export const createRecurring = async (
   input: CreateRecurringInput,
 ): Promise<RecurringResult> => {
   const uniqueIds = [...new Set(input.transaction_ids)];
-  if (uniqueIds.length < 2) {
+  if (uniqueIds.length < 1) {
     return {
       ok: false,
-      error: "A recurring needs at least two transactions.",
+      error: "A recurring needs at least one transaction.",
     };
   }
 
@@ -299,6 +301,131 @@ export const createRecurring = async (
 
     await client.query("COMMIT");
     return { ok: true, recurring_id: result.rows[0].recurring_id };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Add transactions to an existing recurring (the "add to recurring"
+ * affordance on the transaction detail page). The recurring keeps its
+ * merchant_key/cadence/is_income; the added transactions just join its
+ * member set.
+ *
+ * Invariants enforced (same guards as createRecurring):
+ *   - The recurring must exist, belong to this user, be alive, and not
+ *     be dismissed (adding to a dismissed group would fight the denylist).
+ *   - Every transaction must exist, be alive, and belong to this user.
+ *   - REJECT if any transaction is already in ANOTHER active recurring.
+ *     Transactions already in THIS recurring are silently deduped.
+ *   - REJECT if a transaction's direction doesn't match the recurring's
+ *     is_income — an income recurring can't hold a charge.
+ */
+export const addToRecurring = async (
+  user: MaskedUser,
+  recurring_id: string,
+  transaction_ids: string[],
+): Promise<RecurringResult> => {
+  const uniqueIds = [...new Set(transaction_ids)];
+  if (uniqueIds.length === 0) {
+    return { ok: false, error: "No transactions to add." };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))`,
+      [user.user_id],
+    );
+
+    const rec = await client.query(
+      `SELECT ${RECURRING_ID}, ${IS_INCOME}, ${STATUS} FROM ${RECURRINGS}
+       WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
+      [user.user_id, recurring_id],
+    );
+    if ((rec.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error: "That recurring no longer exists.",
+      };
+    }
+    const row = rec.rows[0];
+    if (row[STATUS] === "dismissed") {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error: "That recurring was dismissed. Confirm it again before adding transactions.",
+      };
+    }
+    const is_income = row[IS_INCOME] as boolean;
+
+    const txns = await client.query<{ transaction_id: string; amount: string }>(
+      `SELECT ${TRANSACTION_ID}, amount FROM ${TRANSACTIONS}
+       WHERE ${USER_ID} = $1
+         AND ${TRANSACTION_ID} = ANY($2::text[])
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+         AND pending = FALSE
+       FOR SHARE`,
+      [user.user_id, uniqueIds],
+    );
+    if ((txns.rowCount ?? 0) !== uniqueIds.length) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          "One or more transactions no longer exist (deleted or never belonged to this user).",
+      };
+    }
+    const wrongDirection = txns.rows.some(
+      (t) => (Number(t.amount) < 0) !== is_income,
+    );
+    if (wrongDirection) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error: is_income
+          ? "That recurring holds income — only deposits can join it."
+          : "That recurring holds charges — only expenses can join it.",
+      };
+    }
+
+    const collision = await client.query<{ recurring_id: string }>(
+      `SELECT ${RECURRING_ID} FROM ${RECURRINGS}
+       WHERE ${USER_ID} = $1
+         AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+         AND ${STATUS} <> 'dismissed'
+         AND ${RECURRING_ID} <> $2
+         AND ${TRANSACTION_IDS} && $3::text[]
+       LIMIT 1`,
+      [user.user_id, recurring_id, uniqueIds],
+    );
+    if (collision.rowCount && collision.rowCount > 0) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          "One of these transactions is already in another recurring. Remove it from the existing recurring first.",
+      };
+    }
+
+    await client.query(
+      `UPDATE ${RECURRINGS}
+       SET ${TRANSACTION_IDS} = (
+         SELECT ARRAY(SELECT DISTINCT UNNEST(${TRANSACTION_IDS} || $2::text[]))
+       ),
+       ${UPDATED} = CURRENT_TIMESTAMP
+       WHERE ${RECURRING_ID} = $1 AND ${USER_ID} = $3`,
+      [recurring_id, uniqueIds, user.user_id],
+    );
+
+    await client.query("COMMIT");
+    return { ok: true, recurring_id };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;

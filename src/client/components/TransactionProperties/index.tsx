@@ -16,6 +16,7 @@ import {
   useAppContext,
   useBudgetCategorySelect,
   useMutate,
+  useRecurrings,
   useTransfers,
   call,
   indexedDb,
@@ -49,8 +50,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData, calculations, router } = useAppContext();
   const transactionMutate = useMutate(Transaction);
   const transferActions = useTransfers();
+  const recurringActions = useRecurrings();
   const { transactionFamilies } = calculations;
-  const { accounts, sections, categories, transfers } = data;
+  const { accounts, sections, categories, transfers, recurrings } = data;
 
   const {
     transaction_id,
@@ -296,6 +298,50 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const [showPartnerPicker, setShowPartnerPicker] = useState(false);
   const [pendingPartnerId, setPendingPartnerId] = useState<string | null>(null);
 
+  // Recurring picker state — mirrors the transfer partner picker above.
+  const [showRecurringPicker, setShowRecurringPicker] = useState(false);
+  const [recurringName, setRecurringName] = useState("");
+  const [pendingRecurringId, setPendingRecurringId] = useState<string | null>(null);
+  const existingRecurring = recurrings.byTransactionId.get(transaction_id);
+  const isIncomeTx = amount < 0;
+  // Existing recurrings of the same direction, excluding dismissed and
+  // the one this transaction already belongs to.
+  const recurringCandidates = useMemo(() => {
+    const list: { recurring_id: string; merchant_name: string; status: string }[] = [];
+    recurrings.forEach((r) => {
+      if (r.is_income !== isIncomeTx) return;
+      if (r.status === "dismissed") return;
+      if (r.recurring_id === existingRecurring?.recurring_id) return;
+      list.push({
+        recurring_id: r.recurring_id,
+        merchant_name: r.merchant_name,
+        status: r.status,
+      });
+    });
+    return list;
+  }, [recurrings, isIncomeTx, existingRecurring]);
+
+  const onClickCreateRecurring = async () => {
+    const displayName = recurringName.trim() || merchant_name || name;
+    setPendingRecurringId("new");
+    try {
+      const id = await recurringActions.create([transaction_id], displayName);
+      if (id) setShowRecurringPicker(false);
+    } finally {
+      setPendingRecurringId(null);
+    }
+  };
+
+  const onClickRecurringCandidate = async (recurringId: string) => {
+    setPendingRecurringId(recurringId);
+    try {
+      const ok = await recurringActions.addTo(recurringId, [transaction_id]);
+      if (ok) setShowRecurringPicker(false);
+    } finally {
+      setPendingRecurringId(null);
+    }
+  };
+
   const txAmount = transaction.amount;
   const txDateMs = new LocalDate(authorized_date || date).getTime();
   const partnerCandidates = useMemo(() => {
@@ -539,6 +585,90 @@ export const TransactionProperties = ({ transaction }: Props) => {
             <ButtonRow disabled={!!pendingPartnerId} onClick={() => setShowPartnerPicker(false)}>
               Cancel
             </ButtonRow>
+          </>
+        )}
+      </Property>
+      <PropertyLabel>Recurring</PropertyLabel>
+      <Property>
+        {existingRecurring ? (
+          <KeyValue name="Recurring">
+            <span>
+              {existingRecurring.merchant_name} · {existingRecurring.status}
+            </span>
+          </KeyValue>
+        ) : (
+          <>
+            {!showRecurringPicker && (
+              <ButtonRow
+                onClick={() => {
+                  setRecurringName(merchant_name || name || "");
+                  setShowRecurringPicker(true);
+                }}
+              >
+                Mark&nbsp;as&nbsp;Recurring
+              </ButtonRow>
+            )}
+            {showRecurringPicker && (
+              <>
+                <KeyValue name="Name">
+                  <input
+                    type="text"
+                    value={recurringName}
+                    onChange={(e) => setRecurringName(e.target.value)}
+                    placeholder={merchant_name || name || "Recurring name"}
+                    disabled={!!pendingRecurringId}
+                  />
+                </KeyValue>
+                <ButtonRow
+                  disabled={!!pendingRecurringId}
+                  onClick={onClickCreateRecurring}
+                >
+                  {pendingRecurringId === "new" ? "Creating…" : "Create new recurring"}
+                </ButtonRow>
+                {recurringCandidates.length > 0 && (
+                  <>
+                    <KeyValue name="Add&nbsp;to&nbsp;existing" />
+                    {recurringCandidates.map((candidate) => {
+                      const isPending = pendingRecurringId === candidate.recurring_id;
+                      const disabled = !!pendingRecurringId;
+                      const onClick = disabled
+                        ? undefined
+                        : () => onClickRecurringCandidate(candidate.recurring_id);
+                      return (
+                        <Row
+                          key={candidate.recurring_id}
+                          className={`partnerCandidate${disabled ? " disabled" : ""}`}
+                          role="button"
+                          tabIndex={disabled ? -1 : 0}
+                          aria-disabled={disabled}
+                          onClick={onClick}
+                          onKeyDown={(e) => {
+                            if (!disabled && (e.key === "Enter" || e.key === " ")) {
+                              e.preventDefault();
+                              onClick?.();
+                            }
+                          }}
+                        >
+                          <div className="partnerCandidateInfo">
+                            <div className="merchant_name">
+                              <div className="bigText">{candidate.merchant_name}</div>
+                              <div className="smallText">{candidate.status}</div>
+                            </div>
+                            <div className="amount">{isPending && <>…</>}</div>
+                          </div>
+                        </Row>
+                      );
+                    })}
+                  </>
+                )}
+                <ButtonRow
+                  disabled={!!pendingRecurringId}
+                  onClick={() => setShowRecurringPicker(false)}
+                >
+                  Cancel
+                </ButtonRow>
+              </>
+            )}
           </>
         )}
       </Property>

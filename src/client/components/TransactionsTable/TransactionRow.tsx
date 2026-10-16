@@ -287,6 +287,7 @@ const TransactionRow = ({ transaction }: Props) => {
           />
         ) : suggestedRecurringId ? (
           <RecurringControls
+            merchantName={recurring?.merchant_name ?? ""}
             onConfirm={() => recurringActions.confirm(suggestedRecurringId)}
             onDismiss={() => recurringActions.dismiss(suggestedRecurringId)}
           />

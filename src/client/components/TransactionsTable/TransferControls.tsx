@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { TransferPairModal } from "client/components";
+import { CheckIcon, TransferPairModal } from "client/components";
 
 interface Props {
   onConfirm: () => Promise<boolean>;
@@ -12,7 +12,9 @@ interface Props {
  * "suggested".
  *
  * The chip carries no outcome of its own — it opens `TransferPairModal`,
- * where confirm and reject are named, symmetric buttons.
+ * where confirm and reject are named, symmetric buttons. The checkmark
+ * confirms immediately, like the quick-accept on suggested category
+ * labels.
  */
 const TransferControls = ({ onConfirm, onReject }: Props) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -43,6 +45,13 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
     <div className="transferControls">
       <button className="transferChip suggested" onClick={() => setIsModalOpen(true)}>
         Transfer
+      </button>
+      <button
+        className="transferQuickConfirm"
+        aria-label="Confirm transfer"
+        onClick={run(onConfirm)}
+      >
+        <CheckIcon size={20} />
       </button>
       {isModalOpen && (
         <TransferPairModal

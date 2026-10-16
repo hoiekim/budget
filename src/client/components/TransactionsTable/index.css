@@ -165,27 +165,34 @@ div.TransactionRow .recurringControls > .recurringChip {
   background-color: var(--surface);
 }
 
-div.TransactionRow .recurringControls > .recurringChip.suggested {
+div.TransactionRow .recurringControls > button.recurringChip.suggested {
   background-color: color-mix(in srgb, var(--amber) 25%, var(--surface));
   color: var(--amber);
 }
 
-div.TransactionRow .recurringControls > .recurringConfirm,
-div.TransactionRow .recurringControls > .recurringDismiss {
+/* The chip sets its own background, which outranks the global
+   `button:not(:disabled):hover` rule on specificity, so the hover cue has to
+   be restated at the chip's own selector — same as .transferChip. */
+div.TransactionRow .recurringControls > button.recurringChip.suggested:hover {
+  background-color: color-mix(in srgb, var(--amber) 35%, var(--surface));
+}
+
+/* Quick-confirm checkmark next to the chip — mirrors the suggested
+   category label's confirmButton. */
+div.TransactionRow .recurringControls > .recurringQuickConfirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 24px;
-  padding: 2px 10px;
+  width: 32px;
   border-radius: 12px;
-  font-size: 13px;
-  white-space: nowrap;
+  color: var(--darkGreen);
+  background-color: inherit;
 }
 
-div.TransactionRow .recurringControls > .recurringConfirm {
-  background-color: var(--darkGreen);
+div.TransactionRow .recurringControls > .recurringQuickConfirm:hover {
   color: var(--textBright);
-}
-
-div.TransactionRow .recurringControls > .recurringDismiss {
-  background-color: var(--surface);
+  background-color: var(--darkGreen);
 }
 
 
@@ -207,4 +214,22 @@ div.TransactionsHead > div {
 
 div.TransactionsHead > .hiddenColumn > button {
   text-decoration: line-through;
+}
+
+/* Quick-confirm checkmark next to the transfer chip — mirrors the
+   suggested category label's confirmButton. */
+div.TransactionRow .transferControls > .transferQuickConfirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 32px;
+  border-radius: 12px;
+  color: var(--darkGreen);
+  background-color: inherit;
+}
+
+div.TransactionRow .transferControls > .transferQuickConfirm:hover {
+  color: var(--textBright);
+  background-color: var(--darkGreen);
 }

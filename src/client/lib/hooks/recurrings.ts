@@ -20,9 +20,13 @@ export interface RecurringActions {
   dismiss: (recurring_id: string) => Promise<boolean>;
   /** Manually create a recurring from explicit transaction ids (the "mark
    *  as recurring" affordance). Lands directly as `status="confirmed"` —
-   *  manual creation is user intent, not a suggestion. Returns the new
-   *  recurring_id, or null when the server refused. */
-  create: (transaction_ids: string[]) => Promise<string | null>;
+   *  manual creation is user intent, not a suggestion. An optional
+   *  display name overrides the server-derived merchant name. Returns the
+   *  new recurring_id, or null when the server refused. */
+  create: (transaction_ids: string[], merchant_name?: string) => Promise<string | null>;
+  /** Add transactions to an existing recurring (the detail page's "add to
+   *  recurring" affordance). Returns true when the server write landed. */
+  addTo: (recurring_id: string, transaction_ids: string[]) => Promise<boolean>;
 }
 
 /**
@@ -87,9 +91,10 @@ export const useRecurrings = (): RecurringActions => {
   );
 
   const create = useCallback(
-    async (transaction_ids: string[]) => {
+    async (transaction_ids: string[], merchant_name?: string) => {
       const response = await call.post<{ recurring_id: string }>("/api/recurrings", {
         transaction_ids,
+        ...(merchant_name ? { merchant_name } : {}),
       });
       if (response.status !== "success" || !response.body) {
         if (response.message) window.alert(response.message);
@@ -105,5 +110,22 @@ export const useRecurrings = (): RecurringActions => {
     [setData],
   );
 
-  return { confirm, dismiss, create };
+  const addTo = useCallback(
+    async (recurring_id: string, transaction_ids: string[]) => {
+      const response = await call.post("/api/recurrings", {
+        recurring_id,
+        transaction_ids,
+      });
+      if (response.status !== "success") {
+        if (response.message) window.alert(response.message);
+        return false;
+      }
+      // The updated member set arrives via the realtime
+      // `recurrings-updated` event's refetch (or the next sync).
+      return true;
+    },
+    [],
+  );
+
+  return { confirm, dismiss, create, addTo };
 };

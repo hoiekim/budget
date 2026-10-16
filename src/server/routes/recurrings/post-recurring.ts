@@ -1,6 +1,7 @@
 import {
   Route,
   createRecurring,
+  addToRecurring,
   confirmRecurring,
   normalizeMerchantName,
   transactionsTable,
@@ -31,8 +32,19 @@ export const postRecurringRoute = new Route("POST", "/recurrings", async (req) =
 
   const body = bodyResult.data as Record<string, unknown>;
 
-  // If recurring_id is provided, confirm an existing suggested recurring.
+  // If recurring_id is provided with transaction_ids, add those
+  // transactions to the existing recurring (the detail page's "add to
+  // recurring" affordance). With recurring_id alone, confirm a suggested
+  // recurring.
   if (typeof body.recurring_id === "string") {
+    if (Array.isArray(body.transaction_ids)) {
+      const transactionIds = body.transaction_ids.filter(
+        (id): id is string => typeof id === "string",
+      );
+      const result = await addToRecurring(user, body.recurring_id, transactionIds);
+      if (!result.ok) return { status: "failed", message: result.error };
+      return { status: "success", body: { recurring_id: body.recurring_id } };
+    }
     const result = await confirmRecurring(user, body.recurring_id);
     if (!result.ok) return { status: "failed", message: result.error };
     return { status: "success", body: { recurring_id: body.recurring_id } };
@@ -51,8 +63,8 @@ export const postRecurringRoute = new Route("POST", "/recurrings", async (req) =
   const transactionIds = body.transaction_ids.filter(
     (id): id is string => typeof id === "string",
   );
-  if (transactionIds.length < 2) {
-    return validationError("at least two transactions are required");
+  if (transactionIds.length < 1) {
+    return validationError("at least one transaction is required");
   }
 
   const txnModels = await transactionsTable.query(
@@ -99,14 +111,25 @@ export const postRecurringRoute = new Route("POST", "/recurrings", async (req) =
       ),
     );
   }
-  intervals.sort((a, b) => a - b);
-  const medianInterval = intervals[Math.floor(intervals.length / 2)]!;
-  const cadence = CADENCE_BY_DAYS.find(
-    (c) => medianInterval <= c.maxDays,
-  )!.cadence;
+  // A single transaction has no interval to measure — default to
+  // monthly; the cadence is informational and the detection job's
+  // auto-attach matches on merchant_key + direction regardless.
+  let cadence: RecurringCadence = "monthly";
+  if (intervals.length > 0) {
+    intervals.sort((a, b) => a - b);
+    const medianInterval = intervals[Math.floor(intervals.length / 2)]!;
+    cadence = CADENCE_BY_DAYS.find((c) => medianInterval <= c.maxDays)!.cadence;
+  }
 
+  // A caller-supplied name wins (the detail page's "name this
+  // recurring" input); otherwise fall back to the most common
+  // merchant_name among the members.
+  const customName =
+    typeof body.merchant_name === "string" && body.merchant_name.trim()
+      ? body.merchant_name.trim()
+      : null;
   const nameCounts = new Map<string, number>();
-  let merchant_name = txns[0]!.merchant_name || txns[0]!.name;
+  let merchant_name = customName ?? txns[0]!.merchant_name ?? txns[0]!.name;
   let best = 0;
   for (const t of txns) {
     const n = t.merchant_name || t.name;
