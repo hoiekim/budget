@@ -1,6 +1,7 @@
 import { ChangeEventHandler, useMemo, useState, useEffect } from "react";
 import {
   currencyCodeToSymbol,
+  getNextRecurringDate,
   LocalDate,
   numberToCommaString,
   TRANSFER_DATE_WINDOW_DAYS as PARTNER_DATE_WINDOW_DAYS,
@@ -304,21 +305,33 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const [pendingRecurringId, setPendingRecurringId] = useState<string | null>(null);
   const existingRecurring = recurrings.byTransactionId.get(transaction_id);
   const isIncomeTx = amount < 0;
-  // Existing recurrings of the same direction, excluding dismissed and
-  // the one this transaction already belongs to.
+  // Confirmed recurrings of the same direction that this transaction could
+  // join. Suggested ones are left out: joining one would leave the
+  // transaction in a recurring the user never confirmed. Each shows its
+  // latest charge as the amount that recurs.
   const recurringCandidates = useMemo(() => {
-    const list: { recurring_id: string; merchant_name: string; status: string }[] = [];
+    const list: { recurring_id: string; merchant_name: string; amount: string }[] = [];
     recurrings.forEach((r) => {
       if (r.is_income !== isIncomeTx) return;
-      if (r.status === "dismissed") return;
+      if (r.status !== "confirmed") return;
       if (r.recurring_id === existingRecurring?.recurring_id) return;
+      const latest = r.transactions.reduce<(typeof r.transactions)[number] | undefined>(
+        (found, t) =>
+          !found || (t.authorized_date || t.date) > (found.authorized_date || found.date)
+            ? t
+            : found,
+        undefined,
+      );
+      const symbol = currencyCodeToSymbol(latest?.iso_currency_code || "");
       list.push({
         recurring_id: r.recurring_id,
         merchant_name: r.merchant_name,
-        status: r.status,
+        amount: latest
+          ? `${r.is_income ? "+\u00a0" : ""}${symbol}\u00a0${numberToCommaString(Math.abs(latest.amount))}`
+          : "",
       });
     });
-    return list;
+    return list.sort((a, b) => a.merchant_name.localeCompare(b.merchant_name));
   }, [recurrings, isIncomeTx, existingRecurring]);
 
   const onClickCreateRecurring = async () => {
@@ -339,6 +352,102 @@ export const TransactionProperties = ({ transaction }: Props) => {
       if (ok) setShowRecurringPicker(false);
     } finally {
       setPendingRecurringId(null);
+    }
+  };
+
+  // Summary of the recurring this transaction belongs to, derived from its
+  // member transactions. Dates follow the rest of the UI (authorized date
+  // first) so "From" matches what the transactions list shows.
+  const recurringSummary = useMemo(() => {
+    if (!existingRecurring?.transactions.length) return null;
+    const members = existingRecurring.transactions;
+    const dates = members
+      .map((t) => (t.authorized_date || t.date).slice(0, 10))
+      .sort();
+    const latest = new LocalDate(dates[dates.length - 1]);
+    const total = members.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const currency = members.find((t) => t.iso_currency_code)?.iso_currency_code;
+    return {
+      first: new LocalDate(dates[0]),
+      total,
+      currencySymbol: currencyCodeToSymbol(currency || iso_currency_code || ""),
+      next: getNextRecurringDate(latest, existingRecurring.cadence),
+    };
+  }, [existingRecurring, iso_currency_code]);
+
+  // The recurring's default label, edited with the same selects as the
+  // transaction's own. The server relabels the recurring's transactions to
+  // follow it, apart from ones labeled differently (exceptions).
+  const recurringDefaultLabel = useMemo(
+    () =>
+      new TransactionLabel({
+        budget_id: existingRecurring?.label?.budget_id ?? null,
+        category_id: existingRecurring?.label?.category_id ?? null,
+      }),
+    [existingRecurring?.label?.budget_id, existingRecurring?.label?.category_id],
+  );
+  const recurringSelect = useBudgetCategorySelect(
+    recurringDefaultLabel,
+    undefined,
+    `recurring_${existingRecurring?.recurring_id ?? ""}`,
+  );
+
+  const saveRecurringLabel = async (budget_id: string, category_id: string) => {
+    if (!existingRecurring) return;
+    const previousBudget = recurringSelect.selectedBudgetIdLabel;
+    const previousCategory = recurringSelect.selectedCategoryIdLabel;
+    recurringSelect.setSelectedBudgetIdLabel(budget_id);
+    recurringSelect.setSelectedCategoryIdLabel(category_id);
+    const ok = await recurringActions.setLabel(existingRecurring.recurring_id, {
+      budget_id: budget_id || null,
+      category_id: category_id || null,
+    });
+    if (!ok) {
+      recurringSelect.setSelectedBudgetIdLabel(previousBudget);
+      recurringSelect.setSelectedCategoryIdLabel(previousCategory);
+    }
+  };
+
+  const onChangeRecurringBudget: ChangeEventHandler<HTMLSelectElement> = (e) => {
+    if (e.target.value === recurringSelect.selectedBudgetIdLabel) return;
+    void saveRecurringLabel(e.target.value, "");
+  };
+
+  const onChangeRecurringCategory: ChangeEventHandler<HTMLSelectElement> = (e) => {
+    if (e.target.value === recurringSelect.selectedCategoryIdLabel) return;
+    void saveRecurringLabel(recurringSelect.selectedBudgetIdLabel, e.target.value);
+  };
+
+  // Editable recurring name, saved on blur like the memo above.
+  const [recurringNameValue, setRecurringNameValue] = useState(
+    existingRecurring?.merchant_name ?? "",
+  );
+  useEffect(() => {
+    setRecurringNameValue(existingRecurring?.merchant_name ?? "");
+  }, [existingRecurring?.recurring_id, existingRecurring?.merchant_name]);
+
+  const onBlurRecurringName = async () => {
+    if (!existingRecurring) return;
+    const trimmed = recurringNameValue.trim();
+    if (!trimmed || trimmed === existingRecurring.merchant_name) {
+      setRecurringNameValue(existingRecurring.merchant_name);
+      return;
+    }
+    const ok = await recurringActions.rename(existingRecurring.recurring_id, trimmed);
+    if (!ok) setRecurringNameValue(existingRecurring.merchant_name);
+  };
+
+  // Confirm / dismiss from the detail page. Dismissing a confirmed recurring
+  // is how it's cancelled: the server keeps it as `status='dismissed'` so the
+  // engine stops re-suggesting it, and "Mark as Recurring" un-dismisses it.
+  const [recurringAction, setRecurringAction] = useState<"confirm" | "dismiss" | null>(null);
+  const onClickRecurringAction = async (action: "confirm" | "dismiss") => {
+    if (!existingRecurring || recurringAction) return;
+    setRecurringAction(action);
+    try {
+      await recurringActions[action](existingRecurring.recurring_id);
+    } finally {
+      setRecurringAction(null);
     }
   };
 
@@ -591,11 +700,95 @@ export const TransactionProperties = ({ transaction }: Props) => {
       <PropertyLabel>Recurring</PropertyLabel>
       <Property>
         {existingRecurring ? (
-          <KeyValue name="Recurring">
-            <span>
-              {existingRecurring.merchant_name} · {existingRecurring.status}
-            </span>
-          </KeyValue>
+          <>
+            <KeyValue name="Name">
+              <input
+                type="text"
+                value={recurringNameValue}
+                placeholder="Recurring name"
+                onChange={(e) => setRecurringNameValue(e.target.value)}
+                onBlur={onBlurRecurringName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+            </KeyValue>
+            <KeyValue name="Default&nbsp;Budget">
+              <div>
+                <select
+                  value={recurringSelect.selectedBudgetIdLabel}
+                  onChange={onChangeRecurringBudget}
+                >
+                  <option value="">Select Budget</option>
+                  {recurringSelect.budgetOptions}
+                </select>
+              </div>
+            </KeyValue>
+            <KeyValue name="Default&nbsp;Category">
+              <div>
+                <select
+                  value={recurringSelect.selectedCategoryIdLabel}
+                  onChange={onChangeRecurringCategory}
+                >
+                  <option value="">Select Category</option>
+                  {recurringSelect.categoryOptions}
+                </select>
+              </div>
+            </KeyValue>
+            {recurringSummary && (
+              <>
+                <KeyValue name="From">
+                  <span>
+                    {recurringSummary.first.toLocaleString("en-US", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </span>
+                </KeyValue>
+                <KeyValue name="Total&nbsp;Amount">
+                  <span>
+                    {existingRecurring.is_income && <>+&nbsp;</>}
+                    {recurringSummary.currencySymbol}&nbsp;
+                    {numberToCommaString(recurringSummary.total)}
+                  </span>
+                </KeyValue>
+                {recurringSummary.next && (
+                  <KeyValue name="Next&nbsp;Due">
+                    <span>
+                      {recurringSummary.next.toLocaleString("en-US", {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </KeyValue>
+                )}
+              </>
+            )}
+            {existingRecurring.status === "suggested" ? (
+              <>
+                <ButtonRow
+                  disabled={!!recurringAction}
+                  onClick={() => onClickRecurringAction("confirm")}
+                >
+                  {recurringAction === "confirm" ? "Confirming…" : <>Confirm&nbsp;Recurring</>}
+                </ButtonRow>
+                <ButtonRow
+                  disabled={!!recurringAction}
+                  onClick={() => onClickRecurringAction("dismiss")}
+                >
+                  {recurringAction === "dismiss" ? "Dismissing…" : <>Dismiss&nbsp;Suggestion</>}
+                </ButtonRow>
+              </>
+            ) : (
+              <ButtonRow
+                disabled={!!recurringAction}
+                onClick={() => onClickRecurringAction("dismiss")}
+              >
+                {recurringAction === "dismiss" ? "Removing…" : <>Mark&nbsp;as&nbsp;Non-Recurring</>}
+              </ButtonRow>
+            )}
+          </>
         ) : (
           <>
             {!showRecurringPicker && (
@@ -649,12 +842,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
                             }
                           }}
                         >
-                          <div className="partnerCandidateInfo">
-                            <div className="merchant_name">
-                              <div className="bigText">{candidate.merchant_name}</div>
-                              <div className="smallText">{candidate.status}</div>
+                          <div className="recurringCandidateInfo">
+                            <div className="recurringCandidateName">{candidate.merchant_name}</div>
+                            <div className="recurringCandidateAmount">
+                              {candidate.amount}
+                              {isPending && <>&nbsp;…</>}
                             </div>
-                            <div className="amount">{isPending && <>…</>}</div>
                           </div>
                         </Row>
                       );

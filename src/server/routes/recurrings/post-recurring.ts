@@ -1,8 +1,14 @@
 import {
   Route,
+  Recurring,
+  MaskedUser,
   createRecurring,
   addToRecurring,
   confirmRecurring,
+  renameRecurring,
+  setRecurringLabel,
+  validateFields,
+  getRecurrings,
   normalizeMerchantName,
   transactionsTable,
   USER_ID,
@@ -21,7 +27,20 @@ const CADENCE_BY_DAYS: { maxDays: number; cadence: RecurringCadence }[] = [
   { maxDays: Infinity, cadence: "annual" },
 ];
 
-export const postRecurringRoute = new Route("POST", "/recurrings", async (req) => {
+export interface RecurringPostResponse {
+  recurring_id: string;
+  /** The recurring as it stands after a confirm, create, add, or label
+   *  change, members' labels included — the writing tab applies it
+   *  directly, since it filters out its own realtime event. */
+  recurring?: Recurring;
+}
+
+const readBack = async (user: MaskedUser, recurring_id: string) => {
+  const [recurring] = await getRecurrings(user, { recurringIds: [recurring_id] });
+  return recurring;
+};
+
+export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/recurrings", async (req) => {
   const { user } = req.session;
   if (!user) {
     return { status: "failed", message: "Request user is not authenticated." };
@@ -34,8 +53,9 @@ export const postRecurringRoute = new Route("POST", "/recurrings", async (req) =
 
   // If recurring_id is provided with transaction_ids, add those
   // transactions to the existing recurring (the detail page's "add to
-  // recurring" affordance). With recurring_id alone, confirm a suggested
-  // recurring.
+  // recurring" affordance); with merchant_name, rename it; with label, set
+  // its default budget/category. With recurring_id alone, confirm a
+  // suggested recurring.
   if (typeof body.recurring_id === "string") {
     if (Array.isArray(body.transaction_ids)) {
       const transactionIds = body.transaction_ids.filter(
@@ -43,11 +63,44 @@ export const postRecurringRoute = new Route("POST", "/recurrings", async (req) =
       );
       const result = await addToRecurring(user, body.recurring_id, transactionIds);
       if (!result.ok) return { status: "failed", message: result.error };
+      return {
+        status: "success",
+        body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+      };
+    }
+    if (body.merchant_name !== undefined) {
+      const name = typeof body.merchant_name === "string" ? body.merchant_name.trim() : "";
+      if (!name) return validationError("merchant_name must be a non-empty string");
+      const result = await renameRecurring(user, body.recurring_id, name);
+      if (!result.ok) return { status: "failed", message: result.error };
       return { status: "success", body: { recurring_id: body.recurring_id } };
+    }
+    if (body.label !== undefined) {
+      const fieldsResult = validateFields(body, [
+        { path: "label.budget_id", type: "uuid", nullable: true },
+        { path: "label.category_id", type: "uuid", nullable: true },
+      ]);
+      if (!fieldsResult.success) return validationError(fieldsResult.error!);
+      if (!body.label || typeof body.label !== "object") {
+        return validationError("label must be an object");
+      }
+      const label = body.label as { budget_id?: string | null; category_id?: string | null };
+      const result = await setRecurringLabel(user, body.recurring_id, {
+        budget_id: label.budget_id ?? null,
+        category_id: label.category_id ?? null,
+      });
+      if (!result.ok) return { status: "failed", message: result.error };
+      return {
+        status: "success",
+        body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+      };
     }
     const result = await confirmRecurring(user, body.recurring_id);
     if (!result.ok) return { status: "failed", message: result.error };
-    return { status: "success", body: { recurring_id: body.recurring_id } };
+    return {
+      status: "success",
+      body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+    };
   }
 
   // Otherwise create a new recurring from explicit transaction ids (the
@@ -147,10 +200,14 @@ export const postRecurringRoute = new Route("POST", "/recurrings", async (req) =
     transaction_ids: transactionIds,
     merchant_key,
     merchant_name,
+    name_is_custom: !!customName,
     cadence,
     is_income,
   });
   if (!result.ok) return { status: "failed", message: result.error };
 
-  return { status: "success", body: { recurring_id: result.recurring_id } };
+  return {
+    status: "success",
+    body: { recurring_id: result.recurring_id, recurring: await readBack(user, result.recurring_id) },
+  };
 });
