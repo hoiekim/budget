@@ -164,9 +164,11 @@ export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/rec
       ),
     );
   }
-  // A single transaction has no interval to measure — default to
-  // monthly; the cadence is informational and the detection job's
-  // auto-attach matches on merchant_key + direction regardless.
+  // A single transaction has no interval to measure, so default to
+  // monthly. The detection job's auto-attach (selectConfirmedAttachments)
+  // doesn't trust it: until a recurring has two members it takes a charge
+  // one period of any cadence later, and from then on it measures the
+  // cadence from the members.
   let cadence: RecurringCadence = "monthly";
   if (intervals.length > 0) {
     intervals.sort((a, b) => a - b);
