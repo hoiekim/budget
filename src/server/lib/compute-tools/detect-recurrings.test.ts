@@ -296,18 +296,96 @@ describe("selectConfirmedAttachments", () => {
     ).toEqual(["oct"]);
   });
 
-  test("a same-priced purchase mid-cycle doesn't block the next charge", () => {
-    const prime = (id: string, date: string, amount = 14.99) =>
-      charge(id, date, amount, "Amazon Prime");
-    const recurring = netflix([prime("sep", "2026-09-01")], {
-      merchant_key: "amazon prime",
-    });
+  const prime = (id: string, date: string, amount = 14.99) =>
+    charge(id, date, amount, "Amazon");
+
+  test("a same-priced purchase mid-cycle neither joins nor blocks the next charge", () => {
+    const recurring = netflix([prime("sep", "2026-09-01")], { merchant_key: "amazon" });
     const candidates = [prime("order", "2026-09-20", 13), prime("oct", "2026-10-01")];
-    // The light gate lets the same-priced order in, but never at the
-    // expense of the real charge.
+    // One member, so no measured cadence yet, but the order lands on no
+    // cadence's schedule, so only the real charge joins.
+    expect(runIncrementally(recurring, candidates)).toEqual(["oct"]);
+  });
+
+  test("same-priced purchases off the billing schedule stay out", () => {
+    const recurring = netflix(
+      [prime("aug", "2026-08-01"), prime("sep", "2026-09-01")],
+      { merchant_key: "amazon" },
+    );
+    const candidates = [
+      prime("book", "2026-09-12", 12.5),
+      prime("charger", "2026-09-24", 17),
+      prime("oct", "2026-10-01"),
+      prime("cable", "2026-10-18", 15),
+      prime("nov", "2026-11-01"),
+    ];
     expect(
-      runIncrementally(recurring, candidates),
-    ).toEqual(["order", "oct"]);
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["oct", "nov"]);
+  });
+
+  test("of two charges due in the same cycle, the one closest to the due date joins", () => {
+    const recurring = netflix(
+      [prime("aug", "2026-08-01"), prime("sep", "2026-09-01")],
+      { merchant_key: "amazon" },
+    );
+    // Both within tolerance of Oct 1; the purchase is 3 days early.
+    const candidates = [prime("order", "2026-09-28", 14), prime("oct", "2026-10-01")];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["oct"]);
+  });
+
+  test("the price window can't drift on a run of nearby purchases", () => {
+    const recurring = netflix(
+      [prime("aug", "2026-08-01"), prime("sep", "2026-09-01")],
+      { merchant_key: "amazon" },
+    );
+    const candidates = [
+      prime("a", "2026-09-10", 18),
+      prime("b", "2026-09-17", 22),
+      prime("c", "2026-09-24", 27),
+      prime("oct", "2026-10-01"),
+    ];
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring)),
+    ).toEqual(["oct"]);
+  });
+
+  test("a qualifying group brings in the merchant's history, whatever its dates", () => {
+    // Created by hand from October's charge only; detection still finds the
+    // whole run qualifying.
+    const recurring = netflix([charge("oct", "2026-10-15")]);
+    const candidates = [...history, charge("oct", "2026-10-15")];
+    const group = { transaction_ids: ["jul", "aug", "sep", "oct"] };
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring), group),
+    ).toEqual(["jul", "aug", "sep"]);
+  });
+
+  test("a charge that syncs late with an earlier date joins through its group", () => {
+    const recurring = netflix([history[0]!, history[2]!, charge("oct", "2026-10-15")]);
+    const candidates = [...history, charge("oct", "2026-10-15")];
+    const group = { transaction_ids: ["jul", "aug", "sep", "oct"] };
+    expect(
+      selectConfirmedAttachments(
+        recurring,
+        candidates,
+        claimedBy(recurring),
+        group,
+      ),
+    ).toEqual(["aug"]);
+  });
+
+  test("group charges already claimed elsewhere stay put", () => {
+    const recurring = netflix([charge("oct", "2026-10-15")]);
+    const candidates = [...history, charge("oct", "2026-10-15")];
+    const group = { transaction_ids: ["jul", "aug", "sep", "oct"] };
+    const claimed = new Set(["oct", "aug"]);
+    expect(selectConfirmedAttachments(recurring, candidates, claimed, group)).toEqual([
+      "jul",
+      "sep",
+    ]);
   });
 
   test("a single-transaction manual recurring collects later charges", () => {
