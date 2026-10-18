@@ -20,9 +20,9 @@ import { RECURRINGS } from "common/constants";
 /** Minimum settled occurrences in a run before it counts as a recurring. */
 const MIN_OCCURRENCES = 3;
 /**
- * A run that leaves older same-priced charges out needs one more: three
- * roughly monthly visits to a shop with an irregular history are more
- * likely chance than a bill.
+ * A run that starts after the merchant's first charge needs one more:
+ * three roughly monthly visits to a shop with an irregular history are
+ * more likely chance than a bill.
  */
 const MIN_OCCURRENCES_AFTER_EARLIER_CHARGES = 4;
 /**
@@ -190,7 +190,8 @@ const clusterByAmount = (occurrences: RecurringCandidate[]): RecurringCandidate[
 /**
  * The longest run of a cluster's most recent occurrences that qualifies
  * as a recurring, or null. A run ends at the latest occurrence, has ≥3
- * occurrences (≥4 when it leaves older ones out), every consecutive interval within tolerance of one
+ * occurrences (≥4 when the merchant has older charges at any price), every
+ * consecutive interval within tolerance of one
  * cadence, every amount within ±25% of the run's median, and its latest
  * occurrence within 2× the cadence of `today`. Anything older than the
  * run (a gap, a price that has since changed, a mislabelled charge) is
@@ -198,6 +199,7 @@ const clusterByAmount = (occurrences: RecurringCandidate[]): RecurringCandidate[
  */
 const latestQualifyingRun = (
   sortedByDate: RecurringCandidate[],
+  merchantFirstDate: string,
   today: string,
 ): QualifyingRun | null => {
   const last = sortedByDate[sortedByDate.length - 1];
@@ -214,7 +216,9 @@ const latestQualifyingRun = (
       start--;
     }
     const minimumAt = (from: number) =>
-      from === 0 ? MIN_OCCURRENCES : MIN_OCCURRENCES_AFTER_EARLIER_CHARGES;
+      sortedByDate[from]!.date > merchantFirstDate
+        ? MIN_OCCURRENCES_AFTER_EARLIER_CHARGES
+        : MIN_OCCURRENCES;
     for (let from = start; sortedByDate.length - from >= minimumAt(from); from++) {
       if (best && sortedByDate.length - from <= best.occurrences.length) break;
       const occurrences = sortedByDate.slice(from);
@@ -238,8 +242,8 @@ const latestQualifyingRun = (
  * same merchant are separate), then split into amount clusters. A merchant
  * becomes a recurring when one of its clusters has a qualifying run (see
  * `latestQualifyingRun`); the group holds that run's occurrences. When
- * several clusters qualify, the longest run wins and then the larger
- * amount, so a monthly fee billed beside the rent never displaces it: one
+ * several clusters qualify, the larger amount wins and then the longer
+ * run, so a monthly fee billed beside the rent never displaces it: one
  * merchant and direction holds at most one recurring.
  *
  * `now` is injectable so tests can pin the recency check.
@@ -267,16 +271,20 @@ export const detectRecurringGroups = (
   for (const occurrences of groups.values()) {
     if (occurrences.length < MIN_OCCURRENCES) continue;
 
+    const merchantFirstDate = occurrences.reduce(
+      (first, o) => (o.date < first ? o.date : first),
+      occurrences[0]!.date,
+    );
     let best: QualifyingRun | null = null;
     for (const cluster of clusterByAmount(occurrences)) {
       cluster.sort((a, b) => (a.date < b.date ? -1 : 1));
-      const run = latestQualifyingRun(cluster, todayStr);
+      const run = latestQualifyingRun(cluster, merchantFirstDate, todayStr);
       if (
         run &&
         (!best ||
-          run.occurrences.length > best.occurrences.length ||
-          (run.occurrences.length === best.occurrences.length &&
-            run.medianAmount > best.medianAmount))
+          run.medianAmount > best.medianAmount ||
+          (run.medianAmount === best.medianAmount &&
+            run.occurrences.length > best.occurrences.length))
       ) {
         best = run;
       }
@@ -341,9 +349,10 @@ const addDays = (date: string, days: number): string => {
  *
  * Two sources, returned together, oldest first:
  *
- * 1. The qualifying group, if any. Every unclaimed charge in it joins,
- *    whatever its date: detection has already checked the intervals and
- *    amounts. This is how a recurring created from one recent charge picks
+ * 1. The qualifying group, when it holds one of the recurring's members;
+ *    otherwise it is another stream the merchant bills, at another price.
+ *    Every unclaimed charge in it joins, whatever its date: detection has
+ *    already checked the intervals and amounts. This is how a recurring created from one recent charge picks
  *    up its history, and how a charge that syncs late with an earlier date
  *    still lands.
  *
@@ -371,7 +380,9 @@ export const selectConfirmedAttachments = (
   group?: Pick<DetectedRecurringGroup, "transaction_ids">,
 ): string[] => {
   const candidateById = new Map(candidates.map((c) => [c.transaction_id, c]));
-  const fromGroup = (group?.transaction_ids ?? []).filter(
+  const memberIds = new Set(recurring.members.map((m) => m.transaction_id));
+  const sameStream = !!group?.transaction_ids.some((id) => memberIds.has(id));
+  const fromGroup = (sameStream ? group!.transaction_ids : []).filter(
     (id) => !claimed.has(id) && candidateById.has(id),
   );
   const taken = new Set([...claimed, ...fromGroup]);
@@ -563,7 +574,6 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
  *          merchant group, not "these transactions can never recur")
  *        - suggested → refresh transaction_ids when the set changed
  *        - confirmed → left to step 4
- *      and withdraw (soft-delete) suggested rows no group matched.
  *   4. For each confirmed recurring, append the charges
  *      `selectConfirmedAttachments` picks: its merchant's whole group when
  *      that still qualifies, plus new charges due on its schedule when it
@@ -668,25 +678,6 @@ export const runRecurringDetection = async (): Promise<void> => {
           }
         }
 
-        // A suggestion whose merchant no longer qualifies (lapsed, or keyed
-        // under an older normalization) is withdrawn. Confirmed rows keep
-        // collecting below; dismissed rows stay as the denylist.
-        const detectedKeys = new Set(groups.map((g) => `${g.merchant_key}::${g.is_income}`));
-        const withdrawn = existing
-          .filter(
-            (r) =>
-              r.status === "suggested" && !detectedKeys.has(`${r.merchant_key}::${r.is_income}`),
-          )
-          .map((r) => r.recurring_id);
-        if (withdrawn.length > 0) {
-          await client.query(
-            `UPDATE ${RECURRINGS}
-             SET ${IS_DELETED} = TRUE, ${UPDATED} = CURRENT_TIMESTAMP
-             WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = ANY($2::uuid[])`,
-            [userId, withdrawn],
-          );
-        }
-
         // Confirmed: attach each new charge. Runs per row rather than per
         // group, so a merchant whose history no longer qualifies (one late
         // charge, a price change, a stray purchase), or a manual recurring
@@ -743,11 +734,10 @@ export const runRecurringDetection = async (): Promise<void> => {
         totalUsers++;
         totalSuggested += userSuggested;
         totalAttached += userAttached;
-        if (userSuggested > 0 || userAttached > 0 || withdrawn.length > 0) {
+        if (userSuggested > 0 || userAttached > 0) {
           logger.info("Updated recurrings for user", {
             userId,
             suggested: userSuggested,
-            withdrawn: withdrawn.length,
             attached: userAttached,
             groupsDetected: groups.length,
           });

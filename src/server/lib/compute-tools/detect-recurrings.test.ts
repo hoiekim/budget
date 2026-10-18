@@ -60,6 +60,7 @@ describe("normalizeMerchantName", () => {
   test("keeps slash-separated numbers that aren't dates", () => {
     expect(normalizeMerchantName("24/7 Fitness")).toBe("24 7 fitness");
     expect(normalizeMerchantName("Shop 13/40")).toBe("shop 13 40");
+    expect(normalizeMerchantName("Shop 1/2")).toBe("shop 1 2");
   });
 });
 
@@ -123,12 +124,14 @@ describe("detectRecurringGroups", () => {
   });
 
   test("leaves a one-off charge at another price out of the bill", () => {
-    const txns = monthlyTxns("Utility", 4).map((t, i) => ({
+    const txns = monthlyTxns("Utility", 5).map((t, i) => ({
       ...t,
-      amount: i === 3 ? 100 : 15.99,
+      amount: i === 4 ? 100 : 15.99,
     }));
     const groups = detectRecurringGroups(txns, NOW);
-    expect(groups.map((g) => g.transaction_ids)).toEqual([["Utility-2", "Utility-1", "Utility-0"]]);
+    expect(groups.map((g) => g.transaction_ids)).toEqual([
+      ["Utility-3", "Utility-2", "Utility-1", "Utility-0"],
+    ]);
   });
 
   test("an old gap or mislabelled charge doesn't disqualify the recent run", () => {
@@ -165,6 +168,49 @@ describe("detectRecurringGroups", () => {
     );
     const groups = detectRecurringGroups(txns, NOW);
     expect(groups.map((g) => g.transaction_ids)).toEqual([["s-04", "s-05", "s-06", "s-07", "s-08", "s-09"]]);
+  });
+
+  test("a fee keeps losing to the rent when the rent's run is shorter", () => {
+    const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09"];
+    const rent = months.map((m) =>
+      txn({ transaction_id: `rent-${m}`, merchant_name: "Housing", amount: 3900, date: `2026-${m}-${m === "03" ? "10" : "02"}` }),
+    );
+    const fee = months.map((m) =>
+      txn({ transaction_id: `fee-${m}`, merchant_name: "Housing", amount: 2.49, date: `2026-${m}-02` }),
+    );
+    const groups = detectRecurringGroups([...fee, ...rent], NOW);
+    expect(groups.map((g) => g.transaction_ids)).toEqual([
+      ["rent-04", "rent-05", "rent-06", "rent-07", "rent-08", "rent-09"],
+    ]);
+  });
+
+  test("a second plan at twice the price is its own stream", () => {
+    const months = ["06", "07", "08", "09"];
+    const basic = months.map((m) =>
+      txn({ transaction_id: `basic-${m}`, merchant_name: "Phone", amount: 10, date: `2026-${m}-01` }),
+    );
+    const family = months.map((m) =>
+      txn({ transaction_id: `family-${m}`, merchant_name: "Phone", amount: 20, date: `2026-${m}-15` }),
+    );
+    const groups = detectRecurringGroups([...basic, ...family], NOW);
+    expect(groups.map((g) => g.transaction_ids)).toEqual([
+      ["family-06", "family-07", "family-08", "family-09"],
+    ]);
+  });
+
+  test("earlier charges at other prices also call for a fourth occurrence", () => {
+    const irregular = [
+      ["2026-01-03", 80],
+      ["2026-02-20", 95],
+      ["2026-04-09", 8],
+      ["2026-05-01", 9],
+    ].map(([date, amount], i) =>
+      txn({ transaction_id: `odd-${i}`, merchant_name: "Corner Shop", amount: amount as number, date: date as string }),
+    );
+    const monthly = ["2026-07-15", "2026-08-15", "2026-09-15"].map((date, i) =>
+      txn({ transaction_id: `m-${i}`, merchant_name: "Corner Shop", amount: 25, date }),
+    );
+    expect(detectRecurringGroups([...irregular, ...monthly], NOW)).toHaveLength(0);
   });
 
   test("a fee billed beside the rent never displaces it", () => {
@@ -466,6 +512,21 @@ describe("selectConfirmedAttachments", () => {
         group,
       ),
     ).toEqual(["aug"]);
+  });
+
+  test("a group billed at another price doesn't join", () => {
+    const recurring = netflix([
+      charge("jul", "2026-07-15", 2.99),
+      charge("aug", "2026-08-15", 2.99),
+      charge("sep", "2026-09-15", 2.99),
+    ]);
+    const other = ["06", "07", "08", "09"].map((m) => charge(`plus-${m}`, `2026-${m}-20`, 10.99));
+    const candidates = [...recurring.members.map((m) => charge(m.transaction_id, m.date, 2.99)), ...other];
+    const [group] = detectRecurringGroups(candidates, NOW);
+    expect(group!.transaction_ids).toEqual(["plus-06", "plus-07", "plus-08", "plus-09"]);
+    expect(
+      selectConfirmedAttachments(recurring, candidates, claimedBy(recurring), group),
+    ).toEqual([]);
   });
 
   test("group charges already claimed elsewhere stay put", () => {
