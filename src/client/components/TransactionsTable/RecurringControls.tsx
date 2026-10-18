@@ -16,6 +16,10 @@ interface Props {
  * dismiss are named buttons (dismissing writes the denylist, so it must
  * not be one click away). The checkmark confirms immediately, like the
  * quick-accept on suggested category labels.
+ *
+ * Same direct-child layout as `TransferControls`: the chip fills the box
+ * the label selectors take once the recurring is confirmed, so confirming
+ * swaps one for the other without anything changing width.
  */
 const RecurringControls = ({ merchantName, onConfirm, onDismiss }: Props) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,16 +42,9 @@ const RecurringControls = ({ merchantName, onConfirm, onDismiss }: Props) => {
   };
 
   return (
-    <div className="recurringControls">
+    <>
       <button className="recurringChip suggested" onClick={() => setIsModalOpen(true)}>
         Recurring
-      </button>
-      <button
-        className="recurringQuickConfirm"
-        aria-label="Confirm recurring"
-        onClick={run(onConfirm)}
-      >
-        <CheckIcon size={20} />
       </button>
       {isModalOpen && (
         <RecurringModal
@@ -58,7 +55,16 @@ const RecurringControls = ({ merchantName, onConfirm, onDismiss }: Props) => {
           onClose={() => setIsModalOpen(false)}
         />
       )}
-    </div>
+      <div className="confirmButtonBox">
+        <button
+          className="confirmButton"
+          aria-label="Confirm recurring"
+          onClick={run(onConfirm)}
+        >
+          <CheckIcon size={20} />
+        </button>
+      </div>
+    </>
   );
 };
 

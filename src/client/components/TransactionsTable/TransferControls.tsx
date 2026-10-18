@@ -15,6 +15,11 @@ interface Props {
  * where confirm and reject are named, symmetric buttons. The checkmark
  * confirms immediately, like the quick-accept on suggested category
  * labels.
+ *
+ * Renders as direct children of `.budgetCategoryActions` so the chip takes
+ * the same box as `.labelControls` and the checkmark sits in the same
+ * fixed-width `.confirmButtonBox` slot — the chip's width never depends on
+ * whether a checkmark is beside it.
  */
 const TransferControls = ({ onConfirm, onReject }: Props) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -42,16 +47,9 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
   };
 
   return (
-    <div className="transferControls">
+    <>
       <button className="transferChip suggested" onClick={() => setIsModalOpen(true)}>
         Transfer
-      </button>
-      <button
-        className="transferQuickConfirm"
-        aria-label="Confirm transfer"
-        onClick={run(onConfirm)}
-      >
-        <CheckIcon size={20} />
       </button>
       {isModalOpen && (
         <TransferPairModal
@@ -61,7 +59,16 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
           onClose={() => setIsModalOpen(false)}
         />
       )}
-    </div>
+      <div className="confirmButtonBox">
+        <button
+          className="confirmButton"
+          aria-label="Confirm transfer"
+          onClick={run(onConfirm)}
+        >
+          <CheckIcon size={20} />
+        </button>
+      </div>
+    </>
   );
 };
 

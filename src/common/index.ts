@@ -2,6 +2,7 @@ export * from "./utils";
 export * from "./models";
 export * from "./types";
 export * from "./transfers";
+export * from "./recurrings";
 export * from "./constants";
 export * from "./investment-transaction-shape";
 export * from "./holding-positions";

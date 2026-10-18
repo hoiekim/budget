@@ -73,18 +73,25 @@ const TransactionRow = ({ transaction }: Props) => {
   const suggestedPairId =
     pendingTransferPair?.status === "suggested" ? pendingTransferPair.pair_id : undefined;
 
-  // A row whose parent transaction belongs to a recurring shows the
-  // recurring affordance instead of the budget/category controls —
+  // A row whose parent transaction belongs to a still-suggested recurring
+  // shows the recurring affordance instead of the budget/category controls —
   // mirrors the suggested-transfer-pair treatment above. A suggested
   // transfer pair takes precedence when a row is in both (transfer state
-  // wins, matching the filter predicates). Split rows never carry the
-  // affordance — detection groups whole transactions.
+  // wins, matching the filter predicates). Once confirmed, the controls
+  // come back and a "Recurring" chip sits beside the title instead. Split
+  // rows never carry either — detection groups whole transactions.
   const recurring = isSplitTransaction
     ? undefined
     : recurrings.byTransactionId.get(transaction_id);
   const suggestedRecurringId =
     recurring?.status === "suggested" ? recurring.recurring_id : undefined;
   const isConfirmedRecurring = recurring?.status === "confirmed";
+
+  const title = label.memo || (!merchant_name && name ? name : merchant_name);
+  const subtitle =
+    !label.memo && merchant_name && name && merchant_name.toLowerCase() !== name.toLowerCase()
+      ? name
+      : null;
 
   const onChangeBudgetSelect: ChangeEventHandler<HTMLSelectElement> = async (e) => {
     const { value } = e.target;
@@ -265,18 +272,11 @@ const TransactionRow = ({ transaction }: Props) => {
         isoCurrency={iso_currency_code || ""}
         onClickInfo={onClickInfo}
       >
-        {label.memo ? (
-          <div className="bigText">{label.memo}</div>
-        ) : !merchant_name && name ? (
-          <div className="bigText">{name}</div>
-        ) : (
-          <>
-            <div className="bigText">{merchant_name}</div>
-            {name && merchant_name?.toLowerCase() !== name.toLowerCase() && (
-              <div className="smallText">{name}</div>
-            )}
-          </>
-        )}
+        <div className="titleLine">
+          <div className="bigText">{title}</div>
+          {isConfirmedRecurring && <span className="recurringChip">Recurring</span>}
+        </div>
+        {subtitle && <div className="smallText">{subtitle}</div>}
         <div className="smallText">{account?.custom_name || account?.name}</div>
       </TransactionRowInfo>
       <div className="budgetCategoryActions">
@@ -291,10 +291,6 @@ const TransactionRow = ({ transaction }: Props) => {
             onConfirm={() => recurringActions.confirm(suggestedRecurringId)}
             onDismiss={() => recurringActions.dismiss(suggestedRecurringId)}
           />
-        ) : isConfirmedRecurring ? (
-          <div className="recurringControls">
-            <span className="recurringChip">Recurring</span>
-          </div>
         ) : (
           <>
             <div className="labelControls">

@@ -77,3 +77,26 @@ div.TransactionProperties .row.partnerCandidate .smallText {
   font-size: 12px;
   color: var(--textMuted);
 }
+
+/* "Add to existing" recurring row: one line, the name truncating on the
+   left and the recurring's latest amount on the right. */
+div.TransactionProperties .row.partnerCandidate .recurringCandidateInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+div.TransactionProperties .row.partnerCandidate .recurringCandidateName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+div.TransactionProperties .row.partnerCandidate .recurringCandidateAmount {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
