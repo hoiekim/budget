@@ -242,9 +242,9 @@ const latestQualifyingRun = (
  * same merchant are separate), then split into amount clusters. A merchant
  * becomes a recurring when one of its clusters has a qualifying run (see
  * `latestQualifyingRun`); the group holds that run's occurrences. When
- * several clusters qualify, the larger amount wins and then the longer
- * run, so a monthly fee billed beside the rent never displaces it: one
- * merchant and direction holds at most one recurring.
+ * several clusters qualify, the larger amount wins, so a monthly fee billed
+ * beside the rent never displaces it: one merchant and direction holds at
+ * most one recurring.
  *
  * `now` is injectable so tests can pin the recency check.
  */
@@ -279,15 +279,7 @@ export const detectRecurringGroups = (
     for (const cluster of clusterByAmount(occurrences)) {
       cluster.sort((a, b) => (a.date < b.date ? -1 : 1));
       const run = latestQualifyingRun(cluster, merchantFirstDate, todayStr);
-      if (
-        run &&
-        (!best ||
-          run.medianAmount > best.medianAmount ||
-          (run.medianAmount === best.medianAmount &&
-            run.occurrences.length > best.occurrences.length))
-      ) {
-        best = run;
-      }
+      if (run && (!best || run.medianAmount > best.medianAmount)) best = run;
     }
     if (!best) continue;
 
@@ -345,19 +337,19 @@ const addDays = (date: string, days: number): string => {
  * Pick the charges a confirmed recurring collects this run. Pure: the
  * caller resolves the members, `claimed` (transaction ids already in any
  * active recurring, this one included), and `group`, this merchant's
- * detection group when its whole history still qualifies.
+ * detection group (its latest qualifying run) when it has one.
  *
  * Two sources, returned together, oldest first:
  *
  * 1. The qualifying group, when it holds one of the recurring's members;
  *    otherwise it is another stream the merchant bills, at another price.
  *    Every unclaimed charge in it joins, whatever its date: detection has
- *    already checked the intervals and amounts. This is how a recurring created from one recent charge picks
- *    up its history, and how a charge that syncs late with an earlier date
- *    still lands.
+ *    already checked the intervals and amounts. This is how a recurring
+ *    created from one recent charge picks up its history, and how a charge
+ *    that syncs late with an earlier date still lands.
  *
- * 2. New charges after the latest member, for when the history no longer
- *    qualifies (one late charge, a price change, a stray purchase). Walking
+ * 2. New charges after the latest member, for when no qualifying group
+ *    holds one (one late charge, a price change, a stray purchase). Walking
  *    forward one billing cycle at a time, a charge joins when it is due on
  *    the schedule and looks like the bill:
  *    - Due: a whole number of periods after the last due date, no more
@@ -575,9 +567,9 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
  *        - suggested → refresh transaction_ids when the set changed
  *        - confirmed → left to step 4
  *   4. For each confirmed recurring, append the charges
- *      `selectConfirmedAttachments` picks: its merchant's whole group when
- *      that still qualifies, plus new charges due on its schedule when it
- *      doesn't. This is how a confirmed recurring collects each new charge.
+ *      `selectConfirmedAttachments` picks: its merchant's detected group
+ *      when that holds one of its members, plus new charges due on its
+ *      schedule. This is how a confirmed recurring collects each new charge.
  */
 export const runRecurringDetection = async (): Promise<void> => {
   logger.info("Recurring-detection job started");
