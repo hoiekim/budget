@@ -110,7 +110,11 @@ export const HoldingProperties = () => {
       const securityMatch = data.securitySnapshots.find(
         (s) => s.security.security_id === summary.security_id,
       );
-      const snapTicker = securityMatch?.security.ticker_symbol?.toUpperCase() ?? null;
+      const snapTicker =
+        (
+          data.securities.get(summary.security_id)?.ticker_symbol ||
+          securityMatch?.security.ticker_symbol
+        )?.toUpperCase() ?? null;
       const isCash = summary.isCash;
       const snapBucket = isCash
         ? CASH_TICKER
@@ -142,6 +146,7 @@ export const HoldingProperties = () => {
   }, [
     accountId,
     calculations.holdingSnapshots,
+    data.securities,
     data.securitySnapshots,
     holdingsValueData,
     isNew,
@@ -162,17 +167,18 @@ export const HoldingProperties = () => {
       const sid = snap.holding.security_id;
       if (!securities.has(sid)) {
         const match = data.securitySnapshots.find((s) => s.security.security_id === sid);
+        const security = data.securities.get(sid);
         securities.set(sid, {
           security_id: sid,
-          ticker_symbol: match?.security.ticker_symbol ?? null,
-          name: match?.security.name?.trim() || null,
+          ticker_symbol: security?.ticker_symbol || match?.security.ticker_symbol || null,
+          name: security?.name?.trim() || match?.security.name?.trim() || null,
         });
       }
       if (!name) name = securities.get(sid)?.name ?? null;
     });
     const primaryLabel = tickerKey === CASH_TICKER ? "Cash" : tickerKey;
     return { primaryLabel, name, securities };
-  }, [bucketSnapshots, data.securitySnapshots, tickerKey]);
+  }, [bucketSnapshots, data.securities, data.securitySnapshots, tickerKey]);
 
   const isCash = tickerKey === CASH_TICKER;
   const currencySymbol = currencyCodeToSymbol(
