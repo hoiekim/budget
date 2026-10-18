@@ -50,6 +50,17 @@ describe("normalizeMerchantName", () => {
     expect(normalizeMerchantName("Comcast")).toBe("comcast");
     expect(normalizeMerchantName("Hulu LLC")).toBe("hulu llc");
   });
+
+  test("drops posting dates so one merchant keeps one key", () => {
+    expect(normalizeMerchantName("Manual DB-Bkrg 07/03")).toBe("manual db bkrg");
+    expect(normalizeMerchantName("Manual DB-Bkrg 10/03")).toBe("manual db bkrg");
+    expect(normalizeMerchantName("Utility 03/15/26")).toBe("utility");
+  });
+
+  test("keeps slash-separated numbers that aren't dates", () => {
+    expect(normalizeMerchantName("24/7 Fitness")).toBe("24 7 fitness");
+    expect(normalizeMerchantName("Shop 13/40")).toBe("shop 13 40");
+  });
 });
 
 describe("detectRecurringGroups", () => {
@@ -106,9 +117,89 @@ describe("detectRecurringGroups", () => {
   test("rejects amounts outside ±25% of the median", () => {
     const txns = monthlyTxns("Utility", 4).map((t, i) => ({
       ...t,
-      amount: i === 3 ? 100 : 15.99,
+      amount: [50, 70, 36, 60][i]!,
     }));
     expect(detectRecurringGroups(txns, NOW)).toHaveLength(0);
+  });
+
+  test("leaves a one-off charge at another price out of the bill", () => {
+    const txns = monthlyTxns("Utility", 4).map((t, i) => ({
+      ...t,
+      amount: i === 3 ? 100 : 15.99,
+    }));
+    const groups = detectRecurringGroups(txns, NOW);
+    expect(groups.map((g) => g.transaction_ids)).toEqual([["Utility-2", "Utility-1", "Utility-0"]]);
+  });
+
+  test("an old gap or mislabelled charge doesn't disqualify the recent run", () => {
+    const mislabelled = ["2025-03-16", "2025-04-14", "2025-05-16", "2025-06-16"].map((date, i) =>
+      txn({ transaction_id: `old-${i}`, merchant_name: "YouTube Premium", amount: 2.99, date }),
+    );
+    const premium = ["2025-07-22", "2025-08-22", "2025-09-22", "2025-10-22", "2025-11-22"].map(
+      (date, i) => txn({ transaction_id: `old-premium-${i}`, merchant_name: "YouTube Premium", amount: 22.99, date }),
+    );
+    const resumed = monthlyTxns("YouTube Premium", 4, 22.99);
+    const groups = detectRecurringGroups([...mislabelled, ...premium, ...resumed], NOW);
+    expect(groups.map((g) => [g.cadence, g.transaction_ids])).toEqual([
+      ["monthly", ["YouTube Premium-3", "YouTube Premium-2", "YouTube Premium-1", "YouTube Premium-0"]],
+    ]);
+  });
+
+  test("a run that leaves earlier charges out needs four occurrences", () => {
+    const irregular = ["2026-01-03", "2026-01-20", "2026-03-02"].map((date, i) =>
+      txn({ transaction_id: `early-${i}`, merchant_name: "Corner Shop", amount: 20, date }),
+    );
+    const monthly = ["2026-07-15", "2026-08-15", "2026-09-15"].map((date, i) =>
+      txn({ transaction_id: `m-${i}`, merchant_name: "Corner Shop", amount: 20, date }),
+    );
+    expect(detectRecurringGroups([...irregular, ...monthly], NOW)).toHaveLength(0);
+    expect(detectRecurringGroups(monthly, NOW)).toHaveLength(1);
+    const fourth = txn({ transaction_id: "m-3", merchant_name: "Corner Shop", amount: 20, date: "2026-06-15" });
+    const groups = detectRecurringGroups([...irregular, fourth, ...monthly], NOW);
+    expect(groups.map((g) => g.transaction_ids)).toEqual([["m-3", "m-0", "m-1", "m-2"]]);
+  });
+
+  test("a price rise doesn't disqualify the bill", () => {
+    const txns = ["03", "04", "05", "06", "07", "08", "09"].map((month, i) =>
+      txn({ transaction_id: `s-${month}`, merchant_name: "Streaming", amount: i < 4 ? 10 : 15, date: `2026-${month}-15` }),
+    );
+    const groups = detectRecurringGroups(txns, NOW);
+    expect(groups.map((g) => g.transaction_ids)).toEqual([["s-04", "s-05", "s-06", "s-07", "s-08", "s-09"]]);
+  });
+
+  test("a fee billed beside the rent never displaces it", () => {
+    const rent = monthlyTxns("Housing", 4, 3900);
+    const fee = monthlyTxns("Housing", 4, 2.49).map((t) => ({ ...t, transaction_id: `fee-${t.transaction_id}` }));
+    const groups = detectRecurringGroups([...fee, ...rent], NOW);
+    expect(groups.map((g) => g.transaction_ids)).toEqual([["Housing-3", "Housing-2", "Housing-1", "Housing-0"]]);
+  });
+
+  test("a bonus paid on payday stays out of the paycheck run", () => {
+    const paychecks = [0, 1, 2, 3].map((i) =>
+      txn({
+        transaction_id: `pay-${i}`,
+        merchant_name: "Employer Payroll",
+        amount: -2500,
+        date: new Date(2026, 9, 9 - i * 14).toISOString().slice(0, 10),
+      }),
+    );
+    const bonus = txn({ ...paychecks[1]!, transaction_id: "bonus", amount: -11000 });
+    const groups = detectRecurringGroups([...paychecks, bonus], NOW);
+    expect(groups.map((g) => [g.cadence, g.is_income, g.transaction_ids])).toEqual([
+      ["biweekly", true, ["pay-3", "pay-2", "pay-1", "pay-0"]],
+    ]);
+  });
+
+  test("monthly charges keyed with their posting dates group as one merchant", () => {
+    const txns = monthlyTxns("x", 4).map((t) => ({
+      ...t,
+      merchant_name: null,
+      name: `Manual DB-Bkrg ${t.date.slice(5, 7)}/${t.date.slice(8, 10)}`,
+    }));
+    const groups = detectRecurringGroups(txns, NOW);
+    expect(groups.map((g) => [g.merchant_key, g.cadence, g.transaction_ids.length])).toEqual([
+      ["manual db bkrg", "monthly", 4],
+    ]);
   });
 
   test("tolerates amounts within ±25% of the median", () => {
