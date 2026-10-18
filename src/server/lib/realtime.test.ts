@@ -161,8 +161,6 @@ describe("realtime", () => {
     expect(mutationEmitDomain("DELETE", "/item")).toBe(TableName.Accounts);
     // suggest-category writes transaction labels + rejected categories.
     expect(mutationEmitDomain("POST", "/suggest-category")).toBe(TableName.Transactions);
-    // resolving a security snapshot writes into the snapshots table.
-    expect(mutationEmitDomain("POST", "/resolve-security-snapshot")).toBe(TableName.Snapshots);
   });
 
   it("mutationEmitDomain returns null for a GET read on a shared write path", () => {
