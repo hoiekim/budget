@@ -210,9 +210,10 @@ describe("post-recurring — confirm", () => {
     expect(clientSql().at(-1)).toBe("COMMIT");
     expect(clientSql()[2]).toMatch(/SET status = 'confirmed'/);
     const [sql, values] = relabelCall()!;
-    expect(sql as string).toMatch(/COALESCE\(label_category_confidence, 0\) < 1/);
-    // Every member, the seeded default, confidence 1, no previous default.
-    expect(values).toEqual(["u-1", ["t-1", "t-2"], B1, C1, 1, null, null]);
+    expect(sql as string).toMatch(/label_category_confidence IS NULL/);
+    // Every member, the seeded default at confidence 1, and the seed as the
+    // default they follow, so differently confirmed members stay put.
+    expect(values).toEqual(["u-1", ["t-1", "t-2"], B1, C1, 1, B1, C1]);
   });
 
   test("relabels nothing when no member has a confirmed label to seed from", async () => {
@@ -285,7 +286,7 @@ describe("post-recurring — default label", () => {
     expect(relabelCall()).toBeUndefined();
   });
 
-  test("a budget-only default leaves the category unconfirmed", async () => {
+  test("a budget-only default marks the category empty on purpose, not unlabeled", async () => {
     stageLabel("confirmed");
 
     await postRecurringRoute.execute(
@@ -293,7 +294,40 @@ describe("post-recurring — default label", () => {
       fakeRes(),
     );
 
-    expect(relabelCall()![1]).toEqual(["u-1", ["t-1", "t-2"], B2, null, null, B1, C1]);
+    // Confidence 0, not NULL: the suggestion engine only fills NULL rows.
+    expect(relabelCall()![1]).toEqual(["u-1", ["t-1", "t-2"], B2, null, 0, B1, C1]);
+  });
+
+  test("with no stored default, members follow the label they're most often confirmed with", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          label_budget_id: null,
+          label_category_id: null,
+          status: "confirmed",
+          transaction_ids: ["t-1", "t-2"],
+        },
+      ],
+      rowCount: 1,
+    }); // current default: none
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // store new default
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ budget_id: B1, category_id: C1 }],
+      rowCount: 1,
+    }); // seed = the label they follow
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 }); // relabel
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockQuery.mockResolvedValueOnce({ rows: [recurringRow()], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 });
+
+    await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", label: { budget_id: B2, category_id: C2 } }),
+      fakeRes(),
+    );
+
+    expect(relabelCall()![1]).toEqual(["u-1", ["t-1", "t-2"], B2, C2, 1, B1, C1]);
   });
 
   test("refuses ids that aren't UUIDs before touching the database", async () => {
@@ -305,5 +339,40 @@ describe("post-recurring — default label", () => {
     expect(result?.status).toBe("failed");
     expect(mockQuery).not.toHaveBeenCalled();
     expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("post-recurring — add to existing", () => {
+  test("a recurring with no default leaves joining charges' labels alone", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ recurring_id: "r-1", is_income: false, status: "confirmed" }],
+      rowCount: 1,
+    }); // recurring
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ transaction_id: "t-2", amount: "15.99" }],
+      rowCount: 1,
+    }); // members to add
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // append
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ label_budget_id: null, label_category_id: null, transaction_ids: ["t-1", "t-2"] }],
+      rowCount: 1,
+    }); // default: none (cleared)
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockQuery.mockResolvedValueOnce({ rows: [recurringRow({ transaction_ids: ["t-1", "t-2"] })], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1"), txnRow("t-2")], rowCount: 2 });
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", transaction_ids: ["t-2"] }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    // No seeding and no relabel: a cleared default stays cleared.
+    expect(clientSql().some((sql) => /GROUP BY label_budget_id/.test(sql))).toBe(false);
+    expect(relabelCall()).toBeUndefined();
+    expect(clientSql().at(-1)).toBe("COMMIT");
   });
 });

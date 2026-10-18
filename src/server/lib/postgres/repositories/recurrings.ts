@@ -164,11 +164,16 @@ const lockRecurrings = (client: QueryExecutor, userId: string) =>
   client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))`, [userId]);
 
 /**
- * Give `transactionIds` a recurring's default label. A transaction the user
- * confirmed with a label other than `previous` — the default it was
- * following before this change — is an exception and keeps its own label.
- * Unlabeled, suggested, and default-following transactions take the new one.
- * An empty default relabels nothing.
+ * Give `transactionIds` a recurring's default label, skipping exceptions.
+ * `previous` is the default they were following before this change. A
+ * transaction follows the default when it is:
+ *   - unlabeled (confidence NULL) or holds an engine suggestion (0 < c < 1);
+ *   - confirmed (c = 1) with exactly the previous default;
+ *   - category-less by choice (c = 0, what a budget-only edit or a cleared
+ *     category leaves) with no budget or the previous default's budget.
+ * Anything else the user chose (a different confirmed category, a move to
+ * another budget) is an exception and keeps its label. An empty default
+ * relabels nothing.
  */
 export const applyRecurringLabel = async (
   executor: QueryExecutor,
@@ -178,9 +183,10 @@ export const applyRecurringLabel = async (
   previous: JSONRecurringLabel = EMPTY_LABEL,
 ): Promise<void> => {
   if (isEmptyLabel(label) || transactionIds.length === 0) return;
-  // A budget-only default leaves the category open — unlabeled, so the
-  // suggestion engine can still propose one.
-  const confidence = label.category_id ? 1 : null;
+  // A budget-only default marks the category as deliberately empty (0), not
+  // unlabeled (NULL): the suggestion engine only fills NULL rows, and its
+  // pick would move them to whatever budget its category sits under.
+  const confidence = label.category_id ? 1 : 0;
   await executor.query(
     `UPDATE ${TRANSACTIONS}
      SET ${LABEL_BUDGET_ID} = $3::uuid,
@@ -191,9 +197,13 @@ export const applyRecurringLabel = async (
        AND ${TRANSACTION_ID} = ANY($2::text[])
        AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
        AND (
-         COALESCE(${LABEL_CATEGORY_CONFIDENCE}, 0) < 1
-         OR (${LABEL_BUDGET_ID} IS NOT DISTINCT FROM $6::uuid
+         ${LABEL_CATEGORY_CONFIDENCE} IS NULL
+         OR (${LABEL_CATEGORY_CONFIDENCE} > 0 AND ${LABEL_CATEGORY_CONFIDENCE} < 1)
+         OR (${LABEL_CATEGORY_CONFIDENCE} >= 1
+             AND ${LABEL_BUDGET_ID} IS NOT DISTINCT FROM $6::uuid
              AND ${LABEL_CATEGORY_ID} IS NOT DISTINCT FROM $7::uuid)
+         OR (${LABEL_CATEGORY_CONFIDENCE} <= 0
+             AND (${LABEL_BUDGET_ID} IS NULL OR ${LABEL_BUDGET_ID} = $6::uuid))
        )
        AND (
          ${LABEL_BUDGET_ID} IS DISTINCT FROM $3::uuid
@@ -214,8 +224,9 @@ export const applyRecurringLabel = async (
 
 /**
  * The label the user has confirmed most often on these transactions (most
- * recent wins a tie) — what a recurring starts with as its default when it
- * is confirmed without one.
+ * recent wins a tie). It's what a recurring starts with when it's confirmed
+ * without a default, and what its transactions count as following while it
+ * has none.
  */
 const seedRecurringLabel = async (
   executor: QueryExecutor,
@@ -242,8 +253,10 @@ const seedRecurringLabel = async (
 
 /**
  * Bring a confirmed recurring's transactions in line with its default
- * label: seed the default from the members when it has none, then apply it
- * to `transactionIds` (every member when omitted). Runs inside the caller's
+ * label. Without `transactionIds` (confirming or creating it) every member
+ * is labeled, and a recurring with no default starts one from its members.
+ * With them (charges joining it) only those are labeled, and only if it has
+ * a default: one the user cleared stays cleared. Runs inside the caller's
  * DB transaction, under the recurrings advisory lock.
  */
 export const labelConfirmedRecurring = async (
@@ -268,6 +281,7 @@ export const labelConfirmedRecurring = async (
     category_id: row.label_category_id,
   };
   if (isEmptyLabel(label)) {
+    if (transactionIds) return;
     label = await seedRecurringLabel(executor, userId, row.transaction_ids);
     if (isEmptyLabel(label)) return;
     await executor.query(
@@ -277,7 +291,13 @@ export const labelConfirmedRecurring = async (
       [userId, recurring_id, label.budget_id, label.category_id],
     );
   }
-  await applyRecurringLabel(executor, userId, label, transactionIds ?? row.transaction_ids);
+  await applyRecurringLabel(
+    executor,
+    userId,
+    label,
+    transactionIds ?? row.transaction_ids,
+    label,
+  );
 };
 
 /**
@@ -321,7 +341,8 @@ export const confirmRecurring = async (
  * Set a recurring's default label. While it's confirmed its transactions
  * follow the change, except ones the user labeled differently from the old
  * default. A suggested recurring just keeps the label for when it's
- * confirmed.
+ * confirmed. An empty label clears the default: nothing is relabeled, and
+ * charges joining later keep their own labels.
  */
 export const setRecurringLabel = async (
   user: MaskedUser,
@@ -355,10 +376,17 @@ export const setRecurringLabel = async (
       [user.user_id, recurring_id, label.budget_id, label.category_id],
     );
     if (row.status === "confirmed") {
-      await applyRecurringLabel(client, user.user_id, label, row.transaction_ids, {
+      // With no stored default (one confirmed before defaults existed, or
+      // one the user cleared), its transactions follow the label they're
+      // most often confirmed with, so that's what moves to the new default.
+      const stored: JSONRecurringLabel = {
         budget_id: row.label_budget_id,
         category_id: row.label_category_id,
-      });
+      };
+      const previous = isEmptyLabel(stored)
+        ? await seedRecurringLabel(client, user.user_id, row.transaction_ids)
+        : stored;
+      await applyRecurringLabel(client, user.user_id, label, row.transaction_ids, previous);
     }
     await client.query("COMMIT");
     return { ok: true };
