@@ -561,7 +561,8 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
  *   2. Group candidates with `detectRecurringGroups`.
  *   3. For each group, reconcile against the existing row for
  *      (merchant_key, is_income):
- *        - none → INSERT with status='suggested'
+ *        - none → INSERT a suggestion of the group's unclaimed charges, or
+ *          revive the key's soft-deleted row with them, keeping its status
  *        - dismissed → skip (the denylist: the user said "no" to this
  *          merchant group, not "these transactions can never recur")
  *        - suggested → refresh transaction_ids when the set changed
@@ -627,6 +628,11 @@ export const runRecurringDetection = async (): Promise<void> => {
           existing.map((r) => [`${r.merchant_key}::${r.is_income}`, r]),
         );
 
+        // Charges already in an active recurring; a charge belongs to at most one.
+        const claimed = new Set(
+          existing.filter((r) => r.status !== "dismissed").flatMap((r) => r.transaction_ids),
+        );
+
         let userSuggested = 0;
         let userAttached = 0;
         for (const group of groups) {
@@ -634,6 +640,8 @@ export const runRecurringDetection = async (): Promise<void> => {
           const row = existingByKey.get(key);
 
           if (!row) {
+            const unclaimed = group.transaction_ids.filter((id) => !claimed.has(id));
+            if (unclaimed.length === 0) continue;
             // The unique key also covers soft-deleted rows, which `existing`
             // leaves out: a merchant whose recurring was cascade-deleted
             // revives that row with the new charges and its status, name and
@@ -657,14 +665,15 @@ export const runRecurringDetection = async (): Promise<void> => {
                 group.merchant_name,
                 group.cadence,
                 group.is_income,
-                group.transaction_ids,
+                unclaimed,
               ],
             );
             const revived = inserted.rows[0];
+            if (revived && revived.status !== "dismissed") unclaimed.forEach((id) => claimed.add(id));
             if (revived?.status === "suggested") userSuggested++;
             if (revived?.status === "confirmed") {
-              await labelConfirmedRecurring(client, userId, revived.recurring_id, group.transaction_ids);
-              userAttached += group.transaction_ids.length;
+              await labelConfirmedRecurring(client, userId, revived.recurring_id, unclaimed);
+              userAttached += unclaimed.length;
             }
             continue;
           }
@@ -692,15 +701,11 @@ export const runRecurringDetection = async (): Promise<void> => {
         // Confirmed: attach each new charge. Runs per row rather than per
         // group, so a merchant whose history no longer qualifies (one late
         // charge, a price change, a stray purchase), or a manual recurring
-        // that never did, keeps collecting. Groups never touch a confirmed
-        // row's merchant_key, so `existing` is still current here.
+        // that never did, keeps collecting. A row revived above isn't in
+        // `existing`; its charges are already in `claimed`, and it collects
+        // from the next run on.
         const confirmed = existing.filter((r) => r.status === "confirmed");
         if (confirmed.length > 0) {
-          const claimed = new Set(
-            existing
-              .filter((r) => r.status !== "dismissed")
-              .flatMap((r) => r.transaction_ids),
-          );
           const members = await fetchMembers(
             userId,
             confirmed.flatMap((r) => r.transaction_ids),
