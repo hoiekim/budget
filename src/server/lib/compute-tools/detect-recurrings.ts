@@ -632,10 +632,21 @@ export const runRecurringDetection = async (): Promise<void> => {
           const row = existingByKey.get(key);
 
           if (!row) {
+            // The unique key also covers soft-deleted rows, which `existing`
+            // leaves out: a merchant whose recurring was cascade-deleted
+            // revives that row as a fresh suggestion, keeping its name and
+            // default label.
             await client.query(
               `INSERT INTO ${RECURRINGS}
                  (${RECURRING_ID}, ${USER_ID}, ${MERCHANT_KEY}, ${MERCHANT_NAME}, ${CADENCE}, ${IS_INCOME}, ${STATUS}, ${TRANSACTION_IDS})
-               VALUES ($1, $2, $3, $4, $5, $6, 'suggested', $7)`,
+               VALUES ($1, $2, $3, $4, $5, $6, 'suggested', $7)
+               ON CONFLICT (${USER_ID}, ${MERCHANT_KEY}, ${IS_INCOME}) DO UPDATE SET
+                 ${STATUS} = 'suggested',
+                 ${CADENCE} = EXCLUDED.${CADENCE},
+                 ${TRANSACTION_IDS} = EXCLUDED.${TRANSACTION_IDS},
+                 ${IS_DELETED} = FALSE,
+                 ${UPDATED} = CURRENT_TIMESTAMP
+               WHERE ${RECURRINGS}.${IS_DELETED} = TRUE`,
               [
                 crypto.randomUUID(),
                 userId,
