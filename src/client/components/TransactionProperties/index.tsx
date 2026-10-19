@@ -438,8 +438,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const ownSplitsAreDefault = splitsKey(ownSplits) === splitsKey(recurringSplits);
   // A default must leave a remainder, or a charge of the same amount never
   // takes it.
+  const toCents = (n: number) => Math.round(Math.abs(n) * 100);
   const ownSplitsLeaveRemainder =
-    ownSplits.reduce((sum, s) => sum + s.amount, 0) < Math.abs(amount);
+    ownSplits.reduce((sum, s) => sum + toCents(s.amount), 0) < toCents(amount);
   const [savingSplits, setSavingSplits] = useState(false);
   const saveRecurringSplits = async (splits: JSONRecurringSplit[]) => {
     if (!existingRecurring || savingSplits) return;

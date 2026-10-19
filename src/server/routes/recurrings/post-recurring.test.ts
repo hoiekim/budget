@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
+import { getDateString } from "common";
 
 const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
 
@@ -530,31 +531,52 @@ describe("post-recurring — default splits", () => {
     expect(result?.body?.recurring?.splits).toEqual(stored);
     const [sql, values] = storeCall()!;
     expect(squish(sql as string)).toBe(
-      squish(`UPDATE recurrings
-       SET splits = $3::jsonb, splits_since = CURRENT_DATE, updated = CURRENT_TIMESTAMP
-       WHERE user_id = $1 AND recurring_id = $2
-         AND (is_deleted IS NULL OR is_deleted = FALSE)
+      squish(`UPDATE recurrings SET updated = CURRENT_TIMESTAMP, splits = $1, splits_since = $2
+       WHERE recurring_id = $3 AND user_id = $4 AND (is_deleted IS NULL OR is_deleted = FALSE)
        RETURNING recurring_id`),
     );
     expect(values).toEqual([
-      "u-1",
-      "r-1",
       JSON.stringify([
         { amount: 1000, label: { budget_id: B1, category_id: C1 } },
         { amount: 12.35, label: { budget_id: null, category_id: null } },
       ]),
+      getDateString(),
+      "r-1",
+      "u-1",
     ]);
     expect(mockClientQuery).not.toHaveBeenCalled();
   });
 
-  test("refuses a label the user doesn't own without storing anything", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ ...budgetRow, budget_id: B1 }], rowCount: 1 }); // owned budgets
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // owned categories: none
+  test.each([
+    [
+      "a category",
+      [{ amount: 10, label: { budget_id: B1, category_id: C2 } }],
+      { budgets: [B1], categories: [] as string[] },
+    ],
+    [
+      "a budget",
+      [{ amount: 10, label: { budget_id: B2, category_id: C1 } }],
+      { budgets: [] as string[], categories: [C1] },
+    ],
+    [
+      "one category beside an owned one",
+      [
+        { amount: 10, label: { budget_id: B1, category_id: C1 } },
+        { amount: 5, label: { budget_id: B1, category_id: C2 } },
+      ],
+      { budgets: [B1], categories: [C1] },
+    ],
+  ])("refuses %s the user doesn't own without storing anything", async (_, splits, owned) => {
+    mockQuery.mockResolvedValueOnce({
+      rows: owned.budgets.map((budget_id) => ({ ...budgetRow, budget_id })),
+      rowCount: owned.budgets.length,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: owned.categories.map((category_id) => ({ ...categoryRow, category_id })),
+      rowCount: owned.categories.length,
+    });
 
-    const result = await postRecurringRoute.execute(
-      makeReq({ recurring_id: "r-1", splits: [{ amount: 10, label: { budget_id: B1, category_id: C2 } }] }),
-      fakeRes(),
-    );
+    const result = await postRecurringRoute.execute(makeReq({ recurring_id: "r-1", splits }), fakeRes());
 
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not found/);

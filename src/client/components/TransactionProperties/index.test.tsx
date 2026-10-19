@@ -80,6 +80,8 @@ interface SetupOptions {
   splits?: Recurring["splits"];
   /** Splits of tx-0, the viewed transaction. */
   ownSplits?: SplitTransaction[];
+  /** tx-0's amount, when not the members' default. */
+  amount?: number;
   /** Other recurrings already in `data`. */
   others?: Recurring[];
   /** Body the stubbed `/api/recurrings` answers with. */
@@ -100,6 +102,7 @@ const setup = ({
   label,
   splits,
   ownSplits = [],
+  amount,
   others = [],
   responseBody,
   suggestedTransfer,
@@ -110,7 +113,9 @@ const setup = ({
   data.sections.set(section.id, section);
   data.categories.set(subscriptions.id, subscriptions);
   data.categories.set(streaming.id, streaming);
-  const members = MEMBER_DATES.map((date, i) => buildTransaction(`tx-${i}`, date));
+  const members = MEMBER_DATES.map((date, i) =>
+    buildTransaction(`tx-${i}`, date, i === 0 && amount !== undefined ? { amount } : {}),
+  );
   members.forEach((t) => data.transactions.set(t.transaction_id, t));
   const recurrings = others.map((r): [string, Recurring] => [r.recurring_id, r]);
   if (status) {
@@ -575,6 +580,17 @@ describe("TransactionProperties — recurring default splits", () => {
 
   it("offers nothing to save when the splits cover the whole charge", () => {
     setup({ status: "confirmed", ownSplits: [ownSplit(30, streaming.id)] });
+
+    expect(screen.queryByRole("button", { name: /^Use.These.Splits.as.Default$/ })).toBeNull();
+  });
+
+  it("counts cents exactly when the splits cover the whole charge", () => {
+    // 10.10 + 20.20 is 30.299999999999997 in floating point.
+    setup({
+      status: "confirmed",
+      amount: 30.3,
+      ownSplits: [ownSplit(10.1, streaming.id), ownSplit(20.2, subscriptions.id)],
+    });
 
     expect(screen.queryByRole("button", { name: /^Use.These.Splits.as.Default$/ })).toBeNull();
   });

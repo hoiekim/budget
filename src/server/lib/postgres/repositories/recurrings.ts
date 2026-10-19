@@ -1,4 +1,5 @@
 import {
+  getDateString,
   JSONTransaction,
   JSONRecurringLabel,
   JSONRecurringSplit,
@@ -477,15 +478,16 @@ export const setRecurringSplits = async (
   if (!budgetIds.every((id) => owned.budget_ids.has(id)) || !categoryIds.every((id) => owned.category_ids.has(id))) {
     return { ok: false, error: "A split's budget or category was not found." };
   }
-  const updated = await pool.query(
-    `UPDATE ${RECURRINGS}
-     SET ${SPLITS} = $3::jsonb, ${SPLITS_SINCE} = CURRENT_DATE, ${UPDATED} = CURRENT_TIMESTAMP
-     WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2
-       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
-     RETURNING ${RECURRING_ID}`,
-    [user.user_id, recurring_id, JSON.stringify(splits)],
+  const updated = await recurringsTable.update(
+    recurring_id,
+    { [SPLITS]: JSON.stringify(splits), [SPLITS_SINCE]: getDateString() },
+    undefined,
+    user.user_id,
+    undefined,
+    undefined,
+    true,
   );
-  if ((updated.rowCount ?? 0) === 0) {
+  if (!updated) {
     return { ok: false, error: "Recurring not found." };
   }
   return { ok: true };
