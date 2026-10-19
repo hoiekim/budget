@@ -13,8 +13,8 @@ import type { TransactionsPageType } from "client/components";
 import { Transaction } from "../../lib/models/Transaction";
 import { SplitTransaction } from "../../lib/models/SplitTransaction";
 import { InvestmentTransaction } from "../../lib/models/InvestmentTransaction";
-import { TransferDictionary } from "../../lib/models/Data";
-import type { TransferPair } from "server";
+import { RecurringDictionary, TransferDictionary } from "../../lib/models/Data";
+import type { Recurring, TransferPair } from "server";
 
 // Thin per-test wrapper around the class API so the assertions stay in
 // the `predicate(row, types, ctx)` shape. Each call constructs its own
@@ -481,5 +481,29 @@ describe("matchesAnySelectedType — manual", () => {
     const plaidDeposit = mkTxn("t1", "plaid");
     plaidDeposit.amount = -5;
     expect(matchesAnySelectedType(plaidDeposit, ["manual", "deposits"], makeCtx())).toBe(true);
+  });
+});
+
+describe("recurring filter", () => {
+  const recurringCtx = (memberIds: string[]): FilterContext => ({
+    transfers: new TransferDictionary(),
+    recurrings: new RecurringDictionary([
+      [
+        "r1",
+        {
+          recurring_id: "r1",
+          status: "confirmed",
+          transactions: memberIds.map((id) => ({ transaction_id: id }) as never),
+        } as Recurring,
+      ],
+    ]),
+  });
+
+  test("a member transaction and its splits match; another transaction's split doesn't", () => {
+    const ctx = recurringCtx(["t1"]);
+    expect(matchesAnySelectedType(makeTxn("t1", 10), ["recurring"], ctx)).toBe(true);
+    expect(matchesAnySelectedType(makeSplit("s1", "t1", 3), ["recurring"], ctx)).toBe(true);
+    expect(matchesAnySelectedType(makeSplit("s2", "t2", 3), ["recurring"], ctx)).toBe(false);
+    expect(matchesAnySelectedType(makeTxn("t2", 10), ["recurring"], ctx)).toBe(false);
   });
 });

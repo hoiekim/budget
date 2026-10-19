@@ -73,18 +73,11 @@ const TransactionRow = ({ transaction }: Props) => {
   const suggestedPairId =
     pendingTransferPair?.status === "suggested" ? pendingTransferPair.pair_id : undefined;
 
-  // A row whose parent transaction belongs to a still-suggested recurring
-  // shows the recurring affordance instead of the budget/category controls —
-  // mirrors the suggested-transfer-pair treatment above. A suggested
-  // transfer pair takes precedence when a row is in both (transfer state
-  // wins, matching the filter predicates). Once confirmed, the controls
-  // come back and a "Recurring" chip sits beside the title instead. Split
-  // rows never carry either — detection groups whole transactions.
-  const recurring = isSplitTransaction
-    ? undefined
-    : recurrings.byTransactionId.get(transaction_id);
+  // A split shares its parent's recurring, but a suggestion is answered on the
+  // parent row, so the split keeps its own label controls.
+  const recurring = recurrings.byTransactionId.get(transaction_id);
   const suggestedRecurringId =
-    recurring?.status === "suggested" ? recurring.recurring_id : undefined;
+    !isSplitTransaction && recurring?.status === "suggested" ? recurring.recurring_id : undefined;
   const isConfirmedRecurring = recurring?.status === "confirmed";
 
   const title = label.memo || (!merchant_name && name ? name : merchant_name);
