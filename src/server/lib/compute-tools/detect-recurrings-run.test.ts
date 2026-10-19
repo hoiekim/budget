@@ -106,7 +106,10 @@ const setupSoftDeletedNetflix = (
       return { rows, rowCount: rows.length };
     }
     if (/^SELECT/i.test(flat) && /FROM recurrings/i.test(flat)) {
-      return { rows: recurrings, rowCount: recurrings.length };
+      const rows = /is_deleted IS NULL OR is_deleted = FALSE/i.test(flat)
+        ? recurrings.filter((r) => !r.is_deleted)
+        : recurrings;
+      return { rows, rowCount: rows.length };
     }
     return { rows: [], rowCount: 0 };
   };
