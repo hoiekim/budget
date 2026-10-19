@@ -264,6 +264,9 @@ interface FetchBudgetsResult {
   networkFailed: boolean;
 }
 
+export const sortById = <T,>(rows: T[], id: (row: T) => string): T[] =>
+  [...rows].sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
+
 const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   const result: FetchBudgetsResult = {
     budgets: new BudgetDictionary(),
@@ -279,10 +282,19 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   }
   if (!response.body) return result;
 
+  // Id order is the order IndexedDB hands the cache back in. Matching it keeps
+  // every budget/category dropdown from being rebuilt when a warm load's
+  // cached paint is replaced by the network's.
   const { budgets, sections, categories } = response.body;
-  budgets.forEach((e) => result.budgets.set(e.budget_id, new Budget(e)));
-  sections.forEach((e) => result.sections.set(e.section_id, new Section(e)));
-  categories.forEach((e) => result.categories.set(e.category_id, new Category(e)));
+  sortById(budgets, (e) => e.budget_id).forEach((e) =>
+    result.budgets.set(e.budget_id, new Budget(e)),
+  );
+  sortById(sections, (e) => e.section_id).forEach((e) =>
+    result.sections.set(e.section_id, new Section(e)),
+  );
+  sortById(categories, (e) => e.category_id).forEach((e) =>
+    result.categories.set(e.category_id, new Category(e)),
+  );
 
   return result;
 };
