@@ -419,15 +419,15 @@ export const TransactionProperties = ({ transaction }: Props) => {
     void saveRecurringLabel(recurringSelect.selectedBudgetIdLabel, e.target.value);
   };
 
-  // The recurring's default splits, and this transaction's splits in the same
-  // shape so they can become the default.
   const recurringSplits = existingRecurring?.splits ?? [];
   const ownSplits = useMemo(
     (): JSONRecurringSplit[] =>
-      (transactionFamilies.get(transaction_id)?.toArray() ?? []).map((s) => ({
-        amount: Math.round(Math.abs(s.amount) * 100) / 100,
-        label: { budget_id: s.label.budget_id ?? null, category_id: s.label.category_id ?? null },
-      })),
+      (transactionFamilies.get(transaction_id)?.toArray() ?? [])
+        .map((s) => ({
+          amount: Math.round(Math.abs(s.amount) * 100) / 100,
+          label: { budget_id: s.label.budget_id ?? null, category_id: s.label.category_id ?? null },
+        }))
+        .filter((s) => s.amount > 0),
     [transactionFamilies, transaction_id],
   );
   const splitsKey = (splits: JSONRecurringSplit[]) =>
@@ -436,6 +436,10 @@ export const TransactionProperties = ({ transaction }: Props) => {
       .sort()
       .join();
   const ownSplitsAreDefault = splitsKey(ownSplits) === splitsKey(recurringSplits);
+  // A default must leave a remainder, or a charge of the same amount never
+  // takes it.
+  const ownSplitsLeaveRemainder =
+    ownSplits.reduce((sum, s) => sum + s.amount, 0) < Math.abs(amount);
   const [savingSplits, setSavingSplits] = useState(false);
   const saveRecurringSplits = async (splits: JSONRecurringSplit[]) => {
     if (!existingRecurring || savingSplits) return;
@@ -856,7 +860,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 </span>
               </KeyValue>
             ))}
-            {!!ownSplits.length && !ownSplitsAreDefault && (
+            {!!ownSplits.length && !ownSplitsAreDefault && ownSplitsLeaveRemainder && (
               <ButtonRow disabled={savingSplits} onClick={() => saveRecurringSplits(ownSplits)}>
                 Use&nbsp;These&nbsp;Splits&nbsp;as&nbsp;Default
               </ButtonRow>

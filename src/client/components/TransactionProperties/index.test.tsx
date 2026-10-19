@@ -552,6 +552,33 @@ describe("TransactionProperties — recurring default splits", () => {
     expect(button(/^Clear.Default.Splits$/)).not.toBeNull();
   });
 
+  it("leaves a zero-amount split out of the saved default", async () => {
+    const { calls } = setup({
+      status: "confirmed",
+      ownSplits: [ownSplit(20, streaming.id), ownSplit(0, subscriptions.id)],
+      responseBody: { recurring_id: RECURRING_ID },
+    });
+    const bodies = recordBodies();
+
+    await act(async () => {
+      fireEvent.click(button(/^Use.These.Splits.as.Default$/));
+    });
+
+    expect(calls.requests).toEqual([{ url: "/api/recurrings", method: "POST" }]);
+    expect(bodies).toEqual([
+      {
+        recurring_id: RECURRING_ID,
+        splits: [{ amount: 20, label: { budget_id: budget.id, category_id: streaming.id } }],
+      },
+    ]);
+  });
+
+  it("offers nothing to save when the splits cover the whole charge", () => {
+    setup({ status: "confirmed", ownSplits: [ownSplit(30, streaming.id)] });
+
+    expect(screen.queryByRole("button", { name: /^Use.These.Splits.as.Default$/ })).toBeNull();
+  });
+
   it("offers nothing to save on a transaction without splits", () => {
     setup({ status: "confirmed" });
 

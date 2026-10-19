@@ -81,6 +81,7 @@ const recurringRow = (overrides: Record<string, unknown> = {}) => ({
   label_budget_id: null,
   label_category_id: null,
   splits: [],
+  splits_since: null,
   created_at: "2026-10-02T00:00:00Z",
   updated: "2026-10-02T00:00:00Z",
   is_deleted: false,
@@ -182,6 +183,7 @@ const relabelCall = () =>
   mockClientQuery.mock.calls.find((c) => /UPDATE transactions/.test(c[0] as string));
 const splitCall = () =>
   mockClientQuery.mock.calls.find((c) => /INSERT INTO split_transactions/.test(c[0] as string));
+const squish = (sql: string) => sql.replace(/\s+/g, " ").trim();
 
 describe("post-recurring — confirm", () => {
   test("confirms, seeds the default from the members, relabels them, and answers with the recurring", async () => {
@@ -388,7 +390,7 @@ describe("post-recurring — add to existing", () => {
       rowCount: 1,
     }); // recurring
     mockClientQuery.mockResolvedValueOnce({
-      rows: [{ transaction_id: "t-2", amount: "3900.00" }],
+      rows: [{ transaction_id: "t-2", amount: "1200.00" }],
       rowCount: 1,
     }); // members to add
     mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
@@ -400,9 +402,10 @@ describe("post-recurring — add to existing", () => {
           label_category_id: C1,
           transaction_ids: ["t-1", "t-2"],
           splits: [
-            { amount: 3700, label: { budget_id: B2, category_id: C2 } },
-            { amount: 50.5, label: { budget_id: B2, category_id: null } },
+            { amount: 1000, label: { budget_id: B2, category_id: C2 } },
+            { amount: 25.5, label: { budget_id: B2, category_id: null } },
           ],
+          splits_since: "2026-09-15",
         },
       ],
       rowCount: 1,
@@ -420,32 +423,103 @@ describe("post-recurring — add to existing", () => {
 
     expect(result?.status).toBe("success");
     const [sql, values] = splitCall()!;
-    // Only charges without live splits, and only when a remainder is left.
-    expect(sql as string).toMatch(/NOT EXISTS/);
-    expect(sql as string).toMatch(/ABS\(t\.amount\) > \$6::numeric/);
-    expect(sql as string).toMatch(/s\.amount \* SIGN\(t\.amount\)/);
-    expect(values).toEqual(["u-1", ["t-2"], [3700, 50.5], [B2, B2], [C2, null], 3750.5]);
+    expect(squish(sql as string)).toBe(
+      squish(`INSERT INTO split_transactions
+         (user_id, transaction_id, account_id, amount, date,
+          label_budget_id, label_category_id, label_category_confidence)
+       SELECT t.user_id, t.transaction_id, t.account_id, s.amount * SIGN(t.amount), t.date,
+              s.budget_id, s.category_id,
+              CASE WHEN s.category_id IS NOT NULL THEN 1 WHEN s.budget_id IS NOT NULL THEN 0 END
+       FROM transactions t
+       CROSS JOIN UNNEST($3::numeric[], $4::uuid[], $5::uuid[]) AS s(amount, budget_id, category_id)
+       WHERE t.user_id = $1
+         AND t.transaction_id = ANY($2::text[])
+         AND (t.is_deleted IS NULL OR t.is_deleted = FALSE)
+         AND ABS(t.amount) > $6::numeric
+         AND t.date >= $7::date
+         AND NOT EXISTS (
+           SELECT 1 FROM split_transactions x
+           WHERE x.user_id = t.user_id
+             AND x.transaction_id = t.transaction_id
+             AND (x.is_deleted IS NULL OR x.is_deleted = FALSE)
+         )`),
+    );
+    expect(values).toEqual(["u-1", ["t-2"], [1000, 25.5], [B2, B2], [C2, null], 1025.5, "2026-09-15"]);
     expect(relabelCall()![1]).toEqual(["u-1", ["t-2"], B1, C1, 1, B1, C1]);
     expect(clientSql().at(-1)).toBe("COMMIT");
   });
+
+  test("confirming a recurring splits none of its members", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // status
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          label_budget_id: B1,
+          label_category_id: C1,
+          transaction_ids: ["t-1", "t-2"],
+          splits: [{ amount: 1000, label: { budget_id: B2, category_id: C2 } }],
+          splits_since: "2026-09-15",
+        },
+      ],
+      rowCount: 1,
+    }); // default label and splits
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 }); // relabel
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockQuery.mockResolvedValueOnce({ rows: [recurringRow()], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 });
+
+    const result = await postRecurringRoute.execute(makeReq({ recurring_id: "r-1" }), fakeRes());
+
+    expect(result?.status).toBe("success");
+    expect(splitCall()).toBeUndefined();
+    expect(relabelCall()).toBeDefined();
+  });
 });
 
+const budgetRow = {
+  user_id: "u-1",
+  name: "Living",
+  iso_currency_code: "USD",
+  roll_over: false,
+  roll_over_start_date: null,
+  capacities: [],
+  updated: "2026-10-02T00:00:00Z",
+  is_deleted: false,
+};
+const categoryRow = {
+  user_id: "u-1",
+  section_id: "00000000-0000-0000-0000-0000000000a1",
+  name: "Rent",
+  roll_over: false,
+  roll_over_start_date: null,
+  capacities: [],
+  updated: "2026-10-02T00:00:00Z",
+  is_deleted: false,
+};
+
 describe("post-recurring — default splits", () => {
-  const stageSplits = (stored: unknown[]) => {
+  const stageSplits = (stored: unknown[], { owned = true } = {}) => {
+    if (owned) {
+      mockQuery.mockResolvedValueOnce({ rows: [{ ...budgetRow, budget_id: B1 }], rowCount: 1 }); // owned budgets
+      mockQuery.mockResolvedValueOnce({ rows: [{ ...categoryRow, category_id: C1 }], rowCount: 1 }); // owned categories
+    }
     mockQuery.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // store
     mockQuery.mockResolvedValueOnce({ rows: [recurringRow({ splits: stored })], rowCount: 1 });
     mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 });
   };
+  const storeCall = () => mockQuery.mock.calls.find((c) => /UPDATE recurrings/.test(c[0] as string));
 
-  test("stores them rounded to cents, on a live recurring of the session user", async () => {
-    const stored = [{ amount: 3700, label: { budget_id: B1, category_id: C1 } }];
+  test("stores them rounded to cents, from today, on a live recurring of the session user", async () => {
+    const stored = [{ amount: 1000, label: { budget_id: B1, category_id: C1 } }];
     stageSplits(stored);
 
     const result = await postRecurringRoute.execute(
       makeReq({
         recurring_id: "r-1",
         splits: [
-          { amount: 3700.004, label: { budget_id: B1, category_id: C1 } },
+          { amount: 1000.004, label: { budget_id: B1, category_id: C1 } },
           { amount: 12.345, label: {} },
         ],
       }),
@@ -454,22 +528,44 @@ describe("post-recurring — default splits", () => {
 
     expect(result?.status).toBe("success");
     expect(result?.body?.recurring?.splits).toEqual(stored);
-    const [sql, values] = mockQuery.mock.calls[0];
-    expect(sql as string).toMatch(/UPDATE recurrings/);
-    expect(sql as string).toMatch(/is_deleted/);
-    expect(values).toContain("r-1");
-    expect(values).toContain("u-1");
-    expect(values).toContain(
+    const [sql, values] = storeCall()!;
+    expect(squish(sql as string)).toBe(
+      squish(`UPDATE recurrings
+       SET splits = $3::jsonb, splits_since = CURRENT_DATE, updated = CURRENT_TIMESTAMP
+       WHERE user_id = $1 AND recurring_id = $2
+         AND (is_deleted IS NULL OR is_deleted = FALSE)
+       RETURNING recurring_id`),
+    );
+    expect(values).toEqual([
+      "u-1",
+      "r-1",
       JSON.stringify([
-        { amount: 3700, label: { budget_id: B1, category_id: C1 } },
+        { amount: 1000, label: { budget_id: B1, category_id: C1 } },
         { amount: 12.35, label: { budget_id: null, category_id: null } },
       ]),
-    );
+    ]);
     expect(mockClientQuery).not.toHaveBeenCalled();
   });
 
+  test("refuses a label the user doesn't own without storing anything", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...budgetRow, budget_id: B1 }], rowCount: 1 }); // owned budgets
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // owned categories: none
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", splits: [{ amount: 10, label: { budget_id: B1, category_id: C2 } }] }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/not found/);
+    expect(storeCall()).toBeUndefined();
+    const [budgetSql, budgetValues] = mockQuery.mock.calls[0];
+    expect(budgetSql as string).toMatch(/FROM budgets/);
+    expect(budgetValues).toContain("u-1");
+  });
+
   test("an empty list clears them", async () => {
-    stageSplits([]);
+    stageSplits([], { owned: false });
 
     const result = await postRecurringRoute.execute(
       makeReq({ recurring_id: "r-1", splits: [] }),
@@ -477,7 +573,7 @@ describe("post-recurring — default splits", () => {
     );
 
     expect(result?.status).toBe("success");
-    expect(mockQuery.mock.calls[0][1]).toContain("[]");
+    expect(storeCall()![1]).toContain("[]");
   });
 
   test("reports a recurring that doesn't exist", async () => {

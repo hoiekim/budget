@@ -21,6 +21,7 @@ import {
   TRANSACTION_IDS,
   TRANSACTION_ID,
   SPLITS,
+  SPLITS_SINCE,
   IS_DELETED,
   UPDATED,
   LABEL_BUDGET_ID,
@@ -28,6 +29,7 @@ import {
   LABEL_CATEGORY_CONFIDENCE,
 } from "../models";
 import { TRANSACTIONS, RECURRINGS, SPLIT_TRANSACTIONS } from "common/constants";
+import { getOwnedLabelIds } from "./budgets";
 
 export interface Recurring {
   recurring_id: string;
@@ -259,17 +261,18 @@ const seedRecurringLabel = async (
 };
 
 /**
- * Split each of `transactionIds` by a recurring's default splits. A charge
- * that already has splits keeps them, and one too small to leave a
- * remainder on the parent is left whole.
+ * Split each of `transactionIds` dated on or after `since` by a recurring's
+ * default splits. A charge that already has splits keeps them, and one too
+ * small to leave a remainder on the parent is left whole.
  */
 const applyRecurringSplits = async (
   executor: QueryExecutor,
   userId: string,
   splits: JSONRecurringSplit[],
+  since: string | null,
   transactionIds: string[],
 ): Promise<void> => {
-  if (splits.length === 0 || transactionIds.length === 0) return;
+  if (splits.length === 0 || !since || transactionIds.length === 0) return;
   const total = Math.round(splits.reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
   await executor.query(
     `INSERT INTO ${SPLIT_TRANSACTIONS}
@@ -284,6 +287,7 @@ const applyRecurringSplits = async (
        AND t.${TRANSACTION_ID} = ANY($2::text[])
        AND (t.${IS_DELETED} IS NULL OR t.${IS_DELETED} = FALSE)
        AND ABS(t.amount) > $6::numeric
+       AND t.date >= $7::date
        AND NOT EXISTS (
          SELECT 1 FROM ${SPLIT_TRANSACTIONS} x
          WHERE x.${USER_ID} = t.${USER_ID}
@@ -297,6 +301,7 @@ const applyRecurringSplits = async (
       splits.map((s) => s.label.budget_id),
       splits.map((s) => s.label.category_id),
       total,
+      since,
     ],
   );
 };
@@ -321,14 +326,18 @@ export const labelConfirmedRecurring = async (
     label_category_id: string | null;
     transaction_ids: string[];
     splits: JSONRecurringSplit[];
+    splits_since: string | null;
   }>(
-    `SELECT ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}, ${TRANSACTION_IDS}, ${SPLITS} FROM ${RECURRINGS}
+    `SELECT ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}, ${TRANSACTION_IDS}, ${SPLITS}, ${SPLITS_SINCE}
+     FROM ${RECURRINGS}
      WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2 AND ${STATUS} = 'confirmed'`,
     [userId, recurring_id],
   );
   const row = found.rows[0];
   if (!row) return;
-  if (transactionIds) await applyRecurringSplits(executor, userId, row.splits ?? [], transactionIds);
+  if (transactionIds) {
+    await applyRecurringSplits(executor, userId, row.splits ?? [], row.splits_since, transactionIds);
+  }
   let label: JSONRecurringLabel = {
     budget_id: row.label_budget_id,
     category_id: row.label_category_id,
@@ -452,24 +461,31 @@ export const setRecurringLabel = async (
 };
 
 /**
- * Set the splits a recurring's joining charges take. Charges already in it
- * are left as they are; an empty list stops splitting new ones.
+ * Set the splits a recurring's joining charges take, from today on: charges
+ * dated earlier, including ones a revived recurring takes back, are left as
+ * they are. An empty list stops splitting new ones. Every label must be the
+ * user's own.
  */
 export const setRecurringSplits = async (
   user: MaskedUser,
   recurring_id: string,
   splits: JSONRecurringSplit[],
 ): Promise<RecurringConfirmResult> => {
-  const result = await recurringsTable.update(
-    recurring_id,
-    { [SPLITS]: JSON.stringify(splits) },
-    undefined,
-    user.user_id,
-    undefined,
-    undefined,
-    true,
+  const budgetIds = splits.flatMap((s) => (s.label.budget_id ? [s.label.budget_id] : []));
+  const categoryIds = splits.flatMap((s) => (s.label.category_id ? [s.label.category_id] : []));
+  const owned = await getOwnedLabelIds(user, { budget_ids: budgetIds, category_ids: categoryIds });
+  if (!budgetIds.every((id) => owned.budget_ids.has(id)) || !categoryIds.every((id) => owned.category_ids.has(id))) {
+    return { ok: false, error: "A split's budget or category was not found." };
+  }
+  const updated = await pool.query(
+    `UPDATE ${RECURRINGS}
+     SET ${SPLITS} = $3::jsonb, ${SPLITS_SINCE} = CURRENT_DATE, ${UPDATED} = CURRENT_TIMESTAMP
+     WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2
+       AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+     RETURNING ${RECURRING_ID}`,
+    [user.user_id, recurring_id, JSON.stringify(splits)],
   );
-  if (!result) {
+  if ((updated.rowCount ?? 0) === 0) {
     return { ok: false, error: "Recurring not found." };
   }
   return { ok: true };
