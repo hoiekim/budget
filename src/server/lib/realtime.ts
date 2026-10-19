@@ -97,6 +97,9 @@ const appendToBuffer = (userId: string, event: StoredEvent): void => {
  *    the client never received an id) → overflow, because between the
  *    client's `sync()` and this SSE subscribe some peer emit landed and
  *    the client would silently miss it.
+ *  - `lastEventId` equals the counter tip → nothing was emitted since the
+ *    client's last event; covered with no replay, even when the buffer has
+ *    aged out.
  *  - `lastEventId` parses AND `lastId <= counterTip` (client isn't from a
  *    future / restarted-process past) AND the buffer's oldest id is
  *    `<= lastEventId + 1` (no gap) → covered; replay events with
@@ -119,12 +122,16 @@ export const getEventsSince = (
   const lastId = Number.parseInt(lastEventId, 10);
   if (!Number.isFinite(lastId)) return { events: [], overflow: true };
   if (lastId > counterTip) return { events: [], overflow: true };
+  if (lastId === counterTip) return { events: [], overflow: false };
   if (!buf || buf.length === 0) return { events: [], overflow: true };
   const firstStoredId = Number.parseInt(buf[0].id, 10);
   if (firstStoredId > lastId + 1) return { events: [], overflow: true };
   const events = buf.filter((e) => Number.parseInt(e.id, 10) > lastId);
   return { events, overflow: false };
 };
+
+/** The id of the user's most recent event, "0" before the first. */
+export const currentEventId = (userId: string): string => String(perUserCounter.get(userId) ?? 0);
 
 export type EmitDomain = TableName;
 

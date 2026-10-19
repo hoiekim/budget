@@ -6,7 +6,9 @@ const { pg } = createFakePg();
 mock.module("pg", () => pg);
 
 const { getEventsRoute } = await import("./get-events");
-const { SSE_KEEPALIVE_MS, SSE_IDLE_TIMEOUT_SECONDS, subscriberCount } = await import("server");
+const { SSE_KEEPALIVE_MS, SSE_IDLE_TIMEOUT_SECONDS, subscriberCount, emitToUser } =
+  await import("server");
+const { TableName } = await import("common/constants");
 
 afterAll(restoreLeaves);
 
@@ -52,6 +54,37 @@ const fakeRes = () =>
     end() {},
   }) as unknown as Parameters<typeof getEventsRoute.execute>[1];
 
+/** A request whose stream stays open until the returned `close` aborts it. */
+const makeLiveReq = (userId: string, query: Record<string, string>) => {
+  const controller = new AbortController();
+  const req = {
+    ...makeReq(() => {}),
+    query,
+    session: {
+      id: "s-live",
+      user: { user_id: userId, username: "test" },
+      regenerate() {},
+      destroy() {},
+    },
+    signal: controller.signal,
+  } as unknown as Parameters<typeof getEventsRoute.execute>[0];
+  return { req, close: () => controller.abort() };
+};
+
+/** Reads the stream up to and including the `connected` block. */
+const readUntilConnected = async (response: Response): Promise<string> => {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.includes("event: connected")) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value);
+  }
+  reader.releaseLock();
+  return text;
+};
+
 describe("get-events", () => {
   test("widens this request's idle deadline past the keepalive period", async () => {
     // Deleting the `req.setIdleTimeout(...)` line leaves typecheck clean and
@@ -79,5 +112,28 @@ describe("get-events", () => {
     // Drain so the stream's `start` runs to completion.
     await (result as Response).body?.getReader().read();
     expect(subscriberCount("u-1")).toBe(before);
+  });
+
+  test("replays from the last-event-id query parameter and ends on the current id", async () => {
+    emitToUser("u-replay", TableName.Accounts);
+    emitToUser("u-replay", TableName.Budgets);
+    const { req, close } = makeLiveReq("u-replay", { "last-event-id": "1" });
+    const text = await readUntilConnected((await getEventsRoute.execute(req, fakeRes())) as Response);
+    close();
+
+    const blocks = text.split("\n\n").filter((b) => b.startsWith("id:"));
+    expect(blocks).toEqual([
+      `id: 2\nevent: ${TableName.Budgets}-updated\ndata: {}`,
+      "id: 2\nevent: connected\ndata: {}",
+    ]);
+  });
+
+  test("a reconnect with nothing missed gets no retry-full, only the current id", async () => {
+    const { req, close } = makeLiveReq("u-quiet", { "last-event-id": "0" });
+    const text = await readUntilConnected((await getEventsRoute.execute(req, fakeRes())) as Response);
+    close();
+
+    expect(text).not.toContain("retry-full");
+    expect(text).toContain("id: 0\nevent: connected\ndata: {}");
   });
 });

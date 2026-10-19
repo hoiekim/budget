@@ -6,6 +6,7 @@ import {
   subscriberCount,
   emitToUser,
   getEventsSince,
+  currentEventId,
   mutationEmitDomain,
   mutationSideEffectDomains,
   closeAllSubscribers,
@@ -345,5 +346,24 @@ describe("ring buffer", () => {
     const covered = getEventsSince("u1", "1");
     expect(covered.overflow).toBe(false);
     expect(covered.events).toEqual([]);
+  });
+
+  it("getEventsSince treats a reconnect at the counter tip as covered when nothing was ever buffered", () => {
+    // A tab that connected before this user's first event resumes from the
+    // "0" the connect handed it. Nothing has been emitted since, so there is
+    // nothing to miss — an overflow here would resync the whole app on every
+    // foreground of a quiet tab.
+    const result = getEventsSince("u1", currentEventId("u1"));
+    expect(result.overflow).toBe(false);
+    expect(result.events).toEqual([]);
+  });
+
+  it("currentEventId reports each user's latest event id, and 0 before the first", () => {
+    expect(currentEventId("u1")).toBe("0");
+    emitToUser("u1", TableName.Accounts);
+    emitToUser("u1", TableName.Budgets);
+    emitToUser("u2", TableName.Accounts);
+    expect(currentEventId("u1")).toBe("2");
+    expect(currentEventId("u2")).toBe("1");
   });
 });

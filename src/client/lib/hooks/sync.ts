@@ -651,8 +651,10 @@ export const useSync = () => {
       // time-partitioned. Refreshed on every sync (warm + cold).
       //
       // For warm load, we paint cached state first so the UI doesn't
-      // flicker between cache and the refreshed view of Stage 1.
-      if (isWarm && cached) {
+      // flicker between cache and the refreshed view of Stage 1. A resync of
+      // a page already showing data skips it: the live state is at least as
+      // new as the cache, and swapping the cache in rebuilds every row.
+      if (isWarm && cached && !globalData.status.isInit) {
         cached.status.isInit = true;
         cached.status.isLoading = true;
         cached.status.isError = false;
