@@ -621,12 +621,14 @@ export const runRecurringDetection = async (): Promise<void> => {
         const existing = await recurringsTable.query(
           { [USER_ID]: userId },
           { excludeDeleted: true },
+          client,
         );
         const existingByKey = new Map(
           existing.map((r) => [`${r.merchant_key}::${r.is_income}`, r]),
         );
 
         let userSuggested = 0;
+        let userAttached = 0;
         for (const group of groups) {
           const key = `${group.merchant_key}::${group.is_income}`;
           const row = existingByKey.get(key);
@@ -634,19 +636,20 @@ export const runRecurringDetection = async (): Promise<void> => {
           if (!row) {
             // The unique key also covers soft-deleted rows, which `existing`
             // leaves out: a merchant whose recurring was cascade-deleted
-            // revives that row as a fresh suggestion, keeping its name and
-            // default label.
-            await client.query(
+            // revives that row with the new charges and its status, name and
+            // default label as they were, so a dismissal still holds and a
+            // confirmed recurring carries on.
+            const inserted = await client.query<{ recurring_id: string; status: string }>(
               `INSERT INTO ${RECURRINGS}
                  (${RECURRING_ID}, ${USER_ID}, ${MERCHANT_KEY}, ${MERCHANT_NAME}, ${CADENCE}, ${IS_INCOME}, ${STATUS}, ${TRANSACTION_IDS})
                VALUES ($1, $2, $3, $4, $5, $6, 'suggested', $7)
                ON CONFLICT (${USER_ID}, ${MERCHANT_KEY}, ${IS_INCOME}) DO UPDATE SET
-                 ${STATUS} = 'suggested',
                  ${CADENCE} = EXCLUDED.${CADENCE},
                  ${TRANSACTION_IDS} = EXCLUDED.${TRANSACTION_IDS},
                  ${IS_DELETED} = FALSE,
                  ${UPDATED} = CURRENT_TIMESTAMP
-               WHERE ${RECURRINGS}.${IS_DELETED} = TRUE`,
+               WHERE ${RECURRINGS}.${IS_DELETED} = TRUE
+               RETURNING ${RECURRING_ID}, ${STATUS}`,
               [
                 crypto.randomUUID(),
                 userId,
@@ -657,7 +660,12 @@ export const runRecurringDetection = async (): Promise<void> => {
                 group.transaction_ids,
               ],
             );
-            userSuggested++;
+            const revived = inserted.rows[0];
+            if (revived?.status === "suggested") userSuggested++;
+            if (revived?.status === "confirmed") {
+              await labelConfirmedRecurring(client, userId, revived.recurring_id, group.transaction_ids);
+              userAttached += group.transaction_ids.length;
+            }
             continue;
           }
 
@@ -686,7 +694,6 @@ export const runRecurringDetection = async (): Promise<void> => {
         // charge, a price change, a stray purchase), or a manual recurring
         // that never did, keeps collecting. Groups never touch a confirmed
         // row's merchant_key, so `existing` is still current here.
-        let userAttached = 0;
         const confirmed = existing.filter((r) => r.status === "confirmed");
         if (confirmed.length > 0) {
           const claimed = new Set(
