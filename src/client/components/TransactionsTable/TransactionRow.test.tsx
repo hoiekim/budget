@@ -413,7 +413,6 @@ const renderRecurringRow = (
   return { ...rendered, calls: stub.calls };
 };
 
-/** A split of the recurring's member transaction, rendered as its own row. */
 const renderRecurringSplitRow = (status: "suggested" | "confirmed") => {
   const { data, transaction } = buildRecurring(status);
   const split = new SplitTransaction({
