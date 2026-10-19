@@ -561,8 +561,8 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
  *   2. Group candidates with `detectRecurringGroups`.
  *   3. For each group, reconcile against the existing row for
  *      (merchant_key, is_income):
- *        - none → INSERT a suggestion of the group's unclaimed charges, or
- *          revive the key's soft-deleted row with them, keeping its status
+ *        - none → INSERT a suggestion, or revive the key's soft-deleted row
+ *          keeping its status (a confirmed one takes only unclaimed charges)
  *        - dismissed → skip (the denylist: the user said "no" to this
  *          merchant group, not "these transactions can never recur")
  *        - suggested → refresh transaction_ids when the set changed
@@ -619,16 +619,20 @@ export const runRecurringDetection = async (): Promise<void> => {
         const candidates = await fetchCandidates(userId, executor);
         const groups = detectRecurringGroups(candidates);
 
-        const existing = await recurringsTable.query(
+        const rows = await recurringsTable.query(
           { [USER_ID]: userId },
-          { excludeDeleted: true },
+          { excludeDeleted: false },
           client,
         );
+        const existing = rows.filter((r) => !r.is_deleted);
         const existingByKey = new Map(
           existing.map((r) => [`${r.merchant_key}::${r.is_income}`, r]),
         );
+        const deletedByKey = new Map(
+          rows.filter((r) => r.is_deleted).map((r) => [`${r.merchant_key}::${r.is_income}`, r]),
+        );
 
-        // Charges already in an active recurring; a charge belongs to at most one.
+        // Charges already in an active recurring.
         const claimed = new Set(
           existing.filter((r) => r.status !== "dismissed").flatMap((r) => r.transaction_ids),
         );
@@ -640,13 +644,16 @@ export const runRecurringDetection = async (): Promise<void> => {
           const row = existingByKey.get(key);
 
           if (!row) {
-            const unclaimed = group.transaction_ids.filter((id) => !claimed.has(id));
-            if (unclaimed.length === 0) continue;
-            // The unique key also covers soft-deleted rows, which `existing`
-            // leaves out: a merchant whose recurring was cascade-deleted
-            // revives that row with the new charges and its status, name and
-            // default label as they were, so a dismissal still holds and a
-            // confirmed recurring carries on.
+            // The unique key also covers soft-deleted rows: a merchant whose
+            // recurring was cascade-deleted revives that row with the new
+            // charges and its status, name and default label as they were, so
+            // a dismissal still holds and a confirmed recurring carries on,
+            // taking only charges no active recurring holds, as attaching does.
+            const revivesConfirmed = deletedByKey.get(key)?.status === "confirmed";
+            const ids = revivesConfirmed
+              ? group.transaction_ids.filter((id) => !claimed.has(id))
+              : group.transaction_ids;
+            if (ids.length === 0) continue;
             const inserted = await client.query<{ recurring_id: string; status: string }>(
               `INSERT INTO ${RECURRINGS}
                  (${RECURRING_ID}, ${USER_ID}, ${MERCHANT_KEY}, ${MERCHANT_NAME}, ${CADENCE}, ${IS_INCOME}, ${STATUS}, ${TRANSACTION_IDS})
@@ -665,15 +672,15 @@ export const runRecurringDetection = async (): Promise<void> => {
                 group.merchant_name,
                 group.cadence,
                 group.is_income,
-                unclaimed,
+                ids,
               ],
             );
             const revived = inserted.rows[0];
-            if (revived && revived.status !== "dismissed") unclaimed.forEach((id) => claimed.add(id));
+            if (revived && revived.status !== "dismissed") ids.forEach((id) => claimed.add(id));
             if (revived?.status === "suggested") userSuggested++;
             if (revived?.status === "confirmed") {
-              await labelConfirmedRecurring(client, userId, revived.recurring_id, unclaimed);
-              userAttached += unclaimed.length;
+              await labelConfirmedRecurring(client, userId, revived.recurring_id, ids);
+              userAttached += ids.length;
             }
             continue;
           }

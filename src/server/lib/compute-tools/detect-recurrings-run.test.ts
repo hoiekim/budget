@@ -44,22 +44,30 @@ const netflixCandidates = () => {
 const BUDGET_ID = "00000000-0000-4000-8000-0000000000b1";
 const CATEGORY_ID = "00000000-0000-4000-8000-0000000000c1";
 
-/** An active recurring of another merchant holding `transaction_ids`. */
-const activeRow = (transaction_ids: string[]) => ({
-  recurring_id: "00000000-0000-4000-8000-0000000000a9",
+const recurringRow = (
+  merchant_key: string,
+  status: string,
+  transaction_ids: string[],
+  is_deleted: boolean,
+) => ({
+  recurring_id: `00000000-0000-4000-8000-${merchant_key === "netflix" ? "0000000000a1" : "0000000000a9"}`,
   user_id: USER_ID,
-  merchant_key: "subscriptions",
-  merchant_name: "Subscriptions",
+  merchant_key,
+  merchant_name: merchant_key,
   cadence: "monthly",
   is_income: false,
-  status: "confirmed",
+  status,
   transaction_ids,
   label_budget_id: null,
   label_category_id: null,
   created_at: null,
   updated: null,
-  is_deleted: false,
+  is_deleted,
 });
+
+/** An active recurring of another merchant holding `transaction_ids`. */
+const activeRow = (transaction_ids: string[]) =>
+  recurringRow("subscriptions", "confirmed", transaction_ids, false);
 
 const LABEL_LOOKUP = /^SELECT label_budget_id, label_category_id, transaction_ids FROM recurrings/i;
 
@@ -70,7 +78,13 @@ const LABEL_LOOKUP = /^SELECT label_budget_id, label_category_id, transaction_id
  * resolves the conflict, in which case the row comes back with the status it
  * had (and, when confirmed, its default label).
  */
-const setupSoftDeletedNetflix = (revivedStatus: string, active: ReturnType<typeof activeRow>[] = []) => {
+const setupSoftDeletedNetflix = (
+  revivedStatus: string | null,
+  active: ReturnType<typeof activeRow>[] = [],
+) => {
+  const recurrings = revivedStatus
+    ? [...active, recurringRow("netflix", revivedStatus, ["old-netflix"], true)]
+    : active;
   const respond = async (sql: string) => {
     const flat = sql.replace(/\s+/g, " ").trim();
     if (/FROM users/i.test(flat) && /^SELECT/i.test(flat)) return { rows: [userRow], rowCount: 1 };
@@ -82,7 +96,7 @@ const setupSoftDeletedNetflix = (revivedStatus: string, active: ReturnType<typeo
       if (!/ON CONFLICT \(user_id, merchant_key, is_income\) DO UPDATE/i.test(flat)) {
         throw Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" });
       }
-      return { rows: [{ recurring_id: "r-netflix", status: revivedStatus }], rowCount: 1 };
+      return { rows: [{ recurring_id: "r-netflix", status: revivedStatus ?? "suggested" }], rowCount: 1 };
     }
     if (LABEL_LOOKUP.test(flat)) {
       const rows =
@@ -91,7 +105,9 @@ const setupSoftDeletedNetflix = (revivedStatus: string, active: ReturnType<typeo
           : [];
       return { rows, rowCount: rows.length };
     }
-    if (/^SELECT/i.test(flat) && /FROM recurrings/i.test(flat)) return { rows: active, rowCount: active.length };
+    if (/^SELECT/i.test(flat) && /FROM recurrings/i.test(flat)) {
+      return { rows: recurrings, rowCount: recurrings.length };
+    }
     return { rows: [], rowCount: 0 };
   };
   mockQuery.mockImplementation(respond);
@@ -138,7 +154,23 @@ describe("runRecurringDetection", () => {
     ]);
   });
 
-  test("charges another active recurring holds stay with it", async () => {
+  test("a new suggestion keeps the whole group even where another recurring holds charges", async () => {
+    setupSoftDeletedNetflix(null, [activeRow(["netflix-3", "netflix-2"])]);
+
+    await runRecurringDetection();
+
+    expect(insertCall()!.values[6]).toEqual(["netflix-3", "netflix-2", "netflix-1", "netflix-0"]);
+  });
+
+  test("a revived suggestion keeps the whole group too", async () => {
+    setupSoftDeletedNetflix("suggested", [activeRow(["netflix-3", "netflix-2"])]);
+
+    await runRecurringDetection();
+
+    expect(insertCall()!.values[6]).toEqual(["netflix-3", "netflix-2", "netflix-1", "netflix-0"]);
+  });
+
+  test("a revived confirmed recurring leaves charges another active recurring holds with it", async () => {
     setupSoftDeletedNetflix("confirmed", [activeRow(["netflix-3", "netflix-2"])]);
 
     await runRecurringDetection();
@@ -147,7 +179,7 @@ describe("runRecurringDetection", () => {
     expect(labelWrite()!.values[1]).toEqual(["netflix-1", "netflix-0"]);
   });
 
-  test("nothing is inserted or revived when every charge is already held", async () => {
+  test("a confirmed recurring isn't revived when every charge is already held", async () => {
     setupSoftDeletedNetflix("confirmed", [activeRow(["netflix-3", "netflix-2", "netflix-1", "netflix-0"])]);
 
     await runRecurringDetection();
