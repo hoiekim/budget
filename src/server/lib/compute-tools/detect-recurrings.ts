@@ -17,10 +17,16 @@ import {
 } from "../postgres/models";
 import { RECURRINGS } from "common/constants";
 
-/** Minimum settled occurrences before a merchant group is considered. */
+/** Minimum settled occurrences in a run before it counts as a recurring. */
 const MIN_OCCURRENCES = 3;
 /**
- * Every charge must land within ±25% of the group's median amount.
+ * A run that starts after the merchant's first charge needs one more:
+ * three roughly monthly visits to a shop with an irregular history are
+ * more likely chance than a bill.
+ */
+const MIN_OCCURRENCES_AFTER_EARLIER_CHARGES = 4;
+/**
+ * Every charge in a run must land within ±25% of the run's median amount.
  * Bills like utilities legitimately vary; tighter than this drops real
  * recurrings, looser admits coincidental same-merchant spending.
  */
@@ -31,6 +37,14 @@ const AMOUNT_TOLERANCE_RATIO = 0.25;
  * excluded — the surface is "what recurs now", not history.
  */
 const LAPSED_CADENCE_MULTIPLE = 2;
+/**
+ * A merchant's charges split into amount clusters wherever two neighbours
+ * (sorted by amount) differ by more than this ratio, so a fee or a second
+ * plan billed under the same merchant can't break the main bill's run. It
+ * is the widest gap a set within ±25% of its median can contain, so any
+ * run that passes the amount check sits inside one cluster.
+ */
+const MAX_CLUSTER_STEP = (1 + AMOUNT_TOLERANCE_RATIO) / (1 - AMOUNT_TOLERANCE_RATIO);
 /**
  * How far a confirmed recurring's next charge may move from its latest
  * amount and still count as the same bill at a new price ($10 → $20 or
@@ -60,16 +74,23 @@ const CADENCE_SPECS: {
  */
 const DOMAIN_SUFFIX_TOKENS = new Set(["com", "net", "org"]);
 
+/** A zero-padded MM/DD or MM/DD/YY(YY) date that banks append to names. */
+const NAME_DATE_PATTERN = /\b(?:0[1-9]|1[0-2])\/(?:0[1-9]|[12]\d|3[01])(?:\/\d{2}(?:\d{2})?)?\b/g;
+
 /**
  * Normalize a merchant display string into a grouping key. Plaid merchant
  * names carry per-charge noise — domain suffixes ("NETFLIX.COM"),
- * phone-number suffixes ("Netflix 8665795717"), punctuation, case drift —
- * so the key lowercases, drops punctuation, drops long digit runs
+ * phone-number suffixes ("Netflix 8665795717"), posting dates
+ * ("Manual DB-Bkrg 07/03"), punctuation, case drift — so the key drops
+ * dates, lowercases, drops punctuation, drops long digit runs
  * (reference/phone numbers) while keeping short ones ("7-Eleven" keeps
  * its 7), and drops trailing domain-suffix tokens.
  */
 export const normalizeMerchantName = (raw: string): string => {
-  const cleaned = raw.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ");
+  const cleaned = raw
+    .replace(NAME_DATE_PATTERN, " ")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ");
   const tokens = cleaned
     .split(/\s+/)
     .filter((token) => token && !/^\d{5,}$/.test(token));
@@ -136,16 +157,94 @@ const mostCommon = (values: string[]): string => {
   return best;
 };
 
+type CadenceSpec = (typeof CADENCE_SPECS)[number];
+
+interface QualifyingRun {
+  spec: CadenceSpec;
+  /** Oldest first. */
+  occurrences: RecurringCandidate[];
+  medianAmount: number;
+}
+
+/**
+ * Split one merchant's occurrences into amount clusters: sorted by
+ * magnitude, a new cluster starts wherever a neighbour is more than
+ * `MAX_CLUSTER_STEP` larger.
+ */
+const clusterByAmount = (occurrences: RecurringCandidate[]): RecurringCandidate[][] => {
+  const byAmount = [...occurrences].sort((a, b) => Math.abs(a.amount) - Math.abs(b.amount));
+  const clusters: RecurringCandidate[][] = [];
+  let current: RecurringCandidate[] = [];
+  for (const o of byAmount) {
+    const previous = current[current.length - 1];
+    if (previous && Math.abs(o.amount) > Math.abs(previous.amount) * MAX_CLUSTER_STEP) {
+      clusters.push(current);
+      current = [];
+    }
+    current.push(o);
+  }
+  if (current.length) clusters.push(current);
+  return clusters;
+};
+
+/**
+ * The longest run of a cluster's most recent occurrences that qualifies
+ * as a recurring, or null. A run ends at the latest occurrence, has ≥3
+ * occurrences (≥4 when the merchant has older charges at any price), every
+ * consecutive interval within tolerance of one
+ * cadence, every amount within ±25% of the run's median, and its latest
+ * occurrence within 2× the cadence of `today`. Anything older than the
+ * run (a gap, a price that has since changed, a mislabelled charge) is
+ * left out rather than disqualifying the merchant.
+ */
+const latestQualifyingRun = (
+  sortedByDate: RecurringCandidate[],
+  merchantFirstDate: string,
+  today: string,
+): QualifyingRun | null => {
+  const last = sortedByDate[sortedByDate.length - 1];
+  if (!last || sortedByDate.length < MIN_OCCURRENCES) return null;
+  let best: QualifyingRun | null = null;
+  for (const spec of CADENCE_SPECS) {
+    if (daysBetween(last.date, today) > spec.days * LAPSED_CADENCE_MULTIPLE) continue;
+    let start = sortedByDate.length - 1;
+    while (
+      start > 0 &&
+      Math.abs(daysBetween(sortedByDate[start - 1]!.date, sortedByDate[start]!.date) - spec.days) <=
+        spec.toleranceDays
+    ) {
+      start--;
+    }
+    const minimumAt = (from: number) =>
+      sortedByDate[from]!.date > merchantFirstDate
+        ? MIN_OCCURRENCES_AFTER_EARLIER_CHARGES
+        : MIN_OCCURRENCES;
+    for (let from = start; sortedByDate.length - from >= minimumAt(from); from++) {
+      if (best && sortedByDate.length - from <= best.occurrences.length) break;
+      const occurrences = sortedByDate.slice(from);
+      const absAmounts = occurrences.map((o) => Math.abs(o.amount));
+      const medianAmount = medianOfSorted([...absAmounts].sort((a, b) => a - b));
+      if (absAmounts.every((a) => amountWithin(a, medianAmount, AMOUNT_TOLERANCE_RATIO))) {
+        best = { spec, occurrences, medianAmount };
+        break;
+      }
+    }
+  }
+  return best;
+};
+
 /**
  * Group candidate transactions into recurring groups. Pure: the caller owns
  * candidate selection (pending/zero-amount/hidden-account/confirmed-transfer
  * filtering); this function only groups and qualifies.
  *
- * A merchant group becomes a recurring when it has ≥3 occurrences whose
- * consecutive intervals all land within tolerance of one cadence, whose
- * amounts all land within ±25% of the median, and whose most recent
- * occurrence is within 2× the cadence of `now` (lapsed groups excluded).
- * Income and expense occurrences of the same merchant form separate groups.
+ * Occurrences group by merchant and direction (income and expense of the
+ * same merchant are separate), then split into amount clusters. A merchant
+ * becomes a recurring when one of its clusters has a qualifying run (see
+ * `latestQualifyingRun`); the group holds that run's occurrences. When
+ * several clusters qualify, the larger amount wins, so a monthly fee billed
+ * beside the rent never displaces it: one merchant and direction holds at
+ * most one recurring.
  *
  * `now` is injectable so tests can pin the recency check.
  */
@@ -171,43 +270,26 @@ export const detectRecurringGroups = (
   const result: DetectedRecurringGroup[] = [];
   for (const occurrences of groups.values()) {
     if (occurrences.length < MIN_OCCURRENCES) continue;
-    occurrences.sort((a, b) => (a.date < b.date ? -1 : 1));
 
-    const intervals: number[] = [];
-    for (let i = 1; i < occurrences.length; i++) {
-      intervals.push(daysBetween(occurrences[i - 1]!.date, occurrences[i]!.date));
+    const merchantFirstDate = occurrences.reduce(
+      (first, o) => (o.date < first ? o.date : first),
+      occurrences[0]!.date,
+    );
+    let best: QualifyingRun | null = null;
+    for (const cluster of clusterByAmount(occurrences)) {
+      cluster.sort((a, b) => (a.date < b.date ? -1 : 1));
+      const run = latestQualifyingRun(cluster, merchantFirstDate, todayStr);
+      if (run && (!best || run.medianAmount > best.medianAmount)) best = run;
     }
-    const medianInterval = medianOfSorted([...intervals].sort((a, b) => a - b));
-    const spec = CADENCE_SPECS.find(
-      (s) => Math.abs(medianInterval - s.days) <= s.toleranceDays,
-    );
-    if (!spec) continue;
-    if (!intervals.every((d) => Math.abs(d - spec.days) <= spec.toleranceDays))
-      continue;
+    if (!best) continue;
 
-    const absAmounts = occurrences.map((o) => Math.abs(o.amount));
-    const medianAmount = medianOfSorted([...absAmounts].sort((a, b) => a - b));
-    const amountOk = absAmounts.every(
-      (a) => Math.abs(a - medianAmount) <= medianAmount * AMOUNT_TOLERANCE_RATIO,
-    );
-    if (!amountOk) continue;
-
-    const first = occurrences[0]!;
-    const last = occurrences[occurrences.length - 1]!;
-    if (daysBetween(last.date, todayStr) > spec.days * LAPSED_CADENCE_MULTIPLE)
-      continue;
-
-    const merchant_key = normalizeMerchantName(
-      first.merchant_name || first.name || "",
-    );
+    const first = best.occurrences[0]!;
     result.push({
-      merchant_key,
-      merchant_name: mostCommon(
-        occurrences.map((o) => o.merchant_name || o.name),
-      ),
-      cadence: spec.cadence,
+      merchant_key: normalizeMerchantName(first.merchant_name || first.name || ""),
+      merchant_name: mostCommon(best.occurrences.map((o) => o.merchant_name || o.name)),
+      cadence: best.spec.cadence,
       is_income: first.amount < 0,
-      transaction_ids: occurrences.map((o) => o.transaction_id),
+      transaction_ids: best.occurrences.map((o) => o.transaction_id),
     });
   }
 
@@ -255,18 +337,19 @@ const addDays = (date: string, days: number): string => {
  * Pick the charges a confirmed recurring collects this run. Pure: the
  * caller resolves the members, `claimed` (transaction ids already in any
  * active recurring, this one included), and `group`, this merchant's
- * detection group when its whole history still qualifies.
+ * detection group (its latest qualifying run) when it has one.
  *
  * Two sources, returned together, oldest first:
  *
- * 1. The qualifying group, if any. Every unclaimed charge in it joins,
- *    whatever its date: detection has already checked the intervals and
- *    amounts. This is how a recurring created from one recent charge picks
- *    up its history, and how a charge that syncs late with an earlier date
- *    still lands.
+ * 1. The qualifying group, when it holds one of the recurring's members;
+ *    otherwise it is another stream the merchant bills, at another price.
+ *    Every unclaimed charge in it joins, whatever its date: detection has
+ *    already checked the intervals and amounts. This is how a recurring
+ *    created from one recent charge picks up its history, and how a charge
+ *    that syncs late with an earlier date still lands.
  *
- * 2. New charges after the latest member, for when the history no longer
- *    qualifies (one late charge, a price change, a stray purchase). Walking
+ * 2. New charges after the latest member, for when no qualifying group
+ *    holds one (one late charge, a price change, a stray purchase). Walking
  *    forward one billing cycle at a time, a charge joins when it is due on
  *    the schedule and looks like the bill:
  *    - Due: a whole number of periods after the last due date, no more
@@ -289,7 +372,9 @@ export const selectConfirmedAttachments = (
   group?: Pick<DetectedRecurringGroup, "transaction_ids">,
 ): string[] => {
   const candidateById = new Map(candidates.map((c) => [c.transaction_id, c]));
-  const fromGroup = (group?.transaction_ids ?? []).filter(
+  const memberIds = new Set(recurring.members.map((m) => m.transaction_id));
+  const sameStream = !!group?.transaction_ids.some((id) => memberIds.has(id));
+  const fromGroup = (sameStream ? group!.transaction_ids : []).filter(
     (id) => !claimed.has(id) && candidateById.has(id),
   );
   const taken = new Set([...claimed, ...fromGroup]);
@@ -482,9 +567,9 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
  *        - suggested → refresh transaction_ids when the set changed
  *        - confirmed → left to step 4
  *   4. For each confirmed recurring, append the charges
- *      `selectConfirmedAttachments` picks: its merchant's whole group when
- *      that still qualifies, plus new charges due on its schedule when it
- *      doesn't. This is how a confirmed recurring collects each new charge.
+ *      `selectConfirmedAttachments` picks: its merchant's detected group
+ *      when that holds one of its members, plus new charges due on its
+ *      schedule. This is how a confirmed recurring collects each new charge.
  */
 export const runRecurringDetection = async (): Promise<void> => {
   logger.info("Recurring-detection job started");
