@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { JSONRecurringLabel } from "common";
+import type { JSONRecurringLabel, JSONRecurringSplit } from "common";
 import type { Recurring, RecurringPostResponse } from "server";
 import {
   call,
@@ -46,6 +46,9 @@ export interface RecurringActions {
    *  transactions follow, except ones labeled differently from the old
    *  default. */
   setLabel: (recurring_id: string, label: JSONRecurringLabel) => Promise<boolean>;
+  /** Set the splits each charge joining a recurring takes. Charges already
+   *  in it keep theirs; an empty list stops splitting new ones. */
+  setSplits: (recurring_id: string, splits: JSONRecurringSplit[]) => Promise<boolean>;
 }
 
 /**
@@ -226,5 +229,22 @@ export const useRecurrings = (): RecurringActions => {
     [apply],
   );
 
-  return { confirm, dismiss, create, addTo, rename, setLabel };
+  const setSplits = useCallback(
+    async (recurring_id: string, splits: JSONRecurringSplit[]) => {
+      const response = await call.post<RecurringPostResponse>("/api/recurrings", {
+        recurring_id,
+        splits,
+      });
+      if (response.status !== "success") {
+        if (response.message) window.alert(response.message);
+        return false;
+      }
+      const recurring = response.body?.recurring;
+      if (recurring) apply(recurring);
+      return true;
+    },
+    [apply],
+  );
+
+  return { confirm, dismiss, create, addTo, rename, setLabel, setSplits };
 };

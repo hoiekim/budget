@@ -60,6 +60,8 @@ const recurringRow = (
   transaction_ids,
   label_budget_id: null,
   label_category_id: null,
+  splits: [],
+  splits_since: null,
   created_at: null,
   updated: null,
   is_deleted,
@@ -69,7 +71,8 @@ const recurringRow = (
 const activeRow = (transaction_ids: string[]) =>
   recurringRow("subscriptions", "confirmed", transaction_ids, false);
 
-const LABEL_LOOKUP = /^SELECT label_budget_id, label_category_id, transaction_ids FROM recurrings/i;
+const LABEL_LOOKUP =
+  /^SELECT label_budget_id, .* FROM recurrings WHERE user_id = \$1 AND recurring_id = \$2 AND status = 'confirmed'/i;
 
 /**
  * A user whose Netflix recurring was soft-deleted with `revivedStatus`: the

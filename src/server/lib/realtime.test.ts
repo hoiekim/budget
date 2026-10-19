@@ -126,9 +126,12 @@ describe("realtime", () => {
     expect(mutationSideEffectDomains("GET", "/plan-statement/import")).toEqual([]);
   });
 
-  it("a recurrings write also emits transactions, since it can relabel them", () => {
+  it("a recurrings write also emits transactions and splits, since it can relabel and split them", () => {
     expect(mutationEmitDomain("POST", "/recurrings")).toBe(TableName.Recurrings);
-    expect(mutationSideEffectDomains("POST", "/recurrings")).toEqual([TableName.Transactions]);
+    expect(mutationSideEffectDomains("POST", "/recurrings")).toEqual([
+      TableName.Transactions,
+      TableName.SplitTransactions,
+    ]);
     expect(mutationSideEffectDomains("GET", "/recurrings")).toEqual([]);
   });
 

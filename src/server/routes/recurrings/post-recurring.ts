@@ -7,6 +7,7 @@ import {
   confirmRecurring,
   renameRecurring,
   setRecurringLabel,
+  setRecurringSplits,
   validateFields,
   getRecurrings,
   normalizeMerchantName,
@@ -16,7 +17,8 @@ import {
   requireBodyObject,
   validationError,
 } from "server";
-import type { RecurringCadence } from "common";
+import type { JSONRecurringSplit, RecurringCadence } from "common";
+import type { ValidationResult } from "server/lib/validation";
 
 const CADENCE_BY_DAYS: { maxDays: number; cadence: RecurringCadence }[] = [
   { maxDays: 10, cadence: "weekly" },
@@ -34,6 +36,40 @@ export interface RecurringPostResponse {
    *  directly, since it filters out its own realtime event. */
   recurring?: Recurring;
 }
+
+const MAX_SPLITS = 20;
+
+const SPLIT_SPEC = [
+  { path: "amount", type: "number" as const, required: true },
+  { path: "label.budget_id", type: "uuid" as const, nullable: true },
+  { path: "label.category_id", type: "uuid" as const, nullable: true },
+];
+
+const parseSplits = (value: unknown): ValidationResult<JSONRecurringSplit[]> => {
+  if (!Array.isArray(value)) return { success: false, error: "splits must be an array" };
+  if (value.length > MAX_SPLITS) {
+    return { success: false, error: `A recurring can have at most ${MAX_SPLITS} splits` };
+  }
+  const splits: JSONRecurringSplit[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      return { success: false, error: "Each split must be an object" };
+    }
+    const fields = validateFields(item, SPLIT_SPEC);
+    if (!fields.success) return { success: false, error: fields.error };
+    const { amount, label } = item as {
+      amount: number;
+      label?: { budget_id?: string | null; category_id?: string | null };
+    };
+    const cents = Math.round(amount * 100) / 100;
+    if (cents <= 0) return { success: false, error: "Each split amount must be positive" };
+    splits.push({
+      amount: cents,
+      label: { budget_id: label?.budget_id ?? null, category_id: label?.category_id ?? null },
+    });
+  }
+  return { success: true, data: splits };
+};
 
 const readBack = async (user: MaskedUser, recurring_id: string) => {
   const [recurring] = await getRecurrings(user, { recurringIds: [recurring_id] });
@@ -54,8 +90,8 @@ export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/rec
   // If recurring_id is provided with transaction_ids, add those
   // transactions to the existing recurring (the detail page's "add to
   // recurring" affordance); with merchant_name, rename it; with label, set
-  // its default budget/category. With recurring_id alone, confirm a
-  // suggested recurring.
+  // its default budget/category; with splits, set the splits its joining
+  // charges take. With recurring_id alone, confirm a suggested recurring.
   if (typeof body.recurring_id === "string") {
     if (Array.isArray(body.transaction_ids)) {
       const transactionIds = body.transaction_ids.filter(
@@ -74,6 +110,16 @@ export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/rec
       const result = await renameRecurring(user, body.recurring_id, name);
       if (!result.ok) return { status: "failed", message: result.error };
       return { status: "success", body: { recurring_id: body.recurring_id } };
+    }
+    if (body.splits !== undefined) {
+      const splitsResult = parseSplits(body.splits);
+      if (!splitsResult.success) return validationError(splitsResult.error!);
+      const result = await setRecurringSplits(user, body.recurring_id, splitsResult.data!);
+      if (!result.ok) return { status: "failed", message: result.error };
+      return {
+        status: "success",
+        body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+      };
     }
     if (body.label !== undefined) {
       const fieldsResult = validateFields(body, [

@@ -1,5 +1,6 @@
 import {
   JSONRecurring,
+  JSONRecurringSplit,
   RecurringStatus,
   RecurringCadence,
   isString,
@@ -7,6 +8,7 @@ import {
   isNullableString,
   isNullableBoolean,
   isStringArray,
+  isArray,
 } from "common";
 import {
   RECURRING_ID,
@@ -17,6 +19,8 @@ import {
   IS_INCOME,
   STATUS,
   TRANSACTION_IDS,
+  SPLITS,
+  SPLITS_SINCE,
   LABEL_BUDGET_ID,
   LABEL_CATEGORY_ID,
   CREATED_AT,
@@ -38,6 +42,8 @@ const recurringSchema = {
   [TRANSACTION_IDS]: "TEXT[] NOT NULL DEFAULT '{}'",
   [LABEL_BUDGET_ID]: "UUID",
   [LABEL_CATEGORY_ID]: "UUID",
+  [SPLITS]: "JSONB NOT NULL DEFAULT '[]'",
+  [SPLITS_SINCE]: "DATE",
   [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
@@ -60,6 +66,8 @@ export class RecurringModel
   declare transaction_ids: string[];
   declare label_budget_id: string | null;
   declare label_category_id: string | null;
+  declare splits: JSONRecurringSplit[];
+  declare splits_since: string | null;
   declare created_at: string | null;
   declare updated: string | null;
   declare is_deleted: boolean;
@@ -75,6 +83,8 @@ export class RecurringModel
     transaction_ids: isStringArray,
     label_budget_id: isNullableString,
     label_category_id: isNullableString,
+    splits: isArray,
+    splits_since: isNullableString,
     created_at: isNullableString,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
@@ -94,6 +104,7 @@ export class RecurringModel
       status: this.status,
       transaction_ids: this.transaction_ids,
       label: { budget_id: this.label_budget_id, category_id: this.label_category_id },
+      splits: this.splits,
       updated: this.updated,
     };
   }

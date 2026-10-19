@@ -2,6 +2,7 @@ import { ChangeEventHandler, useMemo, useState, useEffect } from "react";
 import {
   currencyCodeToSymbol,
   getNextRecurringDate,
+  JSONRecurringSplit,
   LocalDate,
   numberToCommaString,
   TRANSFER_DATE_WINDOW_DAYS as PARTNER_DATE_WINDOW_DAYS,
@@ -53,7 +54,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const transferActions = useTransfers();
   const recurringActions = useRecurrings();
   const { transactionFamilies } = calculations;
-  const { accounts, sections, categories, transfers, recurrings } = data;
+  const { accounts, budgets, sections, categories, transfers, recurrings } = data;
 
   const {
     transaction_id,
@@ -417,6 +418,43 @@ export const TransactionProperties = ({ transaction }: Props) => {
     if (e.target.value === recurringSelect.selectedCategoryIdLabel) return;
     void saveRecurringLabel(recurringSelect.selectedBudgetIdLabel, e.target.value);
   };
+
+  const recurringSplits = existingRecurring?.splits ?? [];
+  const ownSplits = useMemo(
+    (): JSONRecurringSplit[] =>
+      (transactionFamilies.get(transaction_id)?.toArray() ?? [])
+        .map((s) => ({
+          amount: Math.round(Math.abs(s.amount) * 100) / 100,
+          label: { budget_id: s.label.budget_id ?? null, category_id: s.label.category_id ?? null },
+        }))
+        .filter((s) => s.amount > 0),
+    [transactionFamilies, transaction_id],
+  );
+  const splitsKey = (splits: JSONRecurringSplit[]) =>
+    splits
+      .map(({ amount, label }) => `${amount}:${label.budget_id}:${label.category_id}`)
+      .sort()
+      .join();
+  const ownSplitsAreDefault = splitsKey(ownSplits) === splitsKey(recurringSplits);
+  // A default must leave a remainder, or a charge of the same amount never
+  // takes it.
+  const toCents = (n: number) => Math.round(Math.abs(n) * 100);
+  const ownSplitsLeaveRemainder =
+    ownSplits.reduce((sum, s) => sum + toCents(s.amount), 0) < toCents(amount);
+  const [savingSplits, setSavingSplits] = useState(false);
+  const saveRecurringSplits = async (splits: JSONRecurringSplit[]) => {
+    if (!existingRecurring || savingSplits) return;
+    setSavingSplits(true);
+    try {
+      await recurringActions.setSplits(existingRecurring.recurring_id, splits);
+    } finally {
+      setSavingSplits(false);
+    }
+  };
+  const splitLabelName = ({ budget_id, category_id }: JSONRecurringSplit["label"]) =>
+    (category_id && categories.get(category_id)?.name) ||
+    (budget_id && budgets.get(budget_id)?.name) ||
+    "Unlabeled";
 
   // Editable recurring name, saved on blur like the memo above.
   const [recurringNameValue, setRecurringNameValue] = useState(
@@ -814,6 +852,25 @@ export const TransactionProperties = ({ transaction }: Props) => {
                 </select>
               </div>
             </KeyValue>
+            {recurringSplits.map((split, i) => (
+              <KeyValue key={i} name="Default&nbsp;Split">
+                <span>
+                  {existingRecurring.is_income && <>+&nbsp;</>}
+                  {currencySymbol}&nbsp;{numberToCommaString(split.amount)}&nbsp;·&nbsp;
+                  {splitLabelName(split.label)}
+                </span>
+              </KeyValue>
+            ))}
+            {!!ownSplits.length && !ownSplitsAreDefault && ownSplitsLeaveRemainder && (
+              <ButtonRow disabled={savingSplits} onClick={() => saveRecurringSplits(ownSplits)}>
+                Use&nbsp;These&nbsp;Splits&nbsp;as&nbsp;Default
+              </ButtonRow>
+            )}
+            {!!recurringSplits.length && (
+              <ButtonRow disabled={savingSplits} onClick={() => saveRecurringSplits([])}>
+                Clear&nbsp;Default&nbsp;Splits
+              </ButtonRow>
+            )}
             {recurringSummary && (
               <>
                 <KeyValue name="From">

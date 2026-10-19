@@ -98,6 +98,8 @@ export const MERCHANT_KEY = "merchant_key";
 export const CADENCE = "cadence";
 export const IS_INCOME = "is_income";
 export const TRANSACTION_IDS = "transaction_ids";
+export const SPLITS = "splits";
+export const SPLITS_SINCE = "splits_since";
 
 export const INVESTMENT_TRANSACTION_ID = "investment_transaction_id";
 export const PRICE = "price";
