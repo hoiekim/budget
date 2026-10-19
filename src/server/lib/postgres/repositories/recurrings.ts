@@ -1,6 +1,7 @@
 import {
   JSONTransaction,
   JSONRecurringLabel,
+  JSONRecurringSplit,
   RecurringStatus,
   RecurringCadence,
 } from "common";
@@ -19,13 +20,14 @@ import {
   STATUS,
   TRANSACTION_IDS,
   TRANSACTION_ID,
+  SPLITS,
   IS_DELETED,
   UPDATED,
   LABEL_BUDGET_ID,
   LABEL_CATEGORY_ID,
   LABEL_CATEGORY_CONFIDENCE,
 } from "../models";
-import { TRANSACTIONS, RECURRINGS } from "common/constants";
+import { TRANSACTIONS, RECURRINGS, SPLIT_TRANSACTIONS } from "common/constants";
 
 export interface Recurring {
   recurring_id: string;
@@ -39,6 +41,9 @@ export interface Recurring {
    *  Optional on the client: recurrings cached before this field existed
    *  come back from IndexedDB without it. */
   label?: JSONRecurringLabel;
+  /** Splits each charge joining it takes. Optional on the client for the
+   *  same reason as `label`. */
+  splits?: JSONRecurringSplit[];
   /** Bumped on every mutation (confirm/dismiss/create/auto-attach). Lets
    *  the FE reduce over a delta by `updated` instead of replacing its
    *  cache wholesale — same role `updated` plays on transaction_pairs. */
@@ -106,6 +111,7 @@ export const getRecurrings = async (
     status: r.status,
     transactions: [],
     label: { budget_id: r.label_budget_id, category_id: r.label_category_id },
+    splits: r.splits,
     updated: r.updated,
   });
 
@@ -149,6 +155,7 @@ export const getRecurrings = async (
       status: r.status,
       transactions,
       label: { budget_id: r.label_budget_id, category_id: r.label_category_id },
+      splits: r.splits,
       updated: r.updated,
     });
   }
@@ -252,12 +259,56 @@ const seedRecurringLabel = async (
 };
 
 /**
+ * Split each of `transactionIds` by a recurring's default splits. A charge
+ * that already has splits keeps them, and one too small to leave a
+ * remainder on the parent is left whole.
+ */
+const applyRecurringSplits = async (
+  executor: QueryExecutor,
+  userId: string,
+  splits: JSONRecurringSplit[],
+  transactionIds: string[],
+): Promise<void> => {
+  if (splits.length === 0 || transactionIds.length === 0) return;
+  const total = Math.round(splits.reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
+  await executor.query(
+    `INSERT INTO ${SPLIT_TRANSACTIONS}
+       (${USER_ID}, ${TRANSACTION_ID}, account_id, amount, date,
+        ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}, ${LABEL_CATEGORY_CONFIDENCE})
+     SELECT t.${USER_ID}, t.${TRANSACTION_ID}, t.account_id, s.amount * SIGN(t.amount), t.date,
+            s.budget_id, s.category_id,
+            CASE WHEN s.category_id IS NOT NULL THEN 1 WHEN s.budget_id IS NOT NULL THEN 0 END
+     FROM ${TRANSACTIONS} t
+     CROSS JOIN UNNEST($3::numeric[], $4::uuid[], $5::uuid[]) AS s(amount, budget_id, category_id)
+     WHERE t.${USER_ID} = $1
+       AND t.${TRANSACTION_ID} = ANY($2::text[])
+       AND (t.${IS_DELETED} IS NULL OR t.${IS_DELETED} = FALSE)
+       AND ABS(t.amount) > $6::numeric
+       AND NOT EXISTS (
+         SELECT 1 FROM ${SPLIT_TRANSACTIONS} x
+         WHERE x.${USER_ID} = t.${USER_ID}
+           AND x.${TRANSACTION_ID} = t.${TRANSACTION_ID}
+           AND (x.${IS_DELETED} IS NULL OR x.${IS_DELETED} = FALSE)
+       )`,
+    [
+      userId,
+      transactionIds,
+      splits.map((s) => s.amount),
+      splits.map((s) => s.label.budget_id),
+      splits.map((s) => s.label.category_id),
+      total,
+    ],
+  );
+};
+
+/**
  * Bring a confirmed recurring's transactions in line with its default
  * label. Without `transactionIds` (confirming or creating it) every member
  * is labeled, and a recurring with no default starts one from its members.
  * With them (charges joining it) only those are labeled, and only if it has
- * a default: one the user cleared stays cleared. Runs inside the caller's
- * DB transaction, under the recurrings advisory lock.
+ * a default: one the user cleared stays cleared. Joining charges are also
+ * split by its default splits. Runs inside the caller's DB transaction,
+ * under the recurrings advisory lock.
  */
 export const labelConfirmedRecurring = async (
   executor: QueryExecutor,
@@ -269,13 +320,15 @@ export const labelConfirmedRecurring = async (
     label_budget_id: string | null;
     label_category_id: string | null;
     transaction_ids: string[];
+    splits: JSONRecurringSplit[];
   }>(
-    `SELECT ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}, ${TRANSACTION_IDS} FROM ${RECURRINGS}
+    `SELECT ${LABEL_BUDGET_ID}, ${LABEL_CATEGORY_ID}, ${TRANSACTION_IDS}, ${SPLITS} FROM ${RECURRINGS}
      WHERE ${USER_ID} = $1 AND ${RECURRING_ID} = $2 AND ${STATUS} = 'confirmed'`,
     [userId, recurring_id],
   );
   const row = found.rows[0];
   if (!row) return;
+  if (transactionIds) await applyRecurringSplits(executor, userId, row.splits ?? [], transactionIds);
   let label: JSONRecurringLabel = {
     budget_id: row.label_budget_id,
     category_id: row.label_category_id,
@@ -396,6 +449,30 @@ export const setRecurringLabel = async (
   } finally {
     client.release();
   }
+};
+
+/**
+ * Set the splits a recurring's joining charges take. Charges already in it
+ * are left as they are; an empty list stops splitting new ones.
+ */
+export const setRecurringSplits = async (
+  user: MaskedUser,
+  recurring_id: string,
+  splits: JSONRecurringSplit[],
+): Promise<RecurringConfirmResult> => {
+  const result = await recurringsTable.update(
+    recurring_id,
+    { [SPLITS]: JSON.stringify(splits) },
+    undefined,
+    user.user_id,
+    undefined,
+    undefined,
+    true,
+  );
+  if (!result) {
+    return { ok: false, error: "Recurring not found." };
+  }
+  return { ok: true };
 };
 
 /**

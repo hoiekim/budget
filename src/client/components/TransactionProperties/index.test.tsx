@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import {
   Account,
   Budget,
+  Calculations,
   Category,
   Context,
   ContextType,
@@ -10,6 +11,7 @@ import {
   PATH,
   RecurringDictionary,
   Section,
+  SplitTransaction,
   Transaction,
   TransactionLabel,
   TransferDictionary,
@@ -74,6 +76,10 @@ interface SetupOptions {
   status?: "suggested" | "confirmed";
   /** That recurring's default label. */
   label?: Recurring["label"];
+  /** That recurring's default splits. */
+  splits?: Recurring["splits"];
+  /** Splits of tx-0, the viewed transaction. */
+  ownSplits?: SplitTransaction[];
   /** Other recurrings already in `data`. */
   others?: Recurring[];
   /** Body the stubbed `/api/recurrings` answers with. */
@@ -92,6 +98,8 @@ const streaming = new Category({ section_id: section.id, name: "Streaming" });
 const setup = ({
   status,
   label,
+  splits,
+  ownSplits = [],
   others = [],
   responseBody,
   suggestedTransfer,
@@ -108,7 +116,7 @@ const setup = ({
   if (status) {
     recurrings.push([
       RECURRING_ID,
-      { ...buildRecurring(RECURRING_ID, "Nvidia", status, members), label },
+      { ...buildRecurring(RECURRING_ID, "Nvidia", status, members), label, splits },
     ]);
   }
   data.recurrings = new RecurringDictionary(recurrings);
@@ -140,8 +148,10 @@ const setup = ({
     { path: "/api/transfers", response: { status: "success" } },
   ]);
   const { router } = buildRouter(PATH.TRANSACTION_DETAIL);
+  const calculations = new Calculations();
+  ownSplits.forEach((split) => calculations.transactionFamilies.add("tx-0", split));
   const render = () => (
-    <Context.Provider value={buildContext({ data: store.data, setData, router })}>
+    <Context.Provider value={buildContext({ data: store.data, setData, router, calculations })}>
       <TransactionProperties transaction={store.data.transactions.get("tx-0")!} />
     </Context.Provider>
   );
@@ -465,6 +475,107 @@ describe("TransactionProperties — recurring default label", () => {
     for (const id of ["tx-0", "tx-1", "tx-2"]) {
       expect(store.data.transactions.get(id)?.label.category_id).toBe(subscriptions.id);
     }
+  });
+});
+
+describe("TransactionProperties — recurring default splits", () => {
+  const ownSplit = (amount: number, category_id: string) =>
+    new SplitTransaction({
+      split_transaction_id: `split-${amount}`,
+      transaction_id: "tx-0",
+      account_id: ACCOUNT_ID,
+      amount,
+      label: new TransactionLabel({ budget_id: budget.id, category_id, category_confidence: 1 }),
+    });
+
+  /** Request bodies sent to the stubbed fetch, parsed. */
+  const recordBodies = () => {
+    const bodies: unknown[] = [];
+    const inner = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (typeof init?.body === "string") bodies.push(JSON.parse(init.body));
+      return inner(input, init);
+    }) as typeof globalThis.fetch;
+    return bodies;
+  };
+
+  const defaultSplitTexts = () =>
+    Array.from(recurringSection()?.querySelectorAll(".row.keyValue") ?? [])
+      .filter((r) => r.querySelector(".propertyName")?.textContent?.replace(/\u00a0/g, " ") === "Default Split")
+      .map((r) => r.lastElementChild?.textContent?.replace(/\u00a0/g, " "));
+
+  it("shows each default split with its amount and label", () => {
+    setup({
+      status: "confirmed",
+      splits: [
+        { amount: 20, label: { budget_id: budget.id, category_id: streaming.id } },
+        { amount: 5.5, label: { budget_id: budget.id, category_id: null } },
+      ],
+    });
+
+    expect(defaultSplitTexts()).toEqual(["$ 20.00 · Streaming", "$ 5.50 · Living"]);
+  });
+
+  it("saves this transaction's splits as the default and shows what the server stored", async () => {
+    const stored = [{ amount: 20, label: { budget_id: budget.id, category_id: streaming.id } }];
+    const { store, calls } = setup({
+      status: "confirmed",
+      ownSplits: [ownSplit(20, streaming.id)],
+      responseBody: {
+        recurring_id: RECURRING_ID,
+        recurring: { ...buildRecurring(RECURRING_ID, "Nvidia", "confirmed", []), splits: stored },
+      },
+    });
+    const bodies = recordBodies();
+
+    await act(async () => {
+      fireEvent.click(button(/^Use.These.Splits.as.Default$/));
+    });
+
+    expect(calls.requests).toEqual([{ url: "/api/recurrings", method: "POST" }]);
+    expect(bodies).toEqual([{ recurring_id: RECURRING_ID, splits: stored }]);
+    expect(store.data.recurrings.get(RECURRING_ID)?.splits).toEqual(stored);
+  });
+
+  it("offers to save only splits that differ from the default", () => {
+    // Stored in another order, with keys ordered as a JSONB column returns them.
+    setup({
+      status: "confirmed",
+      ownSplits: [ownSplit(20, streaming.id), ownSplit(5, subscriptions.id)],
+      splits: [
+        { label: { category_id: subscriptions.id, budget_id: budget.id }, amount: 5 },
+        { label: { category_id: streaming.id, budget_id: budget.id }, amount: 20 },
+      ],
+    });
+
+    expect(screen.queryByRole("button", { name: /^Use.These.Splits.as.Default$/ })).toBeNull();
+    expect(button(/^Clear.Default.Splits$/)).not.toBeNull();
+  });
+
+  it("offers nothing to save on a transaction without splits", () => {
+    setup({ status: "confirmed" });
+
+    expect(screen.queryByRole("button", { name: /^Use.These.Splits.as.Default$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Clear.Default.Splits$/ })).toBeNull();
+  });
+
+  it("Clear Default Splits posts an empty list", async () => {
+    const { store } = setup({
+      status: "confirmed",
+      splits: [{ amount: 20, label: { budget_id: budget.id, category_id: streaming.id } }],
+      responseBody: {
+        recurring_id: RECURRING_ID,
+        recurring: { ...buildRecurring(RECURRING_ID, "Nvidia", "confirmed", []), splits: [] },
+      },
+    });
+    const bodies = recordBodies();
+
+    await act(async () => {
+      fireEvent.click(button(/^Clear.Default.Splits$/));
+    });
+
+    expect(bodies).toEqual([{ recurring_id: RECURRING_ID, splits: [] }]);
+    expect(store.data.recurrings.get(RECURRING_ID)?.splits).toEqual([]);
   });
 });
 

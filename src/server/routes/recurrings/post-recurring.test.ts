@@ -80,6 +80,7 @@ const recurringRow = (overrides: Record<string, unknown> = {}) => ({
   transaction_ids: ["t-1"],
   label_budget_id: null,
   label_category_id: null,
+  splits: [],
   created_at: "2026-10-02T00:00:00Z",
   updated: "2026-10-02T00:00:00Z",
   is_deleted: false,
@@ -179,6 +180,8 @@ const C2 = "00000000-0000-0000-0000-0000000000c2";
 const clientSql = () => mockClientQuery.mock.calls.map((c) => c[0] as string);
 const relabelCall = () =>
   mockClientQuery.mock.calls.find((c) => /UPDATE transactions/.test(c[0] as string));
+const splitCall = () =>
+  mockClientQuery.mock.calls.find((c) => /INSERT INTO split_transactions/.test(c[0] as string));
 
 describe("post-recurring — confirm", () => {
   test("confirms, seeds the default from the members, relabels them, and answers with the recurring", async () => {
@@ -373,6 +376,138 @@ describe("post-recurring — add to existing", () => {
     // No seeding and no relabel: a cleared default stays cleared.
     expect(clientSql().some((sql) => /GROUP BY label_budget_id/.test(sql))).toBe(false);
     expect(relabelCall()).toBeUndefined();
+    expect(splitCall()).toBeUndefined();
     expect(clientSql().at(-1)).toBe("COMMIT");
+  });
+
+  test("joining charges are split by the recurring's default splits", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ recurring_id: "r-1", is_income: false, status: "confirmed" }],
+      rowCount: 1,
+    }); // recurring
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ transaction_id: "t-2", amount: "3900.00" }],
+      rowCount: 1,
+    }); // members to add
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // append
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          label_budget_id: B1,
+          label_category_id: C1,
+          transaction_ids: ["t-1", "t-2"],
+          splits: [
+            { amount: 3700, label: { budget_id: B2, category_id: C2 } },
+            { amount: 50.5, label: { budget_id: B2, category_id: null } },
+          ],
+        },
+      ],
+      rowCount: 1,
+    }); // default label and splits
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 }); // split
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // relabel
+    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockQuery.mockResolvedValueOnce({ rows: [recurringRow({ transaction_ids: ["t-1", "t-2"] })], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1"), txnRow("t-2")], rowCount: 2 });
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", transaction_ids: ["t-2"] }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const [sql, values] = splitCall()!;
+    // Only charges without live splits, and only when a remainder is left.
+    expect(sql as string).toMatch(/NOT EXISTS/);
+    expect(sql as string).toMatch(/ABS\(t\.amount\) > \$6::numeric/);
+    expect(sql as string).toMatch(/s\.amount \* SIGN\(t\.amount\)/);
+    expect(values).toEqual(["u-1", ["t-2"], [3700, 50.5], [B2, B2], [C2, null], 3750.5]);
+    expect(relabelCall()![1]).toEqual(["u-1", ["t-2"], B1, C1, 1, B1, C1]);
+    expect(clientSql().at(-1)).toBe("COMMIT");
+  });
+});
+
+describe("post-recurring — default splits", () => {
+  const stageSplits = (stored: unknown[]) => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // store
+    mockQuery.mockResolvedValueOnce({ rows: [recurringRow({ splits: stored })], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 });
+  };
+
+  test("stores them rounded to cents, on a live recurring of the session user", async () => {
+    const stored = [{ amount: 3700, label: { budget_id: B1, category_id: C1 } }];
+    stageSplits(stored);
+
+    const result = await postRecurringRoute.execute(
+      makeReq({
+        recurring_id: "r-1",
+        splits: [
+          { amount: 3700.004, label: { budget_id: B1, category_id: C1 } },
+          { amount: 12.345, label: {} },
+        ],
+      }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.recurring?.splits).toEqual(stored);
+    const [sql, values] = mockQuery.mock.calls[0];
+    expect(sql as string).toMatch(/UPDATE recurrings/);
+    expect(sql as string).toMatch(/is_deleted/);
+    expect(values).toContain("r-1");
+    expect(values).toContain("u-1");
+    expect(values).toContain(
+      JSON.stringify([
+        { amount: 3700, label: { budget_id: B1, category_id: C1 } },
+        { amount: 12.35, label: { budget_id: null, category_id: null } },
+      ]),
+    );
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+
+  test("an empty list clears them", async () => {
+    stageSplits([]);
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", splits: [] }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(mockQuery.mock.calls[0][1]).toContain("[]");
+  });
+
+  test("reports a recurring that doesn't exist", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-missing", splits: [] }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/not found/);
+  });
+
+  test.each([
+    ["not an array", { amount: 10 }],
+    ["a non-object split", [10]],
+    ["a missing amount", [{ label: {} }]],
+    ["a zero amount", [{ amount: 0.004 }]],
+    ["a negative amount", [{ amount: -10 }]],
+    ["a non-UUID label", [{ amount: 10, label: { budget_id: "nope" } }]],
+    ["too many splits", Array.from({ length: 21 }, () => ({ amount: 1 }))],
+  ])("refuses %s before touching the database", async (_, splits) => {
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", splits }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockClientQuery).not.toHaveBeenCalled();
   });
 });

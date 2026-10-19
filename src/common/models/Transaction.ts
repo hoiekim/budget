@@ -92,6 +92,13 @@ export interface JSONRecurringLabel {
   category_id: string | null;
 }
 
+/** A fixed share of each charge joining a recurring, split off with its own
+ *  label. `amount` is unsigned; the split takes the charge's sign. */
+export interface JSONRecurringSplit {
+  amount: number;
+  label: JSONRecurringLabel;
+}
+
 export interface JSONRecurring {
   recurring_id: string;
   merchant_key: string;
@@ -101,6 +108,7 @@ export interface JSONRecurring {
   status: RecurringStatus;
   transaction_ids: string[];
   label: JSONRecurringLabel;
+  splits: JSONRecurringSplit[];
   updated?: string | null;
 }
 

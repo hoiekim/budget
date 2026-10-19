@@ -176,14 +176,14 @@ export const mutationEmitDomain = (method: string, path: string): EmitDomain | n
  * Tables a path's write also changes as a side effect, beyond its own domain:
  * a plan-statement import also saves the account's fund mappings and holdings
  * rows, and can retire entered holding snapshots; a recurrings write can
- * relabel transactions. These are emitted without
+ * relabel and split transactions. These are emitted without
  * the writing tab's id, so every tab refetches them.
  */
 const SIDE_EFFECT_DOMAINS: Record<string, EmitDomain[]> = {
   "/plan-statement/import": [TableName.Accounts, TableName.Snapshots],
   // Confirming a recurring, adding to one, or changing its default label
-  // relabels its transactions.
-  "/recurrings": [TableName.Transactions],
+  // relabels its transactions, and a charge added to one can be split.
+  "/recurrings": [TableName.Transactions, TableName.SplitTransactions],
 };
 
 export const mutationSideEffectDomains = (method: string, path: string): EmitDomain[] =>
