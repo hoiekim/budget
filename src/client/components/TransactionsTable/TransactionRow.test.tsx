@@ -6,6 +6,7 @@ import {
   Data,
   PATH,
   RecurringDictionary,
+  SplitTransaction,
   Transaction,
   TransactionLabel,
   TransferDictionary,
@@ -58,7 +59,7 @@ const rowTitle = (container: HTMLElement) => {
   return bigText?.textContent ?? "";
 };
 
-const render = (transaction: Transaction, data: Data) => {
+const render = (transaction: Transaction | SplitTransaction, data: Data) => {
   const { router } = buildRouter(PATH.TRANSACTIONS);
   return renderWithContext(<TransactionRow transaction={transaction} />, buildContext({ data, router }));
 };
@@ -412,6 +413,19 @@ const renderRecurringRow = (
   return { ...rendered, calls: stub.calls };
 };
 
+/** A split of the recurring's member transaction, rendered as its own row. */
+const renderRecurringSplitRow = (status: "suggested" | "confirmed") => {
+  const { data, transaction } = buildRecurring(status);
+  const split = new SplitTransaction({
+    split_transaction_id: "split-1",
+    transaction_id: transaction.transaction_id,
+    account_id: ACCOUNT_ID,
+    amount: 5,
+    label: new TransactionLabel(),
+  });
+  return render(split, data);
+};
+
 const recurringChip = () => screen.getByRole("button", { name: "Recurring" });
 const openRecurringDialog = () => act(() => void fireEvent.click(recurringChip()));
 const recurringDialog = () => document.querySelector("div.RecurringModal");
@@ -497,6 +511,21 @@ describe("TransactionRow — recurring", () => {
     expect(rowTitle(container)).toBe("Netflix");
     expect(screen.queryByRole("button", { name: "Confirm recurring" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Recurring" })).toBeNull();
+  });
+
+  it("a split of a confirmed recurring shows the chip beside its title", () => {
+    const { container } = renderRecurringSplitRow("confirmed");
+    const chip = container.querySelector(".merchant_name .titleLine .recurringChip");
+    expect(chip?.textContent).toBe("Recurring");
+    expect(chip?.classList.contains("suggested")).toBe(false);
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+  });
+
+  it("a split of a suggested recurring keeps its label controls; the parent row confirms", () => {
+    const { container } = renderRecurringSplitRow("suggested");
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+    expect(container.querySelector(".recurringChip")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm recurring" })).toBeNull();
   });
 
   it("confirming from the checkmark swaps the chip for the label controls", async () => {
