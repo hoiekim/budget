@@ -43,6 +43,7 @@ import {
   InstitutionDictionary,
   Institution,
   indexedDb,
+  indexedDbAccessor,
   StoreName,
   HoldingDictionary,
   Holding,
@@ -104,18 +105,20 @@ const removeLastSyncedCursor = () => {
 };
 
 /**
- * What a finished sync does with the delta cursor. A failed fetch or save keeps
- * it so the next sync re-fetches the same delta. A failed cold-path purge
- * clears it: hard-deleted rows never arrive as tombstones, so only another cold
- * sync can evict what the failed purge left behind.
+ * What a finished sync does with the delta cursor. A failed fetch or save, or a
+ * write the unavailable cache dropped, keeps it so the next sync re-fetches the
+ * same delta. A failed cold-path purge clears it: hard-deleted rows never
+ * arrive as tombstones, so only another cold sync can evict what the failed
+ * purge left behind.
  */
 export const cursorUpdateAfterSync = (outcome: {
   purgeFailed: boolean;
   fetchFailed: boolean;
   idbFailed: boolean;
+  writesSkipped: boolean;
 }): "advance" | "clear" | "keep" => {
   if (outcome.purgeFailed) return "clear";
-  if (outcome.fetchFailed || outcome.idbFailed) return "keep";
+  if (outcome.fetchFailed || outcome.idbFailed || outcome.writesSkipped) return "keep";
   return "advance";
 };
 
@@ -599,11 +602,13 @@ export const useSync = () => {
       // next sync (which uses cursor = startedAt - safety margin).
       const syncStartedAt = new Date();
       dropLegacyKeys();
+      const skippedWritesAtStart = indexedDbAccessor.skippedWrites;
 
       const cached = await indexedDb.loadAllData().catch((err) => {
         console.error(err);
         return null;
       });
+      const cacheJustUpgraded = indexedDbAccessor.takeUpgradedExisting();
       const cursorRaw = readLastSyncedCursor();
       // Warm requires a populated IDB cache (accounts AND at least one
       // time-partitioned store) AND a previously-recorded cursor. Any missing
@@ -615,7 +620,8 @@ export const useSync = () => {
         (cached.transactions.size > 0 ||
           cached.investmentTransactions.size > 0 ||
           cached.accountSnapshots.size > 0) &&
-        cursorRaw !== null;
+        cursorRaw !== null &&
+        !cacheJustUpgraded;
 
       // Cold path purges IDB before the new save block writes the
       // fresh delta — otherwise pre-tombstone-era rows (soft-deleted
@@ -979,7 +985,12 @@ export const useSync = () => {
         return false;
       });
 
-      const cursorUpdate = cursorUpdateAfterSync({ purgeFailed, fetchFailed, idbFailed });
+      const cursorUpdate = cursorUpdateAfterSync({
+        purgeFailed,
+        fetchFailed,
+        idbFailed,
+        writesSkipped: indexedDbAccessor.skippedWrites !== skippedWritesAtStart,
+      });
       if (cursorUpdate === "advance") writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
       else if (cursorUpdate === "clear") removeLastSyncedCursor();
     } catch (err) {

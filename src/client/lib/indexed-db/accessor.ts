@@ -42,6 +42,13 @@ class IndexedDbAccessor {
   private dbName: string;
   private dbVersion: number;
   private stores = Object.values(StoreName);
+  private blocked = false;
+  private upgradedExisting = false;
+  /**
+   * Writes dropped because the cache was unavailable. A sync that dropped any
+   * left the cache short of what it fetched, so it must not advance the cursor.
+   */
+  skippedWrites = 0;
 
   constructor(dbName = DB_NAME, dbVersion = DB_VERSION) {
     this.dbName = dbName;
@@ -50,6 +57,17 @@ class IndexedDbAccessor {
 
   isAvailable(): boolean {
     return this.available;
+  }
+
+  /**
+   * True once after this page upgraded an existing database. Stores the
+   * upgrade created are empty, so the cache can't seed a delta sync until a
+   * cold one fills it.
+   */
+  takeUpgradedExisting(): boolean {
+    const upgraded = this.upgradedExisting;
+    this.upgradedExisting = false;
+    return upgraded;
   }
 
   private init = (): Promise<IDBDatabase> => {
@@ -83,6 +101,7 @@ class IndexedDbAccessor {
       // possibly until that tab closes. Waiting would hold up the first sync,
       // so this page goes without the cache instead.
       request.onblocked = () => {
+        this.blocked = true;
         this.available = false;
         console.warn("IndexedDB upgrade is blocked by another tab; local caching disabled.");
         reject(new Error("IndexedDB upgrade blocked"));
@@ -95,10 +114,16 @@ class IndexedDbAccessor {
           if (this.db === database) this.db = null;
         };
         this.db = database;
+        // The open that was blocked finishes once the other tab lets go.
+        if (this.blocked) {
+          this.blocked = false;
+          this.available = true;
+        }
         resolve(database);
       };
 
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event) => {
+        if (event.oldVersion > 0) this.upgradedExisting = true;
         const database = request.result;
         this.stores.forEach((storeName) => {
           if (!database.objectStoreNames.contains(storeName)) {
@@ -110,7 +135,10 @@ class IndexedDbAccessor {
   };
 
   save = async (storeName: StoreName, key: string, data: unknown): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
 
@@ -124,7 +152,10 @@ class IndexedDbAccessor {
   };
 
   saveMany = async (storeName: StoreName, items: [string, unknown][]): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
@@ -137,7 +168,10 @@ class IndexedDbAccessor {
   };
 
   delete = async (storeName: StoreName, key: string): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
@@ -187,7 +221,10 @@ class IndexedDbAccessor {
   };
 
   clear = async (storeName: StoreName): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
