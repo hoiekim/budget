@@ -1,5 +1,8 @@
 const DB_NAME = "BudgetApp";
-const DB_VERSION = 5;
+/** Bump with every store added: IndexedDB creates stores only during an upgrade. */
+export const DB_VERSION = 6;
+/** How long an open may wait before the page gives up on the cache for now. */
+const OPEN_DEADLINE_MS = 3_000;
 
 export enum StoreName {
   // primary data
@@ -41,6 +44,18 @@ class IndexedDbAccessor {
   private dbName: string;
   private dbVersion: number;
   private stores = Object.values(StoreName);
+  private blocked = false;
+  /**
+   * Called when this page upgrades an existing database. The stores the
+   * upgrade creates are empty, so whatever delta cursor seeded the cache
+   * before can't seed it now.
+   */
+  onUpgradeExisting: (() => void) | null = null;
+  /**
+   * Writes dropped because the cache was unavailable. A sync that dropped any
+   * left the cache short of what it fetched, so it must not advance the cursor.
+   */
+  skippedWrites = 0;
 
   constructor(dbName = DB_NAME, dbVersion = DB_VERSION) {
     this.dbName = dbName;
@@ -51,18 +66,19 @@ class IndexedDbAccessor {
     return this.available;
   }
 
+  private opening: Promise<IDBDatabase> | null = null;
+
   private init = (): Promise<IDBDatabase> => {
-    return new Promise((resolve, reject) => {
-      if (!this.available) {
-        reject(new Error("IndexedDB is not available"));
-        return;
-      }
+    if (!this.available) return Promise.reject(new Error("IndexedDB is not available"));
+    if (this.db) return Promise.resolve(this.db);
+    this.opening ??= this.open().finally(() => {
+      this.opening = null;
+    });
+    return this.opening;
+  };
 
-      if (this.db) {
-        resolve(this.db);
-        return;
-      }
-
+  private open = (): Promise<IDBDatabase> =>
+    new Promise((resolve, reject) => {
       let request: IDBOpenDBRequest;
       try {
         request = indexedDB.open(this.dbName, this.dbVersion);
@@ -73,17 +89,53 @@ class IndexedDbAccessor {
         return;
       }
 
+      let settled = false;
+      // Another tab holding an older version open keeps the upgrade waiting,
+      // possibly until that tab closes, and only the first open waiting on it
+      // hears `blocked`; later ones hear nothing. Waiting would hold up the
+      // first sync, so past a deadline this page goes without the cache. The
+      // request stays pending and finishes the upgrade when it can.
+      const fallBack = () => {
+        clearTimeout(deadline);
+        if (settled) return;
+        settled = true;
+        this.blocked = true;
+        this.available = false;
+        console.warn("IndexedDB upgrade is blocked by another tab; local caching disabled.");
+        reject(new Error("IndexedDB upgrade blocked"));
+      };
+      const deadline = setTimeout(fallBack, OPEN_DEADLINE_MS);
+      request.onblocked = fallBack;
+
       request.onerror = () => {
+        clearTimeout(deadline);
         this.available = false;
         console.warn("IndexedDB unavailable; local caching disabled.", request.error);
+        if (settled) return;
+        settled = true;
         reject(request.error);
       };
       request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
+        clearTimeout(deadline);
+        const database = request.result;
+        // Step aside when a newer version of the app opens the database.
+        database.onversionchange = () => {
+          database.close();
+          if (this.db === database) this.db = null;
+        };
+        this.db = database;
+        // The open that fell back finishes once the other tab lets go.
+        if (this.blocked) {
+          this.blocked = false;
+          this.available = true;
+        }
+        if (settled) return;
+        settled = true;
+        resolve(database);
       };
 
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event) => {
+        if (event.oldVersion > 0) this.onUpgradeExisting?.();
         const database = request.result;
         this.stores.forEach((storeName) => {
           if (!database.objectStoreNames.contains(storeName)) {
@@ -92,10 +144,12 @@ class IndexedDbAccessor {
         });
       };
     });
-  };
 
   save = async (storeName: StoreName, key: string, data: unknown): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
 
@@ -109,7 +163,10 @@ class IndexedDbAccessor {
   };
 
   saveMany = async (storeName: StoreName, items: [string, unknown][]): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
@@ -122,7 +179,10 @@ class IndexedDbAccessor {
   };
 
   delete = async (storeName: StoreName, key: string): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
@@ -172,7 +232,10 @@ class IndexedDbAccessor {
   };
 
   clear = async (storeName: StoreName): Promise<void> => {
-    if (!this.available) return;
+    if (!this.available) {
+      this.skippedWrites++;
+      return;
+    }
     const database = await this.init();
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);

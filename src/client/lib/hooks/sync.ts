@@ -52,6 +52,9 @@ import {
   RecurringDictionary,
   globalData,
 } from "client";
+// Straight from the module rather than the barrel, so it is initialised when
+// this module's top level runs.
+import { indexedDbAccessor } from "client/lib/indexed-db/accessor";
 
 // Cursor key: ISO timestamp of the last successful sync's start, minus a
 // safety margin. Next sync's delta fetch sends this as `start-date`, so
@@ -103,19 +106,25 @@ const removeLastSyncedCursor = () => {
   }
 };
 
+// Stores an upgrade creates start empty, so no cursor from before it can seed
+// a delta for them. Set at load, before anything on the page opens the cache.
+indexedDbAccessor.onUpgradeExisting = removeLastSyncedCursor;
+
 /**
- * What a finished sync does with the delta cursor. A failed fetch or save keeps
- * it so the next sync re-fetches the same delta. A failed cold-path purge
- * clears it: hard-deleted rows never arrive as tombstones, so only another cold
- * sync can evict what the failed purge left behind.
+ * What a finished sync does with the delta cursor. A failed fetch or save, or a
+ * write the unavailable cache dropped, keeps it so the next sync re-fetches the
+ * same delta. A failed cold-path purge clears it: hard-deleted rows never
+ * arrive as tombstones, so only another cold sync can evict what the failed
+ * purge left behind.
  */
 export const cursorUpdateAfterSync = (outcome: {
   purgeFailed: boolean;
   fetchFailed: boolean;
   idbFailed: boolean;
+  writesSkipped: boolean;
 }): "advance" | "clear" | "keep" => {
   if (outcome.purgeFailed) return "clear";
-  if (outcome.fetchFailed || outcome.idbFailed) return "keep";
+  if (outcome.fetchFailed || outcome.idbFailed || outcome.writesSkipped) return "keep";
   return "advance";
 };
 
@@ -599,6 +608,7 @@ export const useSync = () => {
       // next sync (which uses cursor = startedAt - safety margin).
       const syncStartedAt = new Date();
       dropLegacyKeys();
+      const skippedWritesAtStart = indexedDbAccessor.skippedWrites;
 
       const cached = await indexedDb.loadAllData().catch((err) => {
         console.error(err);
@@ -979,7 +989,12 @@ export const useSync = () => {
         return false;
       });
 
-      const cursorUpdate = cursorUpdateAfterSync({ purgeFailed, fetchFailed, idbFailed });
+      const cursorUpdate = cursorUpdateAfterSync({
+        purgeFailed,
+        fetchFailed,
+        idbFailed,
+        writesSkipped: indexedDbAccessor.skippedWrites !== skippedWritesAtStart,
+      });
       if (cursorUpdate === "advance") writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
       else if (cursorUpdate === "clear") removeLastSyncedCursor();
     } catch (err) {
