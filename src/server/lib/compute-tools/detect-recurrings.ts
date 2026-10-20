@@ -103,6 +103,21 @@ export const normalizeMerchantName = (raw: string): string => {
   return tokens.join(" ");
 };
 
+/**
+ * Whether a charge belongs to the merchant `key`. Its own key decides, but
+ * enrichment can name a merchant something else, or nothing, from one charge
+ * to the next; a bank description that contains the whole key, word for word,
+ * still counts. A one-word key would match too much to trust that way.
+ */
+export const matchesMerchantKey = (
+  candidate: Pick<RecurringCandidate, "merchant_name" | "name">,
+  key: string,
+): boolean => {
+  if (normalizeMerchantName(candidate.merchant_name || candidate.name || "") === key) return true;
+  if (!candidate.name || !key.includes(" ")) return false;
+  return ` ${normalizeMerchantName(candidate.name)} `.includes(` ${key} `);
+};
+
 export interface RecurringCandidate {
   transaction_id: string;
   /** Plaid sign convention: positive = money out, negative = money in. */
@@ -395,8 +410,7 @@ export const selectConfirmedAttachments = (
         !taken.has(c.transaction_id) &&
         isValidDate(c.date) &&
         c.date > mostRecent!.date &&
-        normalizeMerchantName(c.merchant_name || c.name || "") ===
-          recurring.merchant_key,
+        matchesMerchantKey(c, recurring.merchant_key),
     )
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 

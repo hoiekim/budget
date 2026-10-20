@@ -574,6 +574,80 @@ describe("selectConfirmedAttachments", () => {
     ).toEqual(["noisy"]);
   });
 
+  describe("a charge enrichment renamed", () => {
+    const bakery = (id: string, date: string, merchant = "Corner Bakery", amount = 12) =>
+      txn({
+        transaction_id: id,
+        date,
+        amount,
+        merchant_name: merchant,
+        name: `POS PURCHASE 0412 CORNER BAKERY ANYTOWN ${date.slice(5).replace("-", "/")}`,
+      });
+    const weekly = (members: RecurringCandidate[]): ConfirmedRecurringSnapshot => ({
+      merchant_key: "corner bakery",
+      is_income: false,
+      cadence: "weekly",
+      members,
+    });
+    const run = [
+      bakery("w1", "2026-09-21"),
+      bakery("w2", "2026-09-28"),
+      bakery("w3", "2026-10-05"),
+    ];
+
+    test("joins when its bank description names the merchant", () => {
+      const recurring = weekly(run);
+      const renamed = bakery("w4", "2026-10-12", "Bakery Holdings Inc.");
+      expect(
+        selectConfirmedAttachments(recurring, [...run, renamed], claimedBy(recurring)),
+      ).toEqual(["w4"]);
+    });
+
+    test("joins when enrichment gave it no merchant name", () => {
+      const recurring = weekly(run);
+      const unnamed = txn({ ...bakery("w4", "2026-10-12"), merchant_name: null });
+      expect(
+        selectConfirmedAttachments(recurring, [unnamed], claimedBy(recurring)),
+      ).toEqual(["w4"]);
+    });
+
+    test("still has to be on schedule and the same bill", () => {
+      const recurring = weekly(run);
+      const offSchedule = bakery("mid", "2026-10-08", "Bakery Holdings Inc.");
+      const otherBill = bakery("big", "2026-10-12", "Bakery Holdings Inc.", 80);
+      expect(
+        selectConfirmedAttachments(recurring, [offSchedule, otherBill], claimedBy(recurring)),
+      ).toEqual([]);
+    });
+
+    test("needs the whole key, word for word", () => {
+      const recurring = weekly(run);
+      const partial = txn({
+        transaction_id: "w4",
+        date: "2026-10-12",
+        amount: 12,
+        merchant_name: "Bakery Holdings Inc.",
+        name: "POS PURCHASE 0412 CORNER BAKERYSHOP ANYTOWN",
+      });
+      expect(
+        selectConfirmedAttachments(recurring, [partial], claimedBy(recurring)),
+      ).toEqual([]);
+    });
+
+    test("doesn't apply to a one-word key", () => {
+      const recurring = netflix(history);
+      const renamed = txn({
+        transaction_id: "oct",
+        date: "2026-10-15",
+        merchant_name: "Streaming Co",
+        name: "RECURRING NETFLIX 0412",
+      });
+      expect(
+        selectConfirmedAttachments(recurring, [renamed], claimedBy(recurring)),
+      ).toEqual([]);
+    });
+  });
+
   test("matches income by direction", () => {
     const pay = (id: string, date: string, amount = -3000) =>
       charge(id, date, amount, "Employer Inc");
